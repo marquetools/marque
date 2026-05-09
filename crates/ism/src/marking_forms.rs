@@ -4,17 +4,21 @@
 
 //! Single source of truth for banner ↔ portion marking form mappings.
 //!
-//! The CAPCO Register (CAPCO-2016 §G.1 Table 4, lines 821–841) defines three
-//! columns per marking:
+//! The CAPCO Register (CAPCO-2016 §G.1 Table 4, p36–38, spanning the SCI /
+//! NATO / AEA / dissem / non-IC blocks) defines three columns per marking:
 //!
 //! - **Marking Title** (full descriptive name, e.g., "NOT RELEASABLE TO FOREIGN NATIONALS")
 //! - **Banner Line Abbreviation** (e.g., "NOFORN")
 //! - **Portion Mark** (e.g., "NF")
 //!
 //! For most markings, banner and portion forms are identical (e.g., HCS, FISA,
-//! RELIDO). This module only tracks entries where the forms *differ*, since
-//! those are the ones E001 (banner uses portion abbreviation) and E009 (portion
-//! uses banner expansion) need to detect and correct.
+//! RELIDO). This module tracks (a) entries where the forms *differ* — for
+//! E001 (banner uses portion abbreviation) and E009 (portion uses banner
+//! expansion) detection — (b) same-form-with-distinct-title entries for S001
+//! `prefer-banner-abbreviation` substitutions, and (c) documentation rows
+//! that anchor §G.1 Table 4 fidelity even when no substitution is possible
+//! (NATO programs, CVE-Value-bridge anchors). See `MARKING_FORMS` doc for the
+//! three row shapes.
 //!
 //! Per CAPCO-2016 §D.1 p27, a banner line may spell out the Marking Title
 //! OR use the Authorized Abbreviation — both are valid. Detection of the long
@@ -65,12 +69,13 @@ pub struct MarkingForm {
 /// Source: CAPCO Register (Implementation Manual for the IC, current edition).
 ///
 /// Sections covered:
-/// - §H.4  SCI Control System Markings (long-title forms only)
+/// - §H.4  SCI Control System Markings (long-title forms + SI compounds)
 /// - §H.6  Atomic Energy Act Information Markings
+/// - §H.7  Non-US Protective Markings (NATO classifications + programs)
 /// - §H.8  Dissemination Control Markings
 /// - §H.9  Non-IC Dissemination Control Markings
 ///
-/// Two kinds of entries are included:
+/// Three kinds of entries are included:
 ///
 /// 1. **Differing-form entries** (`title != banner || banner != portion`): E001
 ///    (banner uses portion abbreviation) and E009 (portion uses banner expansion)
@@ -80,18 +85,136 @@ pub struct MarkingForm {
 ///    fires when it sees the long Marking Title used in a banner line instead
 ///    of the authorized abbreviation (e.g. "FOR OFFICIAL USE ONLY" → "FOUO").
 ///    Without an entry here, S001 cannot detect the substitution opportunity.
-///    `title == banner` entries (e.g. `DEA SENSITIVE`) are still included when
-///    the portion mark differs, but S001 skips them (no substitution possible).
+///    `title == banner` entries (e.g. `DEA SENSITIVE`, NATO classifications)
+///    are still included when the portion mark differs, but S001 skips them
+///    (no substitution possible).
+///
+/// 3. **Documentation rows** (`title == banner == portion`): present for §G.1
+///    Table 4 fidelity and as anchors for the future CVE-Value↔portion-form
+///    bridge (e.g., CVE Value `DISPLAYONLY` → portion `DISPLAY ONLY`,
+///    NATO programs `ATOMAL` / `BALK` / `BOHEMIA`). S001 / E001 / E009 all
+///    skip these — they exist so the table is the single source of truth for
+///    "is this a known CAPCO marking" lookups even when no substitution is
+///    possible.
 pub static MARKING_FORMS: &[MarkingForm] = &[
     // §H.4 SCI Control System Markings — long-title forms.
     // CAPCO-2016 §H.4 p73 defines full names for control systems. Banner and
     // portion forms are identical (e.g. TK, HCS, SI), so these are same-form
     // entries; only S001 uses them. Titles verified against §H.4 headings.
+    // For MARVEL/KLAMATH, our register doesn't list them, but they are
+    // in the (later-published) ISM `CVEnumISMSCIControls` schema, along
+    // with `BUR` which is the same for all forms.
     MarkingForm {
         title: "TALENT KEYHOLE",
         banner: "TK",
         portion: "TK",
     },
+    MarkingForm {
+        title: "RESERVE",
+        banner: "RSV",
+        portion: "RSV",
+    },
+    MarkingForm {
+        title: "MARVEL",
+        banner: "MVL",
+        portion: "MVL",
+    },
+    MarkingForm {
+        title: "KLAMATH",
+        banner: "KLM",
+        portion: "KLM",
+    },
+    // §H.4 SCI compound forms with distinct banner titles. CAPCO §H.4
+    // explicitly publishes a compound (parent control + compartment) as
+    // the Authorized Banner Line Marking Title for these two — unlike
+    // GAMMA / BLUEFISH / IDITAROD / KANDIK whose §H.4 banner titles are
+    // bare compartment names. Distinct portion bytes from CVE Value
+    // (`SI-EU`, `SI-NK`).
+    MarkingForm {
+        // CAPCO-2016 §H.4 p78: "Authorized Banner Line Marking Title:
+        // SI-ECRU", "Authorized Portion Mark: SI-EU".
+        title: "SI-ECRU",
+        banner: "SI-ECRU",
+        portion: "SI-EU",
+    },
+    MarkingForm {
+        // CAPCO-2016 §H.4 p83: "Authorized Banner Line Marking Title:
+        // SI-NONBOOK", "Authorized Portion Mark: SI-NK".
+        title: "SI-NONBOOK",
+        banner: "SI-NONBOOK",
+        portion: "SI-NK",
+    },
+    // §H.7 Non-US Protective Markings — NATO classifications and programs.
+    //
+    // U.S. representation of NATO markings is fully governed by CAPCO; per
+    // CAPCO-2016 §G.1 Table 4 p36, NATO classifications and programs
+    // appear with the abbreviation column listed as `None`, meaning the
+    // banner-line form spells out the marking title (no separate banner
+    // abbreviation). Classification rows have a distinct portion form
+    // (`CTS`, `NS`, `NC`, `NR`, `NU`); program rows are same-form across
+    // all three columns. Compound NATO forms (CTSA, NSAT, NCA, CTS-BALK,
+    // CTS-BOHEMIA, …) live in CAPCO Manual Appendix B p197–199; they are
+    // parametric (NATO classification × NATO program) and are not
+    // enumerated here pending the CAPCO-vs-ODNI title-authority
+    // architectural discussion.
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| COSMIC TOP SECRET | None | CTS |`.
+        title: "COSMIC TOP SECRET",
+        banner: "COSMIC TOP SECRET",
+        portion: "CTS",
+    },
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| NATO SECRET | None | NS |`.
+        title: "NATO SECRET",
+        banner: "NATO SECRET",
+        portion: "NS",
+    },
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| NATO CONFIDENTIAL | None | NC |`.
+        title: "NATO CONFIDENTIAL",
+        banner: "NATO CONFIDENTIAL",
+        portion: "NC",
+    },
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| NATO RESTRICTED | None | NR |`.
+        title: "NATO RESTRICTED",
+        banner: "NATO RESTRICTED",
+        portion: "NR",
+    },
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| NATO UNCLASSIFIED | None | NU |`.
+        title: "NATO UNCLASSIFIED",
+        banner: "NATO UNCLASSIFIED",
+        portion: "NU",
+    },
+    // NATO programs — same-form across all three columns. Included here
+    // for §G.1-Table-4 fidelity even though S001 cannot fire on them
+    // (no substitution opportunity); they document the closed set of
+    // NATO program markings recognized by CAPCO.
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| ATOMAL | None | ATOMAL |`.
+        title: "ATOMAL",
+        banner: "ATOMAL",
+        portion: "ATOMAL",
+    },
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| BALK | None | BALK |`.
+        title: "BALK",
+        banner: "BALK",
+        portion: "BALK",
+    },
+    MarkingForm {
+        // CAPCO-2016 §G.1 Table 4 p36: `| BOHEMIA | None | BOHEMIA |`.
+        title: "BOHEMIA",
+        banner: "BOHEMIA",
+        portion: "BOHEMIA",
+    },
+    // §H.5 Special Access Program Markings — intentionally omitted.
+    // SAR is parametric (`SPECIAL ACCESS REQUIRED-[program identifier]` ↔
+    // `SAR-[program identifier abbreviation]`, CAPCO-2016 §H.5 p101) and
+    // parsed structurally by `parse_sar_category` in `crates/core/src/parser.rs`.
+    // A bare `SAR-` row would never match real input.
+
     // §H.6 Atomic Energy Act Information Markings.
     // Long Marking Titles from CAPCO-2016 §H.6 p113–122. Banner and portion
     // forms are identical for RD, FRD, TFNI, CNWDI — same-form entries for
@@ -183,10 +306,21 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         banner: "RELIDO",
         portion: "RELIDO",
     },
+    // from ISM `CVEnumISMDissem` schema
+    MarkingForm {
+        title: "RAW FOREIGN INTELLIGENCE SURVEILLANCE ACT",
+        banner: "RAWFISA",
+        portion: "RAWFISA",
+    },
     MarkingForm {
         title: "FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "FISA",
         portion: "FISA",
+    },
+    MarkingForm {
+        title: "DISPLAY ONLY",
+        banner: "DISPLAY ONLY",
+        portion: "DISPLAY ONLY",
     },
     // §H.9 Non-IC Dissemination Control Markings.
     MarkingForm {
@@ -206,19 +340,14 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     },
     // §H.9 same-form entries: banner == portion, but title differs.
     MarkingForm {
-        title: "SENSITIVE BUT UNCLASSIFIED",
-        banner: "SBU",
-        portion: "SBU",
-    },
-    MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED NOFORN",
         banner: "SBU NOFORN",
         portion: "SBU-NF",
     },
     MarkingForm {
-        title: "LAW ENFORCEMENT SENSITIVE",
-        banner: "LES",
-        portion: "LES",
+        title: "SENSITIVE BUT UNCLASSIFIED",
+        banner: "SBU",
+        portion: "SBU",
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE NOFORN",
@@ -226,9 +355,20 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         portion: "LES-NF",
     },
     MarkingForm {
+        title: "LAW ENFORCEMENT SENSITIVE",
+        banner: "LES",
+        portion: "LES",
+    },
+    MarkingForm {
         title: "SENSITIVE SECURITY INFORMATION",
         banner: "SSI",
         portion: "SSI",
+    },
+    // from ISM `CVEnumISMNonIC` schema
+    MarkingForm {
+        title: "NAVAL NUCLEAR PROPULSION INFORMATION",
+        banner: "NNPI",
+        portion: "NNPI",
     },
 ];
 
@@ -324,6 +464,16 @@ mod tests {
         assert_eq!(banner_to_portion("LES NOFORN"), Some("LES-NF"));
         assert_eq!(banner_to_portion("DOD UCNI"), Some("DCNI"));
         assert_eq!(banner_to_portion("DOE UCNI"), Some("UCNI"));
+        // §H.7 NATO classifications — banner spells out the title, portion
+        // is the abbreviation. CAPCO-2016 §G.1 Table 4 p36.
+        assert_eq!(banner_to_portion("COSMIC TOP SECRET"), Some("CTS"));
+        assert_eq!(banner_to_portion("NATO SECRET"), Some("NS"));
+        assert_eq!(banner_to_portion("NATO CONFIDENTIAL"), Some("NC"));
+        assert_eq!(banner_to_portion("NATO RESTRICTED"), Some("NR"));
+        assert_eq!(banner_to_portion("NATO UNCLASSIFIED"), Some("NU"));
+        // §H.4 SCI compounds — CAPCO-2016 §H.4 p78, p83.
+        assert_eq!(banner_to_portion("SI-ECRU"), Some("SI-EU"));
+        assert_eq!(banner_to_portion("SI-NONBOOK"), Some("SI-NK"));
     }
 
     #[test]
@@ -342,6 +492,17 @@ mod tests {
         assert_eq!(portion_to_banner("LES-NF"), Some("LES NOFORN"));
         assert_eq!(portion_to_banner("DCNI"), Some("DOD UCNI"));
         assert_eq!(portion_to_banner("UCNI"), Some("DOE UCNI"));
+        // §H.7 NATO classifications — inverse direction.
+        // CAPCO-2016 §G.1 Table 4 p36.
+        assert_eq!(portion_to_banner("CTS"), Some("COSMIC TOP SECRET"));
+        assert_eq!(portion_to_banner("NS"), Some("NATO SECRET"));
+        assert_eq!(portion_to_banner("NC"), Some("NATO CONFIDENTIAL"));
+        assert_eq!(portion_to_banner("NR"), Some("NATO RESTRICTED"));
+        assert_eq!(portion_to_banner("NU"), Some("NATO UNCLASSIFIED"));
+        // §H.4 SCI compounds — inverse direction.
+        // CAPCO-2016 §H.4 p78, p83.
+        assert_eq!(portion_to_banner("SI-EU"), Some("SI-ECRU"));
+        assert_eq!(portion_to_banner("SI-NK"), Some("SI-NONBOOK"));
     }
 
     #[test]
@@ -374,7 +535,29 @@ mod tests {
         // helpers so E001/E009 never fire a no-op substitution fix for them.
         // Regression guard for PR #256.
         for &same_form in &[
-            "FOUO", "RELIDO", "FISA", "SBU", "LES", "SSI", "TK", "RD", "FRD", "TFNI", "CNWDI",
+            // §H.8 / §H.9 same-form-with-distinct-title rows (S001 targets).
+            "FOUO",
+            "RELIDO",
+            "FISA",
+            "RAWFISA",
+            "SBU",
+            "LES",
+            "SSI",
+            "NNPI",
+            // §H.4 SCI control systems (same-form-with-distinct-title).
+            "TK",
+            // §H.6 AEA bare forms (same-form-with-distinct-title).
+            "RD",
+            "FRD",
+            "TFNI",
+            "CNWDI",
+            // §H.7 NATO programs and §H.8 DISPLAY ONLY — same-form-all-three
+            // documentation rows. Lookup helpers must still return None
+            // because `f.banner != f.portion` filters them out.
+            "ATOMAL",
+            "BALK",
+            "BOHEMIA",
+            "DISPLAY ONLY",
         ] {
             assert_eq!(
                 banner_to_portion(same_form),
@@ -411,26 +594,6 @@ mod tests {
                         a.portion
                     );
                 }
-            }
-        }
-    }
-
-    #[test]
-    fn banner_and_portion_forms_are_valid() {
-        for f in MARKING_FORMS {
-            if f.banner != f.portion {
-                // Differing-form entries: E001/E009 use cases. The banner and
-                // portion abbreviations are distinct (e.g. NOFORN/NF, ORCON/OC).
-                // Nothing further to assert here — the differ is the invariant.
-            } else {
-                // Same-form entries: S001 use case only. Banner and portion
-                // abbreviations are identical, but the long title MUST differ
-                // from the abbreviation so S001 has something to detect.
-                assert_ne!(
-                    f.title, f.banner,
-                    "same-form entry has title equal to banner (S001 would never fire): {:?}",
-                    f.banner
-                );
             }
         }
     }
@@ -523,22 +686,50 @@ mod tests {
     }
 
     #[test]
-    fn dea_sensitive_is_the_only_title_equal_banner() {
-        // Guards against future ODNI register changes that might
-        // introduce new rows without a distinct abbreviation. If one
-        // lands, update S001's pin-down tests and this guard.
-        let same_form: Vec<&'static str> = MARKING_FORMS
+    fn title_equal_banner_rows_are_the_documented_set() {
+        // Guards against silent additions of `title == banner` rows. The set
+        // below is the closed list of CAPCO §G.1 Table 4 markings whose
+        // abbreviation column is `None` (banner doubles as title) or whose
+        // §H.4 / §G.1 row is same-form-all-three (documentation-only). Any
+        // new row that lands in this shape MUST be added here AND have its
+        // S001 / E001 / E009 behavior pinned in the rule-crate test suite.
+        let mut same_form: Vec<&'static str> = MARKING_FORMS
             .iter()
             .filter(|f| f.title == f.banner)
             .map(|f| f.title)
             .collect();
+        same_form.sort_unstable();
+        let mut expected = vec![
+            // §H.7 NATO classifications (banner == title, distinct portion).
+            // CAPCO-2016 §G.1 Table 4 p36.
+            "COSMIC TOP SECRET",
+            "NATO SECRET",
+            "NATO CONFIDENTIAL",
+            "NATO RESTRICTED",
+            "NATO UNCLASSIFIED",
+            // §H.7 NATO programs (same-form-all-three documentation rows).
+            // CAPCO-2016 §G.1 Table 4 p36.
+            "ATOMAL",
+            "BALK",
+            "BOHEMIA",
+            // §H.8 same-form-all-three (CVE-Value-bridge anchor):
+            // CVE Value `DISPLAYONLY` → portion `DISPLAY ONLY`, banner
+            // `DISPLAY ONLY` per CAPCO-2016 §H.8 p163.
+            "DISPLAY ONLY",
+            // §H.4 SCI compounds (banner == title, distinct portion).
+            // CAPCO-2016 §H.4 p78, p83.
+            "SI-ECRU",
+            "SI-NONBOOK",
+            // §H.8 dissem with `None` abbreviation column.
+            // CAPCO-2016 §G.1 Table 4 p36 (DEA SENSITIVE).
+            "DEA SENSITIVE",
+        ];
+        expected.sort_unstable();
         assert_eq!(
-            same_form,
-            vec!["DEA SENSITIVE"],
-            "only DEA SENSITIVE should have `title == banner` today \
-             (CAPCO-2016 §G.1 Table 4 p36). If this fails, a new \
-             row without a distinct abbreviation has been added — \
-             update S001 tests accordingly."
+            same_form, expected,
+            "MARKING_FORMS title==banner row set drifted. Update this test \
+             when adding/removing a documentation row, and audit S001 / \
+             E001 / E009 pin-down tests for the affected marking."
         );
     }
 }
