@@ -19,7 +19,16 @@ include = [
 
 [dependencies]
 marque-ism = { workspace = true }
+# PR 3c.1 (T040) — direct edge anticipated by Constitution VII §VII Appendix
+# D ("As of PR 3c (FixIntent<S>), marque-rules also depends on marque-scheme
+# directly so rule-emission values can reference scheme types without going
+# through marque-ism; the graph stays acyclic because marque-scheme is still
+# leaf-only.")
+marque-scheme = { workspace = true }
 serde = { workspace = true, optional = true }
+# PR 3c.1 (T032/T037) — MessageArgs.feature_ids and FixIntent.feature_ids
+# both use SmallVec<[FeatureId; 4]> to keep the inline-4 case heap-free.
+smallvec = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
