@@ -16,10 +16,24 @@
 //! Two paths into [`Canonical`]:
 //!
 //! 1. **Closed-CVE — [`Canonical::from_cve`]** — public, callable
-//!    from any crate. Accepts a [`crate::TokenId`] (which can only
-//!    come from [`crate::Vocabulary::lookup`] today, or from a
-//!    rule-side const table in PR 3c.2 onward); there is no
-//!    `Box<str> → Canonical<S>` public path.
+//!    from any crate. Accepts a [`crate::TokenId`] (`pub struct
+//!    TokenId(pub u32)`, so the type itself is publicly
+//!    constructible — the [`TokenSource::Cve`] tag is a *provenance
+//!    claim* by the rule, not a vocabulary-validated guarantee at
+//!    `from_cve` call time). The seal that PR 3c.1 enforces is
+//!    weaker than "no input bytes can become a `Canonical<S>`":
+//!    there is no `Box<str> → Canonical<S>` public path that goes
+//!    through `from_cve` *automatically*, but a rule that
+//!    constructs `TokenId(N)` for arbitrary `N` and supplies its
+//!    own `bytes` is constructing a `Canonical<S>` with arguably
+//!    forged provenance. The audit emitter is the validation
+//!    boundary: at audit-emit time it cross-references the recorded
+//!    `TokenId` against [`crate::Vocabulary::lookup`] for the
+//!    active scheme and rejects records whose token does not
+//!    resolve to a registered vocabulary entry. The PR 3c.2 reshape
+//!    of [`Canonical::from_cve`] (removing caller-supplied `bytes`
+//!    in favor of engine-side rendering from the vocabulary) closes
+//!    the residual provenance-forgery channel by construction.
 //!
 //! 2. **Open-vocab — [`Canonical::from_render`]** — `pub(crate)` to
 //!    `marque-scheme`. Reachable from external crates ONLY through
@@ -327,6 +341,7 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
 ///
 /// impl<S: MarkingScheme + ?Sized> CanonicalConstructor<S> for EvilConstructor {
 ///     fn build_open_vocab(
+///         &self,
 ///         _category: CategoryId,
 ///         _bytes: Box<str>,
 ///         _scope: Scope,
@@ -335,15 +350,58 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
 ///     }
 /// }
 /// ```
+///
+/// **Cannot bypass [`EngineConstructor::__engine_construct`] via the
+/// assoc-fn shorthand.** Even though [`EngineConstructor<S>`] is
+/// `pub`, [`CanonicalConstructor::build_open_vocab`] takes `&self`
+/// — so external callers cannot use the
+/// `<EngineConstructor<S> as CanonicalConstructor<S>>::build_open_vocab(category, bytes, scope)`
+/// associated-function-call form to bypass the
+/// `__engine_construct` mint path. They must first obtain an
+/// `EngineConstructor<S>` instance, and that path is the
+/// FR-040-lint-guarded `__engine_construct()`. The snippet below
+/// is rejected: rustc reports "this function takes 4 arguments but
+/// 3 arguments were supplied" because the implicit `&self` receiver
+/// is missing. (Regression catch for the assoc-fn seal-bypass class
+/// raised on PR 3c.1.)
+///
+/// ```compile_fail
+/// use marque_scheme::canonical::{Canonical, CanonicalConstructor, EngineConstructor};
+/// use marque_scheme::category::CategoryId;
+/// use marque_scheme::scope::Scope;
+/// use marque_scheme::MarkingScheme;
+///
+/// fn _bypass<S: MarkingScheme + ?Sized>() -> Canonical<S> {
+///     <EngineConstructor<S> as CanonicalConstructor<S>>::build_open_vocab(
+///         CategoryId(0),
+///         Box::from("forged"),
+///         Scope::Portion,
+///     )
+/// }
+/// ```
 pub trait CanonicalConstructor<S: MarkingScheme + ?Sized>: sealed::Sealed<S> {
     /// Construct an open-vocab [`Canonical`] value.
+    ///
+    /// **The `&self` receiver is load-bearing.** It is what closes
+    /// the open-vocab construction path across the workspace. Without
+    /// it, this method would be an associated function callable as
+    /// `<EngineConstructor<S> as CanonicalConstructor<S>>::build_open_vocab(category, bytes, scope)`
+    /// from any crate that can name [`EngineConstructor`] (every
+    /// crate, since it is `pub`) — bypassing the
+    /// [`EngineConstructor::__engine_construct`] reserved-name path
+    /// that the FR-040 promote-callsite-lint relies on. The `&self`
+    /// receiver forces the caller to first obtain an
+    /// [`EngineConstructor<S>`] instance, which only
+    /// [`EngineConstructor::__engine_construct`] mints, which the
+    /// lint flags.
     ///
     /// The implementer (the engine, via [`EngineConstructor`]) is
     /// responsible for capturing the `render_call_site` via
     /// `#[track_caller]` so the provenance reflects the rule-side
     /// render impl, not the engine's plumbing.
     #[track_caller]
-    fn build_open_vocab(category: CategoryId, bytes: Box<str>, scope: Scope) -> Canonical<S>;
+    fn build_open_vocab(&self, category: CategoryId, bytes: Box<str>, scope: Scope)
+    -> Canonical<S>;
 }
 
 /// Engine-only [`CanonicalConstructor`] implementor.
@@ -400,7 +458,12 @@ impl<S: MarkingScheme + ?Sized> sealed::Sealed<S> for EngineConstructor<S> {}
 impl<S: MarkingScheme + ?Sized> CanonicalConstructor<S> for EngineConstructor<S> {
     #[inline]
     #[track_caller]
-    fn build_open_vocab(category: CategoryId, bytes: Box<str>, scope: Scope) -> Canonical<S> {
+    fn build_open_vocab(
+        &self,
+        category: CategoryId,
+        bytes: Box<str>,
+        scope: Scope,
+    ) -> Canonical<S> {
         Canonical::from_render(category, bytes, scope, Location::caller())
     }
 }
@@ -493,11 +556,10 @@ mod tests {
         // the call site is captured by #[track_caller] so provenance
         // reflects the calling render impl. PR 3c.2 wires this from
         // `Engine::fix_inner` -> `MarkingScheme::render_canonical`.
-        let c: Canonical<TestScheme> = <EngineConstructor<TestScheme> as CanonicalConstructor<
-            TestScheme,
-        >>::build_open_vocab(
-            CategoryId(3), Box::from("OPEN"), Scope::Page
-        );
+        // Test-fixture carve-out per Constitution V Principle V.
+        let ctor: EngineConstructor<TestScheme> = EngineConstructor::__engine_construct();
+        let c: Canonical<TestScheme> =
+            ctor.build_open_vocab(CategoryId(3), Box::from("OPEN"), Scope::Page);
         assert_eq!(c.bytes(), "OPEN");
         assert_eq!(c.scope(), Scope::Page);
         match c.source() {

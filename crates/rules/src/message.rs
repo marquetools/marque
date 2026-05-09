@@ -39,14 +39,22 @@
 //! No `String`, no `&str`, no `Vec<u8>`, no `format!`-derived field is
 //! permitted. The closure is enforced by:
 //!
-//! 1. **Compile-fail tests** at
-//!    `crates/rules/tests/message_args_closed_set.rs` — each tests
-//!    that an inadmissible field shape (a `String`-typed `raw_text`
-//!    field, a `From<&str>` impl, etc.) does not compile.
-//! 2. **A positive destructuring-as-pin test** that exhaustively
-//!    destructures every permitted field, so adding a field without
-//!    updating the test set breaks the build (E0027 — pattern does
-//!    not mention all fields).
+//! 1. **Compile-fail doctests** on [`MessageArgs`] and [`Message`]
+//!    in this module — each `compile_fail` snippet pins one
+//!    inadmissible field shape (a `String`-typed `raw_text` field,
+//!    a `Message::format(...)` macro-style constructor, an
+//!    `impl From<&str> for Message`, etc.) and exits non-zero when
+//!    the snippet starts compiling. Run via
+//!    `cargo test --doc -p marque-rules`.
+//! 2. **Positive destructuring-as-pin tests** at
+//!    `crates/rules/tests/message_args_closed_set.rs` — exhaustive
+//!    `match` over [`MessageArgs`] fields, so adding a field
+//!    without updating the test set breaks the build (E0027 —
+//!    pattern does not mention all fields).
+//! 3. **External-crate positive controls** at
+//!    `crates/rules/tests/message_no_freeform_ctor.rs` — assert
+//!    that [`Message::new`] is the sole public constructor reachable
+//!    from outside `marque-rules`.
 
 use marque_ism::Span;
 use marque_scheme::{CategoryId, TokenId};

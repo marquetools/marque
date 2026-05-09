@@ -122,14 +122,16 @@ fn engine_only_open_vocab_path_works_under_test_fixture_carve_out() {
     //
     // PR 3c.2 wires this same call shape into Engine::fix_inner.
     // Test-fixture carve-out per Constitution V Principle V.
-    let _ctor: EngineConstructor<StubScheme> = EngineConstructor::__engine_construct();
+    let ctor: EngineConstructor<StubScheme> = EngineConstructor::__engine_construct();
     // Test-fixture carve-out per Constitution V — see comment above.
+    // Method-call form (`.build_open_vocab(...)`) is the only path:
+    // the trait method takes `&self`, so the assoc-fn shorthand
+    // `<EngineConstructor<S> as CanonicalConstructor<S>>::build_open_vocab(...)`
+    // does not compile. The compile-fail proof at
+    // `crates/scheme/src/canonical.rs::CanonicalConstructor` covers
+    // the seal property.
     let canonical: Canonical<StubScheme> =
-        <EngineConstructor<StubScheme> as CanonicalConstructor<StubScheme>>::build_open_vocab(
-            CategoryId(7),
-            Box::from("OPEN-VOCAB"),
-            Scope::Page,
-        );
+        ctor.build_open_vocab(CategoryId(7), Box::from("OPEN-VOCAB"), Scope::Page);
     assert_eq!(canonical.bytes(), "OPEN-VOCAB");
     assert_eq!(canonical.scope(), Scope::Page);
     match canonical.source() {

@@ -36,7 +36,7 @@
 //! classifier id, dry-run flag) and is constructed **only** by `Engine::fix`.
 //! This makes "suggested vs applied" a type-system invariant.
 //!
-//! PR 3c.2 will retire `FixProposal` in favour of `FixIntent<S>`, which carries
+//! PR 3c.2 will retire `FixProposal` in favor of `FixIntent<S>`, which carries
 //! the same pure-data shape plus a scheme-typed replacement intent (closed-CVE
 //! token vs open-vocab render directive). `AppliedFix` is reshaped to embed a
 //! sealed `Canonical<S>` and structured `Message`. The two-PR split exists so

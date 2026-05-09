@@ -14,10 +14,16 @@
 //!
 //! # Compile-fail proof
 //!
-//! `crates/scheme/tests/canonical_unconstructable.rs` carries a
-//! `compile_fail` doctest demonstrating that `use
+//! The `compile_fail` doctest demonstrating that `use
 //! marque_scheme::canonical::sealed::Sealed;` does not resolve from
-//! an external crate.
+//! an external crate lives on [`super::CanonicalConstructor`] in
+//! `crates/scheme/src/canonical.rs` (alongside the related "external
+//! crate cannot impl `CanonicalConstructor`" and "assoc-fn shorthand
+//! cannot bypass `__engine_construct`" proofs). Run via
+//! `cargo test --doc -p marque-scheme`. The integration tests at
+//! `crates/scheme/tests/canonical_unconstructable.rs` carry the
+//! complementary positive controls (`from_cve` reachable, engine
+//! open-vocab path reachable under the test-fixture carve-out).
 
 use crate::scheme::MarkingScheme;
 
