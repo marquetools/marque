@@ -129,7 +129,10 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T045 [US1] Migrate every rule's `evaluate` to construct `FixIntent<CapcoScheme>` instead of `FixProposal`; rules emit closed-CVE `ReplacementIntent::Cve { token, scope }` for known tokens, `ReplacementIntent::Render { category, directive, scope }` for open-vocab (FR-025; PR-3c)
 - [ ] T046 [US1] Migrate every rule's diagnostic message construction from `format!`-built strings to `Message::new(MessageTemplate::..., MessageArgs { ... })`; closed-enum dispatch only (FR-003; PR-3c)
 - [ ] T047 [US1] Implement `Engine::fix_inner` promotion path: filter by `Confidence::combined() ≥ threshold`; sort + non-overlap (C-1, I-3); render `FixIntent<S>` to `Canonical<S>` via `S::render_canonical`; construct `AppliedFix` via `__engine_promote(...)`; pure `marque-engine` ownership (PR-3c)
-- [ ] T048 [US1] Implement `MarkingScheme::render_canonical<C: CanonicalConstructor<Self>>(&FixIntent<Self>, &RenderContext) -> Canonical<Self>` for `CapcoScheme` in `crates/capco/src/scheme.rs`; closed-CVE branch dispatches to `Canonical::from_cve`; open-vocab branch builds via `EngineConstructor::build_open_vocab`. **Form-selection design dependency** (raised 2026-05-09 from staging commit #331): a CAPCO token has up to four distinct surface forms (CVE Value, Marking Title, Banner Abbreviation, Portion Mark — see CAPCO-2016 §G.1 Table 4 + the four-form note at `crates/ism/src/marking_forms.rs:1-42`). The closed-CVE branch must pick the right form based on `Scope` and `RenderContext`; this is **not** a trivial `Vocabulary::canonical_form(token)` lookup. See `docs/plans/2026-05-09-pr3c-foundation-plan.md` §8.1 for the full open-question framing — the PR 3c.2 planner agent **MUST** resolve form-selection (`RenderContext` shape, `Scope`-to-form mapping, `Vocabulary<S>` trait extension question) before writing `render_canonical`. (PR-3c, FR-001)
+- [ ] T048 [US1] Implement `MarkingScheme::render_canonical<C: CanonicalConstructor<Self>>(&FixIntent<Self>, &RenderContext) -> Canonical<Self>` for `CapcoScheme` in `crates/capco/src/scheme.rs`; closed-CVE branch dispatches to `Canonical::from_cve` and routes by `ctx.emission_form` (per T048a) — `EmissionForm::Auto` derives form from `Scope` (Page → Banner, Portion → Portion); `EmissionForm::Portion` / `Banner` / `BannerAbbreviated` / `LongTitle` route to the matching `Vocabulary<S>` accessor (post-PR-3d, also `forms().long_title`); open-vocab branch builds via `EngineConstructor::build_open_vocab` and ignores `emission_form` (open-vocab tokens carry one canonical per scope). **Form-selection resolution** (the open question raised in `docs/plans/2026-05-09-pr3c-foundation-plan.md` §8.1, surfaced 2026-05-09 from staging commit #331): the four-form ambiguity (CVE Value, Marking Title, Banner Abbreviation, Portion Mark — CAPCO-2016 §G.1 Table 4) is resolved by carrying an explicit `EmissionForm` selector on `RenderContext` rather than baking the form choice into `Scope`. CVE Value (form 1) is **not** added as a by-token `Vocabulary<S>` accessor — it is recovered, when needed, via `Vocabulary::lookup` round-trip from any of forms 2/3/4 (audit-record `bytes_digest` source is form-2/3/4 bytes, never form 1). The `Vocabulary<S>` extension to expose long-title (form 2) by-token via `forms().long_title` is deferred to **PR 3d** (FR-053). PR 3c.2 implements `EmissionForm::LongTitle` against the existing `marking_forms.rs::MARKING_FORMS` static table; the post-PR-3d migration to `forms()` is a behavior-preserving accessor swap. (PR-3c, FR-001, FR-052)
+- [ ] T048a [US1] Define `RenderContext { scope, emission_form, schema_version }` and `#[non_exhaustive] enum EmissionForm { Auto, Portion, Banner, BannerAbbreviated, LongTitle }` in `crates/scheme/src/scheme.rs` alongside the `MarkingScheme::render_canonical` declaration; `EmissionForm::Auto` is the documented default that preserves pre-3c.2 emission behavior (Page → Banner, Portion → Portion). `#[non_exhaustive]` reserves the future grow-path for `IsmDescriptionTitle` (post-PR-3d), `XmlAttribute` (post-refactor ISM-XML codec), and scheme-specific variants without an API break. `schema_version: SchemaVersionId` is reserved data plumbing — engine wires it from the active scheme's pinned `ism-schema-version`; no consumer in 3c.2. (PR-3c.2, FR-052)
+- [ ] T048b [US1] Wire `Engine::fix_inner` to construct `RenderContext` per fix: `scope` from the `FixIntent`'s `ReplacementIntent::{Cve { scope }, Render { scope, .. }, Delete}`; `emission_form: EmissionForm::Auto` for every existing rule emission site (no rule yet specifies a non-`Auto` form); `schema_version` from the active scheme's pinned `ism-schema-version`. Existing rule emission behavior MUST remain byte-identical with pre-3c.2 — verified by T056 corpus regression matrix. (PR-3c.2, FR-052)
+- [ ] T048c [P] [US1] Test at `crates/capco/tests/render_canonical_emission_form.rs`: construct `FixIntent` for a known-divergent token (NOFORN: portion `(NF)`, banner `NOFORN`, banner-abbreviation absent, long-title `NOT RELEASABLE TO FOREIGN NATIONALS`); call `render_canonical` with each `EmissionForm` variant; assert output matches the matching `Vocabulary<S>` accessor (or `MARKING_FORMS` lookup pre-PR-3d for `LongTitle`); assert `EmissionForm::Auto` with `Scope::Page` produces banner form and `Scope::Portion` produces portion form. (PR-3c.2, FR-052)
 - [ ] T049 [US1] Delete `engine.rs::build_decoder_diagnostic` carve-out: remove `proposal.original = ""` branch around `FixProposal::new(..., "", replacement, ...)` call (currently `engine.rs:1369-1384`); decoder produces `FixIntent` like every other path (FR-028; PR-3c)
 - [ ] T050 [US1] Delete `engine.rs:1389` `format!("decoder-recognized canonical form: {replacement:?}")` interpolation; replace with `Message::new(MessageTemplate::DecoderRecognized, MessageArgs { token: Some(token_id), ..MessageArgs::default() })` (FR-003; PR-3c)
 - [ ] T051 [US1] Implement decoder open-vocab lockout: `DecoderRecognizer` recognizing an open-vocab token produces `Parsed::Ambiguous` with diagnostic-only output, no `FixProposal` (FR-027; PR-3c)
@@ -144,6 +147,48 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 - [ ] T058b [P] [US1] **I-6 mutation test** at `crates/engine/tests/confidence_threshold_mutation.rs` per source plan §5 amendment: a `cfg(test)`-gated build-flag swaps `Confidence::combined()` for `Confidence::recognition()` in the engine filter; asserts the SC-010 mangled-corpus accuracy gate regresses below baseline (catches accidental introduction of a second threshold operator) (PR-3c)
 
 **Checkpoint**: Audit-record content-ignorance is a type invariant; canary scan over five-corpus sweep returns zero leaks; legacy rule-IDs retired; cutover to `marque-1.0` complete.
+
+### PR 3d — Vocabulary FormSet + Deprecation validity windows
+
+**Pre-PR-4 follow-on** to the keystone window. Lands the per-token form-set
+and migration-validity-window data plumbing that the longer-term marking-
+handling goals depend on (recognize-any-form / emit-correct-form, schema-
+compliant output, historical-as-valid evaluation). PR 3d is independent of
+PR 3.7 (lattice §-resolution spike) and PR 4 (lattice impls): the
+`Vocabulary<S>` additions are additive and non-conflicting with PR 4's
+`shape_admits` / `is_fdr_dissem` extensions. PR 4 picks up the new
+`FormSet` shape natively when it lands.
+
+**Goal**: Reshape `Vocabulary<S>::forms()` into a single `FormSet`-returning
+accessor that aggregates portion / banner / banner-abbreviation / long-title
+plus a `recognized_aliases` slice for forms accepted on input but not
+emitted by default (ISM `Description.title` divergences, historical
+aliases). Extend `Deprecation<Token>` with `valid_from` / `valid_until`
+schema-version fields. No runtime consumer change in PR 3d — every existing
+per-form accessor continues to work via default-method delegation.
+
+**Independent Test**: `crates/capco/tests/vocabulary_forms.rs` round-trips
+all active sentinel TokenIds through `forms()` and asserts byte-identity
+with the existing `portion_form` / `banner_form` / `banner_abbreviation`
+methods. `crates/ism/tests/description_title_divergence.rs` confirms at
+least one ODNI CVE entry whose `Description.title` differs from the CAPCO
+long-title surfaces in `recognized_aliases` with
+`FormKind::IsmDescriptionTitle`.
+
+**Quality gate**: WASM binary-size regression ≤ 5% (measured via
+`wasm-pack build crates/wasm --target web --profile release-web` before
+and after merge). If exceeded, switch `recognized_aliases` to a side table
+keyed by `TokenId` rather than baked into the `FormSet` const.
+
+- [ ] T058c [US1] Define `FormSet` and `#[non_exhaustive] enum FormKind` in `crates/scheme/src/vocabulary.rs` per data-model.md FR-053. `FormSet { portion: &'static str, banner: &'static str, banner_abbreviation: Option<&'static str>, long_title: Option<&'static str>, recognized_aliases: &'static [(FormKind, &'static str)] }`. Build-time-only construction; no public `FormSet::new`. (PR-3d, FR-053)
+- [ ] T058d [US1] Reshape `Vocabulary<S>` trait: add `fn forms(&self, token: &S::Token) -> &'static FormSet`; convert `portion_form` / `banner_form` / `banner_abbreviation` to default methods over `forms()`. Existing call sites are unaffected; the per-form methods remain on the trait surface. (PR-3d, FR-053)
+- [ ] T058e [US1] Implement `forms()` for `CapcoScheme` in `crates/capco/src/vocabulary.rs`: compose from existing `crates/ism/src/marking_forms.rs::MARKING_FORMS` + per-token build-time records emitted by `crates/ism/build.rs`. Default-method `portion_form` / `banner_form` / `banner_abbreviation` MUST return byte-identical strings to the pre-3d impl (regression-tested in T058g). (PR-3d, FR-053)
+- [ ] T058f [US1] Extend `MarkingForm` in `crates/ism/src/marking_forms.rs` with `description_title: Option<&'static str>` field (default `None`). Update `crates/ism/build.rs::parse_cve_xml` to extract `Description.title` from each ODNI ISM CVE XML entry; emit `description_title` only when it differs from the CAPCO long-title. Build-time test asserts at least one divergent case is captured (regression guard against silent ODNI/CAPCO drift). (PR-3d, FR-053)
+- [ ] T058g [US1] Extend `Deprecation<Token>` in `crates/scheme/src/vocabulary.rs` with `valid_from: Option<&'static str>` and `valid_until: Option<&'static str>`. Update `crates/ism/build.rs` migration-table generation to populate both fields from ODNI XSD annotations + the migration table where information is available (default `None` otherwise). Build-time test asserts `valid_from <= since` when both are populated. No runtime consumer required. (PR-3d, FR-054)
+- [ ] T058h [P] [US1] Tests: `crates/capco/tests/vocabulary_forms.rs` round-trips all active sentinel TokenIds (NOFORN, RD, FRD, TFNI, CNWDI, HCS, FOUO, etc.) through `forms()` and asserts byte-identity with the pre-3d per-form accessors. `crates/ism/tests/description_title_divergence.rs` picks at least one ODNI CVE entry where `Description.title` differs from CAPCO long-title (likely a dissem control or §H.4 SCI long-title) and asserts the divergent ISM title surfaces in `recognized_aliases` with `FormKind::IsmDescriptionTitle`. (PR-3d, FR-053)
+- [ ] T058i [P] [US1] WASM binary-size measurement: build `crates/wasm` with `wasm-pack build --target web --profile release-web` before T058c–T058h land, capture `pkg/marque_wasm_bg.wasm` byte size as baseline; rebuild post-merge and assert ≤ 5% regression. If exceeded, file a follow-on issue and switch `recognized_aliases` to a side table keyed by `TokenId` rather than embedded in `FormSet`. (PR-3d)
+
+**Checkpoint**: `Vocabulary<S>::forms()` returns aggregated `FormSet`; ISM `Description.title` divergence surfaces in `recognized_aliases`; `Deprecation<Token>` carries validity-window data; WASM size regression ≤ 5%; existing per-form accessors unaffected.
 
 ---
 
@@ -377,7 +422,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 PR 0 ─┬─→ PR 0.5 ─→ PR 0.6 ─┐
       └─→ PR 1               │
                               ▼
-                            PR 2 ─→ PR 3a ─→ PR 3b ─→ PR 3c ─┬─→ PR 3.7 ─→ PR 4 ─→ PR 5 ─→ PR 6a ─→ PR 6b ─→ PR 6c
+                            PR 2 ─→ PR 3a ─→ PR 3b ─→ PR 3c ─┬─→ PR 3d ─→ PR 3.7 ─→ PR 4 ─→ PR 5 ─→ PR 6a ─→ PR 6b ─→ PR 6c
                                                               ├─→ PR 7
                                                               ├─→ PR 8
                                                               └─→ PR 9
@@ -386,13 +431,14 @@ PR 0 ─┬─→ PR 0.5 ─→ PR 0.6 ─┐
                                                                   PR 10 (F.1 maturation; runs after lattice + banner-val migration land)
 ```
 
-Read `→` as "blocks". PR 3.7 absolutely gates PR 4 (lattice §-resolution spike must complete before lattice impls land); per assumption, if PR 3.7 stalls, PRs 4–10 stall. PR 7 / 8 / 9 can land in parallel after PR 3c per the consolidated plan §4 (different concern axes; non-conflicting code regions).
+Read `→` as "blocks". PR 3.7 absolutely gates PR 4 (lattice §-resolution spike must complete before lattice impls land); per assumption, if PR 3.7 stalls, PRs 4–10 stall. PR 3d (Vocabulary `FormSet` + `Deprecation` validity windows) sits between 3c and 3.7 — it is additive to the `Vocabulary<S>` surface and non-conflicting with the lattice spike, but its `forms()` reshape is naturally consumed by PR 4's own `Vocabulary<S>` extensions, so it MUST land before PR 4. PR 3d does NOT block PR 7 / 8 / 9 (which read existing per-form accessors that PR 3d preserves as defaults). PR 7 / 8 / 9 can land in parallel after PR 3c per the consolidated plan §4 (different concern axes; non-conflicting code regions).
 
 ### Phase Dependencies
 
 - **Phase 1 (Setup, PR 0)**: No dependencies; first.
 - **Phase 2 (Foundational, PR 0.5/0.6/1)**: Depends on Phase 1 (lints in place); blocks keystone.
 - **Phase 3 (US1 — Audit content-ignorance, PR 3a/3b/3c)**: Depends on Phase 2; **MVP**.
+- **Phase 3 follow-on (Vocabulary FormSet + validity windows, PR 3d)**: Depends on Phase 3 (PR 3c); independent of PR 3.7 / PR 4 but MUST land before PR 4 so PR 4's `Vocabulary<S>` extensions pick up the new `FormSet` shape natively. Tracks the longer-term marking-handling goals (recognize-any-form / emit-correct-form, schema-compliant output, historical-as-valid evaluation) at the data-plumbing layer.
 - **Phase 4 (US2 — Foreign banner, PR 5+6)**: Depends on Phase 3 (PR 3c); part of MVP.
 - **Phase 5 (US3 — Pass-split, PR 7)**: Depends on Phase 3.
 - **Phase 6 (US4 — Open-vocab parser, PR 2)**: Depends on Phase 1; ships BEFORE Phase 3 in PR-sequence order despite being P2 priority. (Implementation order ≠ priority order here.)

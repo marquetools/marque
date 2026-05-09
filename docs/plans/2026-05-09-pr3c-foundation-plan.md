@@ -1270,6 +1270,23 @@ render_context) -> Canonical<S>`. **The form-selection inside that
 render method is an open architectural question** that PR 3c.2 must
 resolve explicitly.
 
+**Resolution (2026-05-09, after marking-handling-analysis review with
+project owner)**: The four-form ambiguity is resolved by carrying an
+explicit `EmissionForm` selector on `RenderContext` rather than baking
+the form choice into `Scope`. Specifications, FR numbers, and tasks
+land as follows:
+
+| Decision | Lands as | Tracked in |
+|---|---|---|
+| `RenderContext { scope, emission_form, schema_version }` shape, with `#[non_exhaustive] EmissionForm { Auto, Portion, Banner, BannerAbbreviated, LongTitle }` and `EmissionForm::Auto` deriving form from `Scope` to preserve pre-3c.2 behavior. | PR 3c.2 (this PR) | `spec.md` FR-052; `data-model.md` "RenderContext and EmissionForm" section; `tasks.md` T048a / T048b / T048c; T048 reworded |
+| CVE Value (form 1) is **not** added as a by-token `Vocabulary<S>` accessor. Recovered via `Vocabulary::lookup` round-trip from any of forms 2/3/4 when needed. Audit-record `bytes_digest` source is form-2/3/4 bytes, never form 1. | PR 3c.2 (this PR) — no new accessor, by decision | `spec.md` FR-052 closing note |
+| `Vocabulary<S>` extended with `forms() -> &'static FormSet` accessor exposing portion / banner / banner-abbreviation / long-title (form 2 by-token) plus `recognized_aliases` slice (e.g., ISM `Description.title` divergences, historical aliases). Per-form methods become default methods over `forms()`. | PR 3d (post-3c.2, pre-PR-4) | `spec.md` FR-053; `data-model.md` "FormSet and FormKind" section; `tasks.md` PR 3d / T058c–T058h |
+| `Deprecation<Token>` extended with `valid_from` / `valid_until` schema-version fields (data plumbing only; consumer flag is post-refactor). | PR 3d (post-3c.2, pre-PR-4) | `spec.md` FR-054; `data-model.md` "Deprecation validity windows" section; `tasks.md` T058g |
+| Cross-grammar interconversion (e.g., NATO ↔ CAPCO recognize-A-emit-B), historical-as-valid evaluation mode, ISM-XML schema-compliant output, and Bayesian form-context selection — all deferred to post-refactor. The PR 3c.2 + PR 3d additions are the prerequisites; concrete impls land when a second grammar / a real ISM-XML emit need arrives. | Post-refactor; tracked as separate GitHub issues | (issues opened alongside this resolution) |
+
+The decision matrix is preserved below as the historical record of the
+trade-off space considered.
+
 #### The four forms (per CAPCO-2016 §G.1 Table 4 + ODNI XML CVE Value)
 
 A single CAPCO token has up to **four distinct surface forms**:
