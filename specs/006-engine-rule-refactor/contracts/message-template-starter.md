@@ -25,14 +25,11 @@ Total clusters: **21**. Total capture sites: **23**.
 
 ---
 
-## Cluster 1 — `REL TO country codes must be alphabetically ordered \
-                     (USA first when present): [{}] â [{}] \
-                     (multiple REL TO blocks present; fix suppressed to avoid \
-                     cross-block corruption â resolve manually)`
+## Cluster 1 — `REL TO country codes must be alphabetically ordered (USA first when present): [{}] → [{}] (multiple REL TO blocks present; fix suppressed to avoid cross-block corruption — resolve manually)`
 
 Sites:
 
-- `crates/capco/src/rules_declarative.rs:2131` (diagnostic-new-arg)
+- `crates/capco/src/rules_declarative.rs:2132` (diagnostic-new-arg)
 
 Placeholder count: **2**.
 
@@ -42,12 +39,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 2 — `SAR {} must be in ascending order (numeric first, \
-                     then alphabetic)`
+## Cluster 2 — `SAR {} must be in ascending order (numeric first, then alphabetic)`
 
 Sites:
 
-- `crates/capco/src/rules.rs:4254` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:4255` (diagnostic-helper-struct-init)
 
 Placeholder count: **1**.
 
@@ -57,12 +53,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 3 — `SCI {} must be listed in ascending order (numeric first, \
-                 then alphabetic)`
+## Cluster 3 — `SCI {} must be listed in ascending order (numeric first, then alphabetic)`
 
 Sites:
 
-- `crates/capco/src/rules_declarative.rs:2539` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules_declarative.rs:2540` (diagnostic-helper-struct-init)
 
 Placeholder count: **1**.
 
@@ -72,11 +67,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 4 — `SIGMA numbers must be in numerical order: {} â {}`
+## Cluster 4 — `SIGMA numbers must be in numerical order: {} → {}`
 
 Sites:
 
-- `crates/capco/src/rules_declarative.rs:2283` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules_declarative.rs:2284` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -86,13 +81,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 5 — `SIGMA {} not in the currently authorized set \
-                     (14, 15, 18, 20); contact the originating \
-                     program for guidance on historical values`
+## Cluster 5 — `SIGMA {} not in the currently authorized set (14, 15, 18, 20); contact the originating program for guidance on historical values`
 
 Sites:
 
-- `crates/capco/src/rules_declarative.rs:2259` (diagnostic-new-arg)
+- `crates/capco/src/rules_declarative.rs:2260` (diagnostic-new-arg)
 
 Placeholder count: **1**.
 
@@ -102,13 +95,12 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 6 — `X-shorthand declassification code {} is deprecated; \
-                         use {}`
+## Cluster 6 — `X-shorthand declassification code {} is deprecated; use {}`
 
 Sites:
 
-- `crates/capco/src/rules.rs:1352` (diagnostic-helper-struct-init)
-- `crates/capco/src/rules.rs:1379` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1353` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1380` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -118,12 +110,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 7 — `banner contains portion mark {} for a non-IC dissem control; \
-                     use banner abbreviation {}`
+## Cluster 7 — `banner contains portion mark {} for a non-IC dissem control; use banner abbreviation {}`
 
 Sites:
 
-- `crates/capco/src/rules.rs:465` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:466` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -133,12 +124,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 8 — `banner contains portion mark {} for an IC dissem control; \
-                     use banner abbreviation {}`
+## Cluster 8 — `banner contains portion mark {} for an IC dissem control; use banner abbreviation {}`
 
 Sites:
 
-- `crates/capco/src/rules.rs:426` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:427` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -148,12 +138,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 9 — `banner uses long-title dissem form {}; prefer \
-                     banner abbreviation {}`
+## Cluster 9 — `banner uses long-title dissem form {}; prefer banner abbreviation {}`
 
 Sites:
 
-- `crates/capco/src/rules.rs:1953` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1954` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -163,12 +152,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 10 — `banner uses long-title non-IC dissem form {}; \
-                     prefer banner abbreviation {}`
+## Cluster 10 — `banner uses long-title non-IC dissem form {}; prefer banner abbreviation {}`
 
 Sites:
 
-- `crates/capco/src/rules.rs:1981` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1982` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -178,7 +166,7 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 11 — `corrections map: {} â {}`
+## Cluster 11 — `corrections map: {} → {}`
 
 Sites:
 
@@ -207,12 +195,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 13 — `non-IC dissem control {} should not appear in a classified banner; \
-                     use only in portion markings`
+## Cluster 13 — `non-IC dissem control {} should not appear in a classified banner; use only in portion markings`
 
 Sites:
 
-- `crates/capco/src/rules.rs:3023` (diagnostic-new-arg)
+- `crates/capco/src/rules.rs:3024` (diagnostic-new-arg)
 
 Placeholder count: **1**.
 
@@ -226,7 +213,7 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 Sites:
 
-- `crates/capco/src/rules.rs:1796` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1797` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -240,7 +227,7 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 Sites:
 
-- `crates/capco/src/rules.rs:1831` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1832` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -254,7 +241,7 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 Sites:
 
-- `crates/capco/src/rules.rs:1863` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1864` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -278,12 +265,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 18 — `unpublished SCI control system {} present; verify agency \
-                         allocation via ODNI/P&S registry`
+## Cluster 18 — `unpublished SCI control system {} present; verify agency allocation via ODNI/P&S registry`
 
 Sites:
 
-- `crates/capco/src/rules.rs:4702` (diagnostic-new-arg)
+- `crates/capco/src/rules.rs:4703` (diagnostic-new-arg)
 
 Placeholder count: **1**.
 
@@ -293,7 +279,7 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 19 — `unrecognized token inside marking â does not match any known CAPCO classification, control, or trigraph`
+## Cluster 19 — `unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph`
 
 Sites:
 
@@ -311,7 +297,7 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 Sites:
 
-- `crates/capco/src/rules.rs:1245` (diagnostic-helper-struct-init)
+- `crates/capco/src/rules.rs:1246` (diagnostic-helper-struct-init)
 
 Placeholder count: **2**.
 
@@ -321,12 +307,11 @@ Suggested args: _TBD by T031 curator (must be subset of `{token, category, span,
 
 ---
 
-## Cluster 21 — `{} should not appear alongside RD; \
-                     RD takes precedence over {} in both banners and portions`
+## Cluster 21 — `{} should not appear alongside RD; RD takes precedence over {} in both banners and portions`
 
 Sites:
 
-- `crates/capco/src/rules_declarative.rs:699` (diagnostic-new-arg)
+- `crates/capco/src/rules_declarative.rs:700` (diagnostic-new-arg)
 
 Placeholder count: **2**.
 

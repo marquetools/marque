@@ -26,13 +26,26 @@ The tool walks:
 - `crates/capco/src/rules_*.rs`
 - `crates/engine/src/engine.rs`
 
-It captures (in order of preference):
+It captures:
 
-1. The `message:` field of struct-init `Diagnostic { ... }` expressions.
-2. The 4th positional argument to `Diagnostic::new(rule, severity, span,
-   message, citation, fix)`.
-3. Standalone `format!`/`format_args!`/`write!`/`writeln!` first-arg literals
-   that surface near a `Diagnostic` (heuristic — emits as a "context" cluster).
+1. The `message:` field of struct-init `Diagnostic { ... }` expressions
+   (capture kind `diagnostic-struct-init`).
+2. The `message:` field of helper-struct-init expressions whose path
+   contains `Diagnostic` or `FixDiag*` — covers `FixDiagnosticParams { .. }`
+   and similar diagnostic-construction wrappers in
+   `crates/capco/src/rules*.rs` (capture kind
+   `diagnostic-helper-struct-init`).
+3. The 4th positional argument to `Diagnostic::new(rule, severity, span,
+   message, citation, fix)` (capture kind `diagnostic-new-arg`).
+
+When the captured `message:` value is itself a `format!` /
+`format_args!` / `write!` / `writeln!` / `println!` / `eprintln!`
+macro invocation, the extractor parses the macro body and returns the
+first string-literal argument from inside it. The capture kind stays
+the one of the three above that matched the enclosing expression — the
+macro is not emitted as its own kind. Standalone format-macro calls
+that do not appear as a `message:` value or as the 4th arg of
+`Diagnostic::new` are NOT captured.
 
 ## Run
 

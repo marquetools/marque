@@ -35,8 +35,15 @@ struct CaptureSite {
 struct Capture {
     raw: String,
     site: CaptureSite,
-    /// One of "diagnostic-struct-init" / "diagnostic-new-arg" /
-    /// "format-near-diagnostic". Drives clustering.
+    /// Capture-site classification — drives clustering. One of
+    /// `"diagnostic-struct-init"` (a literal `Diagnostic { message: ... }`),
+    /// `"diagnostic-helper-struct-init"` (a `*Diagnostic*` /
+    /// `FixDiag*` helper-struct init with a `message` field, e.g.
+    /// `FixDiagnosticParams { message: ..., .. }`), or
+    /// `"diagnostic-new-arg"` (a positional arg in `Diagnostic::new(...)`).
+    /// The format-macro paths (`format!`/`write!`/etc.) are walked
+    /// inside `extract_message_expr` so they appear under the same
+    /// kind as the surrounding struct-init or `::new` call site.
     kind: &'static str,
 }
 
@@ -94,36 +101,24 @@ impl Extractor {
                 if !is_msg_macro {
                     return None;
                 }
-                // Parse macro tokens looking for the first string literal.
-                // For `write!(buf, "fmt", ...)` the first arg is a writer;
-                // for `format!("fmt", ...)` the first arg IS the format string.
-                // Accept the first string literal regardless of position.
-                let tokens = mac.tokens.to_string();
-                let mut chars = tokens.chars().peekable();
-                let mut buf = String::new();
-                let mut in_str = false;
-                let mut escape = false;
-                while let Some(c) = chars.next() {
-                    if !in_str {
-                        if c == '"' {
-                            in_str = true;
-                        }
-                        continue;
-                    }
-                    if escape {
-                        buf.push(c);
-                        escape = false;
-                        continue;
-                    }
-                    match c {
-                        '\\' => {
-                            buf.push(c);
-                            escape = true;
-                        }
-                        '"' => {
-                            return Some((buf, mac.path.span()));
-                        }
-                        _ => buf.push(c),
+                // Parse the macro body as a comma-separated list of
+                // expressions and return the first `LitStr`. Using
+                // `syn::LitStr::value()` properly unescapes and handles
+                // raw strings (`r#"..."#`), `\u{...}` escapes, and
+                // multi-byte UTF-8 — the previous byte-level token-
+                // string scan corrupted these, producing the mojibake
+                // observed in the starter doc (e.g. `→` rendered as
+                // `â^F^R`). For `write!(buf, "fmt", ...)` the first
+                // string literal is the second arg; the iterator scan
+                // skips over the writer expression naturally.
+                let parser =
+                    syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
+                let args = mac.parse_body_with(parser).ok()?;
+                for arg in args.iter() {
+                    if let syn::Expr::Lit(expr_lit) = arg
+                        && let syn::Lit::Str(lit) = &expr_lit.lit
+                    {
+                        return Some((lit.value(), expr_lit.span()));
                     }
                 }
                 None
@@ -198,37 +193,81 @@ impl<'ast> Visit<'ast> for Extractor {
 /// Replace placeholder substrings (`{...}`, `{}`) with the literal
 /// marker `{}` so format strings that interpolate different variable
 /// names cluster together.
+///
+/// Iterates over `chars()` rather than bytes so multi-byte UTF-8
+/// sequences (`→`, `—`, etc.) round-trip cleanly — the previous
+/// byte-level cast `bytes[i] as char` corrupted these into Latin-1
+/// garbage.
+///
+/// `{{` and `}}` are Rust format-string escapes for literal `{` and
+/// `}` respectively (per `core::fmt` syntax). They are preserved as
+/// `{{` / `}}` in the normalized output rather than counted as
+/// placeholders. Format-spec syntax (`{name:>5.2}`) does not nest
+/// `{` inside the spec, so a flat scan to the next `}` is correct.
 fn normalize_placeholders(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
-    let bytes = raw.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'{' {
-            // `{{` is a literal `{`; preserve.
-            if i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' if chars.peek() == Some(&'{') => {
+                chars.next();
                 out.push_str("{{");
-                i += 2;
-                continue;
             }
-            // Find matching `}`.
-            let mut depth = 1;
-            let mut j = i + 1;
-            while j < bytes.len() && depth > 0 {
-                match bytes[j] {
-                    b'{' => depth += 1,
-                    b'}' => depth -= 1,
-                    _ => {}
+            '}' if chars.peek() == Some(&'}') => {
+                chars.next();
+                out.push_str("}}");
+            }
+            '{' => {
+                // Consume up to and including the matching `}`.
+                while let Some(inner) = chars.next() {
+                    if inner == '}' {
+                        break;
+                    }
                 }
-                j += 1;
+                out.push_str("{}");
             }
-            out.push_str("{}");
-            i = j;
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
+            other => out.push(other),
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_handles_double_open_and_close_brace_escapes() {
+        // `{{` and `}}` are literal `{` and `}` in Rust format-string
+        // syntax. They MUST NOT be counted as placeholders.
+        let n = normalize_placeholders("literal {{ and }} braces");
+        assert_eq!(n, "literal {{ and }} braces");
+        // Round-trip: count `{}` substrings to verify zero
+        // placeholders are inflated.
+        assert_eq!(n.matches("{}").count(), 0);
+    }
+
+    #[test]
+    fn normalize_replaces_named_placeholders_with_marker() {
+        let n = normalize_placeholders("hello {name}, age {age:>3}");
+        assert_eq!(n, "hello {}, age {}");
+        assert_eq!(n.matches("{}").count(), 2);
+    }
+
+    #[test]
+    fn normalize_preserves_multi_byte_utf8() {
+        // The previous byte-level implementation produced mojibake
+        // here (`→` was three UTF-8 bytes cast individually to char).
+        let n = normalize_placeholders("foo → bar — {x}");
+        assert_eq!(n, "foo → bar — {}");
+    }
+
+    #[test]
+    fn normalize_handles_mix_of_escapes_and_placeholders() {
+        let n = normalize_placeholders("set {{key}} = {value}");
+        assert_eq!(n, "set {{key}} = {}");
+        assert_eq!(n.matches("{}").count(), 1);
+    }
 }
 
 fn collect_targets(workspace_root: &Path) -> Vec<PathBuf> {
