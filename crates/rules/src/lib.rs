@@ -19,6 +19,8 @@
 //! This makes "suggested vs applied" a type-system invariant.
 
 pub mod confidence;
+pub mod fix_intent;
+pub mod message;
 
 use marque_ism::{CanonicalAttrs, Span};
 use std::collections::HashMap;
@@ -26,7 +28,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
+pub use fix_intent::{FixIntent, RenderDirective, ReplacementIntent};
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
+pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate};
 
 // ---------------------------------------------------------------------------
 // RuleId
