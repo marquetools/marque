@@ -793,8 +793,9 @@ impl CapcoScheme {
             // §H.8 p136 (ORCON Precedence Rules for Banner Line
             // Guidance): "If ORCON and ORCON-USGOV portions are in a
             // document, ORCON takes precedence and is conveyed in
-            // the banner line." ORCON-NATO (CAPCO-2016 line 895,
-            // Appendix B: "ORCON (NATO dissemination control
+            // the banner line." ORCON-NATO (CAPCO-2016 §G p40,
+            // Register Table 5 cross-reference to Appendix B NATO
+            // protective markings: "ORCON (NATO dissemination control
             // marking) ... See US ORCON ARH requirements") maps onto
             // the same precedence surface — ORCON-NATO contacting
             // US-class transmutes to US ORCON in the page dissem
@@ -1358,7 +1359,7 @@ impl CapcoScheme {
             //
             // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
             // "Cannot be used with NOFORN or DISPLAY ONLY."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3808.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
             //
             // Rationale: RELIDO authorizes foreign release under a
             // Secretary of Defense / SFDRA-mediated arrangement;
@@ -1368,7 +1369,7 @@ impl CapcoScheme {
             //
             // Reciprocal (doc-comment only — NOT the primary citation
             // under D13 single-citation discipline):
-            // §H.8 NOFORN entry p145 line 3585: "Cannot be used with
+            // §H.8 NOFORN entry p145: "Cannot be used with
             // REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY."
             //
             // LHS = asserting token (RELIDO at p154); wrapper span
@@ -1383,9 +1384,9 @@ impl CapcoScheme {
             //
             // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
             // "Cannot be used with NOFORN or DISPLAY ONLY."
-            // Same cited line as E054 — both NOFORN and DISPLAY ONLY
+            // Same cited passage as E054 — both NOFORN and DISPLAY ONLY
             // appear in the single prohibition sentence.
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3808.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
             //
             // Rationale: DISPLAY ONLY authorizes viewing but not release
             // or duplication; RELIDO defers release to a
@@ -1394,7 +1395,7 @@ impl CapcoScheme {
             // SFDRA authorization" — are in direct conflict.
             //
             // Reciprocal (doc-comment only — NOT the primary citation):
-            // §H.8 DISPLAY ONLY entry p163 line 4050: "Cannot be used
+            // §H.8 DISPLAY ONLY entry p163: "Cannot be used
             // with RELIDO or NOFORN."
             //
             // LHS = asserting token (RELIDO at p154); wrapper span
@@ -1409,11 +1410,11 @@ impl CapcoScheme {
             //
             // §H.8 ORCON entry p136, Relationship(s) to Other Markings:
             // "May not be used with RELIDO."
-            // Full surrounding prose (lines 3361–3363):
+            // Full surrounding prose (p136):
             // "May not be used with ORCON-USGOV in a portion mark or
             // banner line. May be used with NOFORN, REL TO, DISPLAY
             // ONLY. May not be used with RELIDO."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3363.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p136.
             //
             // Citation authority note: the asserting prose lives on the
             // ORCON template (p136), NOT in RELIDO's p154
@@ -1439,11 +1440,11 @@ impl CapcoScheme {
             //
             // §H.8 ORCON-USGOV entry p140, Relationship(s) to Other
             // Markings: "May not be used with RELIDO."
-            // Full surrounding prose (lines 3442–3446):
+            // Full surrounding prose (p140):
             // "May not be used with ORCON in a portion mark or banner
             // line. May be used with NOFORN, REL TO, DISPLAY ONLY.
             // May not be used with RELIDO."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3444.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p140.
             //
             // Citation page note: the ORCON-USGOV template begins p139
             // (line 3407); the Relationship(s) subsection straddles
@@ -3194,7 +3195,7 @@ fn presence_orcon_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
 }
 
 /// EYES ONLY portion mark / banner form. CAPCO §H.8 p157 (operative
-/// §H.8 p152 per §3.4.6 author).
+/// §H.8 p152 per `marque-applied.md` Section 3.4.6 author).
 fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
     attrs
@@ -3585,7 +3586,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_bur,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3596,7 +3597,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_hcs_x,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3607,7 +3608,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_klm,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3618,7 +3619,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_mvl,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,

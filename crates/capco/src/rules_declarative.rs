@@ -35,24 +35,25 @@
 //! `attrs.token_spans` the same way the retired hand-written rule
 //! did.
 //!
-//! ## Citation policy: wrappers carry byte-identity-frozen citations
+//! ## Citation policy: wrappers match the catalog
 //!
-//! Every `Diagnostic` emitted here carries the *legacy* rule's
-//! citation string verbatim — typically a section-only reference like
-//! `"CAPCO-2016 §H.6"`. The **authoritative** citation with specific
-//! page + line numbers lives on the matching catalog entry in
-//! `crate::scheme::build_constraints`. We do not unify them in this
-//! PR because the corpus NDJSON output is a stable surface and
-//! changing the citation string breaks SC-008 byte-identity.
+//! Every `Diagnostic` emitted here carries the same authoritative
+//! `§X.Y pNN` citation as the matching catalog entry in
+//! `crate::scheme::build_constraints`. The earlier byte-identity
+//! freeze — which kept legacy umbrella references like `§B.1` /
+//! `§B.3` / unpaginated `§H.4` / `§H.6` / `§H.7` in the wrappers
+//! while the catalog already cited the page-precise forms — is
+//! retired; wrappers and catalog rows are now in lockstep across
+//! every shared rule (E010, E012, E014, E015, E016, E021, E024,
+//! W002).
 //!
-//! When two diverge on *section* (not just precision) — currently
-//! E012 (`§B.1` in wrapper vs `§H.3 p55` in catalog) and E015
-//! (`§B.3` vs `§H.7 + §B.3.d`) — the catalog is correct and the
-//! wrapper is pending a citation update in a follow-up that can
-//! bump the NDJSON schema or carry a migration note. For now,
-//! per-wrapper inline comments flag the divergence so a future
-//! author reading the wrapper doesn't take `§B.1` / `§B.3` as
-//! authoritative without cross-checking the catalog.
+//! New wrappers MUST cite the same authoritative passage as the
+//! corresponding catalog row, page-precise where the audit
+//! (`specs/006-engine-rule-refactor/rule-body-audit.md`) gives a
+//! page anchor. Citation-lint (`tools/citation-lint/`) is a hard
+//! CI gate: every `§X.Y pNN` in either surface must resolve to a
+//! real passage in `crates/capco/docs/CAPCO-2016.md`, and the page
+//! anchor must fall within the cited subsection's span.
 //!
 //! ## T035b audit: E017/E018/E019 retired, E036 added
 //!
@@ -301,7 +302,7 @@ impl Rule for DeclarativeBareHcsRule {
             source: FixSource::BuiltinRule,
             span,
             message,
-            citation: "CAPCO-2016 §H.4",
+            citation: "CAPCO-2016 §H.4 p61-62",
             original: "HCS".to_owned(),
             replacement: "HCS-P".to_owned(),
             confidence,
@@ -393,11 +394,15 @@ impl Rule for DeclarativeDualClassificationRule {
                 us.banner_str(),
                 us.banner_str(),
             ),
-            // Byte-identity freeze. Catalog cites §H.3 p55 (correct
-            // authoritative passage); §B.1 is the legacy wrapper
-            // citation — update in a separate NDJSON-schema-migration
-            // PR. See module-level "Citation policy" doc.
-            citation: "CAPCO-2016 §B.1",
+            // §H.3 p55 is the authoritative passage for the US +
+            // non-US classification mutual exclusion (the JOINT
+            // template's "The US, non-US, and JOINT classification
+            // markings are mutually exclusive" sentence). Earlier
+            // revisions cited `§B.1` (a legacy FD&R-procedures
+            // pointer) under a byte-identity freeze; the wrapper
+            // now matches the catalog row at
+            // `scheme.rs:E012/dual-classification`.
+            citation: "CAPCO-2016 §H.3 p55",
             original,
             replacement: fgi_replacement,
             confidence: 0.90,
@@ -455,7 +460,7 @@ impl Rule for DeclarativeJointRelToRule {
                 "JOINT participants [{}] must appear in REL TO list",
                 missing.join(", "),
             ),
-            "CAPCO-2016 §H.3",
+            "CAPCO-2016 §H.3 p57",
             None,
         )]
     }
@@ -491,11 +496,13 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
             span,
             "non-US classification must be accompanied by a dissemination control \
              (e.g., REL TO, NOFORN)",
-            // Byte-identity freeze. Catalog cites §H.7 + §B.3.d
-            // (correct authoritative passages — FGI commingling +
-            // FD&R procedures); §B.3 alone is the legacy wrapper
-            // citation. See module-level "Citation policy" doc.
-            "CAPCO-2016 §B.3",
+            // §H.7 p122 (FGI commingling + sharing-agreement basis)
+            // + §B.3 p20 (FD&R markings on FGI in IC DAPs) are the
+            // authoritative passages. Earlier revisions cited `§B.3`
+            // (a legacy umbrella pointer) under a byte-identity
+            // freeze; the wrapper now matches the catalog row at
+            // `scheme.rs:E015/non-us-requires-dissem`.
+            "CAPCO-2016 §H.7 p122 + §B.3 p20",
             None,
         )]
     }
@@ -531,7 +538,7 @@ impl Rule for DeclarativeJointRestrictedRule {
             span,
             "RESTRICTED may not be used with JOINT — the US has no equivalent \
              classification level for RESTRICTED",
-            "CAPCO-2016 §H.3",
+            "CAPCO-2016 §H.3 p56",
             None,
         )]
     }
@@ -629,7 +636,7 @@ impl Rule for DeclarativeAeaNofornRule {
             "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
              per the Atomic Energy Act; override to warn via rule severity \
              config if sharing agreements apply",
-            "CAPCO-2016 §H.6",
+            "CAPCO-2016 §H.6 p104",
             None,
         )]
     }
@@ -700,7 +707,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
                     "{superseded} should not appear alongside RD; \
                      RD takes precedence over {superseded} in both banners and portions"
                 ),
-                "CAPCO-2016 §H.6",
+                "CAPCO-2016 §H.6 p104",
                 None,
             ));
         }
@@ -769,7 +776,7 @@ impl Rule for DeclarativeCominglingWarningRule {
             span,
             "portion mark comingles US classification with FGI; \
              consider splitting into separate US and foreign paragraphs",
-            "CAPCO-2016 §H.7",
+            "CAPCO-2016 §H.7 p124",
             None,
         )]
     }
@@ -1179,7 +1186,7 @@ pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<
 /// pre-merge.
 ///
 /// `FixSource::BuiltinRule` is the existing strict-path provenance variant
-/// for hand-written CAPCO rules (the PM Addendum II §4 reference to
+/// for hand-written CAPCO rules (the PM Addendum II Section 4 reference to
 /// `FixSource::Rule { rule_id }` was nomenclature-only — no such variant
 /// exists in `marque-rules`; `BuiltinRule` is the existing-pattern match).
 fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {

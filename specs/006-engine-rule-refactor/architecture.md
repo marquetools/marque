@@ -135,6 +135,68 @@ Input form diverges from canonical form on `scope`. The fact set is correct; the
 
 The renderer re-renders the scope. No directive payload; the renderer canonicalizes per axis and per scope by construction.
 
+### Type sketch
+
+Illustrative shapes — names and lifetimes may differ in the final implementation; the structural commitment is the variant set and the field types.
+
+```rust
+// In marque-rules. Generic over the marking scheme so FactRef and the
+// open-vocab carrier are scheme-specific without leaking domain knowledge
+// into the engine. Closed enum; no `__Migration` escape hatch.
+pub enum FixIntent<S: MarkingScheme> {
+    FactAdd        { token:     FactRef<S>,   scope: Scope },
+    FactRemove     { token_ref: FactRef<S>,   scope: Scope },
+    Recanonicalize { scope:     RecanonScope                 },
+}
+// Note: BOTH FactAdd and FactRemove name tokens via FactRef<S> — the
+// fact-set-position type. `TokenRef<S>` (a constraint-query type in
+// `marque-scheme::constraint` covering `Token | AnyInCategory`) is the
+// wrong shape here: a rule cannot meaningfully emit `FactAdd { token:
+// AnyInCategory(...) }` ("add any token in this category"). Both
+// emission variants identify a specific lattice entry.
+
+// FactRef identifies a token in the fact set, NOT bytes in the input.
+// This is what makes FactRemove source-buffer-agnostic: the engine names
+// what to remove by its place in the projected lattice, never by an
+// input span.
+pub enum FactRef<S: MarkingScheme> {
+    /// CVE-registered token; resolves to a unique entry in the fact set.
+    Cve(TokenId),
+    /// Open-vocab structural reference (SAR program identifier;
+    /// SCI compartment / sub-compartment path; FGI tetragraph).
+    /// The scheme's canonicalize step produces these; the renderer
+    /// consumes them. `S::OpenVocabRef` is a scheme-side associated
+    /// type union covering its open-vocab carriers.
+    OpenVocab(S::OpenVocabRef),
+}
+
+// RecanonScope is a narrowing of marque-scheme's Scope. `Scope::Diff`
+// is not a meaningful recanonicalization target (Diff is a rule-context
+// query mode, not a projection-output scope), so the renderer's accepted
+// scope set is the three positional variants only.
+pub enum RecanonScope { Portion, Page, Document }
+
+// AppliedFix.proposal is the engine-promoted form. The engine snapshots
+// runtime state (timestamp, classifier identity, dry-run flag) onto the
+// rule's pure-data FixIntent at promotion time. The rule never carries
+// runtime context; the engine never carries domain logic.
+pub struct AppliedFix<S: MarkingScheme> {
+    pub rule_id:        RuleId,
+    pub proposal:       FixIntent<S>,        // structural fact-set delta
+    pub confidence:     f32,                 // engine compares vs config threshold
+    pub timestamp:      SystemTime,          // engine-snapshotted
+    pub classifier_id:  Option<ClassifierId>,
+    pub dry_run:        bool,
+}
+```
+
+The sketch encodes four invariants the architecture commits to:
+
+- **No `Box<str>` payloads in fixes.** `FactRemove` names tokens via `FactRef`, not via input-derived bytes. This is what G13 audit-content-ignorance (Constitution V Principle V) requires; the audit record stores structural references, never document content.
+- **No multi-span carriers.** Each variant operates on one `scope`. Multi-span document-level rewrites (declassify-token relocation across banner→CAB; banner-rebuild from portion projections) are *projection plus re-render*, not multi-span fix payloads — the projection handles scope coverage, the renderer handles the bytes.
+- **`Scope` is the lifetime boundary.** Rules emit `FixIntent` with no source-buffer lifetime; the engine's `AppliedFix` owns its data outright. Spans live only on `Diagnostic` for location reporting, never on fix payloads.
+- **Scheme-generic dispatch.** The engine routes `FixIntent<S>` through the scheme's `render_canonical` and `project` traits; the same engine code serves CAPCO today, CUI / NATO / partner-national tomorrow without specialization.
+
 That is the full vocabulary. Three variants. No `Box<str>` payloads. No multi-span carriers. No 17-variant taxonomy. The directive enum was the wrong abstraction layer.
 
 ---

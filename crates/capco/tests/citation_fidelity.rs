@@ -63,12 +63,13 @@ use std::path::{Path, PathBuf};
 /// replaces sloppy matching with a fixture→rule index built from
 /// each fixture's `expected.json`.
 ///
-/// TODO(refactor-006-PR-0.5): replace with a programmatic accessor
-/// once `Rule::citation()` is exposed (post-keystone PR 3a–3c). Track
-/// in PR 10 (F.1 maturation).
+/// TODO(refactor-006-PR-10): replace with a programmatic accessor
+/// once `Rule::citation()` is exposed. Track in PR 10 (F.1 maturation).
 const CITED_AUTHORITIES: &[(&str, &[&str])] = &[
     ("CAPCO-2016 §A.6", &["banner", "portion", "format"]),
-    ("CAPCO-2016 §B.1", &["marking", "banner"]),
+    // §B.1 retired from this list in PR 3c.B commit 1: E012 was the
+    // sole citing rule and now cites `§H.3 p55` (covered by the §H.3
+    // entry below), aligning the wrapper with its catalog entry.
     ("CAPCO-2016 §B.3", &["fdr", "rel_to", "noforn"]),
     ("CAPCO-2016 §C.1", &["portion", "syntax"]),
     ("CAPCO-2016 §D.1", &["banner", "syntax"]),

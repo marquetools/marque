@@ -2671,18 +2671,20 @@ impl Rule for MissingNonUsPrefix {
                 "non-US classification {text:?} is missing the leading //; \
                  use //{text} to indicate the US classification slot is empty"
             ),
-            // §A.6 lines 771-772: "For non-US or Joint information,
+            // §A.6 p15: "For non-US or Joint information,
             // the banner line and portion mark must always start
             // with a double forward slash ('//') with no interjected
-            // space." §H.3 p163 reinforces for JOINT: "The
+            // space." §H.3 p55 reinforces for JOINT: "The
             // JOINT classification marking always starts with a
             // double forward slash ('//')."
             //
-            // Earlier revisions cited §H.4, which is the SCI control
-            // system section — unrelated to the non-US prefix rule.
-            // T035c-7 corrected the citation to the two sections
-            // that actually establish the predicate.
-            citation: "CAPCO-2016 §A.6 + §H.3",
+            // Earlier revisions cited §H.4 (the SCI control system
+            // section — unrelated to the non-US prefix rule) and
+            // later `§H.3 p163` (DISPLAY ONLY section). The
+            // citation field now matches `decisions/04-citation-
+            // hygiene.md`: §A.6 p15 + §H.3 p55, anchored to the
+            // exact passages in `crates/capco/docs/CAPCO-2016.md`.
+            citation: "CAPCO-2016 §A.6 p15 + §H.3 p55",
             original: text.to_owned(),
             replacement: format!("//{text}"),
             confidence: 0.95,
@@ -8258,6 +8260,12 @@ mod tests {
         let e012: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E012").collect();
         assert_eq!(e012.len(), 1);
         assert!(e012[0].message.contains("US") && e012[0].message.contains("NATO"));
+        // Pin the citation field to the catalog-matched authoritative
+        // passage. Drift back to the legacy `§B.1` umbrella reference
+        // would be caught here; structural citation-lint (which
+        // accepts both `§B.1` and `§H.3 p55` as well-formed)
+        // would not flag the regression.
+        assert_eq!(e012[0].citation, "CAPCO-2016 §H.3 p55");
     }
 
     #[test]
@@ -8605,6 +8613,11 @@ mod tests {
         let diags = lint_banner("//NATO SECRET");
         let e015: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E015").collect();
         assert_eq!(e015.len(), 1);
+        // Pin the citation to the catalog-matched authoritative pair
+        // (§H.7 p122 + §B.3 p20). Regression guard against drift back
+        // to the legacy `§B.3`-only umbrella reference; structural
+        // citation-lint accepts both forms and would not catch it.
+        assert_eq!(e015[0].citation, "CAPCO-2016 §H.7 p122 + §B.3 p20");
     }
 
     #[test]
@@ -9989,6 +10002,22 @@ mod tests {
     // --- Spec 003 SCI compartments: E011 structural regression ---
 
     #[test]
+    fn e011_cites_a6_p15_and_h3_p55() {
+        // Pin the post-citation-hygiene citation field. `GBR S` is a
+        // non-US classification missing the mandatory leading `//`
+        // (CAPCO-2016 §A.6 p15: "non-US or Joint information ...
+        // must always start with `//`"). Regression guard against
+        // drift back to the prior `§A.6 + §H.3` section-only form
+        // or the wrong `§H.3 p163`/`§H.3 p56` page anchors; the
+        // structural citation-lint accepts each of those as
+        // well-formed and would not catch a regression.
+        let diags = lint_portion("(GBR S)");
+        let e011: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E011").collect();
+        assert_eq!(e011.len(), 1, "E011 must fire on `(GBR S)`: {diags:?}");
+        assert_eq!(e011[0].citation, "CAPCO-2016 §A.6 p15 + §H.3 p55");
+    }
+
+    #[test]
     fn e011_not_triggered_by_structural_sci_blocks() {
         // Regression: structural SCI parsing must not accidentally route
         // anything through MissingNonUsPrefix. A plain US banner with an
@@ -10619,8 +10648,8 @@ mod tests {
     #[test]
     fn e027_cites_relationship_line_2456() {
         // PR 3b.D (T026d): retired E027 → E058 catalog row
-        // `E058/SAR-classification-floor`. Per marque-applied.md §3.4.6
-        // line 801 the SAR family floor cites `§H.5` (family-level —
+        // `E058/SAR-classification-floor`. Per marque-applied.md
+        // §3.4.6 the SAR family floor cites `§H.5` (family-level —
         // §3.4.6 author's choice). Diagnostic.rule is `E058` (walker).
         let diags = lint_banner("UNCLASSIFIED//SAR-BP");
         let sar = sar_floor_diags(&diags);
