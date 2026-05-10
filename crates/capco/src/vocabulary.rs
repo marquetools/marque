@@ -245,10 +245,11 @@ fn build_authority(cve_file: &'static CveFileMetadata) -> Authority {
 /// will provide their own owner-producer translation.
 ///
 /// The match is exhaustive against the codes that appear in
-/// `crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/`. Adding a new code
-/// to `CVEnumISMCATOwnerProducer.xml` triggers the `unknown` panic
-/// arm here and forces the contributor to either extend the match or
-/// document an intentional fallback. Constitution VIII fail-loud.
+/// `ism_ismcat::package_root() / Schema/ISMCAT/CVEGenerated/`.
+/// Adding a new code to `CVEnumISMCATOwnerProducer.xml` triggers the
+/// `unknown` panic arm here and forces the contributor to either
+/// extend the match or document an intentional fallback. Constitution
+/// VIII fail-loud.
 fn owner_producer_name(code: &'static str) -> &'static str {
     match code {
         "USA" => "United States of America",
@@ -264,8 +265,8 @@ fn owner_producer_name(code: &'static str) -> &'static str {
         unknown => panic!(
             "Vocabulary<CapcoScheme>: unknown owner-producer code {unknown:?}. \
              Extend `owner_producer_name` in crates/capco/src/vocabulary.rs \
-             with the human-readable name from \
-             crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/CVEnumISMCATOwnerProducer.xml."
+             with the human-readable name from the `ism-ismcat` crate's \
+             Schema/ISMCAT/CVEGenerated/CVEnumISMCATOwnerProducer.xml."
         ),
     }
 }

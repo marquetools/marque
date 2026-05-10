@@ -64,7 +64,7 @@ evaluated against this refactor's spec.
 |---|-----------|---------------|---------|
 | I | Uncompromising performance | FR-029..FR-033, SC-008/SC-009; four Criterion benches gate the relevant PRs; measurement-gated rollback discipline preserved | **PASS** |
 | II | Zero-copy / streaming core | Pivot split *strengthens* the invariant — `ParsedAttrs<'src>` carries `'src` lifetime, `FixProposal::original` becomes `Span` (not bytes, FR-004), `Box<[T]>` already used for collection fields | **PASS** |
-| III | Format-agnostic core / WASM safety | All new types (`Canonical<S>`, `FixIntent<S>`, `ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`, `MessageTemplate`, `Phase`) land in WASM-safe crates (`marque-ism`, `marque-rules`, `marque-scheme`, `marque-capco`); WASM build runs the same dispatcher as native | **PASS** |
+| III | Format-agnostic core / WASM safety | All new types (`Canonical<S>`, `FixIntent<S>`, `RenderContext`/`EmissionForm` per PR 3c.2 / FR-052, `FormSet`/`FormKind` per PR 3d / FR-053, `Deprecation` validity-window fields per PR 3d / FR-054, `ParsedAttrs`/`CanonicalAttrs`/`ProjectedMarking`, `MessageTemplate`, `Phase`) land in WASM-safe crates (`marque-ism`, `marque-rules`, `marque-scheme`, `marque-capco`); WASM build runs the same dispatcher as native; PR 3d additions tracked under WASM size budget (≤ 5%, T058i) | **PASS** |
 | IV | Two-layer rule architecture | FR-025/FR-026 codify rule emission via `FixIntent<S>` while preserving Layer 1 generated predicates / Layer 2 hand-written rule split; FR-021 makes `Phase` an explicit registration tag | **PASS** |
 | V | Audit-first / G13 | The keystone correctness property of this entire refactor. FR-001..FR-005 (sealed `Canonical`, `MessageTemplate`-only messages, `Span`-only original, engine-only promotion) + FR-027/FR-028 (decoder open-vocab lockout + carve-out delete) + FR-040 (promote-callsite lint) close it. Test-fixture carve-out preserved per Principle V's three constraints | **PASS** |
 | VI | Dataflow pipeline model | FR-006 (Scope::Page projection replaces `PageContext`), FR-021..FR-024 (phase-tagged two-pass with R002 partial-progress diagnostic), FR-038 (Send + Sync), FR-041 (engine mints synthetic diagnostics) | **PASS** |
@@ -107,8 +107,9 @@ crates/
 │   │   ├── attrs.rs                # IsmAttributes (current); split into ParsedAttrs/CanonicalAttrs/ProjectedMarking (PR 3a)
 │   │   ├── canonical.rs            # NEW (PR 3c) — Canonical<S> with sealed constructors + TokenSource
 │   │   ├── message.rs              # NEW (PR 3c) — MessageTemplate enum + MessageArgs closed-set
+│   │   ├── marking_forms.rs        # MarkingForm gains description_title field (PR 3d, FR-053)
 │   │   └── ...                     # generated CVE enums, Span, Vocabulary metadata
-│   └── build.rs                    # No semantic change; per-token is_fdr_dissem field added (FR-010)
+│   └── build.rs                    # Per-token is_fdr_dissem field (PR 4, FR-010); ODNI Description.title harvested into recognized_aliases when divergent from CAPCO long-title (PR 3d, FR-053); Deprecation valid_from/valid_until populated from XSD annotations + migration table (PR 3d, FR-054)
 │
 ├── core/                           # Scanner + parser
 │   └── src/parser.rs               # Four open-vocab admission sites migrate to shape_admits (PR 2, FR-015): three is_ascii_alphanumeric() checks (:1453/:1481/:1493) + FGI trigraph silent-skip (:1011-1024); FGI returns None on shape failure (FR-016)
@@ -122,14 +123,16 @@ crates/
 │
 ├── scheme/                         # Domain-neutral trait surface (no domain vocab)
 │   └── src/
-│       ├── lib.rs                  # MarkingScheme: render_canonical(token, scope) → Canonical<S>; CanonicalConstructor<S> sealed trait (PR 3c)
+│       ├── scheme.rs               # MarkingScheme: render_canonical(&FixIntent<S>, &RenderContext) → Canonical<S>; RenderContext { scope, emission_form, schema_version }; #[non_exhaustive] EmissionForm { Auto, Portion, BannerTitle, BannerAbbreviation } per CAPCO §G.1 Table 4 (PR 3c.2, FR-052); CanonicalConstructor<S> sealed trait (PR 3c.1)
+│       ├── vocabulary.rs           # Vocabulary<S>::forms() returning &'static FormSet; per-form methods become defaults (banner_form() = banner_abbreviation.unwrap_or(banner_title)); FormSet { portion, banner_title, banner_abbreviation, recognized_aliases } + #[non_exhaustive] FormKind (PR 3d, FR-053); Deprecation<Token> gains valid_from/valid_until (PR 3d, FR-054); shape_admits + is_fdr_dissem (PR 2 / PR 4, FR-015 / FR-010)
 │       ├── lattice.rs              # Existing built-in constructors (OrdMax, OrdMin, FlatSet, IntersectSet, SupersessionSet, ModeSet, MaxDate, OptionalSingleton, Product); Phase B already shipped
 │       └── recognizer.rs           # Recognizer<S>: Send + Sync bound (PR 0, FR-038)
 │
 ├── capco/                          # CAPCO Layer 2 rules + scheme adapter
 │   ├── src/
-│   │   ├── scheme.rs               # MarkingClassification::Us hardcode at :365 deleted (PR 5, FR-007); CapcoMarking::join PageContext delegation deleted (PR 4, FR-014); §4 fabrication cluster fixed (PR 0.6, FR-020)
-│   │   ├── rules.rs                # ~56 rules collapse to ~10–13 (PR 3b, #263); doubled p150–151 p151 cluster fixed (PR 0.6); SIGMA archaeology fixed (PR 0.6); per-rule Phase declared (PR 7, FR-021)
+│   │   ├── scheme.rs               # render_canonical impl honors RenderContext.emission_form (PR 3c.2, FR-052); MarkingClassification::Us hardcode at :365 deleted (PR 5, FR-007); CapcoMarking::join PageContext delegation deleted (PR 4, FR-014); §4 fabrication cluster fixed (PR 0.6, FR-020)
+│   │   ├── vocabulary.rs           # impl Vocabulary<CapcoScheme>: forms() composes FormSet from MARKING_FORMS + per-token build-time records (PR 3d, FR-053)
+│   │   ├── rules.rs                # ~56 rules collapse to ~10–13 (PR 3b, #263); doubled p150–151 p151 cluster fixed (PR 0.6); SIGMA archaeology fixed (PR 0.6); per-rule Phase declared (PR 7, FR-021); FixIntent emission sites pass EmissionForm::Auto by default (PR 3c.2, FR-052)
 │   │   └── lattice.rs              # SciSet / SarSet / FgiSet (existing); FgiSet renders without redundant FGI when trigraph present (PR 5, FR-008); FgiMarker::SourceConcealed | Acknowledged discriminant (PR 2, FR-017)
 │   ├── docs/
 │   │   └── CAPCO-2016.md           # Vendored authoritative source — single source of truth for citation-lint (FR-018)
@@ -138,6 +141,8 @@ crates/
 │       ├── category_lattice_laws.rs        # NEW (PR 4) — assoc/comm/idem/identity per category (FR-011)
 │       ├── cross_axis_dominance.rs         # NEW (PR 4) — FOUO eviction, FGI rollup, SCI canonicalization, AEA commingling (FR-012)
 │       ├── parse_render_roundtrip.rs       # NEW (PR 2) — strict-path round-trip property (Layer 2)
+│       ├── render_canonical_emission_form.rs # NEW (PR 3c.2) — EmissionForm selector covers Auto/Portion/Banner/BannerAbbreviated/LongTitle (FR-052)
+│       ├── vocabulary_forms.rs             # NEW (PR 3d) — forms() round-trip with per-form accessors (FR-053)
 │       └── citation_fidelity.rs            # NEW (PR 0.5 skeleton, PR 10 maturation) — F.1 corpus fixture per cited authority (FR-019)
 │
 ├── engine/                         # Pipeline orchestration

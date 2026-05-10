@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+[package]
+name = "message-template-extract"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+license = "LicenseRef-MarqueLicense-1.0"
+description = "Transient T030 mechanical extraction tool — clusters Diagnostic.message format-arg literals into a starter doc for hand-curation into the closed `MessageTemplate` enum at T031. Standalone (NOT a workspace member) per Constitution III."
+
+[[bin]]
+name = "message-template-extract"
+path = "src/main.rs"
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+walkdir = "2"
+
+[workspace]
+# Out-of-workspace per Constitution III — this transient tool must not
+# contaminate the WASM-safe closure of the parent workspace's Cargo.toml.
+# `syn` and `walkdir` are not WASM-relevant runtime deps; the empty
+# `[workspace]` table here stops cargo's parent-walk during manifest
+# resolution, mirroring `tools/citation-lint/` and `tools/masking-pin-lint/`.
+# Tool deletes after PR 3c.1 review accepts T031's curated `MessageTemplate`.

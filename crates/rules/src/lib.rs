@@ -11,14 +11,41 @@
 //! It has no rule implementations — those live in `marque-capco` and future crates.
 //! The engine depends only on this crate, enabling rule crates to be swapped.
 //!
-//! # Type split: FixProposal vs AppliedFix
+//! # Module layout
+//!
+//! - [`confidence`] — `Confidence` (recognition × rule axes), `FeatureId`,
+//!   `FeatureContribution`. Phase D audit-provenance payload attached to every
+//!   `FixProposal` / `FixIntent`.
+//! - [`message`] — `Message`, `MessageTemplate` (closed enum), `MessageArgs`
+//!   (closed-set struct). The G13 type-system closure of the diagnostic-message
+//!   leak channel: only `Message::new(template, args)` constructs a `Message`,
+//!   and `MessageArgs` cannot carry input bytes (no `String` / `&str` / `Vec<u8>`
+//!   fields). PR 3c.1 lands the surface; PR 3c.2 reshapes `Diagnostic.message`
+//!   to consume it. (Source plan §8.3.)
+//! - [`fix_intent`] — `FixIntent<S>`, `ReplacementIntent<S>`, `RenderDirective`.
+//!   The rule-emission API for closed-CVE / open-vocab replacements; the engine
+//!   renders these to `marque_scheme::canonical::Canonical<S>` via
+//!   `MarkingScheme::render_canonical` and then promotes to `AppliedFix`.
+//!   PR 3c.1 lands the surface alongside `FixProposal`; PR 3c.2 migrates rules
+//!   off `FixProposal` and deletes it.
+//!
+//! # Type split: FixProposal vs AppliedFix (current — PR 3c.1)
 //!
 //! `FixProposal` is pure data emitted by rules — deterministic, timestamp-free,
 //! classifier-free. `AppliedFix` wraps a proposal with runtime context (timestamp,
 //! classifier id, dry-run flag) and is constructed **only** by `Engine::fix`.
 //! This makes "suggested vs applied" a type-system invariant.
+//!
+//! PR 3c.2 will retire `FixProposal` in favor of `FixIntent<S>`, which carries
+//! the same pure-data shape plus a scheme-typed replacement intent (closed-CVE
+//! token vs open-vocab render directive). `AppliedFix` is reshaped to embed a
+//! sealed `Canonical<S>` and structured `Message`. The two-PR split exists so
+//! the rule-side migration lands atomically with the engine-side reshape;
+//! PR 3c.1 is purely additive.
 
 pub mod confidence;
+pub mod fix_intent;
+pub mod message;
 
 use marque_ism::{CanonicalAttrs, Span};
 use std::collections::HashMap;
@@ -26,7 +53,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
+pub use fix_intent::{FixIntent, RenderDirective, ReplacementIntent};
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
+pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate};
 
 // ---------------------------------------------------------------------------
 // RuleId

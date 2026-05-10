@@ -23,6 +23,7 @@
 # bumping this file or by switching CI's check job. Future toolchain
 # updates: bump this file when the workspace MSRV moves and CI's
 # non-nightly jobs follow it; leave the nightly check job alone.
+#:tombi schema.strict = false
 
 [toolchain]
 channel = "1.89"

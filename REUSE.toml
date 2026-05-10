@@ -13,11 +13,15 @@ path = [
   "crates/capco/docs/ICMarkings*.md",
   "crates/capco/docs/original-refs/CAPCO*.pdf",
   "crates/capco/docs/original-refs/ICMarkings*.ppt",
-  "crates/ism/schemas/**",
 ]
 precedence = "closest"
 SPDX-FileCopyrightText = "United States Government, Public Domain"
 SPDX-License-Identifier = "LicenseRef-PublicDomain"
+
+# ODNI ISM schemas formerly under `crates/ism/schemas/` are now consumed
+# via the `ism` and `ism-ismcat` build-dependencies from
+# https://github.com/marquetools/ism-data, which carry their own REUSE
+# annotations alongside the data files.
 
 [[annotations]]
 path = [

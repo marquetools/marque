@@ -5,8 +5,9 @@
 # Org-specific country / country-group code extensions.
 #
 # CAPCO REL TO blocks recognize the codes published in ODNI's CVE
-# trigraph table (`crates/ism/schemas/ISM-v2022-DEC/CVE_ISMCAT/
-# CVEGenerated/CVEnumISMCATRelTo.xsd`): 280 ISO trigraphs (`USA`,
+# trigraph table (`ism_ismcat::package_root() /
+# Schema/ISMCAT/CVEGenerated/CVEnumISMCATRelTo.xsd`, vendored via the
+# `ism-ismcat` build-dependency): 280 ISO trigraphs (`USA`,
 # `GBR`, …), 58 tetragraph / country-group codes (`FVEY`, `ACGU`,
 # `NATO`, `RSMA`/`ISAF`/`KFOR`/…), the 2-byte `EU`, and the 15-byte
 # `AUSTRALIA_GROUP`. That set is sufficient for upstream releases.

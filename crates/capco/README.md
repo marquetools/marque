@@ -16,7 +16,7 @@ This is one of two crates where CAPCO/ISM is the headline; everything else in th
 
 Marque uses a two-layer rule architecture:
 
-- **Layer 1 (generated)**: `marque-ism/build.rs` parses ODNI ISM schemas at build time and emits binary valid/invalid predicates.
+- **Layer 1 (generated)**: `marque-ism/build.rs` parses ODNI ISM schemas at build time (consumed via the `ism` and `ism-ismcat` build-dependencies from [`marquetools/ism-data`](https://github.com/marquetools/ism-data)) and emits binary valid/invalid predicates.
 - **Layer 2 (this crate)**: hand-written `Rule` implementations that consume Layer 1 predicates, classify the violation reason, decide whether to propose a fix, and cite the relevant CAPCO section.
 
 Rule structs are zero-size and stateless. All config-dependent behavior (severity overrides, confidence threshold, classifier identity) is handled by the engine. Fixes are returned as `FixProposal` (pure data) — the engine snapshots runtime state into `AppliedFix` at promotion time. Rule crates must never construct `AppliedFix` directly.
@@ -103,7 +103,15 @@ println!("CAPCO rules compiled against {SCHEMA_VERSION}");
 
 ## Schema Versioning
 
-The active ISM schema version is pinned in `marque-ism/Cargo.toml` under `[package.metadata.marque] ism-schema-version` and re-exported here as `SCHEMA_VERSION`. Bump intentionally when ODNI publishes spec updates.
+The active ISM schema version is pinned in `marque-ism/Cargo.toml` under `[package.metadata.marque]`:
+
+| Pin | Meaning |
+|-----|---------|
+| `ism-schema-version` | Upstream ODNI ISM package label (e.g. `ISM-v2022-DEC`) — re-exported here as `SCHEMA_VERSION` |
+| `ism-data-version` | Snapshot of the [`ism-data`](https://github.com/marquetools/ism-data) workspace whose `ism` / `ism-ismcat` build-deps `marque-ism` resolves |
+| `ismcat-tetra-version` | ISMCAT Tetragraph Taxonomy revision |
+
+Bump intentionally — and in lock-step with the corresponding `[build-dependencies]` versions — when ODNI publishes spec updates and the `ism-data` workspace is re-vendored.
 
 ## License
 
