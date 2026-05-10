@@ -232,7 +232,7 @@ pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<
 /// sub-rules drop silently until a future PR wires wrappers for them.
 pub(crate) struct DeclarativeBareHcsRule;
 
-impl Rule for DeclarativeBareHcsRule {
+impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
     fn id(&self) -> RuleId {
         RuleId::new("E010")
     }
@@ -243,7 +243,7 @@ impl Rule for DeclarativeBareHcsRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::SciControl;
 
         let violations = violations_for(attrs, "E010/HCS-system-constraints");
@@ -318,7 +318,7 @@ impl Rule for DeclarativeBareHcsRule {
 /// Replaces the hand-written `DualClassificationRule`.
 pub(crate) struct DeclarativeDualClassificationRule;
 
-impl Rule for DeclarativeDualClassificationRule {
+impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
     fn id(&self) -> RuleId {
         RuleId::new("E012")
     }
@@ -329,7 +329,7 @@ impl Rule for DeclarativeDualClassificationRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{ForeignClassification, MarkingClassification};
 
         if violations_for(attrs, "E012/dual-classification").is_empty() {
@@ -417,7 +417,7 @@ impl Rule for DeclarativeDualClassificationRule {
 
 pub(crate) struct DeclarativeJointRelToRule;
 
-impl Rule for DeclarativeJointRelToRule {
+impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("E014")
     }
@@ -428,7 +428,7 @@ impl Rule for DeclarativeJointRelToRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingClassification;
 
         if violations_for(attrs, "E014/joint-requires-rel-to-coverage").is_empty() {
@@ -472,7 +472,7 @@ impl Rule for DeclarativeJointRelToRule {
 
 pub(crate) struct DeclarativeNonUsMissingDissemRule;
 
-impl Rule for DeclarativeNonUsMissingDissemRule {
+impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
     fn id(&self) -> RuleId {
         RuleId::new("E015")
     }
@@ -483,7 +483,7 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E015/non-us-requires-dissem").is_empty() {
             return vec![];
         }
@@ -514,7 +514,7 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
 
 pub(crate) struct DeclarativeJointRestrictedRule;
 
-impl Rule for DeclarativeJointRestrictedRule {
+impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
     fn id(&self) -> RuleId {
         RuleId::new("E016")
     }
@@ -525,7 +525,7 @@ impl Rule for DeclarativeJointRestrictedRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E016/joint-conflicts-restricted").is_empty() {
             return vec![];
         }
@@ -561,7 +561,7 @@ impl Rule for DeclarativeJointRestrictedRule {
 
 pub(crate) struct DeclarativeJointHcsRule;
 
-impl Rule for DeclarativeJointHcsRule {
+impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
     fn id(&self) -> RuleId {
         RuleId::new("E036")
     }
@@ -572,7 +572,7 @@ impl Rule for DeclarativeJointHcsRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E036/joint-conflicts-hcs").is_empty() {
             return vec![];
         }
@@ -611,7 +611,7 @@ impl Rule for DeclarativeJointHcsRule {
 
 pub(crate) struct DeclarativeAeaNofornRule;
 
-impl Rule for DeclarativeAeaNofornRule {
+impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
     fn id(&self) -> RuleId {
         RuleId::new("E021")
     }
@@ -622,7 +622,7 @@ impl Rule for DeclarativeAeaNofornRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
             return vec![];
         }
@@ -669,7 +669,7 @@ impl Rule for DeclarativeAeaNofornRule {
 
 pub(crate) struct DeclarativeRdPrecedenceRule;
 
-impl Rule for DeclarativeRdPrecedenceRule {
+impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
     fn id(&self) -> RuleId {
         RuleId::new("E024")
     }
@@ -680,7 +680,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::AeaMarking;
 
         if violations_for(attrs, "E024/rd-precedence").is_empty() {
@@ -743,7 +743,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
 
 pub(crate) struct DeclarativeCominglingWarningRule;
 
-impl Rule for DeclarativeCominglingWarningRule {
+impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
     fn id(&self) -> RuleId {
         RuleId::new("W002")
     }
@@ -754,7 +754,7 @@ impl Rule for DeclarativeCominglingWarningRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Portion-only filter: the catalog predicate fires on any
         // US+FGI presence; user-facing diagnostic is portion-only per
@@ -799,7 +799,7 @@ impl Rule for DeclarativeCominglingWarningRule {
 
 pub(crate) struct DeclarativeNodisConflictsExdisRule;
 
-impl Rule for DeclarativeNodisConflictsExdisRule {
+impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
     fn id(&self) -> RuleId {
         RuleId::new("E037")
     }
@@ -810,7 +810,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E037/nodis-conflicts-exdis").is_empty() {
             return vec![];
         }
@@ -849,7 +849,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
 
 pub(crate) struct DeclarativeDosDissemNofornRule;
 
-impl Rule for DeclarativeDosDissemNofornRule {
+impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
     fn id(&self) -> RuleId {
         RuleId::new("E038")
     }
@@ -860,7 +860,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E038/nodis-or-exdis-requires-noforn").is_empty() {
             return vec![];
         }
@@ -886,7 +886,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
 
 pub(crate) struct DeclarativeNofornRelToConflictRule;
 
-impl Rule for DeclarativeNofornRelToConflictRule {
+impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E053")
     }
@@ -897,7 +897,7 @@ impl Rule for DeclarativeNofornRelToConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "capco/noforn-conflicts-rel-to").is_empty() {
             return vec![];
         }
@@ -1217,7 +1217,7 @@ fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<F
 #[doc(hidden)]
 pub struct DeclarativeRelidoNofornConflictRule;
 
-impl Rule for DeclarativeRelidoNofornConflictRule {
+impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E054")
     }
@@ -1230,7 +1230,7 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
             return vec![];
         }
@@ -1280,7 +1280,7 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
 #[doc(hidden)]
 pub struct DeclarativeRelidoDisplayOnlyConflictRule;
 
-impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
+impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E055")
     }
@@ -1293,7 +1293,7 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
             return vec![];
         }
@@ -1359,7 +1359,7 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
 #[doc(hidden)]
 pub struct DeclarativeOrconRelidoConflictRule;
 
-impl Rule for DeclarativeOrconRelidoConflictRule {
+impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E056")
     }
@@ -1372,7 +1372,7 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
             return vec![];
         }
@@ -1429,7 +1429,7 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
 #[doc(hidden)]
 pub struct DeclarativeOrconUsgovRelidoConflictRule;
 
-impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
+impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E057")
     }
@@ -1442,7 +1442,7 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
             return vec![];
         }
@@ -1540,7 +1540,7 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
 
 pub(crate) struct DeclarativeClassFloorRule;
 
-impl Rule for DeclarativeClassFloorRule {
+impl Rule<CapcoScheme> for DeclarativeClassFloorRule {
     fn id(&self) -> RuleId {
         RuleId::new("E058")
     }
@@ -1571,7 +1571,7 @@ impl Rule for DeclarativeClassFloorRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // PR D R2 perf-1: per-portion early-out guard. Pre-compute
         // axis-presence flags once. On a 10KB document where most
         // portions are prose body text (no SCI / AEA / SAR / dissem /
@@ -1728,7 +1728,7 @@ fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Spa
 
 pub(crate) struct DeclarativeSciPerSystemRule;
 
-impl Rule for DeclarativeSciPerSystemRule {
+impl Rule<CapcoScheme> for DeclarativeSciPerSystemRule {
     fn id(&self) -> RuleId {
         RuleId::new("E059")
     }
@@ -1750,7 +1750,7 @@ impl Rule for DeclarativeSciPerSystemRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // PR 3b.E perf-1: per-portion early-out guard. All PR-E rows
         // are SCI-axis-only — if `attrs.sci_markings` is empty, no row
         // can fire and the catalog walk is skipped entirely. On a 10KB
@@ -1975,7 +1975,7 @@ struct NonCanonicalRow {
     /// strings replaced by the row's stored values), so the
     /// diagnostic message text + fix shapes + spans are byte-
     /// identical to the retired rule's output.
-    evaluate: fn(&CanonicalAttrs, &RuleContext, &NonCanonicalRow) -> Vec<Diagnostic>,
+    evaluate: fn(&CanonicalAttrs, &RuleContext, &NonCanonicalRow) -> Vec<Diagnostic<CapcoScheme>>,
 }
 
 const NON_CANONICAL_CATALOG: &[NonCanonicalRow] = &[
@@ -2106,7 +2106,7 @@ fn evaluate_rel_to_usa_first_alpha(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
 
@@ -2180,7 +2180,7 @@ fn evaluate_joint_alphabetical(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
 
@@ -2225,7 +2225,7 @@ fn evaluate_sigma_numeric_sort(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
     let valid_sigmas: &[u8] = &[14, 15, 18, 20];
@@ -2320,7 +2320,7 @@ fn evaluate_sar_program_ascending_sort(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     use marque_ism::sar_sort_key;
 
@@ -2395,7 +2395,7 @@ fn evaluate_sci_compartment_numeric_then_alpha(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     use marque_ism::sar_sort_key;
 
@@ -2567,7 +2567,7 @@ fn evaluate_sci_compartment_numeric_then_alpha(
 
 pub(crate) struct DeclarativeNonCanonicalInputRule;
 
-impl Rule for DeclarativeNonCanonicalInputRule {
+impl Rule<CapcoScheme> for DeclarativeNonCanonicalInputRule {
     fn id(&self) -> RuleId {
         RULE_ID.clone()
     }
@@ -2587,7 +2587,7 @@ impl Rule for DeclarativeNonCanonicalInputRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // PR 3b.F R-2 perf-1: axis-presence early-out. Bail when none
         // of the five ordering axes are populated. On prose body
         // text in a 10KB document this is the dominant case and the

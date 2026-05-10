@@ -58,18 +58,21 @@ fn engine_with_config(config: Config) -> Engine {
     .expect("CAPCO scheme has no rewrite cycles")
 }
 
-fn lint(source: &str) -> Vec<Diagnostic> {
+fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine_default().lint(source.as_bytes()).diagnostics
 }
 
-fn e060_diags(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+fn e060_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
     diags.iter().filter(|d| d.rule.as_str() == "E060").collect()
 }
 
 /// Filter on E060 + a row-identifying message-text substring so a
 /// single multi-violation fixture can be partitioned into per-row
 /// hits without running afoul of cross-row interference.
-fn e060_diags_for_row<'a>(diags: &'a [Diagnostic], message_substring: &str) -> Vec<&'a Diagnostic> {
+fn e060_diags_for_row<'a>(
+    diags: &'a [Diagnostic<CapcoScheme>],
+    message_substring: &str,
+) -> Vec<&'a Diagnostic<CapcoScheme>> {
     diags
         .iter()
         .filter(|d| d.rule.as_str() == "E060" && d.message.contains(message_substring))

@@ -136,6 +136,7 @@ compile_error!(
      access. See crates/wasm/src/lib.rs for details."
 );
 
+use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
@@ -299,7 +300,7 @@ fn fix_source_str(source: FixSource) -> &'static str {
     }
 }
 
-fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
         severity: d.severity.as_str(),
@@ -392,7 +393,7 @@ struct FeatureJson {
     delta: f32,
 }
 
-fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1<'_> {
+fn applied_fix_to_audit_json_v1(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV1<'_> {
     AuditRecordJsonV1 {
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
         rule: fix.proposal.rule.as_str(),
@@ -412,7 +413,7 @@ fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1<'_> {
     }
 }
 
-fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2<'_> {
+fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV2<'_> {
     let c = &fix.proposal.confidence;
     AuditRecordJsonV2 {
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
@@ -445,7 +446,9 @@ fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2<'_> {
 
 /// Serialize one `AppliedFix` to a pre-serialized JSON value, dispatching
 /// to the v1 or v2 emitter based on this build's audit schema.
-fn serialize_applied_fix(fix: &AppliedFix) -> Result<Box<serde_json::value::RawValue>, String> {
+fn serialize_applied_fix(
+    fix: &AppliedFix<CapcoScheme>,
+) -> Result<Box<serde_json::value::RawValue>, String> {
     // `serde_json::to_string` is the right primitive here: it returns
     // an owned `String` and skips the `Vec<u8>` → `String::from_utf8`
     // validation pass `to_vec` would force, since `serde_json` already

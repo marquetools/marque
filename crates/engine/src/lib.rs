@@ -90,7 +90,7 @@ const fn const_str_eq(a: &str, b: &str) -> bool {
 /// Returns the default rule set for marque (CAPCO rules).
 ///
 /// Both the CLI and WASM front ends use this to share one registration entry point.
-pub fn default_ruleset() -> Vec<Box<dyn marque_rules::RuleSet>> {
+pub fn default_ruleset() -> Vec<Box<dyn marque_rules::RuleSet<marque_capco::CapcoScheme>>> {
     vec![Box::new(marque_capco::rules::CapcoRuleSet::new())]
 }
 

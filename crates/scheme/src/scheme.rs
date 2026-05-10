@@ -10,6 +10,9 @@
 //! design document `docs/plans/2026-04-17-marking-scheme-lattice-
 //! design.md` in the workspace root for the conceptual framing.
 
+use core::fmt::Debug;
+use core::hash::Hash;
+
 use crate::ambiguity::Parsed;
 use crate::category::Category;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
@@ -38,6 +41,32 @@ pub trait MarkingScheme {
 
     /// Parse-level errors produced by `parse`.
     type ParseError;
+
+    /// The scheme's open-vocabulary structural reference type.
+    ///
+    /// `FactRef<S>` (in `marque-rules`) names tokens in the projected
+    /// fact set. Closed-CVE tokens flow through `FactRef::Cve(TokenId)`;
+    /// open-vocabulary tokens (SAR program identifiers, SCI compartment
+    /// / sub-compartment paths, FGI tetragraphs in CAPCO, and whatever
+    /// the equivalent open-vocab carriers are in future schemes) flow
+    /// through `FactRef::OpenVocab(S::OpenVocabRef)`.
+    ///
+    /// The bound set is what `FactRef<S>` / `FixIntent<S>` propagate to
+    /// callers — `Debug` and `Clone` because the rule-emission API
+    /// derives both; `Eq + Hash` because audit-emitter call paths may
+    /// key on the reference (and downstream consumers building lookup
+    /// tables benefit); `Send + Sync` because `BatchEngine` schedules
+    /// `FixIntent<S>` across worker threads (Constitution VI);
+    /// `'static` because open-vocab references must own their data
+    /// (a SAR program identifier as a `Box<str>` or an enum, not a
+    /// `&'src str` into the input buffer — that would re-introduce a
+    /// G13 leak channel).
+    ///
+    /// Schemes with no open-vocab axes bind this to
+    /// `std::convert::Infallible`, which carries no runtime values and
+    /// makes `FactRef::OpenVocab(...)` statically unreachable for that
+    /// scheme.
+    type OpenVocabRef: Debug + Clone + Eq + Hash + Send + Sync + 'static;
 
     /// Human-readable name, e.g., "CAPCO-ISM-v2022-DEC".
     fn name(&self) -> &str;

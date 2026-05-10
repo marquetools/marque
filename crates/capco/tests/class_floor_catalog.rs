@@ -52,7 +52,7 @@ fn engine() -> Engine {
 }
 
 /// Run `source` through the engine and return its diagnostics.
-fn lint(source: &str) -> Vec<Diagnostic> {
+fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
@@ -61,7 +61,10 @@ fn lint(source: &str) -> Vec<Diagnostic> {
 /// ID `E058` for all 27 rows; per-row identification flows via the
 /// diagnostic message text. The marker_text is typically the
 /// `marking_label` (e.g., `"CNWDI"`, `"SI compartments"`).
-fn e058_diags_for<'a>(diags: &'a [Diagnostic], marker_text: &str) -> Vec<&'a Diagnostic> {
+fn e058_diags_for<'a>(
+    diags: &'a [Diagnostic<CapcoScheme>],
+    marker_text: &str,
+) -> Vec<&'a Diagnostic<CapcoScheme>> {
     diags
         .iter()
         .filter(|d| d.rule.as_str() == "E058" && d.message.contains(marker_text))
@@ -516,7 +519,8 @@ fn severity_off_at_e058_suppresses_all_class_floor_diagnostics() {
     let diags = engine_with_off
         .lint(b"CONFIDENTIAL//RD-CNWDI//NOFORN\n")
         .diagnostics;
-    let e058: Vec<&Diagnostic> = diags.iter().filter(|d| d.rule.as_str() == "E058").collect();
+    let e058: Vec<&Diagnostic<CapcoScheme>> =
+        diags.iter().filter(|d| d.rule.as_str() == "E058").collect();
     assert!(
         e058.is_empty(),
         "with `[rules] E058 = \"off\"`, no E058 diagnostics may emit (FR-008): {diags:?}"

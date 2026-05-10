@@ -192,7 +192,9 @@ fn classifier_id_propagated_when_configured() {
 /// fields (`recognition`, `runner_up_ratio`, `features`) are emitted
 /// only when this build is `marque-mvp-2` (default), matching the
 /// CLI emitter's dispatch (`marque/src/render.rs::render_audit_record`).
-fn applied_fix_to_json(fix: &marque_rules::AppliedFix) -> serde_json::Value {
+fn applied_fix_to_json(
+    fix: &marque_rules::AppliedFix<marque_capco::CapcoScheme>,
+) -> serde_json::Value {
     let source_str = match fix.proposal.source {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",

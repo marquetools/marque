@@ -179,7 +179,9 @@ fn diagnostic_span_is_byte_precise() {
 /// Project a Diagnostic into the contract shape from contracts/diagnostic.json.
 /// Phase 3 mirrors this structure here so the snapshot guards both the
 /// contract format and the engine's ability to populate it.
-fn diagnostic_to_contract_json(d: &marque_rules::Diagnostic) -> serde_json::Value {
+fn diagnostic_to_contract_json(
+    d: &marque_rules::Diagnostic<marque_capco::CapcoScheme>,
+) -> serde_json::Value {
     let fix = d.fix.as_ref().map(|f| {
         serde_json::json!({
             "source": format!("{:?}", f.source),

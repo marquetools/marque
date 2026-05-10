@@ -51,6 +51,7 @@ impl MarkingScheme for StubScheme {
     type Token = u32;
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
 
     fn name(&self) -> &str {
         "stub"

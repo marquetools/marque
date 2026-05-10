@@ -4,6 +4,7 @@
 
 //! Output types returned by the engine's synchronous API surface.
 
+use marque_capco::CapcoScheme;
 use marque_rules::{AppliedFix, Diagnostic};
 
 /// Result of a lint pass — diagnostics without source modification.
@@ -42,7 +43,7 @@ use marque_rules::{AppliedFix, Diagnostic};
 #[non_exhaustive]
 #[derive(Debug, Default)]
 pub struct LintResult {
-    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics: Vec<Diagnostic<CapcoScheme>>,
     /// `true` when the lint pass aborted before processing every
     /// scanner-emitted candidate due to deadline expiry. The
     /// `diagnostics` vector contains every diagnostic produced from
@@ -136,10 +137,10 @@ pub struct FixResult {
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
     pub source: Vec<u8>,
     /// Audit records for every fix that was applied.
-    pub applied: Vec<AppliedFix>,
+    pub applied: Vec<AppliedFix<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
-    pub remaining_diagnostics: Vec<Diagnostic>,
+    pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
 }
 
 #[cfg(test)]

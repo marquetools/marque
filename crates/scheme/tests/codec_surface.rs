@@ -71,6 +71,7 @@ impl MarkingScheme for MockScheme {
     type Token = TokenId;
     type Marking = MockMarking;
     type ParseError = MockParseError;
+    type OpenVocabRef = core::convert::Infallible;
 
     fn name(&self) -> &str {
         "mock"

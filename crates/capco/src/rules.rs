@@ -77,6 +77,7 @@
 //!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
 //!   C001 = corrections-map typo (T058, Phase 5)
 
+use crate::scheme::CapcoScheme;
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
     CanonicalAttrs, MarkingClassification, SciControlSystem, SciMarking, Span, TokenKind,
@@ -89,7 +90,7 @@ use std::collections::HashSet;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
 pub struct CapcoRuleSet {
-    rules: Vec<Box<dyn Rule>>,
+    rules: Vec<Box<dyn Rule<CapcoScheme>>>,
 }
 
 impl Default for CapcoRuleSet {
@@ -318,8 +319,8 @@ impl CapcoRuleSet {
     }
 }
 
-impl RuleSet for CapcoRuleSet {
-    fn rules(&self) -> &[Box<dyn Rule>] {
+impl RuleSet<CapcoScheme> for CapcoRuleSet {
+    fn rules(&self) -> &[Box<dyn Rule<CapcoScheme>>] {
         &self.rules
     }
 
@@ -366,7 +367,7 @@ pub use crate::rules_declarative::find_dissem_token_span;
 /// user has authored-but-unidiomatic text.
 struct PortionMarkInBannerRule;
 
-impl Rule for PortionMarkInBannerRule {
+impl Rule<CapcoScheme> for PortionMarkInBannerRule {
     fn id(&self) -> RuleId {
         RuleId::new("E001")
     }
@@ -377,7 +378,7 @@ impl Rule for PortionMarkInBannerRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -518,7 +519,7 @@ impl Rule for PortionMarkInBannerRule {
 ///   USA is present and first; a separate rule is needed for that case.
 struct MissingUsaTrigraphRule;
 
-impl Rule for MissingUsaTrigraphRule {
+impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn id(&self) -> RuleId {
         RuleId::new("E002")
     }
@@ -529,7 +530,7 @@ impl Rule for MissingUsaTrigraphRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.rel_to.is_empty() {
             return vec![];
         }
@@ -694,7 +695,7 @@ impl Rule for MissingUsaTrigraphRule {
 /// because reordering changes byte spans across the whole marking.
 struct MisorderedBlocksRule;
 
-impl Rule for MisorderedBlocksRule {
+impl Rule<CapcoScheme> for MisorderedBlocksRule {
     fn id(&self) -> RuleId {
         RuleId::new("E003")
     }
@@ -705,7 +706,7 @@ impl Rule for MisorderedBlocksRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Portion) {
             return vec![];
@@ -953,7 +954,7 @@ fn reorder_marking(attrs: &CanonicalAttrs) -> Option<String> {
 /// run-pair (consecutive windows).
 struct SeparatorCountRule;
 
-impl Rule for SeparatorCountRule {
+impl Rule<CapcoScheme> for SeparatorCountRule {
     fn id(&self) -> RuleId {
         RuleId::new("E004")
     }
@@ -964,7 +965,7 @@ impl Rule for SeparatorCountRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         // === Extra separators (`////` or longer runs) ===
         // Adjacent separator spans (back-to-back `//` with nothing between)
@@ -1140,7 +1141,7 @@ fn category_of(kind: TokenKind) -> Option<SeparatorCategory> {
 /// diagnostic; the author resolves manually.
 struct DeclassifyMisplacedRule;
 
-impl Rule for DeclassifyMisplacedRule {
+impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn id(&self) -> RuleId {
         RuleId::new("E005")
     }
@@ -1151,7 +1152,7 @@ impl Rule for DeclassifyMisplacedRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Fire on banner AND portion. CAB candidates are the correct
         // location for declass info and must be skipped. PageBreak is
@@ -1202,7 +1203,7 @@ impl Rule for DeclassifyMisplacedRule {
 /// `is_dissem_replacement` filter below.
 struct DeprecatedDissemRule;
 
-impl Rule for DeprecatedDissemRule {
+impl Rule<CapcoScheme> for DeprecatedDissemRule {
     fn id(&self) -> RuleId {
         RuleId::new("E006")
     }
@@ -1213,7 +1214,7 @@ impl Rule for DeprecatedDissemRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         // Walk every TokenSpan whose kind is either DissemControl (the
         // deprecated marking is in the modern CVE — e.g., FOUO) or Unknown
@@ -1318,7 +1319,7 @@ fn is_dissem_replacement(replacement: &str) -> bool {
 ///    replacement mapping).
 struct XShorthandDateRule;
 
-impl Rule for XShorthandDateRule {
+impl Rule<CapcoScheme> for XShorthandDateRule {
     fn id(&self) -> RuleId {
         RuleId::new("E007")
     }
@@ -1329,7 +1330,7 @@ impl Rule for XShorthandDateRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         for token in attrs.token_spans.iter() {
             if token.kind != TokenKind::Unknown {
@@ -1541,7 +1542,7 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 /// not a silent fallback.
 struct UnknownTokenRule;
 
-impl Rule for UnknownTokenRule {
+impl Rule<CapcoScheme> for UnknownTokenRule {
     fn id(&self) -> RuleId {
         RuleId::new("E008")
     }
@@ -1552,7 +1553,7 @@ impl Rule for UnknownTokenRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Precompute whether a first SAR block parsed successfully. The
         // repeated-SAR suppression path below must only fire when E030's
         // own token-shape preconditions are met; otherwise a malformed
@@ -1661,7 +1662,7 @@ impl Rule for UnknownTokenRule {
 ///    is identical.
 struct CorrectionsMapRule;
 
-impl Rule for CorrectionsMapRule {
+impl Rule<CapcoScheme> for CorrectionsMapRule {
     fn id(&self) -> RuleId {
         RuleId::new("C001")
     }
@@ -1672,7 +1673,7 @@ impl Rule for CorrectionsMapRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Engine guarantees corrections is Some only when the map is non-empty
         // (engine.rs: corrections_arc is None when config.corrections.is_empty()).
         let Some(corrections) = ctx.corrections.as_ref() else {
@@ -1754,7 +1755,7 @@ impl Rule for CorrectionsMapRule {
 ///   equal-form guard
 struct PortionAbbreviationRule;
 
-impl Rule for PortionAbbreviationRule {
+impl Rule<CapcoScheme> for PortionAbbreviationRule {
     fn id(&self) -> RuleId {
         RuleId::new("E009")
     }
@@ -1765,7 +1766,7 @@ impl Rule for PortionAbbreviationRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Portion {
             return vec![];
@@ -1912,7 +1913,7 @@ impl Rule for PortionAbbreviationRule {
 ///   banners that mix long-title and abbreviation forms.
 struct PreferBannerAbbreviationRule;
 
-impl Rule for PreferBannerAbbreviationRule {
+impl Rule<CapcoScheme> for PreferBannerAbbreviationRule {
     fn id(&self) -> RuleId {
         RuleId::new("S001")
     }
@@ -1923,7 +1924,7 @@ impl Rule for PreferBannerAbbreviationRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -2048,7 +2049,7 @@ impl Rule for PreferBannerAbbreviationRule {
 /// so reviewers can audit the intent.
 struct BannerConsistentFormRule;
 
-impl Rule for BannerConsistentFormRule {
+impl Rule<CapcoScheme> for BannerConsistentFormRule {
     fn id(&self) -> RuleId {
         RuleId::new("S002")
     }
@@ -2059,7 +2060,7 @@ impl Rule for BannerConsistentFormRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         use marque_ism::marking_forms::MARKING_FORMS;
 
@@ -2194,7 +2195,7 @@ impl Rule for BannerConsistentFormRule {
 /// - **S001** / **S002** (style) — banner-abbreviation preferences.
 struct JointUsaFirstRule;
 
-impl Rule for JointUsaFirstRule {
+impl Rule<CapcoScheme> for JointUsaFirstRule {
     fn id(&self) -> RuleId {
         RuleId::new("S003")
     }
@@ -2205,7 +2206,7 @@ impl Rule for JointUsaFirstRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{CountryCode, MarkingType};
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -2461,7 +2462,7 @@ fn s004_message(
     }
 }
 
-impl Rule for RelToTrigraphSuggestRule {
+impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn id(&self) -> RuleId {
         RuleId::new("S004")
     }
@@ -2472,7 +2473,7 @@ impl Rule for RelToTrigraphSuggestRule {
         Severity::Suggest
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
         use crate::vocab::country_name;
 
@@ -2618,7 +2619,7 @@ impl Rule for RelToTrigraphSuggestRule {
 /// Example: `(GBR S//NF)` → should be `(//GBR S//NF)`
 struct MissingNonUsPrefix;
 
-impl Rule for MissingNonUsPrefix {
+impl Rule<CapcoScheme> for MissingNonUsPrefix {
     fn id(&self) -> RuleId {
         RuleId::new("E011")
     }
@@ -2629,7 +2630,7 @@ impl Rule for MissingNonUsPrefix {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Only fire when classification failed to parse (None) and the
         // classification token text looks like a non-US pattern.
         if attrs.classification.is_some() {
@@ -2783,7 +2784,7 @@ fn looks_like_fgi_classification(s: &str) -> bool {
 /// (country-code-ordering) owns ordering.
 struct DelimiterMismatchRule;
 
-impl Rule for DelimiterMismatchRule {
+impl Rule<CapcoScheme> for DelimiterMismatchRule {
     fn id(&self) -> RuleId {
         RuleId::new("E013")
     }
@@ -2794,7 +2795,7 @@ impl Rule for DelimiterMismatchRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
 
         // --- JOINT: comma delimiter is wrong; canonical is single space.
@@ -2959,7 +2960,7 @@ impl Rule for DelimiterMismatchRule {
 /// `NF` attribute *does*.
 struct NonIcInClassifiedBannerRule;
 
-impl Rule for NonIcInClassifiedBannerRule {
+impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     fn id(&self) -> RuleId {
         RuleId::new("W003")
     }
@@ -2970,7 +2971,7 @@ impl Rule for NonIcInClassifiedBannerRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
             return vec![];
@@ -3224,7 +3225,7 @@ pub(crate) fn dedup_country_codes(
 /// `RelToBlock` span. Blocks without duplicates are silently skipped.
 struct RelToNoDuplicatesRule;
 
-impl Rule for RelToNoDuplicatesRule {
+impl Rule<CapcoScheme> for RelToNoDuplicatesRule {
     fn id(&self) -> RuleId {
         RuleId::new("E052")
     }
@@ -3235,7 +3236,7 @@ impl Rule for RelToNoDuplicatesRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         if attrs.rel_to.len() < 2 {
             return diagnostics;
@@ -3770,7 +3771,7 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
 const S005_CITATION: &str =
     "CAPCO-2016 §H.8 + ODNI ISMCAT Tetragraph Taxonomy (see ISMCAT_TETRA_VERSION)";
 
-impl Rule for RelToOpaqueUncertainReductionSuggestRule {
+impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn id(&self) -> RuleId {
         RuleId::new("S005")
     }
@@ -3781,7 +3782,7 @@ impl Rule for RelToOpaqueUncertainReductionSuggestRule {
         Severity::Suggest
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
             .filter(|c| c.branch == S005Branch::Suggest)
@@ -3799,7 +3800,7 @@ impl Rule for RelToOpaqueUncertainReductionSuggestRule {
     }
 }
 
-impl Rule for RelToOpaqueUncertainReductionInfoRule {
+impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
     fn id(&self) -> RuleId {
         RuleId::new("S006")
     }
@@ -3810,7 +3811,7 @@ impl Rule for RelToOpaqueUncertainReductionInfoRule {
         Severity::Info
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
             .filter(|c| c.branch == S005Branch::Info)
@@ -3855,7 +3856,7 @@ pub(crate) fn check_trigraph_ordering(
     block_span: Option<Span>,
     citation: &'static str,
     usa_first: bool,
-) -> Option<Diagnostic> {
+) -> Option<Diagnostic<CapcoScheme>> {
     let sorted = canonicalize_trigraph_list(codes, usa_first);
     let actual: Vec<&str> = codes.iter().map(|t| t.as_str()).collect();
     if actual == sorted {
@@ -4029,7 +4030,7 @@ pub(crate) fn check_trigraph_ordering(
 /// does not have.
 struct SarPortionFormRule;
 
-impl Rule for SarPortionFormRule {
+impl Rule<CapcoScheme> for SarPortionFormRule {
     fn id(&self) -> RuleId {
         RuleId::new("E026")
     }
@@ -4040,7 +4041,7 @@ impl Rule for SarPortionFormRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, SarIndicator};
         if ctx.marking_type != MarkingType::Portion {
             return vec![];
@@ -4160,7 +4161,7 @@ impl Rule for SarPortionFormRule {
 /// fire on the same marking.
 struct SarCompartmentOrderRule;
 
-impl Rule for SarCompartmentOrderRule {
+impl Rule<CapcoScheme> for SarCompartmentOrderRule {
     fn id(&self) -> RuleId {
         RuleId::new("E029")
     }
@@ -4171,7 +4172,7 @@ impl Rule for SarCompartmentOrderRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let Some(sar) = attrs.sar_markings.as_ref() else {
             return vec![];
         };
@@ -4316,7 +4317,7 @@ impl Rule for SarCompartmentOrderRule {
 /// see `UnknownTokenRule`), so the user would see nothing at all.
 struct SarIndicatorRepeatRule;
 
-impl Rule for SarIndicatorRepeatRule {
+impl Rule<CapcoScheme> for SarIndicatorRepeatRule {
     fn id(&self) -> RuleId {
         RuleId::new("E030")
     }
@@ -4327,7 +4328,7 @@ impl Rule for SarIndicatorRepeatRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Fast exit: no SAR block at all.
         if attrs.sar_markings.is_none() {
             return vec![];
@@ -4525,7 +4526,7 @@ fn sar_block_source(attrs: &CanonicalAttrs, span: Span) -> Option<String> {
 /// block. Confidence 0.85.
 struct SciSystemOrderRule;
 
-impl Rule for SciSystemOrderRule {
+impl Rule<CapcoScheme> for SciSystemOrderRule {
     fn id(&self) -> RuleId {
         RuleId::new("E032")
     }
@@ -4536,7 +4537,7 @@ impl Rule for SciSystemOrderRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.sci_markings.len() < 2 {
             return vec![];
         }
@@ -4672,7 +4673,7 @@ impl Rule for SciSystemOrderRule {
 /// users who want it silent can configure `W034 = "off"`.
 struct SciCustomControlInfoRule;
 
-impl Rule for SciCustomControlInfoRule {
+impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     fn id(&self) -> RuleId {
         RuleId::new("W034")
     }
@@ -4683,7 +4684,7 @@ impl Rule for SciCustomControlInfoRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let sys_spans: Vec<&TokenSpan> = attrs
             .token_spans
             .iter()
@@ -4907,7 +4908,7 @@ pub(crate) struct FixDiagnosticParams {
     pub migration_ref: Option<&'static str>,
 }
 
-pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
+pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
     let proposal = FixProposal::new(
         p.rule.clone(),
         p.source,
@@ -4970,7 +4971,7 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic {
 /// diagnostic with no fix; the user decides manually.
 struct NodisExdisClearsBannerRelToRule;
 
-impl Rule for NodisExdisClearsBannerRelToRule {
+impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("E039")
     }
@@ -4981,7 +4982,7 @@ impl Rule for NodisExdisClearsBannerRelToRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         // Banner-only (and CAB, since CABs can carry REL TO). Portion
@@ -5063,7 +5064,7 @@ impl Rule for NodisExdisClearsBannerRelToRule {
 /// above for the design rationale.
 pub(crate) struct BannerMatchesProjectedRule;
 
-impl Rule for BannerMatchesProjectedRule {
+impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn id(&self) -> RuleId {
         // Bookkeeping ID. Per-row IDs travel on emitted diagnostics for
         // audit traceability.
@@ -5083,7 +5084,7 @@ impl Rule for BannerMatchesProjectedRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
         // Marking-type guard (≤3 branches per D13).
@@ -5141,7 +5142,11 @@ struct BannerCategoryRow {
     /// Pure function returning the diagnostics this row produces for
     /// the given banner attributes and page projection. Implemented as a
     /// fn pointer so the catalog can be a `const`.
-    evaluate: fn(&CanonicalAttrs, &marque_ism::PageContext, &BannerCategoryRow) -> Vec<Diagnostic>,
+    evaluate: fn(
+        &CanonicalAttrs,
+        &marque_ism::PageContext,
+        &BannerCategoryRow,
+    ) -> Vec<Diagnostic<CapcoScheme>>,
 }
 
 const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
@@ -5195,7 +5200,7 @@ fn evaluate_sar_banner_rollup(
     attrs: &CanonicalAttrs,
     page_context: &marque_ism::PageContext,
     row: &BannerCategoryRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let Some(expected) = page_context.expected_sar_marking() else {
         return vec![];
     };
@@ -5342,7 +5347,7 @@ fn evaluate_sci_banner_rollup(
     attrs: &CanonicalAttrs,
     page: &marque_ism::PageContext,
     row: &BannerCategoryRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let expected = page_expected_sci_markings(page);
     if expected.is_empty() {
         // Either P4 has not landed yet (helper returns empty) or no
@@ -5467,7 +5472,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
     attrs: &CanonicalAttrs,
     page: &marque_ism::PageContext,
     row: &BannerCategoryRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     use marque_ism::NonIcDissem;
 
     let (expected_non_ic, _) = page.expected_non_ic_dissem();
@@ -5608,7 +5613,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// separator handling lands in the parser.
 struct NodisSupersedesExdisInPortionRule;
 
-impl Rule for NodisSupersedesExdisInPortionRule {
+impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn id(&self) -> RuleId {
         RuleId::new("E041")
     }
@@ -5619,7 +5624,7 @@ impl Rule for NodisSupersedesExdisInPortionRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
         if ctx.marking_type != MarkingType::Portion {
@@ -7478,7 +7483,8 @@ mod tests {
             corrections: None,
         };
         let rule = super::RelToTrigraphSuggestRule;
-        let diags = <super::RelToTrigraphSuggestRule as Rule>::check(&rule, &attrs, &ctx);
+        let diags =
+            <super::RelToTrigraphSuggestRule as Rule<CapcoScheme>>::check(&rule, &attrs, &ctx);
         assert!(
             diags.is_empty(),
             "S004 must skip when trigraph spans don't align with rel_to: {diags:?}"
@@ -7515,35 +7521,16 @@ mod tests {
         assert_eq!(fix.replacement.as_ref(), "AUS");
     }
 
-    #[test]
-    fn s004_fix_does_not_auto_apply_under_engine_fix_call() {
-        // Pin the suggest-don't-fix invariant end-to-end: even though
-        // S004 emits a `FixProposal`, running `Engine::fix` (the API
-        // that produces audit records) must NOT include the S004 fix
-        // in `applied`. The engine excludes Suggest-severity from
-        // auto-apply by construction.
-        use crate::scheme::CapcoScheme;
-        use marque_config::Config;
-        use marque_engine::{Engine, FixMode};
-        use marque_rules::RuleSet;
-
-        let config = Config::default();
-        let rule_sets: Vec<Box<dyn RuleSet>> = vec![Box::new(super::CapcoRuleSet::new())];
-        let engine = Engine::new(config, rule_sets, CapcoScheme::new())
-            .expect("default scheme has no rewrite cycles");
-
-        let result = engine.fix(b"SECRET//REL TO USA, AUT, GBR\n", FixMode::Apply);
-        // No S004-rule audit record may exist.
-        let s004_audits: Vec<_> = result
-            .applied
-            .iter()
-            .filter(|af| af.proposal.rule.as_str() == "S004")
-            .collect();
-        assert!(
-            s004_audits.is_empty(),
-            "S004 must never produce an AppliedFix; got: {s004_audits:?}"
-        );
-    }
+    // Note: the end-to-end engine-fix test for S004's suggest-don't-fix
+    // invariant was relocated to `crates/capco/tests/s004_engine_fix.rs`.
+    // Rationale: post-PR-3c.B Commit 2, `Engine` consumes
+    // `CapcoScheme` through a generic-typed `MarkingScheme` bound. The
+    // `marque-engine` ↔ `marque-capco` dev-dep cycle compiles the two
+    // crates with separate `CapcoScheme` instances when an in-lib test
+    // tries to construct an `Engine` directly, so the generic-bind
+    // refuses to unify the two. Integration tests in
+    // `crates/capco/tests/` see a single coherent `marque-capco` and
+    // pass through cleanly.
 
     // --- S005: REL TO opaque-uncertain reduction (issue #206) ---
     //
@@ -7662,7 +7649,7 @@ mod tests {
     /// Helper: count diagnostics for either rule of the
     /// S005/S006 pair (they share the trigger condition; only one
     /// of the two emits per banner candidate).
-    fn count_s005_or_s006(diags: &[Diagnostic]) -> usize {
+    fn count_s005_or_s006(diags: &[Diagnostic<CapcoScheme>]) -> usize {
         diags
             .iter()
             .filter(|d| matches!(d.rule.as_str(), "S005" | "S006"))
@@ -8085,13 +8072,13 @@ mod tests {
         // the contract here keeps the regression closer to the
         // implementation.
         let rule = super::RelToOpaqueUncertainReductionSuggestRule;
-        assert_eq!(<_ as Rule>::id(&rule).as_str(), "S005");
+        assert_eq!(<_ as Rule<CapcoScheme>>::id(&rule).as_str(), "S005");
         assert_eq!(
-            <_ as Rule>::name(&rule),
+            <_ as Rule<CapcoScheme>>::name(&rule),
             "rel-to-opaque-uncertain-reduction"
         );
         assert_eq!(
-            <_ as Rule>::default_severity(&rule),
+            <_ as Rule<CapcoScheme>>::default_severity(&rule),
             marque_rules::Severity::Suggest
         );
     }
@@ -8099,13 +8086,13 @@ mod tests {
     #[test]
     fn s006_rule_trait_getters() {
         let rule = super::RelToOpaqueUncertainReductionInfoRule;
-        assert_eq!(<_ as Rule>::id(&rule).as_str(), "S006");
+        assert_eq!(<_ as Rule<CapcoScheme>>::id(&rule).as_str(), "S006");
         assert_eq!(
-            <_ as Rule>::name(&rule),
+            <_ as Rule<CapcoScheme>>::name(&rule),
             "rel-to-opaque-uncertain-reduction-info"
         );
         assert_eq!(
-            <_ as Rule>::default_severity(&rule),
+            <_ as Rule<CapcoScheme>>::default_severity(&rule),
             marque_rules::Severity::Info
         );
     }
@@ -9899,7 +9886,9 @@ mod tests {
     // ("CNWDI requires classification ≥ ..."). These tests pin the
     // observable behavior: fires below floor, doesn't fire at-or-above.
 
-    fn cnwdi_floor_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+    fn cnwdi_floor_diags(
+        diags: &[marque_rules::Diagnostic<CapcoScheme>],
+    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
         diags
             .iter()
             .filter(|d| d.rule.as_str() == "E058" && d.message.contains("CNWDI"))
@@ -9961,7 +9950,9 @@ mod tests {
     // diagnostic message text ("DOD UCNI may only be used with
     // UNCLASSIFIED" / "DOE UCNI may only be used with UNCLASSIFIED").
 
-    fn ucni_ceiling_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+    fn ucni_ceiling_diags(
+        diags: &[marque_rules::Diagnostic<CapcoScheme>],
+    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
         diags
             .iter()
             .filter(|d| d.rule.as_str() == "E058" && d.message.contains("UCNI"))
@@ -10119,7 +10110,9 @@ mod tests {
     // via the diagnostic message text ("SAR requires classification ≥
     // CONFIDENTIAL ...").
 
-    fn sar_floor_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+    fn sar_floor_diags(
+        diags: &[marque_rules::Diagnostic<CapcoScheme>],
+    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
         diags
             .iter()
             .filter(|d| d.rule.as_str() == "E058" && d.message.starts_with("SAR "))
@@ -10163,8 +10156,8 @@ mod tests {
     // are byte-identical to the retired rule. ---
 
     fn e060_sar_program_diags(
-        diags: &[marque_rules::Diagnostic],
-    ) -> Vec<&marque_rules::Diagnostic> {
+        diags: &[marque_rules::Diagnostic<CapcoScheme>],
+    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
         // Filter on E060 + the SAR-program message text so we don't
         // pick up the unrelated REL TO / JOINT / SIGMA / SCI rows of
         // the same walker.
@@ -10233,7 +10226,9 @@ mod tests {
     // message text + fix shape are byte-identical to the retired
     // rule. ---
 
-    fn e060_sci_diags(diags: &[marque_rules::Diagnostic]) -> Vec<&marque_rules::Diagnostic> {
+    fn e060_sci_diags(
+        diags: &[marque_rules::Diagnostic<CapcoScheme>],
+    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
         // Filter on E060 + the SCI compartment / sub-compartment
         // message text so we don't pick up the unrelated REL TO /
         // JOINT / SIGMA / SAR rows of the same walker.
@@ -11110,13 +11105,13 @@ mod tests {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod marque_capco_test_support {
-    use super::CapcoRuleSet;
+    use super::{CapcoRuleSet, CapcoScheme};
     use marque_core::{Parser, Scanner};
     use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
     use marque_rules::{Diagnostic, RuleContext, RuleSet};
     use std::sync::Arc;
 
-    fn run(source: &[u8]) -> Vec<Diagnostic> {
+    fn run(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidates = Scanner::scan(source);
@@ -11168,11 +11163,11 @@ pub(crate) mod marque_capco_test_support {
         out
     }
 
-    pub(crate) fn lint_banner(s: &str) -> Vec<Diagnostic> {
+    pub(crate) fn lint_banner(s: &str) -> Vec<Diagnostic<CapcoScheme>> {
         run(s.as_bytes())
     }
 
-    pub(crate) fn lint_portion(s: &str) -> Vec<Diagnostic> {
+    pub(crate) fn lint_portion(s: &str) -> Vec<Diagnostic<CapcoScheme>> {
         run(s.as_bytes())
     }
 }

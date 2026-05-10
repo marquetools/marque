@@ -24,8 +24,78 @@
 
 use marque_ism::Span;
 use marque_rules::{AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId};
+use marque_scheme::{
+    MarkingScheme, Scope,
+    ambiguity::Parsed,
+    category::Category,
+    constraint::Constraint,
+    lattice::{BoundedLattice, Lattice},
+    template::Template,
+};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
+
+// Local stub scheme so the test compiles without depending on
+// `marque-capco`. `AppliedFix<S>` is generic over the marking scheme
+// post-PR 3c.B; the seal test only exercises the legacy promotion
+// path so the scheme choice is incidental.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct StubMarking;
+
+impl Lattice for StubMarking {
+    fn join(&self, _other: &Self) -> Self {
+        StubMarking
+    }
+    fn meet(&self, _other: &Self) -> Self {
+        StubMarking
+    }
+}
+
+impl BoundedLattice for StubMarking {
+    fn bottom() -> Self {
+        StubMarking
+    }
+    fn top() -> Self {
+        StubMarking
+    }
+}
+
+struct StubScheme;
+
+impl MarkingScheme for StubScheme {
+    type Token = ();
+    type Marking = StubMarking;
+    type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+
+    fn name(&self) -> &str {
+        "StubScheme"
+    }
+    fn schema_version(&self) -> &str {
+        "0.0.1"
+    }
+    fn categories(&self) -> &[Category] {
+        &[]
+    }
+    fn constraints(&self) -> &[Constraint] {
+        &[]
+    }
+    fn templates(&self) -> &[Template] {
+        &[]
+    }
+    fn parse(&self, _input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        Ok(Parsed::Unambiguous(StubMarking))
+    }
+    fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
+        StubMarking
+    }
+    fn render_portion(&self, _m: &Self::Marking) -> String {
+        String::new()
+    }
+    fn render_banner(&self, _m: &Self::Marking) -> String {
+        String::new()
+    }
+}
 
 #[test]
 fn documented_door_can_mint_token_from_outside_marque_rules() {
@@ -46,7 +116,7 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     // Test-fixture carve-out per Constitution V
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V
-    let applied = AppliedFix::__engine_promote(
+    let applied: AppliedFix<StubScheme> = AppliedFix::__engine_promote_legacy(
         proposal,
         UNIX_EPOCH + Duration::from_secs(0),
         Some(Arc::<str>::from("test")),

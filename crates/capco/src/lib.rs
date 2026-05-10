@@ -39,12 +39,12 @@ pub use lattice::{FgiSet, SarSet, SciSet};
 pub use marque_ism::CapcoTokenSet;
 pub use provenance::DecoderProvenance;
 pub use rules::CapcoRuleSet;
-pub use scheme::{CapcoMarking, CapcoScheme};
+pub use scheme::{CapcoMarking, CapcoOpenVocabRef, CapcoScheme};
 
 use marque_rules::RuleSet;
 
 /// Entry point: returns the CAPCO rule set for use by the engine.
-pub fn capco_rules() -> impl RuleSet {
+pub fn capco_rules() -> impl RuleSet<CapcoScheme> {
     rules::CapcoRuleSet::new()
 }
 

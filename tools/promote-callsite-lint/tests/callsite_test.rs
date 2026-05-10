@@ -388,3 +388,62 @@ fn naughty_fqn() {
     assert_eq!(diags.len(), 1, "expected the FQN call to be flagged, got {diags:#?}");
     assert_eq!(diags[0].code, "PRC002");
 }
+
+#[test]
+fn engine_promote_legacy_is_not_caught_by_suffix_match() {
+    // PR 3c.B Commit 2 regression: `AppliedFix::__engine_promote_legacy`
+    // was added as the back-compat path during the FixIntent migration.
+    // The reserved-name lint flags calls whose last path-segment is
+    // EXACTLY `__engine_promote` (or `__engine_construct`) — anchored
+    // on string equality, NOT on prefix containment. The companion
+    // method `__engine_promote_legacy` is a distinct identifier and
+    // must NOT trip the lint, regardless of its `__engine_promote` prefix.
+    //
+    // If a future refactor switches `path_ends_with`'s comparison to
+    // prefix-match (e.g., `starts_with("__engine_promote")`), this
+    // test will fail loudly. The brief for PR 3c.B Commit 2 pins
+    // last-segment exact-equality as load-bearing.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+fn not_a_violation() {
+    // The legacy-path constructor — distinct identifier from the
+    // reserved-name suffix. Must NOT be flagged.
+    let _ = AppliedFix::__engine_promote_legacy((), (), (), false, None, ());
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics on `__engine_promote_legacy` (PRC002 \
+         must anchor on exact last-segment equality, not prefix), \
+         got {diags:#?}"
+    );
+}
+
+#[test]
+fn engine_promote_proper_name_is_still_caught() {
+    // Companion to the test above: this is the exact-name case the
+    // lint MUST still catch. Adding a regression test for both ends
+    // of the suffix-match contract pins the behavior end-to-end.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+fn naughty_proper_name() {
+    let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the exact-name call to be flagged, got {diags:#?}"
+    );
+    assert_eq!(diags[0].code, "PRC002");
+}

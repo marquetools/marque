@@ -142,6 +142,7 @@ humantime = { workspace = true }
 # gated feature inappropriate for WASM) to either crate's defaults,
 # the workspace-level pin closes that channel; the secondary
 # `compile_error!` in `src/lib.rs` stays as a third line of defense.
+marque-capco = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
 marque-engine = { workspace = true, default-features = false }

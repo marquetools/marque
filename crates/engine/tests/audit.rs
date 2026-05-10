@@ -71,7 +71,7 @@
 //! marking by construction — no classification level, compartment,
 //! dissem control, or trigraph contains English words with spaces.
 
-use marque_capco::capco_rules;
+use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
 use marque_ism::Span;
@@ -185,7 +185,7 @@ fn assert_clean(proposal: &FixProposal, field_name: &str, value: &str, context: 
 }
 
 /// Check every AppliedFix in `applied` for sentinel leaks.
-fn check_fixes_clean(applied: &[AppliedFix], context: &str) {
+fn check_fixes_clean(applied: &[AppliedFix<CapcoScheme>], context: &str) {
     for fix in applied {
         let p = &fix.proposal;
         assert_clean(p, "original", p.original.as_ref(), context);
@@ -369,7 +369,7 @@ fn no_document_text_leaks_into_diagnostic_messages() {
 /// remain the only route to a real `AppliedFix` in `cfg(not(test))`
 /// code; see the doc comment on `AppliedFix::__engine_promote` for
 /// the three-constraint definition of the carve-out.
-fn fabricate_leaky_fix() -> AppliedFix {
+fn fabricate_leaky_fix() -> AppliedFix<CapcoScheme> {
     // A deliberately leaky `original`: a literal prose sentinel. In
     // production this could never happen because every proposal's
     // `original` is a byte-exact slice of the marking span, not of
@@ -394,7 +394,7 @@ fn fabricate_leaky_fix() -> AppliedFix {
     // Test-fixture carve-out per Constitution V
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V
-    AppliedFix::__engine_promote(
+    AppliedFix::<CapcoScheme>::__engine_promote_legacy(
         proposal,
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
         Some(Arc::<str>::from("test-classifier")),

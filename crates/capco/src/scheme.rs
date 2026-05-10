@@ -394,16 +394,65 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
 // CapcoScheme — the trait implementation
 // ---------------------------------------------------------------------------
 
+/// CAPCO's open-vocabulary structural reference.
+///
+/// Unifies the open-vocab carriers CAPCO ships today — SAR program
+/// identifiers, SCI compartment and sub-compartment paths, and FGI
+/// tetragraphs. `FactRef::OpenVocab(CapcoOpenVocabRef)` in
+/// `marque-rules` names a token in the projected fact set by its
+/// structural form, never by raw input bytes.
+///
+/// Each variant carries the *canonicalize-produced* structural value
+/// (a SAR program ID value, a tetragraph code) — never source-buffer
+/// surgery payloads. This preserves the G13 audit-content-ignorance
+/// invariant (Constitution V Principle V): an `AppliedFix` referring
+/// to a CAPCO open-vocab token stores a typed structural reference,
+/// not document content.
+///
+/// PR 3c.B Commit 2 stubs the variant set with one nominal variant
+/// per category. Construction sites (canonicalize-side population of
+/// these references) land in Commit 6 alongside the rule migration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CapcoOpenVocabRef {
+    /// A SAR program identifier (CAPCO-2016 §H.5).
+    Sar(Box<str>),
+    /// An SCI compartment name (CAPCO-2016 §A.6 / §H.4).
+    SciCompartment(Box<str>),
+    /// An SCI sub-compartment name (CAPCO-2016 §A.6 / §H.4).
+    SciSubCompartment(Box<str>),
+    /// An FGI tetragraph (CAPCO-2016 §H.3 / ISMCAT Tetragraph Taxonomy).
+    FgiTetragraph(Box<str>),
+}
+
 /// CAPCO's implementation of `MarkingScheme`.
 ///
 /// Stateless; construct with `CapcoScheme::new()` and pass into the
 /// engine. Phase A's engine doesn't consume the trait yet — this impl
 /// exists so the equivalence tests can run.
+///
+/// A manual `Debug` impl is provided so generic types parameterized
+/// over the scheme (`Diagnostic<S>`, `AppliedFix<S>`, `LintResult` /
+/// `FixResult` inside `marque-engine`) can derive `Debug` via the
+/// standard derive-macro field-bound expansion. The implementation
+/// prints only the struct shell — the static-table fields are large
+/// and not useful for debug output, and `PageRewrite<S>` does not
+/// implement `Debug`.
 pub struct CapcoScheme {
     categories: Vec<Category>,
     constraints: Vec<Constraint>,
     templates: Vec<Template>,
     page_rewrites: Vec<PageRewrite<CapcoScheme>>,
+}
+
+impl std::fmt::Debug for CapcoScheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CapcoScheme")
+            .field("categories.len", &self.categories.len())
+            .field("constraints.len", &self.constraints.len())
+            .field("templates.len", &self.templates.len())
+            .field("page_rewrites.len", &self.page_rewrites.len())
+            .finish()
+    }
 }
 
 impl Default for CapcoScheme {
@@ -2056,6 +2105,7 @@ impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;
     type ParseError = CapcoParseError;
+    type OpenVocabRef = CapcoOpenVocabRef;
 
     fn name(&self) -> &str {
         "CAPCO-ISM"
@@ -3727,7 +3777,12 @@ pub(crate) enum SciPerSystemKind {
     /// Custom multi-branch emit. The row encodes a closure that produces
     /// the full emit list, used by rows whose emit logic spans 2-3 distinct
     /// branches with row-specific text and span logic (rows #1, #3, #4).
-    Custom(fn(&marque_ism::CanonicalAttrs, &SciPerSystemRow) -> Vec<marque_rules::Diagnostic>),
+    Custom(
+        fn(
+            &marque_ism::CanonicalAttrs,
+            &SciPerSystemRow,
+        ) -> Vec<marque_rules::Diagnostic<CapcoScheme>>,
+    ),
 }
 
 /// One catalog row. The walker dispatches over `&[SciPerSystemRow]`;
@@ -3891,7 +3946,7 @@ pub(crate) fn emit_companion_insert(
     token: &str,
     message: String,
     citation: &'static str,
-) -> marque_rules::Diagnostic {
+) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_ism::Span;
     use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Severity};
     match last_dissem {
@@ -3985,7 +4040,7 @@ fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs) -> bool {
 fn emit_hcs_o_companions(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
     use marque_ism::{DissemControl, Span};
     use marque_rules::FixSource;
@@ -4049,7 +4104,7 @@ fn emit_hcs_o_companions(
 fn emit_hcs_p_sub_companions(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
     use marque_ism::{DissemControl, Span};
     use marque_rules::FixSource;
@@ -4100,7 +4155,7 @@ fn emit_hcs_p_sub_companions(
 fn emit_si_g_companions(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
     use marque_ism::{DissemControl, Span};
     use marque_rules::FixSource;
@@ -4172,7 +4227,7 @@ fn emit_companion_required(
     row: &SciPerSystemRow,
     dissem: marque_ism::DissemControl,
     token_name: &'static str,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use marque_ism::Span;
 
     if us_level(attrs).is_none() {
@@ -4274,7 +4329,7 @@ pub(crate) fn sci_per_system_catalog() -> &'static [SciPerSystemRow] {
 pub(crate) fn sci_per_system_emit(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     if !(row.presence)(attrs) {
         return Vec::new();
     }

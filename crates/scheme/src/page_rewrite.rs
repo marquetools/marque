@@ -387,6 +387,7 @@ mod tests {
         type Token = TokenId;
         type Marking = FakeMarking;
         type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
 
         fn name(&self) -> &str {
             "fake"

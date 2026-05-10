@@ -67,6 +67,7 @@ impl MarkingScheme for StubScheme {
     type Token = ();
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
 
     fn name(&self) -> &str {
         "StubScheme"

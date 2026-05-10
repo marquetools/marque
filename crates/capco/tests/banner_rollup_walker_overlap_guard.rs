@@ -62,14 +62,14 @@ fn engine() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-fn lint(source: &str) -> Vec<Diagnostic> {
+fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
 /// Filter on E060 + the SAR-program message text so we don't pick up
 /// the unrelated REL TO / JOINT / SIGMA / SCI rows of the same
 /// non-canonical input walker.
-fn e060_sar_program_diags(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+fn e060_sar_program_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
     diags
         .iter()
         .filter(|d| d.rule.as_str() == "E060" && d.message.starts_with("SAR programs"))
@@ -85,7 +85,8 @@ fn e031_walker_and_e060_emit_compatible_overlap_guard_shapes() {
     let diags = lint(source);
 
     let e060_sar = e060_sar_program_diags(&diags);
-    let e031: Vec<&Diagnostic> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
+    let e031: Vec<&Diagnostic<CapcoScheme>> =
+        diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
 
     assert_eq!(
         e060_sar.len(),

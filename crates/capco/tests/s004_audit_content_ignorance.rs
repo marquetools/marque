@@ -18,12 +18,12 @@
 
 use std::sync::Arc;
 
-use marque_capco::CapcoRuleSet;
+use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_core::{Parser, Scanner};
 use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
 use marque_rules::{Diagnostic, RuleContext, RuleSet};
 
-fn lint(source: &[u8]) -> Vec<Diagnostic> {
+fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidates = Scanner::scan(source);

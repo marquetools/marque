@@ -508,6 +508,7 @@ mod tests {
         type Token = ();
         type Marking = TestMarking;
         type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
 
         fn name(&self) -> &str {
             "TestScheme"

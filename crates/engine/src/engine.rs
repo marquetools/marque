@@ -87,7 +87,7 @@ impl std::error::Error for InvalidThreshold {}
 /// A configured engine instance.
 pub struct Engine {
     config: Config,
-    rule_sets: Vec<Box<dyn RuleSet>>,
+    rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
@@ -164,7 +164,7 @@ impl Engine {
     /// Use [`Engine::with_clock`] for deterministic-timestamp testing.
     pub fn new<S: MarkingScheme>(
         config: Config,
-        rule_sets: Vec<Box<dyn RuleSet>>,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
         scheme: S,
     ) -> Result<Self, EngineConstructionError> {
         Self::with_clock(config, rule_sets, scheme, Box::new(SystemClock))
@@ -173,7 +173,7 @@ impl Engine {
     /// Create an engine with a custom clock (for deterministic tests).
     pub fn with_clock<S: MarkingScheme>(
         mut config: Config,
-        rule_sets: Vec<Box<dyn RuleSet>>,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
         scheme: S,
         clock: Box<dyn Clock>,
     ) -> Result<Self, EngineConstructionError> {
@@ -995,6 +995,28 @@ impl Engine {
         // `Suggest`, but explicit `Suggest` rules (e.g., S004) can
         // also emit fixes that clear the threshold yet must NOT be
         // applied. This filter handles both cases uniformly.
+        //
+        // PR 3c.B Commit 2 invariant: a `Diagnostic` MUST NOT
+        // populate both `fix: Option<FixProposal>` (legacy path)
+        // and `fix_intent: Option<FixIntent<S>>` (new path). Rules
+        // emit through one or the other depending on whether
+        // they've been migrated. A rule with both populated is a
+        // migration bug — debug_assert here so the failure surfaces
+        // immediately during development. In release builds the
+        // legacy path takes precedence (the audit stream stays
+        // shape-stable; the new-path emission is silently dropped
+        // pending the migration).
+        for d in &lint.diagnostics {
+            debug_assert!(
+                !(d.fix.is_some() && d.fix_intent.is_some()),
+                "Diagnostic {} populates both `fix` (legacy FixProposal) and \
+                 `fix_intent` (new FixIntent<S>); a rule emits through one \
+                 path or the other, never both. This is a migration bug — \
+                 see PR 3c.B Commit 2 plan §`Engine::fix_inner branching`.",
+                d.rule
+            );
+        }
+
         let mut fixes: Vec<_> = lint
             .diagnostics
             .iter()
@@ -1062,7 +1084,7 @@ impl Engine {
         // so the per-diagnostic filter at the bottom of this function is
         // O(1) per query instead of O(n) over a Vec.
         let mut applied_keys: HashSet<(RuleId, Span)> = HashSet::with_capacity(kept_fixes.len());
-        let mut applied: Vec<AppliedFix> = Vec::with_capacity(kept_fixes.len());
+        let mut applied: Vec<AppliedFix<CapcoScheme>> = Vec::with_capacity(kept_fixes.len());
 
         // T011: per-fix-application deadline check. The check sits
         // at the top of each iteration so the abort happens between
@@ -1150,7 +1172,7 @@ impl Engine {
                             break;
                         }
                         applied_keys.insert((fix.rule.clone(), fix.span));
-                        applied.push(AppliedFix::__engine_promote(
+                        applied.push(AppliedFix::__engine_promote_legacy(
                             fix,
                             now,
                             classifier_id.clone(),
@@ -1169,7 +1191,7 @@ impl Engine {
                         break;
                     }
                     applied_keys.insert((fix.rule.clone(), fix.span));
-                    applied.push(AppliedFix::__engine_promote(
+                    applied.push(AppliedFix::__engine_promote_legacy(
                         fix,
                         now,
                         classifier_id.clone(),
@@ -1228,7 +1250,7 @@ impl Engine {
         lint: &LintResult,
         threshold: f32,
         mode: FixMode,
-    ) -> (Vec<u8>, Vec<AppliedFix>) {
+    ) -> (Vec<u8>, Vec<AppliedFix<CapcoScheme>>) {
         // Mirror `fix_inner`'s suggest-channel exclusion: a C001
         // diagnostic that the lint post-pass rewrote to
         // `Severity::Suggest` (because its confidence fell below
@@ -1281,7 +1303,7 @@ impl Engine {
         let mut applied = Vec::with_capacity(kept.len());
         for fix in &kept {
             buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
-            applied.push(AppliedFix::__engine_promote(
+            applied.push(AppliedFix::__engine_promote_legacy(
                 (*fix).clone(),
                 now,
                 classifier_id.clone(),
@@ -1319,6 +1341,66 @@ impl Engine {
 #[inline]
 fn engine_promotion_token() -> EnginePromotionToken {
     EnginePromotionToken::__engine_construct()
+}
+
+// ---------------------------------------------------------------------------
+// FixIntent → FixProposal conversion (Path C, commits 2–9)
+// ---------------------------------------------------------------------------
+
+/// Synthesize a legacy [`marque_rules::FixProposal`] from a
+/// migrated rule's [`marque_rules::FixIntent`] so the
+/// audit-record JSON shape (`marque-mvp-2`) is byte-stable through
+/// the PR 3c.B Commit 2–9 transition.
+///
+/// Per Path C of the consolidated plan, the audit-record JSON
+/// shape does NOT change in commits 2–9. The WASM and CLI emitters
+/// continue to read `applied_fix.proposal.span`, `.original`,
+/// `.replacement`, `.source`, etc. For legacy variants
+/// ([`marque_rules::AppliedFixProposal::Legacy`]), those reads
+/// flow through `Deref<Target = FixProposal>` directly. For new
+/// variants ([`marque_rules::AppliedFixProposal::New`]), this
+/// helper produces the legacy-shaped projection.
+///
+/// # Commit 2 status
+///
+/// Commit 2 ships the API but no rule emits a [`FixIntent`] yet
+/// (rules migrate one at a time in commits 3–9). The helper is
+/// therefore `unreachable!()`-bodied; the first migrated rule
+/// (E054 in commit 3) wires the real synthesis.
+///
+/// # Inputs
+///
+/// - `intent`: the rule's emission payload (fact-set delta + scope
+///   + confidence + message).
+/// - `span`: the parent diagnostic's `Span`. `FixIntent` carries
+///   no span (architecture.md invariant 3 — spans are
+///   diagnostic-only); the engine forwards the diagnostic's span
+///   so the synthesized `FixProposal` can populate its `span`
+///   field for byte-stable audit output.
+/// - `rule_id`: the parent diagnostic's `RuleId`.
+// PR 3c.B Commit 2: this is the FixIntent→legacy-FixProposal seam; no
+// rule emits `FixIntent<S>` yet, so the helper is dead code until
+// Commit 3 wires the first migrated rule (E054). The allow is paired
+// with the `unimplemented!()` body — together they communicate "this
+// is a not-yet-built seam," not "this path is logically unreachable."
+#[allow(dead_code)]
+fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
+    _intent: &marque_rules::FixIntent<S>,
+    _span: marque_ism::Span,
+    _rule_id: marque_rules::RuleId,
+) -> marque_rules::FixProposal {
+    // Commit 3 wires real rules; commit 2 ships the seam.
+    //
+    // `unimplemented!()` (not `unreachable!()`) — the path is not yet
+    // built, not logically impossible. A future caller reaching this
+    // before Commit 3 wires the body should see a "not implemented"
+    // panic, not a misleading "unreachable" one.
+    unimplemented!(
+        "fix_intent_to_legacy_proposal called in PR 3c.B Commit 2: \
+         no rule emits FixIntent<S> yet. Commit 3+ migrates the first \
+         rule (E054) and this helper synthesizes the legacy projection \
+         at that point."
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1386,7 +1468,7 @@ fn build_decoder_diagnostic(
     provenance: &DecoderProvenance,
     _kind: marque_ism::MarkingType,
     corpus_override_active: bool,
-) -> Option<Diagnostic> {
+) -> Option<Diagnostic<CapcoScheme>> {
     use marque_rules::confidence::{FeatureContribution, FeatureId};
 
     let original = std::str::from_utf8(original_bytes).ok()?;
@@ -1584,7 +1666,7 @@ const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
 /// the expected behavior.
 fn canonicalize_rule_overrides(
     config: &mut Config,
-    rule_sets: &[Box<dyn RuleSet>],
+    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
 ) -> Result<(), EngineConstructionError> {
     if config.rules.overrides.is_empty() {
         return Ok(());
@@ -1804,7 +1886,7 @@ mod tests {
         proposals: Vec<FixProposal>,
     }
 
-    impl Rule for StubRule {
+    impl Rule<CapcoScheme> for StubRule {
         fn id(&self) -> RuleId {
             RuleId::new(self.id)
         }
@@ -1814,7 +1896,11 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Fix
         }
-        fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        fn check(
+            &self,
+            _attrs: &CanonicalAttrs,
+            _ctx: &RuleContext,
+        ) -> Vec<Diagnostic<CapcoScheme>> {
             self.proposals
                 .iter()
                 .map(|p| {
@@ -1831,9 +1917,9 @@ mod tests {
         }
     }
 
-    struct StubSet(Vec<Box<dyn Rule>>);
-    impl RuleSet for StubSet {
-        fn rules(&self) -> &[Box<dyn Rule>] {
+    struct StubSet(Vec<Box<dyn Rule<CapcoScheme>>>);
+    impl RuleSet<CapcoScheme> for StubSet {
+        fn rules(&self) -> &[Box<dyn Rule<CapcoScheme>>] {
             &self.0
         }
         fn schema_version(&self) -> &'static str {
@@ -1872,7 +1958,7 @@ mod tests {
             id: "TEST",
             proposals,
         };
-        let set: Box<dyn RuleSet> = Box::new(StubSet(vec![Box::new(stub)]));
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(StubSet(vec![Box::new(stub)]));
         Engine::with_clock(
             config,
             vec![set],
@@ -2061,7 +2147,7 @@ mod tests {
         // presence check (and might rewrite to Suggest unconditionally)
         // is caught.
         struct FixWithoutProposalRule;
-        impl Rule for FixWithoutProposalRule {
+        impl Rule<CapcoScheme> for FixWithoutProposalRule {
             fn id(&self) -> RuleId {
                 RuleId::new("E997")
             }
@@ -2071,7 +2157,11 @@ mod tests {
             fn default_severity(&self) -> Severity {
                 Severity::Fix
             }
-            fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+            fn check(
+                &self,
+                _attrs: &CanonicalAttrs,
+                _ctx: &RuleContext,
+            ) -> Vec<Diagnostic<CapcoScheme>> {
                 vec![Diagnostic::new(
                     RuleId::new("E997"),
                     Severity::Fix,
@@ -2083,7 +2173,8 @@ mod tests {
             }
         }
 
-        let set: Box<dyn RuleSet> = Box::new(StubSet(vec![Box::new(FixWithoutProposalRule)]));
+        let set: Box<dyn RuleSet<CapcoScheme>> =
+            Box::new(StubSet(vec![Box::new(FixWithoutProposalRule)]));
         let engine = Engine::with_clock(
             Config::default(),
             vec![set],
@@ -2114,7 +2205,7 @@ mod tests {
         // emits Fix-severity by default so we route through a custom
         // rule that emits Suggest directly.
         struct SuggestRule;
-        impl Rule for SuggestRule {
+        impl Rule<CapcoScheme> for SuggestRule {
             fn id(&self) -> RuleId {
                 RuleId::new("S999")
             }
@@ -2124,7 +2215,11 @@ mod tests {
             fn default_severity(&self) -> Severity {
                 Severity::Suggest
             }
-            fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+            fn check(
+                &self,
+                _attrs: &CanonicalAttrs,
+                _ctx: &RuleContext,
+            ) -> Vec<Diagnostic<CapcoScheme>> {
                 let proposal = FixProposal::new(
                     RuleId::new("S999"),
                     FixSource::BuiltinRule,
@@ -2145,7 +2240,7 @@ mod tests {
             }
         }
 
-        let set: Box<dyn RuleSet> = Box::new(StubSet(vec![Box::new(SuggestRule)]));
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(StubSet(vec![Box::new(SuggestRule)]));
         let engine = Engine::with_clock(
             Config::default(),
             vec![set],
@@ -2240,7 +2335,7 @@ mod tests {
         observations: std::sync::Arc<std::sync::Mutex<Vec<(marque_ism::MarkingType, usize)>>>,
     }
 
-    impl Rule for ContextRecorderRule {
+    impl Rule<CapcoScheme> for ContextRecorderRule {
         fn id(&self) -> RuleId {
             RuleId::new("RECORD")
         }
@@ -2250,7 +2345,11 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Warn
         }
-        fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+        fn check(
+            &self,
+            _attrs: &CanonicalAttrs,
+            ctx: &RuleContext,
+        ) -> Vec<Diagnostic<CapcoScheme>> {
             let count = ctx
                 .page_context
                 .as_ref()
@@ -2264,9 +2363,9 @@ mod tests {
         }
     }
 
-    struct RecorderSet(Vec<Box<dyn Rule>>);
-    impl RuleSet for RecorderSet {
-        fn rules(&self) -> &[Box<dyn Rule>] {
+    struct RecorderSet(Vec<Box<dyn Rule<CapcoScheme>>>);
+    impl RuleSet<CapcoScheme> for RecorderSet {
+        fn rules(&self) -> &[Box<dyn Rule<CapcoScheme>>] {
             &self.0
         }
         fn schema_version(&self) -> &'static str {
@@ -2281,7 +2380,7 @@ mod tests {
         let rule = ContextRecorderRule {
             observations: std::sync::Arc::clone(&observations),
         };
-        let set: Box<dyn RuleSet> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
         let engine = Engine::with_clock(
             Config::default(),
             vec![set],
@@ -2337,7 +2436,7 @@ mod tests {
         let rule = ContextRecorderRule {
             observations: std::sync::Arc::clone(&observations),
         };
-        let set: Box<dyn RuleSet> = Box::new(RecorderSet(vec![Box::new(rule)]));
+        let set: Box<dyn RuleSet<CapcoScheme>> = Box::new(RecorderSet(vec![Box::new(rule)]));
         let engine = Engine::with_clock(
             Config::default(),
             vec![set],
@@ -2466,7 +2565,7 @@ mod tests {
         let engine = capco_engine_with_overrides(&[("E031", "warn")]);
         let diagnostics = engine.lint(SAR_BANNER_MISSING_PROGRAM).diagnostics;
 
-        let e031: Vec<&Diagnostic> = diagnostics
+        let e031: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
             .filter(|d| d.rule.as_str() == "E031")
             .collect();
@@ -2506,7 +2605,7 @@ mod tests {
         let engine = capco_engine_with_overrides(&[("E035", "warn")]);
         let diagnostics = engine.lint(SCI_BANNER_MISSING_COMPARTMENT).diagnostics;
 
-        let e035: Vec<&Diagnostic> = diagnostics
+        let e035: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
             .filter(|d| d.rule.as_str() == "E035")
             .collect();
@@ -2560,7 +2659,7 @@ mod tests {
         // to revisit this test.
         let engine = capco_engine_with_overrides(&[("E001", "off")]);
         let diagnostics = engine.lint(b"SECRET//NF").diagnostics;
-        let e001: Vec<&Diagnostic> = diagnostics
+        let e001: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
             .filter(|d| d.rule.as_str() == "E001")
             .collect();
@@ -2577,7 +2676,7 @@ mod tests {
         // triggering E001 for some unrelated reason.
         let engine_default = capco_engine_with_overrides(&[]);
         let baseline = engine_default.lint(b"SECRET//NF").diagnostics;
-        let baseline_e001: Vec<&Diagnostic> = baseline
+        let baseline_e001: Vec<&Diagnostic<CapcoScheme>> = baseline
             .iter()
             .filter(|d| d.rule.as_str() == "E001")
             .collect();
@@ -2602,7 +2701,7 @@ mod tests {
         name: &'static str,
     }
 
-    impl Rule for NamedStub {
+    impl Rule<CapcoScheme> for NamedStub {
         fn id(&self) -> RuleId {
             RuleId::new(self.id)
         }
@@ -2612,15 +2711,19 @@ mod tests {
         fn default_severity(&self) -> Severity {
             Severity::Warn
         }
-        fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+        fn check(
+            &self,
+            _attrs: &CanonicalAttrs,
+            _ctx: &RuleContext,
+        ) -> Vec<Diagnostic<CapcoScheme>> {
             vec![]
         }
     }
 
-    fn named_rule_set(rules: &[(&'static str, &'static str)]) -> Box<dyn RuleSet> {
-        let rules: Vec<Box<dyn Rule>> = rules
+    fn named_rule_set(rules: &[(&'static str, &'static str)]) -> Box<dyn RuleSet<CapcoScheme>> {
+        let rules: Vec<Box<dyn Rule<CapcoScheme>>> = rules
             .iter()
-            .map(|(id, name)| Box::new(NamedStub { id, name }) as Box<dyn Rule>)
+            .map(|(id, name)| Box::new(NamedStub { id, name }) as Box<dyn Rule<CapcoScheme>>)
             .collect();
         Box::new(StubSet(rules))
     }
