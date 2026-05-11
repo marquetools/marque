@@ -26,9 +26,9 @@
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, Scanner};
+use marque_ism::CanonicalAttrs;
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::CapcoTokenSet;
-use marque_ism::{CanonicalAttrs, MarkingClassification};
 use marque_scheme::MarkingScheme;
 use marque_test_utils::{load_fixture, valid_fixtures};
 
@@ -311,10 +311,3 @@ fn lattice_equal_renders_byte_identical() {
         );
     }
 }
-
-// ---------------------------------------------------------------------------
-// Sanity check — `MarkingClassification` import not unused
-// ---------------------------------------------------------------------------
-
-#[allow(dead_code)]
-fn _force_classification_import(_c: MarkingClassification) {}

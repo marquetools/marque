@@ -2,7 +2,7 @@
 
 **Date.** 2026-05-10.
 **Scope.** Decision 6 of the four parallel PR-3c-prep analyses: opportunistic vs. systematic citation cleanup, with a permanent citation-integrity harness as a paired question.
-**Method.** Read-only audit. Each `Diagnostic.citation` and catalog-row `label`/`citation` re-verified against `/home/knitli/marque/crates/capco/docs/CAPCO-2016.md` via Grep, with line-to-page mapping derived from the markdown's `begin page N` / `end page N` markers (Constitution VIII propagation re-verification).
+**Method.** Read-only audit. Each `Diagnostic.citation` and catalog-row `label`/`citation` re-verified against `crates/capco/docs/CAPCO-2016.md` (the vendored authoritative source) via Grep, with line-to-page mapping derived from the markdown's `begin page N` / `end page N` markers (Constitution VIII propagation re-verification).
 
 ---
 

@@ -230,7 +230,11 @@ pub trait MarkingScheme {
     /// Returning `Err` for `Portion` / `Page` / `Document` is a
     /// contract violation and is undefined behavior at the protocol
     /// level — debug builds panic via the default impls'
-    /// `debug_assert!`; release builds silently produce empty output.
+    /// `debug_assert!`; release builds fall through to an **empty**
+    /// `String` (the default impls explicitly discard any partial
+    /// output the violating impl may have written before returning
+    /// `Err`, so downstream consumers never see a partial / subtly-
+    /// wrong canonical form on contract violation).
     ///
     /// # Engine dispatch contract
     ///
@@ -261,20 +265,24 @@ pub trait MarkingScheme {
     fn render_portion(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
         // `Write for String` is infallible, so a `String` write target
-        // never produces `fmt::Error`. The only way the discarded
-        // `Result` could be `Err` is a contract violation: an impl
-        // returning `Err` for `Scope::Portion`. The
-        // [`Self::render_canonical`] doc comment forbids this.
-        // Debug-assert in development; in release, the contract
-        // violation produces an empty `String` rather than a panic
-        // (matching the prior `let _` shape).
+        // never produces `fmt::Error`. The only way the `Result` could
+        // be `Err` is a contract violation: an impl returning `Err`
+        // for `Scope::Portion` (the [`Self::render_canonical`] doc
+        // comment forbids this). Debug-assert in development; on Err,
+        // discard any partial output the violating impl may have
+        // written before returning so downstream consumers see an
+        // empty `String` rather than a partial / subtly-wrong
+        // canonical form (the trait-level "empty on Err" guarantee).
         let result = self.render_canonical(m, crate::scope::Scope::Portion, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
              Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
         );
-        s
+        match result {
+            Ok(()) => s,
+            Err(_) => String::new(),
+        }
     }
 
     /// Render a marking in banner form (expanded).
@@ -299,6 +307,9 @@ pub trait MarkingScheme {
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
              Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
         );
-        s
+        match result {
+            Ok(()) => s,
+            Err(_) => String::new(),
+        }
     }
 }
