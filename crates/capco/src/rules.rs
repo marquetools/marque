@@ -5530,6 +5530,65 @@ mod tests {
         let e016: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E016").collect();
         assert_eq!(e016.len(), 1);
         assert!(e016[0].message.contains("RESTRICTED"));
+        // PR 3c.B Sub-PR 8.B — message must surface the foreign-equivalence
+        // hint so users understand the manual remap path. See module-level
+        // comment on `DeclarativeJointRestrictedRule` in `rules_declarative.rs`
+        // and the followup at
+        // `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`.
+        assert!(
+            e016[0].message.contains("CONFIDENTIAL"),
+            "E016 message must surface the US ↔ UK/Commonwealth foreign-\
+             equivalence hint (RESTRICTED → CONFIDENTIAL) so the user knows \
+             how to manually remap the marking; got: {:?}",
+            e016[0].message
+        );
+        // PR 3c.B Sub-PR 8.B — citation pin (D13 single-citation discipline).
+        assert_eq!(e016[0].citation, "CAPCO-2016 §H.3 p56");
+    }
+
+    /// PR 3c.B Sub-PR 8.B — pin the consciously-decided-no-fix-intent
+    /// migration state.
+    ///
+    /// Per the 2026-05-11 lattice-consultant session captured in
+    /// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+    /// E016 is **Category A.3 — Transmute via foreign-equivalence map**:
+    /// the eventual Stage-4 target is `Remove(RESTRICTED) ⊕ Add(CONFIDENTIAL)`
+    /// emitted as one atomic audit repair, driven by the CAPCO
+    /// foreign-disclosure-equivalence table. That vocabulary table does
+    /// not yet exist in `marque-capco::vocab`; until it does, the rule
+    /// emits a diagnostic with both `fix.is_none()` AND
+    /// `fix_intent.is_none()`.
+    ///
+    /// **Do not** dual-populate this rule with a single-fact
+    /// `FactRemove(RESTRICTED, Portion)` intent in the interim — that
+    /// would land a half-fix (leaving the marking without a
+    /// classification level) and corrupt the audit log under
+    /// Constitution V.
+    ///
+    /// The G13 closure walker at
+    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// relies on `fix.is_some() ⇔ fix_intent.is_some()` symmetry for
+    /// every migrated rule. This test pins the asymmetric-impossible
+    /// state of E016 at the rule-emission boundary, before engine
+    /// pairing happens.
+    #[test]
+    fn e016_emits_no_fix_and_no_fix_intent_pending_stage4_a3_transmute() {
+        let diags = lint_banner("//JOINT R USA GBR//REL TO USA, GBR");
+        let e016 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E016")
+            .expect("E016 must fire on `//JOINT R USA GBR//REL TO USA, GBR`");
+        assert!(
+            e016.fix.is_none(),
+            "E016 fix must be None until Stage-4 A.3 consolidation lands; \
+             see incompatibility-primitive-consolidation.md followup"
+        );
+        assert!(
+            e016.fix_intent.is_none(),
+            "E016 fix_intent must be None (symmetric with fix.is_none() — \
+             the G13 walker test relies on this symmetry; emitting an \
+             asymmetric pair would break tests/g13_closure_fix_intent.rs)"
+        );
     }
 
     #[test]
@@ -5621,6 +5680,92 @@ mod tests {
                 .iter()
                 .all(|d| !matches!(d.rule.as_str(), "E017" | "E018" | "E019")),
             "legacy E017/E018/E019 must not fire post-T035b: {diags:?}"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 8.B — pin the consciously-decided-no-fix-intent
+    /// migration state for E036.
+    ///
+    /// Per the 2026-05-11 lattice-consultant session captured in
+    /// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+    /// E036 is **Category B — genuine mutual exclusion without policy
+    /// decision**: the eventual Stage-4 target is `Reject { suggest:
+    /// Some(...) }` — error diagnostic with an optional
+    /// `Severity::Suggest` companion ("did you mean
+    /// `SECRET//HCS-P//REL TO [LIST]?"`). No auto-applied fix exists for
+    /// this combination — JOINT changes attribution semantics; HCS is
+    /// CIA-owned and US-only; the marking shape is contradictory in a
+    /// way no removal can resolve.
+    ///
+    /// JOINT+HCS is academic in practice (JOINT classifications are
+    /// largely DOD-only; HCS is CIA-only; the agencies' marking
+    /// vocabularies don't overlap on this axis), so the diagnostic-only
+    /// landing is functionally sufficient.
+    ///
+    /// **Parser-gap note:** the existing test
+    /// `legacy_joint_hcs_rules_do_not_fire_on_parser_path` above
+    /// documents that the engine pipeline (`lint_banner`) does not
+    /// reliably surface E036 because the parser may not emit `TOK_HCS`
+    /// inside a JOINT banner. This symmetry pin therefore constructs
+    /// `CanonicalAttrs` programmatically and calls
+    /// `DeclarativeJointHcsRule.check()` directly — same pattern as
+    /// `tests/scheme_equivalence.rs::e036_fires_on_joint_with_bare_hcs`,
+    /// but at the Rule-emission layer (Diagnostic) rather than the
+    /// scheme-validation layer (ConstraintViolation), because the
+    /// `fix.is_none() && fix_intent.is_none()` symmetry is a
+    /// Diagnostic-shape invariant.
+    #[test]
+    fn e036_emits_no_fix_and_no_fix_intent_pending_stage4_b_reject() {
+        use crate::rules_declarative::DeclarativeJointHcsRule;
+        use marque_ism::{
+            CanonicalAttrs, Classification, CountryCode, JointClassification,
+            MarkingClassification, MarkingType, SciCompartment, SciControlBare, SciControlSystem,
+            SciMarking,
+        };
+        use marque_rules::{Rule, RuleContext};
+
+        let mut attrs = CanonicalAttrs::default();
+        attrs.classification = Some(MarkingClassification::Joint(JointClassification {
+            level: Classification::Secret,
+            countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
+        }));
+        attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
+        attrs.sci_markings = vec![SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Hcs),
+            Box::<[SciCompartment]>::from(Vec::new()),
+            None,
+        )]
+        .into();
+
+        let ctx = RuleContext {
+            marking_type: MarkingType::Banner,
+            zone: None,
+            position: None,
+            page_context: None,
+            corrections: None,
+        };
+
+        let rule = DeclarativeJointHcsRule;
+        let diags = rule.check(&attrs, &ctx);
+
+        assert_eq!(
+            diags.len(),
+            1,
+            "E036 must emit exactly one Diagnostic on JOINT+HCS attrs; got: {diags:?}"
+        );
+        let d = &diags[0];
+        assert_eq!(d.rule.as_str(), "E036");
+        assert_eq!(d.citation, "CAPCO-2016 §H.3 p57");
+        assert!(
+            d.fix.is_none(),
+            "E036 fix must be None until Stage-4 B reject lands; \
+             see incompatibility-primitive-consolidation.md followup"
+        );
+        assert!(
+            d.fix_intent.is_none(),
+            "E036 fix_intent must be None (symmetric with fix.is_none() — \
+             the G13 walker test relies on this symmetry; emitting an \
+             asymmetric pair would break tests/g13_closure_fix_intent.rs)"
         );
     }
 
