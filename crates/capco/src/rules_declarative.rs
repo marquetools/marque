@@ -541,7 +541,9 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
 // `fix_intent: None` — the engine surfaces the error to the user but
 // applies no auto-fix. The diagnostic message names the CONFIDENTIAL
 // hint as Five Eyes practice (not as a §H.3 claim) so the user can
-// re-mark the portion manually.
+// re-mark the violating text manually. Wording stays context-neutral
+// because this rule's `check` does not consult `RuleContext` and can
+// fire on either a portion or a banner.
 //
 // **Do not** dual-populate this rule with a single-fact
 // `FactRemove(RESTRICTED, Portion)` intent in the interim — that would
@@ -584,11 +586,11 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
             self.default_severity(),
             span,
             "RESTRICTED may not be used with JOINT — RESTRICTED is not \
-             an authorized US classification level. Re-mark the portion \
-             using an authorized US classification (per Five Eyes \
-             practice, the operational equivalent of UK/Commonwealth \
-             RESTRICTED is CONFIDENTIAL; consult Five Eyes Marking \
-             Comparisons for the authoritative table)",
+             an authorized US classification level. Re-mark using an \
+             authorized US classification (per Five Eyes practice, the \
+             operational equivalent of UK/Commonwealth RESTRICTED is \
+             CONFIDENTIAL; consult Five Eyes Marking Comparisons for \
+             the authoritative table)",
             "CAPCO-2016 §H.3 p56",
             None,
         )]
@@ -618,7 +620,7 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
 // policy decision** case under the eventual `Constraint::Incompatible`
 // umbrella primitive. Stage-4 target: `Reject { suggest: Some(...) }` —
 // emit the error plus an optional `Severity::Suggest` companion
-// diagnostic ("did you mean `SECRET//HCS-P//REL TO [LIST]?"`). No
+// diagnostic ("did you mean `SECRET//HCS-P//REL TO [LIST]`?"). No
 // auto-applied fix exists for this combination — JOINT changes the
 // attribution semantics; HCS is CIA-owned and US-only; the marking
 // shape is contradictory in a way no removal can resolve.

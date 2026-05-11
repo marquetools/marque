@@ -5531,18 +5531,21 @@ mod tests {
         assert_eq!(e016.len(), 1);
         assert!(e016[0].message.contains("RESTRICTED"));
         // PR 3c.B Sub-PR 8.B — message must surface the operational Five
-        // Eyes equivalence hint so users know how to re-mark the portion
-        // manually. The hint is framed as "per Five Eyes practice" — NOT
-        // as a §H.3 claim — because the equivalence lives in CAPCO-2016
-        // Appendix A §4 (Five Eyes Marking Comparisons), not in §H.3.
-        // See the module-level comment on `DeclarativeJointRestrictedRule`
-        // in `rules_declarative.rs` and the followup at
+        // Eyes equivalence hint so users know how to re-mark the violating
+        // text manually. Wording stays context-neutral because the rule's
+        // `check` does not consult `RuleContext` and can fire on either a
+        // portion or a banner (the test input here is a banner). The hint
+        // is framed as "per Five Eyes practice" — NOT as a §H.3 claim —
+        // because the equivalence lives in CAPCO-2016 Appendix A §4 (Five
+        // Eyes Marking Comparisons), not in §H.3. See the module-level
+        // comment on `DeclarativeJointRestrictedRule` in
+        // `rules_declarative.rs` and the followup at
         // `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`.
         assert!(
             e016[0].message.contains("CONFIDENTIAL"),
             "E016 message must surface the operational equivalence hint \
              (RESTRICTED → CONFIDENTIAL per Five Eyes practice) so the \
-             user knows how to re-mark the portion; got: {:?}",
+             user knows how to re-mark; got: {:?}",
             e016[0].message
         );
         assert!(
@@ -5708,7 +5711,7 @@ mod tests {
     /// decision**: the eventual Stage-4 target is `Reject { suggest:
     /// Some(...) }` — error diagnostic with an optional
     /// `Severity::Suggest` companion ("did you mean
-    /// `SECRET//HCS-P//REL TO [LIST]?"`). No auto-applied fix exists for
+    /// `SECRET//HCS-P//REL TO [LIST]`?"). No auto-applied fix exists for
     /// this combination — JOINT changes attribution semantics; HCS is
     /// CIA-owned and US-only; the marking shape is contradictory in a
     /// way no removal can resolve.
