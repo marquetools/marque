@@ -2053,9 +2053,14 @@ pub(crate) fn dedup_country_codes(
 /// # Fix
 ///
 /// **None.** The rule cannot resolve the ambiguity from in-tree
-/// data. Even at Info severity (S006), a fix proposal would not
-/// auto-apply (engine excludes `Severity::Suggest` regardless of
-/// confidence), so a no-fix diagnostic is the cleaner shape.
+/// data — the dropped uncertain tetragraph may genuinely include
+/// the atoms the intersection just lost; only the producer's
+/// external membership data can settle the question. Note that
+/// `Engine::fix_inner` excludes `Severity::Suggest` only (see the
+/// `d.severity != Severity::Suggest` filter at engine.rs ~L1378),
+/// so emitting a `FixProposal` here WOULD risk auto-apply at
+/// engine-overridable Info/Warn/Error severities. A no-fix
+/// diagnostic is the safer shape.
 // ---------------------------------------------------------------------------
 // Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A
 // per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md` D4.
@@ -2090,7 +2095,8 @@ pub(crate) fn dedup_country_codes(
 // Citations explicitly NOT load-bearing for S005/S006:
 //   - §D.2 Table 3 rule 23 (TEYE/ACGU/FVEY-only intersection special
 //     case) — strictly outside S005/S006's general-tetragraph case.
-//   - §H.8 line 3727 (per-portion commingling, not roll-up).
+//   - §H.8 p151 ("Commingling Rule(s) Within a Portion" — per-portion,
+//     not page-level roll-up).
 // Reviewers verifying citation chains for S005/S006 should not follow
 // either of these as authority for the rules' behavior.
 //
@@ -7025,11 +7031,12 @@ mod tests {
     /// see `(None, None)` rules; this symmetry pin is the only guard.
     #[test]
     fn s005_emits_no_fix_and_no_fix_intent_pending_stage4_admonition_channel() {
-        // RSMA is a taxonomy-absent (org-fork extension) tetragraph;
+        // RSMA is an NA-deprecated tetragraph from the V2022-NOV ISMCAT
+        // taxonomy (per the existing test-module note at L~4585);
         // `is_decomposable("RSMA")` returns `None`, so it qualifies as
         // an uncertain code. Two portions list it differently; the
-        // page-level atom intersection drops RSMA. Banner has no REL TO,
-        // making this the active-validation / Suggest branch.
+        // page-level atom intersection drops RSMA. Banner has no REL TO
+        // (NOFORN supersedes) — active-validation / Suggest branch.
         let source = "(S//REL TO USA, GBR, RSMA)\n\
                       (S//REL TO USA, AUS, GBR)\n\
                       SECRET//NOFORN";
