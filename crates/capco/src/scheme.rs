@@ -407,7 +407,10 @@ fn apply_intent_to_marking(
     intent: &ReplacementIntent<CapcoScheme>,
 ) -> Result<(), ApplyIntentError> {
     match intent {
-        ReplacementIntent::FactRemove { token_ref, scope: _ } => {
+        ReplacementIntent::FactRemove {
+            token_ref,
+            scope: _,
+        } => {
             // Scope discriminates page vs portion projection scope.
             // For the engine-prereq's RELIDO / dissem-axis removals,
             // both scopes route to the same per-axis storage on
@@ -5430,9 +5433,9 @@ mod tests {
     fn category_of_routes_open_vocab_variants() {
         let scheme = CapcoScheme::new();
         assert_eq!(
-            scheme.category_of(&FactRef::OpenVocab(CapcoOpenVocabRef::Sar(
-                Box::from("PROGRAM-X")
-            ))),
+            scheme.category_of(&FactRef::OpenVocab(CapcoOpenVocabRef::Sar(Box::from(
+                "PROGRAM-X"
+            )))),
             Some(CAT_SAR)
         );
         assert_eq!(

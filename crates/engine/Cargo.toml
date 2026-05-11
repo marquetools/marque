@@ -68,6 +68,10 @@ marque-test-utils = { workspace = true }
 proptest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# PR 3c.B engine-prereq — intent-only integration test constructs
+# `FixIntent` values whose `feature_ids: SmallVec<[FeatureId; 4]>`
+# field needs `smallvec::SmallVec` at the test boundary.
+smallvec = { workspace = true }
 
 [features]
 default = ["batch"]

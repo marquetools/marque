@@ -143,6 +143,7 @@ impl<S: MarkingScheme> Clone for FixIntent<S> {
 mod tests {
     use super::*;
     use crate::{Confidence, MessageArgs, MessageTemplate};
+    use marque_scheme::TokenId;
     use marque_scheme::ambiguity::Parsed;
     use marque_scheme::category::Category;
     use marque_scheme::constraint::Constraint;
@@ -150,7 +151,6 @@ mod tests {
     use marque_scheme::lattice::{BoundedLattice, Lattice};
     use marque_scheme::scope::Scope;
     use marque_scheme::template::Template;
-    use marque_scheme::TokenId;
 
     // Minimal MarkingScheme fixture so we can instantiate
     // FixIntent<TestScheme> in unit tests. Mirrors the StubScheme

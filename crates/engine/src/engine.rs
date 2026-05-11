@@ -1379,14 +1379,14 @@ impl Engine {
         // index is currently structurally identical to the filtered
         // shape; this is a forward-compatibility guard for future
         // migrations, not a present-day waste.
-        let mut intent_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> =
-            lint.diagnostics
-                .iter()
-                .filter_map(|d| match (d.fix.as_ref(), d.fix_intent.as_ref()) {
-                    (Some(fix), Some(intent)) => Some(((fix.rule.clone(), fix.span), intent)),
-                    _ => None,
-                })
-                .collect();
+        let mut intent_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> = lint
+            .diagnostics
+            .iter()
+            .filter_map(|d| match (d.fix.as_ref(), d.fix_intent.as_ref()) {
+                (Some(fix), Some(intent)) => Some(((fix.rule.clone(), fix.span), intent)),
+                _ => None,
+            })
+            .collect();
 
         // PR 3c.B engine-prereq: intent-only synthesis path.
         //
@@ -1434,10 +1434,14 @@ impl Engine {
         let intent_only_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> =
             lint.diagnostics
                 .iter()
-                .filter_map(|d| match (d.fix.as_ref(), d.fix_intent.as_ref(), d.candidate_span) {
-                    (None, Some(intent), Some(cspan)) => Some(((d.rule.clone(), cspan), intent)),
-                    _ => None,
-                })
+                .filter_map(
+                    |d| match (d.fix.as_ref(), d.fix_intent.as_ref(), d.candidate_span) {
+                        (None, Some(intent), Some(cspan)) => {
+                            Some(((d.rule.clone(), cspan), intent))
+                        }
+                        _ => None,
+                    },
+                )
                 .collect();
         for (key, intent) in &intent_only_index {
             intent_index.entry(key.clone()).or_insert(*intent);
@@ -2009,9 +2013,15 @@ fn synthesize_intent_only_fixes(
     // Collect intent-only diagnostics eligible for synthesis. Group
     // by candidate_span so multi-intent batches apply atomically.
     // BTreeMap keyed on (start, end) so iteration order is
-    // deterministic — Span itself doesn't impl Ord.
-    let mut groups: BTreeMap<(usize, usize), (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>)> =
-        BTreeMap::new();
+    // deterministic — Span itself doesn't impl Ord. The type is
+    // local-only (function-scoped, dropped before the function
+    // returns), so a `type` alias would add indirection without
+    // clarifying anything at the use site.
+    #[allow(clippy::type_complexity)]
+    let mut groups: BTreeMap<
+        (usize, usize),
+        (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
+    > = BTreeMap::new();
     for d in diagnostics {
         if d.fix.is_some() || d.fix_intent.is_none() {
             continue;
