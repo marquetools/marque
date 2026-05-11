@@ -88,6 +88,18 @@ impl std::error::Error for InvalidThreshold {}
 pub struct Engine {
     config: Config,
     rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+    /// Scheme catalog held for the PR 3c.B Commit 7.2 constraint-bridge
+    /// dispatch in `lint_inner`. A fresh `CapcoScheme::new()` is built
+    /// at construction time because the engine is concrete over
+    /// `CapcoScheme` (the generic-`S` parameter on the constructors is
+    /// only used to extract `page_rewrites()` for scheduling — the
+    /// scheduler test in `crates/engine/tests/scheduler.rs:106` passes
+    /// a stub scheme through that surface, but every production call
+    /// site passes `CapcoScheme::new()` and the bridge fires only
+    /// against the default catalog). A future PR that makes
+    /// `Engine<S>` truly generic over the scheme will replace this
+    /// field with the user-supplied `S`.
+    scheme: CapcoScheme,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
@@ -222,9 +234,17 @@ impl Engine {
             }
         });
 
+        // Drop the user-supplied scheme after page-rewrite extraction;
+        // the constraint-catalog bridge in `lint_inner` uses a fresh
+        // `CapcoScheme::new()` (see the `scheme` field doc above for
+        // the design rationale).
+        drop(scheme);
+        let scheme = CapcoScheme::new();
+
         Ok(Self {
             config,
             rule_sets,
+            scheme,
             clock,
             corrections_arc,
             corrections_ac,
@@ -752,6 +772,79 @@ impl Engine {
                         }
                     });
                     diagnostics.extend(diags);
+                }
+            }
+
+            // PR 3c.B Commit 7.2 — scheme-side constraint catalog bridge.
+            //
+            // Walks the scheme's declarative constraint catalog against
+            // the current candidate's attributes and emits a
+            // `Diagnostic` for each `ConstraintViolation` whose `span`
+            // AND `severity` are both populated. Violations with `None`
+            // span or `None` severity are advisory — the dyadic
+            // `Conflicts` / `Requires` / `Implies` / `Supersedes` arms
+            // emit those today, and they continue to flow through as a
+            // tooling-only signal until / unless a future PR commits
+            // them to user-facing diagnostics.
+            //
+            // # Cold-land contract (PR 3c.B Commit 7.2)
+            //
+            // No catalog row populates the `Option<Span>` /
+            // `Option<Severity>` fields yet — every `ConstraintViolation`
+            // produced by `scheme.validate(...)` in 7.2 carries `None`
+            // for both. The `let (Some(span), Some(severity)) = ...
+            // else { continue }` guard below short-circuits every
+            // iteration. This bridge fires its first user-visible
+            // diagnostic when PR 3c.B Commit 7.3 wires the E058
+            // class-floor catalog rows to populate the fields from
+            // `ClassFloorRow.severity` / `class_floor_anchor_span`.
+            //
+            // # `CapcoMarking::from(attrs.clone())` cost
+            //
+            // The conversion is a single-field move (`Self(attrs, None)`
+            // — see `crates/capco/src/scheme.rs:156`) plus the
+            // `CanonicalAttrs.clone()`. `CanonicalAttrs` uses
+            // `Box<[T]>` for its categorical fields, so the clone
+            // allocates per list. Acceptable today because no row
+            // populates yet (so the work is wasted but bounded); 7.3 /
+            // 7.4 add real work for the bridge to do, at which point
+            // the cost amortizes over the diagnostics emitted.
+            {
+                let marking = marque_capco::CapcoMarking::from(attrs.clone());
+                let violations = self.scheme.validate(&marking);
+                for v in violations {
+                    let (Some(span), Some(severity)) = (v.span, v.severity) else {
+                        continue;
+                    };
+                    let rule_id = RuleId::new(v.constraint_label);
+                    let final_severity = self
+                        .config
+                        .rules
+                        .overrides
+                        .get(rule_id.as_str())
+                        .and_then(|s| Severity::parse_config(s))
+                        .unwrap_or(severity);
+                    if final_severity == Severity::Off {
+                        continue;
+                    }
+                    // PR 3c.B Commit 7.2 cold-land: `fix_intent_for`
+                    // returns `None` for every input in this commit.
+                    // PR 3c.B Commit 7.4 populates the E059 catalog
+                    // rows so this branch starts producing structural
+                    // FixIntents (and the engine's existing
+                    // `fix_inner` paired-promotion path picks them up
+                    // without further bridge changes — Path C of the
+                    // consolidated plan).
+                    let fix_intent = self.scheme.fix_intent_for(rule_id.as_str(), &attrs);
+                    let diag = Diagnostic::with_fix_intent(
+                        rule_id,
+                        final_severity,
+                        span,
+                        v.message,
+                        v.citation,
+                        fix_intent,
+                    );
+                    diagnostics.push(diag);
                 }
             }
         }

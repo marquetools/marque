@@ -2091,6 +2091,59 @@ impl CapcoScheme {
                 .collect(),
         }
     }
+
+    /// Look up the [`FixIntent`] a catalog row produces against
+    /// `attrs`, when one is defined.
+    ///
+    /// This is the engine-bridge counterpart to the scheme's
+    /// [`MarkingScheme::validate`] path. The lint loop walks
+    /// `scheme.validate(...)`, gets back a stream of
+    /// [`ConstraintViolation`] values whose `span` and `severity` are
+    /// populated by catalog rows that want to fire as user-facing
+    /// diagnostics. For each such violation, the engine asks the
+    /// scheme: *given this row name and these attributes, is there a
+    /// `FixIntent` you'd like attached to the diagnostic?* For most
+    /// rows the answer is `None`. For rows whose CAPCO §-citation
+    /// commits to a specific repair shape (companion-insert for
+    /// HCS-O / HCS-P sub / SI-G; subtractive for ORCON-USGOV conflict
+    /// cases — see CAPCO-2016 §H.4 p64 / p66 / p68 / p80), the helper
+    /// constructs the matching [`FixIntent`].
+    ///
+    /// # Why scheme-side, not on `ConstraintViolation`
+    ///
+    /// [`FixIntent<S>`] lives in `marque-rules`, and `marque-rules`
+    /// depends on `marque-scheme` (Constitution VII Appendix D —
+    /// post-PR-3c.A graph). Attaching a `fix_intent: Option<FixIntent<S>>`
+    /// field to `ConstraintViolation` (in `marque-scheme`) would invert
+    /// the graph and create a cycle. The bridge instead reconstructs
+    /// the [`FixIntent`] from the row name on the way out — this is
+    /// the side-table pattern the now-retiring walker rules
+    /// (`DeclarativeClassFloorRule`, `DeclarativeSciPerSystemRule`)
+    /// used internally; PR 3c.B Commit 7.4 relocates the table to the
+    /// scheme so the walker can be deleted.
+    ///
+    /// # Cold-land contract (PR 3c.B Commit 7.2)
+    ///
+    /// This method returns `None` for every input in Commit 7.2; the
+    /// only catalog rows that produce fixes today are E059's five
+    /// SCI-per-system rows (companion-insert, HCS-O / HCS-P sub /
+    /// SI-G; forbid-companion, HCS-P sub vs ORCON-USGOV). Those rows
+    /// still fire diagnostics through the walker until Commit 7.4
+    /// retires the walker and populates this helper. `None` is the
+    /// safe shape — the engine attaches no fix and the diagnostic
+    /// flows through unchanged. No behavior change at 7.2; the only
+    /// purpose of the method's existence here is to give the engine
+    /// bridge a stable scheme-side entry point to query.
+    pub fn fix_intent_for(
+        &self,
+        _name: &str,
+        _attrs: &CanonicalAttrs,
+    ) -> Option<marque_rules::FixIntent<CapcoScheme>> {
+        // PR 3c.B Commit 7.4 will populate the E059 catalog rows here.
+        // Until then, the walker rule `DeclarativeSciPerSystemRule`
+        // owns the E059 fixes via its own side-table.
+        None
+    }
 }
 
 // T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
