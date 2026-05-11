@@ -80,7 +80,7 @@ recoco-utils = { version = "0.2.3", default-features = false, features = [
 ] }
 
 # Build-time XML parsing (marque-ism build.rs)
-quick-xml = "0.39.2"
+quick-xml = "0.40.0"
 
 # Vendored ODNI schema crates from github.com/marquetools/ism-data,
 # consumed as build-dependencies for marque-ism's codegen.
