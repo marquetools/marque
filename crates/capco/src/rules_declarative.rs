@@ -86,9 +86,10 @@ use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity,
+    Confidence, Diagnostic, FactRef, FixIntent, FixProposal, FixSource, Message, MessageArgs,
+    MessageTemplate, ReplacementIntent, Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::ConstraintViolation;
+use marque_scheme::{ConstraintViolation, Scope};
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;
@@ -619,7 +620,14 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
         "aea-noforn"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Error
+        // PR 3c.B Commit 3: Error → Fix. CAPCO §H.6 p104 states
+        // RD/FRD/TFNI "Is always used with NOFORN unless a sharing
+        // agreement has been established per the Atomic Energy Act."
+        // The fix is unambiguous (insert NOFORN); the rule emits a
+        // structural FactAdd that the engine auto-applies at the
+        // default 0.95 threshold. Orgs with sharing agreements
+        // override via `.marque.toml [rules] E021 = "warn"`.
+        Severity::Fix
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
@@ -629,16 +637,120 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
 
         let span = first_span_of(attrs, TokenKind::AeaMarking);
 
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
-             per the Atomic Energy Act; override to warn via rule severity \
-             config if sharing agreements apply",
-            "CAPCO-2016 §H.6 p104",
-            None,
-        )]
+        // PR 3c.B Commit 3 (E021 migration). Severity flipped
+        // Error → Fix. Dual-population per Path C: legacy `fix`
+        // (byte-precise zero-width `/NOFORN` insertion at the end
+        // of the IC dissem block) + structural
+        // `FactAdd { NOFORN, Scope::Portion }` intent. When the
+        // portion has no IC dissem block at all, the legacy
+        // helper returns None and the rule emits no fix — the
+        // engine surfaces the diagnostic but does not auto-apply.
+        // Inserting a whole `//`-separated dissem category from
+        // rule context would synthesize content the user didn't
+        // type (same defensive policy as `emit_companion_insert`
+        // and `compute_relido_removal_span`).
+        //
+        // E021 has no pre-PR-3c byte-identity baseline because it
+        // was previously Error-no-fix (no audit record emitted).
+        // The byte-identity gate is vacuous for E021; correctness
+        // is exercised by the per-rule shape tests.
+        match build_aea_noforn_addition_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+                 per the Atomic Energy Act; override to warn via rule severity \
+                 config if sharing agreements apply",
+                "CAPCO-2016 §H.6 p104",
+                fix,
+                aea_noforn_add_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+                 per the Atomic Energy Act; override to warn via rule severity \
+                 config if sharing agreements apply",
+                "CAPCO-2016 §H.6 p104",
+                None,
+            )],
+        }
+    }
+}
+
+/// Build a `<last-dissem-token>/<NOFORN-form>` append-fix anchored on
+/// the last existing IC dissem token. Analogous to
+/// `build_relido_removal_fix` (subtractive); the `emit_companion_insert`
+/// helper used by SCI per-system catalog rules also emits an additive
+/// fix but at a zero-width span (`Span::new(end, end)`), which the
+/// engine's `!f.span.is_empty()` filter
+/// (`crates/engine/src/engine.rs` line ~1108) silently drops. This
+/// helper anchors on the last dissem token's full span and re-emits
+/// the token plus `/NOFORN` so the engine actually applies the fix
+/// (E021 is `Severity::Fix`, not the warn-no-fix posture of the SCI
+/// per-system additive rows).
+///
+/// Returns `None` when the portion has no IC dissem block at all —
+/// same defensive policy as `compute_relido_removal_span`: never
+/// synthesize structural input from rule context (inserting a whole
+/// `//`-separated category absent an explicit anchor is unsafe).
+///
+/// The inserted form (`NF` vs `NOFORN`) tracks the form of the first
+/// existing dissem token via `infer_companion_form` so the post-fix
+/// bytes don't mix banner-form and portion-form. Matches the
+/// surface-form policy `emit_companion_insert` uses for SCI per-system
+/// companion insertions.
+///
+/// Confidence is `Confidence::strict(0.95)` — same as
+/// `build_relido_removal_fix` and the SCI per-system catalog inserts
+/// (CAPCO precedent for at-threshold, auto-apply fixes).
+///
+/// `FixSource::BuiltinRule` per the strict-path provenance convention
+/// for hand-written CAPCO rules.
+fn build_aea_noforn_addition_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
+    // Walk to the LAST DissemControl token span — same as
+    // `scheme::last_dissem_span` but we also need the token's text so
+    // we can re-emit it in the replacement. Inlining keeps the helper
+    // self-contained and avoids a second pass over `token_spans`.
+    let last = attrs
+        .token_spans
+        .iter()
+        .rev()
+        .find(|t| t.kind == TokenKind::DissemControl)?;
+    let form = crate::scheme::infer_companion_form(attrs);
+    Some(FixProposal::new(
+        rule_id,
+        FixSource::BuiltinRule,
+        last.span,
+        last.text.as_ref(),
+        format!("{}/{}", last.text, form.noforn()),
+        Confidence::strict(0.95),
+        None,
+    ))
+}
+
+/// Build the canonical `FactAdd { NOFORN, Scope::Portion }` intent
+/// emitted by E021. NOFORN addition is scope-portion: the fact set
+/// the rule mutates is a single portion's dissem-axis projection
+/// (§H.6 p104 applies per-portion, not per-page).
+///
+/// Confidence mirrors `build_aea_noforn_addition_fix` so the
+/// engine's threshold gate produces identical filter behavior on
+/// `fix_intent.confidence.combined()` vs the legacy
+/// `fix.confidence.combined()` path through the Path C transition
+/// window. Commit 10 collapses to a single emission path.
+fn aea_noforn_add_intent() -> FixIntent<CapcoScheme> {
+    use crate::scheme::TOK_NOFORN;
+    FixIntent {
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TOK_NOFORN),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(0.95),
+        feature_ids: Default::default(),
+        message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
     }
 }
 
@@ -1257,16 +1369,60 @@ impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
         // used with REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY"). NOFORN
         // is the binding constraint, so the only well-defined fix is to
         // remove the rejected token (RELIDO). PM Addendum II §3.
-        let fix = build_relido_removal_fix(self.id(), attrs);
+        //
+        // PR 3c.B Commit 3 (E054 migration). Dual-population per Path C:
+        // `fix` carries the byte-identical pre-migration projection
+        // (the engine's NDJSON shape stays stable through commits 2–9);
+        // `fix_intent` carries the new structural FactRemove emission.
+        // The engine pairs them at promotion time and routes to
+        // `AppliedFixProposal::New { intent, synthesized: fix }`. See
+        // `crates/engine/src/engine.rs::fix_inner` and the consolidated
+        // plan §"Path C" (lines 100–175). Commit 10 retires the
+        // synthesized projection atomically with the audit-schema flip.
+        match build_relido_removal_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
+                "CAPCO-2016 §H.8 p154",
+                fix,
+                relido_remove_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
+                "CAPCO-2016 §H.8 p154",
+                None,
+            )],
+        }
+    }
+}
 
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
-            "CAPCO-2016 §H.8 p154",
-            fix,
-        )]
+/// Build the canonical `FactRemove { RELIDO, Scope::Portion }` intent
+/// shared by every RELIDO-removal wrapper (E054 / E057 in Commit 3;
+/// E055 / E056 follow in later commits of PR 3c.B). RELIDO removal is
+/// scope-portion: the fact set the rule mutates is a single portion's
+/// dissem-axis projection, not a page-level roll-up.
+///
+/// Confidence here mirrors the pre-migration FixProposal's
+/// `Confidence::strict(0.95)` (see `build_relido_removal_fix`) so the
+/// engine's threshold gate produces identical filter behavior on
+/// `fix_intent.confidence.combined()` vs the legacy
+/// `fix.confidence.combined()` path. PR 3c.B Commit 10 collapses these
+/// to a single emission path; until then both must agree.
+fn relido_remove_intent() -> FixIntent<CapcoScheme> {
+    use crate::scheme::TOK_RELIDO;
+    FixIntent {
+        replacement: ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_RELIDO),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(0.95),
+        feature_ids: Default::default(),
+        message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
     }
 }
 
@@ -1474,16 +1630,30 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
         // USGOV-pre-approved variant of ORCON; same originator-approval
         // semantic conflict with RELIDO's SFDRA-deferred release.
         // ORCON-USGOV is the binding constraint. PM Addendum II §3.
-        let fix = build_relido_removal_fix(self.id(), attrs);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
-            "CAPCO-2016 §H.8 p140",
-            fix,
-        )]
+        //
+        // PR 3c.B Commit 3 (E057 migration). Dual-population per Path C
+        // — same shape as E054 above. See `relido_remove_intent()` for
+        // the shared structural emission and the Path C / Commit-10
+        // retirement rationale.
+        match build_relido_removal_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
+                "CAPCO-2016 §H.8 p140",
+                fix,
+                relido_remove_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
+                "CAPCO-2016 §H.8 p140",
+                None,
+            )],
+        }
     }
 }
 

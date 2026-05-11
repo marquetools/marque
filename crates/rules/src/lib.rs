@@ -976,6 +976,54 @@ impl<S: MarkingScheme> Diagnostic<S> {
             fix_intent,
         }
     }
+
+    /// Construct a new diagnostic carrying BOTH a legacy
+    /// [`FixProposal`] AND a structural [`FixIntent<S>`].
+    ///
+    /// This is the dual-population constructor used by rules
+    /// migrated under PR 3c.B Commit 3+ (E054, E057, E021, ...).
+    /// The legacy `fix` field is the pre-migration FixProposal —
+    /// byte-identical to what the rule emitted before migration —
+    /// and the engine wraps it inside `AppliedFixProposal::New {
+    /// intent, synthesized: fix }` at promotion time so the
+    /// NDJSON audit shape stays byte-stable through the Commit
+    /// 2–9 transition (Path C of the consolidated plan).
+    ///
+    /// The `Engine::fix_inner` promotion path builds an
+    /// `(rule_id, span)`-keyed index of `fix_intent` values from
+    /// the diagnostic stream and routes paired diagnostics to
+    /// [`AppliedFix::__engine_promote`] (taking the intent +
+    /// synthesized projection) instead of
+    /// [`AppliedFix::__engine_promote_legacy`] (taking only the
+    /// proposal).
+    ///
+    /// `fix` and `fix_intent` MUST describe the same repair; the
+    /// rule's responsibility is to ensure the structural intent
+    /// agrees with what the byte-precise FixProposal will produce
+    /// when applied. Commit 10 retires the dual-population
+    /// pattern atomically with the audit-schema flip — at that
+    /// point migrated rules drop the legacy `fix` field entirely
+    /// and the synthesized projection is reconstructed from the
+    /// intent at audit-emit time.
+    pub fn with_fix_and_intent(
+        rule: RuleId,
+        severity: Severity,
+        span: Span,
+        message: impl Into<Box<str>>,
+        citation: &'static str,
+        fix: FixProposal,
+        fix_intent: FixIntent<S>,
+    ) -> Self {
+        Self {
+            rule,
+            severity,
+            span,
+            message: message.into(),
+            citation,
+            fix: Some(fix),
+            fix_intent: Some(fix_intent),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

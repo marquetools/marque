@@ -1038,26 +1038,72 @@ impl Engine {
         // also emit fixes that clear the threshold yet must NOT be
         // applied. This filter handles both cases uniformly.
         //
-        // PR 3c.B Commit 2 invariant: a `Diagnostic` MUST NOT
-        // populate both `fix: Option<FixProposal>` (legacy path)
-        // and `fix_intent: Option<FixIntent<S>>` (new path). Rules
-        // emit through one or the other depending on whether
-        // they've been migrated. A rule with both populated is a
-        // migration bug — debug_assert here so the failure surfaces
-        // immediately during development. In release builds the
-        // legacy path takes precedence (the audit stream stays
-        // shape-stable; the new-path emission is silently dropped
-        // pending the migration).
-        for d in &lint.diagnostics {
-            debug_assert!(
-                !(d.fix.is_some() && d.fix_intent.is_some()),
-                "Diagnostic {} populates both `fix` (legacy FixProposal) and \
-                 `fix_intent` (new FixIntent<S>); a rule emits through one \
-                 path or the other, never both. This is a migration bug — \
-                 see PR 3c.B Commit 2 plan §`Engine::fix_inner branching`.",
-                d.rule
-            );
-        }
+        // PR 3c.B Commit 3 contract on `Diagnostic.fix` /
+        // `Diagnostic.fix_intent`: a Diagnostic MAY populate either,
+        // both, or neither. The four legal states are:
+        //
+        //   - **Neither populated** — non-fix-emitting rule
+        //     (Severity::Error / Warn / Info with no repair).
+        //   - **`fix` only** — non-migrated rule emitting a legacy
+        //     `FixProposal`. The transition default through Commit 9.
+        //   - **`fix_intent` only** — Commit 6's `Recanonicalize`
+        //     consumer (E002 / S003), where the rule cannot
+        //     pre-synthesize a byte-precise FixProposal because the
+        //     edit is a whole-scope re-render and the engine
+        //     materializes the canonical bytes at promotion time
+        //     via the per-page `ProjectedMarking`.
+        //   - **BOTH populated** (dual-population) — Commit 3+
+        //     migrated rules. `fix` carries the pre-migration
+        //     byte-precise projection (byte-identical to what the
+        //     rule emitted before migration); `fix_intent` carries
+        //     the new structural FactAdd / FactRemove emission. The
+        //     engine pairs them at promotion time via the
+        //     `(RuleId, Span)`-keyed `intent_index` below.
+        //     Per Path C of the consolidated plan
+        //     (`docs/plans/2026-05-10-pr3c-consolidated-plan.md`
+        //     lines 100–175), G13 closure during commits 2–9
+        //     applies to the `intent` payload only; the
+        //     `synthesized` field carries pre-migration document
+        //     bytes so the NDJSON audit shape stays byte-stable
+        //     through the Path C transition window. Commit 10
+        //     retires dual-population atomically with the
+        //     audit-schema flip.
+        //
+        // The pre-Commit-3 mutual-exclusion debug_assert is
+        // RETIRED — both-populated is now the migrated-rule pattern,
+        // not a bug. The Diagnostic constructor `with_fix_and_intent`
+        // is the dual-population entrypoint (`marque_rules::
+        // Diagnostic::with_fix_and_intent`).
+
+        // PR 3c.B Commit 3: build the dual-population intent index
+        // ONCE per fix pass. Keyed by `(RuleId, Span)` from the
+        // FixProposal — NOT the diagnostic — because the fix-
+        // application loop below iterates `kept_fixes` (a Vec of
+        // FixProposal) and the lookup must match what each iteration
+        // has in hand. Diagnostic.span and FixProposal.span often
+        // differ: the diagnostic anchors on the asserting token (the
+        // user's cursor target) while the FixProposal span covers
+        // the bytes being replaced. Keying off the FixProposal makes
+        // the lookup work regardless of the anchor / replacement-
+        // span split.
+        //
+        // The lookup borrows `&FixIntent<CapcoScheme>` from
+        // `lint.diagnostics`; the borrow lives through the fix loop
+        // below and the intent is only cloned at promotion
+        // (`AppliedFix::__engine_promote` takes the intent by value).
+        //
+        // Memory cost: O(diagnostics-with-both-fix-and-fix_intent),
+        // one entry per migrated rule's emitted diagnostic. For
+        // PR 3c.B Commit 3 that's a small fraction of total
+        // diagnostics (three rules: E054 / E057 / E021).
+        let intent_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> = lint
+            .diagnostics
+            .iter()
+            .filter_map(|d| match (d.fix.as_ref(), d.fix_intent.as_ref()) {
+                (Some(fix), Some(intent)) => Some(((fix.rule.clone(), fix.span), intent)),
+                _ => None,
+            })
+            .collect();
 
         let mut fixes: Vec<_> = lint
             .diagnostics
@@ -1213,15 +1259,38 @@ impl Engine {
                             deadline_aborted = true;
                             break;
                         }
-                        applied_keys.insert((fix.rule.clone(), fix.span));
-                        applied.push(AppliedFix::__engine_promote_legacy(
-                            fix,
-                            now,
-                            classifier_id.clone(),
-                            dry_run,
-                            None, // input identifier set by CLI at the boundary
-                            engine_promotion_token(),
-                        ));
+                        let key = (fix.rule.clone(), fix.span);
+                        applied_keys.insert(key.clone());
+                        // PR 3c.B Commit 3 paired promotion. If the
+                        // diagnostic that produced this fix also carries
+                        // a `fix_intent`, promote both via the new
+                        // `__engine_promote` constructor wrapping
+                        // `AppliedFixProposal::New { intent, synthesized:
+                        // fix }`. Otherwise (non-migrated rule) fall back
+                        // to the legacy single-proposal path. Both arms
+                        // insert the same key into `applied_keys` so the
+                        // remaining-diagnostics filter at the bottom of
+                        // fix_inner is correct regardless of arm.
+                        applied.push(match intent_index.get(&key) {
+                            Some(intent) => AppliedFix::__engine_promote(
+                                key.0,
+                                (*intent).clone(),
+                                fix,
+                                now,
+                                classifier_id.clone(),
+                                dry_run,
+                                None, // input identifier set by CLI at the boundary
+                                engine_promotion_token(),
+                            ),
+                            None => AppliedFix::__engine_promote_legacy(
+                                fix,
+                                now,
+                                classifier_id.clone(),
+                                dry_run,
+                                None, // input identifier set by CLI at the boundary
+                                engine_promotion_token(),
+                            ),
+                        });
                     }
                 }
                 buf
@@ -1232,24 +1301,36 @@ impl Engine {
                         deadline_aborted = true;
                         break;
                     }
-                    // PR 3c.B Commit 3 prerequisite (senior reviewer
-                    // pass): when the parallel `fix_intent` collection
-                    // arm is wired into `fix_inner`, every promoted
-                    // `FixIntent` MUST also insert into `applied_keys`
-                    // here so the `remaining_diagnostics` filter below
-                    // does not double-count `fix_intent`-promoted
-                    // diagnostics in both `applied` and the leftover
-                    // set. Forgetting this insertion produces a
-                    // logical contradiction in `FixResult`.
-                    applied_keys.insert((fix.rule.clone(), fix.span));
-                    applied.push(AppliedFix::__engine_promote_legacy(
-                        fix,
-                        now,
-                        classifier_id.clone(),
-                        dry_run,
-                        None,
-                        engine_promotion_token(),
-                    ));
+                    // PR 3c.B Commit 3 paired promotion (DryRun mirror
+                    // of the Apply arm above). `applied_keys` is
+                    // inserted unconditionally so the
+                    // `remaining_diagnostics` filter below correctly
+                    // excludes paired-promotion entries from the
+                    // leftover set; without this, a `FixIntent`-paired
+                    // diagnostic would double-count in both `applied`
+                    // and the leftover diagnostics.
+                    let key = (fix.rule.clone(), fix.span);
+                    applied_keys.insert(key.clone());
+                    applied.push(match intent_index.get(&key) {
+                        Some(intent) => AppliedFix::__engine_promote(
+                            key.0,
+                            (*intent).clone(),
+                            fix,
+                            now,
+                            classifier_id.clone(),
+                            dry_run,
+                            None,
+                            engine_promotion_token(),
+                        ),
+                        None => AppliedFix::__engine_promote_legacy(
+                            fix,
+                            now,
+                            classifier_id.clone(),
+                            dry_run,
+                            None,
+                            engine_promotion_token(),
+                        ),
+                    });
                 }
                 source.to_vec()
             }
@@ -1412,66 +1493,84 @@ fn engine_promotion_token() -> EnginePromotionToken {
 /// variants ([`marque_rules::AppliedFixProposal::New`]), this
 /// helper produces the legacy-shaped projection.
 ///
-/// # Commit 2 status
+/// # Status post-PR-3c.B Commit 3
 ///
-/// Commit 2 ships the API but no rule emits a [`FixIntent`] yet
-/// (rules migrate one at a time in commits 3–9). The helper is
-/// therefore `unreachable!()`-bodied; the first migrated rule
-/// (E054 in commit 3) wires the real synthesis.
+/// **Dead code through Commit 5.** Commit 3 wires the first three
+/// migrated rules (E054 / E057 / E021) using the **dual-population**
+/// pattern: migrated rules emit BOTH `Diagnostic.fix`
+/// (byte-identical to the pre-migration `FixProposal`) AND
+/// `Diagnostic.fix_intent` (new structural emission). The engine's
+/// `Engine::fix_inner` paired-promotion path pulls `synthesized`
+/// straight from the diagnostic's `fix` field — the rule already did
+/// the legacy projection, so the engine doesn't need to synthesize
+/// one. This helper has no consumer.
+///
+/// **First consumer arrives in Commit 6.** Commit 6 migrates
+/// `Recanonicalize`-emitting rules (E002 / S003) — rules where the
+/// repair is a whole-scope re-render and the rule genuinely
+/// cannot pre-synthesize a byte-precise `FixProposal` because the
+/// canonical bytes depend on the engine's per-page
+/// `ProjectedMarking`. At Commit 6 the helper's body lands and the
+/// `Recanonicalize` arm is wired into `Engine::fix_inner` between
+/// the lint phase and the `intent_index` build.
+///
+/// Through Commit 5, the helper stays `#[allow(dead_code)]` and
+/// `unimplemented!()`-bodied — a future caller invoking it before
+/// Commit 6 lands the body should see a "not implemented" panic
+/// with a pointer to the Commit-6 migration scope.
 ///
 /// # Inputs
 ///
-/// - `intent`: the rule's emission payload (fact-set delta + scope
-///   + confidence + message).
-/// - `span`: the parent diagnostic's `Span`. `FixIntent` carries
-///   no span (architecture.md invariant 3 — spans are
-///   diagnostic-only); the engine forwards the diagnostic's span
-///   so the synthesized `FixProposal` can populate its `span`
-///   field for byte-stable audit output.
+/// - `intent`: the rule's `Recanonicalize` emission payload (the
+///   scope to re-render).
+/// - `span`: the parent diagnostic's `Span`. `FixIntent` carries no
+///   span (architecture.md invariant 3); the engine forwards the
+///   diagnostic's span so the synthesized `FixProposal` populates
+///   its `span` field for byte-stable audit output.
 /// - `rule_id`: the parent diagnostic's `RuleId`.
-///
-/// # Call site invariant (Commit 3+)
-///
-/// The engine MUST call this helper before constructing
-/// [`marque_rules::AppliedFix::__engine_promote`] — the synthesized
-/// `FixProposal` returned here is passed to that constructor as the
-/// `synthesized` parameter, which caches it inside
-/// `AppliedFixProposal::New { intent, synthesized }`. The
-/// `Deref<Target = FixProposal>` impl on `AppliedFixProposal` returns
-/// `&synthesized` for the `New` arm, so audit-emit code reading
-/// `applied_fix.proposal.span` etc. continues to compile and behave
-/// identically through the Commit 2–9 transition (Path C).
 ///
 /// # G13 closure invariant
 ///
-/// The synthesized `FixProposal` MUST set `original = ""` to preserve
-/// Constitution V Principle V (audit content ignorance) on the new
-/// emission path. `FixIntent<S>` carries no source bytes by design;
-/// the engine MUST NOT re-introduce them through the synthesized
-/// projection.
-// PR 3c.B Commit 2: this is the FixIntent→legacy-FixProposal seam; no
-// rule emits `FixIntent<S>` yet, so the helper is dead code until
-// Commit 3 wires the first migrated rule (E054). The allow is paired
-// with the `unimplemented!()` body — together they communicate "this
-// is a not-yet-built seam," not "this path is logically unreachable."
+/// The synthesized `FixProposal` MUST set `original = ""` to
+/// preserve Constitution V Principle V (audit content ignorance)
+/// on the `Recanonicalize` new-emission path — `FixIntent::
+/// Recanonicalize` carries no source bytes by design, so the
+/// engine MUST NOT re-introduce them via the synthesized
+/// projection. (The Path C dual-population pattern in Commits
+/// 2–9 already carries pre-migration source bytes in
+/// `synthesized.original` on `FactAdd` / `FactRemove` rules; G13
+/// closure on the legacy projection waits for Commit 10. See
+/// `docs/plans/2026-05-10-pr3c-consolidated-plan.md` lines
+/// 100–175.)
+// PR 3c.B Commits 3–5: dead code (first consumer is Commit 6's
+// Recanonicalize migration). The `#[allow(dead_code)]` is paired
+// with the `unimplemented!()` body — together they communicate
+// "this is a not-yet-built seam," not "this path is logically
+// unreachable."
 #[allow(dead_code)]
 fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
     _intent: &marque_rules::FixIntent<S>,
     _span: marque_ism::Span,
     _rule_id: marque_rules::RuleId,
 ) -> marque_rules::FixProposal {
-    // Commit 3 wires real rules; commit 2 ships the seam.
+    // Commit 3 (dual-population) does NOT exercise this seam: migrated
+    // rules pre-synthesize the legacy projection inside the rule body,
+    // so the engine pulls `synthesized` straight from
+    // `Diagnostic.fix` without calling this helper. Commit 6
+    // (Recanonicalize) is the first consumer.
     //
     // `unimplemented!()` (not `unreachable!()`) — the path is not yet
-    // built, not logically impossible. A future caller reaching this
-    // before Commit 3 wires the body should see a "not implemented"
-    // panic, not a misleading "unreachable" one.
+    // built, not logically impossible. A caller reaching this before
+    // Commit 6 wires the body should see a "not implemented" panic.
     unimplemented!(
-        "fix_intent_to_legacy_proposal called in PR 3c.B Commit 2: \
-         no rule emits FixIntent<S> yet. Commit 3+ migrates the first \
-         rule (E054) and this helper synthesizes the legacy projection \
-         at that point. The result feeds `AppliedFix::__engine_promote` \
-         as the `synthesized` parameter."
+        "fix_intent_to_legacy_proposal called pre-Commit-6: PR 3c.B \
+         Commit 3 (E054 / E057 / E021) uses dual-population — migrated \
+         rules emit both `Diagnostic.fix` (legacy projection) and \
+         `Diagnostic.fix_intent` (structural). The engine pulls \
+         `synthesized` from the diagnostic's `fix` field at paired \
+         promotion time. This helper's first consumer is Commit 6's \
+         Recanonicalize migration (E002 / S003), where the rule \
+         cannot pre-synthesize a byte-precise FixProposal."
     );
 }
 
