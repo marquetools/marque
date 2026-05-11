@@ -238,6 +238,27 @@ impl Engine {
         // the constraint-catalog bridge in `lint_inner` uses a fresh
         // `CapcoScheme::new()` (see the `scheme` field doc above for
         // the design rationale).
+        //
+        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
+        // that passes a configured `CapcoScheme` (custom catalog,
+        // runtime-amended constraint rows, alternative rewrite axis
+        // beyond what we already extracted) loses every customization
+        // here. No compile-time guard — the `S: MarkingScheme` bound
+        // permits any scheme because the scheduler test
+        // (`crates/engine/tests/scheduler.rs:106`) deliberately
+        // exercises that flexibility with a `StubScheme`. Every
+        // production call site today passes `CapcoScheme::new()` (the
+        // default), so the discard is currently lossless; a future
+        // refactor that makes `Engine<S>` truly generic over the
+        // scheme will close this. The `tracing::debug!` below makes
+        // the silent drop observable to a developer running with
+        // `MARQUE_LOG=marque_engine=debug` (off by default in
+        // production).
+        tracing::debug!(
+            target: "marque_engine::scheme_discard",
+            "user-supplied scheme dropped; constraint-catalog bridge uses default \
+             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
+        );
         drop(scheme);
         let scheme = CapcoScheme::new();
 
@@ -806,14 +827,36 @@ impl Engine {
             // `CanonicalAttrs.clone()`. `CanonicalAttrs` uses
             // `Box<[T]>` for its categorical fields, so the clone
             // allocates per list. Acceptable today because no row
-            // populates yet (so the work is wasted but bounded); 7.3 /
-            // 7.4 add real work for the bridge to do, at which point
-            // the cost amortizes over the diagnostics emitted.
+            // populates yet (so the work is wasted but bounded).
+            //
+            // TODO(pr3c-c-commit7.3): short-circuit this block when
+            // the scheme has no diagnostic-producing Custom rows. The
+            // natural shape is a `CapcoScheme::has_diagnostic_constraints()
+            // -> bool` predicate that the bridge consults before the
+            // `CapcoMarking::from(attrs.clone())` allocation. Today the
+            // predicate would always return `false` (cold-land); 7.3
+            // flips it to `true` when class-floor rows populate. This
+            // keeps the SC-001 p95-≤16ms benchmark off the per-
+            // candidate clone path until there is real catalog work
+            // for the bridge to do.
             {
                 let marking = marque_capco::CapcoMarking::from(attrs.clone());
                 let violations = self.scheme.validate(&marking);
                 for v in violations {
                     let (Some(span), Some(severity)) = (v.span, v.severity) else {
+                        // Advisory-only violation: the catalog row
+                        // did not commit to a user-facing diagnostic.
+                        // Trace the discard so a developer running
+                        // with `MARQUE_LOG=marque_engine=trace` can
+                        // see every advisory signal the engine
+                        // swallows. No allocation cost in production
+                        // (trace is off by default).
+                        tracing::trace!(
+                            target: "marque_engine::constraint_bridge",
+                            constraint = v.constraint_label,
+                            "advisory constraint violation (no span / severity); \
+                             not surfaced as Diagnostic"
+                        );
                         continue;
                     };
                     let rule_id = RuleId::new(v.constraint_label);
@@ -827,15 +870,28 @@ impl Engine {
                     if final_severity == Severity::Off {
                         continue;
                     }
-                    // PR 3c.B Commit 7.2 cold-land: `fix_intent_for`
-                    // returns `None` for every input in this commit.
-                    // PR 3c.B Commit 7.4 populates the E059 catalog
-                    // rows so this branch starts producing structural
-                    // FixIntents (and the engine's existing
-                    // `fix_inner` paired-promotion path picks them up
-                    // without further bridge changes — Path C of the
-                    // consolidated plan).
-                    let fix_intent = self.scheme.fix_intent_for(rule_id.as_str(), &attrs);
+                    // PR 3c.B Commit 7.2 cold-land: `fix_intent_by_name`
+                    // returns `None` for every input.
+                    //
+                    // # 7.4 latent gap (rust-reviewer Item 6)
+                    //
+                    // When 7.4 populates E059 catalog rows, this branch
+                    // will produce diagnostics with `fix: None,
+                    // fix_intent: Some(...)`. The `intent_index` in
+                    // `fix_inner` filters on `(d.fix.as_ref(),
+                    // d.fix_intent.as_ref())` — only `(Some, Some)`
+                    // entries are indexed. A `fix_intent`-only
+                    // diagnostic is NOT indexed, NOT added to `fixes`,
+                    // and ends up in `remaining_diagnostics` with no
+                    // fix applied. 7.4 MUST either extend the
+                    // `intent_index` filter to admit `(_, Some(intent))`
+                    // entries OR synthesize a legacy `FixProposal`
+                    // here at bridge time (via
+                    // `Diagnostic::with_fix_and_intent`) before E059's
+                    // companion-insert fixes can flow through. The
+                    // `bridge_fix_intent_only_promotion_gate`
+                    // regression test pins this expectation today.
+                    let fix_intent = self.scheme.fix_intent_by_name(rule_id.as_str(), &attrs);
                     let diag = Diagnostic::with_fix_intent(
                         rule_id,
                         final_severity,

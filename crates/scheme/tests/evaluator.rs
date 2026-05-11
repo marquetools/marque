@@ -112,6 +112,7 @@ impl MarkingScheme for StubScheme {
 
 const TOK_A: TokenId = TokenId(10);
 const TOK_B: TokenId = TokenId(11);
+const TOK_C: TokenId = TokenId(12);
 const CAT_FOO: CategoryId = CategoryId(1);
 
 // ---------------------------------------------------------------------------
@@ -203,6 +204,62 @@ fn conflict_violation_preserves_citation() {
         v[0].constraint_label, "test/conflict",
         "constraint_label must be the declared `name` — not a generic 'conflicts' string"
     );
+}
+
+#[test]
+fn dyadic_arm_violations_default_to_none_span_and_severity() {
+    // Sentinel test (review-pass MEDIUM, PR 3c.B Commit 7.2): the
+    // dyadic `Conflicts` / `Requires` arms of `evaluate` MUST emit
+    // violations with `span: None` and `severity: None`. The engine's
+    // constraint-catalog bridge (`crates/engine/src/engine.rs:776-851`)
+    // skips such violations as advisory-only — they are detected but
+    // not surfaced as `Diagnostic`s.
+    //
+    // A future PR that flips the dyadic arms to emit populated
+    // `Option<Span>` / `Option<Severity>` (giving them user-facing
+    // diagnostics) would silently change the engine's behavior — the
+    // bridge would start emitting Diagnostics for every dyadic catalog
+    // constraint that fires, which is NOT today's intent. This test
+    // pins the property: the dyadic arms emit advisory-only signals
+    // by construction; only `Constraint::Custom`-arm catalog rows
+    // populated by the scheme's `evaluate_custom` may produce
+    // user-facing diagnostics through the bridge.
+    let scheme = StubScheme::new(vec![
+        Constraint::Conflicts {
+            name: "test/conflict",
+            left: TokenRef::Token(TOK_A),
+            right: TokenRef::Token(TOK_B),
+            label: "CAPCO-2016 §H.4",
+        },
+        Constraint::Requires {
+            name: "test/requires",
+            left: TokenRef::Token(TOK_A),
+            right: TokenRef::Token(TOK_C),
+            label: "CAPCO-2016 §H.5",
+        },
+    ]);
+    let marking = StubMarking {
+        tokens: vec![TOK_A, TOK_B],
+        category_members: vec![],
+    };
+    let v = evaluate(&scheme, &marking);
+    assert_eq!(v.len(), 2, "both dyadic constraints must fire");
+    for violation in &v {
+        assert!(
+            violation.span.is_none(),
+            "dyadic-arm violations MUST emit None span (advisory-only); \
+             got Some({:?}) on {:?}",
+            violation.span,
+            violation.constraint_label,
+        );
+        assert!(
+            violation.severity.is_none(),
+            "dyadic-arm violations MUST emit None severity (advisory-only); \
+             got Some({:?}) on {:?}",
+            violation.severity,
+            violation.constraint_label,
+        );
+    }
 }
 
 #[test]

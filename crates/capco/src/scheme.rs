@@ -2134,7 +2134,7 @@ impl CapcoScheme {
     /// flows through unchanged. No behavior change at 7.2; the only
     /// purpose of the method's existence here is to give the engine
     /// bridge a stable scheme-side entry point to query.
-    pub fn fix_intent_for(
+    pub fn fix_intent_by_name(
         &self,
         _name: &str,
         _attrs: &CanonicalAttrs,

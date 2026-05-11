@@ -117,7 +117,7 @@ graph). Attaching a `fix_intent: Option<FixIntent<S>>` field to
 create a cycle.
 
 **Fix**: add a scheme-side helper
-`CapcoScheme::fix_intent_for(name: &str, attrs: &CanonicalAttrs) ->
+`CapcoScheme::fix_intent_by_name(name: &str, attrs: &CanonicalAttrs) ->
 Option<FixIntent<CapcoScheme>>` that the engine calls when
 materializing a `Diagnostic` from a `ConstraintViolation`. The helper
 returns `None` for everything in 7.2; 7.4 populates the five E059
@@ -145,9 +145,9 @@ after equivalence is green. Matches the PR 3b precedent where
 | Old | New | Scope | Land posture |
 |---|---|---|---|
 | 7.1 | **7.1** | `ConstraintViolation { span: Option<Span>, severity: Option<Severity> }`; patch ~25 construction sites to pass `None`. | Cold (trait edit; no consumer populates fields). |
-| (gap) | **7.2** | Engine bridge: `Engine::scheme: CapcoScheme` field, `self.scheme.validate(...)` per candidate, populated-violation → `Diagnostic`. Plus scheme-side `CapcoScheme::fix_intent_for(name, attrs)` helper (returns `None` in 7.2). | Cold (bridge fires no diagnostics because no catalog row populates fields). |
+| (gap) | **7.2** | Engine bridge: `Engine::scheme: CapcoScheme` field, `self.scheme.validate(...)` per candidate, populated-violation → `Diagnostic`. Plus scheme-side `CapcoScheme::fix_intent_by_name(name, attrs)` helper (returns `None` in 7.2). | Cold (bridge fires no diagnostics because no catalog row populates fields). |
 | 7.2 | **7.3** | E058 inline: 27 class-floor rows populate `Option<Span>` + `Option<Severity>` in `class_floor_emit` via lifted `class_floor_anchor_span` / `first_span_of_optional` helpers; equivalence test in `crates/capco/tests/scheme_equivalence.rs` asserts byte-identity with pre-retirement walker output; delete `DeclarativeClassFloorRule`; update `corpus_parity.rs` count from 33 → 32; remove `"E058"` from `EXPECTED_RULE_IDS`. | Hot (catalog rows start firing through the bridge). |
-| 7.3 | **7.4** | E059 inline: 5 SCI per-system rows populate fields; `CapcoScheme::fix_intent_for(name, attrs)` returns the four companion-insert FactAdd intents and the one HCS-P-sub-vs-ORCON-USGOV FactRemove intent; equivalence test green; delete `DeclarativeSciPerSystemRule`; update `corpus_parity.rs` count 32 → 31; remove `"E059"` from `EXPECTED_RULE_IDS`. | Hot (catalog rows + fixes start firing). |
+| 7.3 | **7.4** | E059 inline: 5 SCI per-system rows populate fields; `CapcoScheme::fix_intent_by_name(name, attrs)` returns the four companion-insert FactAdd intents and the one HCS-P-sub-vs-ORCON-USGOV FactRemove intent; equivalence test green; delete `DeclarativeSciPerSystemRule`; update `corpus_parity.rs` count 32 → 31; remove `"E059"` from `EXPECTED_RULE_IDS`. | Hot (catalog rows + fixes start firing). |
 
 ---
 
@@ -185,5 +185,5 @@ tests.
   shape (post-7.1).
 - `crates/engine/src/engine.rs:97-110` — `Engine::scheme` field (post-7.2).
 - `crates/engine/src/engine.rs:777-860` — engine bridge (post-7.2).
-- `crates/capco/src/scheme.rs:2137-2168` — `CapcoScheme::fix_intent_for`
+- `crates/capco/src/scheme.rs:2137-2168` — `CapcoScheme::fix_intent_by_name`
   (post-7.2).
