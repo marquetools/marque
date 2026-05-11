@@ -2162,8 +2162,15 @@ impl CapcoScheme {
     /// and `::severity` (from `ClassFloorRow::severity`) directly in
     /// [`class_floor_emit`]. The bridge is the sole emitter for the
     /// class-floor rule set as of this commit; the previous walker
-    /// path no longer exists. PR 3c.B Commit 7.4 adds the 5 SCI
-    /// per-system rows (E059) following the same pattern.
+    /// path no longer exists. PR 3c.B Commit 7.4 retired
+    /// `DeclarativeSciPerSystemRule` (E059) via a separate
+    /// direct-path mechanism — `bridge_sci_per_system_diagnostics`
+    /// — that does NOT participate in the `validate()` /
+    /// `ConstraintViolation` envelope flow (decision record
+    /// Amendment 6). The 5 SCI per-system rows therefore do not
+    /// contribute to this predicate's value; it stays `true`
+    /// because the 27 class-floor rows from 7.3 already require
+    /// the bridge walk.
     ///
     /// # Why static (not derived from the catalog at runtime)
     ///
@@ -4043,20 +4050,37 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         primary_kind: Some(TokenKind::AeaMarking),
     },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
-    // PR 3c.B Commit 7.3: passthrough row `citation` fields aligned to the
-    // `§3.7` form used by the corresponding `Constraint::Custom { label }`
-    // entries (Constitution VIII consistency). Pre-7.3 the walker emitted
-    // `row.citation = "Section 3.7"` directly; post-7.3 the bridge emits
-    // `constraint.label = "§3.7"` (via `evaluate`'s citation override).
-    // Sync at the source so any future direct read of `row.citation`
-    // matches the user-visible `Diagnostic.citation`.
+    //
+    // `row.citation` uses the `Section 3.7` form (not `§3.7`) because
+    // the citation-lint tool (FR-018) parses `§N.M` in `citation:`
+    // struct-field literals as a CAPCO section reference and would
+    // flag `§3` as a bare section without subsection letter (CAPCO
+    // sections are A-K, not digits). The cross-document
+    // `marque-applied.md` prefix doesn't currently disambiguate.
+    //
+    // The corresponding `Constraint::Custom { label: "marque-applied.md §3.7 ..." }`
+    // entries in `build_constraints()` keep the `§3.7` form because
+    // the lint only scans `citation:`, `message:`, and
+    // `constraint_label:` struct fields (not `label:`). The bridge's
+    // user-visible `Diagnostic.citation` IS the `§3.7` form because
+    // `marque_scheme::constraint::evaluate` overrides
+    // `ConstraintViolation::citation` from the constraint's `label`
+    // field after `evaluate_custom` returns — so the lint is happy
+    // AND end users see the canonical `§3.7` form. `row.citation` is
+    // internal scratch (never user-visible post-7.3) after the
+    // `evaluate` override step.
+    //
+    // Tracking issue: the citation-lint tool's CAPCO-context
+    // implicit-treatment of `citation:` fields should learn to
+    // recognize cross-document prefixes (`<word>.md §`) so the
+    // `§3.7` form can be used uniformly. Not in scope here.
     ClassFloorRow {
         name: "class-floor/passthrough-BUR",
         marking_label: "BUR family",
         presence: presence_passthrough_bur,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
     },
@@ -4066,7 +4090,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_hcs_x,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
     },
@@ -4076,7 +4100,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_klm,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
     },
@@ -4086,7 +4110,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_mvl,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
     },

@@ -902,9 +902,25 @@ impl Engine {
                     // Constitution VII as an engine-edit channel
                     // sanctioned by the PR 3c.B Commit 7 decision
                     // record (specs/006-engine-rule-refactor/decisions/
-                    // 06-commit-7-subdivision.md Amendment 2). 7.4 does NOT need
-                    // an additional engine edit — the prefix list
-                    // here is the final form for this engine surface.
+                    // 06-commit-7-subdivision.md Amendments 2 and 6).
+                    //
+                    // # E058 and E059 active arms
+                    //
+                    // The `E058/` and `class-floor/` arms fold the
+                    // 27 class-floor catalog rows under E058 (PR 7.3
+                    // wired this on through the `ConstraintViolation`
+                    // envelope path). The `E059/` and `sci-per-system/`
+                    // arms fold the 5 SCI per-system catalog rows
+                    // under E059 — though in production these flow
+                    // through the separate
+                    // `bridge_sci_per_system_diagnostics` direct path
+                    // below (decision record Amendment 6), so the
+                    // E059 arms here are reachable only if a future
+                    // PR rewires SCI per-system back through the
+                    // ConstraintViolation envelope. Both prefix arms
+                    // belong here regardless because the canonicalizer
+                    // accepts both `E058` and `E059` via
+                    // `bridge_emitted_rule_ids()`.
                     let rule_id_str = if v.constraint_label.starts_with("E058/")
                         || v.constraint_label.starts_with("class-floor/")
                     {
