@@ -3505,16 +3505,23 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// mark") at both p172 and p174.
 ///
 /// The Stage-4 target is **blocked on the parser within-category
-/// `/` separator gap** — the same gap documented in the `# No auto-fix`
-/// section above. Constitution V (Audit-First Compliance) is the
-/// load-bearing rationale: emitting a structural
-/// `FixIntent::FactRemove(EXDIS, Scope::Portion)` without a
-/// corresponding legacy `FixProposal` would violate the
-/// `fix.is_some() ⇔ fix_intent.is_some()` symmetry invariant the
-/// G13 closure walker enforces on every migrated rule (see
-/// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`).
-/// Until the parser emits within-category `/` separator spans, the
-/// only audit-safe migration state is `(None, None)`. The constructor
+/// `/` separator gap** — the same gap documented in the
+/// `# No auto-fix` section above. Constitution V (Audit-First
+/// Compliance) is the load-bearing rationale: until the parser
+/// emits within-category `/` separator spans, the legacy
+/// `FixProposal.original` cannot faithfully cover the EXDIS-plus-
+/// separator byte range, so synthesizing the legacy fix risks
+/// audit-record corruption. Emitting a structural
+/// `FixIntent::FactRemove(EXDIS, Scope::Portion)` without the
+/// corresponding legacy `FixProposal` would produce an asymmetric
+/// `(fix: None, fix_intent: Some)` Diagnostic — and the engine's
+/// `intent_index` at `crates/engine/src/engine.rs:1366-1373` only
+/// pairs Diagnostics where BOTH fields are populated, so the
+/// orphaned intent would never reach an `AppliedFixProposal::New`
+/// record. The 8.A/8.B-established `fix.is_some() ⇔
+/// fix_intent.is_some()` symmetry discipline keeps emission
+/// consistent for downstream audit consumers. The only audit-safe
+/// migration state is therefore `(None, None)`; the constructor
 /// migration to `Diagnostic::with_fix_intent(..., None)` signals
 /// conscious evaluation of the FixIntent migration and a deferred
 /// (not lazy) decision.
@@ -3571,16 +3578,20 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
 
         // PR 3c.B Sub-PR 8.E — migrated to `with_fix_intent` constructor
         // signaling consciously-decided-no-fix-intent (Category A.1
-        // Remove(EXDIS, Scope::Portion), Stage-4 target blocked on parser
-        // within-category-separator gap — see Migration status block in
-        // the rustdoc above). Constitution V (Audit-First Compliance):
-        // emitting a structural FixIntent::FactRemove(EXDIS) without a
-        // corresponding legacy FixProposal would break the
-        // `fix.is_some() ⇔ fix_intent.is_some()` symmetry invariant the
-        // G13 closure walker relies on (`tests/g13_closure_fix_intent.rs::
-        // all_migrated_rule_intents_pass_g13_envelope_walker`). Until the
-        // parser emits within-category `/` separator spans, the only
-        // audit-safe state is (None, None).
+        // Remove(EXDIS, Scope::Portion); Stage-4 target blocked on the
+        // parser within-category-separator gap). See the
+        // `# Migration status` rustdoc section above for the full
+        // Constitution V (Audit-First Compliance) argument: emitting a
+        // structural `FixIntent::FactRemove(EXDIS, Scope::Portion)`
+        // without the corresponding legacy `FixProposal` would produce
+        // an asymmetric `(fix: None, fix_intent: Some)` Diagnostic
+        // that the engine's `intent_index`
+        // (`crates/engine/src/engine.rs:1366-1373`) silently drops —
+        // only Diagnostics with both fields populated reach the
+        // pairing logic. The 8.A/8.B-established `fix.is_some() ⇔
+        // fix_intent.is_some()` symmetry discipline keeps emission
+        // consistent; the only audit-safe state until the parser-gap
+        // closes is `(None, None)`.
         vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
@@ -5739,7 +5750,7 @@ mod tests {
     /// Constitution V.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E016 with `fix_intent: None` is never
@@ -5764,7 +5775,7 @@ mod tests {
             e016.fix_intent.is_none(),
             "E016 fix_intent must be None (symmetric with fix.is_none(). \
              The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift)"
+             the only guard against asymmetric drift"
         );
     }
 
@@ -5893,7 +5904,7 @@ mod tests {
     /// that scheme-level tests cannot pin.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E036 with `fix_intent: None` is never
@@ -5953,7 +5964,7 @@ mod tests {
             d.fix_intent.is_none(),
             "E036 fix_intent must be None (symmetric with fix.is_none(). \
              The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift)"
+             the only guard against asymmetric drift"
         );
     }
 
@@ -6384,7 +6395,7 @@ mod tests {
     /// separator gap (Category A.1 Remove(EXDIS, Scope::Portion)).
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E037 with `fix_intent: None` is never
@@ -6409,7 +6420,7 @@ mod tests {
             e037.fix_intent.is_none(),
             "E037 fix_intent must be None (symmetric with fix.is_none()). \
              The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift)"
+             the only guard against asymmetric drift"
         );
     }
 
@@ -6433,7 +6444,7 @@ mod tests {
     /// rustdoc above for the full Constitution V argument.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E041 with `fix_intent: None` is never
@@ -6458,7 +6469,7 @@ mod tests {
             e041.fix_intent.is_none(),
             "E041 fix_intent must be None (symmetric with fix.is_none()). \
              The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift)"
+             the only guard against asymmetric drift"
         );
     }
 
@@ -7113,7 +7124,7 @@ mod tests {
     /// with both `fix.is_none()` AND `fix_intent.is_none()`.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E005 with `fix_intent: None` is never
