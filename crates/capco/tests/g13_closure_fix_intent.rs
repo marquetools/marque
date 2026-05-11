@@ -215,6 +215,18 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         ("(S//NF/RELIDO)\n", "E054", "FactRemove"),
         ("(S//NF/IMC/RELIDO)\n", "E054", "FactRemove"),
         ("(S//OC-USGOV/RELIDO)\n", "E057", "FactRemove"),
+        // PR 3c.B Commit 8 — E056 (ORCON ⊥ RELIDO) migrated to
+        // dual-population. Same `FactRemove { RELIDO, Portion }`
+        // shape as E054/E057; the wrapper reuses
+        // `relido_remove_intent()`.
+        ("(S//OC/RELIDO)\n", "E056", "FactRemove"),
+        // E055 (RELIDO ⊥ DISPLAY ONLY) also migrated in Commit 8
+        // but the engine's parser does not yet emit `Displayonly`
+        // tokens for any DISPLAY ONLY surface form (parser-gap
+        // #323). Wrapper-level intent-shape coverage lives in
+        // `relido_conflicts.rs`; once #323 closes, add
+        // `("(S//RELIDO/DISPLAY ONLY)\n", "E055", "FactRemove")`
+        // here.
         ("(S//RD//IMC)\n", "E021", "FactAdd"),
         // E002 USA-missing branch — FactAdd { USA, Page } on banner.
         ("SECRET//REL TO GBR\n", "E002", "FactAdd"),
@@ -286,8 +298,19 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 // `FixProposal.original` / `.replacement` channel stays open through
 // Commit 9 to preserve byte-stable NDJSON. The G13 closure on
 // `FixProposal` itself is a Commit 10 concern. This test asserts the
-// scope explicitly — a non-migrated rule (E055 / E056) emits a
-// `Legacy` variant, and the walker is NOT run on it.
+// scope explicitly — a still-non-migrated rule emits a `Legacy`
+// variant, and the walker is NOT run on it.
+//
+// As migrations land (PR 3c.B Commits 3, 6, 8, ...), this scope-guard
+// fixture rotates through rules that remain on the legacy path. PR
+// 3c.B Commit 8 migrated the four `Conflicts` RELIDO wrappers
+// (E054/E055/E056/E057), so the scope guard moves to an unmigrated
+// rule that still produces a deterministic `Legacy` AppliedFix.
+// `E010` (DeclarativeBareHcsRule) is a stable choice: `HCS → HCS-P`
+// substitution, currently emitted as `make_fix_diagnostic` (legacy
+// FixProposal path only). When E010 migrates, swap to another
+// surviving legacy rule (E012, E014, E015, ...) and update both this
+// test and the migrated-rule fixture list above.
 //
 // Constitution V Principle V test-fixture carve-out applies to any
 // fabricated `AppliedFix` values: this test exercises real engine
@@ -296,27 +319,31 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 
 #[test]
 fn legacy_variant_records_are_out_of_scope_for_this_gate() {
-    let result = engine().fix(b"(S//OC/RELIDO)\n", FixMode::Apply);
+    // `(S//HCS)` triggers E010 (DeclarativeBareHcsRule); the rule
+    // emits a legacy `FixProposal { HCS → HCS-P, confidence 0.95 }`
+    // via `make_fix_diagnostic`. Severity::Fix at confidence ≥
+    // threshold, so the engine auto-applies through the Legacy
+    // promotion path.
+    let result = engine().fix(b"(S//HCS)\n", FixMode::Apply);
     let af = result
         .applied
         .iter()
-        .find(|af| af.proposal.rule.as_str() == "E056")
-        .expect("E056 must fire on (S//OC/RELIDO)");
+        .find(|af| af.proposal.rule.as_str() == "E010")
+        .expect("E010 must fire on (S//HCS)");
 
-    // E056 is NOT in the Commit 3 beachhead — it still emits a
-    // Legacy `FixProposal`. The walker would refuse to inspect this
-    // record because `AppliedFixProposal::Legacy` carries no
+    // E010 is NOT yet migrated. The walker would refuse to inspect
+    // this record because `AppliedFixProposal::Legacy` carries no
     // `intent` field; this test confirms the scope is what we
     // expect (and serves as a regression pin if a future commit
-    // accidentally migrates E056 without updating the beachhead
-    // walker test above).
+    // accidentally migrates E010 without updating the migrated-
+    // rule fixture list above).
     assert!(
         matches!(af.proposal, AppliedFixProposal::Legacy(_)),
-        "E056 (non-migrated) must emit AppliedFixProposal::Legacy \
+        "E010 (non-migrated) must emit AppliedFixProposal::Legacy \
          through Commit 9; the migration to New + G13-clean intent \
-         lands in a later commit. Once it does, add E056's fixture \
+         lands in a later commit. Once it does, add E010's fixture \
          to `all_migrated_rule_intents_pass_g13_envelope_walker` and \
-         update this test."
+         rotate this scope guard to another non-migrated rule."
     );
 
     // The walker is NOT called on Legacy records. Constitution V

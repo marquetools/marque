@@ -1321,3 +1321,137 @@ fn find_dissem_token_span_matches_marking_or_cve_form() {
         "kind must be DissemControl — text-only match must NOT resolve"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PR 3c.B Commit 8 — FixIntent dual-population shape tests for E055 / E056
+// ---------------------------------------------------------------------------
+//
+// Mirror E054 / E057 (beachhead Commit 3): every wrapper that emits a
+// `FixProposal` now also emits a structurally equivalent `FixIntent<S>`
+// (`ReplacementIntent::FactRemove { token_ref: FactRef::Cve(TOK_RELIDO),
+// scope: Scope::Portion }`). The engine pairs `(fix, fix_intent)` at
+// promotion time so the audit record carries the `New { intent,
+// synthesized }` variant.
+//
+// These tests pin the intent's structural shape — not the FixProposal
+// byte layout (that's covered by `e055_fires_*` / `e056_fires_*` above
+// and by the engine-level baseline gate at `byte_identity_pr3c.rs`).
+
+#[test]
+fn e055_dual_populates_fix_intent_with_factremove_relido_portion() {
+    let (attrs, _src) = attrs_for_dissem_block(
+        "S",
+        &[
+            (DissemControl::Relido, "RELIDO"),
+            (DissemControl::Displayonly, "DISPLAYONLY"),
+        ],
+    );
+    let rule = DeclarativeRelidoDisplayOnlyConflictRule;
+    let diags = rule.check(&attrs, &ctx());
+    assert_eq!(diags.len(), 1);
+
+    let d = &diags[0];
+    assert!(
+        d.fix.is_some(),
+        "E055 dual-population: legacy FixProposal must still emit (byte-identity gate)"
+    );
+    let intent = d
+        .fix_intent
+        .as_ref()
+        .expect("E055 dual-population: FixIntent must be populated after Commit 8 migration");
+    match &intent.replacement {
+        marque_rules::ReplacementIntent::FactRemove { token_ref, scope } => {
+            assert_eq!(
+                token_ref,
+                &marque_rules::FactRef::Cve(TOK_RELIDO),
+                "E055 must remove RELIDO (the §H.8 p154 rejected token)"
+            );
+            assert_eq!(
+                *scope,
+                marque_scheme::Scope::Portion,
+                "E055 intent scope must be Portion (per `relido_remove_intent()`)"
+            );
+        }
+        other => panic!("E055 intent must be FactRemove; got: {other:?}"),
+    }
+    assert!(
+        (intent.confidence.combined() - 0.95).abs() < f32::EPSILON,
+        "E055 intent confidence must match the legacy FixProposal (0.95) so \
+         the engine's threshold gate produces identical filter behavior"
+    );
+}
+
+#[test]
+fn e056_dual_populates_fix_intent_with_factremove_relido_portion() {
+    let (attrs, _src) = attrs_for_dissem_block(
+        "S",
+        &[(DissemControl::Oc, "OC"), (DissemControl::Relido, "RELIDO")],
+    );
+    let rule = DeclarativeOrconRelidoConflictRule;
+    let diags = rule.check(&attrs, &ctx());
+    assert_eq!(diags.len(), 1);
+
+    let d = &diags[0];
+    assert!(
+        d.fix.is_some(),
+        "E056 dual-population: legacy FixProposal must still emit (byte-identity gate)"
+    );
+    let intent = d
+        .fix_intent
+        .as_ref()
+        .expect("E056 dual-population: FixIntent must be populated after Commit 8 migration");
+    match &intent.replacement {
+        marque_rules::ReplacementIntent::FactRemove { token_ref, scope } => {
+            assert_eq!(
+                token_ref,
+                &marque_rules::FactRef::Cve(TOK_RELIDO),
+                "E056 must remove RELIDO (the §H.8 p136 rejected token)"
+            );
+            assert_eq!(
+                *scope,
+                marque_scheme::Scope::Portion,
+                "E056 intent scope must be Portion"
+            );
+        }
+        other => panic!("E056 intent must be FactRemove; got: {other:?}"),
+    }
+    assert!(
+        (intent.confidence.combined() - 0.95).abs() < f32::EPSILON,
+        "E056 intent confidence must match the legacy FixProposal (0.95)"
+    );
+}
+
+#[test]
+fn e055_intent_absent_when_fix_helper_returns_none() {
+    // When `build_relido_removal_fix` cannot anchor (no preceding /
+    // following separator), both `fix` and `fix_intent` must be None
+    // — never asymmetric. Mirror the E054 None-arm in
+    // `DeclarativeRelidoNofornConflictRule::check` and the
+    // `Diagnostic::new(..., None)` fall-through.
+    //
+    // Constructing a triggering attrs whose `build_relido_removal_fix`
+    // returns None requires a `attrs.dissem_controls` containing both
+    // RELIDO and DISPLAY ONLY but with NO RELIDO token span (parser
+    // gap). The wrapper's `violations_for` predicate fires on the
+    // dissem-controls set; the fix helper needs the token span.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_controls = vec![DissemControl::Relido, DissemControl::Displayonly].into_boxed_slice();
+    // Deliberately omit RELIDO from token_spans to force the None arm.
+    a.token_spans = vec![TokenSpan {
+        kind: TokenKind::DissemControl,
+        text: "DISPLAYONLY".to_string().into_boxed_str(),
+        span: Span::new(3, 14),
+    }]
+    .into_boxed_slice();
+
+    let rule = DeclarativeRelidoDisplayOnlyConflictRule;
+    let diags = rule.check(&a, &ctx());
+    assert_eq!(diags.len(), 1, "rule must still emit the diagnostic");
+    let d = &diags[0];
+    assert!(d.fix.is_none(), "fix must be None when helper returns None");
+    assert!(
+        d.fix_intent.is_none(),
+        "fix_intent must be None in the None arm — never asymmetric"
+    );
+}

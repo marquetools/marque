@@ -357,78 +357,167 @@ fn e021_falls_back_to_no_fix_when_no_ic_dissem_block_exists() {
 }
 
 // ---------------------------------------------------------------------------
-// E055 / E056 control group — non-migrated rules still emit FixProposal-only
+// E055 — RELIDO ⊥ DISPLAY ONLY (FactRemove) — PR 3c.B Commit 8 migration
 // ---------------------------------------------------------------------------
 //
-// E055 (RELIDO ⊥ DISPLAY ONLY) and E056 (ORCON ⊥ RELIDO) are NOT in
-// the Commit 3 beachhead set. They continue to emit only
-// `Diagnostic.fix` (legacy `FixProposal`); `Diagnostic.fix_intent` is
-// `None`. Engine routes them through `__engine_promote_legacy` →
-// `AppliedFixProposal::Legacy`. These tests pin the unchanged
-// behavior so a future PR migrating E055 / E056 has to update both
-// the rule body AND this test, not just the rule body.
+// E055 and E056 migrated to dual-population in PR 3c.B Commit 8,
+// mirroring the E054 / E057 beachhead pattern. Both wrappers call
+// `Diagnostic::with_fix_and_intent(...)` with `relido_remove_intent()`
+// — the same `FactRemove { RELIDO, Portion }` shape used by every
+// RELIDO-removal wrapper. The engine pairs `(fix, fix_intent)` at
+// promotion time and routes the pair through
+// `AppliedFixProposal::New { intent, synthesized }`.
 
 #[test]
-fn e055_emits_legacy_fix_only_post_commit_3() {
+fn e055_emits_correct_fix_intent_shape() {
+    // Engine-path coverage is parser-gap-gated. The §H.8 p163
+    // marking-surface form `DISPLAY ONLY` (with space) and the
+    // CVE attribute form `DISPLAYONLY` (no space) both round-trip
+    // through `find_dissem_token_span` at the wrapper layer, but
+    // the engine's Aho-Corasick parser does not yet tokenize
+    // either form as `DissemControl::Displayonly` through the
+    // full lint pipeline — tracked as parser-gap issue #323.
+    //
+    // The rule body's intent-shape correctness is exercised
+    // directly at the unit-test layer in
+    // `relido_conflicts.rs::e055_dual_populates_fix_intent_with_factremove_relido_portion`,
+    // which constructs `CanonicalAttrs` programmatically (bypassing
+    // the parser) and asserts the same `FactRemove { RELIDO,
+    // Portion }` shape this test would. Once #323 closes, replace
+    // this vacuous-pass with the same body as
+    // `e054_emits_correct_fix_intent_shape` above.
+    //
+    // The vacuous-pass surfaces as a CI warning so a future parser
+    // change that ALSO breaks the wrapper silently doesn't mask
+    // the regression: the wrapper-level test in relido_conflicts.rs
+    // would still fire.
     let source = "(S//RELIDO/DISPLAY ONLY)";
     let diags = engine().lint(source.as_bytes()).diagnostics;
-    let Some(d) = diags.iter().find(|d| d.rule.as_str() == "E055") else {
-        // Parser may not recognize "DISPLAY ONLY" with space; the
-        // test exists primarily as a regression pin for the dual-
-        // population invariant. If E055 doesn't fire, the control-
-        // group assertion is vacuously satisfied.
-        //
-        // Surface the vacuous-pass in CI logs so a future change
-        // that silently breaks the parser path (e.g., regresses
-        // "DISPLAY ONLY" tokenization) doesn't mask the regression
-        // by also masking this test. E056 carries the same
-        // control-group invariant via a separately-tokenized
-        // fixture, so the dual-population pin is not lost.
+    if diags.iter().any(|d| d.rule.as_str() == "E055") {
+        let d = diags.iter().find(|d| d.rule.as_str() == "E055").unwrap();
+        let intent = d
+            .fix_intent
+            .as_ref()
+            .expect("E055 must carry `fix_intent` post-Commit-8");
+        match &intent.replacement {
+            ReplacementIntent::FactRemove { token_ref, scope } => {
+                assert!(matches!(token_ref, FactRef::Cve(id) if *id == TOK_RELIDO));
+                assert_eq!(*scope, Scope::Portion);
+            }
+            other => panic!("E055 intent must be FactRemove, got {other:?}"),
+        }
+    } else {
         eprintln!(
-            "WARNING: e055_emits_legacy_fix_only_post_commit_3 vacuously passed — \
-             parser did not recognize `DISPLAY ONLY` in fixture \
-             `(S//RELIDO/DISPLAY ONLY)`. Tracked as a parser-gap follow-up; \
-             E056 carries the same control-group invariant."
+            "WARNING: e055_emits_correct_fix_intent_shape vacuously passed — \
+             parser did not emit `Displayonly` token for `(S//RELIDO/DISPLAY ONLY)`. \
+             Tracked as parser-gap #323; wrapper-level intent-shape coverage \
+             lives in `relido_conflicts.rs`."
         );
-        return;
-    };
-    assert!(
-        d.fix.is_some() && d.fix_intent.is_none(),
-        "E055 (non-migrated) must emit only `fix`; intent migration \
-         lands in a later commit. Got fix={:?}, fix_intent={:?}",
-        d.fix,
-        d.fix_intent
-    );
+    }
 }
 
 #[test]
-fn e056_emits_legacy_fix_only_post_commit_3() {
+fn e055_promotes_through_engine_as_new_variant() {
+    // Same parser-gap gating as `e055_emits_correct_fix_intent_shape`
+    // — see that test for the rationale. Once #323 closes, replace
+    // this vacuous-pass with the E054 promotion-path body.
+    let source = "(S//RELIDO/DISPLAY ONLY)";
+    let result = engine().fix(source.as_bytes(), FixMode::Apply);
+    if let Some(applied) = result
+        .applied
+        .iter()
+        .find(|af| af.proposal.rule.as_str() == "E055")
+    {
+        match &applied.proposal {
+            AppliedFixProposal::New {
+                intent,
+                synthesized,
+            } => {
+                assert_eq!(synthesized.rule.as_str(), "E055");
+                assert!(matches!(
+                    intent.replacement,
+                    ReplacementIntent::FactRemove {
+                        token_ref: FactRef::Cve(t),
+                        scope: Scope::Portion,
+                    } if t == TOK_RELIDO
+                ));
+            }
+            AppliedFixProposal::Legacy(_) => panic!(
+                "E055 must promote as New (Commit 8 dual-population); got Legacy — \
+                 the intent_index pairing did not fire."
+            ),
+        }
+    } else {
+        eprintln!(
+            "WARNING: e055_promotes_through_engine_as_new_variant vacuously passed — \
+             parser did not emit `Displayonly` token; engine path did not auto-apply. \
+             Parser-gap #323."
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E056 — ORCON ⊥ RELIDO (FactRemove) — PR 3c.B Commit 8 migration
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e056_emits_correct_fix_intent_shape() {
     let source = "(S//OC/RELIDO)";
     let diags = engine().lint(source.as_bytes()).diagnostics;
     let d = diags
         .iter()
         .find(|d| d.rule.as_str() == "E056")
         .expect("E056 must fire on (S//OC/RELIDO)");
-    assert!(
-        d.fix.is_some() && d.fix_intent.is_none(),
-        "E056 (non-migrated) must emit only `fix`; intent migration \
-         lands in a later commit. Got fix={:?}, fix_intent={:?}",
-        d.fix,
-        d.fix_intent
-    );
 
-    // Sanity: the legacy proposal still promotes through
-    // __engine_promote_legacy as AppliedFixProposal::Legacy.
+    let fix = d.fix.as_ref().expect("E056 must carry legacy `fix`");
+    let intent = d
+        .fix_intent
+        .as_ref()
+        .expect("E056 must carry new `fix_intent`");
+
+    match &intent.replacement {
+        ReplacementIntent::FactRemove { token_ref, scope } => {
+            assert!(matches!(token_ref, FactRef::Cve(id) if *id == TOK_RELIDO));
+            assert_eq!(*scope, Scope::Portion);
+        }
+        other => panic!("E056 intent must be FactRemove, got {other:?}"),
+    }
+    assert!((intent.confidence.rule - 0.95).abs() < f32::EPSILON);
+    assert_eq!(fix.replacement.as_ref(), "");
+}
+
+#[test]
+fn e056_promotes_through_engine_as_new_variant() {
+    let source = "(S//OC/RELIDO)";
     let result = engine().fix(source.as_bytes(), FixMode::Apply);
+
     let applied = result
         .applied
         .iter()
         .find(|af| af.proposal.rule.as_str() == "E056")
-        .expect("E056 must auto-apply");
-    assert!(
-        matches!(applied.proposal, AppliedFixProposal::Legacy(_)),
-        "E056 must promote as Legacy, not New (no FixIntent migrated yet)"
-    );
+        .expect("E056 must promote through Engine::fix");
+
+    match &applied.proposal {
+        AppliedFixProposal::New {
+            intent,
+            synthesized,
+        } => {
+            assert_eq!(synthesized.rule.as_str(), "E056");
+            assert_eq!(synthesized.replacement.as_ref(), "");
+            assert!(matches!(
+                intent.replacement,
+                ReplacementIntent::FactRemove {
+                    token_ref: FactRef::Cve(t),
+                    scope: Scope::Portion,
+                } if t == TOK_RELIDO
+            ));
+        }
+        AppliedFixProposal::Legacy(_) => panic!(
+            "E056 must promote as New (Commit 8 dual-population); got Legacy — \
+             the intent_index pairing did not fire."
+        ),
+    }
+    assert_eq!(result.source, b"(S//OC)");
 }
 
 // ---------------------------------------------------------------------------
