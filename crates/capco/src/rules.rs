@@ -3515,11 +3515,11 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// `FixIntent::FactRemove(EXDIS, Scope::Portion)` without the
 /// corresponding legacy `FixProposal` would produce an asymmetric
 /// `(fix: None, fix_intent: Some)` Diagnostic — and the engine's
-/// `intent_index` at `crates/engine/src/engine.rs:1366-1373` only
-/// pairs Diagnostics where BOTH fields are populated, so the
-/// orphaned intent would never reach an `AppliedFixProposal::New`
-/// record. The 8.A/8.B-established `fix.is_some() ⇔
-/// fix_intent.is_some()` symmetry discipline keeps emission
+/// `intent_index` only pairs Diagnostics when both `fix` and
+/// `fix_intent` are populated, so the orphaned intent would never
+/// reach an `AppliedFixProposal::New` record. The 8.A/8.B-
+/// established `fix.is_some() ⇔ fix_intent.is_some()` symmetry
+/// discipline keeps emission
 /// consistent for downstream audit consumers. The only audit-safe
 /// migration state is therefore `(None, None)`; the constructor
 /// migration to `Diagnostic::with_fix_intent(..., None)` signals
@@ -6454,7 +6454,7 @@ mod tests {
     /// toward `fix.is_some() && fix_intent.is_none()` (or the inverse)
     /// would slip through CI silently.
     #[test]
-    fn e041_emits_no_fix_and_no_fix_intent_pending_stage4_a1_remove_blocked_on_parser_gap() {
+    fn e041_emits_no_fix_or_intent_when_parser_gap() {
         let diags = lint_portion("(S//NF//ND/XD)");
         let e041 = diags
             .iter()
