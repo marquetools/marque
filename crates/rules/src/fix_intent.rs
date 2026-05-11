@@ -14,13 +14,13 @@
 //! full surface, defined in
 //! [`marque_scheme::fix_intent`](marque_scheme::fix_intent). Rules
 //! import [`FactRef`], [`ReplacementIntent`], and [`RecanonScope`]
-//! through `marque-rules`'s re-exports; the types themselves live in
-//! `marque-scheme` because the
+//! directly from `marque_scheme` — the types live there because the
 //! [`MarkingScheme::apply_intent`](marque_scheme::MarkingScheme::apply_intent)
-//! trait method (the engine-prereq PR) needs to reference them at the
-//! trait surface, and `marque-rules` already depends on
+//! trait method (added in the engine-prereq PR) needs to reference
+//! them at the trait surface, and `marque-rules` already depends on
 //! `marque-scheme` — importing in the other direction would create a
-//! cycle.
+//! cycle. `marque-rules` does NOT re-export them: rule crates import
+//! directly from `marque_scheme::{FactRef, ReplacementIntent, RecanonScope}`.
 //!
 //! # Lifecycle (post-PR-3c.B Commit 2)
 //!
@@ -56,11 +56,13 @@ use crate::message::Message;
 /// Rule-emission API.
 ///
 /// **Rules construct this type; the engine promotes.** External
-/// rule crates depend on `marque-rules` (which re-exports
-/// [`FixIntent`], [`ReplacementIntent`], [`FactRef`],
-/// [`RecanonScope`], [`Message`], [`crate::MessageTemplate`],
-/// [`crate::MessageArgs`], [`Confidence`], [`FeatureId`]); they do
-/// NOT depend on `marque-engine`.
+/// rule crates depend on `marque-rules` for [`FixIntent`],
+/// [`Message`], [`crate::MessageTemplate`], [`crate::MessageArgs`],
+/// [`Confidence`], and [`FeatureId`]; they import
+/// [`ReplacementIntent`], [`FactRef`], and [`RecanonScope`] directly
+/// from `marque_scheme` (which `marque-rules` already depends on,
+/// so the trait surface is transitively available). They do NOT
+/// depend on `marque-engine`.
 ///
 /// # Type parameter
 ///

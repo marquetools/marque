@@ -392,6 +392,37 @@ impl Engine {
     /// §R3 trade-off — a finer-grained check inside `Rule::check`
     /// would require a deadline-aware rule trait.
     pub fn lint_with_options(&self, source: &[u8], opts: &LintOptions) -> LintResult {
+        // Public surface: discard the parsed-markings cache. Internal
+        // callers that need it (`fix_inner`, for intent-only fix
+        // synthesis without re-parsing) go through
+        // `lint_with_options_internal` directly.
+        self.lint_with_options_internal(source, opts).0
+    }
+
+    /// Internal lint entrypoint that returns the parsed-markings cache
+    /// alongside the public `LintResult`.
+    ///
+    /// The cache maps each scanner-emitted candidate's `Span` (the
+    /// source-relative byte range of the candidate, not the
+    /// post-`shift_token_spans` attribute spans) to the
+    /// `Parsed::Unambiguous` `CapcoMarking` produced by the
+    /// recognizer. `synthesize_intent_only_fixes` reads this so the
+    /// intent-only synthesis path NEVER re-parses with a different
+    /// `ParseContext` — and therefore cannot diverge from the lint
+    /// phase's recognition decision (Copilot PR #369 finding #2:
+    /// `classification_floor` divergence between lint and synthesis
+    /// could turn a previously-unambiguous candidate into
+    /// `Parsed::Ambiguous` and silently drop a fix).
+    ///
+    /// Candidates that fail to recognize (ambiguous or zero
+    /// candidates), page-break candidates, and corrections-map text
+    /// candidates do not populate the cache; only successful
+    /// unambiguous recognitions are stored.
+    fn lint_with_options_internal(
+        &self,
+        source: &[u8],
+        opts: &LintOptions,
+    ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
         use marque_core::Scanner;
         use marque_ism::{MarkingType, PageContext};
         use marque_rules::RuleContext;
@@ -401,10 +432,13 @@ impl Engine {
         // runs at all, preserving the spec invariant that the
         // expired path is observable in zero work.
         if deadline_expired(opts.deadline) {
-            return LintResult {
-                truncated: true,
-                ..Default::default()
-            };
+            return (
+                LintResult {
+                    truncated: true,
+                    ..Default::default()
+                },
+                HashMap::new(),
+            );
         }
 
         let candidates = Scanner::scan(source);
@@ -420,6 +454,14 @@ impl Engine {
         // non-truncated completion.
         let candidates_total = candidates.len();
         let mut candidates_processed: usize = 0;
+
+        // Cache of successfully-recognized markings, keyed by the
+        // scanner candidate's source-relative `Span`. Populated below
+        // immediately after each `Parsed::Unambiguous` recognition and
+        // consumed by `synthesize_intent_only_fixes` so the synthesis
+        // path looks up the same marking the lint phase saw — avoiding
+        // the `ParseContext` divergence Copilot finding #2 flagged.
+        let mut parsed_markings: HashMap<Span, marque_capco::CapcoMarking> = HashMap::new();
 
         // corrections_arc was built once at Engine construction; each clone here
         // is an O(1) refcount bump.
@@ -505,13 +547,16 @@ impl Engine {
             // `truncated/processed/total` triple to the caller
             // without falling through the rest of the function.
             if deadline_expired(opts.deadline) {
-                return LintResult {
-                    diagnostics,
-                    truncated: true,
-                    candidates_processed,
-                    candidates_total,
-                    ..Default::default()
-                };
+                return (
+                    LintResult {
+                        diagnostics,
+                        truncated: true,
+                        candidates_processed,
+                        candidates_total,
+                        ..Default::default()
+                    },
+                    parsed_markings,
+                );
             }
 
             // T009: count every candidate the engine started
@@ -594,6 +639,15 @@ impl Engine {
                 continue;
             };
             shift_token_spans(&mut marking.0, start);
+            // Cache the recognized marking before destructuring so
+            // `synthesize_intent_only_fixes` can recover it by
+            // candidate span without re-parsing under a divergent
+            // `ParseContext` (Copilot PR #369 finding #2). The clone
+            // path here is bounded by the candidate count — same cost
+            // shape as the existing `CapcoMarking::from(attrs.clone())`
+            // construction the constraint bridge does below at the
+            // `has_diagnostic_constraints()` arm.
+            parsed_markings.insert(candidate.span, marking.clone());
             // Capture the decoder-provenance side channel before
             // collapsing the marking onto its `CanonicalAttrs` payload.
             // Strict-path recognizers leave this `None`; the decoder
@@ -1136,13 +1190,16 @@ impl Engine {
             }
         }
 
-        LintResult {
-            diagnostics,
-            truncated: false,
-            candidates_processed,
-            candidates_total,
-            ..Default::default()
-        }
+        (
+            LintResult {
+                diagnostics,
+                truncated: false,
+                candidates_processed,
+                candidates_total,
+                ..Default::default()
+            },
+            parsed_markings,
+        )
     }
 
     /// Lint and apply fixes. Returns fixed source and audit log.
@@ -1271,7 +1328,7 @@ impl Engine {
             deadline,
             ..Default::default()
         };
-        let lint1 = self.lint_with_options(source, &lint_opts);
+        let (lint1, parsed_markings1) = self.lint_with_options_internal(source, &lint_opts);
         if deadline_expired(deadline) {
             return Err(EngineError::DeadlineExceeded {
                 partial_lint: lint1,
@@ -1280,11 +1337,16 @@ impl Engine {
         let (effective_source, pass1_applied) =
             self.apply_text_corrections(source, &lint1, threshold, mode);
 
-        let lint = if !pass1_applied.is_empty() {
+        // After pass-1 text corrections apply, the scanner sees a
+        // different source on pass-2; spans / markings produced by
+        // pass-1 are stale relative to the corrected buffer. Use the
+        // pass-2 cache whenever a re-lint runs so synthesis looks up
+        // markings that match `effective_source`'s coordinate space.
+        let (lint, parsed_markings) = if !pass1_applied.is_empty() {
             // Re-lint the corrected source so the scanner picks up newly-valid markings.
-            self.lint_with_options(&effective_source, &lint_opts)
+            self.lint_with_options_internal(&effective_source, &lint_opts)
         } else {
-            lint1
+            (lint1, parsed_markings1)
         };
 
         // Post-lint deadline check: if the deadline expired during
@@ -1414,7 +1476,7 @@ impl Engine {
         // per-rule.
         let intent_only_synthesized: Vec<FixProposal> = synthesize_intent_only_fixes(
             &self.scheme,
-            &*self.recognizer,
+            &parsed_markings,
             &effective_source,
             &lint.diagnostics,
             threshold,
@@ -1942,32 +2004,58 @@ fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
 ///
 /// Walks `diagnostics`, finds entries with `fix.is_none() &&
 /// fix_intent.is_some() && candidate_span.is_some()`, groups them by
-/// `candidate_span`, re-parses each candidate's source bytes through
-/// the recognizer to recover the original [`CapcoMarking`], applies
+/// `candidate_span`, looks up each candidate's recognized marking in
+/// the `parsed_markings` cache populated by the lint phase, applies
 /// the group's intent batch via [`CapcoScheme::apply_intent`], and
 /// renders the resulting marking via [`CapcoScheme::render_portion`]
-/// or [`CapcoScheme::render_banner`] (selected by the diagnostic's
-/// `marking_type` is *not* stored on `Diagnostic` — the diagnostic
-/// surfaces `MarkingType` only via `RuleContext`, which we don't
-/// keep — so we infer the scope from the candidate bytes themselves:
-/// a portion is wrapped in `()`, a banner is not).
+/// or [`CapcoScheme::render_banner`]. The candidate's portion-vs-banner
+/// scope is inferred from the candidate bytes themselves: a portion is
+/// wrapped in `()`, a banner is not.
 ///
-/// Returns one [`FixProposal`] per diagnostic in the group, sharing
-/// the synthesized replacement bytes but carrying the diagnostic's
-/// `rule` field and `candidate_span` so the engine's paired-promotion
-/// loop can route each one to its parent diagnostic.
+/// Returns one [`FixProposal`] **per candidate-span group** (Copilot
+/// PR #369 finding #1; see "Audit collapse" below).
+///
+/// # Audit collapse: one FixProposal per group (lex-min rule_id wins)
+///
+/// When multiple intent-only diagnostics share a `candidate_span`,
+/// the function collapses them into ONE `FixProposal` whose `rule` is
+/// the lexicographically-smallest rule_id in the group (FR-016
+/// deterministic ordering) and whose `confidence` is the minimum
+/// combined-confidence across the group's intents.
+///
+/// **Rationale.** The previous "one FixProposal per diagnostic in the
+/// group" emission interacted badly with the C-1 overlap guard
+/// (`Engine::fix_inner`): C-1 keeps only one fix per overlapping span,
+/// so the dropped N-1 diagnostics were not promoted (no
+/// `AppliedFixProposal::New` for them) and remained in
+/// `remaining_diagnostics` despite the bytes being rewritten by the
+/// kept fix — an audit asymmetry. Collapsing at synthesis time
+/// preserves the architect's preflight design ("synthesize one
+/// FixProposal per candidate-span group", architect preflight
+/// 2026-05-11) and produces honest audit output:
+///
+/// - **Stage-3 E041 (N=1)**: one diagnostic in the group →
+///   identical to per-diagnostic emission.
+/// - **Stage-4 E024 (one rule, many `FactRemove` intents on the same
+///   candidate)**: the group's diagnostics all share the same
+///   `rule_id`, so the lex-min collapse produces an audit record under
+///   that single rule — exactly the right shape for a one-rule
+///   multi-remove atomic change (Constitution V Principle V:
+///   audit-per-rule).
+/// - **Multi-rule on same candidate (rare)**: the lex-min rule wins
+///   the audit entry; the other N-1 diagnostics surface via
+///   `remaining_diagnostics` for caller visibility, which is honest:
+///   they fired and were observed, but the engine applied one
+///   rewrite, not N.
 ///
 /// # Per-candidate atomic application
 ///
-/// Multiple intent-only diagnostics on the same `candidate_span` are
-/// applied as a single batch — the scheme's `apply_intent` takes a
-/// slice. This is what absorbs the E024 multi-remove cluster
-/// (RD/FRD/TFNI from the same portion) without requiring the engine
-/// to splice multiple per-token edits into the same byte range. Each
-/// diagnostic in the group gets a [`FixProposal`] carrying the same
-/// (re-rendered) replacement bytes; the C-1 overlap guard later
-/// deduplicates them per `(span.start, span.end)` so the engine
-/// applies the rewrite exactly once.
+/// All intents in the group are applied atomically through
+/// `scheme.apply_intent(&marking, &intents)` — the scheme's
+/// `apply_intent` takes a slice. This is what absorbs the E024
+/// multi-remove cluster (RD/FRD/TFNI from the same portion) without
+/// requiring the engine to splice multiple per-token edits into the
+/// same byte range.
 ///
 /// # Filters
 ///
@@ -1975,11 +2063,14 @@ fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
 ///   is a hard exclusion from auto-apply by construction).
 /// - Confidence below `threshold` → excluded.
 /// - `candidate_span.is_empty()` → excluded (no scope to re-render).
-/// - Recognizer returns `Parsed::Ambiguous` or yields no
-///   `Unambiguous` marking → diagnostic dropped silently. The lint
-///   phase already produced these diagnostics from a successful
-///   parse; a divergence at synthesis time is a recognizer
-///   nondeterminism we cannot recover from.
+/// - Candidate not present in `parsed_markings` → diagnostic dropped
+///   with a `tracing::warn`. The invariant (since Copilot PR #369
+///   finding #2 fix) is that every intent-only diagnostic came from a
+///   successful lint-phase parse and therefore appears in the cache;
+///   a miss indicates a regression — most likely a rule that emitted
+///   an intent-only diagnostic without populating
+///   `Diagnostic.candidate_span` from `RuleContext.candidate_span`,
+///   or a candidate_span that points outside the document.
 /// - `scheme.apply_intent` returns `Err(IntentInapplicable)` → the
 ///   diagnostic is dropped silently (the marking is already
 ///   consistent, no fix needed). `Err(UnknownToken)` or
@@ -1995,6 +2086,18 @@ fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
 /// consumer where the fix landed; `replacement` carries what it
 /// became; the original bytes already exist in the source document.
 ///
+/// # Whitespace preservation (Copilot PR #369 finding #3)
+///
+/// For banner candidates, the scanner-emitted `candidate_span`
+/// typically includes leading indentation and/or trailing whitespace
+/// on the banner line, but `scheme.render_banner(...)` emits no
+/// surrounding whitespace. Naively replacing the whole span would
+/// strip the line's leading/trailing whitespace. The synthesized
+/// replacement therefore preserves any ASCII whitespace at the head
+/// and tail of the candidate slice, splicing the rendered marking
+/// between them. Portion candidates wrapped in `()` and zero-whitespace
+/// banners are unaffected.
+///
 /// # Pre-migration status
 ///
 /// No production rule emits intent-only as of the engine-prereq
@@ -2003,7 +2106,7 @@ fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
 /// integration test (`crates/engine/tests/intent_only_byte_identity.rs`).
 fn synthesize_intent_only_fixes(
     scheme: &CapcoScheme,
-    recognizer: &dyn Recognizer<CapcoScheme>,
+    parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
     source: &[u8],
     diagnostics: &[marque_rules::Diagnostic<CapcoScheme>],
     threshold: f32,
@@ -2054,7 +2157,7 @@ fn synthesize_intent_only_fixes(
 
     let mut out: Vec<FixProposal> = Vec::with_capacity(groups.len());
 
-    for (_key, (cspan, group_diags)) in groups {
+    for (_key, (cspan, mut group_diags)) in groups {
         let start = cspan.start.min(source.len());
         let end = cspan.end.min(source.len());
         if start >= end {
@@ -2062,32 +2165,36 @@ fn synthesize_intent_only_fixes(
         }
         let bytes = &source[start..end];
 
-        // Re-parse the candidate to recover the original marking.
-        // The lint phase already parsed this candidate successfully
-        // (to produce the diagnostics in `group_diags`), but we don't
-        // carry the parsed marking through the diagnostic stream —
-        // re-parsing is the simplest path. Cost is bounded by the
-        // number of intent-only diagnostic groups, which is small.
-        let parse_cx = ParseContext {
-            strict_evidence: false,
-            zone: None,
-            position: None,
-            classification_floor: None,
-            as_of: None,
-            preceded_by_whitespace: match start.checked_sub(1) {
-                None => true,
-                Some(prev_idx) => source
-                    .get(prev_idx)
-                    .map(|b| b.is_ascii_whitespace())
-                    .unwrap_or(true),
-            },
-        };
-        let Parsed::Unambiguous(marking) = recognizer.recognize(bytes, &parse_cx) else {
+        // Look up the marking the lint phase recognized for this
+        // candidate. Closing the Copilot PR #369 finding #2 channel:
+        // re-parsing here under an empty `ParseContext` could diverge
+        // from the lint-phase recognition (e.g., FR-011's
+        // `classification_floor` is None at synthesis but populated
+        // during lint), turning a previously-unambiguous candidate
+        // into `Parsed::Ambiguous` and silently dropping the fix. The
+        // cache is populated by `lint_with_options_internal` so the
+        // marking here is byte-identical to the one the rule fired
+        // against.
+        let Some(marking) = parsed_markings.get(&cspan) else {
+            // Invariant: every intent-only diagnostic came from a
+            // successful lint-phase parse, so its candidate_span
+            // MUST be in the cache. A miss here means either:
+            //   1. A rule emitted an intent-only Diagnostic with a
+            //      candidate_span that doesn't match any scanner
+            //      candidate (rule bug — rules should copy
+            //      `RuleContext.candidate_span` verbatim).
+            //   2. The lint phase did not record this candidate
+            //      (recognizer returned Ambiguous, so no marking;
+            //      but then no rule could have fired and produced an
+            //      intent-only diagnostic in the first place).
+            // Both are bugs; log and skip rather than fabricate.
             tracing::warn!(
                 target: "marque_engine::intent_only_synth",
                 start = start,
                 end = end,
-                "recognizer returned non-unambiguous result during intent-only fix synthesis; skipping"
+                "intent-only diagnostic's candidate_span missing from \
+                 parsed-markings cache; rule may have populated \
+                 candidate_span incorrectly. Skipping fix synthesis."
             );
             continue;
         };
@@ -2101,7 +2208,7 @@ fn synthesize_intent_only_fixes(
             .filter_map(|d| d.fix_intent.as_ref().map(|i| i.replacement.clone()))
             .collect();
 
-        let modified = match scheme.apply_intent(&marking, &intents) {
+        let modified = match scheme.apply_intent(marking, &intents) {
             Ok(m) => m,
             Err(marque_scheme::ApplyIntentError::IntentInapplicable) => {
                 // Marking is already consistent — drop silently.
@@ -2119,39 +2226,112 @@ fn synthesize_intent_only_fixes(
             }
         };
 
-        // Render the modified marking. Pick portion vs banner shape
-        // from the original candidate bytes: portions are wrapped in
-        // `()` per CAPCO-2016 §A.6.
-        let replacement: String = if bytes.first() == Some(&b'(') && bytes.last() == Some(&b')') {
+        // Render the modified marking, preserving any
+        // leading/trailing ASCII whitespace from the candidate slice
+        // (Copilot PR #369 finding #3). `scheme.render_banner(...)`
+        // emits no surrounding whitespace; without this preservation
+        // step, the splice would strip indentation / trailing spaces
+        // from any banner line the synthesis path targets. ASCII
+        // whitespace is always valid UTF-8 (single-byte code points
+        // ≤ 0x20), so the `from_utf8` calls below cannot fail.
+        let leading_ws_len = bytes.iter().take_while(|b| b.is_ascii_whitespace()).count();
+        let trailing_ws_len = bytes
+            .iter()
+            .rev()
+            .take_while(|b| b.is_ascii_whitespace())
+            .count();
+        let trimmed_start = leading_ws_len;
+        let trimmed_end = bytes.len().saturating_sub(trailing_ws_len);
+
+        // Guard: if the candidate is all whitespace, something went
+        // wrong upstream (the scanner should not have emitted such a
+        // candidate). Skip rather than emit an empty replacement.
+        if trimmed_end <= trimmed_start {
+            tracing::warn!(
+                target: "marque_engine::intent_only_synth",
+                start = start,
+                end = end,
+                "intent-only candidate bytes are all whitespace; skipping"
+            );
+            continue;
+        }
+
+        let trimmed = &bytes[trimmed_start..trimmed_end];
+        // Portion vs banner: inferred from the trimmed candidate bytes
+        // — a portion is wrapped in `()` per CAPCO-2016 §A.6.
+        let core: String = if trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')') {
             format!("({})", scheme.render_portion(&modified))
         } else {
             scheme.render_banner(&modified)
         };
 
-        // One FixProposal per diagnostic in the group. The C-1
-        // overlap guard later deduplicates by (rule, span), so two
-        // diagnostics on the same span produce one applied fix in
-        // the output buffer — which is the desired behavior for
-        // atomic multi-fact changes (E024 cluster). Both diagnostics
-        // remain in the audit stream via paired promotion.
-        for d in group_diags {
-            // Snapshot of the rule's confidence + features so the
-            // synthesized FixProposal carries audit-ready metadata.
-            let intent = d.fix_intent.as_ref().expect("filtered above");
-            out.push(FixProposal::new(
-                d.rule.clone(),
-                FixSource::BuiltinRule,
-                cspan,
-                // G13 closure: original bytes elided on the new
-                // emission path. The audit consumer reconstructs
-                // `original` from `source[span.start..span.end]` if
-                // needed.
-                "",
-                replacement.as_str(),
-                intent.confidence.clone(),
-                None,
-            ));
+        // Reconstruct: leading_ws + core + trailing_ws. The splice
+        // covers the original candidate_span, so the surrounding
+        // whitespace must be re-emitted to preserve the original
+        // line's shape. ASCII whitespace is always valid UTF-8.
+        let leading_ws =
+            std::str::from_utf8(&bytes[..leading_ws_len]).expect("ASCII whitespace is valid UTF-8");
+        let trailing_ws =
+            std::str::from_utf8(&bytes[trimmed_end..]).expect("ASCII whitespace is valid UTF-8");
+        let replacement = format!("{leading_ws}{core}{trailing_ws}");
+
+        // Audit-collapse (Copilot PR #369 finding #1, architect
+        // preflight 2026-05-11, Constitution V audit-per-rule):
+        // emit ONE FixProposal per candidate-span group. The owning
+        // rule is the lexicographically-smallest rule_id in the
+        // group (FR-016 deterministic ordering); the combined
+        // confidence is the minimum across the group's intents
+        // (conservative — the engine's threshold gate compares
+        // against the weakest signal in the batch).
+        //
+        // Sort once by rule_id ASC so `[0]` is the lex-min entry.
+        group_diags.sort_by(|a, b| a.rule.cmp(&b.rule));
+        let owning_diag = group_diags[0];
+        let owning_intent = owning_diag
+            .fix_intent
+            .as_ref()
+            .expect("filtered above by intent.is_some()");
+
+        // Combine confidence axes: take the minimum combined() across
+        // the group, but keep the owning diagnostic's full
+        // `Confidence` record (its `features` / `runner_up_ratio` /
+        // provenance) as the carrier. The minimum-combined()
+        // comparison is purely for the threshold-gate axis; we don't
+        // mint a fabricated provenance trace by merging feature lists
+        // across rules.
+        let min_combined: f32 = group_diags
+            .iter()
+            .filter_map(|d| d.fix_intent.as_ref())
+            .map(|i| i.confidence.combined())
+            .fold(f32::INFINITY, f32::min);
+        let mut combined_confidence = owning_intent.confidence.clone();
+        // Only down-rate when another diagnostic in the group is
+        // strictly weaker than the owner; otherwise preserve the
+        // owner's confidence verbatim.
+        if min_combined < combined_confidence.combined() && combined_confidence.rule > 0.0 {
+            // Scale `rule` down so combined() equals min_combined,
+            // holding `recognition` constant. Saturates at 0.0 to
+            // honor the [0.0, 1.0] axis invariant
+            // (`Confidence::validate`).
+            let scaled_rule = (min_combined
+                / combined_confidence.recognition.max(f32::MIN_POSITIVE))
+            .clamp(0.0, 1.0);
+            combined_confidence.rule = scaled_rule;
         }
+
+        out.push(FixProposal::new(
+            owning_diag.rule.clone(),
+            FixSource::BuiltinRule,
+            cspan,
+            // G13 closure: original bytes elided on the new
+            // emission path. The audit consumer reconstructs
+            // `original` from `source[span.start..span.end]` if
+            // needed.
+            "",
+            replacement.as_str(),
+            combined_confidence,
+            None,
+        ));
     }
 
     out

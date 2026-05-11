@@ -130,7 +130,6 @@ pub trait MarkingScheme {
     /// fail-loud behavior pre-migration.
     ///
     /// [`ReplacementIntent`]: crate::ReplacementIntent
-    /// [`FixIntent`]: crate::ReplacementIntent
     /// [`ApplyIntentError`]: ApplyIntentError
     fn category_of(&self, _token: &FactRef<Self>) -> Option<CategoryId>
     where
@@ -206,7 +205,6 @@ pub trait MarkingScheme {
     ///
     /// [`ReplacementIntent`]: crate::ReplacementIntent
     /// [`FactRef::Cve`]: crate::FactRef::Cve
-    /// [`FixIntent`]: crate::ReplacementIntent
     fn apply_intent(
         &self,
         _marking: &Self::Marking,
