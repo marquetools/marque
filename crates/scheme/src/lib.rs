@@ -76,6 +76,8 @@ pub mod projection;
 pub mod recognizer;
 pub mod scheme;
 pub mod scope;
+pub mod severity;
+pub mod span;
 pub mod template;
 pub mod vocabulary;
 
@@ -99,6 +101,8 @@ pub use projection::{Projection, categories_in_render_order};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
 pub use scheme::MarkingScheme;
 pub use scope::{DiffInput, DiffRelation, Scope};
+pub use severity::Severity;
+pub use span::Span;
 pub use template::{CategoryRule, Presence, Template, TokenForm, Wrapping};
 pub use vocabulary::{
     Authority, Deprecation, OwnerProducer, OwnerProducerKind, PointOfContact, TokenMetadataFull,

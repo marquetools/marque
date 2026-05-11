@@ -31,8 +31,13 @@ fn test_engine() -> Engine {
 }
 
 fn mixed_confidence_source() -> Vec<u8> {
-    // E001 at confidence 1.0 (NF → NOFORN), E003 at confidence 0.6 (misordered).
-    b"SECRET//NF\nSECRET//NOFORN//SI\n".to_vec()
+    // E002 at confidence 0.97 (REL TO missing USA → fix applied), and
+    // E014/E015 (JOINT/non-US dissem) emitting no-fix Severity::Error
+    // diagnostics that stay in `remaining_diagnostics`. (PR 3c.B
+    // Commit 6 retired the original E001/E003 mixed_confidence
+    // fixture; the new pair exercises the same channel — one applied
+    // fix + remaining diagnostics — on still-registered rules.)
+    b"SECRET//REL TO GBR, AUS\n//JOINT SECRET USA GBR\n".to_vec()
 }
 
 #[test]
@@ -41,28 +46,34 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // Only E001 (confidence 1.0) should be applied.
+    // Only E002 (confidence 0.97 ≥ 0.95) should be applied. The
+    // remaining diagnostics on this fixture are E014 / E015 (the
+    // JOINT-participants-missing-from-REL-TO and non-US
+    // classification-without-dissem-control errors, both no-fix on
+    // the `//JOINT SECRET USA GBR\n` second line) — verified below
+    // in the `remaining_diagnostics` assertion.
     assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
-    assert_eq!(result.applied[0].proposal.rule.as_str(), "E001");
-    assert!((result.applied[0].proposal.confidence.combined() - 1.0).abs() < f32::EPSILON);
+    assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
+    assert!((result.applied[0].proposal.confidence.combined() - 0.97).abs() < 0.001);
 
-    // The post-fix text should have NF replaced with NOFORN.
+    // The post-fix first line should have USA elevated and codes
+    // sorted alphabetically.
     let fixed_text = String::from_utf8(result.source).unwrap();
     assert!(
-        fixed_text.starts_with("SECRET//NOFORN"),
-        "expected NF → NOFORN, got: {fixed_text:?}"
+        fixed_text.starts_with("SECRET//REL TO USA"),
+        "expected canonical REL TO list, got: {fixed_text:?}"
     );
 
-    // E003 (confidence 0.6 < threshold 0.95) remains as a suggestion.
+    // E014 and/or E015 (JOINT/non-US, no-fix errors) remain.
     assert!(
         !result.remaining_diagnostics.is_empty(),
-        "E003 should remain in remaining_diagnostics"
+        "E014/E015 should remain in remaining_diagnostics"
     );
     assert!(
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.as_str() == "E003")
+            .any(|d| matches!(d.rule.as_str(), "E014" | "E015"))
     );
 }
 
@@ -253,9 +264,11 @@ fn applied_fix_to_json(
 }
 
 #[test]
-fn audit_record_snapshot_e001_apply() {
+fn audit_record_snapshot_e002_apply() {
+    // Post-PR-3c.B-Commit-6: E001 retired; E002 (REL TO missing USA)
+    // is now the canonical "high-confidence single fix" fixture.
     let engine = test_engine();
-    let source = b"SECRET//NF\n";
+    let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
     assert_eq!(result.applied.len(), 1);
 
@@ -270,9 +283,9 @@ fn audit_record_snapshot_e001_apply() {
 }
 
 #[test]
-fn audit_record_snapshot_e001_dry_run() {
+fn audit_record_snapshot_e002_dry_run() {
     let engine = test_engine();
-    let source = b"SECRET//NF\n";
+    let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::DryRun);
     assert_eq!(result.applied.len(), 1);
 

@@ -121,23 +121,27 @@ fn severity_override_downgrades_rule_to_warn() {
     let config_path = tmp_dir.path().join(".marque.toml");
     std::fs::write(
         &config_path,
-        format!("[rules]\nE001 = \"warn\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
+        format!("[rules]\nE002 = \"warn\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
     )
     .unwrap();
 
-    // SECRET//NF triggers E001 (banner abbreviation). With E001=warn,
-    // the exit code should be 2 (warnings only) instead of 1 (errors).
+    // SECRET//REL TO GBR triggers E002 (REL TO missing USA). With
+    // E002=warn, the exit code should be 2 (warnings only) instead
+    // of 1 (errors). E001 used to be the canonical fixture rule
+    // here, but PR 3c.B Commit 6 retired E001 — we now use E002 as
+    // a still-firing built-in rule that exercises the same
+    // severity-override channel.
     let assert = marque()
         .args(["check", "--format", "json", "--config"])
         .arg(&config_path)
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(2); // Warnings exit code
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(
-        stdout.contains("\"rule\":\"E001\""),
-        "E001 should be present in diagnostics, got: {stdout}"
+        stdout.contains("\"rule\":\"E002\""),
+        "E002 should be present in diagnostics, got: {stdout}"
     );
     assert!(
         stdout.contains("\"severity\":\"warn\""),
@@ -151,22 +155,24 @@ fn severity_override_off_suppresses_rule() {
     let config_path = tmp_dir.path().join(".marque.toml");
     std::fs::write(
         &config_path,
-        format!("[rules]\nE001 = \"off\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
+        format!("[rules]\nE002 = \"off\"\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
     )
     .unwrap();
 
-    // SECRET//NF normally triggers E001. With E001=off, it should not appear.
+    // SECRET//REL TO GBR normally triggers E002. With E002=off, it
+    // should not appear. (Post-PR-3c.B-Commit-6 replacement for the
+    // retired E001-based fixture; same severity-override channel.)
     let assert = marque()
         .args(["check", "--format", "json", "--config"])
         .arg(&config_path)
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .success();
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert!(
-        !stdout.contains("\"rule\":\"E001\""),
-        "E001 should not fire when configured to off, got: {stdout}"
+        !stdout.contains("\"rule\":\"E002\""),
+        "E002 should not fire when configured to off, got: {stdout}"
     );
 }
 
@@ -175,28 +181,34 @@ fn severity_override_off_suppresses_rule() {
 fn cli_confidence_threshold_overrides_config() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let config_path = tmp_dir.path().join(".marque.toml");
-    // Config sets threshold=0.5, which would auto-apply E003 (confidence 0.6).
-    // CLI flag --confidence-threshold=0.99 should override, excluding E003.
+    // Config sets threshold=0.5. CLI flag --confidence-threshold=0.99
+    // should override and select only the >=0.99 fixes. E002's fix
+    // has confidence 0.97 (below 0.99), so the fix should NOT be
+    // applied; the diagnostic still surfaces.
     std::fs::write(
         &config_path,
         format!("confidence_threshold = 0.5\n\n[capco]\nversion = \"{SCHEMA_VERSION}\"\n"),
     )
     .unwrap();
 
-    // With threshold=0.99, only fixes >= 0.99 confidence are applied.
-    // E001 (confidence 1.0) is applied but E003 (confidence 0.6) is not.
+    // (Post-PR-3c.B-Commit-6: this test originally validated that
+    // E001's confidence=1.0 fix passed the 0.99 threshold and that
+    // E003's 0.6 fix did not. E001 and E003 are both retired; the
+    // channel now exercises E002 at confidence 0.97 — below 0.99 —
+    // so no fix is applied at the higher threshold. The audit
+    // stream remains empty.)
     let assert = marque()
         .args(["fix", "--confidence-threshold", "0.99", "--config"])
         .arg(&config_path)
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
-        .success(); // E001 applied, no remaining errors
+        .code(1); // E002 diagnostic remains; fix not applied at 0.99 threshold
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert_eq!(
         stdout.as_ref(),
-        "SECRET//NOFORN\n",
-        "CLI threshold override should still allow E001 (conf=1.0)"
+        "SECRET//REL TO GBR\n",
+        "with --confidence-threshold=0.99, no E002 fix (0.97) applies"
     );
 }
 
@@ -206,10 +218,13 @@ fn cli_confidence_threshold_overrides_config() {
 
 #[test]
 fn classifier_id_env_var_appears_in_audit_ndjson() {
+    // (Post-PR-3c.B-Commit-6 fixture: E001 used to drive this; with
+    // E001 retired we use E002, whose 0.97-confidence fix passes the
+    // default 0.85 threshold and produces an audit record.)
     let assert = marque()
         .env("MARQUE_CLASSIFIER_ID", "CLI-TEST-ID-77")
         .args(["fix"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .success();
 
@@ -224,7 +239,7 @@ fn classifier_id_env_var_appears_in_audit_ndjson() {
 fn absent_classifier_id_is_null_in_audit_ndjson() {
     let assert = marque()
         .args(["fix"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .success();
 

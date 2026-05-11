@@ -5,19 +5,19 @@ expression: json
 [
   {
     "classifier_id": null,
-    "confidence": 1.0,
+    "confidence": 0.9700000286102295,
     "dry_run": true,
     "input": null,
     "migration_ref": null,
-    "original": "NF",
+    "original": "GBR",
     "recognition": 1.0,
-    "replacement": "NOFORN",
-    "rule": "E001",
+    "replacement": "USA, GBR",
+    "rule": "E002",
     "schema": "marque-mvp-2",
     "source": "BuiltinRule",
     "span": {
-      "end": 10,
-      "start": 8
+      "end": 18,
+      "start": 15
     },
     "timestamp": "2023-11-14T22:13:20Z"
   }

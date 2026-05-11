@@ -855,103 +855,54 @@ fn decoder_path_record_shape() {
 // indicate the rule never ran — silently weakening the assertion.
 
 #[test]
-fn migration_audit_has_both_urns() {
+fn nf_noforn_form_pair_resolves_to_same_odni_urn() {
+    // Renamed in PR 3c.B Commit 6: the function used to drive this
+    // contract from a live E001 `AppliedFix` (an audit record), but
+    // E001 retired into `MarkingScheme::render_canonical` at that
+    // commit. The contract being tested is now the URN provenance
+    // property itself — that a canonical CVE value and its banner
+    // form resolve to the same ODNI URN via the public lookup
+    // tables — independent of any emitting rule.
     use marque_capco::scheme::{CapcoScheme, TOK_NOFORN};
     use marque_scheme::Vocabulary;
 
-    let engine = test_engine();
+    // PR 3c.B Commit 6 retired E001 — the rule whose audit pair
+    // (`original = "NF"`, `replacement = "NOFORN"`) used to drive
+    // this test. The URN-provenance contract is independent of the
+    // emitting rule: any pair of audit strings where one is the
+    // canonical CVE value and the other is its banner form must
+    // resolve to identical ODNI URNs via the public lookup tables.
+    // The contract is exercised directly here against the recovery
+    // helpers, not via a rule's emitted audit record.
 
-    // Banner-line shape with the portion-form `NF` triggers E001
-    // (portion-mark-in-banner, see `crates/capco/src/rules.rs`). The
-    // proposed fix replaces `NF` with the banner form `NOFORN`.
-    //
-    // The leading `SECRET//` makes this a banner — banners don't have
-    // enclosing parentheses; portions do. CAPCO-2016 §A.6 (banner-
-    // line grammar) governs the parse.
-    let source: &[u8] = b"SECRET//NF";
-    let result = run_fix(&engine, source);
+    let original = "NF";
+    let replacement = "NOFORN";
 
-    // Find the E001 applied fix. Other rules may also fire on this
-    // input; we narrow to E001 because it is the only one whose
-    // original/replacement directly map onto the URN-traceable
-    // canonical/banner-form pair.
-    let e001_fix = result
-        .applied
-        .iter()
-        .find(|f| f.proposal.rule.as_str() == "E001")
-        .unwrap_or_else(|| {
-            panic!(
-                "T079 vacuity guard: E001 portion-mark-in-banner did not fire on \
-                 banner-shaped input {:?} — the test cannot validate URN provenance \
-                 without the fix being applied. Applied rules: {:?}",
-                std::str::from_utf8(source).unwrap_or("<non-utf8>"),
-                result
-                    .applied
-                    .iter()
-                    .map(|f| f.proposal.rule.as_str())
-                    .collect::<Vec<_>>(),
-            )
-        });
-
-    assert_eq!(
-        e001_fix.proposal.original.as_ref(),
-        "NF",
-        "E001 fix's `original` must be the portion form `NF`",
-    );
-    assert_eq!(
-        e001_fix.proposal.replacement.as_ref(),
-        "NOFORN",
-        "E001 fix's `replacement` must be the banner form `NOFORN`",
-    );
-
-    // Resolve URN provenance via two INDEPENDENT lookup paths — one
-    // per audit-record string — so the test catches a divergence
-    // between the canonical and banner-form lookups (e.g., a future
-    // ODNI release that splits NOFORN into a separate entry).
-    //
     // Path 1: `original` is "NF", a canonical CVE value. Look it up
-    // directly in the per-token metadata table. This is what an audit
-    // consumer with only the audit record + public vocabulary tables
-    // does to recover the source URN.
-    let source_metadata = marque_ism::generated::vocabulary::lookup_token_metadata(
-        e001_fix.proposal.original.as_ref(),
-    )
-    .unwrap_or_else(|| {
-        panic!(
-            "audit's `original` ({:?}) must resolve to a TOKEN_METADATA \
-                     entry — every E001 source token is canonical-form by \
-                     construction",
-            e001_fix.proposal.original.as_ref(),
-        )
-    });
+    // directly in the per-token metadata table.
+    let source_metadata = marque_ism::generated::vocabulary::lookup_token_metadata(original)
+        .unwrap_or_else(|| panic!("canonical {original:?} must resolve to TOKEN_METADATA",));
     let source_urn = source_metadata.cve_file.urn;
 
     // Path 2: `replacement` is "NOFORN", a banner form (not a CVE
     // value). The audit consumer's recovery path is to map back to
     // canonical via `marking_forms::banner_to_portion`, then look up
-    // the canonical in TOKEN_METADATA. This is the round-trip the
-    // recovery contract relies on.
-    let canonical_for_replacement =
-        marque_ism::marking_forms::banner_to_portion(e001_fix.proposal.replacement.as_ref())
-            .unwrap_or_else(|| {
-                panic!(
-                    "banner form {:?} must map back to a portion-form canonical via \
-             marking_forms::banner_to_portion — recovery contract violated",
-                    e001_fix.proposal.replacement.as_ref(),
-                )
-            });
+    // the canonical in TOKEN_METADATA.
+    let canonical_for_replacement = marque_ism::marking_forms::banner_to_portion(replacement)
+        .unwrap_or_else(|| {
+            panic!("banner form {replacement:?} must map back via banner_to_portion",)
+        });
     let replacement_metadata =
         marque_ism::generated::vocabulary::lookup_token_metadata(canonical_for_replacement)
             .unwrap_or_else(|| {
                 panic!(
-                    "canonical {canonical_for_replacement:?} (from banner form {:?}) \
-                     must resolve to a TOKEN_METADATA entry",
-                    e001_fix.proposal.replacement.as_ref(),
+                    "canonical {canonical_for_replacement:?} (from banner form \
+                     {replacement:?}) must resolve to a TOKEN_METADATA entry",
                 )
             });
     let replacement_urn = replacement_metadata.cve_file.urn;
 
-    // Both URNs must be present and trace to ODNI.
+    // Both URNs must trace to ODNI.
     assert!(
         source_urn.starts_with("urn:us:gov:ic:cvenum:"),
         "source URN must trace to ODNI: {source_urn:?}",
@@ -962,62 +913,34 @@ fn migration_audit_has_both_urns() {
     );
 
     // The canonical/banner-form pair NF/NOFORN are forms of the same
-    // CVE entry, so the URNs must match exactly. A future ODNI
-    // release that splits NOFORN into its own entry would invalidate
-    // this — that's a deliberate schema-bump signal, not a stylistic
-    // change.
+    // CVE entry, so the URNs must match exactly.
     assert_eq!(
         source_urn, replacement_urn,
         "NF (source) and NOFORN (replacement) are forms of the same CVE entry — \
-         their URNs must match. Source URN: {source_urn:?}, replacement URN: \
-         {replacement_urn:?}",
+         their URNs must match.",
     );
 
     // Cross-check against the Vocabulary trait surface — both lookup
-    // paths must agree with `Vocabulary<CapcoScheme>::metadata`,
-    // which is the typed accessor the rule-side code uses.
+    // paths must agree with `Vocabulary<CapcoScheme>::metadata`.
     let scheme = CapcoScheme::new();
     let metadata = scheme.metadata(&TOK_NOFORN);
-    assert_eq!(
-        metadata.urn, source_urn,
-        "Vocabulary trait URN must match the string-keyed lookup — typed and \
-         untyped paths must agree",
-    );
-
-    // Pin the canonical / banner_form mapping so a future ODNI
-    // schema-package release that renames either form makes this
-    // test loud.
-    assert_eq!(
-        metadata.canonical, "NF",
-        "NF is the canonical CVE value — a rename means schema bump",
-    );
-    assert_eq!(
-        metadata.banner_form, "NOFORN",
-        "NOFORN is the banner form per CAPCO-2016 §G.1 Table 4",
-    );
-
-    // CAPCO-adapter-specific: `Authority::urn` is documented in
-    // `marque-scheme` as the URN of the publishing authority — a
-    // scheme could legitimately populate it at a coarser granularity
-    // than the token's URN (e.g., a single system-root URN like
-    // `urn:us:gov:ic:ism` shared across every CVE file). CAPCO's
-    // adapter chose per-CVE-file granularity (see
-    // `crates/capco/src/vocabulary.rs::build_authority`), so for
-    // CAPCO the authority URN equals the token's URN by
-    // construction. This invariant is therefore CAPCO-scoped, not a
-    // universal `Vocabulary<S>` contract — a future non-CAPCO scheme
-    // (CUI, NATO, JOINT) is free to choose a different authority-
-    // URN granularity.
-    assert_eq!(
-        metadata.authority.urn, source_urn,
-        "CAPCO adapter populates authority.urn from cve_file.urn — \
-         the two URNs must agree for any token in the CAPCO \
-         vocabulary. (For non-CAPCO schemes this equality may not \
-         hold.)",
-    );
+    assert_eq!(metadata.urn, source_urn);
+    assert_eq!(metadata.canonical, "NF");
+    assert_eq!(metadata.banner_form, "NOFORN");
+    assert_eq!(metadata.authority.urn, source_urn);
     assert_eq!(
         metadata.authority.schema_version,
-        marque_ism::SCHEMA_VERSION,
-        "URN provenance must be pinned to the active schema package",
+        marque_ism::SCHEMA_VERSION
     );
+
+    // NOTE: This test exercises the vocabulary lookup tables
+    // (`lookup_token_metadata`, `banner_to_portion`, `Vocabulary::for_token`)
+    // directly with hardcoded `NF` / `NOFORN`, NOT through a rule-emitted
+    // `AppliedFix`. Pre-PR-3c.B Commit 6 the contract was driven from
+    // E001's audit pair; E001 retired into the renderer at that commit.
+    // The end-to-end audit round-trip (engine produces fix → audit fields
+    // → URN recovery) is no longer separately pinned by this file. A
+    // regression in `proposal.original` / `proposal.replacement` field
+    // emission would surface in the audit snapshot tests
+    // (`fix_pipeline.rs::audit_record_snapshot_*`), not here.
 }

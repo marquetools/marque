@@ -56,9 +56,13 @@ fn happy_path_clean_portion_produces_no_diagnostics() {
 }
 
 #[test]
-fn banner_abbreviation_fires_e001() {
-    let result = engine().lint(b"TOP SECRET//SI//NF\n");
-    assert!(result.diagnostics.iter().any(|d| d.rule.as_str() == "E001"));
+fn banner_with_e002_fires() {
+    // PR 3c.B Commit 6 retired E001 (portion-mark-in-banner) into the
+    // renderer. This smoke test now exercises E002 (REL TO missing
+    // USA) as the canonical "this rule fires on a simple banner"
+    // fixture.
+    let result = engine().lint(b"SECRET//REL TO GBR\n");
+    assert!(result.diagnostics.iter().any(|d| d.rule.as_str() == "E002"));
 }
 
 #[test]
@@ -142,34 +146,44 @@ fn x_shorthand_declass_fires_e007() {
 
 #[test]
 fn diagnostic_carries_citation() {
-    let result = engine().lint(b"TOP SECRET//SI//NF\n");
-    let e001 = result
+    let result = engine().lint(b"SECRET//REL TO GBR\n");
+    let e002 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E001")
-        .expect("E001 must fire");
+        .find(|d| d.rule.as_str() == "E002")
+        .expect("E002 must fire");
     assert!(
-        !e001.citation.is_empty(),
+        !e002.citation.is_empty(),
         "FR-003: every diagnostic must carry a citation"
     );
-    assert!(e001.citation.contains("CAPCO"));
+    assert!(e002.citation.contains("CAPCO"));
 }
 
 #[test]
 fn diagnostic_span_is_byte_precise() {
     // FR-002: every diagnostic must carry a span pointing into the original
     // source. Phase 3 replaced the Phase 2 Span::new(0, 0) placeholders.
-    let src = b"TOP SECRET//SI//NF\n";
+    // E002's REL TO span anchors on the REL-TO trigraph list (the
+    // single existing `GBR` here); pre-PR-3c.B Commit 6 fixture
+    // anchored on E001's `NF` substring — both exercise the same
+    // FR-002 invariant that the span points at the bytes the
+    // diagnostic is about, not a placeholder.
+    let src = b"SECRET//REL TO GBR\n";
     let result = engine().lint(src);
-    let e001 = result
+    let e002 = result
         .diagnostics
         .iter()
-        .find(|d| d.rule.as_str() == "E001")
-        .expect("E001 must fire");
-    assert!(e001.span.start > 0, "span must not be a placeholder");
-    assert!(e001.span.end > e001.span.start);
-    // The span must point at the literal "NF" bytes.
-    assert_eq!(e001.span.as_str(src).unwrap(), "NF");
+        .find(|d| d.rule.as_str() == "E002")
+        .expect("E002 must fire");
+    assert!(e002.span.start > 0, "span must not be a placeholder");
+    assert!(e002.span.end > e002.span.start);
+    // The span must point at the literal `GBR` bytes (the only REL-TO
+    // trigraph in this fixture).
+    assert_eq!(
+        e002.span.as_str(src).unwrap(),
+        "GBR",
+        "FR-002: E002's span must point at the REL-TO trigraph bytes"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -204,17 +218,18 @@ fn diagnostic_to_contract_json(
 }
 
 #[test]
-fn diagnostic_json_shape_is_stable_e001() {
-    // Pin the canonical E001 fixture's JSON shape. A future contract drift —
+fn diagnostic_json_shape_is_stable_e002() {
+    // Pin the canonical E002 fixture's JSON shape. A future contract drift —
     // for example, removing `severity` or renaming `confidence` — flips this
-    // snapshot loud.
-    let result = engine().lint(b"TOP SECRET//SI//NF\n");
+    // snapshot loud. (Pre-PR-3c.B-Commit-6 this was anchored on E001;
+    // the fixture migrated when E001 retired.)
+    let result = engine().lint(b"SECRET//REL TO GBR\n");
     let json: Vec<_> = result
         .diagnostics
         .iter()
         .map(diagnostic_to_contract_json)
         .collect();
-    insta::assert_json_snapshot!("e001_diagnostic_json", json);
+    insta::assert_json_snapshot!("e002_diagnostic_json", json);
 }
 
 #[test]

@@ -32,8 +32,8 @@ chooses to register. Rule crates depend only on `marque-rules` and
 |---|---|
 | `Rule` | The trait every rule implements. Stateless; given parsed attributes plus a `RuleContext`, returns `Vec<Diagnostic>`. |
 | `RuleSet` | A bundle of rules exposed by a rule crate, with a schema version. |
-| `RuleId` | Stable rule identifier (e.g., `"E001"`). |
-| `Severity` | `Off` / `Warn` / `Error` / `Fix`. Configurable per rule. |
+| `RuleId` | Stable rule identifier (e.g., `"E002"`). |
+| `Severity` | `Off` / `Suggest` / `Info` / `Warn` / `Error` / `Fix`. Configurable per rule. Defined in `marque-scheme`, re-exported here. |
 | `Diagnostic` | A violation: rule, severity, span, message, citation, optional fix. |
 | `FixProposal` | A proposed edit with `confidence: f32` and `FixSource` provenance. |
 | `AppliedFix` | A `FixProposal` promoted by the engine, with timestamp + classifier id. The audit record. |

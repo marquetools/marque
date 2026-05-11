@@ -34,15 +34,18 @@ fn check_clean_banner_exits_zero() {
 }
 
 #[test]
-fn check_invalid_banner_exits_one_with_e001() {
+fn check_invalid_banner_exits_one_with_e002() {
+    // PR 3c.B Commit 6 retired E001 + the banner_abbrev fixture. The
+    // replacement uses `missing_usa_trigraph.txt` — E002 fires
+    // (REL TO missing USA, §H.8 p150–151) and the check exits 1.
     let assert = marque()
         .args(["check", "--format", "json"])
-        .arg(fixture("invalid/banner_abbrev.txt"))
+        .arg(fixture("invalid/missing_usa_trigraph.txt"))
         .assert()
         .code(1);
     let output = assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"rule\":\"E001\""), "got: {stdout}");
+    assert!(stdout.contains("\"rule\":\"E002\""), "got: {stdout}");
     assert!(stdout.contains("\"span\""), "got: {stdout}");
 }
 
@@ -61,22 +64,22 @@ fn check_unknown_token_fixture_fires_e008() {
 fn check_stdin_dash_sentinel_works() {
     let assert = marque()
         .args(["check", "--format", "json", "-"])
-        .write_stdin("TOP SECRET//SI//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E001\""));
+    assert!(stdout.contains("\"rule\":\"E002\""));
 }
 
 #[test]
 fn check_stdin_default_when_no_paths() {
     let assert = marque()
         .args(["check", "--format", "json"])
-        .write_stdin("TOP SECRET//SI//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(stdout.contains("\"rule\":\"E001\""));
+    assert!(stdout.contains("\"rule\":\"E002\""));
 }
 
 #[test]
@@ -158,7 +161,7 @@ fn no_color_env_var_suppresses_ansi() {
     // With NO_COLOR set, the human format must not contain ANSI escapes.
     let assert = marque()
         .args(["check", "--format", "human"])
-        .arg(fixture("invalid/banner_abbrev.txt"))
+        .arg(fixture("invalid/missing_usa_trigraph.txt"))
         .env("NO_COLOR", "1")
         .assert()
         .code(1);

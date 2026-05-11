@@ -114,6 +114,13 @@ impl std::fmt::Display for RuleId {
 
 /// Rule severity level. Configurable per rule in `.marque.toml`.
 ///
+/// `Severity` lives in `marque-scheme` as of PR 3c.B Commit 7 prep
+/// (so [`marque_scheme::constraint::ConstraintViolation`] and other
+/// scheme-layer types can carry per-row severity without violating
+/// Constitution VII's leaf-only rule for the scheme crate).
+/// `marque_rules::Severity` is a re-export so existing import sites
+/// continue to work unchanged.
+///
 /// # Ordering
 ///
 /// The derived `Ord` is `Off < Suggest < Info < Warn < Error < Fix`.
@@ -187,80 +194,7 @@ impl std::fmt::Display for RuleId {
 /// layer cannot downgrade a higher layer's severity), change the loader
 /// to `.max()` over `Severity::parse_config` values rather than `extend`.
 /// The derived `Ord` above is already the correct operator for that case.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Severity {
-    /// Rule is disabled entirely. FR-008: severity=off is unrepresentable on emitted diagnostics
-    /// — a rule at `Off` never fires, so no `Diagnostic` is produced.
-    Off,
-    /// Advisory channel — diagnostic carries a candidate fix that
-    /// will **not** auto-apply.
-    ///
-    /// Distinct from `Info` (FYI, no actionable replacement) and
-    /// from `Off` (non-firing). The fix-bearing diagnostic remains
-    /// visible in lint output but the engine excludes it from
-    /// auto-apply regardless of `confidence`. This is the
-    /// suggest-don't-fix channel: rules with low-confidence
-    /// candidate corrections (e.g., `S004 rel-to-trigraph-suggest`)
-    /// can surface "did you mean?" hints without committing to the
-    /// rewrite.
-    ///
-    /// `Suggest` keeps the CLI exit code at `0` (same as `Info`),
-    /// so it is CI-silent.
-    Suggest,
-    /// Emit informational diagnostic; does not block `check`-mode exit
-    /// code. Intended for "audit-visible but probably intentional"
-    /// signals — cases where the marking may be correct but the user
-    /// may want to verify (e.g., unpublished SCI control systems).
-    Info,
-    /// Emit warning; non-error, but still non-zero in `check` mode
-    /// (produces `EX_DIAG_WARN` = 2). Different from `Info` in tone
-    /// *and* exit-code impact: Warn is "this might be wrong" and
-    /// CI-visible; Info is "FYI, probably intentional but worth
-    /// surfacing" and CI-silent (exit 0).
-    Warn,
-    /// Emit error; blocks `--check` exit code.
-    Error,
-    /// Apply fix automatically when `--fix` flag is present.
-    Fix,
-}
-
-impl Severity {
-    /// Parse a severity level from a config string. Returns `None` for
-    /// unrecognized values; the config loader treats `None` as a hard error.
-    pub fn parse_config(s: &str) -> Option<Self> {
-        match s {
-            "off" => Some(Self::Off),
-            "suggest" => Some(Self::Suggest),
-            "info" => Some(Self::Info),
-            "warn" => Some(Self::Warn),
-            "error" => Some(Self::Error),
-            "fix" => Some(Self::Fix),
-            _ => None,
-        }
-    }
-
-    /// Canonical lowercase string form, suitable for JSON output.
-    ///
-    /// This is the inverse of [`Severity::parse_config`] and is the stable
-    /// surface that JSON consumers should depend on — never `format!("{:?}")`
-    /// (which exposes Debug formatting as an unintended API).
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Suggest => "suggest",
-            Self::Info => "info",
-            Self::Warn => "warn",
-            Self::Error => "error",
-            Self::Fix => "fix",
-        }
-    }
-}
-
-impl std::fmt::Display for Severity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+pub use marque_scheme::Severity;
 
 // ---------------------------------------------------------------------------
 // RuleContext

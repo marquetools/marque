@@ -2,14 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.B Commit 3 — FixIntent emission + engine round-trip tests.
+//! PR 3c.B Commit 3 + Commit 6 — FixIntent emission + engine round-trip tests.
 //!
-//! Covers the three beachhead rules migrated in Commit 3:
+//! Commit 3 beachhead rules:
 //!
 //! - **E054** — NOFORN ⊥ RELIDO (`FactRemove`)
 //! - **E057** — ORCON-USGOV ⊥ RELIDO (`FactRemove`)
 //! - **E021** — RD/FRD requires NOFORN (`FactAdd`; severity flipped
 //!   Error → Fix; auto-applies when an IC dissem block exists)
+//!
+//! Commit 6 dual-pop migrations:
+//!
+//! - **E002** — REL TO missing USA trigraph. Two branches: USA-missing
+//!   (`FactAdd`) and USA-not-first (`Recanonicalize`).
+//! - **S003** — JOINT USA-first convention (`Recanonicalize`,
+//!   `Severity::Info`).
 //!
 //! Two layers of assertion:
 //!
@@ -33,11 +40,12 @@
 
 use marque_capco::CapcoRuleSet;
 use marque_capco::CapcoScheme;
-use marque_capco::scheme::{TOK_NOFORN, TOK_RELIDO};
+use marque_capco::scheme::{TOK_NOFORN, TOK_RELIDO, TOK_USA};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::{
-    AppliedFixProposal, FactRef, FixSource, ReplacementIntent, ReplacementIntent::FactAdd, Severity,
+    AppliedFixProposal, FactRef, FixSource, RecanonScope, ReplacementIntent,
+    ReplacementIntent::FactAdd, Severity,
 };
 use marque_scheme::Scope;
 
@@ -421,4 +429,207 @@ fn e056_emits_legacy_fix_only_post_commit_3() {
         matches!(applied.proposal, AppliedFixProposal::Legacy(_)),
         "E056 must promote as Legacy, not New (no FixIntent migrated yet)"
     );
+}
+
+// ---------------------------------------------------------------------------
+// E002 — REL TO missing USA trigraph (PR 3c.B Commit 6 dual-pop)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e002_usa_missing_emits_fact_add_intent() {
+    // Banner form: `SECRET//REL TO GBR\n`. REL TO has GBR but no USA;
+    // the USA-missing branch must emit `FactAdd { USA, Page }`
+    // (banner-context — `ctx.marking_type != Portion`).
+    let source = "SECRET//REL TO GBR\n";
+    let diags = engine().lint(source.as_bytes()).diagnostics;
+    let d = diags
+        .iter()
+        .find(|d| d.rule.as_str() == "E002")
+        .expect("E002 must fire on SECRET//REL TO GBR");
+
+    let fix = d.fix.as_ref().expect("E002 must carry legacy `fix`");
+    let intent = d
+        .fix_intent
+        .as_ref()
+        .expect("E002 must carry new `fix_intent`");
+
+    match &intent.replacement {
+        ReplacementIntent::FactAdd { token, scope } => {
+            assert!(
+                matches!(token, FactRef::Cve(id) if *id == TOK_USA),
+                "E002 USA-missing intent must add TOK_USA; got token = {token:?}"
+            );
+            assert_eq!(
+                *scope,
+                Scope::Page,
+                "E002 USA-missing intent in banner context applies at Scope::Page"
+            );
+        }
+        other => panic!("E002 USA-missing intent must be FactAdd, got {other:?}"),
+    }
+
+    // Confidence parity across both emission paths.
+    assert!((intent.confidence.rule - fix.confidence.rule).abs() < f32::EPSILON);
+    assert!((intent.confidence.rule - 0.97).abs() < f32::EPSILON);
+
+    // Legacy projection — byte-precise REL TO splice.
+    assert_eq!(fix.source, FixSource::BuiltinRule);
+    assert_eq!(fix.replacement.as_ref(), "USA, GBR");
+    assert_eq!(fix.original.as_ref(), "GBR");
+}
+
+#[test]
+fn e002_usa_not_first_emits_recanonicalize_intent() {
+    // Banner form: `SECRET//REL TO GBR, USA\n`. USA is present but not
+    // first; the not-first branch must emit `Recanonicalize { Page }`.
+    let source = "SECRET//REL TO GBR, USA\n";
+    let diags = engine().lint(source.as_bytes()).diagnostics;
+    let d = diags
+        .iter()
+        .find(|d| d.rule.as_str() == "E002")
+        .expect("E002 must fire on USA-not-first input");
+
+    let fix = d.fix.as_ref().expect("E002 must carry legacy `fix`");
+    let intent = d
+        .fix_intent
+        .as_ref()
+        .expect("E002 must carry new `fix_intent`");
+
+    match &intent.replacement {
+        ReplacementIntent::Recanonicalize { scope } => {
+            assert_eq!(
+                *scope,
+                RecanonScope::Page,
+                "E002 USA-not-first intent in banner context recanonicalizes at Page"
+            );
+        }
+        other => panic!("E002 USA-not-first intent must be Recanonicalize, got {other:?}"),
+    }
+
+    assert!((intent.confidence.rule - 0.97).abs() < f32::EPSILON);
+    assert_eq!(fix.replacement.as_ref(), "USA, GBR");
+    assert_eq!(fix.original.as_ref(), "GBR, USA");
+}
+
+#[test]
+fn e002_promotes_through_engine_as_new_variant() {
+    // Full Engine::fix round-trip: E002 (0.97 confidence) passes the
+    // default 0.85 threshold and promotes as `AppliedFixProposal::New`
+    // carrying both the FactAdd intent and the synthesized legacy
+    // proposal.
+    let source = "SECRET//REL TO GBR\n";
+    let result = engine().fix(source.as_bytes(), FixMode::Apply);
+    let applied = result
+        .applied
+        .iter()
+        .find(|af| af.proposal.rule.as_str() == "E002")
+        .expect("E002 must auto-apply at default threshold");
+
+    match &applied.proposal {
+        AppliedFixProposal::New {
+            intent,
+            synthesized,
+        } => {
+            assert!(
+                matches!(
+                    &intent.replacement,
+                    ReplacementIntent::FactAdd {
+                        token: FactRef::Cve(id),
+                        scope: Scope::Page,
+                    } if *id == TOK_USA
+                ),
+                "E002 promoted intent must be FactAdd {{ TOK_USA, Page }}, got {:?}",
+                intent.replacement
+            );
+            // Synthesized projection byte-identical to Diagnostic.fix.
+            assert_eq!(synthesized.replacement.as_ref(), "USA, GBR");
+        }
+        AppliedFixProposal::Legacy(_) => {
+            panic!("E002 must promote as New, not Legacy — dual-pop migration is live")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// S003 — JOINT USA-first style (PR 3c.B Commit 6 dual-pop)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn s003_emits_recanonicalize_intent() {
+    // Banner JOINT classification with USA-not-first. S003 only fires
+    // on banner-context (`marking_type == Banner`) so the canonical
+    // fixture is a banner-line.
+    let source = "//JOINT SECRET GBR USA\n";
+    let diags = engine().lint(source.as_bytes()).diagnostics;
+    let d = diags
+        .iter()
+        .find(|d| d.rule.as_str() == "S003")
+        .expect("S003 must fire on //JOINT SECRET GBR USA");
+
+    let fix = d.fix.as_ref().expect("S003 must carry legacy `fix`");
+    let intent = d
+        .fix_intent
+        .as_ref()
+        .expect("S003 must carry new `fix_intent`");
+
+    match &intent.replacement {
+        ReplacementIntent::Recanonicalize { scope } => {
+            assert_eq!(
+                *scope,
+                RecanonScope::Page,
+                "S003 intent recanonicalizes at Page (banner classification axis)"
+            );
+        }
+        other => panic!("S003 intent must be Recanonicalize, got {other:?}"),
+    }
+
+    assert_eq!(d.severity, Severity::Info, "S003 default severity is Info");
+    assert!((intent.confidence.rule - 1.0).abs() < f32::EPSILON);
+    assert!((fix.confidence.rule - 1.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn s003_promotes_through_engine_as_new_variant() {
+    // S003's 1.0 confidence passes the default 0.95 threshold, so
+    // the fix promotes. The current engine does NOT gate auto-apply
+    // on `Severity::Info` — only `Severity::Suggest` is filtered out
+    // of `kept_fixes` in `Engine::fix_inner`. (Orgs can disable S003
+    // entirely via `S003 = "off"` in config; that path is exercised
+    // in `marque/tests/cli_config.rs`.) The fix shape pin here is
+    // independent of the severity-gate question.
+    let source = "//JOINT SECRET GBR USA\n";
+    let result = engine().fix(source.as_bytes(), FixMode::Apply);
+    let applied = result
+        .applied
+        .iter()
+        .find(|af| af.proposal.rule.as_str() == "S003")
+        .expect("S003 must auto-apply at default threshold (1.0 ≥ 0.95)");
+
+    match &applied.proposal {
+        AppliedFixProposal::New {
+            intent,
+            synthesized,
+        } => {
+            assert!(
+                matches!(
+                    &intent.replacement,
+                    ReplacementIntent::Recanonicalize {
+                        scope: RecanonScope::Page
+                    }
+                ),
+                "S003 promoted intent must be Recanonicalize {{ Page }}, got {:?}",
+                intent.replacement
+            );
+            // The synthesized replacement re-renders the JOINT
+            // classification token with USA leading (S003 convention).
+            assert!(
+                synthesized.replacement.contains("USA GBR"),
+                "S003 synthesized projection must lead with USA, got: {:?}",
+                synthesized.replacement
+            );
+        }
+        AppliedFixProposal::Legacy(_) => {
+            panic!("S003 must promote as New, not Legacy — dual-pop migration is live")
+        }
+    }
 }

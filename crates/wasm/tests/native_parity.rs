@@ -358,8 +358,10 @@ fn config_with_invalid_threshold_returns_error() {
 
 #[test]
 fn config_with_classifier_id() {
+    // PR 3c.B Commit 6 retired E001; this test now uses E002
+    // (REL TO missing USA) as the diagnostic-emitting fixture.
     let config = r#"{"classifier_id":"TEST-WASM-42"}"#;
-    let result = marque_wasm::fix_native("SECRET//NF\n", 0.95, Some(config.to_owned()))
+    let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", 0.95, Some(config.to_owned()))
         .expect("fix with classifier_id");
     assert!(
         result.contains("TEST-WASM-42"),
@@ -373,8 +375,11 @@ fn config_with_classifier_id() {
 
 #[test]
 fn lint_batch_returns_results_for_each_entry() {
+    // PR 3c.B Commit 6 retired E001 (and the `SECRET//NF` fixture
+    // it drove). The batch entries now use E002-firing input on the
+    // first row and a clean banner on the second.
     let entries = r#"[
-        {"id": "a", "text": "SECRET//NF\n"},
+        {"id": "a", "text": "SECRET//REL TO GBR\n"},
         {"id": "b", "text": "SECRET//NOFORN\n"}
     ]"#;
     let result = marque_wasm::lint_batch_native(entries, None).expect("lint_batch");
@@ -383,10 +388,10 @@ fn lint_batch_returns_results_for_each_entry() {
     assert_eq!(parsed.len(), 2, "should return one result per entry");
     assert_eq!(parsed[0]["id"], "a");
     assert_eq!(parsed[1]["id"], "b");
-    // "a" has NF (abbreviated) → should have diagnostics
+    // "a" lacks USA in REL TO → should have diagnostics (E002).
     assert!(
         !parsed[0]["diagnostics"].as_array().unwrap().is_empty(),
-        "SECRET//NF should produce diagnostics"
+        "SECRET//REL TO GBR should produce diagnostics"
     );
     // "b" is clean → empty diagnostics
     assert!(
