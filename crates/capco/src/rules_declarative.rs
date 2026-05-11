@@ -988,6 +988,15 @@ impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
 // TOK_EXDIS }` constraint on `CapcoScheme`. The wrapper below
 // dispatches via the constraint's `name` and emits the user-facing
 // diagnostic.
+//
+// **Migration status (PR 3c.B Sub-PR 8.E, 2026-05-11):** this rule
+// intentionally remains at `fix_intent: None`; Stage-4 target:
+// `Reject { suggest: None }`.
+//
+// Canonical rationale: see
+// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`
+// (Category B / eventual `Constraint::Incompatible` mapping for the
+// NODIS+EXDIS mutual-exclusion case).
 
 pub(crate) struct DeclarativeNodisConflictsExdisRule;
 
@@ -1012,7 +1021,11 @@ impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
         // needs to remove one of them to resolve.
         let span = first_span_of(attrs, TokenKind::NonIcDissem);
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 8.E — migrated to `with_fix_intent` constructor
+        // signaling consciously-decided-no-fix-intent (Category B Reject,
+        // Stage-4 target). See module-level Migration status comment block
+        // above.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,

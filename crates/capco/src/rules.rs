@@ -3466,7 +3466,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// # Interaction with E037
 ///
 /// E037 also fires in portion context (it's a general "NODIS and
-/// EXDIS cannot coexist" rule from line 4235/4295). When a portion
+/// EXDIS cannot coexist" rule per §H.9 p172 + p174). When a portion
 /// has both tokens, both rules fire:
 /// - E037 (`Error`, no fix) states the violation.
 /// - E041 (`Warn`, no fix) states the supersession rule: NODIS wins,
@@ -3493,6 +3493,38 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// Constitution V. E041 therefore ships as a no-fix diagnostic;
 /// a follow-up PR can add the auto-fix once within-category
 /// separator handling lands in the parser.
+///
+/// # Migration status (PR 3c.B Sub-PR 8.E, 2026-05-11)
+///
+/// Consciously landed at `fix_intent: None`. Per the 2026-05-11
+/// lattice-consultant session captured in
+/// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+/// this rule is **Category A.1 — Single-fact removal**: the eventual
+/// Stage-4 target is `FactRemove(EXDIS, Scope::Portion)` because §H.9
+/// names EXDIS as the loser ("NODIS supersedes EXDIS in the portion
+/// mark") at both p172 and p174.
+///
+/// The Stage-4 target is **blocked on the parser within-category
+/// `/` separator gap** — the same gap documented in the
+/// `# No auto-fix` section above. Constitution V (Audit-First
+/// Compliance) is the load-bearing rationale: until the parser
+/// emits within-category `/` separator spans, the legacy
+/// `FixProposal.original` cannot faithfully cover the EXDIS-plus-
+/// separator byte range, so synthesizing the legacy fix risks
+/// audit-record corruption. Emitting a structural
+/// `FixIntent::FactRemove(EXDIS, Scope::Portion)` without the
+/// corresponding legacy `FixProposal` would produce an asymmetric
+/// `(fix: None, fix_intent: Some)` Diagnostic — and the engine's
+/// `intent_index` only pairs Diagnostics when both `fix` and
+/// `fix_intent` are populated, so the orphaned intent would never
+/// reach an `AppliedFixProposal::New` record. The 8.A/8.B-
+/// established `fix.is_some() ⇔ fix_intent.is_some()` symmetry
+/// discipline keeps emission
+/// consistent for downstream audit consumers. The only audit-safe
+/// migration state is therefore `(None, None)`; the constructor
+/// migration to `Diagnostic::with_fix_intent(..., None)` signals
+/// conscious evaluation of the FixIntent migration and a deferred
+/// (not lazy) decision.
 struct NodisSupersedesExdisInPortionRule;
 
 impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
@@ -3544,7 +3576,23 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
             return vec![];
         };
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 8.E — migrated to `with_fix_intent` constructor
+        // signaling consciously-decided-no-fix-intent (Category A.1
+        // Remove(EXDIS, Scope::Portion); Stage-4 target blocked on the
+        // parser within-category-separator gap). See the
+        // `# Migration status` rustdoc section above for the full
+        // Constitution V (Audit-First Compliance) argument: emitting a
+        // structural `FixIntent::FactRemove(EXDIS, Scope::Portion)`
+        // without the corresponding legacy `FixProposal` would produce
+        // an asymmetric `(fix: None, fix_intent: Some)` Diagnostic
+        // that the engine's `intent_index`
+        // (`crates/engine/src/engine.rs:1366-1373`) silently drops —
+        // only Diagnostics with both fields populated reach the
+        // pairing logic. The 8.A/8.B-established `fix.is_some() ⇔
+        // fix_intent.is_some()` symmetry discipline keeps emission
+        // consistent; the only audit-safe state until the parser-gap
+        // closes is `(None, None)`.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             exdis_span_tok.span,
@@ -5702,7 +5750,7 @@ mod tests {
     /// Constitution V.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E016 with `fix_intent: None` is never
@@ -5727,7 +5775,7 @@ mod tests {
             e016.fix_intent.is_none(),
             "E016 fix_intent must be None (symmetric with fix.is_none(). \
              The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift)"
+             the only guard against asymmetric drift"
         );
     }
 
@@ -5856,7 +5904,7 @@ mod tests {
     /// that scheme-level tests cannot pin.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E036 with `fix_intent: None` is never
@@ -5916,7 +5964,7 @@ mod tests {
             d.fix_intent.is_none(),
             "E036 fix_intent must be None (symmetric with fix.is_none(). \
              The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift)"
+             the only guard against asymmetric drift"
         );
     }
 
@@ -6318,9 +6366,9 @@ mod tests {
 
     #[test]
     fn e041_does_not_fire_on_banner_even_when_both_present() {
-        // E041 is portion-only per §H.9 p172 / p174 line
-        // 4306 ("in the portion mark"). The banner case is owned by
-        // E037 (mutual exclusion, Error).
+        // E041 is portion-only per §H.9 p172 + p174 ("in the portion
+        // mark"). The banner case is owned by E037 (mutual exclusion,
+        // Error).
         let diags = lint_banner("SECRET//NOFORN//NODIS/EXDIS");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E041"),
@@ -6330,6 +6378,98 @@ mod tests {
         assert!(
             diags.iter().any(|d| d.rule.as_str() == "E037"),
             "E037 must still fire on banner NODIS+EXDIS: {diags:?}"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 8.E — pin the consciously-decided-no-fix-intent
+    /// migration state for E037.
+    ///
+    /// Per the 2026-05-11 lattice-consultant session captured in
+    /// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+    /// E037 is **Category B — genuine mutual exclusion without policy
+    /// decision**: the eventual Stage-4 target is `Reject { suggest: None }`
+    /// — error diagnostic with no auto-applied fix. CAPCO-2016 §H.9 does
+    /// not specify a banner-level supersession; only that NODIS and EXDIS
+    /// MUST NOT coexist (p172 + p174). Portion-level supersession is
+    /// E041's territory and is itself blocked on the parser within-category
+    /// separator gap (Category A.1 Remove(EXDIS, Scope::Portion)).
+    ///
+    /// **Coverage note:** the G13 closure walker at
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// only inspects rules that auto-apply through the engine (those
+    /// emitting `AppliedFixProposal::New` records, which require
+    /// `fix_intent.is_some()`). E037 with `fix_intent: None` is never
+    /// reached by that walker — so this symmetry pin is the **only**
+    /// guard against a future commit accidentally producing an
+    /// asymmetric `(fix, fix_intent)` pair on E037. Without it, a drift
+    /// toward `fix.is_some() && fix_intent.is_none()` (or the inverse)
+    /// would slip through CI silently.
+    #[test]
+    fn e037_emits_no_fix_and_no_fix_intent_pending_stage4_b_reject() {
+        let diags = lint_banner("SECRET//NOFORN//NODIS/EXDIS");
+        let e037 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E037")
+            .expect("E037 must fire on `SECRET//NOFORN//NODIS/EXDIS`");
+        assert!(
+            e037.fix.is_none(),
+            "E037 fix must be None until Stage-4 B-Reject consolidation lands; \
+             see incompatibility-primitive-consolidation.md followup"
+        );
+        assert!(
+            e037.fix_intent.is_none(),
+            "E037 fix_intent must be None (symmetric with fix.is_none()). \
+             The G13 walker does NOT see (None, None) rules; this test is \
+             the only guard against asymmetric drift"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 8.E — pin the consciously-decided-no-fix-intent
+    /// migration state for E041.
+    ///
+    /// Per the 2026-05-11 lattice-consultant session captured in
+    /// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+    /// E041 is **Category A.1 — Single-fact removal**: the eventual
+    /// Stage-4 target is `FactRemove(EXDIS, Scope::Portion)` because
+    /// §H.9 names EXDIS as the loser ("NODIS supersedes EXDIS in the
+    /// portion mark") at both p172 and p174. The Stage-4 target is
+    /// **blocked on the parser within-category `/` separator gap** —
+    /// emitting a structural `FixIntent::FactRemove(EXDIS, Scope::Portion)`
+    /// without a corresponding legacy `FixProposal` would violate the
+    /// `fix.is_some() ⇔ fix_intent.is_some()` symmetry invariant.
+    /// Constitution V (Audit-First Compliance) is the load-bearing
+    /// rationale: until the parser emits within-category separator
+    /// spans, the only audit-safe state is `(None, None)`. See the
+    /// `# Migration status` section of the `NodisSupersedesExdisInPortionRule`
+    /// rustdoc above for the full Constitution V argument.
+    ///
+    /// **Coverage note:** the G13 closure walker at
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// only inspects rules that auto-apply through the engine (those
+    /// emitting `AppliedFixProposal::New` records, which require
+    /// `fix_intent.is_some()`). E041 with `fix_intent: None` is never
+    /// reached by that walker — so this symmetry pin is the **only**
+    /// guard against a future commit accidentally producing an
+    /// asymmetric `(fix, fix_intent)` pair on E041. Without it, a drift
+    /// toward `fix.is_some() && fix_intent.is_none()` (or the inverse)
+    /// would slip through CI silently.
+    #[test]
+    fn e041_emits_no_fix_or_intent_when_parser_gap() {
+        let diags = lint_portion("(S//NF//ND/XD)");
+        let e041 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E041")
+            .expect("E041 must fire on portion `(S//NF//ND/XD)` carrying both NODIS and EXDIS");
+        assert!(
+            e041.fix.is_none(),
+            "E041 fix must be None until parser within-category-separator gap closes; \
+             see Migration status section in NodisSupersedesExdisInPortionRule rustdoc"
+        );
+        assert!(
+            e041.fix_intent.is_none(),
+            "E041 fix_intent must be None (symmetric with fix.is_none()). \
+             The G13 walker does NOT see (None, None) rules; this test is \
+             the only guard against asymmetric drift"
         );
     }
 
@@ -6984,7 +7124,7 @@ mod tests {
     /// with both `fix.is_none()` AND `fix_intent.is_none()`.
     ///
     /// **Coverage note:** the G13 closure walker at
-    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
     /// only inspects rules that auto-apply through the engine (those
     /// emitting `AppliedFixProposal::New` records, which require
     /// `fix_intent.is_some()`). E005 with `fix_intent: None` is never
