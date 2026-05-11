@@ -56,6 +56,23 @@ pub(crate) fn render_rel_to(
         return Ok(());
     }
 
+    // §H.8 p151: "`REL TO USA` or `REL USA` (i.e., there is not at
+    // least one country trigraph code or tetragraph code following
+    // the USA code), is not an authorized marking and is not allowed
+    // on US intelligence information." Upstream consumers (parser
+    // + lattice projection + rule fixers) are responsible for never
+    // producing a single-USA REL TO marking. This debug_assert
+    // surfaces upstream invariant violations in dev builds without
+    // crashing production renders — if a malformed marking does
+    // reach this renderer in release, it emits the unauthorized
+    // form rather than panicking, leaving downstream lint rules to
+    // catch the violation.
+    debug_assert!(
+        m.0.rel_to.iter().any(|c| c.as_str() != "USA"),
+        "REL TO must contain at least one non-USA trigraph/tetragraph code per §H.8 p151 \
+         (CAPCO-2016); got USA-only rel_to (unauthorized form)"
+    );
+
     out.write_str("REL TO ")?;
 
     // Bucket trigraphs vs tetragraphs (§A.6 p16: "Trigraph codes

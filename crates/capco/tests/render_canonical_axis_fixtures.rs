@@ -542,10 +542,51 @@ fn rel_to_tetragraphs_after_trigraphs() {
     assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR, FVEY, NATO");
 }
 
+#[cfg(debug_assertions)]
 #[test]
-fn rel_to_only_usa() {
-    // Authority: CAPCO-2016 §H.8 p150-151 — single-element REL TO
-    // list with USA only.
+#[should_panic(expected = "REL TO must contain at least one non-USA")]
+fn rel_to_only_usa_panics_in_debug() {
+    // Authority: CAPCO-2016 §H.8 p151 line 3715 — `REL TO USA`
+    // alone (no other trigraph or tetragraph) is NOT an authorized
+    // marking. The renderer carries a `debug_assert!` guard against
+    // this upstream-invariant violation; this test pins that guard
+    // by exercising the USA-only path and asserting the assertion
+    // fires under cfg(debug_assertions).
+    //
+    // Gated on `#[cfg(debug_assertions)]` because `debug_assert!`
+    // compiles to a no-op under `cfg(not(debug_assertions))` (i.e.,
+    // `cargo test --release`); without the gate, the `#[should_panic]`
+    // expectation would fail under a release-profile test run with
+    // "test did not panic as expected". The release-profile path is
+    // covered by `rel_to_only_usa_release_emits_unauthorized_form`
+    // below, which exercises the no-op-assert path and asserts the
+    // renderer's release-build behavior (emits the unauthorized form
+    // rather than panicking) — leaving downstream lint rules to catch
+    // the violation.
+    //
+    // Pre-guard, this test asserted `render_banner == "SECRET//REL
+    // TO USA"`, which captured the prior (broken) renderer output.
+    // The reframe to a `#[should_panic]` invariant pin preserves
+    // the test as a regression guard for the assertion itself
+    // rather than for the unauthorized output.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.rel_to = vec![cc("USA")].into();
+    let _ = render_banner(a);
+}
+
+#[cfg(not(debug_assertions))]
+#[test]
+fn rel_to_only_usa_release_emits_unauthorized_form() {
+    // Release-profile counterpart of `rel_to_only_usa_panics_in_debug`.
+    // Under `cfg(not(debug_assertions))` the `debug_assert!` in
+    // `render_rel_to` is a no-op, so the renderer emits the
+    // unauthorized §H.8 p151 form `SECRET//REL TO USA` rather than
+    // panicking. This test pins that release-build behavior so a
+    // future change that promotes the assert to a runtime `assert!`
+    // (which would crash production renders) trips a regression.
+    // Downstream lint rules are responsible for catching the
+    // unauthorized form in release builds.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.rel_to = vec![cc("USA")].into();

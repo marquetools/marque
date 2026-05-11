@@ -2332,16 +2332,39 @@ impl MarkingScheme for CapcoScheme {
         // round-trip. Removing the override is a follow-up once the
         // engine call sites move off `render_portion` to
         // `render_canonical` (commit 6+).
+        //
+        // `Write for String` is infallible, so a `String` write target
+        // never produces `fmt::Error`. The only way the discarded
+        // `Result` could be `Err` is a contract violation: an impl
+        // returning `Err` for `Scope::Portion`. The
+        // [`MarkingScheme::render_canonical`] doc comment forbids
+        // this. Debug-assert in development; in release, the contract
+        // violation produces an empty / partial `String` rather than
+        // a panic (matching the trait-default behavior in
+        // `MarkingScheme::render_portion`).
         let mut s = String::new();
-        let _ = self.render_canonical(m, Scope::Portion, &mut s);
+        let result = self.render_canonical(m, Scope::Portion, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
         s
     }
 
     fn render_banner(&self, m: &Self::Marking) -> String {
         // See `render_portion`. Override retained for byte-identity
-        // gate; the substantive body is `render_canonical`.
+        // gate; the substantive body is `render_canonical`. Same
+        // contract-violation invariant: `Write for String` is
+        // infallible, so `Err` here would be a conforming-impl bug
+        // forbidden by the trait doc.
         let mut s = String::new();
-        let _ = self.render_canonical(m, Scope::Page, &mut s);
+        let result = self.render_canonical(m, Scope::Page, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
         s
     }
 }

@@ -369,6 +369,19 @@ fn e055_emits_legacy_fix_only_post_commit_3() {
         // test exists primarily as a regression pin for the dual-
         // population invariant. If E055 doesn't fire, the control-
         // group assertion is vacuously satisfied.
+        //
+        // Surface the vacuous-pass in CI logs so a future change
+        // that silently breaks the parser path (e.g., regresses
+        // "DISPLAY ONLY" tokenization) doesn't mask the regression
+        // by also masking this test. E056 carries the same
+        // control-group invariant via a separately-tokenized
+        // fixture, so the dual-population pin is not lost.
+        eprintln!(
+            "WARNING: e055_emits_legacy_fix_only_post_commit_3 vacuously passed — \
+             parser did not recognize `DISPLAY ONLY` in fixture \
+             `(S//RELIDO/DISPLAY ONLY)`. Tracked as a parser-gap follow-up; \
+             E056 carries the same control-group invariant."
+        );
         return;
     };
     assert!(

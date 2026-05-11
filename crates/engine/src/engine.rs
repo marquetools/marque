@@ -1096,6 +1096,24 @@ impl Engine {
         // one entry per migrated rule's emitted diagnostic. For
         // PR 3c.B Commit 3 that's a small fraction of total
         // diagnostics (three rules: E054 / E057 / E021).
+        //
+        // Severity asymmetry vs. the fix loop below: the index is
+        // built over ALL paired diagnostics (both `fix` and
+        // `fix_intent` populated) regardless of severity, including
+        // `Severity::Suggest`. The `fixes` collection immediately
+        // below filters `Severity::Suggest` out of the actual fix
+        // application loop. The asymmetry is intentional and benign:
+        // a Suggest-only paired diagnostic produces an unmatched
+        // index entry (zero cost — `HashMap::get` on a missing key
+        // is O(1), and the index is dropped at the end of this
+        // function). Mirroring the Suggest filter here would couple
+        // index construction to the fix-loop's severity policy and
+        // break if a future Suggest-channel post-pass grows to
+        // consume the index. No rule today emits
+        // `Severity::Suggest` with a populated `fix_intent`, so the
+        // index is currently structurally identical to the filtered
+        // shape; this is a forward-compatibility guard for future
+        // migrations, not a present-day waste.
         let intent_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> = lint
             .diagnostics
             .iter()
