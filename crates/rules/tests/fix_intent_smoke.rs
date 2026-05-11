@@ -14,16 +14,13 @@
 //! `specs/006-engine-rule-refactor/architecture.md` "What fixes
 //! are."
 
-use marque_rules::{
-    Confidence, FactRef, FixIntent, Message, MessageArgs, MessageTemplate, RecanonScope,
-    ReplacementIntent,
-};
+use marque_rules::{Confidence, FixIntent, Message, MessageArgs, MessageTemplate};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
 use marque_scheme::lattice::{BoundedLattice, Lattice};
 use marque_scheme::template::Template;
-use marque_scheme::{MarkingScheme, Scope, TokenId};
+use marque_scheme::{FactRef, MarkingScheme, RecanonScope, ReplacementIntent, Scope, TokenId};
 use smallvec::SmallVec;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

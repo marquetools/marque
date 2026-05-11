@@ -70,6 +70,7 @@ pub mod canonical;
 pub mod category;
 pub mod codec;
 pub mod constraint;
+pub mod fix_intent;
 pub mod lattice;
 pub mod page_rewrite;
 pub mod projection;
@@ -93,6 +94,7 @@ pub use category::{
 };
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, TokenRef};
+pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{BoundedLattice, Lattice};
 pub use page_rewrite::{
     CategoryAction, CategoryPredicate, PageRewrite, PageRewriteAxisError, RewriteId,

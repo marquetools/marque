@@ -73,7 +73,13 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
-pub use fix_intent::{FactRef, FixIntent, RecanonScope, ReplacementIntent};
+pub use fix_intent::FixIntent;
+// `FactRef`, `ReplacementIntent`, and `RecanonScope` moved to
+// `marque-scheme` as of the PR 3c.B engine-prereq (the new
+// `MarkingScheme::apply_intent` trait method needs them at the trait
+// surface; `marque-rules` already depends on `marque-scheme`, so the
+// types must live below us in the dependency graph). Import them
+// directly from `marque_scheme::{FactRef, RecanonScope, ReplacementIntent}`.
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
 pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate};
 

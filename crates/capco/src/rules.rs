@@ -103,10 +103,10 @@ use marque_ism::{
     TokenSpan, sar_sort_key,
 };
 use marque_rules::{
-    Confidence, Diagnostic, FactRef, FixIntent, FixProposal, FixSource, Message, MessageArgs,
-    MessageTemplate, RecanonScope, ReplacementIntent, Rule, RuleContext, RuleId, RuleSet, Severity,
+    Confidence, Diagnostic, FixIntent, FixProposal, FixSource, Message, MessageArgs,
+    MessageTemplate, Rule, RuleContext, RuleId, RuleSet, Severity,
 };
-use marque_scheme::Scope;
+use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, Scope};
 use std::collections::HashSet;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
