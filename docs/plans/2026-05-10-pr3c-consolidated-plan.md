@@ -996,6 +996,12 @@ declarations × 2 + ~300 LoC tests = **~850 LoC.**
   promotion path may not currently support "atomic cluster" promotion
   (both `FactRemove`s land or neither). Verify in commit 3's
   beachhead-test infrastructure (or extend in commit 8 if needed).
+  **Update (2026-05-11):** the engine-side fix lands as GitHub issue
+  #348 (SmallVec extension to
+  `ReplacementIntent::FactRemove`), a standalone PR scheduled to land
+  *before* Sub-PR 8.C drafts E024's migration. See
+  `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`
+  for the Stage-4 umbrella this prerequisite eventually feeds into.
 - E053's subsumption-into-`noforn-clears-rel-to` page rewrite assumes
   that page rewrite is declared on `CapcoScheme` today. Verify; if not
   declared, commit 8's scope expands to include declaring it. (If
@@ -1228,6 +1234,16 @@ Tracked at:
   — D10's deferral: structural diagnostic channel for advisory markings.
   Trigger condition: first concrete consumer or second admonition-shape
   rule.
+- `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`
+  — Stage-4 (PR 5+) consolidation: `Constraint::Incompatible` umbrella
+  primitive unifying conflict-family rules (E016/E024/E036/E037/E039/
+  E041/E054/E055/E056/E057). Three-category taxonomy (A.1 single-fact
+  removal, A.2 chain-removal cluster, A.3 transmute via foreign-
+  equivalence map, B genuine mutual exclusion). Approx −10 rules net
+  toward the 8–18 target band. **Near-term prerequisite — SmallVec
+  extension to `ReplacementIntent::FactRemove` for Sub-PR 8.C — is
+  separated out as GitHub issue #348** and lands before 8.C
+  drafts E024's catalog row.
 
 Open queue (from 2026-05-10 review):
 - **Items 4–7 (short-term, during PR 3c.B):** `Verification` subsection

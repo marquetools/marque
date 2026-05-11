@@ -518,6 +518,37 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
 // ---------------------------------------------------------------------------
 // E016 — JOINT cannot be RESTRICTED
 // ---------------------------------------------------------------------------
+//
+// **Migration status (PR 3c.B Sub-PR 8.B, 2026-05-11):** consciously
+// landed at `fix_intent: None`. Per the 2026-05-11 lattice-consultant
+// session captured in
+// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+// this rule is a **Category A.3 — Transmute via foreign-equivalence map**
+// case under the eventual `Constraint::Incompatible` umbrella primitive.
+// The Stage-4 target is `Remove(RESTRICTED) ⊕ Add(CONFIDENTIAL)` via a
+// foreign-equivalence vocabulary table (UK RESTRICTED → US CONFIDENTIAL
+// per Five Eyes practice), emitted as one atomic audit repair. The
+// vocabulary table does not exist in `marque-capco::vocab` today and
+// its source is open — see the followup file's Open Question 1.
+// Candidate authoritative sources include CAPCO-2016 Appendix A §4
+// (Five Eyes Marking Comparisons; not currently vendored in
+// `crates/capco/docs/`) and bilateral disclosure-policy tables.
+// Per Constitution VIII, CAPCO-2016 §H.3 p56 itself does NOT publish
+// this equivalence — it only says "RESTRICTED is not an authorized
+// US classification marking." A.3 lands when the source is resolved.
+//
+// For now, this rule emits a `Severity::Error` diagnostic with
+// `fix_intent: None` — the engine surfaces the error to the user but
+// applies no auto-fix. The diagnostic message names the CONFIDENTIAL
+// hint as Five Eyes practice (not as a §H.3 claim) so the user can
+// re-mark the violating text manually. Wording stays context-neutral
+// because this rule's `check` does not consult `RuleContext` and can
+// fire on either a portion or a banner.
+//
+// **Do not** dual-populate this rule with a single-fact
+// `FactRemove(RESTRICTED, Portion)` intent in the interim — that would
+// land a half-fix (leaving the marking without a classification level)
+// and corrupt the audit log under Constitution V.
 
 pub(crate) struct DeclarativeJointRestrictedRule;
 
@@ -539,12 +570,27 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
 
         let span = first_span_of(attrs, TokenKind::Classification);
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 8.B — migrated to `with_fix_intent` constructor
+        // signaling consciously-decided-no-fix-intent (Category A.3,
+        // Stage-4 target). See module-level comment block above.
+        //
+        // Message wording per Constitution VIII (Authoritative Source
+        // Fidelity): the §H.3 p56 citation supports the prohibition and
+        // the "not a US classification level" claim verbatim from p56.
+        // The CONFIDENTIAL hint is framed as Five Eyes practice — NOT
+        // attributed to §H.3 — because the equivalence lives in
+        // CAPCO-2016 Appendix A §4 (Five Eyes Marking Comparisons), not
+        // in §H.3 itself.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
-            "RESTRICTED may not be used with JOINT — the US has no equivalent \
-             classification level for RESTRICTED",
+            "RESTRICTED may not be used with JOINT — RESTRICTED is not \
+             an authorized US classification level. Re-mark using an \
+             authorized US classification (per Five Eyes practice, the \
+             operational equivalent of UK/Commonwealth RESTRICTED is \
+             CONFIDENTIAL; consult Five Eyes Marking Comparisons for \
+             the authoritative table)",
             "CAPCO-2016 §H.3 p56",
             None,
         )]
@@ -565,6 +611,24 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
 // "HCS markings" is plural — covers `HCS`, `HCS-O`, `HCS-P`, and any
 // compound anchored on `SciControlBare::Hcs` in `sci_markings`.
 // `TOK_HCS` in `satisfies_attrs` matches all of them.
+//
+// **Migration status (PR 3c.B Sub-PR 8.B, 2026-05-11):** consciously
+// landed at `fix_intent: None`. Per the 2026-05-11 lattice-consultant
+// session captured in
+// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+// this rule is a **Category B — genuine mutual exclusion without
+// policy decision** case under the eventual `Constraint::Incompatible`
+// umbrella primitive. Stage-4 target: `Reject { suggest: Some(...) }` —
+// emit the error plus an optional `Severity::Suggest` companion
+// diagnostic ("did you mean `SECRET//HCS-P//REL TO [LIST]`?"). No
+// auto-applied fix exists for this combination — JOINT changes the
+// attribution semantics; HCS is CIA-owned and US-only; the marking
+// shape is contradictory in a way no removal can resolve.
+//
+// JOINT+HCS is academic in practice (JOINT classifications are largely
+// DOD-only; HCS is CIA-only; the agencies' marking vocabularies don't
+// overlap on this axis), so the diagnostic-only landing is functionally
+// sufficient. The Stage-4 `Suggest` channel adds polish, not correctness.
 
 pub(crate) struct DeclarativeJointHcsRule;
 
@@ -599,7 +663,10 @@ impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
             .map(|t| t.span)
             .unwrap_or_else(|| first_span_of(attrs, TokenKind::SciControl));
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 8.B — migrated to `with_fix_intent` constructor
+        // signaling consciously-decided-no-fix-intent (Category B,
+        // Stage-4 target). See module-level comment block above.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
