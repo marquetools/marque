@@ -627,6 +627,43 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
 /// from the banner/portion into a CAB, which is multi-span document-level
 /// rewriting rather than a local replacement. E005 surfaces the
 /// diagnostic; the author resolves manually.
+// ---------------------------------------------------------------------------
+// Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A
+// per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md` D4.
+// E005 stays as a hand-written `Rule` impl in this file; it does NOT
+// migrate to a `Constraint::Custom` catalog row on `CapcoScheme` in this
+// PR.
+//
+// Retirement target: `Recanonicalize { scope: Scope::Document }` on the
+// `MarkingScheme` trait surface, once `render_canonical` (deferred per
+// `architecture.md` §"What this commits us to") can position declass in
+// the Classification Authority Block (CAB) by construction. Authority:
+// CAPCO-2016 §E.1 p31 + §E.2 p32 (`Declassify On` is a CAB line — the
+// single-value mandate makes the position unambiguous) + §D.1 p27 (the
+// banner category list enumerates classification + control markings;
+// declassification is conspicuously absent — negative-inference). §E
+// commingling exemptions at pp 33-34 are CAB-line *content* rules (e.g.,
+// "N/A to RD/FRD/TFNI portions"), not placement rules, and do not weaken
+// the "declass belongs in CAB" invariant.
+//
+// Structural blocker (why Path A in PR 3c.B Commit 9):
+// `MarkingScheme::evaluate_custom` (crates/scheme/src/scheme.rs:124-130)
+// receives only `&Self::Marking`. It has no access to
+// `RuleContext.marking_type`, so a constraint-catalog predicate cannot
+// reproduce the existing `Banner | Portion` gate (lines below). Without
+// that gate, the predicate would fire on every CAB candidate — declass
+// in a CAB is the correct location, not a violation. The trait-surface
+// extension that would unblock this migration is tracked in
+// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
+//
+// `Diagnostic::with_fix_intent(..., None)` constructor: this rule emits
+// neither a legacy `FixProposal` nor a structural `FixIntent<S>` because
+// the repair is multi-span document-level rewriting (move the declass
+// token from banner/portion into a CAB). The constructor swap (vs the
+// `Diagnostic::new(..., None)` form) signals consciously-decided deferred
+// migration evaluation, matching the PR #349 pattern for E016/E036.
+// Downstream audit consumers observe no behavioral difference: both
+// constructors leave `fix: None` and `fix_intent: None`.
 struct DeclassifyMisplacedRule;
 
 impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
@@ -660,7 +697,11 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
+        // signals consciously-decided deferred migration evaluation. See the
+        // migration-status block above `struct DeclassifyMisplacedRule;` for
+        // the full rationale and retirement target.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
@@ -2012,9 +2053,75 @@ pub(crate) fn dedup_country_codes(
 /// # Fix
 ///
 /// **None.** The rule cannot resolve the ambiguity from in-tree
-/// data. Even at Info severity (S006), a fix proposal would not
-/// auto-apply (engine excludes `Severity::Suggest` regardless of
-/// confidence), so a no-fix diagnostic is the cleaner shape.
+/// data — the dropped uncertain tetragraph may genuinely include
+/// the atoms the intersection just lost; only the producer's
+/// external membership data can settle the question. Note that
+/// `Engine::fix_inner` excludes `Severity::Suggest` only (see the
+/// `d.severity != Severity::Suggest` filter at engine.rs ~L1378),
+/// so emitting a `FixProposal` here WOULD risk auto-apply at
+/// engine-overridable Info/Warn/Error severities. A no-fix
+/// diagnostic is the safer shape.
+// ---------------------------------------------------------------------------
+// Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A
+// per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md` D4.
+// S005 (and its sister rule S006 below) stay as hand-written `Rule` impls
+// in this file; neither migrates to a `Constraint::Custom` catalog row on
+// `CapcoScheme` in this PR.
+//
+// Retirement target: admonition emitter channel (deferred per
+// `specs/006-engine-rule-refactor/followups/admonition-channel.md`). The
+// Suggest/Info severity split between S005 and S006 is operational, NOT
+// §-grounded — CAPCO-2016 §H.8 treats REL TO via pure set-membership
+// language, and §D.2 Table 3 rule 21 (the roll-up intersection law)
+// applies uniformly without distinguishing "active validation" from
+// "consistent case." The split exists because
+// `marque_engine::Engine::lint` overwrites every emitted diagnostic's
+// severity with the rule's configured/default severity (see engine.rs
+// `// Apply configured severity override`); a single rule cannot stably
+// emit at two severities. The admonition channel — when built — collapses
+// the two registered rules into one signal with per-emission severity.
+//
+// Authority for the underlying invariant: CAPCO-2016 §H.8 (REL TO list
+// grammar — syntax and tetragraph definition) + ODNI ISMCAT Tetragraph
+// Taxonomy (member-country expansion). The ISMCAT taxonomy is the
+// authoritative member-country source per ODNI; §H.8 itself does not
+// delegate to ISMCAT (the string "ISMCAT" does not appear in
+// `crates/capco/docs/CAPCO-2016.md`). The two authorities compose; they
+// are not in a delegating relationship. The `S005_CITATION` const below
+// uses an additive `+` form for historical continuity; readers should
+// interpret it as "§H.8 (grammar) plus ISMCAT (expansion data)", not as
+// "§H.8 delegating to ISMCAT."
+//
+// Citations explicitly NOT load-bearing for S005/S006:
+//   - §D.2 Table 3 rule 23 (TEYE/ACGU/FVEY-only intersection special
+//     case) — strictly outside S005/S006's general-tetragraph case.
+//   - §H.8 p151 ("Commingling Rule(s) Within a Portion" — per-portion,
+//     not page-level roll-up).
+// Reviewers verifying citation chains for S005/S006 should not follow
+// either of these as authority for the rules' behavior.
+//
+// Structural blocker (why Path A in PR 3c.B Commit 9):
+// `MarkingScheme::evaluate_custom` (crates/scheme/src/scheme.rs:124-130)
+// receives only `&Self::Marking`. It has no access to
+// `RuleContext.page_context`. The entire body of
+// `analyze_uncertain_reduction` below is page-context-dependent — it
+// reads `page.portions()`, computes a page-level atom-semantics
+// intersection across all portions carrying REL TO, and decides the
+// Suggest vs Info branch from page-wide banner state. A constraint-
+// catalog predicate cannot reproduce any of this without context access.
+// The trait-surface extension that would unblock this migration is
+// tracked in
+// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
+//
+// `Diagnostic::with_fix_intent(..., None)` constructor (in the `check`
+// bodies below): this rule emits neither a legacy `FixProposal` nor a
+// structural `FixIntent<S>` because the ambiguity is not resolvable from
+// in-tree data — the dropped uncertain tetragraph may genuinely include
+// the atoms the intersection lost; only the producer's external
+// membership data can settle the question. The constructor swap (vs
+// `Diagnostic::new(..., None)`) signals consciously-decided deferred
+// migration evaluation, matching the PR #349 pattern for E016/E036.
+// Downstream audit consumers observe no behavioral difference.
 struct RelToOpaqueUncertainReductionSuggestRule;
 
 /// S006 (Info): REL TO membership-uncertain reduction — companion
@@ -2033,6 +2140,12 @@ struct RelToOpaqueUncertainReductionSuggestRule;
 ///
 /// See the S005 doc above for authority and the module-level
 /// S005/S006 header for why the split is two registered rules.
+// Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A,
+// same retirement target and structural blocker as S005. See the
+// migration-status comment block above S005's struct decl
+// (`RelToOpaqueUncertainReductionSuggestRule`) for the full rationale,
+// the admonition-channel retirement target, citation guidance, and the
+// `evaluate_custom` context-access blocker.
 struct RelToOpaqueUncertainReductionInfoRule;
 
 /// Format the `{state}` text for an S005 diagnostic. Pulls from the
@@ -2393,7 +2506,11 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
             .into_iter()
             .filter(|c| c.branch == S005Branch::Suggest)
             .map(|c| {
-                Diagnostic::new(
+                // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
+                // signals consciously-decided deferred migration evaluation. See the
+                // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
+                // for the full rationale and admonition-channel retirement target.
+                Diagnostic::with_fix_intent(
                     self.id(),
                     self.default_severity(),
                     c.span,
@@ -2422,7 +2539,11 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
             .into_iter()
             .filter(|c| c.branch == S005Branch::Info)
             .map(|c| {
-                Diagnostic::new(
+                // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
+                // signals consciously-decided deferred migration evaluation. See the
+                // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
+                // for the full rationale and admonition-channel retirement target.
+                Diagnostic::with_fix_intent(
                     self.id(),
                     self.default_severity(),
                     c.span,
@@ -6845,6 +6966,119 @@ mod tests {
         assert!(
             diags.iter().any(|d| d.rule.as_str() == "E008"),
             "E008 must fire on malformed SCI-shaped token: {diags:?}"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 9 — pin the consciously-decided-no-fix-intent
+    /// migration state for E005.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md`
+    /// D4 (Path A fallback), E005 stays as a registered hand-written
+    /// `Rule` impl in `rules.rs` until `render_canonical` lands on the
+    /// `MarkingScheme` trait surface (the
+    /// `Recanonicalize { scope: Document }` retirement target). The
+    /// structural blocker — `MarkingScheme::evaluate_custom` having no
+    /// access to `RuleContext.marking_type` — is tracked in
+    /// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
+    /// Until the retirement vehicle lands, the rule emits a diagnostic
+    /// with both `fix.is_none()` AND `fix_intent.is_none()`.
+    ///
+    /// **Coverage note:** the G13 closure walker at
+    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// only inspects rules that auto-apply through the engine (those
+    /// emitting `AppliedFixProposal::New` records, which require
+    /// `fix_intent.is_some()`). E005 with `fix_intent: None` is never
+    /// reached by that walker — so this symmetry pin is the **only**
+    /// guard against a future commit accidentally producing an
+    /// asymmetric `(fix, fix_intent)` pair on E005.
+    #[test]
+    fn e005_emits_no_fix_and_no_fix_intent_pending_stage4_recanonicalize_document() {
+        let diags = lint_banner("SECRET//25X1//NOFORN");
+        let e005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E005")
+            .expect("E005 must fire on `SECRET//25X1//NOFORN` (declass exemption in banner)");
+        assert!(
+            e005.fix.is_none(),
+            "E005 fix must be None until Stage-4 `Recanonicalize {{ scope: Document }}` \
+             lands; see constraint-context-extension.md followup"
+        );
+        assert!(
+            e005.fix_intent.is_none(),
+            "E005 fix_intent must be None (symmetric with fix.is_none()). \
+             The G13 walker does NOT see (None, None) rules; this test is \
+             the only guard against asymmetric drift"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 9 — pin the consciously-decided-no-fix-intent
+    /// migration state for S005.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md`
+    /// D4 (Path A fallback), S005 stays as a registered hand-written
+    /// `Rule` impl in `rules.rs` until the admonition emitter channel
+    /// is specced and built per
+    /// `specs/006-engine-rule-refactor/followups/admonition-channel.md`.
+    /// The structural blocker — `MarkingScheme::evaluate_custom` having
+    /// no access to `RuleContext.page_context` (the entire body of
+    /// `analyze_uncertain_reduction` is page-context-dependent) — is
+    /// tracked in
+    /// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
+    /// Until either retirement vehicle lands, the rule emits a diagnostic
+    /// with both `fix.is_none()` AND `fix_intent.is_none()`.
+    ///
+    /// **Coverage note:** same as the E005 pin — the G13 walker doesn't
+    /// see `(None, None)` rules; this symmetry pin is the only guard.
+    #[test]
+    fn s005_emits_no_fix_and_no_fix_intent_pending_stage4_admonition_channel() {
+        // RSMA is an NA-deprecated tetragraph from the V2022-NOV ISMCAT
+        // taxonomy (per the existing test-module note at L~4585);
+        // `is_decomposable("RSMA")` returns `None`, so it qualifies as
+        // an uncertain code. Two portions list it differently; the
+        // page-level atom intersection drops RSMA. Banner has no REL TO
+        // (NOFORN supersedes) — active-validation / Suggest branch.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .expect("S005 must fire on RSMA uncertain-reduction (Suggest branch)");
+        assert!(
+            s005.fix.is_none(),
+            "S005 fix must be None until Stage-4 admonition channel lands; \
+             see admonition-channel.md and constraint-context-extension.md followups"
+        );
+        assert!(
+            s005.fix_intent.is_none(),
+            "S005 fix_intent must be None (symmetric with fix.is_none())"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 9 — pin the consciously-decided-no-fix-intent
+    /// migration state for S006. Same shape as S005's pin; the Info
+    /// branch fires when the banner's REL TO is consistent with the
+    /// atom-semantics intersection.
+    #[test]
+    fn s006_emits_no_fix_and_no_fix_intent_pending_stage4_admonition_channel() {
+        // Banner REL TO equals the atom-semantics intersection
+        // ({USA, GBR}); `expected ⊆ banner` ⇒ Info branch ⇒ S006 fires.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let s006 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S006")
+            .expect("S006 must fire on RSMA uncertain-reduction (Info branch)");
+        assert!(
+            s006.fix.is_none(),
+            "S006 fix must be None until Stage-4 admonition channel lands"
+        );
+        assert!(
+            s006.fix_intent.is_none(),
+            "S006 fix_intent must be None (symmetric with fix.is_none())"
         );
     }
 }
