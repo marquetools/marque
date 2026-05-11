@@ -84,6 +84,8 @@ impl MarkingScheme for StubScheme {
             constraint_label: "custom-stub",
             message: format!("custom fired: {name}"),
             citation: "stub-custom",
+            span: None,
+            severity: None,
         }]
     }
     fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {

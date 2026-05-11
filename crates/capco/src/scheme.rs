@@ -2057,6 +2057,8 @@ impl CapcoScheme {
                         constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
                         citation: label,
+                        span: None,
+                        severity: None,
                     }]
                 } else {
                     Vec::new()
@@ -2068,6 +2070,8 @@ impl CapcoScheme {
                         constraint_label: name,
                         message: format!("token {left:?} requires {right:?} but it is missing"),
                         citation: label,
+                        span: None,
+                        severity: None,
                     }]
                 } else {
                     Vec::new()
@@ -2519,6 +2523,8 @@ fn e012_dual_classification(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
                 foreign_desc
             ),
             citation: "CAPCO-2016 §H.3 p55",
+            span: None,
+            severity: None,
         }]
     } else {
         Vec::new()
@@ -2560,6 +2566,8 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constra
             missing.join(", ")
         ),
         citation: "CAPCO-2016 §H.3 p57",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2602,6 +2610,8 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
                   per the Atomic Energy Act"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104 + p111",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2630,6 +2640,8 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Co
         constraint_label: "E038/nodis-or-exdis-requires-noforn",
         message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
         citation: "CAPCO-2016 §H.9 p172 + p174",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2660,6 +2672,8 @@ fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViola
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2676,6 +2690,8 @@ fn w002_us_commingled_with_fgi(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constr
                   consider splitting into separate US and foreign paragraphs"
             .to_owned(),
         citation: "CAPCO-2016 §H.7 p124",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2698,6 +2714,8 @@ fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViola
                   classification countries and REL TO"
             .to_owned(),
         citation: "CAPCO-2016 §H.3 pp 55–57",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2765,6 +2783,8 @@ fn hcs_system_constraints(
                      §H.4 p62 (requires document-level analysis)."
                     .to_owned(),
                 citation,
+                span: None,
+                severity: None,
             });
             if classification == Some(Classification::Confidential) {
                 out.push(marque_scheme::ConstraintViolation {
@@ -2773,6 +2793,8 @@ fn hcs_system_constraints(
                               per CAPCO-2016 §H.4 p62."
                         .to_owned(),
                     citation,
+                    span: None,
+                    severity: None,
                 });
             }
             continue;
@@ -2791,6 +2813,8 @@ fn hcs_system_constraints(
                                       CAPCO-2016 §H.4 p64."
                                 .to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     if !has_orcon {
@@ -2798,6 +2822,8 @@ fn hcs_system_constraints(
                             constraint_label: "HCS-O-requires-ORCON",
                             message: "HCS-O requires ORCON per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     if has_orcon_usgov {
@@ -2807,6 +2833,8 @@ fn hcs_system_constraints(
                                       §H.4 p64."
                                 .to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     // HCS-O requires NOFORN per CAPCO-2016 §H.4 p64
@@ -2821,6 +2849,8 @@ fn hcs_system_constraints(
                             constraint_label: "HCS-O-requires-NOFORN",
                             message: "HCS-O requires NOFORN per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                 }
@@ -2832,6 +2862,8 @@ fn hcs_system_constraints(
                                       CAPCO-2016 §H.4 p66."
                                 .to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     // HCS-P requires NOFORN per CAPCO-2016 §H.4 p66
@@ -2848,6 +2880,8 @@ fn hcs_system_constraints(
                             constraint_label: "HCS-P-requires-NOFORN",
                             message: "HCS-P requires NOFORN per CAPCO-2016 §H.4 p66.".to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                 }
@@ -2882,6 +2916,8 @@ fn hcs_system_constraints(
                  per CAPCO-2016 §H.4 p62 (requires document-level analysis)."
                 .to_owned(),
             citation,
+            span: None,
+            severity: None,
         });
         if classification == Some(Classification::Confidential) {
             out.push(marque_scheme::ConstraintViolation {
@@ -2890,6 +2926,8 @@ fn hcs_system_constraints(
                           CAPCO-2016 §H.4 p62."
                     .to_owned(),
                 citation,
+                span: None,
+                severity: None,
             });
         }
     }
@@ -3138,6 +3176,8 @@ fn class_floor_emit(
         constraint_label: row.name,
         message,
         citation: row.citation,
+        span: None,
+        severity: None,
     })
 }
 
@@ -4567,6 +4607,8 @@ fn sci_per_system_catalog_eval(
             constraint_label: row.name,
             message: String::from(d.message),
             citation: row.citation,
+            span: None,
+            severity: None,
         })
         .collect()
 }
