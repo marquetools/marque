@@ -63,7 +63,7 @@ axum = { version = "0.8.9", features = ["json"] }
 tower = "0.5.3"
 tower-http = { version = "0.6.8", features = ["cors", "set-header", "trace"] }
 
-assert_cmd = "2.2.1"
+assert_cmd = "2.2.2"
 # CLI
 clap = { version = "4.6.1", features = ["derive"] }
 humantime = "2.3.0"
