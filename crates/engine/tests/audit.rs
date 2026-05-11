@@ -855,7 +855,14 @@ fn decoder_path_record_shape() {
 // indicate the rule never ran — silently weakening the assertion.
 
 #[test]
-fn migration_audit_has_both_urns() {
+fn nf_noforn_form_pair_resolves_to_same_odni_urn() {
+    // Renamed in PR 3c.B Commit 6: the function used to drive this
+    // contract from a live E001 `AppliedFix` (an audit record), but
+    // E001 retired into `MarkingScheme::render_canonical` at that
+    // commit. The contract being tested is now the URN provenance
+    // property itself — that a canonical CVE value and its banner
+    // form resolve to the same ODNI URN via the public lookup
+    // tables — independent of any emitting rule.
     use marque_capco::scheme::{CapcoScheme, TOK_NOFORN};
     use marque_scheme::Vocabulary;
 
