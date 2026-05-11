@@ -401,6 +401,32 @@ impl Engine {
         // would self-justify by raising the floor it then clears).
         let mut classification_floor: Option<u8> = None;
 
+        // PR 3c.B Commit 4 — per-page scratch buffer for
+        // `MarkingScheme::render_canonical`. The writer-passing
+        // contract on `render_canonical` (caller pre-allocates and
+        // reuses) only pays off when this buffer survives across
+        // every portion on a page; allocating per-call would defeat
+        // the SC-001 latency budget Decision 5 cites in the
+        // architecture spec. The buffer is `clear()`ed at every
+        // `MarkingType::PageBreak` boundary (alongside the
+        // `PageContext` reset, per Constitution VI's pipeline
+        // invariant) so a banner roll-up rendered for page N+1
+        // starts from an empty buffer rather than appending to
+        // page N's residue.
+        //
+        // Commit 4 ships the allocation + reset site only: no rule
+        // emits `Recanonicalize` yet, and `Engine::fix_inner` does
+        // not call `render_canonical`. The page-break `.clear()`
+        // call is the only mutation the buffer sees today; that
+        // mutation is what justifies the `mut` binding (and so
+        // satisfies `unused_mut` under `-D warnings` — `.clear()`
+        // takes `&mut self`, which counts as a use of the binding's
+        // mutability). Commit 6 is the first consumer — when the
+        // first `Recanonicalize`-emitting rule lands, the
+        // per-portion `render_canonical` call site reuses this
+        // buffer instead of allocating a fresh `String` per call.
+        let mut render_scratch = String::new();
+
         for candidate in &candidates {
             // T008: per-candidate deadline check. Checking at the top
             // of the loop (before any per-candidate work — including
@@ -442,6 +468,13 @@ impl Engine {
                 page_context = PageContext::new();
                 page_context_arc = None;
                 classification_floor = None;
+                // PR 3c.B Commit 4: clear the per-page render
+                // scratch buffer at the same boundary as the
+                // PageContext reset (Constitution VI invariant).
+                // Commit 6's first `Recanonicalize`-emitting rule
+                // depends on this happening BEFORE the next page's
+                // first portion is rendered.
+                render_scratch.clear();
                 continue;
             }
 

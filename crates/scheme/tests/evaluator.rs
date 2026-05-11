@@ -98,6 +98,14 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, _: &Self::Marking) -> String {
         String::new()
     }
+    fn render_canonical(
+        &self,
+        _: &Self::Marking,
+        _: Scope,
+        _: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 const TOK_A: TokenId = TokenId(10);

@@ -180,6 +180,20 @@ pub enum ReplacementIntent<S: MarkingScheme> {
     /// Recanonicalize the rendering of `scope`. Input form
     /// diverges from canonical form; the fact set is correct.
     /// The renderer re-renders the scope per `render_canonical`.
+    ///
+    /// # Engine dispatch contract
+    ///
+    /// At fix-application time, `Engine::fix_inner` consults its
+    /// in-scope projection (already computed during `lint` per
+    /// Constitution VI's dataflow pipeline) for the named
+    /// [`RecanonScope`], then calls
+    /// `render_canonical(&projection.marking, scope.into(),
+    /// &mut writer)` on the active scheme. Rules NEVER carry the
+    /// `ProjectedMarking` — the engine is the authority on
+    /// per-scope projections; the rule only names which scope to
+    /// re-render. See `MarkingScheme::render_canonical` doc
+    /// comment for the full writer-passing + lattice-equal-byte-
+    /// identical contract.
     Recanonicalize {
         /// The positional scope to re-render. `RecanonScope`
         /// excludes `Scope::Diff` because a diff context is not a
@@ -444,6 +458,14 @@ mod tests {
         }
         fn render_banner(&self, _m: &Self::Marking) -> String {
             String::new()
+        }
+        fn render_canonical(
+            &self,
+            _m: &Self::Marking,
+            _scope: Scope,
+            _out: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
         }
     }
 

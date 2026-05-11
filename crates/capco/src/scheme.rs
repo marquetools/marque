@@ -2261,6 +2261,11 @@ impl MarkingScheme for CapcoScheme {
     fn render_portion(&self, m: &Self::Marking) -> String {
         // Phase A: render only the classification level — enough to
         // exercise the trait method. Full renderer is Phase B.
+        //
+        // Override retained over the trait default. Commit 5 inverts
+        // the dependency: `render_canonical` becomes the substantive
+        // body, and `render_portion` falls through to the trait
+        // default that calls `render_canonical(_, Scope::Portion, _)`.
         match &m.0.classification {
             Some(c) => c.effective_level().portion_str().to_owned(),
             None => String::new(),
@@ -2268,12 +2273,114 @@ impl MarkingScheme for CapcoScheme {
     }
 
     fn render_banner(&self, m: &Self::Marking) -> String {
+        // See `render_portion`. Override retained until commit 5
+        // populates `RENDER_TABLE` and inverts the dispatch.
         match &m.0.classification {
             Some(c) => c.effective_level().banner_str().to_owned(),
             None => String::new(),
         }
     }
+
+    /// Commit 4 — degenerate `render_canonical` that delegates back
+    /// to the existing `render_portion` / `render_banner` impls.
+    ///
+    /// This direction is the inverse of the eventual flow: commit 5
+    /// populates [`RENDER_TABLE`] and makes `render_canonical` the
+    /// substantive body, with `render_portion` / `render_banner`
+    /// retiring into the trait defaults that loop back through this
+    /// method. For commit 4 the contract is purely additive — the
+    /// trait method exists, every `MarkingScheme` impl has a body,
+    /// and the byte-identity property of `render_portion` /
+    /// `render_banner` is preserved (they remain the canonical
+    /// implementations and `render_canonical` defers to them).
+    ///
+    /// `Scope::Diff` returns `Err(fmt::Error)` because diff is a
+    /// rule-context query mode, not a renderer-output scope. See
+    /// the trait-method doc comment and `marque-rules`'
+    /// `RecanonScope` (which narrows `Scope` to exclude `Diff`).
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        scope: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        match scope {
+            Scope::Portion => out.write_str(&self.render_portion(m)),
+            Scope::Page | Scope::Document => out.write_str(&self.render_banner(m)),
+            Scope::Diff => Err(core::fmt::Error),
+        }
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Commit 4 — `AxisRenderRow` declaration + placeholder `RENDER_TABLE`
+// ---------------------------------------------------------------------------
+//
+// `AxisRenderRow` is the per-axis dispatch primitive that commit 5
+// populates with one row per CAPCO axis (classification, dissem, SCI,
+// SAR, FGI, AEA, NIC, declass). Commit 4 declares the type and an
+// empty table — no axis rows yet. The substantive `render_canonical`
+// body that walks `RENDER_TABLE` lands in commit 5; today the table
+// is unread.
+//
+// The `render` field is a function pointer (not a closure) so the
+// table can be `const` and shared across `CapcoScheme` instances.
+// Each row's writer-passing contract matches `MarkingScheme::
+// render_canonical` exactly — implementations append to `out` and
+// MUST NOT clear the buffer themselves.
+
+/// Per-axis renderer dispatch row.
+///
+/// Commit 5 populates [`RENDER_TABLE`] with one row per CAPCO axis;
+/// commit 4 only declares the type. See the module-level note above
+/// for the full migration sketch.
+///
+/// `#[allow(dead_code)]` is intentional: commit 4 ships the type
+/// alongside an empty `RENDER_TABLE` so commit 5 can populate the
+/// table without re-declaring the row shape. The `#[allow]` retires
+/// in commit 5 when the first row's `render` field becomes the
+/// `render_canonical` body.
+///
+/// # Constraint for commit 5+ axis renderers
+///
+/// `render` is a bare `fn` pointer (not `Box<dyn Fn>` or a method
+/// pointer). It cannot capture `&self` or any scheme-instance state.
+/// All inputs the renderer needs MUST be reachable from
+/// [`CapcoMarking`] or `&'static` tables (the existing
+/// vocabulary tables in `crates/capco/src/vocab.rs` satisfy this —
+/// every accessor returns `&'static` data).
+///
+/// Commit 5's planned axes (classification, dissem, SCI, SAR, FGI,
+/// AEA, NIC, declass) all read from `CanonicalAttrs` (inside
+/// `CapcoMarking`) and `&'static` vocabulary tables, so the `fn`
+/// pointer shape is sufficient. If a future axis renderer needs
+/// runtime configuration (e.g., a user-configurable classification
+/// ceiling, a per-document tetragraph expansion, or per-call MCP
+/// state), this row type MUST change to `Box<dyn Fn(...)>` or gain
+/// a threaded `&CapcoScheme` parameter — the `const`-able shape is
+/// the chosen trade-off, not a permanent constraint.
+#[allow(dead_code)]
+pub(crate) struct AxisRenderRow {
+    /// The category this row renders (e.g., [`CAT_CLASSIFICATION`],
+    /// [`CAT_DISSEM`]).
+    pub category: CategoryId,
+    /// Render the axis's contribution to the canonical form for the
+    /// given `scope`, appending bytes to `out`. Same writer-passing
+    /// contract as [`MarkingScheme::render_canonical`].
+    pub render: fn(&CapcoMarking, Scope, &mut dyn core::fmt::Write) -> core::fmt::Result,
+}
+
+/// Per-axis renderer dispatch table.
+///
+/// Commit 4 ships this as an empty placeholder. Commit 5 populates
+/// it with one [`AxisRenderRow`] per CAPCO axis (classification,
+/// dissem, SCI, SAR, FGI, AEA, NIC, declass) and rewrites
+/// [`MarkingScheme::render_canonical`] to walk the table in
+/// `Category::ordering_rank` order.
+///
+/// `#[allow(dead_code)]` is intentional — see [`AxisRenderRow`].
+#[allow(dead_code)]
+pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[];
 
 // ---------------------------------------------------------------------------
 // T035 Custom-constraint helpers

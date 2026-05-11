@@ -213,6 +213,21 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, m: &Self::Marking) -> String {
         if m.has_token { "STUB" } else { "" }.to_string()
     }
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        scope: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        // Degenerate delegation — preserves byte-identity with the
+        // existing `render_portion` / `render_banner` overrides
+        // above. `Scope::Diff` rejects per the trait contract.
+        match scope {
+            Scope::Portion => out.write_str(&self.render_portion(m)),
+            Scope::Page | Scope::Document => out.write_str(&self.render_banner(m)),
+            Scope::Diff => Err(core::fmt::Error),
+        }
+    }
 
     // `evaluate_custom` is intentionally NOT overridden. The trait
     // default (returning `Vec::new()`) is sufficient for any scheme
