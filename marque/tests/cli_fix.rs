@@ -24,17 +24,24 @@ fn marque() -> Command {
 fn fix_applies_high_confidence_and_emits_audit() {
     // Copy fixture to temp dir so in-place write doesn't clobber corpus.
     // Uses tempdir (not NamedTempFile) to avoid Windows file-locking issues.
+    //
+    // PR 3c.B Commit 6 retired the E001/E003 mixed_confidence fixture.
+    // The replacement uses `missing_usa_trigraph.txt` — E002 fires
+    // with confidence 0.97 (passes the 0.95 threshold) and the fix
+    // produces `SECRET//REL TO USA, GBR`. The test still validates
+    // the same channel: a high-confidence fix is applied AND emits
+    // an audit record on stderr.
     let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_path = tmp_dir.path().join("mixed_confidence.txt");
-    std::fs::copy(fixture("invalid/mixed_confidence.txt"), &tmp_path).unwrap();
+    let tmp_path = tmp_dir.path().join("missing_usa_trigraph.txt");
+    std::fs::copy(fixture("invalid/missing_usa_trigraph.txt"), &tmp_path).unwrap();
 
-    let assert = marque().args(["fix"]).arg(&tmp_path).assert().code(1); // E003 remains
+    let assert = marque().args(["fix"]).arg(&tmp_path).assert().success();
 
-    // File should be modified: NF → NOFORN
+    // File should be modified: REL TO GBR, AUS → REL TO USA, AUS, GBR.
     let fixed = std::fs::read_to_string(&tmp_path).unwrap();
     assert!(
-        fixed.starts_with("SECRET//NOFORN"),
-        "E001 fix (NF→NOFORN) should be applied, got: {fixed:?}"
+        fixed.starts_with("SECRET//REL TO USA"),
+        "E002 fix should be applied, got: {fixed:?}"
     );
 
     // stderr should contain audit NDJSON with schema version.
@@ -47,8 +54,8 @@ fn fix_applies_high_confidence_and_emits_audit() {
         "audit record should contain schema version, got: {stderr}"
     );
     assert!(
-        stderr.contains("\"rule\":\"E001\""),
-        "audit record should contain rule E001, got: {stderr}"
+        stderr.contains("\"rule\":\"E002\""),
+        "audit record should contain rule E002, got: {stderr}"
     );
     assert!(
         stderr.contains("\"dry_run\":false"),
@@ -59,15 +66,15 @@ fn fix_applies_high_confidence_and_emits_audit() {
 #[test]
 fn fix_dry_run_does_not_modify_file() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_path = tmp_dir.path().join("mixed_confidence.txt");
-    std::fs::copy(fixture("invalid/mixed_confidence.txt"), &tmp_path).unwrap();
+    let tmp_path = tmp_dir.path().join("missing_usa_trigraph.txt");
+    std::fs::copy(fixture("invalid/missing_usa_trigraph.txt"), &tmp_path).unwrap();
     let original = std::fs::read_to_string(&tmp_path).unwrap();
 
     let assert = marque()
         .args(["fix", "--dry-run"])
         .arg(&tmp_path)
         .assert()
-        .code(1); // E003 remains
+        .success();
 
     // File must be unchanged.
     let after = std::fs::read_to_string(&tmp_path).unwrap();
@@ -85,14 +92,14 @@ fn fix_dry_run_does_not_modify_file() {
 fn fix_stdin_writes_stdout_by_default() {
     let assert = marque()
         .args(["fix"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
-        .success(); // E001 is the only issue and it gets fixed
+        .success(); // E002 is the only issue and it gets fixed
 
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     assert_eq!(
         stdout.as_ref(),
-        "SECRET//NOFORN\n",
+        "SECRET//REL TO USA, GBR\n",
         "stdin fix should write to stdout"
     );
 }
@@ -117,7 +124,7 @@ fn fix_in_place_and_write_stdout_mutual_exclusion() {
 fn fix_quiet_does_not_suppress_audit() {
     let assert = marque()
         .args(["fix", "-q"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .success();
 
@@ -139,20 +146,24 @@ fn fix_quiet_does_not_suppress_audit() {
 
 #[test]
 fn fix_exit_code_zero_when_all_fixed() {
-    // SECRET//NF only triggers E001 (confidence 1.0) — fully fixable.
+    // SECRET//REL TO GBR only triggers E002 (confidence 0.97) — fully
+    // fixable at the default 0.95 threshold.
     marque()
         .args(["fix"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .success();
 }
 
 #[test]
 fn fix_exit_code_one_when_issues_remain() {
-    // mixed_confidence has E003 (0.6) which stays as a suggestion.
+    // `//JOINT SECRET USA GBR` triggers E014 (JOINT requires REL TO
+    // coverage) and E015 (non-US classification needs a dissem
+    // control) — both Severity::Error, both emit no-fix diagnostics.
+    // After fix, the errors remain → exit 1.
     marque()
         .args(["fix"])
-        .write_stdin("SECRET//NF\nSECRET//NOFORN//SI\n")
+        .write_stdin("//JOINT SECRET USA GBR\n")
         .assert()
         .code(1);
 }
@@ -161,7 +172,7 @@ fn fix_exit_code_one_when_issues_remain() {
 fn fixed_timestamp_rejected_without_env_var() {
     marque()
         .args(["fix", "--fixed-timestamp", "2024-01-01T00:00:00Z"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(64);
 }
@@ -172,7 +183,7 @@ fn fixed_timestamp_produces_deterministic_audit() {
         let assert = marque()
             .env("MARQUE_ALLOW_FIXED_CLOCK", "1")
             .args(["fix", "--fixed-timestamp", "2024-06-15T12:00:00Z"])
-            .write_stdin("SECRET//NF\n")
+            .write_stdin("SECRET//REL TO GBR\n")
             .assert()
             .success();
         let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_string();
@@ -201,7 +212,7 @@ fn fixed_timestamp_produces_deterministic_audit() {
 fn fix_dry_run_and_write_stdout_mutual_exclusion() {
     marque()
         .args(["fix", "--dry-run", "--write-stdout"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .code(64);
 }
@@ -229,7 +240,7 @@ fn fix_empty_input_exits_zero_no_audit() {
 fn fix_dry_run_stdin_produces_no_stdout() {
     let assert = marque()
         .args(["fix", "--dry-run"])
-        .write_stdin("SECRET//NF\n")
+        .write_stdin("SECRET//REL TO GBR\n")
         .assert()
         .success();
 
@@ -256,17 +267,32 @@ fn fix_dry_run_stdin_produces_no_stdout() {
     );
 }
 
-// --- H6: all fixes below threshold ---
+// --- H6: no-fix diagnostics → exit 1, no audit ---
 
 #[test]
-fn fix_all_below_threshold_exits_one_no_audit() {
-    // SECRET//NOFORN//SI triggers only E003 at confidence 0.6, below
-    // the default 0.95 threshold. No fixes applied.
+fn fix_no_fix_diagnostics_only_exits_one_no_audit() {
+    // E014/E015 (JOINT/non-US) emit no-fix diagnostics — no proposal
+    // at all, so the threshold gate is academic. After fix, the
+    // errors remain → exit 1 with no audit records.
+    //
+    // Pre-PR-3c.B Commit 6 the fixture here was a sub-threshold
+    // FixProposal (E003 at 0.6 below the default 0.95 threshold) and
+    // the test name reflected that. E003 retired into the renderer at
+    // Commit 6 and after the retirements no remaining rule emits a
+    // FixProposal below 0.95 on canonical inputs, so the
+    // "fix proposal below threshold" CLI gate moved to
+    // `cli_confidence_threshold_overrides_config` in
+    // `marque/tests/cli_config.rs` (sets `--confidence-threshold=0.99`
+    // against E002 at 0.97 — explicitly the CLI-level sub-threshold
+    // gate). The contract this test exercises is the parallel
+    // "all-no-fix-diagnostics → no audit + exit 1" surface; the
+    // engine-level "sub-threshold proposals never auto-apply" gate
+    // is pinned in `crates/engine/tests/audit_completeness.rs`.
     let assert = marque()
         .args(["fix"])
-        .write_stdin("SECRET//NOFORN//SI\n")
+        .write_stdin("//JOINT SECRET USA GBR\n")
         .assert()
-        .code(1); // E003 remains as error
+        .code(1);
 
     // No fixes applied → no audit records.
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
@@ -278,7 +304,7 @@ fn fix_all_below_threshold_exits_one_no_audit() {
 
     // stdout should contain the original text (unchanged, written via --write-stdout default).
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert_eq!(stdout.as_ref(), "SECRET//NOFORN//SI\n");
+    assert_eq!(stdout.as_ref(), "//JOINT SECRET USA GBR\n");
 }
 
 // --- Suggest-only narration (issue #235 / #186 PR-3, M-3) ---
@@ -313,7 +339,7 @@ fn fix_suggest_only_input_emits_no_manual_review_narration() {
 fn fix_write_stdout_on_file_input() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let tmp_path = tmp_dir.path().join("input.txt");
-    std::fs::write(&tmp_path, "SECRET//NF\n").unwrap();
+    std::fs::write(&tmp_path, "SECRET//REL TO GBR\n").unwrap();
     let original = std::fs::read_to_string(&tmp_path).unwrap();
 
     let assert = marque()
@@ -324,7 +350,7 @@ fn fix_write_stdout_on_file_input() {
 
     // stdout should have fixed content.
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert_eq!(stdout.as_ref(), "SECRET//NOFORN\n");
+    assert_eq!(stdout.as_ref(), "SECRET//REL TO USA, GBR\n");
 
     // File should be UNCHANGED (--write-stdout overrides --in-place default).
     let after = std::fs::read_to_string(&tmp_path).unwrap();
@@ -335,7 +361,11 @@ fn fix_write_stdout_on_file_input() {
 
 #[test]
 fn fix_dry_run_exit_code_matches_apply_exit_code() {
-    let input = "SECRET//NF\nSECRET//NOFORN//SI\n";
+    // Mixed input: one line is fully fixable (E002), the other has
+    // a no-fix error (E014/E015 on the JOINT line). Apply and
+    // dry-run must produce the same exit code (both should exit 1
+    // because the JOINT errors remain regardless of mode).
+    let input = "SECRET//REL TO GBR\n//JOINT SECRET USA GBR\n";
     let apply_code = marque()
         .args(["fix"])
         .write_stdin(input)
@@ -404,7 +434,7 @@ fn audit_stream_uses_only_one_schema_version() {
     // A multi-fix input that exercises several rule emitters in a
     // single run, so the test isn't trivially passing on a single
     // record.
-    let input = "SECRET//NF\nSECRET//NF\nSECRET//NF\n";
+    let input = "SECRET//REL TO GBR\nSECRET//REL TO AUS\nSECRET//REL TO JPN\n";
     let assert = marque().args(["fix"]).write_stdin(input).assert().success();
 
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);

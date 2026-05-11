@@ -28,8 +28,10 @@ fn test_engine() -> Engine {
 #[test]
 fn applied_fix_has_all_required_fields() {
     let engine = test_engine();
-    // This source triggers E001 at confidence 1.0.
-    let source = b"SECRET//NF\n";
+    // This source triggers E002 at confidence 0.97. (PR 3c.B Commit
+    // 6 retired E001 — the original "high confidence single fix"
+    // anchor — into the renderer.)
+    let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
     assert!(
@@ -108,45 +110,60 @@ fn applied_fix_has_all_required_fields() {
 
 #[test]
 fn sub_threshold_proposals_never_in_applied() {
-    let engine = test_engine();
-    // This source triggers E003 at confidence 0.6 (below default 0.95 threshold).
-    // E001 fires at 1.0 but on the second line only E003 fires.
-    let source = b"SECRET//NOFORN//SI\n";
+    // Override the default 0.95 threshold to 0.99 so E002's 0.97 fix
+    // is **below** threshold — exercising the sub-threshold gate
+    // without depending on any rule whose default fix is <0.95.
+    // (Pre-PR-3c.B-Commit-6 this test relied on E003 at 0.6 being
+    // sub-threshold against the default 0.95; E003 retired into the
+    // renderer.)
+    let mut config = Config::default();
+    config
+        .set_confidence_threshold(0.99)
+        .expect("0.99 is in [0.0, 1.0]");
+    let engine = Engine::with_clock(
+        config,
+        vec![Box::new(capco_rules())],
+        marque_engine::default_scheme(),
+        Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+
+    let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
-    // E003 is sub-threshold — it must NOT appear in applied. Read
-    // confidence from the top-level snapshot per the v2 audit contract.
-    // The engine's confidence-threshold gate consumes
-    // `proposal.confidence` at gate time; the snapshot to
-    // `fix.confidence` is what users see in the audit record. Today the
-    // two are byte-identical (`__engine_promote` snapshots unchanged),
-    // and either reading would catch a gate regression. Reading from
-    // the snapshot also catches the (future) case where a post-gate
-    // adjustment causes the AUDIT to show sub-threshold confidence
-    // even though the gate input was above threshold — which would
-    // mislead auditors and is itself a contract violation.
+    // No fix should be applied at threshold 0.99 — E002's 0.97 is
+    // sub-threshold.
+    assert!(
+        result.applied.is_empty(),
+        "no sub-threshold fix may appear in applied; got: {:?}",
+        result.applied
+    );
+
+    // Every entry in `applied` (vacuously none here) would have
+    // ≥0.99 confidence. The audit-contract assertion: the gate is
+    // honored.
     for fix in &result.applied {
         let combined = fix.confidence.combined();
         assert!(
-            combined >= 0.95,
+            combined >= 0.99,
             "sub-threshold fix (confidence {combined}) must not appear in applied"
         );
     }
 
-    // E003 should remain in remaining_diagnostics.
+    // E002 should remain in remaining_diagnostics.
     assert!(
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| d.rule.as_str() == "E003"),
-        "E003 should remain as a suggestion in remaining_diagnostics"
+            .any(|d| d.rule.as_str() == "E002"),
+        "E002 should remain as a suggestion in remaining_diagnostics"
     );
 }
 
 #[test]
 fn dry_run_applied_fixes_have_dry_run_flag() {
     let engine = test_engine();
-    let source = b"SECRET//NF\n";
+    let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::DryRun);
 
     for fix in &result.applied {
@@ -161,7 +178,7 @@ fn dry_run_applied_fixes_have_dry_run_flag() {
 fn applied_fix_timestamp_matches_clock() {
     let expected_ts = UNIX_EPOCH + Duration::from_secs(FIXED_TS);
     let engine = test_engine();
-    let source = b"SECRET//NF\n";
+    let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
     for fix in &result.applied {

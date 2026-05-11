@@ -2825,55 +2825,37 @@ mod tests {
         // pre-check fast-path skip restored after the T026a refactor
         // made `check()` always run.
         //
-        // E001 (`portion-mark-in-banner`) is a non-walker rule that
-        // fires deterministically on the banner `SECRET//NF`
-        // (`NF` is the portion form of NOFORN; banners must use the
-        // long `NOFORN` form). With `E001 = "off"` configured, the
-        // engine must produce zero E001 diagnostics — the fast-path
-        // skip prevents the rule's body from running at all.
-        //
-        // Pinning this property keeps a future regression that
-        // accidentally relaxes the fast-path predicate (e.g., to
-        // always go through the post-check filter) from going
-        // unnoticed: the post-check filter would still drop the
-        // emitted E001 diagnostic, so this test would still pass —
-        // BUT the rule's body would have run, defeating the
-        // optimization. To distinguish, the test asserts not just
-        // "no E001 diagnostics" but ALSO that no other rule on the
-        // same input observed an E001-shaped side effect. Since
-        // CAPCO rules are stateless and don't side-effect each
-        // other, the strongest available pin here is the absence
-        // assertion plus this comment documenting the intent. A
-        // future change that converts E001 to a walker would need
-        // to revisit this test.
-        let engine = capco_engine_with_overrides(&[("E001", "off")]);
-        let diagnostics = engine.lint(b"SECRET//NF").diagnostics;
-        let e001: Vec<&Diagnostic<CapcoScheme>> = diagnostics
+        // PR 3c.B Commit 6 retired E001; this test now exercises the
+        // fast-path skip on E002 (`missing-usa-trigraph`), a non-
+        // walker rule that fires deterministically on
+        // `SECRET//REL TO GBR`. The contract is identical: with
+        // `E002 = "off"` configured, the engine must produce zero
+        // E002 diagnostics via the fast-path skip.
+        let engine = capco_engine_with_overrides(&[("E002", "off")]);
+        let diagnostics = engine.lint(b"SECRET//REL TO GBR").diagnostics;
+        let e002: Vec<&Diagnostic<CapcoScheme>> = diagnostics
             .iter()
-            .filter(|d| d.rule.as_str() == "E001")
+            .filter(|d| d.rule.as_str() == "E002")
             .collect();
         assert!(
-            e001.is_empty(),
-            "config `E001 = \"off\"` must produce zero E001 \
+            e002.is_empty(),
+            "config `E002 = \"off\"` must produce zero E002 \
              diagnostics via the fast-path pre-check skip; got: \
-             {e001:?} (full diag list: {diagnostics:?})",
+             {e002:?} (full diag list: {diagnostics:?})",
         );
 
-        // Sanity check: without the Off override, E001 fires on the
-        // same input. Without this opposing pin, the previous
-        // assertion could pass trivially if the fixture stopped
-        // triggering E001 for some unrelated reason.
+        // Sanity check: without the Off override, E002 fires on the
+        // same input.
         let engine_default = capco_engine_with_overrides(&[]);
-        let baseline = engine_default.lint(b"SECRET//NF").diagnostics;
-        let baseline_e001: Vec<&Diagnostic<CapcoScheme>> = baseline
+        let baseline = engine_default.lint(b"SECRET//REL TO GBR").diagnostics;
+        let baseline_e002: Vec<&Diagnostic<CapcoScheme>> = baseline
             .iter()
-            .filter(|d| d.rule.as_str() == "E001")
+            .filter(|d| d.rule.as_str() == "E002")
             .collect();
         assert!(
-            !baseline_e001.is_empty(),
-            "fixture sanity check: without Off override, E001 must \
-             fire on `SECRET//NF` (banner uses portion form `NF`); \
-             got: {baseline:?}",
+            !baseline_e002.is_empty(),
+            "fixture sanity check: without Off override, E002 must \
+             fire on `SECRET//REL TO GBR`; got: {baseline:?}",
         );
     }
 

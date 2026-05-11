@@ -274,7 +274,7 @@ fn cli_no_deadline_runs_to_completion() {
     // truncation warning.
     let assert = marque()
         .args(["check", "--format", "json"])
-        .arg(fixture("invalid/banner_abbrev.txt"))
+        .arg(fixture("invalid/banner_abbrev_3.txt"))
         .assert()
         .code(1);
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);

@@ -203,11 +203,11 @@ fn assert_recanon_scope_is_discriminant(scope: RecanonScope) {
 
 /// Run every migrated rule's representative fixture through the
 /// engine and assert each promoted `AppliedFixProposal::New` record's
-/// intent payload passes the structural envelope walker. The set of
-/// fixtures here MUST cover every `ReplacementIntent` variant the
-/// PR 3c.B Commit 3 beachhead emits — currently `FactRemove` (E054 /
-/// E057) and `FactAdd` (E021); `Recanonicalize` is exercised by
-/// Commit 6's migration tests.
+/// intent payload passes the structural envelope walker. Covers every
+/// `ReplacementIntent` variant a migrated rule emits:
+/// - `FactRemove` (E054 / E057) — Commit 3 beachhead
+/// - `FactAdd` (E021, E002 USA-missing branch) — Commit 3 + 6
+/// - `Recanonicalize` (E002 USA-not-first branch, S003) — Commit 6
 #[test]
 fn all_migrated_rule_intents_pass_g13_envelope_walker() {
     let fixtures = [
@@ -216,6 +216,14 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         ("(S//NF/IMC/RELIDO)\n", "E054", "FactRemove"),
         ("(S//OC-USGOV/RELIDO)\n", "E057", "FactRemove"),
         ("(S//RD//IMC)\n", "E021", "FactAdd"),
+        // E002 USA-missing branch — FactAdd { USA, Page } on banner.
+        ("SECRET//REL TO GBR\n", "E002", "FactAdd"),
+        // E002 USA-not-first branch — Recanonicalize { Page } on
+        // banner.
+        ("SECRET//REL TO GBR, USA\n", "E002", "Recanonicalize"),
+        // S003 — JOINT classification with USA not first on banner.
+        // Recanonicalize { Page } per the classification axis.
+        ("//JOINT SECRET GBR USA\n", "S003", "Recanonicalize"),
     ];
 
     for (input, rule_id, expected_variant) in fixtures {

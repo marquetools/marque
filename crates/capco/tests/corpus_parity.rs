@@ -170,27 +170,16 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        47,
-        "rule count: T035b (retired E017/E018/E019, added E036) + \
-         T035c-1b (added S001) + T035c-8 (added S002) + T035c-14 \
-         (retired W001) + T035c-21 PR-A (added E037, E038) + \
-         S003 (added joint-usa-first) + T035c-21 PR-B (added \
-         E039, E040, E041) + T035d (added E042–E051 per-SCI-system \
-         constraints) + #234 PR-B (added E052 rel-to-no-duplicates) \
-         + #235 / #186 PR-3 (added S004 rel-to-trigraph-suggest) + \
-         #206 (added S005 + S006 rel-to-opaque-uncertain-reduction \
-         pair) + #256 (added E053 noforn-rel-to-conflict) + T026a \
-         (PR 3b Sub-move A: collapsed E031/E035/E040 banner roll-ups \
-         into BannerMatchesProjectedRule walker; net -2) + T026c \
-         PR 3b.C (added E054/E055/E056/E057 RELIDO incompatibility \
-         declarative wrappers; net +4) + T026d PR 3b.D (retired \
-         E022/E025/E027 into DeclarativeClassFloorRule walker E058; \
-         net -2) + T026e PR 3b.E (retired E042–E051 into \
-         DeclarativeSciPerSystemRule walker E059; net -9) + \
-         T026f PR 3b.F (retired E020/E023/E028/E033 into \
-         DeclarativeNonCanonicalInputRule walker E060; net -3). \
-         Adjust this assertion only when rule registration \
-         actually changes."
+        33,
+        "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
+         (form-bucket migration) retires 13 form rules + the E060 \
+         walker into MarkingScheme::render_canonical: E001, E003, \
+         E004, E009, S001, S002, E011, E013, E026, E029, E030, E032, \
+         E052, plus the E060 walker. Net delta: -14. Final: 47 - 14 \
+         = 33. See \
+         `docs/plans/2026-05-10-pr3c-consolidated-plan.md` lines \
+         788–862 for the architectural commitment. Adjust this \
+         assertion only when rule registration actually changes."
     );
 }
 

@@ -224,11 +224,12 @@ fn c001_no_match_when_token_not_in_map() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn fr009_c001_wins_over_builtin_rule_on_same_span() {
-    // Set up a corrections map that matches a dissem control that E001
-    // would also flag: "NF" → "NOFORN". Both C001 and E001 will fire
-    // on the same span. FR-016 sort + C-1 overlap guard should keep C001
-    // (because "C001" < "E001" lexicographically).
+fn fr009_c001_emits_fix_via_corrections_map() {
+    // Set up a corrections map that maps "NF" → "NOFORN" in a banner
+    // context. C001 fires and produces the fix. (PR 3c.B Commit 6
+    // retired E001; the form-bucket migration moves portion-in-banner
+    // normalization into `MarkingScheme::render_canonical`, leaving
+    // C001 as the sole built-in rule that fires on the NF token.)
     let mut corrections = HashMap::new();
     corrections.insert("NF".to_owned(), "NOFORN".to_owned());
     let engine = engine_with_corrections(corrections);
@@ -249,17 +250,15 @@ fn fr009_c001_wins_over_builtin_rule_on_same_span() {
         .filter(|f| f.proposal.replacement.as_ref() == "NOFORN")
         .collect();
 
-    // Both C001 and E001 compete for the NF span. C-1 overlap guard keeps
-    // only one. FR-016 sort picks C001 ("C001" < "E001" lexicographically).
     assert_eq!(
         nf_fixes.len(),
         1,
-        "exactly one NOFORN fix should be applied (C-1 overlap guard)"
+        "exactly one NOFORN fix should be applied"
     );
     assert_eq!(
         nf_fixes[0].proposal.rule.as_str(),
         "C001",
-        "C001 should win over E001 on the same span (FR-009)"
+        "C001 should fire on the NF span (FR-009)"
     );
     assert_eq!(nf_fixes[0].proposal.source, FixSource::CorrectionsMap);
 }
@@ -414,8 +413,12 @@ fn c001_fires_only_on_matching_token_in_multi_token_marking() {
 #[test]
 fn us3_acceptance_scenario_combined_corrections_and_builtin_fix() {
     // US3 acceptance scenario 2 (adapted): corrections map for NF→NOFORN,
-    // input "SECRET//NF\n" → output "SECRET//NOFORN\n". C001 handles NF
-    // and E001 would also fire but C001 wins via FR-009/FR-016.
+    // input "SECRET//NF\n" → output "SECRET//NOFORN\n". C001 (corrections
+    // map) is the sole fixer on this span — pre-PR-3c.B Commit 6 E001
+    // also fired on `NF` in banner position and C001 won via FR-009 /
+    // FR-016, but E001 retired into `MarkingScheme::render_canonical`
+    // when this commit landed, so the overlap arbitration is no longer
+    // exercised here.
     let mut corrections = HashMap::new();
     corrections.insert("NF".to_owned(), "NOFORN".to_owned());
     let engine = engine_with_corrections(corrections);
@@ -475,10 +478,11 @@ fn pre_scanner_corrections_fires_on_unrecognized_classification_prefix() {
 
 #[test]
 fn pre_scanner_corrections_fix_produces_correct_output() {
-    // Full spec acceptance scenario: SERCET//NF with corrections SERCET→SECRET.
-    // After fix: the pre-scanner pass replaces SERCET→SECRET, then the
-    // scanner detects SECRET//NF, E001 fires on NF→NOFORN, and the final
-    // output is SECRET//NOFORN.
+    // Pre-scanner spec scenario: SERCET//NF with corrections
+    // SERCET→SECRET. The pre-scanner pass replaces SERCET→SECRET; NF
+    // is left as the portion-form abbreviation (PR 3c.B Commit 6
+    // retired E001 — portion-in-banner normalization migrated to the
+    // renderer via `MarkingScheme::render_canonical`).
     let mut corrections = HashMap::new();
     corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
     let engine = engine_with_corrections(corrections);
@@ -488,8 +492,8 @@ fn pre_scanner_corrections_fix_produces_correct_output() {
 
     let fixed_text = String::from_utf8(result.source).unwrap();
     assert_eq!(
-        fixed_text, "SECRET//NOFORN\n",
-        "SERCET//NF should become SECRET//NOFORN after corrections + E001 fix"
+        fixed_text, "SECRET//NF\n",
+        "SERCET//NF should become SECRET//NF after the C001 correction"
     );
 
     // The C001 fix for SERCET→SECRET should be in the audit trail.
