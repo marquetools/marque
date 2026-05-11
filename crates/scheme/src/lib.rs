@@ -101,7 +101,7 @@ pub use page_rewrite::{
 };
 pub use projection::{Projection, categories_in_render_order};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
-pub use scheme::MarkingScheme;
+pub use scheme::{ApplyIntentError, MarkingScheme};
 pub use scope::{DiffInput, DiffRelation, Scope};
 pub use severity::Severity;
 pub use span::Span;
