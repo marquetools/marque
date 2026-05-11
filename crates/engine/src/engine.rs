@@ -673,6 +673,14 @@ impl Engine {
                 marking_type: candidate.kind,
                 zone: None,
                 position: None,
+                // PR 3c.B engine-prereq: the scanner's candidate span
+                // is the marking-scope anchor for intent-only fix
+                // synthesis. Rules emitting `FixIntent` copy this into
+                // `Diagnostic.candidate_span` so the engine can clone
+                // the marking, apply intents via
+                // `MarkingScheme::apply_intent`, and render the
+                // result via `MarkingScheme::render_canonical`.
+                candidate_span: candidate.span,
                 page_context: ctx_page,
                 corrections: corrections_arc.clone(),
             };

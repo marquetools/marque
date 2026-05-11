@@ -207,6 +207,10 @@ fn ctx() -> RuleContext {
         marking_type: MarkingType::Portion,
         zone: None,
         position: None,
+        // Synthetic empty span — these tests construct the
+        // CanonicalAttrs directly and do not exercise the engine's
+        // intent-synthesis path that depends on candidate_span.
+        candidate_span: marque_ism::Span::new(0, 0),
         page_context: None,
         corrections: None,
     }

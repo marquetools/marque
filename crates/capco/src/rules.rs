@@ -4581,6 +4581,10 @@ mod tests {
             marking_type: MarkingType::Banner,
             zone: None,
             position: None,
+            // Test-fixture carve-out per Constitution V Principle V:
+            // synthetic empty span — these tests construct attrs
+            // directly and do not exercise intent-only synthesis.
+            candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
         };
@@ -5940,6 +5944,10 @@ mod tests {
             marking_type: MarkingType::Banner,
             zone: None,
             position: None,
+            // Test-fixture carve-out per Constitution V Principle V:
+            // synthetic empty span — these tests construct attrs
+            // directly and do not exercise intent-only synthesis.
+            candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
         };
@@ -6004,6 +6012,10 @@ mod tests {
             marking_type: MarkingType::Banner,
             zone: None,
             position: None,
+            // Test-fixture carve-out per Constitution V Principle V:
+            // synthetic empty span — these tests construct attrs
+            // directly and do not exercise intent-only synthesis.
+            candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
         };
@@ -7282,6 +7294,7 @@ pub(crate) mod marque_capco_test_support {
                 marking_type: candidate.kind,
                 zone: None,
                 position: None,
+                candidate_span: candidate.span,
                 page_context: ctx_page,
                 corrections: None,
             };
