@@ -192,9 +192,12 @@ impl Engine {
         // Instantiate the constraint-catalog bridge's `CapcoScheme`
         // up front so the override canonicalizer can consult its
         // `bridge_emitted_rule_ids()` for IDs the engine emits without
-        // a registered `Rule`. See the `drop(scheme); let scheme =
-        // CapcoScheme::new();` step below for the broader design
-        // rationale (PR 3c.B Commit 7.2's silent-drop note).
+        // a registered `Rule`. The user-supplied generic `scheme: S`
+        // is `drop()`-ped below the corrections-map setup and
+        // `bridge_scheme` becomes the engine's stored scheme (the
+        // `let scheme = bridge_scheme;` step) — see PR 3c.B Commit
+        // 7.2's silent-drop note inside that block for the broader
+        // design rationale.
         let bridge_scheme = CapcoScheme::new();
 
         // Canonicalize [rules] overrides against the registered rule
@@ -2139,15 +2142,17 @@ fn canonicalize_rule_overrides(
             }
         }
     }
-    // PR 3c.B Commit 7.3: rule IDs emitted by the engine's constraint-
-    // catalog bridge that have no corresponding registered `Rule` impl.
-    // The bridge folds `E058/...` / `class-floor/...` constraint
-    // labels to `Diagnostic.rule = "E058"`; the walker `Rule` that
-    // used to advertise `"E058"` retired in this commit, so the
-    // canonicalizer needs an explicit handle on the bridge-emitted
-    // ID set or `[rules] E058 = "off"` configs (and the future
-    // `E059 = "off"` after PR 3c.B Commit 7.4) fail
-    // `UnknownRuleOverride`. Same shape as
+    // PR 3c.B Commit 7.3 + 7.4: rule IDs emitted by the engine's
+    // constraint-catalog bridge that have no corresponding registered
+    // `Rule` impl. The bridge folds `E058/...` / `class-floor/...`
+    // constraint labels to `Diagnostic.rule = "E058"` (the
+    // ConstraintViolation envelope path), and emits
+    // `Diagnostic.rule = "E059"` from the direct
+    // `bridge_sci_per_system_diagnostics` path. Both walker `Rule`s
+    // that used to advertise these IDs retired in 7.3 and 7.4, so
+    // the canonicalizer needs an explicit handle on the bridge-
+    // emitted ID set or `[rules] E058 = "off"` / `[rules] E059 = "off"`
+    // configs fail `UnknownRuleOverride`. Same shape as
     // `Rule::additional_emitted_ids` — the bridge is just a
     // non-`Rule` emitter that participates in the same registration
     // convention.
@@ -3310,6 +3315,98 @@ mod tests {
         canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
             .expect("empty overrides must succeed");
         assert!(config.rules.overrides.is_empty());
+    }
+
+    // PR 3c.B Commit 7.3 + 7.4 — bridge-emitted rule IDs (no registered
+    // `Rule` impl). The canonicalizer consults
+    // `CapcoScheme::bridge_emitted_rule_ids()` so `.marque.toml` keys
+    // referencing the retired walker IDs (`E058`, `E059`) or their
+    // descriptive aliases (`class-floor-catalog`,
+    // `sci-per-system-catalog`) are accepted rather than failing
+    // `UnknownRuleOverride`. These tests pin the four key forms +
+    // canonical-ID resolution so the bridge path can't silently regress.
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e058_id() {
+        let mut config = config_with_overrides(&[("E058", "warn")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted E058 ID must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E058"),
+            Some(&"warn".to_owned()),
+            "E058 bridge ID resolves to itself as canonical"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e058_name_alias() {
+        let mut config = config_with_overrides(&[("class-floor-catalog", "error")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted `class-floor-catalog` name alias must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E058"),
+            Some(&"error".to_owned()),
+            "name-alias `class-floor-catalog` canonicalizes to `E058`"
+        );
+        assert!(
+            !config.rules.overrides.contains_key("class-floor-catalog"),
+            "pre-canonicalization name key must not survive"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e059_id() {
+        let mut config = config_with_overrides(&[("E059", "off")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted E059 ID must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E059"),
+            Some(&"off".to_owned()),
+            "E059 bridge ID resolves to itself as canonical"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e059_name_alias() {
+        let mut config = config_with_overrides(&[("sci-per-system-catalog", "warn")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted `sci-per-system-catalog` name alias must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E059"),
+            Some(&"warn".to_owned()),
+            "name-alias `sci-per-system-catalog` canonicalizes to `E059`"
+        );
+        assert!(
+            !config
+                .rules
+                .overrides
+                .contains_key("sci-per-system-catalog"),
+            "pre-canonicalization name key must not survive"
+        );
+    }
+
+    #[test]
+    fn canonicalize_rejects_legacy_walker_id_with_unknown_rule_override() {
+        // Regression guard: the retired walker IDs (E022 / E025 / E027
+        // for class-floor; E042-E051 for SCI per-system) MUST NOT be
+        // silently accepted as aliases for E058 / E059. Per project
+        // memory `feedback_pre_users_no_deprecation_phasing.md` marque
+        // is pre-users; legacy ID acceptance would be a deprecation-
+        // phasing mechanism we don't carry.
+        let mut config = config_with_overrides(&[("E022", "warn")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        let err = canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect_err("retired legacy ID E022 must NOT be silently aliased to E058");
+        match err {
+            EngineConstructionError::UnknownRuleOverride { key, .. } => {
+                assert_eq!(key, "E022");
+            }
+            other => panic!("expected UnknownRuleOverride for E022, got {other:?}"),
+        }
     }
 
     #[test]

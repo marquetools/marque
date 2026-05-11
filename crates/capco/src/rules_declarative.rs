@@ -781,8 +781,12 @@ fn aea_noforn_add_intent() -> FixIntent<CapcoScheme> {
 // The legacy `E022` rule ID is NOT preserved as a severity-config
 // alias. Per project memory
 // `feedback_pre_users_no_deprecation_phasing.md`: marque is
-// pre-users; we don't carry alias maps. `.marque.toml` files keying
-// class-floor severity overrides MUST use `E058`.
+// pre-users; we don't carry alias maps. Valid `.marque.toml` keys
+// for class-floor severity overrides are `E058` (recommended; matches
+// `Diagnostic.rule` and audit-stream output) and `class-floor-catalog`
+// (the descriptive alias the canonicalizer accepts via
+// `CapcoScheme::bridge_emitted_rule_ids()`). The retired `E022` key
+// is rejected as `UnknownRuleOverride`.
 
 // ---------------------------------------------------------------------------
 // E024 — RD takes precedence over FRD/TFNI (multi-emission)
@@ -851,8 +855,12 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
 // The legacy `E025` rule ID is NOT preserved as a severity-config
 // alias. Per project memory
 // `feedback_pre_users_no_deprecation_phasing.md`: marque is
-// pre-users; we don't carry alias maps. `.marque.toml` files keying
-// class-floor severity overrides MUST use `E058`.
+// pre-users; we don't carry alias maps. Valid `.marque.toml` keys
+// for class-floor severity overrides are `E058` (recommended; matches
+// `Diagnostic.rule` and audit-stream output) and `class-floor-catalog`
+// (the descriptive alias the canonicalizer accepts via
+// `CapcoScheme::bridge_emitted_rule_ids()`). The retired `E025` key
+// is rejected as `UnknownRuleOverride`.
 
 // ---------------------------------------------------------------------------
 // W002 — US + FGI comingling in portion (portion-only)
