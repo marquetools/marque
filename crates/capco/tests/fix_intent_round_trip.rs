@@ -407,6 +407,10 @@ fn e055_emits_correct_fix_intent_shape() {
             other => panic!("E055 intent must be FactRemove, got {other:?}"),
         }
     } else {
+        // TODO(#323): convert this arm to a hard assertion when the
+        // parser emits `Displayonly` tokens for "DISPLAY ONLY" /
+        // "DISPLAYONLY" input through the full lint pipeline. A grep
+        // for "#323" surfaces both vacuous-pass arms in this file.
         eprintln!(
             "WARNING: e055_emits_correct_fix_intent_shape vacuously passed — \
              parser did not emit `Displayonly` token for `(S//RELIDO/DISPLAY ONLY)`. \
@@ -448,6 +452,10 @@ fn e055_promotes_through_engine_as_new_variant() {
             ),
         }
     } else {
+        // TODO(#323): convert this arm to a hard assertion when the
+        // parser emits `Displayonly` tokens through the full lint
+        // pipeline. Paired with the vacuous-pass in
+        // `e055_emits_correct_fix_intent_shape`.
         eprintln!(
             "WARNING: e055_promotes_through_engine_as_new_variant vacuously passed — \
              parser did not emit `Displayonly` token; engine path did not auto-apply. \

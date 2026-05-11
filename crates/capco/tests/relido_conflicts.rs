@@ -1374,9 +1374,13 @@ fn e055_dual_populates_fix_intent_with_factremove_relido_portion() {
         }
         other => panic!("E055 intent must be FactRemove; got: {other:?}"),
     }
+    // Assert on `.rule` (the rule-authored axis) rather than
+    // `.combined()` to match the E054/E057 wrapper-tests above
+    // (lines 379, 536) — distinguishes "rule confidence drifted"
+    // from "recognition pipeline changed" if this ever flips red.
     assert!(
-        (intent.confidence.combined() - 0.95).abs() < f32::EPSILON,
-        "E055 intent confidence must match the legacy FixProposal (0.95) so \
+        (intent.confidence.rule - 0.95).abs() < f32::EPSILON,
+        "E055 intent confidence.rule must match the legacy FixProposal (0.95) so \
          the engine's threshold gate produces identical filter behavior"
     );
 }
@@ -1415,9 +1419,10 @@ fn e056_dual_populates_fix_intent_with_factremove_relido_portion() {
         }
         other => panic!("E056 intent must be FactRemove; got: {other:?}"),
     }
+    // Assert on `.rule` for the same reason as E055 above.
     assert!(
-        (intent.confidence.combined() - 0.95).abs() < f32::EPSILON,
-        "E056 intent confidence must match the legacy FixProposal (0.95)"
+        (intent.confidence.rule - 0.95).abs() < f32::EPSILON,
+        "E056 intent confidence.rule must match the legacy FixProposal (0.95)"
     );
 }
 
