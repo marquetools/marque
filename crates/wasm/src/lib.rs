@@ -413,12 +413,21 @@ fn applied_fix_to_audit_json_v1(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJso
     }
 }
 
+/// Emit the v2 audit record schema. Per the `AppliedFix` contract,
+/// the v2 emitter reads `confidence` and `source` from the top-level
+/// snapshot fields on `AppliedFix`, NOT from `proposal.*`. The two
+/// are identical copies today (the engine's `__engine_promote`
+/// snapshots them unchanged), but the v2 schema contract is that
+/// a future engine-side adjustment at promotion time (e.g.,
+/// region-context calibration) reflects in v2 output. Matches the
+/// CLI v2 emitter at `marque/src/render.rs:applied_fix_to_audit_json_v2`
+/// for SC-008 parity.
 fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV2<'_> {
-    let c = &fix.proposal.confidence;
+    let c = &fix.confidence;
     AuditRecordJsonV2 {
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
         rule: fix.proposal.rule.as_str(),
-        source: fix_source_str(fix.proposal.source),
+        source: fix_source_str(fix.source),
         span: SpanJson {
             start: fix.proposal.span.start,
             end: fix.proposal.span.end,
