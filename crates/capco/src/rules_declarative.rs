@@ -1505,16 +1505,32 @@ impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
         // release to a SFDRA. The deferred decision can't operate when a
         // positive decision is already on the marking — DISPLAY ONLY is
         // the binding constraint. PM Addendum II §3.
-        let fix = build_relido_removal_fix(self.id(), attrs);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
-            "CAPCO-2016 §H.8 p154",
-            fix,
-        )]
+        //
+        // PR 3c.B Commit 8 (E055 migration). Dual-population per Path C
+        // — same shape as E054 above. See `relido_remove_intent()` for
+        // the shared structural emission and the Path C / Commit-10
+        // retirement rationale. RELIDO is the rejected token in both
+        // §H.8 p154 conflict cases (NOFORN, DISPLAY ONLY), so the
+        // intent helper is reused as-is.
+        match build_relido_removal_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
+                "CAPCO-2016 §H.8 p154",
+                fix,
+                relido_remove_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
+                "CAPCO-2016 §H.8 p154",
+                None,
+            )],
+        }
     }
 }
 
@@ -1575,16 +1591,30 @@ impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
         // the rejected token. ORCON requires originator approval for
         // further dissemination, which RELIDO's SFDRA-deferred release
         // bypasses. ORCON is the binding constraint. PM Addendum II §3.
-        let fix = build_relido_removal_fix(self.id(), attrs);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
-            "CAPCO-2016 §H.8 p136",
-            fix,
-        )]
+        //
+        // PR 3c.B Commit 8 (E056 migration). Dual-population per Path C
+        // — same shape as E054 / E057 above. See `relido_remove_intent()`
+        // for the shared structural emission and the Path C / Commit-10
+        // retirement rationale.
+        match build_relido_removal_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
+                "CAPCO-2016 §H.8 p136",
+                fix,
+                relido_remove_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
+                "CAPCO-2016 §H.8 p136",
+                None,
+            )],
+        }
     }
 }
 
