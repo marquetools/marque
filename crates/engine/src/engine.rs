@@ -189,12 +189,23 @@ impl Engine {
         scheme: S,
         clock: Box<dyn Clock>,
     ) -> Result<Self, EngineConstructionError> {
+        // Instantiate the constraint-catalog bridge's `CapcoScheme`
+        // up front so the override canonicalizer can consult its
+        // `bridge_emitted_rule_ids()` for IDs the engine emits without
+        // a registered `Rule`. The user-supplied generic `scheme: S`
+        // is `drop()`-ped below the corrections-map setup and
+        // `bridge_scheme` becomes the engine's stored scheme (the
+        // `let scheme = bridge_scheme;` step) — see PR 3c.B Commit
+        // 7.2's silent-drop note inside that block for the broader
+        // design rationale.
+        let bridge_scheme = CapcoScheme::new();
+
         // Canonicalize [rules] overrides against the registered rule
         // set: accept either the rule ID (e.g. "E001") or the rule
         // name (e.g. "portion-mark-in-banner"), resolve both to the
         // canonical ID before the engine stores the map, and hard-fail
         // on any unknown key. See `canonicalize_rule_overrides`.
-        canonicalize_rule_overrides(&mut config, &rule_sets)?;
+        canonicalize_rule_overrides(&mut config, &rule_sets, &bridge_scheme)?;
 
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
         // Take ownership of the corrections map instead of cloning —
@@ -260,7 +271,7 @@ impl Engine {
              CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
         );
         drop(scheme);
-        let scheme = CapcoScheme::new();
+        let scheme = bridge_scheme;
 
         Ok(Self {
             config,
@@ -467,6 +478,20 @@ impl Engine {
         // per-portion `render_canonical` call site reuses this
         // buffer instead of allocating a fresh `String` per call.
         let mut render_scratch = String::new();
+
+        // Hoist the `[rules] E059 = ...` config override resolution once
+        // per `lint()` call. The override map is immutable for the
+        // lifetime of a single lint invocation, and the bridge SCI
+        // per-system walk consults this value on every SCI-bearing
+        // candidate. Matches the hoisting pattern used for
+        // `c001_severity` below (rust-reviewer MEDIUM finding on
+        // commit a2fbf12b).
+        let e059_override = self
+            .config
+            .rules
+            .overrides
+            .get("E059")
+            .and_then(|s| Severity::parse_config(s));
 
         for candidate in &candidates {
             // T008: per-candidate deadline check. Checking at the top
@@ -856,7 +881,61 @@ impl Engine {
                         );
                         continue;
                     };
-                    let rule_id = RuleId::new(v.constraint_label);
+                    // PR 3c.B Commit 7.3: catalog-row → rule-ID folding.
+                    //
+                    // The retired walker rules (E058 class-floor,
+                    // E059 SCI per-system) emitted every diagnostic
+                    // under their walker-level rule ID with the
+                    // per-row identity carried in the message text.
+                    // Preserving that convention keeps three external
+                    // surfaces stable across the deletion:
+                    //   1. `Diagnostic.rule` strings in audit streams
+                    //      and NDJSON output;
+                    //   2. `[rules] E058 = "off"` / `E059 = "off"`
+                    //      config overrides;
+                    //   3. `class_floor_catalog.rs` /
+                    //      `sci_per_system_catalog.rs` test
+                    //      assertions on `diag.rule.as_str()`.
+                    //
+                    // Inline prefix check (not a scheme-trait method)
+                    // because the fold is a CAPCO-specific transient
+                    // — PR 4 will retire the prefix convention in
+                    // favor of per-row IDs once the audit-stream
+                    // contract is renegotiated. Documented per
+                    // Constitution VII as an engine-edit channel
+                    // sanctioned by the PR 3c.B Commit 7 decision
+                    // record (specs/006-engine-rule-refactor/decisions/
+                    // 06-commit-7-subdivision.md Amendments 2 and 6).
+                    //
+                    // # E058 and E059 active arms
+                    //
+                    // The `E058/` and `class-floor/` arms fold the
+                    // 27 class-floor catalog rows under E058 (PR 7.3
+                    // wired this on through the `ConstraintViolation`
+                    // envelope path). The `E059/` and `sci-per-system/`
+                    // arms fold the 5 SCI per-system catalog rows
+                    // under E059 — though in production these flow
+                    // through the separate
+                    // `bridge_sci_per_system_diagnostics` direct path
+                    // below (decision record Amendment 6), so the
+                    // E059 arms here are reachable only if a future
+                    // PR rewires SCI per-system back through the
+                    // ConstraintViolation envelope. Both prefix arms
+                    // belong here regardless because the canonicalizer
+                    // accepts both `E058` and `E059` via
+                    // `bridge_emitted_rule_ids()`.
+                    let rule_id_str = if v.constraint_label.starts_with("E058/")
+                        || v.constraint_label.starts_with("class-floor/")
+                    {
+                        "E058"
+                    } else if v.constraint_label.starts_with("E059/")
+                        || v.constraint_label.starts_with("sci-per-system/")
+                    {
+                        "E059"
+                    } else {
+                        v.constraint_label
+                    };
+                    let rule_id = RuleId::new(rule_id_str);
                     let final_severity = self
                         .config
                         .rules
@@ -867,28 +946,23 @@ impl Engine {
                     if final_severity == Severity::Off {
                         continue;
                     }
-                    // PR 3c.B Commit 7.2 cold-land: `fix_intent_by_name`
-                    // returns `None` for every input.
-                    //
-                    // # 7.4 latent gap (rust-reviewer Item 6)
-                    //
-                    // When 7.4 populates E059 catalog rows, this branch
-                    // will produce diagnostics with `fix: None,
-                    // fix_intent: Some(...)`. The `intent_index` in
-                    // `fix_inner` filters on `(d.fix.as_ref(),
-                    // d.fix_intent.as_ref())` — only `(Some, Some)`
-                    // entries are indexed. A `fix_intent`-only
-                    // diagnostic is NOT indexed, NOT added to `fixes`,
-                    // and ends up in `remaining_diagnostics` with no
-                    // fix applied. 7.4 MUST either extend the
-                    // `intent_index` filter to admit `(_, Some(intent))`
-                    // entries OR synthesize a legacy `FixProposal`
-                    // here at bridge time (via
-                    // `Diagnostic::with_fix_and_intent`) before E059's
-                    // companion-insert fixes can flow through. The
-                    // `bridge_fix_intent_only_promotion_gate`
-                    // regression test pins this expectation today.
-                    let fix_intent = self.scheme.fix_intent_by_name(rule_id.as_str(), &attrs);
+                    // `fix_intent_by_name` resolves a per-row fix intent
+                    // for the class-floor catalog rows; pass the raw
+                    // `constraint_label` (the catalog row's `name`), NOT
+                    // the folded `rule_id`. The fold above collapses 27
+                    // class-floor rows to `"E058"`; the scheme-side
+                    // helper needs row-level precision to pick the
+                    // correct `FixIntent`. Today (PR 3c.B Commit 7.4
+                    // landed) this returns `None` for every input —
+                    // class-floor violations require human review per
+                    // §H.5 / §H.6, so no fix intent populates. The
+                    // SCI per-system catalog (E059) takes the direct
+                    // `bridge_sci_per_system_diagnostics` path below
+                    // because its fix-flow needs (legacy `FixProposal`
+                    // payload, multiple violations per row with
+                    // distinct fixes) cannot be expressed through this
+                    // single-FixIntent-per-violation interface.
+                    let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, &attrs);
                     let diag = Diagnostic::with_fix_intent(
                         rule_id,
                         final_severity,
@@ -899,6 +973,35 @@ impl Engine {
                     );
                     diagnostics.push(diag);
                 }
+
+                // PR 3c.B Commit 7.4 — SCI per-system catalog direct path.
+                //
+                // The SCI per-system catalog rows produce fixes (companion-
+                // insertion at the dissem-block anchor; ORCON-USGOV → ORCON
+                // replacement). `ConstraintViolation` cannot carry
+                // `FixProposal` (marque-scheme is the graph leaf;
+                // marque-rules sits above), and a single row can emit
+                // multiple violations with distinct fixes which a
+                // (name, attrs) helper cannot disambiguate. The fix path
+                // takes the direct route: `CapcoScheme` returns full
+                // `Diagnostic` values straight from the catalog's emit
+                // bodies, with `FixProposal` intact. The retired walker
+                // `DeclarativeSciPerSystemRule` did the same dispatch
+                // internally; relocating it to the scheme keeps the
+                // catalog as the single source of truth.
+                //
+                // Severity override resolved against the bridge-emitted
+                // rule id `"E059"` (registered in the canonicalizer via
+                // `CapcoScheme::bridge_emitted_rule_ids`). `Severity::Off`
+                // suppresses the entire catalog (FR-008); a non-`Off`
+                // override replaces each emitted diagnostic's severity.
+                // The override value is hoisted once per `lint()` call
+                // above the candidate loop — config is immutable for the
+                // lifetime of the call.
+                diagnostics.extend(
+                    self.scheme
+                        .bridge_sci_per_system_diagnostics(&attrs, e059_override),
+                );
             }
         }
 
@@ -2002,6 +2105,7 @@ const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
 fn canonicalize_rule_overrides(
     config: &mut Config,
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+    scheme: &CapcoScheme,
 ) -> Result<(), EngineConstructionError> {
     if config.rules.overrides.is_empty() {
         return Ok(());
@@ -2037,6 +2141,24 @@ fn canonicalize_rule_overrides(
                 known.insert(catalog_name, catalog_id);
             }
         }
+    }
+    // PR 3c.B Commit 7.3 + 7.4: rule IDs emitted by the engine's
+    // constraint-catalog bridge that have no corresponding registered
+    // `Rule` impl. The bridge folds `E058/...` / `class-floor/...`
+    // constraint labels to `Diagnostic.rule = "E058"` (the
+    // ConstraintViolation envelope path), and emits
+    // `Diagnostic.rule = "E059"` from the direct
+    // `bridge_sci_per_system_diagnostics` path. Both walker `Rule`s
+    // that used to advertise these IDs retired in 7.3 and 7.4, so
+    // the canonicalizer needs an explicit handle on the bridge-
+    // emitted ID set or `[rules] E058 = "off"` / `[rules] E059 = "off"`
+    // configs fail `UnknownRuleOverride`. Same shape as
+    // `Rule::additional_emitted_ids` — the bridge is just a
+    // non-`Rule` emitter that participates in the same registration
+    // convention.
+    for (bridge_id, bridge_name) in scheme.bridge_emitted_rule_ids() {
+        known.insert(bridge_id, bridge_id);
+        known.insert(bridge_name, bridge_id);
     }
 
     // Walk the raw overrides; resolve each key to its canonical ID, and
@@ -3060,7 +3182,8 @@ mod tests {
     fn canonicalize_accepts_rule_id_form_unchanged() {
         let mut config = config_with_overrides(&[("E001", "warn")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets).expect("should succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("should succeed");
         assert_eq!(
             config.rules.overrides.get("E001"),
             Some(&"warn".to_owned()),
@@ -3072,7 +3195,8 @@ mod tests {
     fn canonicalize_accepts_rule_name_form_and_resolves_to_id() {
         let mut config = config_with_overrides(&[("portion-mark-in-banner", "error")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets).expect("should succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("should succeed");
         assert_eq!(
             config.rules.overrides.get("E001"),
             Some(&"error".to_owned()),
@@ -3091,7 +3215,7 @@ mod tests {
     fn canonicalize_rejects_unknown_key_with_suggestion_for_near_miss() {
         let mut config = config_with_overrides(&[("E00l", "warn")]); // lowercase-L, not 1
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
+        let err = canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).unwrap_err();
         match err {
             EngineConstructionError::UnknownRuleOverride { key, did_you_mean } => {
                 assert_eq!(key, "E00l");
@@ -3111,7 +3235,7 @@ mod tests {
         // — a nonsense suggestion is worse than no suggestion.
         let mut config = config_with_overrides(&[("totally-made-up-rule-name", "error")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
+        let err = canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).unwrap_err();
         match err {
             EngineConstructionError::UnknownRuleOverride { key, did_you_mean } => {
                 assert_eq!(key, "totally-made-up-rule-name");
@@ -3129,7 +3253,7 @@ mod tests {
         let mut config =
             config_with_overrides(&[("E001", "warn"), ("portion-mark-in-banner", "error")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        let err = canonicalize_rule_overrides(&mut config, &sets).unwrap_err();
+        let err = canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).unwrap_err();
         match err {
             EngineConstructionError::ConflictingRuleOverride {
                 rule_id,
@@ -3158,7 +3282,7 @@ mod tests {
         let mut config =
             config_with_overrides(&[("E001", "warn"), ("portion-mark-in-banner", "warn")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets)
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
             .expect("duplicate forms with same severity must succeed");
         assert_eq!(config.rules.overrides.len(), 1);
         assert_eq!(config.rules.overrides.get("E001"), Some(&"warn".to_owned()));
@@ -3175,7 +3299,8 @@ mod tests {
             named_rule_set(&[("E001", "portion-mark-in-banner")]),
             named_rule_set(&[("M500", "some-other-domain-rule")]),
         ];
-        canonicalize_rule_overrides(&mut config, &sets).expect("should succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("should succeed");
         assert_eq!(
             config.rules.overrides.get("E001"),
             Some(&"error".to_owned())
@@ -3187,8 +3312,101 @@ mod tests {
     fn canonicalize_empty_overrides_is_noop() {
         let mut config = Config::default();
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets).expect("empty overrides must succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("empty overrides must succeed");
         assert!(config.rules.overrides.is_empty());
+    }
+
+    // PR 3c.B Commit 7.3 + 7.4 — bridge-emitted rule IDs (no registered
+    // `Rule` impl). The canonicalizer consults
+    // `CapcoScheme::bridge_emitted_rule_ids()` so `.marque.toml` keys
+    // referencing the retired walker IDs (`E058`, `E059`) or their
+    // descriptive aliases (`class-floor-catalog`,
+    // `sci-per-system-catalog`) are accepted rather than failing
+    // `UnknownRuleOverride`. These tests pin the four key forms +
+    // canonical-ID resolution so the bridge path can't silently regress.
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e058_id() {
+        let mut config = config_with_overrides(&[("E058", "warn")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted E058 ID must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E058"),
+            Some(&"warn".to_owned()),
+            "E058 bridge ID resolves to itself as canonical"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e058_name_alias() {
+        let mut config = config_with_overrides(&[("class-floor-catalog", "error")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted `class-floor-catalog` name alias must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E058"),
+            Some(&"error".to_owned()),
+            "name-alias `class-floor-catalog` canonicalizes to `E058`"
+        );
+        assert!(
+            !config.rules.overrides.contains_key("class-floor-catalog"),
+            "pre-canonicalization name key must not survive"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e059_id() {
+        let mut config = config_with_overrides(&[("E059", "off")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted E059 ID must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E059"),
+            Some(&"off".to_owned()),
+            "E059 bridge ID resolves to itself as canonical"
+        );
+    }
+
+    #[test]
+    fn canonicalize_accepts_bridge_emitted_e059_name_alias() {
+        let mut config = config_with_overrides(&[("sci-per-system-catalog", "warn")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("bridge-emitted `sci-per-system-catalog` name alias must be accepted");
+        assert_eq!(
+            config.rules.overrides.get("E059"),
+            Some(&"warn".to_owned()),
+            "name-alias `sci-per-system-catalog` canonicalizes to `E059`"
+        );
+        assert!(
+            !config
+                .rules
+                .overrides
+                .contains_key("sci-per-system-catalog"),
+            "pre-canonicalization name key must not survive"
+        );
+    }
+
+    #[test]
+    fn canonicalize_rejects_legacy_walker_id_with_unknown_rule_override() {
+        // Regression guard: the retired walker IDs (E022 / E025 / E027
+        // for class-floor; E042-E051 for SCI per-system) MUST NOT be
+        // silently accepted as aliases for E058 / E059. Per project
+        // memory `feedback_pre_users_no_deprecation_phasing.md` marque
+        // is pre-users; legacy ID acceptance would be a deprecation-
+        // phasing mechanism we don't carry.
+        let mut config = config_with_overrides(&[("E022", "warn")]);
+        let sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![];
+        let err = canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect_err("retired legacy ID E022 must NOT be silently aliased to E058");
+        match err {
+            EngineConstructionError::UnknownRuleOverride { key, .. } => {
+                assert_eq!(key, "E022");
+            }
+            other => panic!("expected UnknownRuleOverride for E022, got {other:?}"),
+        }
     }
 
     #[test]

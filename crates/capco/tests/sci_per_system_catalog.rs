@@ -161,12 +161,25 @@ fn sci_per_system_catalog_citations() {
 }
 
 #[test]
-fn capco_rules_set_includes_sci_per_system_walker() {
+fn sci_per_system_diagnostics_flow_through_engine_bridge_at_e059() {
+    // PR 3c.B Commit 7.4: `DeclarativeSciPerSystemRule` retired from
+    // `CapcoRuleSet`. The 5 catalog rows still emit diagnostics —
+    // they flow through the engine's constraint-catalog bridge via
+    // the direct path (`CapcoScheme::bridge_sci_per_system_diagnostics`)
+    // with `Diagnostic.rule = "E059"` and full `FixProposal`
+    // payloads intact. This test pins the post-deletion external
+    // surface:
+    //   1. No registered `Rule::id() == "E059"` (walker is gone);
+    //   2. The 10 PR-3b.E-retired legacy rules (E042–E051) remain
+    //      unregistered (regression guard from PR 3b.E preserved);
+    //   3. `engine.lint` still emits E059 with a fix for a
+    //      known-firing fixture (TS//HCS-O//NF missing ORCON).
     let set = capco_rules();
     let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
     assert!(
-        ids.contains(&"E059"),
-        "rule set must register `DeclarativeSciPerSystemRule` (E059); registered IDs: {ids:?}"
+        !ids.contains(&"E059"),
+        "post-7.4: `DeclarativeSciPerSystemRule` retired; no rule with id `E059` should be \
+         registered. The bridge emits E059 via the direct path. Registered IDs: {ids:?}"
     );
     for retired in [
         "E042", "E043", "E044", "E045", "E046", "E047", "E048", "E049", "E050", "E051",
@@ -176,6 +189,30 @@ fn capco_rules_set_includes_sci_per_system_walker() {
             "{retired} retired in PR 3b.E; rule set must not register the legacy per-system rule"
         );
     }
+
+    // Bridge-emission anchor: confirm the deleted walker's external
+    // surface — and the fix payload — is preserved end-to-end
+    // through `engine.lint`. `(TS//HCS-O//NF)` is a portion with
+    // HCS-O and NOFORN; row #1 (HCS-O companions) must fire the
+    // ORCON-missing diagnostic with a `FixProposal` that inserts
+    // ORCON into the dissem block.
+    let diags = lint("(TS//HCS-O//NF)");
+    let e059: Vec<&Diagnostic<CapcoScheme>> = diags
+        .iter()
+        .filter(|d| d.rule.as_str() == "E059" && d.message.contains("HCS-O requires ORCON"))
+        .collect();
+    assert_eq!(
+        e059.len(),
+        1,
+        "post-7.4: bridge must emit E059 for (TS//HCS-O//NF) (HCS-O missing ORCON \
+         per §H.4 p64): {diags:?}"
+    );
+    assert!(
+        e059[0].fix.is_some(),
+        "post-7.4: SCI per-system bridge MUST preserve the walker's fix payload \
+         (companion-insertion); got: {:?}",
+        e059[0]
+    );
 }
 
 // ===========================================================================

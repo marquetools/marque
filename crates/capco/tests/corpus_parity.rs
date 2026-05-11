@@ -165,21 +165,31 @@ fn rule_count_reflects_registration_changes() {
     // (Stage 4). Net delta: -3 rules (4 retired + 1 walker added).
     // Final: 50 - 3 = 47.
     //
+    // PR 3c.B Commit 7.3 + 7.4 (walker decomposition):
+    // `DeclarativeClassFloorRule` (E058, 7.3) and
+    // `DeclarativeSciPerSystemRule` (E059, 7.4) retired. The 32 catalog
+    // rows (27 class-floor + 5 SCI per-system) still fire — they flow
+    // through the engine's constraint-catalog bridge. Class-floor uses
+    // the `ConstraintViolation` envelope path (no fixes); SCI per-system
+    // uses the direct `CapcoScheme::bridge_sci_per_system_diagnostics`
+    // path so fixes (`FixProposal`) survive the deletion. Net delta:
+    // -2 (7.3 -1; 7.4 -1). Final: 33 - 2 = 31.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        33,
+        31,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
-         (form-bucket migration) retires 13 form rules + the E060 \
-         walker into MarkingScheme::render_canonical: E001, E003, \
-         E004, E009, S001, S002, E011, E013, E026, E029, E030, E032, \
-         E052, plus the E060 walker. Net delta: -14. Final: 47 - 14 \
-         = 33. See \
-         `docs/plans/2026-05-10-pr3c-consolidated-plan.md` lines \
-         788–862 for the architectural commitment. Adjust this \
-         assertion only when rule registration actually changes."
+         (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
+         + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
+         `DeclarativeSciPerSystemRule` (E059); their 27 + 5 catalog \
+         rows fire via the engine's bridge — net delta -2. Final: \
+         31. See \
+         `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
+         for the architectural rationale. Adjust this assertion only \
+         when rule registration actually changes."
     );
 }
 
