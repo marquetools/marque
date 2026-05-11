@@ -592,9 +592,16 @@ fn constraint_joint_requires_usa_fires_when_usa_missing_from_rel_to() {
 // diagnostics on valid markings:
 //
 // - `e021_does_not_fire_on_u_ucni` — `E021/aea-requires-noforn` must
-//   only fire on RD/FRD/TFNI, not the broader `AnyInCategory(CAT_AEA)`
+//   only fire on RD/FRD, not the broader `AnyInCategory(CAT_AEA)`
 //   which sweeps UCNI in. `U//UCNI` is a valid CAPCO §H.6 marking and
 //   must not trip E021.
+// - `e021_does_not_fire_on_valid_release_authorized_tfni` —
+//   `E021/aea-requires-noforn` must NOT fire on
+//   `SECRET//TFNI//REL TO USA, ACGU`, the §H.6 p121 Notional Example 2
+//   canonical release-authorized TFNI marking. Pre-PR-3c.A-fixup, the
+//   predicate incorrectly lumped TFNI with RD/FRD and would auto-fix
+//   this valid marking into a NOFORN-bearing form (Constitution VIII
+//   defect).
 // - `e015_does_not_fire_on_dual_classification` — `Conflict` is a
 //   parser-internal dual-classification state handled by E012 alone;
 //   E015's `non-US-requires-dissem` must not also emit on it.
@@ -616,7 +623,7 @@ fn e021_does_not_fire_on_u_ucni() {
         !violations
             .iter()
             .any(|v| v.constraint_label == "E021/aea-requires-noforn"),
-        "E021 must not fire on U//UCNI (only RD/FRD/TFNI require NOFORN); got: {violations:?}"
+        "E021 must not fire on U//UCNI (only RD/FRD require NOFORN); got: {violations:?}"
     );
 }
 
@@ -637,6 +644,37 @@ fn e021_fires_on_s_rd_without_noforn() {
             .iter()
             .any(|v| v.constraint_label == "E021/aea-requires-noforn"),
         "E021 must fire on S//RD without NOFORN; got: {violations:?}"
+    );
+}
+
+#[test]
+fn e021_does_not_fire_on_valid_release_authorized_tfni() {
+    // §H.6 p121 Notional Example 2: `SECRET//TFNI//REL TO USA, ACGU`
+    // is a canonical release-authorized TFNI marking. §H.6 p120
+    // Relationship clause says only "May only be used with TOP
+    // SECRET, SECRET, or CONFIDENTIAL" — silent on NOFORN. §H.6 p121
+    // Note 4 explicitly authorizes foreign sharing per IC guidance.
+    //
+    // Pre-PR-3c.A-fixup, the predicate lumped TFNI with RD/FRD and
+    // would have auto-rewritten this valid marking into a
+    // NOFORN-bearing form (which would itself trip E054
+    // NOFORN ⊥ REL TO). This regression test pins that TFNI does
+    // NOT fire E021. Constitution VIII fidelity guard.
+    use marque_ism::{AeaMarking, CountryCode};
+
+    let mut attrs = CanonicalAttrs::default();
+    attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+    attrs.aea_markings = vec![AeaMarking::Tfni].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"ACGU").unwrap()].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "E021/aea-requires-noforn"),
+        "E021 must NOT fire on TFNI (release-authorized per §H.6 p121); \
+         got: {violations:?}"
     );
 }
 

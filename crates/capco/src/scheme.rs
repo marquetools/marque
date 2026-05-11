@@ -2540,20 +2540,30 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constra
     }]
 }
 
-/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement under
-/// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104.
-/// Intentionally narrower than `AnyInCategory(CAT_AEA)` — UCNI variants
-/// do not carry the NOFORN requirement (CAPCO §H.6 p116 / p118).
+/// E021 — RD or FRD requires NOFORN (unless a sharing agreement under
+/// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104 (RD)
+/// + p111 (FRD).
+///
+/// Intentionally narrower than `AnyInCategory(CAT_AEA)`:
+/// - **TFNI is excluded.** §H.6 p120 Relationship clause is silent on
+///   NOFORN ("May only be used with TOP SECRET, SECRET, or
+///   CONFIDENTIAL"); §H.6 p121 Notional Example 2 shows
+///   `SECRET//TFNI//REL TO USA, ACGU` as a valid release-authorized
+///   marking, and Note 4 ("TFNI may be shared with foreign partners
+///   in accordance with existing DNI and IC element guidance") makes
+///   the NOFORN requirement contextual, not categorical. Lumping
+///   TFNI with RD/FRD would auto-rewrite valid release-authorized
+///   TFNI markings — a Constitution VIII fidelity defect.
+/// - **UCNI variants are excluded.** Neither DOE UCNI (§H.6 p116) nor
+///   DoD UCNI (§H.6 p118) carries the NOFORN requirement.
 fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
-    let has_rd_frd_tfni = attrs.aea_markings.iter().any(|a| {
+    let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
         matches!(
             a,
-            marque_ism::AeaMarking::Rd(_)
-                | marque_ism::AeaMarking::Frd(_)
-                | marque_ism::AeaMarking::Tfni
+            marque_ism::AeaMarking::Rd(_) | marque_ism::AeaMarking::Frd(_)
         )
     });
-    if !has_rd_frd_tfni {
+    if !has_rd_or_frd {
         return Vec::new();
     }
     let has_noforn = attrs
@@ -2565,10 +2575,10 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
     }
     vec![ConstraintViolation {
         constraint_label: "E021/aea-requires-noforn",
-        message: "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+        message: "RD/FRD requires NOFORN unless a sharing agreement exists \
                   per the Atomic Energy Act"
             .to_owned(),
-        citation: "CAPCO-2016 §H.6 p104",
+        citation: "CAPCO-2016 §H.6 p104 + p111",
     }]
 }
 

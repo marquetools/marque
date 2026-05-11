@@ -8,7 +8,7 @@
 //!
 //! - **E054** — NOFORN ⊥ RELIDO (`FactRemove`)
 //! - **E057** — ORCON-USGOV ⊥ RELIDO (`FactRemove`)
-//! - **E021** — RD/FRD/TFNI requires NOFORN (`FactAdd`; severity flipped
+//! - **E021** — RD/FRD requires NOFORN (`FactAdd`; severity flipped
 //!   Error → Fix; auto-applies when an IC dissem block exists)
 //!
 //! Two layers of assertion:
@@ -220,7 +220,7 @@ fn e057_promotes_through_engine_as_new_variant() {
 }
 
 // ---------------------------------------------------------------------------
-// E021 — RD/FRD/TFNI requires NOFORN (FactAdd)
+// E021 — RD/FRD requires NOFORN (FactAdd) — TFNI excluded per §H.6 p120/p121
 // ---------------------------------------------------------------------------
 
 #[test]

@@ -607,8 +607,12 @@ impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
 }
 
 // ---------------------------------------------------------------------------
-// E021 — RD/FRD/TFNI requires NOFORN
+// E021 — RD/FRD requires NOFORN
 // ---------------------------------------------------------------------------
+//
+// TFNI is intentionally excluded from this rule per §H.6 p120 + p121
+// (see `e021_aea_requires_noforn` doc in `crate::scheme` for the
+// authority trace).
 
 pub(crate) struct DeclarativeAeaNofornRule;
 
@@ -620,13 +624,14 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
         "aea-noforn"
     }
     fn default_severity(&self) -> Severity {
-        // PR 3c.B Commit 3: Error → Fix. CAPCO §H.6 p104 states
-        // RD/FRD/TFNI "Is always used with NOFORN unless a sharing
-        // agreement has been established per the Atomic Energy Act."
-        // The fix is unambiguous (insert NOFORN); the rule emits a
-        // structural FactAdd that the engine auto-applies at the
-        // default 0.95 threshold. Orgs with sharing agreements
-        // override via `.marque.toml [rules] E021 = "warn"`.
+        // PR 3c.B Commit 3: Error → Fix. CAPCO §H.6 p104 (RD) + p111
+        // (FRD) both state the marking "Is always used with NOFORN
+        // unless a sharing agreement has been established per the
+        // Atomic Energy Act." The fix is unambiguous (insert NOFORN);
+        // the rule emits a structural FactAdd that the engine
+        // auto-applies at the default 0.95 threshold. Orgs with
+        // sharing agreements override via `.marque.toml [rules]
+        // E021 = "warn"`.
         Severity::Fix
     }
 
@@ -659,10 +664,10 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
                 self.id(),
                 self.default_severity(),
                 span,
-                "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+                "RD/FRD requires NOFORN unless a sharing agreement exists \
                  per the Atomic Energy Act; override to warn via rule severity \
                  config if sharing agreements apply",
-                "CAPCO-2016 §H.6 p104",
+                "CAPCO-2016 §H.6 p104 + p111",
                 fix,
                 aea_noforn_add_intent(),
             )],
@@ -670,10 +675,10 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
                 self.id(),
                 self.default_severity(),
                 span,
-                "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+                "RD/FRD requires NOFORN unless a sharing agreement exists \
                  per the Atomic Energy Act; override to warn via rule severity \
                  config if sharing agreements apply",
-                "CAPCO-2016 §H.6 p104",
+                "CAPCO-2016 §H.6 p104 + p111",
                 None,
             )],
         }
