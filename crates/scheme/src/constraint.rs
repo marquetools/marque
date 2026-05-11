@@ -162,12 +162,17 @@ impl Constraint {
 /// diagnostics that today require a walker rule to decorate. The
 /// dyadic-constraint arms in [`evaluate`] (Conflicts/Requires/Implies/
 /// Supersedes) have no natural span or severity from the constraint
-/// declaration itself and continue to emit `None` for both fields; the
-/// engine treats `ConstraintViolation`s with `None` span or `None`
-/// severity as advisory and does NOT surface them as
-/// [`marque_rules::Diagnostic`]s. Schemes that want their `Custom`
-/// constraint catalog to be the end-state emission path (post PR 3c.B
+/// declaration itself and continue to emit `None` for both fields;
+/// downstream engine layers treat `ConstraintViolation`s with `None`
+/// span or `None` severity as advisory and do NOT surface them as
+/// user-facing diagnostics. Schemes that want their `Custom` constraint
+/// catalog to be the end-state diagnostic-emission path (post PR 3c.B
 /// Commit 7) populate both fields from a catalog row.
+///
+/// (The `marque-scheme` crate is the workspace graph leaf and does not
+/// depend on the higher-layer rule / diagnostic types — the precise
+/// engine-side type the populated fields feed into is named in the
+/// engine crate's bridge code, not here.)
 ///
 /// This shape was chosen over required `Span` / `Severity` fields
 /// specifically because (a) it preserves backwards compatibility with

@@ -2144,6 +2144,43 @@ impl CapcoScheme {
         // owns the E059 fixes via its own side-table.
         None
     }
+
+    /// Reports whether the scheme's `Constraint::Custom` catalog has
+    /// any rows that *can* produce user-facing diagnostics (i.e., rows
+    /// whose `evaluate_custom` arm populates `ConstraintViolation::span`
+    /// AND `::severity`). Used by the engine's constraint-catalog
+    /// bridge (`crates/engine/src/engine.rs` lint loop) to short-
+    /// circuit the whole `scheme.validate(...)` walk — including the
+    /// per-candidate `CapcoMarking::from(attrs.clone())` allocation —
+    /// when no catalog row could possibly fire.
+    ///
+    /// # Why a static `false` today
+    ///
+    /// PR 3c.B Commit 7.2 lands the bridge cold: no catalog row in
+    /// `CapcoScheme::build_constraints()` populates the optional span
+    /// / severity fields yet (every dyadic arm passes `None`; every
+    /// Custom-arm helper in this file passes `None` after the 7.1
+    /// bulk-patch). The bridge would walk the entire ~50-entry
+    /// catalog per candidate and discard every result. This predicate
+    /// returns `false` so the bridge skips the walk entirely until
+    /// 7.3 wires the first class-floor row to populate the fields.
+    ///
+    /// # Why static (not derived from the catalog at runtime)
+    ///
+    /// Catalog membership doesn't change across the engine's
+    /// lifetime — `build_constraints()` is invoked once at
+    /// `CapcoScheme::new()` and never mutated. A runtime walk over
+    /// `self.constraints` to look for "any Custom row that produces
+    /// span/severity" would itself defeat the optimization (the data
+    /// we're avoiding fetching is the per-candidate walk's output;
+    /// learning that the catalog has zero such rows shouldn't itself
+    /// require a per-candidate walk). 7.3 flips this to `true`
+    /// statically — the predicate is a one-line override naming the
+    /// commit that introduced the first diagnostic-producing
+    /// Custom-arm catalog row.
+    pub fn has_diagnostic_constraints(&self) -> bool {
+        false
+    }
 }
 
 // T035 (2026-04-21): `satisfies` and `evaluate_custom` are now

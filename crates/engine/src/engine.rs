@@ -820,26 +820,23 @@ impl Engine {
             // class-floor catalog rows to populate the fields from
             // `ClassFloorRow.severity` / `class_floor_anchor_span`.
             //
-            // # `CapcoMarking::from(attrs.clone())` cost
+            // # Cold-land short-circuit
             //
-            // The conversion is a single-field move (`Self(attrs, None)`
-            // — see `crates/capco/src/scheme.rs:156`) plus the
-            // `CanonicalAttrs.clone()`. `CanonicalAttrs` uses
-            // `Box<[T]>` for its categorical fields, so the clone
-            // allocates per list. Acceptable today because no row
-            // populates yet (so the work is wasted but bounded).
-            //
-            // TODO(pr3c-c-commit7.3): short-circuit this block when
-            // the scheme has no diagnostic-producing Custom rows. The
-            // natural shape is a `CapcoScheme::has_diagnostic_constraints()
-            // -> bool` predicate that the bridge consults before the
-            // `CapcoMarking::from(attrs.clone())` allocation. Today the
-            // predicate would always return `false` (cold-land); 7.3
-            // flips it to `true` when class-floor rows populate. This
-            // keeps the SC-001 p95-≤16ms benchmark off the per-
-            // candidate clone path until there is real catalog work
-            // for the bridge to do.
-            {
+            // The bridge's work is wasted when no catalog row
+            // produces a diagnostic-shape `ConstraintViolation` (i.e.,
+            // populated span + severity). The `has_diagnostic_constraints()`
+            // predicate is the scheme-side declaration of that state:
+            // it returns `false` in 7.2 (no row populates yet) and
+            // flips to `true` in 7.3 when the first class-floor row
+            // gains span / severity from `ClassFloorRow.severity` and
+            // a lifted `class_floor_anchor_span`. Skipping the block
+            // entirely here avoids the `CapcoMarking::from(attrs.clone())`
+            // per-candidate allocation (`CanonicalAttrs` uses `Box<[T]>`
+            // for categorical fields, so the clone allocates per
+            // list) plus the full `scheme.validate(...)` catalog walk.
+            // Keeps SC-001 p95-≤16ms benchmark off the bridge's cost
+            // path until there is real catalog work to do.
+            if self.scheme.has_diagnostic_constraints() {
                 let marking = marque_capco::CapcoMarking::from(attrs.clone());
                 let violations = self.scheme.validate(&marking);
                 for v in violations {

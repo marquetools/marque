@@ -55,15 +55,16 @@ through the constraint catalog).
 `post_3b_registration_pin.rs:44-48` both pin
 `rule_set.rules().len()`. The 32 catalog rows are **not** registered
 `Rule` impls — they're `Constraint::Custom` entries on
-`scheme.constraints()`, a separate surface. Deleting the two walker
-rules is **net -2** (33 → 31), not +30. `EXPECTED_RULE_IDS` in the
-pin file loses `"E058"` and `"E059"`; the count comment math becomes
-`47 - 16 = 31`.
+`scheme.constraints()`, a separate surface that `rule_set.rules()`
+does not include. Deleting the two walker rules is **net -2** (33 →
+31), not +30. `EXPECTED_RULE_IDS` in the pin file loses `"E058"` and
+`"E059"`; the count comment math becomes `47 - 16 = 31`.
 
-The `corpus_parity.rs:170` pin shrinks to 31 in 7.3 (when
-`DeclarativeClassFloorRule` is deleted) and again to 30 — actually 31
-holds because both walkers retire — let me re-check: 33 - 2 = 31
-final.
+**Final pinned value**: `rule_set.rules().len() == 31` after both
+subcommits 7.3 (deletes `DeclarativeClassFloorRule`, 33 → 32) and
+7.4 (deletes `DeclarativeSciPerSystemRule`, 32 → 31) merge. Each
+walker retirement is a single-step `-1`; the catalog rows do not
+contribute to this count.
 
 ---
 
