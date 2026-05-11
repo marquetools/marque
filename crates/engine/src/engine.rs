@@ -476,6 +476,20 @@ impl Engine {
         // buffer instead of allocating a fresh `String` per call.
         let mut render_scratch = String::new();
 
+        // Hoist the `[rules] E059 = ...` config override resolution once
+        // per `lint()` call. The override map is immutable for the
+        // lifetime of a single lint invocation, and the bridge SCI
+        // per-system walk consults this value on every SCI-bearing
+        // candidate. Matches the hoisting pattern used for
+        // `c001_severity` below (rust-reviewer MEDIUM finding on
+        // commit a2fbf12b).
+        let e059_override = self
+            .config
+            .rules
+            .overrides
+            .get("E059")
+            .and_then(|s| Severity::parse_config(s));
+
         for candidate in &candidates {
             // T008: per-candidate deadline check. Checking at the top
             // of the loop (before any per-candidate work — including
@@ -962,12 +976,9 @@ impl Engine {
                 // `CapcoScheme::bridge_emitted_rule_ids`). `Severity::Off`
                 // suppresses the entire catalog (FR-008); a non-`Off`
                 // override replaces each emitted diagnostic's severity.
-                let e059_override = self
-                    .config
-                    .rules
-                    .overrides
-                    .get("E059")
-                    .and_then(|s| Severity::parse_config(s));
+                // The override value is hoisted once per `lint()` call
+                // above the candidate loop — config is immutable for the
+                // lifetime of the call.
                 diagnostics.extend(
                     self.scheme
                         .bridge_sci_per_system_diagnostics(&attrs, e059_override),

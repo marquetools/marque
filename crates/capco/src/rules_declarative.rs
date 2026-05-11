@@ -1697,6 +1697,17 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
 // `.marque.toml [rules] E059 = "off"` config overrides continue to
 // work unchanged across the deletion.
 //
+// Per-branch severity escalation is preserved: the
+// no-IC-dissem-block branch in `sci_per_system_emit` escalates from
+// the row's default `Severity::Warn` to `Severity::Error` no-fix
+// (companion-insertion needs a non-empty dissem block to anchor
+// against). The bridge calls `sci_per_system_emit` directly, so the
+// per-branch escalation flows through unchanged; a non-`Off`
+// `[rules] E059 = ...` config override replaces the escalated
+// severity uniformly (same behavior as the engine's pre-retirement
+// `diags.retain_mut` post-loop override pass applied to the
+// walker's output).
+//
 // The dispatch is "direct" — not via `ConstraintViolation` — because
 // `ConstraintViolation` (in `marque-scheme`) cannot carry `FixProposal`
 // (in `marque-rules`) without inverting Constitution VII's

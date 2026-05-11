@@ -176,6 +176,101 @@ tests.
 
 ---
 
+## Amendment 6 — E059 direct-path supersedes `fix_intent_by_name` (added 2026-05-11 during PR 2 implementation)
+
+Amendment 4 prescribed a scheme-side helper
+`CapcoScheme::fix_intent_by_name(name: &str, attrs: &CanonicalAttrs) -> Option<FixIntent<CapcoScheme>>`
+for **both** retired walkers. When 7.4 implementation began, two
+constraints surfaced that made the helper insufficient for E059 (the
+SCI per-system catalog) specifically:
+
+1. **Multi-violation-per-row disambiguation**. A single SCI per-system
+   row can emit multiple `ConstraintViolation`s with distinct fixes
+   (HCS-O missing ORCON AND missing NOFORN ⇒ 2 violations with 2
+   different companion-insertion FixProposals). The `(name, attrs)`
+   signature in Amendment 4 cannot distinguish "which of N violations
+   on this row do I synthesize a fix for" — the helper sees only the
+   row name and the attrs, both shared across all N violations.
+
+2. **`FixProposal` graph-leaf constraint**. `ConstraintViolation`
+   lives in `marque-scheme` (the dependency-graph leaf); `FixProposal`
+   lives in `marque-rules` (which depends on `marque-scheme`).
+   `ConstraintViolation` cannot carry `FixProposal` without inverting
+   Constitution VII directionality. Amendment 4's helper interface
+   already navigates around this by returning `FixIntent<S>` from
+   `marque-rules` at the engine-bridge call site; the engine then
+   needs a separate `fix_intent_to_legacy_proposal` step to convert
+   intent → proposal (currently `unimplemented!()` per the Commit 6
+   roadmap). For E059's already-fully-formed FixProposals from
+   `sci_per_system_emit`, this intent → proposal pivot is gratuitous
+   ceremony.
+
+E058 (class-floor catalog) is unaffected because its 27 rows are
+all "human review required" with no fix payload, so the
+`fix_intent_by_name(name, attrs) → None` interface from Amendment 4
+is sufficient.
+
+**Resolution**: E059 takes a different bridge path —
+`CapcoScheme::bridge_sci_per_system_diagnostics(attrs, severity_override) -> Vec<Diagnostic<CapcoScheme>>`.
+The engine bridge invokes this method after the existing
+ConstraintViolation envelope walk (E058 fold) for every candidate
+with SCI markings; the method walks `SCI_PER_SYSTEM_CATALOG`, calls
+`sci_per_system_emit` per firing row, applies `severity_override`
+uniformly (with `Off` as an FR-008 short-circuit), and returns
+`Vec<Diagnostic<CapcoScheme>>` with `FixProposal` payloads intact.
+Rule names remain declared as `Constraint::Custom` entries in
+`build_constraints()` so the catalog stays the single source of
+truth for declared catalog rows; the bridge takes the
+inherent-method shortcut.
+
+Amendment 4 stands for E058 (class-floor); this amendment
+supersedes it for E059 (SCI per-system).
+
+---
+
+## Amendment 7 — Walker deletion landed atomically with bridge wiring (added 2026-05-11 during PR 2 implementation)
+
+Amendment 5 prescribed a two-step deletion sequence:
+
+  1. Keep the walker registered for one commit while extending
+     `scheme_equivalence.rs` to assert byte-identical diagnostic
+     output across both paths.
+  2. Delete the walker in a follow-up commit after equivalence
+     verification.
+
+**Actual approach used in 7.3 (E058) and 7.4 (E059)**: atomic
+single-commit walker deletion + bridge wiring, relying on the
+pre-existing per-row integration test suites
+(`crates/capco/tests/class_floor_catalog.rs` — 91 tests for E058;
+`crates/capco/tests/sci_per_system_catalog.rs` — 39 tests for
+E059) as the equivalence proof.
+
+**Rationale**: every catalog row was already engine-path-exercised
+via `engine.lint(...)` assertions in those test files. Pre-7.3 the
+engine path routed through the walker's `Rule::check`; post-7.3 and
+post-7.4 it routes through the bridge. The test bodies are
+unchanged across the deletion boundary, so the fact that every
+existing assertion (presence, message text, span anchor, severity,
+citation, AND for E059 the `fix.is_some()` invariant added in the
+7.4 anchor test) continues to pass IS the byte-identity proof.
+
+A separate dual-path equivalence run in `scheme_equivalence.rs`
+would assert the same property by a different mechanism but provide
+no information the existing per-row tests don't already provide.
+The atomic shape avoids the intermediate state where both the
+walker AND the bridge fire simultaneously (which would produce
+duplicate user-visible diagnostics in production, since the engine
+bridge doesn't dedupe across rule-loop and bridge-path emission
+sources).
+
+Amendment 5 stands as the architectural preference; this amendment
+documents the actual implementation path used and the rationale
+for the deviation, so a reviewer following the decision-record
+trail can verify the equivalence proof shape that was actually
+provided.
+
+---
+
 ## References
 
 - `docs/plans/2026-05-10-pr3c-consolidated-plan.md` §"Commit 7"
