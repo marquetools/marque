@@ -480,9 +480,27 @@ fn pre_scanner_corrections_fires_on_unrecognized_classification_prefix() {
 fn pre_scanner_corrections_fix_produces_correct_output() {
     // Pre-scanner spec scenario: SERCET//NF with corrections
     // SERCET→SECRET. The pre-scanner pass replaces SERCET→SECRET; NF
-    // is left as the portion-form abbreviation (PR 3c.B Commit 6
-    // retired E001 — portion-in-banner normalization migrated to the
-    // renderer via `MarkingScheme::render_canonical`).
+    // is left as the portion-form abbreviation.
+    //
+    // The output `SECRET//NF\n` is intentionally NOT canonicalized to
+    // `SECRET//NOFORN\n`. Pre-PR-3c.B Commit 6 the input `NF` in
+    // banner position fired E001 (portion-in-banner) which auto-
+    // applied an NF→NOFORN splice. PR 3c.B Commit 6 retired E001
+    // into `MarkingScheme::render_canonical` — the renderer DOES
+    // produce canonical banner form (`NOFORN`) when invoked, but
+    // it is only invoked at fix-application time when some rule
+    // emits `FixIntent::Recanonicalize` (or, post-Commit-10, when
+    // the engine routes any `FixIntent` through the renderer).
+    // The corrections-map path emits a `FactReplace`-shaped C001
+    // fix and nothing else fires on the post-correction input
+    // (E001 is retired; no other rule cares about banner-form NF),
+    // so the renderer is never invoked and NF stays as authored.
+    // This is the documented architectural shift: lint becomes
+    // silent for form divergence; canonicalization is opt-in via
+    // an explicit fix-application path. Users wanting the
+    // canonical banner form after a corrections-map fix re-run
+    // `marque fix` once the post-Commit-10 engine-side
+    // `Recanonicalize` dispatch lands.
     let mut corrections = HashMap::new();
     corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
     let engine = engine_with_corrections(corrections);

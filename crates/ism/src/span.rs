@@ -4,12 +4,13 @@
 
 //! Byte-offset spans into source buffers — zero-copy position tracking.
 //!
-//! [`Span`] itself lives in `marque-scheme` (PR 3c.B Commit 7) so the
-//! scheme layer's [`marque_scheme::constraint::ConstraintViolation`]
-//! can carry source positions without taking a dependency on
-//! `marque-ism`, which would violate Constitution VII
-//! (`marque-scheme` is the only true graph leaf). The re-export keeps
-//! every existing `marque_ism::Span` import site unchanged.
+//! [`Span`] itself lives in [`marque_scheme::Span`] so the scheme
+//! layer's [`marque_scheme::constraint::ConstraintViolation`] (and
+//! other scheme-layer types) can carry source positions without
+//! taking a dependency on `marque-ism`, which would violate
+//! Constitution VII (`marque-scheme` is the only true graph leaf).
+//! The re-export here keeps every existing `marque_ism::Span` import
+//! site unchanged.
 
 pub use marque_scheme::Span;
 
