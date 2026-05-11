@@ -131,12 +131,24 @@ fn catalog_citations_reference_capco_or_passthrough() {
 }
 
 #[test]
-fn capco_rules_set_includes_class_floor_walker() {
+fn class_floor_diagnostics_flow_through_engine_bridge_at_e058() {
+    // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` retired from
+    // `CapcoRuleSet`. The 27 catalog rows still emit diagnostics —
+    // they flow through the engine's constraint-catalog bridge with
+    // `Diagnostic.rule = "E058"` (the bridge folds catalog row names
+    // `E058/...` and `class-floor/...` to the walker-level ID per
+    // engine.rs comment). This test pins the post-deletion external
+    // surface:
+    //   1. No registered `Rule::id() == "E058"` (walker is gone);
+    //   2. `engine.lint` still produces an E058-tagged diagnostic on
+    //      a known-firing fixture (CONFIDENTIAL//RD-CNWDI → CNWDI
+    //      floor row, §H.6 p104 §2.2 family).
     let set = capco_rules();
     let ids: Vec<&str> = set.rules().iter().map(|r| r.id().as_str()).collect();
     assert!(
-        ids.contains(&"E058"),
-        "rule set must register `DeclarativeClassFloorRule` (E058); registered IDs: {ids:?}"
+        !ids.contains(&"E058"),
+        "post-7.3: `DeclarativeClassFloorRule` retired; no rule with id `E058` should be \
+         registered. The bridge emits E058 via name folding. Registered IDs: {ids:?}"
     );
     assert!(
         !ids.contains(&"E022"),
@@ -149,6 +161,17 @@ fn capco_rules_set_includes_class_floor_walker() {
     assert!(
         !ids.contains(&"E027"),
         "E027 retired in PR 3b.D; rule set must not register the legacy SAR-classification rule"
+    );
+
+    // Bridge-emission anchor: confirm the deleted walker's external
+    // surface is preserved end-to-end through `engine.lint`.
+    let diags = lint("CONFIDENTIAL//RD-CNWDI//NOFORN\n");
+    let cnwdi_e058 = e058_diags_for(&diags, "CNWDI");
+    assert_eq!(
+        cnwdi_e058.len(),
+        1,
+        "post-7.3: bridge must emit E058 for CONFIDENTIAL//RD-CNWDI \
+         (CNWDI floor §H.6 p104 §2.2): {diags:?}"
     );
 }
 

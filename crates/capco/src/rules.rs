@@ -123,13 +123,13 @@ impl Default for CapcoRuleSet {
 impl CapcoRuleSet {
     pub fn new() -> Self {
         use crate::rules_declarative::{
-            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeClassFloorRule,
-            DeclarativeCominglingWarningRule, DeclarativeDualClassificationRule,
-            DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
-            DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
-            DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
-            DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
-            DeclarativeRelidoNofornConflictRule, DeclarativeSciPerSystemRule,
+            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCominglingWarningRule,
+            DeclarativeDualClassificationRule, DeclarativeJointHcsRule, DeclarativeJointRelToRule,
+            DeclarativeJointRestrictedRule, DeclarativeNofornRelToConflictRule,
+            DeclarativeNonUsMissingDissemRule, DeclarativeOrconRelidoConflictRule,
+            DeclarativeOrconUsgovRelidoConflictRule, DeclarativeRdPrecedenceRule,
+            DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+            DeclarativeSciPerSystemRule,
         };
         Self {
             rules: vec![
@@ -195,27 +195,23 @@ impl CapcoRuleSet {
                 Box::new(DeclarativeJointHcsRule),
                 Box::new(DeclarativeAeaNofornRule),
                 Box::new(DeclarativeRdPrecedenceRule),
-                // PR 3b.D (T026d): E022 (CNWDI), E025 (UCNI), and E027
-                // (SAR classification) retired into the class-floor
-                // catalog walker `DeclarativeClassFloorRule` (rule
-                // ID E058). Replacement catalog row names (walker-
-                // prefixed; the legacy E### IDs are not preserved per
-                // `feedback_pre_users_no_deprecation_phasing.md`):
-                //   - E058/CNWDI-classification-floor (CAPCO §H.6 p104)
-                //   - E058/DOD-UCNI-classification-ceiling (§H.6 p116)
-                //   - E058/DOE-UCNI-classification-ceiling (§H.6 p118)
-                //   - E058/SAR-classification-floor (§H.5)
-                // Plus 23 additional `class-floor/<marking>` family
-                // rows per `marque-applied.md` §3.4.6 (HCS-comp-sub,
-                // SI-comp, TK-BLFH, BALK, BOHEMIA, HCS-comp, RSV-comp,
-                // TK family, RD-SG, FRD-SG, RSEN, IMCON, SI bare, RD
-                // bare, FRD bare, TFNI, ATOMAL, ORCON family, EYES
-                // ONLY, BUR/HCS-X/KLM/MVL passthrough). See
-                // `crate::scheme::CLASS_FLOOR_CATALOG` for the row
-                // table and
-                // `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md`
+                // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` (rule
+                // ID E058) retired. The 27 class-floor catalog rows now
+                // fire through the engine's constraint-catalog bridge
+                // directly — `class_floor_emit` populates
+                // `ConstraintViolation::{span, severity}`, and the
+                // bridge folds `E058/<purpose>` and
+                // `class-floor/<marking>` row names to
+                // `Diagnostic.rule = "E058"` so audit-stream consumers
+                // and `[rules] E058 = "off"` config overrides keep
+                // working. The 23 family rows
+                // (`class-floor/<marking>`) plus the 4 walker-prefixed
+                // rows (`E058/CNWDI`, `E058/SAR`, `E058/DOD-UCNI`,
+                // `E058/DOE-UCNI`) remain declared as
+                // `Constraint::Custom` entries in
+                // `CapcoScheme::build_constraints()`. See
+                // `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md`
                 // for the architectural rationale.
-                Box::new(DeclarativeClassFloorRule),
                 Box::new(SciCustomControlInfoRule),
                 // T035c-21 PR-A: NODIS/EXDIS constraint rules per
                 // CAPCO-2016 §H.9. E037 (mutual exclusion) and E038
@@ -2433,19 +2429,15 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
 // Rule: E027 — SAR requires TS, S, or C classification (RETIRED)
 // ---------------------------------------------------------------------------
 //
-// PR 3b.D (T026d): retired. The SAR floor invariant moved into the
-// class-floor catalog as the row `E058/SAR-classification-floor`
-// (CAPCO §H.5). The catalog walker `DeclarativeClassFloorRule` (rule
-// ID `E058`) is the new emitter; the legacy `E027` rule ID is NOT
-// preserved (per project memory
-// `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users
-// — no severity-config back-compat).
-//
-// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
-// citation. The emitted diagnostic carries `Diagnostic.rule = "E058"`
-// (walker ID); per-row identification flows via the diagnostic
-// message text + the catalog's `name` field
-// (`"E058/SAR-classification-floor"`).
+// PR 3b.D (T026d) → PR 3c.B Commit 7.3: retired. The SAR floor
+// invariant lives in `CapcoScheme`'s constraint catalog as the row
+// `E058/SAR-classification-floor` (CAPCO §H.5). The engine's
+// constraint-catalog bridge is the sole emitter; emitted diagnostics
+// carry `Diagnostic.rule = "E058"` (audit-stream + config-override
+// continuity with the retired walker convention). The legacy `E027`
+// rule ID is NOT preserved (per project memory
+// `feedback_pre_users_no_deprecation_phasing.md`: marque is
+// pre-users — no severity-config back-compat).
 
 /// Collect program identifiers that appear in `expected` but not in
 /// `observed`.
@@ -3479,7 +3471,15 @@ mod tests {
         assert!(ids.contains(&"E055"));
         assert!(ids.contains(&"E056"));
         assert!(ids.contains(&"E057"));
-        assert!(ids.contains(&"E058")); // DeclarativeClassFloorRule walker
+        // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` (E058) retired.
+        // The 27 catalog rows fire through the engine's constraint-
+        // catalog bridge with `Diagnostic.rule = "E058"` (audit-stream
+        // continuity); no registered `Rule::id() == "E058"` post-7.3.
+        assert!(
+            !ids.contains(&"E058"),
+            "E058 walker retired in PR 3c.B Commit 7.3; the catalog rows \
+             emit via the engine bridge."
+        );
         assert!(ids.contains(&"E059")); // DeclarativeSciPerSystemRule walker
 
         // Retired-rule guards. PR 3c.B Commit 6 retires 13 rules + the
@@ -3610,11 +3610,13 @@ mod tests {
             );
         }
 
-        // Post-PR-3c.B-Commit-6 registered count: 33 rules.
+        // Post-PR-3c.B-Commit-7.3 registered count: 32 rules.
         // History: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retires
         // 13 form rules + 1 walker (E060) into the renderer (form-bucket
-        // migration); net delta: -14. Final: 47 - 14 = 33.
-        assert_eq!(set.rules().len(), 33);
+        // migration); 47 - 14 = 33. PR 3c.B Commit 7.3 retires
+        // `DeclarativeClassFloorRule` (E058) into the constraint-catalog
+        // bridge; 33 - 1 = 32.
+        assert_eq!(set.rules().len(), 32);
     }
 
     #[test]
@@ -6077,50 +6079,23 @@ mod tests {
         assert_eq!(e021.len(), 1);
     }
 
-    // --- CNWDI floor (formerly E022, now E058 catalog row
-    // `E058/CNWDI-classification-floor`) ---
+    // --- CNWDI floor (formerly E022, now bridge-emitted E058 via
+    // catalog row `E058/CNWDI-classification-floor`) ---
     //
     // PR 3b.D (T026d): the CNWDI floor invariant moved into the
-    // class-floor catalog. Diagnostic.rule is `E058` (walker bookkeeping
-    // ID); per-row identification flows via the diagnostic message text
-    // ("CNWDI requires classification ≥ ..."). These tests pin the
-    // observable behavior: fires below floor, doesn't fire at-or-above.
-
-    fn cnwdi_floor_diags(
-        diags: &[marque_rules::Diagnostic<CapcoScheme>],
-    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
-        diags
-            .iter()
-            .filter(|d| d.rule.as_str() == "E058" && d.message.contains("CNWDI"))
-            .collect()
-    }
-
-    #[test]
-    fn e022_fires_on_cnwdi_with_confidential() {
-        let diags = lint_banner("CONFIDENTIAL//RD-CNWDI//NOFORN");
-        let cnwdi = cnwdi_floor_diags(&diags);
-        assert_eq!(cnwdi.len(), 1);
-    }
-
-    #[test]
-    fn e022_does_not_fire_on_cnwdi_with_secret() {
-        let diags = lint_banner("SECRET//RD-CNWDI//NOFORN");
-        let cnwdi = cnwdi_floor_diags(&diags);
-        assert!(
-            cnwdi.is_empty(),
-            "CNWDI floor should not fire with SECRET: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn e022_does_not_fire_on_cnwdi_with_top_secret() {
-        let diags = lint_banner("TOP SECRET//RD-CNWDI//NOFORN");
-        let cnwdi = cnwdi_floor_diags(&diags);
-        assert!(
-            cnwdi.is_empty(),
-            "CNWDI floor should not fire with TOP SECRET: {diags:?}"
-        );
-    }
+    // class-floor catalog. PR 3c.B Commit 7.3: the walker
+    // (`DeclarativeClassFloorRule`) retired; the engine's constraint-
+    // catalog bridge is the sole emitter. The lib-level tests
+    // (`e022_fires_on_cnwdi_with_confidential` and friends) that
+    // exercised `lint_banner` retired alongside the walker — the
+    // bridge fires through `engine.lint`, which the lib-level harness
+    // bypasses. The 27 class-floor catalog rows are covered
+    // comprehensively (fires-below / silent-at-floor / silent-when-
+    // absent triplet per row, plus span-anchor + severity-override
+    // tests) by the engine-level test suite in
+    // `crates/capco/tests/class_floor_catalog.rs`. The CNWDI-specific
+    // entry points are `cnwdi_fires_below_secret` and
+    // `cnwdi_does_not_fire_when_marking_absent` in that file.
 
     // --- E024: RD precedence ---
 
@@ -6139,42 +6114,17 @@ mod tests {
         assert!(diags.iter().all(|d| d.rule.as_str() != "E024"));
     }
 
-    // --- UCNI ceiling (formerly E025, now E058 catalog rows
-    // `E058/DOD-UCNI-classification-ceiling` +
+    // --- UCNI ceiling (formerly E025, now bridge-emitted E058 via
+    // catalog rows `E058/DOD-UCNI-classification-ceiling` +
     // `E058/DOE-UCNI-classification-ceiling`) ---
     //
     // PR 3b.D (T026d): the UCNI ceiling invariant moved into the
     // class-floor catalog as TWO rows (DOD UCNI + DOE UCNI; split per
     // PM decision so each carries its own §H.6 sub-page citation).
-    // Diagnostic.rule is `E058`; per-row identification flows via the
-    // diagnostic message text ("DOD UCNI may only be used with
-    // UNCLASSIFIED" / "DOE UCNI may only be used with UNCLASSIFIED").
-
-    fn ucni_ceiling_diags(
-        diags: &[marque_rules::Diagnostic<CapcoScheme>],
-    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
-        diags
-            .iter()
-            .filter(|d| d.rule.as_str() == "E058" && d.message.contains("UCNI"))
-            .collect()
-    }
-
-    #[test]
-    fn e025_fires_on_ucni_with_secret() {
-        let diags = lint_banner("SECRET//DOD UCNI");
-        let ucni = ucni_ceiling_diags(&diags);
-        assert_eq!(ucni.len(), 1);
-    }
-
-    #[test]
-    fn e025_does_not_fire_on_ucni_with_unclassified() {
-        let diags = lint_banner("UNCLASSIFIED//DOD UCNI");
-        let ucni = ucni_ceiling_diags(&diags);
-        assert!(
-            ucni.is_empty(),
-            "UCNI ceiling should not fire with UNCLASSIFIED: {diags:?}"
-        );
-    }
+    // PR 3c.B Commit 7.3: lib-level `lint_banner` tests retired
+    // alongside the walker — the engine-level UCNI coverage lives in
+    // `crates/capco/tests/class_floor_catalog.rs::dod_ucni_*` and
+    // `doe_ucni_*`.
 
     // --- Spec 003 SCI compartments: E010 structural regression ---
 
@@ -6212,53 +6162,15 @@ mod tests {
         assert!(sar_sort_key("CD") < sar_sort_key("XR"));
     }
 
-    // --- SAR floor (formerly E027, now E058 catalog row
-    // `E058/SAR-classification-floor`) ---
+    // --- SAR floor (formerly E027, now bridge-emitted E058 via
+    // catalog row `E058/SAR-classification-floor`) ---
     //
     // PR 3b.D (T026d): the SAR floor invariant moved into the class-floor
-    // catalog. Diagnostic.rule is `E058`; per-row identification flows
-    // via the diagnostic message text ("SAR requires classification ≥
-    // CONFIDENTIAL ...").
-
-    fn sar_floor_diags(
-        diags: &[marque_rules::Diagnostic<CapcoScheme>],
-    ) -> Vec<&marque_rules::Diagnostic<CapcoScheme>> {
-        diags
-            .iter()
-            .filter(|d| d.rule.as_str() == "E058" && d.message.starts_with("SAR "))
-            .collect()
-    }
-
-    #[test]
-    fn e027_fires_on_unclassified_banner_with_sar() {
-        let diags = lint_banner("UNCLASSIFIED//SAR-BP");
-        let sar = sar_floor_diags(&diags);
-        assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
-        assert!(
-            sar[0].fix.is_none(),
-            "SAR floor requires human review, no fix"
-        );
-    }
-
-    #[test]
-    fn e027_does_not_fire_on_secret_with_sar() {
-        let diags = lint_banner("SECRET//SAR-BP//NOFORN");
-        let sar = sar_floor_diags(&diags);
-        assert!(
-            sar.is_empty(),
-            "SAR floor must not fire on SECRET//SAR-*: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn e027_does_not_fire_on_top_secret_with_sar() {
-        let diags = lint_banner("TOP SECRET//SAR-BP//NOFORN");
-        let sar = sar_floor_diags(&diags);
-        assert!(
-            sar.is_empty(),
-            "SAR floor must not fire on TS//SAR-*: {diags:?}"
-        );
-    }
+    // catalog. PR 3c.B Commit 7.3: lib-level `lint_banner` tests retired
+    // alongside the walker. Engine-level coverage:
+    // `crates/capco/tests/class_floor_catalog.rs::sar_fires_on_unclassified`,
+    // `sar_does_not_fire_at_confidential`, and
+    // `sar_does_not_fire_when_marking_absent`.
 
     // --- W034: SCI custom control info ---
 
@@ -6458,22 +6370,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn e027_cites_relationship_line_2456() {
-        // PR 3b.D (T026d): retired E027 → E058 catalog row
-        // `E058/SAR-classification-floor`. Per marque-applied.md
-        // §3.4.6 the SAR family floor cites `§H.5` (family-level —
-        // §3.4.6 author's choice). Diagnostic.rule is `E058` (walker).
-        let diags = lint_banner("UNCLASSIFIED//SAR-BP");
-        let sar = sar_floor_diags(&diags);
-        assert_eq!(sar.len(), 1);
-        assert!(
-            sar[0].citation.contains("§H.5"),
-            "SAR floor citation must contain §H.5 (family-level per \
-             marque-applied.md §3.4.6); got: {:?}",
-            sar[0].citation
-        );
-    }
+    // PR 3b.D (T026d): retired E027 → E058 catalog row
+    // `E058/SAR-classification-floor`. PR 3c.B Commit 7.3: the walker
+    // retired; SAR-floor citation coverage moved to the engine-level
+    // test `crates/capco/tests/class_floor_catalog.rs::sar_fires_on_unclassified`
+    // (asserts `sar[0].citation == "CAPCO-2016 §H.5"`).
 
     // --- E031: sar-banner-rollup ---
 

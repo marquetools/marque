@@ -22,7 +22,7 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, TokenKind};
+use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, Span, TokenKind};
 use marque_scheme::{
     AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
     Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
@@ -2154,16 +2154,16 @@ impl CapcoScheme {
     /// per-candidate `CapcoMarking::from(attrs.clone())` allocation —
     /// when no catalog row could possibly fire.
     ///
-    /// # Why a static `false` today
+    /// # Why a static `true` now (PR 3c.B Commit 7.3)
     ///
-    /// PR 3c.B Commit 7.2 lands the bridge cold: no catalog row in
-    /// `CapcoScheme::build_constraints()` populates the optional span
-    /// / severity fields yet (every dyadic arm passes `None`; every
-    /// Custom-arm helper in this file passes `None` after the 7.1
-    /// bulk-patch). The bridge would walk the entire ~50-entry
-    /// catalog per candidate and discard every result. This predicate
-    /// returns `false` so the bridge skips the walk entirely until
-    /// 7.3 wires the first class-floor row to populate the fields.
+    /// PR 3c.B Commit 7.3 retired `DeclarativeClassFloorRule` (E058)
+    /// and rewired its 27 class-floor catalog rows to populate
+    /// `ConstraintViolation::span` (via [`class_floor_anchor_span`])
+    /// and `::severity` (from `ClassFloorRow::severity`) directly in
+    /// [`class_floor_emit`]. The bridge is the sole emitter for the
+    /// class-floor rule set as of this commit; the previous walker
+    /// path no longer exists. PR 3c.B Commit 7.4 adds the 5 SCI
+    /// per-system rows (E059) following the same pattern.
     ///
     /// # Why static (not derived from the catalog at runtime)
     ///
@@ -2174,12 +2174,33 @@ impl CapcoScheme {
     /// span/severity" would itself defeat the optimization (the data
     /// we're avoiding fetching is the per-candidate walk's output;
     /// learning that the catalog has zero such rows shouldn't itself
-    /// require a per-candidate walk). 7.3 flips this to `true`
-    /// statically — the predicate is a one-line override naming the
-    /// commit that introduced the first diagnostic-producing
-    /// Custom-arm catalog row.
+    /// require a per-candidate walk). The constant `true` here
+    /// reflects the post-7.3 catalog state and is a one-line override
+    /// for any future scheme that wires no diagnostic-shape rows.
     pub fn has_diagnostic_constraints(&self) -> bool {
-        false
+        true
+    }
+
+    /// Rule IDs emitted by the engine's constraint-catalog bridge that
+    /// do not correspond to any registered `Rule::id()`. Each entry is
+    /// a `(rule_id, descriptive_name)` pair shaped to match the
+    /// existing `Rule::additional_emitted_ids()` walker convention so
+    /// the engine's `canonicalize_rule_overrides` validator can accept
+    /// `.marque.toml [rules] <id> = "off"` references to these IDs
+    /// without an `UnknownRuleOverride` failure.
+    ///
+    /// # Entries (PR 3c.B Commit 7.3)
+    ///
+    ///   - `("E058", "class-floor-catalog")` — retired
+    ///     `DeclarativeClassFloorRule` walker. The 27 class-floor
+    ///     catalog rows fire through the bridge with
+    ///     `Diagnostic.rule = "E058"`; the bridge folds the per-row
+    ///     `E058/...` / `class-floor/...` constraint-label names to
+    ///     this collapsed ID.
+    ///
+    /// PR 3c.B Commit 7.4 will add `("E059", "sci-per-system-catalog")`.
+    pub fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
+        &[("E058", "class-floor-catalog")]
     }
 }
 
@@ -3118,48 +3139,12 @@ pub(crate) struct ClassFloorRow {
     /// diagnostic message variant (passthrough rows quote the §3.7
     /// passthrough-policy framing).
     pub(crate) passthrough: bool,
-    /// Diagnostic-span anchor token kind. PR D R2 hot-path optimization
-    /// (perf-3): hoisted from the per-diagnostic
-    /// `primary_token_kind_for_row` string match in
-    /// `rules_declarative.rs`. The walker reads this field directly
-    /// when resolving the diagnostic span. `None` means "fall back to
-    /// the classification span" (used for NATO rows where the
-    /// classification token IS the marking surface).
+    /// Diagnostic-span anchor token kind. Used by
+    /// [`class_floor_anchor_span`] when populating
+    /// `ConstraintViolation::span` in [`class_floor_emit`]. `None`
+    /// means "fall back to the classification span" (NATO rows where
+    /// the classification token IS the marking surface).
     pub(crate) primary_kind: Option<marque_ism::TokenKind>,
-    /// Coarse axis classifier for the early-out guard. PR D R2 hot-path
-    /// optimization (perf-1): the walker reads this once per row and
-    /// can skip the entire row when the corresponding axis is empty
-    /// in `attrs`. The axis bitfield model is too coarse for the BUR
-    /// passthrough family (which dual-reads `sci_controls` AND
-    /// `sci_markings`); using a single discriminant per row is
-    /// sufficient because the early-out guard only reads
-    /// "any-token-present-on-this-axis" flags.
-    pub(crate) axis: ClassFloorAxis,
-}
-
-/// Coarse axis classifier for a class-floor catalog row's marking
-/// presence. Used by the walker's early-out guard to skip rows whose
-/// axis is empty in the current `attrs` without invoking the row's
-/// presence predicate.
-///
-/// The classifier is at the marking-axis granularity, NOT the
-/// CanonicalAttrs-field granularity — `Sci` covers BOTH `sci_controls`
-/// and `sci_markings` because passthrough predicates dual-read; `Aea`
-/// covers `aea_markings`; etc. This is a hot-path optimization, not a
-/// semantic guard, so coarseness is correct.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ClassFloorAxis {
-    /// SCI markings or SCI controls (covers HCS / SI / TK / RSV +
-    /// passthrough BUR / HCS-X / KLM / MVL).
-    Sci,
-    /// AEA markings (covers RD / FRD / TFNI / CNWDI / SIGMA / UCNI).
-    Aea,
-    /// SAR markings (covers the SAR floor row).
-    Sar,
-    /// IC dissemination controls (covers RSEN / IMCON / ORCON / EYES).
-    Dissem,
-    /// NATO classification system (covers BALK / BOHEMIA / ATOMAL).
-    NatoClass,
 }
 
 /// Returns true if `name` is a catalog row name dispatched by
@@ -3196,19 +3181,14 @@ pub(crate) fn class_floor_row_by_name(name: &str) -> Option<&'static ClassFloorR
     CLASS_FLOOR_CATALOG.iter().find(|row| row.name == name)
 }
 
-/// Iterate the full class-floor catalog. Used by the walker
-/// `DeclarativeClassFloorRule::check` to dispatch over every row.
-pub(crate) fn class_floor_catalog() -> &'static [ClassFloorRow] {
-    CLASS_FLOOR_CATALOG
-}
-
 /// Single source of truth for the class-floor catalog's
 /// presence-check + floor-satisfaction-check + diagnostic message
-/// shape. PR D R3.1 (R3 C2): extracted to converge the walker
-/// hot-path ([`class_floor_eval_row`]) and the trait/validate path
-/// ([`class_floor_catalog_eval`]) on one body so a citation,
-/// message-text, or floor-comparison change to one row cannot
-/// silently diverge between the two emitters.
+/// shape. PR D R3.1 (R3 C2) consolidated the walker hot-path and the
+/// trait/validate path here so a citation, message-text, or
+/// floor-comparison change to one row cannot silently diverge between
+/// emitters. Post PR 3c.B Commit 7.3 the walker is retired and the
+/// engine's constraint-catalog bridge is the sole emitter — but the
+/// convergence shape stays for any future second emitter path.
 ///
 /// Returns `None` when the row's predicate does not fire (presence
 /// false OR floor satisfied). Returns `Some(ConstraintViolation)`
@@ -3225,6 +3205,20 @@ pub(crate) fn class_floor_catalog() -> &'static [ClassFloorRow] {
 /// `None` for non-US classification kinds. This is the C1 fix from
 /// PR #324 R1; see [`class_floor_satisfied`] doc for the AtLeast vs
 /// EqualsU split.
+///
+/// # Span and severity (PR 3c.B Commit 7.3)
+///
+/// `span` and `severity` are populated here so the engine's
+/// constraint-catalog bridge can surface the violation as a
+/// user-facing `Diagnostic` without going through the retired
+/// `DeclarativeClassFloorRule` walker:
+///   - `span` resolves via [`class_floor_anchor_span`] (lifted from
+///     the walker in this commit) so the diagnostic squiggle anchors
+///     at the marking token, not the classification token (PM
+///     directive #2).
+///   - `severity` is the row's authoring intent (`Error` for
+///     enumerated rows; `Warn` for passthrough rows per
+///     `marque-applied.md` §3.4.6 Q-3.4.6b).
 fn class_floor_emit(
     attrs: &marque_ism::CanonicalAttrs,
     row: &ClassFloorRow,
@@ -3266,31 +3260,54 @@ fn class_floor_emit(
         constraint_label: row.name,
         message,
         citation: row.citation,
-        span: None,
-        severity: None,
+        span: Some(class_floor_anchor_span(attrs, row)),
+        severity: Some(row.severity),
     })
 }
 
-/// Direct catalog-row dispatch for the walker's hot path. Skips the
-/// `evaluate_custom_by_attrs` → `class_floor_catalog_eval` → name-
-/// lookup chain entirely; the walker has the row in hand and calls
-/// the predicate fields directly. PR D R2 hot-path optimization
-/// (perf-2).
+/// Resolve the diagnostic span anchor for a class-floor catalog row.
 ///
-/// Returns `None` when the row's predicate does not fire. Returns
-/// `Some(message)` when the row fires; the caller pairs that with
-/// the row's severity, citation, and span anchor to construct a
-/// `Diagnostic`. The caller does not need the
-/// [`ConstraintViolation`] envelope — the walker constructs a
-/// `Diagnostic` directly from the row's static fields plus the
-/// returned message — so this thin wrapper unwraps
-/// [`class_floor_emit`]'s return to drop the `constraint_label` /
-/// `citation` fields the caller is going to overwrite anyway.
-pub(crate) fn class_floor_eval_row(
-    attrs: &marque_ism::CanonicalAttrs,
-    row: &ClassFloorRow,
-) -> Option<String> {
-    class_floor_emit(attrs, row).map(|v| v.message)
+/// Lifted from `rules_declarative::class_floor_anchor_span` in PR
+/// 3c.B Commit 7.3 when [`DeclarativeClassFloorRule`] retired into
+/// the engine's constraint-catalog bridge. Per PM directive #2 of
+/// the original PR 3b.D plan, the span anchors at the marking token
+/// (not the classification token) so the diagnostic UX puts the
+/// squiggle under the offending presence. Reads `row.primary_kind`
+/// directly (the PR D R2 perf-3 optimization hoisted from the
+/// retired `primary_token_kind_for_row` string-match table into a
+/// struct field on `ClassFloorRow`). Falls back to the first
+/// `Classification` token span if no axis-specific span is found,
+/// and finally to `Span::new(0, 0)` if neither is present.
+///
+/// `[DeclarativeClassFloorRule]` is retired (PR 3c.B Commit 7.3);
+/// crate::rules_declarative::DeclarativeClassFloorRule no longer
+/// exists. This is the new home for the helper.
+#[allow(rustdoc::broken_intra_doc_links)]
+pub(crate) fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &ClassFloorRow) -> Span {
+    if let Some(kind) = row.primary_kind
+        && let Some(span) = first_span_of_optional(attrs, kind)
+    {
+        return span;
+    }
+    // Some rows have no single primary kind (e.g., NATO rows have no
+    // marking-side token; `row.primary_kind == None`). Try
+    // classification as a fallback.
+    if let Some(span) = first_span_of_optional(attrs, TokenKind::Classification) {
+        return span;
+    }
+    Span::new(0, 0)
+}
+
+/// Returns the first span of a given token kind in the attrs'
+/// `token_spans`, or `None` if the kind is absent. Lifted from
+/// `rules_declarative::first_span_of_optional` in PR 3c.B Commit
+/// 7.3 alongside [`class_floor_anchor_span`].
+pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Span> {
+    attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == kind)
+        .map(|t| t.span)
 }
 
 /// Dispatch a single catalog row by name and return at most one
@@ -3299,10 +3316,12 @@ pub(crate) fn class_floor_eval_row(
 /// [`marque_scheme::constraint::evaluate`] when the catalog row's
 /// `Constraint::Custom` arm fires.
 ///
-/// PR D R3.1 (R3 C2): converges through [`class_floor_emit`] so the
-/// presence check, floor-satisfaction check, and message-format are
-/// not duplicated against the walker's [`class_floor_eval_row`]
-/// path.
+/// PR 3c.B Commit 7.3: the walker hot-path equivalent
+/// (`class_floor_eval_row`) retired alongside
+/// `DeclarativeClassFloorRule`; the engine's constraint-catalog
+/// bridge invokes this function via `evaluate_custom` → here, and
+/// fields are populated in [`class_floor_emit`] so no second emitter
+/// path is needed.
 fn class_floor_catalog_eval(
     attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
@@ -3703,7 +3722,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/SI-comp",
@@ -3714,7 +3732,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/TK-BLFH",
@@ -3725,7 +3742,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     // BALK and BOHEMIA: floor TS via CTS reciprocal-raise per
     // marque-applied.md §3.4.1 Note (i). The presence predicate fires
@@ -3744,7 +3760,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.7 Appendix B",
         passthrough: false,
         primary_kind: None,
-        axis: ClassFloorAxis::NatoClass,
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
@@ -3755,7 +3770,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.7 Appendix B",
         passthrough: false,
         primary_kind: None,
-        axis: ClassFloorAxis::NatoClass,
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
@@ -3767,7 +3781,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/RSV-comp",
@@ -3778,7 +3791,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/TK",
@@ -3789,7 +3801,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/RD-SG",
@@ -3800,7 +3811,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p113",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/FRD-SG",
@@ -3811,7 +3821,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p113",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     // CNWDI — replaces retired E022. Walker-prefixed name per PM
     // directive #5.
@@ -3824,7 +3833,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/RSEN",
@@ -3835,7 +3843,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.8 p149",
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
-        axis: ClassFloorAxis::Dissem,
     },
     ClassFloorRow {
         name: "class-floor/IMCON",
@@ -3846,7 +3853,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.8 p144",
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
-        axis: ClassFloorAxis::Dissem,
     },
     // ---- §2.3 Floor C (8 rows) -------------------------------------
     ClassFloorRow {
@@ -3858,7 +3864,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     // SAR — replaces retired E027.
     ClassFloorRow {
@@ -3870,7 +3875,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.5",
         passthrough: false,
         primary_kind: Some(TokenKind::SarIndicator),
-        axis: ClassFloorAxis::Sar,
     },
     ClassFloorRow {
         name: "class-floor/RD",
@@ -3881,7 +3885,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/FRD",
@@ -3892,7 +3895,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/TFNI",
@@ -3903,7 +3905,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p107",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "class-floor/ATOMAL",
@@ -3914,7 +3915,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.7 Appendix B",
         passthrough: false,
         primary_kind: None,
-        axis: ClassFloorAxis::NatoClass,
     },
     ClassFloorRow {
         name: "class-floor/ORCON",
@@ -3925,7 +3925,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.8 p136",
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
-        axis: ClassFloorAxis::Dissem,
     },
     ClassFloorRow {
         name: "class-floor/EYES-ONLY",
@@ -3936,7 +3935,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.8 p152",
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
-        axis: ClassFloorAxis::Dissem,
     },
     // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
     ClassFloorRow {
@@ -3948,7 +3946,6 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p116",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     ClassFloorRow {
         name: "E058/DOE-UCNI-classification-ceiling",
@@ -3959,19 +3956,24 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation: "CAPCO-2016 §H.6 p118",
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        axis: ClassFloorAxis::Aea,
     },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
+    // PR 3c.B Commit 7.3: passthrough row `citation` fields aligned to the
+    // `§3.7` form used by the corresponding `Constraint::Custom { label }`
+    // entries (Constitution VIII consistency). Pre-7.3 the walker emitted
+    // `row.citation = "Section 3.7"` directly; post-7.3 the bridge emits
+    // `constraint.label = "§3.7"` (via `evaluate`'s citation override).
+    // Sync at the source so any future direct read of `row.citation`
+    // matches the user-visible `Diagnostic.citation`.
     ClassFloorRow {
         name: "class-floor/passthrough-BUR",
         marking_label: "BUR family",
         presence: presence_passthrough_bur,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-HCS-X",
@@ -3979,10 +3981,9 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_hcs_x,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-KLM",
@@ -3990,10 +3991,9 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_klm,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-MVL",
@@ -4001,10 +4001,9 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_mvl,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
-        axis: ClassFloorAxis::Sci,
     },
 ];
 

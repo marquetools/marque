@@ -16,10 +16,12 @@
 
 use std::sync::Arc;
 
-use marque_capco::CapcoRuleSet;
+use marque_capco::scheme::CapcoMarking;
+use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_core::{Parser, Scanner};
 use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
 use marque_rules::{RuleContext, RuleSet};
+use marque_scheme::MarkingScheme;
 use marque_test_utils::{
     ExpectedFixture, invalid_fixtures, load_expected, load_fixture, valid_fixtures,
 };
@@ -29,6 +31,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let parser = Parser::new(&token_set);
     let candidates = Scanner::scan(source);
     let rule_set = CapcoRuleSet::new();
+    let scheme = CapcoScheme::new();
     let mut out = Vec::new();
     // Mirror the engine's PageContext accumulation so banner-rollup rules
     // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets at
@@ -71,6 +74,37 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         for rule in rule_set.rules() {
             for d in rule.check(&attrs, &ctx) {
                 out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));
+            }
+        }
+        // PR 3c.B Commit 7.3: emulate the engine's constraint-catalog
+        // bridge here so fixtures that rely on bridge-emitted
+        // diagnostics (E058 class-floor — and post-7.4 E059 SCI per-
+        // system) match. Mirrors the dispatch in
+        // `crates/engine/src/engine.rs` lint loop: gate on
+        // `has_diagnostic_constraints()`, walk `scheme.validate`,
+        // filter to populated-span/severity entries, and fold the
+        // catalog row's `constraint_label` to the bridge-level rule
+        // ID. This module-level test deliberately avoids depending on
+        // `marque-engine` (line 13 docstring) so the bridge logic is
+        // re-implemented locally here.
+        if scheme.has_diagnostic_constraints() {
+            let marking = CapcoMarking::from(attrs.clone());
+            for v in scheme.validate(&marking) {
+                let (Some(span), Some(_severity)) = (v.span, v.severity) else {
+                    continue;
+                };
+                let rule_id = if v.constraint_label.starts_with("E058/")
+                    || v.constraint_label.starts_with("class-floor/")
+                {
+                    "E058"
+                } else if v.constraint_label.starts_with("E059/")
+                    || v.constraint_label.starts_with("sci-per-system/")
+                {
+                    "E059"
+                } else {
+                    v.constraint_label
+                };
+                out.push((rule_id.to_owned(), span.start, span.end));
             }
         }
     }

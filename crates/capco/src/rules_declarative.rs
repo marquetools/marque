@@ -769,22 +769,20 @@ fn aea_noforn_add_intent() -> FixIntent<CapcoScheme> {
 // E022 — CNWDI classification floor (RETIRED)
 // ---------------------------------------------------------------------------
 //
-// PR 3b.D (T026d): retired. The CNWDI floor invariant moved into the
-// class-floor catalog as the row `E058/CNWDI-classification-floor`
-// (CAPCO §H.6 p104). The catalog walker
-// `DeclarativeClassFloorRule` (rule ID `E058`) is the new emitter;
-// per-row identification (which catalog row fired) lives in the
-// walker's emitted `Diagnostic.message` text.
+// PR 3b.D (T026d) → PR 3c.B Commit 7.3: retired. The CNWDI floor
+// invariant lives in `CapcoScheme`'s constraint catalog as the row
+// `E058/CNWDI-classification-floor` (CAPCO §H.6 p104). The engine's
+// constraint-catalog bridge (see `crates/engine/src/engine.rs` lint
+// loop) is the sole emitter; emitted diagnostics carry
+// `Diagnostic.rule = "E058"` (audit-stream + config-override
+// continuity with the retired walker convention). Per-row
+// identification flows via the diagnostic message text.
 //
 // The legacy `E022` rule ID is NOT preserved as a severity-config
 // alias. Per project memory
 // `feedback_pre_users_no_deprecation_phasing.md`: marque is
-// pre-users; we don't carry alias maps or retained namespaces.
-// `.marque.toml` files keying class-floor severity overrides MUST
-// use `E058` (the walker-level ID).
-//
-// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row's predicate +
-// citation, and `DeclarativeClassFloorRule` below for the walker.
+// pre-users; we don't carry alias maps. `.marque.toml` files keying
+// class-floor severity overrides MUST use `E058`.
 
 // ---------------------------------------------------------------------------
 // E024 — RD takes precedence over FRD/TFNI (multi-emission)
@@ -842,23 +840,19 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
 // E025 — UCNI only with UNCLASSIFIED (RETIRED)
 // ---------------------------------------------------------------------------
 //
-// PR 3b.D (T026d): retired. The UCNI ceiling invariant moved into the
-// class-floor catalog as TWO rows
+// PR 3b.D (T026d) → PR 3c.B Commit 7.3: retired. The UCNI ceiling
+// invariant lives in `CapcoScheme`'s constraint catalog as two rows
 // (`E058/DOD-UCNI-classification-ceiling` at CAPCO §H.6 p116 and
-// `E058/DOE-UCNI-classification-ceiling` at §H.6 p118 — split per PM
-// decision so each variant has its own §H.6 sub-page citation). The
-// catalog walker `DeclarativeClassFloorRule` (rule ID `E058`) is the
-// new emitter.
+// `E058/DOE-UCNI-classification-ceiling` at §H.6 p118 — split so
+// each variant has its own §H.6 sub-page citation). The engine's
+// constraint-catalog bridge is the sole emitter; emitted diagnostics
+// carry `Diagnostic.rule = "E058"`.
 //
 // The legacy `E025` rule ID is NOT preserved as a severity-config
 // alias. Per project memory
 // `feedback_pre_users_no_deprecation_phasing.md`: marque is
-// pre-users; we don't carry alias maps or retained namespaces.
-// `.marque.toml` files keying class-floor severity overrides MUST
-// use `E058` (the walker-level ID).
-//
-// See `crate::scheme::CLASS_FLOOR_CATALOG` for the row predicates +
-// citations, and `DeclarativeClassFloorRule` below for the walker.
+// pre-users; we don't carry alias maps. `.marque.toml` files keying
+// class-floor severity overrides MUST use `E058`.
 
 // ---------------------------------------------------------------------------
 // W002 — US + FGI comingling in portion (portion-only)
@@ -1669,185 +1663,24 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
 }
 
 // ===========================================================================
-// PR 3b.D (T026d) — Class-floor catalog walker (E058)
+// PR 3b.D (T026d) — Class-floor catalog walker (E058) — RETIRED 3c.B Commit 7.3
 // ===========================================================================
 //
-// `DeclarativeClassFloorRule` is the single walker rule that dispatches
-// over the 27-row class-floor catalog declared in
-// `crate::scheme::CLASS_FLOOR_CATALOG` (and registered as
-// `Constraint::Custom` rows in `CapcoScheme::build_constraints` under
-// the "PR 3b.D (T026d) — class-floor catalog" section).
+// The walker `DeclarativeClassFloorRule` (rule ID E058) retired in PR
+// 3c.B Commit 7.3. Its 27 class-floor catalog rows now fire through the
+// engine's constraint-catalog bridge (`crates/engine/src/engine.rs` lint
+// loop, gated by `CapcoScheme::has_diagnostic_constraints()`).
 //
-// # Walker rule-ID convention
+// The span-anchor helpers (`class_floor_anchor_span`,
+// `first_span_of_optional`) moved to `crate::scheme` next to
+// `class_floor_emit`. The bridge folds catalog row names
+// (`E058/<purpose>`, `class-floor/<marking>`) to `Diagnostic.rule = "E058"`
+// so audit-stream consumers and `.marque.toml [rules] E058 = "off"` config
+// overrides continue to work unchanged across the deletion.
 //
-// Per the PR 3b.D planning doc §5.2 + PM directive #5: ONE walker rule
-// `E058` with a fresh ID. All emitted diagnostics carry
-// `Diagnostic.rule = "E058"`. Per-row identification flows via the
-// catalog row's `name` field — either `"E058/<purpose>"` (for the
-// four rows replacing retired E022/E025/E027 invariants —
-// `E058/CNWDI-classification-floor`, `E058/SAR-classification-floor`,
-// `E058/DOD-UCNI-classification-ceiling`,
-// `E058/DOE-UCNI-classification-ceiling`) or
-// `"class-floor/<marking>"` (for the 23 new family rows with no
-// retired-rule predecessor) — into the diagnostic message text. The
-// legacy E022 / E025 / E027 IDs are NOT preserved as severity-config
-// aliases (per `feedback_pre_users_no_deprecation_phasing.md`:
-// marque is pre-users; rewrite freely).
-//
-// # Severity convention
-//
-// The walker's `default_severity()` is `Severity::Error` (matches the
-// majority of catalog rows). Per-row severities are stored in
-// `ClassFloorRow.severity` and copied onto each emitted `Diagnostic`
-// — the unknown-floor passthrough rows (BUR / HCS-X / KLM / MVL) emit
-// at `Severity::Warn` per `marque-applied.md` §3.4.6 Q-3.4.6b. The
-// engine's severity-override layer can downgrade or upgrade per
-// `.marque.toml [rules] E058 = "off|warn|error|..."`.
-//
-// # Span anchoring
-//
-// PM directive #2: anchor at the marking token, not the classification
-// token. The diagnostic squiggle should be under the offending presence,
-// not the classification value. Span resolution per row dispatches on
-// the marking axis: AEA-axis rows (RD, FRD, TFNI, CNWDI, SIGMA, UCNI)
-// anchor at the first `TokenKind::AeaMarking` span; SCI-axis rows
-// (HCS, SI, TK, RSV, BUR, HCS-X, KLM, MVL) anchor at the first
-// `TokenKind::SciSystem` or `TokenKind::SciControl` span; SAR rows at
-// `TokenKind::SarIndicator`; dissem-axis rows (RSEN, IMCON, ORCON,
-// EYES) at the first `TokenKind::DissemControl` span; NATO rows at the
-// first `TokenKind::Classification` span (NATO classification token is
-// the marking surface). When no specific token-kind span is found, fall
-// back to the first `Classification` span, and finally to `(0, 0)`.
-
-pub(crate) struct DeclarativeClassFloorRule;
-
-impl Rule<CapcoScheme> for DeclarativeClassFloorRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E058")
-    }
-    fn name(&self) -> &'static str {
-        "class-floor-catalog"
-    }
-    fn default_severity(&self) -> Severity {
-        // Catalog rows individually carry `Severity::Error` (enumerated
-        // rows) or `Severity::Warn` (passthrough rows); each row's
-        // severity is stored in `ClassFloorRow.severity` and is what
-        // the emitted `Diagnostic.severity` carries when no
-        // `.marque.toml` override is configured for `E058`.
-        //
-        // `default_severity` governs the no-override case ONLY. If a
-        // user sets `[rules] E058 = "warn"`, the engine's severity-
-        // override layer replaces every emitted `Diagnostic.severity`
-        // with `Warn` regardless of the per-row authoring intent — so
-        // this default value cannot prevent downgrading. Returning
-        // `Severity::Error` here matches the strictest per-row floor
-        // so an unconfigured catalog defaults to error-severity for
-        // the enumerated rows; passthrough rows still emit at `Warn`
-        // because the walker copies `row.severity` onto each
-        // `Diagnostic` directly (see `check` below).
-        //
-        // A per-row severity floor mechanism (preventing config from
-        // downgrading specific rows below their authoring intent) does
-        // not exist in the engine and is not in scope for PR D.
-        Severity::Error
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        // PR D R2 perf-1: per-portion early-out guard. Pre-compute
-        // axis-presence flags once. On a 10KB document where most
-        // portions are prose body text (no SCI / AEA / SAR / dissem /
-        // NATO classification), all five flags are `false` and the
-        // catalog walk is skipped entirely. The flags are O(1) each
-        // (Box<[T]> length checks + one classification-variant match).
-        let any_sci = !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty();
-        let any_aea = !attrs.aea_markings.is_empty();
-        let any_sar = attrs.sar_markings.is_some();
-        let any_dissem = !attrs.dissem_controls.is_empty();
-        let any_nato_class = matches!(
-            &attrs.classification,
-            Some(marque_ism::MarkingClassification::Nato(_))
-        );
-        if !(any_sci || any_aea || any_sar || any_dissem || any_nato_class) {
-            return Vec::new();
-        }
-
-        // PR D R2 perf-2: direct catalog-row dispatch. Walk the static
-        // `CLASS_FLOOR_CATALOG` table once; for each row whose axis is
-        // present, fire the row's predicate via `class_floor_eval_row`
-        // (which calls `(row.presence)(attrs)` and
-        // `class_floor_satisfied(attrs, row.policy)` directly — no
-        // string-keyed dispatch through `evaluate_custom_by_attrs`).
-        let mut diags = Vec::new();
-        for row in crate::scheme::class_floor_catalog() {
-            // Axis-empty short-circuit: skip rows whose axis carries
-            // no tokens in this portion. The walker can then call
-            // `class_floor_eval_row` only for rows whose axis is
-            // populated.
-            let axis_present = match row.axis {
-                crate::scheme::ClassFloorAxis::Sci => any_sci,
-                crate::scheme::ClassFloorAxis::Aea => any_aea,
-                crate::scheme::ClassFloorAxis::Sar => any_sar,
-                crate::scheme::ClassFloorAxis::Dissem => any_dissem,
-                crate::scheme::ClassFloorAxis::NatoClass => any_nato_class,
-            };
-            if !axis_present {
-                continue;
-            }
-            let Some(message) = crate::scheme::class_floor_eval_row(attrs, row) else {
-                continue;
-            };
-            // PR D R2 perf-3: span anchor read from `row.primary_kind`
-            // (hoisted from the previous `primary_token_kind_for_row`
-            // string match into a struct field).
-            let span = class_floor_anchor_span(attrs, row);
-            diags.push(Diagnostic::new(
-                self.id(),
-                row.severity,
-                span,
-                message,
-                row.citation,
-                None,
-            ));
-        }
-        diags
-    }
-}
-
-/// Resolve the diagnostic span anchor for a class-floor catalog row.
-///
-/// Per PM directive #2, the span anchors at the marking token (not the
-/// classification token) so the diagnostic UX puts the squiggle under
-/// the offending presence. PR D R2 perf-3: reads
-/// `row.primary_kind` directly (hoisted from the previous
-/// `primary_token_kind_for_row` string-match table into a struct
-/// field on `ClassFloorRow`). Falls back to the first
-/// `Classification` token span if no axis-specific span is found, and
-/// finally to `Span::new(0, 0)` if neither is present.
-fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &crate::scheme::ClassFloorRow) -> Span {
-    if let Some(kind) = row.primary_kind
-        && let Some(span) = first_span_of_optional(attrs, kind)
-    {
-        return span;
-    }
-    // Some rows have no single primary kind (e.g., NATO rows have no
-    // marking-side token; `row.primary_kind == None`). Try
-    // classification as a fallback.
-    if let Some(span) = first_span_of_optional(attrs, TokenKind::Classification) {
-        return span;
-    }
-    Span::new(0, 0)
-}
-
-/// Variant of `first_span_of` that returns `Option` instead of
-/// substituting `Span::new(0, 0)` for "no token". Used by the
-/// class-floor span-anchor resolver to chain fallbacks.
-fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Span> {
-    attrs
-        .token_spans
-        .iter()
-        .find(|t| t.kind == kind)
-        .map(|t| t.span)
-}
+// See `docs/plans/2026-05-10-pr3c-consolidated-plan.md` §"Commit 7" +
+// `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md`
+// for the architectural rationale.
 
 // ===========================================================================
 // PR 3b.E (T026e) — SCI per-system catalog walker (E059)
