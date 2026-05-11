@@ -133,7 +133,8 @@ sections:
   - end_page: 35
     name: LEGACY CONTROL MARKINGS
     section: F
-    start_page: 35- end_page: 45
+    start_page: 35
+  - end_page: 45
     name: IC MARKINGS SYSTEM REGISTER
     section: G
     start_page: 36
@@ -207,7 +208,7 @@ sections:
           - end_page: 69
             name: HCS-PRODUCT [SUB-COMPARTMENT] (HCS-P [SUB-COMPARTMENT])
             section: 'H.4: PRODUCT [SUB-COMPARTMENT]'
-          start_page: 68
+            start_page: 68
       - end_page: 73
         name: RESERVE (RSV)
         section: 'H.4: RESERVE'
@@ -316,7 +317,7 @@ sections:
         section: 'H.6: **DOD** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION'
         start_page: 116
       - end_page: 119
-        name: '**DOE** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION (UCNI)' 
+        name: '**DOE** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION (UCNI)'
         section: 'H.6: **DOE** UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION'
         start_page: 118
       - end_page: 121
@@ -390,8 +391,8 @@ sections:
         name: DISPLAY ONLY
         section: 'H.8: DISPLAY ONLY'
         start_page: 163
-    - end_page: NON-INTELLIGENCE COMMUNITY DISSEMINATION CONTROL MARKINGS
-      name: H.9
+    - end_page: 191
+      name: NON-INTELLIGENCE COMMUNITY DISSEMINATION CONTROL MARKINGS
       section: H.9
       start_page: 169
       subsections:
