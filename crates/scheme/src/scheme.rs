@@ -10,6 +10,10 @@
 //! design document `docs/plans/2026-04-17-marking-scheme-lattice-
 //! design.md` in the workspace root for the conceptual framing.
 
+use core::fmt;
+use core::fmt::Debug;
+use core::hash::Hash;
+
 use crate::ambiguity::Parsed;
 use crate::category::Category;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
@@ -38,6 +42,32 @@ pub trait MarkingScheme {
 
     /// Parse-level errors produced by `parse`.
     type ParseError;
+
+    /// The scheme's open-vocabulary structural reference type.
+    ///
+    /// `FactRef<S>` (in `marque-rules`) names tokens in the projected
+    /// fact set. Closed-CVE tokens flow through `FactRef::Cve(TokenId)`;
+    /// open-vocabulary tokens (SAR program identifiers, SCI compartment
+    /// / sub-compartment paths, FGI tetragraphs in CAPCO, and whatever
+    /// the equivalent open-vocab carriers are in future schemes) flow
+    /// through `FactRef::OpenVocab(S::OpenVocabRef)`.
+    ///
+    /// The bound set is what `FactRef<S>` / `FixIntent<S>` propagate to
+    /// callers — `Debug` and `Clone` because the rule-emission API
+    /// derives both; `Eq + Hash` because audit-emitter call paths may
+    /// key on the reference (and downstream consumers building lookup
+    /// tables benefit); `Send + Sync` because `BatchEngine` schedules
+    /// `FixIntent<S>` across worker threads (Constitution VI);
+    /// `'static` because open-vocab references must own their data
+    /// (a SAR program identifier as a `Box<str>` or an enum, not a
+    /// `&'src str` into the input buffer — that would re-introduce a
+    /// G13 leak channel).
+    ///
+    /// Schemes with no open-vocab axes bind this to
+    /// `std::convert::Infallible`, which carries no runtime values and
+    /// makes `FactRef::OpenVocab(...)` statically unreachable for that
+    /// scheme.
+    type OpenVocabRef: Debug + Clone + Eq + Hash + Send + Sync + 'static;
 
     /// Human-readable name, e.g., "CAPCO-ISM-v2022-DEC".
     fn name(&self) -> &str;
@@ -147,9 +177,139 @@ pub trait MarkingScheme {
         &[]
     }
 
+    /// Render a marking in canonical form for the given `scope`,
+    /// writing the bytes through `out`.
+    ///
+    /// This is the **single source of truth for canonical form** in
+    /// the scheme. Per `specs/006-engine-rule-refactor/architecture.md`
+    /// "What this commits us to":
+    ///
+    /// > The renderer (`render_canonical`) is the single source of
+    /// > canonical form. Form rules retire into it.
+    ///
+    /// # Lattice-equal-byte-identical property
+    ///
+    /// Two markings that compare equal under [`Lattice`] equality
+    /// MUST render to byte-identical output for the same `scope`.
+    /// This is what makes `Recanonicalize` a sound fix: the renderer
+    /// is referentially transparent over lattice-equivalent inputs,
+    /// and the engine can therefore re-render a `ProjectedMarking`
+    /// without consulting the input bytes that produced it.
+    ///
+    /// # Writer-passing contract
+    ///
+    /// `out` is intended to be a caller-pre-allocated, reusable
+    /// buffer. The engine's lint loop holds a per-page scratch
+    /// `String` and clears it between calls so that scoring N portions
+    /// on a page produces O(1) heap allocations rather than O(N).
+    /// Implementations MUST NOT assume `out` is empty on entry — they
+    /// MUST append to it and return `Ok(())` on success — and they
+    /// MUST NOT clear `out` themselves. The caller owns the buffer's
+    /// lifetime.
+    ///
+    /// # Scope semantics — return-value contract
+    ///
+    /// Implementations MUST honor the following per-scope contract.
+    /// The default impls of [`Self::render_portion`] /
+    /// [`Self::render_banner`] rely on this contract being upheld;
+    /// they `debug_assert!` on contract violation.
+    ///
+    /// - `Scope::Portion` — canonical portion form. MUST return `Ok(())`.
+    /// - `Scope::Page` — canonical banner / CAB roll-up. MUST return `Ok(())`.
+    /// - `Scope::Document` — canonical document-level rendering;
+    ///   typically agrees with `Page` on single-page documents. MUST
+    ///   return `Ok(())`.
+    /// - `Scope::Diff` — diff is a *rule-context query mode*, not a
+    ///   renderer-output scope. Implementations SHOULD return
+    ///   `Err(fmt::Error)`. The architecture spec is explicit that
+    ///   `RecanonScope` (in `marque-rules`) narrows `Scope` precisely
+    ///   to exclude `Diff` from recanonicalization targets, so this
+    ///   `Err` branch is unreachable from the engine's `Recanonicalize`
+    ///   dispatch.
+    ///
+    /// Returning `Err` for `Portion` / `Page` / `Document` is a
+    /// contract violation and is undefined behavior at the protocol
+    /// level — debug builds panic via the default impls'
+    /// `debug_assert!`; release builds fall through to an **empty**
+    /// `String` (the default impls explicitly discard any partial
+    /// output the violating impl may have written before returning
+    /// `Err`, so downstream consumers never see a partial / subtly-
+    /// wrong canonical form on contract violation).
+    ///
+    /// # Engine dispatch contract
+    ///
+    /// When `Engine::fix_inner` materializes a
+    /// `ReplacementIntent::Recanonicalize { scope }`, it consults its
+    /// in-scope projection (already computed during `lint` per
+    /// Constitution VI's dataflow pipeline) for the named
+    /// `RecanonScope`, then calls
+    /// `render_canonical(&projection.marking, scope.into(), &mut writer)`.
+    /// Rules NEVER carry the `ProjectedMarking` — the engine is the
+    /// authority. See `ReplacementIntent::Recanonicalize` in
+    /// `marque-rules` for the intent-side surface.
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        scope: crate::scope::Scope,
+        out: &mut dyn fmt::Write,
+    ) -> fmt::Result;
+
     /// Render a marking in portion form (abbreviated).
-    fn render_portion(&self, m: &Self::Marking) -> String;
+    ///
+    /// Default delegates to [`Self::render_canonical`] with
+    /// [`crate::scope::Scope::Portion`]. Implementations that already
+    /// have a portion-renderer body MAY override this to avoid the
+    /// `String` round-trip, but the override MUST produce
+    /// byte-identical output to the default chain — `render_canonical`
+    /// is the canonical-form authority.
+    fn render_portion(&self, m: &Self::Marking) -> String {
+        let mut s = String::new();
+        // `Write for String` is infallible, so a `String` write target
+        // never produces `fmt::Error`. The only way the `Result` could
+        // be `Err` is a contract violation: an impl returning `Err`
+        // for `Scope::Portion` (the [`Self::render_canonical`] doc
+        // comment forbids this). Debug-assert in development; on Err,
+        // discard any partial output the violating impl may have
+        // written before returning so downstream consumers see an
+        // empty `String` rather than a partial / subtly-wrong
+        // canonical form (the trait-level "empty on Err" guarantee).
+        let result = self.render_canonical(m, crate::scope::Scope::Portion, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
+        match result {
+            Ok(()) => s,
+            Err(_) => String::new(),
+        }
+    }
 
     /// Render a marking in banner form (expanded).
-    fn render_banner(&self, m: &Self::Marking) -> String;
+    ///
+    /// Default delegates to [`Self::render_canonical`] with
+    /// [`crate::scope::Scope::Page`]. Same byte-identity contract as
+    /// [`Self::render_portion`].
+    ///
+    /// # Note on scope naming
+    ///
+    /// The argument is [`crate::scope::Scope::Page`], not a hypothetical
+    /// `Scope::Banner` — banner roll-up is *defined* as page-scope
+    /// rendering in the architecture spec ("banner = lattice join over
+    /// the page's portions"). The method name `render_banner` is the
+    /// public API surface; the underlying scope is `Page`. Schemes that
+    /// override this method MUST honor the same scope semantics.
+    fn render_banner(&self, m: &Self::Marking) -> String {
+        let mut s = String::new();
+        let result = self.render_canonical(m, crate::scope::Scope::Page, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
+        match result {
+            Ok(()) => s,
+            Err(_) => String::new(),
+        }
+    }
 }

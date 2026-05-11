@@ -35,24 +35,25 @@
 //! `attrs.token_spans` the same way the retired hand-written rule
 //! did.
 //!
-//! ## Citation policy: wrappers carry byte-identity-frozen citations
+//! ## Citation policy: wrappers match the catalog
 //!
-//! Every `Diagnostic` emitted here carries the *legacy* rule's
-//! citation string verbatim — typically a section-only reference like
-//! `"CAPCO-2016 §H.6"`. The **authoritative** citation with specific
-//! page + line numbers lives on the matching catalog entry in
-//! `crate::scheme::build_constraints`. We do not unify them in this
-//! PR because the corpus NDJSON output is a stable surface and
-//! changing the citation string breaks SC-008 byte-identity.
+//! Every `Diagnostic` emitted here carries the same authoritative
+//! `§X.Y pNN` citation as the matching catalog entry in
+//! `crate::scheme::build_constraints`. The earlier byte-identity
+//! freeze — which kept legacy umbrella references like `§B.1` /
+//! `§B.3` / unpaginated `§H.4` / `§H.6` / `§H.7` in the wrappers
+//! while the catalog already cited the page-precise forms — is
+//! retired; wrappers and catalog rows are now in lockstep across
+//! every shared rule (E010, E012, E014, E015, E016, E021, E024,
+//! W002).
 //!
-//! When two diverge on *section* (not just precision) — currently
-//! E012 (`§B.1` in wrapper vs `§H.3 p55` in catalog) and E015
-//! (`§B.3` vs `§H.7 + §B.3.d`) — the catalog is correct and the
-//! wrapper is pending a citation update in a follow-up that can
-//! bump the NDJSON schema or carry a migration note. For now,
-//! per-wrapper inline comments flag the divergence so a future
-//! author reading the wrapper doesn't take `§B.1` / `§B.3` as
-//! authoritative without cross-checking the catalog.
+//! New wrappers MUST cite the same authoritative passage as the
+//! corresponding catalog row, page-precise where the audit
+//! (`specs/006-engine-rule-refactor/rule-body-audit.md`) gives a
+//! page anchor. Citation-lint (`tools/citation-lint/`) is a hard
+//! CI gate: every `§X.Y pNN` in either surface must resolve to a
+//! real passage in `crates/capco/docs/CAPCO-2016.md`, and the page
+//! anchor must fall within the cited subsection's span.
 //!
 //! ## T035b audit: E017/E018/E019 retired, E036 added
 //!
@@ -85,9 +86,10 @@ use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, Severity,
+    Confidence, Diagnostic, FactRef, FixIntent, FixProposal, FixSource, Message, MessageArgs,
+    MessageTemplate, ReplacementIntent, Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::ConstraintViolation;
+use marque_scheme::{ConstraintViolation, Scope};
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;
@@ -231,7 +233,7 @@ pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<
 /// sub-rules drop silently until a future PR wires wrappers for them.
 pub(crate) struct DeclarativeBareHcsRule;
 
-impl Rule for DeclarativeBareHcsRule {
+impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
     fn id(&self) -> RuleId {
         RuleId::new("E010")
     }
@@ -242,7 +244,7 @@ impl Rule for DeclarativeBareHcsRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::SciControl;
 
         let violations = violations_for(attrs, "E010/HCS-system-constraints");
@@ -301,7 +303,7 @@ impl Rule for DeclarativeBareHcsRule {
             source: FixSource::BuiltinRule,
             span,
             message,
-            citation: "CAPCO-2016 §H.4",
+            citation: "CAPCO-2016 §H.4 p61-62",
             original: "HCS".to_owned(),
             replacement: "HCS-P".to_owned(),
             confidence,
@@ -317,7 +319,7 @@ impl Rule for DeclarativeBareHcsRule {
 /// Replaces the hand-written `DualClassificationRule`.
 pub(crate) struct DeclarativeDualClassificationRule;
 
-impl Rule for DeclarativeDualClassificationRule {
+impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
     fn id(&self) -> RuleId {
         RuleId::new("E012")
     }
@@ -328,7 +330,7 @@ impl Rule for DeclarativeDualClassificationRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{ForeignClassification, MarkingClassification};
 
         if violations_for(attrs, "E012/dual-classification").is_empty() {
@@ -393,11 +395,15 @@ impl Rule for DeclarativeDualClassificationRule {
                 us.banner_str(),
                 us.banner_str(),
             ),
-            // Byte-identity freeze. Catalog cites §H.3 p55 (correct
-            // authoritative passage); §B.1 is the legacy wrapper
-            // citation — update in a separate NDJSON-schema-migration
-            // PR. See module-level "Citation policy" doc.
-            citation: "CAPCO-2016 §B.1",
+            // §H.3 p55 is the authoritative passage for the US +
+            // non-US classification mutual exclusion (the JOINT
+            // template's "The US, non-US, and JOINT classification
+            // markings are mutually exclusive" sentence). Earlier
+            // revisions cited `§B.1` (a legacy FD&R-procedures
+            // pointer) under a byte-identity freeze; the wrapper
+            // now matches the catalog row at
+            // `scheme.rs:E012/dual-classification`.
+            citation: "CAPCO-2016 §H.3 p55",
             original,
             replacement: fgi_replacement,
             confidence: 0.90,
@@ -412,7 +418,7 @@ impl Rule for DeclarativeDualClassificationRule {
 
 pub(crate) struct DeclarativeJointRelToRule;
 
-impl Rule for DeclarativeJointRelToRule {
+impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("E014")
     }
@@ -423,7 +429,7 @@ impl Rule for DeclarativeJointRelToRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingClassification;
 
         if violations_for(attrs, "E014/joint-requires-rel-to-coverage").is_empty() {
@@ -455,7 +461,7 @@ impl Rule for DeclarativeJointRelToRule {
                 "JOINT participants [{}] must appear in REL TO list",
                 missing.join(", "),
             ),
-            "CAPCO-2016 §H.3",
+            "CAPCO-2016 §H.3 p57",
             None,
         )]
     }
@@ -467,7 +473,7 @@ impl Rule for DeclarativeJointRelToRule {
 
 pub(crate) struct DeclarativeNonUsMissingDissemRule;
 
-impl Rule for DeclarativeNonUsMissingDissemRule {
+impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
     fn id(&self) -> RuleId {
         RuleId::new("E015")
     }
@@ -478,7 +484,7 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E015/non-us-requires-dissem").is_empty() {
             return vec![];
         }
@@ -491,11 +497,13 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
             span,
             "non-US classification must be accompanied by a dissemination control \
              (e.g., REL TO, NOFORN)",
-            // Byte-identity freeze. Catalog cites §H.7 + §B.3.d
-            // (correct authoritative passages — FGI commingling +
-            // FD&R procedures); §B.3 alone is the legacy wrapper
-            // citation. See module-level "Citation policy" doc.
-            "CAPCO-2016 §B.3",
+            // §H.7 p122 (FGI commingling + sharing-agreement basis)
+            // + §B.3 p20 (FD&R markings on FGI in IC DAPs) are the
+            // authoritative passages. Earlier revisions cited `§B.3`
+            // (a legacy umbrella pointer) under a byte-identity
+            // freeze; the wrapper now matches the catalog row at
+            // `scheme.rs:E015/non-us-requires-dissem`.
+            "CAPCO-2016 §H.7 p122 + §B.3 p20",
             None,
         )]
     }
@@ -507,7 +515,7 @@ impl Rule for DeclarativeNonUsMissingDissemRule {
 
 pub(crate) struct DeclarativeJointRestrictedRule;
 
-impl Rule for DeclarativeJointRestrictedRule {
+impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
     fn id(&self) -> RuleId {
         RuleId::new("E016")
     }
@@ -518,7 +526,7 @@ impl Rule for DeclarativeJointRestrictedRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E016/joint-conflicts-restricted").is_empty() {
             return vec![];
         }
@@ -531,7 +539,7 @@ impl Rule for DeclarativeJointRestrictedRule {
             span,
             "RESTRICTED may not be used with JOINT — the US has no equivalent \
              classification level for RESTRICTED",
-            "CAPCO-2016 §H.3",
+            "CAPCO-2016 §H.3 p56",
             None,
         )]
     }
@@ -554,7 +562,7 @@ impl Rule for DeclarativeJointRestrictedRule {
 
 pub(crate) struct DeclarativeJointHcsRule;
 
-impl Rule for DeclarativeJointHcsRule {
+impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
     fn id(&self) -> RuleId {
         RuleId::new("E036")
     }
@@ -565,7 +573,7 @@ impl Rule for DeclarativeJointHcsRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E036/joint-conflicts-hcs").is_empty() {
             return vec![];
         }
@@ -599,12 +607,16 @@ impl Rule for DeclarativeJointHcsRule {
 }
 
 // ---------------------------------------------------------------------------
-// E021 — RD/FRD/TFNI requires NOFORN
+// E021 — RD/FRD requires NOFORN
 // ---------------------------------------------------------------------------
+//
+// TFNI is intentionally excluded from this rule per §H.6 p120 + p121
+// (see `e021_aea_requires_noforn` doc in `crate::scheme` for the
+// authority trace).
 
 pub(crate) struct DeclarativeAeaNofornRule;
 
-impl Rule for DeclarativeAeaNofornRule {
+impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
     fn id(&self) -> RuleId {
         RuleId::new("E021")
     }
@@ -612,26 +624,138 @@ impl Rule for DeclarativeAeaNofornRule {
         "aea-noforn"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Error
+        // PR 3c.B Commit 3: Error → Fix. CAPCO §H.6 p104 (RD) + p111
+        // (FRD) both state the marking "Is always used with NOFORN
+        // unless a sharing agreement has been established per the
+        // Atomic Energy Act." The fix is unambiguous (insert NOFORN);
+        // the rule emits a structural FactAdd that the engine
+        // auto-applies at the default 0.95 threshold. Orgs with
+        // sharing agreements override via `.marque.toml [rules]
+        // E021 = "warn"`.
+        Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
             return vec![];
         }
 
         let span = first_span_of(attrs, TokenKind::AeaMarking);
 
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
-             per the Atomic Energy Act; override to warn via rule severity \
-             config if sharing agreements apply",
-            "CAPCO-2016 §H.6",
-            None,
-        )]
+        // PR 3c.B Commit 3 (E021 migration). Severity flipped
+        // Error → Fix. Dual-population per Path C: legacy `fix`
+        // (byte-precise zero-width `/NOFORN` insertion at the end
+        // of the IC dissem block) + structural
+        // `FactAdd { NOFORN, Scope::Portion }` intent. When the
+        // portion has no IC dissem block at all, the legacy
+        // helper returns None and the rule emits no fix — the
+        // engine surfaces the diagnostic but does not auto-apply.
+        // Inserting a whole `//`-separated dissem category from
+        // rule context would synthesize content the user didn't
+        // type (same defensive policy as `emit_companion_insert`
+        // and `compute_relido_removal_span`).
+        //
+        // E021 has no pre-PR-3c byte-identity baseline because it
+        // was previously Error-no-fix (no audit record emitted).
+        // The byte-identity gate is vacuous for E021; correctness
+        // is exercised by the per-rule shape tests.
+        match build_aea_noforn_addition_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RD/FRD requires NOFORN unless a sharing agreement exists \
+                 per the Atomic Energy Act; override to warn via rule severity \
+                 config if sharing agreements apply",
+                "CAPCO-2016 §H.6 p104 + p111",
+                fix,
+                aea_noforn_add_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RD/FRD requires NOFORN unless a sharing agreement exists \
+                 per the Atomic Energy Act; override to warn via rule severity \
+                 config if sharing agreements apply",
+                "CAPCO-2016 §H.6 p104 + p111",
+                None,
+            )],
+        }
+    }
+}
+
+/// Build a `<last-dissem-token>/<NOFORN-form>` append-fix anchored on
+/// the last existing IC dissem token. Analogous to
+/// `build_relido_removal_fix` (subtractive); the `emit_companion_insert`
+/// helper used by SCI per-system catalog rules also emits an additive
+/// fix but at a zero-width span (`Span::new(end, end)`), which the
+/// engine's `!f.span.is_empty()` filter
+/// (`crates/engine/src/engine.rs` line ~1108) silently drops. This
+/// helper anchors on the last dissem token's full span and re-emits
+/// the token plus `/NOFORN` so the engine actually applies the fix
+/// (E021 is `Severity::Fix`, not the warn-no-fix posture of the SCI
+/// per-system additive rows).
+///
+/// Returns `None` when the portion has no IC dissem block at all —
+/// same defensive policy as `compute_relido_removal_span`: never
+/// synthesize structural input from rule context (inserting a whole
+/// `//`-separated category absent an explicit anchor is unsafe).
+///
+/// The inserted form (`NF` vs `NOFORN`) tracks the form of the first
+/// existing dissem token via `infer_companion_form` so the post-fix
+/// bytes don't mix banner-form and portion-form. Matches the
+/// surface-form policy `emit_companion_insert` uses for SCI per-system
+/// companion insertions.
+///
+/// Confidence is `Confidence::strict(0.95)` — same as
+/// `build_relido_removal_fix` and the SCI per-system catalog inserts
+/// (CAPCO precedent for at-threshold, auto-apply fixes).
+///
+/// `FixSource::BuiltinRule` per the strict-path provenance convention
+/// for hand-written CAPCO rules.
+fn build_aea_noforn_addition_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
+    // Walk to the LAST DissemControl token span — same as
+    // `scheme::last_dissem_span` but we also need the token's text so
+    // we can re-emit it in the replacement. Inlining keeps the helper
+    // self-contained and avoids a second pass over `token_spans`.
+    let last = attrs
+        .token_spans
+        .iter()
+        .rev()
+        .find(|t| t.kind == TokenKind::DissemControl)?;
+    let form = crate::scheme::infer_companion_form(attrs);
+    Some(FixProposal::new(
+        rule_id,
+        FixSource::BuiltinRule,
+        last.span,
+        last.text.as_ref(),
+        format!("{}/{}", last.text, form.noforn()),
+        Confidence::strict(0.95),
+        None,
+    ))
+}
+
+/// Build the canonical `FactAdd { NOFORN, Scope::Portion }` intent
+/// emitted by E021. NOFORN addition is scope-portion: the fact set
+/// the rule mutates is a single portion's dissem-axis projection
+/// (§H.6 p104 applies per-portion, not per-page).
+///
+/// Confidence mirrors `build_aea_noforn_addition_fix` so the
+/// engine's threshold gate produces identical filter behavior on
+/// `fix_intent.confidence.combined()` vs the legacy
+/// `fix.confidence.combined()` path through the Path C transition
+/// window. Commit 10 collapses to a single emission path.
+fn aea_noforn_add_intent() -> FixIntent<CapcoScheme> {
+    use crate::scheme::TOK_NOFORN;
+    FixIntent {
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TOK_NOFORN),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(0.95),
+        feature_ids: Default::default(),
+        message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
     }
 }
 
@@ -662,7 +786,7 @@ impl Rule for DeclarativeAeaNofornRule {
 
 pub(crate) struct DeclarativeRdPrecedenceRule;
 
-impl Rule for DeclarativeRdPrecedenceRule {
+impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
     fn id(&self) -> RuleId {
         RuleId::new("E024")
     }
@@ -673,7 +797,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::AeaMarking;
 
         if violations_for(attrs, "E024/rd-precedence").is_empty() {
@@ -700,7 +824,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
                     "{superseded} should not appear alongside RD; \
                      RD takes precedence over {superseded} in both banners and portions"
                 ),
-                "CAPCO-2016 §H.6",
+                "CAPCO-2016 §H.6 p104",
                 None,
             ));
         }
@@ -736,7 +860,7 @@ impl Rule for DeclarativeRdPrecedenceRule {
 
 pub(crate) struct DeclarativeCominglingWarningRule;
 
-impl Rule for DeclarativeCominglingWarningRule {
+impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
     fn id(&self) -> RuleId {
         RuleId::new("W002")
     }
@@ -747,7 +871,7 @@ impl Rule for DeclarativeCominglingWarningRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Portion-only filter: the catalog predicate fires on any
         // US+FGI presence; user-facing diagnostic is portion-only per
@@ -769,7 +893,7 @@ impl Rule for DeclarativeCominglingWarningRule {
             span,
             "portion mark comingles US classification with FGI; \
              consider splitting into separate US and foreign paragraphs",
-            "CAPCO-2016 §H.7",
+            "CAPCO-2016 §H.7 p124",
             None,
         )]
     }
@@ -792,7 +916,7 @@ impl Rule for DeclarativeCominglingWarningRule {
 
 pub(crate) struct DeclarativeNodisConflictsExdisRule;
 
-impl Rule for DeclarativeNodisConflictsExdisRule {
+impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
     fn id(&self) -> RuleId {
         RuleId::new("E037")
     }
@@ -803,7 +927,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E037/nodis-conflicts-exdis").is_empty() {
             return vec![];
         }
@@ -842,7 +966,7 @@ impl Rule for DeclarativeNodisConflictsExdisRule {
 
 pub(crate) struct DeclarativeDosDissemNofornRule;
 
-impl Rule for DeclarativeDosDissemNofornRule {
+impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
     fn id(&self) -> RuleId {
         RuleId::new("E038")
     }
@@ -853,7 +977,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E038/nodis-or-exdis-requires-noforn").is_empty() {
             return vec![];
         }
@@ -879,7 +1003,7 @@ impl Rule for DeclarativeDosDissemNofornRule {
 
 pub(crate) struct DeclarativeNofornRelToConflictRule;
 
-impl Rule for DeclarativeNofornRelToConflictRule {
+impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E053")
     }
@@ -890,7 +1014,7 @@ impl Rule for DeclarativeNofornRelToConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "capco/noforn-conflicts-rel-to").is_empty() {
             return vec![];
         }
@@ -1179,7 +1303,7 @@ pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<
 /// pre-merge.
 ///
 /// `FixSource::BuiltinRule` is the existing strict-path provenance variant
-/// for hand-written CAPCO rules (the PM Addendum II §4 reference to
+/// for hand-written CAPCO rules (the PM Addendum II Section 4 reference to
 /// `FixSource::Rule { rule_id }` was nomenclature-only — no such variant
 /// exists in `marque-rules`; `BuiltinRule` is the existing-pattern match).
 fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
@@ -1210,7 +1334,7 @@ fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<F
 #[doc(hidden)]
 pub struct DeclarativeRelidoNofornConflictRule;
 
-impl Rule for DeclarativeRelidoNofornConflictRule {
+impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E054")
     }
@@ -1223,7 +1347,7 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
             return vec![];
         }
@@ -1250,16 +1374,60 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
         // used with REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY"). NOFORN
         // is the binding constraint, so the only well-defined fix is to
         // remove the rejected token (RELIDO). PM Addendum II §3.
-        let fix = build_relido_removal_fix(self.id(), attrs);
+        //
+        // PR 3c.B Commit 3 (E054 migration). Dual-population per Path C:
+        // `fix` carries the byte-identical pre-migration projection
+        // (the engine's NDJSON shape stays stable through commits 2–9);
+        // `fix_intent` carries the new structural FactRemove emission.
+        // The engine pairs them at promotion time and routes to
+        // `AppliedFixProposal::New { intent, synthesized: fix }`. See
+        // `crates/engine/src/engine.rs::fix_inner` and the consolidated
+        // plan §"Path C" (lines 100–175). Commit 10 retires the
+        // synthesized projection atomically with the audit-schema flip.
+        match build_relido_removal_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
+                "CAPCO-2016 §H.8 p154",
+                fix,
+                relido_remove_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
+                "CAPCO-2016 §H.8 p154",
+                None,
+            )],
+        }
+    }
+}
 
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
-            "CAPCO-2016 §H.8 p154",
-            fix,
-        )]
+/// Build the canonical `FactRemove { RELIDO, Scope::Portion }` intent
+/// shared by every RELIDO-removal wrapper (E054 / E057 in Commit 3;
+/// E055 / E056 follow in later commits of PR 3c.B). RELIDO removal is
+/// scope-portion: the fact set the rule mutates is a single portion's
+/// dissem-axis projection, not a page-level roll-up.
+///
+/// Confidence here mirrors the pre-migration FixProposal's
+/// `Confidence::strict(0.95)` (see `build_relido_removal_fix`) so the
+/// engine's threshold gate produces identical filter behavior on
+/// `fix_intent.confidence.combined()` vs the legacy
+/// `fix.confidence.combined()` path. PR 3c.B Commit 10 collapses these
+/// to a single emission path; until then both must agree.
+fn relido_remove_intent() -> FixIntent<CapcoScheme> {
+    use crate::scheme::TOK_RELIDO;
+    FixIntent {
+        replacement: ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_RELIDO),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(0.95),
+        feature_ids: Default::default(),
+        message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
     }
 }
 
@@ -1273,7 +1441,7 @@ impl Rule for DeclarativeRelidoNofornConflictRule {
 #[doc(hidden)]
 pub struct DeclarativeRelidoDisplayOnlyConflictRule;
 
-impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
+impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E055")
     }
@@ -1286,7 +1454,7 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
             return vec![];
         }
@@ -1352,7 +1520,7 @@ impl Rule for DeclarativeRelidoDisplayOnlyConflictRule {
 #[doc(hidden)]
 pub struct DeclarativeOrconRelidoConflictRule;
 
-impl Rule for DeclarativeOrconRelidoConflictRule {
+impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E056")
     }
@@ -1365,7 +1533,7 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
             return vec![];
         }
@@ -1422,7 +1590,7 @@ impl Rule for DeclarativeOrconRelidoConflictRule {
 #[doc(hidden)]
 pub struct DeclarativeOrconUsgovRelidoConflictRule;
 
-impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
+impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
     fn id(&self) -> RuleId {
         RuleId::new("E057")
     }
@@ -1435,7 +1603,7 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
             return vec![];
         }
@@ -1467,16 +1635,30 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
         // USGOV-pre-approved variant of ORCON; same originator-approval
         // semantic conflict with RELIDO's SFDRA-deferred release.
         // ORCON-USGOV is the binding constraint. PM Addendum II §3.
-        let fix = build_relido_removal_fix(self.id(), attrs);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
-            "CAPCO-2016 §H.8 p140",
-            fix,
-        )]
+        //
+        // PR 3c.B Commit 3 (E057 migration). Dual-population per Path C
+        // — same shape as E054 above. See `relido_remove_intent()` for
+        // the shared structural emission and the Path C / Commit-10
+        // retirement rationale.
+        match build_relido_removal_fix(self.id(), attrs) {
+            Some(fix) => vec![Diagnostic::with_fix_and_intent(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
+                "CAPCO-2016 §H.8 p140",
+                fix,
+                relido_remove_intent(),
+            )],
+            None => vec![Diagnostic::new(
+                self.id(),
+                self.default_severity(),
+                span,
+                "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
+                "CAPCO-2016 §H.8 p140",
+                None,
+            )],
+        }
     }
 }
 
@@ -1533,7 +1715,7 @@ impl Rule for DeclarativeOrconUsgovRelidoConflictRule {
 
 pub(crate) struct DeclarativeClassFloorRule;
 
-impl Rule for DeclarativeClassFloorRule {
+impl Rule<CapcoScheme> for DeclarativeClassFloorRule {
     fn id(&self) -> RuleId {
         RuleId::new("E058")
     }
@@ -1564,7 +1746,7 @@ impl Rule for DeclarativeClassFloorRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // PR D R2 perf-1: per-portion early-out guard. Pre-compute
         // axis-presence flags once. On a 10KB document where most
         // portions are prose body text (no SCI / AEA / SAR / dissem /
@@ -1721,7 +1903,7 @@ fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) -> Option<Spa
 
 pub(crate) struct DeclarativeSciPerSystemRule;
 
-impl Rule for DeclarativeSciPerSystemRule {
+impl Rule<CapcoScheme> for DeclarativeSciPerSystemRule {
     fn id(&self) -> RuleId {
         RuleId::new("E059")
     }
@@ -1743,7 +1925,7 @@ impl Rule for DeclarativeSciPerSystemRule {
         Severity::Warn
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // PR 3b.E perf-1: per-portion early-out guard. All PR-E rows
         // are SCI-axis-only — if `attrs.sci_markings` is empty, no row
         // can fire and the catalog walk is skipped entirely. On a 10KB
@@ -1968,7 +2150,7 @@ struct NonCanonicalRow {
     /// strings replaced by the row's stored values), so the
     /// diagnostic message text + fix shapes + spans are byte-
     /// identical to the retired rule's output.
-    evaluate: fn(&CanonicalAttrs, &RuleContext, &NonCanonicalRow) -> Vec<Diagnostic>,
+    evaluate: fn(&CanonicalAttrs, &RuleContext, &NonCanonicalRow) -> Vec<Diagnostic<CapcoScheme>>,
 }
 
 const NON_CANONICAL_CATALOG: &[NonCanonicalRow] = &[
@@ -2099,7 +2281,7 @@ fn evaluate_rel_to_usa_first_alpha(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
 
@@ -2173,7 +2355,7 @@ fn evaluate_joint_alphabetical(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
 
@@ -2218,7 +2400,7 @@ fn evaluate_sigma_numeric_sort(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     let mut diagnostics = Vec::new();
     let valid_sigmas: &[u8] = &[14, 15, 18, 20];
@@ -2313,7 +2495,7 @@ fn evaluate_sar_program_ascending_sort(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     use marque_ism::sar_sort_key;
 
@@ -2388,7 +2570,7 @@ fn evaluate_sci_compartment_numeric_then_alpha(
     attrs: &CanonicalAttrs,
     _ctx: &RuleContext,
     row: &NonCanonicalRow,
-) -> Vec<Diagnostic> {
+) -> Vec<Diagnostic<CapcoScheme>> {
     let rule_id = RULE_ID.clone();
     use marque_ism::sar_sort_key;
 
@@ -2560,7 +2742,7 @@ fn evaluate_sci_compartment_numeric_then_alpha(
 
 pub(crate) struct DeclarativeNonCanonicalInputRule;
 
-impl Rule for DeclarativeNonCanonicalInputRule {
+impl Rule<CapcoScheme> for DeclarativeNonCanonicalInputRule {
     fn id(&self) -> RuleId {
         RULE_ID.clone()
     }
@@ -2580,7 +2762,7 @@ impl Rule for DeclarativeNonCanonicalInputRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // PR 3b.F R-2 perf-1: axis-presence early-out. Bail when none
         // of the five ordering axes are populated. On prose body
         // text in a 10KB document this is the dominant case and the

@@ -84,7 +84,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
         severity: d.severity.as_str(),

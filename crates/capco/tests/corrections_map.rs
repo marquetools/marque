@@ -50,7 +50,7 @@ fn engine_default() -> Engine {
 fn run_c001_rule_pipeline_only(
     source: &[u8],
     corrections: HashMap<String, String>,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoScheme>> {
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidates = Scanner::scan(source);

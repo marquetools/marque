@@ -48,8 +48,10 @@ fn applied_fix_has_all_required_fields() {
         );
 
         // source: valid FixSource variant (always passes by type system, but
-        // verify the string form is one of the contract values)
-        let source_str = match fix.proposal.source {
+        // verify the string form is one of the contract values). Read from
+        // the top-level snapshot per the v2 audit contract (the audit record
+        // is what auditors see; promotion-time adjustments must be visible).
+        let source_str = match fix.source {
             marque_rules::FixSource::BuiltinRule => "BuiltinRule",
             marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
             marque_rules::FixSource::MigrationTable => "MigrationTable",
@@ -83,8 +85,11 @@ fn applied_fix_has_all_required_fields() {
             "replacement must not be empty"
         );
 
-        // confidence: in [0.0, 1.0]
-        let combined = fix.proposal.confidence.combined();
+        // confidence: in [0.0, 1.0]. Read from the top-level snapshot per
+        // the v2 audit contract — the audit record's confidence is what
+        // auditors see; future promotion-time adjustments (e.g.,
+        // region-context calibration) must remain bounded.
+        let combined = fix.confidence.combined();
         assert!(
             (0.0..=1.0).contains(&combined),
             "confidence must be in [0.0, 1.0], got: {combined}"
@@ -109,9 +114,19 @@ fn sub_threshold_proposals_never_in_applied() {
     let source = b"SECRET//NOFORN//SI\n";
     let result = engine.fix(source, FixMode::Apply);
 
-    // E003 is sub-threshold — it must NOT appear in applied.
+    // E003 is sub-threshold — it must NOT appear in applied. Read
+    // confidence from the top-level snapshot per the v2 audit contract.
+    // The engine's confidence-threshold gate consumes
+    // `proposal.confidence` at gate time; the snapshot to
+    // `fix.confidence` is what users see in the audit record. Today the
+    // two are byte-identical (`__engine_promote` snapshots unchanged),
+    // and either reading would catch a gate regression. Reading from
+    // the snapshot also catches the (future) case where a post-gate
+    // adjustment causes the AUDIT to show sub-threshold confidence
+    // even though the gate input was above threshold — which would
+    // mislead auditors and is itself a contract violation.
     for fix in &result.applied {
-        let combined = fix.proposal.confidence.combined();
+        let combined = fix.confidence.combined();
         assert!(
             combined >= 0.95,
             "sub-threshold fix (confidence {combined}) must not appear in applied"

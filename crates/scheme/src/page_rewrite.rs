@@ -387,6 +387,7 @@ mod tests {
         type Token = TokenId;
         type Marking = FakeMarking;
         type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
 
         fn name(&self) -> &str {
             "fake"
@@ -417,6 +418,14 @@ mod tests {
         }
         fn render_banner(&self, _: &Self::Marking) -> String {
             String::new()
+        }
+        fn render_canonical(
+            &self,
+            _: &Self::Marking,
+            _: Scope,
+            _: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
         }
     }
 

@@ -28,6 +28,24 @@ pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use decoder::{DecoderRecognizer, StrictOrDecoderRecognizer};
 pub use engine::{Engine, FixMode, InvalidThreshold};
+
+/// Type alias marking the intentional CAPCO-pinning of [`Engine`].
+///
+/// [`Engine`] is currently NOT generic over the marking scheme — its
+/// internal recognizer dispatch, decoder paths, and provenance
+/// handling are CAPCO-typed. The output types (`Diagnostic<S>`,
+/// `AppliedFix<S>`, `FixIntent<S>`, `LintResult`, `FixResult`) ARE
+/// generic, so the rule-emission surface is scheme-neutral. Engine
+/// generification (`Engine<S>` / `BatchEngine<S>`) is scheduled
+/// alongside the audit-schema flip in PR 3c.B Commit 10 — see
+/// `docs/plans/2026-05-10-pr3c-consolidated-plan.md`.
+///
+/// `CapcoEngine` exists so that `Engine` call sites that conceptually
+/// "want a CapcoScheme engine" can express that intent in the type
+/// system today, and so that Commit 10's generification PR can land
+/// `Engine<S>` alongside `pub type CapcoEngine = Engine<CapcoScheme>;`
+/// without breaking any call site.
+pub type CapcoEngine = Engine;
 pub use errors::{EngineConstructionError, EngineError};
 pub use options::{FixOptions, LintOptions};
 pub use output::{FixResult, LintResult};
@@ -90,7 +108,7 @@ const fn const_str_eq(a: &str, b: &str) -> bool {
 /// Returns the default rule set for marque (CAPCO rules).
 ///
 /// Both the CLI and WASM front ends use this to share one registration entry point.
-pub fn default_ruleset() -> Vec<Box<dyn marque_rules::RuleSet>> {
+pub fn default_ruleset() -> Vec<Box<dyn marque_rules::RuleSet<marque_capco::CapcoScheme>>> {
     vec![Box::new(marque_capco::rules::CapcoRuleSet::new())]
 }
 

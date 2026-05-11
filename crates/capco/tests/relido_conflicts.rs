@@ -61,7 +61,7 @@ use marque_scheme::{Constraint, MarkingScheme, TokenRef};
 ///   triggering dissem-control + token-text pairs)`.
 type CitationCase = (
     &'static str,
-    &'static dyn Rule,
+    &'static dyn Rule<CapcoScheme>,
     &'static str,
     &'static [(DissemControl, &'static str)],
 );
@@ -70,7 +70,7 @@ type CitationCase = (
 /// `(rule id, rule trait object, triggering dissem-control + token-text pairs)`.
 type FixDisciplineCase = (
     &'static str,
-    &'static dyn Rule,
+    &'static dyn Rule<CapcoScheme>,
     &'static [(DissemControl, &'static str)],
 );
 
@@ -649,7 +649,7 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
     let cases: &[CitationCase] = &[
         (
             "E054/relido-conflicts-noforn",
-            &DeclarativeRelidoNofornConflictRule as &dyn Rule,
+            &DeclarativeRelidoNofornConflictRule as &dyn Rule<CapcoScheme>,
             "CAPCO-2016 §H.8 p154",
             &[
                 (DissemControl::Relido, "RELIDO"),
@@ -658,7 +658,7 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
         ),
         (
             "E055/relido-conflicts-display-only",
-            &DeclarativeRelidoDisplayOnlyConflictRule as &dyn Rule,
+            &DeclarativeRelidoDisplayOnlyConflictRule as &dyn Rule<CapcoScheme>,
             "CAPCO-2016 §H.8 p154",
             &[
                 (DissemControl::Relido, "RELIDO"),
@@ -667,13 +667,13 @@ fn relido_conflict_wrappers_carry_catalog_citations() {
         ),
         (
             "E056/orcon-conflicts-relido",
-            &DeclarativeOrconRelidoConflictRule as &dyn Rule,
+            &DeclarativeOrconRelidoConflictRule as &dyn Rule<CapcoScheme>,
             "CAPCO-2016 §H.8 p136",
             &[(DissemControl::Oc, "OC"), (DissemControl::Relido, "RELIDO")],
         ),
         (
             "E057/orcon-usgov-conflicts-relido",
-            &DeclarativeOrconUsgovRelidoConflictRule as &dyn Rule,
+            &DeclarativeOrconUsgovRelidoConflictRule as &dyn Rule<CapcoScheme>,
             "CAPCO-2016 §H.8 p140",
             &[
                 (DissemControl::OcUsgov, "OC-USGOV"),
@@ -1147,13 +1147,16 @@ fn engine() -> Engine {
 }
 
 /// Run `source` through the engine and return its diagnostics.
-fn lint(source: &str) -> Vec<Diagnostic> {
+fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
 /// Find the first diagnostic with a given rule ID, or panic with a
 /// descriptive message naming every rule that DID fire.
-fn first_diag_for_rule<'a>(diags: &'a [Diagnostic], rule_id: &str) -> &'a Diagnostic {
+fn first_diag_for_rule<'a>(
+    diags: &'a [Diagnostic<CapcoScheme>],
+    rule_id: &str,
+) -> &'a Diagnostic<CapcoScheme> {
     diags
         .iter()
         .find(|d| d.rule.as_str() == rule_id)

@@ -508,6 +508,7 @@ mod tests {
         type Token = ();
         type Marking = TestMarking;
         type ParseError = ();
+        type OpenVocabRef = core::convert::Infallible;
 
         fn name(&self) -> &str {
             "TestScheme"
@@ -535,6 +536,14 @@ mod tests {
         }
         fn render_banner(&self, _m: &Self::Marking) -> String {
             String::new()
+        }
+        fn render_canonical(
+            &self,
+            _m: &Self::Marking,
+            _scope: Scope,
+            _out: &mut dyn core::fmt::Write,
+        ) -> core::fmt::Result {
+            Ok(())
         }
     }
 

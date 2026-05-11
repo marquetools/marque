@@ -24,6 +24,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::StrictRecognizer;
+use marque_rules::{AppliedFix, Diagnostic, FixIntent};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use std::sync::Arc;
 
@@ -43,4 +44,40 @@ fn capco_recognizer_dispatch_is_send_sync_as_trait_object() {
     let cx = ParseContext::default();
     let _ = boxed.recognize(b"", &cx);
     let _ = arced.recognize(b"", &cx);
+}
+
+/// Compile-time `Send + Sync` proof for the rule-emission types
+/// monomorphized at `<CapcoScheme>`. PR 3c.B Commit 2 introduced
+/// `CapcoOpenVocabRef` as a new field on `FactRef::OpenVocab`, which
+/// transitively flows through `FixIntent<CapcoScheme>`,
+/// `Diagnostic<CapcoScheme>`, and `AppliedFix<CapcoScheme>`. The
+/// structural correctness is already enforced by the
+/// `OpenVocabRef: Send + Sync + 'static` bound on `MarkingScheme`,
+/// but a future field addition to `CapcoOpenVocabRef` (e.g., wrapping
+/// a non-`Sync` type) would break Constitution VI's `BatchEngine`
+/// scheduling guarantee silently — this test catches that at compile
+/// time. The function bodies are empty; the assertion is the type
+/// constraint, fired at monomorphization.
+#[test]
+fn capco_rule_emission_types_are_send_sync() {
+    fn assert<T: Send + Sync>() {}
+    assert::<FixIntent<CapcoScheme>>();
+    assert::<Diagnostic<CapcoScheme>>();
+    assert::<AppliedFix<CapcoScheme>>();
+}
+
+/// Compile-time `Clone` proof for the same rule-emission types. The
+/// manual `Clone` impls in `crates/rules/src/lib.rs` (added to avoid
+/// the `S: Clone` over-constraint that `#[derive(Clone)]` would
+/// introduce) are correct field-by-field today, but a future variant
+/// addition to `ReplacementIntent<S>` or a future field addition to
+/// any of these types could silently break the manual impl chain.
+/// This assertion catches that at the concrete `<CapcoScheme>`
+/// monomorphization, which is the production path.
+#[test]
+fn capco_rule_emission_types_are_clone() {
+    fn assert<T: Clone>() {}
+    assert::<FixIntent<CapcoScheme>>();
+    assert::<Diagnostic<CapcoScheme>>();
+    assert::<AppliedFix<CapcoScheme>>();
 }

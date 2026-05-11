@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 fn build_engine() -> Engine {
     let config = Config::default();
-    let rule_sets: Vec<Box<dyn RuleSet>> = vec![Box::new(CapcoRuleSet::new())];
+    let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
     Engine::new(config, rule_sets, CapcoScheme::new())
         .expect("engine construction should succeed on a stock CAPCO scheme")
 }

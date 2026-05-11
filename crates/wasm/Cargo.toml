@@ -142,6 +142,17 @@ humantime = { workspace = true }
 # gated feature inappropriate for WASM) to either crate's defaults,
 # the workspace-level pin closes that channel; the secondary
 # `compile_error!` in `src/lib.rs` stays as a third line of defense.
+#
+# `marque-capco` is already transitive via `marque-engine` (verified
+# `cargo tree`: marque-engine → marque-capco). The direct dep entry
+# here is intentional — `src/lib.rs` imports `CapcoScheme` and the
+# WASM lib's public API references `Diagnostic<CapcoScheme>` /
+# `AppliedFix<CapcoScheme>` directly, so listing it as a direct
+# runtime dep makes that surface explicit rather than relying on a
+# silent transitive import. Constitution III: `marque-capco` is in
+# the WASM-safe set (scheme + ism + rules + core + capco), so no
+# surface expansion vs. the transitive shape.
+marque-capco = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
 marque-engine = { workspace = true, default-features = false }
@@ -154,12 +165,11 @@ talc = { version = "5.0.3", optional = true }
 wasm-bindgen = { workspace = true }
 
 [dev-dependencies]
-marque-capco = { workspace = true }
-marque-config = { workspace = true }
-marque-engine = { workspace = true }
-marque-rules = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+# marque-capco / marque-config / marque-engine / marque-rules /
+# serde / serde_json are already declared under [dependencies] above
+# and inherit into dev-dep scope automatically. Test files
+# (tests/*.rs) reference them via the [dependencies] entries; no
+# duplicate dev-dep declarations needed.
 # T088 — `wasm-pack test --node` parity harness uses wasm-bindgen-test
 # to drive `lint_native` from inside the wasm32 target. Native parity
 # (`tests/native_parity.rs`) covers algorithmic equivalence; this

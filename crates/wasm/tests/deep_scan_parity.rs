@@ -132,7 +132,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
         severity: d.severity.as_str(),
@@ -151,7 +151,7 @@ fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
     }
 }
 
-fn render_lint_ndjson(diagnostics: &[Diagnostic]) -> String {
+fn render_lint_ndjson(diagnostics: &[Diagnostic<marque_capco::CapcoScheme>]) -> String {
     let mut buf = Vec::with_capacity(diagnostics.len() * 256);
     for d in diagnostics {
         serde_json::to_writer(&mut buf, &diagnostic_to_json(d))
@@ -196,10 +196,13 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     // See `shared_relaxed_engine` for the rationale.
     let engine = shared_relaxed_engine();
     let native_fix = engine.fix(MANGLED_INPUT, FixMode::Apply);
-    let saw_decoder_native = native_fix
-        .applied
-        .iter()
-        .any(|f: &AppliedFix| matches!(f.source, marque_rules::FixSource::DecoderPosterior));
+    let saw_decoder_native =
+        native_fix
+            .applied
+            .iter()
+            .any(|f: &AppliedFix<marque_capco::CapcoScheme>| {
+                matches!(f.source, marque_rules::FixSource::DecoderPosterior)
+            });
     assert!(
         saw_decoder_native,
         "native engine produced no DecoderPosterior fix on {:?}; \

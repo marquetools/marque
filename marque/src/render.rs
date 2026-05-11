@@ -38,6 +38,7 @@
 //! end of the first line of the span; additional lines are not rendered
 //! (CAPCO markings are always single-line so this is a corner-case).
 
+use marque_capco::CapcoScheme;
 use marque_engine::{AUDIT_SCHEMA_IS_V2, AUDIT_SCHEMA_VERSION, LintResult};
 use marque_rules::{AppliedFix, Diagnostic, FeatureContribution};
 use serde::Serialize;
@@ -94,7 +95,7 @@ pub fn render_human(
     out: &mut dyn std::io::Write,
     path_label: &str,
     source: &[u8],
-    diag: &Diagnostic,
+    diag: &Diagnostic<CapcoScheme>,
     color: bool,
 ) -> std::io::Result<()> {
     let (line, col_start) = byte_to_line_col(source, diag.span.start);
@@ -289,7 +290,7 @@ pub struct FixJson<'a> {
     pub migration_ref: Option<&'a str>,
 }
 
-pub fn diagnostic_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
         severity: d.severity.as_str(),
@@ -463,7 +464,7 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
 }
 
 /// Convert an `AppliedFix` to the v1 JSON audit record shape.
-pub fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1 {
+pub fn applied_fix_to_audit_json_v1(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV1 {
     AuditRecordJsonV1 {
         schema: AUDIT_SCHEMA_VERSION,
         rule: fix.proposal.rule.as_str().to_owned(),
@@ -491,7 +492,7 @@ pub fn applied_fix_to_audit_json_v1(fix: &AppliedFix) -> AuditRecordJsonV1 {
 /// the v2 schema's contract — documented on `AppliedFix` itself — is that
 /// v2 reads the snapshot so a future region-context adjustment landing in
 /// the engine doesn't silently bypass v2 emission.
-pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2 {
+pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV2 {
     let c = &fix.confidence;
     AuditRecordJsonV2 {
         schema: AUDIT_SCHEMA_VERSION,
@@ -525,7 +526,7 @@ pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix) -> AuditRecordJsonV2 {
 /// frame and returns `Err`.
 pub fn render_audit_record(
     stderr: &mut dyn std::io::Write,
-    fix: &AppliedFix,
+    fix: &AppliedFix<CapcoScheme>,
 ) -> std::io::Result<()> {
     let serialized = if AUDIT_SCHEMA_IS_V2 {
         serde_json::to_vec(&applied_fix_to_audit_json_v2(fix))
@@ -613,7 +614,7 @@ mod tests {
         span: Span,
         message: &str,
         fix: Option<FixProposal>,
-    ) -> Diagnostic {
+    ) -> Diagnostic<CapcoScheme> {
         Diagnostic::new(
             RuleId::new(rule),
             Severity::Fix,
@@ -998,7 +999,7 @@ mod tests {
         // Test-fixture carve-out per Constitution V
         let token = EnginePromotionToken::__engine_construct();
         // Test-fixture carve-out per Constitution V
-        let applied = AppliedFix::__engine_promote(
+        let applied = AppliedFix::__engine_promote_legacy(
             fix,
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             Some(Arc::from("classifier-42")),

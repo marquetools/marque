@@ -48,7 +48,7 @@ fn engine() -> Engine {
 }
 
 /// Run `source` through the engine and return its diagnostics.
-fn lint(source: &str) -> Vec<Diagnostic> {
+fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
@@ -57,7 +57,10 @@ fn lint(source: &str) -> Vec<Diagnostic> {
 /// for all 5 rows; per-row identification flows via the diagnostic
 /// message text. The marker_text is typically the marking label
 /// (e.g., `"HCS-O"`, `"SI-G"`, `"TK-{BLFH"`).
-fn e059_diags_for<'a>(diags: &'a [Diagnostic], marker_text: &str) -> Vec<&'a Diagnostic> {
+fn e059_diags_for<'a>(
+    diags: &'a [Diagnostic<CapcoScheme>],
+    marker_text: &str,
+) -> Vec<&'a Diagnostic<CapcoScheme>> {
     diags
         .iter()
         .filter(|d| d.rule.as_str() == "E059" && d.message.contains(marker_text))
@@ -65,7 +68,7 @@ fn e059_diags_for<'a>(diags: &'a [Diagnostic], marker_text: &str) -> Vec<&'a Dia
 }
 
 /// All E059 diagnostics in `diags`, regardless of message content.
-fn e059_diags(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+fn e059_diags(diags: &[Diagnostic<CapcoScheme>]) -> Vec<&Diagnostic<CapcoScheme>> {
     diags.iter().filter(|d| d.rule.as_str() == "E059").collect()
 }
 

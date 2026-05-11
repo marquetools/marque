@@ -21,7 +21,7 @@
 //! force every test to defend against panic-recovery noise. This
 //! file owns the panicky rule set and the assertions tied to it.
 
-use marque_capco::capco_rules;
+use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::Engine;
 use marque_ism::CanonicalAttrs;
@@ -35,7 +35,7 @@ use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, RuleSet, Severity};
 /// assert (where it would matter) that the panic was contained.
 struct AlwaysPanicsRule;
 
-impl Rule for AlwaysPanicsRule {
+impl Rule<CapcoScheme> for AlwaysPanicsRule {
     fn id(&self) -> RuleId {
         // Reserved-for-tests prefix: real rules use `E### / W### /
         // C### / S### / R001`. `Z` keeps this rule out of the rule-id
@@ -51,7 +51,7 @@ impl Rule for AlwaysPanicsRule {
         Severity::Error
     }
 
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         panic!("FixProposal invalid confidence: simulated rule defect (Z001 panic-isolation test)");
     }
 }
@@ -64,7 +64,7 @@ struct AlwaysFiresRule;
 
 const ALWAYS_FIRES_MESSAGE: &str = "always-fires-test-rule sibling diagnostic";
 
-impl Rule for AlwaysFiresRule {
+impl Rule<CapcoScheme> for AlwaysFiresRule {
     fn id(&self) -> RuleId {
         RuleId::new("Z002")
     }
@@ -77,7 +77,7 @@ impl Rule for AlwaysFiresRule {
         Severity::Info
     }
 
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Build a Diagnostic without a fix — we just need to prove
         // this rule's output reaches the LintResult after a sibling
         // rule panics.
@@ -93,17 +93,17 @@ impl Rule for AlwaysFiresRule {
 }
 
 struct TestRuleSet {
-    rules: Vec<Box<dyn Rule>>,
+    rules: Vec<Box<dyn Rule<CapcoScheme>>>,
 }
 
 impl TestRuleSet {
-    fn new(rules: Vec<Box<dyn Rule>>) -> Self {
+    fn new(rules: Vec<Box<dyn Rule<CapcoScheme>>>) -> Self {
         Self { rules }
     }
 }
 
-impl RuleSet for TestRuleSet {
-    fn rules(&self) -> &[Box<dyn Rule>] {
+impl RuleSet<CapcoScheme> for TestRuleSet {
+    fn rules(&self) -> &[Box<dyn Rule<CapcoScheme>>] {
         &self.rules
     }
     fn schema_version(&self) -> &'static str {
@@ -115,7 +115,7 @@ impl RuleSet for TestRuleSet {
 }
 
 fn engine_with(panicky: bool, with_fires: bool) -> Engine {
-    let mut rules: Vec<Box<dyn Rule>> = Vec::new();
+    let mut rules: Vec<Box<dyn Rule<CapcoScheme>>> = Vec::new();
     if panicky {
         rules.push(Box::new(AlwaysPanicsRule));
     }
@@ -234,7 +234,7 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
 
 struct InvalidConfidenceRule;
 
-impl Rule for InvalidConfidenceRule {
+impl Rule<CapcoScheme> for InvalidConfidenceRule {
     fn id(&self) -> RuleId {
         RuleId::new("Z003")
     }
@@ -244,7 +244,7 @@ impl Rule for InvalidConfidenceRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic> {
+    fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // `Confidence::strict(2.0)` is out of `[0.0, 1.0]` and
         // `validate()` rejects it. `FixProposal::new` then panics.
         // The wrapper must catch it.

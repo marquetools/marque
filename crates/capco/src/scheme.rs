@@ -394,16 +394,65 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
 // CapcoScheme — the trait implementation
 // ---------------------------------------------------------------------------
 
+/// CAPCO's open-vocabulary structural reference.
+///
+/// Unifies the open-vocab carriers CAPCO ships today — SAR program
+/// identifiers, SCI compartment and sub-compartment paths, and FGI
+/// tetragraphs. `FactRef::OpenVocab(CapcoOpenVocabRef)` in
+/// `marque-rules` names a token in the projected fact set by its
+/// structural form, never by raw input bytes.
+///
+/// Each variant carries the *canonicalize-produced* structural value
+/// (a SAR program ID value, a tetragraph code) — never source-buffer
+/// surgery payloads. This preserves the G13 audit-content-ignorance
+/// invariant (Constitution V Principle V): an `AppliedFix` referring
+/// to a CAPCO open-vocab token stores a typed structural reference,
+/// not document content.
+///
+/// PR 3c.B Commit 2 stubs the variant set with one nominal variant
+/// per category. Construction sites (canonicalize-side population of
+/// these references) land in Commit 6 alongside the rule migration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CapcoOpenVocabRef {
+    /// A SAR program identifier (CAPCO-2016 §H.5).
+    Sar(Box<str>),
+    /// An SCI compartment name (CAPCO-2016 §A.6 / §H.4).
+    SciCompartment(Box<str>),
+    /// An SCI sub-compartment name (CAPCO-2016 §A.6 / §H.4).
+    SciSubCompartment(Box<str>),
+    /// An FGI tetragraph (CAPCO-2016 §H.3 / ISMCAT Tetragraph Taxonomy).
+    FgiTetragraph(Box<str>),
+}
+
 /// CAPCO's implementation of `MarkingScheme`.
 ///
 /// Stateless; construct with `CapcoScheme::new()` and pass into the
 /// engine. Phase A's engine doesn't consume the trait yet — this impl
 /// exists so the equivalence tests can run.
+///
+/// A manual `Debug` impl is provided so generic types parameterized
+/// over the scheme (`Diagnostic<S>`, `AppliedFix<S>`, `LintResult` /
+/// `FixResult` inside `marque-engine`) can derive `Debug` via the
+/// standard derive-macro field-bound expansion. The implementation
+/// prints only the struct shell — the static-table fields are large
+/// and not useful for debug output, and `PageRewrite<S>` does not
+/// implement `Debug`.
 pub struct CapcoScheme {
     categories: Vec<Category>,
     constraints: Vec<Constraint>,
     templates: Vec<Template>,
     page_rewrites: Vec<PageRewrite<CapcoScheme>>,
+}
+
+impl std::fmt::Debug for CapcoScheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CapcoScheme")
+            .field("categories.len", &self.categories.len())
+            .field("constraints.len", &self.constraints.len())
+            .field("templates.len", &self.templates.len())
+            .field("page_rewrites.len", &self.page_rewrites.len())
+            .finish()
+    }
 }
 
 impl Default for CapcoScheme {
@@ -793,8 +842,9 @@ impl CapcoScheme {
             // §H.8 p136 (ORCON Precedence Rules for Banner Line
             // Guidance): "If ORCON and ORCON-USGOV portions are in a
             // document, ORCON takes precedence and is conveyed in
-            // the banner line." ORCON-NATO (CAPCO-2016 line 895,
-            // Appendix B: "ORCON (NATO dissemination control
+            // the banner line." ORCON-NATO (CAPCO-2016 §G p40,
+            // Register Table 5 cross-reference to Appendix B NATO
+            // protective markings: "ORCON (NATO dissemination control
             // marking) ... See US ORCON ARH requirements") maps onto
             // the same precedence surface — ORCON-NATO contacting
             // US-class transmutes to US ORCON in the page dissem
@@ -1358,7 +1408,7 @@ impl CapcoScheme {
             //
             // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
             // "Cannot be used with NOFORN or DISPLAY ONLY."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3808.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
             //
             // Rationale: RELIDO authorizes foreign release under a
             // Secretary of Defense / SFDRA-mediated arrangement;
@@ -1368,7 +1418,7 @@ impl CapcoScheme {
             //
             // Reciprocal (doc-comment only — NOT the primary citation
             // under D13 single-citation discipline):
-            // §H.8 NOFORN entry p145 line 3585: "Cannot be used with
+            // §H.8 NOFORN entry p145: "Cannot be used with
             // REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY."
             //
             // LHS = asserting token (RELIDO at p154); wrapper span
@@ -1383,9 +1433,9 @@ impl CapcoScheme {
             //
             // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
             // "Cannot be used with NOFORN or DISPLAY ONLY."
-            // Same cited line as E054 — both NOFORN and DISPLAY ONLY
+            // Same cited passage as E054 — both NOFORN and DISPLAY ONLY
             // appear in the single prohibition sentence.
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3808.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
             //
             // Rationale: DISPLAY ONLY authorizes viewing but not release
             // or duplication; RELIDO defers release to a
@@ -1394,7 +1444,7 @@ impl CapcoScheme {
             // SFDRA authorization" — are in direct conflict.
             //
             // Reciprocal (doc-comment only — NOT the primary citation):
-            // §H.8 DISPLAY ONLY entry p163 line 4050: "Cannot be used
+            // §H.8 DISPLAY ONLY entry p163: "Cannot be used
             // with RELIDO or NOFORN."
             //
             // LHS = asserting token (RELIDO at p154); wrapper span
@@ -1409,11 +1459,11 @@ impl CapcoScheme {
             //
             // §H.8 ORCON entry p136, Relationship(s) to Other Markings:
             // "May not be used with RELIDO."
-            // Full surrounding prose (lines 3361–3363):
+            // Full surrounding prose (p136):
             // "May not be used with ORCON-USGOV in a portion mark or
             // banner line. May be used with NOFORN, REL TO, DISPLAY
             // ONLY. May not be used with RELIDO."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3363.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p136.
             //
             // Citation authority note: the asserting prose lives on the
             // ORCON template (p136), NOT in RELIDO's p154
@@ -1439,11 +1489,11 @@ impl CapcoScheme {
             //
             // §H.8 ORCON-USGOV entry p140, Relationship(s) to Other
             // Markings: "May not be used with RELIDO."
-            // Full surrounding prose (lines 3442–3446):
+            // Full surrounding prose (p140):
             // "May not be used with ORCON in a portion mark or banner
             // line. May be used with NOFORN, REL TO, DISPLAY ONLY.
             // May not be used with RELIDO."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` line 3444.
+            // Verified against `crates/capco/docs/CAPCO-2016.md` p140.
             //
             // Citation page note: the ORCON-USGOV template begins p139
             // (line 3407); the Relationship(s) subsection straddles
@@ -2055,6 +2105,7 @@ impl MarkingScheme for CapcoScheme {
     type Token = marque_scheme::TokenId;
     type Marking = CapcoMarking;
     type ParseError = CapcoParseError;
+    type OpenVocabRef = CapcoOpenVocabRef;
 
     fn name(&self) -> &str {
         "CAPCO-ISM"
@@ -2207,22 +2258,214 @@ impl MarkingScheme for CapcoScheme {
         &self.page_rewrites
     }
 
-    fn render_portion(&self, m: &Self::Marking) -> String {
-        // Phase A: render only the classification level — enough to
-        // exercise the trait method. Full renderer is Phase B.
-        match &m.0.classification {
-            Some(c) => c.effective_level().portion_str().to_owned(),
-            None => String::new(),
+    /// Commit 5 — substantive `render_canonical` body driven by the
+    /// per-axis dispatch table [`RENDER_TABLE`].
+    ///
+    /// The dispatch loop walks `RENDER_TABLE` in declaration order
+    /// (which matches `Category::ordering_rank` per §A.6 p15-17
+    /// Figure 2), inserting `//` between consecutive non-empty axes.
+    /// Each per-axis renderer in [`crate::render`] writes ONLY its own
+    /// bytes to `out`; the dispatch loop is the sole owner of the
+    /// `//` major-category separator (CAPCO-2016 §A.6 p15-16).
+    ///
+    /// `Scope::Diff` returns `Err(fmt::Error)` because diff is a
+    /// rule-context query mode, not a renderer-output scope. See
+    /// the trait-method doc comment and `marque-rules`'
+    /// `RecanonScope` (which narrows `Scope` to exclude `Diff`).
+    ///
+    /// # Byte-identity invariant
+    ///
+    /// `scheme.render_canonical(m, Scope::Portion, &mut s)` and
+    /// `scheme.render_portion(m)` MUST produce byte-identical output
+    /// for any input the existing `render_portion` override handled
+    /// (and similarly for `Page` / `render_banner`). The
+    /// `render_canonical_default_chain.rs` integration tests pin this
+    /// property.
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        scope: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        if matches!(scope, Scope::Diff) {
+            return Err(core::fmt::Error);
         }
+
+        // Track whether any axis has emitted bytes yet. The §A.6
+        // category separator `//` is inserted BEFORE each subsequent
+        // non-empty axis's contribution. Classification is special:
+        // for non-US / JOINT classifications it carries its OWN
+        // leading `//` (per §A.6 p15-16 — the `//` occludes the
+        // absent US position), so this loop does not prepend `//` to
+        // the very first axis that emits.
+        //
+        // Implementation: render each axis to a per-axis scratch
+        // buffer; if non-empty, prepend `//` (when any prior axis has
+        // emitted) and copy to `out`. The per-axis buffer reuses one
+        // allocation across the whole loop.
+        let mut scratch = String::new();
+        let mut emitted_any = false;
+        for row in RENDER_TABLE {
+            scratch.clear();
+            (row.render)(m, scope, &mut scratch)?;
+            if scratch.is_empty() {
+                continue;
+            }
+            // Per-axis bytes are emitted as-is. The classification
+            // axis owns its leading `//` (for non-US / JOINT); every
+            // other axis writes only its own content, and the loop
+            // prepends `//` here.
+            if emitted_any {
+                out.write_str("//")?;
+            }
+            out.write_str(&scratch)?;
+            emitted_any = true;
+        }
+        Ok(())
+    }
+
+    fn render_portion(&self, m: &Self::Marking) -> String {
+        // Override retained for the Phase A byte-identity gate
+        // (`render_canonical_default_chain.rs`). Commit 5's
+        // render_canonical body is the substantive renderer; this
+        // override delegates to it through the trait-default String
+        // round-trip. Removing the override is a follow-up once the
+        // engine call sites move off `render_portion` to
+        // `render_canonical` (commit 6+).
+        //
+        // `Write for String` is infallible, so a `String` write target
+        // never produces `fmt::Error`. The only way the discarded
+        // `Result` could be `Err` is a contract violation: an impl
+        // returning `Err` for `Scope::Portion`. The
+        // [`MarkingScheme::render_canonical`] doc comment forbids
+        // this. Debug-assert in development; in release, the contract
+        // violation produces an empty / partial `String` rather than
+        // a panic (matching the trait-default behavior in
+        // `MarkingScheme::render_portion`).
+        let mut s = String::new();
+        let result = self.render_canonical(m, Scope::Portion, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
+        s
     }
 
     fn render_banner(&self, m: &Self::Marking) -> String {
-        match &m.0.classification {
-            Some(c) => c.effective_level().banner_str().to_owned(),
-            None => String::new(),
-        }
+        // See `render_portion`. Override retained for byte-identity
+        // gate; the substantive body is `render_canonical`. Same
+        // contract-violation invariant: `Write for String` is
+        // infallible, so `Err` here would be a conforming-impl bug
+        // forbidden by the trait doc.
+        let mut s = String::new();
+        let result = self.render_canonical(m, Scope::Page, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
+        s
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-axis renderer dispatch table (commit 5 populated)
+// ---------------------------------------------------------------------------
+//
+// The dispatch primitive consumed by [`MarkingScheme::render_canonical`].
+// One [`AxisRenderRow`] per CAPCO category, in the §A.6 p15-17 Figure 2
+// canonical sequence (matches `Category::ordering_rank` declared in
+// `build_categories`). The `render_canonical` body walks this table in
+// declaration order and inserts the `//` major-category separator
+// between consecutive non-empty axis emissions.
+//
+// The `render` field is a bare function pointer so the table can be
+// `const` and shared across `CapcoScheme` instances; per-axis
+// renderers cannot capture `&self` or scheme-instance state. All
+// inputs come from [`CapcoMarking`] (which wraps
+// [`marque_ism::CanonicalAttrs`]) or `&'static` vocabulary tables in
+// `crates/capco/src/vocab.rs`.
+
+/// Per-axis renderer dispatch row.
+///
+/// `render` writes the axis's canonical bytes for the given `scope`
+/// into `out`. Same writer-passing contract as
+/// [`MarkingScheme::render_canonical`]: append; do not clear; return
+/// `Ok(())` on success.
+pub(crate) struct AxisRenderRow {
+    /// The category this row renders (e.g., [`CAT_CLASSIFICATION`],
+    /// [`CAT_DISSEM`]). Informational — dispatch is by declaration
+    /// order, not by category lookup. Future debug/tracing tooling
+    /// may surface this; it is `#[allow(dead_code)]` because no
+    /// runtime call site reads it today.
+    #[allow(dead_code)]
+    pub category: CategoryId,
+    /// Render the axis's contribution to the canonical form for the
+    /// given `scope`, appending bytes to `out`.
+    pub render: fn(&CapcoMarking, Scope, &mut dyn core::fmt::Write) -> core::fmt::Result,
+}
+
+/// Per-axis renderer dispatch table.
+///
+/// Order matches `Category::ordering_rank` (CAPCO-2016 §A.6 p15-17
+/// Figure 2). The `render_canonical` body walks this table in
+/// declaration order; the §A.6 `//` major-category separator is
+/// inserted by the dispatch loop, NOT by individual axis renderers.
+/// Classification is the sole axis that owns its leading `//` — for
+/// non-US / JOINT classifications, the `//` is part of the
+/// classification token because it occludes the absent US position
+/// (§A.6 p15-16).
+pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
+    AxisRenderRow {
+        category: CAT_CLASSIFICATION,
+        render: crate::render::render_classification::render_classification,
+    },
+    AxisRenderRow {
+        category: CAT_SCI,
+        render: crate::render::render_sci::render_sci,
+    },
+    AxisRenderRow {
+        category: CAT_SAR,
+        render: crate::render::render_sar::render_sar,
+    },
+    AxisRenderRow {
+        category: CAT_AEA,
+        render: crate::render::render_aea::render_aea,
+    },
+    AxisRenderRow {
+        category: CAT_FGI_MARKER,
+        render: crate::render::render_fgi::render_fgi,
+    },
+    AxisRenderRow {
+        category: CAT_DISSEM,
+        render: crate::render::render_dissem::render_dissem,
+    },
+    AxisRenderRow {
+        category: CAT_REL_TO,
+        render: crate::render::render_rel_to::render_rel_to,
+    },
+    // Non-IC dissem comes after REL TO in §A.6 sequence (§A.6 p16:
+    // "Non-IC Dissemination Control Markings — must follow,
+    // Dissemination Controls"). REL TO is part of the dissem axis;
+    // non-IC is its own §H.9 block. The category id is reused from
+    // CAT_DISSEM because no `CAT_NON_IC_DISSEM` constant is exposed
+    // yet (see the equivalent comment in `build_constraints`); the
+    // `category` field is informational here — dispatch is by
+    // declaration order.
+    AxisRenderRow {
+        category: CAT_DISSEM,
+        render: crate::render::render_non_ic_dissem::render_non_ic_dissem,
+    },
+    // Declassify-on is a no-op in the banner-line dispatch (the CAB
+    // is a separate block; see render::render_declassify module doc).
+    // Kept in the table so the declassify axis is visible to future
+    // CAB-rendering work.
+    AxisRenderRow {
+        category: CAT_DECLASSIFY_ON,
+        render: crate::render::render_declassify::render_declassify,
+    },
+];
 
 // ---------------------------------------------------------------------------
 // T035 Custom-constraint helpers
@@ -2320,20 +2563,30 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constra
     }]
 }
 
-/// E021 — RD, FRD, or TFNI requires NOFORN (unless a sharing agreement under
-/// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104.
-/// Intentionally narrower than `AnyInCategory(CAT_AEA)` — UCNI variants
-/// do not carry the NOFORN requirement (CAPCO §H.6 p116 / p118).
+/// E021 — RD or FRD requires NOFORN (unless a sharing agreement under
+/// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104 (RD)
+/// + p111 (FRD).
+///
+/// Intentionally narrower than `AnyInCategory(CAT_AEA)`:
+/// - **TFNI is excluded.** §H.6 p120 Relationship clause is silent on
+///   NOFORN ("May only be used with TOP SECRET, SECRET, or
+///   CONFIDENTIAL"); §H.6 p121 Notional Example 2 shows
+///   `SECRET//TFNI//REL TO USA, ACGU` as a valid release-authorized
+///   marking, and Note 4 ("TFNI may be shared with foreign partners
+///   in accordance with existing DNI and IC element guidance") makes
+///   the NOFORN requirement contextual, not categorical. Lumping
+///   TFNI with RD/FRD would auto-rewrite valid release-authorized
+///   TFNI markings — a Constitution VIII fidelity defect.
+/// - **UCNI variants are excluded.** Neither DOE UCNI (§H.6 p116) nor
+///   DoD UCNI (§H.6 p118) carries the NOFORN requirement.
 fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
-    let has_rd_frd_tfni = attrs.aea_markings.iter().any(|a| {
+    let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
         matches!(
             a,
-            marque_ism::AeaMarking::Rd(_)
-                | marque_ism::AeaMarking::Frd(_)
-                | marque_ism::AeaMarking::Tfni
+            marque_ism::AeaMarking::Rd(_) | marque_ism::AeaMarking::Frd(_)
         )
     });
-    if !has_rd_frd_tfni {
+    if !has_rd_or_frd {
         return Vec::new();
     }
     let has_noforn = attrs
@@ -2345,10 +2598,10 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
     }
     vec![ConstraintViolation {
         constraint_label: "E021/aea-requires-noforn",
-        message: "RD/FRD/TFNI requires NOFORN unless a sharing agreement exists \
+        message: "RD/FRD requires NOFORN unless a sharing agreement exists \
                   per the Atomic Energy Act"
             .to_owned(),
-        citation: "CAPCO-2016 §H.6 p104",
+        citation: "CAPCO-2016 §H.6 p104 + p111",
     }]
 }
 
@@ -3194,7 +3447,7 @@ fn presence_orcon_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
 }
 
 /// EYES ONLY portion mark / banner form. CAPCO §H.8 p157 (operative
-/// §H.8 p152 per §3.4.6 author).
+/// §H.8 p152 per `marque-applied.md` Section 3.4.6 author).
 fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
     attrs
@@ -3585,7 +3838,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_bur,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3596,7 +3849,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_hcs_x,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3607,7 +3860,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_klm,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3618,7 +3871,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_mvl,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         axis: ClassFloorAxis::Sci,
@@ -3726,7 +3979,12 @@ pub(crate) enum SciPerSystemKind {
     /// Custom multi-branch emit. The row encodes a closure that produces
     /// the full emit list, used by rows whose emit logic spans 2-3 distinct
     /// branches with row-specific text and span logic (rows #1, #3, #4).
-    Custom(fn(&marque_ism::CanonicalAttrs, &SciPerSystemRow) -> Vec<marque_rules::Diagnostic>),
+    Custom(
+        fn(
+            &marque_ism::CanonicalAttrs,
+            &SciPerSystemRow,
+        ) -> Vec<marque_rules::Diagnostic<CapcoScheme>>,
+    ),
 }
 
 /// One catalog row. The walker dispatches over `&[SciPerSystemRow]`;
@@ -3890,7 +4148,7 @@ pub(crate) fn emit_companion_insert(
     token: &str,
     message: String,
     citation: &'static str,
-) -> marque_rules::Diagnostic {
+) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_ism::Span;
     use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Severity};
     match last_dissem {
@@ -3984,7 +4242,7 @@ fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs) -> bool {
 fn emit_hcs_o_companions(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
     use marque_ism::{DissemControl, Span};
     use marque_rules::FixSource;
@@ -4048,7 +4306,7 @@ fn emit_hcs_o_companions(
 fn emit_hcs_p_sub_companions(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
     use marque_ism::{DissemControl, Span};
     use marque_rules::FixSource;
@@ -4099,7 +4357,7 @@ fn emit_hcs_p_sub_companions(
 fn emit_si_g_companions(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
     use marque_ism::{DissemControl, Span};
     use marque_rules::FixSource;
@@ -4171,7 +4429,7 @@ fn emit_companion_required(
     row: &SciPerSystemRow,
     dissem: marque_ism::DissemControl,
     token_name: &'static str,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use marque_ism::Span;
 
     if us_level(attrs).is_none() {
@@ -4273,7 +4531,7 @@ pub(crate) fn sci_per_system_catalog() -> &'static [SciPerSystemRow] {
 pub(crate) fn sci_per_system_emit(
     attrs: &marque_ism::CanonicalAttrs,
     row: &SciPerSystemRow,
-) -> Vec<marque_rules::Diagnostic> {
+) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     if !(row.presence)(attrs) {
         return Vec::new();
     }

@@ -4,6 +4,7 @@
 
 //! Output types returned by the engine's synchronous API surface.
 
+use marque_capco::CapcoScheme;
 use marque_rules::{AppliedFix, Diagnostic};
 
 /// Result of a lint pass — diagnostics without source modification.
@@ -42,7 +43,7 @@ use marque_rules::{AppliedFix, Diagnostic};
 #[non_exhaustive]
 #[derive(Debug, Default)]
 pub struct LintResult {
-    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics: Vec<Diagnostic<CapcoScheme>>,
     /// `true` when the lint pass aborted before processing every
     /// scanner-emitted candidate due to deadline expiry. The
     /// `diagnostics` vector contains every diagnostic produced from
@@ -117,14 +118,22 @@ impl LintResult {
     }
 
     /// Number of diagnostics that are configured at `Severity::Fix` AND
-    /// carry an actual `FixProposal`. A diagnostic at `Fix` severity but
-    /// with `fix: None` is not counted, since it cannot produce an
-    /// `AppliedFix` downstream.
+    /// carry a fix payload (either legacy [`FixProposal`] or new
+    /// [`marque_rules::FixIntent`]). A diagnostic at `Fix` severity but
+    /// with neither `fix` nor `fix_intent` populated is not counted,
+    /// since it cannot produce an `AppliedFix` downstream.
+    ///
+    /// Both arms are counted to keep `fix_count` honest across the
+    /// PR 3c.B Commit 2–9 transition: in Commit 2 only `d.fix` ever
+    /// fires, but Commit 3+ migrates rules to emit `fix_intent`. The
+    /// server's response struct ([`marque_server`]) and CLI exit-code
+    /// summary both depend on `fix_count` matching the eventual
+    /// `applied.len()` from `Engine::fix`.
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
         self.diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Fix && d.fix.is_some())
+            .filter(|d| d.severity == Severity::Fix && (d.fix.is_some() || d.fix_intent.is_some()))
             .count()
     }
 }
@@ -136,10 +145,10 @@ pub struct FixResult {
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
     pub source: Vec<u8>,
     /// Audit records for every fix that was applied.
-    pub applied: Vec<AppliedFix>,
+    pub applied: Vec<AppliedFix<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
-    pub remaining_diagnostics: Vec<Diagnostic>,
+    pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
 }
 
 #[cfg(test)]

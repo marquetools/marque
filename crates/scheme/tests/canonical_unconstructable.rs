@@ -67,6 +67,7 @@ impl MarkingScheme for StubScheme {
     type Token = ();
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
 
     fn name(&self) -> &str {
         "StubScheme"
@@ -94,6 +95,14 @@ impl MarkingScheme for StubScheme {
     }
     fn render_banner(&self, _m: &Self::Marking) -> String {
         String::new()
+    }
+    fn render_canonical(
+        &self,
+        _m: &Self::Marking,
+        _scope: Scope,
+        _out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
     }
 }
 

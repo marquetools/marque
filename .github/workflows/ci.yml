@@ -294,11 +294,19 @@ jobs:
   # anchors outside the cited subsection's span, the FR-020 doubled-
   # page-anchor pattern, and the retired `line NNNN` form.
   #
-  # PR 0.5 lands the lint and the defect catalog at
-  # `docs/refactor-006/citation-defect-catalog.md`. This job is
-  # **expected to fail on PR 0.5** — that's the merge gate input for
-  # PR 0.6, which fixes the cataloged defects. From PR 0.6 forward,
-  # this job stays green; new defects fail CI immediately.
+  # PR 0.5 landed the lint and the defect catalog at
+  # `docs/refactor-006/citation-defect-catalog.md`. PR 3c.B commit 1
+  # cleared all 14 lint-detectable defects from the catalog
+  # (8 legacy-line-form + 6 bare-section in
+  # `crates/capco/src/{rules.rs, rules_declarative.rs, scheme.rs}`).
+  # The same commit also corrected the E011/E012/E015 wrapper-
+  # vs-catalog citation drift per
+  # `decisions/04-citation-hygiene.md` — those are semantic defects
+  # caught by `rule-body-audit.md`, not by the structural lint
+  # (which validates page-anchor / subsection-span integrity, not
+  # passage-text fidelity). From this commit forward the job is
+  # hard-blocking on the structural lint: any new citation defect
+  # fails CI immediately.
   citation-lint:
     name: Citation lint (FR-018)
     needs: check
@@ -315,23 +323,14 @@ jobs:
           workspaces: tools/citation-lint
 
       - name: Run citation lint
-        # PR 0.5 lands the lint plus the catalog of pre-existing
-        # defects; the lint binary exits non-zero whenever the catalog
-        # is non-empty, which is the entire point of the catalog.
-        #
-        # **Green-by-design.** `continue-on-error: true` on this step
-        # is deliberate: the JOB conclusion stays green so PR 0.5 is
-        # mergeable while shipping the catalog. The step's failure
-        # outcome is still preserved in the workflow log (visible in
-        # the PR Checks UI as a yellow-bang annotation on the step,
-        # next to the green check on the job). The PR description's
-        # phrase "expected to fail on PR 0.5" refers to the STEP
-        # outcome, not the job conclusion.
-        #
-        # PR 0.6 (which closes the catalog) MUST remove this carve-out
-        # as part of its T018 merge-gate verification — at that point
-        # any non-empty catalog becomes a hard CI failure.
-        continue-on-error: true
+        # Hard CI gate. Any defect cataloged at
+        # `docs/refactor-006/citation-defect-catalog.md` fails the job;
+        # the placeholder "no defects" form is the green-state
+        # invariant. Constitution Principle VIII (Authoritative Source
+        # Fidelity) treats fabricated, hallucinated, misattributed, or
+        # silently-drifted citations as correctness defects of the
+        # same severity as a wrong predicate — this gate prevents
+        # them from accreting silently.
         run: |
           cargo run --manifest-path tools/citation-lint/Cargo.toml --release -- \
               "$GITHUB_WORKSPACE"

@@ -51,6 +51,7 @@ impl MarkingScheme for StubScheme {
     type Token = TokenId;
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
 
     fn name(&self) -> &str {
         "stub"
@@ -88,6 +89,14 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, _: &Self::Marking) -> String {
         String::new()
     }
+    fn render_canonical(
+        &self,
+        _: &Self::Marking,
+        _: Scope,
+        _: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +104,17 @@ impl MarkingScheme for StubScheme {
 // ---------------------------------------------------------------------------
 
 fn try_build(scheme: StubScheme) -> Result<Engine, EngineConstructionError> {
-    Engine::new(Config::default(), Vec::<Box<dyn RuleSet>>::new(), scheme)
+    // The engine is hardcoded to `CapcoScheme` for its internal rule
+    // dispatch (decoder, recognizer) post-PR 3c.B; the scheduler test
+    // exercises only the `MarkingScheme::page_rewrites` axis of a
+    // *separate* `StubScheme` value, so the rule-set type parameter
+    // here is `CapcoScheme` (matching the engine's bound), not the
+    // local stub.
+    Engine::new(
+        Config::default(),
+        Vec::<Box<dyn RuleSet<marque_capco::CapcoScheme>>>::new(),
+        scheme,
+    )
 }
 
 const CAT_X: CategoryId = CategoryId(1);

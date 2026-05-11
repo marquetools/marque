@@ -75,7 +75,7 @@ struct FixJson<'a> {
     migration_ref: Option<&'a str>,
 }
 
-fn diag_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
+fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
         severity: d.severity.as_str(),
@@ -102,7 +102,7 @@ fn diag_to_json(d: &Diagnostic) -> DiagnosticJson<'_> {
     }
 }
 
-fn render_ndjson(diagnostics: &[Diagnostic]) -> String {
+fn render_ndjson(diagnostics: &[Diagnostic<marque_capco::CapcoScheme>]) -> String {
     let mut buf = Vec::with_capacity(diagnostics.len() * 256);
     for d in diagnostics {
         serde_json::to_writer(&mut buf, &diag_to_json(d)).expect("infallible: writing to Vec");

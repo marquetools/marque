@@ -398,25 +398,42 @@ fn fr015_sar_program_with_compartment_classification_round_trips() {
 }
 
 // =============================================================================
-// Full-attribute round-trip (gated on T048 — `render_canonical`).
+// Full-attribute round-trip — IDEMPOTENCE form (PR 3c.B Commit 5).
 //
-// The current `MarkingScheme::render_*` impl is an intentional Phase A stub
-// that drops every non-classification axis (SCI, SAR, FGI, dissem, REL TO,
-// declass dates, ...). A full `attrs1 == attrs2` round-trip therefore cannot
-// pass on inputs that carry any non-classification token. T048 / PR 3c
-// implements the full canonical renderer; until then, this test stays
-// `#[ignore]` with the tracked-task reference so a re-enable is a one-line
-// change once the dependency lands.
+// The renderer now has substantive per-axis bodies in
+// `crates/capco/src/render/`. Per
+// `specs/006-engine-rule-refactor/architecture.md` §3.0.a "form is not
+// shape": "Two markings that differ only in delimiter, sort order,
+// abbreviation, or inter-category position are lattice-equal on every
+// axis. The renderer chooses one canonical representative."
 //
-// Re-enable rule: when T048 / PR 3c lands, delete the `#[ignore]` and the
-// note below. The body is already written against the full-attr surface
-// (`attrs1 == attrs2`) — passing it is the acceptance criterion T097 was
-// originally written against.
+// The strict-AST round-trip property `attrs1 == attrs2` therefore does
+// NOT hold for inputs that differ from canonical form (e.g.,
+// `SPECIAL ACCESS REQUIRED-` indicator instead of canonical `SAR-`,
+// reordered REL TO trigraphs, etc.) — the renderer canonicalizes the
+// form, and the re-parsed AST will reflect that canonicalization.
+//
+// What DOES hold (and what this test pins) is the IDEMPOTENCE
+// property: rendering a parsed-then-rendered fixture twice in a row
+// produces byte-identical output. One round of canonicalization is
+// sufficient; subsequent rounds are no-ops.
+//
+//     render(parse(render(parse(x)))) == render(parse(x))
+//
+// This is the load-bearing property `render_canonical` carries: the
+// renderer is referentially transparent over lattice-equivalent
+// inputs. See `tests/render_canonical_properties.rs` for the
+// dedicated property test that pins this; this test exercises the
+// same property across the strict-path corpus rather than hand-
+// curated pairs.
+//
+// History: T097 (PR 2 / US4) was `#[ignore]`'d pending T048 / PR 3c.B
+// Commit 5 with the strict `attrs1 == attrs2` assertion. The
+// `#[ignore]` is removed and the assertion shape switched to
+// idempotence per the architecture restatement (form is not shape).
 // =============================================================================
 
 #[test]
-#[ignore = "blocked on T048 / PR 3c: full MarkingScheme::render_canonical not yet implemented; \
-            current renderer covers classification level only. Re-enable when T048 lands."]
 fn full_attribute_round_trip_across_strict_corpus() {
     let scheme = CapcoScheme::new();
     let fixtures = valid_fixtures();
@@ -429,30 +446,45 @@ fn full_attribute_round_trip_across_strict_corpus() {
         let bytes = load_fixture(path);
         let text = fixture_text(&bytes);
         let kind = detect_kind(text.as_bytes());
-        let (attrs1, rendered, attrs2) = match kind {
+
+        // First round — canonicalize the input.
+        let (rendered_1, kind_owned) = match kind {
             Kind::Portion => {
-                let attrs1 = parse_portion(&text);
-                let inner = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
-                let rendered = format!("({inner})");
-                let attrs2 = parse_portion(&rendered);
-                (attrs1, rendered, attrs2)
+                let attrs = parse_portion(&text);
+                let inner = scheme.render_portion(&CapcoMarking::from(attrs));
+                (format!("({inner})"), Kind::Portion)
             }
             Kind::Banner => {
-                let attrs1 = parse_banner(&text);
-                let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
-                let attrs2 = parse_banner(&rendered);
-                (attrs1, rendered, attrs2)
+                let attrs = parse_banner(&text);
+                (
+                    scheme.render_banner(&CapcoMarking::from(attrs)),
+                    Kind::Banner,
+                )
             }
             Kind::Cab | Kind::Other => continue,
         };
 
-        // The full-attribute invariant: parse-render is idempotent at the
-        // AST level. T048 / PR 3c is the dependency that enables this.
+        // Second round — render again from the re-parsed canonical
+        // form. The output MUST be byte-identical to the first round.
+        let rendered_2 = match kind_owned {
+            Kind::Portion => {
+                let attrs = parse_portion(&rendered_1);
+                let inner = scheme.render_portion(&CapcoMarking::from(attrs));
+                format!("({inner})")
+            }
+            Kind::Banner => {
+                let attrs = parse_banner(&rendered_1);
+                scheme.render_banner(&CapcoMarking::from(attrs))
+            }
+            Kind::Cab | Kind::Other => unreachable!(),
+        };
+
         assert_eq!(
-            attrs1,
-            attrs2,
-            "full-attribute round-trip drift on fixture {} \
-             (input {text:?} → rendered {rendered:?})",
+            rendered_1,
+            rendered_2,
+            "renderer-canonical-form idempotence drift on fixture {} \
+             (input {text:?} → first-render {rendered_1:?} → \
+             re-render {rendered_2:?})",
             path.display(),
         );
     }

@@ -23,9 +23,87 @@
 use std::sync::Arc;
 
 use marque_rules::{Rule, RuleSet};
+use marque_scheme::ambiguity::Parsed;
+use marque_scheme::category::Category;
+use marque_scheme::constraint::Constraint;
+use marque_scheme::lattice::{BoundedLattice, Lattice};
+use marque_scheme::template::Template;
+use marque_scheme::{MarkingScheme, Scope};
 use static_assertions::assert_impl_all;
 
-assert_impl_all!(Box<dyn Rule>: Send, Sync);
-assert_impl_all!(Arc<dyn Rule>: Send, Sync);
-assert_impl_all!(Box<dyn RuleSet>: Send, Sync);
-assert_impl_all!(Arc<dyn RuleSet>: Send, Sync);
+// Local stub scheme for the trait-object Send + Sync proof. PR 3c.B
+// made `Rule<S>` and `RuleSet<S>` generic over the marking scheme;
+// the trait-object form is `Arc<dyn Rule<S>>` / `Arc<dyn RuleSet<S>>`
+// for some concrete scheme. The Send + Sync bound flows through the
+// supertrait declaration regardless of `S`, so a bound proof for any
+// one scheme proves the property for every scheme.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct StubMarking;
+
+impl Lattice for StubMarking {
+    fn join(&self, _other: &Self) -> Self {
+        StubMarking
+    }
+    fn meet(&self, _other: &Self) -> Self {
+        StubMarking
+    }
+}
+
+impl BoundedLattice for StubMarking {
+    fn bottom() -> Self {
+        StubMarking
+    }
+    fn top() -> Self {
+        StubMarking
+    }
+}
+
+struct StubScheme;
+
+impl MarkingScheme for StubScheme {
+    type Token = ();
+    type Marking = StubMarking;
+    type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+
+    fn name(&self) -> &str {
+        "StubScheme"
+    }
+    fn schema_version(&self) -> &str {
+        "0.0.1"
+    }
+    fn categories(&self) -> &[Category] {
+        &[]
+    }
+    fn constraints(&self) -> &[Constraint] {
+        &[]
+    }
+    fn templates(&self) -> &[Template] {
+        &[]
+    }
+    fn parse(&self, _input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        Ok(Parsed::Unambiguous(StubMarking))
+    }
+    fn project(&self, _scope: Scope, _markings: &[Self::Marking]) -> Self::Marking {
+        StubMarking
+    }
+    fn render_portion(&self, _m: &Self::Marking) -> String {
+        String::new()
+    }
+    fn render_banner(&self, _m: &Self::Marking) -> String {
+        String::new()
+    }
+    fn render_canonical(
+        &self,
+        _m: &Self::Marking,
+        _scope: Scope,
+        _out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
+}
+
+assert_impl_all!(Box<dyn Rule<StubScheme>>: Send, Sync);
+assert_impl_all!(Arc<dyn Rule<StubScheme>>: Send, Sync);
+assert_impl_all!(Box<dyn RuleSet<StubScheme>>: Send, Sync);
+assert_impl_all!(Arc<dyn RuleSet<StubScheme>>: Send, Sync);

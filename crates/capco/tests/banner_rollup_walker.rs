@@ -43,11 +43,14 @@ fn engine() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-fn lint(source: &str) -> Vec<Diagnostic> {
+fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
-fn diags_for_rule<'a>(diags: &'a [Diagnostic], rule_id: &str) -> Vec<&'a Diagnostic> {
+fn diags_for_rule<'a>(
+    diags: &'a [Diagnostic<CapcoScheme>],
+    rule_id: &str,
+) -> Vec<&'a Diagnostic<CapcoScheme>> {
     diags
         .iter()
         .filter(|d| d.rule.as_str() == rule_id)

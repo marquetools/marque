@@ -7,19 +7,23 @@
 //! from outside `marque-rules` (the same surface a downstream rule
 //! crate like `marque-capco` or a future `marque-cui` would see). The
 //! richer per-variant unit tests live in `src/fix_intent.rs::tests`.
+//!
+//! PR 3c.B Commit 2 reshaped the variant set:
+//! `Cve` / `Render` / `Delete` retired in favor of the bag-of-tokens
+//! `FactAdd` / `FactRemove` / `Recanonicalize` vocabulary. See
+//! `specs/006-engine-rule-refactor/architecture.md` "What fixes
+//! are."
 
-use core::marker::PhantomData;
-
-use marque_ism::Span;
 use marque_rules::{
-    Confidence, FixIntent, Message, MessageArgs, MessageTemplate, ReplacementIntent,
+    Confidence, FactRef, FixIntent, Message, MessageArgs, MessageTemplate, RecanonScope,
+    ReplacementIntent,
 };
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
 use marque_scheme::lattice::{BoundedLattice, Lattice};
 use marque_scheme::template::Template;
-use marque_scheme::{CategoryId, MarkingScheme, Scope, TokenId};
+use marque_scheme::{MarkingScheme, Scope, TokenId};
 use smallvec::SmallVec;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -49,6 +53,7 @@ impl MarkingScheme for StubScheme {
     type Token = ();
     type Marking = StubMarking;
     type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
 
     fn name(&self) -> &str {
         "StubScheme"
@@ -77,31 +82,42 @@ impl MarkingScheme for StubScheme {
     fn render_banner(&self, _m: &Self::Marking) -> String {
         String::new()
     }
+    fn render_canonical(
+        &self,
+        _m: &Self::Marking,
+        _scope: Scope,
+        _out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 #[test]
-fn external_crate_constructs_fix_intent_with_cve_replacement() {
+fn external_crate_constructs_fix_intent_with_fact_add() {
     let intent: FixIntent<StubScheme> = FixIntent {
-        target_span: Span::new(0, 4),
-        replacement: ReplacementIntent::Cve {
-            token: TokenId(1),
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TokenId(1)),
             scope: Scope::Portion,
         },
         confidence: Confidence::strict(0.95),
         feature_ids: SmallVec::new(),
         message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
     };
-    assert_eq!(intent.target_span, Span::new(0, 4));
     assert_eq!(intent.message.template(), MessageTemplate::SupersededToken);
+    match intent.replacement {
+        ReplacementIntent::FactAdd { token, scope } => {
+            assert!(matches!(token, FactRef::Cve(TokenId(1))));
+            assert_eq!(scope, Scope::Portion);
+        }
+        _ => panic!("expected FactAdd"),
+    }
 }
 
 #[test]
-fn external_crate_constructs_fix_intent_with_render_replacement() {
+fn external_crate_constructs_fix_intent_with_fact_remove() {
     let intent: FixIntent<StubScheme> = FixIntent {
-        target_span: Span::new(0, 10),
-        replacement: ReplacementIntent::Render {
-            category: CategoryId(2),
-            directive: PhantomData::<StubScheme>,
+        replacement: ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TokenId(2)),
             scope: Scope::Page,
         },
         confidence: Confidence::strict(0.85),
@@ -112,24 +128,28 @@ fn external_crate_constructs_fix_intent_with_render_replacement() {
         ),
     };
     match intent.replacement {
-        ReplacementIntent::Render {
-            category, scope, ..
-        } => {
-            assert_eq!(category, CategoryId(2));
+        ReplacementIntent::FactRemove { token_ref, scope } => {
+            assert!(matches!(token_ref, FactRef::Cve(TokenId(2))));
             assert_eq!(scope, Scope::Page);
         }
-        _ => panic!("expected Render"),
+        _ => panic!("expected FactRemove"),
     }
 }
 
 #[test]
-fn external_crate_constructs_fix_intent_with_delete_replacement() {
+fn external_crate_constructs_fix_intent_with_recanonicalize() {
     let intent: FixIntent<StubScheme> = FixIntent {
-        target_span: Span::new(5, 9),
-        replacement: ReplacementIntent::Delete,
+        replacement: ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Document,
+        },
         confidence: Confidence::strict(1.0),
         feature_ids: SmallVec::new(),
         message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
     };
-    assert!(matches!(intent.replacement, ReplacementIntent::Delete));
+    assert!(matches!(
+        intent.replacement,
+        ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Document
+        }
+    ));
 }
