@@ -2258,129 +2258,191 @@ impl MarkingScheme for CapcoScheme {
         &self.page_rewrites
     }
 
-    fn render_portion(&self, m: &Self::Marking) -> String {
-        // Phase A: render only the classification level — enough to
-        // exercise the trait method. Full renderer is Phase B.
-        //
-        // Override retained over the trait default. Commit 5 inverts
-        // the dependency: `render_canonical` becomes the substantive
-        // body, and `render_portion` falls through to the trait
-        // default that calls `render_canonical(_, Scope::Portion, _)`.
-        match &m.0.classification {
-            Some(c) => c.effective_level().portion_str().to_owned(),
-            None => String::new(),
-        }
-    }
-
-    fn render_banner(&self, m: &Self::Marking) -> String {
-        // See `render_portion`. Override retained until commit 5
-        // populates `RENDER_TABLE` and inverts the dispatch.
-        match &m.0.classification {
-            Some(c) => c.effective_level().banner_str().to_owned(),
-            None => String::new(),
-        }
-    }
-
-    /// Commit 4 — degenerate `render_canonical` that delegates back
-    /// to the existing `render_portion` / `render_banner` impls.
+    /// Commit 5 — substantive `render_canonical` body driven by the
+    /// per-axis dispatch table [`RENDER_TABLE`].
     ///
-    /// This direction is the inverse of the eventual flow: commit 5
-    /// populates [`RENDER_TABLE`] and makes `render_canonical` the
-    /// substantive body, with `render_portion` / `render_banner`
-    /// retiring into the trait defaults that loop back through this
-    /// method. For commit 4 the contract is purely additive — the
-    /// trait method exists, every `MarkingScheme` impl has a body,
-    /// and the byte-identity property of `render_portion` /
-    /// `render_banner` is preserved (they remain the canonical
-    /// implementations and `render_canonical` defers to them).
+    /// The dispatch loop walks `RENDER_TABLE` in declaration order
+    /// (which matches `Category::ordering_rank` per §A.6 p15-17
+    /// Figure 2), inserting `//` between consecutive non-empty axes.
+    /// Each per-axis renderer in [`crate::render`] writes ONLY its own
+    /// bytes to `out`; the dispatch loop is the sole owner of the
+    /// `//` major-category separator (CAPCO-2016 §A.6 p15-16).
     ///
     /// `Scope::Diff` returns `Err(fmt::Error)` because diff is a
     /// rule-context query mode, not a renderer-output scope. See
     /// the trait-method doc comment and `marque-rules`'
     /// `RecanonScope` (which narrows `Scope` to exclude `Diff`).
+    ///
+    /// # Byte-identity invariant
+    ///
+    /// `scheme.render_canonical(m, Scope::Portion, &mut s)` and
+    /// `scheme.render_portion(m)` MUST produce byte-identical output
+    /// for any input the existing `render_portion` override handled
+    /// (and similarly for `Page` / `render_banner`). The
+    /// `render_canonical_default_chain.rs` integration tests pin this
+    /// property.
     fn render_canonical(
         &self,
         m: &Self::Marking,
         scope: Scope,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
-        match scope {
-            Scope::Portion => out.write_str(&self.render_portion(m)),
-            Scope::Page | Scope::Document => out.write_str(&self.render_banner(m)),
-            Scope::Diff => Err(core::fmt::Error),
+        if matches!(scope, Scope::Diff) {
+            return Err(core::fmt::Error);
         }
+
+        // Track whether any axis has emitted bytes yet. The §A.6
+        // category separator `//` is inserted BEFORE each subsequent
+        // non-empty axis's contribution. Classification is special:
+        // for non-US / JOINT classifications it carries its OWN
+        // leading `//` (per §A.6 p15-16 — the `//` occludes the
+        // absent US position), so this loop does not prepend `//` to
+        // the very first axis that emits.
+        //
+        // Implementation: render each axis to a per-axis scratch
+        // buffer; if non-empty, prepend `//` (when any prior axis has
+        // emitted) and copy to `out`. The per-axis buffer reuses one
+        // allocation across the whole loop.
+        let mut scratch = String::new();
+        let mut emitted_any = false;
+        for row in RENDER_TABLE {
+            scratch.clear();
+            (row.render)(m, scope, &mut scratch)?;
+            if scratch.is_empty() {
+                continue;
+            }
+            // Per-axis bytes are emitted as-is. The classification
+            // axis owns its leading `//` (for non-US / JOINT); every
+            // other axis writes only its own content, and the loop
+            // prepends `//` here.
+            if emitted_any {
+                out.write_str("//")?;
+            }
+            out.write_str(&scratch)?;
+            emitted_any = true;
+        }
+        Ok(())
+    }
+
+    fn render_portion(&self, m: &Self::Marking) -> String {
+        // Override retained for the Phase A byte-identity gate
+        // (`render_canonical_default_chain.rs`). Commit 5's
+        // render_canonical body is the substantive renderer; this
+        // override delegates to it through the trait-default String
+        // round-trip. Removing the override is a follow-up once the
+        // engine call sites move off `render_portion` to
+        // `render_canonical` (commit 6+).
+        let mut s = String::new();
+        let _ = self.render_canonical(m, Scope::Portion, &mut s);
+        s
+    }
+
+    fn render_banner(&self, m: &Self::Marking) -> String {
+        // See `render_portion`. Override retained for byte-identity
+        // gate; the substantive body is `render_canonical`.
+        let mut s = String::new();
+        let _ = self.render_canonical(m, Scope::Page, &mut s);
+        s
     }
 }
 
 // ---------------------------------------------------------------------------
-// Commit 4 — `AxisRenderRow` declaration + placeholder `RENDER_TABLE`
+// Per-axis renderer dispatch table (commit 5 populated)
 // ---------------------------------------------------------------------------
 //
-// `AxisRenderRow` is the per-axis dispatch primitive that commit 5
-// populates with one row per CAPCO axis (classification, dissem, SCI,
-// SAR, FGI, AEA, NIC, declass). Commit 4 declares the type and an
-// empty table — no axis rows yet. The substantive `render_canonical`
-// body that walks `RENDER_TABLE` lands in commit 5; today the table
-// is unread.
+// The dispatch primitive consumed by [`MarkingScheme::render_canonical`].
+// One [`AxisRenderRow`] per CAPCO category, in the §A.6 p15-17 Figure 2
+// canonical sequence (matches `Category::ordering_rank` declared in
+// `build_categories`). The `render_canonical` body walks this table in
+// declaration order and inserts the `//` major-category separator
+// between consecutive non-empty axis emissions.
 //
-// The `render` field is a function pointer (not a closure) so the
-// table can be `const` and shared across `CapcoScheme` instances.
-// Each row's writer-passing contract matches `MarkingScheme::
-// render_canonical` exactly — implementations append to `out` and
-// MUST NOT clear the buffer themselves.
+// The `render` field is a bare function pointer so the table can be
+// `const` and shared across `CapcoScheme` instances; per-axis
+// renderers cannot capture `&self` or scheme-instance state. All
+// inputs come from [`CapcoMarking`] (which wraps
+// [`marque_ism::CanonicalAttrs`]) or `&'static` vocabulary tables in
+// `crates/capco/src/vocab.rs`.
 
 /// Per-axis renderer dispatch row.
 ///
-/// Commit 5 populates [`RENDER_TABLE`] with one row per CAPCO axis;
-/// commit 4 only declares the type. See the module-level note above
-/// for the full migration sketch.
-///
-/// `#[allow(dead_code)]` is intentional: commit 4 ships the type
-/// alongside an empty `RENDER_TABLE` so commit 5 can populate the
-/// table without re-declaring the row shape. The `#[allow]` retires
-/// in commit 5 when the first row's `render` field becomes the
-/// `render_canonical` body.
-///
-/// # Constraint for commit 5+ axis renderers
-///
-/// `render` is a bare `fn` pointer (not `Box<dyn Fn>` or a method
-/// pointer). It cannot capture `&self` or any scheme-instance state.
-/// All inputs the renderer needs MUST be reachable from
-/// [`CapcoMarking`] or `&'static` tables (the existing
-/// vocabulary tables in `crates/capco/src/vocab.rs` satisfy this —
-/// every accessor returns `&'static` data).
-///
-/// Commit 5's planned axes (classification, dissem, SCI, SAR, FGI,
-/// AEA, NIC, declass) all read from `CanonicalAttrs` (inside
-/// `CapcoMarking`) and `&'static` vocabulary tables, so the `fn`
-/// pointer shape is sufficient. If a future axis renderer needs
-/// runtime configuration (e.g., a user-configurable classification
-/// ceiling, a per-document tetragraph expansion, or per-call MCP
-/// state), this row type MUST change to `Box<dyn Fn(...)>` or gain
-/// a threaded `&CapcoScheme` parameter — the `const`-able shape is
-/// the chosen trade-off, not a permanent constraint.
-#[allow(dead_code)]
+/// `render` writes the axis's canonical bytes for the given `scope`
+/// into `out`. Same writer-passing contract as
+/// [`MarkingScheme::render_canonical`]: append; do not clear; return
+/// `Ok(())` on success.
 pub(crate) struct AxisRenderRow {
     /// The category this row renders (e.g., [`CAT_CLASSIFICATION`],
-    /// [`CAT_DISSEM`]).
+    /// [`CAT_DISSEM`]). Informational — dispatch is by declaration
+    /// order, not by category lookup. Future debug/tracing tooling
+    /// may surface this; it is `#[allow(dead_code)]` because no
+    /// runtime call site reads it today.
+    #[allow(dead_code)]
     pub category: CategoryId,
     /// Render the axis's contribution to the canonical form for the
-    /// given `scope`, appending bytes to `out`. Same writer-passing
-    /// contract as [`MarkingScheme::render_canonical`].
+    /// given `scope`, appending bytes to `out`.
     pub render: fn(&CapcoMarking, Scope, &mut dyn core::fmt::Write) -> core::fmt::Result,
 }
 
 /// Per-axis renderer dispatch table.
 ///
-/// Commit 4 ships this as an empty placeholder. Commit 5 populates
-/// it with one [`AxisRenderRow`] per CAPCO axis (classification,
-/// dissem, SCI, SAR, FGI, AEA, NIC, declass) and rewrites
-/// [`MarkingScheme::render_canonical`] to walk the table in
-/// `Category::ordering_rank` order.
-///
-/// `#[allow(dead_code)]` is intentional — see [`AxisRenderRow`].
-#[allow(dead_code)]
-pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[];
+/// Order matches `Category::ordering_rank` (CAPCO-2016 §A.6 p15-17
+/// Figure 2). The `render_canonical` body walks this table in
+/// declaration order; the §A.6 `//` major-category separator is
+/// inserted by the dispatch loop, NOT by individual axis renderers.
+/// Classification is the sole axis that owns its leading `//` — for
+/// non-US / JOINT classifications, the `//` is part of the
+/// classification token because it occludes the absent US position
+/// (§A.6 p15-16).
+pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
+    AxisRenderRow {
+        category: CAT_CLASSIFICATION,
+        render: crate::render::render_classification::render_classification,
+    },
+    AxisRenderRow {
+        category: CAT_SCI,
+        render: crate::render::render_sci::render_sci,
+    },
+    AxisRenderRow {
+        category: CAT_SAR,
+        render: crate::render::render_sar::render_sar,
+    },
+    AxisRenderRow {
+        category: CAT_AEA,
+        render: crate::render::render_aea::render_aea,
+    },
+    AxisRenderRow {
+        category: CAT_FGI_MARKER,
+        render: crate::render::render_fgi::render_fgi,
+    },
+    AxisRenderRow {
+        category: CAT_DISSEM,
+        render: crate::render::render_dissem::render_dissem,
+    },
+    AxisRenderRow {
+        category: CAT_REL_TO,
+        render: crate::render::render_rel_to::render_rel_to,
+    },
+    // Non-IC dissem comes after REL TO in §A.6 sequence (§A.6 p16:
+    // "Non-IC Dissemination Control Markings — must follow,
+    // Dissemination Controls"). REL TO is part of the dissem axis;
+    // non-IC is its own §H.9 block. The category id is reused from
+    // CAT_DISSEM because no `CAT_NON_IC_DISSEM` constant is exposed
+    // yet (see the equivalent comment in `build_constraints`); the
+    // `category` field is informational here — dispatch is by
+    // declaration order.
+    AxisRenderRow {
+        category: CAT_DISSEM,
+        render: crate::render::render_non_ic_dissem::render_non_ic_dissem,
+    },
+    // Declassify-on is a no-op in the banner-line dispatch (the CAB
+    // is a separate block; see render::render_declassify module doc).
+    // Kept in the table so the declassify axis is visible to future
+    // CAB-rendering work.
+    AxisRenderRow {
+        category: CAT_DECLASSIFY_ON,
+        render: crate::render::render_declassify::render_declassify,
+    },
+];
 
 // ---------------------------------------------------------------------------
 // T035 Custom-constraint helpers

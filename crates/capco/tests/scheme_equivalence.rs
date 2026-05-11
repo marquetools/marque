@@ -1153,11 +1153,27 @@ fn render_portion_and_banner_empty_without_classification() {
 }
 
 #[test]
-fn render_banner_with_joint_classification_falls_back_to_level() {
+fn render_banner_with_joint_classification_renders_canonical_joint_form() {
     use marque_ism::MarkingClassification;
 
-    // effective_level() is US-level for Joint/FGI/NATO too, so
-    // render_banner should still produce a real string.
+    // PR 3c.B Commit 5: the renderer now emits the §A.6 p15-16
+    // canonical JOINT form: leading `//` (occluding the absent US
+    // position), `JOINT` indicator, level (banner long form), then
+    // the participant countries alpha-sorted per CAPCO-2016 §H.3 p56
+    // ("Country trigraph codes are listed alphabetically followed by
+    // tetragraph codes in alphabetical order"). USA appears in
+    // alphabetical position — NOT pulled to the front. Pre-commit-5
+    // the renderer was a Phase A stub that fell back to printing only
+    // the US-level string; the canonical form is the per-axis renderer
+    // body in `crates/capco/src/render/render_classification.rs`.
+    //
+    // Authority for the canonical form:
+    // - CAPCO-2016 §A.6 p15-16 — leading `//` for non-US / JOINT.
+    // - CAPCO-2016 §H.3 p56 line 1258 — JOINT [LIST] alphabetical;
+    //   examples on §H.3 p56 ("//JOINT TOP SECRET CAN ISR USA") and
+    //   §H.3 p58 ("//JOINT SECRET CAN GBR USA") confirm USA in its
+    //   alphabetical slot. The USA-first rule is REL TO-axis only
+    //   (§H.8 p150-151).
     let mut attrs = CanonicalAttrs::default();
     attrs.classification = Some(MarkingClassification::Joint(JointClassification {
         level: Classification::Secret,
@@ -1165,8 +1181,7 @@ fn render_banner_with_joint_classification_falls_back_to_level() {
     }));
     let s = CapcoScheme::new();
     let out = s.render_banner(&wrap(attrs));
-    // Phase A renderer just prints the level string.
-    assert_eq!(out, "SECRET");
+    assert_eq!(out, "//JOINT SECRET GBR USA");
 }
 
 #[test]

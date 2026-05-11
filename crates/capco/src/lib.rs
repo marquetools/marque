@@ -24,6 +24,7 @@
 pub mod lattice;
 pub mod priors;
 pub mod provenance;
+pub(crate) mod render;
 pub mod rules;
 pub(crate) mod rules_declarative;
 pub mod scheme;
