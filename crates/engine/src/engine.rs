@@ -887,8 +887,8 @@ impl Engine {
                     // contract is renegotiated. Documented per
                     // Constitution VII as an engine-edit channel
                     // sanctioned by the PR 3c.B Commit 7 decision
-                    // record (specs/006/decisions/06-commit-7-
-                    // subdivision.md Amendment 2). 7.4 does NOT need
+                    // record (specs/006-engine-rule-refactor/decisions/
+                    // 06-commit-7-subdivision.md Amendment 2). 7.4 does NOT need
                     // an additional engine edit — the prefix list
                     // here is the final form for this engine surface.
                     let rule_id_str = if v.constraint_label.starts_with("E058/")
@@ -3130,7 +3130,8 @@ mod tests {
     fn canonicalize_accepts_rule_id_form_unchanged() {
         let mut config = config_with_overrides(&[("E001", "warn")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).expect("should succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("should succeed");
         assert_eq!(
             config.rules.overrides.get("E001"),
             Some(&"warn".to_owned()),
@@ -3142,7 +3143,8 @@ mod tests {
     fn canonicalize_accepts_rule_name_form_and_resolves_to_id() {
         let mut config = config_with_overrides(&[("portion-mark-in-banner", "error")]);
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).expect("should succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("should succeed");
         assert_eq!(
             config.rules.overrides.get("E001"),
             Some(&"error".to_owned()),
@@ -3245,7 +3247,8 @@ mod tests {
             named_rule_set(&[("E001", "portion-mark-in-banner")]),
             named_rule_set(&[("M500", "some-other-domain-rule")]),
         ];
-        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).expect("should succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("should succeed");
         assert_eq!(
             config.rules.overrides.get("E001"),
             Some(&"error".to_owned())
@@ -3257,7 +3260,8 @@ mod tests {
     fn canonicalize_empty_overrides_is_noop() {
         let mut config = Config::default();
         let sets = vec![named_rule_set(&[("E001", "portion-mark-in-banner")])];
-        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new()).expect("empty overrides must succeed");
+        canonicalize_rule_overrides(&mut config, &sets, &CapcoScheme::new())
+            .expect("empty overrides must succeed");
         assert!(config.rules.overrides.is_empty());
     }
 

@@ -2183,11 +2183,25 @@ impl CapcoScheme {
 
     /// Rule IDs emitted by the engine's constraint-catalog bridge that
     /// do not correspond to any registered `Rule::id()`. Each entry is
-    /// a `(rule_id, descriptive_name)` pair shaped to match the
-    /// existing `Rule::additional_emitted_ids()` walker convention so
-    /// the engine's `canonicalize_rule_overrides` validator can accept
-    /// `.marque.toml [rules] <id> = "off"` references to these IDs
-    /// without an `UnknownRuleOverride` failure.
+    /// a `(rule_id, name)` pair shaped to match the existing
+    /// `Rule::additional_emitted_ids()` walker convention so the
+    /// engine's `canonicalize_rule_overrides` validator can accept
+    /// `.marque.toml [rules] <id-or-name> = "off"` references to
+    /// these IDs without an `UnknownRuleOverride` failure.
+    ///
+    /// # User-facing surface
+    ///
+    /// Both fields are user-facing config keys: `canonicalize_rule_overrides`
+    /// inserts the `rule_id` and the `name` into the known-key map,
+    /// aliasing both to the canonical ID. A `.marque.toml` entry
+    /// `[rules] class-floor-catalog = "off"` is therefore silently
+    /// accepted as an alias for `[rules] E058 = "off"`. The shorter
+    /// `E058` form is the recommended one (matches what `Diagnostic.rule`
+    /// emits, what audit-stream consumers see, and what `did_you_mean`
+    /// suggests for typos); the longer name is the descriptive alias
+    /// users discovering rule IDs in source might also reach for.
+    /// This convention parallels the `id-or-name` aliasing every
+    /// registered `Rule` already accepts.
     ///
     /// # Entries (PR 3c.B Commit 7.3)
     ///
@@ -3268,21 +3282,17 @@ fn class_floor_emit(
 /// Resolve the diagnostic span anchor for a class-floor catalog row.
 ///
 /// Lifted from `rules_declarative::class_floor_anchor_span` in PR
-/// 3c.B Commit 7.3 when [`DeclarativeClassFloorRule`] retired into
-/// the engine's constraint-catalog bridge. Per PM directive #2 of
-/// the original PR 3b.D plan, the span anchors at the marking token
-/// (not the classification token) so the diagnostic UX puts the
-/// squiggle under the offending presence. Reads `row.primary_kind`
-/// directly (the PR D R2 perf-3 optimization hoisted from the
-/// retired `primary_token_kind_for_row` string-match table into a
-/// struct field on `ClassFloorRow`). Falls back to the first
-/// `Classification` token span if no axis-specific span is found,
-/// and finally to `Span::new(0, 0)` if neither is present.
-///
-/// `[DeclarativeClassFloorRule]` is retired (PR 3c.B Commit 7.3);
-/// crate::rules_declarative::DeclarativeClassFloorRule no longer
-/// exists. This is the new home for the helper.
-#[allow(rustdoc::broken_intra_doc_links)]
+/// 3c.B Commit 7.3 when the `DeclarativeClassFloorRule` walker
+/// retired into the engine's constraint-catalog bridge. Per PM
+/// directive #2 of the original PR 3b.D plan, the span anchors at
+/// the marking token (not the classification token) so the
+/// diagnostic UX puts the squiggle under the offending presence.
+/// Reads `row.primary_kind` directly (the PR D R2 perf-3
+/// optimization hoisted from the retired `primary_token_kind_for_row`
+/// string-match table into a struct field on `ClassFloorRow`).
+/// Falls back to the first `Classification` token span if no
+/// axis-specific span is found, and finally to `Span::new(0, 0)` if
+/// neither is present.
 pub(crate) fn class_floor_anchor_span(attrs: &CanonicalAttrs, row: &ClassFloorRow) -> Span {
     if let Some(kind) = row.primary_kind
         && let Some(span) = first_span_of_optional(attrs, kind)

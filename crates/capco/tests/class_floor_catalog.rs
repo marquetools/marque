@@ -401,6 +401,20 @@ fn sar_fires_on_unclassified() {
     let sar = e058_diags_for(&diags, "SAR requires");
     assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
     assert_eq!(sar[0].citation, "CAPCO-2016 §H.5");
+    // Pin the no-fix invariant. SAR classification-floor violations
+    // require human review per §H.5 — the bridge MUST NOT auto-fix.
+    // Migrated from the retired `e027_fires_on_unclassified_banner_with_sar`
+    // lib-test, which asserted `sar[0].fix.is_none()`. Post-7.3 the SAR
+    // row's `fix_intent_by_name` returns `None` (no FixIntent populates
+    // until / unless a future PR adds class-promotion intents); this
+    // assertion pins that contract so a future regression that adds a
+    // fix to SAR-classification-floor without an explicit human-review
+    // exemption fails the test.
+    assert!(
+        sar[0].fix.is_none() && sar[0].fix_intent.is_none(),
+        "SAR floor must emit no fix (human review required, §H.5): {:?}",
+        sar[0]
+    );
 }
 
 #[test]
