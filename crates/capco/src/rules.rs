@@ -697,7 +697,11 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
+        // signals consciously-decided deferred migration evaluation. See the
+        // migration-status block above `struct DeclassifyMisplacedRule;` for
+        // the full rationale and retirement target.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
@@ -2496,7 +2500,11 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
             .into_iter()
             .filter(|c| c.branch == S005Branch::Suggest)
             .map(|c| {
-                Diagnostic::new(
+                // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
+                // signals consciously-decided deferred migration evaluation. See the
+                // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
+                // for the full rationale and admonition-channel retirement target.
+                Diagnostic::with_fix_intent(
                     self.id(),
                     self.default_severity(),
                     c.span,
@@ -2525,7 +2533,11 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
             .into_iter()
             .filter(|c| c.branch == S005Branch::Info)
             .map(|c| {
-                Diagnostic::new(
+                // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
+                // signals consciously-decided deferred migration evaluation. See the
+                // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
+                // for the full rationale and admonition-channel retirement target.
+                Diagnostic::with_fix_intent(
                     self.id(),
                     self.default_severity(),
                     c.span,
@@ -6948,6 +6960,118 @@ mod tests {
         assert!(
             diags.iter().any(|d| d.rule.as_str() == "E008"),
             "E008 must fire on malformed SCI-shaped token: {diags:?}"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 9 — pin the consciously-decided-no-fix-intent
+    /// migration state for E005.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md`
+    /// D4 (Path A fallback), E005 stays as a registered hand-written
+    /// `Rule` impl in `rules.rs` until `render_canonical` lands on the
+    /// `MarkingScheme` trait surface (the
+    /// `Recanonicalize { scope: Document }` retirement target). The
+    /// structural blocker — `MarkingScheme::evaluate_custom` having no
+    /// access to `RuleContext.marking_type` — is tracked in
+    /// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
+    /// Until the retirement vehicle lands, the rule emits a diagnostic
+    /// with both `fix.is_none()` AND `fix_intent.is_none()`.
+    ///
+    /// **Coverage note:** the G13 closure walker at
+    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// only inspects rules that auto-apply through the engine (those
+    /// emitting `AppliedFixProposal::New` records, which require
+    /// `fix_intent.is_some()`). E005 with `fix_intent: None` is never
+    /// reached by that walker — so this symmetry pin is the **only**
+    /// guard against a future commit accidentally producing an
+    /// asymmetric `(fix, fix_intent)` pair on E005.
+    #[test]
+    fn e005_emits_no_fix_and_no_fix_intent_pending_stage4_recanonicalize_document() {
+        let diags = lint_banner("SECRET//25X1//NOFORN");
+        let e005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "E005")
+            .expect("E005 must fire on `SECRET//25X1//NOFORN` (declass exemption in banner)");
+        assert!(
+            e005.fix.is_none(),
+            "E005 fix must be None until Stage-4 `Recanonicalize {{ scope: Document }}` \
+             lands; see constraint-context-extension.md followup"
+        );
+        assert!(
+            e005.fix_intent.is_none(),
+            "E005 fix_intent must be None (symmetric with fix.is_none()). \
+             The G13 walker does NOT see (None, None) rules; this test is \
+             the only guard against asymmetric drift"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 9 — pin the consciously-decided-no-fix-intent
+    /// migration state for S005.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md`
+    /// D4 (Path A fallback), S005 stays as a registered hand-written
+    /// `Rule` impl in `rules.rs` until the admonition emitter channel
+    /// is specced and built per
+    /// `specs/006-engine-rule-refactor/followups/admonition-channel.md`.
+    /// The structural blocker — `MarkingScheme::evaluate_custom` having
+    /// no access to `RuleContext.page_context` (the entire body of
+    /// `analyze_uncertain_reduction` is page-context-dependent) — is
+    /// tracked in
+    /// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
+    /// Until either retirement vehicle lands, the rule emits a diagnostic
+    /// with both `fix.is_none()` AND `fix_intent.is_none()`.
+    ///
+    /// **Coverage note:** same as the E005 pin — the G13 walker doesn't
+    /// see `(None, None)` rules; this symmetry pin is the only guard.
+    #[test]
+    fn s005_emits_no_fix_and_no_fix_intent_pending_stage4_admonition_channel() {
+        // RSMA is a taxonomy-absent (org-fork extension) tetragraph;
+        // `is_decomposable("RSMA")` returns `None`, so it qualifies as
+        // an uncertain code. Two portions list it differently; the
+        // page-level atom intersection drops RSMA. Banner has no REL TO,
+        // making this the active-validation / Suggest branch.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NOFORN";
+        let diags = lint_banner(source);
+        let s005 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S005")
+            .expect("S005 must fire on RSMA uncertain-reduction (Suggest branch)");
+        assert!(
+            s005.fix.is_none(),
+            "S005 fix must be None until Stage-4 admonition channel lands; \
+             see admonition-channel.md and constraint-context-extension.md followups"
+        );
+        assert!(
+            s005.fix_intent.is_none(),
+            "S005 fix_intent must be None (symmetric with fix.is_none())"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 9 — pin the consciously-decided-no-fix-intent
+    /// migration state for S006. Same shape as S005's pin; the Info
+    /// branch fires when the banner's REL TO is consistent with the
+    /// atom-semantics intersection.
+    #[test]
+    fn s006_emits_no_fix_and_no_fix_intent_pending_stage4_admonition_channel() {
+        // Banner REL TO equals the atom-semantics intersection
+        // ({USA, GBR}); `expected ⊆ banner` ⇒ Info branch ⇒ S006 fires.
+        let source = "(S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//REL TO USA, GBR";
+        let diags = lint_banner(source);
+        let s006 = diags
+            .iter()
+            .find(|d| d.rule.as_str() == "S006")
+            .expect("S006 must fire on RSMA uncertain-reduction (Info branch)");
+        assert!(
+            s006.fix.is_none(),
+            "S006 fix must be None until Stage-4 admonition channel lands"
+        );
+        assert!(
+            s006.fix_intent.is_none(),
+            "S006 fix_intent must be None (symmetric with fix.is_none())"
         );
     }
 }
