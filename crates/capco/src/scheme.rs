@@ -2057,6 +2057,8 @@ impl CapcoScheme {
                         constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
                         citation: label,
+                        span: None,
+                        severity: None,
                     }]
                 } else {
                     Vec::new()
@@ -2068,6 +2070,8 @@ impl CapcoScheme {
                         constraint_label: name,
                         message: format!("token {left:?} requires {right:?} but it is missing"),
                         citation: label,
+                        span: None,
+                        severity: None,
                     }]
                 } else {
                     Vec::new()
@@ -2086,6 +2090,96 @@ impl CapcoScheme {
                 })
                 .collect(),
         }
+    }
+
+    /// Look up the [`FixIntent`] a catalog row produces against
+    /// `attrs`, when one is defined.
+    ///
+    /// This is the engine-bridge counterpart to the scheme's
+    /// [`MarkingScheme::validate`] path. The lint loop walks
+    /// `scheme.validate(...)`, gets back a stream of
+    /// [`ConstraintViolation`] values whose `span` and `severity` are
+    /// populated by catalog rows that want to fire as user-facing
+    /// diagnostics. For each such violation, the engine asks the
+    /// scheme: *given this row name and these attributes, is there a
+    /// `FixIntent` you'd like attached to the diagnostic?* For most
+    /// rows the answer is `None`. For rows whose CAPCO §-citation
+    /// commits to a specific repair shape (companion-insert for
+    /// HCS-O / HCS-P sub / SI-G; subtractive for ORCON-USGOV conflict
+    /// cases — see CAPCO-2016 §H.4 p64 / p66 / p68 / p80), the helper
+    /// constructs the matching [`FixIntent`].
+    ///
+    /// # Why scheme-side, not on `ConstraintViolation`
+    ///
+    /// [`FixIntent<S>`] lives in `marque-rules`, and `marque-rules`
+    /// depends on `marque-scheme` (Constitution VII Appendix D —
+    /// post-PR-3c.A graph). Attaching a `fix_intent: Option<FixIntent<S>>`
+    /// field to `ConstraintViolation` (in `marque-scheme`) would invert
+    /// the graph and create a cycle. The bridge instead reconstructs
+    /// the [`FixIntent`] from the row name on the way out — this is
+    /// the side-table pattern the now-retiring walker rules
+    /// (`DeclarativeClassFloorRule`, `DeclarativeSciPerSystemRule`)
+    /// used internally; PR 3c.B Commit 7.4 relocates the table to the
+    /// scheme so the walker can be deleted.
+    ///
+    /// # Cold-land contract (PR 3c.B Commit 7.2)
+    ///
+    /// This method returns `None` for every input in Commit 7.2; the
+    /// only catalog rows that produce fixes today are E059's five
+    /// SCI-per-system rows (companion-insert, HCS-O / HCS-P sub /
+    /// SI-G; forbid-companion, HCS-P sub vs ORCON-USGOV). Those rows
+    /// still fire diagnostics through the walker until Commit 7.4
+    /// retires the walker and populates this helper. `None` is the
+    /// safe shape — the engine attaches no fix and the diagnostic
+    /// flows through unchanged. No behavior change at 7.2; the only
+    /// purpose of the method's existence here is to give the engine
+    /// bridge a stable scheme-side entry point to query.
+    pub fn fix_intent_by_name(
+        &self,
+        _name: &str,
+        _attrs: &CanonicalAttrs,
+    ) -> Option<marque_rules::FixIntent<CapcoScheme>> {
+        // PR 3c.B Commit 7.4 will populate the E059 catalog rows here.
+        // Until then, the walker rule `DeclarativeSciPerSystemRule`
+        // owns the E059 fixes via its own side-table.
+        None
+    }
+
+    /// Reports whether the scheme's `Constraint::Custom` catalog has
+    /// any rows that *can* produce user-facing diagnostics (i.e., rows
+    /// whose `evaluate_custom` arm populates `ConstraintViolation::span`
+    /// AND `::severity`). Used by the engine's constraint-catalog
+    /// bridge (`crates/engine/src/engine.rs` lint loop) to short-
+    /// circuit the whole `scheme.validate(...)` walk — including the
+    /// per-candidate `CapcoMarking::from(attrs.clone())` allocation —
+    /// when no catalog row could possibly fire.
+    ///
+    /// # Why a static `false` today
+    ///
+    /// PR 3c.B Commit 7.2 lands the bridge cold: no catalog row in
+    /// `CapcoScheme::build_constraints()` populates the optional span
+    /// / severity fields yet (every dyadic arm passes `None`; every
+    /// Custom-arm helper in this file passes `None` after the 7.1
+    /// bulk-patch). The bridge would walk the entire ~50-entry
+    /// catalog per candidate and discard every result. This predicate
+    /// returns `false` so the bridge skips the walk entirely until
+    /// 7.3 wires the first class-floor row to populate the fields.
+    ///
+    /// # Why static (not derived from the catalog at runtime)
+    ///
+    /// Catalog membership doesn't change across the engine's
+    /// lifetime — `build_constraints()` is invoked once at
+    /// `CapcoScheme::new()` and never mutated. A runtime walk over
+    /// `self.constraints` to look for "any Custom row that produces
+    /// span/severity" would itself defeat the optimization (the data
+    /// we're avoiding fetching is the per-candidate walk's output;
+    /// learning that the catalog has zero such rows shouldn't itself
+    /// require a per-candidate walk). 7.3 flips this to `true`
+    /// statically — the predicate is a one-line override naming the
+    /// commit that introduced the first diagnostic-producing
+    /// Custom-arm catalog row.
+    pub fn has_diagnostic_constraints(&self) -> bool {
+        false
     }
 }
 
@@ -2519,6 +2613,8 @@ fn e012_dual_classification(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
                 foreign_desc
             ),
             citation: "CAPCO-2016 §H.3 p55",
+            span: None,
+            severity: None,
         }]
     } else {
         Vec::new()
@@ -2560,6 +2656,8 @@ fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constra
             missing.join(", ")
         ),
         citation: "CAPCO-2016 §H.3 p57",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2602,6 +2700,8 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
                   per the Atomic Energy Act"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104 + p111",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2630,6 +2730,8 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Co
         constraint_label: "E038/nodis-or-exdis-requires-noforn",
         message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
         citation: "CAPCO-2016 §H.9 p172 + p174",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2660,6 +2762,8 @@ fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViola
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2676,6 +2780,8 @@ fn w002_us_commingled_with_fgi(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constr
                   consider splitting into separate US and foreign paragraphs"
             .to_owned(),
         citation: "CAPCO-2016 §H.7 p124",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2698,6 +2804,8 @@ fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViola
                   classification countries and REL TO"
             .to_owned(),
         citation: "CAPCO-2016 §H.3 pp 55–57",
+        span: None,
+        severity: None,
     }]
 }
 
@@ -2765,6 +2873,8 @@ fn hcs_system_constraints(
                      §H.4 p62 (requires document-level analysis)."
                     .to_owned(),
                 citation,
+                span: None,
+                severity: None,
             });
             if classification == Some(Classification::Confidential) {
                 out.push(marque_scheme::ConstraintViolation {
@@ -2773,6 +2883,8 @@ fn hcs_system_constraints(
                               per CAPCO-2016 §H.4 p62."
                         .to_owned(),
                     citation,
+                    span: None,
+                    severity: None,
                 });
             }
             continue;
@@ -2791,6 +2903,8 @@ fn hcs_system_constraints(
                                       CAPCO-2016 §H.4 p64."
                                 .to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     if !has_orcon {
@@ -2798,6 +2912,8 @@ fn hcs_system_constraints(
                             constraint_label: "HCS-O-requires-ORCON",
                             message: "HCS-O requires ORCON per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     if has_orcon_usgov {
@@ -2807,6 +2923,8 @@ fn hcs_system_constraints(
                                       §H.4 p64."
                                 .to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     // HCS-O requires NOFORN per CAPCO-2016 §H.4 p64
@@ -2821,6 +2939,8 @@ fn hcs_system_constraints(
                             constraint_label: "HCS-O-requires-NOFORN",
                             message: "HCS-O requires NOFORN per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                 }
@@ -2832,6 +2952,8 @@ fn hcs_system_constraints(
                                       CAPCO-2016 §H.4 p66."
                                 .to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                     // HCS-P requires NOFORN per CAPCO-2016 §H.4 p66
@@ -2848,6 +2970,8 @@ fn hcs_system_constraints(
                             constraint_label: "HCS-P-requires-NOFORN",
                             message: "HCS-P requires NOFORN per CAPCO-2016 §H.4 p66.".to_owned(),
                             citation,
+                            span: None,
+                            severity: None,
                         });
                     }
                 }
@@ -2882,6 +3006,8 @@ fn hcs_system_constraints(
                  per CAPCO-2016 §H.4 p62 (requires document-level analysis)."
                 .to_owned(),
             citation,
+            span: None,
+            severity: None,
         });
         if classification == Some(Classification::Confidential) {
             out.push(marque_scheme::ConstraintViolation {
@@ -2890,6 +3016,8 @@ fn hcs_system_constraints(
                           CAPCO-2016 §H.4 p62."
                     .to_owned(),
                 citation,
+                span: None,
+                severity: None,
             });
         }
     }
@@ -3138,6 +3266,8 @@ fn class_floor_emit(
         constraint_label: row.name,
         message,
         citation: row.citation,
+        span: None,
+        severity: None,
     })
 }
 
@@ -4567,6 +4697,8 @@ fn sci_per_system_catalog_eval(
             constraint_label: row.name,
             message: String::from(d.message),
             citation: row.citation,
+            span: None,
+            severity: None,
         })
         .collect()
 }

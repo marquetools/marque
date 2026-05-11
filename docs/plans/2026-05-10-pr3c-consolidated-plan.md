@@ -863,6 +863,25 @@ test updates (~300 LoC) = **net -600 to -800 LoC removed.**
 
 ### Commit 7 — Walker decomposition + `ConstraintViolation` extension
 
+> **AMENDED 2026-05-11** — the preflight architect review on branch
+> `pr3c-c-commit7` surfaced five plan-gaps that materially restructure
+> this commit. The original 3-subcommit shape (7.1 / 7.2 / 7.3) is
+> replaced by a 4-subcommit shape (7.1 / 7.2 / 7.3 / 7.4) split across
+> two PRs. The end-state goals (~1700 LoC net, two walkers retired, 32
+> catalog rows fire through the constraint catalog) are unchanged.
+> See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md`
+> for the five amendments and the re-numbered subcommit sequence.
+>
+> Headline corrections to the section below: (a) the `corpus_parity.rs:170`
+> delta is **-2** (33 → 31), not +30 — the catalog rows aren't
+> registered Rule impls; (b) extension is `Option<Span>` / `Option<Severity>`,
+> not bare; (c) `FixIntent<S>` cannot live on `ConstraintViolation`
+> (Constitution VII cycle), uses scheme-side
+> `CapcoScheme::fix_intent_by_name(...)` helper instead; (d) the
+> engine bridge is a new subcommit (7.2) — the production lint path
+> does not call `scheme.validate(...)` today; (e) walker deletion is
+> staged behind a `scheme_equivalence.rs` byte-identity test.
+
 **Goal.** Decompose E058 (27 class-floor rows) and E059 (5 SCI per-system
 rows) into per-row `Constraint` entries on `CapcoScheme`. Per user's
 locked answer to question 3: the `ConstraintViolation` extension is the

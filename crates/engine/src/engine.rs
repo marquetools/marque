@@ -88,6 +88,18 @@ impl std::error::Error for InvalidThreshold {}
 pub struct Engine {
     config: Config,
     rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+    /// Scheme catalog held for the PR 3c.B Commit 7.2 constraint-bridge
+    /// dispatch in `lint_inner`. A fresh `CapcoScheme::new()` is built
+    /// at construction time because the engine is concrete over
+    /// `CapcoScheme` (the generic-`S` parameter on the constructors is
+    /// only used to extract `page_rewrites()` for scheduling — the
+    /// scheduler test in `crates/engine/tests/scheduler.rs:106` passes
+    /// a stub scheme through that surface, but every production call
+    /// site passes `CapcoScheme::new()` and the bridge fires only
+    /// against the default catalog). A future PR that makes
+    /// `Engine<S>` truly generic over the scheme will replace this
+    /// field with the user-supplied `S`.
+    scheme: CapcoScheme,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
     /// `RuleContext` clone in `lint()` is an O(1) refcount bump, not a
@@ -222,9 +234,38 @@ impl Engine {
             }
         });
 
+        // Drop the user-supplied scheme after page-rewrite extraction;
+        // the constraint-catalog bridge in `lint_inner` uses a fresh
+        // `CapcoScheme::new()` (see the `scheme` field doc above for
+        // the design rationale).
+        //
+        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
+        // that passes a configured `CapcoScheme` (custom catalog,
+        // runtime-amended constraint rows, alternative rewrite axis
+        // beyond what we already extracted) loses every customization
+        // here. No compile-time guard — the `S: MarkingScheme` bound
+        // permits any scheme because the scheduler test
+        // (`crates/engine/tests/scheduler.rs:106`) deliberately
+        // exercises that flexibility with a `StubScheme`. Every
+        // production call site today passes `CapcoScheme::new()` (the
+        // default), so the discard is currently lossless; a future
+        // refactor that makes `Engine<S>` truly generic over the
+        // scheme will close this. The `tracing::debug!` below makes
+        // the silent drop observable to a developer running with
+        // `MARQUE_LOG=marque_engine=debug` (off by default in
+        // production).
+        tracing::debug!(
+            target: "marque_engine::scheme_discard",
+            "user-supplied scheme dropped; constraint-catalog bridge uses default \
+             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
+        );
+        drop(scheme);
+        let scheme = CapcoScheme::new();
+
         Ok(Self {
             config,
             rule_sets,
+            scheme,
             clock,
             corrections_arc,
             corrections_ac,
@@ -752,6 +793,111 @@ impl Engine {
                         }
                     });
                     diagnostics.extend(diags);
+                }
+            }
+
+            // PR 3c.B Commit 7.2 — scheme-side constraint catalog bridge.
+            //
+            // Walks the scheme's declarative constraint catalog against
+            // the current candidate's attributes and emits a
+            // `Diagnostic` for each `ConstraintViolation` whose `span`
+            // AND `severity` are both populated. Violations with `None`
+            // span or `None` severity are advisory — the dyadic
+            // `Conflicts` / `Requires` / `Implies` / `Supersedes` arms
+            // emit those today, and they continue to flow through as a
+            // tooling-only signal until / unless a future PR commits
+            // them to user-facing diagnostics.
+            //
+            // # Cold-land contract (PR 3c.B Commit 7.2)
+            //
+            // No catalog row populates the `Option<Span>` /
+            // `Option<Severity>` fields yet — every `ConstraintViolation`
+            // produced by `scheme.validate(...)` in 7.2 carries `None`
+            // for both. The `let (Some(span), Some(severity)) = ...
+            // else { continue }` guard below short-circuits every
+            // iteration. This bridge fires its first user-visible
+            // diagnostic when PR 3c.B Commit 7.3 wires the E058
+            // class-floor catalog rows to populate the fields from
+            // `ClassFloorRow.severity` / `class_floor_anchor_span`.
+            //
+            // # Cold-land short-circuit
+            //
+            // The bridge's work is wasted when no catalog row
+            // produces a diagnostic-shape `ConstraintViolation` (i.e.,
+            // populated span + severity). The `has_diagnostic_constraints()`
+            // predicate is the scheme-side declaration of that state:
+            // it returns `false` in 7.2 (no row populates yet) and
+            // flips to `true` in 7.3 when the first class-floor row
+            // gains span / severity from `ClassFloorRow.severity` and
+            // a lifted `class_floor_anchor_span`. Skipping the block
+            // entirely here avoids the `CapcoMarking::from(attrs.clone())`
+            // per-candidate allocation (`CanonicalAttrs` uses `Box<[T]>`
+            // for categorical fields, so the clone allocates per
+            // list) plus the full `scheme.validate(...)` catalog walk.
+            // Keeps SC-001 p95-≤16ms benchmark off the bridge's cost
+            // path until there is real catalog work to do.
+            if self.scheme.has_diagnostic_constraints() {
+                let marking = marque_capco::CapcoMarking::from(attrs.clone());
+                let violations = self.scheme.validate(&marking);
+                for v in violations {
+                    let (Some(span), Some(severity)) = (v.span, v.severity) else {
+                        // Advisory-only violation: the catalog row
+                        // did not commit to a user-facing diagnostic.
+                        // Trace the discard so a developer running
+                        // with `MARQUE_LOG=marque_engine=trace` can
+                        // see every advisory signal the engine
+                        // swallows. No allocation cost in production
+                        // (trace is off by default).
+                        tracing::trace!(
+                            target: "marque_engine::constraint_bridge",
+                            constraint = v.constraint_label,
+                            "advisory constraint violation (no span / severity); \
+                             not surfaced as Diagnostic"
+                        );
+                        continue;
+                    };
+                    let rule_id = RuleId::new(v.constraint_label);
+                    let final_severity = self
+                        .config
+                        .rules
+                        .overrides
+                        .get(rule_id.as_str())
+                        .and_then(|s| Severity::parse_config(s))
+                        .unwrap_or(severity);
+                    if final_severity == Severity::Off {
+                        continue;
+                    }
+                    // PR 3c.B Commit 7.2 cold-land: `fix_intent_by_name`
+                    // returns `None` for every input.
+                    //
+                    // # 7.4 latent gap (rust-reviewer Item 6)
+                    //
+                    // When 7.4 populates E059 catalog rows, this branch
+                    // will produce diagnostics with `fix: None,
+                    // fix_intent: Some(...)`. The `intent_index` in
+                    // `fix_inner` filters on `(d.fix.as_ref(),
+                    // d.fix_intent.as_ref())` — only `(Some, Some)`
+                    // entries are indexed. A `fix_intent`-only
+                    // diagnostic is NOT indexed, NOT added to `fixes`,
+                    // and ends up in `remaining_diagnostics` with no
+                    // fix applied. 7.4 MUST either extend the
+                    // `intent_index` filter to admit `(_, Some(intent))`
+                    // entries OR synthesize a legacy `FixProposal`
+                    // here at bridge time (via
+                    // `Diagnostic::with_fix_and_intent`) before E059's
+                    // companion-insert fixes can flow through. The
+                    // `bridge_fix_intent_only_promotion_gate`
+                    // regression test pins this expectation today.
+                    let fix_intent = self.scheme.fix_intent_by_name(rule_id.as_str(), &attrs);
+                    let diag = Diagnostic::with_fix_intent(
+                        rule_id,
+                        final_severity,
+                        span,
+                        v.message,
+                        v.citation,
+                        fix_intent,
+                    );
+                    diagnostics.push(diag);
                 }
             }
         }

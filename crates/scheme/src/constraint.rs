@@ -33,6 +33,8 @@
 
 use crate::category::{CategoryId, TokenId};
 use crate::scheme::MarkingScheme;
+use crate::severity::Severity;
+use crate::span::Span;
 
 /// Reference to a token or category in a constraint. Kept as a small
 /// enum rather than a bare `TokenId` because some constraints are
@@ -152,11 +154,49 @@ impl Constraint {
 /// passage verbatim (FR-021 + Constitution VIII). `constraint_label`
 /// remains the short rule identifier used in diagnostic messages and
 /// log output.
+///
+/// # Optional emission fields
+///
+/// `span` and `severity` are `Option`-typed and were added in PR 3c.B
+/// Commit 7.1 to let the scheme-side constraint catalog produce
+/// diagnostics that today require a walker rule to decorate. The
+/// dyadic-constraint arms in [`evaluate`] (Conflicts/Requires/Implies/
+/// Supersedes) have no natural span or severity from the constraint
+/// declaration itself and continue to emit `None` for both fields;
+/// downstream engine layers treat `ConstraintViolation`s with `None`
+/// span or `None` severity as advisory and do NOT surface them as
+/// user-facing diagnostics. Schemes that want their `Custom` constraint
+/// catalog to be the end-state diagnostic-emission path (post PR 3c.B
+/// Commit 7) populate both fields from a catalog row.
+///
+/// (The `marque-scheme` crate is the workspace graph leaf and does not
+/// depend on the higher-layer rule / diagnostic types — the precise
+/// engine-side type the populated fields feed into is named in the
+/// engine crate's bridge code, not here.)
+///
+/// This shape was chosen over required `Span` / `Severity` fields
+/// specifically because (a) it preserves backwards compatibility with
+/// the ~25 in-tree construction sites that emit dyadic violations with
+/// no natural span/severity, and (b) it leaves room for a future
+/// "advisory ConstraintViolation that doesn't become a Diagnostic"
+/// surface (logs, audit-only signals, etc.) without inverting the
+/// crate-graph rule that `marque-scheme` is the leaf.
 #[derive(Debug, Clone)]
 pub struct ConstraintViolation {
     pub constraint_label: &'static str,
     pub message: String,
     pub citation: &'static str,
+    /// Source-position anchor for the diagnostic, when the violation
+    /// has a natural location in the input bytes. `None` when the
+    /// violation is a whole-marking fact-set property with no single
+    /// blameable token (e.g., the dyadic Conflicts/Requires arms in
+    /// [`evaluate`] today).
+    pub span: Option<Span>,
+    /// Diagnostic severity, when the catalog row commits to a fixed
+    /// severity. `None` when the violation is an advisory signal that
+    /// the engine should treat as informational only (current default
+    /// for the dyadic Conflicts/Requires arms).
+    pub severity: Option<Severity>,
 }
 
 /// Walk a scheme's declarative constraints and emit one
@@ -195,6 +235,8 @@ where
                         constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
                         citation: label,
+                        span: None,
+                        severity: None,
                     });
                 }
             }
@@ -209,6 +251,8 @@ where
                         constraint_label: name,
                         message: format!("token {left:?} requires {right:?} but it is missing"),
                         citation: label,
+                        span: None,
+                        severity: None,
                     });
                 }
             }
