@@ -65,9 +65,13 @@ and lands before Sub-PR 8.C.
 `Remove(loser) ⊕ Add(equivalent)` in one atomic audit promotion. The
 losing token is replaced by its policy-equivalent counterpart from a
 domain-vocabulary lookup. The known case:
-- JOINT + RESTRICTED → JOINT + CONFIDENTIAL (E016, fed by the CAPCO
-  foreign-disclosure-equivalence map: UK RESTRICTED ↔ US CONFIDENTIAL,
-  etc.)
+- JOINT + RESTRICTED → JOINT + CONFIDENTIAL (E016, eventually fed by
+  a foreign-equivalence vocabulary table — sourcing TBD per Open
+  Question 1 below; candidate authoritative source is CAPCO-2016
+  Appendix A §4 / Five Eyes Marking Comparisons, currently not
+  vendored. CAPCO-2016 §H.3 p56 itself does NOT publish this
+  equivalence — it only establishes that RESTRICTED is not a US
+  classification level.)
 
 A.3 does *not* require a new `ReplacementIntent` variant — the existing
 `FactRemove` + `FactAdd` compose to it, *provided the engine treats the
@@ -193,10 +197,20 @@ comes.
 
 1. **Foreign-equivalence vocabulary sourcing.** The A.3 case requires a
    policy-equivalence table (UK RESTRICTED ↔ US CONFIDENTIAL, etc.).
-   Where does this live? Candidates: (a) hand-curated `&'static`
-   table in `marque-capco::vocab`; (b) generated from a CAPCO §H.3
-   equivalence sidecar at build time; (c) generated from an ISMCAT
-   sidecar if ODNI publishes one. Pre-Stage-4: confirm sourcing.
+   CAPCO-2016 §H.3 p56 establishes only that RESTRICTED is not a US
+   classification level — it does NOT publish an equivalence table.
+   The authoritative table appears in CAPCO-2016 Appendix A §4 (Five
+   Eyes Marking Comparisons), which is not currently vendored in
+   `crates/capco/docs/`. Sourcing candidates: (a) hand-curated
+   `&'static` table in `marque-capco::vocab` transcribed from
+   Appendix A §4; (b) Appendix A §4 vendored and parsed at build
+   time, if ODNI publishes it in a machine-readable form (currently
+   human-readable PDF only — vendoring requires re-licensing
+   verification); (c) generated from a hypothetical ISMCAT sidecar
+   if ODNI ever publishes one. Pre-Stage-4: confirm sourcing and
+   verify Constitution VIII attribution of any embedded equivalence
+   text. Bilateral disclosure-policy tables (non-CAPCO sources) are
+   secondary alternatives if Appendix A §4 proves un-vendorable.
 2. **A.3 single-country JOINT branch.** User noted: when the JOINT list
    has only one non-US partner, the suggest path should *also* offer
    "or did you mean `//GBR RESTRICTED//REL TO USA, GBR`?" (the

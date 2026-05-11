@@ -5530,16 +5530,26 @@ mod tests {
         let e016: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E016").collect();
         assert_eq!(e016.len(), 1);
         assert!(e016[0].message.contains("RESTRICTED"));
-        // PR 3c.B Sub-PR 8.B — message must surface the foreign-equivalence
-        // hint so users understand the manual remap path. See module-level
-        // comment on `DeclarativeJointRestrictedRule` in `rules_declarative.rs`
-        // and the followup at
+        // PR 3c.B Sub-PR 8.B — message must surface the operational Five
+        // Eyes equivalence hint so users know how to re-mark the portion
+        // manually. The hint is framed as "per Five Eyes practice" — NOT
+        // as a §H.3 claim — because the equivalence lives in CAPCO-2016
+        // Appendix A §4 (Five Eyes Marking Comparisons), not in §H.3.
+        // See the module-level comment on `DeclarativeJointRestrictedRule`
+        // in `rules_declarative.rs` and the followup at
         // `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`.
         assert!(
             e016[0].message.contains("CONFIDENTIAL"),
-            "E016 message must surface the US ↔ UK/Commonwealth foreign-\
-             equivalence hint (RESTRICTED → CONFIDENTIAL) so the user knows \
-             how to manually remap the marking; got: {:?}",
+            "E016 message must surface the operational equivalence hint \
+             (RESTRICTED → CONFIDENTIAL per Five Eyes practice) so the \
+             user knows how to re-mark the portion; got: {:?}",
+            e016[0].message
+        );
+        assert!(
+            e016[0].message.contains("Five Eyes"),
+            "E016 message must frame the equivalence as Five Eyes practice \
+             (NOT as a §H.3 claim — Constitution VIII citation fidelity); \
+             got: {:?}",
             e016[0].message
         );
         // PR 3c.B Sub-PR 8.B — citation pin (D13 single-citation discipline).
@@ -5547,17 +5557,19 @@ mod tests {
     }
 
     /// PR 3c.B Sub-PR 8.B — pin the consciously-decided-no-fix-intent
-    /// migration state.
+    /// migration state for E016.
     ///
     /// Per the 2026-05-11 lattice-consultant session captured in
     /// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
     /// E016 is **Category A.3 — Transmute via foreign-equivalence map**:
     /// the eventual Stage-4 target is `Remove(RESTRICTED) ⊕ Add(CONFIDENTIAL)`
-    /// emitted as one atomic audit repair, driven by the CAPCO
-    /// foreign-disclosure-equivalence table. That vocabulary table does
-    /// not yet exist in `marque-capco::vocab`; until it does, the rule
-    /// emits a diagnostic with both `fix.is_none()` AND
-    /// `fix_intent.is_none()`.
+    /// emitted as one atomic audit repair, driven by a foreign-equivalence
+    /// vocabulary table. That vocabulary table does not exist in
+    /// `marque-capco::vocab` today and its source is open (see the
+    /// followup file's Open Question 1 — candidates include CAPCO-2016
+    /// Appendix A §4 / Five Eyes Marking Comparisons, currently not
+    /// vendored). Until the source is resolved, the rule emits a
+    /// diagnostic with both `fix.is_none()` AND `fix_intent.is_none()`.
     ///
     /// **Do not** dual-populate this rule with a single-fact
     /// `FactRemove(RESTRICTED, Portion)` intent in the interim — that
@@ -5565,12 +5577,16 @@ mod tests {
     /// classification level) and corrupt the audit log under
     /// Constitution V.
     ///
-    /// The G13 closure walker at
+    /// **Coverage note:** the G13 closure walker at
     /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
-    /// relies on `fix.is_some() ⇔ fix_intent.is_some()` symmetry for
-    /// every migrated rule. This test pins the asymmetric-impossible
-    /// state of E016 at the rule-emission boundary, before engine
-    /// pairing happens.
+    /// only inspects rules that auto-apply through the engine (those
+    /// emitting `AppliedFixProposal::New` records, which require
+    /// `fix_intent.is_some()`). E016 with `fix_intent: None` is never
+    /// reached by that walker — so this symmetry pin is the **only**
+    /// guard against a future commit accidentally producing an
+    /// asymmetric `(fix, fix_intent)` pair on E016. Without it, a drift
+    /// toward `fix.is_some() && fix_intent.is_none()` (or the inverse)
+    /// would slip through CI silently.
     #[test]
     fn e016_emits_no_fix_and_no_fix_intent_pending_stage4_a3_transmute() {
         let diags = lint_banner("//JOINT R USA GBR//REL TO USA, GBR");
@@ -5585,9 +5601,9 @@ mod tests {
         );
         assert!(
             e016.fix_intent.is_none(),
-            "E016 fix_intent must be None (symmetric with fix.is_none() — \
-             the G13 walker test relies on this symmetry; emitting an \
-             asymmetric pair would break tests/g13_closure_fix_intent.rs)"
+            "E016 fix_intent must be None (symmetric with fix.is_none(). \
+             The G13 walker does NOT see (None, None) rules; this test is \
+             the only guard against asymmetric drift)"
         );
     }
 
@@ -5708,12 +5724,23 @@ mod tests {
     /// reliably surface E036 because the parser may not emit `TOK_HCS`
     /// inside a JOINT banner. This symmetry pin therefore constructs
     /// `CanonicalAttrs` programmatically and calls
-    /// `DeclarativeJointHcsRule.check()` directly — same pattern as
-    /// `tests/scheme_equivalence.rs::e036_fires_on_joint_with_bare_hcs`,
-    /// but at the Rule-emission layer (Diagnostic) rather than the
-    /// scheme-validation layer (ConstraintViolation), because the
-    /// `fix.is_none() && fix_intent.is_none()` symmetry is a
-    /// Diagnostic-shape invariant.
+    /// `DeclarativeJointHcsRule.check()` directly — at the Rule-emission
+    /// layer (Diagnostic), one layer above the scheme-validation
+    /// (ConstraintViolation) layer covered by
+    /// `tests/scheme_equivalence.rs::e036_fires_on_joint_with_bare_hcs`.
+    /// The `(fix, fix_intent)` symmetry is a Diagnostic-shape invariant
+    /// that scheme-level tests cannot pin.
+    ///
+    /// **Coverage note:** the G13 closure walker at
+    /// `tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
+    /// only inspects rules that auto-apply through the engine (those
+    /// emitting `AppliedFixProposal::New` records, which require
+    /// `fix_intent.is_some()`). E036 with `fix_intent: None` is never
+    /// reached by that walker — so this symmetry pin is the **only**
+    /// guard against a future commit accidentally producing an
+    /// asymmetric `(fix, fix_intent)` pair on E036. Without it, a drift
+    /// toward `fix.is_some() && fix_intent.is_none()` (or the inverse)
+    /// would slip through CI silently.
     #[test]
     fn e036_emits_no_fix_and_no_fix_intent_pending_stage4_b_reject() {
         use crate::rules_declarative::DeclarativeJointHcsRule;
@@ -5732,7 +5759,7 @@ mod tests {
         attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
         attrs.sci_markings = vec![SciMarking::new(
             SciControlSystem::Published(SciControlBare::Hcs),
-            Box::<[SciCompartment]>::from(Vec::new()),
+            Vec::<SciCompartment>::new().into_boxed_slice(),
             None,
         )]
         .into();
@@ -5763,9 +5790,59 @@ mod tests {
         );
         assert!(
             d.fix_intent.is_none(),
-            "E036 fix_intent must be None (symmetric with fix.is_none() — \
-             the G13 walker test relies on this symmetry; emitting an \
-             asymmetric pair would break tests/g13_closure_fix_intent.rs)"
+            "E036 fix_intent must be None (symmetric with fix.is_none(). \
+             The G13 walker does NOT see (None, None) rules; this test is \
+             the only guard against asymmetric drift)"
+        );
+    }
+
+    /// PR 3c.B Sub-PR 8.B — programmatic negative case complementing
+    /// `e036_emits_no_fix_and_no_fix_intent_pending_stage4_b_reject`.
+    ///
+    /// Closes the layer-symmetry gap raised by the code-reviewer:
+    /// the positive case above tests `DeclarativeJointHcsRule.check()`
+    /// directly with programmatic `CanonicalAttrs`. The engine-path
+    /// negative case at `e036_does_not_fire_on_joint_without_hcs`
+    /// covers a different layer (engine pipeline) and inherits the
+    /// parser-gap caveat documented on
+    /// `legacy_joint_hcs_rules_do_not_fire_on_parser_path`. This test
+    /// closes that gap: it confirms `DeclarativeJointHcsRule.check()`
+    /// returns an empty `Vec` when given JOINT+non-HCS-SCI attrs, at
+    /// the same Rule-emission layer as the positive case.
+    #[test]
+    fn e036_does_not_fire_on_joint_with_non_hcs_sci_at_rule_layer() {
+        use crate::rules_declarative::DeclarativeJointHcsRule;
+        use marque_ism::{
+            CanonicalAttrs, Classification, CountryCode, JointClassification,
+            MarkingClassification, MarkingType, SciControl,
+        };
+        use marque_rules::{Rule, RuleContext};
+
+        let mut attrs = CanonicalAttrs::default();
+        attrs.classification = Some(MarkingClassification::Joint(JointClassification {
+            level: Classification::Secret,
+            countries: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into(),
+        }));
+        attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
+        // SI is permitted with JOINT (§H.3 p57: SCI excluding HCS is
+        // permitted with JOINT). The rule must NOT fire.
+        attrs.sci_controls = vec![SciControl::Si].into();
+
+        let ctx = RuleContext {
+            marking_type: MarkingType::Banner,
+            zone: None,
+            position: None,
+            page_context: None,
+            corrections: None,
+        };
+
+        let rule = DeclarativeJointHcsRule;
+        let diags = rule.check(&attrs, &ctx);
+
+        assert!(
+            diags.is_empty(),
+            "E036 must NOT fire on JOINT+SI (SCI sans HCS is permitted per \
+             §H.3 p57); got: {diags:?}"
         );
     }
 

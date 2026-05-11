@@ -525,16 +525,23 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
 // `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
 // this rule is a **Category A.3 — Transmute via foreign-equivalence map**
 // case under the eventual `Constraint::Incompatible` umbrella primitive.
-// The Stage-4 target is `Remove(RESTRICTED) ⊕ Add(CONFIDENTIAL)` via the
-// CAPCO foreign-disclosure-equivalence table (UK RESTRICTED ↔ US
-// CONFIDENTIAL, etc.) emitted as one atomic audit repair. The
-// foreign-equivalence vocabulary table does not yet exist in
-// `marque-capco::vocab`; A.3 lands when it does.
+// The Stage-4 target is `Remove(RESTRICTED) ⊕ Add(CONFIDENTIAL)` via a
+// foreign-equivalence vocabulary table (UK RESTRICTED → US CONFIDENTIAL
+// per Five Eyes practice), emitted as one atomic audit repair. The
+// vocabulary table does not exist in `marque-capco::vocab` today and
+// its source is open — see the followup file's Open Question 1.
+// Candidate authoritative sources include CAPCO-2016 Appendix A §4
+// (Five Eyes Marking Comparisons; not currently vendored in
+// `crates/capco/docs/`) and bilateral disclosure-policy tables.
+// Per Constitution VIII, CAPCO-2016 §H.3 p56 itself does NOT publish
+// this equivalence — it only says "RESTRICTED is not an authorized
+// US classification marking." A.3 lands when the source is resolved.
 //
 // For now, this rule emits a `Severity::Error` diagnostic with
 // `fix_intent: None` — the engine surfaces the error to the user but
-// applies no auto-fix. The diagnostic message names the equivalence
-// ("RESTRICTED → CONFIDENTIAL") so users can manually correct.
+// applies no auto-fix. The diagnostic message names the CONFIDENTIAL
+// hint as Five Eyes practice (not as a §H.3 claim) so the user can
+// re-mark the portion manually.
 //
 // **Do not** dual-populate this rule with a single-fact
 // `FactRemove(RESTRICTED, Portion)` intent in the interim — that would
@@ -564,14 +571,24 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
         // PR 3c.B Sub-PR 8.B — migrated to `with_fix_intent` constructor
         // signaling consciously-decided-no-fix-intent (Category A.3,
         // Stage-4 target). See module-level comment block above.
+        //
+        // Message wording per Constitution VIII (Authoritative Source
+        // Fidelity): the §H.3 p56 citation supports the prohibition and
+        // the "not a US classification level" claim verbatim from p56.
+        // The CONFIDENTIAL hint is framed as Five Eyes practice — NOT
+        // attributed to §H.3 — because the equivalence lives in
+        // CAPCO-2016 Appendix A §4 (Five Eyes Marking Comparisons), not
+        // in §H.3 itself.
         vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
-            "RESTRICTED may not be used with JOINT — the US has no \
-             equivalent classification level (the closest US equivalent \
-             of UK/Commonwealth RESTRICTED is CONFIDENTIAL; manually \
-             rewrite the marking)",
+            "RESTRICTED may not be used with JOINT — RESTRICTED is not \
+             an authorized US classification level. Re-mark the portion \
+             using an authorized US classification (per Five Eyes \
+             practice, the operational equivalent of UK/Commonwealth \
+             RESTRICTED is CONFIDENTIAL; consult Five Eyes Marking \
+             Comparisons for the authoritative table)",
             "CAPCO-2016 §H.3 p56",
             None,
         )]
