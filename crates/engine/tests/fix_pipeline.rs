@@ -192,10 +192,23 @@ fn classifier_id_propagated_when_configured() {
 /// fields (`recognition`, `runner_up_ratio`, `features`) are emitted
 /// only when this build is `marque-mvp-2` (default), matching the
 /// CLI emitter's dispatch (`marque/src/render.rs::render_audit_record`).
+///
+/// Per the v2 schema contract documented on `AppliedFix` and the CLI
+/// emitter at `marque/src/render.rs:applied_fix_to_audit_json_v2`,
+/// `source` and `confidence` (plus its derived `recognition` /
+/// `runner_up_ratio` / `features`) are read from the **top-level
+/// snapshot fields** on `AppliedFix`, NOT from `proposal.*`. Today the
+/// two are identical copies (`__engine_promote` snapshots them
+/// unchanged), but a future engine-side adjustment at promotion time
+/// (e.g., region-context calibration) must reflect in v2 output. This
+/// helper matches the CLI emitter verbatim so snapshot regressions
+/// here track the v2 contract, not just the snapshot accident. `rule`
+/// and `span` / `original` / `replacement` / `migration_ref` stay on
+/// `proposal.*` because they have no separate top-level snapshot.
 fn applied_fix_to_json(
     fix: &marque_rules::AppliedFix<marque_capco::CapcoScheme>,
 ) -> serde_json::Value {
-    let source_str = match fix.proposal.source {
+    let source_str = match fix.source {
         marque_rules::FixSource::BuiltinRule => "BuiltinRule",
         marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
         marque_rules::FixSource::MigrationTable => "MigrationTable",
@@ -212,7 +225,7 @@ fn applied_fix_to_json(
         },
         "original": fix.proposal.original.as_ref(),
         "replacement": fix.proposal.replacement.as_ref(),
-        "confidence": fix.proposal.confidence.combined(),
+        "confidence": fix.confidence.combined(),
         "migration_ref": fix.proposal.migration_ref,
         "timestamp": humantime::format_rfc3339(fix.timestamp).to_string(),
         "classifier_id": fix.classifier_id.as_ref().map(|s| s.as_ref()),
@@ -221,7 +234,7 @@ fn applied_fix_to_json(
     });
 
     if marque_engine::AUDIT_SCHEMA_IS_V2 {
-        let c = &fix.proposal.confidence;
+        let c = &fix.confidence;
         let object = record.as_object_mut().expect("record is a JSON object");
         object.insert("recognition".to_owned(), json!(c.recognition));
         if let Some(r) = c.runner_up_ratio {

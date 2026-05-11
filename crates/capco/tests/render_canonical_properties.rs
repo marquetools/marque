@@ -231,21 +231,18 @@ static BANNER_PAIRS: &[CanonPair] = &[
         canonical: "SECRET//RD/FRD//NOFORN",
         citation: "CAPCO-2016 §A.6 p16 + §H.6 Table 4 §6 p36",
     },
-    // §A.6 p16 + Table 4 §8 p36: IC dissem in Register order
-    // (NOFORN < ORCON … reorder via the RELIDO + NOFORN flip below).
-    // NB: The pair shows two valid Register-order inputs producing
-    // the same canonical form. (A "reverse-order" probe of
-    // `RELIDO/NOFORN` would also test renderer canonicalization, but
-    // the current parser rejects out-of-Register-order dissem inputs
-    // — that's a parser limitation outside this commit's scope.
-    // Tracked as an open question for the parser owner.)
-    CanonPair {
-        name: "dissem/register-order-noforn-before-relido",
-        a: "SECRET//NOFORN/RELIDO",
-        b: "SECRET//NOFORN/RELIDO",
-        canonical: "SECRET//NOFORN/RELIDO",
-        citation: "CAPCO-2016 §A.6 p16 + §H.8 Table 4 §8 p36",
-    },
+    // §A.6 p16 + Table 4 §8 p36: IC dissem Register order would be a
+    // natural CanonPair candidate (NOFORN < ORCON < RELIDO), but the
+    // current parser rejects out-of-Register-order dissem inputs, so
+    // we cannot construct a meaningful A/B pair where `a` and `b` are
+    // distinct lattice-equal forms parsed via the public `Engine::lint`
+    // path. The §H.8 register-order property is exercised by the per-
+    // axis fixture suite (`render_canonical_axis_fixtures.rs`) instead;
+    // omitting the row here keeps the table composed entirely of
+    // meaningful A/B comparisons. Re-add when the parser accepts
+    // out-of-order dissem and produces lattice-equal `MarkingScheme`
+    // values for both inputs (tracked for the parser owner).
+    //
     // §A.6 p16: Multiple SCI control systems `/`-separated, sorted
     // numeric-then-alpha. SI < TK alphabetically.
     CanonPair {

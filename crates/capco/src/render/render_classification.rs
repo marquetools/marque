@@ -188,14 +188,37 @@ fn render_joint(j: &JointClassification, scope: Scope, out: &mut dyn fmt::Write)
     };
     out.write_str(level)?;
 
-    // Alphabetical (trigraphs first, then tetragraphs — both alpha-sorted
-    // per §H.3 p56). TODO(commit-6): distinguish trigraph vs tetragraph
-    // sort buckets when tetragraph support lands in the JOINT list (the
-    // existing `JointClassification.countries: Vec<CountryCode>` uses
-    // `CountryCode` which currently models trigraphs only).
-    let mut codes: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
-    codes.sort_unstable();
-    for code in codes {
+    // Per §H.3 p56: "Country trigraph codes are listed alphabetically
+    // followed by tetragraph codes in alphabetical order." `CountryCode`
+    // supports 2-16 bytes — trigraphs (3 chars: CAN, GBR, USA, ...) and
+    // tetragraphs (4 chars: NATO, FVEY, ACGU, ...) both fit. Bucket by
+    // length, alpha-sort within each bucket, emit trigraphs first then
+    // tetragraphs. Mirrors the bucketing in `render_fgi` (§A.6 p16) and
+    // `render_rel_to` (§H.8 p150-151).
+    //
+    // Today's parser populates `JointClassification.countries` only with
+    // trigraphs (the parser's JOINT path runs `parse_fgi_classification`
+    // gated on `length == 3`), but the renderer must produce canonical
+    // output for all valid `CountryCode` values — programmatically
+    // constructed JOINT markings (e.g., from a lattice projection or a
+    // future parser extension) carrying tetragraphs would otherwise
+    // render in a non-canonical interleaved order.
+    let mut trigraphs: Vec<&str> = Vec::new();
+    let mut tetragraphs: Vec<&str> = Vec::new();
+    for c in j.countries.iter() {
+        let s = c.as_str();
+        if s.len() == 3 {
+            trigraphs.push(s);
+        } else {
+            // Tetragraphs (4 chars) per §H.3 p56; any other length is
+            // defensive — the type permits it and the renderer should
+            // emit something deterministic rather than dropping bytes.
+            tetragraphs.push(s);
+        }
+    }
+    trigraphs.sort_unstable();
+    tetragraphs.sort_unstable();
+    for code in trigraphs.into_iter().chain(tetragraphs) {
         out.write_char(' ')?;
         out.write_str(code)?;
     }
