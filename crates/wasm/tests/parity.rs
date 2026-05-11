@@ -166,21 +166,24 @@ fn wasm_fix_clean_input_is_unchanged() {
 
 #[wasm_bindgen_test]
 fn wasm_fix_applies_correction() {
-    // E001: abbreviated dissem control. fix should canonicalize NF → NOFORN.
-    let result =
-        marque_wasm::fix_native("SECRET//NF\n", 0.0, None).expect("fix_native must succeed");
+    // E002: REL TO missing USA trigraph. fix should inject `USA` and
+    // canonicalize the list (USA-first alpha per §H.8 p150-151).
+    // Pre-PR-3c.B Commit 6 fixture anchored on E001 (NF → NOFORN),
+    // retired into the renderer at that commit.
+    let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", 0.0, None)
+        .expect("fix_native must succeed");
     let parsed: serde_json::Value =
         serde_json::from_str(&result).expect("fix_native must return valid JSON");
     let fixed = parsed["fixed_text"].as_str().unwrap();
     assert!(
-        fixed.contains("NOFORN"),
-        "fix under wasm32 should expand NF → NOFORN, got: {fixed}"
+        fixed.contains("USA"),
+        "fix under wasm32 should inject USA into REL TO list, got: {fixed}"
     );
 }
 
 #[wasm_bindgen_test]
 fn wasm_fix_invalid_threshold_returns_error() {
-    let result = marque_wasm::fix_native("SECRET//NF\n", -1.0, None);
+    let result = marque_wasm::fix_native("SECRET//REL TO GBR\n", -1.0, None);
     assert!(
         result.is_err(),
         "fix_native must reject negative threshold under wasm32"
@@ -206,9 +209,16 @@ fn wasm_lint_batch_empty_array() {
 
 #[wasm_bindgen_test]
 fn wasm_lint_batch_two_entries() {
+    // Pre-PR-3c.B Commit 6 the fixtures here anchored on E001
+    // (SECRET//NF → diagnostic) and E001 absence (SECRET//NOFORN →
+    // clean). E001 retired into `MarkingScheme::render_canonical` at
+    // that commit. The replacement diagnostic-firing fixture is
+    // SECRET//REL TO GBR (E002, REL TO missing USA trigraph,
+    // §H.8 p150-151); the clean fixture switches to the canonical
+    // SECRET//REL TO USA, GBR (USA-first alpha).
     let entries = r#"[
-        {"id": "inv", "text": "SECRET//NF\n"},
-        {"id": "ok",  "text": "SECRET//NOFORN\n"}
+        {"id": "inv", "text": "SECRET//REL TO GBR\n"},
+        {"id": "ok",  "text": "SECRET//REL TO USA, GBR\n"}
     ]"#;
     let result =
         marque_wasm::lint_batch_native(entries, None).expect("lint_batch_native must succeed");
@@ -224,11 +234,11 @@ fn wasm_lint_batch_two_entries() {
     assert_eq!(arr[1]["id"], "ok");
     assert!(
         !arr[0]["diagnostics"].as_array().unwrap().is_empty(),
-        "SECRET//NF must produce diagnostics under wasm32"
+        "SECRET//REL TO GBR must produce diagnostics under wasm32"
     );
     assert!(
         arr[1]["diagnostics"].as_array().unwrap().is_empty(),
-        "SECRET//NOFORN must be clean under wasm32"
+        "SECRET//REL TO USA, GBR must be clean under wasm32"
     );
 }
 
