@@ -988,6 +988,23 @@ impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
 // TOK_EXDIS }` constraint on `CapcoScheme`. The wrapper below
 // dispatches via the constraint's `name` and emits the user-facing
 // diagnostic.
+//
+// **Migration status (PR 3c.B Sub-PR 8.E, 2026-05-11):** consciously
+// landed at `fix_intent: None`. Per the 2026-05-11 lattice-consultant
+// session captured in
+// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
+// this rule is a **Category B — genuine mutual exclusion without
+// policy decision** case under the eventual `Constraint::Incompatible`
+// umbrella primitive. The rule's `check()` fires on both banner and
+// portion contexts (it ignores `_ctx: &RuleContext`), and §H.9 does
+// not specify a banner-level supersession — only that the two tokens
+// MUST NOT coexist (CAPCO-2016 §H.9 p172 ("EXDIS and NODIS markings
+// cannot be used together") + §H.9 p174 ("NODIS and EXDIS markings
+// cannot be used together")). Portion-level supersession (NODIS
+// supersedes EXDIS) is E041's scope-narrower territory and lands as
+// Category A.1 in the same followup. Stage-4 target:
+// `Reject { suggest: None }` — emit the error diagnostic with no
+// auto-applied fix.
 
 pub(crate) struct DeclarativeNodisConflictsExdisRule;
 
@@ -1012,7 +1029,11 @@ impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
         // needs to remove one of them to resolve.
         let span = first_span_of(attrs, TokenKind::NonIcDissem);
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 8.E — migrated to `with_fix_intent` constructor
+        // signaling consciously-decided-no-fix-intent (Category B Reject,
+        // Stage-4 target). See module-level Migration status comment block
+        // above.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
