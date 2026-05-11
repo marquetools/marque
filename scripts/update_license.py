@@ -3,6 +3,7 @@
 # requires-python = ">=3.10"
 # ///
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
 # NOTE: SPDX identifiers at the top of a file apply only to that file.
 """
 Propagate changes to the Marque License across the repo. By default, it reads the new license text from LICENSE.md in the repo root, but you can specify a different file or read from standard input.
