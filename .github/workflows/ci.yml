@@ -25,7 +25,7 @@ jobs:
     name: Format + Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -48,7 +48,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -85,7 +85,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -143,7 +143,7 @@ jobs:
     name: Supply chain audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
       - uses: EmbarkStudios/cargo-deny-action@f28dad79a1c0736fb9bef3766fec993bb67416c5
 
   # Whitepaper §8.5 / gap register #14 — the Constitution v1.2.0
@@ -170,7 +170,7 @@ jobs:
     name: Supply chain audit (WASM-safe subgraph)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       # cargo-deny shells out to `cargo metadata` to resolve the
       # workspace graph, which requires a cargo binary that
@@ -206,7 +206,7 @@ jobs:
     name: REUSE compliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       # pipx is pre-installed on ubuntu-latest and keeps `reuse` isolated
       # from any system Python packages. Avoids pulling an external
@@ -226,7 +226,7 @@ jobs:
     name: Vendored reference integrity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       # Gap register #11 / whitepaper §7.3 — SHA256 checksums on the
       # vendored authoritative references (CAPCO PDFs) so any silent
@@ -250,7 +250,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -294,7 +294,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -339,7 +339,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
