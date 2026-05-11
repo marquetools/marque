@@ -143,7 +143,7 @@ jobs:
       app_id: "${{ needs.dispatch.outputs.app_id }}"
       app_private_key: "${{ needs.dispatch.outputs.app_private_key }}"
       gemini_debug: ${{ vars.GEMINI_DEBUG }}
-      mise_env: ${{ vars.MISE_ENV }}
+      mise_env: ${{ vars.MISE_ENV || '' }}
     secrets: "inherit"
 
   triage:
