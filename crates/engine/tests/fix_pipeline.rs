@@ -46,8 +46,12 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
 
-    // Only E002 (confidence 0.97 ≥ 0.95) should be applied. E021 is
-    // a no-fix error, so it doesn't appear in `applied`.
+    // Only E002 (confidence 0.97 ≥ 0.95) should be applied. The
+    // remaining diagnostics on this fixture are E014 / E015 (the
+    // JOINT-participants-missing-from-REL-TO and non-US
+    // classification-without-dissem-control errors, both no-fix on
+    // the `//JOINT SECRET USA GBR\n` second line) — verified below
+    // in the `remaining_diagnostics` assertion.
     assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
     assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
     assert!((result.applied[0].proposal.confidence.combined() - 0.97).abs() < 0.001);

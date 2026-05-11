@@ -75,7 +75,10 @@ seemed to require. Specifically:
   convention) migrate to **dual-population**: emit
   `Diagnostic.fix_intent = Some(FixIntent::Recanonicalize { ... })`
   AND `Diagnostic.fix = Some(FixProposal { replacement: <bytes from
-  rule's lint-time render_canonical call>, ... })`.
+  rule's in-rule canonicalization helper —
+  `canonicalize_trigraph_list` + `dedup_country_codes`, byte-identical
+  to what `render_canonical` would produce on the matching axis /
+  scope; the helpers retire at Commit 10's atomic cutover>, ... })`.
 - 13 form rules + the E060 walker retire entirely (renderer absorbs
   them by construction; no residual emit needed).
 - `fix_intent_to_legacy_proposal` stays `unimplemented!()`. The

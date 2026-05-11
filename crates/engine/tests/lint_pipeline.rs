@@ -163,6 +163,11 @@ fn diagnostic_carries_citation() {
 fn diagnostic_span_is_byte_precise() {
     // FR-002: every diagnostic must carry a span pointing into the original
     // source. Phase 3 replaced the Phase 2 Span::new(0, 0) placeholders.
+    // E002's REL TO span anchors on the REL-TO trigraph list (the
+    // single existing `GBR` here); pre-PR-3c.B Commit 6 fixture
+    // anchored on E001's `NF` substring — both exercise the same
+    // FR-002 invariant that the span points at the bytes the
+    // diagnostic is about, not a placeholder.
     let src = b"SECRET//REL TO GBR\n";
     let result = engine().lint(src);
     let e002 = result
@@ -172,6 +177,13 @@ fn diagnostic_span_is_byte_precise() {
         .expect("E002 must fire");
     assert!(e002.span.start > 0, "span must not be a placeholder");
     assert!(e002.span.end > e002.span.start);
+    // The span must point at the literal `GBR` bytes (the only REL-TO
+    // trigraph in this fixture).
+    assert_eq!(
+        e002.span.as_str(src).unwrap(),
+        "GBR",
+        "FR-002: E002's span must point at the REL-TO trigraph bytes"
+    );
 }
 
 // ---------------------------------------------------------------------------
