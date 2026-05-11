@@ -1683,116 +1683,30 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
 // for the architectural rationale.
 
 // ===========================================================================
-// PR 3b.E (T026e) — SCI per-system catalog walker (E059)
+// PR 3b.E (T026e) — SCI per-system catalog walker (E059) — RETIRED 3c.B Commit 7.4
 // ===========================================================================
 //
-// `DeclarativeSciPerSystemRule` is the single walker that dispatches over
-// the 5-row SCI per-system catalog declared in
-// `crate::scheme::SCI_PER_SYSTEM_CATALOG` (and registered as
-// `Constraint::Custom` rows in `CapcoScheme::build_constraints` under the
-// "PR 3b.E (T026e) — SCI per-system catalog (§H.4)" section).
+// The walker `DeclarativeSciPerSystemRule` (rule ID E059) retired in PR
+// 3c.B Commit 7.4. Its 5 SCI per-system catalog rows now fire through
+// the engine's constraint-catalog bridge via the direct path
+// `CapcoScheme::bridge_sci_per_system_diagnostics`, with the row's
+// `FixProposal` payload preserved (companion-insertion at the dissem-
+// block anchor, ORCON-USGOV → ORCON token replacement). The bridge
+// folds the catalog row names (`sci-per-system/<purpose>`) into
+// `Diagnostic.rule = "E059"` so audit-stream consumers and
+// `.marque.toml [rules] E059 = "off"` config overrides continue to
+// work unchanged across the deletion.
 //
-// # Walker rule-ID convention
+// The dispatch is "direct" — not via `ConstraintViolation` — because
+// `ConstraintViolation` (in `marque-scheme`) cannot carry `FixProposal`
+// (in `marque-rules`) without inverting Constitution VII's
+// dependency-graph directionality, and a single SCI per-system row can
+// emit multiple violations with distinct fixes (HCS-O missing ORCON
+// AND missing NOFORN = 2 violations) which a `(name, attrs)` helper
+// cannot disambiguate. The catalog rows remain declared as
+// `Constraint::Custom` entries in `CapcoScheme::build_constraints()`
+// for documentation and naming-prefix invariants; the bridge takes
+// the inherent-method shortcut.
 //
-// Per the PR 3b.E planning doc §4.2 + PM directive: ONE walker rule
-// `E059` with a fresh ID. All emitted diagnostics carry
-// `Diagnostic.rule = "E059"`. Per-row identification flows via the
-// catalog row's `name` field (always `sci-per-system/<purpose>`) into
-// the diagnostic message text. The legacy `E042`–`E051` IDs are NOT
-// preserved as severity-config aliases (per
-// `feedback_pre_users_no_deprecation_phasing.md`: marque is pre-users;
-// rewrite freely).
-//
-// # Severity convention
-//
-// The walker's `default_severity()` is `Severity::Warn` (matches the
-// per-row authoring intent on every PR-E row). Per-row severities are
-// stored in `SciPerSystemRow.severity` and the emit helper escalates
-// per-branch to `Severity::Error` no-fix when no IC dissem block exists
-// (companion-insertion would need to synthesize a whole `//`-separated
-// category from rule context, which is unsafe; same policy as E040).
-// The engine's severity-override layer can downgrade or upgrade per
-// `.marque.toml [rules] E059 = "off|warn|error|..."`.
-//
-// # Span anchoring (varies by emit-branch shape)
-//
-// **Companion-insertion branches** (missing ORCON / missing NOFORN):
-// the diagnostic anchors at the offending SCI marking token via
-// `first_sci_span(attrs)` (which walks `attrs.token_spans` and returns
-// the span of the first `TokenKind::SciSystem` / `SciControl` /
-// `SciCompartment` / `SciSubCompartment` token in document order). The
-// fix span is a zero-width insertion at the end of the IC dissem block
-// — i.e., the diagnostic and fix span differ, and the user sees the SCI
-// marking that triggered the requirement while the edit applies at the
-// dissem-block anchor where the insertion belongs. Same diagnostic-vs-
-// fix-span split used by `SarPortionFormRule` (E026).
-//
-// **Token-replacement branches** (e.g., HCS-O / HCS-P-sub / SI-G with
-// ORCON-USGOV present → replace with ORCON): both the diagnostic and
-// the fix anchor on the offending dissem token's own span so the user
-// sees the dissem token directly. There is no SCI-vs-dissem split for
-// these branches.
-//
-// `first_sci_span` returns the lexically-first SCI token regardless of
-// which row matched — preserved verbatim from the legacy E042–E051
-// rules (a pre-existing imperfection; on a multi-marking portion like
-// `(TS//SI-G HCS-O//OC-USGOV/NF)` the row #1 (HCS-O) diagnostic anchors
-// at `SI-G`). PR 4's per-category Lattice impls + dedicated span-
-// resolution machinery are expected to address this.
-
-pub(crate) struct DeclarativeSciPerSystemRule;
-
-impl Rule<CapcoScheme> for DeclarativeSciPerSystemRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("E059")
-    }
-    fn name(&self) -> &'static str {
-        "sci-per-system-catalog"
-    }
-    fn default_severity(&self) -> Severity {
-        // Catalog rows individually carry `Severity::Warn` (the fix-and-
-        // warn pattern from the legacy E042–E051 cluster). The emit
-        // helper escalates per-branch to `Severity::Error` no-fix when
-        // no IC dissem block exists. `default_severity` governs the
-        // no-override case ONLY — if a user sets
-        // `[rules] E059 = "error"`, the engine's severity-override
-        // layer replaces every emitted `Diagnostic.severity` with
-        // `Error`. A per-row severity floor mechanism (preventing
-        // config from downgrading specific rows below their authoring
-        // intent) does not exist in the engine and is not in scope for
-        // PR E.
-        Severity::Warn
-    }
-
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        // PR 3b.E perf-1: per-portion early-out guard. All PR-E rows
-        // are SCI-axis-only — if `attrs.sci_markings` is empty, no row
-        // can fire and the catalog walk is skipped entirely. On a 10KB
-        // document where most portions are prose body text (no SCI
-        // markings), this is a single boolean check that costs
-        // effectively nothing.
-        if attrs.sci_markings.is_empty() {
-            return Vec::new();
-        }
-
-        // PR 3b.E perf-2: direct catalog-row dispatch. Walk the static
-        // catalog table; for each row whose presence predicate fires,
-        // call `sci_per_system_emit` with the row in hand — no string-
-        // keyed lookup, no wrapper indirection. The explicit per-row
-        // presence check elides the function-call overhead for non-
-        // firing rows; `sci_per_system_emit` also re-checks presence
-        // internally (idempotent — predicates are pure functions of
-        // `attrs`) so the trait/validate path through
-        // `sci_per_system_catalog_eval`, which calls emit without
-        // going through this walker, stays correct.
-        let mut diags = Vec::new();
-        for row in crate::scheme::sci_per_system_catalog() {
-            if !(row.presence)(attrs) {
-                continue;
-            }
-            let row_diags = crate::scheme::sci_per_system_emit(attrs, row);
-            diags.extend(row_diags);
-        }
-        diags
-    }
-}
+// See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md`
+// (Amendment 4 for the fix-flow architectural decision).

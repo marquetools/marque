@@ -76,15 +76,26 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));
             }
         }
-        // PR 3c.B Commit 7.3: emulate the engine's constraint-catalog
-        // bridge here so fixtures that rely on bridge-emitted
-        // diagnostics (E058 class-floor — and post-7.4 E059 SCI per-
-        // system) match. Mirrors the dispatch in
-        // `crates/engine/src/engine.rs` lint loop: gate on
-        // `has_diagnostic_constraints()`, walk `scheme.validate`,
-        // filter to populated-span/severity entries, and fold the
-        // catalog row's `constraint_label` to the bridge-level rule
-        // ID. This module-level test deliberately avoids depending on
+        // PR 3c.B Commit 7.3 + 7.4: emulate the engine's constraint-
+        // catalog bridge here so fixtures that rely on bridge-emitted
+        // diagnostics (E058 class-floor, E059 SCI per-system) match.
+        // Mirrors the dispatch in `crates/engine/src/engine.rs` lint
+        // loop:
+        //
+        //   1. `scheme.validate(...)` for the ConstraintViolation
+        //      envelope path (class-floor; E058). Gate on
+        //      `has_diagnostic_constraints()`, filter populated
+        //      span/severity, fold the row name to the bridge-level
+        //      rule ID.
+        //   2. `scheme.bridge_sci_per_system_diagnostics(...)` for the
+        //      direct path (SCI per-system; E059) — bypasses the
+        //      ConstraintViolation envelope so `FixProposal` can ride
+        //      along with each diagnostic. This test only matches on
+        //      `(rule_id, span)` tuples, so the fix is informational
+        //      here, but the path exists to keep parity with the
+        //      engine's bridge.
+        //
+        // This module-level test deliberately avoids depending on
         // `marque-engine` (line 13 docstring) so the bridge logic is
         // re-implemented locally here.
         if scheme.has_diagnostic_constraints() {
@@ -105,6 +116,13 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                     v.constraint_label
                 };
                 out.push((rule_id.to_owned(), span.start, span.end));
+            }
+            for diag in scheme.bridge_sci_per_system_diagnostics(&attrs, None) {
+                out.push((
+                    diag.rule.as_str().to_owned(),
+                    diag.span.start,
+                    diag.span.end,
+                ));
             }
         }
     }

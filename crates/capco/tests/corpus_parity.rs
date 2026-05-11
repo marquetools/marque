@@ -165,27 +165,28 @@ fn rule_count_reflects_registration_changes() {
     // (Stage 4). Net delta: -3 rules (4 retired + 1 walker added).
     // Final: 50 - 3 = 47.
     //
-    // PR 3c.B Commit 7.3 (walker decomposition step 1):
-    // `DeclarativeClassFloorRule` (rule ID E058) retired. The 27
-    // class-floor catalog rows still fire — they now flow through the
-    // engine's constraint-catalog bridge directly, with `class_floor_emit`
-    // populating `ConstraintViolation::{span, severity}` and the bridge
-    // folding `E058/...` / `class-floor/...` row names to
-    // `Diagnostic.rule = "E058"` for audit-stream + config-override
-    // continuity. Net delta: -1. Final: 33 - 1 = 32.
+    // PR 3c.B Commit 7.3 + 7.4 (walker decomposition):
+    // `DeclarativeClassFloorRule` (E058, 7.3) and
+    // `DeclarativeSciPerSystemRule` (E059, 7.4) retired. The 32 catalog
+    // rows (27 class-floor + 5 SCI per-system) still fire — they flow
+    // through the engine's constraint-catalog bridge. Class-floor uses
+    // the `ConstraintViolation` envelope path (no fixes); SCI per-system
+    // uses the direct `CapcoScheme::bridge_sci_per_system_diagnostics`
+    // path so fixes (`FixProposal`) survive the deletion. Net delta:
+    // -2 (7.3 -1; 7.4 -1). Final: 33 - 2 = 31.
     //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        32,
+        31,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
-         retires `DeclarativeClassFloorRule` (E058) — its 27 catalog \
-         rows fire via the engine's constraint-catalog bridge — net \
-         delta -1. Final: 32. PR 3c.B Commit 7.4 will retire E059 \
-         (SCI per-system walker) the same way. See \
+         + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
+         `DeclarativeSciPerSystemRule` (E059); their 27 + 5 catalog \
+         rows fire via the engine's bridge — net delta -2. Final: \
+         31. See \
          `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

@@ -913,34 +913,22 @@ impl Engine {
                     if final_severity == Severity::Off {
                         continue;
                     }
-                    // PR 3c.B Commit 7.2 cold-land: `fix_intent_by_name`
-                    // returns `None` for every input.
-                    //
-                    // # 7.4 latent gap (rust-reviewer Item 6)
-                    //
-                    // When 7.4 populates E059 catalog rows, this branch
-                    // will produce diagnostics with `fix: None,
-                    // fix_intent: Some(...)`. The `intent_index` in
-                    // `fix_inner` filters on `(d.fix.as_ref(),
-                    // d.fix_intent.as_ref())` — only `(Some, Some)`
-                    // entries are indexed. A `fix_intent`-only
-                    // diagnostic is NOT indexed, NOT added to `fixes`,
-                    // and ends up in `remaining_diagnostics` with no
-                    // fix applied. 7.4 MUST either extend the
-                    // `intent_index` filter to admit `(_, Some(intent))`
-                    // entries OR synthesize a legacy `FixProposal`
-                    // here at bridge time (via
-                    // `Diagnostic::with_fix_and_intent`) before E059's
-                    // companion-insert fixes can flow through. The
-                    // `bridge_fix_intent_only_promotion_gate`
-                    // regression test pins this expectation today.
-                    // `fix_intent_by_name` resolves a per-row fix
-                    // intent — pass the raw `constraint_label` (the
-                    // catalog row's `name`), NOT the folded
-                    // `rule_id`. The fold above collapses 27
+                    // `fix_intent_by_name` resolves a per-row fix intent
+                    // for the class-floor catalog rows; pass the raw
+                    // `constraint_label` (the catalog row's `name`), NOT
+                    // the folded `rule_id`. The fold above collapses 27
                     // class-floor rows to `"E058"`; the scheme-side
                     // helper needs row-level precision to pick the
-                    // correct `FixIntent`.
+                    // correct `FixIntent`. Today (PR 3c.B Commit 7.4
+                    // landed) this returns `None` for every input —
+                    // class-floor violations require human review per
+                    // §H.5 / §H.6, so no fix intent populates. The
+                    // SCI per-system catalog (E059) takes the direct
+                    // `bridge_sci_per_system_diagnostics` path below
+                    // because its fix-flow needs (legacy `FixProposal`
+                    // payload, multiple violations per row with
+                    // distinct fixes) cannot be expressed through this
+                    // single-FixIntent-per-violation interface.
                     let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, &attrs);
                     let diag = Diagnostic::with_fix_intent(
                         rule_id,
@@ -952,6 +940,38 @@ impl Engine {
                     );
                     diagnostics.push(diag);
                 }
+
+                // PR 3c.B Commit 7.4 — SCI per-system catalog direct path.
+                //
+                // The SCI per-system catalog rows produce fixes (companion-
+                // insertion at the dissem-block anchor; ORCON-USGOV → ORCON
+                // replacement). `ConstraintViolation` cannot carry
+                // `FixProposal` (marque-scheme is the graph leaf;
+                // marque-rules sits above), and a single row can emit
+                // multiple violations with distinct fixes which a
+                // (name, attrs) helper cannot disambiguate. The fix path
+                // takes the direct route: `CapcoScheme` returns full
+                // `Diagnostic` values straight from the catalog's emit
+                // bodies, with `FixProposal` intact. The retired walker
+                // `DeclarativeSciPerSystemRule` did the same dispatch
+                // internally; relocating it to the scheme keeps the
+                // catalog as the single source of truth.
+                //
+                // Severity override resolved against the bridge-emitted
+                // rule id `"E059"` (registered in the canonicalizer via
+                // `CapcoScheme::bridge_emitted_rule_ids`). `Severity::Off`
+                // suppresses the entire catalog (FR-008); a non-`Off`
+                // override replaces each emitted diagnostic's severity.
+                let e059_override = self
+                    .config
+                    .rules
+                    .overrides
+                    .get("E059")
+                    .and_then(|s| Severity::parse_config(s));
+                diagnostics.extend(
+                    self.scheme
+                        .bridge_sci_per_system_diagnostics(&attrs, e059_override),
+                );
             }
         }
 

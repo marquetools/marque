@@ -2212,9 +2212,84 @@ impl CapcoScheme {
     ///     `E058/...` / `class-floor/...` constraint-label names to
     ///     this collapsed ID.
     ///
-    /// PR 3c.B Commit 7.4 will add `("E059", "sci-per-system-catalog")`.
+    /// PR 3c.B Commit 7.4 added `("E059", "sci-per-system-catalog")`.
     pub fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
-        &[("E058", "class-floor-catalog")]
+        &[
+            ("E058", "class-floor-catalog"),
+            ("E059", "sci-per-system-catalog"),
+        ]
+    }
+
+    /// Walk the SCI per-system catalog and return one `Diagnostic` per
+    /// firing emit-branch, with the row's `FixProposal` attached
+    /// (matching the retired `DeclarativeSciPerSystemRule` walker's
+    /// output byte-for-byte).
+    ///
+    /// # Why this bypasses the `ConstraintViolation` envelope
+    ///
+    /// The class-floor catalog (PR 3c.B Commit 7.3) emits diagnostics
+    /// through the standard `MarkingScheme::validate()` →
+    /// `Vec<ConstraintViolation>` → engine bridge path because its
+    /// rows produce no fixes (every class-floor violation requires
+    /// human review). The SCI per-system catalog rows DO produce
+    /// fixes — companion-insertion at the dissem-block anchor and
+    /// `ORCON-USGOV → ORCON` token replacement — and a single row
+    /// can emit multiple diagnostics (HCS-O missing ORCON AND
+    /// missing NOFORN → 2 violations, each with its own fix).
+    ///
+    /// `ConstraintViolation` (in `marque-scheme`) cannot carry a
+    /// `FixProposal` (in `marque-rules`) because `marque-scheme` is
+    /// the workspace dependency-graph leaf (Constitution VII). A
+    /// `fix_intent_by_name(name, attrs)` helper called per
+    /// `ConstraintViolation` cannot disambiguate "which of N
+    /// violations on this row do I synthesize a fix for" with only
+    /// `(name, attrs)` as input. Rather than thread message text
+    /// through the bridge for disambiguation, the SCI per-system
+    /// rows take the direct path: this method returns full
+    /// `Diagnostic` values straight from `sci_per_system_emit`, the
+    /// engine bridge invokes it once per candidate (gated on
+    /// `[rules] E059 != "off"`), and the existing fix-promotion
+    /// path treats each diagnostic identically to a registered
+    /// `Rule` impl's output.
+    ///
+    /// # Severity override handling
+    ///
+    /// The caller passes the resolved `Severity` for `E059`
+    /// (`severity_override` = the `[rules] E059 = ...` config, or
+    /// `None` to use each diagnostic's authoring severity). When
+    /// `severity_override = Some(Severity::Off)` the method returns
+    /// an empty `Vec` (FR-008: an `Off`-severity diagnostic is
+    /// unrepresentable). A non-`Off` override replaces the per-
+    /// diagnostic severity uniformly.
+    pub fn bridge_sci_per_system_diagnostics(
+        &self,
+        attrs: &CanonicalAttrs,
+        severity_override: Option<marque_rules::Severity>,
+    ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
+        // FR-008 early-out — `Off` suppresses the entire catalog.
+        if matches!(severity_override, Some(marque_rules::Severity::Off)) {
+            return Vec::new();
+        }
+        // Hot-path early-out — every SCI per-system row is SCI-axis-
+        // only. If no SCI markings are present, no row can fire and
+        // the catalog walk costs effectively nothing. Mirrors the
+        // retired walker's `attrs.sci_markings.is_empty()` guard.
+        if attrs.sci_markings.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for row in SCI_PER_SYSTEM_CATALOG {
+            if !(row.presence)(attrs) {
+                continue;
+            }
+            for mut diag in sci_per_system_emit(attrs, row) {
+                if let Some(sev) = severity_override {
+                    diag.severity = sev;
+                }
+                out.push(diag);
+            }
+        }
+        out
     }
 }
 
@@ -4645,20 +4720,15 @@ pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSy
     SCI_PER_SYSTEM_CATALOG.iter().find(|row| row.name == name)
 }
 
-/// Iterate the full SCI per-system catalog. Used by the walker
-/// `DeclarativeSciPerSystemRule::check` to dispatch over every row.
-pub(crate) fn sci_per_system_catalog() -> &'static [SciPerSystemRow] {
-    SCI_PER_SYSTEM_CATALOG
-}
-
 /// Single source of truth for the SCI per-system catalog's emit logic.
-/// Both the walker hot path (`DeclarativeSciPerSystemRule::check` calls
-/// this directly per row) and the trait/validate path
-/// ([`sci_per_system_catalog_eval`]) converge through here, so a
-/// citation, message-text, fix-shape, or severity-escalation change to
-/// one row cannot silently diverge between the two emitters.
+/// Post-PR-3c.B-Commit-7.4 the engine's constraint-catalog bridge
+/// (`CapcoScheme::bridge_sci_per_system_diagnostics`) is the only
+/// production caller; the legacy walker `DeclarativeSciPerSystemRule`
+/// retired in 7.4 and the trait/validate path
+/// (`sci_per_system_catalog_eval`) emits `ConstraintViolation` envelopes
+/// without `FixProposal` for non-bridge consumers.
 ///
-/// `#[inline]` because the walker's hot path is the bench-gate-relevant
+/// `#[inline]` because the bridge's hot path is the bench-gate-relevant
 /// one and the emit dispatch is a 2-arm match on a `Copy` enum field —
 /// inlining lets the compiler hoist the row's presence predicate +
 /// kind dispatch into the catalog-walk loop.

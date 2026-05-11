@@ -129,7 +129,6 @@ impl CapcoRuleSet {
             DeclarativeNonUsMissingDissemRule, DeclarativeOrconRelidoConflictRule,
             DeclarativeOrconUsgovRelidoConflictRule, DeclarativeRdPrecedenceRule,
             DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
-            DeclarativeSciPerSystemRule,
         };
         Self {
             rules: vec![
@@ -248,12 +247,23 @@ impl CapcoRuleSet {
                 // engine never auto-applies a Suggest-severity
                 // diagnostic regardless of confidence.
                 Box::new(RelToTrigraphSuggestRule),
-                // PR 3b.E (T026e): retired the 10 hand-written per-SCI-
-                // system rules `E042`–`E051` into the SCI per-system
-                // catalog walker `DeclarativeSciPerSystemRule` (rule ID
-                // `E059`). See
-                // `docs/plans/2026-05-08-pr3b-E-sci-per-system-collapse-plan.md`.
-                Box::new(DeclarativeSciPerSystemRule),
+                // PR 3b.E (T026e) → PR 3c.B Commit 7.4: retired the
+                // 10 hand-written per-SCI-system rules `E042`–`E051`
+                // (PR 3b.E walker `DeclarativeSciPerSystemRule`, ID
+                // `E059`) into the engine's constraint-catalog bridge.
+                // The catalog rows still fire — they emit via
+                // `CapcoScheme::bridge_sci_per_system_diagnostics`
+                // with `Diagnostic.rule = "E059"` and full
+                // `FixProposal` payloads attached (companion-insertion
+                // at the dissem-block anchor, ORCON-USGOV → ORCON
+                // replacement). The 5 catalog rows
+                // (`sci-per-system/{HCS-O,HCS-P-NOFORN,HCS-P-sub,SI-G,
+                // TK-compartment-NOFORN}-*`) remain declared as
+                // `Constraint::Custom` entries in
+                // `CapcoScheme::build_constraints()` for documentation /
+                // dispatch parity with class-floor; the bridge takes
+                // the inherent-method shortcut. See
+                // `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md`.
                 // Issue #206 — REL TO membership-uncertain reduction.
                 // Two registered rules sharing one analysis helper:
                 //   S005 — Suggest, fires when banner is missing a
@@ -3480,7 +3490,16 @@ mod tests {
             "E058 walker retired in PR 3c.B Commit 7.3; the catalog rows \
              emit via the engine bridge."
         );
-        assert!(ids.contains(&"E059")); // DeclarativeSciPerSystemRule walker
+        // PR 3c.B Commit 7.4: `DeclarativeSciPerSystemRule` (E059) retired.
+        // The 5 catalog rows fire through the bridge's direct path
+        // (`CapcoScheme::bridge_sci_per_system_diagnostics`) with
+        // `Diagnostic.rule = "E059"` and full `FixProposal` payloads;
+        // no registered `Rule::id() == "E059"` post-7.4.
+        assert!(
+            !ids.contains(&"E059"),
+            "E059 walker retired in PR 3c.B Commit 7.4; the catalog rows \
+             emit via the engine bridge with fixes intact."
+        );
 
         // Retired-rule guards. PR 3c.B Commit 6 retires 13 rules + the
         // E060 walker into `MarkingScheme::render_canonical` (form-bucket
@@ -3610,13 +3629,15 @@ mod tests {
             );
         }
 
-        // Post-PR-3c.B-Commit-7.3 registered count: 32 rules.
+        // Post-PR-3c.B-Commit-7.4 registered count: 31 rules.
         // History: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retires
         // 13 form rules + 1 walker (E060) into the renderer (form-bucket
         // migration); 47 - 14 = 33. PR 3c.B Commit 7.3 retires
         // `DeclarativeClassFloorRule` (E058) into the constraint-catalog
-        // bridge; 33 - 1 = 32.
-        assert_eq!(set.rules().len(), 32);
+        // bridge; 33 - 1 = 32. PR 3c.B Commit 7.4 retires
+        // `DeclarativeSciPerSystemRule` (E059) into the bridge's direct
+        // path (with fixes preserved); 32 - 1 = 31.
+        assert_eq!(set.rules().len(), 31);
     }
 
     #[test]
