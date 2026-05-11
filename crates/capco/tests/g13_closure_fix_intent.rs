@@ -321,9 +321,14 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 fn legacy_variant_records_are_out_of_scope_for_this_gate() {
     // `(S//HCS)` triggers E010 (DeclarativeBareHcsRule); the rule
     // emits a legacy `FixProposal { HCS → HCS-P, confidence 0.95 }`
-    // via `make_fix_diagnostic`. Severity::Fix at confidence ≥
-    // threshold, so the engine auto-applies through the Legacy
-    // promotion path.
+    // via `make_fix_diagnostic`. Default severity is `Severity::Error`
+    // (`rules_declarative.rs:250`); the engine's auto-apply filter
+    // excludes only `Severity::Suggest`
+    // (`crates/engine/src/engine.rs:1378`), so Error-severity rules
+    // with a populated `fix` at confidence ≥ threshold still
+    // auto-apply — promotion goes through the Legacy path because
+    // E010 carries no `fix_intent` (not yet migrated; queued for
+    // Sub-PR 8.D).
     let result = engine().fix(b"(S//HCS)\n", FixMode::Apply);
     let af = result
         .applied
