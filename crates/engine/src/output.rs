@@ -118,14 +118,22 @@ impl LintResult {
     }
 
     /// Number of diagnostics that are configured at `Severity::Fix` AND
-    /// carry an actual `FixProposal`. A diagnostic at `Fix` severity but
-    /// with `fix: None` is not counted, since it cannot produce an
-    /// `AppliedFix` downstream.
+    /// carry a fix payload (either legacy [`FixProposal`] or new
+    /// [`marque_rules::FixIntent`]). A diagnostic at `Fix` severity but
+    /// with neither `fix` nor `fix_intent` populated is not counted,
+    /// since it cannot produce an `AppliedFix` downstream.
+    ///
+    /// Both arms are counted to keep `fix_count` honest across the
+    /// PR 3c.B Commit 2–9 transition: in Commit 2 only `d.fix` ever
+    /// fires, but Commit 3+ migrates rules to emit `fix_intent`. The
+    /// server's response struct ([`marque_server`]) and CLI exit-code
+    /// summary both depend on `fix_count` matching the eventual
+    /// `applied.len()` from `Engine::fix`.
     pub fn fix_count(&self) -> usize {
         use marque_rules::Severity;
         self.diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Fix && d.fix.is_some())
+            .filter(|d| d.severity == Severity::Fix && (d.fix.is_some() || d.fix_intent.is_some()))
             .count()
     }
 }

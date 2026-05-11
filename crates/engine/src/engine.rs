@@ -823,6 +823,15 @@ impl Engine {
             if d.severity != Severity::Fix {
                 continue;
             }
+            // PR 3c.B Commit 3 prerequisite (senior reviewer pass):
+            // when a migrated rule emits `fix_intent` instead of
+            // `fix`, this loop must also consult `d.fix_intent` to
+            // apply the same below-threshold → Suggest rewrite.
+            // Otherwise a low-confidence `FixIntent`-emitting rule
+            // stays at `Severity::Fix` even when its confidence
+            // falls below the threshold, producing a user-visible
+            // behavioral regression on the first migrated rule.
+            // Add a parallel `fix_intent` arm here in Commit 3.
             let Some(fix) = d.fix.as_ref() else { continue };
             if fix.confidence.combined() < threshold {
                 d.severity = Severity::Suggest;
@@ -1190,6 +1199,15 @@ impl Engine {
                         deadline_aborted = true;
                         break;
                     }
+                    // PR 3c.B Commit 3 prerequisite (senior reviewer
+                    // pass): when the parallel `fix_intent` collection
+                    // arm is wired into `fix_inner`, every promoted
+                    // `FixIntent` MUST also insert into `applied_keys`
+                    // here so the `remaining_diagnostics` filter below
+                    // does not double-count `fix_intent`-promoted
+                    // diagnostics in both `applied` and the leftover
+                    // set. Forgetting this insertion produces a
+                    // logical contradiction in `FixResult`.
                     applied_keys.insert((fix.rule.clone(), fix.span));
                     applied.push(AppliedFix::__engine_promote_legacy(
                         fix,
@@ -1378,6 +1396,26 @@ fn engine_promotion_token() -> EnginePromotionToken {
 ///   so the synthesized `FixProposal` can populate its `span`
 ///   field for byte-stable audit output.
 /// - `rule_id`: the parent diagnostic's `RuleId`.
+///
+/// # Call site invariant (Commit 3+)
+///
+/// The engine MUST call this helper before constructing
+/// [`marque_rules::AppliedFix::__engine_promote`] — the synthesized
+/// `FixProposal` returned here is passed to that constructor as the
+/// `synthesized` parameter, which caches it inside
+/// `AppliedFixProposal::New { intent, synthesized }`. The
+/// `Deref<Target = FixProposal>` impl on `AppliedFixProposal` returns
+/// `&synthesized` for the `New` arm, so audit-emit code reading
+/// `applied_fix.proposal.span` etc. continues to compile and behave
+/// identically through the Commit 2–9 transition (Path C).
+///
+/// # G13 closure invariant
+///
+/// The synthesized `FixProposal` MUST set `original = ""` to preserve
+/// Constitution V Principle V (audit content ignorance) on the new
+/// emission path. `FixIntent<S>` carries no source bytes by design;
+/// the engine MUST NOT re-introduce them through the synthesized
+/// projection.
 // PR 3c.B Commit 2: this is the FixIntent→legacy-FixProposal seam; no
 // rule emits `FixIntent<S>` yet, so the helper is dead code until
 // Commit 3 wires the first migrated rule (E054). The allow is paired
@@ -1399,7 +1437,8 @@ fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
         "fix_intent_to_legacy_proposal called in PR 3c.B Commit 2: \
          no rule emits FixIntent<S> yet. Commit 3+ migrates the first \
          rule (E054) and this helper synthesizes the legacy projection \
-         at that point."
+         at that point. The result feeds `AppliedFix::__engine_promote` \
+         as the `synthesized` parameter."
     );
 }
 

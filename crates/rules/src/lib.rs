@@ -22,26 +22,45 @@
 //!   and `MessageArgs` cannot carry input bytes (no `String` / `&str` / `Vec<u8>`
 //!   fields). PR 3c.1 lands the surface; PR 3c.2 reshapes `Diagnostic.message`
 //!   to consume it. (Source plan §8.3.)
-//! - [`fix_intent`] — `FixIntent<S>`, `ReplacementIntent<S>`, `RenderDirective`.
-//!   The rule-emission API for closed-CVE / open-vocab replacements; the engine
-//!   renders these to `marque_scheme::canonical::Canonical<S>` via
-//!   `MarkingScheme::render_canonical` and then promotes to `AppliedFix`.
-//!   PR 3c.1 lands the surface alongside `FixProposal`; PR 3c.2 migrates rules
-//!   off `FixProposal` and deletes it.
+//! - [`fix_intent`] — `FixIntent<S>`, `ReplacementIntent<S>`, `FactRef<S>`,
+//!   `RecanonScope`. The rule-emission API for the bag-of-tokens vocabulary
+//!   from `architecture.md` §"What fixes are": fact-set deltas (`FactAdd` /
+//!   `FactRemove`) and renderer recanonicalization (`Recanonicalize`). The
+//!   engine promotes a `FixIntent<S>` to an `AppliedFix<S>` via
+//!   `__engine_promote`; the synthesized legacy projection is materialized
+//!   inside `AppliedFixProposal::New` (Path C) so audit-emit code that reads
+//!   `applied_fix.proposal.span` etc. via `Deref<Target = FixProposal>` keeps
+//!   working unchanged.
 //!
-//! # Type split: FixProposal vs AppliedFix (current — PR 3c.1)
+//! # Type split: FixProposal vs FixIntent vs AppliedFix
 //!
-//! `FixProposal` is pure data emitted by rules — deterministic, timestamp-free,
-//! classifier-free. `AppliedFix` wraps a proposal with runtime context (timestamp,
-//! classifier id, dry-run flag) and is constructed **only** by `Engine::fix`.
-//! This makes "suggested vs applied" a type-system invariant.
+//! `FixProposal` (legacy) and `FixIntent<S>` (new) are both pure data
+//! emitted by rules — deterministic, timestamp-free, classifier-free.
+//! `AppliedFix<S>` wraps either of them (via the `AppliedFixProposal<S>`
+//! enum) with runtime context (timestamp, classifier id, dry-run flag)
+//! and is constructed **only** by `Engine::fix_inner`. This makes
+//! "suggested vs applied" a type-system invariant.
 //!
-//! PR 3c.2 will retire `FixProposal` in favor of `FixIntent<S>`, which carries
-//! the same pure-data shape plus a scheme-typed replacement intent (closed-CVE
-//! token vs open-vocab render directive). `AppliedFix` is reshaped to embed a
-//! sealed `Canonical<S>` and structured `Message`. The two-PR split exists so
-//! the rule-side migration lands atomically with the engine-side reshape;
-//! PR 3c.1 is purely additive.
+//! `FixProposal` and `FixIntent<S>` coexist on `marque-rules` through
+//! the PR 3c.B Commit 2–9 transition window. Commit 10 retires
+//! `FixProposal` (and the `AppliedFixProposal::Legacy` arm) atomically
+//! with the `MARQUE_AUDIT_SCHEMA` flip from `"marque-mvp-2"` to
+//! `"marque-mvp-3"`.
+//!
+//! # G13 (audit content ignorance) status
+//!
+//! `FixIntent<S>` and `AppliedFixProposal::New` carry only structural
+//! references (`FactRef`, category IDs, `Scope` / `RecanonScope` tags)
+//! — no document bytes. The synthesized `FixProposal` cached inside
+//! `AppliedFixProposal::New` for `Deref` projection sets `original = ""`
+//! to preserve G13 closure on the new path.
+//!
+//! `Diagnostic.message: Box<str>` (legacy) is NOT type-system-closed
+//! against the diagnostic-message leak channel today; only [`Message`]
+//! (closed template + closed args) provides that guarantee. The narrow
+//! to `Diagnostic.message: Message` is deferred to a follow-up commit
+//! tracked alongside the wider [`Diagnostic<S>`] reshape — when that
+//! lands the G13 closure becomes a type-level invariant for both paths.
 
 pub mod confidence;
 pub mod fix_intent;
@@ -424,12 +443,16 @@ impl FixProposal {
 /// FixProposal>` so existing audit-emit code that reads
 /// `applied_fix.proposal.span`, `.original`, `.replacement`,
 /// `.source`, etc., continues to compile and behave identically.
-/// For `New(_)` variants, `Deref` is unreachable in Commit 2 because
-/// no rule emits a `FixIntent` yet; Commit 3+ will need to either
-/// re-thread the audit-emit code through the helper, or cache a
-/// synthesized `FixProposal` inside the `New` variant. The choice is
-/// deferred to the rule-migration commits where the first migrated
-/// rule actually exercises this path.
+/// For `New { intent, synthesized }` variants, `Deref` returns
+/// `&synthesized` — a legacy-shape `FixProposal` constructed by the
+/// engine via `fix_intent_to_legacy_proposal` at promotion time and
+/// cached inside the variant. Caching the synthesis at construction
+/// time (rather than projecting on every `Deref` call) eliminates
+/// the foot-gun where a `Deref` path could panic at audit-emit time
+/// when the first `FixIntent`-emitting rule lands; the panic now
+/// surfaces at `__engine_promote` if `fix_intent_to_legacy_proposal`
+/// is still `unimplemented!()` for the `ReplacementIntent` variant
+/// the rule emitted.
 #[derive(Debug)]
 pub enum AppliedFixProposal<S: MarkingScheme> {
     /// Legacy `FixProposal` — emitted by non-migrated rules during
@@ -437,9 +460,27 @@ pub enum AppliedFixProposal<S: MarkingScheme> {
     /// `Deref<Target = FixProposal>`.
     Legacy(FixProposal),
     /// New `FixIntent<S>` — emitted by migrated rules from Commit 3
-    /// onward. Audit-emit unwraps via the engine's
-    /// `fix_intent_to_legacy_proposal` helper.
-    New(FixIntent<S>),
+    /// onward. The engine constructs `synthesized` at promotion time
+    /// via `fix_intent_to_legacy_proposal` and caches it here so
+    /// `Deref<Target = FixProposal>` returns `&synthesized` for
+    /// audit-emit consumers. Commit 10 retires this variant (and the
+    /// synthesized cache) atomically with the audit-schema flip when
+    /// audit emitters move to read `FixIntent` variants directly.
+    ///
+    /// `intent` is `Box`ed so the `New` variant's stack size stays
+    /// comparable to `Legacy`'s. Without the box, `FixIntent<S>` (with
+    /// its `SmallVec`, `Confidence`, and `Message` inline storage) plus
+    /// `FixProposal` together push the enum past clippy's
+    /// `large_enum_variant` threshold and inflate every `Legacy`
+    /// allocation by the same delta.
+    New {
+        /// The structural fact-set delta the rule emitted.
+        intent: Box<FixIntent<S>>,
+        /// Engine-synthesized legacy projection. Carries `original = ""`
+        /// per Constitution V Principle V (G13 closure on the new
+        /// emission path); other fields populated by the engine.
+        synthesized: FixProposal,
+    },
 }
 
 // Manual Clone for AppliedFixProposal<S> — see the parallel Clone
@@ -450,7 +491,13 @@ impl<S: MarkingScheme> Clone for AppliedFixProposal<S> {
     fn clone(&self) -> Self {
         match self {
             AppliedFixProposal::Legacy(p) => AppliedFixProposal::Legacy(p.clone()),
-            AppliedFixProposal::New(i) => AppliedFixProposal::New(i.clone()),
+            AppliedFixProposal::New {
+                intent,
+                synthesized,
+            } => AppliedFixProposal::New {
+                intent: intent.clone(),
+                synthesized: synthesized.clone(),
+            },
         }
     }
 }
@@ -461,21 +508,15 @@ impl<S: MarkingScheme> std::ops::Deref for AppliedFixProposal<S> {
     /// Project to the legacy `FixProposal`-shape view.
     ///
     /// For [`AppliedFixProposal::Legacy`], this is a direct field
-    /// borrow. For [`AppliedFixProposal::New`], the projection is
-    /// only meaningful through the engine's
-    /// `fix_intent_to_legacy_proposal` helper (which synthesizes a
-    /// `FixProposal` from the `FixIntent`). Commit 2 never emits a
-    /// `New` variant, so this deref path is statically unreachable;
-    /// Commit 3+ migrates the audit-emit path to thread through the
-    /// helper instead of relying on `Deref` for the `New` arm.
+    /// borrow. For [`AppliedFixProposal::New`], this returns
+    /// `&synthesized` — the engine-cached legacy projection
+    /// constructed at `__engine_promote` time via
+    /// `marque_engine::fix_intent_to_legacy_proposal`. Both arms
+    /// return a valid `&FixProposal`; no panic surface.
     fn deref(&self) -> &FixProposal {
         match self {
             AppliedFixProposal::Legacy(p) => p,
-            AppliedFixProposal::New(_) => unreachable!(
-                "Deref on AppliedFixProposal::New is unreachable in PR 3c.B Commit 2: \
-                 no rule emits FixIntent<S> yet. Commit 3+ migrates the audit-emit \
-                 path to use Engine::fix_intent_to_legacy_proposal."
-            ),
+            AppliedFixProposal::New { synthesized, .. } => synthesized,
         }
     }
 }
@@ -711,10 +752,35 @@ impl<S: MarkingScheme> AppliedFix<S> {
     /// idiomatic "accepted-but-intentionally-unused parameter" convention.
     /// Commit 3+ may surface a rule field on `AppliedFix` directly
     /// when the audit-schema flip lands.
+    ///
+    /// `synthesized` is the engine's projection of `intent` into a
+    /// legacy `FixProposal` shape — constructed by the caller (the
+    /// engine) via `marque_engine::fix_intent_to_legacy_proposal`
+    /// before this constructor runs. Caching it inside the
+    /// `AppliedFixProposal::New` variant means `Deref<Target =
+    /// FixProposal>` always returns a valid `&FixProposal`, so the
+    /// audit-emit path stays Path-C-stable through commits 2–9
+    /// without a runtime-panic foot-gun. The synthesized projection
+    /// MUST set `original = ""` to preserve Constitution V Principle V
+    /// G13 closure on the new path; the engine's helper enforces this.
+    /// `source` is snapshotted from `synthesized.source` for symmetry
+    /// with `__engine_promote_legacy`.
+    //
+    // `clippy::too_many_arguments` allowed because every parameter
+    // carries engine-only runtime context that the seal must capture
+    // atomically: the rule_id (audit-record provenance), the intent
+    // (the rule's emission), the synthesized projection (the engine's
+    // canonicalization), the clock-injected timestamp, the classifier
+    // identity, the dry-run flag, the caller-supplied input
+    // identifier, and the EnginePromotionToken seal proof. Refactoring
+    // into a struct argument would shift the API surface without
+    // reducing the parameter count visible at the engine call site.
     #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
     pub fn __engine_promote(
         _rule_id: RuleId,
         intent: FixIntent<S>,
+        synthesized: FixProposal,
         timestamp: SystemTime,
         classifier_id: Option<Arc<str>>,
         dry_run: bool,
@@ -722,10 +788,14 @@ impl<S: MarkingScheme> AppliedFix<S> {
         _token: EnginePromotionToken,
     ) -> Self {
         let confidence = intent.confidence.clone();
+        let source = synthesized.source;
         Self {
-            proposal: AppliedFixProposal::New(intent),
+            proposal: AppliedFixProposal::New {
+                intent: Box::new(intent),
+                synthesized,
+            },
             confidence,
-            source: FixSource::BuiltinRule,
+            source,
             timestamp,
             classifier_id,
             dry_run,

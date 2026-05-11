@@ -65,3 +65,19 @@ fn capco_rule_emission_types_are_send_sync() {
     assert::<Diagnostic<CapcoScheme>>();
     assert::<AppliedFix<CapcoScheme>>();
 }
+
+/// Compile-time `Clone` proof for the same rule-emission types. The
+/// manual `Clone` impls in `crates/rules/src/lib.rs` (added to avoid
+/// the `S: Clone` over-constraint that `#[derive(Clone)]` would
+/// introduce) are correct field-by-field today, but a future variant
+/// addition to `ReplacementIntent<S>` or a future field addition to
+/// any of these types could silently break the manual impl chain.
+/// This assertion catches that at the concrete `<CapcoScheme>`
+/// monomorphization, which is the production path.
+#[test]
+fn capco_rule_emission_types_are_clone() {
+    fn assert<T: Clone>() {}
+    assert::<FixIntent<CapcoScheme>>();
+    assert::<Diagnostic<CapcoScheme>>();
+    assert::<AppliedFix<CapcoScheme>>();
+}
