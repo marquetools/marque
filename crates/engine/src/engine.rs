@@ -1113,17 +1113,25 @@ impl Engine {
             if d.severity != Severity::Fix {
                 continue;
             }
-            // PR 3c.B Commit 3 prerequisite (senior reviewer pass):
-            // when a migrated rule emits `fix_intent` instead of
-            // `fix`, this loop must also consult `d.fix_intent` to
-            // apply the same below-threshold → Suggest rewrite.
-            // Otherwise a low-confidence `FixIntent`-emitting rule
-            // stays at `Severity::Fix` even when its confidence
-            // falls below the threshold, producing a user-visible
-            // behavioral regression on the first migrated rule.
-            // Add a parallel `fix_intent` arm here in Commit 3.
-            let Some(fix) = d.fix.as_ref() else { continue };
-            if fix.confidence.combined() < threshold {
+            // PR 3c.B engine-prereq closes the intent-only arm of
+            // this loop. Three cases:
+            //   1. `fix` populated → use `fix.confidence` (legacy +
+            //      dual-populate paths, unchanged).
+            //   2. `fix` None, `fix_intent` populated → use
+            //      `fix_intent.confidence` (the intent-only path
+            //      enabled by the new `MarkingScheme::apply_intent`
+            //      bridge). Without this arm a low-confidence
+            //      intent-only rule would stay at `Severity::Fix`
+            //      when its confidence falls below the threshold,
+            //      bypassing `Config::confidence_threshold` entirely.
+            //   3. Both None → skip (informational diagnostic, no
+            //      fix to gate).
+            let combined = match (d.fix.as_ref(), d.fix_intent.as_ref()) {
+                (Some(fix), _) => fix.confidence.combined(),
+                (None, Some(intent)) => intent.confidence.combined(),
+                (None, None) => continue,
+            };
+            if combined < threshold {
                 d.severity = Severity::Suggest;
             }
         }
