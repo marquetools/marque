@@ -26,14 +26,20 @@
 //! ## Why trigger-only, not violation-driven
 //!
 //! `ConstraintViolation` carries `constraint_label`, `message`, and
-//! `citation` but **not** a `Span` — the scheme has no access to the
-//! `TokenSpan` slice the parser attaches to `CanonicalAttrs`. Widening
+//! `citation` but **not** a `Span` today — the scheme had no access
+//! to the `TokenSpan` slice the parser attaches to `CanonicalAttrs`,
+//! and the earlier comment here noted that widening
 //! `ConstraintViolation` to carry spans would couple the scheme layer
-//! to ISM's token-span model, which lives in `marque-ism` and is
-//! CAPCO-specific. Trigger-only dispatch keeps the scheme layer
-//! span-free; each wrapper constructs its span from
-//! `attrs.token_spans` the same way the retired hand-written rule
-//! did.
+//! to ISM's token-span model. PR 3c.B Commit 7's prep step relocated
+//! [`marque_scheme::Span`] into the scheme leaf crate (its definition
+//! is pure byte offsets — no ISM coupling) so a future
+//! `ConstraintViolation { span, ... }` extension stays
+//! Principle-VII-clean. The extension itself, plus the catalog-row
+//! decomposition that depends on it (E058 / E059 inlining), is
+//! sequenced separately so the architecture for per-row severity
+//! lookup can be decided independently. For now, trigger-only
+//! dispatch is still the path: each wrapper constructs its span from
+//! `attrs.token_spans` the same way the retired hand-written rule did.
 //!
 //! ## Citation policy: wrappers match the catalog
 //!
