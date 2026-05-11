@@ -43,6 +43,12 @@ pub const CAT_FGI_MARKER: CategoryId = CategoryId(7);
 pub const CAT_DISSEM: CategoryId = CategoryId(8);
 pub const CAT_REL_TO: CategoryId = CategoryId(9);
 pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(10);
+/// Non-IC dissemination controls (NODIS, EXDIS, SBU-NF, LES-NF, ...)
+/// — backed by `CanonicalAttrs.non_ic_dissem`. Introduced in the PR
+/// 3c.B engine-prereq commit so `MarkingScheme::apply_intent` can
+/// route `FactRemove(EXDIS, Scope::Portion)` to the right axis
+/// instead of silently no-opping (rust-reviewer preflight CRITICAL).
+pub const CAT_NON_IC_DISSEM: CategoryId = CategoryId(11);
 
 // ---------------------------------------------------------------------------
 // Sentinel token ids for constraint expressions
@@ -308,6 +314,7 @@ fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
     match category {
         CAT_REL_TO => !attrs.rel_to.is_empty(),
         CAT_DISSEM => !attrs.dissem_controls.is_empty(),
+        CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
         CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
         _ => true,
     }
@@ -320,6 +327,8 @@ fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
         attrs.rel_to = Box::new([]);
     } else if category == CAT_DISSEM {
         attrs.dissem_controls = Box::new([]);
+    } else if category == CAT_NON_IC_DISSEM {
+        attrs.non_ic_dissem = Box::new([]);
     }
     // Other categories: no-op. Phase C expands coverage.
 }
@@ -333,6 +342,8 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
         attrs.rel_to = with.0.rel_to.clone();
     } else if category == CAT_DISSEM {
         attrs.dissem_controls = with.0.dissem_controls.clone();
+    } else if category == CAT_NON_IC_DISSEM {
+        attrs.non_ic_dissem = with.0.non_ic_dissem.clone();
     }
 }
 
@@ -5072,6 +5083,48 @@ mod tests {
         let before = dst.clone();
         capco_category_replace(&mut dst, CAT_SCI, &src);
         assert_eq!(dst, before);
+    }
+
+    // Non-IC dissem axis — engine-prereq additions so FactRemove /
+    // FactAdd on EXDIS / NODIS / SBU-NF route to the right field
+    // instead of silently no-opping.
+
+    #[test]
+    fn category_has_values_non_ic_dissem_detects_presence() {
+        let empty = CapcoMarking::new(mk_attrs());
+        assert!(!capco_category_has_values(&empty, CAT_NON_IC_DISSEM));
+
+        let mut a = mk_attrs();
+        a.non_ic_dissem = vec![marque_ism::NonIcDissem::Exdis].into();
+        let m = CapcoMarking::new(a);
+        assert!(capco_category_has_values(&m, CAT_NON_IC_DISSEM));
+    }
+
+    #[test]
+    fn category_clear_empties_non_ic_dissem() {
+        let mut a = mk_attrs();
+        a.non_ic_dissem = vec![
+            marque_ism::NonIcDissem::Nodis,
+            marque_ism::NonIcDissem::Exdis,
+        ]
+        .into();
+        let mut m = CapcoMarking::new(a);
+        capco_category_clear(&mut m, CAT_NON_IC_DISSEM);
+        assert!(m.0.non_ic_dissem.is_empty());
+    }
+
+    #[test]
+    fn category_replace_non_ic_dissem_copies_from_source() {
+        let mut src_attrs = CanonicalAttrs::default();
+        src_attrs.non_ic_dissem = vec![marque_ism::NonIcDissem::Exdis].into();
+        let src = CapcoMarking::new(src_attrs);
+
+        let mut dst = CapcoMarking::new(mk_attrs());
+        capco_category_replace(&mut dst, CAT_NON_IC_DISSEM, &src);
+        assert_eq!(
+            dst.0.non_ic_dissem.as_ref(),
+            &[marque_ism::NonIcDissem::Exdis]
+        );
     }
 
     // Declarative rewrite dispatch — exercise the Contains / Empty /
