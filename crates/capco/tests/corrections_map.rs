@@ -72,6 +72,7 @@ fn run_c001_rule_pipeline_only(
             marking_type: candidate.kind,
             zone: None,
             position: None,
+            candidate_span: candidate.span,
             page_context: None,
             corrections: Some(corrections_arc.clone()),
         };

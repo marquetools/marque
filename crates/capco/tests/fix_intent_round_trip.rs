@@ -43,11 +43,8 @@ use marque_capco::CapcoScheme;
 use marque_capco::scheme::{TOK_NOFORN, TOK_RELIDO, TOK_USA};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
-use marque_rules::{
-    AppliedFixProposal, FactRef, FixSource, RecanonScope, ReplacementIntent,
-    ReplacementIntent::FactAdd, Severity,
-};
-use marque_scheme::Scope;
+use marque_rules::{AppliedFixProposal, FixSource, Severity};
+use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, ReplacementIntent::FactAdd, Scope};
 
 // ---------------------------------------------------------------------------
 // Engine helpers

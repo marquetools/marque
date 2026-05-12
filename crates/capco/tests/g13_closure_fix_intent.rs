@@ -36,10 +36,8 @@
 use marque_capco::{CapcoOpenVocabRef, CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_rules::{
-    AppliedFix, AppliedFixProposal, FactRef, FixIntent, RecanonScope, ReplacementIntent,
-};
-use marque_scheme::Scope;
+use marque_rules::{AppliedFix, AppliedFixProposal, FixIntent};
+use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, Scope};
 
 // ---------------------------------------------------------------------------
 // Engine fixture

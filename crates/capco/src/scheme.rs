@@ -24,9 +24,9 @@
 
 use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, Span, TokenKind};
 use marque_scheme::{
-    AggregationOp, Cardinality, Category, CategoryAction, CategoryId, CategoryPredicate,
-    Constraint, ConstraintViolation, IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed,
-    Scope, Template, TokenId, TokenRef,
+    AggregationOp, ApplyIntentError, Cardinality, Category, CategoryAction, CategoryId,
+    CategoryPredicate, Constraint, ConstraintViolation, FactRef, IntraOrdering, Lattice,
+    MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope, Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -43,6 +43,12 @@ pub const CAT_FGI_MARKER: CategoryId = CategoryId(7);
 pub const CAT_DISSEM: CategoryId = CategoryId(8);
 pub const CAT_REL_TO: CategoryId = CategoryId(9);
 pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(10);
+/// Non-IC dissemination controls (NODIS, EXDIS, SBU-NF, LES-NF, ...)
+/// — backed by `CanonicalAttrs.non_ic_dissem`. Introduced in the PR
+/// 3c.B engine-prereq commit so `MarkingScheme::apply_intent` can
+/// route `FactRemove(EXDIS, Scope::Portion)` to the right axis
+/// instead of silently no-opping (rust-reviewer preflight CRITICAL).
+pub const CAT_NON_IC_DISSEM: CategoryId = CategoryId(11);
 
 // ---------------------------------------------------------------------------
 // Sentinel token ids for constraint expressions
@@ -308,6 +314,7 @@ fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
     match category {
         CAT_REL_TO => !attrs.rel_to.is_empty(),
         CAT_DISSEM => !attrs.dissem_controls.is_empty(),
+        CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
         CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
         _ => true,
     }
@@ -320,6 +327,8 @@ fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
         attrs.rel_to = Box::new([]);
     } else if category == CAT_DISSEM {
         attrs.dissem_controls = Box::new([]);
+    } else if category == CAT_NON_IC_DISSEM {
+        attrs.non_ic_dissem = Box::new([]);
     }
     // Other categories: no-op. Phase C expands coverage.
 }
@@ -333,7 +342,210 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
         attrs.rel_to = with.0.rel_to.clone();
     } else if category == CAT_DISSEM {
         attrs.dissem_controls = with.0.dissem_controls.clone();
+    } else if category == CAT_NON_IC_DISSEM {
+        attrs.non_ic_dissem = with.0.non_ic_dissem.clone();
     }
+}
+
+/// Map a sentinel CVE `TokenId` to its [`CategoryId`].
+///
+/// Used by [`<CapcoScheme as MarkingScheme>::category_of`] to route
+/// `FactRef::Cve(id)` to the right marking-axis. Returns `None` for
+/// sentinels not associated with a concrete category (the marker
+/// sentinels like `TOK_IC_DISSEM`, `TOK_NON_US_CLASSIFICATION`,
+/// `TOK_US_CLASSIFIED`, `TOK_FGI_MARKER` are excluded — they label
+/// categorical predicates in the constraint catalog rather than
+/// addressable atomic tokens). The engine surfaces `None` as
+/// [`ApplyIntentError::UnknownToken`].
+///
+/// The mapping mirrors the existing per-token presence semantics in
+/// `satisfies_attrs` so a rule emitting `FactRemove(TOK_X)` lands on
+/// the same axis where `satisfies_attrs` would look for `X`.
+fn capco_token_category(id: TokenId) -> Option<CategoryId> {
+    // Sentinel IDs are declared in the const block above (lines 60+).
+    // Keep the matches in declaration order so a reviewer can trace
+    // the catalog by line position.
+    match id {
+        // CAT_DISSEM — IC dissemination controls
+        TOK_NOFORN | TOK_RELIDO | TOK_DISPLAY_ONLY | TOK_ORCON | TOK_ORCON_USGOV => {
+            Some(CAT_DISSEM)
+        }
+        // CAT_NON_IC_DISSEM — non-IC dissemination controls
+        TOK_NODIS | TOK_EXDIS => Some(CAT_NON_IC_DISSEM),
+        // CAT_REL_TO — country codes in the dissemination context
+        TOK_USA => Some(CAT_REL_TO),
+        // CAT_AEA — atomic-energy markings
+        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI => Some(CAT_AEA),
+        // CAT_SCI — sensitive compartmented information control systems
+        TOK_HCS => Some(CAT_SCI),
+        // CAT_JOINT_CLASSIFICATION — JOINT classification marker
+        TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
+        // CAT_CLASSIFICATION — overall classification level surface
+        TOK_RESTRICTED => Some(CAT_CLASSIFICATION),
+        // Sentinel marker tokens (used in catalog predicates, not as
+        // addressable atomic tokens): no category mapping.
+        _ => None,
+    }
+}
+
+/// Apply a single [`ReplacementIntent`] to a [`CapcoMarking`].
+///
+/// Helper for [`<CapcoScheme as MarkingScheme>::apply_intent`]. Routes
+/// the intent through [`capco_token_category`] (for CVE refs) and the
+/// per-axis mutators ([`capco_category_clear`] /
+/// [`capco_category_replace`]) for `FactRemove`. `FactAdd` and
+/// `Recanonicalize` are stubbed for the engine-prereq commit — the
+/// first rule that exercises `FactAdd` (Requires-bucket migration,
+/// sub-PR 8.D) will land the full add semantics alongside its
+/// fixtures. Pre-migration `FactAdd` returns
+/// `Err(IntentInapplicable)` so the engine drops the fix silently
+/// (which is the conservative behavior — a rule attempting to add
+/// a token before the migration lands would be misemitting).
+fn apply_intent_to_marking(
+    scheme: &CapcoScheme,
+    marking: &mut CapcoMarking,
+    intent: &ReplacementIntent<CapcoScheme>,
+) -> Result<(), ApplyIntentError> {
+    match intent {
+        ReplacementIntent::FactRemove {
+            token_ref,
+            scope: _,
+        } => {
+            // Scope discriminates page vs portion projection scope.
+            // For the engine-prereq's RELIDO / dissem-axis removals,
+            // both scopes route to the same per-axis storage on
+            // `CanonicalAttrs` — the page/document distinction is
+            // handled by the engine's projection layer, not by
+            // `apply_intent`.
+            let category = scheme
+                .category_of(token_ref)
+                .ok_or(ApplyIntentError::UnknownToken)?;
+            apply_fact_remove(marking, category, token_ref)
+        }
+        ReplacementIntent::FactAdd { token, scope: _ } => {
+            // Pre-Requires-migration: validate routing but treat the
+            // intent as inapplicable so the engine silently drops the
+            // fix. The first rule that needs FactAdd (the 8.D
+            // Requires-bucket migration) lands the add semantics
+            // alongside its fixtures.
+            let _ = scheme
+                .category_of(token)
+                .ok_or(ApplyIntentError::UnknownToken)?;
+            Err(ApplyIntentError::IntentInapplicable)
+        }
+        ReplacementIntent::Recanonicalize { .. } => {
+            // No fact-set mutation — the engine renders the marking
+            // via render_canonical to produce the canonical form.
+            Ok(())
+        }
+    }
+}
+
+/// Remove a single closed-vocab token from the marking's axis.
+///
+/// Returns `Err(IntentInapplicable)` when the token is not present
+/// in the axis (idempotence: nothing to remove). For the
+/// engine-prereq commit only the dissem / non-IC-dissem / REL TO /
+/// AEA axes are wired — these are the axes the imminent successor
+/// PRs (8.E/8.D RELIDO + dissem-conflict migrations) actually emit
+/// `FactRemove` against. Other axes (SCI, SAR, JOINT) are reachable
+/// by the routing table but will return `Err(IntentInapplicable)`
+/// until their migration sub-PRs land.
+fn apply_fact_remove(
+    marking: &mut CapcoMarking,
+    category: CategoryId,
+    token_ref: &FactRef<CapcoScheme>,
+) -> Result<(), ApplyIntentError> {
+    use marque_ism::{DissemControl, NonIcDissem};
+
+    let attrs = &mut marking.0;
+
+    let id = match token_ref {
+        FactRef::Cve(id) => *id,
+        // Open-vocab removal lands in the Stage-4 sub-PRs (SAR
+        // program retirement, FGI tetragraph removal). Pre-migration
+        // treat as inapplicable; the engine drops the fix.
+        FactRef::OpenVocab(_) => return Err(ApplyIntentError::IntentInapplicable),
+    };
+
+    if category == CAT_DISSEM {
+        let target = match id {
+            TOK_NOFORN => DissemControl::Nf,
+            TOK_RELIDO => DissemControl::Relido,
+            TOK_DISPLAY_ONLY => DissemControl::Displayonly,
+            TOK_ORCON => DissemControl::Oc,
+            TOK_ORCON_USGOV => DissemControl::OcUsgov,
+            _ => return Err(ApplyIntentError::UnknownToken),
+        };
+        let before = attrs.dissem_controls.len();
+        let kept: Vec<DissemControl> = attrs
+            .dissem_controls
+            .iter()
+            .copied()
+            .filter(|d| *d != target)
+            .collect();
+        if kept.len() == before {
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+        attrs.dissem_controls = kept.into_boxed_slice();
+        return Ok(());
+    }
+
+    if category == CAT_NON_IC_DISSEM {
+        let target = match id {
+            TOK_NODIS => NonIcDissem::Nodis,
+            TOK_EXDIS => NonIcDissem::Exdis,
+            _ => return Err(ApplyIntentError::UnknownToken),
+        };
+        let before = attrs.non_ic_dissem.len();
+        let kept: Vec<NonIcDissem> = attrs
+            .non_ic_dissem
+            .iter()
+            .copied()
+            .filter(|d| *d != target)
+            .collect();
+        if kept.len() == before {
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+        attrs.non_ic_dissem = kept.into_boxed_slice();
+        return Ok(());
+    }
+
+    if category == CAT_REL_TO {
+        // Only TOK_USA is sentinel-mapped today; REL TO removal of
+        // arbitrary country codes lands via FactRef::OpenVocab in a
+        // later sub-PR.
+        if id != TOK_USA {
+            return Err(ApplyIntentError::UnknownToken);
+        }
+        let before = attrs.rel_to.len();
+        let kept: Vec<CountryCode> = attrs
+            .rel_to
+            .iter()
+            .copied()
+            .filter(|c| c != &CountryCode::USA)
+            .collect();
+        if kept.len() == before {
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+        attrs.rel_to = kept.into_boxed_slice();
+        return Ok(());
+    }
+
+    if category == CAT_AEA {
+        // The CapcoMarking layer currently stores AEA markings as a
+        // Box<[AeaMarking]> of compound structural values, not as
+        // atomic tokens. Atomic-level FactRemove on the AEA axis
+        // requires the AeaMarking value-decomposition that lands in
+        // sub-PR 8.D's Requires-bucket migration; pre-migration the
+        // engine drops the fix.
+        return Err(ApplyIntentError::IntentInapplicable);
+    }
+
+    // Other categories (SCI, SAR, JOINT, FGI_MARKER, CLASSIFICATION):
+    // not yet wired for FactRemove. The first rule that needs each
+    // axis lands the routing alongside its migration fixtures.
+    Err(ApplyIntentError::IntentInapplicable)
 }
 
 /// Always-false [`CategoryPredicate::Custom`] body used by every
@@ -2378,6 +2590,81 @@ impl MarkingScheme for CapcoScheme {
     /// table.
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
         satisfies_attrs(&marking.0, token_ref)
+    }
+
+    /// Map a [`FactRef`] to its [`CategoryId`].
+    ///
+    /// Closed-CVE sentinels in the current constraint catalog get
+    /// explicit mappings; open-vocab references route by variant.
+    /// Tokens not in the table return `None`, signaling
+    /// [`ApplyIntentError::UnknownToken`] when the engine asks
+    /// `apply_intent` to route them.
+    fn category_of(&self, token: &FactRef<Self>) -> Option<CategoryId> {
+        match token {
+            FactRef::Cve(id) => capco_token_category(*id),
+            FactRef::OpenVocab(r) => Some(match r {
+                CapcoOpenVocabRef::Sar(_) => CAT_SAR,
+                CapcoOpenVocabRef::SciCompartment(_) | CapcoOpenVocabRef::SciSubCompartment(_) => {
+                    CAT_SCI
+                }
+                CapcoOpenVocabRef::FgiTetragraph(_) => CAT_FGI_MARKER,
+            }),
+        }
+    }
+
+    /// Apply a batch of [`ReplacementIntent`]s to a [`CapcoMarking`].
+    ///
+    /// Clones the input marking, dispatches each intent through the
+    /// per-axis category mutators ([`capco_category_clear`] /
+    /// [`capco_category_replace`]) for `FactRemove` and an analogous
+    /// closed-vocab add path for `FactAdd`. `Recanonicalize` returns
+    /// the cloned marking unchanged — the engine renders it via
+    /// [`MarkingScheme::render_canonical`] to produce canonical form.
+    ///
+    /// # Idempotence
+    ///
+    /// **Per-intent vs batch-level `IntentInapplicable`**: the trait
+    /// invariants for `apply_intent` require idempotence and
+    /// commutativity *within a batch*. A redundant or already-satisfied
+    /// intent (e.g., a second `FactRemove` of the same token, or a
+    /// `FactRemove` of a token a prior intent in the same batch
+    /// already removed) MUST be treated as a per-intent no-op — it
+    /// MUST NOT abort the rest of the batch. Only when EVERY intent
+    /// in the batch is inapplicable does this method return
+    /// `Err(IntentInapplicable)`, signaling to the engine that the
+    /// whole fix is a no-op and should be dropped.
+    ///
+    /// Other error variants (`UnknownToken`, `IntentRejectsLattice`)
+    /// propagate immediately — they're not idempotency cases.
+    fn apply_intent(
+        &self,
+        marking: &Self::Marking,
+        intents: &[ReplacementIntent<Self>],
+    ) -> Result<Self::Marking, ApplyIntentError> {
+        let mut out = marking.clone();
+        let mut any_applied = false;
+        for intent in intents {
+            match apply_intent_to_marking(self, &mut out, intent) {
+                Ok(()) => {
+                    any_applied = true;
+                }
+                Err(ApplyIntentError::IntentInapplicable) => {
+                    // Per-intent no-op: redundant intent (e.g., a
+                    // prior intent in the same batch already produced
+                    // the desired state, or two rules emitted the
+                    // same FactRemove). Idempotence/commutativity
+                    // invariant requires the batch to continue.
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        if any_applied {
+            Ok(out)
+        } else {
+            // Whole-batch no-op: engine drops the fix silently.
+            Err(ApplyIntentError::IntentInapplicable)
+        }
     }
 
     /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
@@ -5072,6 +5359,357 @@ mod tests {
         let before = dst.clone();
         capco_category_replace(&mut dst, CAT_SCI, &src);
         assert_eq!(dst, before);
+    }
+
+    // Non-IC dissem axis — engine-prereq additions so FactRemove /
+    // FactAdd on EXDIS / NODIS / SBU-NF route to the right field
+    // instead of silently no-opping.
+
+    #[test]
+    fn category_has_values_non_ic_dissem_detects_presence() {
+        let empty = CapcoMarking::new(mk_attrs());
+        assert!(!capco_category_has_values(&empty, CAT_NON_IC_DISSEM));
+
+        let mut a = mk_attrs();
+        a.non_ic_dissem = vec![marque_ism::NonIcDissem::Exdis].into();
+        let m = CapcoMarking::new(a);
+        assert!(capco_category_has_values(&m, CAT_NON_IC_DISSEM));
+    }
+
+    #[test]
+    fn category_clear_empties_non_ic_dissem() {
+        let mut a = mk_attrs();
+        a.non_ic_dissem = vec![
+            marque_ism::NonIcDissem::Nodis,
+            marque_ism::NonIcDissem::Exdis,
+        ]
+        .into();
+        let mut m = CapcoMarking::new(a);
+        capco_category_clear(&mut m, CAT_NON_IC_DISSEM);
+        assert!(m.0.non_ic_dissem.is_empty());
+    }
+
+    #[test]
+    fn category_replace_non_ic_dissem_copies_from_source() {
+        let mut src_attrs = CanonicalAttrs::default();
+        src_attrs.non_ic_dissem = vec![marque_ism::NonIcDissem::Exdis].into();
+        let src = CapcoMarking::new(src_attrs);
+
+        let mut dst = CapcoMarking::new(mk_attrs());
+        capco_category_replace(&mut dst, CAT_NON_IC_DISSEM, &src);
+        assert_eq!(
+            dst.0.non_ic_dissem.as_ref(),
+            &[marque_ism::NonIcDissem::Exdis]
+        );
+    }
+
+    // category_of — closed-CVE sentinel → CategoryId routing
+    // (PR 3c.B engine-prereq Commit 3)
+
+    #[test]
+    fn category_of_routes_dissem_tokens() {
+        let scheme = CapcoScheme::new();
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_NOFORN)),
+            Some(CAT_DISSEM)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_RELIDO)),
+            Some(CAT_DISSEM)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_DISPLAY_ONLY)),
+            Some(CAT_DISSEM)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_ORCON)),
+            Some(CAT_DISSEM)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_ORCON_USGOV)),
+            Some(CAT_DISSEM)
+        );
+    }
+
+    #[test]
+    fn category_of_routes_non_ic_dissem_tokens() {
+        let scheme = CapcoScheme::new();
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_NODIS)),
+            Some(CAT_NON_IC_DISSEM)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_EXDIS)),
+            Some(CAT_NON_IC_DISSEM)
+        );
+    }
+
+    #[test]
+    fn category_of_routes_rel_to_tokens() {
+        let scheme = CapcoScheme::new();
+        assert_eq!(scheme.category_of(&FactRef::Cve(TOK_USA)), Some(CAT_REL_TO));
+    }
+
+    #[test]
+    fn category_of_routes_aea_tokens() {
+        let scheme = CapcoScheme::new();
+        for tok in [TOK_RD, TOK_FRD, TOK_TFNI, TOK_CNWDI, TOK_UCNI] {
+            assert_eq!(scheme.category_of(&FactRef::Cve(tok)), Some(CAT_AEA));
+        }
+    }
+
+    #[test]
+    fn category_of_routes_open_vocab_variants() {
+        let scheme = CapcoScheme::new();
+        assert_eq!(
+            scheme.category_of(&FactRef::OpenVocab(CapcoOpenVocabRef::Sar(Box::from(
+                "PROGRAM-X"
+            )))),
+            Some(CAT_SAR)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::OpenVocab(CapcoOpenVocabRef::SciCompartment(
+                Box::from("G")
+            ))),
+            Some(CAT_SCI)
+        );
+        assert_eq!(
+            scheme.category_of(&FactRef::OpenVocab(CapcoOpenVocabRef::FgiTetragraph(
+                Box::from("FVEY")
+            ))),
+            Some(CAT_FGI_MARKER)
+        );
+    }
+
+    #[test]
+    fn category_of_returns_none_for_marker_sentinels() {
+        let scheme = CapcoScheme::new();
+        // Marker sentinels (used in categorical-presence predicates,
+        // not as addressable atomic tokens) have no mapping.
+        assert_eq!(scheme.category_of(&FactRef::Cve(TOK_IC_DISSEM)), None);
+        assert_eq!(scheme.category_of(&FactRef::Cve(TOK_NON_IC_DISSEM)), None);
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_NON_US_CLASSIFICATION)),
+            None
+        );
+        assert_eq!(scheme.category_of(&FactRef::Cve(TOK_US_CLASSIFIED)), None);
+        assert_eq!(scheme.category_of(&FactRef::Cve(TOK_FGI_MARKER)), None);
+    }
+
+    // apply_intent — round-trip FactRemove against the wired axes.
+
+    #[test]
+    fn apply_intent_removes_relido_from_dissem() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        let intents = [ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_RELIDO),
+            scope: Scope::Portion,
+        }];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("RELIDO removal must succeed");
+        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    #[test]
+    fn apply_intent_remove_absent_token_is_inapplicable() {
+        let scheme = CapcoScheme::new();
+        let m = CapcoMarking::new(mk_attrs());
+        let intents = [ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_RELIDO),
+            scope: Scope::Portion,
+        }];
+        assert_eq!(
+            scheme.apply_intent(&m, &intents),
+            Err(ApplyIntentError::IntentInapplicable)
+        );
+    }
+
+    #[test]
+    fn apply_intent_remove_unknown_token_is_unknown() {
+        let scheme = CapcoScheme::new();
+        let m = CapcoMarking::new(mk_attrs());
+        // TokenId(9999) is not in the sentinel table.
+        let intents = [ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TokenId(9999)),
+            scope: Scope::Portion,
+        }];
+        assert_eq!(
+            scheme.apply_intent(&m, &intents),
+            Err(ApplyIntentError::UnknownToken)
+        );
+    }
+
+    #[test]
+    fn apply_intent_recanonicalize_returns_unchanged_marking() {
+        use marque_scheme::RecanonScope;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![marque_ism::DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        let intents = [ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Portion,
+        }];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("Recanonicalize must succeed");
+        // Fact set unchanged — the engine renders the marking via
+        // render_canonical to produce canonical form.
+        assert_eq!(out.0.dissem_controls, m.0.dissem_controls);
+    }
+
+    #[test]
+    fn apply_intent_fact_add_is_inapplicable_pre_migration() {
+        let scheme = CapcoScheme::new();
+        let m = CapcoMarking::new(mk_attrs());
+        let intents = [ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TOK_NOFORN),
+            scope: Scope::Portion,
+        }];
+        // Pre-migration: validate routing but treat as inapplicable
+        // so the engine drops the fix. The first Requires-bucket
+        // migration sub-PR (8.D) will land FactAdd semantics.
+        assert_eq!(
+            scheme.apply_intent(&m, &intents),
+            Err(ApplyIntentError::IntentInapplicable)
+        );
+    }
+
+    #[test]
+    fn apply_intent_multi_intent_batch_applies_atomically() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![
+            DissemControl::Relido,
+            DissemControl::Displayonly,
+            DissemControl::Nf,
+        ]
+        .into();
+        let m = CapcoMarking::new(a);
+
+        // Two removals targeting the same axis.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
+                scope: Scope::Portion,
+            },
+        ];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("multi-intent batch must succeed");
+        // Both tokens removed; NF retained.
+        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    /// Idempotence/commutativity invariant pin — Copilot review on PR #369.
+    ///
+    /// A redundant intent within a batch (e.g., two rules emit the
+    /// same `FactRemove`, or one intent in the batch removes a token
+    /// a prior intent already removed) MUST be treated as a per-intent
+    /// no-op and MUST NOT abort the rest of the batch. The earlier
+    /// implementation used `?` to propagate per-intent
+    /// `IntentInapplicable` errors, which broke the trait-level
+    /// invariant — fixed in the same commit as this test.
+    #[test]
+    fn apply_intent_redundant_intent_within_batch_does_not_abort() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        // First intent removes RELIDO (succeeds). Second intent is a
+        // redundant FactRemove of the same token — RELIDO is already
+        // gone after the first removal. The redundant intent MUST be
+        // silently skipped; the batch as a whole MUST succeed because
+        // at least one intent had effect.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+        ];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("redundant intent within batch must not abort");
+        // RELIDO removed exactly once; NF retained.
+        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    /// Mixed-applicability batch: some intents apply, others are
+    /// no-ops because their target token is already absent. The batch
+    /// MUST succeed and apply the applicable subset.
+    #[test]
+    fn apply_intent_mixed_applicability_batch_applies_applicable_subset() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        // First intent removes DISPLAY ONLY (already absent — no-op
+        // per-intent). Second intent removes RELIDO (succeeds). Batch
+        // succeeds because RELIDO removal had effect.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+        ];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("mixed-applicability batch must apply the applicable subset");
+        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    /// Whole-batch no-op: every intent is inapplicable. The batch
+    /// returns `Err(IntentInapplicable)` so the engine drops the fix
+    /// silently. This is the only case where `IntentInapplicable`
+    /// propagates from `apply_intent`.
+    #[test]
+    fn apply_intent_whole_batch_inapplicable_returns_err() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        // Both intents target tokens not present on this marking.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
+                scope: Scope::Portion,
+            },
+        ];
+        assert_eq!(
+            scheme.apply_intent(&m, &intents),
+            Err(ApplyIntentError::IntentInapplicable)
+        );
+        // NF retained — the marking is unchanged because no intent
+        // applied.
     }
 
     // Declarative rewrite dispatch — exercise the Contains / Empty /

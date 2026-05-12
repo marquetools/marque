@@ -92,10 +92,10 @@ use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FactRef, FixIntent, FixProposal, FixSource, Message, MessageArgs,
-    MessageTemplate, ReplacementIntent, Rule, RuleContext, RuleId, Severity,
+    Confidence, Diagnostic, FixIntent, FixProposal, FixSource, Message, MessageArgs,
+    MessageTemplate, Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::{ConstraintViolation, Scope};
+use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope};
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;

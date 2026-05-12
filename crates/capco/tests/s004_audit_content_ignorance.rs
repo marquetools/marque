@@ -60,6 +60,7 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
             marking_type: candidate.kind,
             zone: None,
             position: None,
+            candidate_span: candidate.span,
             page_context: ctx_page,
             corrections: None,
         };

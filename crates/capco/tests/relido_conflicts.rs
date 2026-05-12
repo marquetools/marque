@@ -207,6 +207,10 @@ fn ctx() -> RuleContext {
         marking_type: MarkingType::Portion,
         zone: None,
         position: None,
+        // Synthetic empty span — these tests construct the
+        // CanonicalAttrs directly and do not exercise the engine's
+        // intent-synthesis path that depends on candidate_span.
+        candidate_span: marque_ism::Span::new(0, 0),
         page_context: None,
         corrections: None,
     }
@@ -1360,10 +1364,10 @@ fn e055_dual_populates_fix_intent_with_factremove_relido_portion() {
         .as_ref()
         .expect("E055 dual-population: FixIntent must be populated after Commit 8 migration");
     match &intent.replacement {
-        marque_rules::ReplacementIntent::FactRemove { token_ref, scope } => {
+        marque_scheme::ReplacementIntent::FactRemove { token_ref, scope } => {
             assert_eq!(
                 token_ref,
-                &marque_rules::FactRef::Cve(TOK_RELIDO),
+                &marque_scheme::FactRef::Cve(TOK_RELIDO),
                 "E055 must remove RELIDO (the §H.8 p154 rejected token)"
             );
             assert_eq!(
@@ -1405,10 +1409,10 @@ fn e056_dual_populates_fix_intent_with_factremove_relido_portion() {
         .as_ref()
         .expect("E056 dual-population: FixIntent must be populated after Commit 8 migration");
     match &intent.replacement {
-        marque_rules::ReplacementIntent::FactRemove { token_ref, scope } => {
+        marque_scheme::ReplacementIntent::FactRemove { token_ref, scope } => {
             assert_eq!(
                 token_ref,
-                &marque_rules::FactRef::Cve(TOK_RELIDO),
+                &marque_scheme::FactRef::Cve(TOK_RELIDO),
                 "E056 must remove RELIDO (the §H.8 p136 rejected token)"
             );
             assert_eq!(

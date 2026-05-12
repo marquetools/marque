@@ -70,6 +70,7 @@ pub mod canonical;
 pub mod category;
 pub mod codec;
 pub mod constraint;
+pub mod fix_intent;
 pub mod lattice;
 pub mod page_rewrite;
 pub mod projection;
@@ -93,13 +94,14 @@ pub use category::{
 };
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, TokenRef};
+pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{BoundedLattice, Lattice};
 pub use page_rewrite::{
     CategoryAction, CategoryPredicate, PageRewrite, PageRewriteAxisError, RewriteId,
 };
 pub use projection::{Projection, categories_in_render_order};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
-pub use scheme::MarkingScheme;
+pub use scheme::{ApplyIntentError, MarkingScheme};
 pub use scope::{DiffInput, DiffRelation, Scope};
 pub use severity::Severity;
 pub use span::Span;

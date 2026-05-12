@@ -103,10 +103,10 @@ use marque_ism::{
     TokenSpan, sar_sort_key,
 };
 use marque_rules::{
-    Confidence, Diagnostic, FactRef, FixIntent, FixProposal, FixSource, Message, MessageArgs,
-    MessageTemplate, RecanonScope, ReplacementIntent, Rule, RuleContext, RuleId, RuleSet, Severity,
+    Confidence, Diagnostic, FixIntent, FixProposal, FixSource, Message, MessageArgs,
+    MessageTemplate, Rule, RuleContext, RuleId, RuleSet, Severity,
 };
-use marque_scheme::Scope;
+use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, Scope};
 use std::collections::HashSet;
 
 /// The full CAPCO rule set returned by `marque_capco::capco_rules()`.
@@ -4581,6 +4581,10 @@ mod tests {
             marking_type: MarkingType::Banner,
             zone: None,
             position: None,
+            // Test-fixture carve-out per Constitution V Principle V:
+            // synthetic empty span — these tests construct attrs
+            // directly and do not exercise intent-only synthesis.
+            candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
         };
@@ -5940,6 +5944,10 @@ mod tests {
             marking_type: MarkingType::Banner,
             zone: None,
             position: None,
+            // Test-fixture carve-out per Constitution V Principle V:
+            // synthetic empty span — these tests construct attrs
+            // directly and do not exercise intent-only synthesis.
+            candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
         };
@@ -6004,6 +6012,10 @@ mod tests {
             marking_type: MarkingType::Banner,
             zone: None,
             position: None,
+            // Test-fixture carve-out per Constitution V Principle V:
+            // synthetic empty span — these tests construct attrs
+            // directly and do not exercise intent-only synthesis.
+            candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
         };
@@ -7282,6 +7294,7 @@ pub(crate) mod marque_capco_test_support {
                 marking_type: candidate.kind,
                 zone: None,
                 position: None,
+                candidate_span: candidate.span,
                 page_context: ctx_page,
                 corrections: None,
             };

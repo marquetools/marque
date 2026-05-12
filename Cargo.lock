@@ -1043,6 +1043,7 @@ dependencies = [
  "recoco-utils",
  "serde",
  "serde_json",
+ "smallvec",
  "thiserror",
  "tokio",
  "tracing",
