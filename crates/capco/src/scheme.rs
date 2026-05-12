@@ -5724,6 +5724,12 @@ mod tests {
             ))),
             Some(CAT_FGI_MARKER)
         );
+        assert_eq!(
+            scheme.category_of(&FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(
+                marque_ism::CountryCode::try_new(b"GBR").expect("GBR is a valid trigraph")
+            ))),
+            Some(CAT_REL_TO)
+        );
     }
 
     #[test]
