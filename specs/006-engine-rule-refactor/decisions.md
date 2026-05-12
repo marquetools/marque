@@ -805,9 +805,19 @@ T108e / T108f / T108g.
   this closure firing?"
 
 - **B. Per-row severity for `ClosureRule` rows in `.marque.toml`**
-  (T108f) — same `[rules]` section, same `Severity` enum, shared
-  keyspace with `Rule` IDs (disambiguation by string content —
-  slashes in `ClosureRule.name`, bare alphanumeric in `RuleId`).
+  (T108f) — new `[closure_rules]` table in `.marque.toml`,
+  **separate from `[rules]`**, keyed by `ClosureRule.name` (e.g.,
+  `"capco/noforn-if-no-fdr"`). Same `Severity` enum and same
+  per-row override mechanic as `[rules]`, but a distinct section
+  rather than a shared keyspace — `RuleId` explicitly supports
+  slash-containing IDs per the `crates/rules/src/lib.rs:84` doc
+  ("E001", "capco/portion-mark-in-banner"), so a string-shape
+  disambiguation (slashes vs bare alphanumeric) would not hold.
+  Section isolation eliminates the collision risk entirely while
+  preserving the "same severity override surface" the user
+  requested (same enum, same per-row mechanic, same default-
+  fallback semantics).
+
   Map per-row severity to closure-row semantics:
 
   | Severity | Behavior |
@@ -915,12 +925,12 @@ recommendations.
 | D18 | T108c catalog shape: public `ClosureRule` (Option C), not private `ImplTable<S>` | `tasks.md` T108c amended; `2026-05-07-pr3b-consultation-verdict.md` §5 item 5 superseded; `decisions.md` Q-4.7-timing wording updated |
 | D19 | Topic 1 design pass: `AuditNote` audit-stream record + per-row severity for `ClosureRule` + `Constraint::Implies` retirement (narrowly supersedes D18 rationale bullet 3) | `tasks.md` T108e/T108f/T108g added; D18 bullet 3 annotated |
 
-All 16 decisions lock at PR 0. D17 / D18 / D19 are post-PR-0
-implementation decisions: D17 is a PR 3b.C scope correction amending a
-consultation verdict projection; D18 is a PR 3.7 T108c catalog-shape
-pivot from the 2026-05-07 trait-shape pin to a public `ClosureRule`
-catalog (Option C); D19 is the Topic 1 design pass that lands
-`AuditNote`, per-row severity for `ClosureRule`, and the
-`Constraint::Implies` retirement as sibling T108e/f/g tasks under
-PR 3.7. Subsequent PRs execute against this register; amendments
-require a follow-up PR editing this file.
+D1–D16 lock at PR 0. D17 / D18 / D19 are post-PR-0 implementation
+decisions: D17 is a PR 3b.C scope correction amending a consultation
+verdict projection; D18 is a PR 3.7 T108c catalog-shape pivot from
+the 2026-05-07 trait-shape pin to a public `ClosureRule` catalog
+(Option C); D19 is the Topic 1 design pass that lands `AuditNote`,
+per-row severity for `ClosureRule`, and the `Constraint::Implies`
+retirement as sibling T108e/f/g tasks under PR 3.7. Subsequent PRs
+execute against this register; amendments require a follow-up PR
+editing this file.
