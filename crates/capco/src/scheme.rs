@@ -2623,19 +2623,48 @@ impl MarkingScheme for CapcoScheme {
     ///
     /// # Idempotence
     ///
-    /// `FactAdd` on a token already present is a no-op;
-    /// `FactRemove` on an absent token returns
-    /// `Err(IntentInapplicable)` so the engine drops the fix silently.
+    /// **Per-intent vs batch-level `IntentInapplicable`**: the trait
+    /// invariants for `apply_intent` require idempotence and
+    /// commutativity *within a batch*. A redundant or already-satisfied
+    /// intent (e.g., a second `FactRemove` of the same token, or a
+    /// `FactRemove` of a token a prior intent in the same batch
+    /// already removed) MUST be treated as a per-intent no-op — it
+    /// MUST NOT abort the rest of the batch. Only when EVERY intent
+    /// in the batch is inapplicable does this method return
+    /// `Err(IntentInapplicable)`, signaling to the engine that the
+    /// whole fix is a no-op and should be dropped.
+    ///
+    /// Other error variants (`UnknownToken`, `IntentRejectsLattice`)
+    /// propagate immediately — they're not idempotency cases.
     fn apply_intent(
         &self,
         marking: &Self::Marking,
         intents: &[ReplacementIntent<Self>],
     ) -> Result<Self::Marking, ApplyIntentError> {
         let mut out = marking.clone();
+        let mut any_applied = false;
         for intent in intents {
-            apply_intent_to_marking(self, &mut out, intent)?;
+            match apply_intent_to_marking(self, &mut out, intent) {
+                Ok(()) => {
+                    any_applied = true;
+                }
+                Err(ApplyIntentError::IntentInapplicable) => {
+                    // Per-intent no-op: redundant intent (e.g., a
+                    // prior intent in the same batch already produced
+                    // the desired state, or two rules emitted the
+                    // same FactRemove). Idempotence/commutativity
+                    // invariant requires the batch to continue.
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
         }
-        Ok(out)
+        if any_applied {
+            Ok(out)
+        } else {
+            // Whole-batch no-op: engine drops the fix silently.
+            Err(ApplyIntentError::IntentInapplicable)
+        }
     }
 
     /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
@@ -5581,6 +5610,106 @@ mod tests {
             .expect("multi-intent batch must succeed");
         // Both tokens removed; NF retained.
         assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    /// Idempotence/commutativity invariant pin — Copilot review on PR #369.
+    ///
+    /// A redundant intent within a batch (e.g., two rules emit the
+    /// same `FactRemove`, or one intent in the batch removes a token
+    /// a prior intent already removed) MUST be treated as a per-intent
+    /// no-op and MUST NOT abort the rest of the batch. The earlier
+    /// implementation used `?` to propagate per-intent
+    /// `IntentInapplicable` errors, which broke the trait-level
+    /// invariant — fixed in the same commit as this test.
+    #[test]
+    fn apply_intent_redundant_intent_within_batch_does_not_abort() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        // First intent removes RELIDO (succeeds). Second intent is a
+        // redundant FactRemove of the same token — RELIDO is already
+        // gone after the first removal. The redundant intent MUST be
+        // silently skipped; the batch as a whole MUST succeed because
+        // at least one intent had effect.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+        ];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("redundant intent within batch must not abort");
+        // RELIDO removed exactly once; NF retained.
+        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    /// Mixed-applicability batch: some intents apply, others are
+    /// no-ops because their target token is already absent. The batch
+    /// MUST succeed and apply the applicable subset.
+    #[test]
+    fn apply_intent_mixed_applicability_batch_applies_applicable_subset() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        // First intent removes DISPLAY ONLY (already absent — no-op
+        // per-intent). Second intent removes RELIDO (succeeds). Batch
+        // succeeds because RELIDO removal had effect.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+        ];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("mixed-applicability batch must apply the applicable subset");
+        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    }
+
+    /// Whole-batch no-op: every intent is inapplicable. The batch
+    /// returns `Err(IntentInapplicable)` so the engine drops the fix
+    /// silently. This is the only case where `IntentInapplicable`
+    /// propagates from `apply_intent`.
+    #[test]
+    fn apply_intent_whole_batch_inapplicable_returns_err() {
+        use marque_ism::DissemControl;
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.dissem_controls = vec![DissemControl::Nf].into();
+        let m = CapcoMarking::new(a);
+
+        // Both intents target tokens not present on this marking.
+        let intents = [
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_RELIDO),
+                scope: Scope::Portion,
+            },
+            ReplacementIntent::FactRemove {
+                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
+                scope: Scope::Portion,
+            },
+        ];
+        assert_eq!(
+            scheme.apply_intent(&m, &intents),
+            Err(ApplyIntentError::IntentInapplicable)
+        );
+        // NF retained — the marking is unchanged because no intent
+        // applied.
     }
 
     // Declarative rewrite dispatch — exercise the Contains / Empty /

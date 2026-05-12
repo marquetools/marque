@@ -182,17 +182,24 @@ pub trait MarkingScheme {
     ///
     /// # Errors
     ///
-    /// - [`ApplyIntentError::IntentInapplicable`] — the intent doesn't
-    ///   apply: `FactRemove` of an absent token, or `FactAdd` of a
-    ///   present-and-already-canonical token. Engine drops the fix
-    ///   silently — the marking is already consistent.
+    /// - [`ApplyIntentError::IntentInapplicable`] — returned ONLY when
+    ///   the entire batch is a no-op (no intent in the slice produced
+    ///   any change to the marking). Engine drops the fix silently —
+    ///   the marking is already consistent. **Per-intent inapplicability
+    ///   within a batch is NOT a failure**: an impl MUST silently skip
+    ///   the redundant intent and continue applying the rest. This is
+    ///   what the idempotence/commutativity invariants require — two
+    ///   rules emitting the same `FactRemove`, or one intent in the
+    ///   batch removing a token a prior intent already removed, must
+    ///   not abort the batch.
     /// - [`ApplyIntentError::UnknownToken`] — a [`FactRef::Cve`]'s
     ///   [`crate::TokenId`] doesn't map to any category. Programmer
-    ///   error in the rule; engine logs and skips the fix.
+    ///   error in the rule; engine logs and skips the fix. Propagates
+    ///   immediately, even mid-batch.
     /// - [`ApplyIntentError::IntentRejectsLattice`] — applying would
     ///   produce a marking that violates a structural invariant the
     ///   scheme can't repair through fact-set delta alone. Engine
-    ///   surfaces as a diagnostic.
+    ///   surfaces as a diagnostic. Propagates immediately, even mid-batch.
     ///
     /// # Default implementation
     ///
