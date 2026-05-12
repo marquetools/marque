@@ -8,14 +8,18 @@
 //! E010 migrates to `fix_intent: None` matching the E015/E016
 //! conscious-defer pattern landed in Sub-PR 8.D.2 (PR #374). The
 //! authoritative source (CAPCO-2016 §H.4 at
-//! `crates/capco/docs/CAPCO-2016.md` lines 1369–1395) does NOT
+//! `crates/capco/docs/CAPCO-2016.md` lines 1393–1395) does NOT
 //! mandate HCS-P as the default fill for bare HCS. The
-//! Relationship(s) to Other Markings paragraph says verbatim:
+//! Relationship(s) to Other Markings paragraph reads in relevant
+//! part:
 //!
 //!   "When incorporating legacy material marked 'HCS' into a new
 //!    product, re-mark the new document and associated portion
 //!    according to the instructions in the HCS-O and HCS-P marking
-//!    templates."
+//!    templates. However, legacy information previously marked HCS
+//!    and transmitted via machine-to-machine processes may retain
+//!    the HCS marking without requiring translation to either HCS-O
+//!    or HCS-P."
 //!
 //! The classifier must read the HCS-O / HCS-P marking templates and
 //! decide which applies — operational source (HCS-O) versus
@@ -65,7 +69,7 @@ fn engine() -> Engine {
 /// `fix.is_none()` and `fix_intent.is_none()` (conscious-defer). The
 /// diagnostic message identifies HCS-O, HCS-P, and the combined
 /// HCS-O-P form as the candidate compartments so the classifier
-/// knows which templates to consult (CAPCO-2016 §H.4 p65 line 1406:
+/// knows which templates to consult (CAPCO-2016 §H.4 p63 line 1406:
 /// "the portion mark must include either HCS-P, HCS-O, or
 /// HCS-O-P, if applicable").
 #[test]
@@ -111,7 +115,7 @@ fn e010_emits_diagnostic_on_bare_hcs_in_portion() {
     assert!(
         e010[0].message.contains("HCS-O-P"),
         "E010 message must reference HCS-O-P (the combined \
-         compartment form) per CAPCO-2016 §H.4 p65 line 1406; \
+         compartment form) per CAPCO-2016 §H.4 p63 line 1406; \
          got: {:?}",
         e010[0].message
     );
@@ -164,7 +168,7 @@ fn e010_emits_diagnostic_on_bare_hcs_in_banner() {
     assert!(
         e010[0].message.contains("HCS-O-P"),
         "E010 message must reference HCS-O-P (the combined \
-         compartment form) per CAPCO-2016 §H.4 p65 line 1406; \
+         compartment form) per CAPCO-2016 §H.4 p63 line 1406; \
          got: {:?}",
         e010[0].message
     );

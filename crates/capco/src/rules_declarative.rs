@@ -229,14 +229,17 @@ pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<
 //
 // **Migration status (PR 3c.B Sub-PR 8.D.3, 2026-05-12):** consciously
 // landed at `fix_intent: None`. The authoritative source (CAPCO-2016
-// §H.4 at `crates/capco/docs/CAPCO-2016.md` lines 1369–1395) does NOT
+// §H.4 at `crates/capco/docs/CAPCO-2016.md` lines 1393–1395) does NOT
 // mandate HCS-P as the default fill for bare HCS. The Relationship(s)
-// to Other Markings paragraph (line 1395) says verbatim:
+// to Other Markings paragraph (line 1395) reads in relevant part:
 //
 //   "When incorporating legacy material marked 'HCS' into a new
 //    product, re-mark the new document and associated portion
 //    according to the instructions in the HCS-O and HCS-P marking
-//    templates."
+//    templates. However, legacy information previously marked HCS
+//    and transmitted via machine-to-machine processes may retain
+//    the HCS marking without requiring translation to either HCS-O
+//    or HCS-P."
 //
 // The classifier MUST read the HCS-O and HCS-P marking templates and
 // decide which applies for the specific information — operational
@@ -268,9 +271,16 @@ pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<
 /// HCS detection, HCS-O/P classification floor, ORCON pairing, etc.).
 /// Only the bare-HCS sub-violation corresponds to a legacy hand-
 /// written diagnostic; the other sub-rules weren't emitted by any
-/// rule before T035. The wrapper discriminates by message prefix so
-/// byte-identity with the pre-branch corpus is preserved; the other
-/// sub-rules drop silently until a future PR wires wrappers for them.
+/// rule before T035. The wrapper discriminates by message prefix.
+///
+/// Note: post Sub-PR 8.D.3 (PR #375), the diagnostic message and
+/// fix shape changed (mentions HCS-O / HCS-P / HCS-O-P with
+/// semantics; `fix_intent: None`). Byte-identity with the
+/// pre-branch corpus is no longer preserved — the wrapper's
+/// purpose is now to translate the catalog's bare-HCS sub-
+/// violation into the conscious-defer emission, not to reproduce
+/// the legacy fix string. The other sub-rules drop silently until
+/// a future PR wires wrappers for them.
 pub(crate) struct DeclarativeBareHcsRule;
 
 impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
