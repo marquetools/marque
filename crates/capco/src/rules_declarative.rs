@@ -95,7 +95,7 @@ use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixProposal, FixSource, Message, MessageArgs,
     MessageTemplate, Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope};
+use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, TokenId};
 
 use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;
@@ -1051,6 +1051,26 @@ impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
 // ID, one violation — keeps the wrapper trivial. Splitting into two
 // separate `Requires` constraints would produce two distinct
 // violation names for one rule ID.
+//
+// # Auto-fix mechanism (PR 3c.B Sub-PR 8.D.1 — FactAdd first consumer)
+//
+// PR 3c.B Sub-PR 8.D.1 migrates E038 from a no-fix diagnostic to
+// intent-only emission and lands FactAdd wiring for CAT_DISSEM in
+// `CapcoScheme::apply_intent_to_marking` at the same time. The rule
+// emits `FixIntent { ReplacementIntent::FactAdd { TOK_NOFORN, Portion } }`
+// alongside `RuleContext::candidate_span`; the engine's
+// `synthesize_intent_only_fixes` calls `CapcoScheme::apply_intent`
+// to add NOFORN to the marking's `dissem_controls` axis, then
+// re-renders the portion via `MarkingScheme::render_canonical`. The
+// synthesized `FixProposal.span` covers the full candidate, so the
+// re-render places NOFORN in the canonical dissem-controls position
+// (§G.1 Table 4 ordering) — no parser-span manipulation by the rule
+// is required.
+//
+// Issue #106 remains open as a tracking ticket for FR-045 parser
+// within-category-separator-spans work that other rules genuinely
+// need; E038 itself sidesteps it via `synthesize_intent_only_fixes`,
+// the same pattern PR #370 established for E041.
 
 pub(crate) struct DeclarativeDosDissemNofornRule;
 
@@ -1065,22 +1085,102 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::NonIcDissem;
+
         if violations_for(attrs, "E038/nodis-or-exdis-requires-noforn").is_empty() {
             return vec![];
         }
 
+        // Identify which non-IC dissem token fired (NODIS preferred
+        // when both are present, per §H.9 p174 supersession: NODIS
+        // dominates EXDIS, so the diagnostic should name the
+        // surviving token as the triggering one). The token id flows
+        // into `MessageArgs.token` so structured-diagnostic emitters
+        // can render "NODIS requires NOFORN" / "EXDIS requires NOFORN"
+        // without re-deriving the trigger from the message string.
+        let has_nodis = attrs
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Nodis));
+        let has_exdis = attrs
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, NonIcDissem::Exdis));
+        let trigger_token = if has_nodis {
+            crate::scheme::TOK_NODIS
+        } else if has_exdis {
+            crate::scheme::TOK_EXDIS
+        } else {
+            // Catalog predicate fired but neither NODIS nor EXDIS is
+            // present — should be unreachable per the
+            // `E038/nodis-or-exdis-requires-noforn` predicate, but
+            // bail rather than emit a mis-attributed diagnostic.
+            return vec![];
+        };
+
+        // Diagnostic `span`: the user-facing pointer at the
+        // triggering token. The legacy code anchored at the first
+        // `TokenKind::NonIcDissem` token via `first_span_of`; preserve
+        // that anchor so the diagnostic's surface position is
+        // unchanged for callers that read `diagnostic.span`.
         let span = first_span_of(attrs, TokenKind::NonIcDissem);
 
-        vec![Diagnostic::new(
+        vec![Diagnostic::with_intent_at_span(
             self.id(),
             self.default_severity(),
             span,
+            ctx.candidate_span,
             "NODIS and EXDIS may be used only with NOFORN information; \
              add NOFORN to the dissem controls",
             "CAPCO-2016 §H.9 p172 + p174",
-            None,
+            e038_add_noforn_intent(trigger_token),
         )]
+    }
+}
+
+/// Build the `FactAdd { NOFORN, Scope::Portion }` intent emitted by
+/// [`DeclarativeDosDissemNofornRule`]. NOFORN is the missing required
+/// token per CAPCO-2016 §H.9 p172 (EXDIS "Requires NOFORN") + p174
+/// (NODIS "Requires NOFORN") — both passages use the verb "Requires"
+/// verbatim, which is what makes `MessageTemplate::RequiredByPresence`
+/// the right structured-message variant.
+///
+/// `trigger_token` carries the NODIS-or-EXDIS token that fired the
+/// rule (NODIS preferred when both are present per §H.9 p174
+/// supersession). It flows into `MessageArgs.token` so consumers can
+/// render "NODIS requires NOFORN" vs "EXDIS requires NOFORN" without
+/// re-parsing the message string. `expected_token` is `TOK_NOFORN` —
+/// the absent token whose presence the source requires.
+///
+/// Scope is portion-only: §H.9 names the portion mark as the
+/// surface where these markings appear ("May be used only with
+/// NOFORN information"). Banner-level NOFORN roll-up is a separate
+/// concern handled by the page-level banner-roll-up rule family.
+///
+/// Confidence is `Confidence::strict(1.0)` — the source is
+/// unambiguous about the required companion, and the strict
+/// recognizer path is what produced the parse that surfaced the
+/// triggering NODIS/EXDIS token. Mirrors the calibration used by
+/// `nodis_supersedes_exdis_intent` in `rules.rs` (the matching §H.9
+/// supersession rule).
+fn e038_add_noforn_intent(trigger_token: TokenId) -> FixIntent<CapcoScheme> {
+    use crate::scheme::TOK_NOFORN;
+    FixIntent {
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TOK_NOFORN),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(1.0),
+        feature_ids: Default::default(),
+        message: Message::new(
+            MessageTemplate::RequiredByPresence,
+            MessageArgs {
+                token: Some(trigger_token),
+                expected_token: Some(TOK_NOFORN),
+                ..MessageArgs::default()
+            },
+        ),
     }
 }
 
