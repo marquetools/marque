@@ -486,10 +486,15 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
 //    aggregates per-intent applications — N FactAdds compose
 //    correctly into the canonical REL TO list.
 //
-// Span anchors to the JOINT classification token (the same anchor
-// the legacy single-diagnostic emission used); all N diagnostics
-// share the same span. This is what surfaces the violation at the
-// JOINT site rather than the (potentially absent) REL TO position.
+// Span anchors to the classification level token (`TokenKind::
+// Classification` — `S`/`SECRET`/`TS`/`TOP SECRET`, the same anchor
+// the legacy single-diagnostic emission used). `TokenKind` carries
+// no JOINT-specific variant — the JOINT keyword is parsed into the
+// `MarkingClassification::Joint(_)` shape, not into its own token
+// span — and the level token is the closest available structural
+// anchor that surfaces the violation at the classification site
+// rather than the (potentially absent) REL TO position. All N
+// per-co-owner diagnostics share this single span.
 
 pub(crate) struct DeclarativeJointRelToRule;
 
