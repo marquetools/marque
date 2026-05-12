@@ -1301,17 +1301,10 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
         // Point to NOFORN, the disallowing control: §H.8 p145 says NOFORN
         // "Cannot be used with REL TO." The REL TO block is also present,
         // but NOFORN is the asserting token that makes REL TO invalid.
-        let span = attrs
-            .token_spans
-            .iter()
-            .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "NOFORN")
-            .or_else(|| {
-                attrs
-                    .token_spans
-                    .iter()
-                    .find(|t| t.kind == TokenKind::DissemControl && &*t.text == "NF")
-            })
-            .map(|t| t.span)
+        // Reuse `find_dissem_token_span` (shared with RELIDO / ORCON
+        // conflict wrappers) to keep span-selection consistent across
+        // declarative dissem-conflict rules.
+        let span = find_dissem_token_span(attrs, &["NOFORN", "NF"])
             .unwrap_or_else(|| first_span_of(attrs, TokenKind::RelToBlock));
 
         // Scope-keyed emission. Portion → intent-only with FactRemove;
@@ -1334,8 +1327,7 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
                     self.default_severity(),
                     span,
                     ctx.candidate_span,
-                    "NOFORN cannot be used with REL TO (§H.8 p145); \
-                     remove one or the other",
+                    "NOFORN supersedes REL TO (§H.8 p145); REL TO removed",
                     "CAPCO-2016 §H.8 p145",
                     e053_remove_rel_to_intent(),
                 )]
