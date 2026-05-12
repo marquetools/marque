@@ -3,7 +3,12 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! PR 3c.B Sub-PR 8.E.2 — E041 (NODIS supersedes EXDIS in portion)
-//! intent-only migration engine-level tests. Closes #106.
+//! intent-only migration engine-level tests. Unblocks E041 — the
+//! primary rule named in #106 — via `synthesize_intent_only_fixes`
+//! re-rendering. #106 itself stays open as the tracking ticket for
+//! the FR-045 parser within-category-separator-spans work that other
+//! downstream rules (per `specs/006-engine-rule-refactor/spec.md`)
+//! depend on.
 //!
 //! These tests cover the engine-synthesis behaviors that can't be
 //! exercised through the `lint_portion` helper inside

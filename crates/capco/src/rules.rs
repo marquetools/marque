@@ -3488,7 +3488,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// `E041 = "suggest"` in `.marque.toml`; orgs that want the violation
 /// promoted to an error can configure `E041 = "error"`.
 ///
-/// # Auto-fix mechanism (PR 3c.B Sub-PR 8.E.2 — closes #106)
+/// # Auto-fix mechanism (PR 3c.B Sub-PR 8.E.2 — unblocks E041, primary rule named in #106)
 ///
 /// Pre-PR-3c.B-Sub-PR-8.E.2 this rule shipped as a no-fix diagnostic.
 /// The blocker was that a byte-precise legacy [`FixProposal`] would
@@ -3565,7 +3565,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
             return vec![];
         };
 
-        // PR 3c.B Sub-PR 8.E.2 — intent-only emission (closes #106).
+        // PR 3c.B Sub-PR 8.E.2 — intent-only emission (unblocks E041 in #106).
         // The diagnostic's `span` points at the EXDIS token (the
         // user-facing pointer); `candidate_span` is the full portion
         // candidate so the engine's `synthesize_intent_only_fixes`
@@ -3576,7 +3576,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
         // sidestepped because the engine replaces the full
         // candidate_span with the re-rendered output — no parser
         // change required (see the `# Auto-fix mechanism` section in
-        // the rustdoc above for the issue-#106 closure rationale).
+        // the rustdoc above for the issue-#106 sidestep rationale).
         vec![Diagnostic::with_intent_at_span(
             self.id(),
             self.default_severity(),
@@ -6349,7 +6349,7 @@ mod tests {
         // EXDIS. E041 surfaces the diagnostic at Warn severity and
         // emits an intent-only `FactRemove(EXDIS, Scope::Portion)`
         // fix that the engine auto-applies via the synthesis path
-        // (PR 3c.B Sub-PR 8.E.2 — closes #106). The legacy `fix`
+        // (PR 3c.B Sub-PR 8.E.2 — unblocks E041 in #106). The legacy `fix`
         // field stays `None`; the new emission is on `fix_intent`.
         let diags = lint_portion("(S//NF//ND/XD)");
         let e041: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E041").collect();
@@ -6467,7 +6467,7 @@ mod tests {
     }
 
     /// PR 3c.B Sub-PR 8.E.2 — pin E041's intent-only emission shape
-    /// (closes #106).
+    /// (unblocks E041, the primary rule named in #106).
     ///
     /// E041 emits `fix: None, fix_intent: Some(FactRemove(EXDIS,
     /// Scope::Portion))`. The engine's
@@ -6549,7 +6549,7 @@ mod tests {
 
     // Engine-level round-trip / idempotence / FR-016 tests for E041
     // live in `crates/capco/tests/e041_intent_only_engine.rs` (PR 3c.B
-    // Sub-PR 8.E.2 — closes #106). They can't live inside this
+    // Sub-PR 8.E.2 — unblocks E041 in #106). They can't live inside this
     // `#[cfg(test)]` module because the `marque_engine` dependency
     // pulls in `marque_capco` as published, giving two non-equal
     // crate identities for `CapcoScheme` (the inline module's

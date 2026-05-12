@@ -218,7 +218,7 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // shape as E054/E057; the wrapper reuses
         // `relido_remove_intent()`.
         ("(S//OC/RELIDO)\n", "E056", "FactRemove"),
-        // PR 3c.B Sub-PR 8.E.2 (closes #106) — E041 (NODIS supersedes
+        // PR 3c.B Sub-PR 8.E.2 (unblocks E041 in #106) — E041 (NODIS supersedes
         // EXDIS in portion) is the first non-RELIDO `FactRemove`
         // consumer of `synthesize_intent_only_fixes`. Unlike
         // E054/E055/E056/E057 (which are dual-populated under Path C),
