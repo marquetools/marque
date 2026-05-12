@@ -46,9 +46,11 @@ require new primitives that don't ship at PR 3b time.
 Decision: re-sequence into four stages. PR 3b ships the
 declarative-catalog moves over existing primitives only. PR 3.7
 ships the new primitives (RhsFamily + closure operator). PR 4 wires
-the closure operator's `ImplTable` and adds per-category Lattice
-impls + property tests. PR 5+ moves style/ordering to renderer
-correctness.
+the closure operator's `ClosureRule` catalog (catalog shape pivoted
+2026-05-11 per `decisions.md` D18 — Option C public catalog,
+retiring the 2026-05-07 private-`ImplTable<S>` pin) and adds
+per-category Lattice impls + property tests. PR 5+ moves
+style/ordering to renderer correctness.
 
 ## 2. Resolved questions
 
@@ -56,7 +58,7 @@ correctness.
 |---|------------|
 | **Q-3.9** — "single citation per rule": per declarative entry or per `impl Rule` block? | **Per declarative entry.** Walkers (3b.A banner, 3b.C RELIDO, 3b.D floors, 3b.E SCI per-system, 3b.F renderer fallback) are each one `impl Rule` block delegating to a catalog whose rows each carry their own §-citation. Constitution VIII (citation integrity is per-claim, not per-block). Locked in `plan.md` D13 + `decisions.md` D13 amendment. |
 | **Q-3.4.2-timing** — where does `Constraint::Conflicts::RhsFamily(predicate)` land? | **PR 3.7** (T108b). PR 3b ships the enumerated form (~15–20 single-token rows per `marque-applied.md` §3.4.2 fallback table); compaction to 2 family rows lands in PR 4. |
-| **Q-4.7-timing** — where does the `marque-applied.md` §4.7 closure operator primitive land? | **PR 3.7** (T108c). Implication tables ship with the primitive. CAPCO `ImplTable` hand-curated with §-citations per `marque-applied.md` §4.7.5. PR 4 wires the call site into `Engine::project` per §4.7.4 pipeline. |
+| **Q-4.7-timing** — where does the `marque-applied.md` §4.7 closure operator primitive land? | **PR 3.7** (T108c). Implication tables ship with the primitive. CAPCO `ClosureRule` catalog hand-curated with §-citations per `marque-applied.md` §4.7.5. (Catalog shape pivoted 2026-05-11 from private `ImplTable<S>` to public `ClosureRule` — see `decisions.md` D18.) PR 4 wires the call site into `Engine::project` per §4.7.4 pipeline. |
 | **Q-4.7-Cl_supp** — single shared FD&R suppressor or per-row suppressors? | **Single shared FD&R predicate** as primary; per-row override available for future implications that need it. Consistent with `marque-applied.md` §4.7.1 table-design unification. |
 | **Q-Move-7-timing** — style/ordering → renderer at PR 5+? | **PR 5+, with a single fallback walker retained in PR 3b** (T026f). The renderer trait surface is a separate effort; PR 3b retains one "non-canonical input" diagnostic walker covering E020 / E023 / E028 / E033 until the renderer arrives. |
 
@@ -112,6 +114,15 @@ marque-applied.md`) absorbed five corrections from the consultation:
    scope.
 5. §4.7.6 trait shape pinned to α (`MarkingScheme` trait method) with
    default no-op; `ImplTable` as `&'static [ImplRow<S>]`.
+   **Superseded 2026-05-11 by `decisions.md` D18**: the `ImplTable<S>`
+   / `ImplRow<S>` private shape is retired in favor of Option C —
+   a public `ClosureRule` catalog (sibling to `Constraint`) accessed
+   via `MarkingScheme::closure_rules() -> &[ClosureRule]`, with a
+   default `closure()` impl walking the catalog. `triggers` /
+   `suppressors` are `&'static [TokenRef]` (n-ary OR), not
+   `fn`-pointer predicate bodies. The trait-method-with-default-no-op
+   pin from this verdict still holds; only the private-structure
+   shape was retired.
 
 The bridge's §3.11 (new) is the stage-sequencing section that maps
 each Move to its home PR.

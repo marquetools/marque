@@ -479,8 +479,10 @@ acceptance gates.
 - **Q-4.7-timing** (where does the `marque-applied.md` §4.7 closure
   operator primitive land?) → **fold into PR 3.7**. Same reason.
   The implication tables and `proptest_closure.rs` ship with the
-  primitive; PR 4 wires CAPCO's `ImplTable` and re-classifies
-  closure-implied entries.
+  primitive; PR 4 wires CAPCO's `ClosureRule` catalog and
+  re-classifies closure-implied entries. (Catalog shape pivoted
+  2026-05-11 from private `ImplTable<S>` to public `ClosureRule` —
+  see D18.)
 - **Q-Move-7-timing** (where does style/ordering → renderer move
   land?) → **PR 5+, with a single fallback walker retained in
   PR 3b**. The renderer trait surface is a separate effort; PR 3b
@@ -669,6 +671,238 @@ and the helper-position tests
 
 ---
 
+### D18 — T108c catalog shape: public `ClosureRule` (Option C), not private `ImplTable<S>`
+
+**Decision**: PR 3.7 T108c ships the §4.7 closure operator as a
+**public** catalog primitive `ClosureRule` in `marque-scheme` (sibling
+to `Constraint`), accessed via a new `MarkingScheme::closure_rules()
+-> &[ClosureRule]` trait method. The private `ImplTable<S>` /
+`ImplRow<S>` shape pinned in the 2026-05-07 consultation verdict
+(line 113–114, item 5 — "trait shape pinned to α with default no-op;
+`ImplTable` as `&'static [ImplRow<S>]`") is **retired in favor of
+Option C**: the closure rules are first-class catalog data, not an
+engine-implementation-detail private structure.
+
+**Rationale**:
+
+1. **The bridge §3.0.b structure-vs-constraint distinction reads
+   cleanly as two parallel catalogs.** Phase A "structure rules"
+   (closure-shaped — adds facts when triggers fire) become
+   `&[ClosureRule]`. Phase B "constraint rules" (validation —
+   diagnoses violations of structural invariants) stay
+   `&[Constraint]`. Both are inspectable by tooling
+   (scheme-exploration UI, docs generator, catalog audit), both
+   per-scheme, both data-form. A private `ImplTable<S>` would hide
+   the closure rules from tooling and conflate "engine
+   implementation detail" with "scheme's declared semantics."
+
+2. **No fn-pointer trigger / suppressor bodies are needed for the
+   CAPCO catalog.** The 2026-05-07 pin specified `ImplRow = {
+   trigger: fn(&marking) -> bool, cone: ConeBuilder, suppressor:
+   fn(&marking) -> bool }` — function pointers for the predicate
+   bodies. Walking the bridge §4.7.1 implication list shows every
+   row reduces to "presence of any token in a fixed set" (n-ary OR
+   over `TokenRef`s); the function-pointer escape hatch is
+   unnecessary. `triggers: &'static [TokenRef]` + `suppressors:
+   &'static [TokenRef]` carry the same information in a
+   data-inspectable form. If a future scheme needs a
+   non-presence-shaped trigger, an `fn`-pointer variant can be
+   added then (YAGNI).
+
+3. **`Constraint::Implies` semantics are NOT promoted in this
+   pivot.** `Constraint::Implies` remains a diagnostic-suppression
+   hint (its current job — "if left is present, right is implied;
+   the engine skips false missing-X diagnostics"). The closure
+   operator's fact-propagation work flows through `ClosureRule`,
+   not through `Implies`. The two catalogs are independent.
+   **Superseded 2026-05-11 by D19 C**: a follow-on design pass
+   surfaced that closure-first evaluation makes `Constraint::Implies`
+   dead code — the implied fact is propagated before validation
+   runs, so "missing X" never fires — and that the variant has
+   zero in-tree CAPCO catalog rows. D19 C retires the variant
+   cleanly.
+
+4. **Engine call site is unchanged.** PR 4 (T112+) wires
+   `Engine::project` to call `scheme.closure(marking)` per the
+   §4.7.4 pipeline; the default `closure()` impl walks
+   `closure_rules()` to fixpoint. Engine code doesn't need to know
+   the catalog shape.
+
+5. **Shared-suppressor design** (Q-4.7-Cl_supp resolution) is
+   preserved verbatim — `FDR_DOMINATORS: &'static [TokenRef] = ...`
+   is referenced by every trio row that shares the FD&R suppressor.
+   One source of truth; rows reference by `&'static` slice
+   identity, not by row-duplication.
+
+**Decision pass context**: surfaced 2026-05-11 during a
+lattice-consultant Topic-2-variant-shape exploration (Topics 1 + 2
+in the closure-FCA-discuss worktree). User selected Option C +
+delete `ImplTable` after walking three variant-shape alternatives
+(A: enumerated single-trigger rows with shared suppressor pointer;
+B: first-class n-ary variant inside `Constraint::*`; C: separate
+catalog alongside `Constraint::*`). The consultant verdict file
+captures the analysis.
+
+**What changes for T108c**: trait method signatures + `ClosureRule`
+type definition + `closure_rules()` content (no `ImplRow<S>` /
+`ImplTable<S>` types introduced). Property-test obligations and
+the implicit-default trio data are unchanged. Class-floor entries
+still STAY in `Constraint::Custom` per §4.7.5.
+
+**What changes for PR 4**: wiring reads from `scheme.closure_rules()`
+or calls `scheme.closure()` (both public) at the §4.7.4 pipeline
+slot. Closure-implied entries that were `Constraint::Custom` /
+`Requires` rows in PR 3b flip to `ClosureRule` rows; the count
+delta projection in §3 of the 2026-05-07 consultation verdict
+(stage 2 row: "~−5 to −8 implication-shaped Requires entries flip
+to closure entries") is unchanged.
+
+**Lands in**:
+
+- `tasks.md` T108c amended to specify `ClosureRule` (not
+  `ImplTable<S>`); the trait surface gains `closure_rules()`
+  alongside `closure()`.
+- `docs/plans/2026-05-01-lattice-design.md` §9 amended.
+- `docs/plans/2026-05-07-pr3b-consultation-verdict.md` §5 item 5
+  ("trait shape pinned to α") annotated as superseded by D18.
+- `docs/plans/2026-05-07-pr3b-C-relido-conflicts-plan.md` §8
+  forward-reference updated.
+- `docs/plans/2026-05-08-pr3b-D-class-floor-catalog-plan.md` §2
+  "stable ImplTable shape" wording updated to `ClosureRule`
+  catalog.
+
+---
+
+### D19 — Topic 1 design pass: `AuditNote` shape + per-row closure severity + `Constraint::Implies` retirement
+
+**Decision**: Three coordinated sub-decisions land alongside T108c's
+`ClosureRule` catalog (D18), folded into PR 3.7 as sibling tasks
+T108e / T108f / T108g.
+
+- **A. `AuditNote` type** (T108e) — new audit-stream record for
+  `ClosureRule` firings. Lives in `marque-rules` alongside
+  `AppliedFix`. Carries `rule: RuleId`, `citation: &'static str`,
+  `kind: AuditNoteKind`, engine-snapshotted runtime state
+  (`timestamp`, `classifier_id`, `dry_run`), and a structural-only
+  payload `AuditNoteStructural { row_name, cone: &'static [TokenId],
+  scope: Scope, span: Option<Span> }`. G13 invariant preserved by
+  construction: no document bytes traverse the audit pipeline —
+  only TokenIds, byte offsets, and catalog row identifiers.
+  Engine-promoted with `__engine_promote`-shaped sealing mirroring
+  `AppliedFix` (same Constitution V Principle V scope; same
+  test-fixture carve-out). Separate NDJSON line type
+  (`{"type":"audit_note", ...}`) distinct from
+  `{"type":"applied_fix", ...}`.
+
+  `AuditNoteKind` is closed-set; **v1 ships `InferredFact` only**.
+  Additional kinds (`SuppressedByFact`, `DisabledByConfig`) are
+  deferred to a debug-tracing follow-up — engineer-facing tools,
+  not load-bearing for compliance.
+
+  `Confidence` propagates from the underlying parse/recognition
+  into `AuditNote` (mirrors `AppliedFix.confidence`) so downstream
+  audits can ask "how confident was the recognition step that fed
+  this closure firing?"
+
+- **B. Per-row severity for `ClosureRule` rows in `.marque.toml`**
+  (T108f) — new `[closure_rules]` table in `.marque.toml`,
+  **separate from `[rules]`**, keyed by `ClosureRule.name` (e.g.,
+  `"capco/noforn-if-no-fdr"`). Same `Severity` enum and same
+  per-row override mechanic as `[rules]`, but a distinct section
+  rather than a shared keyspace — `RuleId` explicitly supports
+  slash-containing IDs per the `crates/rules/src/lib.rs:84` doc
+  ("E001", "capco/portion-mark-in-banner"), so a string-shape
+  disambiguation (slashes vs bare alphanumeric) would not hold.
+  Section isolation eliminates the collision risk entirely while
+  preserving the "same severity override surface" the user
+  requested (same enum, same per-row mechanic, same default-
+  fallback semantics).
+
+  Map per-row severity to closure-row semantics:
+
+  | Severity | Behavior |
+  |---|---|
+  | `Off` | Row disabled; no firing; no propagation; no `AuditNote` |
+  | `Suggest` | Fires; propagates; `AuditNote` at suggestion level |
+  | `Info` | (default) Fires; propagates; `AuditNote` at info level |
+  | `Warn` | Fires; propagates; `AuditNote` + `Diagnostic` (warn) surfaces |
+  | `Error` | Fires; propagates; `AuditNote` + `Diagnostic` (error) surfaces |
+  | `Fix` | **Rejected at config load** — closure firings are not byte-level fixes; load-time error points the user at `Info` / `Warn` / `Error` |
+
+  Default per row is `Info`. Catalog rows declare
+  `default_severity: Severity` on the `ClosureRule` struct itself
+  (always present per T108c — closure rows are severity-aware at
+  the catalog level; typically initialized to `Severity::Info`).
+  The runtime override surface in `.marque.toml` reads the
+  `[closure_rules]` table first; absent → falls back to
+  `ClosureRule.default_severity`. `[rules]` is NOT consulted for
+  closure-row severity — the section split is total, consistent
+  with the keyspace-collision rationale above.
+
+  Surface at `Warn` / `Error` produces a `Diagnostic` *in addition
+  to* the `AuditNote` from T108e — the two streams serve different
+  consumers (compliance reviewer vs. content author) and are not
+  conflated.
+
+- **C. `Constraint::Implies` retirement** (T108g) — the variant
+  becomes dead code in the post-T108c world: `ClosureRule`
+  propagates the implied fact; downstream `Requires` checks
+  evaluate against the *closed* marking; "missing X" false
+  positives disappear automatically. Grounded in code: zero
+  in-tree `Constraint::Implies` catalog rows in CapcoScheme
+  today (verified 2026-05-11). Only usage is the evaluator test
+  stub at `crates/scheme/tests/evaluator.rs:301`.
+
+  Retirement is a five-site surgical change (see T108g for the
+  call-site list). No CAPCO catalog data touched. Marque is
+  pre-users; no deprecation phasing per
+  `feedback_pre_users_no_deprecation_phasing.md`.
+
+  This narrowly supersedes D18 rationale bullet 3 — D18 preserved
+  `Implies` because the catalog-shape pivot did not surface the
+  redundancy question. D19 surfaces it: the redundancy IS
+  terminal, retire cleanly.
+
+  **Speculative-preservation rejected**: the only non-fact-
+  propagation reading of `Implies` worth naming is "left implies
+  right is the *preferred* rendered form but not required" — a
+  styling / codec preference, not a structural constraint. That
+  semantic belongs on a `Codec` / renderer trait surface
+  introduced at PR 5+, not on `Constraint`. Don't preserve
+  `Implies` today against hypothetical future use; re-add a
+  purpose-built trait surface when the use case actually arrives.
+
+**Rationale**:
+
+1. **User-stated priors** (2026-05-11 design pass): "lean
+   AuditNote type; same severity override surface" — directly
+   drives sub-decisions A and B.
+2. **G13 audit-content-ignorance preserved by construction** for
+   sub-decision A — `AuditNote` payload is structural only
+   (TokenIds, byte offsets, catalog row identifiers).
+3. **Closure-first evaluation makes `Implies` dead code** —
+   propagation runs before validation; suppression is automatic.
+4. **No user-visible breaking change** — marque is pre-users; the
+   `Constraint::Implies` variant has no production catalog rows
+   to migrate.
+
+**Decision pass context**: surfaced 2026-05-11 immediately after
+D18, in the same lattice-consultant Topic-1 design pass
+(closure-fca-discuss worktree). User selected option (1) —
+"approve A/B/C as written" — after the design pass laid out the
+three sub-decisions, the eight open questions, and the
+recommendations.
+
+**Lands in**:
+
+- `tasks.md` T108e (`AuditNote` type + emission), T108f (per-row
+  severity for `ClosureRule`), T108g (`Constraint::Implies`
+  retirement) — three new sibling tasks under PR 3.7.
+- This `decisions.md` D19 entry (above) + D18 rationale bullet 3
+  supersession annotation (history preserved).
+
+---
+
 ## PR 0 absorption summary
 
 | # | Decision | PR-0 deliverable |
@@ -690,8 +924,15 @@ and the helper-position tests
 | D15 | Fixture glob + count | `spec.md` US1 / US2 AC edits |
 | D16 | Quarantine queue (cap=10) | `tools/flake-watch/` scaffold; `spec.md` FR-051 |
 | D17 | PR 3b.C scope correction: RELIDO Conflicts roster pruned from ~15–20 to 4 rows under Constitution VIII; broader §3.4.2 family roster deferred to PR 3.7 T108b | `crates/capco/tests/relido_conflicts.rs` count pin; verdict line 82 amended |
+| D18 | T108c catalog shape: public `ClosureRule` (Option C), not private `ImplTable<S>` | `tasks.md` T108c amended; `2026-05-07-pr3b-consultation-verdict.md` §5 item 5 superseded; `decisions.md` Q-4.7-timing wording updated |
+| D19 | Topic 1 design pass: `AuditNote` audit-stream record + per-row severity for `ClosureRule` + `Constraint::Implies` retirement (narrowly supersedes D18 rationale bullet 3) | `tasks.md` T108e/T108f/T108g added; D18 bullet 3 annotated |
 
-All 16 decisions lock at PR 0. D17 is a PR 3b.C implementation decision
-amending the consultation verdict projection; it was added post-PR-0.
-Subsequent PRs execute against this register; amendments require a
-follow-up PR editing this file.
+D1–D16 lock at PR 0. D17 / D18 / D19 are post-PR-0 implementation
+decisions: D17 is a PR 3b.C scope correction amending a consultation
+verdict projection; D18 is a PR 3.7 T108c catalog-shape pivot from
+the 2026-05-07 trait-shape pin to a public `ClosureRule` catalog
+(Option C); D19 is the Topic 1 design pass that lands `AuditNote`,
+per-row severity for `ClosureRule`, and the `Constraint::Implies`
+retirement as sibling T108e/f/g tasks under PR 3.7. Subsequent PRs
+execute against this register; amendments require a follow-up PR
+editing this file.

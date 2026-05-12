@@ -549,7 +549,7 @@ Relative to `/home/knitli/marque-pr3b-C/`. Approximate line counts.
 The following are explicitly NOT in scope for PR 3b.C and are tracked for later work:
 
 1. **Broader §3.4.2 family roster** (RELIDO ⊥ {LES-NF, SBU-NF, each FGI atom, each JOINT atom, each NATO atom}) — deferred to **PR 3.7 (T108b)** where `Constraint::Conflicts::RhsFamily(predicate)` lands. At that point a single (or two) family-predicate row(s) carry the structural argument with one well-documented citation chain (likely §H.8 RELIDO definition + §H.7 FGI + §H.3 JOINT introduction prose explaining IDO scope, packaged as a new "structural derivation" citation form to be designed in T108b).
-2. **Closure-operator implications for RELIDO** — e.g., RELIDO implies REL TO under certain conditions per §B.3 Table 2 — deferred to **PR 3.7 (T108c)** where the closure-operator primitive ships with `ImplTable`.
+2. **Closure-operator implications for RELIDO** — e.g., RELIDO implies REL TO under certain conditions per §B.3 Table 2 — deferred to **PR 3.7 (T108c)** where the closure-operator primitive ships as a public `ClosureRule` catalog (private `ImplTable<S>` shape from the 2026-05-07 verdict retired per `decisions.md` D18).
 3. **Runtime activation** of the four new wrappers in the engine's lint pipeline — already activated for E053 and E054–E057 follow the same dispatch path; nothing new to wire. (Verified: `Engine::lint` walks `RuleSet::rules()`, which the registration in §5.1 covers.)
 4. **`AppliedFix` audit-record changes** — none. Conflicts wrappers emit no `FixProposal`, so no audit records are produced. Constitution V untouched.
 5. **`Codec<S>` round-trip** — no codec impls in-tree (Phase G), so the Conflicts entries don't cross the codec boundary. No round-trip obligations.
