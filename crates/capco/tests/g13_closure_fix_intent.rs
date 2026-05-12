@@ -176,6 +176,15 @@ fn assert_open_vocab_ref_is_structural(open_ref: &CapcoOpenVocabRef) {
         // FGI / JOINT tetragraph — canonical 4-letter token from
         // the ISMCAT taxonomy.
         CapcoOpenVocabRef::FgiTetragraph(_) => {}
+        // REL TO country code or country-group — canonical
+        // `marque_ism::CountryCode` value (16-byte fixed buffer, no
+        // heap, no raw input bytes). Wired by PR 3c.B Sub-PR 8.D.4
+        // as the first open-vocab consumer of the CAT_REL_TO axis;
+        // E014 emits one `FactAdd { CountryCode(...), Portion }` per
+        // missing JOINT co-owner. The variant carries no document
+        // text — G13 audit-content-ignorance invariant holds by
+        // construction.
+        CapcoOpenVocabRef::CountryCode(_) => {}
     }
 }
 
@@ -255,6 +264,16 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // PageRewrite, NOT this rule.
         ("(S//NF//REL TO USA, GBR)\n", "E053", "FactRemove"),
         ("(S//RD//IMC)\n", "E021", "FactAdd"),
+        // PR 3c.B Sub-PR 8.D.4 — E014 (JOINT participants require REL
+        // TO coverage, §H.3 p57) is the first consumer of the
+        // open-vocab `CapcoOpenVocabRef::CountryCode` FactAdd path on
+        // the CAT_REL_TO axis. The rule emits N FactAdds (one per
+        // missing JOINT co-owner); `find` picks up the first auto-
+        // applied entry. `(//JOINT S GBR USA//REL TO USA)` lists USA
+        // explicitly in REL TO, so only GBR is missing — exactly one
+        // FactAdd intent fires (single-co-owner case demonstrates the
+        // open-vocab CountryCode payload through the audit pipeline).
+        ("(//JOINT S GBR USA//REL TO USA)\n", "E014", "FactAdd"),
         // E002 USA-missing branch — FactAdd { USA, Page } on banner.
         ("SECRET//REL TO GBR\n", "E002", "FactAdd"),
         // E002 USA-not-first branch — Recanonicalize { Page } on

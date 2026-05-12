@@ -157,13 +157,25 @@ fn fix_exit_code_zero_when_all_fixed() {
 
 #[test]
 fn fix_exit_code_one_when_issues_remain() {
-    // `//JOINT SECRET USA GBR` triggers E014 (JOINT requires REL TO
-    // coverage) and E015 (non-US classification needs a dissem
-    // control) — both Severity::Error, both emit no-fix diagnostics.
-    // After fix, the errors remain → exit 1.
+    // `(TS//HCS)` triggers E010 (bare HCS legacy form; classifier
+    // must choose HCS-O vs HCS-P) — a conscious-defer rule with
+    // `fix_intent: None`. The diagnostic emits but no auto-fix
+    // applies; the error remains after the fix pass → exit 1.
+    //
+    // Pre-PR 3c.B Sub-PR 8.D.4 the fixture here was
+    // `//JOINT SECRET USA GBR` (E014 + E015 both Error-no-fix). E014
+    // migrated to FactAdd in 8.D.4 and now auto-adds the missing
+    // co-owners to REL TO, which transitively satisfies E015
+    // (CAT_DISSEM is satisfied by either dissem_controls OR rel_to —
+    // see `satisfies_attrs` CAT_DISSEM arm); the marking becomes
+    // fully clean after fix and the test no longer exercises the
+    // "issues remain" path. `(TS//HCS)` is the stable post-8.D.4
+    // replacement — E010 is consciously-deferred (HCS-O vs HCS-P is
+    // a classifier decision per §H.4) and intentionally has no
+    // auto-fix path.
     marque()
         .args(["fix"])
-        .write_stdin("//JOINT SECRET USA GBR\n")
+        .write_stdin("(TS//HCS)\n")
         .assert()
         .code(1);
 }
@@ -271,9 +283,11 @@ fn fix_dry_run_stdin_produces_no_stdout() {
 
 #[test]
 fn fix_no_fix_diagnostics_only_exits_one_no_audit() {
-    // E014/E015 (JOINT/non-US) emit no-fix diagnostics — no proposal
-    // at all, so the threshold gate is academic. After fix, the
-    // errors remain → exit 1 with no audit records.
+    // `(TS//HCS)` emits one Error-severity diagnostic (E010, bare
+    // HCS legacy form, §H.4 p62) with `fix_intent: None` — a
+    // conscious-defer rule because HCS-O vs HCS-P vs HCS-O-P is a
+    // classifier decision the engine cannot make. After fix, the
+    // error remains → exit 1 with no audit records.
     //
     // Pre-PR-3c.B Commit 6 the fixture here was a sub-threshold
     // FixProposal (E003 at 0.6 below the default 0.95 threshold) and
@@ -288,9 +302,18 @@ fn fix_no_fix_diagnostics_only_exits_one_no_audit() {
     // "all-no-fix-diagnostics → no audit + exit 1" surface; the
     // engine-level "sub-threshold proposals never auto-apply" gate
     // is pinned in `crates/engine/tests/audit_completeness.rs`.
+    //
+    // Pre-PR 3c.B Sub-PR 8.D.4 the fixture here was
+    // `//JOINT SECRET USA GBR` (E014 + E015 both Error-no-fix).
+    // E014 migrated to FactAdd in 8.D.4 and now auto-applies the
+    // co-owner additions to REL TO, transitively satisfying E015
+    // (CAT_DISSEM's `satisfies_attrs` arm accepts non-empty rel_to);
+    // the input no longer exercises the all-no-fix-diagnostics
+    // path. `(TS//HCS)` is the stable post-8.D.4 fixture — E010 is
+    // consciously-deferred and intentionally has no auto-fix path.
     let assert = marque()
         .args(["fix"])
-        .write_stdin("//JOINT SECRET USA GBR\n")
+        .write_stdin("(TS//HCS)\n")
         .assert()
         .code(1);
 
@@ -304,7 +327,7 @@ fn fix_no_fix_diagnostics_only_exits_one_no_audit() {
 
     // stdout should contain the original text (unchanged, written via --write-stdout default).
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert_eq!(stdout.as_ref(), "//JOINT SECRET USA GBR\n");
+    assert_eq!(stdout.as_ref(), "(TS//HCS)\n");
 }
 
 // --- Suggest-only narration (issue #235 / #186 PR-3, M-3) ---
