@@ -346,16 +346,23 @@ to make a call before the section can be filled:
 6. **§6 tetragraph join level**: trigraph-expanded vs tetragraph-atomic.
 7. **§7 ATOMAL/BOHEMIA combinability**: §H.3 citation needed.
 8. **§8 mixed dates and canned strings**: §C citation needed.
-9. **NEW (2026-05-07) — §3 (Dissem set) and cross-axis: closure
-   operator primitive (`marque-applied.md` §4.7).** PR 3.7 lands
-   the §4.7 closure operator as a `MarkingScheme` trait method
-   (`tasks.md` T108c); the per-axis fill-in for §3 (and the cross-
-   axis interaction with §2 / §7) MUST reference the `ImplTable`
-   shape and the implicit-default trio (NOFORN-if-no-FD&R, RELIDO-
-   if-no-FD&R-and-not-incompat, REL-USA-NATO-if-no-FD&R-and-NATO).
-   Property-test obligations land in `proptest_closure.rs`. Q-4.7-
-   Cl_supp resolved per `2026-05-07-pr3b-consultation-verdict.md`:
-   single shared FD&R suppressor.
+9. **NEW (2026-05-07; catalog shape amended 2026-05-11 per D18) —
+   §3 (Dissem set) and cross-axis: closure operator primitive
+   (`marque-applied.md` §4.7).** PR 3.7 lands the §4.7 closure
+   operator as a `MarkingScheme` trait method (`tasks.md` T108c);
+   the per-axis fill-in for §3 (and the cross-axis interaction
+   with §2 / §7) MUST reference the public **`ClosureRule`
+   catalog** (`MarkingScheme::closure_rules() -> &[ClosureRule]`,
+   sibling to `Constraint`; private `ImplTable<S>` shape from the
+   2026-05-07 pin retired per `decisions.md` D18) and the
+   implicit-default trio (NOFORN-if-no-FD&R,
+   RELIDO-if-no-FD&R-and-not-incompat,
+   REL-USA-NATO-if-no-FD&R-and-NATO). Property-test obligations
+   land in `proptest_closure.rs` (run directly against
+   `scheme.closure_rules()`). Q-4.7-Cl_supp resolved per
+   `2026-05-07-pr3b-consultation-verdict.md`: single shared FD&R
+   suppressor (`FDR_DOMINATORS: &'static [TokenRef]` referenced by
+   every trio row).
 10. **NEW (2026-05-07) — §3 (Dissem set): RELIDO incompatibility
     via `Constraint::Conflicts::RhsFamily(predicate)`.** PR 3.7
     lands the `RhsFamily` Constraint variant (`tasks.md` T108b);
