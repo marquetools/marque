@@ -32,12 +32,24 @@ fn test_engine() -> Engine {
 
 fn mixed_confidence_source() -> Vec<u8> {
     // E002 at confidence 0.97 (REL TO missing USA → fix applied), and
-    // E014/E015 (JOINT/non-US dissem) emitting no-fix Severity::Error
-    // diagnostics that stay in `remaining_diagnostics`. (PR 3c.B
-    // Commit 6 retired the original E001/E003 mixed_confidence
-    // fixture; the new pair exercises the same channel — one applied
-    // fix + remaining diagnostics — on still-registered rules.)
-    b"SECRET//REL TO GBR, AUS\n//JOINT SECRET USA GBR\n".to_vec()
+    // E010 (bare HCS legacy form, §H.4 p62) emitting a no-fix
+    // Severity::Error diagnostic that stays in `remaining_diagnostics`.
+    //
+    // Fixture history:
+    // - PR 3c.B Commit 6 retired the original E001/E003 fixture; the
+    //   replacement used `//JOINT SECRET USA GBR\n` for the no-fix
+    //   line (E014 + E015 both Error-no-fix at the time).
+    // - PR 3c.B Sub-PR 8.D.4 migrated E014 to FactAdd; the JOINT
+    //   fixture's E014 now auto-applies the missing co-owners to REL
+    //   TO, transitively satisfying E015 (CAT_DISSEM is satisfied by
+    //   non-empty rel_to per `satisfies_attrs`). The JOINT line no
+    //   longer exercises the "remaining no-fix Error diagnostic"
+    //   channel. `(TS//HCS)\n` is the stable replacement — E010 is
+    //   consciously-deferred (HCS-O vs HCS-P is a classifier decision
+    //   per §H.4) and intentionally has no auto-fix path, so its
+    //   diagnostic persists through the fix pass and lands in
+    //   `remaining_diagnostics`.
+    b"SECRET//REL TO GBR, AUS\n(TS//HCS)\n".to_vec()
 }
 
 #[test]
@@ -47,10 +59,9 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     let result = engine.fix(&source, FixMode::Apply);
 
     // Only E002 (confidence 0.97 ≥ 0.95) should be applied. The
-    // remaining diagnostics on this fixture are E014 / E015 (the
-    // JOINT-participants-missing-from-REL-TO and non-US
-    // classification-without-dissem-control errors, both no-fix on
-    // the `//JOINT SECRET USA GBR\n` second line) — verified below
+    // remaining diagnostic on this fixture is E010 (bare HCS legacy
+    // form, no-fix on the `(TS//HCS)\n` second line — conscious-defer
+    // per §H.4 p62, classifier picks HCS-O vs HCS-P) — verified below
     // in the `remaining_diagnostics` assertion.
     assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
     assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
@@ -64,16 +75,23 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
         "expected canonical REL TO list, got: {fixed_text:?}"
     );
 
-    // E014 and/or E015 (JOINT/non-US, no-fix errors) remain.
+    // E010 (bare HCS, no-fix Error) remains.
     assert!(
         !result.remaining_diagnostics.is_empty(),
-        "E014/E015 should remain in remaining_diagnostics"
+        "E010 should remain in remaining_diagnostics"
     );
     assert!(
         result
             .remaining_diagnostics
             .iter()
-            .any(|d| matches!(d.rule.as_str(), "E014" | "E015"))
+            .any(|d| d.rule.as_str() == "E010"),
+        "E010 (bare HCS, conscious-defer no-fix) should remain; \
+         remaining: {:?}",
+        result
+            .remaining_diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
     );
 }
 

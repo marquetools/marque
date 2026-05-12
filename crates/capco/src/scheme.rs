@@ -413,22 +413,25 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
 /// Apply a single [`ReplacementIntent`] to a [`CapcoMarking`].
 ///
 /// Helper for [`<CapcoScheme as MarkingScheme>::apply_intent`]. Routes
-/// the intent through [`capco_token_category`] (for CVE refs) to the
-/// per-axis mutators:
+/// the intent through [`capco_token_category`] (for CVE refs) and
+/// [`<CapcoScheme as MarkingScheme>::category_of`] (for open-vocab
+/// refs) to the per-axis mutators:
 ///
 /// - `FactRemove` → [`apply_fact_remove`] (CAT_DISSEM, CAT_NON_IC_DISSEM,
-///   CAT_REL_TO wired; other axes return `IntentInapplicable`).
+///   CAT_REL_TO wired for both CVE sentinels and open-vocab country
+///   codes; other axes return `IntentInapplicable`).
 /// - `FactAdd` → [`apply_fact_add`] (CAT_DISSEM wired in PR 3c.B
-///   Sub-PR 8.D.1 as the first consumer; other axes return
-///   `IntentInapplicable` until their own migration sub-PRs land).
+///   Sub-PR 8.D.1 for closed-CVE adds; CAT_REL_TO wired in PR 3c.B
+///   Sub-PR 8.D.4 for open-vocab CountryCode adds — E014's JOINT
+///   co-owner coverage path; other axes return `IntentInapplicable`
+///   until their own migration sub-PRs land).
 /// - `Recanonicalize` → no fact-set mutation (the engine renders the
 ///   marking via `render_canonical` to produce the canonical form).
 ///
-/// Per-axis FactAdd routing tracks the same minimum-needed pattern as
-/// FactRemove: the wired axis is the one the imminent rule migration
-/// (E038 NODIS/EXDIS-requires-NOFORN, Sub-PR 8.D.1) actually emits
-/// `FactAdd` against. Other axes (SCI, SAR, JOINT, AEA, REL TO,
-/// classification) are reachable by the routing table but return
+/// Per-axis routing tracks the minimum-needed pattern: each wired
+/// axis is the one some rule migration actually emits intents
+/// against. Other axes (SCI, SAR, JOINT, AEA, classification) are
+/// reachable by the routing table but return
 /// `Err(IntentInapplicable)` until their migration sub-PRs land.
 fn apply_intent_to_marking(
     scheme: &CapcoScheme,
@@ -487,16 +490,24 @@ fn apply_intent_to_marking(
 /// batch aggregates to `Err(IntentInapplicable)` only when the whole
 /// batch produced no mutation.
 ///
-/// PR 3c.B Sub-PR 8.D.1 wires CAT_DISSEM only — the axis E038
-/// (NODIS/EXDIS-requires-NOFORN) targets when emitting
-/// `FactAdd { TOK_NOFORN, Portion }`. Other axes return
-/// `Err(IntentInapplicable)` until their migration sub-PRs land:
+/// Wired axes today:
+///
+/// - **CAT_DISSEM** (PR 3c.B Sub-PR 8.D.1): closed-CVE FactAdd —
+///   E038 (NODIS/EXDIS-requires-NOFORN) emits `FactAdd { TOK_NOFORN,
+///   Portion }`; E021 (AEA-requires-NOFORN) emits the same shape.
+/// - **CAT_REL_TO** (PR 3c.B Sub-PR 8.D.4): open-vocab FactAdd via
+///   `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(...))` —
+///   E014 (JOINT-requires-REL-TO-coverage) emits one FactAdd per
+///   missing JOINT co-owner.
+///
+/// Other axes return `Err(IntentInapplicable)` until their migration
+/// sub-PRs land:
 ///
 /// - **CAT_AEA**: `AeaMarking` is a compound structural value, not
 ///   an atomic token; FactAdd requires the same value-decomposition
 ///   that blocks AEA FactRemove (queued for the AEA Requires-bucket
 ///   sub-PR alongside FactRemove).
-/// - **CAT_NON_IC_DISSEM / CAT_REL_TO / CAT_SCI / CAT_SAR /
+/// - **CAT_NON_IC_DISSEM / CAT_SCI / CAT_SAR /
 ///   CAT_JOINT_CLASSIFICATION / CAT_CLASSIFICATION**: no rule
 ///   currently emits `FactAdd` against these axes; the first rule
 ///   that does lands the routing alongside its fixtures.
@@ -509,11 +520,49 @@ fn apply_fact_add(
 
     let attrs = &mut marking.0;
 
+    // CAT_REL_TO is the first axis wired for open-vocab FactAdd
+    // (PR 3c.B Sub-PR 8.D.4 — E014 JOINT co-owner coverage). Handle
+    // the open-vocab CountryCode branch BEFORE the CVE-only `id`
+    // extraction so we don't have to thread the `FactRef` itself
+    // through the closed-vocab match below.
+    //
+    // Other open-vocab adds (SAR program registration, FGI tetragraph
+    // addition) land in their own sub-PRs.
+    if category == CAT_REL_TO {
+        let country = match token {
+            FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(c)) => *c,
+            // CVE-side TOK_USA / TOK_REL_TO are FactRemove sentinels
+            // (see the doc block on `TOK_REL_TO` above, lines 110–126);
+            // they have no meaning as FactAdd payloads. TOK_USA on the
+            // add side would lose the discrimination between "add USA"
+            // and "clear axis"; the open-vocab CountryCode path is the
+            // canonical add channel for the REL TO axis.
+            _ => return Err(ApplyIntentError::UnknownToken),
+        };
+        if attrs.rel_to.contains(&country) {
+            // Per-intent no-op: country already present, no mutation
+            // applied. Per the trait contract at
+            // `scheme::MarkingScheme::apply_intent` (scheme/src/scheme.rs:185-194)
+            // and the CAT_DISSEM precedent below: per-intent
+            // inapplicability is NOT failure — the batch loop skips
+            // and continues. Returning Ok here would let a redundant-
+            // add intent appear as an applied no-op in the audit log.
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+        let mut next: Vec<CountryCode> = attrs.rel_to.to_vec();
+        next.push(country);
+        attrs.rel_to = next.into_boxed_slice();
+        return Ok(());
+    }
+
     let id = match token {
         FactRef::Cve(id) => *id,
-        // Open-vocab adds (SAR program registration, FGI tetragraph
-        // addition, REL TO country-code addition) land in their own
-        // sub-PRs.
+        // Open-vocab adds for SAR program registration / FGI
+        // tetragraph addition land in their own sub-PRs. The
+        // CountryCode open-vocab branch is handled above under the
+        // CAT_REL_TO arm; reaching this fall-through with an open-
+        // vocab ref means we're on an axis (SAR, SCI, FGI) that has
+        // not yet wired its FactAdd path.
         FactRef::OpenVocab(_) => return Err(ApplyIntentError::IntentInapplicable),
     };
 
@@ -548,11 +597,10 @@ fn apply_fact_add(
         return Ok(());
     }
 
-    // Other categories (CAT_NON_IC_DISSEM, CAT_REL_TO, CAT_AEA,
-    // CAT_SCI, CAT_SAR, CAT_JOINT_CLASSIFICATION,
-    // CAT_CLASSIFICATION): not yet wired for FactAdd. The first rule
-    // that needs each axis lands the routing alongside its migration
-    // fixtures.
+    // Other categories (CAT_NON_IC_DISSEM, CAT_AEA, CAT_SCI, CAT_SAR,
+    // CAT_JOINT_CLASSIFICATION, CAT_CLASSIFICATION): not yet wired
+    // for FactAdd. The first rule that needs each axis lands the
+    // routing alongside its migration fixtures.
     Err(ApplyIntentError::IntentInapplicable)
 }
 
@@ -576,11 +624,35 @@ fn apply_fact_remove(
 
     let attrs = &mut marking.0;
 
+    // CAT_REL_TO open-vocab country-code removal: symmetric with the
+    // FactAdd path wired in PR 3c.B Sub-PR 8.D.4. Wired for
+    // round-trip symmetry; no current emitter targets per-country
+    // FactRemove on REL TO (E053 uses the `TOK_REL_TO` whole-axis-
+    // clear sentinel; E002 USA-not-first uses `Recanonicalize`, not
+    // FactRemove). Handle the open-vocab branch BEFORE the
+    // CVE-only `id` extraction so the closed-vocab match below
+    // stays unchanged.
+    if category == CAT_REL_TO {
+        if let FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(c)) = token_ref {
+            if !attrs.rel_to.contains(c) {
+                return Err(ApplyIntentError::IntentInapplicable);
+            }
+            let next: Vec<CountryCode> = attrs.rel_to.iter().copied().filter(|x| x != c).collect();
+            attrs.rel_to = next.into_boxed_slice();
+            return Ok(());
+        }
+        // Fall through to the closed-CVE `TOK_USA` / `TOK_REL_TO`
+        // sentinel handling below.
+    }
+
     let id = match token_ref {
         FactRef::Cve(id) => *id,
-        // Open-vocab removal lands in the Stage-4 sub-PRs (SAR
-        // program retirement, FGI tetragraph removal). Pre-migration
-        // treat as inapplicable; the engine drops the fix.
+        // Open-vocab removal for SAR program retirement / FGI
+        // tetragraph removal lands in the Stage-4 sub-PRs. The
+        // CountryCode open-vocab branch is handled above under the
+        // CAT_REL_TO arm; reaching this fall-through with an open-
+        // vocab ref means we're on an axis (SAR, SCI, FGI) that has
+        // not yet wired its FactRemove path.
         FactRef::OpenVocab(_) => return Err(ApplyIntentError::IntentInapplicable),
     };
 
@@ -628,16 +700,23 @@ fn apply_fact_remove(
     }
 
     if category == CAT_REL_TO {
-        // Two sentinel paths land here today; REL TO removal of
-        // arbitrary country codes lands via FactRef::OpenVocab in a
-        // later sub-PR.
+        // Three paths land on this axis today:
         //
-        // - TOK_USA: remove only the USA entry from `attrs.rel_to`.
-        // - TOK_REL_TO (PR 3c.B Sub-PR 8.D.2): whole-axis clear.
-        //   E053 (NOFORN ⊥ REL TO, §H.8 p145) emits this sentinel —
-        //   NOFORN supersedes the entire REL TO list, not just USA.
-        //   Analog to the CAT_NON_IC_DISSEM EXDIS-sentinel path that
-        //   PR #370 wired.
+        // - `FactRef::OpenVocab(CountryCode(...))`: per-country
+        //   removal (handled above before the CVE-id extraction).
+        //   Wired by PR 3c.B Sub-PR 8.D.4 for round-trip symmetry
+        //   with the E014 FactAdd path; no current emitter targets
+        //   FactRemove on a per-country basis (E053 uses the whole-
+        //   axis-clear sentinel, E002 USA-not-first uses
+        //   Recanonicalize).
+        // - `FactRef::Cve(TOK_USA)`: remove only the USA entry from
+        //   `attrs.rel_to`.
+        // - `FactRef::Cve(TOK_REL_TO)` (PR 3c.B Sub-PR 8.D.2):
+        //   whole-axis clear. E053 (NOFORN ⊥ REL TO, §H.8 p145)
+        //   emits this sentinel — NOFORN supersedes the entire
+        //   REL TO list, not just USA. Analog to the
+        //   CAT_NON_IC_DISSEM EXDIS-sentinel path that PR #370
+        //   wired.
         match id {
             TOK_USA => {
                 let before = attrs.rel_to.len();
@@ -774,6 +853,17 @@ pub enum CapcoOpenVocabRef {
     SciSubCompartment(Box<str>),
     /// An FGI tetragraph (CAPCO-2016 §H.3 / ISMCAT Tetragraph Taxonomy).
     FgiTetragraph(Box<str>),
+    /// A REL TO country code or country-group (CAPCO-2016 §H.3 / §H.8).
+    ///
+    /// Carries the structural [`marque_ism::CountryCode`] value
+    /// (16-byte fixed buffer, no heap) already produced by the parser,
+    /// never raw input bytes — preserves the G13 audit-content-
+    /// ignorance invariant (Constitution V Principle V). Wired by
+    /// PR 3c.B Sub-PR 8.D.4 as the first open-vocab consumer of the
+    /// CAT_REL_TO axis: E014 (JOINT participants require REL TO
+    /// coverage, §H.3 p57) emits one `FactAdd { CountryCode(...),
+    /// Scope::Portion }` per missing JOINT co-owner.
+    CountryCode(marque_ism::CountryCode),
 }
 
 /// CAPCO's implementation of `MarkingScheme`.
@@ -2748,6 +2838,12 @@ impl MarkingScheme for CapcoScheme {
                     CAT_SCI
                 }
                 CapcoOpenVocabRef::FgiTetragraph(_) => CAT_FGI_MARKER,
+                // PR 3c.B Sub-PR 8.D.4 — open-vocab REL TO country codes
+                // route to CAT_REL_TO so E014's `FactAdd { CountryCode,
+                // Portion }` intents land on the same axis as the
+                // closed-CVE `TOK_USA` / `TOK_REL_TO` sentinels used by
+                // FactRemove paths in PR 3c.B Sub-PR 8.D.2.
+                CapcoOpenVocabRef::CountryCode(_) => CAT_REL_TO,
             }),
         }
     }

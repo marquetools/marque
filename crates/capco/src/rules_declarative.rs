@@ -438,6 +438,58 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
 // ---------------------------------------------------------------------------
 // E014 — JOINT participants must appear in REL TO
 // ---------------------------------------------------------------------------
+//
+// **Migration status (PR 3c.B Sub-PR 8.D.4, 2026-05-12):** migrated
+// to `with_fix_intent` carrying one `FactAdd { CountryCode(...),
+// Scope::Portion }` intent per missing JOINT co-owner. This is the
+// FIRST consumer of the open-vocab `CapcoOpenVocabRef::CountryCode`
+// FactAdd path on the CAT_REL_TO axis (wired in
+// `crates/capco/src/scheme.rs::apply_fact_add` in the same sub-PR).
+//
+// # Authoritative source (CAPCO-2016 §H.3 p57)
+//
+// > "JOINT classified information for which the US is a co-owner,
+// > must be appropriately classified and explicitly marked with a
+// > REL TO marking that includes the US and all co-owners, at both
+// > the banner and portion level."
+//
+// — `crates/capco/docs/CAPCO-2016.md` §H.3 p57, under
+// "Relationship(s) to Other Markings → Requires REL TO USA, LIST".
+//
+// # Why this is FactAdd, not no-fix-intent (vs. E010 / E015 / E016)
+//
+// The §H.3 p57 "REL TO marking that includes the US and all
+// co-owners" floor is policy-mandated and deterministic. Given
+// `JOINT(X, Y, Z)`, the REL TO minimum is `{USA, X, Y, Z}` — no
+// classifier discretion sits between the JOINT participant list and
+// the REL TO floor. The classifier's discretion is around expanding
+// the LIST beyond the floor (adding additional release-authorized
+// partners); the floor itself is auto-fillable audit-faithfully.
+// This is the structural difference from the conscious-defer rules
+// (E010 HCS-O vs HCS-P, E015 REL TO USA, LIST vs NOFORN, E016 JOINT
+// + RESTRICTED) where the source provides two valid fills and
+// classifier judgment picks one.
+//
+// # N-diagnostic emission shape
+//
+// Each missing co-owner produces ONE Diagnostic carrying ONE
+// `FactAdd` intent. Three rationales:
+// 1. `FixIntent.replacement` is strict-singleton (one
+//    `ReplacementIntent` per `FixIntent`); the natural way to express
+//    "add multiple countries" is multiple intents — one per
+//    diagnostic.
+// 2. Per-diagnostic actionability: a classifier UI displaying "GBR
+//    missing" is more actionable than "[GBR, CAN, AUS] missing" with
+//    a single combined fix. Each row is independently
+//    suppress/accept-able.
+// 3. The engine's batch dispatcher (`apply_intent_to_marking`)
+//    aggregates per-intent applications — N FactAdds compose
+//    correctly into the canonical REL TO list.
+//
+// Span anchors to the JOINT classification token (the same anchor
+// the legacy single-diagnostic emission used); all N diagnostics
+// share the same span. This is what surfaces the violation at the
+// JOINT site rather than the (potentially absent) REL TO position.
 
 pub(crate) struct DeclarativeJointRelToRule;
 
@@ -449,10 +501,16 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
         "joint-rel-to"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Error
+        // PR 3c.B Sub-PR 8.D.4: Error → Fix. The §H.3 p57
+        // "REL TO marking that includes the US and all co-owners"
+        // floor is policy-mandated and deterministic — no classifier
+        // discretion gates the per-co-owner addition. Fix-severity is
+        // appropriate because the intent is unambiguous and the
+        // engine auto-applies at the default 0.95 threshold.
+        Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingClassification;
 
         if violations_for(attrs, "E014/joint-requires-rel-to-coverage").is_empty() {
@@ -464,11 +522,14 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
             _ => return vec![],
         };
 
-        let missing: Vec<&str> = joint
+        // Iterate over `&CountryCode` (Copy) so we can both diagnose
+        // by `.as_str()` and pass the typed value into the FactAdd
+        // intent without an intermediate parse.
+        let missing: Vec<marque_ism::CountryCode> = joint
             .countries
             .iter()
             .filter(|c| !crate::scheme::rel_to_covers(&attrs.rel_to, c.as_str()))
-            .map(|c| c.as_str())
+            .copied()
             .collect();
         if missing.is_empty() {
             return vec![];
@@ -476,17 +537,78 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
 
         let span = first_span_of(attrs, TokenKind::Classification);
 
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            format!(
-                "JOINT participants [{}] must appear in REL TO list",
-                missing.join(", "),
-            ),
-            "CAPCO-2016 §H.3 p57",
-            None,
-        )]
+        // Use `with_intent_at_span` so the engine's
+        // `synthesize_intent_only_fixes` can locate this diagnostic
+        // via `candidate_span` and re-render the marking after
+        // `apply_intent`. Without `candidate_span` populated, the
+        // synthesis pipeline skips the intent and no fix lands in the
+        // applied audit stream. Same pattern as E038 (FactAdd
+        // CAT_DISSEM) and E041 (FactRemove CAT_NON_IC_DISSEM).
+        missing
+            .iter()
+            .map(|country| {
+                Diagnostic::with_intent_at_span(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    ctx.candidate_span,
+                    format!(
+                        "JOINT participant {} must appear in REL TO list",
+                        country.as_str(),
+                    ),
+                    "CAPCO-2016 §H.3 p57",
+                    e014_add_country_intent(*country),
+                )
+            })
+            .collect()
+    }
+}
+
+/// Build the `FactAdd { CountryCode(...), Scope::Portion }` intent
+/// emitted by [`DeclarativeJointRelToRule`] for one missing JOINT
+/// co-owner.
+///
+/// **Scope is `Portion`**: the rule fires at the portion level
+/// (each portion mark carries its own REL TO list per §H.3 p57
+/// "at both the banner and portion level"). Banner-level roll-up
+/// of the consolidated REL TO list is the page-level rewrite layer's
+/// concern, not this rule's. Mirrors the `Scope::Portion` choice
+/// `e038_add_noforn_intent` and `aea_noforn_add_intent` made for
+/// the analogous companion-required cases on the dissem axis.
+///
+/// **Confidence is `Confidence::strict(0.95)`**: §H.3 p57 is
+/// unambiguous about the floor (co-owners ⊆ REL TO list); the
+/// strict-recognizer path produced the JOINT parse that surfaced the
+/// triggering classification token. Threshold matches the engine's
+/// default `Config::confidence_threshold` (0.95) so the fix
+/// auto-applies, but stays at the precedent-aligned level — same as
+/// E021 (AEA-requires-NOFORN, §H.6 p104 + p111) which has an
+/// identical "always used with X unless agreement" shape.
+///
+/// **Structured message**: `MessageTemplate::RequiredByPresence`
+/// with `token: Some(TOK_JOINT)`. `expected_token` is intentionally
+/// `None` — the missing companion is a country code, not a CVE
+/// `TokenId`, and `MessageArgs.expected_token` is closed-CVE-only.
+/// The country itself is carried structurally via the
+/// `ReplacementIntent::FactAdd { token: FactRef::OpenVocab(
+/// CapcoOpenVocabRef::CountryCode(...)), ... }` payload, which the
+/// audit emitter renders separately from the structured message.
+fn e014_add_country_intent(country: marque_ism::CountryCode) -> FixIntent<CapcoScheme> {
+    use crate::scheme::{CapcoOpenVocabRef, TOK_JOINT};
+    FixIntent {
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(country)),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(0.95),
+        feature_ids: Default::default(),
+        message: Message::new(
+            MessageTemplate::RequiredByPresence,
+            MessageArgs {
+                token: Some(TOK_JOINT),
+                ..MessageArgs::default()
+            },
+        ),
     }
 }
 
