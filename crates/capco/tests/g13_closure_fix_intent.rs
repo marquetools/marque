@@ -94,7 +94,7 @@ fn assert_intent_is_g13_clean(intent: &FixIntent<CapcoScheme>) {
         // variants. Add a dedicated arm when the new variant ships.
         _ => panic!(
             "unexpected ReplacementIntent variant; update \
-             assert_intent_carries_no_source_bytes when new variants land"
+             assert_intent_is_g13_clean when new variants land"
         ),
     }
 

@@ -497,8 +497,9 @@ fn apply_intent_to_marking(
             Ok(())
         }
         // #[non_exhaustive] forward-compat guard: unknown future variants
-        // are treated as inapplicable so the engine drops the fix silently.
-        _ => Err(ApplyIntentError::IntentInapplicable),
+        // are rejected loudly so newly added intents cannot be
+        // silently dropped as no-ops without explicit wiring here.
+        _ => Err(ApplyIntentError::IntentRejectsLattice),
     }
 }
 
