@@ -452,11 +452,18 @@ fn apply_intent_to_marking(
 
 /// Add a single closed-vocab token to the marking's axis.
 ///
-/// Idempotent: if the token is already present on the target axis,
-/// returns `Ok(())` (second add is a no-op, NOT an error — distinct
-/// from [`apply_fact_remove`]'s "absent token is inapplicable" policy
-/// because adding an already-present token does not need to abort
-/// the batch; it just means no per-intent effect this pass).
+/// Idempotent at the per-intent level: if the token is already
+/// present on the target axis, returns `Err(IntentInapplicable)`
+/// (per-intent no-op, NOT a hard failure — the batch dispatcher in
+/// [`CapcoScheme::apply_intent`] silently skips inapplicable intents
+/// and continues the batch). This mirrors [`apply_fact_remove`]'s
+/// "absent token is inapplicable" policy: both axes report
+/// per-intent inapplicability when the requested mutation is a
+/// no-op. The trait contract at
+/// [`marque_scheme::MarkingScheme::apply_intent`] (scheme.rs:185-194)
+/// is explicit that per-intent inapplicability is not failure; the
+/// batch aggregates to `Err(IntentInapplicable)` only when the whole
+/// batch produced no mutation.
 ///
 /// PR 3c.B Sub-PR 8.D.1 wires CAT_DISSEM only — the axis E038
 /// (NODIS/EXDIS-requires-NOFORN) targets when emitting
@@ -5666,12 +5673,16 @@ mod tests {
     /// classification on `mk_attrs()` has an empty dissem axis
     /// pre-call; post-call the axis contains exactly `[Nf]`.
     ///
-    /// Case (b): marking already containing NOFORN → FactAdd(NOFORN)
-    /// returns `Ok(())` (idempotence: second add is a no-op, not an
-    /// error). Distinct from FactRemove's "absent token is
-    /// inapplicable" policy because adding an already-present token
-    /// leaves the marking in the requested post-state, which is what
-    /// the rule wanted.
+    /// Case (b): marking already containing NOFORN — FactAdd(NOFORN)
+    /// is a per-intent no-op and `apply_fact_add` returns
+    /// `Err(IntentInapplicable)`. The lone intent in this batch
+    /// produces no mutation, so `apply_intent` aggregates the
+    /// whole-batch result as `Err(IntentInapplicable)` (the engine
+    /// silently drops the synthesized fix). Symmetric with
+    /// FactRemove's "absent token is inapplicable" policy: both axes
+    /// report per-intent inapplicability when the requested mutation
+    /// is a no-op, per the `MarkingScheme::apply_intent` trait
+    /// contract (scheme.rs:185-194).
     ///
     /// Case (c): FactAdd against an unwired axis (CAT_SCI via
     /// `TOK_HCS`) returns `Err(IntentInapplicable)`. The routing

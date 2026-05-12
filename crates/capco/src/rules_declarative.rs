@@ -1092,12 +1092,16 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
             return vec![];
         }
 
-        // Identify the first NonIcDissem token in source order. The
-        // span anchor (`Diagnostic.span`) and the structured-message
-        // trigger token (`MessageArgs.token`) MUST agree so a
-        // structured-diagnostic renderer doesn't say "NODIS requires
-        // NOFORN" while highlighting an EXDIS token (per Copilot
-        // review of PR #372 — source-order inputs like `(S//XD/ND)`).
+        // Identify the FIRST NODIS-or-EXDIS entry in source order.
+        // The span anchor (`Diagnostic.span`) and the structured-
+        // message trigger token (`MessageArgs.token`) MUST agree so a
+        // renderer doesn't say "NODIS requires NOFORN" while
+        // highlighting an EXDIS token. Scan the full `non_ic_dissem`
+        // collection — NOT just the first entry — so a marking that
+        // contains other NonIcDissem variants before the trigger
+        // (e.g. `(S//LIMDIS/NODIS)`) still fires correctly. The
+        // earlier `.first()` shortcut silently dropped diagnostics
+        // on such inputs (Copilot review of PR #372, second round).
         //
         // §H.9 supersession (NODIS dominates EXDIS) is the concern of
         // E041, not E038: E041 emits a FactRemove(EXDIS) when both
@@ -1106,18 +1110,26 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
         // simply names *which* triggering token caused this firing,
         // anchored at the same source-position the user sees.
         let nid_spans = spans_of_kind(attrs, TokenKind::NonIcDissem);
-        let trigger_token = match attrs.non_ic_dissem.first() {
-            Some(NonIcDissem::Nodis) => crate::scheme::TOK_NODIS,
-            Some(NonIcDissem::Exdis) => crate::scheme::TOK_EXDIS,
-            // Catalog predicate fired but the first NonIcDissem entry
-            // is neither NODIS nor EXDIS — should be unreachable per
-            // the `E038/nodis-or-exdis-requires-noforn` predicate's
-            // axis-presence gate, but bail rather than emit a
-            // mis-attributed diagnostic.
-            _ => return vec![],
-        };
+        let (trigger_token, trigger_idx) =
+            match attrs
+                .non_ic_dissem
+                .iter()
+                .enumerate()
+                .find_map(|(i, d)| match d {
+                    NonIcDissem::Nodis => Some((crate::scheme::TOK_NODIS, i)),
+                    NonIcDissem::Exdis => Some((crate::scheme::TOK_EXDIS, i)),
+                    _ => None,
+                }) {
+                Some(pair) => pair,
+                // Catalog predicate fired but the collection contains no
+                // NODIS or EXDIS — should be unreachable per the
+                // `E038/nodis-or-exdis-requires-noforn` predicate's
+                // axis-presence gate, but bail rather than emit a
+                // mis-attributed diagnostic.
+                None => return vec![],
+            };
         let span = nid_spans
-            .first()
+            .get(trigger_idx)
             .map(|ts| ts.span)
             .unwrap_or_else(|| first_span_of(attrs, TokenKind::NonIcDissem));
 
@@ -1145,7 +1157,7 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
     }
 }
 
-/// Build the `FactAdd { NOFORN, Scope::Portion }` intent emitted by
+/// Build the `FactAdd { NOFORN, scope }` intent emitted by
 /// [`DeclarativeDosDissemNofornRule`]. NOFORN is the missing required
 /// token per CAPCO-2016 §H.9 p172 (EXDIS "Requires NOFORN") + p174
 /// (NODIS "Requires NOFORN") — both passages use the verb "Requires"
@@ -1153,11 +1165,13 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
 /// the right structured-message variant.
 ///
 /// `trigger_token` carries the NODIS-or-EXDIS token that fired the
-/// rule, derived from the first NonIcDissem token in source order so
-/// it agrees with `Diagnostic.span` (the rule's surface anchor). It
-/// flows into `MessageArgs.token` so consumers can render "NODIS
-/// requires NOFORN" vs "EXDIS requires NOFORN" without re-parsing
-/// the message string. `expected_token` is `TOK_NOFORN` — the absent
+/// rule, derived from the first NODIS-or-EXDIS entry in source order
+/// (scanning the full `non_ic_dissem` collection, not just position
+/// zero — `(S//LIMDIS/NODIS)` must still fire). It agrees with
+/// `Diagnostic.span` (the rule's surface anchor) and flows into
+/// `MessageArgs.token` so consumers can render "NODIS requires
+/// NOFORN" vs "EXDIS requires NOFORN" without re-parsing the
+/// message string. `expected_token` is `TOK_NOFORN` — the absent
 /// token whose presence the source requires.
 ///
 /// `scope` follows the marking surface: `Scope::Portion` for portion

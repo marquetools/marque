@@ -126,6 +126,50 @@ fn round_trip_e038_adds_noforn_to_exdis_portion() {
     );
 }
 
+/// Regression test for the Copilot review of PR #372 (second round):
+/// when a marking contains other `NonIcDissem` variants before
+/// NODIS/EXDIS in source order (e.g., `(S//DS/ND)` where `DS` is
+/// LIMDIS's portion form), E038 must still fire and target NODIS.
+/// The rule must scan the full `non_ic_dissem` collection to find
+/// the first NODIS-or-EXDIS entry — an earlier shortcut that read
+/// only `attrs.non_ic_dissem.first()` silently dropped the
+/// diagnostic on such inputs, which is the regression this test
+/// pins.
+#[test]
+fn e038_scans_past_other_non_ic_dissem_to_find_trigger() {
+    let result = engine().fix(b"(S//DS/ND)\n", FixMode::Apply);
+
+    assert!(
+        result
+            .applied
+            .iter()
+            .any(|af| af.proposal.rule.as_str() == "E038"),
+        "E038 must auto-apply on `(S//DS/ND)` — the rule must scan \
+         past LIMDIS to find NODIS in `non_ic_dissem`; applied: {:?}",
+        result
+            .applied
+            .iter()
+            .map(|af| af.proposal.rule.as_str())
+            .collect::<Vec<_>>(),
+    );
+    // Post-state byte assertion: NOFORN added to IC-dissem block;
+    // LIMDIS and NODIS remain in the non-IC block in their render-
+    // priority order. The exact non-IC ordering depends on the
+    // renderer's `render_non_ic_dissem` priority table — assert that
+    // NOFORN is present in the output as the load-bearing property,
+    // not the exact byte arrangement of the trailing block.
+    let s = std::str::from_utf8(&result.source).unwrap_or("<non-utf8>");
+    assert!(
+        s.contains("NF"),
+        "E038 fix must place NOFORN in the output; got: {s:?}",
+    );
+    assert!(
+        s.contains("DS") && s.contains("ND"),
+        "LIMDIS (DS) and NODIS (ND) must remain in the non-IC dissem \
+         block after the fix; got: {s:?}",
+    );
+}
+
 /// Idempotence: running `Engine::fix` twice reaches a fixed point.
 /// First pass: `(S//ND)` → `(S//NF//ND)`. Second pass: `(S//NF//ND)` →
 /// no E038 diagnostics, output byte-identical to first-pass output.
