@@ -110,8 +110,9 @@ fn e010_emits_diagnostic_on_bare_hcs_in_portion() {
     );
     assert!(
         e010[0].message.contains("HCS-O-P"),
-        "E010 message must reference HCS-O-P (the combined compart- \
-         ment form) per CAPCO-2016 §H.4 p65 line 1406; got: {:?}",
+        "E010 message must reference HCS-O-P (the combined \
+         compartment form) per CAPCO-2016 §H.4 p65 line 1406; \
+         got: {:?}",
         e010[0].message
     );
 }
@@ -162,8 +163,9 @@ fn e010_emits_diagnostic_on_bare_hcs_in_banner() {
     );
     assert!(
         e010[0].message.contains("HCS-O-P"),
-        "E010 message must reference HCS-O-P (the combined compart- \
-         ment form) per CAPCO-2016 §H.4 p65 line 1406; got: {:?}",
+        "E010 message must reference HCS-O-P (the combined \
+         compartment form) per CAPCO-2016 §H.4 p65 line 1406; \
+         got: {:?}",
         e010[0].message
     );
 }
