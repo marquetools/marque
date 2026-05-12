@@ -96,6 +96,7 @@ use marque_rules::{
     MessageTemplate, Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, TokenId};
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoScheme;
 
@@ -1117,7 +1118,7 @@ fn aea_noforn_add_intent() -> FixIntent<CapcoScheme> {
 // is rejected as `UnknownRuleOverride`.
 
 // ---------------------------------------------------------------------------
-// E024 — RD takes precedence over FRD/TFNI (multi-emission)
+// E024 — RD takes precedence over FRD/TFNI (atomic-cluster emission)
 // ---------------------------------------------------------------------------
 
 pub(crate) struct DeclarativeRdPrecedenceRule;
@@ -1130,41 +1131,86 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
         "rd-precedence"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Error
+        // Severity::Fix enables the confidence-threshold gate (engine.rs
+        // line 1167): below-threshold E024 diagnostics are downgraded to
+        // Severity::Suggest rather than auto-applied. Matches E054/E056/
+        // E057's pattern for intent-only FactRemove rules (all Severity::Fix).
+        Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use crate::scheme::{TOK_FRD, TOK_TFNI};
         use marque_ism::AeaMarking;
 
         if violations_for(attrs, "E024/rd-precedence").is_empty() {
             return vec![];
         }
 
-        let mut diagnostics = Vec::new();
+        // Collect all superseded tokens (FRD, TFNI) into an atomic SmallVec.
+        // The issue is one policy decision — "RD supersedes both" — so all
+        // superseded facts must land as a single FactRemove per Constitution V
+        // Principle V (one policy decision → one audit repair).
         let aea_spans = spans_of_kind(attrs, TokenKind::AeaMarking);
+        let mut superseded_facts: SmallVec<[FactRef<CapcoScheme>; 2]> = SmallVec::new();
+        let mut first_span = Span::new(0, 0);
+        let mut found_first = false;
+
         for (idx, aea) in attrs.aea_markings.iter().enumerate() {
-            let superseded = match aea {
-                AeaMarking::Frd(_) => "FRD",
-                AeaMarking::Tfni => "TFNI",
+            let tok = match aea {
+                AeaMarking::Frd(_) => TOK_FRD,
+                AeaMarking::Tfni => TOK_TFNI,
                 _ => continue,
             };
-            let span = aea_spans
-                .get(idx)
-                .map(|t| t.span)
-                .unwrap_or(Span::new(0, 0));
-            diagnostics.push(Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                format!(
-                    "{superseded} should not appear alongside RD; \
-                     RD takes precedence over {superseded} in both banners and portions"
-                ),
-                "CAPCO-2016 §H.6 p104",
-                None,
-            ));
+            if !found_first {
+                first_span = aea_spans
+                    .get(idx)
+                    .map(|t| t.span)
+                    .unwrap_or(Span::new(0, 0));
+                found_first = true;
+            }
+            superseded_facts.push(FactRef::Cve(tok));
         }
-        diagnostics
+
+        if superseded_facts.is_empty() {
+            return vec![];
+        }
+
+        // Build a descriptive label for the message.
+        let superseded_label: String = superseded_facts
+            .iter()
+            .map(|f| match f {
+                FactRef::Cve(t) if *t == TOK_FRD => "FRD",
+                FactRef::Cve(t) if *t == TOK_TFNI => "TFNI",
+                _ => unreachable!(
+                    "E024 catalog should only contain TOK_FRD / TOK_TFNI; \
+                     update this label builder when adding new tokens: {f:?}"
+                ),
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+
+        let fix_intent = FixIntent {
+            replacement: ReplacementIntent::FactRemove {
+                facts: superseded_facts,
+                scope: Scope::Portion,
+            },
+            confidence: Confidence::strict(1.0),
+            feature_ids: Default::default(),
+            message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+        };
+
+        vec![Diagnostic::with_intent_at_span(
+            self.id(),
+            self.default_severity(),
+            first_span,
+            ctx.candidate_span,
+            format!(
+                "{superseded_label} should not appear alongside RD; \
+                 RD takes precedence over {superseded_label} in both banners and portions"
+            ),
+            "CAPCO-2016 §H.6 p104–p105",
+            fix_intent,
+        )]
     }
 }
 
@@ -1616,10 +1662,7 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
 fn e053_remove_rel_to_intent() -> FixIntent<CapcoScheme> {
     use crate::scheme::{TOK_NOFORN, TOK_REL_TO};
     FixIntent {
-        replacement: ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_REL_TO),
-            scope: Scope::Portion,
-        },
+        replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_REL_TO), Scope::Portion),
         confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),
         message: Message::new(
@@ -2007,10 +2050,7 @@ impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
 fn relido_remove_intent() -> FixIntent<CapcoScheme> {
     use crate::scheme::TOK_RELIDO;
     FixIntent {
-        replacement: ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_RELIDO),
-            scope: Scope::Portion,
-        },
+        replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
         confidence: Confidence::strict(0.95),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),

@@ -3610,10 +3610,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
 fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
     use crate::scheme::{TOK_EXDIS, TOK_NODIS};
     FixIntent {
-        replacement: ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_EXDIS),
-            scope: Scope::Portion,
-        },
+        replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_EXDIS), Scope::Portion),
         confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),
         // `ConflictsWith` (not `SupersededToken`): §H.9 mutual-exclusion
@@ -6562,12 +6559,18 @@ mod tests {
             .as_ref()
             .expect("E041 must emit `fix_intent: Some(FactRemove(EXDIS, Portion))`");
         match &intent.replacement {
-            ReplacementIntent::FactRemove { token_ref, scope } => {
+            ReplacementIntent::FactRemove { facts, scope } => {
                 assert_eq!(
-                    token_ref,
-                    &FactRef::Cve(crate::scheme::TOK_EXDIS),
+                    facts.len(),
+                    1,
+                    "E041 FactRemove must have exactly one fact (EXDIS); got: {facts:?}"
+                );
+                assert_eq!(
+                    facts[0],
+                    FactRef::Cve(crate::scheme::TOK_EXDIS),
                     "E041 intent must target EXDIS (§H.9 names EXDIS as \
-                     the loser); got: {token_ref:?}"
+                     the loser); got: {:?}",
+                    facts[0]
                 );
                 assert_eq!(
                     *scope,

@@ -21,6 +21,7 @@ include = [
 
 [dependencies]
 serde = { workspace = true, optional = true }
+smallvec = { workspace = true }
 
 [features]
 default = []

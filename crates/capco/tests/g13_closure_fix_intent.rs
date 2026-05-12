@@ -80,13 +80,22 @@ fn assert_intent_is_g13_clean(intent: &FixIntent<CapcoScheme>) {
             assert_fact_ref_is_structural(token);
             assert_scope_is_discriminant(*scope);
         }
-        ReplacementIntent::FactRemove { token_ref, scope } => {
-            assert_fact_ref_is_structural(token_ref);
+        ReplacementIntent::FactRemove { facts, scope } => {
+            for fact in facts {
+                assert_fact_ref_is_structural(fact);
+            }
             assert_scope_is_discriminant(*scope);
         }
         ReplacementIntent::Recanonicalize { scope } => {
             assert_recanon_scope_is_discriminant(*scope);
         }
+        // #[non_exhaustive] guard: if a new variant lands, assert it carries
+        // no source bytes — the invariant this test enforces applies to all
+        // variants. Add a dedicated arm when the new variant ships.
+        _ => panic!(
+            "unexpected ReplacementIntent variant; update \
+             assert_intent_is_g13_clean when new variants land"
+        ),
     }
 
     // `Confidence` carries `f32` values plus an optional closed
@@ -319,6 +328,10 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
                     ReplacementIntent::FactAdd { .. } => "FactAdd",
                     ReplacementIntent::FactRemove { .. } => "FactRemove",
                     ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    // #[non_exhaustive] guard: unknown future variants map
+                    // to "Unknown" so the assert_eq below fires a clear
+                    // message rather than failing to compile.
+                    _ => "Unknown",
                 };
                 assert_eq!(
                     actual, expected_variant,

@@ -994,6 +994,7 @@ dependencies = [
  "phf",
  "proptest",
  "serde_json",
+ "smallvec",
  "thiserror",
 ]
 
@@ -1099,6 +1100,7 @@ name = "marque-scheme"
 version = "0.2.1"
 dependencies = [
  "serde",
+ "smallvec",
 ]
 
 [[package]]

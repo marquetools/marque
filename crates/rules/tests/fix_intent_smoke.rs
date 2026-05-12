@@ -113,10 +113,7 @@ fn external_crate_constructs_fix_intent_with_fact_add() {
 #[test]
 fn external_crate_constructs_fix_intent_with_fact_remove() {
     let intent: FixIntent<StubScheme> = FixIntent {
-        replacement: ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TokenId(2)),
-            scope: Scope::Page,
-        },
+        replacement: ReplacementIntent::fact_remove(FactRef::Cve(TokenId(2)), Scope::Page),
         confidence: Confidence::strict(0.85),
         feature_ids: SmallVec::new(),
         message: Message::new(
@@ -125,8 +122,9 @@ fn external_crate_constructs_fix_intent_with_fact_remove() {
         ),
     };
     match intent.replacement {
-        ReplacementIntent::FactRemove { token_ref, scope } => {
-            assert!(matches!(token_ref, FactRef::Cve(TokenId(2))));
+        ReplacementIntent::FactRemove { facts, scope } => {
+            assert_eq!(facts.len(), 1);
+            assert!(matches!(facts[0], FactRef::Cve(TokenId(2))));
             assert_eq!(scope, Scope::Page);
         }
         _ => panic!("expected FactRemove"),

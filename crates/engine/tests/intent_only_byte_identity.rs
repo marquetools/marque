@@ -77,10 +77,7 @@ impl Rule<CapcoScheme> for IntentOnlyRelidoRule {
         }
 
         let intent = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
@@ -187,8 +184,13 @@ fn intent_only_path_produces_audit_record_with_intent_variant() {
     // Verify the AppliedFixProposal::New variant is used (not Legacy).
     match &applied.proposal {
         marque_rules::AppliedFixProposal::New { intent, .. } => match &intent.replacement {
-            ReplacementIntent::FactRemove { token_ref, scope } => {
-                assert!(matches!(token_ref, FactRef::Cve(t) if *t == TOK_RELIDO));
+            ReplacementIntent::FactRemove { facts, scope } => {
+                assert_eq!(
+                    facts.len(),
+                    1,
+                    "FactRemove must have exactly one fact (RELIDO)"
+                );
+                assert!(matches!(facts[0], FactRef::Cve(t) if t == TOK_RELIDO));
                 assert_eq!(*scope, Scope::Portion);
             }
             _ => panic!("expected FactRemove intent variant"),
@@ -228,10 +230,10 @@ fn intent_only_path_below_threshold_becomes_suggest() {
                 return Vec::new();
             }
             let intent = FixIntent {
-                replacement: ReplacementIntent::FactRemove {
-                    token_ref: FactRef::Cve(TOK_RELIDO),
-                    scope: Scope::Portion,
-                },
+                replacement: ReplacementIntent::fact_remove(
+                    FactRef::Cve(TOK_RELIDO),
+                    Scope::Portion,
+                ),
                 // 0.50 is well below the default 0.95 threshold.
                 confidence: Confidence::strict(0.50),
                 feature_ids: SmallVec::new(),
@@ -348,20 +350,14 @@ impl Rule<CapcoScheme> for DualIntentRule {
         }
         let cspan = ctx.candidate_span;
         let nf_intent = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_NOFORN),
-                scope: Scope::Portion,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_NOFORN), Scope::Portion),
             // 0.97 — the weaker leg; the collapse uses min combined.
             confidence: Confidence::strict(0.97),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
         };
         let relido_intent = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
@@ -478,10 +474,7 @@ impl Rule<CapcoScheme> for TestRuleA {
             return Vec::new();
         }
         let intent = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_NOFORN),
-                scope: Scope::Portion,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_NOFORN), Scope::Portion),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
@@ -518,10 +511,7 @@ impl Rule<CapcoScheme> for TestRuleZ {
             return Vec::new();
         }
         let intent = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
@@ -644,10 +634,7 @@ impl Rule<CapcoScheme> for BannerNoforn {
             return Vec::new();
         }
         let intent = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_NOFORN),
-                scope: Scope::Page,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_NOFORN), Scope::Page),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
