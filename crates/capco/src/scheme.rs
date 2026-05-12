@@ -391,16 +391,23 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
 /// Apply a single [`ReplacementIntent`] to a [`CapcoMarking`].
 ///
 /// Helper for [`<CapcoScheme as MarkingScheme>::apply_intent`]. Routes
-/// the intent through [`capco_token_category`] (for CVE refs) and the
-/// per-axis mutators ([`capco_category_clear`] /
-/// [`capco_category_replace`]) for `FactRemove`. `FactAdd` and
-/// `Recanonicalize` are stubbed for the engine-prereq commit — the
-/// first rule that exercises `FactAdd` (Requires-bucket migration,
-/// sub-PR 8.D) will land the full add semantics alongside its
-/// fixtures. Pre-migration `FactAdd` returns
-/// `Err(IntentInapplicable)` so the engine drops the fix silently
-/// (which is the conservative behavior — a rule attempting to add
-/// a token before the migration lands would be misemitting).
+/// the intent through [`capco_token_category`] (for CVE refs) to the
+/// per-axis mutators:
+///
+/// - `FactRemove` → [`apply_fact_remove`] (CAT_DISSEM, CAT_NON_IC_DISSEM,
+///   CAT_REL_TO wired; other axes return `IntentInapplicable`).
+/// - `FactAdd` → [`apply_fact_add`] (CAT_DISSEM wired in PR 3c.B
+///   Sub-PR 8.D.1 as the first consumer; other axes return
+///   `IntentInapplicable` until their own migration sub-PRs land).
+/// - `Recanonicalize` → no fact-set mutation (the engine renders the
+///   marking via `render_canonical` to produce the canonical form).
+///
+/// Per-axis FactAdd routing tracks the same minimum-needed pattern as
+/// FactRemove: the wired axis is the one the imminent rule migration
+/// (E038 NODIS/EXDIS-requires-NOFORN, Sub-PR 8.D.1) actually emits
+/// `FactAdd` against. Other axes (SCI, SAR, JOINT, AEA, REL TO,
+/// classification) are reachable by the routing table but return
+/// `Err(IntentInapplicable)` until their migration sub-PRs land.
 fn apply_intent_to_marking(
     scheme: &CapcoScheme,
     marking: &mut CapcoMarking,
@@ -423,15 +430,17 @@ fn apply_intent_to_marking(
             apply_fact_remove(marking, category, token_ref)
         }
         ReplacementIntent::FactAdd { token, scope: _ } => {
-            // Pre-Requires-migration: validate routing but treat the
-            // intent as inapplicable so the engine silently drops the
-            // fix. The first rule that needs FactAdd (the 8.D
-            // Requires-bucket migration) lands the add semantics
-            // alongside its fixtures.
-            let _ = scheme
+            // PR 3c.B Sub-PR 8.D.1 — first consumer of FactAdd.
+            // Routes through `category_of` then to the per-axis adder
+            // (`apply_fact_add`). Pre-migration axes (SCI, SAR,
+            // JOINT, AEA, REL TO, classification) return
+            // `IntentInapplicable` from `apply_fact_add` so the
+            // engine drops the fix; same minimum-needed scoping as
+            // the FactRemove wiring.
+            let category = scheme
                 .category_of(token)
                 .ok_or(ApplyIntentError::UnknownToken)?;
-            Err(ApplyIntentError::IntentInapplicable)
+            apply_fact_add(marking, category, token)
         }
         ReplacementIntent::Recanonicalize { .. } => {
             // No fact-set mutation — the engine renders the marking
@@ -441,16 +450,101 @@ fn apply_intent_to_marking(
     }
 }
 
+/// Add a single closed-vocab token to the marking's axis.
+///
+/// Idempotent at the per-intent level: if the token is already
+/// present on the target axis, returns `Err(IntentInapplicable)`
+/// (per-intent no-op, NOT a hard failure — the batch dispatcher in
+/// [`CapcoScheme::apply_intent`] silently skips inapplicable intents
+/// and continues the batch). This mirrors [`apply_fact_remove`]'s
+/// "absent token is inapplicable" policy: both axes report
+/// per-intent inapplicability when the requested mutation is a
+/// no-op. The trait contract at
+/// [`marque_scheme::MarkingScheme::apply_intent`] (scheme.rs:185-194)
+/// is explicit that per-intent inapplicability is not failure; the
+/// batch aggregates to `Err(IntentInapplicable)` only when the whole
+/// batch produced no mutation.
+///
+/// PR 3c.B Sub-PR 8.D.1 wires CAT_DISSEM only — the axis E038
+/// (NODIS/EXDIS-requires-NOFORN) targets when emitting
+/// `FactAdd { TOK_NOFORN, Portion }`. Other axes return
+/// `Err(IntentInapplicable)` until their migration sub-PRs land:
+///
+/// - **CAT_AEA**: `AeaMarking` is a compound structural value, not
+///   an atomic token; FactAdd requires the same value-decomposition
+///   that blocks AEA FactRemove (queued for the AEA Requires-bucket
+///   sub-PR alongside FactRemove).
+/// - **CAT_NON_IC_DISSEM / CAT_REL_TO / CAT_SCI / CAT_SAR /
+///   CAT_JOINT_CLASSIFICATION / CAT_CLASSIFICATION**: no rule
+///   currently emits `FactAdd` against these axes; the first rule
+///   that does lands the routing alongside its fixtures.
+fn apply_fact_add(
+    marking: &mut CapcoMarking,
+    category: CategoryId,
+    token: &FactRef<CapcoScheme>,
+) -> Result<(), ApplyIntentError> {
+    use marque_ism::DissemControl;
+
+    let attrs = &mut marking.0;
+
+    let id = match token {
+        FactRef::Cve(id) => *id,
+        // Open-vocab adds (SAR program registration, FGI tetragraph
+        // addition, REL TO country-code addition) land in their own
+        // sub-PRs.
+        FactRef::OpenVocab(_) => return Err(ApplyIntentError::IntentInapplicable),
+    };
+
+    if category == CAT_DISSEM {
+        let target = match id {
+            TOK_NOFORN => DissemControl::Nf,
+            TOK_RELIDO => DissemControl::Relido,
+            TOK_DISPLAY_ONLY => DissemControl::Displayonly,
+            TOK_ORCON => DissemControl::Oc,
+            TOK_ORCON_USGOV => DissemControl::OcUsgov,
+            _ => return Err(ApplyIntentError::UnknownToken),
+        };
+        if attrs.dissem_controls.contains(&target) {
+            // Per-intent no-op: token already present, no mutation
+            // applied. Return `IntentInapplicable` so the batch-level
+            // `apply_intent` dispatcher does NOT flip `any_applied =
+            // true` for a non-mutation, and a whole-batch redundant
+            // add aggregates to `Err(IntentInapplicable)` (engine
+            // silently drops the synthesized no-op fix). The trait
+            // contract at `scheme::MarkingScheme::apply_intent`
+            // (scheme/src/scheme.rs:185-194) is explicit: per-intent
+            // inapplicability is NOT a failure — the batch loop skips
+            // and continues; whole-batch no-op surfaces as Err so the
+            // engine drops the fix. Returning Ok here would let a
+            // redundant-add intent appear as an applied no-op in the
+            // audit log (Copilot review of PR #372).
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+        let mut next: Vec<DissemControl> = attrs.dissem_controls.to_vec();
+        next.push(target);
+        attrs.dissem_controls = next.into_boxed_slice();
+        return Ok(());
+    }
+
+    // Other categories (CAT_NON_IC_DISSEM, CAT_REL_TO, CAT_AEA,
+    // CAT_SCI, CAT_SAR, CAT_JOINT_CLASSIFICATION,
+    // CAT_CLASSIFICATION): not yet wired for FactAdd. The first rule
+    // that needs each axis lands the routing alongside its migration
+    // fixtures.
+    Err(ApplyIntentError::IntentInapplicable)
+}
+
 /// Remove a single closed-vocab token from the marking's axis.
 ///
 /// Returns `Err(IntentInapplicable)` when the token is not present
-/// in the axis (idempotence: nothing to remove). For the
-/// engine-prereq commit only the dissem / non-IC-dissem / REL TO /
-/// AEA axes are wired — these are the axes the imminent successor
-/// PRs (8.E/8.D RELIDO + dissem-conflict migrations) actually emit
-/// `FactRemove` against. Other axes (SCI, SAR, JOINT) are reachable
-/// by the routing table but will return `Err(IntentInapplicable)`
-/// until their migration sub-PRs land.
+/// in the axis (idempotence: nothing to remove). The dissem /
+/// non-IC-dissem / REL TO axes are wired — PR #370 (8.E.2) and
+/// PR #372 (8.D.1) exercise these for `FactRemove` (E041 / RELIDO
+/// conflicts) and `FactAdd` (E038) respectively; the AEA arm is
+/// reachable but still unwired pending a later sub-PR. Other axes
+/// (SCI, SAR, JOINT) are reachable by the routing table but will
+/// return `Err(IntentInapplicable)` until their migration sub-PRs
+/// land.
 fn apply_fact_remove(
     marking: &mut CapcoMarking,
     category: CategoryId,
@@ -537,8 +631,10 @@ fn apply_fact_remove(
         // Box<[AeaMarking]> of compound structural values, not as
         // atomic tokens. Atomic-level FactRemove on the AEA axis
         // requires the AeaMarking value-decomposition that lands in
-        // sub-PR 8.D's Requires-bucket migration; pre-migration the
-        // engine drops the fix.
+        // a later sub-PR (8.D.2+ / AEA-bucket migration); the FactAdd
+        // wiring that landed in PR #372 (8.D.1) is CAT_DISSEM only
+        // and does not cover the AEA axis. Pre-migration the engine
+        // drops the fix.
         return Err(ApplyIntentError::IntentInapplicable);
     }
 
@@ -5564,20 +5660,93 @@ mod tests {
         assert_eq!(out.0.dissem_controls, m.0.dissem_controls);
     }
 
+    /// PR 3c.B Sub-PR 8.D.1 — first consumer of FactAdd lands NOFORN
+    /// add semantics on `CAT_DISSEM`. Replaces the pre-migration
+    /// "FactAdd is always inapplicable" pin; the three cases below
+    /// (a/b/c) cover the wired-axis success path, the
+    /// idempotence-on-already-present path, and the unwired-axis
+    /// regression guard that confirms the stub-removal did not
+    /// over-reach into axes whose migration is still queued.
+    ///
+    /// Case (a): bare classification marking → FactAdd(NOFORN, Portion)
+    /// places NOFORN into `attrs.dissem_controls`. The lone Secret
+    /// classification on `mk_attrs()` has an empty dissem axis
+    /// pre-call; post-call the axis contains exactly `[Nf]`.
+    ///
+    /// Case (b): marking already containing NOFORN — FactAdd(NOFORN)
+    /// is a per-intent no-op and `apply_fact_add` returns
+    /// `Err(IntentInapplicable)`. The lone intent in this batch
+    /// produces no mutation, so `apply_intent` aggregates the
+    /// whole-batch result as `Err(IntentInapplicable)` (the engine
+    /// silently drops the synthesized fix). Symmetric with
+    /// FactRemove's "absent token is inapplicable" policy: both axes
+    /// report per-intent inapplicability when the requested mutation
+    /// is a no-op, per the `MarkingScheme::apply_intent` trait
+    /// contract (scheme.rs:185-194).
+    ///
+    /// Case (c): FactAdd against an unwired axis (CAT_SCI via
+    /// `TOK_HCS`) returns `Err(IntentInapplicable)`. The routing
+    /// table maps `TOK_HCS → CAT_SCI`, so the call reaches
+    /// `apply_fact_add` with the SCI category and falls through to
+    /// the unwired-axis arm. Regression-guards the stub-removal did
+    /// not over-reach: only CAT_DISSEM is wired in this sub-PR, and
+    /// other axes return `IntentInapplicable` until their own
+    /// migration sub-PRs land.
     #[test]
-    fn apply_intent_fact_add_is_inapplicable_pre_migration() {
+    fn apply_fact_add_noforn_adds_to_dissem_controls_idempotent() {
+        use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
-        let m = CapcoMarking::new(mk_attrs());
+
+        // Case (a): bare classification → NOFORN added to dissem.
+        let m_bare = CapcoMarking::new(mk_attrs());
         let intents = [ReplacementIntent::FactAdd {
             token: FactRef::Cve(TOK_NOFORN),
             scope: Scope::Portion,
         }];
-        // Pre-migration: validate routing but treat as inapplicable
-        // so the engine drops the fix. The first Requires-bucket
-        // migration sub-PR (8.D) will land FactAdd semantics.
+        let out_a = scheme
+            .apply_intent(&m_bare, &intents)
+            .expect("FactAdd(NOFORN, Portion) must succeed on bare marking");
         assert_eq!(
-            scheme.apply_intent(&m, &intents),
-            Err(ApplyIntentError::IntentInapplicable)
+            out_a.0.dissem_controls.as_ref(),
+            &[DissemControl::Nf],
+            "after FactAdd(NOFORN) the dissem axis must contain exactly [Nf]"
+        );
+
+        // Case (b): marking already containing NOFORN — the whole
+        // batch is a per-intent no-op. Per `MarkingScheme::apply_intent`
+        // contract (scheme/src/scheme.rs:185-194), this aggregates to
+        // `Err(IntentInapplicable)` so the engine drops the synthesized
+        // fix. A FactAdd of an already-present token returns per-intent
+        // `IntentInapplicable` from `apply_fact_add`; the lone intent
+        // in `intents` produces no mutation, so the batch result is
+        // `Err`.
+        let err_b = scheme
+            .apply_intent(&out_a, &intents)
+            .expect_err("redundant FactAdd(NOFORN) must aggregate to Err(IntentInapplicable)");
+        assert_eq!(
+            err_b,
+            ApplyIntentError::IntentInapplicable,
+            "redundant single-intent FactAdd batch must be IntentInapplicable, not a successful no-op",
+        );
+
+        // Case (c): unwired axis (CAT_SCI via TOK_HCS) → IntentInapplicable.
+        // Regression guard that the stub-removal did not over-reach
+        // into axes whose migration is still queued. `TOK_HCS` routes
+        // to `CAT_SCI` via `capco_token_category`; `apply_fact_add`
+        // sees a category that is not yet wired and returns
+        // `IntentInapplicable`, which propagates through the
+        // whole-batch no-op detection (the lone intent in `intents`
+        // did not apply, so the batch returns Err).
+        let m_unwired = CapcoMarking::new(mk_attrs());
+        let unwired_intents = [ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TOK_HCS),
+            scope: Scope::Portion,
+        }];
+        assert_eq!(
+            scheme.apply_intent(&m_unwired, &unwired_intents),
+            Err(ApplyIntentError::IntentInapplicable),
+            "FactAdd against the unwired CAT_SCI axis must return \
+             IntentInapplicable (only CAT_DISSEM is wired in Sub-PR 8.D.1)"
         );
     }
 
