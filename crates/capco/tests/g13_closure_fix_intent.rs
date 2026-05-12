@@ -246,6 +246,14 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // `relido_conflicts.rs`; once #323 closes, add
         // `("(S//RELIDO/DISPLAY ONLY)\n", "E055", "FactRemove")`
         // here.
+        // PR 3c.B Sub-PR 8.D.2 — E053 (NOFORN ⊥ REL TO, §H.8 p145)
+        // is the first consumer of the `TOK_REL_TO` whole-axis-clear
+        // sentinel on CAT_REL_TO. NOFORN unambiguously supersedes
+        // REL TO per §H.8 p145; the intent clears the REL TO axis
+        // entirely (not just USA). Portion-scope only — banner
+        // roll-up is handled by the `capco/noforn-clears-rel-to`
+        // PageRewrite, NOT this rule.
+        ("(S//NF//REL TO USA, GBR)\n", "E053", "FactRemove"),
         ("(S//RD//IMC)\n", "E021", "FactAdd"),
         // E002 USA-missing branch — FactAdd { USA, Page } on banner.
         ("SECRET//REL TO GBR\n", "E002", "FactAdd"),
@@ -346,11 +354,16 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 // that auto-applies as Legacy; E010 satisfies that shape and is
 // still non-migrated in this sub-PR.
 //
-// When E010 migrates (Sub-PR 8.D.2+), swap to another surviving
-// legacy rule (E012/E014/E015 are candidates — all carry
+// When E010 migrates (Sub-PR 8.D.3+), swap to another surviving
+// legacy rule (E012/E014 are candidates — both carry
 // `make_fix_diagnostic` Legacy fixes that auto-apply at confidence
 // ≥ threshold) and update both this test and the migrated-rule
-// fixture list above.
+// fixture list above. E015 was a candidate prior to Sub-PR 8.D.2;
+// it migrated in 8.D.2 as consciously-deferred (Category A.x,
+// `fix_intent: None` like E016) and is no longer in the legacy-
+// auto-apply pool — its `with_fix_intent(..., None)` shape means
+// it never lands in `result.applied`, so it cannot serve as a
+// "Legacy variant present" scope guard.
 //
 // Constitution V Principle V test-fixture carve-out applies to any
 // fabricated `AppliedFix` values: this test exercises real engine
