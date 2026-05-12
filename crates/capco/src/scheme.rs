@@ -522,13 +522,14 @@ fn apply_fact_add(
 /// Remove a single closed-vocab token from the marking's axis.
 ///
 /// Returns `Err(IntentInapplicable)` when the token is not present
-/// in the axis (idempotence: nothing to remove). For the
-/// engine-prereq commit only the dissem / non-IC-dissem / REL TO /
-/// AEA axes are wired — these are the axes the imminent successor
-/// PRs (8.E/8.D RELIDO + dissem-conflict migrations) actually emit
-/// `FactRemove` against. Other axes (SCI, SAR, JOINT) are reachable
-/// by the routing table but will return `Err(IntentInapplicable)`
-/// until their migration sub-PRs land.
+/// in the axis (idempotence: nothing to remove). The dissem /
+/// non-IC-dissem / REL TO axes are wired — PR #370 (8.E.2) and
+/// PR #372 (8.D.1) exercise these for `FactRemove` (E041 / RELIDO
+/// conflicts) and `FactAdd` (E038) respectively; the AEA arm is
+/// reachable but still unwired pending a later sub-PR. Other axes
+/// (SCI, SAR, JOINT) are reachable by the routing table but will
+/// return `Err(IntentInapplicable)` until their migration sub-PRs
+/// land.
 fn apply_fact_remove(
     marking: &mut CapcoMarking,
     category: CategoryId,
@@ -615,8 +616,10 @@ fn apply_fact_remove(
         // Box<[AeaMarking]> of compound structural values, not as
         // atomic tokens. Atomic-level FactRemove on the AEA axis
         // requires the AeaMarking value-decomposition that lands in
-        // sub-PR 8.D's Requires-bucket migration; pre-migration the
-        // engine drops the fix.
+        // a later sub-PR (8.D.2+ / AEA-bucket migration); the FactAdd
+        // wiring that landed in PR #372 (8.D.1) is CAT_DISSEM only
+        // and does not cover the AEA axis. Pre-migration the engine
+        // drops the fix.
         return Err(ApplyIntentError::IntentInapplicable);
     }
 

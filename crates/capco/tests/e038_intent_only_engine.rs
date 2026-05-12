@@ -64,13 +64,60 @@ fn round_trip_e038_adds_noforn_to_nodis_portion() {
         std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
     );
 
+    let e038 = result
+        .applied
+        .iter()
+        .find(|af| af.proposal.rule.as_str() == "E038")
+        .unwrap_or_else(|| {
+            panic!(
+                "E038 must auto-apply through `synthesize_intent_only_fixes` \
+                 (FactAdd path); applied rules: {:?}",
+                result
+                    .applied
+                    .iter()
+                    .map(|af| af.proposal.rule.as_str())
+                    .collect::<Vec<_>>()
+            )
+        });
+
+    // G13 invariant (Constitution V Principle V): intent-only fixes
+    // carry an empty `original` so document content cannot leak into
+    // the audit record. Structurally enforced by
+    // `synthesize_intent_only_fixes` in `engine.rs`; asserted here to
+    // make the invariant self-documenting at the rule level. See
+    // `g13_closure_fix_intent.rs` for the workspace-wide gate.
+    assert!(
+        e038.proposal.original.is_empty(),
+        "G13: intent-only AppliedFix must carry empty `original` \
+         (no document content in audit record); got: {:?}",
+        e038.proposal.original
+    );
+}
+
+/// EXDIS branch: `(S//XD)` exercises the `trigger_token = TOK_EXDIS`
+/// path of the rule, complementing `round_trip_e038_adds_noforn_to_nodis_portion`
+/// (which only exercises the NODIS branch). The same FactAdd intent
+/// fires; the `MessageArgs.token` payload differs (EXDIS vs NODIS)
+/// but the byte-level rewrite is identical in shape.
+#[test]
+fn round_trip_e038_adds_noforn_to_exdis_portion() {
+    let result = engine().fix(b"(S//XD)\n", FixMode::Apply);
+
+    assert_eq!(
+        result.source,
+        b"(S//NF//XD)\n",
+        "E038 EXDIS-branch round-trip must produce canonical portion \
+         with NOFORN added before the non-IC dissem block; got: {:?}",
+        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+    );
+
     assert!(
         result
             .applied
             .iter()
             .any(|af| af.proposal.rule.as_str() == "E038"),
-        "E038 must auto-apply through `synthesize_intent_only_fixes` \
-         (FactAdd path); applied rules: {:?}",
+        "E038 must auto-apply on EXDIS-only input through \
+         `synthesize_intent_only_fixes`; applied rules: {:?}",
         result
             .applied
             .iter()
@@ -193,5 +240,13 @@ fn e038_fr016_split_against_e037() {
         remaining_ids.contains(&"E037"),
         "E037 must surface in `remaining_diagnostics` (no-fix \
          conflict rule); remaining: {remaining_ids:?}",
+    );
+    assert!(
+        remaining_ids.contains(&"E041"),
+        "E041 must surface in `remaining_diagnostics` (its FactRemove \
+         intent applied through the atomic candidate-span group, but \
+         the audit slot went to lex-min E038, so E041's diagnostic \
+         remains visible to the caller per the architect-preflight \
+         honest-audit-output design); remaining: {remaining_ids:?}",
     );
 }
