@@ -3608,7 +3608,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
 /// stay consistent with the other strict-path intent builders in
 /// this crate (see `relido_remove_intent` in `rules_declarative.rs`).
 fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
-    use crate::scheme::TOK_EXDIS;
+    use crate::scheme::{TOK_EXDIS, TOK_NODIS};
     FixIntent {
         replacement: ReplacementIntent::FactRemove {
             token_ref: FactRef::Cve(TOK_EXDIS),
@@ -3616,7 +3616,18 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
         },
         confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),
-        message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
+        // `ConflictsWith` (not `SupersededToken`): §H.9 mutual-exclusion
+        // with a dominated + surviving token, NOT §F deprecation /
+        // canonical-replacement. `token` = the dominated EXDIS;
+        // `expected_token` = the surviving NODIS.
+        message: Message::new(
+            MessageTemplate::ConflictsWith,
+            MessageArgs {
+                token: Some(TOK_EXDIS),
+                expected_token: Some(TOK_NODIS),
+                ..MessageArgs::default()
+            },
+        ),
     }
 }
 
