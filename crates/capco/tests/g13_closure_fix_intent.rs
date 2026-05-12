@@ -218,6 +218,16 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // shape as E054/E057; the wrapper reuses
         // `relido_remove_intent()`.
         ("(S//OC/RELIDO)\n", "E056", "FactRemove"),
+        // PR 3c.B Sub-PR 8.E.2 (closes #106) — E041 (NODIS supersedes
+        // EXDIS in portion) is the first non-RELIDO `FactRemove`
+        // consumer of `synthesize_intent_only_fixes`. Unlike
+        // E054/E055/E056/E057 (which are dual-populated under Path C),
+        // E041 is intent-only — the engine synthesizes the
+        // byte-precise `FixProposal` from the intent + the rule's
+        // `RuleContext::candidate_span`. NF is included so E038
+        // (NODIS-requires-NOFORN) does not also fire on the same
+        // candidate. §H.9 p172 + p174 name EXDIS as the loser.
+        ("(S//NF//ND/XD)\n", "E041", "FactRemove"),
         // E055 (RELIDO ⊥ DISPLAY ONLY) also migrated in Commit 8
         // but the engine's parser does not yet emit `Displayonly`
         // tokens for any DISPLAY ONLY surface form (parser-gap
