@@ -117,12 +117,12 @@ pub const TOK_ORCON_USGOV: TokenId = TokenId(127);
 // per-country open-vocab removal channel will land alongside the
 // `FactRef::OpenVocab` open-vocab country-removal Stage-4 sub-PR.
 //
-// The sentinel does NOT introduce a new category-mapping entry in
-// `capco_token_category` (USA already maps `TOK_USA → CAT_REL_TO`).
-// Instead, `TOK_REL_TO` also maps to CAT_REL_TO, and
-// `apply_fact_remove`'s CAT_REL_TO branch discriminates between the
-// two sentinels: `TOK_USA` removes only USA; `TOK_REL_TO` clears
-// the whole axis.
+// The sentinel does NOT introduce a new category/axis in
+// `capco_token_category` — CAT_REL_TO already exists (USA maps
+// `TOK_USA → CAT_REL_TO`). `TOK_REL_TO` adds a second token routed
+// to the same CAT_REL_TO category, and `apply_fact_remove`'s
+// CAT_REL_TO branch discriminates between the two sentinels:
+// `TOK_USA` removes only USA; `TOK_REL_TO` clears the whole axis.
 pub const TOK_REL_TO: TokenId = TokenId(128);
 
 // ---------------------------------------------------------------------------
