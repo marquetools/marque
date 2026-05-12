@@ -107,6 +107,24 @@ pub const TOK_DISPLAY_ONLY: TokenId = TokenId(125);
 pub const TOK_ORCON: TokenId = TokenId(126);
 pub const TOK_ORCON_USGOV: TokenId = TokenId(127);
 
+// PR 3c.B Sub-PR 8.D.2 — REL TO whole-axis-clear sentinel.
+//
+// Resolved via `apply_fact_remove`'s CAT_REL_TO arm. Unlike `TOK_USA`
+// (which removes only the USA entry from `attrs.rel_to`),
+// `TOK_REL_TO` is a sentinel meaning "clear the entire CAT_REL_TO
+// axis." E053 (NOFORN ⊥ REL TO, §H.8 p145) emits
+// `FactRemove { FactRef::Cve(TOK_REL_TO), Scope::Portion }`; the
+// per-country open-vocab removal channel will land alongside the
+// `FactRef::OpenVocab` open-vocab country-removal Stage-4 sub-PR.
+//
+// The sentinel does NOT introduce a new category-mapping entry in
+// `capco_token_category` (USA already maps `TOK_USA → CAT_REL_TO`).
+// Instead, `TOK_REL_TO` also maps to CAT_REL_TO, and
+// `apply_fact_remove`'s CAT_REL_TO branch discriminates between the
+// two sentinels: `TOK_USA` removes only USA; `TOK_REL_TO` clears
+// the whole axis.
+pub const TOK_REL_TO: TokenId = TokenId(128);
+
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over CanonicalAttrs implementing Lattice
 // ---------------------------------------------------------------------------
@@ -372,8 +390,12 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         }
         // CAT_NON_IC_DISSEM — non-IC dissemination controls
         TOK_NODIS | TOK_EXDIS => Some(CAT_NON_IC_DISSEM),
-        // CAT_REL_TO — country codes in the dissemination context
-        TOK_USA => Some(CAT_REL_TO),
+        // CAT_REL_TO — country codes in the dissemination context.
+        // `TOK_USA` removes USA from the axis; the `TOK_REL_TO`
+        // sentinel (PR 3c.B Sub-PR 8.D.2) clears the whole axis. Both
+        // route through the same category so `apply_fact_remove`'s
+        // CAT_REL_TO branch can discriminate.
+        TOK_USA | TOK_REL_TO => Some(CAT_REL_TO),
         // CAT_AEA — atomic-energy markings
         TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI => Some(CAT_AEA),
         // CAT_SCI — sensitive compartmented information control systems
@@ -606,24 +628,46 @@ fn apply_fact_remove(
     }
 
     if category == CAT_REL_TO {
-        // Only TOK_USA is sentinel-mapped today; REL TO removal of
+        // Two sentinel paths land here today; REL TO removal of
         // arbitrary country codes lands via FactRef::OpenVocab in a
         // later sub-PR.
-        if id != TOK_USA {
-            return Err(ApplyIntentError::UnknownToken);
+        //
+        // - TOK_USA: remove only the USA entry from `attrs.rel_to`.
+        // - TOK_REL_TO (PR 3c.B Sub-PR 8.D.2): whole-axis clear.
+        //   E053 (NOFORN ⊥ REL TO, §H.8 p145) emits this sentinel —
+        //   NOFORN supersedes the entire REL TO list, not just USA.
+        //   Analog to the CAT_NON_IC_DISSEM EXDIS-sentinel path that
+        //   PR #370 wired.
+        match id {
+            TOK_USA => {
+                let before = attrs.rel_to.len();
+                let kept: Vec<CountryCode> = attrs
+                    .rel_to
+                    .iter()
+                    .copied()
+                    .filter(|c| c != &CountryCode::USA)
+                    .collect();
+                if kept.len() == before {
+                    return Err(ApplyIntentError::IntentInapplicable);
+                }
+                attrs.rel_to = kept.into_boxed_slice();
+                return Ok(());
+            }
+            TOK_REL_TO => {
+                // Whole-axis clear. Per the trait contract
+                // (`crates/scheme/src/scheme.rs:185-194`), an already-
+                // empty axis is per-intent inapplicable — return
+                // `Err(IntentInapplicable)`. The batch dispatcher
+                // aggregates to whole-batch inapplicable only when no
+                // intent applied.
+                if attrs.rel_to.is_empty() {
+                    return Err(ApplyIntentError::IntentInapplicable);
+                }
+                attrs.rel_to = Box::<[CountryCode]>::default();
+                return Ok(());
+            }
+            _ => return Err(ApplyIntentError::UnknownToken),
         }
-        let before = attrs.rel_to.len();
-        let kept: Vec<CountryCode> = attrs
-            .rel_to
-            .iter()
-            .copied()
-            .filter(|c| c != &CountryCode::USA)
-            .collect();
-        if kept.len() == before {
-            return Err(ApplyIntentError::IntentInapplicable);
-        }
-        attrs.rel_to = kept.into_boxed_slice();
-        return Ok(());
     }
 
     if category == CAT_AEA {
@@ -5879,6 +5923,85 @@ mod tests {
         );
         // NF retained — the marking is unchanged because no intent
         // applied.
+    }
+
+    // PR 3c.B Sub-PR 8.D.2 — CAT_REL_TO whole-axis-clear sentinel
+    // (TOK_REL_TO) extends the FactRemove routing E053 uses to clear
+    // REL TO when NOFORN is present per §H.8 p145. The three cases
+    // below cover: (a) wired-axis success path on a populated REL TO
+    // axis; (b) per-intent inapplicability on an empty axis (trait
+    // contract `crates/scheme/src/scheme.rs:185-194`); (c) regression
+    // guard that the pre-existing TOK_USA single-country removal
+    // path still works post-extension.
+
+    #[test]
+    fn apply_intent_removes_rel_to_whole_axis_sentinel() {
+        let scheme = CapcoScheme::new();
+        let mut a = mk_attrs();
+        a.rel_to = vec![
+            CountryCode::USA,
+            CountryCode::try_new(b"GBR").unwrap(),
+            CountryCode::try_new(b"AUS").unwrap(),
+        ]
+        .into();
+        let m = CapcoMarking::new(a);
+
+        let intents = [ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_REL_TO),
+            scope: Scope::Portion,
+        }];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("TOK_REL_TO whole-axis clear must succeed on populated axis");
+        assert!(
+            out.0.rel_to.is_empty(),
+            "REL TO axis must be empty after whole-axis-clear sentinel"
+        );
+    }
+
+    #[test]
+    fn apply_intent_rel_to_whole_axis_clear_on_empty_is_inapplicable() {
+        // Empty REL TO axis: whole-axis-clear sentinel is per-intent
+        // inapplicable (trait contract — already-empty axis is a
+        // no-op). With a single intent in the batch, the whole-batch
+        // result aggregates to `Err(IntentInapplicable)`.
+        let scheme = CapcoScheme::new();
+        let m = CapcoMarking::new(mk_attrs());
+        assert!(m.0.rel_to.is_empty(), "fixture precondition");
+
+        let intents = [ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_REL_TO),
+            scope: Scope::Portion,
+        }];
+        assert_eq!(
+            scheme.apply_intent(&m, &intents),
+            Err(ApplyIntentError::IntentInapplicable)
+        );
+    }
+
+    #[test]
+    fn apply_intent_removes_usa_only_regression_guard() {
+        // Regression guard: TOK_USA single-country removal still
+        // works after the TOK_REL_TO whole-axis-clear sentinel
+        // landed alongside it. USA is removed; GBR remains.
+        let scheme = CapcoScheme::new();
+        let gbr = CountryCode::try_new(b"GBR").unwrap();
+        let mut a = mk_attrs();
+        a.rel_to = vec![CountryCode::USA, gbr].into();
+        let m = CapcoMarking::new(a);
+
+        let intents = [ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_USA),
+            scope: Scope::Portion,
+        }];
+        let out = scheme
+            .apply_intent(&m, &intents)
+            .expect("TOK_USA single-country removal must succeed");
+        assert_eq!(
+            out.0.rel_to.as_ref(),
+            &[gbr],
+            "USA removed, GBR retained"
+        );
     }
 
     // Declarative rewrite dispatch — exercise the Contains / Empty /

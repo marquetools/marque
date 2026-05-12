@@ -476,6 +476,35 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
 // ---------------------------------------------------------------------------
 // E015 — non-US classification requires dissem control
 // ---------------------------------------------------------------------------
+//
+// **Migration status (PR 3c.B Sub-PR 8.D.2, 2026-05-12):** consciously
+// landed at `fix_intent: None`. The authoritative source (CAPCO-2016
+// §H.7 p122 + §B.3 p20) offers **two distinct valid fills** keyed to
+// a foreign-arrangement fact outside marque's view:
+//
+// 1. **REL TO USA, [LIST]** — when the originating country allows
+//    further sharing by the United States (§B.3 p20 paragraph d).
+//    Marque cannot synthesize the [LIST] because the sharing
+//    agreement defines which partner nations are authorized.
+// 2. **NOFORN** — when the originating country prohibits further
+//    sharing by the United States (§B.3 p20 paragraph d, second
+//    bullet), or in the absence of a positive release determination
+//    by the originating agency.
+//
+// Both fills are correct per the source; only the classifier knows
+// which applies for the specific information being marked. A
+// dual-population intent that picked one branch arbitrarily would
+// corrupt the audit log under Constitution V (Audit-First
+// Compliance) by attributing a policy decision to the engine that
+// only a human can make. Matches the `with_fix_intent(..., None)`
+// pattern E016 (JOINT+RESTRICTED) established in Sub-PR 8.B.
+//
+// The Stage-4 target is a `Severity::Suggest` companion diagnostic
+// pair ("did you mean `REL TO USA, [LIST]`?" / "did you mean
+// `NOFORN`?") — the same Reject-with-suggest pattern named for E036
+// (JOINT+HCS). No auto-applied fix exists for this combination
+// because the marking shape is ambiguous in a way no single
+// removal-or-addition can resolve without classifier input.
 
 pub(crate) struct DeclarativeNonUsMissingDissemRule;
 
@@ -497,7 +526,11 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
 
         let span = first_span_of(attrs, TokenKind::Classification);
 
-        vec![Diagnostic::new(
+        // PR 3c.B Sub-PR 8.D.2 — migrated to `with_fix_intent`
+        // constructor signaling consciously-decided-no-fix-intent.
+        // See module-level comment block above for the two-valid-
+        // fills rationale.
+        vec![Diagnostic::with_fix_intent(
             self.id(),
             self.default_severity(),
             span,
@@ -1213,6 +1246,37 @@ fn e038_add_noforn_intent(trigger_token: TokenId, scope: Scope) -> FixIntent<Cap
 // E053 — NOFORN conflicts with REL TO (§H.8 p145)
 // ---------------------------------------------------------------------------
 // (See below for E054–E057, PR 3b.C RELIDO incompatibility wrappers.)
+//
+// **Migration status (PR 3c.B Sub-PR 8.D.2, 2026-05-12):** scope-
+// keyed migration. CAPCO-2016 §H.8 p145 NOFORN entry states verbatim:
+// "Cannot be used with REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY."
+// NOFORN unambiguously supersedes REL TO — there is no policy
+// ambiguity, no alternative fill, no foreign-arrangement fact
+// required to choose: NOFORN wins, REL TO must be removed.
+//
+// Two emission surfaces:
+//
+// 1. **Portion scope** — intent-only emission.
+//    `FactRemove { FactRef::Cve(TOK_REL_TO), Scope::Portion }` via the
+//    `TOK_REL_TO` whole-axis-clear sentinel `apply_fact_remove`'s
+//    CAT_REL_TO branch was extended to accept in this sub-PR. The
+//    engine's `synthesize_intent_only_fixes` re-renders the portion
+//    after `apply_intent` clears the REL TO axis. Analog to the
+//    CAT_NON_IC_DISSEM EXDIS sentinel that PR #370 / Sub-PR 8.E.2
+//    wired for E041.
+//
+// 2. **Banner / CAB scope** — no-fix-intent diagnostic.
+//    The page-level mutation is the responsibility of the
+//    `capco/noforn-clears-rel-to` PageRewrite declared in
+//    `CapcoScheme::build_page_rewrites`
+//    (`crates/capco/src/scheme.rs:786`, cited at §D.2 Table 3 +
+//    §H.8 p145). Adding a `Scope::Page` arm here would cause a
+//    double rewrite — the page would be re-rolled once by the
+//    rewrite scheduler and once by this rule's intent synthesis.
+//    The rule still emits a diagnostic at banner scope so a user
+//    typing the malformed banner directly sees the violation, but
+//    the diagnostic carries no `fix_intent`: the banner mutation
+//    flows through the PageRewrite, not through the rule.
 
 pub(crate) struct DeclarativeNofornRelToConflictRule;
 
@@ -1227,7 +1291,9 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::MarkingType;
+
         if violations_for(attrs, "capco/noforn-conflicts-rel-to").is_empty() {
             return vec![];
         }
@@ -1248,15 +1314,93 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
             .map(|t| t.span)
             .unwrap_or_else(|| first_span_of(attrs, TokenKind::RelToBlock));
 
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "NOFORN cannot be used with REL TO (§H.8 p145); \
-             remove one or the other",
-            "CAPCO-2016 §H.8 p145",
-            None,
-        )]
+        // Scope-keyed emission. Portion → intent-only with FactRemove;
+        // banner/CAB → diagnostic-only (page mutation is the
+        // `capco/noforn-clears-rel-to` PageRewrite's responsibility).
+        // PageBreak and other marking types do not carry §H.8 surfaces
+        // and bail (matches E038's pattern post-Copilot review of PR #372).
+        match ctx.marking_type {
+            MarkingType::Portion => {
+                // PR 3c.B Sub-PR 8.D.2 — intent-only emission. The
+                // diagnostic's `span` points at the NOFORN token (the
+                // user-facing pointer); `candidate_span` is the full
+                // portion candidate so the engine's
+                // `synthesize_intent_only_fixes` knows which
+                // scope-bytes to re-render after
+                // `CapcoScheme::apply_intent` clears the REL TO axis
+                // via the `TOK_REL_TO` whole-axis sentinel.
+                vec![Diagnostic::with_intent_at_span(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    ctx.candidate_span,
+                    "NOFORN cannot be used with REL TO (§H.8 p145); \
+                     remove one or the other",
+                    "CAPCO-2016 §H.8 p145",
+                    e053_remove_rel_to_intent(),
+                )]
+            }
+            MarkingType::Banner | MarkingType::Cab => {
+                // Diagnostic-only at banner / CAB scope — see module-
+                // level comment. The `capco/noforn-clears-rel-to`
+                // PageRewrite handles the page-level mutation; a
+                // page-scope `FactRemove` intent here would
+                // double-rewrite.
+                vec![Diagnostic::with_fix_intent(
+                    self.id(),
+                    self.default_severity(),
+                    span,
+                    "NOFORN cannot be used with REL TO (§H.8 p145); \
+                     remove one or the other",
+                    "CAPCO-2016 §H.8 p145",
+                    None,
+                )]
+            }
+            _ => vec![],
+        }
+    }
+}
+
+/// Build the `FactRemove { TOK_REL_TO, Scope::Portion }` intent
+/// emitted by [`DeclarativeNofornRelToConflictRule`]. The
+/// `TOK_REL_TO` sentinel routes to `apply_fact_remove`'s CAT_REL_TO
+/// whole-axis-clear arm (PR 3c.B Sub-PR 8.D.2) — REL TO is cleared
+/// entirely, not just USA, because §H.8 p145 says NOFORN cannot be
+/// used with REL TO **at all** (no per-country exemption).
+///
+/// Confidence is `Confidence::strict(1.0)` — the source is
+/// unambiguous ("Cannot be used with REL TO" is a categorical
+/// prohibition, not a context-dependent guideline), and the strict
+/// recognizer path is what produced the parse that surfaced both
+/// the NOFORN token and the REL TO block. Mirrors the calibration
+/// used by `nodis_supersedes_exdis_intent` in `rules.rs` and the
+/// other strict-path intent builders in this crate.
+///
+/// `feature_ids` uses `Default::default()` (empty `SmallVec`) to
+/// stay consistent with the other strict-path intent builders.
+///
+/// Message uses `MessageTemplate::ConflictsWith`: §H.8 mutual-
+/// exclusion with a dominated + surviving token, NOT §F deprecation
+/// / canonical-replacement. `token` = the dominated REL TO (carried
+/// via the `TOK_REL_TO` sentinel that identifies the axis);
+/// `expected_token` = the surviving NOFORN.
+fn e053_remove_rel_to_intent() -> FixIntent<CapcoScheme> {
+    use crate::scheme::{TOK_NOFORN, TOK_REL_TO};
+    FixIntent {
+        replacement: ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_REL_TO),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(1.0),
+        feature_ids: Default::default(),
+        message: Message::new(
+            MessageTemplate::ConflictsWith,
+            MessageArgs {
+                token: Some(TOK_REL_TO),
+                expected_token: Some(TOK_NOFORN),
+                ..MessageArgs::default()
+            },
+        ),
     }
 }
 
