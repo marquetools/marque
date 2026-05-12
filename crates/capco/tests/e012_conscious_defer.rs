@@ -34,16 +34,39 @@
 //! pattern class (alongside JOINT, NODIS/EXDIS, RELIDO/REL TO/
 //! NOFORN).
 //!
-//! Citation-honesty rationale (code-reviewer CRITICAL-1): the
-//! prior `make_fix_diagnostic` emission claimed a `FGI {countries}`
-//! / `FGI NATO` replacement at confidence 0.90 — an INFERENCE from
-//! §H.3 p55 + §H.7 FGI structure, not a CAPCO-cited repair. §H.3
-//! p55 authoritatively covers the DETECTION predicate; §H.7
-//! governs FGI marking shape but does not direct that the foreign
-//! side of a Conflict becomes `FGI X`. Path B's no-fix posture is
-//! the citation-honest choice: the rule fires, surfaces the §H.3
-//! p55 mutual-exclusion problem, and lets the classifier consult
-//! §H.7 to choose the correct FGI marking.
+//! Citation-honesty rationale (code-reviewer CRITICAL-1, refined
+//! after Copilot review on PR #390): the prior `make_fix_diagnostic`
+//! emission claimed a `FGI {countries}` / `FGI NATO` replacement at
+//! confidence 0.90 — a pattern application, not direct CAPCO
+//! citation. The diagnostic now separates the load-bearing cites:
+//!
+//!   - §H.3 p55 (detection): "The US, non-US, and JOINT
+//!     classification markings are mutually exclusive — a banner
+//!     line or portion mark may contain only one type and value
+//!     for the classification marking." Authoritative for the
+//!     malformed-input predicate.
+//!   - §H.3 p57 (US-precedence pattern, normative for JOINT
+//!     derivative use): the banner line of a US document
+//!     containing JOINT portions is "expressed as a US
+//!     classification marking" with FGI carrying the foreign
+//!     trigraph/tetragraph codes.
+//!   - §H.3 p59 Example 4 note (broader principle): "when US and
+//!     non-US portions are combined in a single document, the
+//!     overall marking is a US classification."
+//!   - §H.7 (FGI marking format): the shape the foreign side
+//!     takes once the classifier has decided to express it as FGI.
+//!
+//! What CAPCO does NOT say: "if a classifier writes `C//NATO C` in
+//! a single marking, treat the marking as US C." The p57/p59
+//! passages cover document-level commingling, not the
+//! single-marking malformed-input case the rule detects. The
+//! inference from "document commingling → US classification + FGI
+//! block" to "malformed dual marking → US classification + FGI
+//! block" is defensible pattern application, not direct citation.
+//! Path B's no-fix posture remains the citation-honest choice: the
+//! rule fires, surfaces §H.3 p55, names the CAPCO US-precedence
+//! pattern (§H.3 p57 / p59), and lets the classifier consult §H.7
+//! for the correct FGI marking shape.
 //!
 //! Confidence-threshold note (code-reviewer CRITICAL-2): the
 //! legacy 0.90 confidence sat BELOW the default
@@ -138,10 +161,36 @@ fn e012_emits_diagnostic_on_dual_us_plus_nato_in_portion() {
          template; got: {:?}",
         e012[0].message
     );
+    // Citation-honesty: the diagnostic separates the §H.3 p55
+    // detection mandate from the §H.3 p57 / p59 US-precedence pattern
+    // (post-Copilot-review-r3229000257 refinement). Asserting all
+    // four cites appear in the message text locks in the separation
+    // — a drift that collapsed back to "§H.3 p55 mandates US wins"
+    // would break this test.
+    assert!(
+        e012[0].message.contains("§H.3 p57"),
+        "E012 message must cite §H.3 p57 (JOINT derivative use) — \
+         this is the normative passage for the US-precedence + \
+         foreign-to-FGI structural pattern that marque's no-fix \
+         posture points the classifier at; got: {:?}",
+        e012[0].message
+    );
+    assert!(
+        e012[0].message.contains("§H.3 p59"),
+        "E012 message must cite §H.3 p59 (Example 4 note: \"when \
+         US and non-US portions are combined in a single document, \
+         the overall marking is a US classification\") — the \
+         broader-principle complement to the §H.3 p57 normative \
+         template; got: {:?}",
+        e012[0].message
+    );
     assert_eq!(
         e012[0].citation, "CAPCO-2016 §H.3 p55",
         "E012 citation must pin the authoritative detection passage; \
-         got: {:?}",
+         the §H.3 p57 / p59 remediation pattern cites live in the \
+         message body, not the citation field (which holds the \
+         single load-bearing detection cite per existing \
+         convention); got: {:?}",
         e012[0].citation
     );
 }

@@ -368,15 +368,42 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
 //
 // **Citation-honesty note.** Earlier revisions emitted a
 // hard-coded `FGI {countries}` / `FGI NATO` replacement string under
-// `make_fix_diagnostic` at confidence 0.90. That replacement was an
-// INFERENCE from §H.3 p55 + §H.7 FGI structure — not a CAPCO-cited
-// repair. §H.3 p55 authoritatively covers the DETECTION predicate;
-// §H.7 governs FGI marking shape but does not say "if a US+foreign
-// dual classification is encountered, the foreign side becomes
-// `FGI X`." Path B's no-fix posture is the citation-honest choice:
-// the rule fires, surfaces the §H.3 p55 mutual-exclusion problem,
-// and lets the classifier consult §H.7 to choose the correct FGI
-// marking.
+// `make_fix_diagnostic` at confidence 0.90. The diagnostic separates
+// the load-bearing cites:
+//
+//   - **Detection** — §H.3 p55: "The US, non-US, and JOINT
+//     classification markings are mutually exclusive — a banner line
+//     or portion mark may contain only one type and value for the
+//     classification marking." Authoritative for the fact that a
+//     `Conflict { us, foreign }` shape is malformed.
+//   - **US-precedence pattern** — §H.3 p57 (JOINT derivative use,
+//     normative): when JOINT portions are extracted into a US
+//     document, "the banner line contains the highest classification
+//     level of all portions, expressed as a US classification
+//     marking" with "the FGI marking including all trigraph/
+//     tetragraph codes identified in the JOINT portion(s)." §H.3
+//     p59 Notional Example 4 note generalizes this: "when US and
+//     non-US portions are combined in a single document, the
+//     overall marking is a US classification." These passages
+//     establish the US-precedence + foreign-to-FGI structural
+//     pattern that the now-retired auto-repair was imitating.
+//   - **FGI marking format** — §H.7: the shape an FGI block takes
+//     once a classifier has decided to express the foreign side as
+//     FGI.
+//
+// What CAPCO does NOT directly say: "if a classifier writes
+// `C//NATO C` in a single marking, treat the marking as US C." The
+// p57/p59 passages cover document-level commingling (JOINT
+// extraction, mixed US+non-US portions), not the malformed-input
+// case where two classifications share one banner/portion. The
+// inference from "document commingling → US classification + FGI
+// block" to "malformed dual marking → US classification + FGI
+// block" is a defensible pattern application, but it is
+// application of a pattern, not direct citation. Path B's no-fix
+// posture is the citation-honest choice: the rule fires, surfaces
+// the §H.3 p55 mutual-exclusion problem, names the CAPCO
+// US-precedence pattern (§H.3 p57 / p59), and lets the classifier
+// consult §H.7 for the correct FGI marking shape.
 //
 // **Severity preservation.** `default_severity()` stays at
 // `Severity::Fix`. Severity classifies the rule's PROBLEM-CATEGORY,
@@ -469,9 +496,11 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
             span,
             format!(
                 "marking has both US ({us_banner}) and foreign ({foreign_desc}) \
-                 classification; §H.3 p55 mandates these are mutually exclusive — \
-                 US wins; consult §H.7 to determine the correct FGI marking for \
-                 the foreign classification",
+                 classification; §H.3 p55 mandates these are mutually exclusive. \
+                 CAPCO's pattern when US and non-US classifications are commingled \
+                 is to express the overall as a US classification with foreign \
+                 provenance in an FGI block (§H.3 p57 JOINT derivative use; §H.3 \
+                 p59 Example 4 note); consult §H.7 for the FGI marking format",
             ),
             // §H.3 p55 is the authoritative passage for the US +
             // non-US classification mutual exclusion (the JOINT
