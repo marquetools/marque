@@ -71,7 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: rust-lang/crates-io-auth-action@92ec0602aa002521f5e2b1084cae1fba4aee6b55
+      - uses: rust-lang/crates-io-auth-action@f8c4b7797acde66a9450d56cbbbed37bb22e4447
         id: auth
       - name: Publish crates
         env:
