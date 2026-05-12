@@ -97,7 +97,6 @@ use marque_rules::{
 };
 use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, TokenId};
 
-use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
 use crate::scheme::CapcoScheme;
 
 // ---------------------------------------------------------------------------
@@ -338,6 +337,101 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
 // ---------------------------------------------------------------------------
 // E012 — dual classification (US + foreign in one marking)
 // ---------------------------------------------------------------------------
+//
+// **Migration status (PR 3c.B Sub-PR 8.D.5, 2026-05-12):** consciously
+// landed at `fix_intent: None`. The §H.3 p55 mutual-exclusion
+// predicate is authoritative ("The US, non-US, and JOINT classification
+// markings are mutually exclusive — a banner line or portion mark may
+// contain only one type and value for the classification marking"),
+// but the *remediation* — "move foreign to FGI block" — is a
+// CROSS-AXIS renormalization (classification axis → FGI axis) that
+// the current intent vocabulary cannot express:
+//
+// 1. `ReplacementIntent::FactAdd` and `FactRemove` are strictly
+//    single-axis-scoped — they add or remove a token within ONE
+//    axis. The E012 fix mutates two axes atomically (drop the
+//    foreign-classification token, add an FGI block with the
+//    corresponding countries and level).
+// 2. `ReplacementIntent::Recanonicalize` re-renders an existing
+//    axis from `CanonicalAttrs`. Today `CapcoScheme::project`
+//    does not resolve `MarkingClassification::Conflict` into a
+//    well-formed FGI projection — the projector treats it as a
+//    pure US classification at the `max` level and discards the
+//    foreign side. Without that resolution, Recanonicalize cannot
+//    materialize the FGI block.
+//
+// Either path forward (a new `Migrate { from, to, scope }` intent
+// variant, or extending the `CapcoScheme::project` Conflict
+// resolution) is an engine/scheme edit forbidden in scheme-adoption
+// sub-PRs by Constitution VII §IV. The retirement target is named
+// below.
+//
+// **Citation-honesty note.** Earlier revisions emitted a
+// hard-coded `FGI {countries}` / `FGI NATO` replacement string under
+// `make_fix_diagnostic` at confidence 0.90. The diagnostic separates
+// the load-bearing cites:
+//
+//   - **Detection** — §H.3 p55: "The US, non-US, and JOINT
+//     classification markings are mutually exclusive — a banner line
+//     or portion mark may contain only one type and value for the
+//     classification marking." Authoritative for the fact that a
+//     `Conflict { us, foreign }` shape is malformed.
+//   - **US-precedence pattern** — §H.3 p57 (JOINT derivative use,
+//     normative): when JOINT portions are extracted into a US
+//     document, "the banner line contains the highest classification
+//     level of all portions, expressed as a US classification
+//     marking" with "the FGI marking including all trigraph/
+//     tetragraph codes identified in the JOINT portion(s)." §H.3
+//     p59 Notional Example 4 note generalizes this: "when US and
+//     non-US portions are combined in a single document, the
+//     overall marking is a US classification." These passages
+//     establish the US-precedence + foreign-to-FGI structural
+//     pattern that the now-retired auto-repair was imitating.
+//   - **FGI marking format** — §H.7: the shape an FGI block takes
+//     once a classifier has decided to express the foreign side as
+//     FGI.
+//
+// What CAPCO does NOT directly say: "if a classifier writes
+// `C//NATO C` in a single marking, treat the marking as US C." The
+// p57/p59 passages cover document-level commingling (JOINT
+// extraction, mixed US+non-US portions), not the malformed-input
+// case where two classifications share one banner/portion. The
+// inference from "document commingling → US classification + FGI
+// block" to "malformed dual marking → US classification + FGI
+// block" is a defensible pattern application, but it is
+// application of a pattern, not direct citation. Path B's no-fix
+// posture is the citation-honest choice: the rule fires, surfaces
+// the §H.3 p55 mutual-exclusion problem, names the CAPCO
+// US-precedence pattern (§H.3 p57 / p59), and lets the classifier
+// consult §H.7 for the correct FGI marking shape.
+//
+// **Severity preservation.** `default_severity()` stays at
+// `Severity::Fix`. Severity classifies the rule's PROBLEM-CATEGORY,
+// not a fix-emission promise — E010 kept its severity at `Error`
+// under the same conscious-defer pattern (Sub-PR 8.D.3, PR #375),
+// and E015 / E016 follow the same shape. Confidence-threshold
+// math also concurs: the legacy 0.90 confidence sat below the
+// default `Config::confidence_threshold` (0.95), so the
+// dual-population legacy path was never reaching `result.applied`
+// in production — Path B closes the proposal channel cleanly
+// without altering observable auto-apply behavior.
+//
+// **Stage-4 retirement target.** E012 is the canonical example of
+// the "type incompatibility / ejection" pattern class (alongside
+// JOINT, NODIS/EXDIS, RELIDO/REL TO/NOFORN) — the entire family
+// is tracked under
+// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`.
+// E012 retires to either:
+//   (a) a new `ReplacementIntent::Migrate { from, to, scope }`
+//       variant that expresses cross-axis renormalization
+//       atomically (preferred — generalizes to the rest of the
+//       incompatibility family), OR
+//   (b) `Recanonicalize { Portion }` once `CapcoScheme::project`
+//       admits classification-axis `Conflict` resolution and emits
+//       an FGI projection from the foreign side.
+// The conscious-defer landing here keeps the rule firing and the
+// diagnostic message accurate while the consolidation pass decides
+// between (a) and (b).
 
 /// Replaces the hand-written `DualClassificationRule`.
 pub(crate) struct DeclarativeDualClassificationRule;
@@ -364,6 +458,9 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
             return vec![];
         };
 
+        // Token-canonical foreign description (G13-clean: derived
+        // from vocabulary / typed structural values, not from
+        // source-buffer slices).
         let foreign_desc = match foreign.as_ref() {
             ForeignClassification::Nato(n) => format!("NATO ({})", n.banner_str()),
             ForeignClassification::Fgi(f) => {
@@ -380,58 +477,40 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
             }
         };
 
-        let fgi_replacement = match foreign.as_ref() {
-            ForeignClassification::Nato(_) => "FGI NATO".to_owned(),
-            ForeignClassification::Fgi(f) => {
-                let countries: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
-                if countries.is_empty() {
-                    "FGI".to_owned()
-                } else {
-                    format!("FGI {}", countries.join(" "))
-                }
-            }
-            ForeignClassification::Joint(j) => {
-                let countries: Vec<&str> = j.countries.iter().map(|c| c.as_str()).collect();
-                format!("FGI {}", countries.join(" "))
-            }
-        };
-
         // Second Classification token span — that's the foreign one.
         let class_spans = spans_of_kind(attrs, TokenKind::Classification);
         let span = class_spans
             .get(1)
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
-        let original = class_spans
-            .get(1)
-            .map(|t| t.text.to_string())
-            .unwrap_or_default();
 
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
+        let us_banner = us.banner_str();
+
+        // PR 3c.B Sub-PR 8.D.5 — migrated to `with_fix_intent`
+        // constructor signaling consciously-decided-no-fix-intent.
+        // See module-level comment block above for the cross-axis-
+        // renormalization rationale and Stage-4 retirement target.
+        vec![Diagnostic::with_fix_intent(
+            self.id(),
+            self.default_severity(),
             span,
-            message: format!(
-                "marking has both US ({}) and foreign ({foreign_desc}) classification; \
-                 US wins at {}; move foreign to FGI block",
-                us.banner_str(),
-                us.banner_str(),
+            format!(
+                "marking has both US ({us_banner}) and foreign ({foreign_desc}) \
+                 classification; §H.3 p55 mandates these are mutually exclusive. \
+                 CAPCO's pattern when US and non-US classifications are commingled \
+                 is to express the overall as a US classification with foreign \
+                 provenance in an FGI block (§H.3 p57 JOINT derivative use; §H.3 \
+                 p59 Example 4 note); consult §H.7 for the FGI marking format",
             ),
             // §H.3 p55 is the authoritative passage for the US +
             // non-US classification mutual exclusion (the JOINT
             // template's "The US, non-US, and JOINT classification
-            // markings are mutually exclusive" sentence). Earlier
-            // revisions cited `§B.1` (a legacy FD&R-procedures
-            // pointer) under a byte-identity freeze; the wrapper
-            // now matches the catalog row at
+            // markings are mutually exclusive" sentence). Matches
+            // the catalog row at
             // `scheme.rs:E012/dual-classification`.
-            citation: "CAPCO-2016 §H.3 p55",
-            original,
-            replacement: fgi_replacement,
-            confidence: 0.90,
-            migration_ref: None,
-        })]
+            "CAPCO-2016 §H.3 p55",
+            None,
+        )]
     }
 }
 

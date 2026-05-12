@@ -5416,6 +5416,13 @@ mod tests {
         // accepts both `§B.1` and `§H.3 p55` as well-formed)
         // would not flag the regression.
         assert_eq!(e012[0].citation, "CAPCO-2016 §H.3 p55");
+        // PR 3c.B Sub-PR 8.D.5: conscious-defer migration. E012
+        // emits neither a legacy `FixProposal` nor a structural
+        // `FixIntent`. See `crates/capco/src/rules_declarative.rs`
+        // module-level comment on `DeclarativeDualClassificationRule`
+        // for the cross-axis-renormalization rationale.
+        assert!(e012[0].fix.is_none());
+        assert!(e012[0].fix_intent.is_none());
     }
 
     #[test]
