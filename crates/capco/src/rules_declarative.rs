@@ -226,6 +226,43 @@ pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<
 // ---------------------------------------------------------------------------
 // E010 — bare HCS requires compartment suffix
 // ---------------------------------------------------------------------------
+//
+// **Migration status (PR 3c.B Sub-PR 8.D.3, 2026-05-12):** consciously
+// landed at `fix_intent: None`. The authoritative source (CAPCO-2016
+// §H.4 at `crates/capco/docs/CAPCO-2016.md` lines 1393–1395) does NOT
+// mandate HCS-P as the default fill for bare HCS. The Relationship(s)
+// to Other Markings paragraph (line 1395) reads in relevant part:
+//
+//   "When incorporating legacy material marked 'HCS' into a new
+//    product, re-mark the new document and associated portion
+//    according to the instructions in the HCS-O and HCS-P marking
+//    templates. However, legacy information previously marked HCS
+//    and transmitted via machine-to-machine processes may retain
+//    the HCS marking without requiring translation to either HCS-O
+//    or HCS-P."
+//
+// The classifier MUST read the HCS-O and HCS-P marking templates and
+// decide which applies for the specific information — operational
+// source (HCS-O) versus analytical product (HCS-P). The decision
+// depends on facts about the underlying intelligence that marque
+// cannot see. Marque's prior auto-pick of HCS-P (at 0.95 absent HCS-O,
+// or 0.5 when HCS-O also appeared) was a UX heuristic, not a manual
+// directive.
+//
+// Per project memory `feedback_pre_users_no_deprecation_phasing`,
+// marque is pre-users; we drop the heuristic rather than preserve it
+// at higher confidence. A dual-population intent that auto-applied
+// HCS-P would corrupt the audit log under Constitution V (Audit-
+// First Compliance) by attributing a policy decision to the engine
+// that only a human can make. Matches the `with_fix_intent(..., None)`
+// pattern E015 / E016 established in Sub-PR 8.D.2 / 8.B.
+//
+// The Stage-4 target is a `Severity::Suggest` companion diagnostic
+// pair ("did you mean `HCS-O`?" / "did you mean `HCS-P`?") — the
+// same Reject-with-suggest pattern named for E015 / E036. No auto-
+// applied fix exists for this combination because the marking shape
+// is ambiguous in a way no single removal-or-addition can resolve
+// without classifier input.
 
 /// Replaces the hand-written `BareHcsRule`.
 ///
@@ -234,9 +271,16 @@ pub fn find_dissem_token_span(attrs: &CanonicalAttrs, forms: &[&str]) -> Option<
 /// HCS detection, HCS-O/P classification floor, ORCON pairing, etc.).
 /// Only the bare-HCS sub-violation corresponds to a legacy hand-
 /// written diagnostic; the other sub-rules weren't emitted by any
-/// rule before T035. The wrapper discriminates by message prefix so
-/// byte-identity with the pre-branch corpus is preserved; the other
-/// sub-rules drop silently until a future PR wires wrappers for them.
+/// rule before T035. The wrapper discriminates by message prefix.
+///
+/// Note: post Sub-PR 8.D.3 (PR #375), the diagnostic message and
+/// fix shape changed (mentions HCS-O / HCS-P / HCS-O-P with
+/// semantics; `fix_intent: None`). Byte-identity with the
+/// pre-branch corpus is no longer preserved — the wrapper's
+/// purpose is now to translate the catalog's bare-HCS sub-
+/// violation into the conscious-defer emission, not to reproduce
+/// the legacy fix string. The other sub-rules drop silently until
+/// a future PR wires wrappers for them.
 pub(crate) struct DeclarativeBareHcsRule;
 
 impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
@@ -262,35 +306,6 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
             return vec![];
         }
 
-        // Byte-identity: reproduce the retired rule's message +
-        // confidence selection. Inspect `sci_controls` again locally
-        // because the scheme's violation message doesn't carry the
-        // sub-discriminator.
-        let has_hcs_o = attrs.sci_controls.contains(&SciControl::HcsO);
-        let has_hcs_p = attrs.sci_controls.contains(&SciControl::HcsP);
-        let (confidence, message) = if has_hcs_o {
-            (
-                0.5,
-                "bare HCS requires a compartment suffix (-O or -P); \
-                 HCS-O appears in this marking — verify whether HCS should be HCS-O or HCS-P"
-                    .to_owned(),
-            )
-        } else if has_hcs_p {
-            (
-                0.95,
-                "bare HCS requires a compartment suffix; \
-                 HCS-P already present — this HCS likely should be HCS-P"
-                    .to_owned(),
-            )
-        } else {
-            (
-                0.95,
-                "bare HCS requires a compartment suffix (-O or -P); \
-                 use HCS-P unless this involves operational source information"
-                    .to_owned(),
-            )
-        };
-
         // Find the token span for the bare HCS entry (matches legacy
         // rule: position-indexed lookup into SciControl spans).
         let sci_spans = spans_of_kind(attrs, TokenKind::SciControl);
@@ -303,18 +318,20 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
             .map(|t| t.span)
             .unwrap_or(Span::new(0, 0));
 
-        vec![make_fix_diagnostic(FixDiagnosticParams {
-            rule: self.id(),
-            severity: self.default_severity(),
-            source: FixSource::BuiltinRule,
+        // PR 3c.B Sub-PR 8.D.3 — migrated to `with_fix_intent`
+        // constructor signaling consciously-decided-no-fix-intent.
+        // See module-level comment block above for the HCS-O vs
+        // HCS-P classifier-decision rationale.
+        vec![Diagnostic::with_fix_intent(
+            self.id(),
+            self.default_severity(),
             span,
-            message,
-            citation: "CAPCO-2016 §H.4 p61-62",
-            original: "HCS".to_owned(),
-            replacement: "HCS-P".to_owned(),
-            confidence,
-            migration_ref: None,
-        })]
+            "bare HCS is a legacy marking; consult the HCS-O and HCS-P marking templates \
+             per §H.4 to determine the correct compartment (HCS-O for operational source \
+             information, HCS-P for analytical product, HCS-O-P when both are present)",
+            "CAPCO-2016 §H.4 p62",
+            None,
+        )]
     }
 }
 
