@@ -557,24 +557,22 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
                         country.as_str(),
                     ),
                     "CAPCO-2016 §H.3 p57",
-                    e014_add_country_intent(*country),
+                    e014_add_country_intent(*country, ctx.marking_type),
                 )
             })
             .collect()
     }
 }
 
-/// Build the `FactAdd { CountryCode(...), Scope::Portion }` intent
-/// emitted by [`DeclarativeJointRelToRule`] for one missing JOINT
-/// co-owner.
+/// Build the `FactAdd { CountryCode(...), Scope }` intent emitted by
+/// [`DeclarativeJointRelToRule`] for one missing JOINT co-owner.
 ///
-/// **Scope is `Portion`**: the rule fires at the portion level
-/// (each portion mark carries its own REL TO list per §H.3 p57
-/// "at both the banner and portion level"). Banner-level roll-up
-/// of the consolidated REL TO list is the page-level rewrite layer's
-/// concern, not this rule's. Mirrors the `Scope::Portion` choice
-/// `e038_add_noforn_intent` and `aea_noforn_add_intent` made for
-/// the analogous companion-required cases on the dissem axis.
+/// **Scope follows `marking_type`**: a portion-context firing emits
+/// `Scope::Portion` (one portion's REL TO list); a banner or CAB-context
+/// firing emits `Scope::Page` (the page-aggregated REL TO list per
+/// §H.3 p57 "at both the banner and portion level"). Matches the
+/// established E002 pattern at `crates/capco/src/rules.rs:548-555`
+/// for the analogous CAT_REL_TO axis FactAdd.
 ///
 /// **Confidence is `Confidence::strict(0.95)`**: §H.3 p57 is
 /// unambiguous about the floor (co-owners ⊆ REL TO list); the
@@ -593,12 +591,19 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
 /// `ReplacementIntent::FactAdd { token: FactRef::OpenVocab(
 /// CapcoOpenVocabRef::CountryCode(...)), ... }` payload, which the
 /// audit emitter renders separately from the structured message.
-fn e014_add_country_intent(country: marque_ism::CountryCode) -> FixIntent<CapcoScheme> {
+fn e014_add_country_intent(
+    country: marque_ism::CountryCode,
+    marking_type: marque_ism::MarkingType,
+) -> FixIntent<CapcoScheme> {
     use crate::scheme::{CapcoOpenVocabRef, TOK_JOINT};
+    let scope = match marking_type {
+        marque_ism::MarkingType::Portion => Scope::Portion,
+        _ => Scope::Page,
+    };
     FixIntent {
         replacement: ReplacementIntent::FactAdd {
             token: FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(country)),
-            scope: Scope::Portion,
+            scope,
         },
         confidence: Confidence::strict(0.95),
         feature_ids: Default::default(),

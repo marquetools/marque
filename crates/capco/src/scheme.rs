@@ -531,12 +531,30 @@ fn apply_fact_add(
     if category == CAT_REL_TO {
         let country = match token {
             FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(c)) => *c,
-            // CVE-side TOK_USA / TOK_REL_TO are FactRemove sentinels
+            // CVE-side TOK_USA is mapped to `CountryCode::USA` for
+            // back-compat with E002 (`crates/capco/src/rules.rs:559`),
+            // which emits `FactAdd { token: Cve(TOK_USA), scope }` to
+            // ensure USA appears in REL TO. Before this arm existed,
+            // E002's FactAdd silently no-op'd through the CAT_REL_TO
+            // fall-through (returning `IntentInapplicable`) and the
+            // dual-population legacy `FixProposal` did the real work;
+            // post-PR-3c.B-Sub-PR-8.D.4 the open-vocab path is wired and
+            // we honor the existing CVE emission too. Mapping is safe
+            // because `CountryCode::USA` is a `const` literal validated
+            // against `try_new` at compile time.
+            FactRef::Cve(id) if *id == TOK_USA => marque_ism::CountryCode::USA,
+            // TOK_REL_TO is the FactRemove "clear whole axis" sentinel
             // (see the doc block on `TOK_REL_TO` above, lines 110–126);
-            // they have no meaning as FactAdd payloads. TOK_USA on the
-            // add side would lose the discrimination between "add USA"
-            // and "clear axis"; the open-vocab CountryCode path is the
-            // canonical add channel for the REL TO axis.
+            // FactAdd of this sentinel has no meaning. Return
+            // `IntentInapplicable` (per-intent no-op, batch continues)
+            // rather than `UnknownToken` (programmer error, batch
+            // aborts) — the sentinel is a known token routed correctly,
+            // it just has no FactAdd semantic.
+            FactRef::Cve(id) if *id == TOK_REL_TO => {
+                return Err(ApplyIntentError::IntentInapplicable);
+            }
+            // Any other token routed to CAT_REL_TO is a programmer
+            // error — no other token shape has REL TO axis meaning.
             _ => return Err(ApplyIntentError::UnknownToken),
         };
         if attrs.rel_to.contains(&country) {

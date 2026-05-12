@@ -271,17 +271,27 @@ fn e014_fix_apply_inserts_missing_countries_idempotently() {
     // position. We don't pin the exact rendered byte sequence because
     // engine canonicalization order can interact with concurrent
     // page-rewrite rules and other rules firing on the same input —
-    // assert the JOINT participants appear in the REL TO list.
+    // assert the JOINT participants appear in the REL TO list
+    // specifically (not just anywhere in the marking, since the JOINT
+    // participant list also names them).
     let fixed = std::str::from_utf8(&first.source).expect("fixed output is UTF-8");
-    assert!(
-        fixed.contains("REL TO"),
-        "fix must produce a REL TO marking on the portion; got: {fixed:?}",
-    );
+    let rel_to_start = fixed.find("REL TO").unwrap_or_else(|| {
+        panic!("fix must produce a REL TO marking on the portion; got: {fixed:?}")
+    });
+    // The REL TO list extends from "REL TO " through the next category
+    // separator (`//`) or the close-paren of the portion. Capture
+    // everything from "REL TO " to the first occurrence of either.
+    let after_rel_to = &fixed[rel_to_start + "REL TO ".len()..];
+    let rel_to_list_end = after_rel_to
+        .find("//")
+        .or_else(|| after_rel_to.find(')'))
+        .unwrap_or(after_rel_to.len());
+    let rel_to_list = &after_rel_to[..rel_to_list_end];
     for country in ["USA", "AUS", "CAN"] {
         assert!(
-            fixed.contains(country),
-            "fixed output must contain co-owner `{country}` in REL TO; \
-             got: {fixed:?}",
+            rel_to_list.contains(country),
+            "fixed REL TO list must contain co-owner `{country}`; \
+             extracted REL TO list: {rel_to_list:?}, full fixed: {fixed:?}",
         );
     }
 

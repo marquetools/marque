@@ -269,9 +269,11 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // open-vocab `CapcoOpenVocabRef::CountryCode` FactAdd path on
         // the CAT_REL_TO axis. The rule emits N FactAdds (one per
         // missing JOINT co-owner); `find` picks up the first auto-
-        // applied entry. `(//JOINT S GBR USA)` has GBR missing from
-        // the implicit-empty REL TO list — one FactAdd intent fires.
-        ("(//JOINT S GBR USA)\n", "E014", "FactAdd"),
+        // applied entry. `(//JOINT S GBR USA//REL TO USA)` lists USA
+        // explicitly in REL TO, so only GBR is missing — exactly one
+        // FactAdd intent fires (single-co-owner case demonstrates the
+        // open-vocab CountryCode payload through the audit pipeline).
+        ("(//JOINT S GBR USA//REL TO USA)\n", "E014", "FactAdd"),
         // E002 USA-missing branch — FactAdd { USA, Page } on banner.
         ("SECRET//REL TO GBR\n", "E002", "FactAdd"),
         // E002 USA-not-first branch — Recanonicalize { Page } on
