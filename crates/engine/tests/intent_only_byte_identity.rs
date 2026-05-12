@@ -185,7 +185,11 @@ fn intent_only_path_produces_audit_record_with_intent_variant() {
     match &applied.proposal {
         marque_rules::AppliedFixProposal::New { intent, .. } => match &intent.replacement {
             ReplacementIntent::FactRemove { facts, scope } => {
-                assert_eq!(facts.len(), 1, "FactRemove must have exactly one fact (RELIDO)");
+                assert_eq!(
+                    facts.len(),
+                    1,
+                    "FactRemove must have exactly one fact (RELIDO)"
+                );
                 assert!(matches!(facts[0], FactRef::Cve(t) if t == TOK_RELIDO));
                 assert_eq!(*scope, Scope::Portion);
             }
@@ -353,10 +357,7 @@ impl Rule<CapcoScheme> for DualIntentRule {
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
         };
         let relido_intent = FixIntent {
-            replacement: ReplacementIntent::fact_remove(
-                FactRef::Cve(TOK_RELIDO),
-                Scope::Portion,
-            ),
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),

@@ -93,7 +93,8 @@ fn e054_emits_correct_fix_intent_shape() {
             );
             assert!(
                 matches!(facts[0], FactRef::Cve(id) if id == TOK_RELIDO),
-                "E054 intent must remove TOK_RELIDO; got facts[0] = {:?}", facts[0]
+                "E054 intent must remove TOK_RELIDO; got facts[0] = {:?}",
+                facts[0]
             );
             assert_eq!(
                 *scope,

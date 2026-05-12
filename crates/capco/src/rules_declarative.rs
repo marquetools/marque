@@ -1193,10 +1193,7 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
             },
             confidence: Confidence::strict(1.0),
             feature_ids: Default::default(),
-            message: Message::new(
-                MessageTemplate::ConflictsWith,
-                MessageArgs::default(),
-            ),
+            message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
         };
 
         vec![Diagnostic::with_intent_at_span(

@@ -439,10 +439,7 @@ fn apply_intent_to_marking(
     intent: &ReplacementIntent<CapcoScheme>,
 ) -> Result<(), ApplyIntentError> {
     match intent {
-        ReplacementIntent::FactRemove {
-            facts,
-            scope: _,
-        } => {
+        ReplacementIntent::FactRemove { facts, scope: _ } => {
             // Scope discriminates page vs portion projection scope.
             // For the engine-prereq's RELIDO / dissem-axis removals,
             // both scopes route to the same per-axis storage on
