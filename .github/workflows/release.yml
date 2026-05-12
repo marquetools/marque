@@ -232,7 +232,7 @@ jobs:
 
       - name: Create GitHub release
         if: inputs.dry-run == false
-        uses: softprops/action-gh-release@2bc819c87a4e63a4ac4e581a02085318bd49975a
+        uses: softprops/action-gh-release@437e073e786973c6b6af97d9e445c41ae43b1d29
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
