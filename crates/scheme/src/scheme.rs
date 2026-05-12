@@ -15,8 +15,9 @@ use core::fmt::Debug;
 use core::hash::Hash;
 
 use crate::ambiguity::Parsed;
-use crate::category::Category;
+use crate::category::{Category, CategoryId};
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
+use crate::fix_intent::FactRef;
 use crate::lattice::Lattice;
 use crate::page_rewrite::PageRewrite;
 use crate::scope::Scope;
@@ -108,6 +109,122 @@ pub trait MarkingScheme {
     /// coverage.
     fn satisfies(&self, _marking: &Self::Marking, _token_ref: &TokenRef) -> bool {
         false
+    }
+
+    /// Resolve a [`FactRef`] to its [`CategoryId`].
+    ///
+    /// The engine consults this when materializing a [`ReplacementIntent`]
+    /// (in [`Self::apply_intent`]) so it knows which category-axis the
+    /// fact-set delta targets. For example, `FactRef::Cve(TOK_RELIDO)`
+    /// resolves to `CAT_DISSEM` in CAPCO; `FactRef::Cve(TOK_EXDIS)`
+    /// resolves to `CAT_NON_IC_DISSEM`.
+    ///
+    /// Returns `None` when the token is not known to this scheme — a
+    /// programmer error in the rule's emission (the engine surfaces
+    /// this as [`ApplyIntentError::UnknownToken`]).
+    ///
+    /// Default implementation panics with `unimplemented!()` so schemes
+    /// that do not yet support intent-based fix application still
+    /// compile — but the panic surfaces at engine-fix time if a rule
+    /// emits a [`FixIntent`] against the scheme, which is the correct
+    /// fail-loud behavior pre-migration.
+    ///
+    /// [`ReplacementIntent`]: crate::ReplacementIntent
+    /// [`ApplyIntentError`]: ApplyIntentError
+    fn category_of(&self, _token: &FactRef<Self>) -> Option<CategoryId>
+    where
+        Self: Sized,
+    {
+        unimplemented!(
+            "category_of not supported by this scheme (PR 3c.B engine-prereq); \
+             a rule emitted a FixIntent but the scheme has no token-to-category \
+             routing table — implement category_of for this scheme."
+        )
+    }
+
+    /// Apply a batch of [`ReplacementIntent`]s to a marking, returning
+    /// the modified marking.
+    ///
+    /// This is the bag-of-tokens fix-synthesis bridge — the engine
+    /// receives the rule's structural intent emission, clones the
+    /// scheme's current marking, and asks the scheme to apply each
+    /// intent atomically. The engine then renders the modified marking
+    /// via [`Self::render_canonical`] to produce the final fix bytes.
+    /// See `specs/006-engine-rule-refactor/architecture.md` "What
+    /// fixes are" for the architectural rationale.
+    ///
+    /// # Slice argument
+    ///
+    /// The `intents` slice carries one or more intents that all target
+    /// the same candidate span. This shape supports atomic multi-fact
+    /// changes (e.g., E024's RD/FRD/TFNI multi-remove cluster) without
+    /// requiring the engine to splice multiple per-token edits into
+    /// the same byte range — the scheme applies every intent to the
+    /// cloned marking, then the engine renders once.
+    ///
+    /// # Invariants
+    ///
+    /// - **Idempotent**: applying the same intent batch twice produces
+    ///   the same result. An impl MUST treat `FactAdd` of a token
+    ///   already present as a no-op rather than duplicating it.
+    /// - **Commutative within a batch**: intent order within a single
+    ///   `intents` slice MUST NOT affect output. Implementations may
+    ///   sort, deduplicate, or interleave application; callers MUST
+    ///   NOT depend on the slice's index order.
+    /// - **Stateless**: the scheme MUST NOT mutate any shared state.
+    ///   Apply against the `marking` argument only.
+    /// - **Output rendering authority**: the engine calls
+    ///   [`Self::render_canonical`] on the returned marking. Conforming
+    ///   impls return a fact-set-correct marking; canonical-form
+    ///   normalization (delimiter spacing, sort order, abbreviation
+    ///   form, banner roll-up) is the renderer's job, not
+    ///   `apply_intent`'s.
+    ///
+    /// # Errors
+    ///
+    /// - [`ApplyIntentError::IntentInapplicable`] — returned ONLY when
+    ///   the entire batch is a no-op (no intent in the slice produced
+    ///   any change to the marking). Engine drops the fix silently —
+    ///   the marking is already consistent. **Per-intent inapplicability
+    ///   within a batch is NOT a failure**: an impl MUST silently skip
+    ///   the redundant intent and continue applying the rest. This is
+    ///   what the idempotence/commutativity invariants require — two
+    ///   rules emitting the same `FactRemove`, or one intent in the
+    ///   batch removing a token a prior intent already removed, must
+    ///   not abort the batch.
+    /// - [`ApplyIntentError::UnknownToken`] — a [`FactRef::Cve`]'s
+    ///   [`crate::TokenId`] doesn't map to any category. Programmer
+    ///   error in the rule; engine logs and skips the fix. Propagates
+    ///   immediately, even mid-batch.
+    /// - [`ApplyIntentError::IntentRejectsLattice`] — applying would
+    ///   produce a marking that violates a structural invariant the
+    ///   scheme can't repair through fact-set delta alone. Engine
+    ///   surfaces as a diagnostic. Propagates immediately, even mid-batch.
+    ///
+    /// # Default implementation
+    ///
+    /// Panics with `unimplemented!()` so schemes that do not yet
+    /// support intent-based fix application still compile — but the
+    /// panic surfaces at engine-fix time if a rule emits a [`FixIntent`]
+    /// against the scheme. Test-fixture schemes (the five stubs in
+    /// `crates/scheme/tests/`) inherit the default and never trigger
+    /// it because their rule paths emit only `FixProposal`.
+    ///
+    /// [`ReplacementIntent`]: crate::ReplacementIntent
+    /// [`FactRef::Cve`]: crate::FactRef::Cve
+    fn apply_intent(
+        &self,
+        _marking: &Self::Marking,
+        _intents: &[crate::fix_intent::ReplacementIntent<Self>],
+    ) -> Result<Self::Marking, ApplyIntentError>
+    where
+        Self: Sized,
+    {
+        unimplemented!(
+            "apply_intent not supported by this scheme (PR 3c.B engine-prereq); \
+             a rule emitted a FixIntent but the scheme has no intent-application \
+             routing — implement apply_intent for this scheme."
+        )
     }
 
     /// Evaluate a [`Constraint::Custom`] by name. Returns one
@@ -313,3 +430,52 @@ pub trait MarkingScheme {
         }
     }
 }
+
+/// Error variants returned by [`MarkingScheme::apply_intent`].
+///
+/// The engine dispatches on these so different failure modes get
+/// different handling:
+/// - [`IntentInapplicable`](Self::IntentInapplicable) — silent drop.
+///   The marking is already consistent under the rule's invariant.
+/// - [`UnknownToken`](Self::UnknownToken) — log + skip. Programmer
+///   error in the rule's emission; the engine cannot route the
+///   intent without a category mapping.
+/// - [`IntentRejectsLattice`](Self::IntentRejectsLattice) — surface
+///   as a diagnostic. The scheme refuses the fix because applying it
+///   would violate a structural invariant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApplyIntentError {
+    /// The intent doesn't apply: `FactRemove` of a token that's
+    /// absent, `FactAdd` of a token that's already present, or
+    /// `Recanonicalize` on a marking that's already canonical. The
+    /// engine drops the fix silently — the rule was pre-emptively
+    /// right that the marking is already consistent.
+    IntentInapplicable,
+    /// A [`FactRef::Cve`](crate::FactRef::Cve)'s
+    /// [`TokenId`](crate::TokenId) doesn't map to any category in
+    /// this scheme. Programmer error in the rule. The engine logs
+    /// and skips the fix.
+    UnknownToken,
+    /// Applying the intent would produce a marking that violates a
+    /// structural invariant the scheme can't repair through fact-set
+    /// delta alone. The engine surfaces this as a diagnostic.
+    IntentRejectsLattice,
+}
+
+impl fmt::Display for ApplyIntentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ApplyIntentError::IntentInapplicable => {
+                f.write_str("intent does not apply to this marking (already consistent)")
+            }
+            ApplyIntentError::UnknownToken => {
+                f.write_str("token reference does not map to any category in this scheme")
+            }
+            ApplyIntentError::IntentRejectsLattice => {
+                f.write_str("applying intent would violate a structural invariant of this scheme")
+            }
+        }
+    }
+}
+
+impl core::error::Error for ApplyIntentError {}

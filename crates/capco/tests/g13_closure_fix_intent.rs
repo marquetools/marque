@@ -36,10 +36,8 @@
 use marque_capco::{CapcoOpenVocabRef, CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_rules::{
-    AppliedFix, AppliedFixProposal, FactRef, FixIntent, RecanonScope, ReplacementIntent,
-};
-use marque_scheme::Scope;
+use marque_rules::{AppliedFix, AppliedFixProposal, FixIntent};
+use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, Scope};
 
 // ---------------------------------------------------------------------------
 // Engine fixture
@@ -220,6 +218,27 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // shape as E054/E057; the wrapper reuses
         // `relido_remove_intent()`.
         ("(S//OC/RELIDO)\n", "E056", "FactRemove"),
+        // PR 3c.B Sub-PR 8.E.2 (unblocks E041 in #106) — E041 (NODIS supersedes
+        // EXDIS in portion) is the first non-RELIDO `FactRemove`
+        // consumer of `synthesize_intent_only_fixes`. Unlike
+        // E054/E055/E056/E057 (which are dual-populated under Path C),
+        // E041 is intent-only — the engine synthesizes the
+        // byte-precise `FixProposal` from the intent + the rule's
+        // `RuleContext::candidate_span`. NF is included so E038
+        // (NODIS-requires-NOFORN) does not also fire on the same
+        // candidate. §H.9 p172 + p174 name EXDIS as the loser.
+        ("(S//NF//ND/XD)\n", "E041", "FactRemove"),
+        // PR 3c.B Sub-PR 8.D.1 — E038 (NODIS/EXDIS require NOFORN)
+        // is the first `FactAdd` consumer of
+        // `synthesize_intent_only_fixes`. Same intent-only shape as
+        // E041 (the engine synthesizes the byte-precise `FixProposal`
+        // from the intent + `RuleContext::candidate_span`), but on
+        // the FactAdd path: `apply_intent` adds NOFORN to
+        // `dissem_controls` instead of removing a token. §H.9 p172
+        // (EXDIS) + p174 (NODIS) both use "Requires NOFORN"
+        // verbatim, which is what makes `MessageTemplate::
+        // RequiredByPresence` the right structured-message variant.
+        ("(S//ND)\n", "E038", "FactAdd"),
         // E055 (RELIDO ⊥ DISPLAY ONLY) also migrated in Commit 8
         // but the engine's parser does not yet emit `Displayonly`
         // tokens for any DISPLAY ONLY surface form (parser-gap
@@ -301,16 +320,37 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 // scope explicitly — a still-non-migrated rule emits a `Legacy`
 // variant, and the walker is NOT run on it.
 //
-// As migrations land (PR 3c.B Commits 3, 6, 8, ...), this scope-guard
-// fixture rotates through rules that remain on the legacy path. PR
-// 3c.B Commit 8 migrated the four `Conflicts` RELIDO wrappers
-// (E054/E055/E056/E057), so the scope guard moves to an unmigrated
-// rule that still produces a deterministic `Legacy` AppliedFix.
-// `E010` (DeclarativeBareHcsRule) is a stable choice: `HCS → HCS-P`
-// substitution, currently emitted as `make_fix_diagnostic` (legacy
-// FixProposal path only). When E010 migrates, swap to another
-// surviving legacy rule (E012, E014, E015, ...) and update both this
-// test and the migrated-rule fixture list above.
+// As migrations land (PR 3c.B Commits 3, 6, 8, Sub-PR 8.D.1, ...),
+// this scope-guard fixture rotates through rules that remain on the
+// legacy path. PR 3c.B Commit 8 migrated the four `Conflicts` RELIDO
+// wrappers (E054/E055/E056/E057); PR 3c.B Sub-PR 8.E.2 migrated E041;
+// PR 3c.B Sub-PR 8.D.1 migrated E038. The scope guard stays on an
+// unmigrated rule that still produces a deterministic `Legacy`
+// AppliedFix. `E010` (DeclarativeBareHcsRule) remains the stable
+// choice: `HCS → HCS-P` substitution, currently emitted as
+// `make_fix_diagnostic` (legacy FixProposal path only).
+//
+// E010's eventual migration target is the SCI-axis FactAdd /
+// FactRemove + Recanonicalize compound — none of which is wired in
+// Sub-PR 8.D.1 (the FactAdd wiring this sub-PR lands is CAT_DISSEM
+// only, not CAT_SCI). E010 is queued for a later sub-PR (8.D.2+)
+// once the SCI-axis primitives land; until then it produces a
+// stable Legacy AppliedFix and serves as the scope guard.
+//
+// E016 (DeclarativeJointRestrictedRule, JOINT+RESTRICTED) is the
+// canonical "consciously-deferred no-fix-intent" rule per Sub-PR 8.B
+// (it emits `with_fix_intent(..., None)`), but doesn't fit this
+// scope-guard shape: with `fix: None` AND `fix_intent: None`, E016
+// never lands in `result.applied`, so the "Legacy variant present"
+// assertion below cannot match against it. The guard requires a rule
+// that auto-applies as Legacy; E010 satisfies that shape and is
+// still non-migrated in this sub-PR.
+//
+// When E010 migrates (Sub-PR 8.D.2+), swap to another surviving
+// legacy rule (E012/E014/E015 are candidates — all carry
+// `make_fix_diagnostic` Legacy fixes that auto-apply at confidence
+// ≥ threshold) and update both this test and the migrated-rule
+// fixture list above.
 //
 // Constitution V Principle V test-fixture carve-out applies to any
 // fabricated `AppliedFix` values: this test exercises real engine
@@ -327,8 +367,10 @@ fn legacy_variant_records_are_out_of_scope_for_this_gate() {
     // (`crates/engine/src/engine.rs:1378`), so Error-severity rules
     // with a populated `fix` at confidence ≥ threshold still
     // auto-apply — promotion goes through the Legacy path because
-    // E010 carries no `fix_intent` (not yet migrated; queued for
-    // Sub-PR 8.D).
+    // E010 carries no `fix_intent` (not yet migrated; queued for a
+    // later sub-PR — 8.D.2+ — once SCI-axis FactAdd/FactRemove +
+    // Recanonicalize primitives land; the FactAdd wiring in Sub-PR
+    // 8.D.1 is CAT_DISSEM only).
     let result = engine().fix(b"(S//HCS)\n", FixMode::Apply);
     let af = result
         .applied

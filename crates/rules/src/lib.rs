@@ -73,7 +73,13 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
-pub use fix_intent::{FactRef, FixIntent, RecanonScope, ReplacementIntent};
+pub use fix_intent::FixIntent;
+// `FactRef`, `ReplacementIntent`, and `RecanonScope` moved to
+// `marque-scheme` as of the PR 3c.B engine-prereq (the new
+// `MarkingScheme::apply_intent` trait method needs them at the trait
+// surface; `marque-rules` already depends on `marque-scheme`, so the
+// types must live below us in the dependency graph). Import them
+// directly from `marque_scheme::{FactRef, RecanonScope, ReplacementIntent}`.
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
 pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate};
 
@@ -223,6 +229,21 @@ pub struct RuleContext {
     pub zone: Option<Zone>,
     /// Coarse document position when known. `None` in Phase 3.
     pub position: Option<DocumentPosition>,
+    /// Byte span of the scanner-emitted candidate this rule check is
+    /// running against. This is the marking-scope span (the full
+    /// portion or banner candidate), distinct from any sub-span a
+    /// diagnostic might point at (e.g., a single token within the
+    /// portion).
+    ///
+    /// Intent-only rules (those emitting `Diagnostic.fix_intent` with
+    /// no `fix` field) copy this into `Diagnostic.candidate_span` so
+    /// the engine's intent-synthesis path knows which scope-bytes to
+    /// re-render via `MarkingScheme::apply_intent` +
+    /// `MarkingScheme::render_canonical`.
+    ///
+    /// Added in the PR 3c.B engine-prereq commit. Populated by the
+    /// engine from `candidate.span` before invoking each rule.
+    pub candidate_span: Span,
     /// Accumulated portion data for the current page, reset at every
     /// scanner-emitted `MarkingType::PageBreak`.
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
@@ -825,6 +846,20 @@ pub struct Diagnostic<S: MarkingScheme> {
     pub severity: Severity,
     /// Byte span in the original source buffer.
     pub span: Span,
+    /// Optional marking-scope span (full portion or banner) when the
+    /// `span` field points at a sub-region (e.g., a single token).
+    /// Intent-only rules — those whose [`Self::fix`] is `None` but
+    /// [`Self::fix_intent`] is populated — set this from
+    /// [`RuleContext::candidate_span`] so the engine's
+    /// intent-synthesis path knows which scope-bytes to re-render via
+    /// [`marque_scheme::MarkingScheme::apply_intent`] +
+    /// [`marque_scheme::MarkingScheme::render_canonical`].
+    ///
+    /// `None` when the diagnostic's `span` already covers the full
+    /// scope, or when the rule emits a byte-precise `fix` (the
+    /// legacy path doesn't need the synthesis anchor). Added in the
+    /// PR 3c.B engine-prereq commit.
+    pub candidate_span: Option<Span>,
     /// Human-readable description of the violation.
     pub message: Box<str>,
     /// CAPCO section citation, e.g., "CAPCO-2016 §A.6"
@@ -851,6 +886,7 @@ impl<S: MarkingScheme> Clone for Diagnostic<S> {
             rule: self.rule.clone(),
             severity: self.severity,
             span: self.span,
+            candidate_span: self.candidate_span,
             message: self.message.clone(),
             citation: self.citation,
             fix: self.fix.clone(),
@@ -878,6 +914,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             rule,
             severity,
             span,
+            candidate_span: None,
             message: message.into(),
             citation,
             fix,
@@ -904,10 +941,54 @@ impl<S: MarkingScheme> Diagnostic<S> {
             rule,
             severity,
             span,
+            candidate_span: None,
             message: message.into(),
             citation,
             fix: None,
             fix_intent,
+        }
+    }
+
+    /// Construct a new diagnostic carrying a structural
+    /// [`FixIntent<S>`] anchored at a marking-scope span.
+    ///
+    /// Identical to [`Self::with_fix_intent`] but also populates
+    /// [`Self::candidate_span`] from
+    /// [`RuleContext::candidate_span`]. This is the intent-only
+    /// constructor for rules whose fix is materialized by the
+    /// engine's intent-synthesis path
+    /// ([`marque_scheme::MarkingScheme::apply_intent`] +
+    /// [`marque_scheme::MarkingScheme::render_canonical`]).
+    ///
+    /// Use when:
+    /// - The diagnostic's `span` points at a *sub-region* of the
+    ///   marking (e.g., a single token within a portion) — the
+    ///   sub-span tells the user *where* the violation is, but the
+    ///   engine needs the full marking-scope span to replace the
+    ///   re-rendered output.
+    /// - The rule does NOT emit a byte-precise legacy `fix` field;
+    ///   the engine synthesizes the replacement bytes from the
+    ///   `fix_intent`.
+    ///
+    /// Added in the PR 3c.B engine-prereq commit.
+    pub fn with_intent_at_span(
+        rule: RuleId,
+        severity: Severity,
+        span: Span,
+        candidate_span: Span,
+        message: impl Into<Box<str>>,
+        citation: &'static str,
+        fix_intent: FixIntent<S>,
+    ) -> Self {
+        Self {
+            rule,
+            severity,
+            span,
+            candidate_span: Some(candidate_span),
+            message: message.into(),
+            citation,
+            fix: None,
+            fix_intent: Some(fix_intent),
         }
     }
 
@@ -952,6 +1033,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             rule,
             severity,
             span,
+            candidate_span: None,
             message: message.into(),
             citation,
             fix: Some(fix),

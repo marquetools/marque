@@ -151,7 +151,7 @@ per-family shapes:
 | 8.C | E024 | `FactRemove(SmallVec<2>, Scope::Portion)` (post-prerequisite) |
 | 8.D | E010/E012/E014/E015/E038/E053 | `FactAdd(_, _)` — *Requires* bucket, not part of this consolidation |
 | 8.E | E037 | `Diagnostic { fix: None }` (no auto-fix) — Stage-4 target `Reject { suggest: None }` (Category B) |
-| 8.E | E041 | `Diagnostic { fix: None }` (no auto-fix) — Stage-4 target `FactRemove(EXDIS, Scope::Portion)` (Category A.1, blocked on parser within-category-separator gap) |
+| 8.E | E041 | Intent-only `FactRemove(EXDIS, Scope::Portion)` (migrated in PR 3c.B Sub-PR 8.E.2 — unblocks E041 (the primary rule named in #106) via `synthesize_intent_only_fixes` re-rendering; #106 remains open as the tracking ticket for the FR-045 parser within-category-separator-spans work, which is sidestepped here but not closed) |
 | 8.F | E039 retirement (W003 separate) | absorbed into E031 banner walker |
 
 Stage-4 consolidation lowers all of these (except 8.D Requires-bucket,
