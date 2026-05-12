@@ -353,17 +353,23 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 // wrappers (E054/E055/E056/E057); PR 3c.B Sub-PR 8.E.2 migrated E041;
 // PR 3c.B Sub-PR 8.D.1 migrated E038; PR 3c.B Sub-PR 8.D.2 migrated
 // E015/E053; PR 3c.B Sub-PR 8.D.3 migrated E010 as consciously-
-// deferred (`fix_intent: None`, matching E015/E016). The scope guard
-// stays on an unmigrated rule that still produces a deterministic
-// `Legacy` AppliedFix. `E007` (XShorthandDateRule) is the post-8.D.3
-// stable choice: `make_fix_diagnostic` Legacy fix that auto-applies
-// on deprecated `25X1-` / `50X1-` X-shorthand declassification codes
-// at confidence 0.97 (table-backed via `MIGRATIONS`). E012
-// (DeclarativeDualClassificationRule) was considered but emits its
-// fix at confidence 0.90 — below the default
-// `Config::confidence_threshold` of 0.95, so the engine demotes the
-// diagnostic to `Severity::Suggest` and it never lands in
-// `result.applied`. E007 sits cleanly above the gate.
+// deferred (`fix_intent: None`, matching E015/E016); PR 3c.B Sub-PR
+// 8.D.5 migrated E012 as consciously-deferred (cross-axis
+// renormalization outside current intent vocabulary — see
+// `crates/capco/src/rules_declarative.rs` module-level comment on
+// `DeclarativeDualClassificationRule`). The scope guard stays on
+// an unmigrated rule that still produces a deterministic `Legacy`
+// AppliedFix. `E007` (XShorthandDateRule) is the post-8.D.3 stable
+// choice: `make_fix_diagnostic` Legacy fix that auto-applies on
+// deprecated `25X1-` / `50X1-` X-shorthand declassification codes
+// at confidence 0.97 (table-backed via `MIGRATIONS`). E012 also
+// out of pool: post-8.D.5 it is `fix_intent: None` conscious-defer
+// (no FixIntent emitted) and never lands in `result.applied`
+// regardless of severity — same exclusion shape as E010 / E015 /
+// E016. (Pre-8.D.5 the same exclusion held for a different reason:
+// E012's legacy 0.90 confidence sat below the default
+// `Config::confidence_threshold` of 0.95.) E007 sits cleanly
+// above the gate.
 //
 // E007's eventual migration target is a structural `FixIntent` on
 // the declassification-date axis (the X-shorthand canonical form is
