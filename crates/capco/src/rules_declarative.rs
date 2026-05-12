@@ -1086,45 +1086,51 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
     }
 
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        use marque_ism::NonIcDissem;
+        use marque_ism::{MarkingType, NonIcDissem};
 
         if violations_for(attrs, "E038/nodis-or-exdis-requires-noforn").is_empty() {
             return vec![];
         }
 
-        // Identify which non-IC dissem token fired (NODIS preferred
-        // when both are present, per §H.9 p174 supersession: NODIS
-        // dominates EXDIS, so the diagnostic should name the
-        // surviving token as the triggering one). The token id flows
-        // into `MessageArgs.token` so structured-diagnostic emitters
-        // can render "NODIS requires NOFORN" / "EXDIS requires NOFORN"
-        // without re-deriving the trigger from the message string.
-        let has_nodis = attrs
-            .non_ic_dissem
-            .iter()
-            .any(|d| matches!(d, NonIcDissem::Nodis));
-        let has_exdis = attrs
-            .non_ic_dissem
-            .iter()
-            .any(|d| matches!(d, NonIcDissem::Exdis));
-        let trigger_token = if has_nodis {
-            crate::scheme::TOK_NODIS
-        } else if has_exdis {
-            crate::scheme::TOK_EXDIS
-        } else {
-            // Catalog predicate fired but neither NODIS nor EXDIS is
-            // present — should be unreachable per the
-            // `E038/nodis-or-exdis-requires-noforn` predicate, but
-            // bail rather than emit a mis-attributed diagnostic.
-            return vec![];
+        // Identify the first NonIcDissem token in source order. The
+        // span anchor (`Diagnostic.span`) and the structured-message
+        // trigger token (`MessageArgs.token`) MUST agree so a
+        // structured-diagnostic renderer doesn't say "NODIS requires
+        // NOFORN" while highlighting an EXDIS token (per Copilot
+        // review of PR #372 — source-order inputs like `(S//XD/ND)`).
+        //
+        // §H.9 supersession (NODIS dominates EXDIS) is the concern of
+        // E041, not E038: E041 emits a FactRemove(EXDIS) when both
+        // are present, and the supersession-driven token-survival
+        // choice flows through that rule's intent. E038's diagnostic
+        // simply names *which* triggering token caused this firing,
+        // anchored at the same source-position the user sees.
+        let nid_spans = spans_of_kind(attrs, TokenKind::NonIcDissem);
+        let trigger_token = match attrs.non_ic_dissem.first() {
+            Some(NonIcDissem::Nodis) => crate::scheme::TOK_NODIS,
+            Some(NonIcDissem::Exdis) => crate::scheme::TOK_EXDIS,
+            // Catalog predicate fired but the first NonIcDissem entry
+            // is neither NODIS nor EXDIS — should be unreachable per
+            // the `E038/nodis-or-exdis-requires-noforn` predicate's
+            // axis-presence gate, but bail rather than emit a
+            // mis-attributed diagnostic.
+            _ => return vec![],
         };
+        let span = nid_spans
+            .first()
+            .map(|ts| ts.span)
+            .unwrap_or_else(|| first_span_of(attrs, TokenKind::NonIcDissem));
 
-        // Diagnostic `span`: the user-facing pointer at the
-        // triggering token. The legacy code anchored at the first
-        // `TokenKind::NonIcDissem` token via `first_span_of`; preserve
-        // that anchor so the diagnostic's surface position is
-        // unchanged for callers that read `diagnostic.span`.
-        let span = first_span_of(attrs, TokenKind::NonIcDissem);
+        // Scope follows the marking surface — banner-form firings
+        // (e.g., `SECRET//NODIS`) need `Scope::Page` so the engine's
+        // synthesis path re-renders the banner; portion-form firings
+        // need `Scope::Portion`. CABs and page-break candidates are
+        // never §H.9 surfaces and bail (per Copilot review of PR #372).
+        let scope = match ctx.marking_type {
+            MarkingType::Portion => Scope::Portion,
+            MarkingType::Banner => Scope::Page,
+            _ => return vec![],
+        };
 
         vec![Diagnostic::with_intent_at_span(
             self.id(),
@@ -1134,7 +1140,7 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
             "NODIS and EXDIS may be used only with NOFORN information; \
              add NOFORN to the dissem controls",
             "CAPCO-2016 §H.9 p172 + p174",
-            e038_add_noforn_intent(trigger_token),
+            e038_add_noforn_intent(trigger_token, scope),
         )]
     }
 }
@@ -1147,16 +1153,19 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
 /// the right structured-message variant.
 ///
 /// `trigger_token` carries the NODIS-or-EXDIS token that fired the
-/// rule (NODIS preferred when both are present per §H.9 p174
-/// supersession). It flows into `MessageArgs.token` so consumers can
-/// render "NODIS requires NOFORN" vs "EXDIS requires NOFORN" without
-/// re-parsing the message string. `expected_token` is `TOK_NOFORN` —
-/// the absent token whose presence the source requires.
+/// rule, derived from the first NonIcDissem token in source order so
+/// it agrees with `Diagnostic.span` (the rule's surface anchor). It
+/// flows into `MessageArgs.token` so consumers can render "NODIS
+/// requires NOFORN" vs "EXDIS requires NOFORN" without re-parsing
+/// the message string. `expected_token` is `TOK_NOFORN` — the absent
+/// token whose presence the source requires.
 ///
-/// Scope is portion-only: §H.9 names the portion mark as the
-/// surface where these markings appear ("May be used only with
-/// NOFORN information"). Banner-level NOFORN roll-up is a separate
-/// concern handled by the page-level banner-roll-up rule family.
+/// `scope` follows the marking surface: `Scope::Portion` for portion
+/// marks, `Scope::Page` for banner marks. The engine's
+/// `synthesize_intent_only_fixes` re-renders the corresponding
+/// candidate-span window via `MarkingScheme::apply_intent` +
+/// `MarkingScheme::render_canonical`; the scope tag tells the codec
+/// which surface to emit.
 ///
 /// Confidence is `Confidence::strict(1.0)` — the source is
 /// unambiguous about the required companion, and the strict
@@ -1164,12 +1173,12 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
 /// triggering NODIS/EXDIS token. Mirrors the calibration used by
 /// `nodis_supersedes_exdis_intent` in `rules.rs` (the matching §H.9
 /// supersession rule).
-fn e038_add_noforn_intent(trigger_token: TokenId) -> FixIntent<CapcoScheme> {
+fn e038_add_noforn_intent(trigger_token: TokenId, scope: Scope) -> FixIntent<CapcoScheme> {
     use crate::scheme::TOK_NOFORN;
     FixIntent {
         replacement: ReplacementIntent::FactAdd {
             token: FactRef::Cve(TOK_NOFORN),
-            scope: Scope::Portion,
+            scope,
         },
         confidence: Confidence::strict(1.0),
         feature_ids: Default::default(),

@@ -498,12 +498,20 @@ fn apply_fact_add(
             _ => return Err(ApplyIntentError::UnknownToken),
         };
         if attrs.dissem_controls.contains(&target) {
-            // Idempotence: token already present — second add is a
-            // no-op, not an error. Return Ok(()) so the engine's
-            // batch loop counts this intent as applied (the marking
-            // is in the requested post-state, which is what the rule
-            // wanted).
-            return Ok(());
+            // Per-intent no-op: token already present, no mutation
+            // applied. Return `IntentInapplicable` so the batch-level
+            // `apply_intent` dispatcher does NOT flip `any_applied =
+            // true` for a non-mutation, and a whole-batch redundant
+            // add aggregates to `Err(IntentInapplicable)` (engine
+            // silently drops the synthesized no-op fix). The trait
+            // contract at `scheme::MarkingScheme::apply_intent`
+            // (scheme/src/scheme.rs:185-194) is explicit: per-intent
+            // inapplicability is NOT a failure — the batch loop skips
+            // and continues; whole-batch no-op surfaces as Err so the
+            // engine drops the fix. Returning Ok here would let a
+            // redundant-add intent appear as an applied no-op in the
+            // audit log (Copilot review of PR #372).
+            return Err(ApplyIntentError::IntentInapplicable);
         }
         let mut next: Vec<DissemControl> = attrs.dissem_controls.to_vec();
         next.push(target);
@@ -5693,14 +5701,21 @@ mod tests {
             "after FactAdd(NOFORN) the dissem axis must contain exactly [Nf]"
         );
 
-        // Case (b): marking already containing NOFORN → idempotent.
-        let out_b = scheme
+        // Case (b): marking already containing NOFORN — the whole
+        // batch is a per-intent no-op. Per `MarkingScheme::apply_intent`
+        // contract (scheme/src/scheme.rs:185-194), this aggregates to
+        // `Err(IntentInapplicable)` so the engine drops the synthesized
+        // fix. A FactAdd of an already-present token returns per-intent
+        // `IntentInapplicable` from `apply_fact_add`; the lone intent
+        // in `intents` produces no mutation, so the batch result is
+        // `Err`.
+        let err_b = scheme
             .apply_intent(&out_a, &intents)
-            .expect("second FactAdd(NOFORN) must return Ok(()) (idempotence)");
+            .expect_err("redundant FactAdd(NOFORN) must aggregate to Err(IntentInapplicable)");
         assert_eq!(
-            out_b.0.dissem_controls.as_ref(),
-            &[DissemControl::Nf],
-            "idempotent FactAdd must leave dissem_controls unchanged"
+            err_b,
+            ApplyIntentError::IntentInapplicable,
+            "redundant single-intent FactAdd batch must be IntentInapplicable, not a successful no-op",
         );
 
         // Case (c): unwired axis (CAT_SCI via TOK_HCS) → IntentInapplicable.
