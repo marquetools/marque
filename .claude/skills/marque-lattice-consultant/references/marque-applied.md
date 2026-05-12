@@ -1116,7 +1116,7 @@ From `[capco-2016]` §A.6 p15 (SCI roll-up), §H.7 p138–141 (FGI roll-up), §H
 - **SCI across portions**: union compartments and sub-compartments per system; stack different systems side-by-side. The banner is the *most restrictive* aggregate.
 - **REL TO across portions**: intersect country lists. The banner releases only to countries every portion authorizes.
 - **FGI (acknowledged) across portions**: union country lists. Every country with equity is named on the banner. FGI says nothing about *who can read* the document — that's REL TO / NOFORN / EYES territory.
-- **Classification across portions**: max along the chain (U ≤ C ≤ S ≤ TS). Foreign classifications normalize to US-equivalents at portion-parse time (`[capco-2016]` §H.7 reciprocal-classification rule).
+- **Classification across portions**: max along the full OrdMax chain (NU ≤ U ≤ NR ≤ R ≤ NC ≤ C ≤ NS ≤ S ≤ CTS ≤ TS). Foreign classifications normalize to US-equivalents at portion-parse time (`[capco-2016]` §H.7 reciprocal-classification rule).
 
 What CAPCO **does not** define:
 
@@ -1478,6 +1478,8 @@ Define `FgiAttribution` over the carrier:
 ```
 
 Class is **not** part of the carrier. Per §4.4, FGI is purely about equity; the class on the banner comes from the OrdMax axis (with foreign classifications normalized to US-equivalents at portion-parse time per `[capco-2016]` §H.7 reciprocal-classification).
+
+Accordingly, every example, renderer sketch, and rewrite pattern in §4.8 should use the 2-argument atom shape `bare(form, countries)` only (for example, `bare(_, C)`, not `bare(_, C, _)`).
 
 Order: `⊥ ⊑ a ⊑ ⊤(s)` for every atom `a` such that `trigraphs(a) ⊆ s`; atoms pairwise incomparable.
 
@@ -2010,7 +2012,7 @@ Given the (a)/(b)/(c) verdicts above, here are the moves the consultant would re
 - (a) verdicts: 17
 - (b) verdicts: 6
 - (c) verdicts: 5 (`Category`/`Scope`/`Constraint`/`MarkingScheme` aren't lattice problems; `MaxDate` extension is partially (c) for exemption codes)
-- Open questions surfaced: 10 (Q-2.6, Q-2.25, Q-3.8, Q-3.9, Q-4.5-JOINT-implies-REL, Q-4.6, Q-5.3, Q-6.5, Q-Master, plus the deferred composite Constraint::Custom volume question)
+- Aggregated open-question summaries surfaced: 10 (Q-2.6, Q-2.25, Q-3.8, Q-3.9, Q-4.5-JOINT-implies-REL, Q-4.6, Q-5.3, Q-6.5, Q-Master, plus the deferred composite Constraint::Custom volume question); §9 also contains additional subordinate `Q-...` headings that elaborate these summaries and are not included in this count.
 
 ---
 
