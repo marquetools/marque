@@ -1105,102 +1105,100 @@ Audibles beyond these require a dated amendment to the verdict doc.
 
 ---
 
-## §4. The §3.3a equal-depth meet — applied diagnosis
+## §4. The per-axis lattice operations — what CAPCO actually defines
 
-The §3.3a meet policy is the marque-specific lattice question that most needs a consultant verdict. This section walks it through.
+CAPCO defines roll-up operations on SCI, REL TO, FGI, and class. It does **not** define their duals. Each axis is therefore named here by the operation CAPCO requires; the section that previously proved lattice-completeness for the unrequired SCI dual is demoted to §4.6.
 
-### 4.1 What §3.3a says
+### 4.1 What CAPCO defines and what it doesn't
 
-From `/home/knitli/marque/.worktrees/fix-gemini/docs/plans/2026-04-19-recursive-lattice-and-decoder.md:313–339`:
+From `[capco-2016]` §A.6 p15 (SCI roll-up), §H.7 p138–141 (FGI roll-up), §H.8 p150–151 (REL TO roll-up), and the OrdMax classification chain (§B):
 
-> Tree intersection is not unique. Given `SI-G ABCD` on the left and plain `SI` on the right, the meet could reasonably be (a) `SI-G ABCD` (right's "SI" is the broadest ancestor and survives), (b) just `SI` (drop everything the right side doesn't explicitly name), or (c) empty (only identical leaves survive). CAPCO does not settle the question because it never describes a "meet" operation — the only operation the spec defines on SCI across portions is the join (roll-up, §A.6 p15).
->
-> Phase B picks policy (b): meet keeps only elements present at the same depth in both operands. That gives `SI ⊓ SI-G ABCD = SI` (not `SI-G ABCD`), and is the interpretation closest to the plain lattice definition (`x ⊓ y ≤ x` and `x ⊓ y ≤ y`).
+- **SCI across portions**: union compartments and sub-compartments per system; stack different systems side-by-side. The banner is the *most restrictive* aggregate.
+- **REL TO across portions**: intersect country lists. The banner releases only to countries every portion authorizes.
+- **FGI (acknowledged) across portions**: union country lists. Every country with equity is named on the banner. FGI says nothing about *who can read* the document — that's REL TO / NOFORN / EYES territory.
+- **Classification across portions**: max along the chain (U ≤ C ≤ S ≤ TS). Foreign classifications normalize to US-equivalents at portion-parse time (`[capco-2016]` §H.7 reciprocal-classification rule).
 
-### 4.2 What `SciSet::meet` does today
+What CAPCO **does not** define:
 
-From `crates/capco/src/lattice.rs:234–261`:
+- "Meet" of two SCI markings — there is no "least restrictive common access" concept; SCI controls are indestructible.
+- "Meet" of two FGI country sets — equity is additive, not subtractive.
+- A dual for any of the page-level operations above.
 
-```text
-For each system S in self.systems:
-  if S not in other.systems:
-    drop  (system itself absent at depth 0)
-  else:
-    For each compartment C in self.systems[S]:
-      if C not in other.systems[S]:
-        drop  (compartment absent at depth 1; bare system survives)
-      else:
-        result.systems[S][C] = self.systems[S][C].subs ∩ other.systems[S][C].subs
-        (sub-compartments intersected at depth 2)
-```
+The §3.3a doc's framing — "tree intersection is not unique, here are three policies (a)(b)(c)" — was answering a question CAPCO doesn't ask. The previous §4.2/§4.3 walked through which policy is the "right" meet under various orders; the walk is mathematically clean but operationally vacuous. See §4.6 for the cleanup.
 
-So `SI ⊓ SI-G ABCD = SI` (system survives, no compartments shared); `SI-G ABCD ⊓ SI-H DEFG = SI` (system survives, compartments disagree); `SI-G ⊓ SI-G ABCD = SI-G` (system and compartment survive, sub-comp `ABCD` not in left so drops).
+### 4.2 SCI: join-semilattice (indestructibility)
 
-### 4.3 Is this a lattice meet?
+**Operational claim.** Banner SCI = union of per-portion SCI markings. To read the document, you must be read on to every system listed, every compartment under every system, and meet handling requirements for every sub-compartment. Any one missing and you can't access — hence "indestructible."
 
-**Define the natural order.** A `SciSet` is a structured multiset of (system, compartment, sub-compartment) tuples. The natural inclusion order is:
+**Lattice claim.** `SciSet` is a `JoinSemilattice` with no top (compartments are agency-extensible, per §5) and no operationally meaningful meet (CAPCO has no "less restrictive" semantics).
 
-```text
-A ⊑ B  iff  every (sys, comp, sub) tuple in A is also in B
-            AND every (sys, comp) in A is also in B
-            AND every sys in A is also in B
-```
+**Join law.** Fact-set union under prefix-inclusion order, where a marking `SI-G ABCD` contributes the facts `{SI present, SI-G present, SI-G-ABCD present}`. Join = set-union of these fact sets. Grammar `CONTROL-COMP (SPACE SUB-COMP)*(-COMP (SPACE SUB-COMP)*)*` (CAPCO §A.6) means compartments stack under a single control via repeated `-COMP`; different control systems are separated by `/`.
 
-(The extra constraints handle bare-system and bare-compartment "tuples": `SI` with no compartments is the tuple `(SI, ∅, ∅)`; this is in `B` iff `SI` is in `B`'s system set.)
+| Inputs (per-portion markings) | Join (banner roll-up) | Why |
+|---|---|---|
+| `SI` and `SI-G` | `SI-G` | same control, add compartment |
+| `SI-G` and `SI-G ABCD` | `SI-G ABCD` | same control + compartment, add sub-comp |
+| `SI-G ABCD` and `SI-G DEFG` | `SI-G ABCD DEFG` | same control + compartment, union sub-comps (alpha order, §A.6 p15) |
+| `HCS-O` and `HCS-P MNOP` | `HCS-O-P MNOP` | same control, stack compartments via `-COMP`; sub-comp rides on P only |
+| `SI-G ABCD` and `SI-H DEFG` | `SI-G ABCD-H DEFG` | same control, stack two compartments; grammatically valid, rare in practice |
+| `SI-G` and `TK-BLFH ABCD` | `SI-G/TK-BLFH ABCD` | different controls, `/` separator |
 
-Equivalently: `A ⊑ B` iff treating each marking as its full set of (system, compartment, sub-comp) facts (where a bare system is the fact "SI is present"), `A`'s facts are a subset of `B`'s facts.
+**Lattice laws on join.** Idempotence (`a ⊔ a = a`), commutativity, and associativity all hold trivially because set-union is well-behaved. There is no meet to verify absorption against — the operation isn't defined.
 
-**Under this order, what is the categorical meet?** The meet (greatest lower bound) of `A` and `B` is the largest `M` such that `M ⊑ A` and `M ⊑ B`, which is the **intersection of fact sets**. Concretely:
+**Code reference.** `PageContext::expected_sci_markings()` (per CLAUDE.md "Banner roll-up for SCI (E035)") computes exactly this union, sorted per §A.6 p15 (numeric first, alpha after). This is the production banner-roll-up path; no caller invokes the trait-impl meet (see §4.6).
 
-- `SI ⊓ SI-G ABCD`: fact set `{SI present}` ∩ fact set `{SI present, SI-G present, SI-G-ABCD present}` = `{SI present}` — i.e., `SI`. ✓ (matches policy b)
-- `SI-G ABCD ⊓ SI-H DEFG`: `{SI present, SI-G present, SI-G-ABCD present}` ∩ `{SI present, SI-H present, SI-H-DEFG present}` = `{SI present}` — i.e., `SI`. ✓ (matches policy b)
-- `SI-G ⊓ SI-G ABCD`: `{SI present, SI-G present}` ∩ `{SI present, SI-G present, SI-G-ABCD present}` = `{SI present, SI-G present}` — i.e., `SI-G`. ✓ (matches policy b)
+### 4.3 REL TO: meet-semilattice with order-flipped join
 
-**Verdict: under this fact-set inclusion order, the §3.3a policy (b) IS the categorical meet.** The recursive-lattice plan's framing ("not unique") is somewhat misleading: it is unique, *given the right order*. What's not unique is which order to choose for the SCI marking space; the §3.3a doc presents three "interpretations" (a)/(b)/(c) which correspond to three different orders:
+**Operational claim.** Page REL TO = intersection of portion REL TO country lists. The page can release to a country only if every portion authorizes that country.
 
-- **(a)** "SI-G ABCD" — order is by *abstraction*: a less-specific marking is "above" a more-specific one. Then `SI ⊒ SI-G ABCD` (because SI is more abstract), and the meet is the *more specific* of the two. This is the **opposite** of the inclusion order; it's the *refinement* order.
-- **(b)** "SI" — order is by *fact-set inclusion* (as derived above). Marque ships this. Default mathematical reading.
-- **(c)** "empty" — order is by *exact-leaf equality*: a marking is "below" another only if every leaf is identical. This is a much weaker order; the meet under it is the intersection of leaves only.
+**Lattice claim.** `IntersectSet` is a bounded meet-semilattice. Marque chooses the order-flip convention where set-intersection plays the role of join, so the lattice's "up" direction (`⊒`) corresponds to "fewer countries = more restrictive." Empty set is the top; full ISO 3166 country space is the bottom.
 
-Each is a valid order; each gives a different meet. The §3.3a doc is correctly noting that *CAPCO doesn't pick one*, which is true. The marque implementation correctly picks (b), which corresponds to the natural inclusion order.
+**Join law.** `{USA, GBR} ⊔ {USA, FRA} = {USA}`. Idempotence, commutativity, associativity all hold by set-intersection's properties.
 
-### 4.4 What proof obligations does the marque implementation satisfy?
+**Code reference.** `IntersectSet<CountryCode>` in `crates/scheme/src/builtins.rs`; `crates/capco/src/lattice.rs` for the REL TO instantiation.
 
-Under the fact-set inclusion order of §4.3, the standard lattice laws on `meet` are:
+### 4.4 FGI (acknowledged): union of equity, not of access
 
-- **Idempotence** (`a ⊓ a = a`): facts(a) ∩ facts(a) = facts(a). ✓
-- **Commutativity** (`a ⊓ b = b ⊓ a`): set intersection is commutative. ✓
-- **Associativity** (`(a ⊓ b) ⊓ c = a ⊓ (b ⊓ c)`): set intersection is associative. ✓
-- **Absorption** (`a ⊓ (a ⊔ b) = a`): facts(a) ∩ (facts(a) ∪ facts(b)) = facts(a). ✓ by set algebra.
+**Operational claim.** Banner FGI country list = union of portion FGI country lists. Every country with equity in the aggregate document is named.
 
-**All four laws hold under the fact-set order.** The marque tests at `crates/capco/tests/lattice_laws.rs` exercise idempotence, commutativity, associativity directly; the `proptest_lattice.rs` file randomly generates inputs to stress them.
+**Critical point.** FGI is about *equity, not access*. An FGI marking says "this country (or countries) has rights over this information — declassification authority, change control, return-to-originator obligations." It says nothing about who can read the document. A very common pattern is `S//FGI [trigraph]//NOFORN`: a country gave us information with the explicit instruction not to release it back to *their own* government (because internal trust within their government is limited, and REL TO has no unit-level granularity to express "release to Service X but not Ministry Y"). The FGI attribution preserves their equity; the NOFORN closes off access — including back to them. The two are orthogonal axes of the marking, not in tension.
 
-### 4.5 Counterexamples? Any?
+**Lattice claim.** The FGI country set is a join-semilattice under union (bounded only by the closed ISO 3166 country space, so `BoundedLattice` is permitted but the top rarely matters operationally). FGI does NOT enter the access-control reasoning that governs REL TO / NOFORN / EYES.
 
-I tried to construct one and failed. Under the fact-set order, the implementation is correct. Specifically:
+**Code reference.** `FgiSet` in `crates/capco/src/lattice.rs`. The acknowledged-FGI country join is union; the concealment-supersession layer is described in §5.3.
 
-- The "bare system survives even when compartments disagree" behavior (`SI-G ⊓ SI-H = SI`) is correct because both sides contain the *fact* "SI is present," and the meet is the intersection of facts.
-- The "compartment-only survives if compartment IDs agree" behavior is correct because the fact "SI-G is present" is in both iff both have G in their SI compartments.
+### 4.5 FGI form selection: consensus-or-fallback (rendering, not lattice)
 
-The doc-comment claim that the meet is "not a lattice meet on arbitrary tree operands" (`crates/capco/src/lattice.rs:14–19` module docs) overstates the gap. It IS a lattice meet **under the fact-set order**. The doc could be tightened.
+The FGI *country set* (§4.4) is a clean join-semilattice. The FGI *banner form* — bare `//DEU TS//` (foreign-classified-only) vs. rolled-up `TS//FGI DEU//` (US-classified with FGI equity) — is a separate question, and it is **not** a lattice operation: it's a *rendering choice* driven by two operational facts.
 
-### 4.6 The user's MEMORY note
+Bare survives at the banner iff:
 
-Per the user's MEMORY (`project_lattice_plan_fdr_register_gaps.md` and the §3.3a memory note): the user wants a clear consultant verdict on whether `SciSet::meet` is "a lattice meet."
+1. Every portion's FGI attribution agrees on the same `(form, countries)` pair, AND
+2. No portion contributes a US classification — i.e., the OrdMax class axis is exclusively foreign-classified.
 
-**Verdict.** Yes, under the fact-set inclusion order documented in §4.3 above. The "policy (b) is one of three reasonable choices" framing in the plan is a reflection of the user's choice of *order*, not a reflection of meet being underdetermined for that order. Once the order is pinned, the meet is unique. Source: `[birkhoff-1937]` (representation of finite distributive lattices as down-sets of join-irreducibles); `[davey-priestley-2002]` Theorem 5.12 (Birkhoff's representation theorem).
+Either condition failing forces the rolled-up form `<US-class>//FGI [country union]//`. The country union is the §4.4 join; the form decision is a cross-axis read of the OrdMax class axis. The §4.8 lattice models this as a flat-join-semilattice with disagreement-at-top carrying the rolled-up country set; the bare-vs-rolled distinction is then a renderer concern keyed on the FGI lattice element plus the class axis state.
 
-**Recommendation to the user.**
-1. **Document the order explicitly** in the `SciSet` doc comment: "under the fact-set inclusion order, where `A ⊑ B` iff every (sys, comp, sub-comp) tuple in `A` (treating bare systems and bare compartments as tuples in their own right) is also in `B`."
-2. **Cite the literature** for the fact-set construction: this is the canonical "structural inclusion" order on tree-shaped data, equivalent to the path-set view in (e.g.) `pure-lattice.md` §6 "Birkhoff's representation theorem" applied to the down-set structure.
-3. **Keep `SciSet::overlaps` and `SciSet::common_compartments`** as documented alternative views for callers who want different interpretations (per the doc at lines 30–35).
-4. **Tighten the doc comment** at lines 14–39 to say "the meet under fact-set inclusion order corresponds to policy (b); other orders give other meets" rather than "not unique."
+**This is the §4.8 primitive.** Detailed mathematical treatment, lattice laws, and worked example are preserved in §4.8 (with the carrier revised to drop `class` — §4.8.2 below).
 
-**Open questions for the user.**
-- Q-4.6a: Adopt the fact-set order as the canonical documented order? (Default: yes — it's the implementation's order.)
-- Q-4.6b: Rename the doc-comment language to remove "not a lattice meet" claim? (Default: yes — it IS a lattice meet under the natural order.)
+**JOINT semantics — research needed.** Operationally, `//JOINT S AUS USA//` appears to imply `REL TO ⊇ {AUS, USA}` — joint-produced documents typically release to all listed parties by default, and the rare "JOINT but not REL'd to self" pattern (the FGI/NOFORN equivalent for joint partners) has been observed approximately zero times in HUMINT practice. **This implication is a hypothesis, not a confirmed CAPCO rule.** The user's operational experience may be conflating empirical pattern with normative requirement. Before encoding `joint-implies-rel-to` as a closure rule (§4.7), verify against `[capco-2016]` §H.3 + §H.7 text. If confirmed, the rule belongs in the closure catalog with `trigger: JOINT(countries) present` and `cone: REL TO ⊇ countries`. The topological scheduler's `writes: [rel_to]` ordering will sequence it before `noforn-clears-rel-to` automatically.
 
-These are documentation moves, not code moves. The implementation itself is sound.
+JOINT classification (genuinely co-produced documents) is rare outside NATO contexts — NATO uses NATO markings, not JOINT. Even bilateral operations typically have a single owner. The structural question of whether JOINT lives in the FGI lattice's `bare(form, countries)` carrier or wants its own axis is deferred to the Stage 4+ incompatibility-class reframe per the user's MEMORY note (`project_incompatibility_class.md`).
+
+### 4.6 Footnote: `SciSet::meet` and why it's operationally vacuous
+
+`SciSet` currently implements the full `Lattice` trait, which requires both a join and a meet. The meet implementation (`crates/capco/src/lattice.rs:234–261`) computes fact-set intersection under the prefix-inclusion order:
+
+- `SI ⊓ SI-G ABCD = SI`
+- `SI-G ABCD ⊓ SI-H DEFG = SI`
+- `SI-G ⊓ SI-G ABCD = SI-G`
+
+These compute exactly what they advertise, and they satisfy idempotence, commutativity, associativity, and absorption under that order. The previous §4.2/§4.3 verdict ("policy (b) IS the categorical meet under fact-set order") is mathematically true. The order is the canonical "structural inclusion" order on tree-shaped data — equivalent to `pure-lattice.md` §6 "Birkhoff's representation theorem" applied to the down-set structure. Source: `[birkhoff-1937]`; `[davey-priestley-2002]` Theorem 5.12.
+
+**No production code path calls `SciSet::meet`.** The operation exists to satisfy the trait surface. Per §4.2, CAPCO defines no "least restrictive common SCI" operation — SCI indestructibility is exactly the statement that there is no operationally meaningful "down" direction.
+
+**Recommendation.** Demote `SciSet` from `Lattice` to a hypothetical `JoinSemilattice` trait once the trait surface supports the split. Until then, document the meet as "defined for trait-impl completeness; no CAPCO semantics; not invoked by any rule." Tighten the doc comment at `crates/capco/src/lattice.rs:14–39` accordingly, and keep `SciSet::overlaps` and `SciSet::common_compartments` as documented alternative views for callers who want different interpretations.
+
+The same caveat applies to any meet on `FgiSet` country sets — equity is additive, not subtractive, and CAPCO defines no "intersection of FGI country sets" operation. The FgiSet meet (if implemented) is similarly trait-completeness-only.
 
 ### 4.7 The closure operator (Phase-A: implied-fact propagation)
 
@@ -1474,22 +1472,24 @@ Define `FgiAttribution` over the carrier:
 
 ```text
 {⊥}                              -- "no FGI/JOINT attribution on this portion"
-∪ {bare(form, countries, class)} -- "this portion is exactly form X with country-set Y at class Z"
+∪ {bare(form, countries)}        -- "this portion is exactly form X with country-set Y"
                                    --   form ∈ {FGI-bare, JOINT}
 ∪ {⊤(countries: Set<Trigraph>)}  -- "rolled-up FGI list (renderer emits //FGI [countries]//)"
 ```
+
+Class is **not** part of the carrier. Per §4.4, FGI is purely about equity; the class on the banner comes from the OrdMax axis (with foreign classifications normalized to US-equivalents at portion-parse time per `[capco-2016]` §H.7 reciprocal-classification).
 
 Order: `⊥ ⊑ a ⊑ ⊤(s)` for every atom `a` such that `trigraphs(a) ⊆ s`; atoms pairwise incomparable.
 
 Join law:
 
 - `⊥ ∨ x = x ∨ ⊥ = x`
-- `bare(f, C, k) ∨ bare(f, C, k) = bare(f, C, k)`  (consensus: same atom)
-- `bare(f₁, C₁, k₁) ∨ bare(f₂, C₂, k₂) = ⊤(C₁ ∪ C₂)`  (disagreement; lose form/class info — those move to other axes)
+- `bare(f, C) ∨ bare(f, C) = bare(f, C)`  (consensus: same form, same countries)
+- `bare(f₁, C₁) ∨ bare(f₂, C₂) = ⊤(C₁ ∪ C₂)`  (disagreement on form OR countries)
 - `⊤(s) ∨ ⊤(t) = ⊤(s ∪ t)`
-- `bare(f, C, k) ∨ ⊤(s) = ⊤(C ∪ s)`
+- `bare(f, C) ∨ ⊤(s) = ⊤(C ∪ s)`
 
-The atom→`⊤` collapse drops the form (FGI-bare vs JOINT) and the class (since `⊤` is rendered with the *US* class via reciprocal raise; see §4.8.5). The country-set is the only data that survives; `JOINT` membership semantics ("USA member is implicit, drops from list") is applied at the join boundary by the `trigraphs(·)` extractor.
+The atom→`⊤` collapse drops the form (FGI-bare vs JOINT). The country-set is the only data that survives in the lattice; `JOINT` membership semantics ("USA member is implicit, drops from list") is applied at the join boundary by the `trigraphs(·)` extractor. Distinct atoms collapse whenever EITHER form OR country-set differs — same form with different country sets is still disagreement (consensus is "every portion's exact attribution"), so e.g. `bare(FGI-bare, {DEU}) ∨ bare(FGI-bare, {AUS}) = ⊤({AUS, DEU})`.
 
 This is a **bounded join-semilattice**: it has `⊥` (bottom) and `⊤(All-countries)` (top of the chain of `⊤`s). It is *not* a full lattice — the meet of two distinct atoms isn't well-defined in this domain (and isn't needed, because Phase A only uses joins for banner aggregation). If a meet is required for the trait surface, define `bare(...) ∧ bare(...) = ⊥` for distinct atoms and `⊤(s) ∧ ⊤(t) = ⊤(s ∩ t)` (with `⊤(∅) = ⊥`); this gives a lattice but the meet has no operational meaning in Phase A.
 
@@ -1541,7 +1541,7 @@ Per-axis decomposition of a page with two portions, `(C//NF) ...` (US Confidenti
 | Axis | Portion 1 | Portion 2 | Per-axis join | Rewrite (cross-axis) | Final |
 |---|---|---|---|---|---|
 | Class (`OrdMax`) | C | TS (raised reciprocally on US side) | TS | — | TS |
-| FGI-attribution (this primitive) | ⊥ | bare(FGI-bare, {GBR}, TS) | bare(FGI-bare, {GBR}, TS) | US-presence rewrite: ⊤({GBR}) | ⊤({GBR}) |
+| FGI-attribution (this primitive) | ⊥ | bare(FGI-bare, {GBR}) | bare(FGI-bare, {GBR}) | US-presence rewrite: ⊤({GBR}) | ⊤({GBR}) |
 | Dissem (`SupersessionSet`, NOFORN-top) | {NOFORN} | ∅ | {NOFORN} | closure adds NOFORN from FGI-no-FD&R (redundant; already present) | {NOFORN} |
 | REL TO (`IntersectSet`) | ∅ (NOFORN supersedes) | ∅ (no REL info) | ∅ | — | ∅ |
 
@@ -1557,14 +1557,14 @@ Two things to note from this walkthrough:
 
 Open design question. Two viable shapes:
 
-- **(α) Add to `marque-scheme::builtins`** as `FlatLattice<T>` or `ConsensusLattice<T>` — a generic bounded-join-semilattice with disagreement-top, parameterized by the atom type. CAPCO instantiates it with `FgiAttribution` (the `bare(form, countries, class)` ADT). Domain-neutral; future schemes (CUI compartments?) might reuse it.
+- **(α) Add to `marque-scheme::builtins`** as `FlatLattice<T>` or `ConsensusLattice<T>` — a generic bounded-join-semilattice with disagreement-top, parameterized by the atom type. CAPCO instantiates it with `FgiAttribution` (the `bare(form, countries)` ADT; class lives on a separate OrdMax axis per §4.4). Domain-neutral; future schemes (CUI compartments?) might reuse it.
 - **(β) Keep in `marque-capco`** as `FgiAttributionLattice`, a CAPCO-specific type. Don't expose as a built-in unless a second use case appears.
 
 Shape (α) is compositional; shape (β) is conservative. Lean (β) for v1 — the refinement that makes this useful (the country-set at the top, the form/class drop on disagreement) is CAPCO-specific, and a generic `FlatLattice<T>` would underspecify what data lives at the top. If a second use case appears, lift to `marque-scheme`.
 
 #### 4.8.7 Open questions
 
-- Q-4.8a: Confirm the carrier shape — does `bare(form, countries, class)` capture every distinct attribution that survives consensus, or are there finer distinctions (e.g., does `//DEU TS//REL TO USA, DEU` differ from `//DEU TS//REL TO USA, FVEY` for consensus purposes)? My read: REL-TO is a separate axis; consensus on FGI-attribution is at the `(form, countries, class)` granularity. But this should be checked against §H.7 examples.
+- Q-4.8a: Confirm the carrier shape — does `bare(form, countries)` capture every distinct attribution that survives consensus, or are there finer distinctions (e.g., does `//DEU TS//REL TO USA, DEU` differ from `//DEU TS//REL TO USA, FVEY` for consensus purposes)? My read per §4.4: REL-TO is a separate axis; consensus on FGI-attribution is at the `(form, countries)` granularity and class lives on the OrdMax axis. But this should be checked against §H.7 examples.
 - Q-4.8b: The reciprocal-class raise — portion-parse-time normalization or `PageRewrite` on the class axis? (Default per §4.8.5 note 1: portion-parse-time.)
 - Q-4.8c: Is meet definable / required? (Default: no — Phase A only uses joins. If the trait surface requires `Lattice` rather than `JoinSemilattice`, define meet as `⊥` for distinct atoms + intersection for `⊤`s; meet is operationally meaningless but algebraically clean.)
 - Q-4.8d: Lift to `marque-scheme::builtins`, or keep in `marque-capco`? (Default per §4.8.6: keep in `marque-capco`.)
@@ -1802,17 +1802,17 @@ Does the PR 3b D13 acceptance criterion ("single CAPCO-§ citation per rule") me
 
 **Default.** Pick (a) — the citation discipline is per-entry, not per-impl. The consolidated walker is one `impl Rule` that delegates to the catalog; the catalog entries each have their own citation. This is consistent with how `evaluate()` works today.
 
-### Q-4.6a (SciSet documented order)
+### Q-4.5-JOINT-implies-REL (verify CAPCO normativity)
 
-Adopt the fact-set inclusion order documented in §4.3 above as the canonical order for `SciSet`/`SarSet`?
+Operationally, `//JOINT [class] [countries]//` appears to imply `REL TO ⊇ countries`. User experience with HUMINT-volume JOINT production reports approximately zero counterexamples, but cannot separate "CAPCO rule" from "I've only ever seen it this way." Before encoding `joint-implies-rel-to` as a closure rule (§4.7), verify against `[capco-2016]` §H.3 + §H.7 text.
 
-**Default.** Yes — it's the implementation's order, and saying so explicitly removes the "policy is one of three reasonable choices" fog.
+**Default.** Defer encoding the closure rule until CAPCO normativity is confirmed. If verified, the rule slots into the closure catalog with `trigger: JOINT(countries) present` and `cone: REL TO ⊇ countries`; topological scheduler sequences it before `noforn-clears-rel-to` automatically via `writes: [rel_to]`.
 
-### Q-4.6b (SciSet doc-comment language)
+### Q-4.6 (SciSet trait demotion to JoinSemilattice)
 
-Tighten the `SciSet` doc comment (`crates/capco/src/lattice.rs:14–39`) to state "the meet under fact-set inclusion is policy (b)" rather than the current "tree intersection is not unique"?
+Demote `SciSet` from `Lattice` to a hypothetical `JoinSemilattice` trait once the trait surface supports the split, and tighten the doc comment at `crates/capco/src/lattice.rs:14–39` to state "meet is defined for trait-impl completeness; no CAPCO semantics; not invoked by any rule"?
 
-**Default.** Yes — the implementation IS a unique lattice meet under the natural order; the doc currently overstates the indeterminacy.
+**Default.** Yes. The previous Q-4.6a / Q-4.6b ("adopt fact-set order; rename 'not a lattice meet' language") are answered by §4.6: the meet is mathematically clean under the prefix-inclusion order but operationally unused. The right fix is a trait demotion rather than a doc gloss that legitimizes an operation CAPCO never invokes.
 
 ### Q-5.3 (FgiSet representable-but-unreachable state)
 
@@ -1991,8 +1991,8 @@ Given the (a)/(b)/(c) verdicts above, here are the moves the consultant would re
 | `MaxDate` | (a) exact (with deferred extension) | `security-lattice.md` §8 |
 | `OptionalSingleton` | (a) exact | `abstract-interp.md` §12 (related) |
 | `Product` | (a) exact | `pure-lattice.md` §11 |
-| `SciSet` | (b) — meet needs §4 doc fix | `security-lattice.md` §18 |
-| `SarSet` | (b) — same as SciSet | `security-lattice.md` §19 |
+| `SciSet` | (a) join-semilattice; meet is trait-impl-only and operationally vacuous (§4.6) | `security-lattice.md` §18 |
+| `SarSet` | (a) join-semilattice; same indestructibility shape as SciSet | `security-lattice.md` §19 |
 | `FgiSet` | (b) — bounded distributive lattice | `security-lattice.md` §6 Framing 1 |
 | `Category`/`AggregationOp`/`CategoryShape` | (c) not a lattice problem | — |
 | `Scope` | (c) not a lattice problem | — |
@@ -2000,7 +2000,7 @@ Given the (a)/(b)/(c) verdicts above, here are the moves the consultant would re
 | `Constraint` | (c) not a lattice problem | `security-lattice.md` "Not a lattice" §4 |
 | `MarkingScheme` | (c) signature, not algebra | — |
 | `project()` | (a) per-category fold | `pure-lattice.md` §15 |
-| §3.3a meet | (a) under fact-set order | `pure-lattice.md` §6 (Birkhoff) |
+| §3.3a meet | (a) mathematically clean under fact-set order; (c) operationally — CAPCO has no meet semantics for SCI, only join (§4.2, §4.6) | `pure-lattice.md` §6 (Birkhoff) |
 | Open-vocab no-top | (a) exact across 3 catalog entries | pure §4 + sec §18 + univ §11 Axis F |
 | NOFORN clears REL TO | (a) exact | `security-lattice.md` §6 Framing 3 + §7 |
 | Decoder confidence | (a) — monotone fold on chain lattice | `abstract-interp.md` §19 |
@@ -2010,7 +2010,7 @@ Given the (a)/(b)/(c) verdicts above, here are the moves the consultant would re
 - (a) verdicts: 17
 - (b) verdicts: 6
 - (c) verdicts: 5 (`Category`/`Scope`/`Constraint`/`MarkingScheme` aren't lattice problems; `MaxDate` extension is partially (c) for exemption codes)
-- Open questions surfaced: 10 (Q-2.6, Q-2.25, Q-3.8, Q-3.9, Q-4.6a, Q-4.6b, Q-5.3, Q-6.5, Q-Master, plus the deferred composite Constraint::Custom volume question)
+- Open questions surfaced: 10 (Q-2.6, Q-2.25, Q-3.8, Q-3.9, Q-4.5-JOINT-implies-REL, Q-4.6, Q-5.3, Q-6.5, Q-Master, plus the deferred composite Constraint::Custom volume question)
 
 ---
 
