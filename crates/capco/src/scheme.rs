@@ -1535,7 +1535,7 @@ impl CapcoScheme {
             // marking (one per failing sub-rule).
             Constraint::Custom {
                 name: "E010/HCS-system-constraints",
-                label: "CAPCO-2016 §H.4 p62",
+                label: "CAPCO-2016 §H.4 pp 62-66",
             },
             // ---- E012: dual classification (CAPCO-2016 §H.3 p55) -
             //
@@ -2355,7 +2355,7 @@ fn evaluate_custom_by_attrs(
         return sci_per_system_catalog_eval(attrs, name);
     }
     match name {
-        "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 p62"),
+        "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 pp 62-66"),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
         "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),

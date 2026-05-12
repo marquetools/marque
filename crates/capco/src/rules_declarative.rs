@@ -318,7 +318,7 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
             span,
             "bare HCS is a legacy marking; consult the HCS-O and HCS-P marking templates \
              per §H.4 to determine the correct compartment (HCS-O for operational source \
-             information, HCS-P for analytical product)",
+             information, HCS-P for analytical product, HCS-O-P when both are present)",
             "CAPCO-2016 §H.4 p62",
             None,
         )]

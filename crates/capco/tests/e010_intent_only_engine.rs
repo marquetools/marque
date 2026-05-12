@@ -63,9 +63,11 @@ fn engine() -> Engine {
 /// E010 diagnostic emission on the portion form. `(TS//HCS)` carries
 /// a bare HCS with no compartment suffix; the rule fires with
 /// `fix.is_none()` and `fix_intent.is_none()` (conscious-defer). The
-/// diagnostic message identifies both HCS-O and HCS-P as the
-/// candidate compartments so the classifier knows which templates to
-/// consult.
+/// diagnostic message identifies HCS-O, HCS-P, and the combined
+/// HCS-O-P form as the candidate compartments so the classifier
+/// knows which templates to consult (CAPCO-2016 §H.4 p65 line 1406:
+/// "the portion mark must include either HCS-P, HCS-O, or
+/// HCS-O-P, if applicable").
 #[test]
 fn e010_emits_diagnostic_on_bare_hcs_in_portion() {
     let result = engine().lint(b"(TS//HCS)\n");
@@ -90,20 +92,26 @@ fn e010_emits_diagnostic_on_bare_hcs_in_portion() {
     assert!(
         e010[0].fix_intent.is_none(),
         "E010 must consciously decline to emit a FixIntent \
-         (HCS-O vs HCS-P is a classifier decision per §H.4); \
-         got: {:?}",
+         (HCS-O vs HCS-P vs HCS-O-P is a classifier decision per \
+         §H.4); got: {:?}",
         e010[0].fix_intent
     );
     assert!(
-        e010[0].message.contains("HCS-O"),
-        "E010 message must reference HCS-O so the classifier knows \
-         which template to consult; got: {:?}",
+        e010[0].message.contains("HCS-O for"),
+        "E010 message must reference HCS-O as a distinct form so \
+         the classifier knows which template to consult; got: {:?}",
         e010[0].message
     );
     assert!(
         e010[0].message.contains("HCS-P"),
         "E010 message must reference HCS-P so the classifier knows \
          which template to consult; got: {:?}",
+        e010[0].message
+    );
+    assert!(
+        e010[0].message.contains("HCS-O-P"),
+        "E010 message must reference HCS-O-P (the combined compart- \
+         ment form) per CAPCO-2016 §H.4 p65 line 1406; got: {:?}",
         e010[0].message
     );
 }
@@ -136,20 +144,26 @@ fn e010_emits_diagnostic_on_bare_hcs_in_banner() {
     assert!(
         e010[0].fix_intent.is_none(),
         "E010 must consciously decline to emit a FixIntent \
-         (HCS-O vs HCS-P is a classifier decision per §H.4); \
-         got: {:?}",
+         (HCS-O vs HCS-P vs HCS-O-P is a classifier decision per \
+         §H.4); got: {:?}",
         e010[0].fix_intent
     );
     assert!(
-        e010[0].message.contains("HCS-O"),
-        "E010 message must reference HCS-O so the classifier knows \
-         which template to consult; got: {:?}",
+        e010[0].message.contains("HCS-O for"),
+        "E010 message must reference HCS-O as a distinct form so \
+         the classifier knows which template to consult; got: {:?}",
         e010[0].message
     );
     assert!(
         e010[0].message.contains("HCS-P"),
         "E010 message must reference HCS-P so the classifier knows \
          which template to consult; got: {:?}",
+        e010[0].message
+    );
+    assert!(
+        e010[0].message.contains("HCS-O-P"),
+        "E010 message must reference HCS-O-P (the combined compart- \
+         ment form) per CAPCO-2016 §H.4 p65 line 1406; got: {:?}",
         e010[0].message
     );
 }
