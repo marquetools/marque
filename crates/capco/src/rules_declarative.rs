@@ -1132,7 +1132,7 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
     }
     fn default_severity(&self) -> Severity {
         // Severity::Fix enables the confidence-threshold gate (engine.rs
-        // line 1167): below-threshold E024 diagnositcs are downgraded to
+        // line 1167): below-threshold E024 diagnostics are downgraded to
         // Severity::Suggest rather than auto-applied. Matches E041's
         // pattern for intent-only rules.
         Severity::Fix
