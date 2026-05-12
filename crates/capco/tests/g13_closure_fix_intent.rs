@@ -80,8 +80,10 @@ fn assert_intent_is_g13_clean(intent: &FixIntent<CapcoScheme>) {
             assert_fact_ref_is_structural(token);
             assert_scope_is_discriminant(*scope);
         }
-        ReplacementIntent::FactRemove { token_ref, scope } => {
-            assert_fact_ref_is_structural(token_ref);
+        ReplacementIntent::FactRemove { facts, scope } => {
+            for fact in facts {
+                assert_fact_ref_is_structural(fact);
+            }
             assert_scope_is_discriminant(*scope);
         }
         ReplacementIntent::Recanonicalize { scope } => {

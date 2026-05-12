@@ -248,17 +248,15 @@ mod tests {
     #[test]
     fn fix_intent_fact_remove() {
         let intent: FixIntent<TestScheme> = FixIntent {
-            replacement: ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TokenId(11)),
-                scope: Scope::Page,
-            },
+            replacement: ReplacementIntent::fact_remove(FactRef::Cve(TokenId(11)), Scope::Page),
             confidence: Confidence::strict(0.9),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
         };
         match &intent.replacement {
-            ReplacementIntent::FactRemove { token_ref, scope } => {
-                assert!(matches!(token_ref, FactRef::Cve(TokenId(11))));
+            ReplacementIntent::FactRemove { facts, scope } => {
+                assert_eq!(facts.len(), 1);
+                assert!(matches!(facts[0], FactRef::Cve(TokenId(11))));
                 assert_eq!(*scope, Scope::Page);
             }
             _ => panic!("expected FactRemove replacement"),

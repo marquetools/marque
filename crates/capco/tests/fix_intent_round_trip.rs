@@ -85,10 +85,15 @@ fn e054_emits_correct_fix_intent_shape() {
 
     // Structural intent payload — FactRemove { RELIDO, Scope::Portion }.
     match &intent.replacement {
-        ReplacementIntent::FactRemove { token_ref, scope } => {
+        ReplacementIntent::FactRemove { facts, scope } => {
+            assert_eq!(
+                facts.len(),
+                1,
+                "E054 FactRemove must have exactly one fact (RELIDO)"
+            );
             assert!(
-                matches!(token_ref, FactRef::Cve(id) if *id == TOK_RELIDO),
-                "E054 intent must remove TOK_RELIDO; got token_ref = {token_ref:?}"
+                matches!(facts[0], FactRef::Cve(id) if id == TOK_RELIDO),
+                "E054 intent must remove TOK_RELIDO; got facts[0] = {:?}", facts[0]
             );
             assert_eq!(
                 *scope,
@@ -142,13 +147,16 @@ fn e054_promotes_through_engine_as_new_variant() {
             assert_eq!(synthesized.source, FixSource::BuiltinRule);
 
             // Intent payload — FactRemove of RELIDO at Scope::Portion.
-            assert!(matches!(
-                intent.replacement,
-                ReplacementIntent::FactRemove {
-                    token_ref: FactRef::Cve(t),
-                    scope: Scope::Portion,
-                } if t == TOK_RELIDO
-            ));
+            if let ReplacementIntent::FactRemove { facts, scope } = &intent.replacement {
+                assert_eq!(scope, &Scope::Portion, "E054 intent scope must be Portion");
+                assert_eq!(facts.len(), 1, "E054 FactRemove must have exactly one fact");
+                assert!(
+                    matches!(facts[0], FactRef::Cve(t) if t == TOK_RELIDO),
+                    "E054 intent fact must be TOK_RELIDO"
+                );
+            } else {
+                panic!("E054 intent must be FactRemove");
+            }
         }
         AppliedFixProposal::Legacy(_) => {
             panic!(
@@ -183,8 +191,9 @@ fn e057_emits_correct_fix_intent_shape() {
         .expect("E057 must carry new `fix_intent`");
 
     match &intent.replacement {
-        ReplacementIntent::FactRemove { token_ref, scope } => {
-            assert!(matches!(token_ref, FactRef::Cve(id) if *id == TOK_RELIDO));
+        ReplacementIntent::FactRemove { facts, scope } => {
+            assert_eq!(facts.len(), 1, "E057 FactRemove must have exactly one fact");
+            assert!(matches!(facts[0], FactRef::Cve(id) if id == TOK_RELIDO));
             assert_eq!(*scope, Scope::Portion);
         }
         other => panic!("E057 intent must be FactRemove, got {other:?}"),
@@ -211,13 +220,16 @@ fn e057_promotes_through_engine_as_new_variant() {
         } => {
             assert_eq!(synthesized.rule.as_str(), "E057");
             assert_eq!(synthesized.replacement.as_ref(), "");
-            assert!(matches!(
-                intent.replacement,
-                ReplacementIntent::FactRemove {
-                    token_ref: FactRef::Cve(t),
-                    scope: Scope::Portion,
-                } if t == TOK_RELIDO
-            ));
+            if let ReplacementIntent::FactRemove { facts, scope } = &intent.replacement {
+                assert_eq!(scope, &Scope::Portion, "E057 intent scope must be Portion");
+                assert_eq!(facts.len(), 1, "E057 FactRemove must have exactly one fact");
+                assert!(
+                    matches!(facts[0], FactRef::Cve(t) if t == TOK_RELIDO),
+                    "E057 intent fact must be TOK_RELIDO"
+                );
+            } else {
+                panic!("E057 intent must be FactRemove");
+            }
         }
         AppliedFixProposal::Legacy(_) => panic!("E057 must promote as New"),
     }
@@ -397,8 +409,9 @@ fn e055_emits_correct_fix_intent_shape() {
             .as_ref()
             .expect("E055 must carry `fix_intent` post-Commit-8");
         match &intent.replacement {
-            ReplacementIntent::FactRemove { token_ref, scope } => {
-                assert!(matches!(token_ref, FactRef::Cve(id) if *id == TOK_RELIDO));
+            ReplacementIntent::FactRemove { facts, scope } => {
+                assert_eq!(facts.len(), 1, "E055 FactRemove must have exactly one fact");
+                assert!(matches!(facts[0], FactRef::Cve(id) if id == TOK_RELIDO));
                 assert_eq!(*scope, Scope::Portion);
             }
             other => panic!("E055 intent must be FactRemove, got {other:?}"),
@@ -435,13 +448,16 @@ fn e055_promotes_through_engine_as_new_variant() {
                 synthesized,
             } => {
                 assert_eq!(synthesized.rule.as_str(), "E055");
-                assert!(matches!(
-                    intent.replacement,
-                    ReplacementIntent::FactRemove {
-                        token_ref: FactRef::Cve(t),
-                        scope: Scope::Portion,
-                    } if t == TOK_RELIDO
-                ));
+                if let ReplacementIntent::FactRemove { facts, scope } = &intent.replacement {
+                    assert_eq!(scope, &Scope::Portion);
+                    assert_eq!(facts.len(), 1, "E055 FactRemove must have exactly one fact");
+                    assert!(
+                        matches!(facts[0], FactRef::Cve(t) if t == TOK_RELIDO),
+                        "E055 intent fact must be TOK_RELIDO"
+                    );
+                } else {
+                    panic!("E055 intent must be FactRemove");
+                }
             }
             AppliedFixProposal::Legacy(_) => panic!(
                 "E055 must promote as New (Commit 8 dual-population); got Legacy — \
@@ -481,8 +497,9 @@ fn e056_emits_correct_fix_intent_shape() {
         .expect("E056 must carry new `fix_intent`");
 
     match &intent.replacement {
-        ReplacementIntent::FactRemove { token_ref, scope } => {
-            assert!(matches!(token_ref, FactRef::Cve(id) if *id == TOK_RELIDO));
+        ReplacementIntent::FactRemove { facts, scope } => {
+            assert_eq!(facts.len(), 1, "E056 FactRemove must have exactly one fact");
+            assert!(matches!(facts[0], FactRef::Cve(id) if id == TOK_RELIDO));
             assert_eq!(*scope, Scope::Portion);
         }
         other => panic!("E056 intent must be FactRemove, got {other:?}"),
@@ -509,13 +526,16 @@ fn e056_promotes_through_engine_as_new_variant() {
         } => {
             assert_eq!(synthesized.rule.as_str(), "E056");
             assert_eq!(synthesized.replacement.as_ref(), "");
-            assert!(matches!(
-                intent.replacement,
-                ReplacementIntent::FactRemove {
-                    token_ref: FactRef::Cve(t),
-                    scope: Scope::Portion,
-                } if t == TOK_RELIDO
-            ));
+            if let ReplacementIntent::FactRemove { facts, scope } = &intent.replacement {
+                assert_eq!(scope, &Scope::Portion);
+                assert_eq!(facts.len(), 1, "E056 FactRemove must have exactly one fact");
+                assert!(
+                    matches!(facts[0], FactRef::Cve(t) if t == TOK_RELIDO),
+                    "E056 intent fact must be TOK_RELIDO"
+                );
+            } else {
+                panic!("E056 intent must be FactRemove");
+            }
         }
         AppliedFixProposal::Legacy(_) => panic!(
             "E056 must promote as New (Commit 8 dual-population); got Legacy — \

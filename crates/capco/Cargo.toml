@@ -26,6 +26,7 @@ marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 phf = { workspace = true }
+smallvec = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

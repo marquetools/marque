@@ -440,7 +440,7 @@ fn apply_intent_to_marking(
 ) -> Result<(), ApplyIntentError> {
     match intent {
         ReplacementIntent::FactRemove {
-            token_ref,
+            facts,
             scope: _,
         } => {
             // Scope discriminates page vs portion projection scope.
@@ -449,10 +449,29 @@ fn apply_intent_to_marking(
             // `CanonicalAttrs` — the page/document distinction is
             // handled by the engine's projection layer, not by
             // `apply_intent`.
-            let category = scheme
-                .category_of(token_ref)
-                .ok_or(ApplyIntentError::UnknownToken)?;
-            apply_fact_remove(marking, category, token_ref)
+            //
+            // Multi-fact clusters (e.g. E024's RD/FRD/TFNI atomic chain)
+            // iterate through all facts in the SmallVec. Per-fact
+            // inapplicability (token already absent) is a silent no-op;
+            // the whole intent is inapplicable only when no fact applied.
+            let mut any_applied = false;
+            for fact in facts {
+                let category = scheme
+                    .category_of(fact)
+                    .ok_or(ApplyIntentError::UnknownToken)?;
+                match apply_fact_remove(marking, category, fact) {
+                    Ok(()) => any_applied = true,
+                    Err(ApplyIntentError::IntentInapplicable) => {
+                        // Token already absent — per-fact no-op; continue.
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            if any_applied {
+                Ok(())
+            } else {
+                Err(ApplyIntentError::IntentInapplicable)
+            }
         }
         ReplacementIntent::FactAdd { token, scope: _ } => {
             // PR 3c.B Sub-PR 8.D.1 — first consumer of FactAdd.
@@ -768,15 +787,36 @@ fn apply_fact_remove(
     }
 
     if category == CAT_AEA {
-        // The CapcoMarking layer currently stores AEA markings as a
-        // Box<[AeaMarking]> of compound structural values, not as
-        // atomic tokens. Atomic-level FactRemove on the AEA axis
-        // requires the AeaMarking value-decomposition that lands in
-        // a later sub-PR (8.D.2+ / AEA-bucket migration); the FactAdd
-        // wiring that landed in PR #372 (8.D.1) is CAT_DISSEM only
-        // and does not cover the AEA axis. Pre-migration the engine
-        // drops the fix.
-        return Err(ApplyIntentError::IntentInapplicable);
+        // PR 3c.B Sub-PR 8.C — E024 atomic-cluster migration.
+        // Wire FRD and TFNI removal so the multi-fact FactRemove intent
+        // can atomically remove both superseded markings when RD is present.
+        // TOK_CNWDI and TOK_UCNI removal are deferred to later sub-PRs
+        // (their compound-value decomposition is more complex).
+        use marque_ism::AeaMarking;
+        let before = attrs.aea_markings.len();
+        let kept: Vec<AeaMarking> = match id {
+            TOK_FRD => attrs
+                .aea_markings
+                .iter()
+                .filter(|a| !matches!(a, AeaMarking::Frd(_)))
+                .cloned()
+                .collect(),
+            TOK_TFNI => attrs
+                .aea_markings
+                .iter()
+                .filter(|a| !matches!(a, AeaMarking::Tfni))
+                .cloned()
+                .collect(),
+            // TOK_RD removal and other AEA tokens are deferred — the
+            // compound RdBlock decomposition is an open question
+            // (CNWDI, SIGMA modifiers complicate atomic semantics).
+            _ => return Err(ApplyIntentError::IntentInapplicable),
+        };
+        if kept.len() == before {
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+        attrs.aea_markings = kept.into_boxed_slice();
+        return Ok(());
     }
 
     // Other categories (SCI, SAR, JOINT, FGI_MARKER, CLASSIFICATION):
@@ -5775,10 +5815,10 @@ mod tests {
         a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
 
-        let intents = [ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_RELIDO),
-            scope: Scope::Portion,
-        }];
+        let intents = [ReplacementIntent::fact_remove(
+            FactRef::Cve(TOK_RELIDO),
+            Scope::Portion,
+        )];
         let out = scheme
             .apply_intent(&m, &intents)
             .expect("RELIDO removal must succeed");
@@ -5789,10 +5829,10 @@ mod tests {
     fn apply_intent_remove_absent_token_is_inapplicable() {
         let scheme = CapcoScheme::new();
         let m = CapcoMarking::new(mk_attrs());
-        let intents = [ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_RELIDO),
-            scope: Scope::Portion,
-        }];
+        let intents = [ReplacementIntent::fact_remove(
+            FactRef::Cve(TOK_RELIDO),
+            Scope::Portion,
+        )];
         assert_eq!(
             scheme.apply_intent(&m, &intents),
             Err(ApplyIntentError::IntentInapplicable)
@@ -5804,10 +5844,10 @@ mod tests {
         let scheme = CapcoScheme::new();
         let m = CapcoMarking::new(mk_attrs());
         // TokenId(9999) is not in the sentinel table.
-        let intents = [ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TokenId(9999)),
-            scope: Scope::Portion,
-        }];
+        let intents = [ReplacementIntent::fact_remove(
+            FactRef::Cve(TokenId(9999)),
+            Scope::Portion,
+        )];
         assert_eq!(
             scheme.apply_intent(&m, &intents),
             Err(ApplyIntentError::UnknownToken)
@@ -5938,14 +5978,8 @@ mod tests {
 
         // Two removals targeting the same axis.
         let intents = [
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
-                scope: Scope::Portion,
-            },
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_DISPLAY_ONLY), Scope::Portion),
         ];
         let out = scheme
             .apply_intent(&m, &intents)
@@ -5977,14 +6011,8 @@ mod tests {
         // silently skipped; the batch as a whole MUST succeed because
         // at least one intent had effect.
         let intents = [
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
         ];
         let out = scheme
             .apply_intent(&m, &intents)
@@ -6008,14 +6036,8 @@ mod tests {
         // per-intent). Second intent removes RELIDO (succeeds). Batch
         // succeeds because RELIDO removal had effect.
         let intents = [
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
-                scope: Scope::Portion,
-            },
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_DISPLAY_ONLY), Scope::Portion),
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
         ];
         let out = scheme
             .apply_intent(&m, &intents)
@@ -6037,14 +6059,8 @@ mod tests {
 
         // Both intents target tokens not present on this marking.
         let intents = [
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_RELIDO),
-                scope: Scope::Portion,
-            },
-            ReplacementIntent::FactRemove {
-                token_ref: FactRef::Cve(TOK_DISPLAY_ONLY),
-                scope: Scope::Portion,
-            },
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
+            ReplacementIntent::fact_remove(FactRef::Cve(TOK_DISPLAY_ONLY), Scope::Portion),
         ];
         assert_eq!(
             scheme.apply_intent(&m, &intents),
@@ -6075,10 +6091,10 @@ mod tests {
         .into();
         let m = CapcoMarking::new(a);
 
-        let intents = [ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_REL_TO),
-            scope: Scope::Portion,
-        }];
+        let intents = [ReplacementIntent::fact_remove(
+            FactRef::Cve(TOK_REL_TO),
+            Scope::Portion,
+        )];
         let out = scheme
             .apply_intent(&m, &intents)
             .expect("TOK_REL_TO whole-axis clear must succeed on populated axis");
@@ -6098,10 +6114,10 @@ mod tests {
         let m = CapcoMarking::new(mk_attrs());
         assert!(m.0.rel_to.is_empty(), "fixture precondition");
 
-        let intents = [ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_REL_TO),
-            scope: Scope::Portion,
-        }];
+        let intents = [ReplacementIntent::fact_remove(
+            FactRef::Cve(TOK_REL_TO),
+            Scope::Portion,
+        )];
         assert_eq!(
             scheme.apply_intent(&m, &intents),
             Err(ApplyIntentError::IntentInapplicable)
@@ -6119,10 +6135,10 @@ mod tests {
         a.rel_to = vec![CountryCode::USA, gbr].into();
         let m = CapcoMarking::new(a);
 
-        let intents = [ReplacementIntent::FactRemove {
-            token_ref: FactRef::Cve(TOK_USA),
-            scope: Scope::Portion,
-        }];
+        let intents = [ReplacementIntent::fact_remove(
+            FactRef::Cve(TOK_USA),
+            Scope::Portion,
+        )];
         let out = scheme
             .apply_intent(&m, &intents)
             .expect("TOK_USA single-country removal must succeed");

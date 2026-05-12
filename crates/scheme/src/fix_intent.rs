@@ -25,6 +25,8 @@
 use core::fmt::Debug;
 use core::hash::Hash;
 
+use smallvec::SmallVec;
+
 use crate::category::TokenId;
 use crate::scheme::MarkingScheme;
 use crate::scope::Scope;
@@ -148,11 +150,23 @@ pub enum ReplacementIntent<S: MarkingScheme> {
         scope: Scope,
     },
 
-    /// Remove a token from the projected fact set at `scope`.
+    /// Remove one or more tokens from the projected fact set at `scope`.
+    ///
+    /// The common case carries exactly one fact (inline capacity `[_; 2]`
+    /// keeps the single-token path heap-free). Multi-fact removal is used
+    /// for atomic chain removals — e.g. E024's "RD supersedes both FRD and
+    /// TFNI" is one policy decision that should land as one audit repair
+    /// per Constitution V Principle V.
+    ///
+    /// Use [`ReplacementIntent::fact_remove`] for the single-fact case to
+    /// avoid constructing a `SmallVec` at every call site. Multi-fact
+    /// callers construct `FactRemove { facts: smallvec![f1, f2], scope }`
+    /// directly.
     FactRemove {
-        /// The token to remove, identified by its position in the
-        /// projected fact set (never by raw input bytes).
-        token_ref: FactRef<S>,
+        /// The token(s) to remove. Inline capacity 2 — single-fact
+        /// (common case) and the FRD+TFNI pair (E024) both fit without
+        /// heap allocation; longer chains spill to heap cleanly.
+        facts: SmallVec<[FactRef<S>; 2]>,
         /// Which projection level the removal applies to.
         scope: Scope,
     },
@@ -191,9 +205,9 @@ impl<S: MarkingScheme> Debug for ReplacementIntent<S> {
                 .field("token", token)
                 .field("scope", scope)
                 .finish(),
-            ReplacementIntent::FactRemove { token_ref, scope } => f
+            ReplacementIntent::FactRemove { facts, scope } => f
                 .debug_struct("FactRemove")
-                .field("token_ref", token_ref)
+                .field("facts", facts)
                 .field("scope", scope)
                 .finish(),
             ReplacementIntent::Recanonicalize { scope } => f
@@ -211,13 +225,32 @@ impl<S: MarkingScheme> Clone for ReplacementIntent<S> {
                 token: token.clone(),
                 scope: *scope,
             },
-            ReplacementIntent::FactRemove { token_ref, scope } => ReplacementIntent::FactRemove {
-                token_ref: token_ref.clone(),
+            ReplacementIntent::FactRemove { facts, scope } => ReplacementIntent::FactRemove {
+                facts: facts.clone(),
                 scope: *scope,
             },
             ReplacementIntent::Recanonicalize { scope } => {
                 ReplacementIntent::Recanonicalize { scope: *scope }
             }
+        }
+    }
+}
+
+impl<S: MarkingScheme> ReplacementIntent<S> {
+    /// Construct a single-fact [`FactRemove`](ReplacementIntent::FactRemove) intent.
+    ///
+    /// Ergonomic shorthand for the common case where one policy
+    /// decision removes exactly one token. The resulting `SmallVec`
+    /// has length 1 and never allocates on the heap.
+    ///
+    /// Multi-fact callers (e.g. E024's RD/FRD/TFNI atomic cluster)
+    /// should construct `FactRemove { facts: smallvec![f1, f2], scope }`
+    /// directly.
+    #[inline]
+    pub fn fact_remove(fact: FactRef<S>, scope: Scope) -> Self {
+        ReplacementIntent::FactRemove {
+            facts: smallvec::smallvec![fact],
+            scope,
         }
     }
 }
