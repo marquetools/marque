@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! PR 3c.B Sub-PR 8.D.3 — E010 (bare HCS requires compartment
-//! suffix, §H.4 p61-62) intent-only migration engine-level tests.
+//! suffix, §H.4 p62) intent-only migration engine-level tests.
 //!
 //! E010 migrates to `fix_intent: None` matching the E015/E016
 //! conscious-defer pattern landed in Sub-PR 8.D.2 (PR #374). The
