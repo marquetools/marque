@@ -5588,6 +5588,15 @@ mod tests {
     fn category_of_routes_rel_to_tokens() {
         let scheme = CapcoScheme::new();
         assert_eq!(scheme.category_of(&FactRef::Cve(TOK_USA)), Some(CAT_REL_TO));
+        // PR 3c.B Sub-PR 8.D.2: TOK_REL_TO is the whole-axis-clear
+        // sentinel for CAT_REL_TO (analog to TOK_EXDIS for
+        // CAT_NON_IC_DISSEM). Pin its category routing alongside
+        // TOK_USA so a future re-shuffle of capco_token_category
+        // can't silently drop it.
+        assert_eq!(
+            scheme.category_of(&FactRef::Cve(TOK_REL_TO)),
+            Some(CAT_REL_TO)
+        );
     }
 
     #[test]
@@ -5997,11 +6006,7 @@ mod tests {
         let out = scheme
             .apply_intent(&m, &intents)
             .expect("TOK_USA single-country removal must succeed");
-        assert_eq!(
-            out.0.rel_to.as_ref(),
-            &[gbr],
-            "USA removed, GBR retained"
-        );
+        assert_eq!(out.0.rel_to.as_ref(), &[gbr], "USA removed, GBR retained");
     }
 
     // Declarative rewrite dispatch — exercise the Contains / Empty /

@@ -1346,6 +1346,15 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
                 // PageRewrite handles the page-level mutation; a
                 // page-scope `FactRemove` intent here would
                 // double-rewrite.
+                //
+                // Audit-correlation note for downstream consumers:
+                // the `AppliedFix` record for the corresponding
+                // mutation lands under the `capco/noforn-clears-rel-to`
+                // PageRewrite identity, NOT under E053. A consumer
+                // joining "what fixed this NOFORN/REL TO violation?"
+                // at banner scope must look at the PageRewrite audit
+                // row; the E053 row at banner scope carries the
+                // diagnostic only.
                 vec![Diagnostic::with_fix_intent(
                     self.id(),
                     self.default_severity(),
