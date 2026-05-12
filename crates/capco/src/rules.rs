@@ -5317,23 +5317,48 @@ mod tests {
 
     #[test]
     fn e010_fires_on_bare_hcs_in_banner() {
+        // PR 3c.B Sub-PR 8.D.3 — E010 migrated to `fix_intent: None`
+        // (conscious-defer per CAPCO-2016 §H.4 lines 1369–1395; the
+        // classifier must read the HCS-O / HCS-P marking templates).
+        // The diagnostic still fires; only the auto-fix is dropped.
         let diags = lint_banner("TOP SECRET//HCS//NOFORN");
         let e010: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E010").collect();
         assert_eq!(e010.len(), 1);
         let src = b"TOP SECRET//HCS//NOFORN";
         assert_eq!(e010[0].span.as_str(src).unwrap(), "HCS");
-        let fix = e010[0].fix.as_ref().expect("E010 must carry a FixProposal");
-        assert_eq!(fix.replacement.as_ref(), "HCS-P");
-        assert!((fix.confidence.combined() - 0.95).abs() < f32::EPSILON);
+        assert!(
+            e010[0].fix.is_none(),
+            "E010 must not carry a legacy FixProposal post-migration; got: {:?}",
+            e010[0].fix
+        );
+        assert!(
+            e010[0].fix_intent.is_none(),
+            "E010 must consciously decline to emit a FixIntent \
+             (HCS-O vs HCS-P is a classifier decision per §H.4); \
+             got: {:?}",
+            e010[0].fix_intent
+        );
     }
 
     #[test]
     fn e010_fires_on_bare_hcs_in_portion() {
+        // PR 3c.B Sub-PR 8.D.3 — same conscious-defer shape as the
+        // banner variant. The diagnostic still fires; no auto-fix.
         let diags = lint_portion("(TS//HCS//NF)");
         let e010: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E010").collect();
         assert_eq!(e010.len(), 1);
-        let fix = e010[0].fix.as_ref().expect("E010 must carry a FixProposal");
-        assert_eq!(fix.replacement.as_ref(), "HCS-P");
+        assert!(
+            e010[0].fix.is_none(),
+            "E010 must not carry a legacy FixProposal post-migration; got: {:?}",
+            e010[0].fix
+        );
+        assert!(
+            e010[0].fix_intent.is_none(),
+            "E010 must consciously decline to emit a FixIntent \
+             (HCS-O vs HCS-P is a classifier decision per §H.4); \
+             got: {:?}",
+            e010[0].fix_intent
+        );
     }
 
     #[test]
@@ -5355,16 +5380,25 @@ mod tests {
     }
 
     #[test]
-    fn e010_lowers_confidence_when_hcs_o_present() {
-        // If HCS-O appears alongside bare HCS, the suggestion is ambiguous.
+    fn e010_does_not_emit_fix_when_hcs_o_present() {
+        // PR 3c.B Sub-PR 8.D.3 — the pre-migration behavior lowered
+        // fix confidence to 0.5 when HCS-O appeared alongside bare HCS
+        // (ambiguous suggestion). Post-migration the entire fix path is
+        // dropped; only the diagnostic fires.
         let diags = lint_banner("TOP SECRET//HCS//HCS-O//NOFORN");
         let e010: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E010").collect();
         assert_eq!(e010.len(), 1);
-        let fix = e010[0].fix.as_ref().unwrap();
         assert!(
-            (fix.confidence.combined() - 0.5).abs() < f32::EPSILON,
-            "confidence should be 0.5 when HCS-O is present, got {}",
-            fix.confidence.combined()
+            e010[0].fix.is_none(),
+            "E010 must not carry a legacy FixProposal post-migration; got: {:?}",
+            e010[0].fix
+        );
+        assert!(
+            e010[0].fix_intent.is_none(),
+            "E010 must consciously decline to emit a FixIntent \
+             (HCS-O vs HCS-P is a classifier decision per §H.4); \
+             got: {:?}",
+            e010[0].fix_intent
         );
     }
 

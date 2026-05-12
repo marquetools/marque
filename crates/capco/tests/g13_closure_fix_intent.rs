@@ -332,18 +332,26 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 // this scope-guard fixture rotates through rules that remain on the
 // legacy path. PR 3c.B Commit 8 migrated the four `Conflicts` RELIDO
 // wrappers (E054/E055/E056/E057); PR 3c.B Sub-PR 8.E.2 migrated E041;
-// PR 3c.B Sub-PR 8.D.1 migrated E038. The scope guard stays on an
-// unmigrated rule that still produces a deterministic `Legacy`
-// AppliedFix. `E010` (DeclarativeBareHcsRule) remains the stable
-// choice: `HCS → HCS-P` substitution, currently emitted as
-// `make_fix_diagnostic` (legacy FixProposal path only).
+// PR 3c.B Sub-PR 8.D.1 migrated E038; PR 3c.B Sub-PR 8.D.2 migrated
+// E015/E053; PR 3c.B Sub-PR 8.D.3 migrated E010 as consciously-
+// deferred (`fix_intent: None`, matching E015/E016). The scope guard
+// stays on an unmigrated rule that still produces a deterministic
+// `Legacy` AppliedFix. `E007` (XShorthandDateRule) is the post-8.D.3
+// stable choice: `make_fix_diagnostic` Legacy fix that auto-applies
+// on deprecated `25X1-` / `50X1-` X-shorthand declassification codes
+// at confidence 0.97 (table-backed via `MIGRATIONS`). E012
+// (DeclarativeDualClassificationRule) was considered but emits its
+// fix at confidence 0.90 — below the default
+// `Config::confidence_threshold` of 0.95, so the engine demotes the
+// diagnostic to `Severity::Suggest` and it never lands in
+// `result.applied`. E007 sits cleanly above the gate.
 //
-// E010's eventual migration target is the SCI-axis FactAdd /
-// FactRemove + Recanonicalize compound — none of which is wired in
-// Sub-PR 8.D.1 (the FactAdd wiring this sub-PR lands is CAT_DISSEM
-// only, not CAT_SCI). E010 is queued for a later sub-PR (8.D.2+)
-// once the SCI-axis primitives land; until then it produces a
-// stable Legacy AppliedFix and serves as the scope guard.
+// E007's eventual migration target is a structural `FixIntent` on
+// the declassification-date axis (the X-shorthand canonical form is
+// a string transform plus an optional migration-table lookup) —
+// none of which is wired today. E007 is queued for a later sub-PR
+// once the declassification-axis primitives land; until then it
+// produces a stable Legacy AppliedFix and serves as the scope guard.
 //
 // E016 (DeclarativeJointRestrictedRule, JOINT+RESTRICTED) is the
 // canonical "consciously-deferred no-fix-intent" rule per Sub-PR 8.B
@@ -351,19 +359,16 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 // scope-guard shape: with `fix: None` AND `fix_intent: None`, E016
 // never lands in `result.applied`, so the "Legacy variant present"
 // assertion below cannot match against it. The guard requires a rule
-// that auto-applies as Legacy; E010 satisfies that shape and is
-// still non-migrated in this sub-PR.
+// that auto-applies as Legacy.
 //
-// When E010 migrates (Sub-PR 8.D.3+), swap to another surviving
-// legacy rule (E012/E014 are candidates — both carry
-// `make_fix_diagnostic` Legacy fixes that auto-apply at confidence
-// ≥ threshold) and update both this test and the migrated-rule
-// fixture list above. E015 was a candidate prior to Sub-PR 8.D.2;
-// it migrated in 8.D.2 as consciously-deferred (Category A.x,
-// `fix_intent: None` like E016) and is no longer in the legacy-
-// auto-apply pool — its `with_fix_intent(..., None)` shape means
-// it never lands in `result.applied`, so it cannot serve as a
-// "Legacy variant present" scope guard.
+// When E007 migrates, look further down the rule list for the next
+// legacy `make_fix_diagnostic` consumer that emits at confidence
+// ≥ `Config::confidence_threshold` default (0.95). E010 was the
+// scope-guard pre-8.D.3 (legacy `HCS → HCS-P` at 0.95 confidence);
+// it migrated in 8.D.3 as consciously-deferred (Category A.x,
+// `fix_intent: None` like E015/E016) and is no longer in the
+// legacy-auto-apply pool. E015 was a candidate prior to Sub-PR 8.D.2
+// and migrated in the same shape.
 //
 // Constitution V Principle V test-fixture carve-out applies to any
 // fabricated `AppliedFix` values: this test exercises real engine
@@ -372,36 +377,35 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
 
 #[test]
 fn legacy_variant_records_are_out_of_scope_for_this_gate() {
-    // `(S//HCS)` triggers E010 (DeclarativeBareHcsRule); the rule
-    // emits a legacy `FixProposal { HCS → HCS-P, confidence 0.95 }`
-    // via `make_fix_diagnostic`. Default severity is `Severity::Error`
-    // (`rules_declarative.rs:250`); the engine's auto-apply filter
-    // excludes only `Severity::Suggest`
-    // (`crates/engine/src/engine.rs:1378`), so Error-severity rules
-    // with a populated `fix` at confidence ≥ threshold still
-    // auto-apply — promotion goes through the Legacy path because
-    // E010 carries no `fix_intent` (not yet migrated; queued for a
-    // later sub-PR — 8.D.2+ — once SCI-axis FactAdd/FactRemove +
-    // Recanonicalize primitives land; the FactAdd wiring in Sub-PR
-    // 8.D.1 is CAT_DISSEM only).
-    let result = engine().fix(b"(S//HCS)\n", FixMode::Apply);
+    // `SECRET//25X1-//NOFORN` triggers E007 (XShorthandDateRule);
+    // the rule emits a legacy `FixProposal` (`25X1-` → `25X1` at
+    // confidence 0.97 via the table-backed `MIGRATIONS` entry) via
+    // `make_fix_diagnostic`. Default severity is `Severity::Error`
+    // (`rules.rs:858`); the engine's auto-apply filter excludes only
+    // `Severity::Suggest` (`crates/engine/src/engine.rs:1378`), so
+    // Error-severity rules with a populated `fix` at confidence ≥
+    // threshold (default 0.95) still auto-apply — promotion goes
+    // through the Legacy path because E007 carries no `fix_intent`
+    // (not yet migrated; queued for a later sub-PR once the
+    // declassification-axis primitives land).
+    let result = engine().fix(b"SECRET//25X1-//NOFORN\n", FixMode::Apply);
     let af = result
         .applied
         .iter()
-        .find(|af| af.proposal.rule.as_str() == "E010")
-        .expect("E010 must fire on (S//HCS)");
+        .find(|af| af.proposal.rule.as_str() == "E007")
+        .expect("E007 must fire on SECRET//25X1-//NOFORN");
 
-    // E010 is NOT yet migrated. The walker would refuse to inspect
+    // E007 is NOT yet migrated. The walker would refuse to inspect
     // this record because `AppliedFixProposal::Legacy` carries no
     // `intent` field; this test confirms the scope is what we
     // expect (and serves as a regression pin if a future commit
-    // accidentally migrates E010 without updating the migrated-
+    // accidentally migrates E007 without updating the migrated-
     // rule fixture list above).
     assert!(
         matches!(af.proposal, AppliedFixProposal::Legacy(_)),
-        "E010 (non-migrated) must emit AppliedFixProposal::Legacy \
+        "E007 (non-migrated) must emit AppliedFixProposal::Legacy \
          through Commit 9; the migration to New + G13-clean intent \
-         lands in a later commit. Once it does, add E010's fixture \
+         lands in a later commit. Once it does, add E007's fixture \
          to `all_migrated_rule_intents_pass_g13_envelope_walker` and \
          rotate this scope guard to another non-migrated rule."
     );
