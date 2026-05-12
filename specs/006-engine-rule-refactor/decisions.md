@@ -834,8 +834,10 @@ T108e / T108f / T108g.
   (always present per T108c — closure rows are severity-aware at
   the catalog level; typically initialized to `Severity::Info`).
   The runtime override surface in `.marque.toml` reads the
-  `[rules]` table first; absent → falls back to
-  `ClosureRule.default_severity`.
+  `[closure_rules]` table first; absent → falls back to
+  `ClosureRule.default_severity`. `[rules]` is NOT consulted for
+  closure-row severity — the section split is total, consistent
+  with the keyspace-collision rationale above.
 
   Surface at `Warn` / `Error` produces a `Diagnostic` *in addition
   to* the `AuditNote` from T108e — the two streams serve different
