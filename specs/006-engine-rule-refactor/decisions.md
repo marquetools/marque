@@ -819,8 +819,13 @@ T108e / T108f / T108g.
   | `Error` | Fires; propagates; `AuditNote` + `Diagnostic` (error) surfaces |
   | `Fix` | **Rejected at config load** — closure firings are not byte-level fixes; load-time error points the user at `Info` / `Warn` / `Error` |
 
-  Default per row is `Info`. Catalog rows MAY declare a
-  `default_severity: Severity` override; absent → `Info`.
+  Default per row is `Info`. Catalog rows declare
+  `default_severity: Severity` on the `ClosureRule` struct itself
+  (always present per T108c — closure rows are severity-aware at
+  the catalog level; typically initialized to `Severity::Info`).
+  The runtime override surface in `.marque.toml` reads the
+  `[rules]` table first; absent → falls back to
+  `ClosureRule.default_severity`.
 
   Surface at `Warn` / `Error` produces a `Diagnostic` *in addition
   to* the `AuditNote` from T108e — the two streams serve different
@@ -845,6 +850,15 @@ T108e / T108f / T108g.
   `Implies` because the catalog-shape pivot did not surface the
   redundancy question. D19 surfaces it: the redundancy IS
   terminal, retire cleanly.
+
+  **Speculative-preservation rejected**: the only non-fact-
+  propagation reading of `Implies` worth naming is "left implies
+  right is the *preferred* rendered form but not required" — a
+  styling / codec preference, not a structural constraint. That
+  semantic belongs on a `Codec` / renderer trait surface
+  introduced at PR 5+, not on `Constraint`. Don't preserve
+  `Implies` today against hypothetical future use; re-add a
+  purpose-built trait surface when the use case actually arrives.
 
 **Rationale**:
 
