@@ -3442,10 +3442,10 @@ fn evaluate_non_ic_dissem_banner_rollup(
 // ---------------------------------------------------------------------------
 
 /// Fires when a portion carries BOTH NODIS and EXDIS. Emits a
-/// `Warn` diagnostic pointing at the EXDIS token; no auto-fix
-/// (see the "# No auto-fix" section below). Per the supersession
-/// rule in §H.9, NODIS survives and the user removes EXDIS
-/// manually.
+/// `Warn`-severity diagnostic pointing at the EXDIS token and an
+/// intent-only `FactRemove(EXDIS, Scope::Portion)` fix that the
+/// engine auto-applies via the synthesis path. Per the supersession
+/// rule in §H.9, NODIS survives and EXDIS is removed.
 ///
 /// Authority:
 /// - **CAPCO-2016 §H.9 p172** (EXDIS Commingling): *"When a
@@ -3469,62 +3469,51 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// EXDIS cannot coexist" rule per §H.9 p172 + p174). When a portion
 /// has both tokens, both rules fire:
 /// - E037 (`Error`, no fix) states the violation.
-/// - E041 (`Warn`, no fix) states the supersession rule: NODIS wins,
-///   so EXDIS must be removed from the portion marking.
+/// - E041 (`Warn`, intent-only `FactRemove`) states the supersession
+///   rule: NODIS wins, so EXDIS is removed from the portion marking.
 ///
-/// After the user manually removes EXDIS, re-linting clears both
-/// diagnostics.
+/// E037 emits no `FixProposal`, so the FR-016 deterministic ordering
+/// (lex-min rule id wins on overlap) does not block E041's fix from
+/// applying — E041 is the only diagnostic in the candidate-span group
+/// that contributes an intent. After the engine applies E041, re-linting
+/// the resulting portion clears both diagnostics.
 ///
-/// # Severity
+/// # Severity and auto-fix surface
 ///
-/// `Warn` — the diagnostic surfaces the supersession rule; the user
-/// resolves manually by removing EXDIS. Orgs that want to escalate
-/// can configure `E041 = "error"` in `.marque.toml`.
+/// `Warn` default severity. The engine's intent-only synthesis path
+/// auto-applies the fix for every severity *except* `Severity::Suggest`
+/// (see `crates/engine/src/engine.rs::synthesize_intent_only_fixes`),
+/// so the default emission auto-fixes. Orgs that want to surface
+/// the supersession without applying it can configure
+/// `E041 = "suggest"` in `.marque.toml`; orgs that want the violation
+/// promoted to an error can configure `E041 = "error"`.
 ///
-/// # No auto-fix
+/// # Auto-fix mechanism (PR 3c.B Sub-PR 8.E.2 — unblocks E041, primary rule named in #106)
 ///
-/// The source is unambiguous about which marking survives (NODIS),
-/// but auto-removing EXDIS would require constructing a clean
-/// `FixProposal.original` spanning `XD` + an adjacent `/` separator.
-/// The parser emits `TokenKind::Separator` only for between-category
-/// `//` — within-category `/` is gap bytes the rule cannot safely
-/// reconstruct. A fix implementation that overruns the single
-/// within-category byte risks corrupting the audit record per
-/// Constitution V. E041 therefore ships as a no-fix diagnostic;
-/// a follow-up PR can add the auto-fix once within-category
-/// separator handling lands in the parser.
+/// Pre-PR-3c.B-Sub-PR-8.E.2 this rule shipped as a no-fix diagnostic.
+/// The blocker was that a byte-precise legacy [`FixProposal`] would
+/// need to splice EXDIS *plus* an adjacent within-category `/`
+/// separator, but the parser only emits `TokenKind::Separator` for
+/// between-category `//` delimiters — within-category `/` bytes are
+/// gap bytes that no `TokenSpan` covers. Constructing the legacy
+/// proposal from rule-level position info risked over-running on
+/// edge inputs and corrupting the audit record per Constitution V.
 ///
-/// # Migration status (PR 3c.B Sub-PR 8.E, 2026-05-11)
-///
-/// Consciously landed at `fix_intent: None`. Per the 2026-05-11
-/// lattice-consultant session captured in
-/// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
-/// this rule is **Category A.1 — Single-fact removal**: the eventual
-/// Stage-4 target is `FactRemove(EXDIS, Scope::Portion)` because §H.9
-/// names EXDIS as the loser ("NODIS supersedes EXDIS in the portion
-/// mark") at both p172 and p174.
-///
-/// The Stage-4 target is **blocked on the parser within-category
-/// `/` separator gap** — the same gap documented in the
-/// `# No auto-fix` section above. Constitution V (Audit-First
-/// Compliance) is the load-bearing rationale: until the parser
-/// emits within-category `/` separator spans, the legacy
-/// `FixProposal.original` cannot faithfully cover the EXDIS-plus-
-/// separator byte range, so synthesizing the legacy fix risks
-/// audit-record corruption. Emitting a structural
-/// `FixIntent::FactRemove(EXDIS, Scope::Portion)` without the
-/// corresponding legacy `FixProposal` would produce an asymmetric
-/// `(fix: None, fix_intent: Some)` Diagnostic — and the engine's
-/// `intent_index` only pairs Diagnostics when both `fix` and
-/// `fix_intent` are populated, so the orphaned intent would never
-/// reach an `AppliedFixProposal::New` record. The 8.A/8.B-
-/// established `fix.is_some() ⇔ fix_intent.is_some()` symmetry
-/// discipline keeps emission
-/// consistent for downstream audit consumers. The only audit-safe
-/// migration state is therefore `(None, None)`; the constructor
-/// migration to `Diagnostic::with_fix_intent(..., None)` signals
-/// conscious evaluation of the FixIntent migration and a deferred
-/// (not lazy) decision.
+/// The intent-only emission path obviates that gap. The rule emits
+/// `FixIntent { ReplacementIntent::FactRemove { TOK_EXDIS, Portion } }`
+/// alongside the rule's `RuleContext::candidate_span` (the full
+/// portion span, including the parentheses). The engine's
+/// `synthesize_intent_only_fixes` calls `CapcoScheme::apply_intent`
+/// to remove EXDIS from the marking's `non_ic_dissem` axis, then
+/// re-renders the portion via `MarkingScheme::render_canonical`
+/// (delegated to `render_portion`). The synthesized
+/// `FixProposal.span` covers the full candidate, so the
+/// within-category `/` byte is replaced as part of the re-rendered
+/// portion — no parser change required. Issue #106 remains open as
+/// a tracking ticket for any future rule that genuinely needs
+/// byte-precise within-category separator info (i.e., a rule that
+/// cannot route through re-rendering); E041 itself no longer
+/// blocks on it.
 struct NodisSupersedesExdisInPortionRule;
 
 impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
@@ -3576,26 +3565,23 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
             return vec![];
         };
 
-        // PR 3c.B Sub-PR 8.E — migrated to `with_fix_intent` constructor
-        // signaling consciously-decided-no-fix-intent (Category A.1
-        // Remove(EXDIS, Scope::Portion); Stage-4 target blocked on the
-        // parser within-category-separator gap). See the
-        // `# Migration status` rustdoc section above for the full
-        // Constitution V (Audit-First Compliance) argument: emitting a
-        // structural `FixIntent::FactRemove(EXDIS, Scope::Portion)`
-        // without the corresponding legacy `FixProposal` would produce
-        // an asymmetric `(fix: None, fix_intent: Some)` Diagnostic
-        // that the engine's `intent_index`
-        // (`crates/engine/src/engine.rs:1366-1373`) silently drops —
-        // only Diagnostics with both fields populated reach the
-        // pairing logic. The 8.A/8.B-established `fix.is_some() ⇔
-        // fix_intent.is_some()` symmetry discipline keeps emission
-        // consistent; the only audit-safe state until the parser-gap
-        // closes is `(None, None)`.
-        vec![Diagnostic::with_fix_intent(
+        // PR 3c.B Sub-PR 8.E.2 — intent-only emission (unblocks E041 in #106).
+        // The diagnostic's `span` points at the EXDIS token (the
+        // user-facing pointer); `candidate_span` is the full portion
+        // candidate so the engine's `synthesize_intent_only_fixes`
+        // knows which scope-bytes to re-render after
+        // `CapcoScheme::apply_intent` removes EXDIS from the
+        // marking's non-IC-dissem axis. The within-category `/`
+        // separator that previously blocked byte-precise splicing is
+        // sidestepped because the engine replaces the full
+        // candidate_span with the re-rendered output — no parser
+        // change required (see the `# Auto-fix mechanism` section in
+        // the rustdoc above for the issue-#106 sidestep rationale).
+        vec![Diagnostic::with_intent_at_span(
             self.id(),
             self.default_severity(),
             exdis_span_tok.span,
+            ctx.candidate_span,
             "portion contains both NODIS and EXDIS; NODIS (ND) supersedes \
              EXDIS (XD) per §H.9 — remove EXDIS from the portion mark",
             concat!(
@@ -3603,8 +3589,45 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
                 "p174 (NODIS): NODIS supersedes EXDIS in the ",
                 "portion mark when both are present",
             ),
-            None,
+            nodis_supersedes_exdis_intent(),
         )]
+    }
+}
+
+/// Build the `FactRemove { EXDIS, Scope::Portion }` intent emitted by
+/// `NodisSupersedesExdisInPortionRule`. EXDIS is the rejected token
+/// per §H.9 p172 + p174 ("NODIS (ND) supersedes EXDIS (XD) in the
+/// portion mark"). Scope is portion-only: the supersession rule
+/// names the portion mark explicitly at both source passages.
+///
+/// Confidence is `Confidence::strict(1.0)` — the source is
+/// unambiguous about which token survives, and the strict recognizer
+/// path is what produced the parse that surfaced both tokens.
+///
+/// `feature_ids` uses `Default::default()` (empty `SmallVec`) to
+/// stay consistent with the other strict-path intent builders in
+/// this crate (see `relido_remove_intent` in `rules_declarative.rs`).
+fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
+    use crate::scheme::{TOK_EXDIS, TOK_NODIS};
+    FixIntent {
+        replacement: ReplacementIntent::FactRemove {
+            token_ref: FactRef::Cve(TOK_EXDIS),
+            scope: Scope::Portion,
+        },
+        confidence: Confidence::strict(1.0),
+        feature_ids: Default::default(),
+        // `ConflictsWith` (not `SupersededToken`): §H.9 mutual-exclusion
+        // with a dominated + surviving token, NOT §F deprecation /
+        // canonical-replacement. `token` = the dominated EXDIS;
+        // `expected_token` = the surviving NODIS.
+        message: Message::new(
+            MessageTemplate::ConflictsWith,
+            MessageArgs {
+                token: Some(TOK_EXDIS),
+                expected_token: Some(TOK_NODIS),
+                ..MessageArgs::default()
+            },
+        ),
     }
 }
 
@@ -6322,11 +6345,12 @@ mod tests {
 
     #[test]
     fn e041_fires_on_portion_with_both_nodis_and_exdis() {
-        // §H.9 p172 / p174: when a portion has
-        // both, NODIS supersedes EXDIS. E041 surfaces the diagnostic
-        // at Warn severity with no auto-fix (user removes EXDIS
-        // manually). See the rule doc for why the auto-fix is
-        // deferred.
+        // §H.9 p172 / p174: when a portion has both, NODIS supersedes
+        // EXDIS. E041 surfaces the diagnostic at Warn severity and
+        // emits an intent-only `FactRemove(EXDIS, Scope::Portion)`
+        // fix that the engine auto-applies via the synthesis path
+        // (PR 3c.B Sub-PR 8.E.2 — unblocks E041 in #106). The legacy `fix`
+        // field stays `None`; the new emission is on `fix_intent`.
         let diags = lint_portion("(S//NF//ND/XD)");
         let e041: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E041").collect();
         assert_eq!(
@@ -6337,10 +6361,16 @@ mod tests {
         assert_eq!(e041[0].severity, Severity::Warn);
         assert!(
             e041[0].fix.is_none(),
-            "E041 emits no auto-fix (the parser does not emit within-\
-             category `/` as a Separator token; see rule doc); got: \
-             {:?}",
+            "E041 emits no legacy FixProposal (intent-only emission); \
+             the engine synthesizes the byte-precise fix via \
+             `synthesize_intent_only_fixes` at fix time; got: {:?}",
             e041[0].fix
+        );
+        assert!(
+            e041[0].fix_intent.is_some(),
+            "E041 must emit `fix_intent: Some(FactRemove(EXDIS, Portion))` \
+             post-PR-3c.B-Sub-PR-8.E.2; got: {:?}",
+            e041[0].fix_intent
         );
         assert!(
             e041[0].message.contains("NODIS") && e041[0].message.contains("EXDIS"),
@@ -6436,54 +6466,95 @@ mod tests {
         );
     }
 
-    /// PR 3c.B Sub-PR 8.E — pin the consciously-decided-no-fix-intent
-    /// migration state for E041.
+    /// PR 3c.B Sub-PR 8.E.2 — pin E041's intent-only emission shape
+    /// (unblocks E041, the primary rule named in #106).
     ///
-    /// Per the 2026-05-11 lattice-consultant session captured in
-    /// `specs/006-engine-rule-refactor/followups/incompatibility-primitive-consolidation.md`,
-    /// E041 is **Category A.1 — Single-fact removal**: the eventual
-    /// Stage-4 target is `FactRemove(EXDIS, Scope::Portion)` because
-    /// §H.9 names EXDIS as the loser ("NODIS supersedes EXDIS in the
-    /// portion mark") at both p172 and p174. The Stage-4 target is
-    /// **blocked on the parser within-category `/` separator gap** —
-    /// emitting a structural `FixIntent::FactRemove(EXDIS, Scope::Portion)`
-    /// without a corresponding legacy `FixProposal` would violate the
-    /// `fix.is_some() ⇔ fix_intent.is_some()` symmetry invariant.
-    /// Constitution V (Audit-First Compliance) is the load-bearing
-    /// rationale: until the parser emits within-category separator
-    /// spans, the only audit-safe state is `(None, None)`. See the
-    /// `# Migration status` section of the `NodisSupersedesExdisInPortionRule`
-    /// rustdoc above for the full Constitution V argument.
+    /// E041 emits `fix: None, fix_intent: Some(FactRemove(EXDIS,
+    /// Scope::Portion))`. The engine's
+    /// `synthesize_intent_only_fixes` consumes the intent + the
+    /// diagnostic's `candidate_span` to produce a byte-precise
+    /// FixProposal that covers the full portion span; the
+    /// within-category `/` separator is replaced as part of the
+    /// re-rendered portion, sidestepping the parser gap tracked in
+    /// issue #106.
     ///
-    /// **Coverage note:** the G13 closure walker at
-    /// `crates/capco/tests/g13_closure_fix_intent.rs::all_migrated_rule_intents_pass_g13_envelope_walker`
-    /// only inspects rules that auto-apply through the engine (those
-    /// emitting `AppliedFixProposal::New` records, which require
-    /// `fix_intent.is_some()`). E041 with `fix_intent: None` is never
-    /// reached by that walker — so this symmetry pin is the **only**
-    /// guard against a future commit accidentally producing an
-    /// asymmetric `(fix, fix_intent)` pair on E041. Without it, a drift
-    /// toward `fix.is_some() && fix_intent.is_none()` (or the inverse)
-    /// would slip through CI silently.
+    /// This test pins three load-bearing invariants of the
+    /// intent-only emission:
+    ///
+    /// 1. `fix.is_none()` — the legacy `FixProposal` field stays
+    ///    empty. The engine synthesizes the byte-precise fix
+    ///    downstream; the rule does not duplicate it on the
+    ///    diagnostic. (Dual-population is reserved for Path C
+    ///    migrations under Commits 3/8; E041 is an intent-only
+    ///    rule, never dual-populated.)
+    ///
+    /// 2. `fix_intent.is_some()` and the intent variant is
+    ///    `ReplacementIntent::FactRemove` with `token_ref =
+    ///    FactRef::Cve(TOK_EXDIS)` and `scope = Scope::Portion`.
+    ///    Any drift (FactAdd, wrong token, wrong scope) would
+    ///    silently change which token gets removed.
+    ///
+    /// 3. `candidate_span.is_some()` — load-bearing for the
+    ///    synthesis path. `synthesize_intent_only_fixes` skips any
+    ///    intent-only diagnostic whose `candidate_span` is `None`
+    ///    (see `crates/engine/src/engine.rs:2141-2143`), so an E041
+    ///    that emits `fix_intent` without `candidate_span` would
+    ///    silently fail to auto-apply.
     #[test]
-    fn e041_emits_no_fix_or_intent_when_parser_gap() {
+    fn e041_emits_intent_only_factremove_exdis_portion() {
+        use marque_scheme::{FactRef, ReplacementIntent, Scope};
+
         let diags = lint_portion("(S//NF//ND/XD)");
         let e041 = diags
             .iter()
             .find(|d| d.rule.as_str() == "E041")
             .expect("E041 must fire on portion `(S//NF//ND/XD)` carrying both NODIS and EXDIS");
+
         assert!(
             e041.fix.is_none(),
-            "E041 fix must be None until parser within-category-separator gap closes; \
-             see Migration status section in NodisSupersedesExdisInPortionRule rustdoc"
+            "E041 must emit `fix: None` (intent-only); got: {:?}",
+            e041.fix
         );
+
+        let intent = e041
+            .fix_intent
+            .as_ref()
+            .expect("E041 must emit `fix_intent: Some(FactRemove(EXDIS, Portion))`");
+        match &intent.replacement {
+            ReplacementIntent::FactRemove { token_ref, scope } => {
+                assert_eq!(
+                    token_ref,
+                    &FactRef::Cve(crate::scheme::TOK_EXDIS),
+                    "E041 intent must target EXDIS (§H.9 names EXDIS as \
+                     the loser); got: {token_ref:?}"
+                );
+                assert_eq!(
+                    *scope,
+                    Scope::Portion,
+                    "E041 intent scope must be Portion per §H.9 p172 + \
+                     p174 (\"in the portion mark\"); got: {scope:?}"
+                );
+            }
+            other => panic!("E041 intent must be ReplacementIntent::FactRemove; got: {other:?}"),
+        }
+
         assert!(
-            e041.fix_intent.is_none(),
-            "E041 fix_intent must be None (symmetric with fix.is_none()). \
-             The G13 walker does NOT see (None, None) rules; this test is \
-             the only guard against asymmetric drift"
+            e041.candidate_span.is_some(),
+            "E041 must populate `candidate_span` so the engine's \
+             `synthesize_intent_only_fixes` knows which scope-bytes to \
+             re-render; got: {:?}",
+            e041.candidate_span
         );
     }
+
+    // Engine-level round-trip / idempotence / FR-016 tests for E041
+    // live in `crates/capco/tests/e041_intent_only_engine.rs` (PR 3c.B
+    // Sub-PR 8.E.2 — unblocks E041 in #106). They can't live inside this
+    // `#[cfg(test)]` module because the `marque_engine` dependency
+    // pulls in `marque_capco` as published, giving two non-equal
+    // crate identities for `CapcoScheme` (the inline module's
+    // `crate::scheme::CapcoScheme` vs `marque_capco::scheme::CapcoScheme`)
+    // and breaking the `RuleSet<CapcoScheme>` trait bound.
 
     // -----------------------------------------------------------------------
     // E053 — NOFORN conflicts with REL TO (§H.8 p145)
