@@ -139,6 +139,7 @@ impl<S: MarkingScheme> Hash for FactRef<S> {
 /// `Debug` and `Clone` are written manually rather than derived for
 /// the same reason as on [`FactRef`] — to avoid over-constraining
 /// the trait bound to `S: Debug + Clone`.
+#[non_exhaustive]
 pub enum ReplacementIntent<S: MarkingScheme> {
     /// Add a token to the projected fact set at `scope`.
     FactAdd {

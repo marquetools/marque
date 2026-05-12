@@ -449,8 +449,15 @@ fn apply_intent_to_marking(
             //
             // Multi-fact clusters (e.g. E024's RD/FRD/TFNI atomic chain)
             // iterate through all facts in the SmallVec. Per-fact
-            // inapplicability (token already absent) is a silent no-op;
-            // the whole intent is inapplicable only when no fact applied.
+            // `IntentInapplicable` is a silent no-op; the whole intent is
+            // inapplicable only when no fact applied.
+            //
+            // Note: `apply_fact_remove` uses `IntentInapplicable` for two
+            // distinct sub-cases — "token already absent" (idempotence) and
+            // "axis or token not yet wired for FactRemove" (migration stub).
+            // Both are silent per-fact no-ops in this loop. The whole-batch
+            // `IntentInapplicable` returned when `!any_applied` is the only
+            // failure that propagates to the caller.
             let mut any_applied = false;
             for fact in facts {
                 let category = scheme
@@ -459,7 +466,8 @@ fn apply_intent_to_marking(
                 match apply_fact_remove(marking, category, fact) {
                     Ok(()) => any_applied = true,
                     Err(ApplyIntentError::IntentInapplicable) => {
-                        // Token already absent — per-fact no-op; continue.
+                        // Token absent or axis not yet wired — per-fact no-op;
+                        // continue to next fact in the SmallVec.
                     }
                     Err(e) => return Err(e),
                 }
@@ -488,6 +496,9 @@ fn apply_intent_to_marking(
             // via render_canonical to produce the canonical form.
             Ok(())
         }
+        // #[non_exhaustive] forward-compat guard: unknown future variants
+        // are treated as inapplicable so the engine drops the fix silently.
+        _ => Err(ApplyIntentError::IntentInapplicable),
     }
 }
 

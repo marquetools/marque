@@ -1133,8 +1133,8 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
     fn default_severity(&self) -> Severity {
         // Severity::Fix enables the confidence-threshold gate (engine.rs
         // line 1167): below-threshold E024 diagnostics are downgraded to
-        // Severity::Suggest rather than auto-applied. Matches E041's
-        // pattern for intent-only rules.
+        // Severity::Suggest rather than auto-applied. Matches E054/E056/
+        // E057's pattern for intent-only FactRemove rules (all Severity::Fix).
         Severity::Fix
     }
 
@@ -1181,7 +1181,10 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
             .map(|f| match f {
                 FactRef::Cve(t) if *t == TOK_FRD => "FRD",
                 FactRef::Cve(t) if *t == TOK_TFNI => "TFNI",
-                _ => "?",
+                _ => unreachable!(
+                    "E024 catalog should only contain TOK_FRD / TOK_TFNI; \
+                     update this label builder when adding new tokens: {f:?}"
+                ),
             })
             .collect::<Vec<_>>()
             .join("/");
@@ -1205,7 +1208,7 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
                 "{superseded_label} should not appear alongside RD; \
                  RD takes precedence over {superseded_label} in both banners and portions"
             ),
-            "CAPCO-2016 §H.6 p104",
+            "CAPCO-2016 §H.6 p104–p105",
             fix_intent,
         )]
     }

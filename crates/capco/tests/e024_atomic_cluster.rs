@@ -209,3 +209,27 @@ fn e024_fix_is_idempotent_second_pass_clears_all_e024() {
             .collect::<Vec<_>>()
     );
 }
+
+/// Negative guard: RD alone (no FRD or TFNI) must not trigger E024.
+///
+/// The E024 predicate is `has_rd && (has_frd || has_tfni)`. When only
+/// RD is present the predicate is false; no diagnostic must be emitted.
+/// This locks in the no-fire contract so a future change to the
+/// predicate cannot silently cause false positives on clean RD portions.
+///
+/// CAPCO-2016 §H.6 p104–p105: RD takes precedence *when* FRD or TFNI
+/// are commingled; there is nothing to fix when they are absent.
+#[test]
+fn e024_does_not_fire_on_rd_alone() {
+    let input = b"(TS//RD//NF) Marking without FRD or TFNI.\n";
+    let result = engine().lint(input);
+    assert!(
+        result.diagnostics.iter().all(|d| d.rule.as_str() != "E024"),
+        "E024 must not fire on RD-alone portions; got: {:?}",
+        result
+            .diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
