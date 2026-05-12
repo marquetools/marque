@@ -90,14 +90,14 @@ fn e041_fix_round_trip_produces_canonical_nodis_only_portion() {
 fn e041_fix_is_idempotent_second_pass_clears_all_e041() {
     let first = engine().fix(b"(S//NF//ND/XD)\n", FixMode::Apply);
     assert_eq!(
-        first.source,
-        b"(S//NF//ND)\n",
+        first.source, b"(S//NF//ND)\n",
         "first pass must produce canonical NODIS-only portion"
     );
 
     let second = engine().fix(&first.source, FixMode::Apply);
     assert_eq!(
-        second.source, first.source,
+        second.source,
+        first.source,
         "second pass must be byte-identical to first-pass output \
          (fixed point); got: {:?}",
         std::str::from_utf8(&second.source).unwrap_or("<non-utf8>")

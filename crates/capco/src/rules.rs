@@ -6524,9 +6524,7 @@ mod tests {
                      p174 (\"in the portion mark\"); got: {scope:?}"
                 );
             }
-            other => panic!(
-                "E041 intent must be ReplacementIntent::FactRemove; got: {other:?}"
-            ),
+            other => panic!("E041 intent must be ReplacementIntent::FactRemove; got: {other:?}"),
         }
 
         assert!(
