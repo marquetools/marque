@@ -1099,7 +1099,8 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
         // highlighting an EXDIS token. Scan the full `non_ic_dissem`
         // collection — NOT just the first entry — so a marking that
         // contains other NonIcDissem variants before the trigger
-        // (e.g. `(S//LIMDIS/NODIS)`) still fires correctly. The
+        // (e.g. `(S//DS/ND)` — `DS` is LIMDIS's portion form,
+        // `ND` is NODIS's) still fires correctly. The
         // earlier `.first()` shortcut silently dropped diagnostics
         // on such inputs (Copilot review of PR #372, second round).
         //
@@ -1167,7 +1168,8 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
 /// `trigger_token` carries the NODIS-or-EXDIS token that fired the
 /// rule, derived from the first NODIS-or-EXDIS entry in source order
 /// (scanning the full `non_ic_dissem` collection, not just position
-/// zero — `(S//LIMDIS/NODIS)` must still fire). It agrees with
+/// zero — `(S//DS/ND)` must still fire, where `DS` is LIMDIS's
+/// portion form and `ND` is NODIS's). It agrees with
 /// `Diagnostic.span` (the rule's surface anchor) and flows into
 /// `MessageArgs.token` so consumers can render "NODIS requires
 /// NOFORN" vs "EXDIS requires NOFORN" without re-parsing the
