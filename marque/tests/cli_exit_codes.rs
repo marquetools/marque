@@ -61,25 +61,47 @@ fn fix_clean_input_exits_zero() {
 
 #[test]
 fn fix_with_warning_only_exits_two() {
-    // The W003 fixture is an Info+Warn corpus that maps to
-    // `EX_DIAG_WARN = 2`. We use `fix --dry-run` so no on-disk
-    // changes occur; the re-lint post-fix accounts for the warn
-    // count.
+    // W003 (non-IC dissem control in classified banner, §H.9) is
+    // `Severity::Warn` and emits no fix — a "manual review required"
+    // signal, not an automatable rewrite. The fixture
+    // `invalid/classified_banner_limdis.txt` (`SECRET//LIMDIS`)
+    // produces exactly one diagnostic: W003 at span 8..14.
     //
-    // If no Warn-only fixture is available, this test exits OK and
-    // documents that absence; the load-bearing precedence test is
-    // the `merge_exit_code` unit-test bank.
-    let candidate = fixture("valid/banner_with_info_only.txt");
-    if !candidate.exists() {
-        // Documented absence — see `exit_code_tests::warn_beats_ok`
-        // for the precedence-chain unit test.
-        return;
-    }
+    // The exit-code precedence chain in `marque::main::merge_exit_code`
+    // routes Warn-only documents to `EX_DIAG_WARN = 2`. This test
+    // pins the integration shape: the spawned `marque` binary, given
+    // a real Warn-only fixture, returns exit code 2 — not the
+    // vacuous "fixture missing → exit 0" sentinel the pre-Copilot
+    // version did (Copilot round-1 finding #1).
+    //
+    // The `fix` exit code is verified first; the diagnostic-stream
+    // belt-and-suspenders runs through `check` (which writes the
+    // diagnostic JSON to stdout — `fix` emits no stdout when there
+    // are no fixes to apply, which is exactly the W003 no-fix
+    // shape).
     marque()
         .args(["fix", "--dry-run", "--format", "json"])
-        .arg(&candidate)
+        .arg(fixture("invalid/classified_banner_limdis.txt"))
         .assert()
-        .code(0); // Info-only stays at EX_OK; this is a smoke check.
+        .code(2);
+
+    // Confirm the diagnostic stream actually carries W003 / Warn —
+    // a future change that retired W003 or flipped its severity
+    // would silently fall back to EX_OK without this guard.
+    let check = marque()
+        .args(["check", "--format", "json"])
+        .arg(fixture("invalid/classified_banner_limdis.txt"))
+        .assert()
+        .code(2);
+    let stdout = String::from_utf8_lossy(&check.get_output().stdout).into_owned();
+    assert!(
+        stdout.contains("\"rule\":\"W003\""),
+        "expected W003 in diagnostic stream; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"severity\":\"warn\""),
+        "expected severity=warn for W003; got: {stdout}"
+    );
 }
 
 #[test]

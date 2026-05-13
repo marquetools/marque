@@ -145,16 +145,28 @@ Post-conditions:
 
 ### Re-parse (between Pass 1 and Pass 2)
 
+The recognizer is total — there is no `parse(...) -> Err` arm.
+The "re-parse failed" signal is represented as **"the post-splice
+buffer no longer parses any candidates"** (see the R002 surfacing
+section below for the full trigger conjunction):
+
 ```text
-let post_pass_1_attrs: Result<ParsedAttrs<'_>, ParseError> = parse(post_pass_1_buffer);
-match post_pass_1_attrs {
-    Ok(attrs) => proceed_to_pass_2(canonicalize(attrs)),
-    Err(_) => emit_r002_and_return(),
+let (relint, post_pass_1_markings) = engine.lint_with_options_internal(post_pass_1_buffer, opts);
+if pre_pass_1_markings.is_empty() == false
+   && post_pass_1_markings.is_empty()
+   && pass1.applied.is_empty() == false
+{
+    emit_r002_and_return()
+} else {
+    proceed_to_pass_2(post_pass_1_markings, relint.diagnostics)
 }
 ```
 
-Post-conditions on success: pass-1 reshape is reflected in `attrs`
-(I-4); pass-2 rules see the post-rewrite token spans.
+Post-conditions on success: pass-1 reshape is reflected in the
+fresh `relint` (I-4); pass-2 rules see the post-rewrite token
+spans AND the post-rewrite diagnostic stream (FR-023 partial —
+the full reshape-aware `(scheme, predicate-id)` no-re-fire gate
+lands in PR 7c on top of the pre-pass-1 attrs cache).
 
 Post-conditions on failure (FR-024):
 - Engine emits `R002` diagnostic with `contributing_pass1_fix_ids`
@@ -173,13 +185,30 @@ each consumer surface MUST do with R002. Per **decision D1** in
 `decisions.md` and PR 7b decisions D-7.8 / D-7.12 / D-7.15 in
 `docs/refactor-006/pr-7-pm-decisions.md`:
 
-**1. When R002 fires.** `parse(post_pass_1_buffer)` rejects the
-buffer the engine produced after splicing pass-1 fixes. Re-parse
-goes through the engine's installed `Recognizer` — dispatcher
-behavior matches the original lint pass. Pre-condition: pass-1
-produced ≥1 applied fix (when pass-1 was empty the engine short-
-circuits and never re-parses, so R002 is unreachable on a no-fix
-path).
+**1. When R002 fires.** Implementation note: marque's recognizer
+is total — `parse(...) -> Err` is not an arm in the
+`Recognizer<S>` trait surface. The "re-parse failed" signal is
+therefore represented as **"the post-splice buffer no longer
+parses any candidates."** Concretely, R002 fires when ALL of:
+
+- pass-1 produced ≥1 applied fix (the byte stream changed); AND
+- the pre-pass-1 markings table was non-empty (the original
+  buffer had ≥1 parsed candidate); AND
+- the post-pass-1 markings table is empty (the re-lint over the
+  spliced buffer found zero candidates).
+
+That conjunction is the conservative trigger — it fires only
+when pass-1 walked the scanner clean of every candidate the
+original buffer had, which is the operational definition of
+"pass-1 corrupted the marking shape." A partial cleanup (some
+markings survive) does not fire R002; pass-2 proceeds normally
+against the surviving markings. Pre-condition: when pass-1
+produced no applied fixes the engine short-circuits, reuses the
+pre-pass-1 markings table, and R002 is unreachable on the no-fix
+path.
+
+Re-parse goes through the engine's installed `Recognizer` —
+dispatcher behavior matches the original lint pass.
 
 **2. Audit-record consumer view.**
 - `FixResult.applied` = pass-0 text-corrections + pass-1

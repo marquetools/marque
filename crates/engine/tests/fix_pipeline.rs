@@ -606,9 +606,15 @@ fn r002_not_minted_as_applied_fix() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
     for fix in &result.applied {
+        // Compare against the typed constant rather than the string
+        // literal so a future rename of `R002_RULE_ID` is caught here
+        // instead of silently passing on stale identifier drift —
+        // matches the pattern in
+        // `audit_completeness.rs::r002_does_not_mint_applied_fix`
+        // (security-panel LOW-4 fix).
         assert_ne!(
-            fix.rule.as_str(),
-            "R002",
+            fix.rule,
+            marque_engine::R002_RULE_ID,
             "R002 must never appear as an AppliedFix; \
              Constitution V Principle V (audit-record integrity)"
         );
