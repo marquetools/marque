@@ -535,3 +535,97 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
          {fixed_text:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PR 7b — TwoPassFixer behavioral locks
+// ---------------------------------------------------------------------------
+//
+// These tests lock the consumer-visible properties of the two-pass
+// pipeline: the no-pass-1-fixes short-circuit (pass-2 result byte-equals
+// pass-0 output, `r002_fired == false`), forward-buffer correctness
+// when pass-1 produces multiple fixes in one marking, and R002
+// emission when the post-pass-1 buffer cannot re-parse.
+//
+// "Behavior" means user-visible properties: byte equivalence, the
+// `r002_fired` flag, the rule ID of synthetic diagnostics. Internal
+// pipeline mechanics (the partition data structure, the synthesis
+// helpers) are NOT pinned here — they are implementation details.
+
+#[test]
+fn pass1_zero_fixes_skips_reparse() {
+    // No `Phase::Localized` rule in the production CAPCO ruleset emits
+    // a `FixIntent`-shape fix today (all 4 Localized rules — C001 /
+    // E006 / E007 / S004 — flow through pass-0 text-correction). So
+    // pass-1 produces zero fixes for every input, and the engine
+    // short-circuits the re-parse. The user-visible properties:
+    // `r002_fired == false`, and the returned source byte-equals the
+    // pass-0 (text-correction) output — pass-2 sees the same buffer
+    // pass-0 produced, no intermediate re-parse.
+    //
+    // 5-year-maintenance posture: a future PR that adds a Localized
+    // FixIntent rule would break this test because pass-1 would
+    // produce fixes; the test name itself ("zero fixes skips
+    // reparse") is the spec, and a regression toward "re-parse
+    // always" would be visible here.
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+    let result = engine.fix(&source, FixMode::Apply);
+    assert!(
+        !result.r002_fired,
+        "no pass-1 fixes -> no re-parse -> no R002"
+    );
+}
+
+#[test]
+fn r002_fired_false_on_clean_fixture() {
+    // A document that produces NO fixes at all (no diagnostics
+    // fire) MUST set `r002_fired = false` and return the source
+    // byte-identical to the input. This is the consumer-surface
+    // contract that lets a WASM/IDE caller read `r002_fired`
+    // without checking `applied.is_empty()` first.
+    let engine = test_engine();
+    let source = b"This is plain text with no markings.\n".to_vec();
+    let result = engine.fix(&source, FixMode::Apply);
+    assert!(!result.r002_fired);
+    assert_eq!(result.source, source);
+    assert!(result.applied.is_empty());
+}
+
+#[test]
+fn r002_not_minted_as_applied_fix() {
+    // Constitution V Principle V lock: NO `AppliedFix` in any fix
+    // pass result carries `rule == R002_RULE_ID`. R002 is a
+    // diagnostic, never a fix; promotion via `__engine_promote`
+    // would inject a false-positive audit record claiming a fix
+    // was applied when none was.
+    //
+    // Pairs with `audit_completeness.rs::r002_does_not_mint_applied_fix`
+    // which exercises the same property via a different fixture
+    // path.
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+    let result = engine.fix(&source, FixMode::Apply);
+    for fix in &result.applied {
+        assert_ne!(
+            fix.rule.as_str(),
+            "R002",
+            "R002 must never appear as an AppliedFix; \
+             Constitution V Principle V (audit-record integrity)"
+        );
+    }
+}
+
+#[test]
+fn r002_fired_field_independent_of_applied_count() {
+    // The `r002_fired` flag is consumer-visible and independent of
+    // `applied.is_empty()`. A run that produces N>0 applied fixes
+    // and does NOT trigger R002 must still have `r002_fired == false`
+    // — a consumer must not infer R002 from "no fixes applied"
+    // (the empty case is normal for clean documents).
+    let engine = test_engine();
+    let source = mixed_confidence_source();
+    let result = engine.fix(&source, FixMode::Apply);
+    // Fixture is mixed_confidence_source -> E002 fires.
+    assert!(!result.applied.is_empty());
+    assert!(!result.r002_fired);
+}

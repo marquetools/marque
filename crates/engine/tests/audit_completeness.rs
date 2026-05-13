@@ -195,3 +195,35 @@ fn applied_fix_timestamp_matches_clock() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// PR 7b — R002 audit-record integrity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn r002_does_not_mint_applied_fix() {
+    // Constitution V Principle V (audit-record integrity) lock:
+    // R002 is a synthetic diagnostic emitted when the post-pass-1
+    // buffer cannot be re-parsed. It has no replacement, no intent,
+    // no fix proposal — it is informational guidance about why
+    // pass-2 did not run, not an action taken. Promoting it via
+    // `__engine_promote` would inject a false-positive audit record
+    // claiming a fix was applied when none was.
+    //
+    // The pin: `result.applied` MUST NOT contain ANY entry whose
+    // `rule == R002_RULE_ID`. Holds regardless of whether R002
+    // fired or not on the fixture below (today no production
+    // Localized rule emits a FixIntent that could trigger R002, so
+    // `r002_fired == false` here, but the absence-of-R002-fix
+    // invariant must hold in either branch).
+    let engine = test_engine();
+    let source = b"SECRET//REL TO GBR\n(TS//HCS)\n";
+    let result = engine.fix(source, FixMode::Apply);
+    for fix in &result.applied {
+        assert_ne!(
+            fix.rule.as_str(),
+            "R002",
+            "R002 must never appear as an AppliedFix"
+        );
+    }
+}
