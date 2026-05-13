@@ -3079,14 +3079,22 @@ impl MarkingScheme for CapcoScheme {
                                 // - `Ok(())`: rewrite applied, marking mutated.
                                 // - `IntentInapplicable`: silent no-op for this rewrite (idempotent
                                 //   — the marking was already in the post-rewrite state).
-                                // - `UnknownToken` / `IntentRejectsLattice`: these are validated
-                                //   at `Engine::new` time (see `validate_intent_rewrites`
-                                //   in marque-engine); reaching this arm means engine construction
-                                //   succeeded but the runtime route regressed (e.g., scheme
-                                //   mutated between construction and call). Log and treat as a
-                                //   silent no-op rather than panic; `Engine::lint`'s hot path
-                                //   must not unwind into Tower middleware. The corpus-parity
-                                //   tests will surface incorrect projection output.
+                                // - `UnknownToken`: pre-validated for callers that go through
+                                //   `Engine::new` (see `validate_intent_rewrites` in
+                                //   marque-engine). Direct callers of `CapcoScheme::project` (e.g.,
+                                //   tests, scheme-exploration tooling) bypass that validation, so
+                                //   this arm IS reachable on the project path; it's also reachable
+                                //   if the scheme is mutated between Engine construction and call.
+                                // - `IntentRejectsLattice`: NOT pre-validated — it's a runtime
+                                //   condition (lattice invariant violation) that
+                                //   `validate_intent_rewrites` cannot detect without simulating
+                                //   the intent application.
+                                // - Future `ReplacementIntent` variants that reach the
+                                //   `apply_intent_to_marking` `_` arm also land here.
+                                // In every error-arm case, log and treat as a silent no-op rather
+                                // than panic; `Engine::lint`'s hot path must not unwind into Tower
+                                // middleware. The corpus-parity tests will surface incorrect
+                                // projection output.
                                 match apply_intent_to_marking(self, &mut out, intent) {
                                     Ok(()) => {
                                         tracing::debug!(
@@ -5556,6 +5564,7 @@ impl CapcoScheme {
     /// payloads). Tests that want to exercise validation MUST feed
     /// the constructed scheme to `Engine::new` so the validation
     /// runs over the test rewrites.
+    #[doc(hidden)]
     pub fn with_rewrites(rewrites: Vec<PageRewrite<CapcoScheme>>) -> Self {
         Self {
             categories: Self::build_categories(),
@@ -5574,6 +5583,7 @@ impl CapcoScheme {
     /// construction-time validation pass). Tests that want to exercise
     /// validation MUST construct the scheme separately and feed it to
     /// `Engine::new` so the validation runs over the appended rewrite.
+    #[doc(hidden)]
     pub fn with_extra_rewrite_for_tests(mut self, rewrite: PageRewrite<CapcoScheme>) -> Self {
         self.page_rewrites.push(rewrite);
         self

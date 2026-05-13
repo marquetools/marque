@@ -132,10 +132,17 @@ pub enum EngineConstructionError {
     /// by the validation walk (`UnknownToken` in practice, since
     /// `IntentRejectsLattice` is a runtime-only condition).
     ///
+    /// The `fact_label` field carries the `Debug`-formatted offending
+    /// [`FactRef`] (e.g., `"Cve(TokenId(4294967295))"`) so the Display
+    /// message points the scheme-author at the specific token, not
+    /// just the rewrite.
+    ///
     /// [`PageRewrite`]: marque_scheme::PageRewrite
     /// [`ReplacementIntent`]: marque_scheme::ReplacementIntent
+    /// [`FactRef`]: marque_scheme::FactRef
     InvalidIntentInPageRewrite {
         rewrite_id: RewriteId,
+        fact_label: String,
         error: ApplyIntentError,
     },
 }
@@ -201,10 +208,14 @@ impl std::fmt::Display for EngineConstructionError {
                     " — specify only one form (either the rule ID or the rule name), not both with different severities"
                 )
             }
-            Self::InvalidIntentInPageRewrite { rewrite_id, error } => write!(
+            Self::InvalidIntentInPageRewrite {
+                rewrite_id,
+                fact_label,
+                error,
+            } => write!(
                 f,
                 "page-rewrite {rewrite_id:?} carries a CategoryAction::Intent with an \
-                 unroutable token reference: {error}"
+                 unroutable token reference {fact_label}: {error}"
             ),
         }
     }
@@ -318,6 +329,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn invalid_intent_in_page_rewrite_exit_code_is_unavailable() {
+        let err = EngineConstructionError::InvalidIntentInPageRewrite {
+            rewrite_id: "test-rewrite",
+            fact_label: "Cve(TokenId(4294967295))".to_string(),
+            error: ApplyIntentError::UnknownToken,
+        };
+        assert_eq!(
+            err.exit_code(),
+            69,
+            "scheme-author defect (Intent payload references an unroutable token) \
+             → EX_UNAVAILABLE, same class as RewriteCycle / UnannotatedCustomAxes"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // EngineConstructionError::Display — round-trip every variant. Smoke
     // checks key strings appear so the message stays useful when a
@@ -334,6 +360,28 @@ mod tests {
         assert!(msg.contains("page-rewrite cycle"), "got: {msg}");
         assert!(msg.contains("alpha"), "got: {msg}");
         assert!(msg.contains("beta"), "got: {msg}");
+    }
+
+    #[test]
+    fn invalid_intent_in_page_rewrite_display_names_rewrite_and_fact() {
+        let err = EngineConstructionError::InvalidIntentInPageRewrite {
+            rewrite_id: "nodis-implies-noforn",
+            fact_label: "Cve(TokenId(4294967295))".to_string(),
+            error: ApplyIntentError::UnknownToken,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("nodis-implies-noforn"),
+            "rewrite id missing: {msg}"
+        );
+        assert!(
+            msg.contains("Cve(TokenId(4294967295))"),
+            "fact label missing: {msg}",
+        );
+        assert!(
+            msg.contains("unroutable token"),
+            "expected message to identify the failure mode: {msg}",
+        );
     }
 
     #[test]

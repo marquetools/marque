@@ -282,10 +282,18 @@ fn engine_new_rejects_intent_with_unroutable_cve_token() {
     );
 
     match result {
-        Err(EngineConstructionError::InvalidIntentInPageRewrite { rewrite_id, error }) => {
+        Err(EngineConstructionError::InvalidIntentInPageRewrite {
+            rewrite_id,
+            fact_label,
+            error,
+        }) => {
             assert_eq!(
                 rewrite_id, "test/intent-unroutable-token",
                 "Engine must name the offending rewrite by id",
+            );
+            assert!(
+                fact_label.contains("Cve") && fact_label.contains(&u32::MAX.to_string()),
+                "fact_label must Debug-format the offending FactRef: got {fact_label:?}",
             );
             assert_eq!(
                 error,

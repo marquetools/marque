@@ -579,8 +579,16 @@ fn engine_new_rejects_intent_with_unroutable_token_via_stub_scheme() {
         Err(e) => e,
     };
     match err {
-        EngineConstructionError::InvalidIntentInPageRewrite { rewrite_id, error } => {
+        EngineConstructionError::InvalidIntentInPageRewrite {
+            rewrite_id,
+            fact_label,
+            error,
+        } => {
             assert_eq!(rewrite_id, "intent-unroutable");
+            assert!(
+                fact_label.contains("Cve"),
+                "fact_label must Debug-format the FactRef variant: got {fact_label:?}",
+            );
             assert_eq!(error, ApplyIntentError::UnknownToken);
         }
         other => panic!("expected InvalidIntentInPageRewrite, got {other:?}"),

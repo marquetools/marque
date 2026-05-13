@@ -47,7 +47,7 @@ use crate::errors::EngineConstructionError;
 /// - `FactAdd { token, .. }` validates `token`.
 /// - `FactRemove { facts, .. }` validates every `FactRef` in `facts`.
 /// - `Recanonicalize { .. }` carries no `FactRef`; nothing to validate.
-pub fn validate_intent_rewrites<S>(
+pub(crate) fn validate_intent_rewrites<S>(
     scheme: &S,
     rewrites: &[PageRewrite<S>],
 ) -> Result<(), EngineConstructionError>
@@ -60,6 +60,7 @@ where
                 if scheme.category_of(fact).is_none() {
                     return Err(EngineConstructionError::InvalidIntentInPageRewrite {
                         rewrite_id: rw.id,
+                        fact_label: format!("{fact:?}"),
                         error: ApplyIntentError::UnknownToken,
                     });
                 }

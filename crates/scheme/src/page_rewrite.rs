@@ -315,9 +315,12 @@ pub enum CategoryAction<S: MarkingScheme + ?Sized> {
     ///
     /// Unlike `Clear` / `Replace` (which operate on an entire category)
     /// and `Custom` (which is opaque to the scheduler), `Intent` lets the
-    /// rewrite mutate a single fact in a category while remaining
-    /// declarative: the rewrite author still declares `reads` / `writes`
-    /// annotations explicitly via [`PageRewrite::declarative`].
+    /// rewrite mutate one or more named facts in a category while
+    /// remaining declarative (`FactAdd` carries one fact;
+    /// `FactRemove` carries a `SmallVec` of one or more for atomic
+    /// multi-fact clusters like the E024 RD/FRD/TFNI removal). The
+    /// rewrite author still declares `reads` / `writes` annotations
+    /// explicitly via [`PageRewrite::declarative`].
     ///
     /// **Validation**: every `CategoryAction::Intent` is validated at
     /// engine-construction time. The engine walks each rewrite's
