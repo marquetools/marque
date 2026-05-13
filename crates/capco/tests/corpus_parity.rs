@@ -194,18 +194,21 @@ fn rule_count_reflects_registration_changes() {
 }
 
 #[test]
-fn phase_3_declares_nine_page_rewrites_with_citations() {
+fn phase_3_declares_eleven_page_rewrites_with_citations() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
-        9,
-        "PR 3b.B (T026b) declares nine page rewrites: the retained \
+        11,
+        "PR 3b.B (T026b) declared nine page rewrites — the retained \
          `capco/noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3 \
          transmutation entries from `marque-applied.md` (consultant \
          Entry 6 split into 6a + 6b for D13). The two earlier Phase-3 \
          stubs (`joint-promotion`, `fgi-absorption`) were retired in \
-         PR 3b.B."
+         PR 3b.B. PR 3c.B Sub-PR 8.F adds two Pattern A NOFORN-supremacy \
+         rewrites: `capco/nodis-implies-noforn` (CAPCO-2016 §H.9 p174) \
+         and `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172), \
+         bringing the total to eleven."
     );
     for rw in rewrites {
         assert!(
@@ -229,25 +232,29 @@ fn phase_3_engine_lint_produces_wellformed_result_on_empty_input() {
 }
 
 #[test]
-fn phase_3_scheduler_exposes_nine_scheduled_rewrites() {
+fn phase_3_scheduler_exposes_eleven_scheduled_rewrites() {
     // The scheduler produced a topological order at construction
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
     // property, not a declaration-order one. Set is the retained
-    // `noforn-clears-rel-to` plus the eight PR 3b.B transmutations.
+    // `noforn-clears-rel-to` plus the eight PR 3b.B transmutations
+    // plus the two PR 3c.B Sub-PR 8.F Pattern A rewrites
+    // (`capco/nodis-implies-noforn`, `capco/exdis-implies-noforn`).
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    assert_eq!(scheduled.len(), 9);
+    assert_eq!(scheduled.len(), 11);
     let mut names: Vec<&str> = scheduled.to_vec();
     names.sort();
     assert_eq!(
         names,
         [
+            "capco/exdis-implies-noforn",
             "capco/fgi-restricted-rollup-on-us-contact",
             "capco/fgi-rollup-on-us-contact",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/joint-cross-class-rollup",
             "capco/les-nf-transmutes-on-classified-contact",
+            "capco/nodis-implies-noforn",
             "capco/noforn-clears-rel-to",
             "capco/orcon-nato-to-us-orcon-on-us-contact",
             "capco/sbu-nf-transmutes-on-classified-contact",
@@ -258,15 +265,23 @@ fn phase_3_scheduler_exposes_nine_scheduled_rewrites() {
 
 #[test]
 fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
-    // The DISSEM-writing transmutations (entries 5, 6a, 6b — ORCON-
-    // NATO, SBU-NF, LES-NF) all write CAT_DISSEM; `capco/noforn-
-    // clears-rel-to` reads CAT_DISSEM (and writes CAT_REL_TO). The
-    // scheduler must therefore order each DISSEM writer BEFORE the
-    // NOFORN clearer — otherwise a transmutation that emits NOFORN
-    // could fire after the clearer and leave REL TO populated when
-    // it should have been cleared. This ordering is a declarative
-    // guarantee of the scheme's `reads` / `writes` annotations, not
-    // an accident of declaration order.
+    // The DISSEM-writing transmutations all write CAT_DISSEM;
+    // `capco/noforn-clears-rel-to` reads CAT_DISSEM (and writes
+    // CAT_REL_TO). The scheduler must therefore order each DISSEM
+    // writer BEFORE the NOFORN clearer — otherwise a transmutation
+    // that emits NOFORN could fire after the clearer and leave REL TO
+    // populated when it should have been cleared. This ordering is a
+    // declarative guarantee of the scheme's `reads` / `writes`
+    // annotations, not an accident of declaration order.
+    //
+    // DISSEM writers:
+    //   - Entries 5, 6a, 6b — ORCON-NATO, SBU-NF, LES-NF
+    //     transmutations (PR 3b.B).
+    //   - PR 3c.B Sub-PR 8.F Pattern A rewrites —
+    //     `capco/nodis-implies-noforn` (CAPCO-2016 §H.9 p174) and
+    //     `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172) — each
+    //     declares `writes = [CAT_DISSEM]`, so the same DISSEM-writer
+    //     precedence invariant applies.
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
     let nf = scheduled
@@ -277,6 +292,8 @@ fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
         "capco/orcon-nato-to-us-orcon-on-us-contact",
         "capco/sbu-nf-transmutes-on-classified-contact",
         "capco/les-nf-transmutes-on-classified-contact",
+        "capco/nodis-implies-noforn",
+        "capco/exdis-implies-noforn",
     ] {
         let pos = scheduled
             .iter()
