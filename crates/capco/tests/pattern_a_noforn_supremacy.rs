@@ -514,6 +514,22 @@ fn pattern_a_rewrites_emit_no_applied_fix() {
         .map(|af| af.proposal.rule.as_str())
         .collect();
 
+    // Positive control: prove the fix pipeline actually ran on this
+    // input. `(S//ND)` and `(S//XD)` are both invalid per E038
+    // (NODIS/EXDIS Requires NOFORN, §H.9 p172/p174); E038 emits a
+    // `FactAdd(NOFORN)` fix proposal at `Severity::Fix`, so its rule ID
+    // MUST appear in the audit stream. Without this assertion the test
+    // could pass vacuously if `Engine::fix` failed to parse the input or
+    // if future threshold/default changes silently disabled the fix
+    // pipeline — Copilot PR #393 inline review.
+    assert!(
+        applied_ids.contains(&"E038"),
+        "E038 must appear in the audit stream for input `(S//ND)\\n(S//XD)\\n` \
+         (NODIS/EXDIS portions both missing the required NOFORN). \
+         Without E038 firing, the `no Pattern A AppliedFix` assertions below \
+         risk passing vacuously. applied rules: {applied_ids:?}",
+    );
+
     // Assert: neither new rewrite ID appears in the audit stream.
     // These rewrites are scheduler-validated but execution-deferred —
     // they live in the scheme's declarative table and their intent
