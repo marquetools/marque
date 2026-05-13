@@ -4986,13 +4986,19 @@ mod tests {
         // `needs_nf` bail in `analyze_uncertain_reduction` (lines
         // 2311-2314 after the rename) propagates this. Pin the bail.
         //
-        // Fixture: portion 1 has NODIS; portions 2 and 3 have classified
-        // REL TO with an uncertain code (RSMA). Pre-PR the rule would
-        // have computed `portions_with_rel_to.len() == 2`,
-        // `expected_set = {}` (NODIS supersession via `needs_nf`), and
-        // fired a misleading "intersection produced REL TO (empty…)"
-        // diagnostic. Post-PR the `needs_nf` bail stops it.
-        let source = "(S//NODIS//NOFORN)\n\
+        // Fixture: portion 1 has NODIS only (NOT explicit `//NOFORN` — the
+        // §H.9 p174 imply-NF semantics IS what we are testing; including
+        // explicit NF in the portion would route the bail through the
+        // pre-existing `any_portion_noforn` short-circuit at line 2303-
+        // 2310 instead of the new `needs_nf` path, defeating the
+        // regression purpose. Caught by Copilot review on this PR.).
+        // Portions 2 and 3 have classified REL TO with an uncertain code
+        // (RSMA). Pre-PR the rule would have computed
+        // `portions_with_rel_to.len() == 2`, `expected_set = {}` (NODIS
+        // supersession via `needs_nf`), and fired a misleading
+        // "intersection produced REL TO (empty…)" diagnostic. Post-PR
+        // the `needs_nf` bail stops it.
+        let source = "(S//NODIS)\n\
                       (S//REL TO USA, GBR, RSMA)\n\
                       (S//REL TO USA, AUS, GBR)\n\
                       SECRET//NODIS//NOFORN";
@@ -5013,7 +5019,12 @@ mod tests {
         // authorized in the banner line if any portion contains EXDIS
         // information. In this case, NOFORN would convey in the banner
         // line."
-        let source = "(S//EXDIS//NOFORN)\n\
+        //
+        // Portion 1 carries EXDIS only — see the NODIS test above for
+        // why explicit `//NOFORN` is intentionally omitted from the
+        // portion (route the bail through the new `needs_nf` path, not
+        // the pre-existing `any_portion_noforn` short-circuit).
+        let source = "(S//EXDIS)\n\
                       (S//REL TO USA, GBR, RSMA)\n\
                       (S//REL TO USA, AUS, GBR)\n\
                       SECRET//EXDIS//NOFORN";
