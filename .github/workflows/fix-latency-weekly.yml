@@ -37,13 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: scripts/bench-check.sh (capture full output)
         run: |
