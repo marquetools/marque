@@ -40,6 +40,7 @@ use marque_ism::parsed::{
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
 use smallvec::SmallVec;
+use smol_str::SmolStr;
 use std::str::FromStr;
 
 /// Parse result for a single candidate.
@@ -908,7 +909,7 @@ fn parse_sci_block(
                     text: comp_id.into(),
                 });
 
-                let mut subs: Vec<Box<str>> = Vec::new();
+                let mut subs: Vec<SmolStr> = Vec::new();
                 // Track cursor within segment for sub-compartment offsets.
                 let mut sub_cursor = comp_id.len() + 1; // +1 skips the space
                 for sub in parts {
@@ -925,7 +926,7 @@ fn parse_sci_block(
                     sub_cursor += sub.len() + 1;
                 }
 
-                compartments.push(SciCompartment::new(comp_id.into(), subs.into_boxed_slice()));
+                compartments.push(SciCompartment::new(comp_id, subs.into_boxed_slice()));
             }
         }
 
@@ -1780,7 +1781,7 @@ fn parse_sar_program(
             text: comp_id.into(),
         });
 
-        let mut subs: Vec<Box<str>> = Vec::with_capacity(parts.len());
+        let mut subs: Vec<SmolStr> = Vec::with_capacity(parts.len());
         for (sub_rel_off, sub_id) in parts {
             // FR-015 admission: sub-compartment identifier shape
             // gated through the same canonical predicate as the
@@ -1800,13 +1801,10 @@ fn parse_sar_program(
             subs.push(sub_id.into());
         }
 
-        compartments.push(SarCompartment::new(comp_id.into(), subs.into_boxed_slice()));
+        compartments.push(SarCompartment::new(comp_id, subs.into_boxed_slice()));
     }
 
-    Some(SarProgram::new(
-        prog_id.into(),
-        compartments.into_boxed_slice(),
-    ))
+    Some(SarProgram::new(prog_id, compartments.into_boxed_slice()))
 }
 
 /// Split `s` on `delim`, returning `(offset_in_s, token)` pairs. Unlike

@@ -1039,6 +1039,7 @@ dependencies = [
  "memchr",
  "serde",
  "smallvec",
+ "smol_str",
  "thiserror",
 ]
 

@@ -28,6 +28,13 @@ serde = { workspace = true, optional = true }
 # WASM-safe (pure data structure, no I/O); already a workspace dep
 # via `marque-ism`.
 smallvec = { workspace = true }
+# `smol_str` provides inline-storage for short owned strings on hot-path
+# struct fields (SAR/SCI compartment identifiers, sub-compartments). The
+# `Into<SmolStr>` constructors in `marque-ism::{SciCompartment, SarCompartment,
+# SarProgram}` accept `&str` directly, but the parser builds intermediate
+# `Vec<SmolStr>` buffers to populate `Box<[SmolStr]>` fields, so we name
+# the type. WASM-safe; same scope as the marque-ism + marque-rules adoption.
+smol_str = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
