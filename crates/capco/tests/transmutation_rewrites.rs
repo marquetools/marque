@@ -250,7 +250,7 @@ fn entry_6b_les_nf_transmutes_is_correctly_authored() {
 fn engine_construction_succeeds_with_full_rewrite_table() {
     // Arrange — the canonical CAPCO engine construction path. The
     // scheduler runs Kahn's algorithm at `Engine::new` over the
-    // nine-row rewrite table; this test asserts the table is
+    // eleven-row rewrite table; this test asserts the table is
     // acyclic (no `RewriteCycle`) and that every `Custom`-shape
     // rewrite carries non-empty `reads` / `writes` annotations
     // (no `UnannotatedCustomAxes`).
@@ -265,15 +265,19 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
 
     // Assert
     let engine = result.expect(
-        "Engine::new must succeed with the nine-row PR 3b.B rewrite table — \
-         a failure here indicates either a `RewriteCycle` (a writer/reader \
-         dependency loop) or `UnannotatedCustomAxes` (a `Custom` rewrite \
-         declared with empty reads/writes). Both are scheme-authoring bugs.",
+        "Engine::new must succeed with the eleven-row rewrite table (nine \
+         from PR 3b.B + two from PR 3c.B Sub-PR 8.F: nodis-implies-noforn \
+         and exdis-implies-noforn) — a failure here indicates either a \
+         `RewriteCycle` (a writer/reader dependency loop) or \
+         `UnannotatedCustomAxes` (a `Custom` rewrite declared with empty \
+         reads/writes). Both are scheme-authoring bugs.",
     );
-    // Smoke-check the scheduler exposed the same nine ids it was
+    // Smoke-check the scheduler exposed the same eleven ids it was
     // handed; this prevents a regression where construction silently
     // drops a rewrite.
-    assert_eq!(engine.scheduled_rewrites().len(), 9);
+    // PR 3c.B Sub-PR 8.F added capco/nodis-implies-noforn and
+    // capco/exdis-implies-noforn (9 → 11).
+    assert_eq!(engine.scheduled_rewrites().len(), 11);
 }
 
 #[test]

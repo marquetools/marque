@@ -945,21 +945,30 @@ fn project_portion_scope_empty_returns_bottom() {
 
 #[test]
 fn scheme_declares_phase3_rewrites() {
-    // PR 3b.B (T026b): CAPCO declares nine rewrites — the retained
+    // PR 3b.B (T026b) declared nine rewrites — the retained
     // `noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3
     // transmutation entries (consultant Entry 6 split into 6a + 6b
     // for D13 single-citation discipline). The two earlier Phase-3
     // stubs (`joint-promotion`, `fgi-absorption`) were retired in
     // PR 3b.B because their semantics are subsumed by entries 1, 3,
     // and 7 with finer-grained, properly-cited transmutations.
+    //
+    // PR 3c.B Sub-PR 8.F adds two Pattern A NOFORN-supremacy rewrites:
+    // `capco/nodis-implies-noforn` (§H.9 p174) and
+    // `capco/exdis-implies-noforn` (§H.9 p172). Both are declared
+    // BEFORE `noforn-clears-rel-to` in the vec so that `scheme.project`'s
+    // sequential scan executes them in the correct topological order
+    // (DISSEM-writers before the DISSEM-reader). Total: eleven.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
-    assert_eq!(rewrites.len(), 9);
+    assert_eq!(rewrites.len(), 11);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
         ids,
         [
+            "capco/nodis-implies-noforn",
+            "capco/exdis-implies-noforn",
             "capco/noforn-clears-rel-to",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/fgi-rollup-on-us-contact",
@@ -971,30 +980,32 @@ fn scheme_declares_phase3_rewrites() {
             "capco/les-nf-transmutes-on-classified-contact",
         ],
         "rewrite declaration order is observable; the scheduler (Phase 3 T031) \
-         reorders them by read/write edges. This snapshot pins what \
-         downstream tools see when iterating `page_rewrites()` directly \
-         (declaration order — `noforn-clears-rel-to` first as the canonical \
-         worked example, followed by the §3.4.1 / §3.4.3 transmutations). \
-         The scheduler's topological order — see plan §4 — is computed at \
-         `Engine::new` and runs `noforn-clears-rel-to` AFTER the DISSEM \
-         writers (entries 5/6a/6b). The two orderings are intentionally \
-         distinct."
+         reorders them by read/write edges. The two PR 3c.B Sub-PR 8.F \
+         Pattern A rewrites (nodis/exdis-implies-noforn) are declared first \
+         in the vec so `scheme.project`'s sequential scan executes them \
+         before `noforn-clears-rel-to` — matching the topological order. \
+         The scheduler's topological order is also computed at `Engine::new` \
+         and confirms the same partial order."
     );
 
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
     // sections; T089 retired the line-number form per project memory
-    // `feedback_citations_use_page_numbers.md`). Each of the nine
+    // `feedback_citations_use_page_numbers.md`). Each of the eleven
     // citations is verifiable in the vendored CAPCO-2016 markdown.
-    assert_eq!(rewrites[0].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
-    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.7 p123");
-    assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.7 p123");
-    assert_eq!(rewrites[4].citation, "CAPCO-2016 §H.3 p57");
+    // Indices shifted by 2 vs. pre-8.F: the two new entries [0] and [1]
+    // moved the original nine entries to positions [2..10].
+    assert_eq!(rewrites[0].citation, "CAPCO-2016 §H.9 p174");
+    assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.9 p172");
+    assert_eq!(rewrites[2].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
+    assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.6 p113");
+    assert_eq!(rewrites[4].citation, "CAPCO-2016 §H.7 p123");
     assert_eq!(rewrites[5].citation, "CAPCO-2016 §H.7 p123");
-    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.8 p136");
-    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.9 p178");
-    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]

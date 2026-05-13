@@ -199,13 +199,16 @@ fn phase_3_declares_nine_page_rewrites_with_citations() {
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
-        9,
-        "PR 3b.B (T026b) declares nine page rewrites: the retained \
+        11,
+        "PR 3b.B (T026b) declared nine page rewrites: the retained \
          `capco/noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3 \
          transmutation entries from `marque-applied.md` (consultant \
          Entry 6 split into 6a + 6b for D13). The two earlier Phase-3 \
          stubs (`joint-promotion`, `fgi-absorption`) were retired in \
-         PR 3b.B."
+         PR 3b.B. PR 3c.B Sub-PR 8.F adds two Pattern A NOFORN-supremacy \
+         rewrites: `capco/nodis-implies-noforn` (CAPCO-2016 §H.9 p174) \
+         and `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172), \
+         bringing the total to eleven."
     );
     for rw in rewrites {
         assert!(
@@ -234,20 +237,24 @@ fn phase_3_scheduler_exposes_nine_scheduled_rewrites() {
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
     // property, not a declaration-order one. Set is the retained
-    // `noforn-clears-rel-to` plus the eight PR 3b.B transmutations.
+    // `noforn-clears-rel-to` plus the eight PR 3b.B transmutations
+    // plus the two PR 3c.B Sub-PR 8.F Pattern A rewrites
+    // (`capco/nodis-implies-noforn`, `capco/exdis-implies-noforn`).
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    assert_eq!(scheduled.len(), 9);
+    assert_eq!(scheduled.len(), 11);
     let mut names: Vec<&str> = scheduled.to_vec();
     names.sort();
     assert_eq!(
         names,
         [
+            "capco/exdis-implies-noforn",
             "capco/fgi-restricted-rollup-on-us-contact",
             "capco/fgi-rollup-on-us-contact",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/joint-cross-class-rollup",
             "capco/les-nf-transmutes-on-classified-contact",
+            "capco/nodis-implies-noforn",
             "capco/noforn-clears-rel-to",
             "capco/orcon-nato-to-us-orcon-on-us-contact",
             "capco/sbu-nf-transmutes-on-classified-contact",
