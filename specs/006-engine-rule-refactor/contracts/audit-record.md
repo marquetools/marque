@@ -29,7 +29,11 @@ shapes retired entirely; the accept-list is `["marque-mvp-3"]`.
   "span": { "start": 12, "end": 25 },
   "proposal": {
     "kind": "FixIntent",
-    "intent": { "kind": "FactRemove", "scope": "Page", "fact_count": 1 }
+    "intent": {
+      "kind": "FactRemove",
+      "scope": "Page",
+      "facts": [{ "kind": "Cve", "token_id": 104 }]
+    }
   },
   "confidence": 0.95,
   "migration_ref": null,

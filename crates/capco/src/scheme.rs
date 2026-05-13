@@ -5536,19 +5536,34 @@ pub(crate) fn emit_companion_insert(
         Severity,
     };
     use marque_scheme::{FactRef, ReplacementIntent};
+    let token_id = match dissem_token_id_for_form(token) {
+        Some(id) => id,
+        None => {
+            // Unrecognized surface form — fail loudly with a no-fix
+            // diagnostic rather than silently substituting NOFORN.
+            // In normal flow this is unreachable (the catalog rows
+            // pass `form.noforn()` / `form.orcon()` which return one
+            // of the six recognized forms); reaching this arm means
+            // a new surface form was added without updating the
+            // lookup, which is a programming error worth surfacing.
+            tracing::warn!(
+                target: "marque_capco::scheme",
+                token = token,
+                "emit_companion_insert: unrecognized dissem-control surface form; emitting no-fix Error diagnostic"
+            );
+            return Diagnostic::info(rule, Severity::Error, anchor_span, message, citation);
+        }
+    };
     match last_dissem {
         Some(_dissem_span) => {
             // Insert the companion token via a `FactAdd` intent.
             // `fix_scope` is the caller-derived scope: `Scope::Portion`
             // for portion candidates, `Scope::Page` for banner
             // candidates (the banner roll-up's per-page projection).
-            // The string-canonical `token` maps to a CVE `TokenId` via
-            // `dissem_token_id_for_form`; both `NF`/`NOFORN` and
-            // `OC`/`ORCON`/`OC-USGOV`/`ORCON-USGOV` resolve to the
-            // same canonical `TokenId` per CVE — the engine's
-            // `render_canonical` decides surface form from the
-            // inferred companion form.
-            let token_id = dissem_token_id_for_form(token);
+            // Both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/
+            // `ORCON-USGOV` resolve to the same canonical `TokenId`
+            // per CVE — the engine's `render_canonical` decides
+            // surface form from the inferred companion form.
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::FactAdd {
                     token: FactRef::Cve(token_id),
@@ -5582,19 +5597,21 @@ pub(crate) fn emit_companion_insert(
 /// Surface-form distinction (banner abbrev vs portion abbrev vs full)
 /// collapses at the canonical layer; the engine's `render_canonical`
 /// decides emission form from the inferred companion form at the
-/// insertion site.
+/// insertion site. Returns `None` for unrecognized forms — the
+/// caller routes those to the no-fix `Severity::Error` path rather
+/// than silently substituting NOFORN. In normal flow the catalog
+/// rows only ever pass `form.noforn()` or `form.orcon()` which
+/// return one of the six recognized surface forms; an unrecognized
+/// input represents a programming error (e.g., a new surface form
+/// added without updating this lookup), and failing loudly is the
+/// correct behavior.
 #[inline]
-fn dissem_token_id_for_form(token: &str) -> TokenId {
+fn dissem_token_id_for_form(token: &str) -> Option<TokenId> {
     match token {
-        "NF" | "NOFORN" => TOK_NOFORN,
-        "OC" | "ORCON" => TOK_ORCON,
-        "OC-USGOV" | "ORCON-USGOV" => TOK_ORCON_USGOV,
-        // Caller passed an unrecognized form; route to NOFORN as a
-        // safe default. The catalog rows that reach this helper only
-        // ever pass `form.noforn()` or `form.orcon()` which return
-        // one of the six recognized surface forms — so this fallback
-        // is unreachable in normal flow.
-        _ => TOK_NOFORN,
+        "NF" | "NOFORN" => Some(TOK_NOFORN),
+        "OC" | "ORCON" => Some(TOK_ORCON),
+        "OC-USGOV" | "ORCON-USGOV" => Some(TOK_ORCON_USGOV),
+        _ => None,
     }
 }
 

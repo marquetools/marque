@@ -261,8 +261,33 @@ fn applied_fix_to_json(
     }
     let proposal_json = match &fix.proposal {
         marque_rules::AppliedFixProposal::FixIntent(intent) => {
-            // Inline FactRef projection — mirrored from production
-            // marque/src/render.rs `fact_ref_to_json`.
+            // Inline FactRef + OpenVocab projection — mirrored from
+            // production marque/src/render.rs `fact_ref_to_json` /
+            // `open_vocab_ref_to_json`.
+            fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
+                match r {
+                    marque_capco::CapcoOpenVocabRef::Sar(name) => json!({
+                        "kind": "Sar",
+                        "name": name.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::SciCompartment(name) => json!({
+                        "kind": "SciCompartment",
+                        "name": name.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => json!({
+                        "kind": "SciSubCompartment",
+                        "name": name.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => json!({
+                        "kind": "FgiTetragraph",
+                        "code": code.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::CountryCode(c) => json!({
+                        "kind": "CountryCode",
+                        "code": c.as_str(),
+                    }),
+                }
+            }
             fn fact_ref_to_json(
                 fact: &marque_scheme::FactRef<marque_capco::CapcoScheme>,
             ) -> serde_json::Value {
@@ -273,7 +298,7 @@ fn applied_fix_to_json(
                     }),
                     marque_scheme::FactRef::OpenVocab(r) => json!({
                         "kind": "OpenVocab",
-                        "ref": format!("{r:?}"),
+                        "ref": open_vocab_ref_to_json(r),
                     }),
                 }
             }

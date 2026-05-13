@@ -444,6 +444,40 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
+/// Schema-pinned JSON projection of `CapcoOpenVocabRef`. Each variant
+/// is encoded as a discriminated object so downstream consumers can
+/// parse without Debug-string heuristics — `Debug` would not be a
+/// stable wire format (variant renames or `#[derive(Debug)]`
+/// regenerations would silently change the JSON). The string
+/// payloads are SAR program identifiers, SCI compartment names, FGI
+/// tetragraphs, and structural CountryCodes — all on Constitution V
+/// Principle V's permitted-identifier list (token canonicals from
+/// agency-allocated vocabularies + structural codes).
+fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
+    match r {
+        marque_capco::CapcoOpenVocabRef::Sar(name) => serde_json::json!({
+            "kind": "Sar",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::SciCompartment(name) => serde_json::json!({
+            "kind": "SciCompartment",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => serde_json::json!({
+            "kind": "SciSubCompartment",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => serde_json::json!({
+            "kind": "FgiTetragraph",
+            "code": code.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::CountryCode(c) => serde_json::json!({
+            "kind": "CountryCode",
+            "code": c.as_str(),
+        }),
+    }
+}
+
 /// JSON projection of a `FactRef<CapcoScheme>`. Discriminated by
 /// `kind`. Constitution V Principle V permits emitting CVE token IDs
 /// and category IDs (closed-vocabulary identifiers) and open-vocab
@@ -457,7 +491,7 @@ fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::V
         }),
         marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
             "kind": "OpenVocab",
-            "ref": format!("{r:?}"),
+            "ref": open_vocab_ref_to_json(r),
         }),
     }
 }

@@ -301,6 +301,34 @@ fn fix_source_str(source: FixSource) -> &'static str {
     }
 }
 
+/// Schema-pinned JSON projection of `CapcoOpenVocabRef`. Mirrors the
+/// CLI's `open_vocab_ref_to_json` in `marque/src/render.rs` — CLI and
+/// WASM must emit byte-identical JSON for SC-008 parity.
+fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
+    match r {
+        marque_capco::CapcoOpenVocabRef::Sar(name) => serde_json::json!({
+            "kind": "Sar",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::SciCompartment(name) => serde_json::json!({
+            "kind": "SciCompartment",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => serde_json::json!({
+            "kind": "SciSubCompartment",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => serde_json::json!({
+            "kind": "FgiTetragraph",
+            "code": code.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::CountryCode(c) => serde_json::json!({
+            "kind": "CountryCode",
+            "code": c.as_str(),
+        }),
+    }
+}
+
 /// JSON projection of a `FactRef<CapcoScheme>`. Constitution V
 /// Principle V permits CVE token IDs and open-vocab canonical refs
 /// in audit output (token canonicals + category IDs are on the
@@ -313,7 +341,7 @@ fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::V
         }),
         marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
             "kind": "OpenVocab",
-            "ref": format!("{r:?}"),
+            "ref": open_vocab_ref_to_json(r),
         }),
     }
 }
