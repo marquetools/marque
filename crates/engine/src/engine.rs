@@ -2098,7 +2098,11 @@ fn build_decoder_diagnostic(
         return None;
     }
 
-    let mut features: Vec<FeatureContribution> = provenance.features.to_vec();
+    // `provenance.features` is a `Box<[FeatureContribution]>`; copy into
+    // a `SmallVec<[…; 4]>` matching `Confidence::features` so the inline-4
+    // case stays heap-free even after the optional override-marker push.
+    let mut features: marque_rules::SmallVec<[FeatureContribution; 4]> =
+        marque_rules::SmallVec::from_slice(&provenance.features);
     if corpus_override_active {
         features.push(FeatureContribution {
             id: FeatureId::CorpusOverrideInEffect,

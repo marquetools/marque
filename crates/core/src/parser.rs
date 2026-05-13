@@ -1327,10 +1327,16 @@ fn parse_non_ic_full_form(s: &str) -> Option<NonIcDissem> {
 /// that were appended to the last comma entry via an intra-segment `/`
 /// separator (e.g., `REL TO USA, FVEY/NF` → countries=[USA, FVEY],
 /// trailing_dissem=[NF]).
+///
+/// All three fields use `SmallVec` inline storage sized to the empirical
+/// REL TO distribution: country lists are typically 1–8 entries and
+/// trailing dissem/non-IC controls 0–2. The caller drains each field via
+/// `Vec::extend(IntoIterator)`, so the storage type is invisible at the
+/// call site.
 struct RelToParseResult<'src> {
-    countries: Vec<ParsedRelToEntry<'src>>,
-    trailing_dissem: Vec<ParsedDissem<'src>>,
-    trailing_non_ic: Vec<ParsedNonIcDissem<'src>>,
+    countries: SmallVec<[ParsedRelToEntry<'src>; 8]>,
+    trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]>,
+    trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]>,
 }
 
 /// Span-aware parse of a `REL TO ...` block. Records one
@@ -1364,9 +1370,9 @@ fn parse_rel_to_with_spans<'src>(
     };
     let after_rel = &block[prefix_skip..];
 
-    let mut countries: Vec<ParsedRelToEntry<'src>> = Vec::new();
-    let mut trailing_dissem: Vec<ParsedDissem<'src>> = Vec::new();
-    let mut trailing_non_ic: Vec<ParsedNonIcDissem<'src>> = Vec::new();
+    let mut countries: SmallVec<[ParsedRelToEntry<'src>; 8]> = SmallVec::new();
+    let mut trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]> = SmallVec::new();
+    let mut trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]> = SmallVec::new();
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
