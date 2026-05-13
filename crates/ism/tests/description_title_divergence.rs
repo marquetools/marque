@@ -42,8 +42,14 @@
 //! 2. If genuine: adds `description_title: Some("<ODNI text>")` to
 //!    the matching `MarkingForm` row in
 //!    `crates/ism/src/marking_forms.rs`, bumps
-//!    `EXPECTED_DIVERGENCES` by 1, and (in a follow-on PR) wires
-//!    the `recognized_aliases` slot through `build_form_set`.
+//!    `EXPECTED_DIVERGENCES` by 1, and — when the canonical is an
+//!    active CAPCO sentinel — extends
+//!    `recognized_aliases_for_canonical` in
+//!    `crates/capco/src/vocabulary.rs` so `forms()` surfaces the
+//!    alias. The round-trip test in
+//!    `crates/capco/tests/vocabulary_forms.rs::recognized_aliases_pin_ism_description_divergences`
+//!    pins the wired-through subset; this file pins the row-level
+//!    data shape.
 //! 3. If a typo: files an upstream ODNI / CAPCO bug or a marque
 //!    citation-discipline correction.
 
@@ -53,6 +59,17 @@ use marque_ism::marking_forms::MARKING_FORMS;
 /// Number of `MARKING_FORMS` rows whose CAPCO `title` field
 /// disagrees with the ODNI ISM CVE `<Description>` for the matching
 /// canonical value.
+///
+/// At PR 3d.3 this count must equal both
+/// `MARKING_FORMS.iter().filter(|f| f.description_title.is_some()).count()`
+/// (the data-shape pin asserted in
+/// `description_title_field_populated_for_every_divergence` below)
+/// AND the runtime walk count (the original
+/// `description_title_divergence_count_matches_pin` test). When the
+/// two diverge, the data shape and the runtime detection are out of
+/// sync — either a row was set to `Some(_)` for a non-divergent
+/// canonical (typo on data side) or a divergent row's
+/// `description_title` was missed (typo on update side).
 ///
 /// `9` for ISM-v2022-DEC paired with the active CAPCO §G.1 Table 4
 /// transcription in `crates/ism/src/marking_forms.rs`. The
@@ -142,4 +159,64 @@ fn description_title_divergence_count_matches_pin() {
             .collect::<Vec<_>>()
             .join("\n"),
     );
+}
+
+#[test]
+fn description_title_field_populated_for_every_divergence() {
+    // PR 3d.3: closes the data-shape ↔ runtime-detection loop. The
+    // original `description_title_divergence_count_matches_pin` walks
+    // `MARKING_FORMS` at runtime and compares each row's `title` to
+    // the looked-up ODNI `<Description>`. This sibling test pins the
+    // DATA SHAPE: every divergent row must carry
+    // `description_title: Some(odni_desc)`, and the count of `Some`
+    // entries must equal `EXPECTED_DIVERGENCES`.
+    //
+    // Without this pin, a future contributor could add an
+    // intentionally-divergent row but forget to populate
+    // `description_title` — the runtime test passes, the
+    // `crates/capco/tests/vocabulary_forms.rs` round-trip never sees
+    // the divergence, and the alias channel goes silently missing.
+    let populated = MARKING_FORMS
+        .iter()
+        .filter(|f| f.description_title.is_some())
+        .count();
+
+    assert_eq!(
+        populated, EXPECTED_DIVERGENCES,
+        "MARKING_FORMS rows with description_title=Some(_) count ({populated}) \
+         disagrees with EXPECTED_DIVERGENCES ({EXPECTED_DIVERGENCES}). \
+         Either a non-divergent row was populated by mistake, or a \
+         divergent row's `description_title` is still `None`.",
+    );
+
+    // Per-row consistency: every `Some(text)` must equal the ODNI
+    // Description for the same canonical. The runtime walk above
+    // already detects divergence between CAPCO `title` and ODNI
+    // Description; this pin asserts that when we DO populate
+    // `description_title`, the bytes match what the ODNI side
+    // actually publishes — no stale or hand-transcribed-wrong text.
+    for row in MARKING_FORMS {
+        let Some(ism_title) = row.description_title else {
+            continue;
+        };
+        let entry = lookup_token_metadata(row.portion)
+            .or_else(|| lookup_token_metadata(row.banner))
+            .unwrap_or_else(|| {
+                panic!(
+                    "MarkingForm row with description_title=Some(_) has \
+                     neither portion={:?} nor banner={:?} in TOKEN_METADATA — \
+                     unreachable via the runtime divergence walk above. \
+                     Remove the description_title or fix the row keys.",
+                    row.portion, row.banner,
+                )
+            });
+        let odni_desc = entry.description.trim();
+        assert_eq!(
+            ism_title, odni_desc,
+            "description_title for canonical {:?} disagrees with the \
+             ODNI <Description>. Re-fetch the verbatim ODNI text and \
+             update the row.",
+            entry.value,
+        );
+    }
 }

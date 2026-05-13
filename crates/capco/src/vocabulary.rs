@@ -62,8 +62,8 @@ use marque_ism::generated::vocabulary::{
 };
 use marque_ism::marking_forms::{MARKING_FORMS, MarkingForm, banner_to_portion};
 use marque_scheme::{
-    Authority, CategoryId, Deprecation, FormSet, OwnerProducer, OwnerProducerKind, PointOfContact,
-    TokenId, TokenMetadataFull, Vocabulary,
+    Authority, CategoryId, Deprecation, FormKind, FormSet, OwnerProducer, OwnerProducerKind,
+    PointOfContact, TokenId, TokenMetadataFull, Vocabulary,
 };
 use std::sync::LazyLock;
 
@@ -81,6 +81,18 @@ use std::sync::LazyLock;
 // present in `TOKEN_METADATA` by PR-1's
 // `crates/ism/tests/vocabulary_tables.rs::well_known_tokens_resolve`
 // and direct inspection of the ODNI JSON sidecars.
+
+/// Number of active sentinel TokenIds the CAPCO Vocabulary impl covers.
+///
+/// Exposed for integration tests (e.g.,
+/// `crates/capco/tests/vocabulary_forms.rs`) so the expected-forms
+/// table can pin its row count against the authoritative active-
+/// sentinel-set size — adding a sentinel without extending the test
+/// table is caught loudly. Returns the length of
+/// [`SENTINEL_TO_CANONICAL`].
+pub fn active_sentinel_count() -> usize {
+    SENTINEL_TO_CANONICAL.len()
+}
 
 const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
     // Dissem — `NF` is the canonical portion form in
@@ -473,9 +485,73 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
 /// to the "canonical IS the portion/banner/title" shape (verbatim
 /// canonical for all three forms, with `banner_abbreviation = None`).
 ///
-/// `recognized_aliases: &[]` for every token at PR 3d. Commit 2's
-/// `description_title_divergence` test pins the empty divergence count
-/// between ODNI `<Description>` text and CAPCO `MarkingForm.title`.
+/// `recognized_aliases` payload for `build_form_set` — surfaces the
+/// ODNI `<Description>` text when it diverges from the CAPCO
+/// `MarkingForm.title` (PR 3d.3 wire-through of FR-053).
+///
+/// ## Why per-canonical static slices and not a runtime read of
+/// `MarkingForm.description_title`
+///
+/// `FormSet.recognized_aliases` is `&'static [(FormKind, &'static str)]`
+/// — a slice, not a single `&str`. `MarkingForm.description_title` is
+/// `Option<&'static str>`; lifting that into a `&'static
+/// [(FormKind, &'static str)]` requires either a const slice per
+/// canonical (this approach) or a `LazyLock<Vec<...>>` table side-
+/// channel. The static-slice-per-row approach preserves the SC-008
+/// zero-runtime-allocation invariant and keeps the data co-located with
+/// its citation; the `LazyLock` route adds an allocation site (the
+/// `Vec` of per-row slices) for no payoff at the active sentinel scale
+/// (only 1 active sentinel — UCNI — is divergent today).
+///
+/// Each `const` carries the ODNI `<Description>` text verbatim;
+/// updates flow through `MARKING_FORMS.description_title` and this
+/// table in lockstep. The `recognized_aliases_pin_ism_description_divergences`
+/// test in `crates/capco/tests/vocabulary_forms.rs` enforces the
+/// round-trip.
+///
+/// ## Active sentinel coverage
+///
+/// `SENTINEL_TO_CANONICAL` (10 entries) intersects the 9 divergent
+/// `MARKING_FORMS` rows at exactly one canonical: `"UCNI"` (the DOE
+/// form). `TOK_CNWDI` maps to canonical `"RD-CNWDI"`, not the bare
+/// `"CNWDI"` that the MARKING_FORMS row keys on — so its description
+/// title divergence is captured on the row but unreachable through
+/// `forms(TOK_CNWDI)`. Other divergent canonicals (SI-EU, SI-NK,
+/// DCNI, OC-USGOV, FISA, SSI, NNPI) have no active sentinel today;
+/// their `description_title` is populated on the row for the direct
+/// `description_title_divergence.rs` walk but `forms()` is
+/// unreachable for them (closed-CVE sentinel set only).
+const ALIASES_UCNI: &[(FormKind, &str)] = &[(
+    FormKind::IsmDescriptionTitle,
+    "DoE CONTROLLED NUCLEAR INFORMATION",
+)];
+
+/// Lookup the `recognized_aliases` static slice for a `MarkingForm`'s
+/// canonical. Returns `&[]` for non-divergent rows.
+///
+/// Match arms cover only canonicals that are BOTH active sentinels AND
+/// carry a populated `MarkingForm.description_title`. Non-sentinel
+/// divergent rows (SI-EU, SI-NK, DCNI, OC-USGOV, FISA, SSI, NNPI)
+/// fall through to `&[]` here because `forms()` is unreachable for
+/// them — the divergence remains visible via direct iteration of
+/// `MARKING_FORMS.description_title` (exercised by
+/// `crates/ism/tests/description_title_divergence.rs`).
+fn recognized_aliases_for_canonical(
+    canonical: &'static str,
+) -> &'static [(FormKind, &'static str)] {
+    match canonical {
+        "UCNI" => ALIASES_UCNI,
+        _ => &[],
+    }
+}
+
+/// Build the `FormSet` for a sentinel token's canonical CVE value
+/// (PR 3d, FR-053).
+///
+/// `recognized_aliases` is populated for canonicals where the
+/// matching `MARKING_FORMS` row's `description_title` field is
+/// `Some(ism_title)` AND the canonical is an active sentinel — see
+/// [`recognized_aliases_for_canonical`] for the coverage notes.
 fn build_form_set(canonical: &'static str) -> FormSet {
     if let Some(class_form_set) = classification_form_set(canonical) {
         return class_form_set;
@@ -487,6 +563,8 @@ fn build_form_set(canonical: &'static str) -> FormSet {
     let row: Option<&'static MarkingForm> = MARKING_FORMS
         .iter()
         .find(|f| f.portion == canonical || f.banner == canonical);
+
+    let recognized_aliases = recognized_aliases_for_canonical(canonical);
 
     match row {
         Some(f) => {
@@ -502,7 +580,7 @@ fn build_form_set(canonical: &'static str) -> FormSet {
                 portion: f.portion,
                 banner_title: f.title,
                 banner_abbreviation,
-                recognized_aliases: &[],
+                recognized_aliases,
             }
         }
         // No MARKING_FORMS row — every form collapses to the
@@ -513,7 +591,7 @@ fn build_form_set(canonical: &'static str) -> FormSet {
             portion: canonical,
             banner_title: canonical,
             banner_abbreviation: None,
-            recognized_aliases: &[],
+            recognized_aliases,
         },
     }
 }

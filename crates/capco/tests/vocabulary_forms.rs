@@ -18,13 +18,23 @@
 //! - `scheme.banner_form(t) ==
 //!   scheme.forms(t).banner_abbreviation.unwrap_or(scheme.forms(t).banner_title)`
 //!   — the FR-053 projection equation specified by T058d.
-//! - `scheme.banner_abbreviation(t) == scheme.forms(t).banner_abbreviation`.
+//! - `scheme.banner_abbreviation(t) == scheme.forms(t).banner_abbreviation`
+//!   AND the explicit expected `Option<&str>` recorded in
+//!   `EXPECTED_FORMS`. PR 3d.3 widened the table from a 3-tuple to a
+//!   4-tuple specifically so the D1 banner_abbreviation flip on
+//!   `RD` / `FRD` / `TFNI` (was `None` pre-3d, becomes
+//!   `Some("RD")` / `Some("FRD")` / `Some("TFNI")` per FR-053) is
+//!   pinned by an explicit `Option` — not via a tautological
+//!   `form_set.banner_abbreviation == form_set.banner_abbreviation`
+//!   comparison.
 //!
 //! The expected projection outputs are captured inline as a hand-
-//! rolled `&'static [(TokenId, &'static str, &'static str)]` table
-//! seeded from the pre-3d behavior. Any future refactor that
-//! changes the projection for an active sentinel must update the
-//! expected table here in lock-step — the regression is loud.
+//! rolled
+//! `&'static [(TokenId, &'static str, &'static str, Option<&'static str>)]`
+//! table seeded from the FR-053-corrected behavior. Any future
+//! refactor that changes the projection for an active sentinel must
+//! update the expected table here in lock-step — the regression is
+//! loud.
 //!
 //! ## What this does NOT pin
 //!
@@ -35,56 +45,97 @@
 //! allocation gate pins the storage model.
 
 use marque_capco::CapcoScheme;
+use marque_capco::active_sentinel_count;
 use marque_capco::scheme::{
     TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED,
     TOK_TFNI, TOK_UCNI,
 };
-use marque_scheme::{TokenId, Vocabulary};
+use marque_scheme::{FormKind, TokenId, Vocabulary};
 
 /// Every active sentinel TokenId with its expected
-/// `(portion_form, banner_form)` projection. `banner_abbreviation`
-/// is derived per-row inside the test loop from these two values
-/// plus the `forms(t).banner_title` — the test asserts the trait's
-/// default-method projection matches the equation in T058d.
+/// `(portion_form, banner_form, banner_abbreviation)` projection.
 ///
-/// Seeded from the pre-3d behavior (commit
-/// `d4664160 perf: SmallVec at parser scratch + renderer sort buffers`
-/// state of `crates/capco/src/vocabulary.rs::derive_*`) plus the
-/// FR-053 corrected `banner_abbreviation` semantic for RD / FRD /
-/// TFNI (see `build_form_set` doc in
-/// `crates/capco/src/vocabulary.rs`).
-const EXPECTED_FORMS: &[(TokenId, &str, &str)] = &[
-    // (token, expected portion, expected banner)
-    (TOK_NOFORN, "NF", "NOFORN"),
-    (TOK_RD, "RD", "RD"),
-    (TOK_FRD, "FRD", "FRD"),
-    (TOK_TFNI, "TFNI", "TFNI"),
-    // CNWDI's canonical is "RD-CNWDI" — no MARKING_FORMS row,
-    // canonical-collapse fallback applies.
-    (TOK_CNWDI, "RD-CNWDI", "RD-CNWDI"),
-    // UCNI canonical is "UCNI"; MARKING_FORMS row has
-    // title="DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
-    // banner="DOE UCNI", portion="UCNI".
-    (TOK_UCNI, "UCNI", "DOE UCNI"),
+/// `banner_form` is derived per-row in the test loop from
+/// `banner_abbreviation.unwrap_or(banner_title)`. `banner_abbreviation`
+/// is pinned explicitly as the third element so the D1 / FR-053
+/// semantic shift (RD / FRD / TFNI from `None` → `Some(banner)`) is
+/// regression-checked against an explicit `Option`, not against
+/// `form_set.banner_abbreviation` (which would be tautological).
+///
+/// ## D1 / FR-053 semantic recap
+///
+/// Pre-3d code derived `banner_abbreviation` from `banner != portion`.
+/// PR 3d's corrected D1 semantic uses `banner != title` (CAPCO §G.1
+/// Table 4 col 2 emptiness). The two predicates agree for rows where
+/// the banner differs from both portion and title (NOFORN, NODIS,
+/// EXDIS, UCNI) and for rows with no MARKING_FORMS entry
+/// (canonical-collapse: HCS, RESTRICTED, CNWDI). They DISAGREE for
+/// `RD`, `FRD`, `TFNI` — same-form rows where the title is a long
+/// descriptive form CAPCO §G.1 Table 4 carries a banner abbreviation
+/// for. The flip: pre-3d `None` → 3d `Some("RD")` / `Some("FRD")` /
+/// `Some("TFNI")`.
+const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
+    // (token, expected portion, expected banner, expected banner_abbreviation)
+    //
+    // NOFORN row: title="NOT RELEASABLE TO FOREIGN NATIONALS",
+    // banner="NOFORN", portion="NF". banner != title → Some("NOFORN").
+    (TOK_NOFORN, "NF", "NOFORN", Some("NOFORN")),
+    // RD row: title="RESTRICTED DATA", banner="RD", portion="RD".
+    // banner != title → Some("RD") — the D1 flip.
+    (TOK_RD, "RD", "RD", Some("RD")),
+    // FRD row: title="FORMERLY RESTRICTED DATA", banner="FRD",
+    // portion="FRD". banner != title → Some("FRD") — the D1 flip.
+    (TOK_FRD, "FRD", "FRD", Some("FRD")),
+    // TFNI row: title="TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
+    // banner="TFNI", portion="TFNI". banner != title → Some("TFNI") —
+    // the D1 flip.
+    (TOK_TFNI, "TFNI", "TFNI", Some("TFNI")),
+    // CNWDI sentinel's canonical is "RD-CNWDI" — no MARKING_FORMS
+    // row matches (the bare CNWDI row exists at canonical "CNWDI",
+    // unreachable through TOK_CNWDI). Canonical-collapse fallback:
+    // banner_abbreviation=None.
+    (TOK_CNWDI, "RD-CNWDI", "RD-CNWDI", None),
+    // UCNI row: title="DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
+    // banner="DOE UCNI", portion="UCNI". banner != title → Some("DOE UCNI").
+    (TOK_UCNI, "UCNI", "DOE UCNI", Some("DOE UCNI")),
     // HCS canonical is "HCS"; no MARKING_FORMS row, canonical-collapse.
-    (TOK_HCS, "HCS", "HCS"),
+    (TOK_HCS, "HCS", "HCS", None),
     // RESTRICTED canonical is "R"; no MARKING_FORMS row, no
-    // classification_form_set arm (per byte-identity preservation
-    // — see `classification_form_set` doc). Canonical-collapse.
-    (TOK_RESTRICTED, "R", "R"),
-    // NODIS canonical is "ND"; MARKING_FORMS row has
-    // title="NO DISTRIBUTION", banner="NODIS", portion="ND".
-    (TOK_NODIS, "ND", "NODIS"),
-    // EXDIS canonical is "XD"; MARKING_FORMS row has
-    // title="EXCLUSIVE DISTRIBUTION", banner="EXDIS", portion="XD".
-    (TOK_EXDIS, "XD", "EXDIS"),
+    // classification_form_set arm (per byte-identity preservation —
+    // see `classification_form_set` doc). Canonical-collapse:
+    // banner_abbreviation=None.
+    (TOK_RESTRICTED, "R", "R", None),
+    // NODIS row: title="NO DISTRIBUTION", banner="NODIS",
+    // portion="ND". banner != title → Some("NODIS").
+    (TOK_NODIS, "ND", "NODIS", Some("NODIS")),
+    // EXDIS row: title="EXCLUSIVE DISTRIBUTION", banner="EXDIS",
+    // portion="XD". banner != title → Some("EXDIS").
+    (TOK_EXDIS, "XD", "EXDIS", Some("EXDIS")),
 ];
+
+#[test]
+fn expected_forms_covers_full_active_sentinel_set() {
+    // Couples `EXPECTED_FORMS` to the authoritative
+    // `SENTINEL_TO_CANONICAL` table inside
+    // `crates/capco/src/vocabulary.rs`. A future PR that adds a
+    // sentinel without extending `EXPECTED_FORMS` fails here loudly
+    // rather than silently leaving the new sentinel untested.
+    assert_eq!(
+        EXPECTED_FORMS.len(),
+        active_sentinel_count(),
+        "EXPECTED_FORMS row count ({}) disagrees with the active \
+         CapcoScheme sentinel set size ({}). Update EXPECTED_FORMS \
+         when adding/removing a sentinel in SENTINEL_TO_CANONICAL.",
+        EXPECTED_FORMS.len(),
+        active_sentinel_count(),
+    );
+}
 
 #[test]
 fn forms_round_trips_for_every_active_sentinel() {
     let scheme = CapcoScheme::new();
 
-    for (token, expected_portion, expected_banner) in EXPECTED_FORMS {
+    for (token, expected_portion, expected_banner, expected_banner_abbreviation) in EXPECTED_FORMS {
         let form_set = scheme.forms(token);
 
         // Default-method projection #1: portion_form
@@ -116,32 +167,150 @@ fn forms_round_trips_for_every_active_sentinel() {
             "banner_form regression for {token:?}",
         );
 
-        // Default-method projection #3: banner_abbreviation
+        // Default-method projection #3: banner_abbreviation. Two
+        // independent assertions — neither comparison is tautological:
+        //   (a) `scheme.banner_abbreviation(token)` (the trait
+        //       default-method projection) vs the EXPECTED_FORMS pin;
+        //   (b) `form_set.banner_abbreviation` (the FormSet field) vs
+        //       the EXPECTED_FORMS pin.
+        // Pre-3d code (and the post-3d.2 review found) did
+        // `scheme.banner_abbreviation(token) == form_set.banner_abbreviation`,
+        // which both route through the same FormSet — the D1 flip on
+        // RD / FRD / TFNI was therefore unpinned. The EXPECTED_FORMS
+        // 4-tuple addition closes that gap.
         assert_eq!(
             scheme.banner_abbreviation(token),
-            form_set.banner_abbreviation,
-            "banner_abbreviation / forms.banner_abbreviation disagree \
-             for {token:?}",
+            *expected_banner_abbreviation,
+            "banner_abbreviation regression (trait projection) for {token:?}",
+        );
+        assert_eq!(
+            form_set.banner_abbreviation, *expected_banner_abbreviation,
+            "banner_abbreviation regression (FormSet field) for {token:?}",
         );
     }
 }
 
+/// Sentinels expected to surface a non-empty `recognized_aliases`
+/// slice via `forms()`, with the verbatim expected
+/// `(FormKind, &'static str)` pair.
+///
+/// Coverage: only sentinels whose CAPCO canonical (per
+/// `SENTINEL_TO_CANONICAL`) matches a `MARKING_FORMS` row with
+/// `description_title: Some(_)`. At PR 3d.3 that set has size 1:
+/// `TOK_UCNI` (the DOE form), whose row's ODNI Description
+/// (`"DoE CONTROLLED NUCLEAR INFORMATION"`) diverges from CAPCO's
+/// `"DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION"`.
+///
+/// `TOK_CNWDI`'s `MARKING_FORMS` row (portion="CNWDI", divergent
+/// description "Controled Nuclear Weapon Design Information Warning
+/// statement") is intentionally NOT in this table — `TOK_CNWDI`'s
+/// canonical is `"RD-CNWDI"` (the AEA compound), which doesn't
+/// match the bare `"CNWDI"` row. The divergence still surfaces via
+/// `crates/ism/tests/description_title_divergence.rs` walking
+/// `MARKING_FORMS` directly; it just isn't reachable through
+/// `forms(TOK_CNWDI)`.
+const EXPECTED_ALIASES: &[(TokenId, &[(FormKind, &str)])] = &[(
+    TOK_UCNI,
+    &[(
+        FormKind::IsmDescriptionTitle,
+        "DoE CONTROLLED NUCLEAR INFORMATION",
+    )],
+)];
+
 #[test]
-fn recognized_aliases_empty_at_pr_3d() {
-    // PR 3d (FR-053) ships the `recognized_aliases` field plumbed
-    // but unpopulated. The
-    // `crates/ism/tests/description_title_divergence.rs` test pins
-    // the count of ODNI Description vs CAPCO title divergences;
-    // until a divergence appears, every form-set's aliases slice is
-    // empty. This regression guard catches an unintentional
-    // population at scheme-impl level.
+fn recognized_aliases_consistency_with_marking_forms_description_title() {
+    // PR 3d.3 wiring-consistency invariant. For every active
+    // sentinel `t`:
+    //   - If `MARKING_FORMS` has a row matching `canonical_for(t)`
+    //     AND that row carries `description_title: Some(ism_title)`,
+    //     then `forms(t).recognized_aliases` MUST contain a
+    //     `(FormKind::IsmDescriptionTitle, ism_title)` entry.
+    //   - Else, `forms(t).recognized_aliases` MUST be empty (or
+    //     contain only non-IsmDescriptionTitle entries — future
+    //     `HistoricalAlias` channel).
+    //
+    // A future PR that adds `description_title: Some(_)` to a row
+    // matching an active sentinel without extending
+    // `recognized_aliases_for_canonical` in
+    // `crates/capco/src/vocabulary.rs` fails here loudly.
+    use marque_ism::marking_forms::MARKING_FORMS;
+
     let scheme = CapcoScheme::new();
-    for (token, _, _) in EXPECTED_FORMS {
+
+    for (token, expected_portion, _, _) in EXPECTED_FORMS {
         let form_set = scheme.forms(token);
-        assert!(
-            form_set.recognized_aliases.is_empty(),
-            "recognized_aliases unexpectedly non-empty for {token:?}: {:?}",
-            form_set.recognized_aliases,
+
+        // Find the MARKING_FORMS row matching this sentinel's
+        // canonical portion. We use `expected_portion` (the
+        // EXPECTED_FORMS row's portion column) as the canonical —
+        // it equals `canonical_for(token)` for every row whose
+        // canonical resolves through `MARKING_FORMS` directly.
+        // Sentinels with no MARKING_FORMS row (HCS, RESTRICTED,
+        // CNWDI via canonical-collapse) will find no match here,
+        // which is the correct behavior — they have no
+        // description_title to alias.
+        let row = MARKING_FORMS
+            .iter()
+            .find(|f| f.portion == *expected_portion || f.banner == *expected_portion);
+
+        match row.and_then(|r| r.description_title) {
+            Some(ism_title) => {
+                let found = form_set.recognized_aliases.iter().any(|(kind, alias)| {
+                    matches!(kind, FormKind::IsmDescriptionTitle) && *alias == ism_title
+                });
+                assert!(
+                    found,
+                    "MARKING_FORMS row for sentinel {token:?} carries \
+                     description_title={ism_title:?} but \
+                     forms(t).recognized_aliases does not include an \
+                     IsmDescriptionTitle entry for it. Extend \
+                     `recognized_aliases_for_canonical` in \
+                     crates/capco/src/vocabulary.rs.",
+                );
+            }
+            None => {
+                let stray = form_set
+                    .recognized_aliases
+                    .iter()
+                    .find(|(kind, _)| matches!(kind, FormKind::IsmDescriptionTitle));
+                assert!(
+                    stray.is_none(),
+                    "Sentinel {token:?} has no MARKING_FORMS row with \
+                     description_title=Some(_) but its FormSet carries \
+                     an IsmDescriptionTitle alias: {stray:?}. Either \
+                     populate the MARKING_FORMS row or remove the \
+                     stray entry from `recognized_aliases_for_canonical`.",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn recognized_aliases_pin_ism_description_divergences() {
+    // PR 3d.3 closes the T058h spec checkpoint
+    // (`tasks.md:188`): "the divergent ISM title surfaces in
+    // `recognized_aliases` with `FormKind::IsmDescriptionTitle`".
+    //
+    // For every active sentinel:
+    //   - If the sentinel is in EXPECTED_ALIASES, assert byte-identity
+    //     against the pinned `(FormKind, &str)` pair list.
+    //   - Otherwise, assert `recognized_aliases` is empty.
+    //
+    // The previous PR 3d.2 test `recognized_aliases_empty_at_pr_3d`
+    // asserted the OPPOSITE of T058h (universal emptiness); it is
+    // retired in favor of this round-trip test.
+    let scheme = CapcoScheme::new();
+    for (token, _, _, _) in EXPECTED_FORMS {
+        let form_set = scheme.forms(token);
+        let expected = EXPECTED_ALIASES
+            .iter()
+            .find(|(t, _)| t == token)
+            .map(|(_, aliases)| *aliases)
+            .unwrap_or(&[]);
+        assert_eq!(
+            form_set.recognized_aliases, expected,
+            "recognized_aliases mismatch for {token:?}",
         );
     }
 }

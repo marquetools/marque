@@ -2,13 +2,21 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3d (FR-054) — `Deprecation` validity-window invariant test.
+//! PR 3d (FR-054) — `MigrationEntry::valid_until` parse-shape
+//! invariant test.
 //!
-//! Asserts that for every generated migration entry, if both
-//! `valid_from` and `since` are populated (post a future ODNI
-//! revision that adds per-term version metadata), the temporal
-//! order `valid_from <= since` holds — a token cannot be
-//! deprecated before it was published.
+//! Asserts that every generated migration entry's `valid_until`
+//! field, when populated, parses cleanly as an ISM schema-version
+//! label (`"ISM-vYYYY-MMM"`). This is a malformed-data guard at the
+//! migration-table layer; the temporal-ordering invariant
+//! (`valid_from <= since`) that PR 3d's spec calls for lives on
+//! `Deprecation` after `marque-capco::vocabulary::build_deprecation`
+//! composes the migration entry into the `Deprecation` struct, and
+//! is pinned by
+//! `crates/capco/tests/deprecation_invariant.rs::deprecation_valid_from_lte_since_for_every_sentinel`.
+//! The split between this file and that one is dictated by the crate
+//! dependency graph (see header comment for the original PR 3d.2
+//! rationale).
 //!
 //! ## Schema-version comparison
 //!
@@ -90,22 +98,28 @@ fn parse_schema_version_round_trips() {
 }
 
 #[test]
-fn migration_entries_satisfy_valid_from_lte_valid_until() {
+fn migration_entries_valid_until_parses_as_schema_version() {
     // PR 3d Commit 2 adds `valid_until` to MigrationEntry; the
     // `marque_scheme::Deprecation` consumer ties this to
-    // `Deprecation.valid_until`. For temporal sanity: if both a
-    // first-publish and a deprecated-at version exist on the same
-    // entry, the publish version must not be later than the
-    // deprecation version.
+    // `Deprecation.valid_until`.
     //
     // Migration entries today have no `valid_from` field at the
     // `MigrationEntry` shape (that lives on `Deprecation` after
-    // `build_deprecation` composes it). The invariant we can pin
-    // here at the migration-table level is the weaker one:
-    // `valid_until`, when populated, must parse cleanly. Every
-    // current entry has `valid_until: None`, so the loop is
-    // vacuous; once entries gain cutoff data, the parse check
-    // catches malformed schema-version strings.
+    // `build_deprecation` composes it). The invariant pinned at
+    // this layer is therefore parse-shape only: `valid_until`,
+    // when populated, must parse cleanly as an `ISM-vYYYY-MMM`
+    // schema-version label. Every current entry has
+    // `valid_until: None`, so the loop is vacuous today; once
+    // entries gain cutoff data, the parse check catches malformed
+    // schema-version strings before they propagate into composed
+    // `Deprecation` records.
+    //
+    // The temporal-ordering invariant (`valid_from <= since`) the
+    // function name previously claimed to enforce moved to
+    // `crates/capco/tests/deprecation_invariant.rs::deprecation_valid_from_lte_since_for_every_sentinel`
+    // — the only place `Deprecation`s are observable (after
+    // `build_deprecation` composes them in the CapcoScheme
+    // adapter).
     for entry in MIGRATIONS {
         if let Some(valid_until) = entry.valid_until {
             assert!(

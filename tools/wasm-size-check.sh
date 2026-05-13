@@ -12,6 +12,18 @@
 # exceeds the baseline by more than 5% (Constitution III + T058i
 # quality gate).
 #
+# ## What this gate measures vs what CI ships
+#
+# This gate measures the `release-web` profile's PRE-`wasm-opt`
+# artifact size. The main `.github/workflows/ci.yml` `wasm` job
+# additionally runs `wasm-pack build --profiling` and post-processes
+# with `wasm-opt -O3` flags; the ship artifact is therefore smaller
+# than the number this gate enforces. The gate exists to catch
+# Rust-side bloat (new vocabulary tables, new `Box<dyn>` paths,
+# accidentally-pulled-in deps) at the source — `wasm-opt` cannot
+# rescue every regression, and a 5% pre-opt regression is the
+# right canary for an upstream-side bloat event.
+#
 # ## Why we measure the pre-`wasm-opt` artifact
 #
 # `wasm-pack`'s integrated `wasm-opt` pass fails on the current
@@ -57,7 +69,10 @@ if [[ ! -f "${WASM_ARTIFACT}" ]]; then
     exit 2
 fi
 
-CURRENT_SIZE=$(stat -c '%s' "${WASM_ARTIFACT}")
+# POSIX-portable byte count (`stat -c '%s'` is GNU-only; macOS BSD
+# stat uses `stat -f '%z'`). `wc -c` works identically on every
+# POSIX environment and avoids the Linux/macOS split.
+CURRENT_SIZE=$(wc -c <"${WASM_ARTIFACT}" | tr -d ' ')
 echo "[wasm-size-check] current size: ${CURRENT_SIZE} bytes"
 
 if "${UPDATE_BASELINE}"; then
