@@ -2316,30 +2316,6 @@ const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
 // Rule-override canonicalization (task #49)
 // ---------------------------------------------------------------------------
 
-/// Resolve every key in `config.rules.overrides` against the registered
-/// rule sets. Both the rule ID (`"E001"`) and the rule name
-/// (`"portion-mark-in-banner"`) are accepted — after canonicalization
-/// the override map keys by canonical ID only, and the per-rule lookup
-/// in `lint()` / `fix_inner()` keeps working unchanged.
-///
-/// Fails closed on:
-/// - **Unknown keys** — `E999 = "warn"` or `not-a-rule = "error"` → the
-///   user has almost certainly typo'd a rule reference. Silent acceptance
-///   (the pre-#49 behavior) means the user thought they were configuring
-///   the rule, but nothing happened at lint time. Emits
-///   `EngineConstructionError::UnknownRuleOverride` with a best-effort
-///   `did_you_mean` suggestion (Levenshtein ≤ 3 against the union of
-///   known IDs and names).
-/// - **Conflicting duplicate forms** — `E001 = "warn"` AND
-///   `portion-mark-in-banner = "error"` in the same merged config →
-///   the two entries resolved to the same rule but with different
-///   severities. One form would have silently won the HashMap race.
-///   Emits `EngineConstructionError::ConflictingRuleOverride`.
-///
-/// Duplicate forms with the *same* severity are silently accepted —
-/// a user writing both `E001 = "warn"` and `portion-mark-in-banner =
-/// "warn"` (intentionally or via copy-paste across config layers) gets
-/// the expected behavior.
 /// Pass-1 (Localized) rule-index partition. Each entry indexes back
 /// into `Engine::rule_sets[i].rules()[j]` as `(i, j)`. Inline-4
 /// because the production CAPCO ruleset has 4 Localized rules; future
@@ -2386,6 +2362,30 @@ fn partition_rules_by_phase(
     (pass1, pass2)
 }
 
+/// Resolve every key in `config.rules.overrides` against the registered
+/// rule sets. Both the rule ID (`"E001"`) and the rule name
+/// (`"portion-mark-in-banner"`) are accepted — after canonicalization
+/// the override map keys by canonical ID only, and the per-rule lookup
+/// in `lint()` / `fix_inner()` keeps working unchanged.
+///
+/// Fails closed on:
+/// - **Unknown keys** — `E999 = "warn"` or `not-a-rule = "error"` → the
+///   user has almost certainly typo'd a rule reference. Silent acceptance
+///   (the pre-#49 behavior) means the user thought they were configuring
+///   the rule, but nothing happened at lint time. Emits
+///   `EngineConstructionError::UnknownRuleOverride` with a best-effort
+///   `did_you_mean` suggestion (Levenshtein ≤ 3 against the union of
+///   known IDs and names).
+/// - **Conflicting duplicate forms** — `E001 = "warn"` AND
+///   `portion-mark-in-banner = "error"` in the same merged config →
+///   the two entries resolved to the same rule but with different
+///   severities. One form would have silently won the HashMap race.
+///   Emits `EngineConstructionError::ConflictingRuleOverride`.
+///
+/// Duplicate forms with the *same* severity are silently accepted —
+/// a user writing both `E001 = "warn"` and `portion-mark-in-banner =
+/// "warn"` (intentionally or via copy-paste across config layers) gets
+/// the expected behavior.
 fn canonicalize_rule_overrides(
     config: &mut Config,
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
