@@ -705,18 +705,32 @@ impl PageContext {
 
     /// Expected non-IC dissem controls for the banner.
     ///
-    /// Rules (ISM-Rollup XSLT + NonICRollup.xspec):
+    /// Rules (ISM-Rollup XSLT + NonICRollup.xspec, plus §H.9 NODIS/EXDIS):
     /// - Union of all non-IC controls across portions
     /// - **SBU-NF in classified docs**: Splits to SBU + NF (NF goes to dissem)
     /// - **LES-NF in classified docs**: Splits to LES + NF
     /// - In unclassified docs: SBU-NF and LES-NF kept intact
+    /// - **NODIS or EXDIS in any portion** (classification-independent):
+    ///   sets `needs_nf` so NOFORN is injected at banner roll-up per
+    ///   CAPCO-2016 §H.9 p172 (EXDIS) / p174 (NODIS). NODIS and EXDIS
+    ///   stay in the non-IC set; they are NOT split.
     ///
-    /// Returns a tuple: (non_ic_controls, additional_nf) where additional_nf
-    /// is true if NF should be added to dissem controls from the split.
+    /// Returns a tuple `(non_ic_controls, needs_nf)` where `needs_nf` is
+    /// `true` if NF must be added to dissem controls at banner roll-up.
+    /// `needs_nf` is set when:
+    /// - The SBU-NF / LES-NF classified-context split fires (§H.9
+    ///   p178 / p185), OR
+    /// - Any portion carries NODIS or EXDIS (§H.9 p172 / p174).
+    ///
+    /// `needs_nf` does NOT depend on classification level for the
+    /// NODIS/EXDIS triggers — those passages do not gate on
+    /// classification. The SBU-NF/LES-NF split IS classification-gated
+    /// (the split only fires in classified context per the `if classified`
+    /// guard inside the function body).
     pub fn expected_non_ic_dissem(&self) -> (Vec<NonIcDissem>, bool) {
         let classified = self.is_classified();
         let mut seen = std::collections::BTreeSet::new();
-        let mut needs_nf_from_split = false;
+        let mut needs_nf = false;
 
         seen.extend(
             self.portions
@@ -728,16 +742,44 @@ impl PageContext {
             // SBU-NF → SBU + NF (dissem)
             if seen.remove(&NonIcDissem::SbuNf) {
                 seen.insert(NonIcDissem::Sbu);
-                needs_nf_from_split = true;
+                needs_nf = true;
             }
             // LES-NF → LES + NF (dissem)
             if seen.remove(&NonIcDissem::LesNf) {
                 seen.insert(NonIcDissem::Les);
-                needs_nf_from_split = true;
+                needs_nf = true;
             }
         }
 
-        (seen.into_iter().collect(), needs_nf_from_split)
+        // NODIS / EXDIS imply NOFORN in the banner per CAPCO-2016 §H.9.
+        // Source passages, verbatim:
+        //
+        //   §H.9 p172 (EXDIS) — "REL TO is not authorized in the banner
+        //   line if any portion contains EXDIS information. In this case,
+        //   NOFORN would convey in the banner line."
+        //
+        //   §H.9 p174 (NODIS) — "REL TO is not authorized in the banner
+        //   line if any portion contains NODIS information. In this case,
+        //   NOFORN would convey in the banner line."
+        //
+        // NODIS and EXDIS themselves stay in the non-IC dissem set (they
+        // roll up to the banner per the non-IC banner-roll-up rule); we
+        // only flag that NF must also be injected into CAT_DISSEM. Unlike
+        // SBU-NF / LES-NF this is not a split — NODIS/EXDIS tokens are
+        // NOT removed or renamed. The flag is purely additive for
+        // downstream consumers (the renderer at `render_expected_banner`,
+        // the REL TO short-circuit at `expected_rel_to`).
+        //
+        // Classification-independent for the NODIS/EXDIS triggers — the
+        // §H.9 passages above do not gate on classification level. This
+        // block is intentionally placed AFTER the `if classified` SBU-NF
+        // / LES-NF split block so it runs in both unclassified and
+        // classified contexts.
+        if seen.contains(&NonIcDissem::Nodis) || seen.contains(&NonIcDissem::Exdis) {
+            needs_nf = true;
+        }
+
+        (seen.into_iter().collect(), needs_nf)
     }
 
     /// Assemble a CAPCO banner string from all accumulated portion markings.
@@ -802,7 +844,7 @@ impl PageContext {
         // DissemControl::as_str() returns the portion abbreviation ("NF", "RELIDO"),
         // so convert to banner form via marking_forms::portion_to_banner().
         let rel_to = self.expected_rel_to();
-        let (non_ic, needs_nf_from_non_ic) = self.expected_non_ic_dissem();
+        let (non_ic, needs_nf) = self.expected_non_ic_dissem();
         let dissem = self.expected_dissem_controls();
 
         let mut dissem_parts: Vec<String> = Vec::new();
@@ -817,8 +859,10 @@ impl PageContext {
             }
             dissem_parts.push(banner.to_owned());
         }
-        // If non-IC SBU-NF/LES-NF split injected NOFORN, add it.
-        if needs_nf_from_non_ic && !dissem_parts.iter().any(|p| p == "NOFORN") {
+        // If the non-IC dissem family implies NF at banner roll-up — the
+        // SBU-NF/LES-NF classified-context split (§H.9 p178 / p185) OR a
+        // portion carrying NODIS/EXDIS (§H.9 p172 / p174) — inject NOFORN.
+        if needs_nf && !dissem_parts.iter().any(|p| p == "NOFORN") {
             dissem_parts.push("NOFORN".to_owned());
         }
         // REL TO list (comma-delimited countries with "REL TO " prefix).
@@ -1110,6 +1154,73 @@ mod tests {
     }
 
     #[test]
+    fn expected_rel_to_empty_when_nodis_in_portion() {
+        // PR 3c.B-8F-engine-gap: NODIS in any portion implies NOFORN in
+        // banner per CAPCO-2016 §H.9 p174 verbatim: "REL TO is not
+        // authorized in the banner line if any portion contains NODIS
+        // information. In this case, NOFORN would convey in the banner
+        // line." `expected_rel_to` must short-circuit to empty via the
+        // `needs_nf` flag from `expected_non_ic_dissem`. Unclassified
+        // context — the §H.9 p174 passage does not gate on
+        // classification.
+        use crate::attrs::CountryCode;
+        let mut ctx = PageContext::new();
+        // Portion 1: REL TO USA, GBR
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]
+                .into_boxed_slice(),
+            ..Default::default()
+        });
+        // Portion 2: NODIS (unclassified)
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            non_ic_dissem: vec![NonIcDissem::Nodis].into(),
+            ..Default::default()
+        });
+        // Without the short-circuit, the intersection would be
+        // [USA, GBR] (portion 1 alone, since portion 2 has no REL TO
+        // list). With the short-circuit, it's empty.
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "NODIS in any portion must clear expected_rel_to per §H.9 p174"
+        );
+    }
+
+    #[test]
+    fn expected_rel_to_empty_when_exdis_in_portion() {
+        // PR 3c.B-8F-engine-gap: EXDIS in any portion implies NOFORN in
+        // banner per CAPCO-2016 §H.9 p172 verbatim: "REL TO is not
+        // authorized in the banner line if any portion contains EXDIS
+        // information. In this case, NOFORN would convey in the banner
+        // line." `expected_rel_to` must short-circuit to empty via the
+        // `needs_nf` flag from `expected_non_ic_dissem`. Classified
+        // context — the §H.9 p172 passage does not gate on
+        // classification (this test uses SECRET to exercise the
+        // classified path; the unclassified sibling test above pins
+        // the inverse classification path).
+        use crate::attrs::CountryCode;
+        let mut ctx = PageContext::new();
+        // Portion 1: SECRET, REL TO USA, GBR
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()]
+                .into_boxed_slice(),
+            ..Default::default()
+        });
+        // Portion 2: SECRET, EXDIS
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            non_ic_dissem: vec![NonIcDissem::Exdis].into(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "EXDIS in any portion must clear expected_rel_to per §H.9 p172"
+        );
+    }
+
+    #[test]
     fn expected_declassify_on_max() {
         let a1 = CanonicalAttrs {
             declassify_on: Some(IsmDate::Date(2035, 1, 1)),
@@ -1263,6 +1374,61 @@ mod tests {
         let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
         assert!(non_ic.contains(&NonIcDissem::SbuNf));
         assert!(!needs_nf);
+    }
+
+    #[test]
+    fn expected_non_ic_dissem_signals_needs_nf_on_nodis() {
+        // PR 3c.B-8F-engine-gap: §H.9 p174 — "REL TO is not authorized
+        // in the banner line if any portion contains NODIS information.
+        // In this case, NOFORN would convey in the banner line." Unlike
+        // the SBU-NF/LES-NF split, NODIS is NOT renamed or removed;
+        // `needs_nf` is purely additive. Classification-independent.
+        for classification in [Classification::Unclassified, Classification::Confidential] {
+            let mut ctx = PageContext::new();
+            ctx.add_portion(CanonicalAttrs {
+                classification: Some(MarkingClassification::Us(classification)),
+                non_ic_dissem: vec![NonIcDissem::Nodis].into(),
+                ..Default::default()
+            });
+            let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+            assert!(
+                non_ic.contains(&NonIcDissem::Nodis),
+                "NODIS must remain in non-IC set at {classification:?} \
+                 (it is not split, only imply-NF)"
+            );
+            assert!(
+                needs_nf,
+                "needs_nf must be true when NODIS present at {classification:?} \
+                 per §H.9 p174"
+            );
+        }
+    }
+
+    #[test]
+    fn expected_non_ic_dissem_signals_needs_nf_on_exdis() {
+        // PR 3c.B-8F-engine-gap: §H.9 p172 — "REL TO is not authorized
+        // in the banner line if any portion contains EXDIS information.
+        // In this case, NOFORN would convey in the banner line."
+        // Symmetric to the NODIS test above. Classification-independent.
+        for classification in [Classification::Unclassified, Classification::Secret] {
+            let mut ctx = PageContext::new();
+            ctx.add_portion(CanonicalAttrs {
+                classification: Some(MarkingClassification::Us(classification)),
+                non_ic_dissem: vec![NonIcDissem::Exdis].into(),
+                ..Default::default()
+            });
+            let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+            assert!(
+                non_ic.contains(&NonIcDissem::Exdis),
+                "EXDIS must remain in non-IC set at {classification:?} \
+                 (it is not split, only imply-NF)"
+            );
+            assert!(
+                needs_nf,
+                "needs_nf must be true when EXDIS present at {classification:?} \
+                 per §H.9 p172"
+            );
+        }
     }
 
     // --- FGI rollup ---

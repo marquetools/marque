@@ -973,6 +973,21 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     out.rel_to = ctx.expected_rel_to().into_boxed_slice();
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
+    // `_needs_nf` (second tuple element) is intentionally discarded here.
+    // NOFORN injection into `out.dissem_controls` for the non-IC dissem
+    // trigger family (SBU-NF/LES-NF classified-context split, and
+    // NODIS/EXDIS imply-NF per CAPCO-2016 §H.9 p172 / p174) is handled at
+    // the final-projection layer by the PageRewrites
+    // `capco/{sbu-nf,les-nf,nodis,exdis}-implies-noforn`
+    // (declared in `CapcoScheme::page_rewrites`). Adding a second
+    // injection path here would duplicate work the PageRewrites already
+    // do and split the "what does the projected page look like?" answer
+    // across two code paths. The PageRewrites are authoritative for final
+    // mutations on CAT_DISSEM; this function only assembles the
+    // intermediate snapshot from raw portion reads. `out.rel_to` (set on
+    // the line above) is consistent with the post-rewrite state via the
+    // `expected_rel_to` short-circuit that fires whenever `needs_nf` is
+    // true.
     let (non_ic, _needs_nf) = ctx.expected_non_ic_dissem();
     out.non_ic_dissem = non_ic.into_boxed_slice();
 

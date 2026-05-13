@@ -2283,23 +2283,38 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
     }
 
     // NOFORN supersedes REL TO at the page level (CAPCO-2016
-    // §H.8 + §H.9 — NOFORN/REL TO mutual exclusion). When any
-    // portion carries NOFORN, or when the non-IC SBU-NF/LES-NF
-    // split forces NF injection at banner roll-up,
-    // `PageContext::expected_rel_to` returns empty *because the
-    // marking is superseded*, not because the atom intersection
-    // is empty. Firing S005/S006 in that case produces a
-    // misleading "intersection produced REL TO (empty)"
-    // diagnostic — the operator's actual problem is "you have
-    // NOFORN AND REL TO portions on the same page", which is a
-    // different rule's territory. Bail so S005/S006 only run
-    // when REL TO is semantically in play. Mirrors the
-    // supersession checks `PageContext::expected_rel_to` runs
-    // internally; we duplicate them here because the rule needs
-    // to distinguish "empty due to supersession" from "empty
-    // due to genuinely-disjoint portion REL TO lists" (the
-    // latter is a legitimate S005/S006 trigger). (Caught by
-    // Copilot review on PR #249.)
+    // §H.8 + §H.9 — NOFORN/REL TO mutual exclusion). Four trigger
+    // families cause `PageContext::expected_rel_to` to return empty
+    // *because the marking is superseded*, not because the atom
+    // intersection is empty:
+    //
+    //   1. Any portion carries DissemControl::Nf (NOFORN directly).
+    //   2. SBU-NF / LES-NF classified-context split injects NF
+    //      (§H.9 p178 / p185).
+    //   3. Any portion carries NODIS (§H.9 p174 — "REL TO is not
+    //      authorized in the banner line if any portion contains
+    //      NODIS information. In this case, NOFORN would convey in
+    //      the banner line.").
+    //   4. Any portion carries EXDIS (§H.9 p172 — "REL TO is not
+    //      authorized in the banner line if any portion contains
+    //      EXDIS information. In this case, NOFORN would convey in
+    //      the banner line.").
+    //
+    // Firing S005/S006 under any of these conditions produces a
+    // misleading "intersection produced REL TO (empty)" diagnostic
+    // — the operator's actual problem is supersession, which is a
+    // different rule's territory. Bail so S005/S006 only run when
+    // REL TO is semantically in play. Mirrors the supersession
+    // checks `PageContext::expected_rel_to` runs internally; we
+    // duplicate them here because the rule needs to distinguish
+    // "empty due to supersession" from "empty due to genuinely-
+    // disjoint portion REL TO lists" (the latter is a legitimate
+    // S005/S006 trigger). Trigger 1 (NOFORN-direct) needs its own
+    // check because `expected_non_ic_dissem`'s `needs_nf` only
+    // covers triggers 2–4; triggers 2–4 are all reflected in the
+    // `needs_nf` flag. Caught originally by Copilot review on
+    // PR #249; expanded to cover triggers 3–4 in PR
+    // 3c.B-8F-engine-gap.
     let any_portion_noforn = page.portions().iter().any(|p| {
         p.dissem_controls
             .iter()
@@ -2308,8 +2323,8 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
     if any_portion_noforn {
         return Vec::new();
     }
-    let (_expected_non_ic, needs_nf_from_split) = page.expected_non_ic_dissem();
-    if needs_nf_from_split {
+    let (_expected_non_ic, needs_nf) = page.expected_non_ic_dissem();
+    if needs_nf {
         return Vec::new();
     }
 
@@ -4907,8 +4922,11 @@ mod tests {
         // `PageContext::expected_rel_to` returns empty even though
         // no portion carries `DissemControl::Nf` directly — REL TO
         // is superseded at the page level. Pin the second NOFORN
-        // bail in `analyze_uncertain_reduction` (the
-        // `needs_nf_from_split` branch).
+        // bail in `analyze_uncertain_reduction` (the `needs_nf`
+        // branch — also covers NODIS/EXDIS portions per the
+        // §H.9 p172 / p174 imply-NF extension landed in PR
+        // 3c.B-8F-engine-gap; this test stays scoped to SBU-NF,
+        // with separate tests below for the NODIS/EXDIS paths).
         //
         // Fixture: portion 1 has SBU-NF (the split trigger);
         // portions 2 and 3 have classified REL TO with an uncertain
@@ -4954,6 +4972,58 @@ mod tests {
             0,
             "S005/S006 must not fire when any portion carries NOFORN \
              (REL TO is superseded at the page level): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_portion_has_nodis() {
+        // PR 3c.B-8F-engine-gap regression: NODIS in any portion implies
+        // NOFORN in the banner per CAPCO-2016 §H.9 p174 verbatim — "REL TO
+        // is not authorized in the banner line if any portion contains
+        // NODIS information. In this case, NOFORN would convey in the
+        // banner line." `PageContext::expected_rel_to` now short-circuits
+        // to empty when NODIS is present in any portion, and the
+        // `needs_nf` bail in `analyze_uncertain_reduction` (lines
+        // 2311-2314 after the rename) propagates this. Pin the bail.
+        //
+        // Fixture: portion 1 has NODIS; portions 2 and 3 have classified
+        // REL TO with an uncertain code (RSMA). Pre-PR the rule would
+        // have computed `portions_with_rel_to.len() == 2`,
+        // `expected_set = {}` (NODIS supersession via `needs_nf`), and
+        // fired a misleading "intersection produced REL TO (empty…)"
+        // diagnostic. Post-PR the `needs_nf` bail stops it.
+        let source = "(S//NODIS//NOFORN)\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//NODIS//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when any portion carries NODIS \
+             (REL TO is superseded at the page level per §H.9 p174): \
+             {diags:?}"
+        );
+    }
+
+    #[test]
+    fn s005_does_not_fire_when_portion_has_exdis() {
+        // PR 3c.B-8F-engine-gap regression: EXDIS analogue of the NODIS
+        // test above. CAPCO-2016 §H.9 p172 verbatim — "REL TO is not
+        // authorized in the banner line if any portion contains EXDIS
+        // information. In this case, NOFORN would convey in the banner
+        // line."
+        let source = "(S//EXDIS//NOFORN)\n\
+                      (S//REL TO USA, GBR, RSMA)\n\
+                      (S//REL TO USA, AUS, GBR)\n\
+                      SECRET//EXDIS//NOFORN";
+        let diags = lint_banner(source);
+        assert_eq!(
+            count_s005_or_s006(&diags),
+            0,
+            "S005/S006 must not fire when any portion carries EXDIS \
+             (REL TO is superseded at the page level per §H.9 p172): \
+             {diags:?}"
         );
     }
 
@@ -6279,6 +6349,44 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E039"),
             "E039 must not fire when banner has no REL TO: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn e039_still_fires_after_engine_gap_close() {
+        // PR 3c.B-8F-engine-gap regression pin: E039 reads
+        // `attrs.rel_to` (the literal banner REL TO list) AND
+        // `page.expected_non_ic_dissem()` first element (the NODIS/EXDIS
+        // set) — neither of which is affected by the engine-gap close.
+        // The gap-close adjusts `expected_non_ic_dissem`'s SECOND tuple
+        // element (`needs_nf`), and `expected_rel_to`'s short-circuit
+        // behavior. E039's check path does not consume either signal.
+        //
+        // This test pins the load-bearing assertion that E039 stays in
+        // place after the gap-close lands. Re-running the existing
+        // `e039_fires_on_banner_rel_to_with_nodis_portion` test post-PR
+        // would catch a regression, but THIS test exists to document
+        // why E039 is preserved (not retired) by this PR: the engine
+        // gap closes a parallel read-API inconsistency; E039 is the
+        // dedicated rule for "banner has REL TO + portion has
+        // NODIS/EXDIS" and retains its check path verbatim.
+        //
+        // E039 retirement is a follow-on PR that requires a
+        // BannerMatchesProjectedRule REL TO row to become the natural
+        // detector. Not in scope here.
+        let source = "(S//NODIS)\nSECRET//NODIS//REL TO USA";
+        let diags = lint_banner(source);
+        let e039: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E039").collect();
+        assert_eq!(
+            e039.len(),
+            1,
+            "E039 must continue firing after PR 3c.B-8F-engine-gap (banner \
+             has REL TO + portion has NODIS): {diags:?}"
+        );
+        assert!(
+            e039[0].citation.contains("§H.9 p172") && e039[0].citation.contains("p174"),
+            "E039 citation must continue to pin §H.9 p172 + p174: {:?}",
+            e039[0].citation
         );
     }
 
