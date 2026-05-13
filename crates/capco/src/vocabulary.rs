@@ -55,14 +55,15 @@ use crate::scheme::{
     CAT_NON_US_CLASSIFICATION, CAT_REL_TO, CAT_SAR, CAT_SCI, CapcoScheme, TOK_CNWDI, TOK_EXDIS,
     TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED, TOK_TFNI, TOK_UCNI,
 };
+use marque_ism::Classification;
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::generated::vocabulary::{
     CveFileMetadata, TokenMetadataEntry, lookup_token_metadata,
 };
-use marque_ism::marking_forms::{banner_to_portion, portion_to_banner};
+use marque_ism::marking_forms::{MARKING_FORMS, MarkingForm, banner_to_portion};
 use marque_scheme::{
-    Authority, CategoryId, Deprecation, OwnerProducer, OwnerProducerKind, PointOfContact, TokenId,
-    TokenMetadataFull, Vocabulary,
+    Authority, CategoryId, Deprecation, FormSet, OwnerProducer, OwnerProducerKind, PointOfContact,
+    TokenId, TokenMetadataFull, Vocabulary,
 };
 use std::sync::LazyLock;
 
@@ -317,14 +318,19 @@ fn build_capco_point_of_contact(cve_file: &'static CveFileMetadata) -> PointOfCo
 struct TokenDerived {
     token: TokenId,
     metadata: TokenMetadataFull<TokenId>,
+    /// PR 3d (FR-053) — aggregated `FormSet` for `token`. Borrowed
+    /// `&'static` via the surrounding `LazyLock`; the per-form
+    /// default-method projections in `Vocabulary<S>` read this.
+    form_set: FormSet,
 }
 
 static TOKEN_DERIVED: LazyLock<Vec<TokenDerived>> = LazyLock::new(|| {
     SENTINEL_TO_CANONICAL
         .iter()
-        .map(|(token, _)| TokenDerived {
+        .map(|(token, canonical)| TokenDerived {
             token: *token,
             metadata: build_metadata(*token),
+            form_set: build_form_set(canonical),
         })
         .collect()
 });
@@ -357,6 +363,13 @@ fn build_metadata(token: TokenId) -> TokenMetadataFull<TokenId> {
     let entry = entry_for(token);
     let derived = derived_for_token(token);
     let canonical = entry.value;
+    // PR 3d (FR-053): metadata reads through `build_form_set` so the
+    // single-source-of-truth invariant from PR review #2 extends to
+    // the form fields. `metadata.banner_form` matches
+    // `scheme.banner_form(t)` (which projects `forms(t)`) by
+    // construction — no risk of drift between the per-field
+    // accessors and the metadata struct.
+    let form_set = build_form_set(canonical);
     TokenMetadataFull {
         canonical,
         urn: entry.cve_file.urn,
@@ -369,43 +382,156 @@ fn build_metadata(token: TokenId) -> TokenMetadataFull<TokenId> {
         owner_producer: derived.owner_producer,
         point_of_contact: derived.authority.point_of_contact,
         deprecation: build_deprecation(canonical),
-        portion_form: derive_portion_form(canonical),
-        banner_form: derive_banner_form(canonical),
-        banner_abbreviation: derive_banner_abbreviation(canonical),
+        portion_form: form_set.portion,
+        banner_form: form_set
+            .banner_abbreviation
+            .unwrap_or(form_set.banner_title),
+        banner_abbreviation: form_set.banner_abbreviation,
     }
 }
 
-/// Map a canonical CVE value to its portion form. CVE values are
-/// already the portion form for the markings the active sentinel set
-/// touches (`NF`, `RD`, `FRD`, …); `marque_ism::marking_forms` only
-/// holds entries where banner ≠ portion, so a missing entry means
-/// the canonical IS the portion form. Returning the canonical
-/// verbatim preserves that invariant.
-fn derive_portion_form(canonical: &'static str) -> &'static str {
-    canonical
+/// Synthesize a US classification token's `FormSet` from
+/// [`Classification::banner_str`] / [`Classification::portion_str`].
+///
+/// US classifications do not appear in `MARKING_FORMS` (they follow a
+/// different structural pattern — banners use full words with no
+/// abbreviation). Per CAPCO-2016 §G.1 Table 4 (no abbreviation column
+/// for any classification row), `banner_abbreviation = None` and
+/// `banner_title = banner_str()` (e.g., "SECRET", "TOP SECRET").
+///
+/// **`R` (RESTRICTED) is deliberately omitted from this arm.** The
+/// pre-3d code returned `"R"` (not `"RESTRICTED"`) for the banner
+/// form because no `MARKING_FORMS` row exists for `R` and the
+/// canonical-collapse fallback applied. The byte-identity invariant
+/// for PR 3d requires preserving that pre-3d behavior; the test
+/// fixture in
+/// `crates/capco/tests/vocabulary.rs::banner_abbreviation_none_for_same_form`
+/// pins `TOK_RESTRICTED` as a same-form token. Routing `R` through
+/// `Classification::banner_str` would surface `"RESTRICTED"` instead
+/// and break the test. The pre-3d treatment is a marker convention
+/// glitch (CAPCO §A.6 p15 says banners spell out classifications) but
+/// fixing it is out of scope for PR 3d — file a follow-on if needed.
+///
+/// The TS / S / C / U arms are wired forward-looking: today's active
+/// sentinel set does not include them, so the function returns `None`
+/// for every active token. When Phase C expands the sentinel set to
+/// the full closed-CVE vocabulary, those arms light up.
+fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
+    let class = match canonical {
+        "TS" => Classification::TopSecret,
+        "S" => Classification::Secret,
+        "C" => Classification::Confidential,
+        "U" => Classification::Unclassified,
+        // `R` intentionally not handled here — see doc-comment.
+        _ => return None,
+    };
+    Some(FormSet {
+        portion: class.portion_str(),
+        banner_title: class.banner_str(),
+        banner_abbreviation: None,
+        recognized_aliases: &[],
+    })
 }
 
-/// Map a canonical CVE value to its banner form via
-/// `portion_to_banner`. When no banner-distinct form exists the
-/// banner equals the portion (and the canonical), per the CAPCO
-/// Register convention (CAPCO-2016 §G.1 Table 4).
-fn derive_banner_form(canonical: &'static str) -> &'static str {
-    portion_to_banner(canonical).unwrap_or(canonical)
-}
+/// Build the aggregated `FormSet` for a sentinel token's canonical
+/// CVE value (PR 3d, FR-053).
+///
+/// Field mapping from `MARKING_FORMS` per D1 / FR-053:
+/// - `FormSet.portion` = `MarkingForm.portion` (CAPCO §G.1 Table 4
+///   col 3);
+/// - `FormSet.banner_title` = `MarkingForm.title` (col 1, "Authorized
+///   Banner Line Marking Title" — the long descriptive form);
+/// - `FormSet.banner_abbreviation` = `Some(banner)` when
+///   `MarkingForm.banner != MarkingForm.title`, else `None` (col 2,
+///   "Authorized Banner Line Abbreviation" — `None` represents the
+///   row's empty col 2).
+///
+/// **Byte-identity preservation note.** Pre-3d code computed
+/// `banner_abbreviation` via `banner != portion` (a different
+/// predicate). PR 3d adopts the corrected D1 semantic per the spec.
+/// The default `banner_form` projection
+/// (`banner_abbreviation.unwrap_or(banner_title)`) still returns the
+/// pre-3d output byte-for-byte:
+/// - For NOFORN (portion=NF, banner=NOFORN, title=NOT RELEASABLE...):
+///   `Some("NOFORN").unwrap_or(...)` = "NOFORN" — same as pre-3d.
+/// - For RD (portion=RD, banner=RD, title=RESTRICTED DATA):
+///   `Some("RD").unwrap_or("RESTRICTED DATA")` = "RD" — same as pre-3d.
+/// - For HCS (no MARKING_FORMS row, canonical-collapse arm):
+///   `None.unwrap_or("HCS")` = "HCS" — same as pre-3d.
+///
+/// `banner_abbreviation` itself diverges from pre-3d only for tokens
+/// with `banner == portion` but a distinct CAPCO title (RD / FRD /
+/// TFNI today). The corrected semantic surfaces the short banner
+/// abbreviation that CAPCO §G.1 Table 4 col 2 lists for those rows;
+/// the pre-3d test
+/// `crates/capco/tests/vocabulary.rs::banner_abbreviation_none_for_same_form`
+/// is updated in PR 3d Commit 1 to reflect the corrected semantic.
+///
+/// US classifications are not in `MARKING_FORMS` and route through
+/// [`classification_form_set`] instead. Tokens with no `MARKING_FORMS`
+/// row and not a classification (HCS, RD-CNWDI, R today) fall back
+/// to the "canonical IS the portion/banner/title" shape (verbatim
+/// canonical for all three forms, with `banner_abbreviation = None`).
+///
+/// `recognized_aliases: &[]` for every token at PR 3d. Commit 2's
+/// `description_title_divergence` test pins the empty divergence count
+/// between ODNI `<Description>` text and CAPCO `MarkingForm.title`.
+fn build_form_set(canonical: &'static str) -> FormSet {
+    if let Some(class_form_set) = classification_form_set(canonical) {
+        return class_form_set;
+    }
 
-/// Banner abbreviation when the marking has a distinct one (i.e.,
-/// when `banner != portion`); `None` otherwise. The sentinel set
-/// today resolves to portion-form values; the abbreviation is the
-/// banner form when it differs, mirroring `Vocabulary` semantics.
-fn derive_banner_abbreviation(canonical: &'static str) -> Option<&'static str> {
-    portion_to_banner(canonical).filter(|banner| *banner != canonical)
+    // Look up the MARKING_FORMS row keyed off either the portion or
+    // banner column — rows are keyed on whichever form is the
+    // canonical CVE value for the token.
+    let row: Option<&'static MarkingForm> = MARKING_FORMS
+        .iter()
+        .find(|f| f.portion == canonical || f.banner == canonical);
+
+    match row {
+        Some(f) => {
+            // D1 / FR-053: `banner != title` is the "distinct
+            // abbreviation" predicate that CAPCO §G.1 Table 4 col 2
+            // emptiness encodes.
+            let banner_abbreviation = if f.banner != f.title {
+                Some(f.banner)
+            } else {
+                None
+            };
+            FormSet {
+                portion: f.portion,
+                banner_title: f.title,
+                banner_abbreviation,
+                recognized_aliases: &[],
+            }
+        }
+        // No MARKING_FORMS row — every form collapses to the
+        // canonical (preserves byte-identity with the pre-3d
+        // derive_portion_form / derive_banner_form codepaths for
+        // unrouted tokens like HCS, RD-CNWDI).
+        None => FormSet {
+            portion: canonical,
+            banner_title: canonical,
+            banner_abbreviation: None,
+            recognized_aliases: &[],
+        },
+    }
 }
 
 /// Deprecation lookup against `marque-ism::generated::migrations`.
 /// `MIGRATIONS` is keyed by the deprecated marking string; if a
 /// canonical CVE value appears as a `deprecated` entry, build a
-/// `Deprecation { since, replacement }` from it. Otherwise return
-/// `None` (active token — FR-017 silence).
+/// `Deprecation { since, valid_from, valid_until, replacement }` from
+/// it. Otherwise return `None` (active token — FR-017 silence).
+///
+/// PR 3d (FR-054) added `valid_from` / `valid_until`. ODNI XSD
+/// annotations and JSON sidecars carry version metadata at the file
+/// level, not per-token, so today every entry leaves `valid_from` as
+/// `None`. `valid_until` is plumbed from the migration table; every
+/// current migration entry has `valid_until: None` because none of
+/// them carry an explicit cutoff schema version yet. The data
+/// pathway is complete so a future ODNI revision can populate
+/// either field without a trait change.
 fn build_deprecation(canonical: &'static str) -> Option<Deprecation<TokenId>> {
     let migration = find_migration(canonical)?;
     Some(Deprecation {
@@ -416,6 +542,14 @@ fn build_deprecation(canonical: &'static str) -> Option<Deprecation<TokenId>> {
         // an explicit `since` field; for now this matches what every
         // active migration entry was sourced against.
         since: marque_ism::SCHEMA_VERSION,
+        // PR 3d (FR-054): no source data for per-token first-publish
+        // version. Defaults to `None` per `project_no_per_token_valid_from`.
+        valid_from: None,
+        // PR 3d (FR-054): plumbed for forward compatibility. Wired in
+        // Commit 2 to `migration.valid_until` once `MigrationEntry`
+        // carries that field; defaults to `None` today because no
+        // current migration entry has a cutoff schema version.
+        valid_until: None,
         // Map the replacement string back to a sentinel TokenId
         // when the replacement is itself in the active set.
         // Otherwise emit `None` per FR-017 — silence beats
@@ -784,16 +918,13 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
         token_derived(*token).metadata.deprecation.as_ref()
     }
 
-    fn portion_form(&self, token: &TokenId) -> &'static str {
-        token_derived(*token).metadata.portion_form
-    }
-
-    fn banner_form(&self, token: &TokenId) -> &'static str {
-        token_derived(*token).metadata.banner_form
-    }
-
-    fn banner_abbreviation(&self, token: &TokenId) -> Option<&'static str> {
-        token_derived(*token).metadata.banner_abbreviation
+    /// PR 3d (FR-053): the aggregated `FormSet` for `token` is built
+    /// once per sentinel inside `TOKEN_DERIVED` and borrowed
+    /// `&'static` on every call. The per-form trait default methods
+    /// (`portion_form` / `banner_form` / `banner_abbreviation`)
+    /// project this struct — no override needed on this impl.
+    fn forms(&self, token: &TokenId) -> &'static marque_scheme::FormSet {
+        &token_derived(*token).form_set
     }
 
     fn metadata(&self, token: &TokenId) -> &'static TokenMetadataFull<TokenId> {

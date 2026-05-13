@@ -51,8 +51,8 @@ use marque_scheme::scheme::MarkingScheme;
 use marque_scheme::scope::Scope;
 use marque_scheme::template::Template;
 use marque_scheme::vocabulary::{
-    Authority, Deprecation, OwnerProducer, OwnerProducerKind, PointOfContact, TokenMetadataFull,
-    Vocabulary,
+    Authority, Deprecation, FormSet, OwnerProducer, OwnerProducerKind, PointOfContact,
+    TokenMetadataFull, Vocabulary,
 };
 
 // ---------------------------------------------------------------------------
@@ -283,6 +283,19 @@ static STUB_METADATA: TokenMetadataFull<TokenId> = TokenMetadataFull {
     banner_abbreviation: None,
 };
 
+// PR 3d (FR-053): the StubScheme's single sentinel token returns a
+// `FormSet` whose three canonical fields are all `"STUB"` —
+// equivalent to the pre-3d explicit accessors. The default
+// projections in the `Vocabulary` trait (introduced in PR 3d
+// Commit 1) handle `portion_form` / `banner_form` /
+// `banner_abbreviation` automatically.
+static STUB_FORM_SET: FormSet = FormSet {
+    portion: "STUB",
+    banner_title: "STUB",
+    banner_abbreviation: None,
+    recognized_aliases: &[],
+};
+
 impl Vocabulary<StubScheme> for StubScheme {
     fn authority(&self, _token: &TokenId) -> &'static Authority {
         &STUB_AUTHORITY
@@ -296,14 +309,8 @@ impl Vocabulary<StubScheme> for StubScheme {
     fn deprecation(&self, _token: &TokenId) -> Option<&'static Deprecation<TokenId>> {
         None
     }
-    fn portion_form(&self, _token: &TokenId) -> &'static str {
-        STUB_METADATA.portion_form
-    }
-    fn banner_form(&self, _token: &TokenId) -> &'static str {
-        STUB_METADATA.banner_form
-    }
-    fn banner_abbreviation(&self, _token: &TokenId) -> Option<&'static str> {
-        STUB_METADATA.banner_abbreviation
+    fn forms(&self, _token: &TokenId) -> &'static FormSet {
+        &STUB_FORM_SET
     }
     fn metadata(&self, _token: &TokenId) -> &'static TokenMetadataFull<TokenId> {
         &STUB_METADATA
