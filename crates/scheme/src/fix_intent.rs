@@ -60,7 +60,7 @@ use crate::scope::Scope;
 /// `S::OpenVocabRef` (which carries the full bound set per
 /// `MarkingScheme`) instead of over-constraining to `S: Debug +
 /// Clone + ...`.
-pub enum FactRef<S: MarkingScheme> {
+pub enum FactRef<S: MarkingScheme + ?Sized> {
     /// Closed-vocabulary token; resolves to a unique entry in the
     /// scheme's CVE-registered vocabulary.
     Cve(TokenId),
@@ -70,7 +70,7 @@ pub enum FactRef<S: MarkingScheme> {
     OpenVocab(S::OpenVocabRef),
 }
 
-impl<S: MarkingScheme> Debug for FactRef<S> {
+impl<S: MarkingScheme + ?Sized> Debug for FactRef<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             FactRef::Cve(id) => f.debug_tuple("Cve").field(id).finish(),
@@ -79,7 +79,7 @@ impl<S: MarkingScheme> Debug for FactRef<S> {
     }
 }
 
-impl<S: MarkingScheme> Clone for FactRef<S> {
+impl<S: MarkingScheme + ?Sized> Clone for FactRef<S> {
     fn clone(&self) -> Self {
         match self {
             FactRef::Cve(id) => FactRef::Cve(*id),
@@ -88,7 +88,7 @@ impl<S: MarkingScheme> Clone for FactRef<S> {
     }
 }
 
-impl<S: MarkingScheme> PartialEq for FactRef<S> {
+impl<S: MarkingScheme + ?Sized> PartialEq for FactRef<S> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (FactRef::Cve(a), FactRef::Cve(b)) => a == b,
@@ -98,9 +98,9 @@ impl<S: MarkingScheme> PartialEq for FactRef<S> {
     }
 }
 
-impl<S: MarkingScheme> Eq for FactRef<S> {}
+impl<S: MarkingScheme + ?Sized> Eq for FactRef<S> {}
 
-impl<S: MarkingScheme> Hash for FactRef<S> {
+impl<S: MarkingScheme + ?Sized> Hash for FactRef<S> {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         match self {
             FactRef::Cve(id) => {
@@ -140,7 +140,7 @@ impl<S: MarkingScheme> Hash for FactRef<S> {
 /// the same reason as on [`FactRef`] — to avoid over-constraining
 /// the trait bound to `S: Debug + Clone`.
 #[non_exhaustive]
-pub enum ReplacementIntent<S: MarkingScheme> {
+pub enum ReplacementIntent<S: MarkingScheme + ?Sized> {
     /// Add a token to the projected fact set at `scope`.
     FactAdd {
         /// The token to add. Closed-vocab via [`FactRef::Cve`] or
@@ -198,7 +198,7 @@ pub enum ReplacementIntent<S: MarkingScheme> {
     },
 }
 
-impl<S: MarkingScheme> Debug for ReplacementIntent<S> {
+impl<S: MarkingScheme + ?Sized> Debug for ReplacementIntent<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             ReplacementIntent::FactAdd { token, scope } => f
@@ -219,7 +219,7 @@ impl<S: MarkingScheme> Debug for ReplacementIntent<S> {
     }
 }
 
-impl<S: MarkingScheme> Clone for ReplacementIntent<S> {
+impl<S: MarkingScheme + ?Sized> Clone for ReplacementIntent<S> {
     fn clone(&self) -> Self {
         match self {
             ReplacementIntent::FactAdd { token, scope } => ReplacementIntent::FactAdd {

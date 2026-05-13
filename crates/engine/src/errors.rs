@@ -37,7 +37,7 @@
 
 use crate::engine::InvalidThreshold;
 use crate::output::LintResult;
-use marque_scheme::{CategoryId, RewriteId};
+use marque_scheme::{ApplyIntentError, CategoryId, RewriteId};
 
 /// Errors that will be raised while constructing an `Engine`.
 ///
@@ -121,6 +121,23 @@ pub enum EngineConstructionError {
         keys: Box<[String]>,
         severities: Box<[String]>,
     },
+    /// A [`PageRewrite`] carries a `CategoryAction::Intent` whose
+    /// [`ReplacementIntent`] references a token that does not route
+    /// to any category in the scheme. The rewrite is a scheme-
+    /// authoring bug — the engine catches it at construction time
+    /// (PR 3c.B Sub-PR 8.F engine-prereq) rather than letting the
+    /// intent silently no-op on the first page that triggers it.
+    ///
+    /// The `error` field carries the [`ApplyIntentError`] returned
+    /// by the validation walk (`UnknownToken` in practice, since
+    /// `IntentRejectsLattice` is a runtime-only condition).
+    ///
+    /// [`PageRewrite`]: marque_scheme::PageRewrite
+    /// [`ReplacementIntent`]: marque_scheme::ReplacementIntent
+    InvalidIntentInPageRewrite {
+        rewrite_id: RewriteId,
+        error: ApplyIntentError,
+    },
 }
 
 impl EngineConstructionError {
@@ -137,7 +154,9 @@ impl EngineConstructionError {
     ///   the developer ships a corrected build.
     pub fn exit_code(&self) -> i32 {
         match self {
-            Self::RewriteCycle { .. } | Self::UnannotatedCustomAxes { .. } => 69,
+            Self::RewriteCycle { .. }
+            | Self::UnannotatedCustomAxes { .. }
+            | Self::InvalidIntentInPageRewrite { .. } => 69,
             Self::UnknownRuleOverride { .. } | Self::ConflictingRuleOverride { .. } => 65,
         }
     }
@@ -182,6 +201,11 @@ impl std::fmt::Display for EngineConstructionError {
                     " — specify only one form (either the rule ID or the rule name), not both with different severities"
                 )
             }
+            Self::InvalidIntentInPageRewrite { rewrite_id, error } => write!(
+                f,
+                "page-rewrite {rewrite_id:?} carries a CategoryAction::Intent with an \
+                 unroutable token reference: {error}"
+            ),
         }
     }
 }

@@ -3027,12 +3027,24 @@ impl MarkingScheme for CapcoScheme {
                     if fires {
                         match &rw.action {
                             CategoryAction::Clear { category } => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Clear",
+                                    ?category,
+                                    "PageRewrite fired",
+                                );
                                 capco_category_clear(&mut out, *category);
                             }
                             CategoryAction::Replace { category, with } => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Replace",
+                                    ?category,
+                                    "PageRewrite fired",
+                                );
                                 capco_category_replace(&mut out, *category, with);
                             }
-                            CategoryAction::Promote { .. } => {
+                            CategoryAction::Promote { from, to, .. } => {
                                 // Phase 3 T034 declares the JOINT-
                                 // promotion and FGI-absorption rewrites
                                 // for the scheduler + catalog surface,
@@ -3045,8 +3057,61 @@ impl MarkingScheme for CapcoScheme {
                                 // transform-driven dispatch lands in
                                 // Phase D / Phase E when the engine
                                 // switches to scheme-driven roll-up.
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Promote",
+                                    ?from,
+                                    ?to,
+                                    "PageRewrite fired (Phase-3 no-op)",
+                                );
                             }
-                            CategoryAction::Custom(f) => f(&mut out),
+                            CategoryAction::Custom(f) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Custom",
+                                    "PageRewrite fired",
+                                );
+                                f(&mut out);
+                            }
+                            CategoryAction::Intent(intent) => {
+                                // Bridge to the existing per-intent helper. Errors are handled
+                                // as follows:
+                                // - `Ok(())`: rewrite applied, marking mutated.
+                                // - `IntentInapplicable`: silent no-op for this rewrite (idempotent
+                                //   — the marking was already in the post-rewrite state).
+                                // - `UnknownToken` / `IntentRejectsLattice`: these are validated
+                                //   at `Engine::new` time (see `validate_intent_rewrites`
+                                //   in marque-engine); reaching this arm means engine construction
+                                //   succeeded but the runtime route regressed (e.g., scheme
+                                //   mutated between construction and call). Log and treat as a
+                                //   silent no-op rather than panic; `Engine::lint`'s hot path
+                                //   must not unwind into Tower middleware. The corpus-parity
+                                //   tests will surface incorrect projection output.
+                                match apply_intent_to_marking(self, &mut out, intent) {
+                                    Ok(()) => {
+                                        tracing::debug!(
+                                            rewrite_id = rw.id,
+                                            action = "Intent",
+                                            "PageRewrite fired (CategoryAction::Intent)",
+                                        );
+                                    }
+                                    Err(ApplyIntentError::IntentInapplicable) => {
+                                        tracing::debug!(
+                                            rewrite_id = rw.id,
+                                            action = "Intent",
+                                            "PageRewrite no-op (intent already satisfied)",
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            rewrite_id = rw.id,
+                                            error = ?e,
+                                            "PageRewrite Intent failed at runtime — expected to be \
+                                             caught at Engine::new validation. Treating as no-op.",
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -5471,20 +5536,41 @@ impl CapcoMarking {
     }
 }
 
-#[cfg(test)]
 impl CapcoScheme {
     /// Test-only constructor that lets tests install arbitrary
     /// `PageRewrite` entries, exercising the declarative dispatch
     /// path (`CategoryPredicate::Contains` / `Empty`,
-    /// `CategoryAction::Clear` / `Replace`) with test-provided
-    /// rewrites.
-    pub(crate) fn with_rewrites(rewrites: Vec<PageRewrite<CapcoScheme>>) -> Self {
+    /// `CategoryAction::Clear` / `Replace` / `Intent`) with
+    /// test-provided rewrites.
+    ///
+    /// Exposed publicly so integration tests under `crates/capco/tests/`
+    /// can exercise scheme-level behaviors (page-rewrite projection,
+    /// `CategoryAction::Intent` apply paths). Production code MUST NOT
+    /// use this constructor — it bypasses `build_page_rewrites()`'s
+    /// curated CAPCO-2016 table. The `_for_tests` suffix on the
+    /// related [`with_extra_rewrite_for_tests`](Self::with_extra_rewrite_for_tests)
+    /// helper makes the intent explicit.
+    pub fn with_rewrites(rewrites: Vec<PageRewrite<CapcoScheme>>) -> Self {
         Self {
             categories: Self::build_categories(),
             constraints: Self::build_constraints(),
             templates: Vec::new(),
             page_rewrites: rewrites,
         }
+    }
+
+    /// Append one extra `PageRewrite` to a scheme's table, returning
+    /// the modified scheme. Test-only — production code MUST NOT use
+    /// this; the production rewrite table is the curated
+    /// CAPCO-2016 table built by `build_page_rewrites()`.
+    ///
+    /// Bypasses `validate_intent_rewrites` (the engine's
+    /// construction-time validation pass). Tests that want to exercise
+    /// validation MUST construct the scheme separately and feed it to
+    /// `Engine::new` so the validation runs over the appended rewrite.
+    pub fn with_extra_rewrite_for_tests(mut self, rewrite: PageRewrite<CapcoScheme>) -> Self {
+        self.page_rewrites.push(rewrite);
+        self
     }
 }
 

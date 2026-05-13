@@ -16,8 +16,9 @@ use marque_config::Config;
 use marque_engine::{Engine, EngineConstructionError};
 use marque_rules::RuleSet;
 use marque_scheme::{
-    Category, CategoryAction, CategoryId, CategoryPredicate, Constraint, ConstraintViolation,
-    Lattice, MarkingScheme, PageRewrite, Parsed, RewriteId, Scope, Template, TokenId, TokenRef,
+    ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
+    ConstraintViolation, FactRef, Lattice, MarkingScheme, PageRewrite, Parsed, RecanonScope,
+    ReplacementIntent, RewriteId, Scope, Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -73,6 +74,16 @@ impl MarkingScheme for StubScheme {
     }
     fn satisfies(&self, _: &Self::Marking, _: &TokenRef) -> bool {
         false
+    }
+    fn category_of(&self, token: &FactRef<Self>) -> Option<CategoryId> {
+        // Route TokenId(1) to CAT_X for the Intent-validation tests; any
+        // other token returns None (the unroutable-token path). OpenVocab
+        // refs are statically impossible here because StubScheme's
+        // OpenVocabRef = Infallible.
+        match token {
+            FactRef::Cve(id) if id.0 == 1 => Some(CAT_X),
+            _ => None,
+        }
     }
     fn validate(&self, _: &Self::Marking) -> Vec<ConstraintViolation> {
         vec![]
@@ -444,4 +455,155 @@ fn joint_promotion_before_fgi_absorption() {
         "joint-promotion must precede fgi-absorption in {:?}",
         order,
     );
+}
+
+// ---------------------------------------------------------------------------
+// PR 3c.B Sub-PR 8.F engine-prereq — `CategoryAction::Intent` scheduler
+// integration.
+// ---------------------------------------------------------------------------
+
+/// `CategoryAction::Intent` is a data-shaped action whose
+/// `reads` / `writes` annotations are author-declared via
+/// `PageRewrite::declarative`, just like `Clear` / `Replace` /
+/// `Promote`. Empty axis slices must NOT trigger
+/// `EngineConstructionError::UnannotatedCustomAxes`; only `Custom`
+/// triggers/actions (opaque function pointers) require non-empty
+/// annotations.
+#[test]
+fn intent_action_with_empty_axes_does_not_trigger_unannotated_custom_error() {
+    let intent_rewrite = PageRewrite {
+        id: "intent-empty-axes",
+        citation: "test",
+        trigger: CategoryPredicate::Empty { category: CAT_X },
+        action: CategoryAction::Intent(ReplacementIntent::FactAdd {
+            // TokenId(1) routes to CAT_X via StubScheme::category_of,
+            // so engine-construction validation passes.
+            token: FactRef::Cve(TokenId(1)),
+            scope: Scope::Page,
+        }),
+        // Intentionally empty axes — for Intent actions this must NOT
+        // be rejected as unannotated.
+        reads: &[],
+        writes: &[],
+    };
+
+    let scheme = StubScheme::new(vec![intent_rewrite]);
+    let engine = try_build(scheme)
+        .expect("Intent action with empty axes must not trip UnannotatedCustomAxes");
+    let order = engine.scheduled_rewrites();
+    assert_eq!(
+        order,
+        &["intent-empty-axes"],
+        "single rewrite must schedule in its own slot",
+    );
+}
+
+/// Scheduler ordering: a declarative `Clear` rewrite writes
+/// CAT_X; an `Intent` rewrite reads CAT_X. The scheduler must order
+/// the writer before the reader regardless of declaration order.
+/// This is the prereq-level guard for the Sub-PR 8.F R1 mitigation
+/// — when the actual NOFORN-supremacy / FOUO-eviction rewrites
+/// land, the ordering between writers and `Intent`-reader rewrites
+/// is already correct by topological sort.
+#[test]
+fn intent_action_orders_correctly_against_existing_rewrite_writers() {
+    const READS_X: &[CategoryId] = &[CAT_X];
+    const WRITES_X: &[CategoryId] = &[CAT_X];
+
+    let writer = PageRewrite::<StubScheme>::declarative(
+        "writer-clears-x",
+        "test",
+        CategoryPredicate::Empty { category: CAT_X },
+        CategoryAction::Clear { category: CAT_X },
+        &[],
+        WRITES_X,
+    );
+    let reader_intent = PageRewrite {
+        id: "reader-intent-on-x",
+        citation: "test",
+        trigger: CategoryPredicate::Empty { category: CAT_X },
+        action: CategoryAction::Intent(ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TokenId(1)),
+            scope: Scope::Page,
+        }),
+        reads: READS_X,
+        writes: WRITES_X,
+    };
+
+    // Declare reader first so the scheduler must reorder it.
+    let scheme = StubScheme::new(vec![reader_intent, writer]);
+    let engine = try_build(scheme).expect("writer/reader edge must not cycle");
+    let order = engine.scheduled_rewrites();
+    let writer_pos = order
+        .iter()
+        .position(|&r| r == "writer-clears-x")
+        .expect("writer must appear");
+    let reader_pos = order
+        .iter()
+        .position(|&r| r == "reader-intent-on-x")
+        .expect("reader must appear");
+    assert!(
+        writer_pos < reader_pos,
+        "writer-clears-x must precede reader-intent-on-x in {:?}",
+        order,
+    );
+}
+
+/// `Engine::new` rejects a `CategoryAction::Intent` whose `FactRef`
+/// does not route to any category. `StubScheme::category_of` returns
+/// `None` for any `TokenId` other than `TokenId(1)`, so a rewrite
+/// using `TokenId(99)` triggers `InvalidIntentInPageRewrite`.
+///
+/// This mirrors the `CapcoScheme` test in `category_action_intent.rs`
+/// but exercises the path through `StubScheme` to confirm the
+/// validation pass calls `category_of` on the user-supplied scheme
+/// (Constitution VII: the scheme's own `category_of` is the only
+/// authority for token routing).
+#[test]
+fn engine_new_rejects_intent_with_unroutable_token_via_stub_scheme() {
+    let rewrite = PageRewrite {
+        id: "intent-unroutable",
+        citation: "test",
+        trigger: CategoryPredicate::Empty { category: CAT_X },
+        action: CategoryAction::Intent(ReplacementIntent::FactAdd {
+            token: FactRef::Cve(TokenId(99)),
+            scope: Scope::Page,
+        }),
+        reads: &[CAT_X],
+        writes: &[CAT_X],
+    };
+    let scheme = StubScheme::new(vec![rewrite]);
+
+    let err = match try_build(scheme) {
+        Ok(_) => panic!("unroutable Intent token must fail Engine::new"),
+        Err(e) => e,
+    };
+    match err {
+        EngineConstructionError::InvalidIntentInPageRewrite { rewrite_id, error } => {
+            assert_eq!(rewrite_id, "intent-unroutable");
+            assert_eq!(error, ApplyIntentError::UnknownToken);
+        }
+        other => panic!("expected InvalidIntentInPageRewrite, got {other:?}"),
+    }
+}
+
+/// `Engine::new` accepts a `Recanonicalize` intent at any scope —
+/// the intent carries no `FactRef`s, so there is nothing to validate.
+#[test]
+fn engine_new_accepts_recanonicalize_intent_in_page_rewrite() {
+    let rewrite = PageRewrite {
+        id: "intent-recanonicalize",
+        citation: "test",
+        trigger: CategoryPredicate::Empty { category: CAT_X },
+        action: CategoryAction::Intent(ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Page,
+        }),
+        reads: &[CAT_X],
+        writes: &[CAT_X],
+    };
+    let scheme = StubScheme::new(vec![rewrite]);
+
+    let engine = try_build(scheme).expect("Recanonicalize-only intent has no FactRefs to validate");
+    let order = engine.scheduled_rewrites();
+    assert_eq!(order, &["intent-recanonicalize"]);
 }
