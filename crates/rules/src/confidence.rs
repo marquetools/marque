@@ -34,6 +34,23 @@
 //! feature means a new variant and a coordinated bump of the audit
 //! schema version (`MARQUE_AUDIT_SCHEMA`) — silent additions would
 //! break the auditability contract on already-emitted records.
+//!
+//! ## `features` storage
+//!
+//! `Confidence::features` is a `SmallVec<[FeatureContribution; 4]>`.
+//! Strict-path fixes record zero features and never allocate; decoder-
+//! path fixes record 1–4 features per the empirical distribution of
+//! the corpus, which fits inline. The inline-4 bound matches the
+//! existing `MessageArgs::feature_ids` / `FixIntent::feature_ids`
+//! pattern — same cardinality, same audit-record proximity. The
+//! `SmallVec` storage is an implementation detail; the field iterates
+//! and indexes the same as a `Vec`, so consumers that only read the
+//! contributions are unaffected. Struct-literal construction must use
+//! `SmallVec::new()` or the [`smallvec!`] macro (the rules crate root
+//! re-exports both so external callers do not need their own
+//! `smallvec` dep).
+
+use smallvec::SmallVec;
 
 /// Multi-axis confidence attached to every [`FixProposal`](crate::FixProposal).
 ///
@@ -69,7 +86,11 @@ pub struct Confidence {
     /// (`None` for strict-path fixes; set by decoder-sourced fixes).
     pub runner_up_ratio: Option<f32>,
     /// Per-feature contributions to `recognition`.
-    pub features: Vec<FeatureContribution>,
+    ///
+    /// Stored as `SmallVec<[FeatureContribution; 4]>` so the inline-4
+    /// case is heap-free. See the module-level docs for the inline-N
+    /// rationale.
+    pub features: SmallVec<[FeatureContribution; 4]>,
 }
 
 impl Confidence {
@@ -93,7 +114,7 @@ impl Confidence {
             rule: rule_confidence,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         }
     }
 
@@ -255,7 +276,7 @@ mod tests {
             rule: 0.5,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         assert!((c2.combined() - 0.4).abs() < 1e-6);
     }
@@ -316,7 +337,7 @@ mod tests {
                 rule: 0.8,
                 region: Some(0.5),
                 runner_up_ratio: Some(2.7),
-                features: vec![FeatureContribution {
+                features: smallvec::smallvec![FeatureContribution {
                     id: FeatureId::EditDistance1,
                     delta: -0.5,
                 }],
@@ -333,7 +354,7 @@ mod tests {
             rule: 0.5,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         let err = c.validate().unwrap_err();
         assert!(
@@ -349,7 +370,7 @@ mod tests {
             rule: -0.1,
             region: None,
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         let err = c.validate().unwrap_err();
         assert!(err.contains("rule"), "got: {err}");
@@ -362,7 +383,7 @@ mod tests {
             rule: 0.5,
             region: Some(1.5),
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         let err = c.validate().unwrap_err();
         assert!(err.contains("region"), "got: {err}");
@@ -376,7 +397,7 @@ mod tests {
                 rule: 0.5,
                 region: None,
                 runner_up_ratio: Some(bad),
-                features: Vec::new(),
+                features: SmallVec::new(),
             };
             assert!(
                 c.validate().is_err(),
@@ -393,7 +414,7 @@ mod tests {
             rule: 0.5,
             region: None,
             runner_up_ratio: Some(0.01),
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         assert!(c.validate().is_ok());
     }
@@ -406,7 +427,7 @@ mod tests {
                 rule: 0.5,
                 region: None,
                 runner_up_ratio: None,
-                features: vec![FeatureContribution {
+                features: smallvec::smallvec![FeatureContribution {
                     id: FeatureId::EditDistance1,
                     delta: bad,
                 }],
@@ -427,7 +448,7 @@ mod tests {
             rule: 0.0,
             region: Some(0.0),
             runner_up_ratio: None,
-            features: Vec::new(),
+            features: SmallVec::new(),
         };
         assert!(c.validate().is_ok());
     }

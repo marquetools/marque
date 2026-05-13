@@ -42,6 +42,7 @@
 use core::fmt;
 
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -77,9 +78,12 @@ pub(crate) fn render_rel_to(
 
     // Bucket trigraphs vs tetragraphs (§A.6 p16: "Trigraph codes
     // ... listed first ... then tetragraph codes"). USA always first.
+    //
+    // Inline-8 / inline-4 keeps the typical REL TO list (≤8 trigraphs,
+    // ≤3 tetragraphs in real CAPCO) heap-free on every banner render.
     let mut has_usa = false;
-    let mut trigraphs: Vec<&str> = Vec::new();
-    let mut tetragraphs: Vec<&str> = Vec::new();
+    let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
+    let mut tetragraphs: SmallVec<[&str; 4]> = SmallVec::new();
     for c in &m.0.rel_to {
         let s = c.as_str();
         if s == "USA" {

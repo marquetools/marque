@@ -68,6 +68,13 @@ use std::time::SystemTime;
 
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
+// Re-export `SmallVec` + the `smallvec!` macro so external consumers
+// can construct `Confidence.features` (a `SmallVec<[FeatureContribution; 4]>`)
+// and any other rules-crate SmallVec field without depending on the
+// `smallvec` crate directly. The inline storage is an implementation
+// detail of the audit-record payload; the re-export keeps it that
+// way at the boundary.
+pub use smallvec::{SmallVec, smallvec};
 // `FactRef`, `ReplacementIntent`, and `RecanonScope` moved to
 // `marque-scheme` as of the PR 3c.B engine-prereq (the new
 // `MarkingScheme::apply_intent` trait method needs them at the trait

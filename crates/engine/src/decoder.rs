@@ -98,6 +98,7 @@ use marque_ism::{
 use marque_rules::confidence::{FeatureContribution, FeatureId};
 use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
+use smallvec::SmallVec;
 
 use crate::recognizer::{StrictRecognizer, is_us_restricted};
 
@@ -579,7 +580,10 @@ struct ScoredCandidate {
     /// engine can emit the decoder fix from the original mangled
     /// bytes to this canonical form (Phase 4 PR-4b, T068).
     canonical_bytes: Box<[u8]>,
-    features: Vec<FeatureEntry>,
+    /// Per-candidate feature contributions. `SmallVec<[…; 4]>` matches
+    /// `Confidence::features` so the inline-4 case stays heap-free
+    /// from canonicalization through audit emission.
+    features: SmallVec<[FeatureEntry; 4]>,
     /// Provenance discriminator carried from the originating
     /// [`CanonicalAttempt`]. The engine maps this to
     /// [`Severity::Fix`](marque_rules::Severity::Fix) for
@@ -619,9 +623,16 @@ fn feature_entry_to_evidence(f: &FeatureEntry) -> EvidenceFeature {
 /// A canonicalization attempt: the byte string the decoder will hand
 /// to the strict parser, plus the features that transformation
 /// represents. Zero or more attempts are generated per observed input.
+///
+/// `bytes` and `features` use `SmallVec` inline storage tuned to the
+/// empirical distribution of CAPCO markings: most candidate byte
+/// strings fit in 64 bytes (portion shapes are tiny; banners can
+/// spill to the heap when REL TO grows long) and most attempts record
+/// 1–4 features. The inline path saves a per-attempt heap allocation
+/// on the deep-scan latency budget (SC-002).
 struct CanonicalAttempt {
-    bytes: Vec<u8>,
-    features: Vec<FeatureEntry>,
+    bytes: SmallVec<[u8; 64]>,
+    features: SmallVec<[FeatureEntry; 4]>,
     /// Which decoder path produced this attempt. Defaults to
     /// [`marque_rules::FixSource::DecoderPosterior`] for the standard
     /// vocab-based pipeline (delimiter normalization, fuzzy
@@ -714,10 +725,13 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
             // converge on a vocab-based result is dropped here, preserving
             // the more authoritative `FixSource::DecoderPosterior`
             // provenance.
-            if !attempts.iter().any(|a| a.bytes == bytes) {
+            if !attempts
+                .iter()
+                .any(|a| a.bytes.as_slice() == bytes.as_slice())
+            {
                 attempts.push(CanonicalAttempt {
-                    bytes,
-                    features,
+                    bytes: SmallVec::from_vec(bytes),
+                    features: SmallVec::from_vec(features),
                     fix_source,
                 });
             }
@@ -4855,7 +4869,7 @@ mod tests {
             .expect("SECRET//NOFORN must parse");
         let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
 
-        let features = vec![
+        let features = [
             FeatureEntry {
                 id: FeatureId::EditDistance1,
                 delta: -0.5,
@@ -4863,8 +4877,8 @@ mod tests {
             FeatureId::TokenReorder.into(),
         ];
         let attempt = CanonicalAttempt {
-            bytes: b"SECRET//NOFORN".to_vec(),
-            features: features.clone(),
+            bytes: SmallVec::from_slice(b"SECRET//NOFORN"),
+            features: features.iter().copied().collect(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
         let (prior, posterior, _null_posterior) =
@@ -4921,15 +4935,14 @@ mod tests {
             .expect("SECRET//REL TO USA, GBR must parse");
         let two_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(two_parsed.attrs));
 
-        let no_features: Vec<FeatureEntry> = vec![];
         let attempt_one = CanonicalAttempt {
-            bytes: b"SECRET//REL TO USA".to_vec(),
-            features: no_features.clone(),
+            bytes: SmallVec::from_slice(b"SECRET//REL TO USA"),
+            features: SmallVec::new(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
         let attempt_two = CanonicalAttempt {
-            bytes: b"SECRET//REL TO USA, GBR".to_vec(),
-            features: no_features.clone(),
+            bytes: SmallVec::from_slice(b"SECRET//REL TO USA, GBR"),
+            features: SmallVec::new(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
 
@@ -4974,15 +4987,14 @@ mod tests {
             .expect("SECRET//REL TO USA must parse");
         let once_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(once_parsed.attrs));
 
-        let no_features: Vec<FeatureEntry> = vec![];
         let attempt_dup = CanonicalAttempt {
-            bytes: b"SECRET//REL TO USA, USA".to_vec(),
-            features: no_features.clone(),
+            bytes: SmallVec::from_slice(b"SECRET//REL TO USA, USA"),
+            features: SmallVec::new(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
         let attempt_once = CanonicalAttempt {
-            bytes: b"SECRET//REL TO USA".to_vec(),
-            features: no_features.clone(),
+            bytes: SmallVec::from_slice(b"SECRET//REL TO USA"),
+            features: SmallVec::new(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
 
