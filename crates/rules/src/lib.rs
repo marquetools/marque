@@ -204,6 +204,58 @@ impl std::fmt::Display for RuleId {
 pub use marque_scheme::Severity;
 
 // ---------------------------------------------------------------------------
+// Phase
+// ---------------------------------------------------------------------------
+
+/// Dispatch phase declared by each [`Rule`] at registration. Drives the
+/// engine's two-pass fix pipeline (PR 7 of the engine refactor).
+///
+/// FR-021 (`specs/006-engine-rule-refactor/spec.md`) makes the phase a
+/// rule-level promise about the span shape of the `FixIntent` the rule
+/// emits, not an engine-side classification. The engine partitions the
+/// registered rule set by phase once at `Engine::new`; pass-1 dispatches
+/// `Phase::Localized` rules against the post-C001 buffer and applies
+/// their fixes, then re-parses; pass-2 dispatches `Phase::WholeMarking`
+/// rules against the post-pass-1 attrs (with the pre-pass-1 attrs cached
+/// for FR-023 disambiguation; the cache plumbing lands in PR 7c).
+///
+/// No `Phase::Both` escape hatch. A defect class that genuinely needs
+/// detection in both phases registers two rule entries (one per phase)
+/// sharing a backend module — see `docs/plans/2026-05-02-engine-refactor-consolidated.md`
+/// §9.1 for the design rationale.
+///
+/// PR 7a (this commit) plumbs the type into `Rule` and stashes a
+/// partition on `Engine`; pass-split dispatch lands in 7b.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Phase {
+    /// The rule's `FixIntent::span` is strictly inside a single token
+    /// boundary — e.g., a deprecation rewrite (`OC → ORCON`) or a
+    /// corpus-typo correction (`SERCET → SECRET`). Pass-1 applies these
+    /// fixes via a forward-pass buffer splice before re-parsing for
+    /// pass-2; they MUST NOT span more than one parser-recognized token,
+    /// because the splice does not invalidate adjacent token spans.
+    ///
+    /// First-fire span-shape enforcement lives in `Engine::fix_inner`
+    /// (PR 7b); a rule that misdeclares `Localized` and emits a wider
+    /// span is dropped from pass-1 with a `tracing::error!`, not
+    /// promoted to `AppliedFix`.
+    Localized,
+    /// The rule's `FixIntent::span` (and `candidate_span`, when
+    /// populated) covers a full marking — e.g., a banner roll-up
+    /// walker, a class-floor walker, or any rule whose emission carries
+    /// `ReplacementIntent::FactAdd` / `FactRemove` / `Recanonicalize`
+    /// scoped to a portion, banner, or page. Pass-2 sees post-pass-1
+    /// attrs and, in PR 7c, the pre-pass-1 attrs cache for FR-023
+    /// disambiguation.
+    ///
+    /// This is the default returned by [`Rule::phase`] for rules that
+    /// do not override the method (see [`Rule::phase`]'s documentation
+    /// for the design rationale per PM decision D-7.2 in
+    /// `docs/refactor-006/pr-7-pm-decisions.md`).
+    WholeMarking,
+}
+
+// ---------------------------------------------------------------------------
 // RuleContext
 // ---------------------------------------------------------------------------
 
@@ -965,6 +1017,34 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     /// Default severity — overridable per rule in `.marque.toml`.
     fn default_severity(&self) -> Severity;
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<S>>;
+
+    /// Dispatch phase for the engine's two-pass fix pipeline (FR-021).
+    ///
+    /// Returns [`Phase::WholeMarking`] by default. The default is
+    /// **intentional, not accidental** — per PM decision D-7.2 in
+    /// `docs/refactor-006/pr-7-pm-decisions.md`:
+    ///
+    /// - Most rules in the catalog are whole-marking by construction
+    ///   (27 of 31 CAPCO rules post-PR-3c.B Commit 7.4).
+    /// - Failing to declare yields the safer dispatch: a localized rule
+    ///   running in pass-2 is conservative (no I-19 false positive),
+    ///   whereas a whole-marking rule running in pass-1 violates the
+    ///   span-shape constraint and trips the PR 7b first-fire check.
+    /// - Drift mitigation lives in `crates/capco/tests/phase_assignment.rs`,
+    ///   which enumerates every registered rule's declared phase
+    ///   against a hand-maintained allowlist. Adding a new rule
+    ///   without considering phase forces an allowlist edit — a
+    ///   "stop and think" gate without the per-rule boilerplate of a
+    ///   required-method.
+    ///
+    /// PR 7a (this commit) stores the phase on the engine as a
+    /// partition but does NOT yet dispatch on it; both phases still
+    /// run together in pass-2 exactly as before. Pass-split dispatch
+    /// lands in 7b. The default is forward-compatible with future
+    /// schemes whose rules are `WholeMarking`-by-construction.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
 
     /// Additional rule IDs / names this rule may emit on diagnostics
     /// beyond its registered `id()` / `name()`. Each entry is
