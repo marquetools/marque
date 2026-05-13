@@ -27,6 +27,7 @@ marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 phf = { workspace = true }
 smallvec = { workspace = true }
+smol_str = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

@@ -55,6 +55,15 @@ memchr = "2.8.0"
 # Constitution Principle III.
 smallvec = "1"
 
+# Small-string optimization (<=23 bytes inline, Arc<str> fallback above the
+# threshold, cheap Clone, zero-cost SmolStr::new_static(&'static str)).
+# Used at hot-path owned-string fields where the inline path eliminates per-
+# token / per-fix allocations (TokenSpan::text, SAR/SCI identifiers,
+# TextCorrection::replacement, page-context + lattice BTreeMap keys).
+# MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
+# Constitution Principle III.
+smol_str = "0.3"
+
 anyhow = "1.0.102"
 # Error handling
 thiserror = "2.0.18"
