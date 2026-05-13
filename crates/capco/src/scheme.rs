@@ -307,6 +307,21 @@ impl Lattice for CapcoMarking {
 /// effectively disables the rewrite rather than silently misfiring.
 /// Phase C expands coverage as more rewrites move to the declarative
 /// form.
+///
+/// PR 3c.B Sub-PR 8.F adds `CAT_NON_IC_DISSEM` arms for `TOK_NODIS` and
+/// `TOK_EXDIS` so the `capco/nodis-implies-noforn` and
+/// `capco/exdis-implies-noforn` PageRewrites' `Contains` triggers can
+/// resolve against the `non_ic_dissem` axis. Without this extension the
+/// new rewrites would silently never fire (the conservative-`false`
+/// fallthrough effectively disables them), making 8.F a no-op
+/// masquerading as a fix (design spec §3 "Predicate-evaluator support",
+/// Q2 "capco_category_contains silent-disabling root-cause").
+///
+/// The match-arm dispatches on `TokenId` constants for routing and scans
+/// the `NonIcDissem` enum variants in `attrs.non_ic_dissem` in the body —
+/// the same two-form separation used by the existing `(CAT_DISSEM,
+/// TOK_NOFORN)` arm (dispatches on `TOK_NOFORN`, scans
+/// `DissemControl::Nf`).
 fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenId) -> bool {
     let attrs = &m.0;
     if category == CAT_DISSEM && token == TOK_NOFORN {
@@ -314,6 +329,23 @@ fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenI
             .dissem_controls
             .iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+    }
+    // PR 3c.B Sub-PR 8.F — CAT_NON_IC_DISSEM arms for NODIS and EXDIS.
+    // These enable the `capco/nodis-implies-noforn` and
+    // `capco/exdis-implies-noforn` PageRewrite triggers to resolve.
+    if category == CAT_NON_IC_DISSEM {
+        if token == TOK_NODIS {
+            return attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Nodis));
+        }
+        if token == TOK_EXDIS {
+            return attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Exdis));
+        }
     }
     false
 }
@@ -1152,13 +1184,195 @@ impl CapcoScheme {
         const E6B_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
         const E6B_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
+        // PR 3c.B Sub-PR 8.F — Pattern A NOFORN-supremacy: NODIS and EXDIS.
+        //
+        // Both rewrites read `CAT_NON_IC_DISSEM` (to detect the
+        // NODIS / EXDIS token) and write `CAT_DISSEM` (to add NOFORN).
+        // The `reads = [CAT_NON_IC_DISSEM]` / `writes = [CAT_DISSEM]`
+        // dataflow annotations make the Kahn scheduler order these two
+        // rewrites BEFORE `capco/noforn-clears-rel-to`, which reads
+        // `CAT_DISSEM`. This guarantees that once a NODIS or EXDIS
+        // portion is seen on the page, NOFORN is in the projected dissem
+        // state before the clearer runs — so the REL TO axis is correctly
+        // cleared in the same projection pass.
+        //
+        // No existing rewrite writes `CAT_NON_IC_DISSEM`, so the new
+        // rewrites have no upstream producers on that axis and can run
+        // in declaration order relative to each other.
+        //
+        // FUTURE (Pattern A SCI follow-on): 5 more `*-implies-noforn`
+        // rewrites for SCI systems (HCS-O / HCS-P-sub / TK-IDIT /
+        // TK-BLFH / TK-KAND per §H.4 p64 / p68 / p87 / p91 / p95)
+        // will read `CAT_SCI` and write `CAT_DISSEM`. They are a
+        // structural peer of these two entries but land in a follow-on
+        // sub-PR (8.F.2 or Stage-4 SCI NOFORN-implication PR) after
+        // `capco_category_contains` is extended for `CAT_SCI` + token
+        // dispatch.
+        //
+        // Runtime execution gap (design spec §5): these rewrites are
+        // scheduler-validated (Engine::new validates intent payloads +
+        // topological ordering) but execution-deferred (`Engine::lint` /
+        // `Engine::fix` drives banner-validation through
+        // `marque_ism::PageContext` directly, not through
+        // `scheme.project`). Callers that invoke
+        // `scheme.project(Scope::Page, …)` directly see the full
+        // declarative effect today. Engine-level effect lands when
+        // Phase D/E wires the banner-validation path through
+        // `scheme.project`.
+        const NODIS_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+        const NODIS_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        const EXDIS_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+        const EXDIS_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
         vec![
+            // PR 3c.B Sub-PR 8.F — `capco/nodis-implies-noforn`.
+            //
+            // CAPCO-2016 §H.9 p174 (NO DISTRIBUTION, Relationship(s) to
+            // Other Markings):
+            //   "- May be used with TOP SECRET, SECRET, CONFIDENTIAL,
+            //      or UNCLASSIFIED.
+            //    - NODIS and EXDIS markings cannot be used together.
+            //    - Requires NOFORN."
+            //
+            // The "Requires NOFORN." line is the operative authority for
+            // this rewrite. The NODIS entry's "Precedence Rules for Banner
+            // Line Guidance" (p174) further states: "REL TO is not
+            // authorized in the banner line if any portion contains NODIS
+            // information. In this case, NOFORN would convey in the banner
+            // line." — confirming NOFORN as the foreign-release vehicle
+            // when NODIS is present.
+            //
+            // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_NODIS)` — fires
+            // when any portion on the page carries NODIS in its
+            // `non_ic_dissem` axis. Resolved by the
+            // `capco_category_contains` extension in PR 3c.B Sub-PR 8.F.
+            //
+            // Action: `Intent(FactAdd { Cve(TOK_NOFORN), Scope::Page })`
+            // — adds NOFORN to the projected page dissem axis. Monotone-
+            // additive: FactAdd with an already-present token is a
+            // per-intent no-op (IntentInapplicable, silent) per the
+            // idempotence policy in `apply_fact_add` (scheme.rs:624-639).
+            //
+            // Axis annotations: reads `[CAT_NON_IC_DISSEM]`, writes
+            // `[CAT_DISSEM]`. The Kahn scheduler (engine/src/scheduler.rs)
+            // places this rewrite BEFORE `capco/noforn-clears-rel-to`
+            // (which reads CAT_DISSEM) so the REL TO axis is correctly
+            // cleared in the same projection pass when NODIS is present.
+            // Declaration order here also respects this invariant: the two
+            // `*-implies-noforn` entries appear before `noforn-clears-rel-to`
+            // in the vec so `project`'s sequential scan sees them first.
+            //
+            // Classification-agnostic: §H.9 p174 says "May be used with
+            // TOP SECRET, SECRET, CONFIDENTIAL, or UNCLASSIFIED" — the
+            // trigger predicate is classification-agnostic and fires at
+            // any classification level, including UNCLASSIFIED.
+            //
+            // FUTURE (SCI Pattern A follow-on): 5 more `*-implies-noforn`
+            // rewrites reading `CAT_SCI` / writing `CAT_DISSEM` will land
+            // alongside this entry in a follow-on sub-PR after
+            // `capco_category_contains` is extended for `CAT_SCI` dispatch
+            // (§H.4 p64 / p68 / p87 / p91 / p95).
+            //
+            // Runtime execution gap: this rewrite is scheduler-validated
+            // (Engine::new validates the intent payload + topological
+            // ordering) but execution-deferred (`Engine::lint` / `Engine::fix`
+            // drives banner-validation through PageContext directly). Effect
+            // is visible through `scheme.project(Scope::Page, …)`. Engine-
+            // level effect lands when Phase D/E wires banner-validation
+            // through `scheme.project`.
+            PageRewrite::declarative(
+                "capco/nodis-implies-noforn",
+                "CAPCO-2016 §H.9 p174",
+                CategoryPredicate::Contains {
+                    category: CAT_NON_IC_DISSEM,
+                    token: TOK_NODIS,
+                },
+                CategoryAction::Intent(ReplacementIntent::FactAdd {
+                    token: FactRef::Cve(TOK_NOFORN),
+                    scope: Scope::Page,
+                }),
+                NODIS_IMPLIES_NF_READS,
+                NODIS_IMPLIES_NF_WRITES,
+            ),
+            // PR 3c.B Sub-PR 8.F — `capco/exdis-implies-noforn`.
+            //
+            // CAPCO-2016 §H.9 p172 (EXCLUSIVE DISTRIBUTION, Relationship(s)
+            // to Other Markings):
+            //   "- May be used with TOP SECRET, SECRET, CONFIDENTIAL,
+            //      or UNCLASSIFIED.
+            //    - EXDIS and NODIS markings cannot be used together.
+            //    - Requires NOFORN."
+            //
+            // The "Requires NOFORN." line is the operative authority for
+            // this rewrite. The EXDIS entry's "Precedence Rules for Banner
+            // Line Guidance" (p172) further states: "REL TO is not
+            // authorized in the banner line if any portion contains EXDIS
+            // information. In this case, NOFORN would convey in the banner
+            // line." — confirming NOFORN as the foreign-release vehicle
+            // when EXDIS is present.
+            //
+            // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_EXDIS)` — fires
+            // when any portion on the page carries EXDIS in its
+            // `non_ic_dissem` axis.
+            //
+            // Action: `Intent(FactAdd { Cve(TOK_NOFORN), Scope::Page })`
+            // — adds NOFORN to the projected page dissem axis. Same
+            // monotone-additive + idempotence policy as the NODIS entry.
+            //
+            // Axis annotations: reads `[CAT_NON_IC_DISSEM]`, writes
+            // `[CAT_DISSEM]`. Scheduler ordering: same sibling position
+            // as `capco/nodis-implies-noforn` — both are DISSEM-writers
+            // ordered before `noforn-clears-rel-to` (DISSEM-reader).
+            // The two `*-implies-noforn` entries are DAG siblings (no
+            // ordering dependency between them). Declaration order here
+            // also respects this invariant: both appear before
+            // `noforn-clears-rel-to` in the vec.
+            //
+            // Classification-agnostic: §H.9 p172 says "May be used with
+            // TOP SECRET, SECRET, CONFIDENTIAL, or UNCLASSIFIED" — same
+            // as the NODIS entry.
+            //
+            // Note: §H.9 p172 specifies "EXDIS and NODIS markings cannot
+            // be used together." — the NODIS ⊥ EXDIS conflict is already
+            // enforced by E037 (stays registered per design spec §5 Option
+            // R2). Under malformed input where both appear simultaneously,
+            // both rewrites fire; the second FactAdd hits the idempotence
+            // no-op path (NOFORN already present), producing exactly one
+            // NOFORN with no panic.
+            //
+            // FUTURE: see the NODIS entry doc-comment for the SCI Pattern A
+            // follow-on note.
+            //
+            // Runtime execution gap: see the NODIS entry doc-comment.
+            PageRewrite::declarative(
+                "capco/exdis-implies-noforn",
+                "CAPCO-2016 §H.9 p172",
+                CategoryPredicate::Contains {
+                    category: CAT_NON_IC_DISSEM,
+                    token: TOK_EXDIS,
+                },
+                CategoryAction::Intent(ReplacementIntent::FactAdd {
+                    token: FactRef::Cve(TOK_NOFORN),
+                    scope: Scope::Page,
+                }),
+                EXDIS_IMPLIES_NF_READS,
+                EXDIS_IMPLIES_NF_WRITES,
+            ),
             // §D.2 Table 3 (FD&R Markings Precedence Rules for Banner
             // Line Roll-Up) Rule #2 specifies that NOFORN supersedes
             // REL TO at banner scope; the §H.8 NOFORN entry (p145)
             // back-references this table via "Refer to Section D.2.,
             // Table 3 FD&R Markings Precedence Rules for Banner Line
             // Roll-Up for guidance" in its Precedence Rules section.
+            //
+            // Declaration order note: this entry is placed AFTER the
+            // `*-implies-noforn` entries (PR 3c.B Sub-PR 8.F) which write
+            // CAT_DISSEM. The Kahn scheduler also enforces this ordering
+            // via the `reads/writes` dataflow annotations; matching the
+            // declaration order to the topological order ensures both
+            // `scheme.project(Scope::Page, …)` (which iterates
+            // declaration order) and the scheduler-driven execution path
+            // (Phase D/E) produce the same result.
             PageRewrite::declarative(
                 "capco/noforn-clears-rel-to",
                 "CAPCO-2016 §D.2 Table 3 + §H.8 p145",
