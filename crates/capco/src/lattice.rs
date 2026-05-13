@@ -207,16 +207,16 @@ impl Lattice for SciSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
-            if !out.systems.contains_key(sys) {
-                out.systems.insert(sys.clone(), BTreeMap::new());
-            }
-            let out_comps = out.systems.get_mut(sys).unwrap();
+            let out_comps = match out.systems.get_mut(sys) {
+                Some(c) => c,
+                None => out.systems.entry(sys.clone()).or_default(),
+            };
 
             for (cid, subs) in comp_map {
-                if !out_comps.contains_key(cid) {
-                    out_comps.insert(cid.clone(), BTreeSet::new());
-                }
-                let out_subs = out_comps.get_mut(cid).unwrap();
+                let out_subs = match out_comps.get_mut(cid) {
+                    Some(s) => s,
+                    None => out_comps.entry(cid.clone()).or_default(),
+                };
                 out_subs.extend(subs.iter().cloned());
             }
         }
@@ -370,16 +370,16 @@ impl Lattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
-            if !out.programs.contains_key(pid) {
-                out.programs.insert(pid.clone(), BTreeMap::new());
-            }
-            let out_comps = out.programs.get_mut(pid).unwrap();
+            let out_comps = match out.programs.get_mut(pid) {
+                Some(c) => c,
+                None => out.programs.entry(pid.clone()).or_default(),
+            };
 
             for (cid, subs) in comp_map {
-                if !out_comps.contains_key(cid) {
-                    out_comps.insert(cid.clone(), BTreeSet::new());
-                }
-                let out_subs = out_comps.get_mut(cid).unwrap();
+                let out_subs = match out_comps.get_mut(cid) {
+                    Some(s) => s,
+                    None => out_comps.entry(cid.clone()).or_default(),
+                };
                 out_subs.extend(subs.iter().cloned());
             }
         }
