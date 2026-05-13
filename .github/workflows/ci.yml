@@ -411,6 +411,21 @@ jobs:
       - name: wasm-pack test --node (parity)
         run: wasm-pack test --node crates/wasm --test parity
 
+      # PR 3d.3 — WASM binary-size regression gate (T058i quality
+      # gate, Constitution III). Runs a SEPARATE `wasm-pack build
+      # --profile release-web` invocation and compares the resulting
+      # pre-`wasm-opt` artifact size to
+      # `tools/wasm-size-baseline.txt`. Fails if the size regressed
+      # by more than 5%. Adds ~30 seconds to the wasm job (acceptable
+      # for the catch-rust-side-bloat property the gate provides).
+      #
+      # Profile note: this build uses `release-web`, while the
+      # parity build and ship artifact use `--profiling` +
+      # `wasm-opt`. See `tools/wasm-size-check.sh` header comment
+      # for why measurement happens at the pre-opt boundary.
+      - name: wasm-size-check (release-web profile)
+        run: ./tools/wasm-size-check.sh
+
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
         with:
           file: crates/wasm/pkg/*.wasm
