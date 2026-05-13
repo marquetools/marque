@@ -92,8 +92,8 @@ use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule,
-    RuleContext, RuleId, Severity,
+    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Rule, RuleContext, RuleId, Severity,
 };
 use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, TokenId};
 use smallvec::SmallVec;
@@ -293,7 +293,12 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: reads cross-token SCI-controls state via
+    /// `violations_for(... "E010/HCS-system-constraints")`; no fix is
+    /// emitted (HCS-O vs HCS-P is a classifier judgment call).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::SciControl;
 
@@ -447,7 +452,14 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-
+    /// Phase::WholeMarking: §H.3 mutual-exclusion across the
+    /// classification axis (US ∥ non-US ∥ JOINT). The intent vocabulary
+    /// cannot express the cross-axis renormalization (drop foreign,
+    /// add FGI block), so the rule emits no fix today; whole-marking
+    /// is the correct dispatch regardless of fix shape.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{ForeignClassification, MarkingClassification};
 
@@ -594,7 +606,13 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
         // engine auto-applies at the default 0.95 threshold.
         Severity::Fix
     }
-
+    /// Phase::WholeMarking: emits `ReplacementIntent::FactAdd` at
+    /// portion or page scope (via `ctx.marking_type`); the engine
+    /// re-renders the candidate via `apply_intent` + `render_canonical`.
+    /// Span covers the marking.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingClassification;
 
@@ -749,7 +767,13 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: cross-axis non-US-classification + dissem
+    /// decision (§H.7 / §B.3); §H.7 p122 names two distinct valid fills
+    /// (REL TO USA, [LIST] vs NOFORN) keyed to a foreign-arrangement
+    /// fact outside marque's view, so the rule emits no fix.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E015/non-us-requires-dissem").is_empty() {
             return vec![];
@@ -826,7 +850,12 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: §H.3 cross-axis mutual exclusion (JOINT vs
+    /// RESTRICTED). No fix — re-classification to an authorized US
+    /// level is a classifier decision (Stage-4 `Reject { suggest }`).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E016/joint-conflicts-restricted").is_empty() {
             return vec![];
@@ -906,7 +935,12 @@ impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: §H.3 cross-axis mutual exclusion (JOINT vs
+    /// any HCS marking). No fix — the contradiction is irreducible
+    /// without classifier input.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E036/joint-conflicts-hcs").is_empty() {
             return vec![];
@@ -971,7 +1005,13 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
         // E021 = "warn"`.
         Severity::Fix
     }
-
+    /// Phase::WholeMarking: emits `FactAdd(NOFORN, Scope::Portion)`
+    /// with `candidate_span` so the engine re-renders the marking via
+    /// `apply_intent` + `render_canonical`. Whole-marking span by
+    /// construction.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
             return vec![];
@@ -1085,7 +1125,12 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
         // E057's pattern for intent-only FactRemove rules (all Severity::Fix).
         Severity::Fix
     }
-
+    /// Phase::WholeMarking: atomic-cluster `FactRemove({FRD, TFNI},
+    /// Scope::Portion)` with `candidate_span`; the engine re-renders
+    /// the full marking. Whole-marking span by construction.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{TOK_FRD, TOK_TFNI};
         use marque_ism::AeaMarking;
@@ -1202,7 +1247,12 @@ impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-
+    /// Phase::WholeMarking: §H.7 cross-axis advisory (US classification
+    /// co-present with FGI marker). No fix — the suggested remediation
+    /// is structural document reorganization.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Portion-only filter: the catalog predicate fires on any
@@ -1267,7 +1317,11 @@ impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: §H.9 cross-axis mutual exclusion (NODIS vs
+    /// EXDIS). No fix — the user must choose which control survives.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E037/nodis-conflicts-exdis").is_empty() {
             return vec![];
@@ -1341,7 +1395,12 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: emits `FactAdd(NOFORN, scope)` where scope
+    /// follows the marking surface (portion vs page) with
+    /// `candidate_span`. Whole-marking span by construction.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
@@ -1516,7 +1575,14 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: portion-scope emits `FactRemove(REL_TO,
+    /// Scope::Portion)` with `candidate_span` for engine re-render;
+    /// banner/CAB scope emits no-fix (the page mutation is the
+    /// `capco/noforn-clears-rel-to` PageRewrite's job). Both paths are
+    /// whole-marking by shape.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
@@ -1898,6 +1964,12 @@ impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
         Severity::Error
     }
 
+    /// Phase::WholeMarking: emits `FactRemove(RELIDO, Scope::Portion)`
+    /// with `candidate_span` so the engine re-renders the marking
+    /// (NOFORN-dominates supersession per §H.8 p145).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
             return vec![];
@@ -1995,6 +2067,13 @@ impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
         Severity::Error
     }
 
+    /// Phase::WholeMarking: emits `FactRemove(RELIDO, Scope::Portion)`
+    /// with `candidate_span` so the engine re-renders the marking
+    /// (DISPLAY ONLY is a positive disclosure decision that binds over
+    /// RELIDO per §H.8 p154).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
             return vec![];
@@ -2081,6 +2160,12 @@ impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
         Severity::Error
     }
 
+    /// Phase::WholeMarking: emits `FactRemove(RELIDO, Scope::Portion)`
+    /// with `candidate_span` so the engine re-renders the marking
+    /// (ORCON binds over RELIDO per §H.8 p136).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
             return vec![];
@@ -2156,6 +2241,12 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
         Severity::Error
     }
 
+    /// Phase::WholeMarking: emits `FactRemove(RELIDO, Scope::Portion)`
+    /// with `candidate_span` so the engine re-renders the marking
+    /// (ORCON-USGOV binds over RELIDO per §H.8 p140).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
             return vec![];

@@ -103,8 +103,8 @@ use marque_ism::{
     TokenSpan, sar_sort_key,
 };
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule,
-    RuleContext, RuleId, RuleSet, Severity,
+    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Rule, RuleContext, RuleId, RuleSet, Severity,
 };
 use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, Scope};
 use std::collections::HashSet;
@@ -377,7 +377,12 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-
+    /// Phase::WholeMarking: rewrites the entire REL TO block (multi-token
+    /// span covering first→last `RelToTrigraph` plus any trailing
+    /// separators); requires whole-marking attrs to canonicalize.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.rel_to.is_empty() {
             return vec![];
@@ -647,7 +652,12 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: no auto-fix; flags declass-token placement
+    /// at document scope (move into the CAB). Decision reads across the
+    /// banner/portion/CAB axes.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Fire on banner AND portion. CAB candidates are the correct
@@ -713,7 +723,13 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::Localized: each fix rewrites a single `DissemControl` /
+    /// `Unknown` token in place via the migration table (e.g.
+    /// `LIMDIS → LIMITED DISTRIBUTION`). Span is strictly the one
+    /// `TokenSpan` the rule walked.
+    fn phase(&self) -> Phase {
+        Phase::Localized
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         // Walk every TokenSpan whose kind is either DissemControl (the
@@ -829,7 +845,13 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::Localized: each fix rewrites a single `Unknown` token in
+    /// place — either a migration-table hit or a pattern-stripped
+    /// `25X1-` → `25X1` style derivation. Span is the token the rule
+    /// walked.
+    fn phase(&self) -> Phase {
+        Phase::Localized
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
         for token in attrs.token_spans.iter() {
@@ -1052,7 +1074,14 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: no fix is emitted (FR-012); diagnostics
+    /// point at a single `Unknown` span but the firing decision reads
+    /// cross-token state (`attrs.sar_markings.is_some()` to suppress
+    /// repeated-SAR shapes E030 owns). Default to whole-marking per
+    /// D-7.2 — the dispatch consequence is conservative.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Precompute whether a first SAR block parsed successfully. The
         // repeated-SAR suppression path below must only fire when E030's
@@ -1172,7 +1201,19 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
     fn default_severity(&self) -> Severity {
         Severity::Fix
     }
-
+    /// Phase::Localized: each fix replaces a single `TokenSpan` with the
+    /// user-configured `[corrections]` mapping (e.g. `SERCET → SECRET`).
+    /// Span is strictly one token.
+    ///
+    /// Architecturally C001 also runs as a separate pre-pass-0 in
+    /// `Engine::fix_inner` (text-correction Aho-Corasick scan against
+    /// raw bytes before parsing — `docs/refactor-006/pr-7-architect-plan.md`
+    /// §3.5). The phase tag governs the rule-dispatch path; the
+    /// pre-pass-0 path is a separate channel that bypasses rule
+    /// dispatch entirely.
+    fn phase(&self) -> Phase {
+        Phase::Localized
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Engine guarantees corrections is Some only when the map is non-empty
         // (engine.rs: corrections_arc is None when config.corrections.is_empty()).
@@ -1303,7 +1344,12 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
     fn default_severity(&self) -> Severity {
         Severity::Info
     }
-
+    /// Phase::WholeMarking: emits `ReplacementIntent::Recanonicalize`
+    /// at `RecanonScope::Page`; the engine re-renders the JOINT
+    /// classification across the candidate scope.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{CountryCode, MarkingType};
         if ctx.marking_type != MarkingType::Banner {
@@ -1574,7 +1620,15 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn default_severity(&self) -> Severity {
         Severity::Suggest
     }
-
+    /// Phase::Localized: each emitted `Diagnostic::text_correction`
+    /// replaces a single `RelToTrigraph` token with a corpus-derived
+    /// canonical trigraph (e.g. `GRB → GBR`). Span is one token.
+    /// `Severity::Suggest` means the engine never auto-promotes, but
+    /// the phase declaration governs dispatch even for suggest-only
+    /// rules.
+    fn phase(&self) -> Phase {
+        Phase::Localized
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
         use crate::vocab::country_name;
@@ -1754,7 +1808,12 @@ impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-
+    /// Phase::WholeMarking: banner-only decision reading the
+    /// classification axis × non-IC dissem axis together; emits no fix
+    /// (the SBU/LIMDIS removal is intentionally manual).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         if ctx.marking_type != MarkingType::Banner {
@@ -2473,7 +2532,13 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn default_severity(&self) -> Severity {
         Severity::Suggest
     }
-
+    /// Phase::WholeMarking: reads the full REL TO list + page context to
+    /// score atom-semantics ambiguity per trigraph; emits no fix.
+    /// Spans point at individual trigraphs but the decision is
+    /// list-scoped.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
@@ -2506,7 +2571,12 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
     fn default_severity(&self) -> Severity {
         Severity::Info
     }
-
+    /// Phase::WholeMarking: companion to S005 (same `analyze_uncertain_reduction`
+    /// helper, filtered to the `Info` branch). List-scoped decision, no
+    /// fix.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
@@ -2616,6 +2686,13 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     }
     fn default_severity(&self) -> Severity {
         Severity::Warn
+    }
+    /// Phase::WholeMarking: audit-visibility surface for unpublished SCI
+    /// control identifiers. No fix emitted; the diagnostic flags every
+    /// Custom-control span in the marking. Decision is per-marking, not
+    /// per-token.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
@@ -2842,7 +2919,13 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn default_severity(&self) -> Severity {
         Severity::Error
     }
-
+    /// Phase::WholeMarking: banner-scope decision combining the
+    /// banner's REL TO list with the page-context expected non-IC
+    /// dissem set. No fix (removing REL TO from a banner is multi-span
+    /// and policy-dependent).
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
@@ -2944,7 +3027,13 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
         // its authoring intent.
         Severity::Error
     }
-
+    /// Phase::WholeMarking: banner roll-up walker (E031 SAR / E035 SCI /
+    /// E040 Non-IC dissem). Every row reads the page projection across
+    /// all portions and compares against the banner; fixes (when emitted)
+    /// span the banner candidate.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
@@ -3505,7 +3594,12 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-
+    /// Phase::WholeMarking: emits `ReplacementIntent::FactRemove` at
+    /// `Scope::Portion`; the engine re-renders the full portion via
+    /// `candidate_span`. Span shape is whole-marking by construction.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
