@@ -25,20 +25,20 @@ jobs:
     name: Format + Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "nightly"
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: cargo fmt
         run: cargo fmt --check
 
       - name: typos
-        uses: crate-ci/typos@bbaefadf97b0ec5fdc942684b647f1a6ab250274
+        uses: crate-ci/typos@5374cbf686e897b15713110e233094e2874de7ef
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -48,15 +48,15 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "nightly"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
-      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
+      - uses: taiki-e/install-action@c070f87102a1c75b3183910f391c1cb887fe13c8
         with:
           tool: cargo-nextest
 
@@ -85,14 +85,14 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
 
@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-      - uses: EmbarkStudios/cargo-deny-action@f28dad79a1c0736fb9bef3766fec993bb67416c5
+      - uses: EmbarkStudios/cargo-deny-action@6c8f9facfa5047ec02d8485b6bf52b587b7777d1
 
   # Whitepaper §8.5 / gap register #14 — the Constitution v1.2.0
   # dependency-hygiene rule must hold independently for the WASM-safe
@@ -170,7 +170,7 @@ jobs:
     name: Supply chain audit (WASM-safe subgraph)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       # cargo-deny shells out to `cargo metadata` to resolve the
       # workspace graph, which requires a cargo binary that
@@ -183,7 +183,7 @@ jobs:
         with:
           toolchain: "1.89"
 
-      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
+      - uses: taiki-e/install-action@c070f87102a1c75b3183910f391c1cb887fe13c8
         with:
           tool: cargo-deny
 
@@ -206,7 +206,7 @@ jobs:
     name: REUSE compliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       # pipx is pre-installed on ubuntu-latest and keeps `reuse` isolated
       # from any system Python packages. Avoids pulling an external
@@ -226,7 +226,7 @@ jobs:
     name: Vendored reference integrity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       # Gap register #11 / whitepaper §7.3 — SHA256 checksums on the
       # vendored authoritative references (CAPCO PDFs) so any silent
@@ -250,15 +250,15 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
-      - uses: taiki-e/install-action@711e1c3275189d76dcc4d34ddea63bf96ac49090
+      - uses: taiki-e/install-action@c070f87102a1c75b3183910f391c1cb887fe13c8
         with:
           tool: cargo-llvm-cov
 
@@ -294,13 +294,13 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: cargo test (alloc-budget gate)
         run: |
@@ -339,13 +339,13 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: "1.89"
 
-      - uses: Swatinem/rust-cache@919333daf4640a6fca9dd8b87468dc776e46b44b
+      - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68
 
       - name: scripts/bench-check.sh
         run: bash scripts/bench-check.sh

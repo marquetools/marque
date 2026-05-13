@@ -43,7 +43,7 @@ async-trait = "0.1.89"
 futures = "0.3.32"
 futures-core = "0.3.32"
 # Async
-tokio = { version = "1.52.2", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
 
 aho-corasick = "1.1.4"
 # Text processing / scanning
@@ -61,9 +61,9 @@ toml = "1.1.2"
 # HTTP / server
 axum = { version = "0.8.9", features = ["json"] }
 tower = "0.5.3"
-tower-http = { version = "0.6.8", features = ["cors", "set-header", "trace"] }
+tower-http = { version = "0.6.10", features = ["cors", "set-header", "trace"] }
 
-assert_cmd = "2.2.1"
+assert_cmd = "2.2.2"
 # CLI
 clap = { version = "4.6.1", features = ["derive"] }
 humantime = "2.3.0"
@@ -80,7 +80,7 @@ recoco-utils = { version = "0.2.3", default-features = false, features = [
 ] }
 
 # Build-time XML parsing (marque-ism build.rs)
-quick-xml = "0.39.2"
+quick-xml = "0.40.0"
 
 # Vendored ODNI schema crates from github.com/marquetools/ism-data,
 # consumed as build-dependencies for marque-ism's codegen.
