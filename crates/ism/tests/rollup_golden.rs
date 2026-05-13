@@ -250,6 +250,87 @@ fn country_noforn_supersedes_rel() {
     assert!(ctx.expected_dissem_controls().contains(&DissemControl::Nf));
 }
 
+/// PR 3c.B-8F-engine-gap: NODIS in any portion injects NOFORN into the
+/// rendered banner per CAPCO-2016 §H.9 p174 verbatim — "REL TO is not
+/// authorized in the banner line if any portion contains NODIS information.
+/// In this case, NOFORN would convey in the banner line."
+///
+/// Pins the end-to-end flow: `needs_nf` propagates from
+/// `expected_non_ic_dissem` into `render_expected_banner` and produces a
+/// banner string that includes `//NOFORN` and excludes the REL TO block
+/// the portions would otherwise contribute.
+#[test]
+fn banner_renders_noforn_when_portion_has_nodis() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.non_ic_dissem = vec![NonIcDissem::Nodis].into();
+    ctx.add_portion(p2);
+
+    let banner = ctx
+        .render_expected_banner()
+        .expect("portions present, banner must render");
+
+    assert!(
+        banner.contains("NOFORN"),
+        "banner must inject NOFORN when any portion has NODIS \
+         (§H.9 p174): {banner}"
+    );
+    assert!(
+        !banner.contains("REL TO"),
+        "banner must NOT carry REL TO when any portion has NODIS \
+         (§H.9 p174): {banner}"
+    );
+    assert!(
+        banner.contains("NODIS"),
+        "NODIS itself must still roll up to the banner: {banner}"
+    );
+}
+
+/// PR 3c.B-8F-engine-gap: EXDIS in any portion injects NOFORN into the
+/// rendered banner per CAPCO-2016 §H.9 p172 verbatim — "REL TO is not
+/// authorized in the banner line if any portion contains EXDIS information.
+/// In this case, NOFORN would convey in the banner line."
+///
+/// Symmetric to the NODIS test above.
+#[test]
+fn banner_renders_noforn_when_portion_has_exdis() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.non_ic_dissem = vec![NonIcDissem::Exdis].into();
+    ctx.add_portion(p2);
+
+    let banner = ctx
+        .render_expected_banner()
+        .expect("portions present, banner must render");
+
+    assert!(
+        banner.contains("NOFORN"),
+        "banner must inject NOFORN when any portion has EXDIS \
+         (§H.9 p172): {banner}"
+    );
+    assert!(
+        !banner.contains("REL TO"),
+        "banner must NOT carry REL TO when any portion has EXDIS \
+         (§H.9 p172): {banner}"
+    );
+    assert!(
+        banner.contains("EXDIS"),
+        "EXDIS itself must still roll up to the banner: {banner}"
+    );
+}
+
 // =========================================================================
 // FGI Rollup
 // =========================================================================
