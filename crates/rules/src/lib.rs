@@ -211,11 +211,14 @@ pub use marque_scheme::Severity;
 /// engine's two-pass fix pipeline (PR 7 of the engine refactor).
 ///
 /// FR-021 (`specs/006-engine-rule-refactor/spec.md`) makes the phase a
-/// rule-level promise about the span shape of every fix payload the
-/// rule emits — applies to both `FixIntent::span` (structural intents)
-/// and the `Diagnostic::span` carrying a `text_correction` (e.g.,
-/// C001 corrections-map, E006 deprecation migrations). The phase is
-/// not an engine-side classification.
+/// rule-level promise about the span shape of every `Diagnostic` the
+/// rule emits — the `Diagnostic::span` field, regardless of whether
+/// the rule's fix payload is a structural `FixIntent` or a
+/// `Diagnostic::text_correction` (e.g., C001 corrections-map, E006
+/// deprecation migrations). Note: `FixIntent` itself carries no span
+/// — spans live on `Diagnostic::span` and `RuleContext::candidate_span`
+/// and are promoted onto `AppliedFix::span` by the engine. The phase
+/// is not an engine-side classification.
 ///
 /// The engine partitions the registered rule set by phase once at
 /// `Engine::new`; pass-1 dispatches `Phase::Localized` rules against
@@ -233,14 +236,15 @@ pub use marque_scheme::Severity;
 /// partition on `Engine`; pass-split dispatch lands in 7b.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Phase {
-    /// Every fix payload the rule emits has a span strictly inside a
-    /// single token boundary — applies to `FixIntent::span` (structural
-    /// intents) and `Diagnostic::span` (text-correction payloads).
-    /// Examples: a deprecation rewrite (`OC → ORCON`) carrying a
-    /// `FixIntent`, or a corpus-typo correction (`SERCET → SECRET`)
-    /// carrying a `Diagnostic::text_correction`. Pass-1 applies these
-    /// fixes via a forward-pass buffer splice before re-parsing for
-    /// pass-2. The constraint is *boundary-respect*, not span stability:
+    /// Every `Diagnostic` the rule emits has a `Diagnostic::span`
+    /// strictly inside a single token boundary — applies regardless
+    /// of whether the fix payload is a structural `FixIntent` or a
+    /// `Diagnostic::text_correction`. Examples: a deprecation rewrite
+    /// (`OC → ORCON`) carrying a `FixIntent`, or a corpus-typo
+    /// correction (`SERCET → SECRET`) carrying a
+    /// `Diagnostic::text_correction`. Pass-1 applies these fixes via
+    /// a forward-pass buffer splice before re-parsing for pass-2.
+    /// The constraint is *boundary-respect*, not span stability:
     /// any byte-length-changing splice shifts every later span, but the
     /// re-parse between passes recomputes spans from scratch. The
     /// reason pass-1 fixes must stay inside one token is that crossing
@@ -253,15 +257,14 @@ pub enum Phase {
     /// span is dropped from pass-1 with a `tracing::error!`, not
     /// promoted to `AppliedFix`.
     Localized,
-    /// Fix payloads cover a full marking — `FixIntent::span` (and
-    /// `candidate_span`, when populated) covers a portion, banner, or
-    /// page scope. Examples: a banner roll-up walker, a class-floor
-    /// walker, or any rule whose emission carries
-    /// `ReplacementIntent::FactAdd` / `FactRemove` / `Recanonicalize`.
-    /// `Diagnostic::text_correction` is rare in this phase but follows
-    /// the same span-shape contract when used. Pass-2 sees post-pass-1
-    /// attrs and, in PR 7c, the pre-pass-1 attrs cache for FR-023
-    /// disambiguation.
+    /// `Diagnostic::span` (and `Diagnostic::candidate_span`, when
+    /// populated) covers a portion, banner, or page scope. Examples:
+    /// a banner roll-up walker, a class-floor walker, or any rule
+    /// whose `FixIntent` carries `ReplacementIntent::FactAdd` /
+    /// `FactRemove` / `Recanonicalize`. `Diagnostic::text_correction`
+    /// is rare in this phase but follows the same span-shape contract
+    /// when used. Pass-2 sees post-pass-1 attrs and, in PR 7c, the
+    /// pre-pass-1 attrs cache for FR-023 disambiguation.
     ///
     /// This is the default returned by [`Rule::phase`] for rules that
     /// do not override the method (see [`Rule::phase`]'s documentation

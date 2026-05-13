@@ -2327,8 +2327,12 @@ const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
 /// schemes are expected to stay in the same order of magnitude.
 type Pass1Indices = SmallVec<[(usize, usize); 4]>;
 /// Pass-2 (WholeMarking) rule-index partition. Inline-32 covers the
-/// current 27-rule whole-marking subset with headroom for the
-/// post-refactor ruleset of ~40 before spilling to the heap.
+/// current 27-rule whole-marking subset; the SmallVec spills to the
+/// heap at the 33rd entry, leaving 5 entries of headroom. The
+/// rule-collapse trajectory (PR 3b retired 13 rules into walkers;
+/// end-state target ~10 across all 4 stages) means the count is
+/// contracting, so 32 stays comfortable. See [`Engine::pass2_rule_indices`]
+/// for the same rationale at greater length.
 type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 
 /// Partition the registered rules by their declared [`Phase`] (FR-021).
