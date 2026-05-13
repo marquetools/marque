@@ -168,12 +168,15 @@ pub struct Engine {
     /// **Inline-size choice.** `[(usize, usize); 4]` for pass-1
     /// (Localized rules are rare — 4 of 31 in the CAPCO ruleset at
     /// PR 7a: C001, E006, E007, S004) and `[(usize, usize); 32]` for
-    /// pass-2 (whole-marking is the dominant shape — 27 of 31 today,
-    /// with headroom for the immediate post-refactor ruleset of ~40
-    /// before allocating on the heap). The canonical per-rule list
-    /// lives in `crates/capco/tests/phase_assignment.rs`. Inline
-    /// storage means no extra heap allocation in the common case —
-    /// the partitions live wherever the `Engine` itself does.
+    /// pass-2. With 27 WholeMarking rules today and an inline capacity
+    /// of 32, the partition has 5 entries of headroom before the
+    /// SmallVec spills to the heap at the 33rd entry. The current
+    /// rule-collapse trajectory (PR 3b retired 13 rules into walkers;
+    /// further reductions targeted in stages 3–4) makes 32 comfortable
+    /// for the foreseeable future. The canonical per-rule list lives
+    /// in `crates/capco/tests/phase_assignment.rs`. Inline storage
+    /// means no extra heap allocation in the common case — the
+    /// partitions live wherever the `Engine` itself does.
     ///
     /// **PR 7a behavior.** Stored but unused — both phases still run
     /// together in pass-2 exactly as before. The partition is READ but
@@ -2203,7 +2206,7 @@ fn build_decoder_diagnostic(
             scope: RecanonScope::Portion,
         },
         confidence,
-        feature_ids: smallvec::SmallVec::new(),
+        feature_ids: SmallVec::new(),
         message: marque_rules::Message::new(
             marque_rules::MessageTemplate::BannerRollupMismatch,
             marque_rules::MessageArgs::default(),
@@ -2705,7 +2708,7 @@ mod tests {
                                 scope: RecanonScope::Portion,
                             },
                             confidence: p.confidence.clone(),
-                            feature_ids: smallvec::SmallVec::new(),
+                            feature_ids: SmallVec::new(),
                             message: Message::new(
                                 MessageTemplate::BannerRollupMismatch,
                                 MessageArgs::default(),
@@ -3025,7 +3028,7 @@ mod tests {
                         scope: RecanonScope::Portion,
                     },
                     confidence: marque_rules::Confidence::strict(1.0),
-                    feature_ids: smallvec::SmallVec::new(),
+                    feature_ids: SmallVec::new(),
                     message: Message::new(
                         MessageTemplate::BannerRollupMismatch,
                         MessageArgs::default(),
