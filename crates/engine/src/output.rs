@@ -41,7 +41,7 @@ use marque_rules::{AppliedFix, Diagnostic};
 /// Mid-document expiry produces `truncated: true` with
 /// `0 < candidates_processed < candidates_total`.
 #[non_exhaustive]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LintResult {
     pub diagnostics: Vec<Diagnostic<CapcoScheme>>,
     /// `true` when the lint pass aborted before processing every
@@ -151,6 +151,28 @@ pub struct FixResult {
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
     pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
+    /// `true` when pass-1 re-parse failed and the engine emitted an
+    /// `R002` synthetic diagnostic (PR 7b, FR-024). When set:
+    ///
+    /// - [`Self::source`] holds the post-pass-1 buffer ONLY. Pass-2
+    ///   never ran, so any pass-2 fixes that would have applied are
+    ///   absent from [`Self::applied`].
+    /// - [`Self::remaining_diagnostics`] contains the R002 diagnostic
+    ///   (and any other unfixed pass-1 diagnostics).
+    /// - WASM / IDE consumers MUST test this field BEFORE applying
+    ///   [`Self::source`] to the user's editor; splicing the
+    ///   partial buffer in silently is destructive without consent.
+    /// - The CLI exit-code precedence chain
+    ///   (`EX_R002_PARTIAL > EX_DIAG_ERROR > EX_DIAG_WARN > EX_OK`)
+    ///   maps this to exit code `3`. See `marque/src/main.rs::merge_exit_code`.
+    ///
+    /// The flag exists so consumers can detect R002 without scanning
+    /// the diagnostic stream (D1's "detectable without NDJSON
+    /// parsing" binding constraint). A second synthetic-error
+    /// boolean lands cleanly on the same surface; a third synthetic
+    /// signal would suggest collapsing to a `partial_state:
+    /// PartialState` enum.
+    pub r002_fired: bool,
 }
 
 #[cfg(test)]

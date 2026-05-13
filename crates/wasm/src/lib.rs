@@ -524,6 +524,11 @@ struct FixResultJson {
     fixed_text: String,
     applied: Vec<Box<serde_json::value::RawValue>>,
     remaining: Vec<Box<serde_json::value::RawValue>>,
+    /// Mirrors [`marque_engine::FixResult::r002_fired`]. Serialized
+    /// at the top level of the JS-object so callers can branch on a
+    /// single field read without parsing the NDJSON `remaining`
+    /// stream (PR 7b D1 binding constraint).
+    r002_fired: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -919,6 +924,7 @@ pub fn fix_native(
                 fixed_text,
                 applied,
                 remaining,
+                r002_fired: result.r002_fired,
             };
 
             // Serialize directly into a byte buffer to avoid serde_json::to_string's
