@@ -59,6 +59,7 @@ Without a [commercial license](#commercial-use), you can't:
 
 - **Include, adapt, or integrate Marque** (or any of its components or functionality) into anything you provide to people or organizations outside your own — including products, applications, services, hosted or managed offerings, and contract deliverables.
 - **Relicense or redistribute Marque** (or any of its components) to a third party outside your organization.
+- **'Piggyback' on Marque availability.** You can't deliver a product or service ("product") to a customer that depends on Marque to function — regardless of who installed Marque, who operates it, where it runs or how your product accesses it. Your product requires a commercial license if it *would not work as designed, or as specified by your agreement with the customer* without Marque being somewhere in the environment.
 
 ---
 
@@ -70,7 +71,7 @@ If Knitli patents cover any part of Marque, Knitli grants you a free, worldwide,
 
 ## Trademarks
 
-Marque™, the Marque logo (a stylized "(M)"), and logomark (a stylized "(M)arque") are trademarks of Knitli Inc. The Marque License gives you rights to use the software. It doesn't give you rights to use the trademarks.
+Marque™, the Marque logo (a stylized "(M)"), and wordmark (stylized "(M)arque") are Knitli Inc's trademarks. The Marque License gives you rights to use the software. It doesn't give you rights to use the trademarks.
 
 **You can:**
 
