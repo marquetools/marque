@@ -58,6 +58,10 @@ tracing = { workspace = true }
 # engine's deadline check (spec 005) calls `Instant::now()` per
 # candidate; without this dep, that call panics in the WASM target.
 web-time = { workspace = true }
+# PR 3c.B Commit 10: `FixIntent.feature_ids: SmallVec<[FeatureId; 4]>`
+# is constructed in production code (R001 decoder-path diagnostic
+# synthesis), so smallvec moved out of `[dev-dependencies]`.
+smallvec = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -68,10 +72,6 @@ marque-test-utils = { workspace = true }
 proptest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# PR 3c.B engine-prereq — intent-only integration test constructs
-# `FixIntent` values whose `feature_ids: SmallVec<[FeatureId; 4]>`
-# field needs `smallvec::SmallVec` at the test boundary.
-smallvec = { workspace = true }
 
 [features]
 default = ["batch"]

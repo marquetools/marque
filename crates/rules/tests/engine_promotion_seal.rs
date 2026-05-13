@@ -23,12 +23,16 @@
 //! visibility a downstream consumer would see.
 
 use marque_ism::Span;
-use marque_rules::{AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId};
+use marque_rules::{
+    AppliedFix, Confidence, EnginePromotionToken, FixIntent, FixSource, Message, MessageArgs,
+    MessageTemplate, RuleId,
+};
 use marque_scheme::{
-    MarkingScheme, Scope,
+    MarkingScheme, ReplacementIntent, Scope,
     ambiguity::Parsed,
     category::Category,
     constraint::Constraint,
+    fix_intent::RecanonScope,
     lattice::{BoundedLattice, Lattice},
     template::Template,
 };
@@ -112,26 +116,32 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     // never commingled with engine output. The point of the test is
     // to prove the documented engine-only door is usable across the
     // crate boundary.
-    let proposal = FixProposal::new(
-        RuleId::new("E001"),
-        FixSource::BuiltinRule,
-        Span::new(0, 4),
-        "TEST",
-        "DONE",
-        Confidence::strict(1.0),
-        None,
-    );
+    let intent: FixIntent<StubScheme> = FixIntent {
+        replacement: ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Portion,
+        },
+        confidence: Confidence::strict(1.0),
+        feature_ids: Default::default(),
+        message: Message::new(
+            MessageTemplate::BannerRollupMismatch,
+            MessageArgs::default(),
+        ),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
+    };
     // Test-fixture carve-out per Constitution V
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V
-    let applied: AppliedFix<StubScheme> = AppliedFix::__engine_promote_legacy(
-        proposal,
+    let applied: AppliedFix<StubScheme> = AppliedFix::__engine_promote(
+        RuleId::new("E001"),
+        Span::new(0, 4),
+        intent,
         UNIX_EPOCH + Duration::from_secs(0),
         Some(Arc::<str>::from("test")),
         false,
         Some(Arc::<str>::from("-")),
         token,
     );
-    assert_eq!(applied.proposal.rule.as_str(), "E001");
+    assert_eq!(applied.rule.as_str(), "E001");
     assert!(!applied.dry_run);
 }

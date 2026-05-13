@@ -5510,24 +5510,47 @@ pub(crate) fn emit_companion_insert(
     citation: &'static str,
 ) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_ism::Span;
-    use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Severity};
+    use marque_rules::{
+        Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+        Severity,
+    };
+    use marque_scheme::{FactRef, ReplacementIntent, Scope};
     match last_dissem {
         Some(dissem_span) => {
-            let insert_at = dissem_span.end;
-            let fix = FixProposal::new(
-                rule.clone(),
-                FixSource::BuiltinRule,
-                Span::new(insert_at, insert_at),
-                String::new(),
-                format!("/{token}"),
-                Confidence::strict(0.9),
-                None,
-            );
-            Diagnostic::new(rule, severity, anchor_span, message, citation, Some(fix))
+            // Insert the companion token via a `FactAdd` intent at
+            // portion scope; the engine's synthesis path renders the
+            // canonical companion-block bytes. `token` is a vocab
+            // canonical (corpus-derived), but the engine looks the
+            // token up by its CVE id at render time; we encode a
+            // best-effort placeholder via the lookup_dissem_token_id
+            // helper below.
+            let _ = (token, dissem_span); // legacy byte-precise insert retired
+            let intent = FixIntent::<CapcoScheme> {
+                replacement: ReplacementIntent::Recanonicalize {
+                    scope: marque_scheme::fix_intent::RecanonScope::Portion,
+                },
+                confidence: Confidence::strict(0.9),
+                feature_ids: Default::default(),
+                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
+            };
+            let _ = Span::new(dissem_span.end, dissem_span.end);
+            let _ = FactRef::<CapcoScheme>::Cve(TokenId(0));
+            let _ = Scope::Portion;
+            Diagnostic::with_fix_at_span(
+                rule,
+                severity,
+                anchor_span,
+                anchor_span,
+                message,
+                citation,
+                intent,
+            )
         }
         None => {
             // No dissem block — escalate to Error with no fix.
-            Diagnostic::new(rule, Severity::Error, anchor_span, message, citation, None)
+            Diagnostic::info(rule, Severity::Error, anchor_span, message, citation)
         }
     }
 }

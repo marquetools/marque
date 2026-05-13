@@ -14,7 +14,7 @@
 //! `specs/006-engine-rule-refactor/architecture.md` "What fixes
 //! are."
 
-use marque_rules::{Confidence, FixIntent, Message, MessageArgs, MessageTemplate};
+use marque_rules::{Confidence, FixIntent, FixSource, Message, MessageArgs, MessageTemplate};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
@@ -99,6 +99,8 @@ fn external_crate_constructs_fix_intent_with_fact_add() {
         confidence: Confidence::strict(0.95),
         feature_ids: SmallVec::new(),
         message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     };
     assert_eq!(intent.message.template(), MessageTemplate::SupersededToken);
     match intent.replacement {
@@ -120,6 +122,8 @@ fn external_crate_constructs_fix_intent_with_fact_remove() {
             MessageTemplate::BannerRollupMismatch,
             MessageArgs::default(),
         ),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     };
     match intent.replacement {
         ReplacementIntent::FactRemove { facts, scope } => {
@@ -140,6 +144,8 @@ fn external_crate_constructs_fix_intent_with_recanonicalize() {
         confidence: Confidence::strict(1.0),
         feature_ids: SmallVec::new(),
         message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     };
     assert!(matches!(
         intent.replacement,

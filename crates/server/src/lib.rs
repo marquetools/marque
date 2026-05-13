@@ -604,11 +604,32 @@ fn diagnostics_to_json(result: &marque_engine::LintResult) -> Vec<DiagnosticJson
             message: d.message.to_string(),
             start: d.span.start,
             end: d.span.end,
-            fix: d.fix.as_ref().map(|f| FixJson {
-                replacement: f.replacement.to_string(),
-                confidence: f.confidence.combined(),
-                migration_ref: f.migration_ref.map(str::to_owned),
-            }),
+            fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+                (Some(f), _) => Some(FixJson {
+                    // Structural rule fix — replacement bytes are
+                    // engine-rendered at promotion time. The server
+                    // surface reports the intent kind as a stand-in
+                    // for the legacy `replacement` field.
+                    replacement: match &f.replacement {
+                        marque_scheme::ReplacementIntent::FactAdd { .. } => "<FactAdd>".to_owned(),
+                        marque_scheme::ReplacementIntent::FactRemove { .. } => {
+                            "<FactRemove>".to_owned()
+                        }
+                        marque_scheme::ReplacementIntent::Recanonicalize { .. } => {
+                            "<Recanonicalize>".to_owned()
+                        }
+                        _ => "<Unknown>".to_owned(),
+                    },
+                    confidence: f.confidence.combined(),
+                    migration_ref: f.migration_ref.map(str::to_owned),
+                }),
+                (None, Some(rep)) => Some(FixJson {
+                    replacement: rep.to_string(),
+                    confidence: 1.0,
+                    migration_ref: None,
+                }),
+                (None, None) => None,
+            },
         })
         .collect()
 }

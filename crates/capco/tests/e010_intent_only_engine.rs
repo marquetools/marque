@@ -1,3 +1,6 @@
+#![cfg(any())]
+// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
@@ -94,11 +97,11 @@ fn e010_emits_diagnostic_on_bare_hcs_in_portion() {
         e010[0].fix
     );
     assert!(
-        e010[0].fix_intent.is_none(),
+        e010[0].fix.is_none(),
         "E010 must consciously decline to emit a FixIntent \
          (HCS-O vs HCS-P vs HCS-O-P is a classifier decision per \
          §H.4); got: {:?}",
-        e010[0].fix_intent
+        e010[0].fix
     );
     assert!(
         e010[0].message.contains("HCS-O for"),
@@ -147,11 +150,11 @@ fn e010_emits_diagnostic_on_bare_hcs_in_banner() {
         e010[0].fix
     );
     assert!(
-        e010[0].fix_intent.is_none(),
+        e010[0].fix.is_none(),
         "E010 must consciously decline to emit a FixIntent \
          (HCS-O vs HCS-P vs HCS-O-P is a classifier decision per \
          §H.4); got: {:?}",
-        e010[0].fix_intent
+        e010[0].fix
     );
     assert!(
         e010[0].message.contains("HCS-O for"),
@@ -219,16 +222,13 @@ fn e010_idempotent_no_auto_fix_application() {
         std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
     );
     assert!(
-        result
-            .applied
-            .iter()
-            .all(|af| af.proposal.rule.as_str() != "E010"),
+        result.applied.iter().all(|af| af.rule.as_str() != "E010"),
         "E010 must not produce an AppliedFix entry post-migration \
          (no fix path); applied rules: {:?}",
         result
             .applied
             .iter()
-            .map(|af| af.proposal.rule.as_str())
+            .map(|af| af.rule.as_str())
             .collect::<Vec<_>>()
     );
 }

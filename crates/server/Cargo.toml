@@ -35,6 +35,8 @@ marque-capco = { workspace = true }
 marque-config = { workspace = true }
 marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
+marque-rules = { workspace = true }
+marque-scheme = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

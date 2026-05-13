@@ -75,7 +75,9 @@ use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
 use marque_ism::Span;
-use marque_rules::{AppliedFix, Confidence, EnginePromotionToken, FixProposal, FixSource, RuleId};
+use marque_rules::{
+    AppliedFix, AppliedFixProposal, Confidence, EnginePromotionToken, FixSource, RuleId,
+};
 use marque_test_utils::{invalid_fixtures, load_fixture, prose_fixtures, valid_fixtures};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -168,28 +170,35 @@ fn deep_scan_engine_relaxed() -> Engine {
 ///
 /// Panic includes the rule ID and span so a failure points directly at
 /// the offending proposal without requiring test re-runs to find it.
-fn assert_clean(proposal: &FixProposal, field_name: &str, value: &str, context: &str) {
+fn assert_clean(fix: &AppliedFix<CapcoScheme>, field_name: &str, value: &str, context: &str) {
     for sentinel in PROSE_SENTINELS {
         if value.contains(sentinel) {
             panic!(
                 "G13 violation: prose sentinel {sentinel:?} leaked into \
-                 AppliedFix.proposal.{field_name} \
+                 AppliedFix.{field_name} \
                  (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
                  field value: {value:?}",
-                rule = proposal.rule.as_str(),
-                start = proposal.span.start,
-                end = proposal.span.end,
+                rule = fix.rule.as_str(),
+                start = fix.span.start,
+                end = fix.span.end,
             );
         }
     }
 }
 
 /// Check every AppliedFix in `applied` for sentinel leaks.
+///
+/// Post Commit 10 the only audit field that can carry corpus-derived
+/// bytes is the `TextCorrection.replacement` payload — and that's a
+/// canonical token from the `[corrections]` map, on Constitution V's
+/// permitted-identifier list. The original byte field that the legacy
+/// `mvp-2` envelope carried (and that this test guarded) is no longer
+/// representable in the audit record.
 fn check_fixes_clean(applied: &[AppliedFix<CapcoScheme>], context: &str) {
     for fix in applied {
-        let p = &fix.proposal;
-        assert_clean(p, "original", p.original.as_ref(), context);
-        assert_clean(p, "replacement", p.replacement.as_ref(), context);
+        if let AppliedFixProposal::TextCorrection { replacement } = &fix.proposal {
+            assert_clean(fix, "proposal.replacement", replacement.as_ref(), context);
+        }
     }
 }
 
@@ -370,32 +379,21 @@ fn no_document_text_leaks_into_diagnostic_messages() {
 /// code; see the doc comment on `AppliedFix::__engine_promote` for
 /// the three-constraint definition of the carve-out.
 fn fabricate_leaky_fix() -> AppliedFix<CapcoScheme> {
-    // A deliberately leaky `original`: a literal prose sentinel. In
-    // production this could never happen because every proposal's
-    // `original` is a byte-exact slice of the marking span, not of
-    // surrounding prose. This is a synthetic leak to prove the check
-    // is load-bearing.
-    let leaky_original = "enlightened statesmen";
-    let proposal = FixProposal::new(
-        RuleId::new("E001"),
-        FixSource::BuiltinRule,
-        Span::new(0, leaky_original.len()),
-        leaky_original,
-        "SECRET",
-        Confidence::strict(1.0),
-        None,
-    );
-    // Test-fixture carve-out per Constitution V Principle V: the
-    // token is minted via the engine-only door so the synthetic
-    // `AppliedFix` can flow through the G13 sentinel sweep. The
-    // fabricated value is consumed inside `tests/` and never
-    // commingled with engine output (see `fabricate_leaky_fix`'s
-    // doc comment above).
-    // Test-fixture carve-out per Constitution V
+    // A deliberately leaky text-correction replacement carrying a
+    // literal prose sentinel. Post Commit 10 the only audit field
+    // that can carry corpus-derived bytes is the `TextCorrection`
+    // `replacement` payload; a real corrections-map entry would
+    // never contain prose, but this synthetic fixture proves the
+    // checker can catch a leak if one were to land.
+    let leaky_replacement = "enlightened statesmen";
+    // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
-    // Test-fixture carve-out per Constitution V
-    AppliedFix::<CapcoScheme>::__engine_promote_legacy(
-        proposal,
+    AppliedFix::<CapcoScheme>::__engine_promote_text_correction(
+        RuleId::new("C001"),
+        Span::new(0, leaky_replacement.len()),
+        leaky_replacement.into(),
+        FixSource::CorrectionsMap,
+        Confidence::strict(1.0),
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
         Some(Arc::<str>::from("test-classifier")),
         /* dry_run */ false,
@@ -473,13 +471,14 @@ fn audit_v2_strict_path_invariants() {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
         for fix in &result.applied {
-            let p = &fix.proposal;
-            let c = &p.confidence;
+            // Top-level fields post Commit 10: `rule`, `span`,
+            // `source`, `confidence`, `migration_ref`.
+            let c = &fix.confidence;
             let context = format!(
                 "rule {} at {}..{} ({})",
-                p.rule.as_str(),
-                p.span.start,
-                p.span.end,
+                fix.rule.as_str(),
+                fix.span.start,
+                fix.span.end,
                 path.display()
             );
 
@@ -503,12 +502,12 @@ fn audit_v2_strict_path_invariants() {
             );
             assert!(
                 matches!(
-                    p.source,
+                    fix.source,
                     FixSource::BuiltinRule | FixSource::CorrectionsMap | FixSource::MigrationTable
                 ),
                 "strict-path FixSource must be BuiltinRule | CorrectionsMap | \
                  MigrationTable; got {:?} for {context}",
-                p.source,
+                fix.source,
             );
         }
         total_fixes_examined += result.applied.len();
@@ -728,17 +727,17 @@ fn decoder_path_record_shape() {
             "decoder-path Confidence.recognition must be strictly < 1.0; \
              got {} (rule {}, span {}..{})",
             c.recognition,
-            fix.proposal.rule.as_str(),
-            fix.proposal.span.start,
-            fix.proposal.span.end,
+            fix.rule.as_str(),
+            fix.span.start,
+            fix.span.end,
         );
         assert!(
             !c.features.is_empty(),
             "decoder-path Confidence.features must be non-empty (FR-009); \
              got 0 features for rule {} at {}..{}",
-            fix.proposal.rule.as_str(),
-            fix.proposal.span.start,
-            fix.proposal.span.end,
+            fix.rule.as_str(),
+            fix.span.start,
+            fix.span.end,
         );
         // Every feature carries a `FeatureId` enum — by type, not by
         // string. Iterating exercises the field; pattern-matching is

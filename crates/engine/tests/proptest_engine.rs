@@ -144,7 +144,7 @@ proptest! {
         );
         for (d, a) in dry.applied.iter().zip(apply.applied.iter()) {
             prop_assert!(
-                d.proposal.rule == a.proposal.rule,
+                d.rule == a.rule,
                 "dry-run/apply rule ID mismatch for {:?}", src,
             );
             // confidence combined() values must be identical (same rule, same input)

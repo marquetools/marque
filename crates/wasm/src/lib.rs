@@ -285,7 +285,8 @@ struct SpanJson {
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     source: &'static str,
-    replacement: &'a str,
+    intent_kind: &'static str,
+    replacement: Option<&'a str>,
     confidence: f32,
     migration_ref: Option<&'a str>,
 }
@@ -310,70 +311,52 @@ fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
         },
         message: d.message.as_ref(),
         citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: fix_source_str(f.source),
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: match &f.replacement {
+                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    _ => "Unknown",
+                },
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(rep)) => Some(FixJson {
+                source: "CorrectionsMap",
+                intent_kind: "TextCorrection",
+                replacement: Some(rep.as_ref()),
+                confidence: 1.0,
+                migration_ref: None,
+            }),
+            (None, None) => None,
+        },
     }
 }
 
 // ---------------------------------------------------------------------------
-// Audit record JSON
+// Audit record JSON (marque-mvp-3)
 //
-// Two struct shapes mirror the CLI emitter (`marque/src/render.rs`):
-//
-// - `AuditRecordJsonV1<'a>` — `marque-mvp-1`, the legacy 12-field shape
-//   that pre-Phase-D consumers parse.
-// - `AuditRecordJsonV2<'a>` — `marque-mvp-2`, strict superset that adds
-//   `recognition` (always present), `runner_up_ratio` (omitted when
-//   `None`), and `features` (omitted when empty).
-//
-// Selection is driven by `marque_engine::AUDIT_SCHEMA_IS_V2`, the
-// compile-time const surfaced by `crates/engine/build.rs`. The two
-// shapes have different field counts, so the `applied` field of
-// `FixResultJson` carries `Box<RawValue>` (already used for
-// `remaining`) and `serialize_applied_fix` dispatches once at
-// serialization time. Both arms compile in every build; the
-// const-folded `if` eliminates the dead arm at the matching schema's
-// expense.
+// Mirrors the CLI emitter (`marque/src/render.rs`) for SC-008 parity.
+// Single accepted schema post PR 3c.B Commit 10.
 // ---------------------------------------------------------------------------
 
-/// v1 audit record (`contracts/audit-record.json`, schema `marque-mvp-1`).
-///
-/// Borrows from the `AppliedFix` to avoid per-field heap allocations.
-/// Only `timestamp` is owned — `humantime::format_rfc3339` returns a
-/// temporary that cannot be borrowed across the struct boundary.
 #[derive(Debug, Serialize)]
-struct AuditRecordJsonV1<'a> {
-    schema: &'static str,
-    rule: &'a str,
-    source: &'static str,
-    span: SpanJson,
-    original: &'a str,
-    replacement: &'a str,
-    confidence: f32,
-    migration_ref: Option<&'a str>,
-    timestamp: String,
-    classifier_id: Option<&'a str>,
-    dry_run: bool,
-    input: Option<&'a str>,
+#[serde(tag = "kind")]
+enum ProposalJson<'a> {
+    FixIntent { intent: serde_json::Value },
+    TextCorrection { replacement: &'a str },
 }
 
-/// v2 audit record (`contracts/audit-record-v2.md`, schema `marque-mvp-2`).
-///
-/// Strict superset of [`AuditRecordJsonV1`]: every v1 field is preserved
-/// in v1 order, then `recognition` / `runner_up_ratio` / `features` are
-/// appended. v2 ⊃ v1 is the back-compat guarantee.
 #[derive(Debug, Serialize)]
-struct AuditRecordJsonV2<'a> {
+struct AuditRecordJsonV3<'a> {
     schema: &'static str,
     rule: &'a str,
     source: &'static str,
     span: SpanJson,
-    original: &'a str,
-    replacement: &'a str,
+    proposal: ProposalJson<'a>,
     confidence: f32,
     migration_ref: Option<&'a str>,
     timestamp: String,
@@ -393,49 +376,52 @@ struct FeatureJson {
     delta: f32,
 }
 
-fn applied_fix_to_audit_json_v1(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV1<'_> {
-    AuditRecordJsonV1 {
-        schema: marque_engine::AUDIT_SCHEMA_VERSION,
-        rule: fix.proposal.rule.as_str(),
-        source: fix_source_str(fix.proposal.source),
-        span: SpanJson {
-            start: fix.proposal.span.start,
-            end: fix.proposal.span.end,
-        },
-        original: &fix.proposal.original,
-        replacement: &fix.proposal.replacement,
-        confidence: fix.proposal.confidence.combined(),
-        migration_ref: fix.proposal.migration_ref,
-        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
-        classifier_id: fix.classifier_id.as_deref(),
-        dry_run: fix.dry_run,
-        input: fix.input.as_deref(),
+fn proposal_to_json<'a>(
+    proposal: &'a marque_rules::AppliedFixProposal<CapcoScheme>,
+) -> ProposalJson<'a> {
+    match proposal {
+        marque_rules::AppliedFixProposal::FixIntent(intent) => {
+            let inner: serde_json::Value = match &intent.replacement {
+                marque_scheme::ReplacementIntent::FactAdd { scope, .. } => serde_json::json!({
+                    "kind": "FactAdd",
+                    "scope": format!("{scope:?}"),
+                }),
+                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
+                    serde_json::json!({
+                        "kind": "FactRemove",
+                        "scope": format!("{scope:?}"),
+                        "fact_count": facts.len(),
+                    })
+                }
+                marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
+                    serde_json::json!({
+                        "kind": "Recanonicalize",
+                        "scope": format!("{scope:?}"),
+                    })
+                }
+                _ => serde_json::json!({ "kind": "Unknown" }),
+            };
+            ProposalJson::FixIntent { intent: inner }
+        }
+        marque_rules::AppliedFixProposal::TextCorrection { replacement } => {
+            ProposalJson::TextCorrection { replacement }
+        }
     }
 }
 
-/// Emit the v2 audit record schema. Per the `AppliedFix` contract,
-/// the v2 emitter reads `confidence` and `source` from the top-level
-/// snapshot fields on `AppliedFix`, NOT from `proposal.*`. The two
-/// are identical copies today (the engine's `__engine_promote`
-/// snapshots them unchanged), but the v2 schema contract is that
-/// a future engine-side adjustment at promotion time (e.g.,
-/// region-context calibration) reflects in v2 output. Matches the
-/// CLI v2 emitter at `marque/src/render.rs:applied_fix_to_audit_json_v2`
-/// for SC-008 parity.
-fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV2<'_> {
+fn applied_fix_to_audit_json_v3(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV3<'_> {
     let c = &fix.confidence;
-    AuditRecordJsonV2 {
+    AuditRecordJsonV3 {
         schema: marque_engine::AUDIT_SCHEMA_VERSION,
-        rule: fix.proposal.rule.as_str(),
+        rule: fix.rule.as_str(),
         source: fix_source_str(fix.source),
         span: SpanJson {
-            start: fix.proposal.span.start,
-            end: fix.proposal.span.end,
+            start: fix.span.start,
+            end: fix.span.end,
         },
-        original: &fix.proposal.original,
-        replacement: &fix.proposal.replacement,
+        proposal: proposal_to_json(&fix.proposal),
         confidence: c.combined(),
-        migration_ref: fix.proposal.migration_ref,
+        migration_ref: fix.migration_ref,
         timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
         classifier_id: fix.classifier_id.as_deref(),
         dry_run: fix.dry_run,
@@ -453,20 +439,12 @@ fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJso
     }
 }
 
-/// Serialize one `AppliedFix` to a pre-serialized JSON value, dispatching
-/// to the v1 or v2 emitter based on this build's audit schema.
 fn serialize_applied_fix(
     fix: &AppliedFix<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    // `serde_json::to_string` is the right primitive here: it returns
-    // an owned `String` and skips the `Vec<u8>` → `String::from_utf8`
-    // validation pass `to_vec` would force, since `serde_json` already
-    // guarantees its output is valid UTF-8.
-    let json = if marque_engine::AUDIT_SCHEMA_IS_V2 {
-        serde_json::to_string(&applied_fix_to_audit_json_v2(fix)).map_err(|e| e.to_string())?
-    } else {
-        serde_json::to_string(&applied_fix_to_audit_json_v1(fix)).map_err(|e| e.to_string())?
-    };
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V3;
+    let json =
+        serde_json::to_string(&applied_fix_to_audit_json_v3(fix)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
 }
 

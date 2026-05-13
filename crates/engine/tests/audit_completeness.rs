@@ -41,7 +41,7 @@ fn applied_fix_has_all_required_fields() {
 
     for fix in &result.applied {
         // rule: non-empty string matching E/W/C + 3 digits
-        let rule = fix.proposal.rule.as_str();
+        let rule = fix.rule.as_str();
         assert!(!rule.is_empty(), "rule ID must not be empty");
         assert!(
             rule.len() == 4
@@ -76,16 +76,23 @@ fn applied_fix_has_all_required_fields() {
 
         // span: non-empty
         assert!(
-            fix.proposal.span.start < fix.proposal.span.end,
+            fix.span.start < fix.span.end,
             "span must be non-empty: {:?}",
-            fix.proposal.span
+            fix.span
         );
 
-        // replacement: non-empty for actual fixes
-        assert!(
-            !fix.proposal.replacement.is_empty(),
-            "replacement must not be empty"
-        );
+        // proposal shape: every applied fix must carry either a
+        // structural FixIntent or a TextCorrection payload (post
+        // Commit 10 the audit envelope is one of these two shapes).
+        match &fix.proposal {
+            marque_rules::AppliedFixProposal::FixIntent(_) => {}
+            marque_rules::AppliedFixProposal::TextCorrection { replacement } => {
+                assert!(
+                    !replacement.is_empty(),
+                    "text-correction replacement must not be empty"
+                );
+            }
+        }
 
         // confidence: in [0.0, 1.0]. Read from the top-level snapshot per
         // the v2 audit contract — the audit record's confidence is what

@@ -92,8 +92,8 @@ use std::sync::LazyLock;
 
 use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixProposal, FixSource, Message, MessageArgs,
-    MessageTemplate, Rule, RuleContext, RuleId, Severity,
+    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule,
+    RuleContext, RuleId, Severity,
 };
 use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, TokenId};
 use smallvec::SmallVec;
@@ -322,7 +322,7 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
         // constructor signaling consciously-decided-no-fix-intent.
         // See module-level comment block above for the HCS-O vs
         // HCS-P classifier-decision rationale.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -491,7 +491,7 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
         // constructor signaling consciously-decided-no-fix-intent.
         // See module-level comment block above for the cross-axis-
         // renormalization rationale and Stage-4 retirement target.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -632,7 +632,7 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
         missing
             .iter()
             .map(|country| {
-                Diagnostic::with_intent_at_span(
+                Diagnostic::with_fix_at_span(
                     self.id(),
                     self.default_severity(),
                     span,
@@ -699,6 +699,8 @@ fn e014_add_country_intent(
                 ..MessageArgs::default()
             },
         ),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     }
 }
 
@@ -759,7 +761,7 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
         // constructor signaling consciously-decided-no-fix-intent.
         // See module-level comment block above for the two-valid-
         // fills rationale.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -843,7 +845,7 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
         // attributed to §H.3 — because the equivalence lives in
         // CAPCO-2016 Appendix A §4 (Five Eyes Marking Comparisons), not
         // in §H.3 itself.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -928,7 +930,7 @@ impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
         // PR 3c.B Sub-PR 8.B — migrated to `with_fix_intent` constructor
         // signaling consciously-decided-no-fix-intent (Category B,
         // Stage-4 target). See module-level comment block above.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -970,7 +972,7 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
         Severity::Fix
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
             return vec![];
         }
@@ -994,82 +996,27 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
         // was previously Error-no-fix (no audit record emitted).
         // The byte-identity gate is vacuous for E021; correctness
         // is exercised by the per-rule shape tests.
-        match build_aea_noforn_addition_fix(self.id(), attrs) {
-            Some(fix) => vec![Diagnostic::with_fix_and_intent(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RD/FRD requires NOFORN unless a sharing agreement exists \
-                 per the Atomic Energy Act; override to warn via rule severity \
-                 config if sharing agreements apply",
-                "CAPCO-2016 §H.6 p104 + p111",
-                fix,
-                aea_noforn_add_intent(),
-            )],
-            None => vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RD/FRD requires NOFORN unless a sharing agreement exists \
-                 per the Atomic Energy Act; override to warn via rule severity \
-                 config if sharing agreements apply",
-                "CAPCO-2016 §H.6 p104 + p111",
-                None,
-            )],
-        }
+        let _ = attrs;
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            span,
+            ctx.candidate_span,
+            "RD/FRD requires NOFORN unless a sharing agreement exists \
+             per the Atomic Energy Act; override to warn via rule severity \
+             config if sharing agreements apply",
+            "CAPCO-2016 §H.6 p104 + p111",
+            aea_noforn_add_intent(),
+        )]
     }
 }
 
-/// Build a `<last-dissem-token>/<NOFORN-form>` append-fix anchored on
-/// the last existing IC dissem token. Analogous to
-/// `build_relido_removal_fix` (subtractive); the `emit_companion_insert`
-/// helper used by SCI per-system catalog rules also emits an additive
-/// fix but at a zero-width span (`Span::new(end, end)`), which the
-/// engine's `!f.span.is_empty()` filter
-/// (`crates/engine/src/engine.rs` line ~1108) silently drops. This
-/// helper anchors on the last dissem token's full span and re-emits
-/// the token plus `/NOFORN` so the engine actually applies the fix
-/// (E021 is `Severity::Fix`, not the warn-no-fix posture of the SCI
-/// per-system additive rows).
-///
-/// Returns `None` when the portion has no IC dissem block at all —
-/// same defensive policy as `compute_relido_removal_span`: never
-/// synthesize structural input from rule context (inserting a whole
-/// `//`-separated category absent an explicit anchor is unsafe).
-///
-/// The inserted form (`NF` vs `NOFORN`) tracks the form of the first
-/// existing dissem token via `infer_companion_form` so the post-fix
-/// bytes don't mix banner-form and portion-form. Matches the
-/// surface-form policy `emit_companion_insert` uses for SCI per-system
-/// companion insertions.
-///
-/// Confidence is `Confidence::strict(0.95)` — same as
-/// `build_relido_removal_fix` and the SCI per-system catalog inserts
-/// (CAPCO precedent for at-threshold, auto-apply fixes).
-///
-/// `FixSource::BuiltinRule` per the strict-path provenance convention
-/// for hand-written CAPCO rules.
-fn build_aea_noforn_addition_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
-    // Walk to the LAST DissemControl token span — same as
-    // `scheme::last_dissem_span` but we also need the token's text so
-    // we can re-emit it in the replacement. Inlining keeps the helper
-    // self-contained and avoids a second pass over `token_spans`.
-    let last = attrs
-        .token_spans
-        .iter()
-        .rev()
-        .find(|t| t.kind == TokenKind::DissemControl)?;
-    let form = crate::scheme::infer_companion_form(attrs);
-    Some(FixProposal::new(
-        rule_id,
-        FixSource::BuiltinRule,
-        last.span,
-        last.text.as_ref(),
-        format!("{}/{}", last.text, form.noforn()),
-        Confidence::strict(0.95),
-        None,
-    ))
-}
+// `build_aea_noforn_addition_fix` retired in PR 3c.B Commit 10
+// alongside `FixProposal`. The structural NOFORN-addition intent
+// (`aea_noforn_add_intent`) is the sole emission channel; the engine
+// re-renders the portion via `apply_intent` + `render_canonical` at
+// the full marking-scope span, so the legacy byte-precise anchor is
+// no longer needed.
 
 /// Build the canonical `FactAdd { NOFORN, Scope::Portion }` intent
 /// emitted by E021. NOFORN addition is scope-portion: the fact set
@@ -1091,6 +1038,8 @@ fn aea_noforn_add_intent() -> FixIntent<CapcoScheme> {
         confidence: Confidence::strict(0.95),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     }
 }
 
@@ -1197,9 +1146,11 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
             confidence: Confidence::strict(1.0),
             feature_ids: Default::default(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
 
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             first_span,
@@ -1332,7 +1283,7 @@ impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
         // signaling consciously-decided-no-fix-intent (Category B Reject,
         // Stage-4 target). See module-level Migration status comment block
         // above.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -1452,7 +1403,7 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
             _ => return vec![],
         };
 
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             span,
@@ -1513,6 +1464,8 @@ fn e038_add_noforn_intent(trigger_token: TokenId, scope: Scope) -> FixIntent<Cap
                 ..MessageArgs::default()
             },
         ),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     }
 }
 
@@ -1596,7 +1549,7 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
                 // scope-bytes to re-render after
                 // `CapcoScheme::apply_intent` clears the REL TO axis
                 // via the `TOK_REL_TO` whole-axis sentinel.
-                vec![Diagnostic::with_intent_at_span(
+                vec![Diagnostic::with_fix_at_span(
                     self.id(),
                     self.default_severity(),
                     span,
@@ -1621,7 +1574,7 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
                 // at banner scope must look at the PageRewrite audit
                 // row; the E053 row at banner scope carries the
                 // diagnostic only.
-                vec![Diagnostic::with_fix_intent(
+                vec![Diagnostic::with_fix(
                     self.id(),
                     self.default_severity(),
                     span,
@@ -1673,6 +1626,8 @@ fn e053_remove_rel_to_intent() -> FixIntent<CapcoScheme> {
                 ..MessageArgs::default()
             },
         ),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     }
 }
 
@@ -1909,44 +1864,12 @@ pub fn compute_relido_removal_span(attrs: &CanonicalAttrs) -> Option<(Span, Box<
     None
 }
 
-/// Build a subtractive RELIDO `FixProposal` for the four §H.8 conflict
-/// wrappers. Returns `None` when `compute_relido_removal_span` cannot find
-/// a sound removal layout (rare; caller emits the diagnostic without a fix
-/// in that case so Constitution V's "never emit a malformed fix" invariant
-/// holds).
-///
-/// Confidence is fixed at **0.95** per PM Addendum II §3 (post-2026-05-08
-/// calibration) so the fix clears the engine's default
-/// `Config::confidence_threshold` of 0.95 (`crates/config/src/lib.rs:156`,
-/// auto-apply gate is `confidence >= threshold`). The §-cited prose in
-/// every E054–E057 case is categorical ("Cannot be used with..." / "May
-/// not be used with RELIDO"); the marking IS invalid and the user has
-/// explicitly endorsed RELIDO as the remove-target. 0.95 matches the
-/// established CAPCO convention for definite, at-threshold, auto-apply
-/// fixes (e.g. `crates/capco/src/rules.rs:998 / :1327 / :2622 / :2777 /
-/// :2853`); 0.85–0.9 is reserved for conditional / lower-confidence cases.
-///
-/// The earlier 0.9 value left the fix as a manual-review suggestion under
-/// the default threshold — opposite of the user-stated guidance behavior
-/// ("remove RELIDO and tell them why"). Bumped to 0.95 in PR 3b.C
-/// pre-merge.
-///
-/// `FixSource::BuiltinRule` is the existing strict-path provenance variant
-/// for hand-written CAPCO rules (the PM Addendum II Section 4 reference to
-/// `FixSource::Rule { rule_id }` was nomenclature-only — no such variant
-/// exists in `marque-rules`; `BuiltinRule` is the existing-pattern match).
-fn build_relido_removal_fix(rule_id: RuleId, attrs: &CanonicalAttrs) -> Option<FixProposal> {
-    let (span, original) = compute_relido_removal_span(attrs)?;
-    Some(FixProposal::new(
-        rule_id,
-        FixSource::BuiltinRule,
-        span,
-        original,
-        "",
-        Confidence::strict(0.95),
-        None,
-    ))
-}
+// `build_relido_removal_fix` retired in PR 3c.B Commit 10 alongside
+// `FixProposal`. `relido_remove_intent` is the sole emission channel for
+// the four §H.8 RELIDO conflict wrappers (E054 / E055 / E056 / E057);
+// the engine re-renders the portion via `apply_intent` + `render_canonical`
+// at `ctx.candidate_span`. Confidence stays at the per-rule 0.95 baseline
+// set on the intent itself.
 
 // ---------------------------------------------------------------------------
 // E054 — RELIDO conflicts with NOFORN (§H.8 p154)
@@ -1976,7 +1899,7 @@ impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
             return vec![];
         }
@@ -2013,25 +1936,16 @@ impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
         // `crates/engine/src/engine.rs::fix_inner` and the consolidated
         // plan §"Path C" (lines 100–175). Commit 10 retires the
         // synthesized projection atomically with the audit-schema flip.
-        match build_relido_removal_fix(self.id(), attrs) {
-            Some(fix) => vec![Diagnostic::with_fix_and_intent(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
-                "CAPCO-2016 §H.8 p154",
-                fix,
-                relido_remove_intent(),
-            )],
-            None => vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
-                "CAPCO-2016 §H.8 p154",
-                None,
-            )],
-        }
+        let _ = attrs; // legacy byte-precise span computation retired
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            span,
+            ctx.candidate_span,
+            "RELIDO removed: cannot be used with NOFORN (§H.8 p154)",
+            "CAPCO-2016 §H.8 p154",
+            relido_remove_intent(),
+        )]
     }
 }
 
@@ -2054,6 +1968,8 @@ fn relido_remove_intent() -> FixIntent<CapcoScheme> {
         confidence: Confidence::strict(0.95),
         feature_ids: Default::default(),
         message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     }
 }
 
@@ -2080,7 +1996,7 @@ impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
             return vec![];
         }
@@ -2130,25 +2046,16 @@ impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
         // retirement rationale. RELIDO is the rejected token in both
         // §H.8 p154 conflict cases (NOFORN, DISPLAY ONLY), so the
         // intent helper is reused as-is.
-        match build_relido_removal_fix(self.id(), attrs) {
-            Some(fix) => vec![Diagnostic::with_fix_and_intent(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
-                "CAPCO-2016 §H.8 p154",
-                fix,
-                relido_remove_intent(),
-            )],
-            None => vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
-                "CAPCO-2016 §H.8 p154",
-                None,
-            )],
-        }
+        let _ = attrs; // legacy byte-precise span computation retired
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            span,
+            ctx.candidate_span,
+            "RELIDO removed: cannot be used with DISPLAY ONLY (§H.8 p154)",
+            "CAPCO-2016 §H.8 p154",
+            relido_remove_intent(),
+        )]
     }
 }
 
@@ -2175,7 +2082,7 @@ impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
             return vec![];
         }
@@ -2214,25 +2121,16 @@ impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
         // — same shape as E054 / E057 above. See `relido_remove_intent()`
         // for the shared structural emission and the Path C / Commit-10
         // retirement rationale.
-        match build_relido_removal_fix(self.id(), attrs) {
-            Some(fix) => vec![Diagnostic::with_fix_and_intent(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
-                "CAPCO-2016 §H.8 p136",
-                fix,
-                relido_remove_intent(),
-            )],
-            None => vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
-                "CAPCO-2016 §H.8 p136",
-                None,
-            )],
-        }
+        let _ = attrs; // legacy byte-precise span computation retired
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            span,
+            ctx.candidate_span,
+            "RELIDO removed: ORCON may not be used with RELIDO (§H.8 p136)",
+            "CAPCO-2016 §H.8 p136",
+            relido_remove_intent(),
+        )]
     }
 }
 
@@ -2259,7 +2157,7 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
         Severity::Error
     }
 
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
             return vec![];
         }
@@ -2296,25 +2194,16 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
         // — same shape as E054 above. See `relido_remove_intent()` for
         // the shared structural emission and the Path C / Commit-10
         // retirement rationale.
-        match build_relido_removal_fix(self.id(), attrs) {
-            Some(fix) => vec![Diagnostic::with_fix_and_intent(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
-                "CAPCO-2016 §H.8 p140",
-                fix,
-                relido_remove_intent(),
-            )],
-            None => vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                span,
-                "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
-                "CAPCO-2016 §H.8 p140",
-                None,
-            )],
-        }
+        let _ = attrs; // legacy byte-precise span computation retired
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            span,
+            ctx.candidate_span,
+            "RELIDO removed: ORCON-USGOV may not be used with RELIDO (§H.8 p140)",
+            "CAPCO-2016 §H.8 p140",
+            relido_remove_intent(),
+        )]
     }
 }
 

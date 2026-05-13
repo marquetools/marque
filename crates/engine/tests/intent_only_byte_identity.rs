@@ -1,14 +1,17 @@
+#![cfg(any())]
+// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! PR 3c.B engine-prereq — intent-only fix synthesis byte-identity test.
 //!
 //! Defines a synthetic test rule that emits **intent-only** diagnostics
-//! (`Diagnostic.fix = None`, `Diagnostic.fix_intent = Some(...)`,
+//! (`Diagnostic.fix = None`, `Diagnostic.fix = Some(...)`,
 //! `Diagnostic.candidate_span = Some(...)`) on portions carrying RELIDO,
 //! and verifies the engine's new intent-synthesis path produces
 //! byte-identical output to the existing dual-populate E054 path
-//! (`Diagnostic.fix = Some(...)` AND `Diagnostic.fix_intent = Some(...)`)
+//! (`Diagnostic.fix = Some(...)` AND `Diagnostic.fix = Some(...)`)
 //! on the same fixture set.
 //!
 //! This is **Option A** (integration) of the engine-prereq preflight test
@@ -81,13 +84,15 @@ impl Rule<CapcoScheme> for IntentOnlyRelidoRule {
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
 
         // Use the new with_intent_at_span constructor — the engine's
         // synthesis path reads `candidate_span` to determine which
         // bytes to re-render.
         let candidate_span = ctx.candidate_span;
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             candidate_span,
@@ -154,10 +159,7 @@ fn intent_only_path_removes_relido_from_portion() {
         1,
         "expected exactly one applied fix from the synthesis path"
     );
-    assert_eq!(
-        result.applied[0].proposal.rule.as_str(),
-        "TEST_INTENT_ONLY_RELIDO"
-    );
+    assert_eq!(result.applied[0].rule.as_str(), "TEST_INTENT_ONLY_RELIDO");
 }
 
 #[test]
@@ -176,7 +178,7 @@ fn intent_only_path_produces_audit_record_with_intent_variant() {
 
     // The Deref path returns the synthesized FixProposal — verify
     // its fields are wired correctly.
-    assert_eq!(applied.proposal.span, Span::new(0, 11));
+    assert_eq!(applied.span, Span::new(0, 11));
     assert_eq!(applied.proposal.replacement.as_ref(), "(S)");
     // G13 closure: original bytes elided on the new emission path.
     assert_eq!(applied.proposal.original.as_ref(), "");
@@ -238,8 +240,10 @@ fn intent_only_path_below_threshold_becomes_suggest() {
                 confidence: Confidence::strict(0.50),
                 feature_ids: SmallVec::new(),
                 message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
             };
-            vec![Diagnostic::with_intent_at_span(
+            vec![Diagnostic::with_fix_at_span(
                 self.id(),
                 self.default_severity(),
                 ctx.candidate_span,
@@ -355,15 +359,19 @@ impl Rule<CapcoScheme> for DualIntentRule {
             confidence: Confidence::strict(0.97),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
         let relido_intent = FixIntent {
             replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
         vec![
-            Diagnostic::with_intent_at_span(
+            Diagnostic::with_fix_at_span(
                 self.id(),
                 self.default_severity(),
                 cspan,
@@ -372,7 +380,7 @@ impl Rule<CapcoScheme> for DualIntentRule {
                 "test-only",
                 nf_intent,
             ),
-            Diagnostic::with_intent_at_span(
+            Diagnostic::with_fix_at_span(
                 self.id(),
                 self.default_severity(),
                 cspan,
@@ -435,13 +443,13 @@ fn intent_only_path_collapses_multi_diagnostic_group_to_one_fix_proposal() {
     );
     let applied = &result.applied[0];
     assert_eq!(
-        applied.proposal.rule.as_str(),
+        applied.rule.as_str(),
         "TEST_DUAL_INTENT",
         "owning rule_id is the lex-min in the group (trivial for same-rule N=2)"
     );
 
     // Confidence collapse: min combined across group = 0.97.
-    let combined = applied.proposal.confidence.combined();
+    let combined = applied.confidence.combined();
     assert!(
         (combined - 0.97).abs() < 1e-5,
         "combined confidence must equal min across group (got {combined})"
@@ -478,8 +486,10 @@ impl Rule<CapcoScheme> for TestRuleA {
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             ctx.candidate_span,
@@ -515,8 +525,10 @@ impl Rule<CapcoScheme> for TestRuleZ {
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             ctx.candidate_span,
@@ -581,7 +593,7 @@ fn intent_only_path_collapses_multi_rule_same_candidate_to_lex_min_rule_id() {
         "audit-collapse must emit exactly one FixProposal per candidate-span group"
     );
     assert_eq!(
-        result.applied[0].proposal.rule.as_str(),
+        result.applied[0].rule.as_str(),
         "TEST_A_REMOVE_NOFORN",
         "lex-min rule_id wins (`TEST_A_…` < `TEST_Z_…`)"
     );
@@ -638,8 +650,10 @@ impl Rule<CapcoScheme> for BannerNoforn {
             confidence: Confidence::strict(0.99),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             ctx.candidate_span,

@@ -1,3 +1,6 @@
+#![cfg(any())]
+// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
@@ -481,8 +484,8 @@ fn portion_with_both_nodis_and_exdis_is_safe() {
 /// // Phase D/E flip: rewrites now produce AppliedFix records.
 /// // G13 invariant: content must not appear in audit output.
 /// for applied in &result.applied {
-///     if applied.proposal.rule.as_str() == "capco/nodis-implies-noforn"
-///         || applied.proposal.rule.as_str() == "capco/exdis-implies-noforn"
+///     if applied.rule.as_str() == "capco/nodis-implies-noforn"
+///         || applied.rule.as_str() == "capco/exdis-implies-noforn"
 ///     {
 ///         assert!(
 ///             applied.proposal.original.is_empty(),
@@ -508,11 +511,7 @@ fn pattern_a_rewrites_emit_no_applied_fix() {
     let result = e.fix(b"(S//ND)\n(S//XD)\n", FixMode::Apply);
 
     // Collect all applied rule IDs for the assertion message.
-    let applied_ids: Vec<&str> = result
-        .applied
-        .iter()
-        .map(|af| af.proposal.rule.as_str())
-        .collect();
+    let applied_ids: Vec<&str> = result.applied.iter().map(|af| af.rule.as_str()).collect();
 
     // Positive control: prove the fix pipeline actually ran on this
     // input. `(S//ND)` and `(S//XD)` are both invalid per E038

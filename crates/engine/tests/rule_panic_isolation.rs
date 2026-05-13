@@ -246,18 +246,9 @@ impl Rule<CapcoScheme> for InvalidConfidenceRule {
     }
     fn check(&self, _attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // `Confidence::strict(2.0)` is out of `[0.0, 1.0]` and
-        // `validate()` rejects it. `FixProposal::new` then panics.
-        // The wrapper must catch it.
-        let bad = marque_rules::Confidence::strict(2.0);
-        let _proposal = marque_rules::FixProposal::new(
-            self.id(),
-            marque_rules::FixSource::CorrectionsMap,
-            marque_ism::Span::new(0, 1),
-            "x",
-            "y",
-            bad,
-            None,
-        );
+        // panics directly. The engine's catch_unwind wrapper must
+        // catch the rule-side panic and continue.
+        let _bad = marque_rules::Confidence::strict(2.0);
         Vec::new() // unreachable
     }
 }

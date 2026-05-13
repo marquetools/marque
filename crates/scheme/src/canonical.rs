@@ -414,12 +414,13 @@ pub trait CanonicalConstructor<S: MarkingScheme + ?Sized>: sealed::Sealed<S> {
 ///
 /// `EngineConstructor<S>` is `pub` so the engine can name it in
 /// `Engine::fix_inner`'s render dispatch (PR 3c.2). Construction is
-/// sealed via the `__engine_construct` reserved-name pattern that
-/// already secures `marque_rules::EnginePromotionToken::__engine_construct`
-/// and `marque_rules::AppliedFix::__engine_promote`. The
-/// `tools/promote-callsite-lint/` CI lint (FR-040) flags every call
-/// expression whose path's last segment is `__engine_construct` or
-/// `__engine_promote` regardless of leading qualifier; the lint's
+/// sealed via the `__engine_construct` reserved-name pattern (the
+/// same convention the audit-promotion seal in the rules crate uses;
+/// `marque-scheme` does not depend on `marque-rules` so we describe
+/// the convention here rather than naming a specific concrete type).
+/// The `tools/promote-callsite-lint/` CI lint (FR-040) flags every
+/// call expression whose path's last segment is `__engine_construct`
+/// or `__engine_promote` regardless of leading qualifier; the lint's
 /// allow-list scopes the legitimate use sites to the engine.
 ///
 /// # 5-year-maintainability note
