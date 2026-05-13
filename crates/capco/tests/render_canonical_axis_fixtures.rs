@@ -28,7 +28,6 @@
 //! coverage.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
-use smol_str::SmolStr;
 use marque_ism::{
     AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiClassification,
     FgiMarker, FrdBlock, IsmDate, JointClassification, MarkingClassification, NatoClassification,
@@ -36,6 +35,7 @@ use marque_ism::{
     SciControl, SciControlSystem, SciMarking,
 };
 use marque_scheme::{MarkingScheme, Scope};
+use smol_str::SmolStr;
 
 // ---------------------------------------------------------------------------
 // Helpers — render via render_canonical at the requested scope and
@@ -228,7 +228,11 @@ fn sci_numeric_system_sorts_before_alpha() {
             vec![SciCompartment::new("G", Box::new([]))].into(),
             None,
         ),
-        SciMarking::new(SciControlSystem::Custom(SmolStr::from("123")), Box::new([]), None),
+        SciMarking::new(
+            SciControlSystem::Custom(SmolStr::from("123")),
+            Box::new([]),
+            None,
+        ),
     ]
     .into();
     assert_eq!(render_banner(a), "TOP SECRET//123/SI-G");
@@ -315,11 +319,7 @@ fn sar_compartment_with_sub_compartments() {
         SarIndicator::Abbrev,
         vec![SarProgram::new(
             "ABC",
-            vec![SarCompartment::new(
-                "DEF",
-                Box::new([SmolStr::from("123")]),
-            )]
-            .into(),
+            vec![SarCompartment::new("DEF", Box::new([SmolStr::from("123")]))].into(),
         )]
         .into(),
     ));

@@ -1063,21 +1063,13 @@ fn sci_set_from_to_roundtrip_agrees_with_page_context() {
     use smol_str::SmolStr;
     let sci1 = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Si),
-        vec![SciCompartment::new(
-            "G",
-            Box::new([SmolStr::from("ABCD")]),
-        )]
-        .into_boxed_slice(),
+        vec![SciCompartment::new("G", Box::new([SmolStr::from("ABCD")]))].into_boxed_slice(),
         None,
     )]
     .into_boxed_slice();
     let sci2 = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Si),
-        vec![SciCompartment::new(
-            "G",
-            Box::new([SmolStr::from("DEFG")]),
-        )]
-        .into_boxed_slice(),
+        vec![SciCompartment::new("G", Box::new([SmolStr::from("DEFG")]))].into_boxed_slice(),
         None,
     )]
     .into_boxed_slice();

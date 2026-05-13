@@ -862,16 +862,9 @@ mod tests {
     fn sci_set_custom_system_text_used_for_ordering() {
         // Two customs; ordering in output uses SAR-style sort keys
         // (numeric first, then alpha).
-        let custom_alpha = SciMarking::new(
-            SciControlSystem::Custom("AAA".into()),
-            Box::new([]),
-            None,
-        );
-        let custom_num = SciMarking::new(
-            SciControlSystem::Custom("99".into()),
-            Box::new([]),
-            None,
-        );
+        let custom_alpha =
+            SciMarking::new(SciControlSystem::Custom("AAA".into()), Box::new([]), None);
+        let custom_num = SciMarking::new(SciControlSystem::Custom("99".into()), Box::new([]), None);
         let set = SciSet::from_markings(&[custom_alpha, custom_num]);
         let out = set.to_markings();
         assert_eq!(out.len(), 2);

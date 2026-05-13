@@ -202,10 +202,7 @@ impl SarMarking {
 
 impl SarProgram {
     /// Construct a [`SarProgram`] with an optional compartment list.
-    pub fn new(
-        identifier: impl Into<SmolStr>,
-        compartments: Box<[SarCompartment]>,
-    ) -> Self {
+    pub fn new(identifier: impl Into<SmolStr>, compartments: Box<[SarCompartment]>) -> Self {
         Self {
             identifier: identifier.into(),
             compartments,
@@ -394,10 +391,7 @@ impl SarProgram {
 
 impl SarCompartment {
     /// Construct a [`SarCompartment`] with an optional sub-compartment list.
-    pub fn new(
-        identifier: impl Into<SmolStr>,
-        sub_compartments: Box<[SmolStr]>,
-    ) -> Self {
+    pub fn new(identifier: impl Into<SmolStr>, sub_compartments: Box<[SmolStr]>) -> Self {
         Self {
             identifier: identifier.into(),
             sub_compartments,
@@ -2224,10 +2218,7 @@ pub struct SciCompartment {
 impl SciCompartment {
     /// Construct a new `SciCompartment`. Used by the parser to populate
     /// [`SciMarking::compartments`].
-    pub fn new(
-        identifier: impl Into<SmolStr>,
-        sub_compartments: Box<[SmolStr]>,
-    ) -> Self {
+    pub fn new(identifier: impl Into<SmolStr>, sub_compartments: Box<[SmolStr]>) -> Self {
         Self {
             identifier: identifier.into(),
             sub_compartments,
