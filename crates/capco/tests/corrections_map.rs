@@ -1,557 +1,112 @@
-#![cfg(any())]
-// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
-
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Phase 5 — Corrections-map integration tests (T054).
+//! PR 7b — C001 dual-path idempotency lock.
 //!
-//! Exercises FR-009 (`specs/001-marque-mvp/spec.md`): user corrections take
-//! precedence over built-in rules when both match the same span. The C001
-//! rule emits `FixSource::CorrectionsMap` with citation
-//! `marque_rules::CORRECTIONS_MAP_CITATION` for audit-trail fidelity.
+//! Closes the L-1 forward obligation from `docs/refactor-006/pr-7a-rust-review.md`:
+//! C001 is declared `Phase::Localized` (T074), and the engine's
+//! pass-1 dispatch loop (PR 7b) would naively re-run every Localized
+//! rule against the post-pass-0 buffer. The risk: a double-application
+//! of C001 (once as pass-0 text-correction, once as pass-1 FixIntent)
+//! would either splice the same bytes twice (corrupting the audit
+//! log) or split a successful pass-0 correction into two audit
+//! entries (inflating the apparent fix count).
+//!
+//! The mitigating property comes from C001's check body
+//! (`crates/capco/src/rules.rs`'s `CorrectionsMapRule::check`): it
+//! walks `attrs.token_spans`, looks up each token's text in
+//! `ctx.corrections`, and emits a diagnostic ONLY when
+//! `replacement != text` (the M2 no-op guard). After pass-0 rewrites
+//! `SERCET → SECRET`, the re-lint produces token spans whose `.text`
+//! reads `"SECRET"` — the lookup against the same corrections map
+//! either misses entirely (typical) or hits with `replacement == text`
+//! and the M2 guard drops it. Pass-1 dispatch of C001 produces zero
+//! diagnostics by construction.
+//!
+//! This test pins that property at the engine boundary so a future
+//! refactor that removes the M2 guard, or changes the corrections-map
+//! key semantics, would fail visibly here.
 
-use marque_capco::{CapcoRuleSet, capco_rules};
+use marque_capco::capco_rules;
 use marque_config::Config;
-use marque_core::{Parser, Scanner};
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_ism::{CapcoTokenSet, MarkingType};
-use marque_rules::{CORRECTIONS_MAP_CITATION, FixSource, RuleContext, RuleId, RuleSet};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 
-fn engine_with_corrections(corrections: HashMap<String, String>) -> Engine {
+fn make_engine_with_correction(from: &str, to: &str) -> Engine {
+    let mut corrections: HashMap<String, String> = HashMap::new();
+    corrections.insert(from.to_owned(), to.to_owned());
     let mut config = Config::default();
     config.corrections = corrections;
     Engine::with_clock(
         config,
         vec![Box::new(capco_rules())],
-        marque_capco::scheme::CapcoScheme::new(),
+        marque_engine::default_scheme(),
         Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-fn engine_default() -> Engine {
-    engine_with_corrections(HashMap::new())
-}
-
-// -----------------------------------------------------------------------
-// C001 basics
-// -----------------------------------------------------------------------
-
-/// Walk a rule set and invoke only the C001 rule's `check` method on a
-/// parsed banner. Used by `c001_rule_pipeline_citation_equals_constant`
-/// to exercise the rule-pipeline path in isolation — `Engine::lint` runs
-/// both the rule pipeline AND the pre-scanner text scan, so routing
-/// through it cannot distinguish which path emitted a diagnostic and a
-/// regression in one path can be masked by the other.
-fn run_c001_rule_pipeline_only(
-    source: &[u8],
-    corrections: HashMap<String, String>,
-) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoScheme>> {
-    let token_set = CapcoTokenSet;
-    let parser = Parser::new(&token_set);
-    let candidates = Scanner::scan(source);
-    let rule_set = CapcoRuleSet::new();
-    let corrections_arc = Arc::new(corrections);
-
-    let mut out = Vec::new();
-    for candidate in &candidates {
-        if candidate.kind == MarkingType::PageBreak {
-            continue;
-        }
-        let Ok(parsed) = parser.parse(candidate, source) else {
-            continue;
-        };
-        // PR-3a transitional adapter; test-fixture carve-out per
-        // Constitution V Principle V.
-        let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
-        let ctx = RuleContext {
-            marking_type: candidate.kind,
-            zone: None,
-            position: None,
-            candidate_span: candidate.span,
-            page_context: None,
-            corrections: Some(corrections_arc.clone()),
-        };
-        for rule in rule_set.rules() {
-            if rule.id() == RuleId::new("C001") {
-                out.extend(rule.check(&attrs, &ctx));
-            }
-        }
-    }
-    out
-}
-
 #[test]
-fn c001_rule_pipeline_citation_equals_constant() {
-    // T035c-15 audit guard — rule-pipeline path in isolation.
-    //
-    // This test invokes `CorrectionsMapRule::check` directly via the
-    // rule-set iterator, bypassing `Engine::lint` entirely so the
-    // engine's pre-scanner text-scan path cannot mask a regression
-    // in the rule-pipeline path. `Engine::lint` runs both paths on
-    // the same source and dedupes by span, so a test that asserts
-    // "some C001 diagnostic fired with the right citation" after
-    // `engine.lint(...)` cannot distinguish which path produced it —
-    // a regression in the rule-pipeline's citation string would be
-    // invisible if the pre-scanner still fired on the same span.
-    //
-    // Input `SECRET//NF` with corrections `NF → NOFORN` ensures the
-    // rule pipeline has a matching TokenSpan to walk. No pre-scanner
-    // runs in this test harness.
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-
-    let diags = run_c001_rule_pipeline_only(b"SECRET//NF\n", corrections);
-    let c001: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "C001").collect();
-    assert_eq!(
-        c001.len(),
-        1,
-        "rule-pipeline path must emit exactly one C001 diagnostic: {diags:?}"
-    );
-    assert_eq!(
-        c001[0].citation, CORRECTIONS_MAP_CITATION,
-        "rule-pipeline C001 citation must equal CORRECTIONS_MAP_CITATION"
-    );
-}
-
-#[test]
-fn c001_pre_scanner_citation_equals_constant() {
-    // T035c-15 audit guard — pre-scanner path in isolation.
-    //
-    // Input `SERCET//NF` (not `SECRET`): the scanner does not
-    // recognize `SERCET` as a classification prefix, so it produces
-    // no banner candidate, the parser runs no rule-pipeline passes,
-    // and `CorrectionsMapRule::check` cannot fire. The pre-scanner
-    // text-scan path in `Engine::lint` is the only codepath that
-    // can emit a C001 diagnostic for this input. Pairing this with
-    // `c001_rule_pipeline_citation_equals_constant` locks down
-    // both emission paths against silent divergence.
-    let mut corrections = HashMap::new();
-    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
-    let engine = engine_with_corrections(corrections);
-    let result = engine.lint(b"SERCET//NF\n");
-
-    let c001: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-    assert_eq!(
-        c001.len(),
-        1,
-        "pre-scanner path must emit exactly one C001 diagnostic: {:?}",
-        result.diagnostics
-    );
-    assert_eq!(
-        c001[0].citation, CORRECTIONS_MAP_CITATION,
-        "pre-scanner C001 citation must equal CORRECTIONS_MAP_CITATION"
-    );
-}
-
-#[test]
-fn c001_fires_on_corrections_map_match() {
-    // C001 can only correct tokens inside markings the scanner detects.
-    // The scanner recognizes banners starting with known classification
-    // prefixes (SECRET, TOP SECRET, etc.), so we use a valid banner with
-    // a corrections-map entry matching a dissem control token.
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NF\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-
-    assert!(
-        !c001_diags.is_empty(),
-        "C001 must fire when corrections map matches a token"
-    );
-    let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
-    assert_eq!(fix.source, FixSource::CorrectionsMap);
-    assert_eq!(fix.replacement.as_ref(), "NOFORN");
-    assert!((fix.confidence.combined() - 1.0).abs() < f32::EPSILON);
-    assert_eq!(fix.migration_ref, None);
-}
-
-#[test]
-fn c001_no_match_when_corrections_empty() {
-    let engine = engine_default();
-    let source = b"SECRET//NOFORN\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-    assert!(
-        c001_diags.is_empty(),
-        "C001 should not fire with empty corrections map"
-    );
-}
-
-#[test]
-fn c001_no_match_when_token_not_in_map() {
-    // Corrections map has "SERCET" but the input contains "SECRET" — no match.
-    let mut corrections = HashMap::new();
-    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NOFORN\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-    assert!(
-        c001_diags.is_empty(),
-        "C001 should not fire when no token matches corrections map"
-    );
-}
-
-// -----------------------------------------------------------------------
-// FR-009: corrections-map precedence over built-in rules
-// -----------------------------------------------------------------------
-
-#[test]
-fn fr009_c001_emits_fix_via_corrections_map() {
-    // Set up a corrections map that maps "NF" → "NOFORN" in a banner
-    // context. C001 fires and produces the fix. (PR 3c.B Commit 6
-    // retired E001; the form-bucket migration moves portion-in-banner
-    // normalization into `MarkingScheme::render_canonical`, leaving
-    // C001 as the sole built-in rule that fires on the NF token.)
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NF\n";
+fn c001_pass1_dispatch_noop_after_pass0() {
+    // The load-bearing fixture: `(TS//SERCET//NF)` with a corrections
+    // entry `"SERCET" → "SECRET"`. Pass-0 rewrites `SERCET` to
+    // `SECRET`; pass-1 sees the corrected buffer, re-lints, and
+    // C001 fires exactly ZERO additional times. The total C001
+    // count in `result.applied` is exactly 1 — the pass-0 promotion.
+    let engine = make_engine_with_correction("SERCET", "SECRET");
+    let source = b"(TS//SERCET//NF)";
     let result = engine.fix(source, FixMode::Apply);
 
-    // At least one fix should be applied.
-    assert!(
-        !result.applied.is_empty(),
-        "at least one fix should be applied for NF→NOFORN"
-    );
-
-    // Find the fix for the NF span.
-    let nf_fixes: Vec<_> = result
-        .applied
-        .iter()
-        .filter(|f| f.proposal.replacement.as_ref() == "NOFORN")
-        .collect();
-
-    assert_eq!(
-        nf_fixes.len(),
-        1,
-        "exactly one NOFORN fix should be applied"
-    );
-    assert_eq!(
-        nf_fixes[0].rule.as_str(),
-        "C001",
-        "C001 should fire on the NF span (FR-009)"
-    );
-    assert_eq!(nf_fixes[0].source, FixSource::CorrectionsMap);
-}
-
-#[test]
-fn c001_fix_carries_corrections_map_source_in_audit() {
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NF\n";
-    let result = engine.fix(source, FixMode::Apply);
-
-    let c001_fixes: Vec<_> = result
+    let c001_count = result
         .applied
         .iter()
         .filter(|f| f.rule.as_str() == "C001")
-        .collect();
-
-    assert!(
-        !c001_fixes.is_empty(),
-        "C001 must appear in applied fixes for NF→NOFORN"
+        .count();
+    assert_eq!(
+        c001_count,
+        1,
+        "C001 fires exactly once (pass-0 only); pass-1 dispatch \
+         is a no-op after pass-0 rewrote the source. Applied: {:?}",
+        result
+            .applied
+            .iter()
+            .map(|f| f.rule.as_str())
+            .collect::<Vec<_>>()
     );
-    assert_eq!(c001_fixes[0].source, FixSource::CorrectionsMap);
-    assert_eq!(c001_fixes[0].migration_ref, None);
-}
-
-// -----------------------------------------------------------------------
-// Classifier ID propagation (T060)
-// -----------------------------------------------------------------------
-
-#[test]
-fn classifier_id_propagated_into_audit_records() {
-    let mut config = Config::default();
-    config.user.classifier_id = Some("TEST-AUDIT-99".to_owned());
-    let engine = Engine::with_clock(
-        config,
-        vec![Box::new(capco_rules())],
-        marque_capco::scheme::CapcoScheme::new(),
-        Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(FIXED_TS))),
-    )
-    .expect("default CAPCO scheme has no rewrite cycles");
-
-    let source = b"SECRET//NF\n";
-    let result = engine.fix(source, FixMode::Apply);
-
-    for fix in &result.applied {
-        assert_eq!(
-            fix.classifier_id.as_deref(),
-            Some("TEST-AUDIT-99"),
-            "classifier_id must propagate from config into audit records"
-        );
-    }
-}
-
-#[test]
-fn absent_classifier_id_is_none_in_audit() {
-    let engine = engine_default();
-    let source = b"SECRET//NF\n";
-    let result = engine.fix(source, FixMode::Apply);
-
-    for fix in &result.applied {
-        assert!(
-            fix.classifier_id.is_none(),
-            "absent classifier_id should be None, not empty"
-        );
-    }
-}
-
-// -----------------------------------------------------------------------
-// Edge cases (M1, M2, T3, T4)
-// -----------------------------------------------------------------------
-
-#[test]
-fn c001_does_not_fire_on_separator_tokens() {
-    // M1: corrections map entry for "//" must not match separator tokens.
-    let mut corrections = HashMap::new();
-    corrections.insert("//".to_owned(), "///".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NOFORN\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
+    // Sanity: the output buffer contains the corrected token.
+    let out = String::from_utf8(result.source).unwrap();
     assert!(
-        c001_diags.is_empty(),
-        "C001 must not fire on separator tokens, got: {c001_diags:?}"
+        out.contains("SECRET"),
+        "expected SECRET in corrected output, got: {out:?}"
+    );
+    assert!(
+        !out.contains("SERCET"),
+        "SERCET should be gone from corrected output, got: {out:?}"
     );
 }
 
 #[test]
-fn c001_skips_noop_correction() {
-    // M2: a corrections entry where key == value must not produce a fix.
-    let mut corrections = HashMap::new();
-    corrections.insert("NOFORN".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NOFORN\n";
+fn c001_self_correction_filtered_at_pass0() {
+    // Corrections entry where key == value (a no-op `"SECRET" →
+    // "SECRET"`) is filtered out at engine construction time
+    // (`CachedAhoCorasick` filter excludes `k == v` patterns). The
+    // pass-0 path therefore never sees a self-correction to apply,
+    // and there is no pass-1 dispatch issue to test here either.
+    let engine = make_engine_with_correction("SECRET", "SECRET");
+    let source = b"(TS//SECRET//NF)";
     let result = engine.fix(source, FixMode::Apply);
 
-    let c001_fixes: Vec<_> = result
+    let c001_count = result
         .applied
         .iter()
         .filter(|f| f.rule.as_str() == "C001")
-        .collect();
-    assert!(
-        c001_fixes.is_empty(),
-        "no-op correction (replacement == original) must not produce an applied fix"
-    );
-}
-
-// -----------------------------------------------------------------------
-// LOW-2: multi-token marking where only one token matches corrections
-// -----------------------------------------------------------------------
-
-#[test]
-fn c001_fires_only_on_matching_token_in_multi_token_marking() {
-    // SECRET//NF//NOFORN — corrections map has NF→NOFORN. C001 should
-    // fire on the "NF" token but NOT on "NOFORN" (not in the map) or
-    // "SECRET" (not in the map).
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NF//NOFORN\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-
+        .count();
     assert_eq!(
-        c001_diags.len(),
-        1,
-        "C001 should fire exactly once (on NF), not on SECRET or NOFORN: {c001_diags:?}"
-    );
-    let fix = c001_diags[0].fix.as_ref().unwrap();
-    assert_eq!(fix.original.as_ref(), "NF");
-    assert_eq!(fix.replacement.as_ref(), "NOFORN");
-}
-
-// -----------------------------------------------------------------------
-// F-13: exact spec input scenario
-// -----------------------------------------------------------------------
-
-#[test]
-fn us3_acceptance_scenario_combined_corrections_and_builtin_fix() {
-    // US3 acceptance scenario 2 (adapted): corrections map for NF→NOFORN,
-    // input "SECRET//NF\n" → output "SECRET//NOFORN\n". C001 (corrections
-    // map) is the sole fixer on this span — pre-PR-3c.B Commit 6 E001
-    // also fired on `NF` in banner position and C001 won via FR-009 /
-    // FR-016, but E001 retired into `MarkingScheme::render_canonical`
-    // when this commit landed, so the overlap arbitration is no longer
-    // exercised here.
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SECRET//NF\n";
-    let result = engine.fix(source, FixMode::Apply);
-
-    let fixed_text = String::from_utf8(result.source).unwrap();
-    assert_eq!(
-        fixed_text, "SECRET//NOFORN\n",
-        "combined fix should produce SECRET//NOFORN"
-    );
-
-    // Verify C001 is the rule that won for the NF→NOFORN span
-    let nf_fix = result
-        .applied
-        .iter()
-        .find(|f| f.proposal.replacement.as_ref() == "NOFORN")
-        .expect("should have a NOFORN fix");
-    assert_eq!(nf_fix.rule.as_str(), "C001");
-    assert_eq!(nf_fix.source, FixSource::CorrectionsMap);
-    assert_eq!(nf_fix.migration_ref, None);
-}
-
-// -----------------------------------------------------------------------
-// Pre-scanner text corrections (markings the scanner misses)
-// -----------------------------------------------------------------------
-
-#[test]
-fn pre_scanner_corrections_fires_on_unrecognized_classification_prefix() {
-    // "SERCET" is not a known classification prefix, so the scanner does
-    // not detect "SERCET//NF" as a banner candidate. The pre-scanner text
-    // corrections pass should still find "SERCET" and emit a C001 diagnostic.
-    let mut corrections = HashMap::new();
-    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SERCET//NF\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-
-    assert!(
-        !c001_diags.is_empty(),
-        "pre-scanner corrections must fire on SERCET even though the scanner \
-         doesn't detect it as a banner"
-    );
-    let fix = c001_diags[0].fix.as_ref().expect("C001 should have a fix");
-    assert_eq!(fix.source, FixSource::CorrectionsMap);
-    assert_eq!(fix.original.as_ref(), "SERCET");
-    assert_eq!(fix.replacement.as_ref(), "SECRET");
-}
-
-#[test]
-fn pre_scanner_corrections_fix_produces_correct_output() {
-    // Pre-scanner spec scenario: SERCET//NF with corrections
-    // SERCET→SECRET. The pre-scanner pass replaces SERCET→SECRET; NF
-    // is left as the portion-form abbreviation.
-    //
-    // The output `SECRET//NF\n` is intentionally NOT canonicalized to
-    // `SECRET//NOFORN\n`. Pre-PR-3c.B Commit 6 the input `NF` in
-    // banner position fired E001 (portion-in-banner) which auto-
-    // applied an NF→NOFORN splice. PR 3c.B Commit 6 retired E001
-    // into `MarkingScheme::render_canonical` — the renderer DOES
-    // produce canonical banner form (`NOFORN`) when invoked, but
-    // it is only invoked at fix-application time when some rule
-    // emits `FixIntent::Recanonicalize` (or, post-Commit-10, when
-    // the engine routes any `FixIntent` through the renderer).
-    // The corrections-map path emits a `FactReplace`-shaped C001
-    // fix and nothing else fires on the post-correction input
-    // (E001 is retired; no other rule cares about banner-form NF),
-    // so the renderer is never invoked and NF stays as authored.
-    // This is the documented architectural shift: lint becomes
-    // silent for form divergence; canonicalization is opt-in via
-    // an explicit fix-application path. Users wanting the
-    // canonical banner form after a corrections-map fix re-run
-    // `marque fix` once the post-Commit-10 engine-side
-    // `Recanonicalize` dispatch lands.
-    let mut corrections = HashMap::new();
-    corrections.insert("SERCET".to_owned(), "SECRET".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    let source = b"SERCET//NF\n";
-    let result = engine.fix(source, FixMode::Apply);
-
-    let fixed_text = String::from_utf8(result.source).unwrap();
-    assert_eq!(
-        fixed_text, "SECRET//NF\n",
-        "SERCET//NF should become SECRET//NF after the C001 correction"
-    );
-
-    // The C001 fix for SERCET→SECRET should be in the audit trail.
-    let c001_fix = result.applied.iter().find(|f| f.rule.as_str() == "C001");
-    assert!(
-        c001_fix.is_some(),
-        "audit trail must contain a C001 fix for SERCET→SECRET"
-    );
-    assert_eq!(c001_fix.unwrap().source, FixSource::CorrectionsMap);
-}
-
-#[test]
-fn pre_scanner_corrections_does_not_duplicate_rule_pipeline_c001() {
-    // When the rule pipeline already produces a C001 diagnostic for a span
-    // (because the scanner DID detect the marking), the pre-scanner pass
-    // must not emit a duplicate.
-    let mut corrections = HashMap::new();
-    corrections.insert("NF".to_owned(), "NOFORN".to_owned());
-    let engine = engine_with_corrections(corrections);
-
-    // SECRET//NF — the scanner detects this as a banner. The rule pipeline's
-    // C001 matches "NF" via token_spans. The pre-scanner text scan also
-    // finds "NF" in the raw text. Only ONE C001 diagnostic should exist.
-    let source = b"SECRET//NF\n";
-    let result = engine.lint(source);
-
-    let c001_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "C001")
-        .collect();
-
-    // There should be exactly one C001, not two.
-    assert_eq!(
-        c001_diags.len(),
-        1,
-        "pre-scanner must not duplicate rule-pipeline C001 diagnostics: {c001_diags:?}"
+        c001_count, 0,
+        "self-correction must produce zero C001 applied fixes"
     );
 }
