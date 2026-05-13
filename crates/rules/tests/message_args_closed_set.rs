@@ -27,7 +27,7 @@
 //! a coordinated audit-schema change.
 
 use marque_ism::Span;
-use marque_rules::{Blake3Hash, Confidence, FeatureId, MessageArgs};
+use marque_rules::{Blake3Hash, Confidence, FeatureId, MessageArgs, RuleId};
 use marque_scheme::{CategoryId, TokenId};
 use smallvec::SmallVec;
 
@@ -43,6 +43,7 @@ fn message_args_field_set_pin_destructures_every_permitted_field() {
         expected_token,
         actual_token,
         feature_ids,
+        contributing_rule_ids,
     } = args;
     let _: Option<TokenId> = token;
     let _: Option<CategoryId> = category;
@@ -52,6 +53,11 @@ fn message_args_field_set_pin_destructures_every_permitted_field() {
     let _: Option<TokenId> = expected_token;
     let _: Option<TokenId> = actual_token;
     let _: SmallVec<[FeatureId; 4]> = feature_ids;
+    let _: SmallVec<[RuleId; 4]> = contributing_rule_ids.clone();
+    // Default state pin — the SmallVec MUST be empty in the default
+    // case so a misuse of `MessageArgs::default()` cannot silently
+    // ship a populated `contributing_rule_ids` list. PR 7b D-7.17.
+    assert!(contributing_rule_ids.is_empty());
 }
 
 #[test]
@@ -62,6 +68,9 @@ fn message_args_round_trips_each_permitted_field() {
     // field-by-field assignment to avoid `clippy::field_reassign_with_default`.
     let mut feature_ids: SmallVec<[FeatureId; 4]> = SmallVec::new();
     feature_ids.push(FeatureId::EditDistance1);
+    let mut contributing_rule_ids: SmallVec<[RuleId; 4]> = SmallVec::new();
+    contributing_rule_ids.push(RuleId::new("C001"));
+    contributing_rule_ids.push(RuleId::new("E006"));
     let args = MessageArgs {
         token: Some(TokenId(1)),
         category: Some(CategoryId(2)),
@@ -71,10 +80,15 @@ fn message_args_round_trips_each_permitted_field() {
         expected_token: Some(TokenId(3)),
         actual_token: Some(TokenId(4)),
         feature_ids,
+        contributing_rule_ids,
     };
     assert_eq!(args.token, Some(TokenId(1)));
     assert_eq!(args.category, Some(CategoryId(2)));
     assert_eq!(args.expected_token, Some(TokenId(3)));
     assert_eq!(args.actual_token, Some(TokenId(4)));
     assert_eq!(args.feature_ids.as_slice(), &[FeatureId::EditDistance1]);
+    assert_eq!(
+        args.contributing_rule_ids.as_slice(),
+        &[RuleId::new("C001"), RuleId::new("E006")]
+    );
 }

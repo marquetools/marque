@@ -26,11 +26,48 @@ use std::time::{Duration, Instant};
 const EX_OK: i32 = 0;
 const EX_DIAG_ERROR: i32 = 1;
 const EX_DIAG_WARN: i32 = 2;
+/// Exit code surfaced when the engine emitted an `R002` synthetic
+/// diagnostic — pass-1 fixes applied but the resulting buffer was
+/// unparseable, so pass-2 was skipped (PR 7b D-7.8, FR-024).
+///
+/// Numerically `3` sits adjacent to the diagnostic exit codes and
+/// distinct from the sysexits-style range starting at `64`.
+const EX_R002_PARTIAL: i32 = 3;
 const EX_USAGE: i32 = 64;
 const EX_DATAERR: i32 = 65;
 const EX_UNAVAILABLE: i32 = 69;
 const EX_IOERR: i32 = 74;
 const EX_TEMPFAIL: i32 = 75;
+
+/// Reduce two exit codes to a single value using the PR 7b D-7.15
+/// precedence chain.
+///
+/// Precedence (high → low):
+/// `EX_R002_PARTIAL` (3) > `EX_DIAG_ERROR` (1) > `EX_DIAG_WARN` (2) > `EX_OK` (0).
+///
+/// R002 wins over generic error because R002 is the rare, distinguished,
+/// action-changing signal — pass-2 was skipped because pass-1 made the
+/// buffer unparseable. A consumer seeing `EX_DIAG_ERROR` thinks
+/// "diagnostics found, normal exit"; a consumer seeing `EX_R002_PARTIAL`
+/// thinks "something unusual happened, investigate." When both signals
+/// are present in the same document or batch, the user needs the R002
+/// signal because it changes workflow.
+///
+/// Numeric `max()` is NOT the right operator: `max(EX_DIAG_ERROR,
+/// EX_DIAG_WARN) = max(1, 2) = 2` would silently demote an error to a
+/// warning. The constants are not ordered by severity.
+///
+/// If a future R003-class signal lands, extending the chain is
+/// mechanical — adding it ahead of or behind R002 is the policy
+/// question for that PR.
+fn merge_exit_code(current: i32, new_code: i32) -> i32 {
+    match (current, new_code) {
+        (EX_R002_PARTIAL, _) | (_, EX_R002_PARTIAL) => EX_R002_PARTIAL,
+        (EX_DIAG_ERROR, _) | (_, EX_DIAG_ERROR) => EX_DIAG_ERROR,
+        (EX_DIAG_WARN, _) | (_, EX_DIAG_WARN) => EX_DIAG_WARN,
+        _ => EX_OK,
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "marque", about = "Classification marking linter and fixer")]
@@ -897,11 +934,21 @@ fn run_fix(
         let has_errors = relint.error_count() > 0 || relint.fix_count() > 0;
         let has_warns = relint.warn_count() > 0;
 
-        if has_errors && matches!(exit_code, EX_OK | EX_DIAG_WARN) {
-            exit_code = EX_DIAG_ERROR;
-        } else if has_warns && exit_code == EX_OK {
-            exit_code = EX_DIAG_WARN;
-        }
+        // R002 takes priority over every other diagnostic signal
+        // (PR 7b D-7.15). Test it BEFORE the error/warn branch so a
+        // document with both R002 and ordinary errors surfaces R002
+        // — the partial-application story is what the operator
+        // needs to act on.
+        let row_code = if result.r002_fired {
+            EX_R002_PARTIAL
+        } else if has_errors {
+            EX_DIAG_ERROR
+        } else if has_warns {
+            EX_DIAG_WARN
+        } else {
+            EX_OK
+        };
+        exit_code = merge_exit_code(exit_code, row_code);
 
         // Suggest-channel diagnostics are advisory — they don't
         // "require manual review", they offer optional alternatives.
@@ -980,4 +1027,95 @@ fn run_explain_config(config: &marque_config::Config) -> i32 {
         return EX_IOERR;
     }
     EX_OK
+}
+
+#[cfg(test)]
+mod exit_code_tests {
+    //! PR 7b D-7.15 — `merge_exit_code` precedence-chain locks.
+    //!
+    //! These tests pin the rule that R002 wins over generic error and
+    //! that the reduction is NOT numeric `max()`. The reduction is
+    //! used both per-document (in `run_fix`) and per-row (when batch
+    //! support lands); changing the precedence is a policy decision
+    //! that this test bank exists to surface in code review.
+
+    use super::*;
+
+    #[test]
+    fn ok_with_ok_is_ok() {
+        assert_eq!(merge_exit_code(EX_OK, EX_OK), EX_OK);
+    }
+
+    #[test]
+    fn warn_beats_ok() {
+        assert_eq!(merge_exit_code(EX_OK, EX_DIAG_WARN), EX_DIAG_WARN);
+        assert_eq!(merge_exit_code(EX_DIAG_WARN, EX_OK), EX_DIAG_WARN);
+    }
+
+    #[test]
+    fn error_beats_warn() {
+        // numeric `max(1, 2) = 2` would be WRONG: error must win.
+        assert_eq!(merge_exit_code(EX_DIAG_ERROR, EX_DIAG_WARN), EX_DIAG_ERROR);
+        assert_eq!(merge_exit_code(EX_DIAG_WARN, EX_DIAG_ERROR), EX_DIAG_ERROR);
+    }
+
+    #[test]
+    fn r002_beats_error() {
+        // R002 is the rare, distinguished, action-changing signal.
+        assert_eq!(
+            merge_exit_code(EX_R002_PARTIAL, EX_DIAG_ERROR),
+            EX_R002_PARTIAL
+        );
+        assert_eq!(
+            merge_exit_code(EX_DIAG_ERROR, EX_R002_PARTIAL),
+            EX_R002_PARTIAL
+        );
+    }
+
+    #[test]
+    fn r002_beats_warn() {
+        assert_eq!(
+            merge_exit_code(EX_R002_PARTIAL, EX_DIAG_WARN),
+            EX_R002_PARTIAL
+        );
+    }
+
+    #[test]
+    fn r002_beats_ok() {
+        assert_eq!(merge_exit_code(EX_OK, EX_R002_PARTIAL), EX_R002_PARTIAL);
+    }
+
+    #[test]
+    fn reduction_is_associative_on_three_codes() {
+        // Batch fold property: `(a |> b) |> c` must equal `a |> (b |> c)`
+        // so per-row order does not change the batch exit code.
+        let codes = [EX_OK, EX_DIAG_WARN, EX_DIAG_ERROR, EX_R002_PARTIAL];
+        for &a in &codes {
+            for &b in &codes {
+                for &c in &codes {
+                    let left = merge_exit_code(merge_exit_code(a, b), c);
+                    let right = merge_exit_code(a, merge_exit_code(b, c));
+                    assert_eq!(
+                        left, right,
+                        "merge_exit_code must be associative; \
+                         got {left} vs {right} for ({a}, {b}, {c})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reduction_is_commutative() {
+        let codes = [EX_OK, EX_DIAG_WARN, EX_DIAG_ERROR, EX_R002_PARTIAL];
+        for &a in &codes {
+            for &b in &codes {
+                assert_eq!(
+                    merge_exit_code(a, b),
+                    merge_exit_code(b, a),
+                    "merge_exit_code must be commutative; got mismatch for ({a}, {b})"
+                );
+            }
+        }
+    }
 }

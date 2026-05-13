@@ -45,10 +45,7 @@ impl Engine {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert!(
-        diags.is_empty(),
-        "expected no diagnostics, got {diags:#?}",
-    );
+    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
 }
 
 #[test]
@@ -99,7 +96,11 @@ fn evil_helper() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC002");
     assert_eq!(diags[0].severity, Severity::Error);
 }
@@ -172,7 +173,11 @@ fn fabricate_leaky_fix() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC001");
     assert_eq!(diags[0].severity, Severity::Error);
 }
@@ -288,7 +293,11 @@ fn top_level_workspace_member_src_is_walked_and_flagged() {
     let tmp = TempDir::new().unwrap();
     // The directory must contain a `Cargo.toml` for the discovery
     // logic to recognize it as a workspace member.
-    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/Cargo.toml",
+        "[package]\nname = \"marque\"\n",
+    );
     write(
         tmp.path(),
         "marque/src/lib.rs",
@@ -299,10 +308,17 @@ fn naughty_in_top_level_member() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected the top-level member's call to be flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the top-level member's call to be flagged, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC002");
     assert!(
-        diags[0].file.to_string_lossy().contains("marque/src/lib.rs"),
+        diags[0]
+            .file
+            .to_string_lossy()
+            .contains("marque/src/lib.rs"),
         "expected the diagnostic to point at the top-level member; got {:?}",
         diags[0].file
     );
@@ -316,7 +332,11 @@ fn top_level_workspace_member_tests_carve_out_is_recognized() {
     // `is_test_path` branch that handles the `<member>/tests/<...>`
     // shape (R6 #1 fix).
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/Cargo.toml",
+        "[package]\nname = \"marque\"\n",
+    );
     write(
         tmp.path(),
         "marque/tests/integration.rs",
@@ -364,7 +384,11 @@ fn naughty_construct_aliased() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 3, "expected all three aliased/Self call shapes flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        3,
+        "expected all three aliased/Self call shapes flagged, got {diags:#?}"
+    );
     for d in &diags {
         assert_eq!(d.code, "PRC002");
     }
@@ -385,7 +409,11 @@ fn naughty_fqn() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected the FQN call to be flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the FQN call to be flagged, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC002");
 }
 
@@ -446,4 +474,118 @@ fn naughty_proper_name() {
         "expected the exact-name call to be flagged, got {diags:#?}"
     );
     assert_eq!(diags[0].code, "PRC002");
+}
+
+#[test]
+fn production_allowed_inside_two_pass_fixer_apply_kept_fixes() {
+    // PR 7b extracts the two `__engine_promote` calls from
+    // `Engine::fix_inner` into `TwoPassFixer::apply_kept_fixes`.
+    // The phase-split orchestrator is a private struct in
+    // `crates/engine/src/engine.rs`; its `apply_kept_fixes` method
+    // is the new authorized production call site. The allow-list
+    // must accept it explicitly so the engine-only contract is
+    // still mechanically enforced by the lint.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct TwoPassFixer;
+impl TwoPassFixer {
+    fn apply_kept_fixes(&self) {
+        let _ = AppliedFix::__engine_promote(
+            (),
+            (),
+            (),
+            false,
+            None,
+            EnginePromotionToken::__engine_construct(),
+        );
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics for TwoPassFixer::apply_kept_fixes, got {diags:#?}",
+    );
+}
+
+#[test]
+fn two_pass_fixer_method_not_on_allow_list_is_denied() {
+    // The `TwoPassFixer` allow-list is closed: only `apply_kept_fixes`
+    // may call `__engine_promote`. A new method on the same struct
+    // calling the promotion API must be rejected, forcing any
+    // future fourth-promotion-site addition to be a deliberate
+    // amendment to the allow-list — exactly the property the
+    // FR-040 contract pins.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct TwoPassFixer;
+impl TwoPassFixer {
+    fn unauthorized_promotion_site(&self) {
+        let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic for unauthorized TwoPassFixer method, got {diags:#?}",
+    );
+    assert_eq!(diags[0].code, "PRC002");
+}
+
+#[test]
+fn two_pass_fixer_shadow_type_outside_canonical_file_is_denied() {
+    // Copilot round-3 R3-1 regression test: a same-name `TwoPassFixer`
+    // type defined in a different file under `crates/engine/src/**`
+    // MUST NOT inherit the canonical allow-list. The allow-list is
+    // pinned to the single canonical home `crates/engine/src/engine.rs`
+    // via the `is_engine_canonical_helper_file` path guard. Without
+    // that guard, type-name-only matching on `impl_self_type` would
+    // let any shadow type with `apply_kept_fixes` defined anywhere
+    // under `crates/engine/src/**` bypass the FR-040 engine-only
+    // contract.
+    //
+    // Mirrors the existing free-fn pin (`ENGINE_FREE_FN_ALLOW_LIST` +
+    // `is_engine_canonical_helper_file`): "one allow-list entry, one
+    // canonical home." A contributor who genuinely needs to expand
+    // the allow-list must do so deliberately by amending both the
+    // method list and (if needed) the canonical-path guard — not
+    // accidentally by re-using a type name.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/shadow.rs",
+        r"
+struct TwoPassFixer;
+impl TwoPassFixer {
+    fn apply_kept_fixes(&self) {
+        let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic for shadow TwoPassFixer in non-canonical file, got {diags:#?}",
+    );
+    assert_eq!(diags[0].code, "PRC002");
+    assert!(
+        diags[0]
+            .file
+            .to_string_lossy()
+            .contains("crates/engine/src/shadow.rs"),
+        "expected the diagnostic to point at the shadow file; got {:?}",
+        diags[0].file,
+    );
 }

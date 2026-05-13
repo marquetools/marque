@@ -195,3 +195,52 @@ fn applied_fix_timestamp_matches_clock() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// PR 7b — R002 audit-record integrity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn r002_does_not_mint_applied_fix() {
+    // Constitution V Principle V (audit-record integrity) lock:
+    // R002 is a synthetic diagnostic emitted when the post-pass-1
+    // buffer cannot be re-parsed. It has no replacement, no intent,
+    // no fix proposal — it is informational guidance about why
+    // pass-2 did not run, not an action taken. Promoting it via
+    // `__engine_promote` would inject a false-positive audit record
+    // claiming a fix was applied when none was.
+    //
+    // The pin: `result.applied` MUST NOT contain ANY entry whose
+    // `rule == R002_RULE_ID`. Holds regardless of whether R002
+    // fired or not on the fixture below (today no production
+    // Localized rule emits a FixIntent that could trigger R002, so
+    // `r002_fired == false` here, but the absence-of-R002-fix
+    // invariant must hold in either branch).
+    //
+    // This integration test is a canary; it becomes load-bearing
+    // when a future `Phase::Localized` rule lands that can trigger
+    // R002. Today the loop iterates over fixes that R002 cannot
+    // appear in, so the per-fix assertion is vacuously satisfied —
+    // the direct shape pin lives at the unit-test layer in
+    // `engine.rs::tests::build_r002_diagnostic_returns_diagnostic_not_appliedfix`,
+    // which exercises `build_r002_diagnostic` itself and verifies
+    // the returned `Diagnostic` carries neither a `FixIntent` nor a
+    // `TextCorrection` (the two channels a `Diagnostic` can become
+    // an `AppliedFix` through).
+    let engine = test_engine();
+    let source = b"SECRET//REL TO GBR\n(TS//HCS)\n";
+    let result = engine.fix(source, FixMode::Apply);
+    for fix in &result.applied {
+        // Compare against the typed constant rather than the string
+        // literal so a future rename of `R002_RULE_ID` (e.g., to
+        // adopt the engine-synthetic namespace
+        // `("engine", "r002.reparse-failed")` referenced in
+        // `MessageTemplate::ReparseFailed`'s doc) is caught here
+        // instead of silently passing on stale identifier drift.
+        assert_ne!(
+            fix.rule,
+            marque_engine::R002_RULE_ID,
+            "R002 must never appear as an AppliedFix"
+        );
+    }
+}

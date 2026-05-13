@@ -86,8 +86,8 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Diagnostic>> {
     for path in collect_rust_files(workspace_dir)? {
         let source = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let file = syn::parse_file(&source)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let file =
+            syn::parse_file(&source).with_context(|| format!("parsing {}", path.display()))?;
         scan_file(&path, &file, workspace_dir, &mut diagnostics);
     }
     Ok(diagnostics)
@@ -95,12 +95,7 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Diagnostic>> {
 
 /// Scan a single in-memory file. Used by both [`scan_workspace`]
 /// and the integration tests.
-pub fn scan_file(
-    file_path: &Path,
-    file: &File,
-    workspace_dir: &Path,
-    sink: &mut Vec<Diagnostic>,
-) {
+pub fn scan_file(file_path: &Path, file: &File, workspace_dir: &Path, sink: &mut Vec<Diagnostic>) {
     let rel = file_path
         .strip_prefix(workspace_dir)
         .unwrap_or(file_path)
@@ -177,15 +172,15 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
             path.file_name().and_then(|s| s.to_str()),
             Some(
                 "crates"
-                | "tests"
-                | "tools"
-                | "target"
-                | ".git"
-                | "site"
-                | "specs"
-                | "docs"
-                | "scripts"
-                | "benches"
+                    | "tests"
+                    | "tools"
+                    | "target"
+                    | ".git"
+                    | "site"
+                    | "specs"
+                    | "docs"
+                    | "scripts"
+                    | "benches"
             )
         ) {
             continue;
@@ -324,8 +319,7 @@ impl SignatureWalker<'_> {
         // because at the AST level it could be a crate-local shadow
         // trait. Forcing the qualified path makes the carve-out
         // unambiguous (see `is_marking_scheme_trait_path`).
-        let trait_path: Option<&SynPath> =
-            item_impl.trait_.as_ref().map(|(_, path, _)| path);
+        let trait_path: Option<&SynPath> = item_impl.trait_.as_ref().map(|(_, path, _)| path);
 
         for impl_item in &item_impl.items {
             if let ImplItem::Fn(method) = impl_item {
@@ -352,11 +346,7 @@ impl SignatureWalker<'_> {
         }
     }
 
-    fn maybe_emit_for_signature(
-        &mut self,
-        sig: &Signature,
-        impl_trait_path: Option<&SynPath>,
-    ) {
+    fn maybe_emit_for_signature(&mut self, sig: &Signature, impl_trait_path: Option<&SynPath>) {
         // Whitelist 1: any `unsafe fn`.
         if sig.unsafety.is_some() {
             return;
@@ -394,8 +384,7 @@ impl SignatureWalker<'_> {
         // Whitelist 3: transitional `crates/ism/src/canonical.rs::from_parsed_unchecked`.
         // Auto-expires when PR 3c lands and tasks.md T054 deletes the
         // function — the whitelist becomes a no-op at that point.
-        if self.rel_path_matches_transitional_site() && sig.ident == TRANSITIONAL_WHITELIST_FN
-        {
+        if self.rel_path_matches_transitional_site() && sig.ident == TRANSITIONAL_WHITELIST_FN {
             return;
         }
 
@@ -477,9 +466,11 @@ fn is_top_level_named_type(ty: &Type, name: &str) -> bool {
     match ty {
         Type::Paren(p) => is_top_level_named_type(&p.elem, name),
         Type::Group(g) => is_top_level_named_type(&g.elem, name),
-        Type::Path(type_path) => {
-            type_path.path.segments.last().is_some_and(|s| s.ident == name)
-        }
+        Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .is_some_and(|s| s.ident == name),
         _ => false,
     }
 }
@@ -529,10 +520,14 @@ fn return_is_canonical_or_result_canonical(ty: &Type) -> bool {
     // T, E>` don't exist for std `Result`, but if a contributor used
     // a custom `Result`-named type with leading-lifetime generics we
     // correctly skip past them.)
-    angle.args.iter().find_map(|ga| match ga {
-        GenericArgument::Type(t) => Some(t),
-        _ => None,
-    }).is_some_and(|ok_ty| is_top_level_named_type(ok_ty, CANONICAL_TYPE_NAME))
+    angle
+        .args
+        .iter()
+        .find_map(|ga| match ga {
+            GenericArgument::Type(t) => Some(t),
+            _ => None,
+        })
+        .is_some_and(|ok_ty| is_top_level_named_type(ok_ty, CANONICAL_TYPE_NAME))
 }
 
 /// Strip leading paren/group wrappers, leaving the inner type that
@@ -553,8 +548,7 @@ fn strip_paren_group_layers(ty: &Type) -> &Type {
 /// path so the shared trait-path matcher can recognize a synthesized
 /// path coming from a trait declaration in the canonical file.
 fn qualified_marking_scheme_path() -> SynPath {
-    syn::parse_str::<SynPath>("marque_scheme::MarkingScheme")
-        .expect("static path string parses")
+    syn::parse_str::<SynPath>("marque_scheme::MarkingScheme").expect("static path string parses")
 }
 
 /// True when the trait path written at an `impl <Trait> for <Type>`
@@ -582,11 +576,7 @@ fn qualified_marking_scheme_path() -> SynPath {
 /// The import-aware match closes that bypass at AST level without
 /// requiring contributors to write the verbose qualified form.
 fn is_marking_scheme_trait_path(path: &SynPath, imports_marking_scheme: bool) -> bool {
-    let segs: Vec<String> = path
-        .segments
-        .iter()
-        .map(|s| s.ident.to_string())
-        .collect();
+    let segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
     // Fully-qualified form: always accepted.
     if matches!(
         segs.as_slice(),
@@ -598,9 +588,7 @@ fn is_marking_scheme_trait_path(path: &SynPath, imports_marking_scheme: bool) ->
     // `marque_scheme` — a `use marque_scheme::MarkingScheme`,
     // a `use marque_scheme::{..., MarkingScheme, ...}` group, or a
     // `use marque_scheme::*` glob.
-    if imports_marking_scheme
-        && matches!(segs.as_slice(), [single] if single == "MarkingScheme")
-    {
+    if imports_marking_scheme && matches!(segs.as_slice(), [single] if single == "MarkingScheme") {
         return true;
     }
     false
@@ -620,7 +608,7 @@ fn is_marking_scheme_trait_path(path: &SynPath, imports_marking_scheme: bool) ->
 /// so a `impl MarkingScheme for X` in the same file does NOT refer
 /// to the renamed import. Only the canonical local name binds.
 fn file_imports_marking_scheme_from_marque_scheme(file: &File) -> bool {
-    use syn::{UseTree, ItemUse};
+    use syn::{ItemUse, UseTree};
     fn tree_matches(tree: &UseTree, expecting_marque_scheme_root: bool) -> bool {
         match tree {
             // `marque_scheme::<...>` — descend into the right child.

@@ -60,6 +60,7 @@ use marque_ism::Span;
 use marque_scheme::{CategoryId, TokenId};
 use smallvec::SmallVec;
 
+use crate::RuleId;
 use crate::confidence::{Confidence, FeatureId};
 
 /// BLAKE3 digest, 32 bytes, fixed-size array.
@@ -413,6 +414,26 @@ pub struct MessageArgs {
     /// Closed list of contributing features (decoder posterior
     /// contributions, strict-context floors, etc.).
     pub feature_ids: SmallVec<[FeatureId; 4]>,
+
+    /// Contributing pass-1 fix rule IDs for
+    /// [`MessageTemplate::ReparseFailed`] (PR 7b, FR-024). Empty for
+    /// every other template variant.
+    ///
+    /// Inline-4 matches the four-rule pass-1 partition in the CAPCO
+    /// ruleset (C001, E006, E007, S004) — no heap allocation even
+    /// when every Localized rule contributes. [`RuleId`] is on
+    /// Constitution V Principle V's permitted-identifier list
+    /// (enumerated identifier, not document bytes); adding the
+    /// `SmallVec<[RuleId; 4]>` preserves the closed-set property
+    /// of [`MessageArgs`].
+    ///
+    /// Audit emitters MUST skip this field when empty. The audit
+    /// emit boundary at `crates/engine/src/audit.rs` (and the WASM
+    /// equivalent) uses `SmallVec::is_empty` as the skip predicate
+    /// when this field eventually flows through `Diagnostic.message`
+    /// (PR 3c.2 migration). PR 7b ships the type-level addition; the
+    /// wire-format gate lives at the migration boundary.
+    pub contributing_rule_ids: SmallVec<[RuleId; 4]>,
 }
 
 /// Diagnostic message: closed template + closed args.
@@ -633,5 +654,6 @@ mod tests {
         assert!(args.expected_token.is_none());
         assert!(args.actual_token.is_none());
         assert!(args.feature_ids.is_empty());
+        assert!(args.contributing_rule_ids.is_empty());
     }
 }

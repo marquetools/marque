@@ -65,6 +65,32 @@ pub const COMMENT_LOOKBACK_LINES: usize = 5;
 /// names elsewhere in `crates/engine/src/**` is rejected.
 const ENGINE_METHOD_ALLOW_LIST: &[&str] = &["fix_inner", "apply_text_corrections"];
 
+/// Methods on `TwoPassFixer` permitted to call
+/// `AppliedFix::__engine_promote` / `EnginePromotionToken::__engine_construct`
+/// in production code (PR 7b). `TwoPassFixer` is the phase-split fix
+/// orchestrator extracted from `Engine::fix_inner`; the two promotion
+/// call sites that used to live directly inside `fix_inner` now live
+/// inside `TwoPassFixer::apply_kept_fixes`. The Constitution V Principle V
+/// engine-only contract still holds — `TwoPassFixer` is a private
+/// struct in `crates/engine/src/engine.rs`, the promotion token is
+/// minted by the same `engine_promotion_token()` free helper as
+/// before, and the threshold gate / FR-016 sort / C-1 overlap guard
+/// run in the same orchestrator.
+///
+/// This list is matched only when (a) the enclosing `impl` block
+/// targets a type whose last-segment name is `TwoPassFixer` AND (b)
+/// the call site lives in the canonical file
+/// `crates/engine/src/engine.rs` (the [`is_engine_canonical_helper_file`]
+/// check). The path guard closes the Copilot round-3 R3-1 finding:
+/// type-name-only matching against `impl_self_type` would let any
+/// `struct TwoPassFixer` defined elsewhere under `crates/engine/src/**`
+/// inherit the allow-list — same-name shadowing is exactly the
+/// engine-only-contract bypass the FR-040 lint must mechanically
+/// prevent. The pattern mirrors [`ENGINE_FREE_FN_ALLOW_LIST`]'s
+/// `is_engine_canonical_helper_file` companion-check: "one allow-list
+/// entry, one canonical home."
+const TWOPASSFIXER_METHOD_ALLOW_LIST: &[&str] = &["apply_kept_fixes"];
+
 /// Free helper(s) in `crates/engine/src/engine.rs` (the exact file)
 /// that are permitted to mint an `EnginePromotionToken`. Currently
 /// exactly one — the `engine_promotion_token()` token-mint helper.
@@ -93,8 +119,8 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Diagnostic>> {
     for path in collect_rust_files(workspace_dir)? {
         let source = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let file = syn::parse_file(&source)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let file =
+            syn::parse_file(&source).with_context(|| format!("parsing {}", path.display()))?;
         scan_file(&path, &source, &file, workspace_dir, &mut diagnostics);
     }
     Ok(diagnostics)
@@ -162,15 +188,15 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
             path.file_name().and_then(|s| s.to_str()),
             Some(
                 "crates"
-                | "tests"
-                | "tools"
-                | "target"
-                | ".git"
-                | "site"
-                | "specs"
-                | "docs"
-                | "scripts"
-                | "benches"
+                    | "tests"
+                    | "tools"
+                    | "target"
+                    | ".git"
+                    | "site"
+                    | "specs"
+                    | "docs"
+                    | "scripts"
+                    | "benches"
             )
         ) {
             continue;
@@ -328,6 +354,22 @@ impl CallSiteVisitor<'_> {
                             && self.is_engine_canonical_helper_file()
                     }
                     Some("Engine") => ENGINE_METHOD_ALLOW_LIST.contains(&fr.name.as_str()),
+                    // Canonical-path guard (Copilot round-3 R3-1): same-
+                    // name shadow types defined elsewhere under
+                    // `crates/engine/src/**` MUST NOT inherit the
+                    // `TwoPassFixer` allow-list. The path check pins
+                    // the allow-list to one home — the canonical file
+                    // `crates/engine/src/engine.rs` — mirroring the
+                    // free-fn `ENGINE_FREE_FN_ALLOW_LIST` companion
+                    // check above. Without this guard, a contributor
+                    // who writes `struct TwoPassFixer { ... } impl
+                    // TwoPassFixer { fn apply_kept_fixes(...) }` in
+                    // `crates/engine/src/wherever.rs` gets a free pass
+                    // through the FR-040 engine-only contract.
+                    Some("TwoPassFixer") => {
+                        TWOPASSFIXER_METHOD_ALLOW_LIST.contains(&fr.name.as_str())
+                            && self.is_engine_canonical_helper_file()
+                    }
                     Some(_) => false,
                 };
                 if allowed {
@@ -615,9 +657,7 @@ fn line_comment_contains_marker(line: &str, marker: &str) -> bool {
                     // Raw string: closes on `"` followed by exactly `raw_hashes` `#`s.
                     if b == b'"' {
                         let close = i + 1 + raw_hashes;
-                        if close <= bytes.len()
-                            && bytes[i + 1..close].iter().all(|&h| h == b'#')
-                        {
+                        if close <= bytes.len() && bytes[i + 1..close].iter().all(|&h| h == b'#') {
                             in_str = None;
                             i = close;
                             continue;

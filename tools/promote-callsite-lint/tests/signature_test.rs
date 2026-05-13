@@ -81,7 +81,11 @@ pub trait MarkingScheme {
 ",
     );
     let diags = signature::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected exactly one PRC100, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly one PRC100, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC100");
 }
 
@@ -314,7 +318,11 @@ fn top_level_workspace_member_src_is_walked_and_flagged() {
     // `<member>/Cargo.toml` + `<member>/src/lib.rs` and assert the
     // prohibited shape is detected.
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/Cargo.toml",
+        "[package]\nname = \"marque\"\n",
+    );
     write(
         tmp.path(),
         "marque/src/lib.rs",
@@ -328,10 +336,17 @@ pub fn naughty(p: ParsedAttrs) -> CanonicalAttrs {
 ",
     );
     let diags = signature::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected the top-level member's signature to be flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the top-level member's signature to be flagged, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC100");
     assert!(
-        diags[0].file.to_string_lossy().contains("marque/src/lib.rs"),
+        diags[0]
+            .file
+            .to_string_lossy()
+            .contains("marque/src/lib.rs"),
         "expected the diagnostic to point at the top-level member; got {:?}",
         diags[0].file
     );
@@ -346,7 +361,11 @@ fn top_level_workspace_member_tests_walked_too() {
     // signature-scoped (PRC100). The shape itself is the prohibited
     // architectural pattern regardless of test-vs-production scope.
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/Cargo.toml",
+        "[package]\nname = \"marque\"\n",
+    );
     write(
         tmp.path(),
         "marque/tests/it.rs",
@@ -360,7 +379,11 @@ pub fn naughty(p: ParsedAttrs) -> CanonicalAttrs {
 ",
     );
     let diags = signature::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected the top-level member's tests/ signature to be flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the top-level member's tests/ signature to be flagged, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC100");
 }
 

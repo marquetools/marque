@@ -145,16 +145,28 @@ Post-conditions:
 
 ### Re-parse (between Pass 1 and Pass 2)
 
+The recognizer is total — there is no `parse(...) -> Err` arm.
+The "re-parse failed" signal is represented as **"the post-splice
+buffer no longer parses any candidates"** (see the R002 surfacing
+section below for the full trigger conjunction):
+
 ```text
-let post_pass_1_attrs: Result<ParsedAttrs<'_>, ParseError> = parse(post_pass_1_buffer);
-match post_pass_1_attrs {
-    Ok(attrs) => proceed_to_pass_2(canonicalize(attrs)),
-    Err(_) => emit_r002_and_return(),
+let (relint, post_pass_1_markings) = engine.lint_with_options_internal(post_pass_1_buffer, opts);
+if pre_pass_1_markings.is_empty() == false
+   && post_pass_1_markings.is_empty()
+   && pass1.applied.is_empty() == false
+{
+    emit_r002_and_return()
+} else {
+    proceed_to_pass_2(post_pass_1_markings, relint.diagnostics)
 }
 ```
 
-Post-conditions on success: pass-1 reshape is reflected in `attrs`
-(I-4); pass-2 rules see the post-rewrite token spans.
+Post-conditions on success: pass-1 reshape is reflected in the
+fresh `relint` (I-4); pass-2 rules see the post-rewrite token
+spans AND the post-rewrite diagnostic stream (FR-023 partial —
+the full reshape-aware `(scheme, predicate-id)` no-re-fire gate
+lands in PR 7c on top of the pre-pass-1 attrs cache).
 
 Post-conditions on failure (FR-024):
 - Engine emits `R002` diagnostic with `contributing_pass1_fix_ids`
@@ -170,14 +182,89 @@ Post-conditions on failure (FR-024):
 
 §9.4 specifies engine-side semantics; this section specifies what
 each consumer surface MUST do with R002. Per **decision D1** in
-`decisions.md`:
+`decisions.md` and PR 7b decisions D-7.8 / D-7.12 / D-7.15 in
+`docs/refactor-006/pr-7-pm-decisions.md`:
 
-| Consumer | Surface contract |
-|----------|------------------|
-| **CLI** (`marque check` / `marque fix`) | Distinct exit code `EX_R002_PARTIAL` (numeric value chosen at PR 7 implementation; documented in `marque/src/main.rs` exit-code table). Distinct from `EX_DIAG_WARN` and from regular fix-failure. The CLI prints the R002 diagnostic on stderr with a clear "partial application" indicator. |
-| **WASM** (`marque-wasm`) | Typed return shape signaling partial application — either `LintResult { partial: true, .. }` flag or a typed `Result` variant. The binding constraint: consumers MUST be able to detect R002 without parsing NDJSON. Format choice (flag vs. typed variant) is implementer's call at PR 7. |
-| **IDE plugins** | Documented contract: plugins MUST inspect the R002 diagnostic before applying the returned buffer. The buffer is the post-pass-1 state; applying without inspection silently splices pass-1 fixes into the user's editor — destructive without consent. The IDE-plugin reference implementation MUST refuse the partial buffer or prompt the user. |
-| **`BatchEngine`** | Per-row R002 surfaces in the row's individual result. The batch exit code is **worst-row-wins**: any row hitting R002 raises the batch exit code to `EX_R002_PARTIAL`. Per-row records remain individually inspectable (`id`-correlatable per the existing completion-order contract). |
+**1. When R002 fires.** Implementation note: marque's recognizer
+is total — `parse(...) -> Err` is not an arm in the
+`Recognizer<S>` trait surface. The "re-parse failed" signal is
+therefore represented as **"the post-splice buffer no longer
+parses any candidates."** Concretely, R002 fires when ALL of:
+
+- pass-1 produced ≥1 applied fix (the byte stream changed); AND
+- the pre-pass-1 markings table was non-empty (the original
+  buffer had ≥1 parsed candidate); AND
+- the post-pass-1 markings table is empty (the re-lint over the
+  spliced buffer found zero candidates).
+
+That conjunction is the conservative trigger — it fires only
+when pass-1 walked the scanner clean of every candidate the
+original buffer had, which is the operational definition of
+"pass-1 corrupted the marking shape." A partial cleanup (some
+markings survive) does not fire R002; pass-2 proceeds normally
+against the surviving markings. Pre-condition: when pass-1
+produced no applied fixes the engine short-circuits, reuses the
+pre-pass-1 markings table, and R002 is unreachable on the no-fix
+path.
+
+Re-parse goes through the engine's installed `Recognizer` —
+dispatcher behavior matches the original lint pass.
+
+**2. Audit-record consumer view.**
+- `FixResult.applied` = pass-0 text-corrections + pass-1
+  `AppliedFix` records, in audit-stream order. No pass-2 entries —
+  pass-2 did not run.
+- `FixResult.remaining_diagnostics` = the synthetic R002
+  `Diagnostic` plus any un-fixed pass-1 diagnostics. The R002
+  entry's `rule == R002_RULE_ID` (`"R002"`).
+- `FixResult.source` = the post-pass-1 buffer in `FixMode::Apply`;
+  the original source in `FixMode::DryRun`. The engine returns the
+  partial buffer in Apply mode because the pass-1 fixes
+  successfully landed — the audit log is honest about what
+  applied.
+- `FixResult.r002_fired = true`. Consumers MUST test this field
+  before consuming `source`.
+- No `AppliedFix` carries `rule == R002_RULE_ID`. R002 is a
+  diagnostic, never a fix; constitution V Principle V's
+  audit-record integrity invariant forbids minting a fix-shaped
+  record for a non-fix signal.
+
+**3. CLI exit code.** `EX_R002_PARTIAL = 3` in
+`marque/src/main.rs`. Per-document precedence chain
+(D-7.15): `EX_R002_PARTIAL > EX_DIAG_ERROR > EX_DIAG_WARN > EX_OK`.
+R002 wins over generic error because R002 is the rare, distinguished,
+action-changing signal — a consumer seeing `EX_DIAG_ERROR` thinks
+"diagnostics found, normal exit"; a consumer seeing `EX_R002_PARTIAL`
+thinks "something unusual happened, investigate." The reduction
+operator is `marque::main::merge_exit_code`, an explicit `match`
+expression — numeric `max()` is the wrong operator (constants are
+not ordered by severity).
+
+**4. WASM detection without NDJSON parsing.** `FixResult.r002_fired:
+bool` (in `crates/engine/src/output.rs`) and
+`FixResultJson.r002_fired: bool` (in `crates/wasm/src/lib.rs`). JS
+/ IDE consumers branch on a single property read; zero NDJSON
+diagnostic-stream parsing. D1's "detectable without NDJSON
+parsing" binding constraint is satisfied by this field. A second
+synthetic-error boolean (R003-class) lands cleanly on the same
+surface; a third synthetic signal would suggest collapsing to a
+`partial_state: PartialState` enum.
+
+**5. BatchEngine.** Per-row `FixResult.r002_fired` is individually
+inspectable. The batch exit code is **worst-row-wins**: the CLI's
+batch driver folds per-row codes through `merge_exit_code`, and
+any row hitting R002 raises the batch exit code to `EX_R002_PARTIAL`.
+Aggregation lives in the CLI loop, NOT inside `BatchEngine` (per
+the existing completion-order contract — the engine yields per-row
+results in completion order and the CLI is responsible for the
+final reduction).
+
+**6. IDE plugins.** Plugins MUST inspect `FixResult.r002_fired`
+before applying `FixResult.source` to the user's editor. The buffer
+is the post-pass-1 state; applying without inspection silently
+splices pass-1 fixes into the user's editor — destructive without
+consent. The IDE-plugin reference implementation MUST refuse the
+partial buffer or prompt the user.
 
 Rationale: the engine's "honest about partial progress" property (§9.4)
 is meaningful only if consumers have a mechanical signal to act on. The
