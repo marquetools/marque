@@ -996,6 +996,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

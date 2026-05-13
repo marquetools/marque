@@ -9,7 +9,7 @@ use crate::errors::{EngineConstructionError, EngineError};
 use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
 use crate::recognizer::shift_token_spans;
-use crate::scheduler::schedule_rewrites;
+use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
 use marque_capco::provenance::DecoderProvenance;
@@ -207,6 +207,18 @@ impl Engine {
         // on any unknown key. See `canonicalize_rule_overrides`.
         canonicalize_rule_overrides(&mut config, &rule_sets, &bridge_scheme)?;
 
+        // PR 3c.B Sub-PR 8.F engine-prereq: validate every
+        // `CategoryAction::Intent` payload BEFORE scheduling. Reordering
+        // matters when a rewrite table contains both an unroutable
+        // Intent token AND a topological cycle: validate-first surfaces
+        // the per-rewrite-id error (more actionable) instead of the
+        // graph-shaped cycle error, and avoids wasting the scheduler
+        // pass on a scheme that can't construct anyway. Walks each
+        // intent's `FactRef`s and confirms the scheme can route each
+        // one via `category_of`; a scheme-authoring bug surfaces here
+        // at engine-construction time instead of silently no-opping on
+        // the first page that triggers the rewrite.
+        validate_intent_rewrites(&scheme, scheme.page_rewrites())?;
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.

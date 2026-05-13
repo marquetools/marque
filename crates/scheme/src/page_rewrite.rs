@@ -304,6 +304,40 @@ pub enum CategoryAction<S: MarkingScheme + ?Sized> {
     },
     /// Scheme-specific mutation.
     Custom(fn(&mut S::Marking)),
+    /// Apply a structural fix-intent at page scope.
+    ///
+    /// Bridges page-level declarative rewrites to the
+    /// [`ReplacementIntent`](crate::ReplacementIntent) vocabulary already
+    /// used for rule-emitted fixes. The trigger detects a page-scope
+    /// precondition (e.g., NODIS present in a dissem-control category)
+    /// and the action expresses the rewrite as a `FactAdd` / `FactRemove`
+    /// / `Recanonicalize` operation against the projected marking.
+    ///
+    /// Unlike `Clear` / `Replace` (which operate on an entire category)
+    /// and `Custom` (which is opaque to the scheduler), `Intent` lets the
+    /// rewrite mutate one or more named facts in a category while
+    /// remaining declarative (`FactAdd` carries one fact;
+    /// `FactRemove` carries a `SmallVec` of one or more for atomic
+    /// multi-fact clusters like the E024 RD/FRD/TFNI removal). The
+    /// rewrite author still declares `reads` / `writes` annotations
+    /// explicitly via [`PageRewrite::declarative`].
+    ///
+    /// **Validation**: every `CategoryAction::Intent` is validated at
+    /// engine-construction time. The engine walks each rewrite's
+    /// `FactRef`s and calls the scheme's category routing to confirm
+    /// every token maps to a category. If any token is unroutable, the
+    /// engine returns `EngineConstructionError::InvalidIntentInPageRewrite`
+    /// at `Engine::new` — the failure surfaces deterministically at
+    /// startup, not on the first page that triggers the rewrite.
+    ///
+    /// **Note on `Recanonicalize`**: the `Recanonicalize` variant of
+    /// `ReplacementIntent` is a no-op when used inside a `PageRewrite`
+    /// action. Page rewrites mutate the projected marking before the
+    /// renderer runs; a re-canonicalization intent has no semantic effect
+    /// at this layer. Authoring `CategoryAction::Intent(Recanonicalize {
+    /// .. })` is permitted (for round-trip uniformity) but is silently
+    /// inert.
+    Intent(crate::fix_intent::ReplacementIntent<S>),
 }
 
 // Manual Debug impls — function pointers don't auto-derive well across
@@ -350,6 +384,7 @@ where
                 .field("transform", &"<fn>")
                 .finish(),
             Self::Custom(_) => f.write_str("Custom(<fn>)"),
+            Self::Intent(intent) => f.debug_tuple("Intent").field(intent).finish(),
         }
     }
 }
@@ -483,6 +518,41 @@ mod tests {
         let a: CategoryAction<FakeScheme> = CategoryAction::Custom(|_: &mut FakeMarking| {});
         let s = format!("{a:?}");
         assert_eq!(s, "Custom(<fn>)");
+    }
+
+    #[test]
+    fn debug_category_action_intent_fact_add() {
+        let a: CategoryAction<FakeScheme> =
+            CategoryAction::Intent(crate::fix_intent::ReplacementIntent::FactAdd {
+                token: crate::fix_intent::FactRef::Cve(TokenId(7)),
+                scope: Scope::Page,
+            });
+        let s = format!("{a:?}");
+        assert!(s.contains("Intent"), "got: {s}");
+        assert!(s.contains("FactAdd"), "got: {s}");
+    }
+
+    #[test]
+    fn debug_category_action_intent_fact_remove() {
+        let a: CategoryAction<FakeScheme> =
+            CategoryAction::Intent(crate::fix_intent::ReplacementIntent::fact_remove(
+                crate::fix_intent::FactRef::Cve(TokenId(3)),
+                Scope::Page,
+            ));
+        let s = format!("{a:?}");
+        assert!(s.contains("Intent"), "got: {s}");
+        assert!(s.contains("FactRemove"), "got: {s}");
+    }
+
+    #[test]
+    fn debug_category_action_intent_recanonicalize() {
+        let a: CategoryAction<FakeScheme> =
+            CategoryAction::Intent(crate::fix_intent::ReplacementIntent::Recanonicalize {
+                scope: crate::fix_intent::RecanonScope::Page,
+            });
+        let s = format!("{a:?}");
+        assert!(s.contains("Intent"), "got: {s}");
+        assert!(s.contains("Recanonicalize"), "got: {s}");
     }
 
     #[test]
