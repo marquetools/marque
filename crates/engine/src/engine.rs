@@ -1714,12 +1714,28 @@ impl<'engine> TwoPassFixer<'engine> {
         // the buffer didn't change, so the pre-pass-1 `pass2_diags`
         // partition is still current and is reused — saving one
         // re-lint pass on the hot path.
-        let (pass2_source, pass2_markings, pass1_applied, pass1_applied_keys, pass2_diags) =
+        //
+        // `lint` is rebound to the post-pass-1 re-lint on the re-parse
+        // arm so EVERY downstream consumer — the pass-2 dispatch, the
+        // `DeadlineExceeded { partial_lint }` payload, and the
+        // remaining-diagnostics filter — sees the same post-pass-1
+        // state. Round 2 of Copilot review caught three call sites
+        // that previously kept reading the pre-pass-1 `lint` here;
+        // tupling `lint` through the decision is what makes
+        // post-pass-1 propagation total rather than partial. The
+        // R002 short-circuit explicitly passes the **pre-pass-1**
+        // `lint` into `assemble_r002_result`: pass-1 destroyed the
+        // marking shape, so post-pass-1 diagnostics are degenerate
+        // and the surfaced remaining-diagnostics stream should
+        // reflect what the operator saw before pass-1 ran.
+        let (pass2_source, pass2_markings, pass1_applied, pass1_applied_keys, pass2_diags, lint) =
             if pass1.applied.is_empty() {
                 // Short-circuit: pass-1 produced no applied fixes, so the
                 // byte stream is unchanged. Move `pass0_effective_source`
                 // directly into `pass2_source` — no document-buffer clone.
                 // `pass1.applied` is empty so we move it through as-is.
+                // The pre-pass-1 `lint` is still current here (no byte
+                // change → no re-lint needed) and is moved through.
                 let Pass1Result {
                     post_buffer: _,
                     applied,
@@ -1731,6 +1747,7 @@ impl<'engine> TwoPassFixer<'engine> {
                     applied,
                     applied_keys,
                     pass2_diags,
+                    lint,
                 )
             } else {
                 let (relint, new_markings) = self
@@ -1780,7 +1797,11 @@ impl<'engine> TwoPassFixer<'engine> {
                     partition_diags_by_phase(&relint.diagnostics, &localized_ids);
                 // Non-R002 re-parse path: destructure pass1 and move
                 // `post_buffer` directly into `pass2_source` — no
-                // document-buffer clone.
+                // document-buffer clone. `relint` is the fresh
+                // post-pass-1 LintResult — move it into the `lint`
+                // slot so the deadline-error payload, the pass-2
+                // dispatch borrow, and the remaining-diagnostics
+                // filter all see post-pass-1 state.
                 let Pass1Result {
                     post_buffer,
                     applied,
@@ -1792,6 +1813,7 @@ impl<'engine> TwoPassFixer<'engine> {
                     applied,
                     applied_keys,
                     fresh_pass2_diags,
+                    relint,
                 )
             };
 
@@ -2048,6 +2070,21 @@ impl<'engine> TwoPassFixer<'engine> {
     /// pass-2 because the splice semantics are identical at this
     /// layer.
     ///
+    /// The post-splice buffer is built in **both** [`FixMode::Apply`]
+    /// and [`FixMode::DryRun`] because pass-1's `post_buffer` is the
+    /// input to pass-2's re-lint + dispatch (FR-022 / FR-023): pass-2
+    /// MUST see the post-pass-1 coordinate space regardless of mode,
+    /// or DryRun would silently dispatch pass-2 against the pre-pass-1
+    /// buffer and produce a different applied set than Apply. The
+    /// DryRun-vs-Apply distinction only affects [`FixResult.source`]
+    /// at the outer layer — `run_pass2_whole_marking` substitutes
+    /// `self.source.to_vec()` for DryRun there, so the user-visible
+    /// `FixResult.source` remains the unmodified original.
+    ///
+    /// `dry_run` is plumbed into every [`AppliedFix`] record so the
+    /// audit stream reflects mode regardless of which buffer the
+    /// engine chose to keep as `FixResult.source`.
+    ///
     /// Per-fix-application deadline check sits at the top of each
     /// iteration — the abort happens between fixes so we never
     /// construct a half-applied `FixResult` (Constitution V Principle
@@ -2079,56 +2116,30 @@ impl<'engine> TwoPassFixer<'engine> {
             });
         }
 
-        match self.mode {
-            FixMode::Apply => {
-                let post_buffer = apply_pass1_fixes(source_buf, &kept_fixes);
-                for fix in kept_fixes {
-                    if deadline_expired(self.deadline) {
-                        return Err(EngineError::DeadlineExceeded {
-                            partial_lint: lint.clone(),
-                        });
-                    }
-                    let key = (fix.rule.clone(), fix.span);
-                    applied_keys.insert(key);
-                    applied.push(AppliedFix::__engine_promote(
-                        fix.rule,
-                        fix.span,
-                        fix.intent,
-                        now,
-                        classifier_id.clone(),
-                        dry_run,
-                        None,
-                        engine_promotion_token(),
-                    ));
-                }
-                Ok((post_buffer, applied, applied_keys))
+        // Build the post-splice buffer in both modes — pass-2 needs
+        // the post-pass-1 coordinate space to dispatch correctly even
+        // in DryRun.
+        let post_buffer = splice_fixes_forward(source_buf, &kept_fixes);
+        for fix in kept_fixes {
+            if deadline_expired(self.deadline) {
+                return Err(EngineError::DeadlineExceeded {
+                    partial_lint: lint.clone(),
+                });
             }
-            FixMode::DryRun => {
-                for fix in kept_fixes {
-                    if deadline_expired(self.deadline) {
-                        return Err(EngineError::DeadlineExceeded {
-                            partial_lint: lint.clone(),
-                        });
-                    }
-                    let key = (fix.rule.clone(), fix.span);
-                    applied_keys.insert(key);
-                    applied.push(AppliedFix::__engine_promote(
-                        fix.rule,
-                        fix.span,
-                        fix.intent,
-                        now,
-                        classifier_id.clone(),
-                        dry_run,
-                        None,
-                        engine_promotion_token(),
-                    ));
-                }
-                // DryRun: no buffer mutation. The post_buffer slot
-                // is unused — `run_pass2_whole_marking` substitutes
-                // `self.source` at the outer layer.
-                Ok((source_buf.to_vec(), applied, applied_keys))
-            }
+            let key = (fix.rule.clone(), fix.span);
+            applied_keys.insert(key);
+            applied.push(AppliedFix::__engine_promote(
+                fix.rule,
+                fix.span,
+                fix.intent,
+                now,
+                classifier_id.clone(),
+                dry_run,
+                None,
+                engine_promotion_token(),
+            ));
         }
+        Ok((post_buffer, applied, applied_keys))
     }
 
     /// Build the set of `RuleId.as_str()` values that belong to
@@ -2334,10 +2345,17 @@ fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix
 }
 
 /// Forward-pass buffer construction shared by pass-1 and pass-2
-/// (rust pre-flight Q2). `fixes` MUST be FR-016 sorted (span.end
-/// DESC, span.start DESC) so `iter().rev()` yields ascending order
-/// for the left-to-right walk. Pre-allocates capacity using the
-/// per-fix growth contribution (`saturating_sub` upper bound).
+/// via [`TwoPassFixer::apply_kept_fixes`]. `fixes` MUST be FR-016
+/// sorted (span.end DESC, span.start DESC) so `iter().rev()` yields
+/// ascending order for the left-to-right walk. Pre-allocates
+/// capacity using the per-fix growth contribution (`saturating_sub`
+/// upper bound).
+///
+/// The earlier name `apply_pass1_fixes` predated the PR 7b
+/// phase-split orchestrator and implied pass-1 exclusivity; the
+/// renamed `splice_fixes_forward` names what the function actually
+/// does — a forward splice — so a reader scanning either pass's
+/// caller can see the operation without re-reading the body.
 ///
 /// # Overlap handling
 ///
@@ -2353,7 +2371,7 @@ fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix
 /// targeted message in dev/CI, the slice panic provides a hard
 /// stop in release. Neither silently corrupts the buffer; a real
 /// overlap is observable in either build mode.
-fn apply_pass1_fixes(source: &[u8], fixes: &[SynthesizedFix]) -> Vec<u8> {
+fn splice_fixes_forward(source: &[u8], fixes: &[SynthesizedFix]) -> Vec<u8> {
     let extra: usize = fixes
         .iter()
         .map(|f| {
@@ -2367,7 +2385,7 @@ fn apply_pass1_fixes(source: &[u8], fixes: &[SynthesizedFix]) -> Vec<u8> {
     for fix in fixes.iter().rev() {
         debug_assert!(
             fix.span.start >= cursor,
-            "overlapping pass-1 fix: cursor={cursor}, span={:?}",
+            "overlapping fix in splice_fixes_forward: cursor={cursor}, span={:?}",
             fix.span
         );
         buf.extend_from_slice(&source[cursor..fix.span.start]);
@@ -4877,8 +4895,109 @@ mod tests {
         );
     }
 
+    #[test]
+    fn apply_kept_fixes_splices_post_buffer_in_dryrun_mode() {
+        // Copilot round-2 finding R2-3 lock.
+        //
+        // Pre-R2-3, `apply_kept_fixes` short-circuited in DryRun mode
+        // and returned the unspliced source as `post_buffer`. The outer
+        // `TwoPassFixer::run` then re-linted that unspliced buffer and
+        // dispatched pass-2 against the WRONG coordinate space — same
+        // byte input as Apply but a different pass-2 context, breaking
+        // the DryRun-as-preview contract (FR-022 / FR-023).
+        //
+        // Post-R2-3, `apply_kept_fixes` always builds the post-splice
+        // buffer in BOTH modes; only the OUTER `FixResult.source`
+        // differs between Apply and DryRun (the outer layer in
+        // `run_pass2_whole_marking` substitutes `self.source.to_vec()`
+        // for DryRun). The intermediate pass-1 → pass-2 buffer must
+        // be the spliced output regardless of mode so pass-2 dispatch
+        // is mode-invariant.
+        //
+        // This test pins the structural property directly: it calls
+        // `apply_kept_fixes` with the same synthesized fixes in both
+        // modes and asserts the returned `post_buffer` is the spliced
+        // result in both. A future regression to "skip splicing in
+        // DryRun" would flip the DryRun assertion to the unspliced
+        // source bytes and fail loudly.
+        let engine = engine_with(vec![]);
+        let source = b"SECRET//NOFORN";
+
+        // FR-016-sorted (span.end DESC): the synth helper produces
+        // one fix at 8..14 replacing "NOFORN" with "REL TO USA".
+        let kept_fixes = vec![synth_fix("E001", 8, 14, "REL TO USA")];
+        let expected_post_buffer = b"SECRET//REL TO USA".to_vec();
+
+        // Build a dummy LintResult so `apply_kept_fixes`'s deadline-
+        // error branch has something to clone (the test never trips
+        // the deadline, but the signature requires it).
+        let dummy_lint = LintResult::default();
+
+        // Apply mode — establish the spliced baseline.
+        let apply_fixer = super::TwoPassFixer {
+            engine: &engine,
+            source,
+            mode: FixMode::Apply,
+            threshold: 0.95,
+            deadline: None,
+        };
+        let (apply_post, apply_applied, _) = apply_fixer
+            .apply_kept_fixes(source, kept_fixes.clone(), &dummy_lint)
+            .expect("apply_kept_fixes succeeds in Apply mode");
+        assert_eq!(
+            apply_post, expected_post_buffer,
+            "Apply mode: post_buffer must be the spliced result",
+        );
+        for f in &apply_applied {
+            assert!(!f.dry_run, "Apply: dry_run must be false");
+        }
+
+        // DryRun mode — the load-bearing R2-3 assertion. Pre-R2-3,
+        // this branch returned `source.to_vec()` (unspliced). After
+        // the fix, it returns the spliced buffer just like Apply.
+        let dry_run_fixer = super::TwoPassFixer {
+            engine: &engine,
+            source,
+            mode: FixMode::DryRun,
+            threshold: 0.95,
+            deadline: None,
+        };
+        let (dry_run_post, dry_run_applied, _) = dry_run_fixer
+            .apply_kept_fixes(source, kept_fixes, &dummy_lint)
+            .expect("apply_kept_fixes succeeds in DryRun mode");
+        assert_eq!(
+            dry_run_post, expected_post_buffer,
+            "DryRun mode: post_buffer must be the spliced result so pass-2 \
+             dispatches against the same coordinate space as Apply (R2-3 lock)",
+        );
+        // Sanity: post_buffer is NOT the unspliced source — that's
+        // the exact pre-R2-3 behavior this test exists to detect.
+        assert_ne!(
+            dry_run_post.as_slice(),
+            source.as_ref(),
+            "DryRun post_buffer must differ from the unspliced source — \
+             returning the unspliced source is the R2-3 regression"
+        );
+        for f in &dry_run_applied {
+            assert!(f.dry_run, "DryRun: dry_run must be true");
+        }
+
+        // Cross-mode parity at the AppliedFix (rule, span) level:
+        // the promotion loop is shared, so the applied set must be
+        // identical modulo the dry_run flag.
+        assert_eq!(
+            apply_applied.len(),
+            dry_run_applied.len(),
+            "applied list length must match across modes",
+        );
+        for (a, d) in apply_applied.iter().zip(dry_run_applied.iter()) {
+            assert_eq!(a.rule, d.rule);
+            assert_eq!(a.span, d.span);
+        }
+    }
+
     // -------------------------------------------------------------------
-    // Pure-helper unit tests — sort_and_c1_dedup / apply_pass1_fixes /
+    // Pure-helper unit tests — sort_and_c1_dedup / splice_fixes_forward /
     // span_is_within_marking / find_containing_marking
     // -------------------------------------------------------------------
     //
@@ -4973,7 +5092,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_pass1_fixes_splices_in_reverse_order() {
+    fn splice_fixes_forward_splices_in_reverse_order() {
         // Source: "SECRET//NOFORN" (14 bytes).
         // Two fixes: 0..6 → "AA", 8..14 → "BB".
         // FR-016 sort (span.end DESC) → 8..14 first, then 0..6.
@@ -4983,26 +5102,26 @@ mod tests {
             synth_fix("E001", 0, 6, "AA"),
             synth_fix("E002", 8, 14, "BB"),
         ]);
-        let out = super::apply_pass1_fixes(source, &fixes);
+        let out = super::splice_fixes_forward(source, &fixes);
         assert_eq!(out, b"AA//BB");
     }
 
     #[test]
-    fn apply_pass1_fixes_with_empty_fixes_returns_source_clone() {
+    fn splice_fixes_forward_with_empty_fixes_returns_source_clone() {
         let source = b"SECRET//NOFORN";
-        let out = super::apply_pass1_fixes(source, &[]);
+        let out = super::splice_fixes_forward(source, &[]);
         assert_eq!(out, source);
     }
 
     #[test]
-    fn apply_pass1_fixes_handles_replacement_growth_and_shrink() {
+    fn splice_fixes_forward_handles_replacement_growth_and_shrink() {
         // 0..6 → "TOP SECRET" (grow), 8..14 → "X" (shrink).
         let source = b"SECRET//NOFORN";
         let fixes = super::sort_and_c1_dedup(vec![
             synth_fix("E001", 0, 6, "TOP SECRET"),
             synth_fix("E002", 8, 14, "X"),
         ]);
-        let out = super::apply_pass1_fixes(source, &fixes);
+        let out = super::splice_fixes_forward(source, &fixes);
         assert_eq!(out, b"TOP SECRET//X");
     }
 

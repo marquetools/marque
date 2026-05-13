@@ -45,7 +45,7 @@ impl Engine {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}",);
+    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
 }
 
 #[test]
