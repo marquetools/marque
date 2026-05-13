@@ -82,8 +82,8 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
             1,
             "expected exactly one CorpusOverrideInEffect contribution on \
              decoder-path fix at {}..{}, got {} (full features: {:?})",
-            fix.proposal.span.start,
-            fix.proposal.span.end,
+            fix.span.start,
+            fix.span.end,
             override_features.len(),
             fix.confidence.features,
         );
@@ -140,7 +140,7 @@ fn decoder_fix_omits_corpus_override_feature_without_override() {
             "decoder-path fix at {}..{} carries CorpusOverrideInEffect \
              without an override installed — audit stream would be \
              misleading. Full features: {:?}",
-            fix.proposal.span.start, fix.proposal.span.end, fix.confidence.features,
+            fix.span.start, fix.span.end, fix.confidence.features,
         );
     }
 

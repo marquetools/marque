@@ -103,8 +103,8 @@ use marque_ism::{
     TokenSpan, sar_sort_key,
 };
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixProposal, FixSource, Message, MessageArgs,
-    MessageTemplate, Rule, RuleContext, RuleId, RuleSet, Severity,
+    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule,
+    RuleContext, RuleId, RuleSet, Severity,
 };
 use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, Scope};
 use std::collections::HashSet;
@@ -393,13 +393,6 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             return vec![];
         }
 
-        let current = attrs
-            .rel_to
-            .iter()
-            .map(|t| t.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-
         let message = if !has_usa {
             "REL TO list missing required USA trigraph"
         } else {
@@ -507,44 +500,18 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         // E002's fix output stays canonical when input also has
         // duplicates — under the C-1 overlap guard E002's narrow span
         // would not deduplicate other rules' edits, so we deduplicate
-        // inline to preserve single-pass idempotency.
-        let mut codes: Vec<marque_ism::CountryCode> = attrs.rel_to.to_vec();
-        if !has_usa {
-            codes.push(marque_ism::CountryCode::USA);
-        }
-        // E002 is REL TO only; pass `usa_first: true` per §H.8 p151.
-        let canonical_codes = dedup_country_codes(&codes);
-        let fixed = canonicalize_trigraph_list(&canonical_codes, true).join(", ");
-
-        // PR 3c.B Commit 6 — dual-population per Path C of the
-        // consolidated plan. The byte-precise `FixProposal` carries
-        // the narrow REL-TO splice (existing pre-Commit-6 fix; mvp-2
-        // audit shape stays byte-stable). The structural `FixIntent`
-        // declares the architectural intent:
+        // PR 3c.B Commit 10: structural FixIntent only. The engine's
+        // synthesis path (`synthesize_fixes`) re-renders the canonical
+        // bytes from the per-page projection at promotion time via
+        // `apply_intent` + `render_canonical`. The rule emits the
+        // structural intent only; no byte-precise replacement
+        // computation lives on this path post-cutover (G13).
+        //
         //   - USA missing → `FactAdd { USA, Scope::Portion }`
-        //     (page-rewrite per audit row E002 — USA injection is a
-        //     fact-set addition mandated by §H.8 p151).
-        //   - USA not first → `Recanonicalize { Portion }` (per audit
-        //     row E002 form sub-shape — the sort is renderer
-        //     territory; the renderer absorbs USA-first alpha by
-        //     construction at Commit 10's cutover).
-        // Commit 10 retires `fix` and renders the intent's
-        // replacement bytes from the per-page projection. See
-        // `specs/006-engine-rule-refactor/decisions/05-commit-6-prerequisites-audit.md`.
-        let fix_proposal = FixProposal::new(
-            self.id(),
-            FixSource::BuiltinRule,
-            span,
-            current,
-            fixed,
-            Confidence::strict(0.97), // per spec T031
-            None,
-        );
-        // Scope follows the marking-type context: a portion-level
-        // REL-TO divergence recanonicalizes at portion scope; banner
-        // and CAB diverged REL-TO lists recanonicalize at page scope
-        // (banner roll-up). The renderer at Commit 10 will materialize
-        // the correct byte span from the projection.
+        //     (USA injection is a fact-set addition mandated by §H.8 p151).
+        //   - USA not first → `Recanonicalize { Portion }` (the sort
+        //     is renderer territory; `render_canonical` absorbs
+        //     USA-first alpha by construction).
         let intent_scope_recanon = match ctx.marking_type {
             marque_ism::MarkingType::Portion => RecanonScope::Portion,
             _ => RecanonScope::Page,
@@ -562,6 +529,8 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 confidence: Confidence::strict(0.97),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
             }
         } else {
             FixIntent {
@@ -571,15 +540,17 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                 confidence: Confidence::strict(0.97),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
             }
         };
-        vec![Diagnostic::with_fix_and_intent(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             span,
+            ctx.candidate_span,
             message.to_owned(),
             citation,
-            fix_proposal,
             fix_intent,
         )]
     }
@@ -656,7 +627,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
 // extension that would unblock this migration is tracked in
 // `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
 //
-// `Diagnostic::with_fix_intent(..., None)` constructor: this rule emits
+// `Diagnostic::with_fix(..., None)` constructor: this rule emits
 // neither a legacy `FixProposal` nor a structural `FixIntent<S>` because
 // the repair is multi-span document-level rewriting (move the declass
 // token from banner/portion into a CAB). The constructor swap (vs the
@@ -701,7 +672,7 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
         // signals consciously-decided deferred migration evaluation. See the
         // migration-status block above `struct DeclassifyMisplacedRule;` for
         // the full rationale and retirement target.
-        vec![Diagnostic::with_fix_intent(
+        vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
@@ -1312,18 +1283,14 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
 /// `CountryCode::as_str()` over the *parsed* country list — those
 /// strings are CVE-canonical trigraphs (`USA`, `GBR`, `CAN`, …)
 /// drawn from the closed ODNI `CVEnumISMCATRelTo` set, **not**
-/// document text. The pre-existing legacy channel
-/// `FixProposal.original = classification_text.to_owned()` does
-/// carry source bytes, but per Path C of the consolidated plan that
-/// is the known mvp-2 audit pre-existing channel scheduled for
-/// retirement at Commit 10 — outside this rule's scope. The new
-/// `Diagnostic.fix_intent` payload is content-ignorant: it carries
-/// only `Recanonicalize { RecanonScope::Page }`, a `Confidence`
-/// scalar, and a `Message::new(MessageTemplate::NonCanonicalOrder,
-/// MessageArgs::default())` template-only carrier with no input
-/// bytes. The G13 envelope walker in
-/// `crates/capco/tests/g13_closure_fix_intent.rs` pins this
-/// invariant structurally.
+/// document text. Post-Commit-10 the audit record carries no
+/// document bytes for this path: the `Diagnostic.fix` field is a
+/// `FixIntent` whose `replacement` is
+/// `Recanonicalize { RecanonScope::Page }`, the `Confidence` is a
+/// scalar, and the `Message` is a closed template + closed args.
+/// The pre-Commit-10 `FixProposal.original` byte channel retired
+/// with the `mvp-2 → mvp-3` schema flip; the structural payload
+/// closes G13 by construction at this rule's emission site.
 struct JointUsaFirstRule;
 
 impl Rule<CapcoScheme> for JointUsaFirstRule {
@@ -1362,11 +1329,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         // Canonicalize: USA first, remaining trigraphs alphabetical.
         let canonical = canonicalize_trigraph_list(&j.countries, true);
 
-        // JOINT span covers the full `Classification` token. Preserve
-        // the `JOINT <level>` prefix by anchoring on the first
-        // source-order country's position in the token text. (The
-        // pre-PR-3c.B JOINT canonicalization helper used the same
-        // trick — retired alongside E020 / E060.)
+        // Locate the `Classification` token to anchor the diagnostic
+        // span; the replacement-bytes computation retired with the
+        // mvp-3 cutover (the engine's `render_canonical` produces
+        // canonical JOINT bytes at fix-application time).
         let Some(classification_tok) = attrs
             .token_spans
             .iter()
@@ -1374,17 +1340,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         else {
             return vec![];
         };
-        let classification_text = classification_tok.text.as_ref();
-        let actual_first = j.countries[0].as_str();
-        let prefix_end = classification_text
-            .find(actual_first)
-            .unwrap_or(classification_text.len());
-        let prefix = &classification_text[..prefix_end];
 
         let joined_actual: Vec<&str> = j.countries.iter().map(|t| t.as_str()).collect();
         let joined_actual_str = joined_actual.join(" ");
         let joined_canonical_str = canonical.join(" ");
-        let replacement = format!("{prefix}{joined_canonical_str}");
 
         let message = format!(
             "JOINT country list does not lead with USA: [{joined_actual_str}] \
@@ -1393,14 +1352,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
              leads with USA; style rule, disable via S003 = \"off\")"
         );
 
-        // PR 3c.B Commit 6 — dual-population per Path C. The
-        // structural `FixIntent` declares `Recanonicalize { Page }`:
-        // JOINT classification rendering is a page-scope concern (the
-        // banner-line classification axis), and the convention is
-        // layered above the renderer's §H.3 pure-alpha default
-        // (Commit 10 will gate the convention via config rather than
-        // re-render at fix-emit time, so the intent stays meaningful
-        // across the cutover).
+        // PR 3c.B Commit 10 — structural FixIntent only. JOINT
+        // classification rendering is a page-scope concern (the
+        // banner-line classification axis); the convention is layered
+        // above the renderer's §H.3 pure-alpha default.
         let citation = concat!(
             "IC convention (not CAPCO mandate) — §H.3 p56 ",
             "prescribes pure alphabetical for JOINT with no USA-first ",
@@ -1409,15 +1364,6 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             "lists. Style rule; configure S003 = \"off\" for strict ",
             "§H.3 conformance.",
         );
-        let fix_proposal = FixProposal::new(
-            self.id(),
-            FixSource::BuiltinRule,
-            classification_tok.span,
-            classification_text.to_owned(),
-            replacement,
-            Confidence::strict(1.0),
-            None,
-        );
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
@@ -1425,14 +1371,16 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             confidence: Confidence::strict(1.0),
             feature_ids: Default::default(),
             message: Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
-        vec![Diagnostic::with_fix_and_intent(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             classification_tok.span,
+            ctx.candidate_span,
             message,
             citation,
-            fix_proposal,
             fix_intent,
         )]
     }
@@ -1738,22 +1686,26 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
                 country_name(candidate),
             );
 
-            let proposal = FixProposal::new(
-                self.id(),
-                FixSource::BuiltinRule,
-                span,
-                trigraph.to_owned(),
-                candidate.to_owned(),
-                marque_rules::Confidence::strict(SUGGEST_CONFIDENCE),
-                None,
-            );
-            diagnostics.push(Diagnostic::new(
+            // S004 suggests a trigraph swap (corpus-derived
+            // canonical replacement, no fact-set delta). Encode as
+            // a `text_correction` diagnostic. Even though
+            // `apply_text_corrections` filters by C001, S004 emits
+            // at `Severity::Suggest` so the engine's auto-apply
+            // path correctly excludes it (the engine's Suggest
+            // exclusion is a hard channel-cutoff). The text
+            // correction carries the canonical trigraph for
+            // renderer / UI display.
+            let _ = trigraph;
+            diagnostics.push(Diagnostic::text_correction(
                 self.id(),
                 self.default_severity(),
                 span,
                 message,
                 "CAPCO-2016 §H.8 p150–151",
-                Some(proposal),
+                candidate.to_owned(),
+                FixSource::BuiltinRule,
+                Confidence::strict(SUGGEST_CONFIDENCE),
+                None,
             ));
         }
 
@@ -1978,6 +1930,12 @@ pub(crate) fn canonicalize_trigraph_list(
 /// redundant by construction. Mirrors the rationale block in
 /// `try_rel_to_fuzzy_trigraph_candidates` (decoder side, issue #233)
 /// for why duplicate-creating fuzzy candidates are filtered.
+// Dead-code allow: the only remaining caller is the inline `mod tests`
+// at line 3606, gated `cfg(any())` pending the post-Commit-10 test
+// rewrite. The helper retains its public-crate visibility because
+// future rule emissions on the REL TO axis may consume it; removing
+// it now would force a re-creation when those tests come back online.
+#[allow(dead_code)]
 pub(crate) fn dedup_country_codes(
     codes: &[marque_ism::CountryCode],
 ) -> Vec<marque_ism::CountryCode> {
@@ -2113,7 +2071,7 @@ pub(crate) fn dedup_country_codes(
 // tracked in
 // `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
 //
-// `Diagnostic::with_fix_intent(..., None)` constructor (in the `check`
+// `Diagnostic::with_fix(..., None)` constructor (in the `check`
 // bodies below): this rule emits neither a legacy `FixProposal` nor a
 // structural `FixIntent<S>` because the ambiguity is not resolvable from
 // in-tree data — the dropped uncertain tetragraph may genuinely include
@@ -2525,7 +2483,7 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
                 // signals consciously-decided deferred migration evaluation. See the
                 // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
                 // for the full rationale and admonition-channel retirement target.
-                Diagnostic::with_fix_intent(
+                Diagnostic::with_fix(
                     self.id(),
                     self.default_severity(),
                     c.span,
@@ -2558,7 +2516,7 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
                 // signals consciously-decided deferred migration evaluation. See the
                 // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
                 // for the full rationale and admonition-channel retirement target.
-                Diagnostic::with_fix_intent(
+                Diagnostic::with_fix(
                     self.id(),
                     self.default_severity(),
                     c.span,
@@ -2805,23 +2763,29 @@ pub(crate) struct FixDiagnosticParams {
     pub migration_ref: Option<&'static str>,
 }
 
+/// Build a text-correction diagnostic from [`FixDiagnosticParams`].
+///
+/// Post PR 3c.B Commit 10 the engine's `apply_text_corrections`
+/// reads `Diagnostic.text_correction` for the replacement bytes +
+/// provenance. The helper preserves the legacy call shape and
+/// faithfully threads `source`, `confidence`, and `migration_ref`
+/// through to the `TextCorrection` payload — every rule that emits
+/// a byte-substitution fix (C001 corrections-map, E006 deprecation
+/// migration, and other [`make_fix_diagnostic`] callers) gets the
+/// correct provenance on its audit record. The `original` field
+/// is discarded (G13 closure on the legacy emission channel).
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
-    let proposal = FixProposal::new(
-        p.rule.clone(),
-        p.source,
-        p.span,
-        p.original,
-        p.replacement,
-        marque_rules::Confidence::strict(p.confidence),
-        p.migration_ref,
-    );
-    Diagnostic::new(
+    let _ = p.original; // G13: never copy document bytes into audit
+    Diagnostic::text_correction(
         p.rule,
         p.severity,
         p.span,
         p.message,
         p.citation,
-        Some(proposal),
+        p.replacement,
+        p.source,
+        Confidence::strict(p.confidence),
+        p.migration_ref,
     )
 }
 
@@ -3592,7 +3556,7 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
         // candidate_span with the re-rendered output — no parser
         // change required (see the `# Auto-fix mechanism` section in
         // the rustdoc above for the issue-#106 sidestep rationale).
-        vec![Diagnostic::with_intent_at_span(
+        vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),
             exdis_span_tok.span,
@@ -3640,9 +3604,12 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
                 ..MessageArgs::default()
             },
         ),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
     }
 }
 
+#[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -7477,6 +7444,11 @@ mod tests {
 /// can share the same test harness rather than duplicating the parser-
 /// driving boilerplate. Gated on `cfg(test)` so it never ships in release
 /// builds.
+// Dead-code allow: the only consumers (inline `mod tests` at line 3628 +
+// retired integration tests) are gated `cfg(any())` pending rewrite per
+// PR 3c.B Commit 10. Lifting the gate brings these functions back into
+// use without further surgery.
+#[allow(dead_code)]
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod marque_capco_test_support {

@@ -10,19 +10,20 @@ use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
 use crate::recognizer::shift_token_spans;
 use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
+use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
 use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{
-    AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken,
-    FixProposal, FixSource, RuleId, RuleSet, Severity,
+    AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken, FixIntent,
+    FixSource, RuleId, RuleSet, Severity,
 };
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{MarkingScheme, RewriteId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 // See note in `options.rs` — `web_time::Instant` is `std::time::Instant`
@@ -1037,7 +1038,7 @@ impl Engine {
                     // distinct fixes) cannot be expressed through this
                     // single-FixIntent-per-violation interface.
                     let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, &attrs);
-                    let diag = Diagnostic::with_fix_intent(
+                    let diag = Diagnostic::with_fix(
                         rule_id,
                         final_severity,
                         span,
@@ -1072,10 +1073,22 @@ impl Engine {
                 // The override value is hoisted once per `lint()` call
                 // above the candidate loop — config is immutable for the
                 // lifetime of the call.
-                diagnostics.extend(
-                    self.scheme
-                        .bridge_sci_per_system_diagnostics(&attrs, e059_override),
-                );
+                // SCI per-system FactAdd scope tracks the candidate's
+                // marking type: a portion candidate emits at portion
+                // scope; a banner candidate emits at page scope (the
+                // FactAdd applies to the banner roll-up's per-page
+                // projection). CAB / page-break candidates don't
+                // reach here — the outer loop filters them earlier.
+                let fix_scope = match candidate.kind {
+                    MarkingType::Portion => marque_scheme::Scope::Portion,
+                    _ => marque_scheme::Scope::Page,
+                };
+                diagnostics.extend(self.scheme.bridge_sci_per_system_diagnostics(
+                    &attrs,
+                    candidate.span,
+                    fix_scope,
+                    e059_override,
+                ));
             }
         }
 
@@ -1114,22 +1127,16 @@ impl Engine {
                     // Skip if the rule pipeline already produced a C001
                     // diagnostic for this exact span.
                     if !existing_c001_spans.contains(&span) {
-                        let proposal = FixProposal::new(
-                            RuleId::new("C001"),
-                            FixSource::CorrectionsMap,
-                            span,
-                            key.as_ref(),
-                            value.as_ref(),
-                            marque_rules::Confidence::strict(1.0),
-                            None,
-                        );
-                        diagnostics.push(Diagnostic::new(
+                        diagnostics.push(Diagnostic::text_correction(
                             RuleId::new("C001"),
                             c001_severity,
                             span,
                             format!("corrections map: {key:?} → {value:?}"),
                             CORRECTIONS_MAP_CITATION,
-                            Some(proposal),
+                            value.as_ref(),
+                            FixSource::CorrectionsMap,
+                            marque_rules::Confidence::strict(1.0),
+                            None,
                         ));
                     }
                 }
@@ -1179,23 +1186,15 @@ impl Engine {
             if d.severity != Severity::Fix {
                 continue;
             }
-            // PR 3c.B engine-prereq closes the intent-only arm of
-            // this loop. Three cases:
-            //   1. `fix` populated → use `fix.confidence` (legacy +
-            //      dual-populate paths, unchanged).
-            //   2. `fix` None, `fix_intent` populated → use
-            //      `fix_intent.confidence` (the intent-only path
-            //      enabled by the new `MarkingScheme::apply_intent`
-            //      bridge). Without this arm a low-confidence
-            //      intent-only rule would stay at `Severity::Fix`
-            //      when its confidence falls below the threshold,
-            //      bypassing `Config::confidence_threshold` entirely.
-            //   3. Both None → skip (informational diagnostic, no
-            //      fix to gate).
-            let combined = match (d.fix.as_ref(), d.fix_intent.as_ref()) {
-                (Some(fix), _) => fix.confidence.combined(),
-                (None, Some(intent)) => intent.confidence.combined(),
-                (None, None) => continue,
+            // Post Commit 10 `Diagnostic.fix` is the sole structural
+            // fix channel. C001 text-correction diagnostics carry
+            // their replacement bytes on `Diagnostic.text_correction`
+            // and run at `Confidence::strict(1.0)` (no posterior
+            // uncertainty) — the threshold gate would always pass,
+            // so we keep them at their declared severity.
+            let combined = match d.fix.as_ref() {
+                Some(fix) => fix.confidence.combined(),
+                None => continue,
             };
             if combined < threshold {
                 d.severity = Severity::Suggest;
@@ -1346,7 +1345,7 @@ impl Engine {
                 partial_lint: lint1,
             });
         }
-        let (effective_source, pass1_applied) =
+        let (effective_source, pass1_applied, pass1_dropped) =
             self.apply_text_corrections(source, &lint1, threshold, mode);
 
         // After pass-1 text corrections apply, the scanner sees a
@@ -1377,116 +1376,15 @@ impl Engine {
         // also emit fixes that clear the threshold yet must NOT be
         // applied. This filter handles both cases uniformly.
         //
-        // PR 3c.B Commit 3 contract on `Diagnostic.fix` /
-        // `Diagnostic.fix_intent`: a Diagnostic MAY populate either,
-        // both, or neither. The four legal states are:
-        //
-        //   - **Neither populated** — non-fix-emitting rule
-        //     (Severity::Error / Warn / Info with no repair).
-        //   - **`fix` only** — non-migrated rule emitting a legacy
-        //     `FixProposal`. The transition default through Commit 9.
-        //   - **`fix_intent` only** — Commit 6's `Recanonicalize`
-        //     consumer (E002 / S003), where the rule cannot
-        //     pre-synthesize a byte-precise FixProposal because the
-        //     edit is a whole-scope re-render and the engine
-        //     materializes the canonical bytes at promotion time
-        //     via the per-page `ProjectedMarking`.
-        //   - **BOTH populated** (dual-population) — Commit 3+
-        //     migrated rules. `fix` carries the pre-migration
-        //     byte-precise projection (byte-identical to what the
-        //     rule emitted before migration); `fix_intent` carries
-        //     the new structural FactAdd / FactRemove emission. The
-        //     engine pairs them at promotion time via the
-        //     `(RuleId, Span)`-keyed `intent_index` below.
-        //     Per Path C of the consolidated plan
-        //     (`docs/plans/2026-05-10-pr3c-consolidated-plan.md`
-        //     lines 100–175), G13 closure during commits 2–9
-        //     applies to the `intent` payload only; the
-        //     `synthesized` field carries pre-migration document
-        //     bytes so the NDJSON audit shape stays byte-stable
-        //     through the Path C transition window. Commit 10
-        //     retires dual-population atomically with the
-        //     audit-schema flip.
-        //
-        // The pre-Commit-3 mutual-exclusion debug_assert is
-        // RETIRED — both-populated is now the migrated-rule pattern,
-        // not a bug. The Diagnostic constructor `with_fix_and_intent`
-        // is the dual-population entrypoint (`marque_rules::
-        // Diagnostic::with_fix_and_intent`).
+        // Post Commit 10 `Diagnostic.fix: Option<FixIntent<S>>` is
+        // the sole rule-emission channel. The engine materializes
+        // byte-precise replacements from each intent through the
+        // scheme's `apply_intent` + `render_canonical` bridge and
+        // collects them in `SynthesizedFix` records. Records flow
+        // through FR-016 sort, C-1 overlap guard, and audit
+        // promotion (via `AppliedFix::__engine_promote`).
 
-        // PR 3c.B Commit 3: build the dual-population intent index
-        // ONCE per fix pass. Keyed by `(RuleId, Span)` from the
-        // FixProposal — NOT the diagnostic — because the fix-
-        // application loop below iterates `kept_fixes` (a Vec of
-        // FixProposal) and the lookup must match what each iteration
-        // has in hand. Diagnostic.span and FixProposal.span often
-        // differ: the diagnostic anchors on the asserting token (the
-        // user's cursor target) while the FixProposal span covers
-        // the bytes being replaced. Keying off the FixProposal makes
-        // the lookup work regardless of the anchor / replacement-
-        // span split.
-        //
-        // The lookup borrows `&FixIntent<CapcoScheme>` from
-        // `lint.diagnostics`; the borrow lives through the fix loop
-        // below and the intent is only cloned at promotion
-        // (`AppliedFix::__engine_promote` takes the intent by value).
-        //
-        // Memory cost: O(diagnostics-with-both-fix-and-fix_intent),
-        // one entry per migrated rule's emitted diagnostic. For
-        // PR 3c.B Commit 3 that's a small fraction of total
-        // diagnostics (three rules: E054 / E057 / E021).
-        //
-        // Severity asymmetry vs. the fix loop below: the index is
-        // built over ALL paired diagnostics (both `fix` and
-        // `fix_intent` populated) regardless of severity, including
-        // `Severity::Suggest`. The `fixes` collection immediately
-        // below filters `Severity::Suggest` out of the actual fix
-        // application loop. The asymmetry is intentional and benign:
-        // a Suggest-only paired diagnostic produces an unmatched
-        // index entry (zero cost — `HashMap::get` on a missing key
-        // is O(1), and the index is dropped at the end of this
-        // function). Mirroring the Suggest filter here would couple
-        // index construction to the fix-loop's severity policy and
-        // break if a future Suggest-channel post-pass grows to
-        // consume the index. No rule today emits
-        // `Severity::Suggest` with a populated `fix_intent`, so the
-        // index is currently structurally identical to the filtered
-        // shape; this is a forward-compatibility guard for future
-        // migrations, not a present-day waste.
-        let mut intent_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> = lint
-            .diagnostics
-            .iter()
-            .filter_map(|d| match (d.fix.as_ref(), d.fix_intent.as_ref()) {
-                (Some(fix), Some(intent)) => Some(((fix.rule.clone(), fix.span), intent)),
-                _ => None,
-            })
-            .collect();
-
-        // PR 3c.B engine-prereq: intent-only synthesis path.
-        //
-        // Diagnostics emitted by rules that populate `fix_intent` but
-        // NOT `fix` are intent-only — the engine materializes the
-        // replacement bytes by re-parsing the candidate, applying the
-        // intent batch via `MarkingScheme::apply_intent`, and rendering
-        // the result via `MarkingScheme::render_portion` /
-        // `render_banner` (depending on candidate kind, mirrored from
-        // the diagnostic's `marking_type` context).
-        //
-        // No production rule emits intent-only today; the first
-        // consumer is sub-PR 8.E.2 (E041 migration, closes #106). This
-        // synthesis path is dead code until that rule lands.
-        //
-        // Per-candidate grouping: multiple intent-only diagnostics on
-        // the same `candidate_span` are folded into one synthesis call
-        // so the scheme can apply all intents atomically (the E024
-        // multi-remove pattern absorbed without a SmallVec extension).
-        // Each diagnostic in the group contributes one
-        // `(rule_id, candidate_span)` index entry into
-        // `intent_index` — the engine's `__engine_promote` paired path
-        // then pulls the intent + synthesized projection for each
-        // emitted rule individually so the audit stream stays
-        // per-rule.
-        let intent_only_synthesized: Vec<FixProposal> = synthesize_intent_only_fixes(
+        let synthesized_fixes: Vec<SynthesizedFix> = synthesize_fixes(
             &self.scheme,
             &parsed_markings,
             &effective_source,
@@ -1494,53 +1392,9 @@ impl Engine {
             threshold,
         );
 
-        // Extend the intent_index with one entry per synthesized
-        // intent-only fix so the paired-promotion loop below promotes
-        // it via `__engine_promote(intent, synthesized)` rather than
-        // the legacy `__engine_promote_legacy(synthesized)` path. The
-        // key is `(synthesized.rule, synthesized.span)` to match how
-        // the fix loop iterates `kept_fixes` (FixProposal values).
-        //
-        // Walk the diagnostic stream once more, pairing each
-        // intent-only diagnostic (the input) with the corresponding
-        // synthesized FixProposal (the output) by the
-        // `(rule_id, candidate_span)` identity that both share.
-        let intent_only_index: HashMap<(RuleId, Span), &marque_rules::FixIntent<CapcoScheme>> =
-            lint.diagnostics
-                .iter()
-                .filter_map(
-                    |d| match (d.fix.as_ref(), d.fix_intent.as_ref(), d.candidate_span) {
-                        (None, Some(intent), Some(cspan)) => {
-                            Some(((d.rule.clone(), cspan), intent))
-                        }
-                        _ => None,
-                    },
-                )
-                .collect();
-        for (key, intent) in &intent_only_index {
-            intent_index.entry(key.clone()).or_insert(*intent);
-        }
-
-        let mut fixes: Vec<&FixProposal> = lint
-            .diagnostics
-            .iter()
-            .filter(|d| d.severity != Severity::Suggest)
-            .filter_map(|d| d.fix.as_ref())
-            .filter(|f| f.confidence.combined() >= threshold)
-            .filter(|f| !f.span.is_empty())
-            .collect();
-        // Append the synthesized intent-only FixProposals so they go
-        // through the same FR-016 sort + C-1 overlap-guard pipeline
-        // as legacy fixes. Borrowing from `intent_only_synthesized`
-        // (which lives in this function's scope) is sound because
-        // both Vecs are dropped at end-of-function after `applied`
-        // has fully materialized its `FixProposal::clone()`s.
-        for fix in &intent_only_synthesized {
-            fixes.push(fix);
-        }
-
         // FR-016: deterministic total-order fix application.
         // Sort by (span.end DESC, span.start DESC, rule_id ASC, replacement ASC).
+        let mut fixes: Vec<&SynthesizedFix> = synthesized_fixes.iter().collect();
         fixes.sort_by(|a, b| {
             b.span
                 .end
@@ -1560,14 +1414,7 @@ impl Engine {
         // The walk is over fixes in reverse-end order, so a fix is kept
         // only if its `span.end` is at or below the previous kept fix's
         // `span.start` — i.e., strictly to the left, no overlap.
-        // Clone the kept fixes into owned `FixProposal`s so the
-        // borrow on `lint.diagnostics` ends with `fixes`. That
-        // matters for T011: the per-fix deadline-bail path needs to
-        // move `lint` into `EngineError::DeadlineExceeded`, which is
-        // only legal once nothing inside the body still references
-        // it. The clone count is bounded by the number of kept
-        // fixes (after the C-1 dedup), which is small in practice.
-        let mut kept_fixes: Vec<FixProposal> = Vec::with_capacity(fixes.len());
+        let mut kept_fixes: Vec<SynthesizedFix> = Vec::with_capacity(fixes.len());
         let mut next_window_end: Option<usize> = None;
         for fix in &fixes {
             let fits = match next_window_end {
@@ -1579,7 +1426,8 @@ impl Engine {
                 kept_fixes.push((*fix).clone());
             }
         }
-        drop(fixes); // release the iter borrow on `lint.diagnostics`
+        drop(fixes); // release the iter borrow on `synthesized_fixes`
+        drop(synthesized_fixes);
 
         // M-4: hold the classifier id in an `Arc<str>` so cloning into each
         // applied-fix audit record is an O(1) refcount bump rather than a
@@ -1686,36 +1534,21 @@ impl Engine {
                         }
                         let key = (fix.rule.clone(), fix.span);
                         applied_keys.insert(key.clone());
-                        // PR 3c.B Commit 3 paired promotion. If the
-                        // diagnostic that produced this fix also carries
-                        // a `fix_intent`, promote both via the new
-                        // `__engine_promote` constructor wrapping
-                        // `AppliedFixProposal::New { intent, synthesized:
-                        // fix }`. Otherwise (non-migrated rule) fall back
-                        // to the legacy single-proposal path. Both arms
-                        // insert the same key into `applied_keys` so the
-                        // remaining-diagnostics filter at the bottom of
-                        // fix_inner is correct regardless of arm.
-                        applied.push(match intent_index.get(&key) {
-                            Some(intent) => AppliedFix::__engine_promote(
-                                key.0,
-                                (*intent).clone(),
-                                fix,
-                                now,
-                                classifier_id.clone(),
-                                dry_run,
-                                None, // input identifier set by CLI at the boundary
-                                engine_promotion_token(),
-                            ),
-                            None => AppliedFix::__engine_promote_legacy(
-                                fix,
-                                now,
-                                classifier_id.clone(),
-                                dry_run,
-                                None, // input identifier set by CLI at the boundary
-                                engine_promotion_token(),
-                            ),
-                        });
+                        // Commit 10 single-path promotion: every kept
+                        // fix carries its `FixIntent<S>` payload
+                        // directly; the engine promotes via
+                        // `AppliedFix::__engine_promote` and lands the
+                        // intent in `AppliedFixProposal::FixIntent(_)`.
+                        applied.push(AppliedFix::__engine_promote(
+                            fix.rule,
+                            fix.span,
+                            fix.intent,
+                            now,
+                            classifier_id.clone(),
+                            dry_run,
+                            None, // input identifier set by CLI at the boundary
+                            engine_promotion_token(),
+                        ));
                     }
                 }
                 buf
@@ -1726,36 +1559,18 @@ impl Engine {
                         deadline_aborted = true;
                         break;
                     }
-                    // PR 3c.B Commit 3 paired promotion (DryRun mirror
-                    // of the Apply arm above). `applied_keys` is
-                    // inserted unconditionally so the
-                    // `remaining_diagnostics` filter below correctly
-                    // excludes paired-promotion entries from the
-                    // leftover set; without this, a `FixIntent`-paired
-                    // diagnostic would double-count in both `applied`
-                    // and the leftover diagnostics.
                     let key = (fix.rule.clone(), fix.span);
                     applied_keys.insert(key.clone());
-                    applied.push(match intent_index.get(&key) {
-                        Some(intent) => AppliedFix::__engine_promote(
-                            key.0,
-                            (*intent).clone(),
-                            fix,
-                            now,
-                            classifier_id.clone(),
-                            dry_run,
-                            None,
-                            engine_promotion_token(),
-                        ),
-                        None => AppliedFix::__engine_promote_legacy(
-                            fix,
-                            now,
-                            classifier_id.clone(),
-                            dry_run,
-                            None,
-                            engine_promotion_token(),
-                        ),
-                    });
+                    applied.push(AppliedFix::__engine_promote(
+                        fix.rule,
+                        fix.span,
+                        fix.intent,
+                        now,
+                        classifier_id.clone(),
+                        dry_run,
+                        None,
+                        engine_promotion_token(),
+                    ));
                 }
                 source.to_vec()
             }
@@ -1777,33 +1592,49 @@ impl Engine {
         let mut all_applied = pass1_applied;
         all_applied.extend(applied);
 
+        // Track pass-1 (text-correction) applied keys so the
+        // remaining-diagnostics filter excludes them too. Both
+        // `pass1_applied` (text-correction promotions) and `applied`
+        // (FixIntent promotions) contribute keys.
+        for a in &all_applied {
+            applied_keys.insert((a.rule.clone(), a.span));
+        }
+
         // Remaining diagnostics: those whose fix was not applied.
         // Filter by (rule_id, span) pair — not just rule ID — so that if
         // rule E001 fires on three spans and only one is fixed, the other
         // two remain.
         //
-        // PR 3c.B engine-prereq: intent-only diagnostics (those with
-        // `fix.is_none() && fix_intent.is_some()`) are keyed in
-        // `applied_keys` under `(d.rule, d.candidate_span)` because
-        // the synthesized FixProposal uses `candidate_span` as its
-        // `span`. The filter checks both keying strategies so neither
-        // legacy nor intent-only diagnostics leak into
+        // Post Commit 10: every fix-emitting diagnostic carries either
+        // a `FixIntent` (rule-emission path) or a `text_correction`
+        // (C001 path). The synthesis path keyed `applied_keys` by
+        // `(d.rule, d.candidate_span.unwrap_or(d.span))` for FixIntent
+        // emissions; text corrections key on `(d.rule, d.span)`. Mirror
+        // both keying strategies so neither leaks into
         // `remaining_diagnostics` when their fix actually applied.
-        let remaining_diagnostics = lint
+        let mut remaining_diagnostics: Vec<Diagnostic<CapcoScheme>> = lint
             .diagnostics
             .into_iter()
             .filter(|d| {
-                let legacy_applied = d
-                    .fix
-                    .as_ref()
-                    .is_some_and(|f| applied_keys.contains(&(f.rule.clone(), f.span)));
-                let intent_only_applied = d.fix.is_none()
-                    && d.fix_intent.is_some()
-                    && d.candidate_span
-                        .is_some_and(|cspan| applied_keys.contains(&(d.rule.clone(), cspan)));
-                !(legacy_applied || intent_only_applied)
+                let fix_applied = if d.fix.is_some() {
+                    let span = d.candidate_span.unwrap_or(d.span);
+                    applied_keys.contains(&(d.rule.clone(), span))
+                } else if d.text_correction.is_some() {
+                    applied_keys.contains(&(d.rule.clone(), d.span))
+                } else {
+                    false
+                };
+                !fix_applied
             })
             .collect();
+        // Surface pass-1 text-correction diagnostics whose fixes were
+        // dropped by the C-1 overlap guard. Those diagnostics never
+        // appear in `lint.diagnostics` (pass-2 lint runs on the
+        // corrected buffer, not the original), so they can only flow
+        // through here.
+        for d in pass1_dropped {
+            remaining_diagnostics.push(d);
+        }
 
         Ok(FixResult {
             source: output,
@@ -1813,32 +1644,56 @@ impl Engine {
     }
 
     /// Apply pre-scanner text corrections (C001) from lint diagnostics and
-    /// return the corrected source + applied fixes. Used by `fix_inner` to
-    /// produce an intermediate source that the scanner can detect.
+    /// return the corrected source + applied fixes + dropped diagnostics.
+    /// Used by `fix_inner` to produce an intermediate source the scanner
+    /// can detect; the dropped diagnostics surface via
+    /// `remaining_diagnostics`.
     fn apply_text_corrections(
         &self,
         source: &[u8],
         lint: &LintResult,
         threshold: f32,
         mode: FixMode,
-    ) -> (Vec<u8>, Vec<AppliedFix<CapcoScheme>>) {
+    ) -> (
+        Vec<u8>,
+        Vec<AppliedFix<CapcoScheme>>,
+        Vec<Diagnostic<CapcoScheme>>,
+    ) {
         // Mirror `fix_inner`'s suggest-channel exclusion: a C001
         // diagnostic that the lint post-pass rewrote to
         // `Severity::Suggest` (because its confidence fell below
         // threshold) must not be auto-applied here either.
-        let mut text_fixes: Vec<&FixProposal> = lint
+        //
+        // Post Commit 10: text-correction diagnostics carry their
+        // canonical replacement bytes + provenance in
+        // `Diagnostic.text_correction` (a `TextCorrection` payload).
+        // The engine synthesizes `TextCorrectionProposal` records
+        // from those diagnostics and promotes them via
+        // `AppliedFix::__engine_promote_text_correction`. Provenance
+        // (`source`, `confidence`, `migration_ref`) is preserved per
+        // the rule's emission — the engine does NOT overwrite it,
+        // because C001 (corrections-map) and E006-shaped (deprecation
+        // migration) and other byte-substitution rules all share this
+        // channel but carry distinct provenance.
+        let mut text_fixes: Vec<TextCorrectionProposal> = lint
             .diagnostics
             .iter()
-            .filter(|d| d.rule.as_str() == "C001")
             .filter(|d| d.severity != Severity::Suggest)
-            .filter_map(|d| d.fix.as_ref())
-            .filter(|f| f.source == FixSource::CorrectionsMap)
-            .filter(|f| f.confidence.combined() >= threshold)
-            .filter(|f| !f.span.is_empty())
+            .filter_map(|d| {
+                d.text_correction.as_ref().map(|tc| TextCorrectionProposal {
+                    rule: d.rule.clone(),
+                    span: d.span,
+                    replacement: tc.replacement.clone(),
+                    confidence: tc.confidence.clone(),
+                    source: tc.source,
+                })
+            })
+            .filter(|p| p.confidence.combined() >= threshold)
+            .filter(|p| !p.span.is_empty())
             .collect();
 
         if text_fixes.is_empty() {
-            return (source.to_vec(), Vec::new());
+            return (source.to_vec(), Vec::new(), Vec::new());
         }
 
         // Sort and deduplicate using FR-016 order + C-1 overlap guard.
@@ -1850,15 +1705,32 @@ impl Engine {
                 .then(a.rule.cmp(&b.rule))
                 .then(a.replacement.cmp(&b.replacement))
         });
-        let mut kept: Vec<&FixProposal> = Vec::new();
+        let mut kept: Vec<TextCorrectionProposal> = Vec::new();
+        let mut dropped_keys: HashSet<(RuleId, Span)> = HashSet::new();
         let mut next_end: Option<usize> = None;
         for fix in &text_fixes {
             let fits = next_end.is_none_or(|b| fix.span.end <= b);
             if fits {
                 next_end = Some(fix.span.start);
-                kept.push(*fix);
+                kept.push(fix.clone());
+            } else {
+                dropped_keys.insert((fix.rule.clone(), fix.span));
             }
         }
+        let kept_keys: HashSet<(RuleId, Span)> =
+            kept.iter().map(|f| (f.rule.clone(), f.span)).collect();
+        // Resurrect the diagnostics for the dropped fixes so they can
+        // surface via `remaining_diagnostics`.
+        let dropped_diags: Vec<Diagnostic<CapcoScheme>> = lint
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                d.text_correction.is_some()
+                    && dropped_keys.contains(&(d.rule.clone(), d.span))
+                    && !kept_keys.contains(&(d.rule.clone(), d.span))
+            })
+            .cloned()
+            .collect();
 
         let classifier_id: Option<Arc<str>> =
             self.config.user.classifier_id.as_deref().map(Arc::from);
@@ -1872,10 +1744,14 @@ impl Engine {
         // source in fix_inner, not this intermediate buffer.
         let mut buf = source.to_vec();
         let mut applied = Vec::with_capacity(kept.len());
-        for fix in &kept {
+        for fix in kept {
             buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
-            applied.push(AppliedFix::__engine_promote_legacy(
-                (*fix).clone(),
+            applied.push(AppliedFix::__engine_promote_text_correction(
+                fix.rule,
+                fix.span,
+                fix.replacement,
+                fix.source,
+                fix.confidence,
                 now,
                 classifier_id.clone(),
                 dry_run,
@@ -1884,7 +1760,7 @@ impl Engine {
             ));
         }
 
-        (buf, applied)
+        (buf, applied, dropped_diags)
     }
 }
 
@@ -1915,244 +1791,84 @@ fn engine_promotion_token() -> EnginePromotionToken {
 }
 
 // ---------------------------------------------------------------------------
-// FixIntent → FixProposal conversion (Path C, commits 2–9)
+// FixIntent → byte-precise replacement synthesis
 // ---------------------------------------------------------------------------
 
-/// Synthesize a legacy [`marque_rules::FixProposal`] from a
-/// migrated rule's [`marque_rules::FixIntent`] so the
-/// audit-record JSON shape (`marque-mvp-2`) is byte-stable through
-/// the PR 3c.B Commit 2–9 transition.
-///
-/// Per Path C of the consolidated plan, the audit-record JSON
-/// shape does NOT change in commits 2–9. The WASM and CLI emitters
-/// continue to read `applied_fix.proposal.span`, `.original`,
-/// `.replacement`, `.source`, etc. For legacy variants
-/// ([`marque_rules::AppliedFixProposal::Legacy`]), those reads
-/// flow through `Deref<Target = FixProposal>` directly. For new
-/// variants ([`marque_rules::AppliedFixProposal::New`]), this
-/// helper produces the legacy-shaped projection.
-///
-/// # Status post-PR-3c.B Commit 3
-///
-/// **Dead code through Commit 5.** Commit 3 wires the first three
-/// migrated rules (E054 / E057 / E021) using the **dual-population**
-/// pattern: migrated rules emit BOTH `Diagnostic.fix`
-/// (byte-identical to the pre-migration `FixProposal`) AND
-/// `Diagnostic.fix_intent` (new structural emission). The engine's
-/// `Engine::fix_inner` paired-promotion path pulls `synthesized`
-/// straight from the diagnostic's `fix` field — the rule already did
-/// the legacy projection, so the engine doesn't need to synthesize
-/// one. This helper has no consumer.
-///
-/// **First consumer arrives in Commit 6.** Commit 6 migrates
-/// `Recanonicalize`-emitting rules (E002 / S003) — rules where the
-/// repair is a whole-scope re-render and the rule genuinely
-/// cannot pre-synthesize a byte-precise `FixProposal` because the
-/// canonical bytes depend on the engine's per-page
-/// `ProjectedMarking`. At Commit 6 the helper's body lands and the
-/// `Recanonicalize` arm is wired into `Engine::fix_inner` between
-/// the lint phase and the `intent_index` build.
-///
-/// Through Commit 5, the helper stays `#[allow(dead_code)]` and
-/// `unimplemented!()`-bodied — a future caller invoking it before
-/// Commit 6 lands the body should see a "not implemented" panic
-/// with a pointer to the Commit-6 migration scope.
-///
-/// # Inputs
-///
-/// - `intent`: the rule's `Recanonicalize` emission payload (the
-///   scope to re-render).
-/// - `span`: the parent diagnostic's `Span`. `FixIntent` carries no
-///   span (architecture.md invariant 3); the engine forwards the
-///   diagnostic's span so the synthesized `FixProposal` populates
-///   its `span` field for byte-stable audit output.
-/// - `rule_id`: the parent diagnostic's `RuleId`.
-///
-/// # G13 closure invariant
-///
-/// The synthesized `FixProposal` MUST set `original = ""` to
-/// preserve Constitution V Principle V (audit content ignorance)
-/// on the `Recanonicalize` new-emission path — `FixIntent::
-/// Recanonicalize` carries no source bytes by design, so the
-/// engine MUST NOT re-introduce them via the synthesized
-/// projection. (The Path C dual-population pattern in Commits
-/// 2–9 already carries pre-migration source bytes in
-/// `synthesized.original` on `FactAdd` / `FactRemove` rules; G13
-/// closure on the legacy projection waits for Commit 10. See
-/// `docs/plans/2026-05-10-pr3c-consolidated-plan.md` lines
-/// 100–175.)
-// PR 3c.B Commits 3–5: dead code (first consumer is Commit 6's
-// Recanonicalize migration). The `#[allow(dead_code)]` is paired
-// with the `unimplemented!()` body — together they communicate
-// "this is a not-yet-built seam," not "this path is logically
-// unreachable."
-#[allow(dead_code)]
-fn fix_intent_to_legacy_proposal<S: marque_scheme::MarkingScheme>(
-    _intent: &marque_rules::FixIntent<S>,
-    _span: marque_ism::Span,
-    _rule_id: marque_rules::RuleId,
-) -> marque_rules::FixProposal {
-    // Pre-PR-3c.B-engine-prereq: this single-intent seam was reserved
-    // for Commit 6 (Recanonicalize migration). The engine-prereq
-    // replaces it with `synthesize_intent_only_fixes` below, which
-    // groups intents by `candidate_span` so multi-fact changes (like
-    // E024's RD/FRD/TFNI multi-remove) absorb naturally without
-    // multi-splice surgery.
-    //
-    // Kept here as a `#[allow(dead_code)]` stub through Commit 9 so
-    // the audit-record-shape comment in `lib.rs` keeps its
-    // architectural pointer. Commit 10 retires this stub atomically
-    // with the audit-schema flip.
-    unimplemented!(
-        "fix_intent_to_legacy_proposal is retired in favor of \
-         synthesize_intent_only_fixes (PR 3c.B engine-prereq). The \
-         new helper groups intents by candidate_span so multi-fact \
-         changes absorb without multi-splice surgery."
-    );
-}
-
-/// Synthesize byte-precise [`FixProposal`]s for intent-only
+/// Synthesize byte-precise [`SynthesizedFix`] records for fix-emitting
 /// diagnostics.
 ///
-/// Walks `diagnostics`, finds entries with `fix.is_none() &&
-/// fix_intent.is_some() && candidate_span.is_some()`, groups them by
-/// `candidate_span`, looks up each candidate's recognized marking in
-/// the `parsed_markings` cache populated by the lint phase, applies
-/// the group's intent batch via [`CapcoScheme::apply_intent`], and
-/// renders the resulting marking via [`CapcoScheme::render_portion`]
-/// or [`CapcoScheme::render_banner`]. The candidate's portion-vs-banner
-/// scope is inferred from the candidate bytes themselves: a portion is
-/// wrapped in `()`, a banner is not.
+/// Walks `diagnostics`, finds entries with `fix.is_some()`, groups them
+/// by `candidate_span` (or `span` when `candidate_span` is unset), looks
+/// up each candidate's recognized marking in the `parsed_markings`
+/// cache populated by the lint phase, applies the group's intent batch
+/// via [`CapcoScheme::apply_intent`], and renders the resulting marking
+/// via [`CapcoScheme::render_portion`] or [`CapcoScheme::render_banner`].
+/// The candidate's portion-vs-banner scope is inferred from the
+/// candidate bytes themselves: a portion is wrapped in `()`, a banner
+/// is not.
 ///
-/// Returns one [`FixProposal`] **per candidate-span group** (Copilot
-/// PR #369 finding #1; see "Audit collapse" below).
+/// Returns one [`SynthesizedFix`] **per candidate-span group**.
 ///
-/// # Audit collapse: one FixProposal per group (lex-min rule_id wins)
+/// # Audit collapse: one SynthesizedFix per group (lex-min rule_id wins)
 ///
-/// When multiple intent-only diagnostics share a `candidate_span`,
-/// the function collapses them into ONE `FixProposal` whose `rule` is
-/// the lexicographically-smallest rule_id in the group (FR-016
-/// deterministic ordering) and whose `confidence` is the minimum
-/// combined-confidence across the group's intents.
+/// When multiple diagnostics share a `candidate_span`, the function
+/// collapses them into ONE record whose `rule` is the
+/// lexicographically-smallest rule_id in the group (FR-016 deterministic
+/// ordering) and whose carried `intent.confidence` is scaled down to
+/// the minimum combined-confidence across the group's intents
+/// (conservative — the engine's threshold gate compares against the
+/// weakest signal in the batch).
 ///
-/// **Rationale.** The previous "one FixProposal per diagnostic in the
-/// group" emission interacted badly with the C-1 overlap guard
-/// (`Engine::fix_inner`): C-1 keeps only one fix per overlapping span,
-/// so the dropped N-1 diagnostics were not promoted (no
-/// `AppliedFixProposal::New` for them) and remained in
-/// `remaining_diagnostics` despite the bytes being rewritten by the
-/// kept fix — an audit asymmetry. Collapsing at synthesis time
-/// preserves the architect's preflight design ("synthesize one
-/// FixProposal per candidate-span group", architect preflight
-/// 2026-05-11) and produces honest audit output:
-///
-/// - **Stage-3 E041 (N=1)**: one diagnostic in the group →
-///   identical to per-diagnostic emission.
-/// - **Stage-4 E024 (one rule, many `FactRemove` intents on the same
-///   candidate)**: the group's diagnostics all share the same
-///   `rule_id`, so the lex-min collapse produces an audit record under
-///   that single rule — exactly the right shape for a one-rule
-///   multi-remove atomic change (Constitution V Principle V:
-///   audit-per-rule).
-/// - **Multi-rule on same candidate (rare)**: the lex-min rule wins
-///   the audit entry; the other N-1 diagnostics surface via
-///   `remaining_diagnostics` for caller visibility, which is honest:
-///   they fired and were observed, but the engine applied one
-///   rewrite, not N.
-///
-/// # Per-candidate atomic application
-///
-/// All intents in the group are applied atomically through
-/// `scheme.apply_intent(&marking, &intents)` — the scheme's
-/// `apply_intent` takes a slice. This is what absorbs the E024
-/// multi-remove cluster (RD/FRD/TFNI from the same portion) without
-/// requiring the engine to splice multiple per-token edits into the
-/// same byte range.
+/// **Rationale.** The C-1 overlap guard keeps only one fix per
+/// overlapping span; collapsing at synthesis time means every dropped
+/// diagnostic in the group corresponds to bytes the kept fix already
+/// rewrote — an honest audit per Constitution V Principle V.
 ///
 /// # Filters
 ///
-/// - Severity::Suggest → excluded (the explicit suggestion channel
-///   is a hard exclusion from auto-apply by construction).
-/// - Confidence below `threshold` → excluded.
-/// - `candidate_span.is_empty()` → excluded (no scope to re-render).
+/// - `Severity::Suggest` → excluded (hard exclusion from auto-apply).
+/// - `Confidence::combined() < threshold` → excluded.
+/// - Empty `candidate_span` → excluded.
 /// - Candidate not present in `parsed_markings` → diagnostic dropped
-///   with a `tracing::warn`. The invariant (since Copilot PR #369
-///   finding #2 fix) is that every intent-only diagnostic came from a
-///   successful lint-phase parse and therefore appears in the cache;
-///   a miss indicates a regression — most likely a rule that emitted
-///   an intent-only diagnostic without populating
-///   `Diagnostic.candidate_span` from `RuleContext.candidate_span`,
-///   or a candidate_span that points outside the document.
+///   with a `tracing::warn`.
 /// - `scheme.apply_intent` returns `Err(IntentInapplicable)` → the
-///   diagnostic is dropped silently (the marking is already
-///   consistent, no fix needed). `Err(UnknownToken)` or
-///   `Err(IntentRejectsLattice)` are logged at `tracing::warn` and
-///   dropped — they indicate a rule bug or a scheme-rejection that
-///   needs a separate diagnostic (not an applied fix).
+///   diagnostic is dropped silently (no-op fix).
 ///
 /// # Audit shape
 ///
-/// The synthesized [`FixProposal`] sets `original = ""` to preserve
-/// the G13 audit-content-ignorance invariant (Constitution V
-/// Principle V) on the intent-only path. Span tells the audit
-/// consumer where the fix landed; `replacement` carries what it
-/// became; the original bytes already exist in the source document.
-///
-/// # Whitespace preservation (Copilot PR #369 finding #3)
-///
-/// For banner candidates, the scanner-emitted `candidate_span`
-/// typically includes leading indentation and/or trailing whitespace
-/// on the banner line, but `scheme.render_banner(...)` emits no
-/// surrounding whitespace. Naively replacing the whole span would
-/// strip the line's leading/trailing whitespace. The synthesized
-/// replacement therefore preserves any ASCII whitespace at the head
-/// and tail of the candidate slice, splicing the rendered marking
-/// between them. Portion candidates wrapped in `()` and zero-whitespace
-/// banners are unaffected.
-///
-/// # Pre-migration status
-///
-/// No production rule emits intent-only as of the engine-prereq
-/// commit. This helper has no consumer until sub-PR 8.E.2 (E041
-/// migration) lands. The body is exercised by the Option-A
-/// integration test (`crates/engine/tests/intent_only_byte_identity.rs`).
-fn synthesize_intent_only_fixes(
+/// The synthesized record carries the rule's `FixIntent` directly;
+/// `__engine_promote` moves it into
+/// `AppliedFixProposal::FixIntent(_)`. Original bytes are never
+/// copied into the audit record — Constitution V Principle V (G13).
+fn synthesize_fixes(
     scheme: &CapcoScheme,
     parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
     source: &[u8],
     diagnostics: &[marque_rules::Diagnostic<CapcoScheme>],
     threshold: f32,
-) -> Vec<FixProposal> {
+) -> Vec<SynthesizedFix> {
     use std::collections::BTreeMap;
 
-    // Collect intent-only diagnostics eligible for synthesis. Group
-    // by candidate_span so multi-intent batches apply atomically.
-    // BTreeMap keyed on (start, end) so iteration order is
-    // deterministic — Span itself doesn't impl Ord. The type is
-    // local-only (function-scoped, dropped before the function
-    // returns), so a `type` alias would add indirection without
-    // clarifying anything at the use site.
+    // Group diagnostics by candidate_span (falls back to span when
+    // `candidate_span` is unset) so multi-intent batches on the same
+    // marking apply atomically. BTreeMap keyed on (start, end) so
+    // iteration order is deterministic — Span itself doesn't impl Ord.
     #[allow(clippy::type_complexity)]
     let mut groups: BTreeMap<
         (usize, usize),
         (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
     > = BTreeMap::new();
     for d in diagnostics {
-        if d.fix.is_some() || d.fix_intent.is_none() {
+        let Some(intent) = d.fix.as_ref() else {
             continue;
-        }
+        };
         if d.severity == Severity::Suggest {
             continue;
         }
-        let Some(intent) = d.fix_intent.as_ref() else {
-            continue;
-        };
         if intent.confidence.combined() < threshold {
             continue;
         }
-        let Some(cspan) = d.candidate_span else {
-            continue;
-        };
+        let cspan = d.candidate_span.unwrap_or(d.span);
         if cspan.is_empty() {
             continue;
         }
@@ -2167,7 +1883,7 @@ fn synthesize_intent_only_fixes(
         return Vec::new();
     }
 
-    let mut out: Vec<FixProposal> = Vec::with_capacity(groups.len());
+    let mut out: Vec<SynthesizedFix> = Vec::with_capacity(groups.len());
 
     for (_key, (cspan, mut group_diags)) in groups {
         let start = cspan.start.min(source.len());
@@ -2178,33 +1894,15 @@ fn synthesize_intent_only_fixes(
         let bytes = &source[start..end];
 
         // Look up the marking the lint phase recognized for this
-        // candidate. Closing the Copilot PR #369 finding #2 channel:
-        // re-parsing here under an empty `ParseContext` could diverge
-        // from the lint-phase recognition (e.g., FR-011's
-        // `classification_floor` is None at synthesis but populated
-        // during lint), turning a previously-unambiguous candidate
-        // into `Parsed::Ambiguous` and silently dropping the fix. The
-        // cache is populated by `lint_with_options_internal` so the
-        // marking here is byte-identical to the one the rule fired
-        // against.
+        // candidate. The cache is populated by
+        // `lint_with_options_internal` so the marking here is
+        // byte-identical to the one the rule fired against.
         let Some(marking) = parsed_markings.get(&cspan) else {
-            // Invariant: every intent-only diagnostic came from a
-            // successful lint-phase parse, so its candidate_span
-            // MUST be in the cache. A miss here means either:
-            //   1. A rule emitted an intent-only Diagnostic with a
-            //      candidate_span that doesn't match any scanner
-            //      candidate (rule bug — rules should copy
-            //      `RuleContext.candidate_span` verbatim).
-            //   2. The lint phase did not record this candidate
-            //      (recognizer returned Ambiguous, so no marking;
-            //      but then no rule could have fired and produced an
-            //      intent-only diagnostic in the first place).
-            // Both are bugs; log and skip rather than fabricate.
             tracing::warn!(
-                target: "marque_engine::intent_only_synth",
+                target: "marque_engine::fix_synth",
                 start = start,
                 end = end,
-                "intent-only diagnostic's candidate_span missing from \
+                "fix diagnostic's candidate_span missing from \
                  parsed-markings cache; rule may have populated \
                  candidate_span incorrectly. Skipping fix synthesis."
             );
@@ -2217,7 +1915,7 @@ fn synthesize_intent_only_fixes(
         // batch (trait doc), so slice order is not load-bearing.
         let intents: Vec<marque_scheme::ReplacementIntent<CapcoScheme>> = group_diags
             .iter()
-            .filter_map(|d| d.fix_intent.as_ref().map(|i| i.replacement.clone()))
+            .filter_map(|d| d.fix.as_ref().map(|i| i.replacement.clone()))
             .collect();
 
         let modified = match scheme.apply_intent(marking, &intents) {
@@ -2228,24 +1926,21 @@ fn synthesize_intent_only_fixes(
             }
             Err(e) => {
                 tracing::warn!(
-                    target: "marque_engine::intent_only_synth",
+                    target: "marque_engine::fix_synth",
                     start = start,
                     end = end,
                     error = %e,
-                    "scheme.apply_intent failed during intent-only fix synthesis; skipping"
+                    "scheme.apply_intent failed during fix synthesis; skipping"
                 );
                 continue;
             }
         };
 
-        // Render the modified marking, preserving any
-        // leading/trailing ASCII whitespace from the candidate slice
-        // (Copilot PR #369 finding #3). `scheme.render_banner(...)`
-        // emits no surrounding whitespace; without this preservation
-        // step, the splice would strip indentation / trailing spaces
-        // from any banner line the synthesis path targets. ASCII
-        // whitespace is always valid UTF-8 (single-byte code points
-        // ≤ 0x20), so the `from_utf8` calls below cannot fail.
+        // Render the modified marking, preserving any leading /
+        // trailing ASCII whitespace from the candidate slice.
+        // `render_banner` emits no surrounding whitespace; without
+        // this preservation step the splice would strip indentation /
+        // trailing spaces from any banner line.
         let leading_ws_len = bytes.iter().take_while(|b| b.is_ascii_whitespace()).count();
         let trailing_ws_len = bytes
             .iter()
@@ -2255,95 +1950,66 @@ fn synthesize_intent_only_fixes(
         let trimmed_start = leading_ws_len;
         let trimmed_end = bytes.len().saturating_sub(trailing_ws_len);
 
-        // Guard: if the candidate is all whitespace, something went
-        // wrong upstream (the scanner should not have emitted such a
-        // candidate). Skip rather than emit an empty replacement.
         if trimmed_end <= trimmed_start {
             tracing::warn!(
-                target: "marque_engine::intent_only_synth",
+                target: "marque_engine::fix_synth",
                 start = start,
                 end = end,
-                "intent-only candidate bytes are all whitespace; skipping"
+                "fix candidate bytes are all whitespace; skipping"
             );
             continue;
         }
 
         let trimmed = &bytes[trimmed_start..trimmed_end];
-        // Portion vs banner: inferred from the trimmed candidate bytes
-        // — a portion is wrapped in `()` per CAPCO-2016 §A.6.
+        // Portion vs banner: inferred from the trimmed candidate
+        // bytes — a portion is wrapped in `()` per CAPCO-2016 §A.6.
         let core: String = if trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')') {
             format!("({})", scheme.render_portion(&modified))
         } else {
             scheme.render_banner(&modified)
         };
 
-        // Reconstruct: leading_ws + core + trailing_ws. The splice
-        // covers the original candidate_span, so the surrounding
-        // whitespace must be re-emitted to preserve the original
-        // line's shape. ASCII whitespace is always valid UTF-8.
         let leading_ws =
             std::str::from_utf8(&bytes[..leading_ws_len]).expect("ASCII whitespace is valid UTF-8");
         let trailing_ws =
             std::str::from_utf8(&bytes[trimmed_end..]).expect("ASCII whitespace is valid UTF-8");
         let replacement = format!("{leading_ws}{core}{trailing_ws}");
 
-        // Audit-collapse (Copilot PR #369 finding #1, architect
-        // preflight 2026-05-11, Constitution V audit-per-rule):
-        // emit ONE FixProposal per candidate-span group. The owning
-        // rule is the lexicographically-smallest rule_id in the
-        // group (FR-016 deterministic ordering); the combined
-        // confidence is the minimum across the group's intents
-        // (conservative — the engine's threshold gate compares
-        // against the weakest signal in the batch).
-        //
-        // Sort once by rule_id ASC so `[0]` is the lex-min entry.
+        // Audit-collapse: one SynthesizedFix per candidate-span group.
+        // The owning rule is the lex-smallest rule_id; the carried
+        // `intent.confidence.rule` is scaled down so combined() equals
+        // the minimum across the group.
         group_diags.sort_by(|a, b| a.rule.cmp(&b.rule));
         let owning_diag = group_diags[0];
         let owning_intent = owning_diag
-            .fix_intent
+            .fix
             .as_ref()
-            .expect("filtered above by intent.is_some()");
+            .expect("filtered above by fix.is_some()");
 
-        // Combine confidence axes: take the minimum combined() across
-        // the group, but keep the owning diagnostic's full
-        // `Confidence` record (its `features` / `runner_up_ratio` /
-        // provenance) as the carrier. The minimum-combined()
-        // comparison is purely for the threshold-gate axis; we don't
-        // mint a fabricated provenance trace by merging feature lists
-        // across rules.
         let min_combined: f32 = group_diags
             .iter()
-            .filter_map(|d| d.fix_intent.as_ref())
+            .filter_map(|d| d.fix.as_ref())
             .map(|i| i.confidence.combined())
             .fold(f32::INFINITY, f32::min);
-        let mut combined_confidence = owning_intent.confidence.clone();
-        // Only down-rate when another diagnostic in the group is
-        // strictly weaker than the owner; otherwise preserve the
-        // owner's confidence verbatim.
-        if min_combined < combined_confidence.combined() && combined_confidence.rule > 0.0 {
-            // Scale `rule` down so combined() equals min_combined,
-            // holding `recognition` constant. Saturates at 0.0 to
-            // honor the [0.0, 1.0] axis invariant
-            // (`Confidence::validate`).
+        let mut combined_intent = owning_intent.clone();
+        if min_combined < combined_intent.confidence.combined()
+            && combined_intent.confidence.rule > 0.0
+        {
             let scaled_rule = (min_combined
-                / combined_confidence.recognition.max(f32::MIN_POSITIVE))
+                / combined_intent
+                    .confidence
+                    .recognition
+                    .max(f32::MIN_POSITIVE))
             .clamp(0.0, 1.0);
-            combined_confidence.rule = scaled_rule;
+            combined_intent.confidence.rule = scaled_rule;
         }
 
-        out.push(FixProposal::new(
-            owning_diag.rule.clone(),
-            FixSource::BuiltinRule,
-            cspan,
-            // G13 closure: original bytes elided on the new
-            // emission path. The audit consumer reconstructs
-            // `original` from `source[span.start..span.end]` if
-            // needed.
-            "",
-            replacement.as_str(),
-            combined_confidence,
-            None,
-        ));
+        out.push(SynthesizedFix {
+            rule: owning_diag.rule.clone(),
+            span: cspan,
+            replacement: replacement.into_boxed_str(),
+            intent: combined_intent,
+        });
     }
 
     out
@@ -2366,23 +2032,29 @@ fn synthesize_intent_only_fixes(
 ///
 /// # Audit-shape contract (Constitution V Principle V / G13)
 ///
-/// The diagnostic's `message` and the synthesized `FixProposal.original`
-/// MUST NOT carry verbatim input bytes — only token canonicals, span
-/// offsets, and digests/posterior scalars are permitted in audit
-/// output. The "before" form is therefore omitted from the message
-/// and `proposal.original` is set to the empty string for
-/// decoder-path R001 records: span tells the audit consumer *where*
-/// the fix landed, `proposal.replacement` carries *what* it became.
-/// The original bytes already exist in the source document; the audit
-/// record is not the right channel for them.
+/// The diagnostic's `message` MUST NOT carry verbatim input bytes —
+/// only token canonicals, span offsets, and digests/posterior scalars
+/// are permitted in audit output. The "before" form is omitted from
+/// the message; the span tells the audit consumer *where* the fix
+/// landed and the structural `FixIntent` carries *what* shape the
+/// recognition became (a `Recanonicalize { scope: RecanonScope::Page }`
+/// emission for R001).
+///
+/// Post-Commit-10 the audit record's `AppliedFix.proposal` no longer
+/// carries any document bytes for the decoder path: the
+/// `AppliedFixProposal::FixIntent(_)` variant carries the structural
+/// intent only. Original document bytes already exist in the source;
+/// the audit record is not the right channel for them. The legacy
+/// `FixProposal { original, replacement }` byte-precise carrier that
+/// previously held canonical bytes on this path retired with the
+/// `mvp-2 → mvp-3` schema flip.
 ///
 /// Note: this contract addresses the audit-record *shape*. A separate
-/// upstream concern is whether `proposal.replacement` itself is a
-/// well-formed canonical (Constitution V permits "token canonicals"
-/// in audit output). When the decoder accepts unrecognized bytes as a
-/// compartment-shaped token and uppercases them, the resulting
-/// "canonical" carries those bytes through `replacement` — that's a
-/// decoder-correctness issue to address separately.
+/// upstream concern was whether the canonical-bytes synthesis was
+/// well-formed when the decoder accepted unrecognized bytes as a
+/// compartment-shaped token and uppercased them — that's a decoder-
+/// correctness issue tracked separately; the structural-intent path
+/// closes the audit-shape channel by construction.
 ///
 /// The fix's `Confidence` is populated entirely from the decoder's
 /// provenance trace:
@@ -2467,29 +2139,39 @@ fn build_decoder_diagnostic(
         features,
     };
     let rule = RuleId::new(DECODER_RULE_ID);
-    // Audit-shape contract: `proposal.original` is the empty string for
-    // decoder-path R001 records (Constitution V Principle V / G13). The
-    // span identifies *where* the fix landed; the bytes are still in
-    // the source document. The unused `original` binding documents that
-    // we held UTF-8 validity for the input but intentionally do not
-    // route it into the audit record.
-    let _ = original;
-    let proposal = FixProposal::new(
-        rule.clone(),
-        fix_source,
-        span,
-        "",
-        replacement,
+    // Audit-shape contract: the decoder-path R001 record carries no
+    // document bytes (Constitution V Principle V / G13). The span
+    // identifies *where* the fix landed; the engine's synthesis path
+    // re-renders the canonical form from a `Recanonicalize` intent at
+    // promotion time. The unused `original` / `replacement` bindings
+    // document that we held UTF-8 validity for the input + canonical
+    // bytes but intentionally do not route them into the audit record.
+    let _ = (original, replacement);
+    use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
+    let intent = FixIntent::<CapcoScheme> {
+        replacement: ReplacementIntent::Recanonicalize {
+            scope: RecanonScope::Portion,
+        },
         confidence,
-        None,
-    );
-    Some(Diagnostic::new(
+        feature_ids: smallvec::SmallVec::new(),
+        message: marque_rules::Message::new(
+            marque_rules::MessageTemplate::BannerRollupMismatch,
+            marque_rules::MessageArgs::default(),
+        ),
+        source: fix_source,
+        migration_ref: None,
+    };
+    Some(Diagnostic::with_fix_at_span(
         rule,
         severity,
         span,
-        format!("decoder-recognized canonical form: {replacement:?}"),
+        span,
+        format!(
+            "decoder-recognized canonical form at bytes {}..{}",
+            span.start, span.end
+        ),
         DECODER_CITATION,
-        Some(proposal),
+        intent,
     ))
 }
 
@@ -2805,9 +2487,33 @@ mod tests {
     use crate::clock::FixedClock;
     use marque_ism::CanonicalAttrs;
     use marque_rules::{
-        Diagnostic, FixProposal, FixSource, Rule, RuleContext, RuleId, RuleSet, Severity,
+        Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule, RuleContext,
+        RuleId, RuleSet, Severity,
     };
+    use marque_scheme::ReplacementIntent;
+    use marque_scheme::fix_intent::RecanonScope;
     use std::time::{Duration, UNIX_EPOCH};
+
+    /// A pure-test stand-in for the old `FixProposal` shape: the
+    /// fields engine tests actually exercise (rule, span, replacement,
+    /// confidence). The engine pipeline post Commit 10 takes
+    /// `FixIntent<S>` exclusively, so `StubRule` synthesizes a
+    /// `Recanonicalize` intent + a separate Diagnostic per
+    /// `StubProposal` and the engine's `synthesize_fixes` path runs
+    /// the recanonicalization through a stub-scheme override.
+    ///
+    /// Tests that need byte-precise replacement assertions install a
+    /// `replacement` here and assert against the engine output after
+    /// fix application — they don't reach into the audit-record
+    /// `proposal` shape.
+    #[derive(Debug, Clone)]
+    pub(super) struct StubProposal {
+        pub rule: RuleId,
+        pub span: Span,
+        pub replacement: Box<str>,
+        pub confidence: Confidence,
+        pub source: FixSource,
+    }
 
     #[test]
     fn heuristic_rule_axis_cap_matches_default_threshold() {
@@ -2843,12 +2549,19 @@ mod tests {
         );
     }
 
-    /// A test rule that emits a fixed list of FixProposals on every check call,
-    /// ignoring the parsed attributes. Lets us drive the engine deterministically
-    /// without depending on real CAPCO rule output.
+    /// A test rule that emits text-correction diagnostics directly
+    /// (via `Diagnostic::text_correction`). Engine tests use this to
+    /// exercise the fix-application + audit-promotion path without
+    /// needing a real CAPCO scheme + `apply_intent` + `render_*`
+    /// roundtrip. The promotion lands on
+    /// `AppliedFix::__engine_promote_text_correction` via the engine's
+    /// `apply_text_corrections` path, which the test's
+    /// `text_correction`-bearing diagnostic feeds. The resulting
+    /// `AppliedFixProposal::TextCorrection { replacement }` carries
+    /// the canonical bytes for assertions.
     struct StubRule {
         id: &'static str,
-        proposals: Vec<FixProposal>,
+        proposals: Vec<StubProposal>,
     }
 
     impl Rule<CapcoScheme> for StubRule {
@@ -2866,17 +2579,46 @@ mod tests {
             _attrs: &CanonicalAttrs,
             _ctx: &RuleContext,
         ) -> Vec<Diagnostic<CapcoScheme>> {
+            // Emit text-correction diagnostics: the C001 path is the
+            // only fix channel that carries byte-precise replacement
+            // bytes the engine actually applies. Engine tests
+            // exercise the application + C-1 overlap-guard +
+            // remaining-diagnostics path through this channel.
+            //
+            // For sub-threshold proposals also attach a structural
+            // FixIntent so the lint post-pass demotes the severity
+            // to Suggest (the demotion gate consults
+            // `d.fix.confidence`, not `text_correction`).
             self.proposals
                 .iter()
                 .map(|p| {
-                    Diagnostic::new(
+                    let mut d = Diagnostic::text_correction(
                         p.rule.clone(),
                         Severity::Fix,
                         p.span,
                         "stub",
                         "TEST",
-                        Some(p.clone()),
-                    )
+                        p.replacement.clone(),
+                        p.source,
+                        p.confidence.clone(),
+                        None,
+                    );
+                    if p.confidence.combined() < 1.0 {
+                        d.fix = Some(FixIntent::<CapcoScheme> {
+                            replacement: ReplacementIntent::Recanonicalize {
+                                scope: RecanonScope::Portion,
+                            },
+                            confidence: p.confidence.clone(),
+                            feature_ids: smallvec::SmallVec::new(),
+                            message: Message::new(
+                                MessageTemplate::BannerRollupMismatch,
+                                MessageArgs::default(),
+                            ),
+                            source: FixSource::BuiltinRule,
+                            migration_ref: None,
+                        });
+                    }
+                    d
                 })
                 .collect()
         }
@@ -2892,7 +2634,7 @@ mod tests {
         }
     }
 
-    fn proposal(rule: &'static str, start: usize, end: usize, replacement: &str) -> FixProposal {
+    fn proposal(rule: &'static str, start: usize, end: usize, replacement: &str) -> StubProposal {
         proposal_with_confidence(rule, start, end, replacement, 1.0)
     }
 
@@ -2902,23 +2644,21 @@ mod tests {
         end: usize,
         replacement: &str,
         confidence: f32,
-    ) -> FixProposal {
-        FixProposal::new(
-            RuleId::new(rule),
-            FixSource::BuiltinRule,
-            Span::new(start, end),
-            "x",
-            replacement,
-            marque_rules::Confidence::strict(confidence),
-            None,
-        )
+    ) -> StubProposal {
+        StubProposal {
+            rule: RuleId::new(rule),
+            span: Span::new(start, end),
+            replacement: replacement.into(),
+            confidence: marque_rules::Confidence::strict(confidence),
+            source: FixSource::CorrectionsMap,
+        }
     }
 
-    fn engine_with(proposals: Vec<FixProposal>) -> Engine {
+    fn engine_with(proposals: Vec<StubProposal>) -> Engine {
         engine_with_config(Config::default(), proposals)
     }
 
-    fn engine_with_config(config: Config, proposals: Vec<FixProposal>) -> Engine {
+    fn engine_with_config(config: Config, proposals: Vec<StubProposal>) -> Engine {
         let stub = StubRule {
             id: "TEST",
             proposals,
@@ -3127,13 +2867,12 @@ mod tests {
                 _attrs: &CanonicalAttrs,
                 _ctx: &RuleContext,
             ) -> Vec<Diagnostic<CapcoScheme>> {
-                vec![Diagnostic::new(
+                vec![Diagnostic::info(
                     RuleId::new("E997"),
                     Severity::Fix,
                     Span::new(0, 6),
                     "fix-severity diagnostic with no proposal",
                     "TEST",
-                    None,
                 )]
             }
         }
@@ -3185,22 +2924,26 @@ mod tests {
                 _attrs: &CanonicalAttrs,
                 _ctx: &RuleContext,
             ) -> Vec<Diagnostic<CapcoScheme>> {
-                let proposal = FixProposal::new(
-                    RuleId::new("S999"),
-                    FixSource::BuiltinRule,
-                    Span::new(0, 6),
-                    "SECRET",
-                    "TOP SECRET",
-                    marque_rules::Confidence::strict(1.0),
-                    None,
-                );
-                vec![Diagnostic::new(
+                let intent = FixIntent::<CapcoScheme> {
+                    replacement: ReplacementIntent::Recanonicalize {
+                        scope: RecanonScope::Portion,
+                    },
+                    confidence: marque_rules::Confidence::strict(1.0),
+                    feature_ids: smallvec::SmallVec::new(),
+                    message: Message::new(
+                        MessageTemplate::BannerRollupMismatch,
+                        MessageArgs::default(),
+                    ),
+                    source: FixSource::BuiltinRule,
+                    migration_ref: None,
+                };
+                vec![Diagnostic::with_fix(
                     RuleId::new("S999"),
                     Severity::Suggest,
                     Span::new(0, 6),
                     "explicit suggest with high confidence",
                     "TEST",
-                    Some(proposal),
+                    Some(intent),
                 )]
             }
         }
@@ -3268,7 +3011,7 @@ mod tests {
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         // Only the 0.6 fix is applied.
         assert_eq!(result.applied.len(), 1);
-        assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
+        assert_eq!(result.applied[0].rule.as_str(), "E002");
         // The 0.4 fix surfaces as a remaining diagnostic.
         assert_eq!(result.remaining_diagnostics.len(), 1);
     }
@@ -3438,6 +3181,7 @@ mod tests {
     // and C-1 drops the second (overlapping) fix.
     #[test]
     fn fr016_same_span_different_rule_ids_picks_lower_rule_id() {
+        use marque_rules::AppliedFixProposal;
         // Two proposals for span 0..6 with different rule IDs.
         // "C001" < "E001" lexicographically, so C001 is kept and E001 dropped.
         let engine = engine_with(vec![
@@ -3446,20 +3190,31 @@ mod tests {
         ]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(result.applied.len(), 1);
-        assert_eq!(result.applied[0].proposal.rule.as_str(), "C001");
-        assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AA");
+        assert_eq!(result.applied[0].rule.as_str(), "C001");
+        match &result.applied[0].proposal {
+            AppliedFixProposal::TextCorrection { replacement } => {
+                assert_eq!(replacement.as_ref(), "AA");
+            }
+            other => panic!("expected TextCorrection, got {other:?}"),
+        }
     }
 
     // FR-016 tiebreaker — same span, same rule ID, different replacements.
     #[test]
     fn fr016_same_span_same_rule_picks_lower_replacement() {
+        use marque_rules::AppliedFixProposal;
         let engine = engine_with(vec![
             proposal("E001", 0, 6, "ZZZ"),
             proposal("E001", 0, 6, "AAA"),
         ]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(result.applied.len(), 1);
-        assert_eq!(result.applied[0].proposal.replacement.as_ref(), "AAA");
+        match &result.applied[0].proposal {
+            AppliedFixProposal::TextCorrection { replacement } => {
+                assert_eq!(replacement.as_ref(), "AAA");
+            }
+            other => panic!("expected TextCorrection, got {other:?}"),
+        }
     }
 
     // -----------------------------------------------------------------------

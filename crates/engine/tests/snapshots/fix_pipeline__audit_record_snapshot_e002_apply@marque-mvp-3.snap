@@ -9,15 +9,24 @@ expression: json
     "dry_run": false,
     "input": null,
     "migration_ref": null,
-    "original": "GBR",
+    "proposal": {
+      "intent": {
+        "kind": "FactAdd",
+        "scope": "Page",
+        "token": {
+          "kind": "Cve",
+          "token_id": 104
+        }
+      },
+      "kind": "FixIntent"
+    },
     "recognition": 1.0,
-    "replacement": "USA, GBR",
     "rule": "E002",
-    "schema": "marque-mvp-2",
+    "schema": "marque-mvp-3",
     "source": "BuiltinRule",
     "span": {
       "end": 18,
-      "start": 15
+      "start": 0
     },
     "timestamp": "2023-11-14T22:13:20Z"
   }

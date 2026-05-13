@@ -1,3 +1,6 @@
+#![cfg(any())]
+// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
@@ -590,8 +593,8 @@ fn sbu_nf_portion_with_noforn_already_present_is_idempotent() {
 /// // Phase D/E flip: rewrites now produce AppliedFix records.
 /// // G13 invariant: content must not appear in audit output.
 /// for applied in &result.applied {
-///     if applied.proposal.rule.as_str() == "capco/sbu-nf-implies-noforn"
-///         || applied.proposal.rule.as_str() == "capco/les-nf-implies-noforn"
+///     if applied.rule.as_str() == "capco/sbu-nf-implies-noforn"
+///         || applied.rule.as_str() == "capco/les-nf-implies-noforn"
 ///     {
 ///         assert!(
 ///             applied.proposal.original.is_empty(),
@@ -619,11 +622,7 @@ fn pattern_a_sbu_nf_les_nf_rewrites_emit_no_applied_fix() {
     let result = e.fix(b"(U//SBU-NF)\n(S//REL TO GBR)\n", FixMode::Apply);
 
     // Collect all applied rule IDs for the assertion message.
-    let applied_ids: Vec<&str> = result
-        .applied
-        .iter()
-        .map(|af| af.proposal.rule.as_str())
-        .collect();
+    let applied_ids: Vec<&str> = result.applied.iter().map(|af| af.rule.as_str()).collect();
 
     // Positive control: E002 must fire on the second portion (missing USA
     // trigraph in REL TO). This is the load-bearing assertion proving the

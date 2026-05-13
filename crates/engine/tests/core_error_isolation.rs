@@ -200,14 +200,14 @@ fn lint_does_not_leak_core_error_content() {
                 msg = diag.message,
                 input = String::from_utf8_lossy(&input),
             );
-            if let Some(fix) = diag.fix.as_ref() {
+            // Post Commit 10: `Diagnostic.fix` carries a structural
+            // FixIntent with no byte payload. The diagnostic's
+            // `text_correction` field is the only string-bearing
+            // channel; assert it doesn't contain the canary.
+            if let Some(tc) = diag.text_correction.as_ref() {
                 assert!(
-                    !fix.original.contains(CANARY),
-                    "FixProposal.original leaked CoreError-bearing input"
-                );
-                assert!(
-                    !fix.replacement.contains(CANARY),
-                    "FixProposal.replacement leaked CoreError-bearing input"
+                    !tc.replacement.contains(CANARY),
+                    "Diagnostic.text_correction.replacement leaked CoreError-bearing input"
                 );
             }
         }
@@ -225,14 +225,17 @@ fn fix_does_not_leak_core_error_content() {
         // `audit.rs`, but with input designed to trip CoreError
         // rather than to embed prose.
         for applied in &result.applied {
-            assert!(
-                !applied.proposal.original.contains(CANARY),
-                "AppliedFix.proposal.original leaked CoreError-bearing input"
-            );
-            assert!(
-                !applied.proposal.replacement.contains(CANARY),
-                "AppliedFix.proposal.replacement leaked CoreError-bearing input"
-            );
+            // Post Commit 10 the audit record carries no `original`
+            // byte field; only `TextCorrection.replacement` can hold
+            // string bytes (corpus-derived canonical token).
+            if let marque_rules::AppliedFixProposal::TextCorrection { replacement } =
+                &applied.proposal
+            {
+                assert!(
+                    !replacement.contains(CANARY),
+                    "AppliedFix TextCorrection.replacement leaked CoreError-bearing input"
+                );
+            }
         }
 
         // Remaining diagnostics — what `marque check` and the lint

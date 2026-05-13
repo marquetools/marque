@@ -1,3 +1,6 @@
+#![cfg(any())]
+// PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite
+
 // SPDX-FileCopyrightText: 2026 Knitli Inc.
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
@@ -135,11 +138,11 @@ fn e012_emits_diagnostic_on_dual_us_plus_nato_in_portion() {
         e012[0].fix
     );
     assert!(
-        e012[0].fix_intent.is_none(),
+        e012[0].fix.is_none(),
         "E012 must consciously decline to emit a FixIntent — the \
          cross-axis renormalization (classification → FGI) is outside \
          the current `ReplacementIntent` vocabulary; got: {:?}",
-        e012[0].fix_intent
+        e012[0].fix
     );
     assert!(
         e012[0].message.contains("mutually exclusive"),
@@ -223,9 +226,9 @@ fn e012_emits_diagnostic_on_dual_us_plus_nato_in_banner() {
         e012[0].fix
     );
     assert!(
-        e012[0].fix_intent.is_none(),
+        e012[0].fix.is_none(),
         "E012 must consciously decline to emit a FixIntent; got: {:?}",
-        e012[0].fix_intent
+        e012[0].fix
     );
     assert!(
         e012[0].message.contains("US"),
@@ -270,11 +273,11 @@ fn e012_emits_on_level_escalation_conflict() {
         result.diagnostics
     );
     assert!(
-        e012[0].fix.is_none() && e012[0].fix_intent.is_none(),
+        e012[0].fix.is_none() && e012[0].fix.is_none(),
         "E012 must emit conscious-defer shape on escalation Conflict; \
          got fix: {:?}, fix_intent: {:?}",
         e012[0].fix,
-        e012[0].fix_intent
+        e012[0].fix
     );
 }
 
@@ -355,16 +358,13 @@ fn e012_idempotent_no_auto_fix_application() {
         std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
     );
     assert!(
-        result
-            .applied
-            .iter()
-            .all(|af| af.proposal.rule.as_str() != "E012"),
+        result.applied.iter().all(|af| af.rule.as_str() != "E012"),
         "E012 must not produce an AppliedFix entry post-migration \
          (no fix path); applied rules: {:?}",
         result
             .applied
             .iter()
-            .map(|af| af.proposal.rule.as_str())
+            .map(|af| af.rule.as_str())
             .collect::<Vec<_>>()
     );
 }

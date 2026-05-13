@@ -70,9 +70,20 @@ struct SpanJson {
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     source: &'static str,
-    replacement: &'a str,
+    intent_kind: &'static str,
+    replacement: Option<&'a str>,
     confidence: f32,
     migration_ref: Option<&'a str>,
+}
+
+fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
+    match source {
+        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
+        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
+        marque_rules::FixSource::MigrationTable => "MigrationTable",
+        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+        marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
+    }
 }
 
 fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_> {
@@ -85,20 +96,28 @@ fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_>
         },
         message: d.message.as_ref(),
         citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: match f.source {
-                marque_rules::FixSource::BuiltinRule => "BuiltinRule",
-                marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
-                marque_rules::FixSource::MigrationTable => "MigrationTable",
-                marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
-                marque_rules::FixSource::DecoderClassificationHeuristic => {
-                    "DecoderClassificationHeuristic"
-                }
-            },
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: match &f.replacement {
+                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                    _ => "Unknown",
+                },
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
+                intent_kind: "TextCorrection",
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
+            }),
+            (None, None) => None,
+        },
     }
 }
 

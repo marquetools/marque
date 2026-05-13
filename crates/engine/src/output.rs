@@ -133,7 +133,9 @@ impl LintResult {
         use marque_rules::Severity;
         self.diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Fix && (d.fix.is_some() || d.fix_intent.is_some()))
+            .filter(|d| {
+                d.severity == Severity::Fix && (d.fix.is_some() || d.text_correction.is_some())
+            })
             .count()
     }
 }

@@ -3,7 +3,84 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Contract: Audit Record (NDJSON, schema `marque-1.0`)
+# Contract: Audit Record (NDJSON)
+
+**Active schema**: `marque-mvp-3` (PR 3c.B Commit 10 — see §0).
+**Post-keystone target**: `marque-1.0` (see body sections below).
+**Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-037, FR-041
+**Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
+
+---
+
+## §0. Active schema (`marque-mvp-3`) — PR 3c.B Commit 10
+
+Landed in PR 3c.B Commit 10 atomically with the `FixProposal` cleanup. The
+mvp-3 envelope deletes the legacy top-level `original` / `replacement` byte
+fields and replaces them with a discriminated `proposal` sub-object that
+carries either a structural `FixIntent` (rule-emission) or a
+`TextCorrection` (engine-internal C001 path). The legacy `mvp-1` / `mvp-2`
+shapes retired entirely; the accept-list is `["marque-mvp-3"]`.
+
+```jsonc
+{
+  "schema": "marque-mvp-3",
+  "rule": "E054",
+  "source": "BuiltinRule",
+  "span": { "start": 12, "end": 25 },
+  "proposal": {
+    "kind": "FixIntent",
+    "intent": {
+      "kind": "FactRemove",
+      "scope": "Page",
+      "facts": [{ "kind": "Cve", "token_id": 104 }]
+    }
+  },
+  "confidence": 0.95,
+  "migration_ref": null,
+  "timestamp": "2026-05-13T12:34:56Z",
+  "classifier_id": "12345",
+  "dry_run": false,
+  "input": "/path/file.txt",
+  "recognition": 0.95
+  // `runner_up_ratio` omitted when None (strict-path fix); only
+  // emitted by decoder-path R001 records.
+  // `features` omitted when empty; emitted as an array of
+  // `{"id": "...", "delta": <f32>}` when the decoder contributes
+  // explicit feature deltas.
+}
+```
+
+For C001 text-correction records, `proposal` carries the canonical
+replacement string (corpus-derived token canonical — Constitution V's
+permitted-identifier list):
+
+```jsonc
+"proposal": {
+  "kind": "TextCorrection",
+  "replacement": "SECRET"
+}
+```
+
+**Constitution V Principle V (G13) closure**: the audit envelope carries
+no `original` byte field. The structural FixIntent variants carry no
+document content; the TextCorrection variant carries only corpus-derived
+canonical tokens. Audit records are content-ignorant by construction.
+
+**FR-014 (single schema per build)**: `crates/engine/build.rs` validates
+`MARQUE_AUDIT_SCHEMA` against the closed accept-list `["marque-mvp-3"]`.
+The CLI and WASM emitters compile against the same const so byte-identical
+records flow from both surfaces.
+
+The sections below describe the **post-keystone `marque-1.0` target**,
+which adds `(scheme, predicate_id)` rule encoding, `Canonical<S>`
+provenance, BLAKE3 digesting, closed `MessageTemplate` JSON serialization,
+and content-ignorance canary tooling. The keystone work is scheduled in
+follow-up 006-refactor PRs; this section governs what binaries today
+emit.
+
+---
+
+# Contract: Audit Record (NDJSON, schema `marque-1.0`) — POST-KEYSTONE TARGET
 
 **Lands at**: PR 3c (single cutover; clean break)
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-037, FR-041

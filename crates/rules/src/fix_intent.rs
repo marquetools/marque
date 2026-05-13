@@ -22,13 +22,11 @@
 //! cycle. `marque-rules` does NOT re-export them: rule crates import
 //! directly from `marque_scheme::{FactRef, ReplacementIntent, RecanonScope}`.
 //!
-//! # Lifecycle (post-PR-3c.B Commit 2)
+//! # Lifecycle
 //!
 //! 1. Rule's `check(...)` returns `Vec<Diagnostic<S>>`. Each
-//!    `Diagnostic` carries `fix_intent: Option<FixIntent<S>>` for
-//!    migrated rules; legacy rules continue to populate
-//!    `fix: Option<FixProposal>` until they are migrated in
-//!    Commit 3+.
+//!    `Diagnostic` carries `fix: Option<FixIntent<S>>` — the sole
+//!    fix-emission channel post PR 3c.B Commit 10.
 //! 2. Engine filters by `Confidence::combined() >= threshold`
 //!    (FR-016).
 //! 3. Engine sorts non-overlapping fixes (I-3) and resolves overlaps
@@ -38,18 +36,18 @@
 //! 4. Engine snapshots runtime state (timestamp, classifier id,
 //!    dry-run flag, input identifier) onto the rule's pure-data
 //!    `FixIntent` to produce an `AppliedFix<S>` via
-//!    `AppliedFix::__engine_promote(...)` (new) or
-//!    `__engine_promote_legacy(...)` (legacy `FixProposal` path).
-//!    Both variants land in `AppliedFix.proposal:
-//!    AppliedFixProposal<S>` for the duration of the Commit 2–9
-//!    transition; Commit 10 retires the legacy variant atomically
-//!    with the audit-schema flip.
+//!    `AppliedFix::__engine_promote(...)`. The single promotion path
+//!    replaces the Commit 2–9 dual-path `__engine_promote` /
+//!    `__engine_promote_legacy` shape: as of Commit 10 every rule
+//!    emits `FixIntent<S>` and the engine carries the intent directly
+//!    on `AppliedFixProposal::FixIntent(_)`.
 
 use core::fmt::Debug;
 
 use marque_scheme::{MarkingScheme, ReplacementIntent};
 use smallvec::SmallVec;
 
+use crate::FixSource;
 use crate::confidence::{Confidence, FeatureId};
 use crate::message::Message;
 
@@ -80,12 +78,15 @@ use crate::message::Message;
 /// structural fact-set delta plus the message attached to its
 /// diagnostic; it never references the source buffer.
 ///
-/// # Transitional coexistence with `FixProposal` (Commit 2–9)
+/// # Sole rule-emission API
 ///
-/// `marque-rules` ships `FixIntent<S>` and the legacy
-/// [`crate::FixProposal`] in parallel. Rules migrate from one to
-/// the other one at a time over Commits 3–9. Commit 10 retires
-/// `FixProposal` atomically with the audit-schema flip.
+/// PR 3c.B Commit 10 retired the legacy `FixProposal` from the
+/// rule-emission surface. Every rule emits `FixIntent<S>` via
+/// `Diagnostic::with_fix(...)` / `Diagnostic::with_fix_at_span(...)`,
+/// and the engine promotes through the single `__engine_promote`
+/// constructor. The internal text-correction helper still lives
+/// inside `marque-engine` (engine-only `TextCorrectionProposal`),
+/// but no rule crate constructs it.
 ///
 /// `FixIntent<S>` deliberately does NOT derive `PartialEq` /
 /// `Eq` / `Hash` — `Confidence` and `Message` are not equatable
@@ -116,6 +117,23 @@ pub struct FixIntent<S: MarkingScheme> {
     /// Diagnostic message attached to this fix. Closed template +
     /// closed args; see [`crate::Message`].
     pub message: Message,
+
+    /// Provenance: where this fix recommendation originated
+    /// (BuiltinRule, CorrectionsMap, MigrationTable, decoder).
+    ///
+    /// Moved from `FixProposal` to `FixIntent<S>` in PR 3c.B
+    /// Commit 10. Rules own their fix's provenance; the engine
+    /// snapshots it onto `AppliedFix<S>` at promotion time.
+    pub source: FixSource,
+
+    /// Reference to the CAPCO rule or migration document
+    /// justifying this fix. `None` for most rules; populated when
+    /// a specific section / doc anchor adds value beyond the
+    /// diagnostic's `citation`.
+    ///
+    /// Moved from `FixProposal` to `FixIntent<S>` in PR 3c.B
+    /// Commit 10 for the same reason as `source`.
+    pub migration_ref: Option<&'static str>,
 }
 
 impl<S: MarkingScheme> Debug for FixIntent<S> {
@@ -125,6 +143,8 @@ impl<S: MarkingScheme> Debug for FixIntent<S> {
             .field("confidence", &self.confidence)
             .field("feature_ids", &self.feature_ids)
             .field("message", &self.message)
+            .field("source", &self.source)
+            .field("migration_ref", &self.migration_ref)
             .finish()
     }
 }
@@ -136,6 +156,8 @@ impl<S: MarkingScheme> Clone for FixIntent<S> {
             confidence: self.confidence.clone(),
             feature_ids: self.feature_ids.clone(),
             message: self.message.clone(),
+            source: self.source,
+            migration_ref: self.migration_ref,
         }
     }
 }
@@ -234,6 +256,8 @@ mod tests {
             confidence: Confidence::strict(0.95),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
         match &intent.replacement {
             ReplacementIntent::FactAdd { token, scope } => {
@@ -252,6 +276,8 @@ mod tests {
             confidence: Confidence::strict(0.9),
             feature_ids: SmallVec::new(),
             message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
         match &intent.replacement {
             ReplacementIntent::FactRemove { facts, scope } => {
@@ -275,6 +301,8 @@ mod tests {
                 MessageTemplate::BannerRollupMismatch,
                 MessageArgs::default(),
             ),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
         };
         assert!(matches!(
             intent.replacement,

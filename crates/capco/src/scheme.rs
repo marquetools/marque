@@ -3239,6 +3239,8 @@ impl CapcoScheme {
     pub fn bridge_sci_per_system_diagnostics(
         &self,
         attrs: &CanonicalAttrs,
+        candidate_span: marque_ism::Span,
+        fix_scope: marque_scheme::Scope,
         severity_override: Option<marque_rules::Severity>,
     ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
         // FR-008 early-out — `Off` suppresses the entire catalog.
@@ -3257,7 +3259,7 @@ impl CapcoScheme {
             if !(row.presence)(attrs) {
                 continue;
             }
-            for mut diag in sci_per_system_emit(attrs, row) {
+            for mut diag in sci_per_system_emit(attrs, candidate_span, fix_scope, row) {
                 if let Some(sev) = severity_override {
                     diag.severity = sev;
                 }
@@ -5339,9 +5341,18 @@ pub(crate) enum SciPerSystemKind {
     /// Custom multi-branch emit. The row encodes a closure that produces
     /// the full emit list, used by rows whose emit logic spans 2-3 distinct
     /// branches with row-specific text and span logic (rows #1, #3, #4).
+    /// The `candidate_span` argument is the full marking-scope span
+    /// (portion or banner) that the engine's `synthesize_fixes` path
+    /// uses to look up the parsed marking for `apply_intent` +
+    /// `render_canonical`. `fix_scope` is the scope discriminator
+    /// embedded in any `FactAdd` / `Recanonicalize` intent the row
+    /// emits — `Scope::Portion` for portion candidates, `Scope::Page`
+    /// for banner candidates.
     Custom(
         fn(
             &marque_ism::CanonicalAttrs,
+            marque_ism::Span,
+            marque_scheme::Scope,
             &SciPerSystemRow,
         ) -> Vec<marque_rules::Diagnostic<CapcoScheme>>,
     ),
@@ -5490,45 +5501,117 @@ pub(crate) fn infer_companion_form(attrs: &marque_ism::CanonicalAttrs) -> Compan
 }
 
 /// Build a diagnostic that points at `anchor_span` (the offending SCI
-/// token) with a zero-width insertion fix appending `/<token>` at the
-/// end of the existing IC dissem block. Diagnostic span and fix span
-/// intentionally differ: the user sees the SCI marking that triggered
-/// the requirement; the edit applies at the dissem block where the
-/// insertion belongs. Same diagnostic-vs-fix-span split used by
-/// `SarPortionFormRule` (E026).
+/// token) with a structural `FixIntent::FactAdd` fix at the marking
+/// scope. Diagnostic span and fix-scope span intentionally differ:
+/// the user sees the SCI marking that triggered the requirement; the
+/// engine's `synthesize_fixes` path applies the intent to the parsed
+/// marking covering `candidate_span` and re-renders the canonical
+/// bytes via `apply_intent` + `render_canonical`. Same
+/// diagnostic-vs-fix-scope split used by `SarPortionFormRule` (E026).
 ///
 /// Falls back to `Severity::Error` no-fix when no dissem block exists
-/// — inserting a whole `//`-separated category block from rule context
-/// is unsafe (no anchor for the `//`). Same policy as E040.
+/// — inserting a whole new dissem category from rule context is
+/// unsafe (the structural addition has no existing block to compose
+/// with for canonical re-rendering). Same policy as E040.
+//
+// 8 args is the irreducible carrying capacity: id/severity for the
+// catalog row, anchor_span/candidate_span for the diagnostic-vs-fix
+// span split, last_dissem for the anchor lookup, token/message/citation
+// for the emission. Folding into a struct would shift the count
+// without reducing it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_companion_insert(
     rule: marque_rules::RuleId,
     severity: marque_rules::Severity,
     anchor_span: marque_ism::Span,
+    candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     last_dissem: Option<marque_ism::Span>,
     token: &str,
     message: String,
     citation: &'static str,
 ) -> marque_rules::Diagnostic<CapcoScheme> {
-    use marque_ism::Span;
-    use marque_rules::{Confidence, Diagnostic, FixProposal, FixSource, Severity};
-    match last_dissem {
-        Some(dissem_span) => {
-            let insert_at = dissem_span.end;
-            let fix = FixProposal::new(
-                rule.clone(),
-                FixSource::BuiltinRule,
-                Span::new(insert_at, insert_at),
-                String::new(),
-                format!("/{token}"),
-                Confidence::strict(0.9),
-                None,
+    use marque_rules::{
+        Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+        Severity,
+    };
+    use marque_scheme::{FactRef, ReplacementIntent};
+    let token_id = match dissem_token_id_for_form(token) {
+        Some(id) => id,
+        None => {
+            // Unrecognized surface form — fail loudly with a no-fix
+            // diagnostic rather than silently substituting NOFORN.
+            // In normal flow this is unreachable (the catalog rows
+            // pass `form.noforn()` / `form.orcon()` which return one
+            // of the six recognized forms); reaching this arm means
+            // a new surface form was added without updating the
+            // lookup, which is a programming error worth surfacing.
+            tracing::warn!(
+                target: "marque_capco::scheme",
+                token = token,
+                "emit_companion_insert: unrecognized dissem-control surface form; emitting no-fix Error diagnostic"
             );
-            Diagnostic::new(rule, severity, anchor_span, message, citation, Some(fix))
+            return Diagnostic::info(rule, Severity::Error, anchor_span, message, citation);
+        }
+    };
+    match last_dissem {
+        Some(_dissem_span) => {
+            // Insert the companion token via a `FactAdd` intent.
+            // `fix_scope` is the caller-derived scope: `Scope::Portion`
+            // for portion candidates, `Scope::Page` for banner
+            // candidates (the banner roll-up's per-page projection).
+            // Both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/
+            // `ORCON-USGOV` resolve to the same canonical `TokenId`
+            // per CVE — the engine's `render_canonical` decides
+            // surface form from the inferred companion form.
+            let intent = FixIntent::<CapcoScheme> {
+                replacement: ReplacementIntent::FactAdd {
+                    token: FactRef::Cve(token_id),
+                    scope: fix_scope,
+                },
+                confidence: Confidence::strict(0.9),
+                feature_ids: Default::default(),
+                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
+            };
+            Diagnostic::with_fix_at_span(
+                rule,
+                severity,
+                anchor_span,
+                candidate_span,
+                message,
+                citation,
+                intent,
+            )
         }
         None => {
             // No dissem block — escalate to Error with no fix.
-            Diagnostic::new(rule, Severity::Error, anchor_span, message, citation, None)
+            Diagnostic::info(rule, Severity::Error, anchor_span, message, citation)
         }
+    }
+}
+
+/// Map a dissem-control surface form (`"NF"` / `"NOFORN"` / `"OC"` /
+/// `"ORCON"` / `"OC-USGOV"` / `"ORCON-USGOV"`) to its CVE `TokenId`.
+/// Surface-form distinction (banner abbrev vs portion abbrev vs full)
+/// collapses at the canonical layer; the engine's `render_canonical`
+/// decides emission form from the inferred companion form at the
+/// insertion site. Returns `None` for unrecognized forms — the
+/// caller routes those to the no-fix `Severity::Error` path rather
+/// than silently substituting NOFORN. In normal flow the catalog
+/// rows only ever pass `form.noforn()` or `form.orcon()` which
+/// return one of the six recognized surface forms; an unrecognized
+/// input represents a programming error (e.g., a new surface form
+/// added without updating this lookup), and failing loudly is the
+/// correct behavior.
+#[inline]
+fn dissem_token_id_for_form(token: &str) -> Option<TokenId> {
+    match token {
+        "NF" | "NOFORN" => Some(TOK_NOFORN),
+        "OC" | "ORCON" => Some(TOK_ORCON),
+        "OC-USGOV" | "ORCON-USGOV" => Some(TOK_ORCON_USGOV),
+        _ => None,
     }
 }
 
@@ -5601,6 +5684,8 @@ fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs) -> bool {
 /// ORCON-USGOV. §H.4 p64.
 fn emit_hcs_o_companions(
     attrs: &marque_ism::CanonicalAttrs,
+    candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -5625,6 +5710,8 @@ fn emit_hcs_o_companions(
             RULE_E059,
             row.severity,
             sci_span,
+            candidate_span,
+            fix_scope,
             last_dissem,
             form.orcon(),
             "HCS-O requires ORCON (§H.4 p64)".to_owned(),
@@ -5636,6 +5723,8 @@ fn emit_hcs_o_companions(
             RULE_E059,
             row.severity,
             sci_span,
+            candidate_span,
+            fix_scope,
             last_dissem,
             form.noforn(),
             "HCS-O requires NOFORN (§H.4 p64)".to_owned(),
@@ -5665,6 +5754,8 @@ fn emit_hcs_o_companions(
 /// it is not duplicated here.
 fn emit_hcs_p_sub_companions(
     attrs: &marque_ism::CanonicalAttrs,
+    candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -5688,6 +5779,8 @@ fn emit_hcs_p_sub_companions(
             RULE_E059,
             row.severity,
             sci_span,
+            candidate_span,
+            fix_scope,
             last_dissem,
             form.orcon(),
             "HCS-P sub-compartment requires ORCON (§H.4 p68)".to_owned(),
@@ -5716,6 +5809,8 @@ fn emit_hcs_p_sub_companions(
 /// §H.4 p80.
 fn emit_si_g_companions(
     attrs: &marque_ism::CanonicalAttrs,
+    candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -5739,6 +5834,8 @@ fn emit_si_g_companions(
             RULE_E059,
             row.severity,
             sci_span,
+            candidate_span,
+            fix_scope,
             last_dissem,
             form.orcon(),
             "SI-G requires ORCON (§H.4 p80)".to_owned(),
@@ -5786,6 +5883,8 @@ fn emit_si_g_companions(
 /// per-row exception table.
 fn emit_companion_required(
     attrs: &marque_ism::CanonicalAttrs,
+    candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
     dissem: marque_ism::DissemControl,
     token_name: &'static str,
@@ -5834,6 +5933,8 @@ fn emit_companion_required(
         RULE_E059,
         row.severity,
         sci_span,
+        candidate_span,
+        fix_scope,
         last_dissem,
         companion_text,
         message,
@@ -5885,6 +5986,8 @@ pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSy
 #[inline]
 pub(crate) fn sci_per_system_emit(
     attrs: &marque_ism::CanonicalAttrs,
+    candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     if !(row.presence)(attrs) {
@@ -5892,9 +5995,9 @@ pub(crate) fn sci_per_system_emit(
     }
     match row.kind {
         SciPerSystemKind::CompanionRequired { dissem, token_name } => {
-            emit_companion_required(attrs, row, dissem, token_name)
+            emit_companion_required(attrs, candidate_span, fix_scope, row, dissem, token_name)
         }
-        SciPerSystemKind::Custom(emit_fn) => emit_fn(attrs, row),
+        SciPerSystemKind::Custom(emit_fn) => emit_fn(attrs, candidate_span, fix_scope, row),
     }
 }
 
@@ -5916,16 +6019,29 @@ fn sci_per_system_catalog_eval(
     let Some(row) = sci_per_system_row_by_name(name) else {
         return Vec::new();
     };
-    sci_per_system_emit(attrs, row)
-        .into_iter()
-        .map(|d| ConstraintViolation {
-            constraint_label: row.name,
-            message: String::from(d.message),
-            citation: row.citation,
-            span: None,
-            severity: None,
-        })
-        .collect()
+    // Trait-path doesn't have a candidate span (the engine's
+    // bridge_sci_per_system_diagnostics direct path does). The
+    // emitted Diagnostics are projected to ConstraintViolation
+    // below which drops the fix payload — so the candidate_span
+    // a Diagnostic's fix would have keyed on isn't observed here.
+    // Pass an empty span as a sentinel; the resulting fix would be
+    // dropped by the engine's `!f.span.is_empty()` filter even if a
+    // hypothetical caller threaded it through.
+    sci_per_system_emit(
+        attrs,
+        marque_ism::Span::new(0, 0),
+        marque_scheme::Scope::Portion,
+        row,
+    )
+    .into_iter()
+    .map(|d| ConstraintViolation {
+        constraint_label: row.name,
+        message: String::from(d.message),
+        citation: row.citation,
+        span: None,
+        severity: None,
+    })
+    .collect()
 }
 
 // ---------------------------------------------------------------------------

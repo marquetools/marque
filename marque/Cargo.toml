@@ -32,6 +32,7 @@ marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
 marque-ism = { workspace = true }
 marque-rules = { workspace = true }
+marque-scheme = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

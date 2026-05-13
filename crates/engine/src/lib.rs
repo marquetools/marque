@@ -22,6 +22,7 @@ pub mod output;
 pub mod pipeline;
 pub mod recognizer;
 pub mod scheduler;
+mod text_correction;
 
 #[cfg(feature = "batch")]
 pub use batch::{BatchEngine, BatchError, BatchOptions};
@@ -69,25 +70,32 @@ pub use web_time::Instant;
 
 /// Audit-record schema version emitted by this build.
 ///
-/// Set at build time by `crates/engine/build.rs` (see `MARQUE_AUDIT_SCHEMA`),
-/// validated against the closed accept-list `["marque-mvp-1", "marque-mvp-2"]`.
-/// Defaults to `"marque-mvp-2"` (Phase D); a build can downgrade by exporting
-/// `MARQUE_AUDIT_SCHEMA=marque-mvp-1`. Re-exported through this crate so CLI
-/// and WASM emitters can populate the `schema` field without each owning a
-/// separate copy of the constant (whitepaper §980 / FR-014).
+/// Set at build time by `crates/engine/build.rs` (see
+/// `MARQUE_AUDIT_SCHEMA`), validated against the closed accept-list
+/// `["marque-mvp-3"]`. Defaults to `"marque-mvp-3"`. Re-exported
+/// through this crate so CLI and WASM emitters can populate the
+/// `schema` field without each owning a separate copy of the
+/// constant (whitepaper §980 / FR-014).
 ///
-/// Per FR-014 the value is fixed for the lifetime of a build — a single
-/// binary emits exactly one schema, never a mix.
+/// Per FR-014 the value is fixed for the lifetime of a build — a
+/// single binary emits exactly one schema, never a mix.
+///
+/// The legacy `mvp-1` / `mvp-2` shapes retired in PR 3c.B Commit 10
+/// atomically with the `FixProposal` cleanup; their structural
+/// envelope (top-level `original` / `replacement` byte fields) is
+/// no longer representable.
 pub const AUDIT_SCHEMA_VERSION: &str = env!("MARQUE_AUDIT_SCHEMA");
 
-/// `true` when this build emits Phase-D audit records (`marque-mvp-2`),
-/// `false` when emitting the legacy `marque-mvp-1` shape.
+/// `true` when this build emits the post-Commit-10 audit records
+/// (`marque-mvp-3`).
 ///
-/// Evaluated at compile time from [`AUDIT_SCHEMA_VERSION`]; the comparison
-/// against a `&'static str` literal folds to a constant, so callers using
-/// `if AUDIT_SCHEMA_IS_V2 { ... } else { ... }` get dead-branch elimination
-/// at the matching schema's expense.
-pub const AUDIT_SCHEMA_IS_V2: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-mvp-2");
+/// Evaluated at compile time from [`AUDIT_SCHEMA_VERSION`]; folds
+/// to a constant. The accept-list is currently a single value, so
+/// the const is always `true` in any successfully-built binary;
+/// the const exists to give downstream code a stable shape-discriminant
+/// across future schema bumps (a future `mvp-4` would land alongside
+/// an `AUDIT_SCHEMA_IS_V4` and a dispatch branch on each emitter).
+pub const AUDIT_SCHEMA_IS_V3: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-mvp-3");
 
 const fn const_str_eq(a: &str, b: &str) -> bool {
     let a = a.as_bytes();

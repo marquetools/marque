@@ -64,8 +64,8 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     // per §H.4 p62, classifier picks HCS-O vs HCS-P) — verified below
     // in the `remaining_diagnostics` assertion.
     assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
-    assert_eq!(result.applied[0].proposal.rule.as_str(), "E002");
-    assert!((result.applied[0].proposal.confidence.combined() - 0.97).abs() < 0.001);
+    assert_eq!(result.applied[0].rule.as_str(), "E002");
+    assert!((result.applied[0].confidence.combined() - 0.97).abs() < 0.001);
 
     // The post-fix first line should have USA elevated and codes
     // sorted alphabetically.
@@ -111,11 +111,8 @@ fn dry_run_parity_with_apply() {
 
     // Same rule IDs and confidences.
     for (a, d) in apply_result.applied.iter().zip(dry_result.applied.iter()) {
-        assert_eq!(a.proposal.rule.as_str(), d.proposal.rule.as_str());
-        assert!(
-            (a.proposal.confidence.combined() - d.proposal.confidence.combined()).abs()
-                < f32::EPSILON
-        );
+        assert_eq!(a.rule.as_str(), d.rule.as_str());
+        assert!((a.confidence.combined() - d.confidence.combined()).abs() < f32::EPSILON);
     }
 
     // DryRun records have dry_run=true.
@@ -244,25 +241,113 @@ fn applied_fix_to_json(
         marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
         marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
     };
+    // Schema-pinned scope projection — mirrors `scope_str` /
+    // `recanon_scope_str` in `marque/src/render.rs` so the snapshot
+    // helper doesn't drift from the production audit JSON shape.
+    fn scope_str(s: marque_scheme::Scope) -> &'static str {
+        match s {
+            marque_scheme::Scope::Portion => "Portion",
+            marque_scheme::Scope::Page => "Page",
+            marque_scheme::Scope::Document => "Document",
+            marque_scheme::Scope::Diff => "Diff",
+        }
+    }
+    fn recanon_scope_str(s: marque_scheme::fix_intent::RecanonScope) -> &'static str {
+        match s {
+            marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
+            marque_scheme::fix_intent::RecanonScope::Page => "Page",
+            marque_scheme::fix_intent::RecanonScope::Document => "Document",
+        }
+    }
+    let proposal_json = match &fix.proposal {
+        marque_rules::AppliedFixProposal::FixIntent(intent) => {
+            // Inline FactRef + OpenVocab projection — mirrored from
+            // production marque/src/render.rs `fact_ref_to_json` /
+            // `open_vocab_ref_to_json`.
+            fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
+                match r {
+                    marque_capco::CapcoOpenVocabRef::Sar(name) => json!({
+                        "kind": "Sar",
+                        "name": name.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::SciCompartment(name) => json!({
+                        "kind": "SciCompartment",
+                        "name": name.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => json!({
+                        "kind": "SciSubCompartment",
+                        "name": name.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => json!({
+                        "kind": "FgiTetragraph",
+                        "code": code.as_ref(),
+                    }),
+                    marque_capco::CapcoOpenVocabRef::CountryCode(c) => json!({
+                        "kind": "CountryCode",
+                        "code": c.as_str(),
+                    }),
+                }
+            }
+            fn fact_ref_to_json(
+                fact: &marque_scheme::FactRef<marque_capco::CapcoScheme>,
+            ) -> serde_json::Value {
+                match fact {
+                    marque_scheme::FactRef::Cve(token_id) => json!({
+                        "kind": "Cve",
+                        "token_id": token_id.0,
+                    }),
+                    marque_scheme::FactRef::OpenVocab(r) => json!({
+                        "kind": "OpenVocab",
+                        "ref": open_vocab_ref_to_json(r),
+                    }),
+                }
+            }
+            let kind_obj = match &intent.replacement {
+                marque_scheme::ReplacementIntent::FactAdd { token, scope } => json!({
+                    "kind": "FactAdd",
+                    "scope": scope_str(*scope),
+                    "token": fact_ref_to_json(token),
+                }),
+                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
+                    let facts_json: Vec<serde_json::Value> =
+                        facts.iter().map(fact_ref_to_json).collect();
+                    json!({
+                        "kind": "FactRemove",
+                        "scope": scope_str(*scope),
+                        "facts": facts_json,
+                    })
+                }
+                marque_scheme::ReplacementIntent::Recanonicalize { scope } => json!({
+                    "kind": "Recanonicalize",
+                    "scope": recanon_scope_str(*scope),
+                }),
+                _ => json!({"kind": "Unknown"}),
+            };
+            json!({"kind": "FixIntent", "intent": kind_obj})
+        }
+        marque_rules::AppliedFixProposal::TextCorrection { replacement } => json!({
+            "kind": "TextCorrection",
+            "replacement": replacement.as_ref(),
+        }),
+    };
     let mut record = json!({
         "schema": marque_engine::AUDIT_SCHEMA_VERSION,
-        "rule": fix.proposal.rule.as_str(),
+        "rule": fix.rule.as_str(),
         "source": source_str,
         "span": {
-            "start": fix.proposal.span.start,
-            "end": fix.proposal.span.end,
+            "start": fix.span.start,
+            "end": fix.span.end,
         },
-        "original": fix.proposal.original.as_ref(),
-        "replacement": fix.proposal.replacement.as_ref(),
+        "proposal": proposal_json,
         "confidence": fix.confidence.combined(),
-        "migration_ref": fix.proposal.migration_ref,
+        "migration_ref": fix.migration_ref,
         "timestamp": humantime::format_rfc3339(fix.timestamp).to_string(),
         "classifier_id": fix.classifier_id.as_ref().map(|s| s.as_ref()),
         "dry_run": fix.dry_run,
         "input": fix.input.as_ref().map(|s| s.as_ref()),
     });
 
-    if marque_engine::AUDIT_SCHEMA_IS_V2 {
+    if marque_engine::AUDIT_SCHEMA_IS_V3 {
         let c = &fix.confidence;
         let object = record.as_object_mut().expect("record is a JSON object");
         object.insert("recognition".to_owned(), json!(c.recognition));
@@ -361,7 +446,7 @@ fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
     let e002_applied: Vec<_> = result
         .applied
         .iter()
-        .filter(|f| f.proposal.rule.as_str() == "E002")
+        .filter(|f| f.rule.as_str() == "E002")
         .collect();
     assert_eq!(
         e002_applied.len(),
@@ -432,7 +517,7 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     let e002_applied: Vec<_> = result
         .applied
         .iter()
-        .filter(|f| f.proposal.rule.as_str() == "E002")
+        .filter(|f| f.rule.as_str() == "E002")
         .collect();
     assert!(
         e002_applied.is_empty(),

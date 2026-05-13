@@ -39,8 +39,8 @@
 //! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_capco::CapcoScheme;
-use marque_engine::{AUDIT_SCHEMA_IS_V2, AUDIT_SCHEMA_VERSION, LintResult};
-use marque_rules::{AppliedFix, Diagnostic, FeatureContribution};
+use marque_engine::{AUDIT_SCHEMA_IS_V3, AUDIT_SCHEMA_VERSION, LintResult};
+use marque_rules::{AppliedFix, AppliedFixProposal, Diagnostic, FeatureContribution};
 use serde::Serialize;
 use std::path::Path;
 
@@ -171,22 +171,35 @@ pub fn render_human(
             // candidate hint rather than a confirmed replacement;
             // surface the wording difference so the reader doesn't
             // think it will be auto-applied.
-            let hint = diag
-                .fix
-                .as_ref()
-                .map(|f| match diag.severity {
+            //
+            // Post Commit 10 the renderer cannot show the exact
+            // replacement bytes here — `FixIntent` carries the
+            // structural intent only, and the renderer is on the
+            // diagnostic path (no engine projection available). C001
+            // text-correction diagnostics still carry their canonical
+            // replacement bytes via `text_correction`, so those
+            // render the legacy "replace with X" form.
+            let hint = if let Some(tc) = &diag.text_correction {
+                match diag.severity {
+                    marque_rules::Severity::Suggest => {
+                        format!(" did you mean {:?}?", tc.replacement.as_ref())
+                    }
+                    _ => format!(" replace with {:?}", tc.replacement.as_ref()),
+                }
+            } else if let Some(f) = diag.fix.as_ref() {
+                match diag.severity {
                     marque_rules::Severity::Suggest => format!(
-                        " did you mean {:?}? (confidence {:.0}%)",
-                        f.replacement.as_ref(),
+                        " (suggested fix; confidence {:.0}%)",
                         f.confidence.combined() * 100.0
                     ),
                     _ => format!(
-                        " replace with {:?} (confidence {:.0}%)",
-                        f.replacement.as_ref(),
+                        " (auto-fixable; confidence {:.0}%)",
                         f.confidence.combined() * 100.0
                     ),
-                })
-                .unwrap_or_default();
+                }
+            } else {
+                String::new()
+            };
             writeln!(out, "{gutter} {pipe} {caret_pad}{carets_styled}{hint}")?;
             // Blank gutter line below the caret
             writeln!(out, "{gutter} {pipe}")?;
@@ -285,7 +298,16 @@ pub struct SpanJson {
 #[derive(Debug, Serialize)]
 pub struct FixJson<'a> {
     pub source: &'static str,
-    pub replacement: &'a str,
+    /// Structural intent kind (`"FactAdd"` / `"FactRemove"` /
+    /// `"Recanonicalize"`) for rule-emitted fixes; `"TextCorrection"`
+    /// for the C001 path. Replaces the legacy `replacement: &str`
+    /// field — the structural intent has no byte-precise replacement
+    /// at the diagnostic boundary.
+    pub intent_kind: &'static str,
+    /// Canonical replacement bytes for text-correction diagnostics
+    /// (C001). `None` for structural rule fixes; the engine renders
+    /// them from the per-page projection at promotion time.
+    pub replacement: Option<&'a str>,
     pub confidence: f32,
     pub migration_ref: Option<&'a str>,
 }
@@ -300,20 +322,23 @@ pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
         },
         message: d.message.as_ref(),
         citation: d.citation,
-        fix: d.fix.as_ref().map(|f| FixJson {
-            source: match f.source {
-                marque_rules::FixSource::BuiltinRule => "BuiltinRule",
-                marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
-                marque_rules::FixSource::MigrationTable => "MigrationTable",
-                marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
-                marque_rules::FixSource::DecoderClassificationHeuristic => {
-                    "DecoderClassificationHeuristic"
-                }
-            },
-            replacement: f.replacement.as_ref(),
-            confidence: f.confidence.combined(),
-            migration_ref: f.migration_ref,
-        }),
+        fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+            (Some(f), _) => Some(FixJson {
+                source: fix_source_str(f.source),
+                intent_kind: intent_kind_str(&f.replacement),
+                replacement: None,
+                confidence: f.confidence.combined(),
+                migration_ref: f.migration_ref,
+            }),
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
+                intent_kind: "TextCorrection",
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
+            }),
+            (None, None) => None,
+        },
     }
 }
 
@@ -342,104 +367,60 @@ pub fn render_human_result(
 }
 
 // ---------------------------------------------------------------------------
-// Audit record NDJSON
+// Audit record NDJSON (marque-mvp-3)
 //
 // The `schema` field is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`,
 // which `crates/engine/build.rs` validates against the closed accept-list
-// `["marque-mvp-1", "marque-mvp-2"]`. Default is `"marque-mvp-2"` (Phase D).
-//
-// Two struct shapes coexist:
-//
-// - `AuditRecordJsonV1` — the v1 contract (`contracts/audit-record.json`,
-//   schema `"marque-mvp-1"`); the 12-field shape that pre-Phase-D
-//   downstream consumers parse.
-// - `AuditRecordJsonV2` — the v2 contract (`contracts/audit-record-v2.md`,
-//   schema `"marque-mvp-2"`); strict superset of v1 — adds `recognition`
-//   (always present), `runner_up_ratio` (omitted via `skip_serializing_if`
-//   when `None`), and `features` (omitted when empty).
-//
-// `render_audit_record` dispatches to the right emitter at the
-// `AUDIT_SCHEMA_IS_V2` const-folded branch. Both emitters are always
-// compiled; the dead arm is eliminated by the optimizer at the matching
-// build's expense.
+// `["marque-mvp-3"]`. The pre-Commit-10 `mvp-1` / `mvp-2` shapes (with
+// top-level `original` / `replacement` byte fields) retired alongside
+// `FixProposal` to close the G13 audit-content-ignorance channel.
 //
 // FR-014 (single-schema-per-build) is upheld at two layers:
-//   1. `crates/engine/build.rs` panics on unknown values — only one of the
-//      two accepted versions can ever reach the emitter.
-//   2. The emitter chooses the matching struct shape from the const, so a
-//      v1 build never produces a v2-shaped record and vice versa.
+//   1. `crates/engine/build.rs` panics on unknown values — only the
+//      accepted version can reach the emitter.
+//   2. The emitter chooses the matching struct shape from the const.
 // ---------------------------------------------------------------------------
 
-/// JSON projection of an `AppliedFix` conforming to
-/// `contracts/audit-record.json` (schema `"marque-mvp-1"`).
+/// JSON projection of the `proposal` sub-object on a `marque-mvp-3`
+/// audit record. Discriminated by `kind`:
 ///
-/// Every field from the v1 schema is present; the type definition is the
-/// authoritative shape contract. Emitted to stderr as NDJSON (one record
-/// per line). FR-005a requires atomic emission: serialize to buffer, then
-/// single `write_all`.
+///   - `"kind": "FixIntent"` carries a structural fact-set delta.
+///   - `"kind": "TextCorrection"` carries the canonical replacement
+///     bytes for the C001 / `[corrections]` map path (a Constitution
+///     V Principle V permitted identifier — corpus-derived token
+///     canonical, never document content).
 #[derive(Debug, Serialize)]
-pub struct AuditRecordJsonV1 {
-    pub schema: &'static str,
-    pub rule: String,
-    pub source: &'static str,
-    pub span: SpanJson,
-    pub original: String,
-    pub replacement: String,
-    pub confidence: f32,
-    pub migration_ref: Option<String>,
-    pub timestamp: String,
-    pub classifier_id: Option<String>,
-    pub dry_run: bool,
-    pub input: Option<String>,
+#[serde(tag = "kind")]
+pub enum ProposalJson {
+    FixIntent { intent: serde_json::Value },
+    TextCorrection { replacement: String },
 }
 
-/// JSON projection of an `AppliedFix` conforming to
-/// `contracts/audit-record-v2.md` (schema `"marque-mvp-2"`).
-///
-/// Strict superset of [`AuditRecordJsonV1`]: every v1 field is preserved
-/// in v1's serialized order, then the v2 extensions (`recognition`,
-/// `runner_up_ratio`, `features`) follow. v2 ⊃ v1 is the back-compat
-/// guarantee — a v1 consumer reading a v2 record sees all the v1 fields
-/// it knows about and ignores the unknown `recognition` /
-/// `runner_up_ratio` / `features` keys (assuming a tolerant parser, which
-/// is the standard JSON contract).
-///
-/// `recognition` is always emitted (strict-path = `1.0`, decoder = `<1.0`)
-/// because the recognition axis is always meaningful in a v2 record.
-/// `runner_up_ratio` and `features` are omitted via
-/// `skip_serializing_if` when absent, so a strict-path v2 record stays
-/// minimal — a downstream consumer can detect a decoder-sourced fix by
-/// the presence of the latter two fields plus a non-1.0 `recognition`.
+/// JSON projection of an `AppliedFix` conforming to the
+/// `marque-mvp-3` audit-record contract.
 #[derive(Debug, Serialize)]
-pub struct AuditRecordJsonV2 {
+pub struct AuditRecordJsonV3 {
     pub schema: &'static str,
     pub rule: String,
     pub source: &'static str,
     pub span: SpanJson,
-    pub original: String,
-    pub replacement: String,
+    pub proposal: ProposalJson,
     pub confidence: f32,
     pub migration_ref: Option<String>,
     pub timestamp: String,
     pub classifier_id: Option<String>,
     pub dry_run: bool,
     pub input: Option<String>,
-    /// Recognition posterior, always present in v2. `1.0` for strict-path
-    /// fixes (the strict grammar matched unambiguously), `<1.0` for
-    /// decoder-sourced fixes.
+    /// Recognition posterior. `1.0` for strict-path fixes;
+    /// `<1.0` for decoder-sourced fixes.
     pub recognition: f32,
-    /// Top-vs-runner-up posterior ratio for decoder-sourced fixes;
-    /// `None` (omitted from JSON) for strict-path fixes with no
-    /// candidate set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner_up_ratio: Option<f32>,
-    /// Per-feature contributions to `recognition` for decoder-sourced
-    /// fixes; empty Vec (omitted from JSON) for strict-path fixes.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<FeatureJson>,
 }
 
-/// JSON projection of a [`FeatureContribution`] for the v2 audit record.
+/// JSON projection of a [`FeatureContribution`] for the audit record.
 #[derive(Debug, Serialize)]
 pub struct FeatureJson {
     pub id: &'static str,
@@ -463,49 +444,163 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
-/// Convert an `AppliedFix` to the v1 JSON audit record shape.
-pub fn applied_fix_to_audit_json_v1(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV1 {
-    AuditRecordJsonV1 {
-        schema: AUDIT_SCHEMA_VERSION,
-        rule: fix.proposal.rule.as_str().to_owned(),
-        source: fix_source_str(fix.proposal.source),
-        span: SpanJson {
-            start: fix.proposal.span.start,
-            end: fix.proposal.span.end,
-        },
-        original: fix.proposal.original.to_string(),
-        replacement: fix.proposal.replacement.to_string(),
-        confidence: fix.proposal.confidence.combined(),
-        migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
-        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
-        classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
-        dry_run: fix.dry_run,
-        input: fix.input.as_ref().map(|s| s.to_string()),
+/// Schema-pinned JSON projection of `CapcoOpenVocabRef`. Each variant
+/// is encoded as a discriminated object so downstream consumers can
+/// parse without Debug-string heuristics — `Debug` would not be a
+/// stable wire format (variant renames or `#[derive(Debug)]`
+/// regenerations would silently change the JSON). The string
+/// payloads are SAR program identifiers, SCI compartment names, FGI
+/// tetragraphs, and structural CountryCodes — all on Constitution V
+/// Principle V's permitted-identifier list (token canonicals from
+/// agency-allocated vocabularies + structural codes).
+fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
+    match r {
+        marque_capco::CapcoOpenVocabRef::Sar(name) => serde_json::json!({
+            "kind": "Sar",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::SciCompartment(name) => serde_json::json!({
+            "kind": "SciCompartment",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => serde_json::json!({
+            "kind": "SciSubCompartment",
+            "name": name.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => serde_json::json!({
+            "kind": "FgiTetragraph",
+            "code": code.as_ref(),
+        }),
+        marque_capco::CapcoOpenVocabRef::CountryCode(c) => serde_json::json!({
+            "kind": "CountryCode",
+            "code": c.as_str(),
+        }),
     }
 }
 
-/// Convert an `AppliedFix` to the v2 JSON audit record shape.
-///
-/// Reads `confidence` and `source` from the **top-level** snapshot fields
-/// on `AppliedFix`, not from `proposal.*`. The two are identical copies
-/// today (the engine's `__engine_promote` snapshots them unchanged), but
-/// the v2 schema's contract — documented on `AppliedFix` itself — is that
-/// v2 reads the snapshot so a future region-context adjustment landing in
-/// the engine doesn't silently bypass v2 emission.
-pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV2 {
+/// JSON projection of a `FactRef<CapcoScheme>`. Discriminated by
+/// `kind`. Constitution V Principle V permits emitting CVE token IDs
+/// and category IDs (closed-vocabulary identifiers) and open-vocab
+/// canonical refs (vocab-canonical, not document bytes) in audit
+/// output — these are explicitly on the permitted-identifier list.
+fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::Value {
+    match fact {
+        marque_scheme::FactRef::Cve(token_id) => serde_json::json!({
+            "kind": "Cve",
+            "token_id": token_id.0,
+        }),
+        marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
+            "kind": "OpenVocab",
+            "ref": open_vocab_ref_to_json(r),
+        }),
+    }
+}
+
+/// Schema-pinned string projection of a `ReplacementIntent` variant
+/// discriminator. The enum is `#[non_exhaustive]` so a wildcard arm
+/// is unavoidable; the helper logs a tracing warning on unknown
+/// variants so an unrecognized addition surfaces operationally
+/// (rather than the audit / diagnostic JSON silently emitting
+/// "Unknown").
+fn intent_kind_str(intent: &marque_scheme::ReplacementIntent<CapcoScheme>) -> &'static str {
+    match intent {
+        marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+        marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+        marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+        _ => {
+            tracing::warn!(
+                target: "marque::render",
+                "unrecognized ReplacementIntent variant in audit projection; downstream consumers will see kind=\"Unknown\""
+            );
+            "Unknown"
+        }
+    }
+}
+
+/// Schema-pinned string projection of `Scope`. Used in the audit JSON
+/// `proposal.intent.scope` field — `Debug` would not be a stable wire
+/// format (small refactors / variant renames would change the JSON
+/// silently).
+fn scope_str(scope: marque_scheme::Scope) -> &'static str {
+    match scope {
+        marque_scheme::Scope::Portion => "Portion",
+        marque_scheme::Scope::Page => "Page",
+        marque_scheme::Scope::Document => "Document",
+        marque_scheme::Scope::Diff => "Diff",
+    }
+}
+
+/// Schema-pinned string projection of `RecanonScope`. Same rationale
+/// as [`scope_str`].
+fn recanon_scope_str(scope: marque_scheme::fix_intent::RecanonScope) -> &'static str {
+    match scope {
+        marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
+        marque_scheme::fix_intent::RecanonScope::Page => "Page",
+        marque_scheme::fix_intent::RecanonScope::Document => "Document",
+    }
+}
+
+fn proposal_to_json(proposal: &AppliedFixProposal<CapcoScheme>) -> ProposalJson {
+    match proposal {
+        AppliedFixProposal::FixIntent(intent) => {
+            // FixIntent doesn't `derive(Serialize)`; encode the
+            // replacement variant + scope into a structured JSON
+            // object that downstream consumers can match on. The
+            // shape mirrors the `ReplacementIntent` enum
+            // discriminator.
+            let inner: serde_json::Value = match &intent.replacement {
+                marque_scheme::ReplacementIntent::FactAdd { token, scope } => {
+                    serde_json::json!({
+                        "kind": "FactAdd",
+                        "scope": scope_str(*scope),
+                        "token": fact_ref_to_json(token),
+                    })
+                }
+                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
+                    let facts_json: Vec<serde_json::Value> =
+                        facts.iter().map(fact_ref_to_json).collect();
+                    serde_json::json!({
+                        "kind": "FactRemove",
+                        "scope": scope_str(*scope),
+                        "facts": facts_json,
+                    })
+                }
+                marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
+                    serde_json::json!({
+                        "kind": "Recanonicalize",
+                        "scope": recanon_scope_str(*scope),
+                    })
+                }
+                _ => {
+                    tracing::warn!(
+                        target: "marque::render",
+                        "unrecognized ReplacementIntent variant in audit projection; downstream consumers will see kind=\"Unknown\""
+                    );
+                    serde_json::json!({ "kind": "Unknown" })
+                }
+            };
+            ProposalJson::FixIntent { intent: inner }
+        }
+        AppliedFixProposal::TextCorrection { replacement } => ProposalJson::TextCorrection {
+            replacement: replacement.to_string(),
+        },
+    }
+}
+
+/// Convert an `AppliedFix` to the v3 JSON audit record shape.
+pub fn applied_fix_to_audit_json_v3(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV3 {
     let c = &fix.confidence;
-    AuditRecordJsonV2 {
+    AuditRecordJsonV3 {
         schema: AUDIT_SCHEMA_VERSION,
-        rule: fix.proposal.rule.as_str().to_owned(),
+        rule: fix.rule.as_str().to_owned(),
         source: fix_source_str(fix.source),
         span: SpanJson {
-            start: fix.proposal.span.start,
-            end: fix.proposal.span.end,
+            start: fix.span.start,
+            end: fix.span.end,
         },
-        original: fix.proposal.original.to_string(),
-        replacement: fix.proposal.replacement.to_string(),
+        proposal: proposal_to_json(&fix.proposal),
         confidence: c.combined(),
-        migration_ref: fix.proposal.migration_ref.map(|s| s.to_owned()),
+        migration_ref: fix.migration_ref.map(|s| s.to_owned()),
         timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
         classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
         dry_run: fix.dry_run,
@@ -518,31 +613,25 @@ pub fn applied_fix_to_audit_json_v2(fix: &AppliedFix<CapcoScheme>) -> AuditRecor
 
 /// Emit a single audit record as NDJSON to `stderr`.
 ///
-/// Dispatches to the v1 or v2 emitter based on `AUDIT_SCHEMA_IS_V2`,
-/// the const-folded selector set by `crates/engine/build.rs`. Each
-/// record is serialized to an in-memory buffer and flushed with a
-/// single `write_all` ending in `\n` (FR-005a). A partially-serialized
-/// record is never flushed; on serialization failure, emits an error
-/// frame and returns `Err`.
+/// Single accepted schema (`marque-mvp-3`) so dispatch is a no-op;
+/// the const lookup is kept so a future schema bump can land via the
+/// same dispatch shape without restructuring callers.
 pub fn render_audit_record(
     stderr: &mut dyn std::io::Write,
     fix: &AppliedFix<CapcoScheme>,
 ) -> std::io::Result<()> {
-    let serialized = if AUDIT_SCHEMA_IS_V2 {
-        serde_json::to_vec(&applied_fix_to_audit_json_v2(fix))
-    } else {
-        serde_json::to_vec(&applied_fix_to_audit_json_v1(fix))
-    };
+    let _ = AUDIT_SCHEMA_IS_V3;
+    let serialized = serde_json::to_vec(&applied_fix_to_audit_json_v3(fix));
     match serialized {
         Ok(mut buf) => {
             buf.push(b'\n');
             stderr.write_all(&buf)
         }
         Err(e) => {
-            render_audit_error_frame(stderr, fix.proposal.rule.as_str(), &e.to_string())?;
+            render_audit_error_frame(stderr, fix.rule.as_str(), &e.to_string())?;
             Err(std::io::Error::other(format!(
                 "audit record serialization failed for rule {}: {e}",
-                fix.proposal.rule
+                fix.rule
             )))
         }
     }
@@ -607,13 +696,16 @@ pub fn label_for(path: Option<&Path>) -> String {
 mod tests {
     use super::*;
     use marque_ism::Span;
-    use marque_rules::{FixProposal, FixSource, RuleId, Severity};
+    use marque_rules::{
+        FixIntent, FixSource, Message, MessageArgs, MessageTemplate, RuleId, Severity,
+    };
+    use marque_scheme::{ReplacementIntent, fix_intent::RecanonScope};
 
     fn make_diagnostic(
         rule: &'static str,
         span: Span,
         message: &str,
-        fix: Option<FixProposal>,
+        fix: Option<FixIntent<CapcoScheme>>,
     ) -> Diagnostic<CapcoScheme> {
         Diagnostic::new(
             RuleId::new(rule),
@@ -623,6 +715,22 @@ mod tests {
             "CAPCO-2016 §A.6",
             fix,
         )
+    }
+
+    fn make_intent_fix() -> FixIntent<CapcoScheme> {
+        FixIntent {
+            replacement: ReplacementIntent::Recanonicalize {
+                scope: RecanonScope::Portion,
+            },
+            confidence: marque_rules::Confidence::strict(1.0),
+            feature_ids: Default::default(),
+            message: Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs::default(),
+            ),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
+        }
     }
 
     #[test]
@@ -661,15 +769,7 @@ mod tests {
         // Single-line source with a span pointing at "NF" in banner form.
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
-        let fix = FixProposal::new(
-            RuleId::new("E001"),
-            FixSource::BuiltinRule,
-            span,
-            "NF".to_owned(),
-            "NOFORN".to_owned(),
-            marque_rules::Confidence::strict(1.0),
-            None,
-        );
+        let fix = make_intent_fix();
         let diag = make_diagnostic(
             "E001",
             span,
@@ -694,9 +794,14 @@ mod tests {
             rendered.contains("                ^^"),
             "expected caret at col 17; got:\n{rendered}"
         );
-        // Hint includes the replacement
-        assert!(rendered.contains("replace with \"NOFORN\""));
-        assert!(rendered.contains("(confidence 100%)"));
+        // Post-Commit-10: FixIntent carries no replacement bytes (the
+        // renderer is on the diagnostic path; no engine projection
+        // available). The hint shows the auto-fixable signal +
+        // confidence, not the literal replacement.
+        assert!(
+            rendered.contains("auto-fixable; confidence 100%"),
+            "expected auto-fixable hint; got:\n{rendered}"
+        );
         // Citation footer
         assert!(rendered.contains("= citation: CAPCO-2016 §A.6"));
     }
@@ -792,15 +897,7 @@ mod tests {
         // user can tell at a glance the engine will not auto-apply.
         let src = b"SECRET//REL TO USA, AUT, GBR\n";
         let span = Span::new(20, 23);
-        let fix = FixProposal::new(
-            RuleId::new("S004"),
-            FixSource::BuiltinRule,
-            span,
-            "AUT".to_owned(),
-            "AUS".to_owned(),
-            marque_rules::Confidence::strict(0.5),
-            None,
-        );
+        let fix = make_intent_fix();
         let diag = Diagnostic::new(
             RuleId::new("S004"),
             Severity::Suggest,
@@ -841,15 +938,7 @@ mod tests {
         // escape sequence MUST be present in the output.
         let src = b"SECRET//REL TO USA, AUT, GBR\n";
         let span = Span::new(20, 23);
-        let fix = FixProposal::new(
-            RuleId::new("S004"),
-            FixSource::BuiltinRule,
-            span,
-            "AUT".to_owned(),
-            "AUS".to_owned(),
-            marque_rules::Confidence::strict(0.5),
-            None,
-        );
+        let fix = make_intent_fix();
         let diag = Diagnostic::new(
             RuleId::new("S004"),
             Severity::Suggest,
@@ -921,15 +1010,7 @@ mod tests {
         // unchanged: a Suggest-severity diagnostic round-trips
         // through `severity: "suggest"` with no schema bump.
         let span = Span::new(0, 3);
-        let fix = FixProposal::new(
-            RuleId::new("S004"),
-            FixSource::BuiltinRule,
-            span,
-            "AUT",
-            "AUS",
-            marque_rules::Confidence::strict(0.5),
-            None,
-        );
+        let fix = make_intent_fix();
         let diag = Diagnostic::new(
             RuleId::new("S004"),
             Severity::Suggest,
@@ -945,7 +1026,15 @@ mod tests {
         // Fix payload is preserved on the wire so a downstream
         // consumer can render the candidate replacement themselves.
         assert!(json.fix.is_some());
-        assert_eq!(json.fix.as_ref().unwrap().replacement, "AUS");
+        // Post Commit 10 the wire shape carries `intent_kind` (the
+        // structural emission discriminant); `replacement` is `None`
+        // for non-text-correction fixes since the engine renders
+        // bytes from the per-page projection.
+        let fix_json = json.fix.as_ref().unwrap();
+        assert!(matches!(
+            fix_json.intent_kind,
+            "FactAdd" | "FactRemove" | "Recanonicalize" | "TextCorrection"
+        ));
     }
 
     // --- Audit record tests ---
@@ -977,29 +1066,17 @@ mod tests {
 
     #[test]
     fn render_audit_record_produces_valid_ndjson() {
-        use marque_rules::{AppliedFix, EnginePromotionToken};
+        use marque_ism::Span;
+        use marque_rules::{AppliedFix, EnginePromotionToken, RuleId};
         use std::sync::Arc;
         use std::time::{Duration, UNIX_EPOCH};
 
-        let fix = FixProposal::new(
-            RuleId::new("E001"),
-            FixSource::BuiltinRule,
-            Span::new(8, 10),
-            "NF",
-            "NOFORN",
-            marque_rules::Confidence::strict(1.0),
-            Some("CAPCO-2016 §A.6"),
-        );
-        // Test-fixture carve-out per Constitution V Principle V:
-        // synthetic AppliedFix for renderer unit testing only;
-        // never commingled with engine output, never reachable from
-        // cfg(not(test)). The token is minted via the engine-only
-        // door for the same reason — the test exercises the audit
-        // emitter, not the engine's promotion gate.
-        // Test-fixture carve-out per Constitution V
+        let fix = make_intent_fix();
+        // Test-fixture carve-out per Constitution V Principle V.
         let token = EnginePromotionToken::__engine_construct();
-        // Test-fixture carve-out per Constitution V
-        let applied = AppliedFix::__engine_promote_legacy(
+        let applied = AppliedFix::__engine_promote(
+            RuleId::new("E002"),
+            Span::new(8, 10),
             fix,
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             Some(Arc::from("classifier-42")),
@@ -1015,46 +1092,34 @@ mod tests {
 
         let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
         assert_eq!(v["schema"], AUDIT_SCHEMA_VERSION);
-        assert_eq!(v["rule"], "E001");
+        assert_eq!(v["rule"], "E002");
         assert_eq!(v["source"], "BuiltinRule");
         assert_eq!(v["span"]["start"], 8);
         assert_eq!(v["span"]["end"], 10);
-        assert_eq!(v["original"], "NF");
-        assert_eq!(v["replacement"], "NOFORN");
+        assert_eq!(v["proposal"]["kind"], "FixIntent");
         assert_eq!(v["confidence"], 1.0);
-        assert_eq!(v["migration_ref"], "CAPCO-2016 §A.6");
         assert_eq!(v["classifier_id"], "classifier-42");
         assert_eq!(v["dry_run"], false);
         assert_eq!(v["input"], "test.txt");
         // timestamp must be a valid RFC3339 string
         assert!(v["timestamp"].as_str().unwrap().contains('T'));
 
-        // v2 contract: a strict-path fix has `recognition: 1.0` always
-        // present, and `runner_up_ratio` / `features` omitted (skip when
-        // empty / None). v1 builds (downgrade) drop all three new fields.
-        if AUDIT_SCHEMA_IS_V2 {
-            // `serde_json::Value` deserializes JSON numbers as `f64`, so
-            // compare against `1.0` (f64) — matches the
-            // `assert_eq!(v["confidence"], 1.0)` line above and avoids
-            // f32→f64 widening surprises.
-            assert_eq!(v["recognition"], 1.0);
-            assert!(
-                v.get("runner_up_ratio").is_none(),
-                "strict-path v2 record must omit runner_up_ratio when None; \
-                 got {:?}",
-                v.get("runner_up_ratio")
-            );
-            assert!(
-                v.get("features").is_none(),
-                "strict-path v2 record must omit features when empty; got {:?}",
-                v.get("features")
-            );
-        } else {
-            assert!(
-                v.get("recognition").is_none(),
-                "v1 build must not emit recognition field; got {:?}",
-                v.get("recognition")
-            );
+        // mvp-3: a strict-path fix has `recognition: 1.0` always
+        // present, and `runner_up_ratio` / `features` omitted (skip
+        // when empty / None).
+        #[allow(clippy::assertions_on_constants)]
+        // Drift-gate: failure here means the build-time const desynced from the schema literal.
+        {
+            assert!(AUDIT_SCHEMA_IS_V3);
         }
+        assert_eq!(v["recognition"], 1.0);
+        assert!(
+            v.get("runner_up_ratio").is_none(),
+            "strict-path record must omit runner_up_ratio when None"
+        );
+        assert!(
+            v.get("features").is_none(),
+            "strict-path record must omit features when empty"
+        );
     }
 }

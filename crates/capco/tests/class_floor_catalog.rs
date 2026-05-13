@@ -411,7 +411,7 @@ fn sar_fires_on_unclassified() {
     // fix to SAR-classification-floor without an explicit human-review
     // exemption fails the test.
     assert!(
-        sar[0].fix.is_none() && sar[0].fix_intent.is_none(),
+        sar[0].fix.is_none() && sar[0].fix.is_none(),
         "SAR floor must emit no fix (human review required, §H.5): {:?}",
         sar[0]
     );

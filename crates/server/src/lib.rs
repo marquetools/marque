@@ -354,7 +354,23 @@ pub struct DiagnosticJson {
 
 #[derive(Serialize)]
 pub struct FixJson {
-    pub replacement: String,
+    /// Provenance of the fix — `"BuiltinRule" | "CorrectionsMap" |
+    /// "MigrationTable" | "DecoderPosterior" |
+    /// "DecoderClassificationHeuristic"`. Mirrors the CLI/WASM
+    /// `source` field.
+    pub source: &'static str,
+    /// The kind of fix payload — `"FactAdd" | "FactRemove" |
+    /// "Recanonicalize"` for structural rule fixes, `"TextCorrection"`
+    /// for byte-substitution fixes (the corrections-map / migration
+    /// channel). Mirrors the CLI and WASM diagnostic JSON shape.
+    pub intent_kind: &'static str,
+    /// Replacement bytes, present only for `TextCorrection` payloads.
+    /// `None` for structural-intent fixes (the engine synthesizes the
+    /// canonical bytes at fix-application time via `apply_intent` +
+    /// `render_canonical`; the server response carries only the
+    /// structural commitment, not the materialized bytes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<String>,
     pub confidence: f32,
     pub migration_ref: Option<String>,
 }
@@ -594,6 +610,16 @@ pub struct DeadlineExceededBody {
     pub candidates_total: usize,
 }
 
+fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
+    match source {
+        marque_rules::FixSource::BuiltinRule => "BuiltinRule",
+        marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
+        marque_rules::FixSource::MigrationTable => "MigrationTable",
+        marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
+        marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
+    }
+}
+
 fn diagnostics_to_json(result: &marque_engine::LintResult) -> Vec<DiagnosticJson> {
     result
         .diagnostics
@@ -604,11 +630,33 @@ fn diagnostics_to_json(result: &marque_engine::LintResult) -> Vec<DiagnosticJson
             message: d.message.to_string(),
             start: d.span.start,
             end: d.span.end,
-            fix: d.fix.as_ref().map(|f| FixJson {
-                replacement: f.replacement.to_string(),
-                confidence: f.confidence.combined(),
-                migration_ref: f.migration_ref.map(str::to_owned),
-            }),
+            fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
+                (Some(f), _) => Some(FixJson {
+                    source: fix_source_str(f.source),
+                    intent_kind: match &f.replacement {
+                        marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                        marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                        marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                        _ => "Unknown",
+                    },
+                    // Structural rule fix — replacement bytes are
+                    // engine-rendered at promotion time. The server
+                    // response carries only the structural commitment;
+                    // callers needing materialized bytes call the fix
+                    // endpoint and read the corrected text.
+                    replacement: None,
+                    confidence: f.confidence.combined(),
+                    migration_ref: f.migration_ref.map(str::to_owned),
+                }),
+                (None, Some(tc)) => Some(FixJson {
+                    source: fix_source_str(tc.source),
+                    intent_kind: "TextCorrection",
+                    replacement: Some(tc.replacement.to_string()),
+                    confidence: tc.confidence.combined(),
+                    migration_ref: tc.migration_ref.map(str::to_owned),
+                }),
+                (None, None) => None,
+            },
         })
         .collect()
 }
