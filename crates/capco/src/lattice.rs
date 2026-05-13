@@ -207,15 +207,16 @@ impl Lattice for SciSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
-            let out_comps = match out.systems.get_mut(sys) {
-                Some(c) => c,
-                None => out.systems.entry(sys.clone()).or_default(),
-            };
+            if !out.systems.contains_key(sys) {
+                out.systems.insert(sys.clone(), BTreeMap::new());
+            }
+            let out_comps = out.systems.get_mut(sys).unwrap();
+
             for (cid, subs) in comp_map {
-                let out_subs = match out_comps.get_mut(cid) {
-                    Some(s) => s,
-                    None => out_comps.entry(cid.clone()).or_default(),
-                };
+                if !out_comps.contains_key(cid) {
+                    out_comps.insert(cid.clone(), BTreeSet::new());
+                }
+                let out_subs = out_comps.get_mut(cid).unwrap();
                 out_subs.extend(subs.iter().cloned());
             }
         }
@@ -369,9 +370,16 @@ impl Lattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
-            let out_comps = out.programs.entry(pid.clone()).or_default();
+            if !out.programs.contains_key(pid) {
+                out.programs.insert(pid.clone(), BTreeMap::new());
+            }
+            let out_comps = out.programs.get_mut(pid).unwrap();
+
             for (cid, subs) in comp_map {
-                let out_subs = out_comps.entry(cid.clone()).or_default();
+                if !out_comps.contains_key(cid) {
+                    out_comps.insert(cid.clone(), BTreeSet::new());
+                }
+                let out_subs = out_comps.get_mut(cid).unwrap();
                 out_subs.extend(subs.iter().cloned());
             }
         }
