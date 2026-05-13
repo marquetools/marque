@@ -541,3 +541,51 @@ impl TwoPassFixer {
     );
     assert_eq!(diags[0].code, "PRC002");
 }
+
+#[test]
+fn two_pass_fixer_shadow_type_outside_canonical_file_is_denied() {
+    // Copilot round-3 R3-1 regression test: a same-name `TwoPassFixer`
+    // type defined in a different file under `crates/engine/src/**`
+    // MUST NOT inherit the canonical allow-list. The allow-list is
+    // pinned to the single canonical home `crates/engine/src/engine.rs`
+    // via the `is_engine_canonical_helper_file` path guard. Without
+    // that guard, type-name-only matching on `impl_self_type` would
+    // let any shadow type with `apply_kept_fixes` defined anywhere
+    // under `crates/engine/src/**` bypass the FR-040 engine-only
+    // contract.
+    //
+    // Mirrors the existing free-fn pin (`ENGINE_FREE_FN_ALLOW_LIST` +
+    // `is_engine_canonical_helper_file`): "one allow-list entry, one
+    // canonical home." A contributor who genuinely needs to expand
+    // the allow-list must do so deliberately by amending both the
+    // method list and (if needed) the canonical-path guard — not
+    // accidentally by re-using a type name.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/shadow.rs",
+        r"
+struct TwoPassFixer;
+impl TwoPassFixer {
+    fn apply_kept_fixes(&self) {
+        let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic for shadow TwoPassFixer in non-canonical file, got {diags:#?}",
+    );
+    assert_eq!(diags[0].code, "PRC002");
+    assert!(
+        diags[0]
+            .file
+            .to_string_lossy()
+            .contains("crates/engine/src/shadow.rs"),
+        "expected the diagnostic to point at the shadow file; got {:?}",
+        diags[0].file,
+    );
+}

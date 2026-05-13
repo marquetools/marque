@@ -1659,21 +1659,30 @@ impl<'engine> TwoPassFixer<'engine> {
         // emits all its catalog IDs at pass-1.
         let localized_ids = self.localized_rule_id_set();
 
-        // Pass-1 + pass-2 share the synthesized diagnostic stream
-        // from `lint`. Partition the diagnostic list by the firing
-        // rule's declared phase so each pass's synthesis sees only
-        // its own slice — the two C-1 dedup walks are independent
-        // by construction (architect pre-flight §2).
-        let (pass1_diags, pass2_diags) =
-            partition_diags_by_phase(&lint.diagnostics, &localized_ids);
-
-        // Pass-1: Localized FixIntent fixes against the post-pass-0 buffer.
-        let pass1 = self.run_pass1_localized(
-            &pass0.effective_source,
-            &parsed_markings,
-            &pass1_diags,
-            &lint,
-        )?;
+        // Pass-1 sees the pre-pass-1 partition (`pass1_diags`) of the
+        // `lint` diagnostic stream. The reference vector borrows from
+        // `lint.diagnostics`; we keep the borrow scoped to the pass-1
+        // dispatch call so the borrow checker can let `lint` move
+        // (or be replaced by `relint`) in the rebind below.
+        //
+        // We deliberately drop the pre-pass-1 `pass2_diags` partition
+        // immediately after pass-1: the post-pass-1 rebind below may
+        // replace `lint` with `relint`, and pass-2 in either branch
+        // operates on the post-rebind `lint.diagnostics`. The fresh
+        // re-partition is the correct pass-2 input (FR-023 partial —
+        // Copilot round-1 #2). Reference partitioning is O(N) pointer
+        // pushes; the prior owned-vec clone allocated O(N) Diagnostic
+        // bodies on every call (Constitution I).
+        let pass1 = {
+            let (pass1_diags, _pass2_diags_pre) =
+                partition_diags_by_phase(&lint.diagnostics, &localized_ids);
+            self.run_pass1_localized(
+                &pass0.effective_source,
+                &parsed_markings,
+                &pass1_diags,
+                &lint,
+            )?
+        };
 
         // Destructure pass0 into owned locals so the re-parse / R002
         // branches can move `effective_source` directly (eliminating
@@ -1728,7 +1737,16 @@ impl<'engine> TwoPassFixer<'engine> {
         // marking shape, so post-pass-1 diagnostics are degenerate
         // and the surfaced remaining-diagnostics stream should
         // reflect what the operator saw before pass-1 ran.
-        let (pass2_source, pass2_markings, pass1_applied, pass1_applied_keys, pass2_diags, lint) =
+        // Rebind `(pass2_source, pass2_markings, pass1_applied,
+        // pass1_applied_keys, lint)` first — splitting `pass2_diags`
+        // off into its own subsequent let-binding (below) is what
+        // unblocks the reference-propagation refactor (Copilot
+        // round-3 R3-2). With the old single-tuple shape, the `else`
+        // arm tried to move both `relint` and a `Vec<&relint.diagnostics>`
+        // out together, which Rust correctly rejects as a
+        // self-referential bundle. Splitting lets `lint` settle to
+        // its final owner first, then `pass2_diags` borrows from it.
+        let (pass2_source, pass2_markings, pass1_applied, pass1_applied_keys, lint) =
             if pass1.applied.is_empty() {
                 // Short-circuit: pass-1 produced no applied fixes, so the
                 // byte stream is unchanged. Move `pass0_effective_source`
@@ -1746,7 +1764,6 @@ impl<'engine> TwoPassFixer<'engine> {
                     parsed_markings,
                     applied,
                     applied_keys,
-                    pass2_diags,
                     lint,
                 )
             } else {
@@ -1783,47 +1800,50 @@ impl<'engine> TwoPassFixer<'engine> {
                         r002,
                     ));
                 }
-                // Non-R002 re-parse path: re-partition the FRESH
-                // post-pass-1 diagnostic stream by phase. Pass-2
-                // dispatches against `fresh_pass2_diags`, not against
-                // the now-stale `pass2_diags` derived from the pre-
-                // pass-1 lint. `localized_ids` is unchanged across
-                // the pass (the rule registry is `Engine::new`-time
-                // immutable), so the partition predicate is identical.
-                // The pre-pass-1 `pass1_diags` partition is discarded
-                // here because pass-1 has already run; what we need
-                // for pass-2 is its post-pass-1 phase partition.
-                let (_fresh_pass1_diags, fresh_pass2_diags) =
-                    partition_diags_by_phase(&relint.diagnostics, &localized_ids);
                 // Non-R002 re-parse path: destructure pass1 and move
                 // `post_buffer` directly into `pass2_source` — no
                 // document-buffer clone. `relint` is the fresh
                 // post-pass-1 LintResult — move it into the `lint`
                 // slot so the deadline-error payload, the pass-2
-                // dispatch borrow, and the remaining-diagnostics
-                // filter all see post-pass-1 state.
+                // dispatch borrow, the partition below, and the
+                // remaining-diagnostics filter all see post-pass-1
+                // state.
                 let Pass1Result {
                     post_buffer,
                     applied,
                     applied_keys,
                 } = pass1;
-                (
-                    post_buffer,
-                    new_markings,
-                    applied,
-                    applied_keys,
-                    fresh_pass2_diags,
-                    relint,
-                )
+                (post_buffer, new_markings, applied, applied_keys, relint)
             };
 
+        // Re-partition the (now post-pass-1, when applicable) lint's
+        // diagnostic stream. Pass-2 dispatches against this fresh
+        // partition (FR-023 partial — Copilot round-1 #2). The pre-
+        // pass-1 partition went out of scope when its enclosing block
+        // ended above, so its borrow of the pre-rebind `lint` doesn't
+        // outlive the rebind. `localized_ids` is `Engine::new`-time
+        // immutable, so the partition predicate is unchanged. The
+        // unused pass-1 slot here is discarded because pass-1 has
+        // already run; pass-2 only needs its own phase partition.
+        //
+        // The partition itself is O(N) pointer pushes into two
+        // reference vectors — no clones, no extra owned-diagnostic
+        // bodies (Copilot round-3 R3-2 / Constitution I).
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded { partial_lint: lint });
         }
 
-        // Pass-2: WholeMarking FixIntent fixes against post-pass-1 buffer.
-        let pass2 =
-            self.run_pass2_whole_marking(&pass2_source, &pass2_markings, &pass2_diags, &lint)?;
+        // Pass-2: WholeMarking FixIntent fixes against post-pass-1
+        // buffer. The partition + dispatch live in an inner scope so
+        // `pass2_diags` (a `SmallVec<[&Diagnostic; 32]>` whose Drop
+        // impl is not `#[may_dangle]`) drops before the later
+        // `lint.diagnostics.into_iter()` move — `Vec<&T>`'s borrowck
+        // relaxation doesn't carry over to `SmallVec`.
+        let pass2 = {
+            let (_pass1_diags_post, pass2_diags) =
+                partition_diags_by_phase(&lint.diagnostics, &localized_ids);
+            self.run_pass2_whole_marking(&pass2_source, &pass2_markings, &pass2_diags, &lint)?
+        };
 
         // Merge applied lists: pass-0 corrections, then pass-1, then
         // pass-2. Order matches the existing audit-stream contract
@@ -1918,7 +1938,7 @@ impl<'engine> TwoPassFixer<'engine> {
         &self,
         effective_source: &[u8],
         parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
-        pass1_diags: &[Diagnostic<CapcoScheme>],
+        pass1_diags: &[&Diagnostic<CapcoScheme>],
         lint: &LintResult,
     ) -> Result<Pass1Result, EngineError> {
         if pass1_diags.is_empty() {
@@ -2025,7 +2045,7 @@ impl<'engine> TwoPassFixer<'engine> {
         &self,
         pass2_source: &[u8],
         parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
-        pass2_diags: &[Diagnostic<CapcoScheme>],
+        pass2_diags: &[&Diagnostic<CapcoScheme>],
         lint: &LintResult,
     ) -> Result<Pass2Result, EngineError> {
         if pass2_diags.is_empty() {
@@ -2264,12 +2284,43 @@ impl<'engine> TwoPassFixer<'engine> {
 /// partial — the full reshape-aware `(scheme, predicate-id)`
 /// no-re-fire gate lands in PR 7c on top of the pre-pass-1 attrs
 /// cache).
-fn partition_diags_by_phase(
-    diagnostics: &[Diagnostic<CapcoScheme>],
+///
+/// # Hot-path allocation note (Copilot round-3 R3-2)
+///
+/// Returns reference vectors (`Vec<&Diagnostic<_>>`) rather than
+/// cloning the diagnostics into owned vectors. Constitution I
+/// (Uncompromising Performance) — this function runs up to twice
+/// per fix and on the pre-Phase-D 10 KB fix path was previously
+/// cloning the entire diagnostic stream on each call. Reference
+/// propagation is the natural shape because every downstream
+/// consumer (`run_pass1_localized`, `run_pass2_whole_marking`,
+/// `synthesize_fixes`, `relint`-arm logging) only reads the
+/// diagnostics; ownership is never required.
+///
+/// The returned references borrow from `diagnostics`, which the
+/// caller (`TwoPassFixer::run`) keeps alive via the owning
+/// `LintResult` for the duration of pass-1 + pass-2 dispatch.
+/// Pass-1 diagnostic-reference partition. Inline-4 mirrors the
+/// 4-rule `Phase::Localized` cap (C001, E006, E007, S004) — covers
+/// "each Localized rule fires once for one marking" stack-only;
+/// spills to heap only on pathological multi-fire (e.g., a
+/// corrections map with ≥5 typo hits in one document).
+type Pass1DiagRefs<'a> = SmallVec<[&'a Diagnostic<CapcoScheme>; 4]>;
+
+/// Pass-2 diagnostic-reference partition. Inline-32 mirrors the
+/// existing `Pass2Indices` precedent (5 entries of headroom from the
+/// 27 `Phase::WholeMarking` rules; ample for typical 10 KB
+/// documents). Refs are 8 bytes each → 256 bytes of inline storage +
+/// Vec header. Spills to heap for documents with very many concurrent
+/// WholeMarking diagnostics.
+type Pass2DiagRefs<'a> = SmallVec<[&'a Diagnostic<CapcoScheme>; 32]>;
+
+fn partition_diags_by_phase<'a>(
+    diagnostics: &'a [Diagnostic<CapcoScheme>],
     localized_ids: &HashSet<&'static str>,
-) -> (Vec<Diagnostic<CapcoScheme>>, Vec<Diagnostic<CapcoScheme>>) {
-    let mut pass1_diags: Vec<Diagnostic<CapcoScheme>> = Vec::new();
-    let mut pass2_diags: Vec<Diagnostic<CapcoScheme>> = Vec::new();
+) -> (Pass1DiagRefs<'a>, Pass2DiagRefs<'a>) {
+    let mut pass1_diags: Pass1DiagRefs<'a> = SmallVec::new();
+    let mut pass2_diags: Pass2DiagRefs<'a> = SmallVec::new();
     for d in diagnostics {
         // text_correction diagnostics flow through pass-0 only;
         // they are excluded from both pass-1 and pass-2 splicing
@@ -2281,9 +2332,9 @@ fn partition_diags_by_phase(
             continue;
         }
         if localized_ids.contains(d.rule.as_str()) {
-            pass1_diags.push(d.clone());
+            pass1_diags.push(d);
         } else {
-            pass2_diags.push(d.clone());
+            pass2_diags.push(d);
         }
     }
     (pass1_diags, pass2_diags)
@@ -2480,7 +2531,7 @@ fn synthesize_fixes(
     scheme: &CapcoScheme,
     parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
     source: &[u8],
-    diagnostics: &[marque_rules::Diagnostic<CapcoScheme>],
+    diagnostics: &[&marque_rules::Diagnostic<CapcoScheme>],
     threshold: f32,
 ) -> Vec<SynthesizedFix> {
     use std::collections::BTreeMap;
@@ -2494,7 +2545,7 @@ fn synthesize_fixes(
         (usize, usize),
         (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
     > = BTreeMap::new();
-    for d in diagnostics {
+    for &d in diagnostics {
         let Some(intent) = d.fix.as_ref() else {
             continue;
         };
@@ -4663,6 +4714,54 @@ mod tests {
     }
 
     #[test]
+    fn partition_diags_by_phase_returns_references_not_clones() {
+        // Copilot round-3 R3-2 regression test: the partition MUST
+        // return reference vectors borrowing from `diagnostics`, not
+        // cloned owned vectors. The cloning shape allocated O(N)
+        // Diagnostic bodies on every call, and `partition_diags_by_phase`
+        // is called up to twice per fix on the hot path — that
+        // allocation cost is unjustified under Constitution I.
+        //
+        // Behavioral lock: build an input slice, partition it, and
+        // verify each entry in the returned partitions is pointer-
+        // equal (via `std::ptr::eq`) to its source entry. Pointer
+        // identity is the load-bearing assertion — a clone-based
+        // partition would produce structurally-equal but
+        // pointer-distinct Diagnostics, failing the test.
+        let localized: HashSet<&'static str> = ["E006"].into_iter().collect();
+
+        let diags = vec![
+            Diagnostic::<CapcoScheme>::new(
+                RuleId::new("E006"),
+                Severity::Error,
+                Span::new(0, 4),
+                "pass-1",
+                "TEST",
+                None,
+            ),
+            Diagnostic::<CapcoScheme>::new(
+                RuleId::new("E022"),
+                Severity::Error,
+                Span::new(4, 8),
+                "pass-2",
+                "TEST",
+                None,
+            ),
+        ];
+        let (p1, p2) = super::partition_diags_by_phase(&diags, &localized);
+        assert_eq!(p1.len(), 1);
+        assert_eq!(p2.len(), 1);
+        assert!(
+            std::ptr::eq(p1[0], &diags[0]),
+            "pass-1 partition entry must be a reference to the original Diagnostic"
+        );
+        assert!(
+            std::ptr::eq(p2[0], &diags[1]),
+            "pass-2 partition entry must be a reference to the original Diagnostic"
+        );
+    }
+
+    #[test]
     fn partition_diags_by_phase_includes_text_correction_with_fix_in_partition() {
         // A text_correction diagnostic that ALSO carries a `fix` is a
         // sub-threshold suggestion — it stays in the partition routed by
@@ -4695,7 +4794,12 @@ mod tests {
             migration_ref: None,
         });
 
-        let (p1, p2) = super::partition_diags_by_phase(&[tc], &localized);
+        // Bind the input array to a named local so the reference
+        // partition (Copilot round-3 R3-2) outlives the assertion
+        // — `partition_diags_by_phase` now returns reference
+        // vectors, so the source `[Diagnostic]` must remain live.
+        let diags = [tc];
+        let (p1, p2) = super::partition_diags_by_phase(&diags, &localized);
         assert_eq!(p1.len(), 1, "text_correction WITH fix → pass-1 (C001)");
         assert_eq!(p2.len(), 0);
     }
