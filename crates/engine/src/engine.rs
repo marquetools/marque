@@ -18,7 +18,7 @@ use marque_config::Config;
 use marque_ism::Span;
 use marque_rules::{
     AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken, FixIntent,
-    FixSource, RuleId, RuleSet, Severity,
+    FixSource, Phase, RuleId, RuleSet, Severity, SmallVec,
 };
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
@@ -155,6 +155,38 @@ pub struct Engine {
     /// seam.
     #[cfg(feature = "corpus-override")]
     corpus_override: Option<std::sync::Arc<marque_config::corpus_override::CorpusOverride>>,
+
+    /// Phase partition of the registered rule set, computed once at
+    /// construction time (PR 7a, FR-021). Each entry is a
+    /// `(rule_set_index, rule_index_within_set)` pair indexing back into
+    /// `self.rule_sets[i].rules()[j]`. `pass1_rule_indices` lists every
+    /// rule whose `phase()` returned [`Phase::Localized`];
+    /// `pass2_rule_indices` lists every rule whose `phase()` returned
+    /// [`Phase::WholeMarking`]. Together they enumerate every registered
+    /// rule exactly once.
+    ///
+    /// **Inline-size choice.** `[(usize, usize); 4]` for pass-1
+    /// (Localized rules are rare — 4 of 31 in the CAPCO ruleset
+    /// post-PR-3c.B Commit 7.4: C001, E006, E007, S004) and
+    /// `[(usize, usize); 32]` for pass-2 (whole-marking is the dominant
+    /// shape — 27 of 31 today, with headroom for the immediate
+    /// post-refactor ruleset of ~40 before allocating on the heap).
+    /// Both are stack-allocated for the production rule set.
+    ///
+    /// **PR 7a behavior.** Stored but unused — both phases still run
+    /// together in pass-2 exactly as before. The partition is READ but
+    /// UNUSED. PR 7b restructures `fix_inner` to dispatch on it; this
+    /// is what makes 7a cleanly revertable.
+    //
+    // `dead_code` is suppressed only for PR 7a — `fix_inner` does not
+    // yet dispatch on the partition (per the umbrella plan, dispatch
+    // lands in 7b). Removing the allow when 7b consumes these fields
+    // is part of that PR's checklist.
+    #[allow(dead_code)]
+    pass1_rule_indices: Pass1Indices,
+    /// See [`Engine::pass1_rule_indices`] for the shape rationale.
+    #[allow(dead_code)]
+    pass2_rule_indices: Pass2Indices,
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -286,6 +318,16 @@ impl Engine {
         drop(scheme);
         let scheme = bridge_scheme;
 
+        // PR 7a phase-partition walk (FR-021). Read every registered
+        // rule's declared `Phase` and partition the rule set into a
+        // pass-1 (Localized) list and a pass-2 (WholeMarking) list
+        // indexed by `(rule_set_index, rule_index_within_set)`. The
+        // walk runs once at construction time; per-document dispatch
+        // reads the cached partition. Phase partition stored but
+        // unused in 7a; 7b restructures `fix_inner` to dispatch on
+        // it.
+        let (pass1_rule_indices, pass2_rule_indices) = partition_rules_by_phase(&rule_sets);
+
         Ok(Self {
             config,
             rule_sets,
@@ -297,6 +339,8 @@ impl Engine {
             recognizer: Arc::new(crate::decoder::StrictOrDecoderRecognizer::new()),
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
+            pass1_rule_indices,
+            pass2_rule_indices,
         })
     }
 
@@ -2296,6 +2340,52 @@ const HEURISTIC_RULE_AXIS_CAP: f32 = 0.95;
 /// a user writing both `E001 = "warn"` and `portion-mark-in-banner =
 /// "warn"` (intentionally or via copy-paste across config layers) gets
 /// the expected behavior.
+/// Pass-1 (Localized) rule-index partition. Each entry indexes back
+/// into `Engine::rule_sets[i].rules()[j]` as `(i, j)`. Inline-4
+/// because the production CAPCO ruleset has 4 Localized rules; future
+/// schemes are expected to stay in the same order of magnitude.
+type Pass1Indices = SmallVec<[(usize, usize); 4]>;
+/// Pass-2 (WholeMarking) rule-index partition. Inline-32 covers the
+/// current 27-rule whole-marking subset with headroom for the
+/// post-refactor ruleset of ~40 before spilling to the heap.
+type Pass2Indices = SmallVec<[(usize, usize); 32]>;
+
+/// Partition the registered rules by their declared [`Phase`] (FR-021).
+///
+/// Returns `(pass1, pass2)` where each entry is a
+/// `(rule_set_index, rule_index_within_set)` pair indexing back into
+/// the caller's `rule_sets[i].rules()[j]`. `pass1` enumerates every
+/// [`Phase::Localized`] rule; `pass2` enumerates every
+/// [`Phase::WholeMarking`] rule. Together they cover every registered
+/// rule exactly once — the trait method is total over `Phase`'s two
+/// variants.
+///
+/// Walked once at [`Engine::with_clock`] time and cached on the engine.
+/// Per-document `fix` dispatch reads the cached lists in PR 7b; the
+/// walk does not re-run.
+///
+/// PR 7a behavior: the partition is stored but unused — both phases
+/// still run together in pass-2 exactly as before. The walk runs (so
+/// any future test that inspects the lists sees real data) and the
+/// engine carries the cost of the cached lists (a few dozen
+/// `(usize, usize)` pairs total), but `fix_inner` does not yet
+/// dispatch on the partition.
+fn partition_rules_by_phase(
+    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+) -> (Pass1Indices, Pass2Indices) {
+    let mut pass1: Pass1Indices = SmallVec::new();
+    let mut pass2: Pass2Indices = SmallVec::new();
+    for (set_idx, rule_set) in rule_sets.iter().enumerate() {
+        for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
+            match rule.phase() {
+                Phase::Localized => pass1.push((set_idx, rule_idx)),
+                Phase::WholeMarking => pass2.push((set_idx, rule_idx)),
+            }
+        }
+    }
+    (pass1, pass2)
+}
+
 fn canonicalize_rule_overrides(
     config: &mut Config,
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
