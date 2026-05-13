@@ -41,6 +41,11 @@ pub use marque_ism::CapcoTokenSet;
 pub use provenance::DecoderProvenance;
 pub use rules::CapcoRuleSet;
 pub use scheme::{CapcoMarking, CapcoOpenVocabRef, CapcoScheme};
+// PR 3d.3: surface the active-sentinel-set count so integration
+// tests (notably `vocabulary_forms.rs`) can pin EXPECTED_FORMS
+// against the authoritative size without coupling to private
+// `vocabulary` module internals.
+pub use vocabulary::active_sentinel_count;
 
 use marque_rules::RuleSet;
 

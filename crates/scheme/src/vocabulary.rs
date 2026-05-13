@@ -108,11 +108,35 @@ pub struct PointOfContact {
 /// unrelated constraints. `Clone`, `Debug`, `PartialEq`, and `Eq` are
 /// auto-implemented when `Token` satisfies them; consumers that only
 /// read via `&'static Deprecation<_>` get the type unconditionally.
+///
+/// PR 3d (FR-054) adds `valid_from` / `valid_until` to carry the
+/// validity-window metadata schema needs for "evaluate as valid at
+/// time of authoring". Both are `Option<&'static str>` because the
+/// upstream sources (ODNI XSD annotations, JSON sidecars) carry
+/// version metadata at the file level, not per-token, so today every
+/// generated entry leaves them as `None`. The data plumbing is wired
+/// so a future ODNI revision that exposes per-term version info can
+/// populate them without a trait change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Deprecation<Token> {
     /// Schema version at which the token was deprecated, e.g.,
     /// `"ISM-v2022-DEC"`.
     pub since: &'static str,
+    /// Schema version at which the token was first published.
+    ///
+    /// Defaults to `None` when build.rs cannot derive it from ODNI
+    /// XSD annotations or the migration table. The build-time
+    /// invariant `valid_from <= since` MUST hold when both are
+    /// populated (a token cannot be deprecated before it was
+    /// published); see `crates/ism/tests/migrations_invariant.rs`.
+    pub valid_from: Option<&'static str>,
+    /// Schema version after which the token is no longer valid in
+    /// newly-authored documents.
+    ///
+    /// Defaults to `None` when the token has no successor in the
+    /// migration table (rare — FOUO-style "no replacement" cases per
+    /// FR-017).
+    pub valid_until: Option<&'static str>,
     /// Replacement token id, when one is defined.
     pub replacement: Option<Token>,
 }
@@ -147,6 +171,68 @@ pub struct TokenMetadataFull<Token> {
     pub banner_form: &'static str,
     /// Banner abbreviation when one exists (e.g., `"S"`).
     pub banner_abbreviation: Option<&'static str>,
+}
+
+/// Aggregated form-set for a single token (PR 3d, FR-053).
+///
+/// Replaces the closed-world "exactly three forms per token"
+/// assumption baked into the original per-form trait methods. Every
+/// scheme exposes a `&'static FormSet` per token via
+/// [`Vocabulary::forms`]; the per-form accessors
+/// ([`Vocabulary::portion_form`], [`Vocabulary::banner_form`],
+/// [`Vocabulary::banner_abbreviation`]) become default-method
+/// projections over the `FormSet`.
+///
+/// Field naming follows CAPCO-2016 §G.1 Table 4 column terms
+/// (pp 36–38):
+///
+/// - `portion` — column 3, "Authorized Portion Mark". Always present.
+/// - `banner_title` — column 1, "Authorized Banner Line Marking
+///   Title". Always present.
+/// - `banner_abbreviation` — column 2, "Authorized Banner Line
+///   Abbreviation". `Some` only when the abbreviation is distinct
+///   from `banner_title`; classifications carry `None` because the
+///   Register lists no abbreviation for any classification row.
+///
+/// `recognized_aliases` carries forms the scheme accepts on input
+/// but does not emit by default — e.g., ODNI ISM `<Description>`
+/// titles that diverge from the CAPCO `banner_title`, or historical
+/// aliases from a prior CAPCO revision. Engine policy (not data
+/// shape) decides whether any alias may be promoted to emission.
+///
+/// Construction is build-time-only: a scheme's `forms()` impl returns
+/// references into a `&'static` table populated by the build script
+/// or hand-rolled const data. There is no public `FormSet::new`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormSet {
+    /// CAPCO §G.1 Table 4 column 3 — "Authorized Portion Mark".
+    pub portion: &'static str,
+    /// CAPCO §G.1 Table 4 column 1 — "Authorized Banner Line Marking
+    /// Title".
+    pub banner_title: &'static str,
+    /// CAPCO §G.1 Table 4 column 2 — "Authorized Banner Line
+    /// Abbreviation". `Some` only when distinct from `banner_title`.
+    pub banner_abbreviation: Option<&'static str>,
+    /// Forms recognized on input but not emitted by default. Each
+    /// entry pairs a [`FormKind`] tag with the alias string.
+    pub recognized_aliases: &'static [(FormKind, &'static str)],
+}
+
+/// Kind tag for an entry in [`FormSet::recognized_aliases`].
+///
+/// Marked `#[non_exhaustive]` because future schemes (NATO, CUI,
+/// JOINT) will add their own recognize-only alias kinds without a
+/// breaking change. Integration tests crossing the crate boundary
+/// MUST include a wildcard arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FormKind {
+    /// ODNI ISM CVE `<Description>` body, when the published title
+    /// disagrees with the scheme's `banner_title`. Recognize-only by
+    /// default.
+    IsmDescriptionTitle,
+    /// Pre-dated alias from a prior CAPCO revision. Recognize-only.
+    HistoricalAlias,
 }
 
 /// Vocabulary metadata accessors for a [`MarkingScheme`].
@@ -188,14 +274,49 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Deprecation metadata for `token`, or `None` if active.
     fn deprecation(&self, token: &S::Token) -> Option<&'static Deprecation<S::Token>>;
 
+    /// Aggregated form-set for `token` (PR 3d, FR-053).
+    ///
+    /// Returns `&'static FormSet` carrying portion / banner-title /
+    /// banner-abbreviation / recognized-aliases. The per-form
+    /// accessors ([`Self::portion_form`], [`Self::banner_form`],
+    /// [`Self::banner_abbreviation`]) project over this struct via
+    /// the default impls below.
+    ///
+    /// **Open-vocabulary tokens** (country trigraphs, custom SCI
+    /// control systems, SAR program IDs) are NOT addressable here —
+    /// `forms()` is defined only over the closed-CVE token enum that
+    /// the scheme's `Token` type enumerates. Schemes that need to
+    /// surface open-vocab forms should expose a scheme-specific
+    /// accessor that takes raw bytes rather than `&S::Token`.
+    fn forms(&self, token: &S::Token) -> &'static FormSet;
+
     /// Canonical portion form for `token`, e.g., `"(S)"`.
-    fn portion_form(&self, token: &S::Token) -> &'static str;
+    ///
+    /// Default impl projects [`FormSet::portion`]. Schemes only
+    /// override if they need a non-`FormSet`-based codepath.
+    fn portion_form(&self, token: &S::Token) -> &'static str {
+        self.forms(token).portion
+    }
 
     /// Canonical banner form for `token`, e.g., `"SECRET"`.
-    fn banner_form(&self, token: &S::Token) -> &'static str;
+    ///
+    /// Default impl preserves the pre-3d "abbreviation when distinct,
+    /// else title" semantics byte-for-byte:
+    /// `forms(token).banner_abbreviation.unwrap_or(forms(token).banner_title)`.
+    /// Schemes only override if they need a non-`FormSet`-based codepath.
+    fn banner_form(&self, token: &S::Token) -> &'static str {
+        let f = self.forms(token);
+        f.banner_abbreviation.unwrap_or(f.banner_title)
+    }
 
     /// Banner abbreviation when defined, else `None`.
-    fn banner_abbreviation(&self, token: &S::Token) -> Option<&'static str>;
+    ///
+    /// Default impl projects [`FormSet::banner_abbreviation`].
+    /// Schemes only override if they need a non-`FormSet`-based
+    /// codepath.
+    fn banner_abbreviation(&self, token: &S::Token) -> Option<&'static str> {
+        self.forms(token).banner_abbreviation
+    }
 
     /// Full metadata record for `token`.
     ///

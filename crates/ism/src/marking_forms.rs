@@ -43,7 +43,17 @@
 
 /// A marking where the banner-line abbreviation differs from the portion mark.
 ///
-/// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4.
+/// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4. PR 3d
+/// (FR-053) added [`Self::description_title`] to carry an ODNI
+/// `<Description>` title that diverges from the CAPCO Register
+/// [`Self::title`]. Nine rows in the current ODNI ISM schema package
+/// (ISM-v2022-DEC) carry `description_title: Some(...)` today (typos,
+/// regulatory-citation prose, casing differences). The
+/// `crates/ism/tests/description_title_divergence.rs` test pins the
+/// exact divergence count and catalogs each case; remaining rows default
+/// to `None`. Future ODNI / CAPCO publications that introduce additional
+/// divergences gain a `description_title: Some("...")` entry and the
+/// divergence-count pin updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarkingForm {
     /// Long "Authorized Banner Line Marking Title" form (§G.1 Table 4,
@@ -61,6 +71,29 @@ pub struct MarkingForm {
     /// "Authorized Portion Mark" form (§G.1 Table 4, column 3), e.g., "NF",
     /// "OC".
     pub portion: &'static str,
+    /// PR 3d (FR-053) — ODNI ISM CVE `<Description>` body when it
+    /// diverges from [`Self::title`].
+    ///
+    /// The ODNI XML `<Description>` element body is the long-form title
+    /// verbatim — there is no `<title>` sub-element. For nine entries
+    /// in the current ODNI ISM schema package (ISM-v2022-DEC) the
+    /// `<Description>` body differs from the corresponding CAPCO §G.1
+    /// Table 4 title (typos like CNWDI's `"Controled"`, regulatory-
+    /// citation prose for FISA / SSI / NNPI, casing or wording
+    /// differences for DCNI / UCNI / OC-USGOV / SI-EU / SI-NK). Those
+    /// rows carry `description_title: Some(<verbatim ODNI text>)` and
+    /// surface in `marque-scheme::FormSet::recognized_aliases` with
+    /// `FormKind::IsmDescriptionTitle` whenever the token has a closed-
+    /// CVE sentinel (UCNI today; the rest will surface as the sentinel
+    /// set expands per issue #407). Rows whose ODNI `<Description>`
+    /// matches the CAPCO title (the majority of `MARKING_FORMS`)
+    /// remain `None`.
+    ///
+    /// The exact divergent set is pinned by
+    /// `crates/ism/tests/description_title_divergence.rs`; any future
+    /// ODNI / CAPCO publication that introduces or retires a
+    /// divergence trips that test and forces a manual review.
+    pub description_title: Option<&'static str>,
 }
 
 /// All markings where the long Marking Title differs from the banner
@@ -108,21 +141,25 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "TALENT KEYHOLE",
         banner: "TK",
         portion: "TK",
+        description_title: None,
     },
     MarkingForm {
         title: "RESERVE",
         banner: "RSV",
         portion: "RSV",
+        description_title: None,
     },
     MarkingForm {
         title: "MARVEL",
         banner: "MVL",
         portion: "MVL",
+        description_title: None,
     },
     MarkingForm {
         title: "KLAMATH",
         banner: "KLM",
         portion: "KLM",
+        description_title: None,
     },
     // §H.4 SCI compound forms with distinct banner titles. CAPCO §H.4
     // explicitly publishes a compound (parent control + compartment) as
@@ -133,16 +170,28 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     MarkingForm {
         // CAPCO-2016 §H.4 p78: "Authorized Banner Line Marking Title:
         // SI-ECRU", "Authorized Portion Mark: SI-EU".
+        //
+        // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-EU` is the
+        // bare compartment `"ECRU"` — the CAPCO Register prepends the
+        // parent control system (`SI-`) to form the compound. The ODNI
+        // form is recognize-only on input via
+        // `FormKind::IsmDescriptionTitle`.
         title: "SI-ECRU",
         banner: "SI-ECRU",
         portion: "SI-EU",
+        description_title: Some("ECRU"),
     },
     MarkingForm {
         // CAPCO-2016 §H.4 p83: "Authorized Banner Line Marking Title:
         // SI-NONBOOK", "Authorized Portion Mark: SI-NK".
+        //
+        // PR 3d.3 (FR-053): ODNI `<Description>` for `SI-NK` is the
+        // bare compartment `"NONBOOK"`; CAPCO uses the compound
+        // `SI-NONBOOK`. Recognize-only on input.
         title: "SI-NONBOOK",
         banner: "SI-NONBOOK",
         portion: "SI-NK",
+        description_title: Some("NONBOOK"),
     },
     // §H.7 Non-US Protective Markings — NATO classifications and programs.
     //
@@ -162,30 +211,35 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "COSMIC TOP SECRET",
         banner: "COSMIC TOP SECRET",
         portion: "CTS",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO SECRET | None | NS |`.
         title: "NATO SECRET",
         banner: "NATO SECRET",
         portion: "NS",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO CONFIDENTIAL | None | NC |`.
         title: "NATO CONFIDENTIAL",
         banner: "NATO CONFIDENTIAL",
         portion: "NC",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO RESTRICTED | None | NR |`.
         title: "NATO RESTRICTED",
         banner: "NATO RESTRICTED",
         portion: "NR",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO UNCLASSIFIED | None | NU |`.
         title: "NATO UNCLASSIFIED",
         banner: "NATO UNCLASSIFIED",
         portion: "NU",
+        description_title: None,
     },
     // NATO programs — same-form across all three columns. Included here
     // for §G.1-Table-4 fidelity even though S001 cannot fire on them
@@ -196,18 +250,21 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "ATOMAL",
         banner: "ATOMAL",
         portion: "ATOMAL",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| BALK | None | BALK |`.
         title: "BALK",
         banner: "BALK",
         portion: "BALK",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| BOHEMIA | None | BOHEMIA |`.
         title: "BOHEMIA",
         banner: "BOHEMIA",
         portion: "BOHEMIA",
+        description_title: None,
     },
     // §H.5 Special Access Program Markings — intentionally omitted.
     // SAR is parametric (`SPECIAL ACCESS REQUIRED-[program identifier]` ↔
@@ -225,31 +282,52 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "RESTRICTED DATA",
         banner: "RD",
         portion: "RD",
+        description_title: None,
     },
     MarkingForm {
         title: "FORMERLY RESTRICTED DATA",
         banner: "FRD",
         portion: "FRD",
+        description_title: None,
     },
     MarkingForm {
         title: "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
         banner: "TFNI",
         portion: "TFNI",
+        description_title: None,
     },
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` carries the
+        // Class-A misspelled / non-canonical-cased form
+        // `"Controled Nuclear Weapon Design Information Warning
+        // statement"` — "Controled" is misspelled (single l) and
+        // the casing is inconsistent with the rest of the CVE
+        // register. CAPCO §H.6 is the authoritative title.
+        // Recognize-only on input via `FormKind::IsmDescriptionTitle`.
         title: "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION",
         banner: "CNWDI",
         portion: "CNWDI",
+        description_title: Some("Controled Nuclear Weapon Design Information Warning statement"),
     },
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` is
+        // `"DoD CONTROLLED NUCLEAR INFORMATION"` — drops the
+        // "UNCLASSIFIED" qualifier CAPCO §H.6 carries. Class-C
+        // surface-form divergence; recognize-only on input.
         title: "DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
         banner: "DOD UCNI",
         portion: "DCNI",
+        description_title: Some("DoD CONTROLLED NUCLEAR INFORMATION"),
     },
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` is
+        // `"DoE CONTROLLED NUCLEAR INFORMATION"` — drops the
+        // "UNCLASSIFIED" qualifier CAPCO §H.6 carries. Class-C
+        // surface-form divergence; recognize-only on input.
         title: "DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
         banner: "DOE UCNI",
         portion: "UCNI",
+        description_title: Some("DoE CONTROLLED NUCLEAR INFORMATION"),
     },
     // §H.8 Dissemination Control Markings.
     //
@@ -259,31 +337,42 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "NOT RELEASABLE TO FOREIGN NATIONALS",
         banner: "NOFORN",
         portion: "NF",
+        description_title: None,
     },
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` is
+        // `"ORIGINATOR CONTROLLED US GOVERNMENT"` — spells out
+        // "US GOVERNMENT" instead of the CAPCO `-USGOV` abbreviation
+        // and drops the hyphen. Class-C surface-form divergence;
+        // recognize-only on input.
         title: "ORIGINATOR CONTROLLED-USGOV",
         banner: "ORCON-USGOV",
         portion: "OC-USGOV",
+        description_title: Some("ORIGINATOR CONTROLLED US GOVERNMENT"),
     },
     MarkingForm {
         title: "ORIGINATOR CONTROLLED",
         banner: "ORCON",
         portion: "OC",
+        description_title: None,
     },
     MarkingForm {
         title: "CONTROLLED IMAGERY",
         banner: "IMCON",
         portion: "IMC",
+        description_title: None,
     },
     MarkingForm {
         title: "CAUTION-PROPRIETARY INFORMATION INVOLVED",
         banner: "PROPIN",
         portion: "PR",
+        description_title: None,
     },
     MarkingForm {
         title: "RISK SENSITIVE",
         banner: "RSEN",
         portion: "RS",
+        description_title: None,
     },
     MarkingForm {
         // §G.1 Table 4 p36: `| DEA SENSITIVE | None | DSEN |`. No
@@ -292,6 +381,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "DEA SENSITIVE",
         banner: "DEA SENSITIVE",
         portion: "DSEN",
+        description_title: None,
     },
     // §H.8 same-form entries: banner == portion, but title differs.
     // S001 fires when a banner line spells out the Marking Title instead
@@ -300,75 +390,129 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "FOR OFFICIAL USE ONLY",
         banner: "FOUO",
         portion: "FOUO",
+        description_title: None,
     },
     MarkingForm {
         title: "RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL",
         banner: "RELIDO",
         portion: "RELIDO",
+        description_title: None,
     },
     // from ISM `CVEnumISMDissem` schema
     MarkingForm {
         title: "RAW FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "RAWFISA",
         portion: "RAWFISA",
+        description_title: None,
     },
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` adds a regulatory
+        // citation and definition. CAPCO §G.1 Table 4 lists the
+        // concise title; the ODNI long form is admissible on input
+        // via `FormKind::IsmDescriptionTitle` (recognize-only).
         title: "FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "FISA",
         portion: "FISA",
+        description_title: Some(
+            "Foreign Intelligence Surveillance Act. Related to unclassified \
+             and declassified information that is collected from \
+             unconsenting individuals under the authority of the Foreign \
+             Intelligence Surveillance Act (FISA).",
+        ),
     },
     MarkingForm {
         title: "DISPLAY ONLY",
         banner: "DISPLAY ONLY",
         portion: "DISPLAY ONLY",
+        description_title: None,
     },
     // §H.9 Non-IC Dissemination Control Markings.
     MarkingForm {
         title: "LIMITED DISTRIBUTION",
         banner: "LIMDIS",
         portion: "DS",
+        description_title: None,
     },
     MarkingForm {
         title: "EXCLUSIVE DISTRIBUTION",
         banner: "EXDIS",
         portion: "XD",
+        description_title: None,
     },
     MarkingForm {
         title: "NO DISTRIBUTION",
         banner: "NODIS",
         portion: "ND",
+        description_title: None,
     },
     // §H.9 same-form entries: banner == portion, but title differs.
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED NOFORN",
         banner: "SBU NOFORN",
         portion: "SBU-NF",
+        description_title: None,
     },
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED",
         banner: "SBU",
         portion: "SBU",
+        description_title: None,
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE NOFORN",
         banner: "LES NOFORN",
         portion: "LES-NF",
+        description_title: None,
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE",
         banner: "LES",
         portion: "LES",
+        description_title: None,
     },
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` adds the 49 C.F.R.
+        // §15.5 and §1520.5 citations and definition. CAPCO §G.1
+        // Table 4 lists the concise title; the ODNI long form is
+        // admissible on input via `FormKind::IsmDescriptionTitle`
+        // (recognize-only).
         title: "SENSITIVE SECURITY INFORMATION",
         banner: "SSI",
         portion: "SSI",
+        description_title: Some(
+            "Sensitive Security Information. As defined in 49 C.F.R. Part \
+             15.5, Sensitive Security Information is information obtained \
+             or developed in the conduct of security activities, including \
+             research and development, the disclosure of which DOT has \
+             determined would constitute an unwarranted invasion of \
+             privacy, reveal trade secrets or privileged or confidential \
+             information, or be detrimental to transportation safety. As \
+             defined in 49 C.F.R. Part 1520.5, Sensitive Security \
+             Information is information obtained or developed in the \
+             conduct of security activities, including research and \
+             development, the disclosure of which DHS/TSA has determined \
+             would, among other things, be detrimental to the security \
+             of transportation.",
+        ),
     },
     // from ISM `CVEnumISMNonIC` schema
     MarkingForm {
+        // PR 3d.3 (FR-053): ODNI `<Description>` adds the
+        // reactor-safety definition. CAPCO §G.1 Table 4 lists the
+        // concise title; the ODNI long form is admissible on input
+        // via `FormKind::IsmDescriptionTitle` (recognize-only).
         title: "NAVAL NUCLEAR PROPULSION INFORMATION",
         banner: "NNPI",
         portion: "NNPI",
+        description_title: Some(
+            "Naval Nuclear Propulsion Information. Related to the safety \
+             of reactors and associated naval nuclear propulsion plants, \
+             and control of radiation and radioactivity associated with \
+             naval nuclear propulsion activities, including prescribing \
+             and enforcing standards and regulations for these areas as \
+             they affect the environment and the safety and health of \
+             workers, operators, and the general public.",
+        ),
     },
 ];
 

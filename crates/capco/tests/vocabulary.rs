@@ -264,33 +264,57 @@ fn fouo_remains_active_dissem_control() {
 // gap so the production code paths CI exercises match the production
 // code paths real callers will hit.
 
-/// Sentinels whose canonical CVE value has a distinct banner form
-/// (`portion_to_banner(canonical)` returns `Some(banner)` with
-/// `banner != canonical`). For these, `banner_abbreviation()` must
-/// return `Some` — see CAPCO-2016 §G.1 Table 4 (banner column 2 ≠
-/// portion column 3).
+/// Sentinels whose `MARKING_FORMS` row has a distinct title and
+/// banner-line abbreviation. Per the PR 3d FR-053 corrected semantic
+/// (`banner_abbreviation = Some iff banner != title`), these must
+/// surface their banner abbreviation as `Some(banner)`. Each tuple
+/// is `(token, canonical/portion, expected banner abbreviation)`.
+///
+/// **Note vs pre-3d.** The pre-3d operational test was
+/// `banner != portion`, which suppressed the abbreviation for rows
+/// whose banner column matches the portion column even when the
+/// title is distinct (RD / FRD / TFNI today). PR 3d aligns the
+/// semantic with CAPCO §G.1 Table 4 col 2 emptiness: the
+/// abbreviation column is non-empty exactly when the row has a
+/// distinct title, regardless of whether the abbreviation collapses
+/// to the portion form. The expected banner is then the row's
+/// banner-line abbreviation — `"RD"`, `"FRD"`, `"TFNI"` — which also
+/// equals the portion form for those three rows. The downstream
+/// effect on `banner_form()` is byte-identical: pre-3d returned the
+/// portion form via the canonical-collapse fallback, the new
+/// projection returns the same string via
+/// `banner_abbreviation.unwrap_or(banner_title)`.
 fn distinct_banner_form_sentinels() -> &'static [(TokenId, &'static str, &'static str)] {
-    // (TokenId, canonical/portion, expected banner abbreviation)
     &[
         (TOK_NOFORN, "NF", "NOFORN"),
         (TOK_UCNI, "UCNI", "DOE UCNI"),
         (TOK_NODIS, "ND", "NODIS"),
         (TOK_EXDIS, "XD", "EXDIS"),
+        // Rows where MARKING_FORMS lists a distinct CAPCO title; the
+        // banner-line abbreviation is the row's banner column even
+        // when it collapses to the portion form. CAPCO §G.1 Table 4:
+        // - RD row: title="RESTRICTED DATA", banner="RD", portion="RD"
+        // - FRD row: title="FORMERLY RESTRICTED DATA", banner="FRD",
+        //   portion="FRD"
+        // - TFNI row: title="TRANSCLASSIFIED FOREIGN NUCLEAR
+        //   INFORMATION", banner="TFNI", portion="TFNI"
+        (TOK_RD, "RD", "RD"),
+        (TOK_FRD, "FRD", "FRD"),
+        (TOK_TFNI, "TFNI", "TFNI"),
     ]
 }
 
-/// Sentinels whose canonical CVE value is identical to its banner
-/// form (no distinct authorized abbreviation in the CAPCO Register).
-/// `banner_abbreviation()` must return `None` for these.
+/// Sentinels whose canonical CVE value has NO `MARKING_FORMS` row
+/// (the canonical-collapse fallback applies: all three forms are the
+/// canonical itself, `banner_abbreviation` is `None`). Today's set:
+/// HCS (canonical `"HCS"`, no row), TOK_CNWDI (canonical `"RD-CNWDI"`,
+/// no row — the `"CNWDI"` row is a different token surface), and
+/// TOK_RESTRICTED (canonical `"R"`, deliberately routed through the
+/// canonical-collapse path per PR 3d's byte-identity preservation —
+/// see `classification_form_set` doc-comment in
+/// `crates/capco/src/vocabulary.rs`).
 fn same_form_sentinels() -> &'static [TokenId] {
-    &[
-        TOK_RD,
-        TOK_FRD,
-        TOK_TFNI,
-        TOK_CNWDI,
-        TOK_HCS,
-        TOK_RESTRICTED,
-    ]
+    &[TOK_CNWDI, TOK_HCS, TOK_RESTRICTED]
 }
 
 #[test]
@@ -305,7 +329,7 @@ fn banner_abbreviation_some_for_distinct_form() {
              CAPCO-2016 §G.1 Table 4 lists a distinct authorized banner abbreviation",
         );
         // And the banner_form() accessor must match the expected
-        // banner (not the portion-form canonical).
+        // banner via `Some(...).unwrap_or(banner_title)`.
         assert_eq!(
             scheme.banner_form(token),
             *expected_banner,
@@ -321,8 +345,9 @@ fn banner_abbreviation_none_for_same_form() {
         assert_eq!(
             scheme.banner_abbreviation(token),
             None,
-            "banner_abbreviation({token:?}) should be None — CAPCO-2016 §G.1 \
-             Table 4 lists no distinct banner abbreviation for this marking",
+            "banner_abbreviation({token:?}) should be None — no MARKING_FORMS \
+             row exists for this canonical, so the canonical-collapse fallback \
+             applies (all three forms equal the canonical itself)",
         );
         // For same-form markings the portion form and banner form
         // are byte-identical.
