@@ -11,6 +11,27 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Reference documents**: `pr-7-pm-decisions.md` (D-7.1 – D-7.3), `pr-7-architect-plan.md` §1–§3.2, `specs/006-engine-rule-refactor/spec.md` FR-021  
 **Date**: 2026-05-13
 
+> **Post-review resolution status** (annotation added 2026-05-13 by PM)
+>
+> All MEDIUM findings below have been addressed in commit `079974e7`
+> (the reviewer-panel fixes commit). Review text preserved verbatim:
+>
+> - **MEDIUM-1 ("28 of 31" in PM doc D-7.2)** — RESOLVED. Decisions doc
+>   now reads "27 of 31; 4 are Localized — C001, E006, E007, S004".
+>   The same number propagated to `pr-7-architect-plan.md` §3.2 (which
+>   Copilot independently flagged on the PR).
+> - **MEDIUM-2 (test placement contradicts plan docs)** — RESOLVED.
+>   The test correctly lives at `crates/capco/tests/phase_assignment.rs`
+>   (Constitution VII forbids `marque-rules` depending on `marque-capco`).
+>   Plan docs corrected to record the constitutionally required path.
+> - **MEDIUM-3 (`SmallVec` import inconsistency, pre-existing)** —
+>   DEFERRED to 7b per scope discipline; captured in
+>   `pr-7-pm-decisions.md` D-7.13.
+> - **LOW (narrative "Commit 7.4" reference)** — RESOLVED. The
+>   reference was replaced with a stable pointer to
+>   `crates/capco/tests/phase_assignment.rs` (the canonical
+>   per-rule allowlist).
+
 ---
 
 ## Approval Status

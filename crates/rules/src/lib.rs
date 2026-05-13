@@ -232,8 +232,13 @@ pub enum Phase {
     /// boundary — e.g., a deprecation rewrite (`OC → ORCON`) or a
     /// corpus-typo correction (`SERCET → SECRET`). Pass-1 applies these
     /// fixes via a forward-pass buffer splice before re-parsing for
-    /// pass-2; they MUST NOT span more than one parser-recognized token,
-    /// because the splice does not invalidate adjacent token spans.
+    /// pass-2. The constraint is *boundary-respect*, not span stability:
+    /// any byte-length-changing splice shifts every later span, but the
+    /// re-parse between passes recomputes spans from scratch. The
+    /// reason pass-1 fixes must stay inside one token is that crossing
+    /// a token boundary (separators, structural delimiters) risks
+    /// producing an unparseable buffer — handled by the FR-024 R002
+    /// path, but better avoided by construction.
     ///
     /// First-fire span-shape enforcement lives in `Engine::fix_inner`
     /// (PR 7b); a rule that misdeclares `Localized` and emits a wider
@@ -1025,7 +1030,8 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     /// `docs/refactor-006/pr-7-pm-decisions.md`:
     ///
     /// - Most rules in the catalog are whole-marking by construction
-    ///   (27 of 31 CAPCO rules post-PR-3c.B Commit 7.4).
+    ///   (27 of 31 CAPCO rules at PR 7a; see `crates/capco/tests/phase_assignment.rs`
+    ///   for the canonical per-rule list).
     /// - Failing to declare yields the safer dispatch: a localized rule
     ///   running in pass-2 is conservative (no I-19 false positive),
     ///   whereas a whole-marking rule running in pass-1 violates the

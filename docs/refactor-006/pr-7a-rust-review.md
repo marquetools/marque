@@ -11,6 +11,30 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Date**: 2026-05-13
 **Compared against**: `74309770` (parent on `origin/staging`)
 
+> **Post-review resolution status** (annotation added 2026-05-13 by PM)
+>
+> All findings below have been addressed in commit `079974e7` (the
+> reviewer-panel fixes commit). The review text below is preserved
+> verbatim as the historical record:
+>
+> - **M-1 (docstring bleed at `engine.rs:2343`)** — RESOLVED. While
+>   fixing the surface issue, the underlying cause turned out to be
+>   bigger: a doc block documenting `canonicalize_rule_overrides`
+>   was placed above `Pass1Indices` instead of above the function it
+>   documented; Rust silently attached the entire block to the type
+>   alias. The fix moves the doc to its real owner; the type aliases
+>   now have their own (correct) doc blocks. Verified by `cargo doc`
+>   rendering and `cargo +stable clippy --workspace --all-targets
+>   -- -D warnings`.
+> - **M-2 (test placement deviation from plan docs)** — RESOLVED.
+>   Plan docs (`pr-7-pm-decisions.md` D-7.2, `pr-7-architect-plan.md`
+>   §1, §8) corrected to record that the test correctly lives at
+>   `crates/capco/tests/phase_assignment.rs` (Constitution VII forbids
+>   `marque-rules` depending on `marque-capco`).
+> - **L-1 (C001 dual-path forward obligation)** — CAPTURED for 7b
+>   implementer brief; tracked in `pr-7-pm-decisions.md` D-7.13
+>   "Forward obligations".
+
 ---
 
 ## Diagnostic Status

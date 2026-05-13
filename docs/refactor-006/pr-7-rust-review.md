@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+-->
+
 # PR 7 Rust Review — Phase-Tagged Pass Split
 
 **Branch**: `refactor-006-pr-7-phase-tagged-pass-split`

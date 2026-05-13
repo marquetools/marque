@@ -274,7 +274,7 @@ check".
 
 **Decision:** Default to `WholeMarking`. Justification:
 
-- Most rules in the catalog are whole-marking already (28 of 31).
+- Most rules in the catalog are whole-marking already (27 of 31; 4 are Localized — C001, E006, E007, S004).
 - A rule that *fails to think about* phase will be `WholeMarking`,
   which is the safer default — pass-2 runs against post-pass-1 attrs,
   so the rule sees the same input shape as today.

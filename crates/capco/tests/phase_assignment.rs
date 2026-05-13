@@ -24,8 +24,13 @@
 //! { Phase::WholeMarking }` boilerplate across the whole-marking
 //! ruleset) needs a guard against the silent-acceptance failure
 //! mode: a rule author adds a new `Phase::Localized` rule but
-//! forgets to override `phase()`, and pass-2 dispatch unexpectedly
-//! sees pre-pass-1 attrs. This test catches that by pinning every
+//! forgets to override `phase()`. Pass-2 will then dispatch the rule
+//! against post-pass-1 attrs (since its declared phase silently
+//! defaulted to `WholeMarking`) and skip the pass-1 splice the rule
+//! intended — its fix never lands, and a localized defect goes
+//! unfixed. The error mode is silent, not unsafe — but it's exactly
+//! the kind of silent failure the corpus regression won't catch if
+//! the rule was newly added. This test catches it by pinning every
 //! registered rule's phase against an audited allowlist.
 //!
 //! # Drift policy

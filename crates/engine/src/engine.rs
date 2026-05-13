@@ -166,12 +166,14 @@ pub struct Engine {
     /// rule exactly once.
     ///
     /// **Inline-size choice.** `[(usize, usize); 4]` for pass-1
-    /// (Localized rules are rare — 4 of 31 in the CAPCO ruleset
-    /// post-PR-3c.B Commit 7.4: C001, E006, E007, S004) and
-    /// `[(usize, usize); 32]` for pass-2 (whole-marking is the dominant
-    /// shape — 27 of 31 today, with headroom for the immediate
-    /// post-refactor ruleset of ~40 before allocating on the heap).
-    /// Both are stack-allocated for the production rule set.
+    /// (Localized rules are rare — 4 of 31 in the CAPCO ruleset at
+    /// PR 7a: C001, E006, E007, S004) and `[(usize, usize); 32]` for
+    /// pass-2 (whole-marking is the dominant shape — 27 of 31 today,
+    /// with headroom for the immediate post-refactor ruleset of ~40
+    /// before allocating on the heap). The canonical per-rule list
+    /// lives in `crates/capco/tests/phase_assignment.rs`. Inline
+    /// storage means no extra heap allocation in the common case —
+    /// the partitions live wherever the `Engine` itself does.
     ///
     /// **PR 7a behavior.** Stored but unused — both phases still run
     /// together in pass-2 exactly as before. The partition is READ but
