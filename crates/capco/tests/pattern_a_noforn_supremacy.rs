@@ -15,8 +15,8 @@
 //!
 //! # Citation anchor
 //!
-//! - NODIS "Requires NOFORN." — CAPCO-2016 §H.9 p174, line 4296
-//! - EXDIS "Requires NOFORN." — CAPCO-2016 §H.9 p172, line 4236
+//! - NODIS "Requires NOFORN." — CAPCO-2016 §H.9 p174
+//! - EXDIS "Requires NOFORN." — CAPCO-2016 §H.9 p172
 //!
 //! Both citations pre-verified by the spec architect against the
 //! vendored source at `crates/capco/docs/CAPCO-2016.md`.
@@ -196,10 +196,7 @@ fn nodis_portion_composes_with_noforn_clears_rel_to() {
 
     // Portion B: carries REL TO (USA, GBR), no NODIS/EXDIS. This
     // populates the page's REL TO axis before the rewrites fire.
-    let rel_to_portion = portion_with_rel_to(
-        Classification::Secret,
-        &[CountryCode::USA, gbr()],
-    );
+    let rel_to_portion = portion_with_rel_to(Classification::Secret, &[CountryCode::USA, gbr()]);
 
     let projected = scheme.project(Scope::Page, &[nodis_portion, rel_to_portion]);
 
@@ -234,10 +231,7 @@ fn exdis_portion_composes_with_noforn_clears_rel_to() {
     let scheme = CapcoScheme::new();
 
     let exdis_portion = portion_with_non_ic(Classification::Secret, &[NonIcDissem::Exdis]);
-    let rel_to_portion = portion_with_rel_to(
-        Classification::Secret,
-        &[CountryCode::USA, gbr()],
-    );
+    let rel_to_portion = portion_with_rel_to(Classification::Secret, &[CountryCode::USA, gbr()]);
 
     let projected = scheme.project(Scope::Page, &[exdis_portion, rel_to_portion]);
 
@@ -369,7 +363,10 @@ fn unclassified_nodis_and_exdis_portions_still_inject_noforn() {
     let projected_nodis = scheme.project(Scope::Page, &[nodis_u]);
 
     assert!(
-        projected_nodis.0.dissem_controls.contains(&DissemControl::Nf),
+        projected_nodis
+            .0
+            .dissem_controls
+            .contains(&DissemControl::Nf),
         "capco/nodis-implies-noforn must fire on UNCLASSIFIED NODIS portions \
          (CAPCO-2016 §H.9 p174: 'May be used with ... UNCLASSIFIED. Requires \
          NOFORN.'); got dissem_controls = {:?}",
@@ -381,7 +378,10 @@ fn unclassified_nodis_and_exdis_portions_still_inject_noforn() {
     let projected_exdis = scheme.project(Scope::Page, &[exdis_u]);
 
     assert!(
-        projected_exdis.0.dissem_controls.contains(&DissemControl::Nf),
+        projected_exdis
+            .0
+            .dissem_controls
+            .contains(&DissemControl::Nf),
         "capco/exdis-implies-noforn must fire on UNCLASSIFIED EXDIS portions \
          (CAPCO-2016 §H.9 p172: 'May be used with ... UNCLASSIFIED. Requires \
          NOFORN.'); got dissem_controls = {:?}",

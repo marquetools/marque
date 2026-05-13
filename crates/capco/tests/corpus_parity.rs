@@ -194,13 +194,13 @@ fn rule_count_reflects_registration_changes() {
 }
 
 #[test]
-fn phase_3_declares_nine_page_rewrites_with_citations() {
+fn phase_3_declares_eleven_page_rewrites_with_citations() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
         11,
-        "PR 3b.B (T026b) declared nine page rewrites: the retained \
+        "PR 3b.B (T026b) declared nine page rewrites — the retained \
          `capco/noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3 \
          transmutation entries from `marque-applied.md` (consultant \
          Entry 6 split into 6a + 6b for D13). The two earlier Phase-3 \
@@ -232,7 +232,7 @@ fn phase_3_engine_lint_produces_wellformed_result_on_empty_input() {
 }
 
 #[test]
-fn phase_3_scheduler_exposes_nine_scheduled_rewrites() {
+fn phase_3_scheduler_exposes_eleven_scheduled_rewrites() {
     // The scheduler produced a topological order at construction
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
