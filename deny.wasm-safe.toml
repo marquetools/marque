@@ -70,6 +70,10 @@ allow = [
   "CC0-1.0",
   "CC-BY-4.0",
 ]
+exceptions = [
+  { allow = ["LicenseRef-PublicDomain"], name = "ism" },
+  { allow = ["LicenseRef-PublicDomain"], name = "ism-ismcat" }
+]
 unused-allowed-license = "allow"
 confidence-threshold = 0.93
 
