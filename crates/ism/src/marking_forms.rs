@@ -46,10 +46,14 @@
 /// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4. PR 3d
 /// (FR-053) added [`Self::description_title`] to carry an ODNI
 /// `<Description>` title that diverges from the CAPCO Register
-/// [`Self::title`]. Default is `None` for every row; a future ODNI revision
-/// (or a CAPCO Register revision) may introduce divergent text, at which
-/// point the row gains `description_title: Some("...")` and the
-/// `crates/ism/tests/description_title_divergence.rs` test's pin updates.
+/// [`Self::title`]. Nine rows in the current ODNI ISM schema package
+/// (ISM-v2022-DEC) carry `description_title: Some(...)` today (typos,
+/// regulatory-citation prose, casing differences). The
+/// `crates/ism/tests/description_title_divergence.rs` test pins the
+/// exact divergence count and catalogs each case; remaining rows default
+/// to `None`. Future ODNI / CAPCO publications that introduce additional
+/// divergences gain a `description_title: Some("...")` entry and the
+/// divergence-count pin updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarkingForm {
     /// Long "Authorized Banner Line Marking Title" form (§G.1 Table 4,
@@ -70,18 +74,25 @@ pub struct MarkingForm {
     /// PR 3d (FR-053) — ODNI ISM CVE `<Description>` body when it
     /// diverges from [`Self::title`].
     ///
-    /// Per `project_odni_description_is_title` (PR 3d preflight notes):
-    /// the ODNI XML `<Description>` element body is the long-form title
-    /// verbatim — no `<title>` sub-element exists, and for every entry in
-    /// the current ODNI ISM schema package (ISM-v2022-DEC) the
-    /// `<Description>` text matches the corresponding CAPCO §G.1 Table 4
-    /// title exactly. `description_title` is therefore `None` for every
-    /// row in `MARKING_FORMS` today. The field exists to be populated
-    /// when a future ODNI / CAPCO publication introduces divergent text —
-    /// at which point the row's `description_title` becomes
-    /// `Some(<the divergent ODNI Description>)` and surfaces in
-    /// `marque-scheme::FormSet::recognized_aliases` with
-    /// `FormKind::IsmDescriptionTitle`.
+    /// The ODNI XML `<Description>` element body is the long-form title
+    /// verbatim — there is no `<title>` sub-element. For nine entries
+    /// in the current ODNI ISM schema package (ISM-v2022-DEC) the
+    /// `<Description>` body differs from the corresponding CAPCO §G.1
+    /// Table 4 title (typos like CNWDI's `"Controled"`, regulatory-
+    /// citation prose for FISA / SSI / NNPI, casing or wording
+    /// differences for DCNI / UCNI / OC-USGOV / SI-EU / SI-NK). Those
+    /// rows carry `description_title: Some(<verbatim ODNI text>)` and
+    /// surface in `marque-scheme::FormSet::recognized_aliases` with
+    /// `FormKind::IsmDescriptionTitle` whenever the token has a closed-
+    /// CVE sentinel (UCNI today; the rest will surface as the sentinel
+    /// set expands per issue #407). Rows whose ODNI `<Description>`
+    /// matches the CAPCO title (the majority of `MARKING_FORMS`)
+    /// remain `None`.
+    ///
+    /// The exact divergent set is pinned by
+    /// `crates/ism/tests/description_title_divergence.rs`; any future
+    /// ODNI / CAPCO publication that introduces or retires a
+    /// divergence trips that test and forces a manual review.
     pub description_title: Option<&'static str>,
 }
 

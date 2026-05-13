@@ -59,10 +59,33 @@ if [[ "${1:-}" == "--update-baseline" ]]; then
 fi
 
 # `wasm-pack`'s integrated wasm-opt pass currently fails on this
-# repo (see file-level comment) — capture the failure code without
-# aborting so we can still read the pre-opt artifact.
+# repo (see file-level comment) — but every OTHER failure mode
+# (rustc errors, codegen panics, target-not-installed, etc.) must
+# still fail the gate. We delete any pre-existing artifact before
+# building so a successful "wasm-opt failed AFTER producing the .wasm"
+# run can be distinguished from "build failed BEFORE producing it",
+# and we inspect the build log for the specific wasm-opt failure
+# string to decide whether to tolerate a nonzero exit.
+rm -f "${WASM_ARTIFACT}"
+
 echo "[wasm-size-check] building crates/wasm (release-web profile)..."
-wasm-pack build crates/wasm --target web --profile release-web 2>&1 | tail -5 || true
+BUILD_LOG=$(mktemp)
+trap 'rm -f "${BUILD_LOG}"' EXIT
+set +e
+wasm-pack build crates/wasm --target web --profile release-web >"${BUILD_LOG}" 2>&1
+BUILD_STATUS=$?
+set -e
+tail -5 "${BUILD_LOG}"
+
+if [[ ${BUILD_STATUS} -ne 0 ]]; then
+    # Only the integrated wasm-opt failure is tolerated — any other
+    # nonzero exit signals a real build break and must fail the gate.
+    if ! grep -q "wasm-opt" "${BUILD_LOG}"; then
+        echo "[wasm-size-check] ERROR: wasm-pack build failed (exit ${BUILD_STATUS}); failure is not the known wasm-opt issue. See log above." >&2
+        exit "${BUILD_STATUS}"
+    fi
+    echo "[wasm-size-check] (wasm-opt step failed as expected on this repo — proceeding with pre-opt artifact)"
+fi
 
 if [[ ! -f "${WASM_ARTIFACT}" ]]; then
     echo "[wasm-size-check] ERROR: ${WASM_ARTIFACT} not produced by wasm-pack." >&2
@@ -92,10 +115,23 @@ echo "[wasm-size-check] baseline size: ${BASELINE_SIZE} bytes (${BASELINE_FILE})
 
 DELTA=$((CURRENT_SIZE - BASELINE_SIZE))
 # 5% regression threshold per T058i quality gate. Bash arithmetic
-# is integer-only so we compute the percentage at 1000x and compare
-# against 50 (= 5.0%).
+# is integer-only, so we compute the percentage at 1000x (i.e.,
+# PERCENT_X1000 = round-down(percentage * 1000)) and compare against
+# 5000 (= 5.0% × 1000).
 PERCENT_X1000=$((DELTA * 100000 / BASELINE_SIZE))
-PERCENT_DISPLAY="$((PERCENT_X1000 / 1000)).$(printf '%03d' $((PERCENT_X1000 % 1000 < 0 ? -PERCENT_X1000 % 1000 : PERCENT_X1000 % 1000)))"
+
+# Format the signed percentage. Bash integer division truncates
+# toward zero, so for |PERCENT_X1000| < 1000 the integer-part division
+# yields 0 and would drop the sign. Track the sign explicitly and
+# format the magnitude unsigned.
+if [[ ${PERCENT_X1000} -lt 0 ]]; then
+    SIGN="-"
+    ABS_PERCENT_X1000=$((-PERCENT_X1000))
+else
+    SIGN=""
+    ABS_PERCENT_X1000=${PERCENT_X1000}
+fi
+PERCENT_DISPLAY="${SIGN}$((ABS_PERCENT_X1000 / 1000)).$(printf '%03d' $((ABS_PERCENT_X1000 % 1000)))"
 
 echo "[wasm-size-check] delta: ${DELTA} bytes (${PERCENT_DISPLAY}%)"
 

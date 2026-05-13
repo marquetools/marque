@@ -36,15 +36,24 @@
 //! version" rule context flag — see FR-054's "Used by" note), this
 //! local helper retires in favor of the typed parser.
 //!
-//! ## Vacuous-at-PR-3d note
+//! ## Scope note
 //!
-//! Every migration entry today has `valid_from: None` because no
-//! per-term first-publish source data exists in the active ODNI
-//! schema package (see `project_no_per_token_valid_from`). The
-//! `valid_from <= since` check below therefore short-circuits for
-//! every entry. The test exists to pin the invariant so a future
-//! ODNI revision that populates `valid_from` cannot land a
-//! migration entry that violates the constraint silently.
+//! `MigrationEntry` itself carries `valid_until` only (added in PR 3d
+//! Commit 2); the matching `valid_from` lives on `Deprecation<Token>`
+//! after `marque-capco::vocabulary::build_deprecation` composes the
+//! migration entry into a `Deprecation`. This file therefore only
+//! validates the malformed-data guard on `MigrationEntry::valid_until`
+//! (its presence-or-absence and its parse shape). The temporal-
+//! ordering invariant `Deprecation::valid_from <= since` is pinned in
+//! `crates/capco/tests/deprecation_invariant.rs::deprecation_valid_from_lte_since_for_every_sentinel`.
+//!
+//! Every migration entry today has `valid_until: None` because no
+//! per-term last-valid source data exists in the active ODNI schema
+//! package (see `project_no_per_token_valid_from`). The parse check
+//! below therefore short-circuits for every current entry. The test
+//! exists to pin the invariant so a future ODNI revision that
+//! populates `valid_until` cannot land a malformed schema-version
+//! string silently.
 
 // `MigrationEntry::valid_until` is a `pub` field on the generated
 // migration struct (added by PR 3d Commit 2 to
