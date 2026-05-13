@@ -47,9 +47,7 @@
 //! we don't need a `rerun-if-changed=schemas/` since there's no local
 //! schema tree anymore.
 
-use quick_xml::Reader;
-use quick_xml::XmlVersion;
-use quick_xml::events::Event;
+use quick_xml::{events::Event, Reader, XmlVersion};
 
 use std::{env, fs, path::Path};
 
@@ -362,56 +360,6 @@ fn emit_enum(out: &mut String, name: &str, entries: &[(String, String)], doc: &s
     writeln!(out).unwrap();
 
     // Display impl
-    writeln!(out, "impl std::fmt::Display for {name} {{").unwrap();
-    writeln!(
-        out,
-        "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{"
-    )
-    .unwrap();
-    writeln!(out, "        f.write_str(self.as_str())").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-}
-
-/// Emit a minimal enum for CVE types that have zero entries in the public spec.
-#[allow(dead_code)] // Retained for potential future empty-CVE categories; SAR removed per specs/002-sar-implementation.
-fn emit_empty_enum(out: &mut String, name: &str, doc: &str) {
-    use std::fmt::Write;
-
-    writeln!(out, "/// {doc}").unwrap();
-    writeln!(
-        out,
-        "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]"
-    )
-    .unwrap();
-    writeln!(out, "#[non_exhaustive]").unwrap();
-    writeln!(out, "pub enum {name} {{}}").unwrap();
-    writeln!(out).unwrap();
-
-    writeln!(out, "impl {name} {{").unwrap();
-    writeln!(
-        out,
-        "    /// Returns the canonical CVE string representation."
-    )
-    .unwrap();
-    writeln!(out, "    pub fn as_str(&self) -> &'static str {{").unwrap();
-    writeln!(out, "        match *self {{}}").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(
-        out,
-        "    /// Parse from the canonical CVE string. Always returns `None` (no entries)."
-    )
-    .unwrap();
-    writeln!(out, "    pub fn parse(_s: &str) -> Option<Self> {{").unwrap();
-    writeln!(out, "        None").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "    /// All valid values (empty).").unwrap();
-    writeln!(out, "    pub const ALL: &[{name}] = &[];").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
     writeln!(out, "impl std::fmt::Display for {name} {{").unwrap();
     writeln!(
         out,
@@ -1421,27 +1369,27 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          /// across all tokens published in that file.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct CveFileMetadata {{\n\
-         \x20   /// Symbolic constant name (e.g., \"CVE_DISSEM\").\n\
-         \x20   pub const_name: &'static str,\n\
-         \x20   /// Source-of-record URN, e.g.,\n\
-         \x20   /// `urn:us:gov:ic:cvenum:ism:dissem`.\n\
-         \x20   pub urn: &'static str,\n\
-         \x20   /// CVE title text.\n\
-         \x20   pub title: &'static str,\n\
-         \x20   /// Free-form `Source` text from the CVE IRM.\n\
-         \x20   pub source: &'static str,\n\
-         \x20   /// Point-of-contact name.\n\
-         \x20   pub poc_name: &'static str,\n\
-         \x20   /// Point-of-contact email.\n\
-         \x20   pub poc_email: &'static str,\n\
-         \x20   /// Owner/producer code, e.g., `\"USA\"`.\n\
-         \x20   pub owner_producer: &'static str,\n\
-         \x20   /// CVE `specVersion`, e.g., `\"202111.202211\"`.\n\
-         \x20   pub spec_version: &'static str,\n\
-         \x20   /// CVE `ism:DESVersion`, e.g., `\"202111\"`.\n\
-         \x20   pub des_version: &'static str,\n\
-         \x20   /// Pinned schema package version (`SCHEMA_VERSION`).\n\
-         \x20   pub schema_version: &'static str,\n\
+            /// Symbolic constant name (e.g., \"CVE_DISSEM\").\n\
+            pub const_name: &'static str,\n\
+            /// Source-of-record URN, e.g.,\n\
+            /// `urn:us:gov:ic:cvenum:ism:dissem`.\n\
+            pub urn: &'static str,\n\
+            /// CVE title text.\n\
+            pub title: &'static str,\n\
+            /// Free-form `Source` text from the CVE IRM.\n\
+            pub source: &'static str,\n\
+            /// Point-of-contact name.\n\
+            pub poc_name: &'static str,\n\
+            /// Point-of-contact email.\n\
+            pub poc_email: &'static str,\n\
+            /// Owner/producer code, e.g., `\"USA\"`.\n\
+            pub owner_producer: &'static str,\n\
+            /// CVE `specVersion`, e.g., `\"202111.202211\"`.\n\
+            pub spec_version: &'static str,\n\
+            /// CVE `ism:DESVersion`, e.g., `\"202111\"`.\n\
+            pub des_version: &'static str,\n\
+            /// Pinned schema package version (`SCHEMA_VERSION`).\n\
+            pub schema_version: &'static str,\n\
          }}\n"
     )
     .unwrap();
@@ -1615,16 +1563,10 @@ enum TaxMembership {
     /// One-or-more `<Country>` and/or `<Organization>` children.
     /// `recursive == true` if any `<Organization>` reference appears
     /// (the BHTF case in V2022-NOV — NA-deprecated, runtime-inert).
-    /// `organizations` is retained verbatim for future diagnostics (e.g.
-    /// "BHTF includes Organization MNTF, itself decomposable=No"), even
-    /// though only the `recursive` flag is read in PR-1 emitters.
+    /// Organization identifiers are not persisted yet; add them when
+    /// organization-aware diagnostics are implemented.
     Members {
         countries: Vec<String>,
-        #[allow(
-            dead_code,
-            reason = "reserved for future organization-aware diagnostics"
-        )]
-        organizations: Vec<String>,
         recursive: bool,
     },
     /// `<Description>` free text — typically an OCA-deferral pointer.
@@ -1815,8 +1757,8 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                     }
                     b"Country" if in_membership => in_country = true,
                     b"Organization" if in_membership => in_organization = true,
-                    // spellchecker:off
                     b"Description" if in_membership => in_membership_description = true,
+                    // spellchecker:off
                     // <MembershipSupressed> (note ODNI's misspelling — single
                     // `p`). The taxonomy ships it as a self-closing
                     // `<MembershipSupressed/>`, but XML allows the equivalent
@@ -1829,13 +1771,13 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                     b"MembershipSupressed" if in_membership => {
                         current_suppressed = true;
                     }
+                    // spellchecker:on
                     _ => {}
                 }
             }
             Ok(Event::Empty(ref e))
                 if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
             {
-                // spellchecker:on
                 current_suppressed = true;
             }
             Ok(Event::End(ref e)) => {
@@ -1892,7 +1834,6 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                 let recursive = !current_organizations.is_empty();
                                 TaxMembership::Members {
                                     countries: std::mem::take(&mut current_countries),
-                                    organizations: std::mem::take(&mut current_organizations),
                                     recursive,
                                 }
                             };
