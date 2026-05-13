@@ -48,6 +48,7 @@
 //! schema tree anymore.
 
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
 use std::{env, fs, path::Path};
@@ -162,6 +163,7 @@ fn parse_cve_xml(path: &Path) -> Vec<(String, String)> {
     let content = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let mut reader = Reader::from_str(&content);
+    let mut buf = Vec::new();
 
     let mut entries = Vec::new();
     let mut in_term = false;
@@ -171,7 +173,7 @@ fn parse_cve_xml(path: &Path) -> Vec<(String, String)> {
     let mut current_desc = String::new();
 
     loop {
-        match reader.read_event() {
+        match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                 let name = e.name();
                 let local = local_name(name.as_ref());
@@ -219,6 +221,7 @@ fn parse_cve_xml(path: &Path) -> Vec<(String, String)> {
             Err(e) => panic!("XML parse error in {}: {e}", path.display()),
             _ => {}
         }
+        buf.clear();
     }
 
     entries
@@ -828,11 +831,12 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
     let content = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let mut reader = Reader::from_str(&content);
+    let mut buf = Vec::new();
 
     let mut entries = Vec::new();
 
     loop {
-        match reader.read_event() {
+        match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                 let name = e.name();
                 let local = local_name(name.as_ref());
@@ -844,9 +848,14 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
                     // produce wrong canonicalization at runtime.
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"value" {
-                            let val = attr.unescape_value().unwrap_or_else(|err| {
-                                panic!("XSD attribute unescape error in {}: {err}", path.display())
-                            });
+                            let val = attr
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .unwrap_or_else(|err| {
+                                    panic!(
+                                        "XSD attribute unescape error in {}: {err}",
+                                        path.display()
+                                    )
+                                });
                             entries.push((val.into_owned(), String::new()));
                             break;
                         }
@@ -857,6 +866,7 @@ fn parse_xsd_trigraphs(path: &Path) -> Vec<(String, String)> {
             Err(e) => panic!("XSD parse error in {}: {e}", path.display()),
             _ => {}
         }
+        buf.clear();
     }
 
     entries
@@ -1694,6 +1704,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
     let content = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let mut reader = Reader::from_str(&content);
+    let mut buf = Vec::new();
 
     let mut entries: Vec<TaxEntry> = Vec::new();
 
@@ -1721,7 +1732,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
     let mut current_description = String::new();
 
     loop {
-        match reader.read_event() {
+        match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 let local = local_name(e.name().as_ref()).to_owned();
                 match local.as_slice() {
@@ -1745,12 +1756,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                             let key_local = local_name(attr.key.as_ref()).to_owned();
                             match key_local.as_slice() {
                                 b"decomposable" => {
-                                    let value = attr.unescape_value().unwrap_or_else(|err| {
-                                        panic!(
-                                            "{}: failed to unescape `decomposable`: {err}",
-                                            path.display()
-                                        )
-                                    });
+                                    let value = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_else(|err| {
+                                            panic!(
+                                                "{}: failed to unescape `decomposable`: {err}",
+                                                path.display()
+                                            )
+                                        });
                                     current_decomposable = Some(match value.as_ref() {
                                         "Yes" => TaxDecomposable::Yes,
                                         "No" => TaxDecomposable::No,
@@ -1763,12 +1776,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                     });
                                 }
                                 b"deprecated" => {
-                                    let value = attr.unescape_value().unwrap_or_else(|err| {
-                                        panic!(
-                                            "{}: failed to unescape `deprecated`: {err}",
-                                            path.display()
-                                        )
-                                    });
+                                    let value = attr
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .unwrap_or_else(|err| {
+                                            panic!(
+                                                "{}: failed to unescape `deprecated`: {err}",
+                                                path.display()
+                                            )
+                                        });
                                     current_deprecated = Some(value.into_owned());
                                 }
                                 _ => {}
@@ -1786,12 +1801,14 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                                 )
                             });
                             if local_name(attr.key.as_ref()) == b"dateLastVerified" {
-                                let value = attr.unescape_value().unwrap_or_else(|err| {
-                                    panic!(
-                                        "{}: failed to unescape `dateLastVerified`: {err}",
-                                        path.display()
-                                    )
-                                });
+                                let value = attr
+                                    .normalized_value(XmlVersion::Implicit1_0)
+                                    .unwrap_or_else(|err| {
+                                        panic!(
+                                            "{}: failed to unescape `dateLastVerified`: {err}",
+                                            path.display()
+                                        )
+                                    });
                                 current_last_verified = Some(value.into_owned());
                             }
                         }
@@ -1940,6 +1957,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
             Err(e) => panic!("XML parse error in {}: {e}", path.display()),
             _ => {}
         }
+        buf.clear();
     }
 
     println!("cargo:rerun-if-changed={}", path.display());

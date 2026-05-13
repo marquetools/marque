@@ -211,6 +211,7 @@ impl Lattice for SciSet {
                 Some(c) => c,
                 None => out.systems.entry(sys.clone()).or_default(),
             };
+
             for (cid, subs) in comp_map {
                 let out_subs = match out_comps.get_mut(cid) {
                     Some(s) => s,
@@ -369,9 +370,16 @@ impl Lattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
-            let out_comps = out.programs.entry(pid.clone()).or_default();
+            let out_comps = match out.programs.get_mut(pid) {
+                Some(c) => c,
+                None => out.programs.entry(pid.clone()).or_default(),
+            };
+
             for (cid, subs) in comp_map {
-                let out_subs = out_comps.entry(cid.clone()).or_default();
+                let out_subs = match out_comps.get_mut(cid) {
+                    Some(s) => s,
+                    None => out_comps.entry(cid.clone()).or_default(),
+                };
                 out_subs.extend(subs.iter().cloned());
             }
         }
