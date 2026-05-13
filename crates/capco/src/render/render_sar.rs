@@ -45,6 +45,7 @@ use core::fmt;
 
 use marque_ism::SarMarking;
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -80,8 +81,11 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
         out.write_str("SAR-")?;
     }
 
-    // Programs ascending alpha (numeric first per §A.6 p16).
-    let mut programs: Vec<_> = sar.programs.iter().collect();
+    // Programs ascending alpha (numeric first per §A.6 p16). Inline-4
+    // covers the typical SAR cardinality (single program common; up to
+    // ~4 programs in compound markings); compartments/sub-compartments
+    // similarly cap at ~4 per program in observed §H.5 markings.
+    let mut programs: SmallVec<[_; 4]> = sar.programs.iter().collect();
     programs.sort_by(|a, b| numeric_then_alpha_cmp(&a.identifier, &b.identifier));
 
     let mut first_prog = true;
@@ -93,7 +97,7 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
         out.write_str(&prog.identifier)?;
 
         // Compartments ascending alpha (numeric first), `-`-separated.
-        let mut comps: Vec<_> = prog.compartments.iter().collect();
+        let mut comps: SmallVec<[_; 4]> = prog.compartments.iter().collect();
         comps.sort_by(|a, b| numeric_then_alpha_cmp(&a.identifier, &b.identifier));
         for comp in comps {
             out.write_char('-')?;
@@ -101,7 +105,8 @@ fn render_block(sar: &SarMarking, out: &mut dyn fmt::Write) -> fmt::Result {
 
             // Sub-compartments ascending alpha (numeric first),
             // space-separated.
-            let mut subs: Vec<&str> = comp.sub_compartments.iter().map(|s| s.as_ref()).collect();
+            let mut subs: SmallVec<[&str; 4]> =
+                comp.sub_compartments.iter().map(|s| s.as_ref()).collect();
             subs.sort_by(|a, b| numeric_then_alpha_cmp(a, b));
             for sub in subs {
                 out.write_char(' ')?;

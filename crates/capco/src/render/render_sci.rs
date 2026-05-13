@@ -44,6 +44,7 @@ use core::fmt;
 
 use marque_ism::{SciControlSystem, SciMarking};
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -67,7 +68,11 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
     // Sort the systems numeric-then-alpha per §A.6 p15-16. Stable sort
     // on the system text yields a deterministic order that matches the
     // numeric-first convention because ASCII '0'..'9' < 'A'..'Z'.
-    let mut sorted: Vec<&SciMarking> = markings.iter().collect();
+    //
+    // Inline-4 covers typical SCI usage (SI/TK/HCS/G as the four bare
+    // control systems); inline-4 for compartments/sub-compartments
+    // matches the SCI hierarchy ceiling in observed CAPCO markings.
+    let mut sorted: SmallVec<[&SciMarking; 4]> = markings.iter().collect();
     sorted.sort_by(|a, b| numeric_then_alpha_cmp(system_text(&a.system), system_text(&b.system)));
 
     let mut first = true;
@@ -78,14 +83,15 @@ fn render_structural(markings: &[SciMarking], out: &mut dyn fmt::Write) -> fmt::
         first = false;
         out.write_str(system_text(&marking.system))?;
         // Compartments numeric-then-alpha within the system.
-        let mut comps: Vec<_> = marking.compartments.iter().collect();
+        let mut comps: SmallVec<[_; 4]> = marking.compartments.iter().collect();
         comps.sort_by(|a, b| numeric_then_alpha_cmp(&a.identifier, &b.identifier));
         for comp in comps {
             out.write_char('-')?;
             out.write_str(&comp.identifier)?;
             // Sub-compartments numeric-then-alpha within the
             // compartment, space-separated.
-            let mut subs: Vec<&str> = comp.sub_compartments.iter().map(|s| s.as_ref()).collect();
+            let mut subs: SmallVec<[&str; 4]> =
+                comp.sub_compartments.iter().map(|s| s.as_ref()).collect();
             subs.sort_by(|a, b| numeric_then_alpha_cmp(a, b));
             for sub in subs {
                 out.write_char(' ')?;
