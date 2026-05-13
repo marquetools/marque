@@ -806,11 +806,17 @@ fn apply_fact_remove(
         // capco_token_category but the match arm currently only handles
         // TOK_NODIS / TOK_EXDIS. A FactRemove with `FactRef::Cve(TOK_SBU_NF)`
         // or `FactRef::Cve(TOK_LES_NF)` today falls through to the
-        // `_ => return Err(ApplyIntentError::UnknownToken)` branch below
-        // (silent rejection, NOT panic — propagates as an `UnknownToken`
-        // error to `apply_intent`). 8.F.2 emits FactAdd only, so this gap
-        // is non-triggering today. Add SbuNf / LesNf variants when Pattern
-        // C classified-strips-{sbu,les} rewrites land.
+        // `_ => return Err(ApplyIntentError::UnknownToken)` branch below.
+        // Per the `ApplyIntentError::UnknownToken` doc-comment
+        // (`crates/scheme/src/scheme.rs:454-458`), this is treated as a
+        // programmer-emission defect: the engine logs the error and drops
+        // the fix — it does NOT crash, panic, or apply a partial mutation,
+        // but the failure IS surfaced through the engine's error-logging
+        // pipeline, not silently swallowed. 8.F.2 emits FactAdd only
+        // (writes CAT_DISSEM, routes through `apply_fact_add`), so no rule
+        // in this PR can hit this gap. Add SbuNf / LesNf variants when
+        // Pattern C classified-strips-{sbu,les} rewrites land — those will
+        // be the first emitters of FactRemove on these tokens.
         let target = match id {
             TOK_NODIS => NonIcDissem::Nodis,
             TOK_EXDIS => NonIcDissem::Exdis,

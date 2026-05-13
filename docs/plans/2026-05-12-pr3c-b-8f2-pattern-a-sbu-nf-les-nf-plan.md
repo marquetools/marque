@@ -4,7 +4,7 @@
 - **Author:** architect agent (preflight)
 - **Reviewers expected:** rust-reviewer, code-reviewer
 - **Prior art:** PR #393 (Sub-PR 8.F, merged `6e867ef6`) — NODIS + EXDIS Pattern A
-- **Master pattern doc:** `~/.claude/projects/-home-knitli-marque/memory/project_noforn_supremacy_composition.md`
+- **Pattern A framing (inlined for reviewer reproducibility):** "X implies NOFORN" — a family of CAPCO §H.9 entries where the presence of token X on the page mandates NOFORN on the projected dissem axis. The non-IC dissem subfamily covers NODIS (§H.9 p174), EXDIS (§H.9 p172), SBU-NF (§H.9 p178), and LES-NF (§H.9 p185). The SCI subfamily (HCS-O §H.4 p64, HCS-P-sub §H.4 p68, TK-IDIT §H.4 p87, TK-BLFH §H.4 p91, TK-KAND §H.4 p95) is deferred to a follow-on sub-PR. 8.F (PR #393) landed NODIS + EXDIS; 8.F.2 (this PR) lands SBU-NF + LES-NF. All four entries share identical structural shape — `Contains(CAT_NON_IC_DISSEM, TOK_*)` trigger, `Intent(FactAdd { Cve(TOK_NOFORN), Scope::Page })` action, `[CAT_NON_IC_DISSEM]` reads, `[CAT_DISSEM]` writes — designed for a Stage-4 reframe collapse into one declarative-table walker.
 - **Reviewer attestation:** rust-reviewer and code-reviewer both `APPROVE WITH FIXES` (see §11 for the consolidated patch set folded into this spec).
 
 ---
