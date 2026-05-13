@@ -588,7 +588,11 @@ impl<'t> Parser<'t> {
                     aea: Option<AeaMarking>,
                 }
 
-                let mut results: Vec<SubResult<'_>> = Vec::new();
+                // Inline-4: a `/`-separated slash block typically carries
+                // 2-4 sub-tokens (e.g. `SI/TK`, `NF/LIMDIS`, `SI/TK/HCS`);
+                // see [`split_slash_with_offsets`] for the matching scratch
+                // budget on the index side.
+                let mut results: SmallVec<[SubResult<'_>; 4]> = SmallVec::new();
                 for (sub_off, sub_tok) in split_slash_with_offsets(trimmed) {
                     let sub_abs_start = abs_start + sub_off;
                     let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
@@ -812,21 +816,28 @@ fn parse_sci_block(
     text: &str,
     base: usize,
     tokens: &mut SmallVec<[TokenSpan; 16]>,
-) -> Option<Vec<SciMarking>> {
+) -> Option<SmallVec<[SciMarking; 2]>> {
     if text.is_empty() {
         return None;
     }
 
-    // Buffer tokens into a local vec so we can discard them if any system
-    // fails to parse (all-or-nothing success semantics per spec).
-    let mut local_tokens: Vec<TokenSpan> = Vec::new();
-    let mut markings: Vec<SciMarking> = Vec::new();
+    // Buffer tokens into a local scratch so we can discard them if any
+    // system fails to parse (all-or-nothing success semantics per spec).
+    // Inline-16 mirrors the outer `tokens` budget — even a multi-system
+    // block like `SI-G ABCD DEFG-MMM AACD` emits well under 16 spans.
+    let mut local_tokens: SmallVec<[TokenSpan; 16]> = SmallVec::new();
+    // Inline-2: most SCI blocks carry one system; the §A.6 grammar example
+    // `123/SI-G ABCD DEFG-MMM AACD` is two. Three- or four-system blocks
+    // spill cleanly.
+    let mut markings: SmallVec<[SciMarking; 2]> = SmallVec::new();
 
     // Split on `/` into per-system chunks, tracking byte offsets so each
     // TokenSpan's `span` is accurate relative to the original source.
+    // Inline-4: same scale as `markings` (one chunk per `/`-separated
+    // system); inline-4 covers up to four systems without spilling.
     let mut chunk_start = 0usize;
-    let chunks: Vec<(usize, &str)> = {
-        let mut v = Vec::new();
+    let chunks: SmallVec<[(usize, &str); 4]> = {
+        let mut v: SmallVec<[(usize, &str); 4]> = SmallVec::new();
         for (i, ch) in text.char_indices() {
             if ch == '/' {
                 v.push((chunk_start, &text[chunk_start..i]));
@@ -896,13 +907,18 @@ fn parse_sci_block(
         // Parse compartments. `rest` is the substring after the first `-`.
         // Each additional compartment is preceded by another `-`, and
         // sub-compartments within a compartment are space-separated.
-        let mut compartments: Vec<SciCompartment> = Vec::new();
+        // Inline-4: the §A.6 grammar example `SI-G ABCD DEFG-MMM AACD`
+        // shows two compartments (G, MMM) per system; CAPCO real-world
+        // markings typically cap at ~4 compartments per system.
+        let mut compartments: SmallVec<[SciCompartment; 4]> = SmallVec::new();
         if let Some(rest) = rest_opt {
             // Split `rest` on `-` into compartment segments. Strict grammar:
             // empty segment (trailing or consecutive hyphen) → reject.
             let rest_abs_base = base + chunk_off + ctrl_str.len() + 1; // +1 skips the `-`
             let mut seg_start = 0usize;
-            let mut seg_offs: Vec<(usize, &str)> = Vec::new();
+            // Inline-4: same cardinality as `compartments` (one segment per
+            // `-`-separated compartment).
+            let mut seg_offs: SmallVec<[(usize, &str); 4]> = SmallVec::new();
             for (i, ch) in rest.char_indices() {
                 if ch == '-' {
                     seg_offs.push((seg_start, &rest[seg_start..i]));
@@ -930,7 +946,10 @@ fn parse_sci_block(
                     text: comp_id.into(),
                 });
 
-                let mut subs: Vec<SmolStr> = Vec::new();
+                // Inline-4: the §A.6 grammar example shows 2 sub-comps
+                // per compartment (`G ABCD DEFG`, `MMM AACD`); real-world
+                // markings rarely exceed 4 per compartment.
+                let mut subs: SmallVec<[SmolStr; 4]> = SmallVec::new();
                 // Track cursor within segment for sub-compartment offsets.
                 let mut sub_cursor = comp_id.len() + 1; // +1 skips the space
                 for sub in parts {
@@ -1576,8 +1595,12 @@ fn is_declass_date(s: &str) -> bool {
 ///
 /// Used by the multi-token block fallback to handle CAPCO §D.1 blocks like
 /// `"SI/TK"` or `"NF/LIMDIS"` where multiple entries share one `//` block.
-fn split_slash_with_offsets(s: &str) -> Vec<(usize, &str)> {
-    let mut result = Vec::new();
+fn split_slash_with_offsets(s: &str) -> SmallVec<[(usize, &str); 4]> {
+    // Inline-4: a multi-token slash block (e.g. `SI/TK`, `NF/LIMDIS`)
+    // typically carries 2-4 sub-tokens; the same scale as the
+    // `results: SmallVec<[SubResult<'_>; 4]>` accumulator at the sole
+    // caller in the multi-token block fallback.
+    let mut result: SmallVec<[(usize, &str); 4]> = SmallVec::new();
     let mut pos = 0usize;
     for part in s.split('/') {
         let trim_lead = part.len() - part.trim_start().len();
@@ -1628,7 +1651,10 @@ fn split_slash_with_offsets(s: &str) -> Vec<(usize, &str)> {
 ///
 /// Ordering, classification, and roll-up constraints are NOT enforced here;
 /// they are rule-layer (P3/P4) concerns.
-fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<TokenSpan>)> {
+fn parse_sar_category(
+    block_text: &str,
+    base: usize,
+) -> Option<(SarMarking, SmallVec<[TokenSpan; 16]>)> {
     // Defensive: `//` would mean the outer splitter gave us more than one
     // block. Refuse so the caller can record the text as Unknown and let
     // E030 handle it separately.
@@ -1651,7 +1677,11 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
         return None;
     }
 
-    let mut spans: Vec<TokenSpan> = Vec::new();
+    // Inline-16: a SAR category emits the indicator span plus per-program
+    // (id + per-compartment (1 + subs)) spans. The §A.6 grammar example
+    // `SAR-ABC-DEF 123/SDA-121` totals ~8 spans; multi-program markings
+    // with several compartments approach but rarely exceed 16.
+    let mut spans: SmallVec<[TokenSpan; 16]> = SmallVec::new();
 
     // Record the indicator span (does NOT include the first character of
     // the program identifier — only the literal `SAR-` / `SPECIAL ACCESS
@@ -1662,7 +1692,10 @@ fn parse_sar_category(block_text: &str, base: usize) -> Option<(SarMarking, Vec<
         text: indicator_lit.into(),
     });
 
-    let mut programs: Vec<SarProgram> = Vec::new();
+    // Inline-4: CAPCO-2016 §H.5 examples typically show 1-2 SAR programs;
+    // the §A.6 grammar example `SAR-ABC-DEF 123/SDA-121` is two; multi-
+    // program markings rarely exceed 4.
+    let mut programs: SmallVec<[SarProgram; 4]> = SmallVec::new();
 
     // Split the remainder on `/` into program chunks. Each chunk is a
     // `PROGRAM` production: `PROG_ID` optionally followed by `-COMPARTMENT`.
@@ -1738,7 +1771,7 @@ fn parse_sar_program(
     chunk: &str,
     base: usize,
     indicator: SarIndicator,
-    spans: &mut Vec<TokenSpan>,
+    spans: &mut SmallVec<[TokenSpan; 16]>,
 ) -> Option<SarProgram> {
     if chunk.is_empty() {
         return None;
@@ -1789,8 +1822,10 @@ fn parse_sar_program(
     });
 
     // Remaining segments: each is a compartment, possibly with
-    // space-separated sub-compartments.
-    let mut compartments: Vec<SarCompartment> = Vec::with_capacity(segments.len());
+    // space-separated sub-compartments. Inline-4: CAPCO-2016 §H.5 p100
+    // example `SAR-BP-J12 J54-K15/CD-...` shows two compartments per
+    // program; markings rarely exceed 4 compartments per program.
+    let mut compartments: SmallVec<[SarCompartment; 4]> = SmallVec::new();
     for (seg_off, seg) in segments {
         if seg.is_empty() {
             return None;
@@ -1817,7 +1852,10 @@ fn parse_sar_program(
             text: comp_id.into(),
         });
 
-        let mut subs: Vec<SmolStr> = Vec::with_capacity(parts.len());
+        // Inline-4: CAPCO-2016 §H.5 example `SAR-BP-J12 J54` shows one
+        // sub-compartment per compartment; markings rarely carry more
+        // than 4 subs.
+        let mut subs: SmallVec<[SmolStr; 4]> = SmallVec::new();
         for (sub_rel_off, sub_id) in parts {
             // FR-015 admission: sub-compartment identifier shape
             // gated through the same canonical predicate as the
@@ -1846,8 +1884,12 @@ fn parse_sar_program(
 /// Split `s` on `delim`, returning `(offset_in_s, token)` pairs. Unlike
 /// [`split_slash_with_offsets`], this preserves empty tokens so callers can
 /// detect malformed input (e.g., `SAR--BP` → two segments, the first empty).
-fn split_with_offsets(s: &str, delim: char) -> Vec<(usize, &str)> {
-    let mut result = Vec::new();
+fn split_with_offsets(s: &str, delim: char) -> SmallVec<[(usize, &str); 4]> {
+    // Inline-4: the two SAR-parser call sites split on `-` (segment
+    // count = compartments + 1, typically ≤ 4) and on ` ` (segment
+    // count = sub-compartments + 1, typically ≤ 4) per CAPCO-2016
+    // §H.5 — see callers in [`parse_sar_program`].
+    let mut result: SmallVec<[(usize, &str); 4]> = SmallVec::new();
     let mut pos = 0usize;
     let delim_len = delim.len_utf8();
     for part in s.split(delim) {
