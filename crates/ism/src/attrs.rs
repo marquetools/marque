@@ -162,6 +162,14 @@ pub enum SarIndicator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SarProgram {
     /// Program identifier as it appeared in the source.
+    ///
+    /// `SmolStr` inline storage is capped at 23 bytes. Abbreviated form
+    /// (2–3 chars) and most nicknames stay inline; nicknames above the
+    /// threshold (e.g., `SPECIAL ACCESS REQUIRED` is exactly 23 bytes,
+    /// anything longer overflows) fall back to `Arc<str>`. The fallback
+    /// is still better than `Box<str>`'s always-heap path and keeps
+    /// `Clone` cheap (refcount bump), so the field stays `SmolStr` even
+    /// for the full-form case.
     pub identifier: SmolStr,
     /// Compartments in source order. May be empty.
     pub compartments: Box<[SarCompartment]>,

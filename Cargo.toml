@@ -62,7 +62,11 @@ smallvec = "1"
 # TextCorrection::replacement, page-context + lattice BTreeMap keys).
 # MIT/Apache-2.0 dual-licensed, `no_std`-compatible — WASM-safe per
 # Constitution Principle III.
-smol_str = "0.3"
+# `default-features = false` drops the `serde` and `borsh` features (and
+# their transitive `borsh` + `cfg_aliases` crates) that we do not use —
+# we only consume the core `SmolStr` type. Re-add `features = ["serde"]`
+# here if a downstream crate needs the `Serialize` impl.
+smol_str = { version = "0.3", default-features = false }
 
 anyhow = "1.0.102"
 # Error handling
