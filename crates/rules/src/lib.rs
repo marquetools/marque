@@ -61,6 +61,7 @@ pub mod message;
 
 use marque_ism::{CanonicalAttrs, Span};
 use marque_scheme::MarkingScheme;
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -331,7 +332,7 @@ pub enum AppliedFixProposal<S: MarkingScheme> {
     /// list) — no document content.
     TextCorrection {
         /// Canonical replacement bytes (corpus-derived token canonical).
-        replacement: Box<str>,
+        replacement: SmolStr,
     },
 }
 
@@ -601,7 +602,7 @@ impl<S: MarkingScheme> AppliedFix<S> {
     pub fn __engine_promote_text_correction(
         rule: RuleId,
         span: Span,
-        replacement: Box<str>,
+        replacement: SmolStr,
         source: FixSource,
         confidence: Confidence,
         timestamp: SystemTime,
@@ -762,7 +763,7 @@ pub struct Diagnostic<S: MarkingScheme> {
 pub struct TextCorrection {
     /// Canonical replacement bytes. On Constitution V's permitted-
     /// identifier list (token canonicals from a closed vocabulary).
-    pub replacement: Box<str>,
+    pub replacement: SmolStr,
     /// Provenance of the fix.
     pub source: FixSource,
     /// Multi-axis confidence. Threshold-gated like any other fix in
@@ -894,7 +895,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
         span: Span,
         message: impl Into<Box<str>>,
         citation: &'static str,
-        replacement: impl Into<Box<str>>,
+        replacement: impl Into<SmolStr>,
         source: FixSource,
         confidence: Confidence,
         migration_ref: Option<&'static str>,

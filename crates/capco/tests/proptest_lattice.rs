@@ -16,6 +16,7 @@ use marque_ism::{
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use proptest::prelude::*;
+use smol_str::SmolStr;
 
 // ---------------------------------------------------------------------------
 // SciSet strategy
@@ -43,12 +44,12 @@ fn arb_sci_compartment() -> impl Strategy<Value = SciCompartment> {
         proptest::collection::vec(arb_uppercase_id(1, 4), 0..=3),
     )
         .prop_map(|(id, subs)| {
-            let sub_boxes: Box<[Box<str>]> = subs
+            let sub_boxes: Box<[SmolStr]> = subs
                 .into_iter()
-                .map(|s| s.into_boxed_str())
+                .map(SmolStr::from)
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SciCompartment::new(id.into_boxed_str(), sub_boxes)
+            SciCompartment::new(id, sub_boxes)
         })
 }
 
@@ -85,12 +86,12 @@ fn arb_sar_compartment() -> impl Strategy<Value = SarCompartment> {
         proptest::collection::vec(arb_uppercase_id(1, 4), 0..=2),
     )
         .prop_map(|(id, subs)| {
-            let sub_boxes: Box<[Box<str>]> = subs
+            let sub_boxes: Box<[SmolStr]> = subs
                 .into_iter()
-                .map(|s| s.into_boxed_str())
+                .map(SmolStr::from)
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SarCompartment::new(id.into_boxed_str(), sub_boxes)
+            SarCompartment::new(id, sub_boxes)
         })
 }
 
@@ -99,7 +100,7 @@ fn arb_sar_program() -> impl Strategy<Value = SarProgram> {
         arb_sar_program_id(),
         proptest::collection::vec(arb_sar_compartment(), 0..=2),
     )
-        .prop_map(|(id, comps)| SarProgram::new(id.into_boxed_str(), comps.into_boxed_slice()))
+        .prop_map(|(id, comps)| SarProgram::new(id, comps.into_boxed_slice()))
 }
 
 fn arb_sar_marking() -> impl Strategy<Value = SarMarking> {

@@ -5173,10 +5173,7 @@ mod tests {
         use marque_ism::{CanonicalAttrs, SarIndicator, SarMarking, SarProgram};
         let sar = SarMarking::new(
             SarIndicator::Full,
-            Box::new([SarProgram::new(
-                Box::from("BUTTER POPCORN NOFORN"),
-                Box::new([]),
-            )]),
+            Box::new([SarProgram::new("BUTTER POPCORN NOFORN", Box::new([]))]),
         );
         let mut attrs = CanonicalAttrs::default();
         attrs.sar_markings = Some(sar);
@@ -5195,13 +5192,14 @@ mod tests {
         // XR-XRA RB NOFORN` when the strict parser absorbs NOFORN at
         // the SAR-block tail.
         use marque_ism::{CanonicalAttrs, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        use smol_str::SmolStr;
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             Box::new([SarProgram::new(
-                Box::from("BP"),
+                "BP",
                 Box::new([SarCompartment::new(
-                    Box::from("J12"),
-                    Box::new([Box::from("RB"), Box::from("NOFORN")]),
+                    "J12",
+                    Box::new([SmolStr::from("RB"), SmolStr::from("NOFORN")]),
                 )]),
             )]),
         );
@@ -5227,8 +5225,8 @@ mod tests {
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             Box::new([SarProgram::new(
-                Box::from("BP"),
-                Box::new([SarCompartment::new(Box::from("NOFORN"), Box::new([]))]),
+                "BP",
+                Box::new([SarCompartment::new("NOFORN", Box::new([]))]),
             )]),
         );
         let mut attrs = CanonicalAttrs::default();
@@ -5246,13 +5244,14 @@ mod tests {
         // `RB`) and no hard-splitter token anywhere. Must NOT trigger
         // the penalty.
         use marque_ism::{CanonicalAttrs, SarCompartment, SarIndicator, SarMarking, SarProgram};
+        use smol_str::SmolStr;
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             Box::new([SarProgram::new(
-                Box::from("BP"),
+                "BP",
                 Box::new([SarCompartment::new(
-                    Box::from("J12"),
-                    Box::new([Box::from("RB"), Box::from("XRA")]),
+                    "J12",
+                    Box::new([SmolStr::from("RB"), SmolStr::from("XRA")]),
                 )]),
             )]),
         );
@@ -5275,12 +5274,10 @@ mod tests {
         use marque_ism::{
             CanonicalAttrs, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
         };
+        use smol_str::SmolStr;
         let sci = SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
-            Box::new([SciCompartment::new(
-                Box::from("G"),
-                Box::new([Box::from("ORCON")]),
-            )]),
+            Box::new([SciCompartment::new("G", Box::new([SmolStr::from("ORCON")]))]),
             None,
         );
         let mut attrs = CanonicalAttrs::default();

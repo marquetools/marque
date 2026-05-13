@@ -53,6 +53,7 @@ jiff = { workspace = true }
 marque-scheme = { workspace = true }
 serde = { workspace = true, optional = true }
 smallvec = { workspace = true }
+smol_str = { workspace = true }
 
 [dev-dependencies]
 ism = { workspace = true }

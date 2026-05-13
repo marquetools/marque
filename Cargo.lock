@@ -996,6 +996,7 @@ dependencies = [
  "proptest",
  "serde_json",
  "smallvec",
+ "smol_str",
  "thiserror",
  "tracing",
 ]
@@ -1022,6 +1023,7 @@ dependencies = [
  "memchr",
  "serde",
  "smallvec",
+ "smol_str",
  "thiserror",
 ]
 
@@ -1047,6 +1049,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "smol_str",
  "thiserror",
  "tokio",
  "tracing",
@@ -1081,6 +1084,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "smol_str",
  "toml",
  "xmloxide",
 ]
@@ -1093,6 +1097,7 @@ dependencies = [
  "marque-scheme",
  "serde",
  "smallvec",
+ "smol_str",
  "static_assertions",
  "thiserror",
 ]
@@ -1767,6 +1772,12 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "smol_str"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9676b89cd56310a87b93dec47b11af744f34d5fc9f367b829474eec0a891350d"
 
 [[package]]
 name = "socket2"

@@ -4636,7 +4636,7 @@ fn presence_hcs_comp_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
             && !m.compartments.is_empty()
             && m.compartments.iter().all(|c| c.sub_compartments.is_empty())
             // Exclude HCS-X: it's a passthrough family with its own row.
-            && !m.compartments.iter().any(|c| c.identifier.as_ref() == "X")
+            && !m.compartments.iter().any(|c| c.identifier.as_str() == "X")
     })
 }
 
@@ -4669,7 +4669,7 @@ fn presence_tk_blfh(attrs: &marque_ism::CanonicalAttrs) -> bool {
         matches!(m.system, SciControlSystem::Published(SciControlBare::Tk))
             && m.compartments
                 .iter()
-                .any(|c| c.identifier.as_ref() == "BLFH")
+                .any(|c| c.identifier.as_str() == "BLFH")
     })
 }
 
@@ -4687,7 +4687,7 @@ fn presence_tk_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
         let has_blfh = m
             .compartments
             .iter()
-            .any(|c| c.identifier.as_ref() == "BLFH");
+            .any(|c| c.identifier.as_str() == "BLFH");
         !has_blfh
     })
 }
@@ -4886,7 +4886,7 @@ fn presence_passthrough_hcs_x(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::{SciControl, SciControlBare, SciControlSystem};
     let has_via_markings = attrs.sci_markings.iter().any(|m| {
         matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
-            && m.compartments.iter().any(|c| c.identifier.as_ref() == "X")
+            && m.compartments.iter().any(|c| c.identifier.as_str() == "X")
     });
     let has_via_controls = attrs
         .sci_controls
@@ -5403,14 +5403,14 @@ pub(crate) fn anchors_on(m: &marque_ism::SciMarking, system: marque_ism::SciCont
 
 /// Does any compartment under this marking carry the given identifier?
 pub(crate) fn has_compartment(m: &marque_ism::SciMarking, id: &str) -> bool {
-    m.compartments.iter().any(|c| c.identifier.as_ref() == id)
+    m.compartments.iter().any(|c| c.identifier.as_str() == id)
 }
 
 /// Does the specific compartment carry at least one sub-compartment?
 pub(crate) fn compartment_has_sub(m: &marque_ism::SciMarking, comp_id: &str) -> bool {
     m.compartments
         .iter()
-        .any(|c| c.identifier.as_ref() == comp_id && !c.sub_compartments.is_empty())
+        .any(|c| c.identifier.as_str() == comp_id && !c.sub_compartments.is_empty())
 }
 
 /// Is this a TK-BLFH, TK-IDIT, or TK-KAND marking (the three TK
@@ -5420,7 +5420,7 @@ pub(crate) fn is_tk_noforn_compartment(m: &marque_ism::SciMarking) -> bool {
     anchors_on(m, SciControlBare::Tk)
         && m.compartments
             .iter()
-            .any(|c| matches!(c.identifier.as_ref(), "BLFH" | "IDIT" | "KAND"))
+            .any(|c| matches!(c.identifier.as_str(), "BLFH" | "IDIT" | "KAND"))
 }
 
 /// Find the first SCI-system/SCI-control token span in document order.

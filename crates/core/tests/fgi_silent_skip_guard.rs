@@ -454,5 +454,5 @@ fn sar_canonical_abbrev_form_round_trips() {
     let attrs = parse_portion_attrs("(TS//SAR-BP)");
     let sar = attrs.sar_markings.expect("canonical SAR-BP parses");
     assert_eq!(sar.programs.len(), 1);
-    assert_eq!(sar.programs[0].identifier.as_ref(), "BP");
+    assert_eq!(sar.programs[0].identifier.as_str(), "BP");
 }

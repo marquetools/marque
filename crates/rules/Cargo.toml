@@ -29,6 +29,7 @@ serde = { workspace = true, optional = true }
 # PR 3c.1 (T032/T037) — MessageArgs.feature_ids and FixIntent.feature_ids
 # both use SmallVec<[FeatureId; 4]> to keep the inline-4 case heap-free.
 smallvec = { workspace = true }
+smol_str = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -35,6 +35,7 @@ use marque_ism::{
     SciControl, SciControlSystem, SciMarking,
 };
 use marque_scheme::{MarkingScheme, Scope};
+use smol_str::SmolStr;
 
 // ---------------------------------------------------------------------------
 // Helpers — render via render_canonical at the requested scope and
@@ -163,8 +164,8 @@ fn sci_compartment_numeric_then_alpha_sort() {
     a.sci_markings = vec![SciMarking::new(
         SciControlSystem::Published(marque_ism::SciControlBare::Si),
         vec![
-            SciCompartment::new("DEFG".into(), Box::new([])),
-            SciCompartment::new("ABCD".into(), Box::new([])),
+            SciCompartment::new("DEFG", Box::new([])),
+            SciCompartment::new("ABCD", Box::new([])),
         ]
         .into(),
         None,
@@ -183,8 +184,8 @@ fn sci_sub_compartments_space_separated() {
     a.sci_markings = vec![SciMarking::new(
         SciControlSystem::Published(marque_ism::SciControlBare::Si),
         vec![SciCompartment::new(
-            "G".into(),
-            vec!["ABCD".into(), "DEFG".into()].into(),
+            "G",
+            Box::new([SmolStr::from("ABCD"), SmolStr::from("DEFG")]),
         )]
         .into(),
         None,
@@ -224,10 +225,14 @@ fn sci_numeric_system_sorts_before_alpha() {
     a.sci_markings = vec![
         SciMarking::new(
             SciControlSystem::Published(marque_ism::SciControlBare::Si),
-            vec![SciCompartment::new("G".into(), Box::new([]))].into(),
+            vec![SciCompartment::new("G", Box::new([]))].into(),
             None,
         ),
-        SciMarking::new(SciControlSystem::Custom("123".into()), Box::new([]), None),
+        SciMarking::new(
+            SciControlSystem::Custom(SmolStr::from("123")),
+            Box::new([]),
+            None,
+        ),
     ]
     .into();
     assert_eq!(render_banner(a), "TOP SECRET//123/SI-G");
@@ -245,7 +250,7 @@ fn sar_single_program_short_indicator() {
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.sar_markings = Some(SarMarking::new(
         SarIndicator::Abbrev,
-        vec![SarProgram::new("ABC".into(), Box::new([]))].into(),
+        vec![SarProgram::new("ABC", Box::new([]))].into(),
     ));
     assert_eq!(render_banner(a), "SECRET//SAR-ABC");
 }
@@ -259,8 +264,8 @@ fn sar_multi_program_alpha_sort() {
     a.sar_markings = Some(SarMarking::new(
         SarIndicator::Abbrev,
         vec![
-            SarProgram::new("XYZ".into(), Box::new([])),
-            SarProgram::new("ABC".into(), Box::new([])),
+            SarProgram::new("XYZ", Box::new([])),
+            SarProgram::new("ABC", Box::new([])),
         ]
         .into(),
     ));
@@ -277,8 +282,8 @@ fn sar_program_with_compartment() {
     a.sar_markings = Some(SarMarking::new(
         SarIndicator::Abbrev,
         vec![SarProgram::new(
-            "ABC".into(),
-            vec![SarCompartment::new("DEF".into(), Box::new([]))].into(),
+            "ABC",
+            vec![SarCompartment::new("DEF", Box::new([]))].into(),
         )]
         .into(),
     ));
@@ -295,7 +300,7 @@ fn sar_full_indicator_for_multiword_program() {
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     a.sar_markings = Some(SarMarking::new(
         SarIndicator::Full,
-        vec![SarProgram::new("BUTTER POPCORN".into(), Box::new([]))].into(),
+        vec![SarProgram::new("BUTTER POPCORN", Box::new([]))].into(),
     ));
     assert_eq!(
         render_banner(a),
@@ -313,8 +318,8 @@ fn sar_compartment_with_sub_compartments() {
     a.sar_markings = Some(SarMarking::new(
         SarIndicator::Abbrev,
         vec![SarProgram::new(
-            "ABC".into(),
-            vec![SarCompartment::new("DEF".into(), vec!["123".into()].into())].into(),
+            "ABC",
+            vec![SarCompartment::new("DEF", Box::new([SmolStr::from("123")]))].into(),
         )]
         .into(),
     ));

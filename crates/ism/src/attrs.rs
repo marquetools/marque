@@ -33,6 +33,7 @@
 //! `MarkingScheme::canonicalize` replaces it.
 
 use smallvec::SmallVec;
+use smol_str::SmolStr;
 
 use crate::generated::values;
 use crate::span::Span;
@@ -51,7 +52,7 @@ pub use values::{DeclassExemption, DissemControl, SciControl, SciControlBare};
 pub struct TokenSpan {
     pub kind: TokenKind,
     pub span: Span,
-    pub text: Box<str>,
+    pub text: SmolStr,
 }
 
 /// Discriminant for `TokenSpan`. Phase 3 rules read these to filter
@@ -161,7 +162,15 @@ pub enum SarIndicator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SarProgram {
     /// Program identifier as it appeared in the source.
-    pub identifier: Box<str>,
+    ///
+    /// `SmolStr` inline storage is capped at 23 bytes. Abbreviated form
+    /// (2–3 chars) and most nicknames stay inline; nicknames above the
+    /// threshold (e.g., `SPECIAL ACCESS REQUIRED` is exactly 23 bytes,
+    /// anything longer overflows) fall back to `Arc<str>`. The fallback
+    /// is still better than `Box<str>`'s always-heap path and keeps
+    /// `Clone` cheap (refcount bump), so the field stays `SmolStr` even
+    /// for the full-form case.
+    pub identifier: SmolStr,
     /// Compartments in source order. May be empty.
     pub compartments: Box<[SarCompartment]>,
 }
@@ -174,9 +183,9 @@ pub struct SarProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SarCompartment {
     /// Compartment identifier (alphanumeric).
-    pub identifier: Box<str>,
+    pub identifier: SmolStr,
     /// Sub-compartments in source order. May be empty.
-    pub sub_compartments: Box<[Box<str>]>,
+    pub sub_compartments: Box<[SmolStr]>,
 }
 
 impl SarMarking {
@@ -193,9 +202,9 @@ impl SarMarking {
 
 impl SarProgram {
     /// Construct a [`SarProgram`] with an optional compartment list.
-    pub fn new(identifier: Box<str>, compartments: Box<[SarCompartment]>) -> Self {
+    pub fn new(identifier: impl Into<SmolStr>, compartments: Box<[SarCompartment]>) -> Self {
         Self {
-            identifier,
+            identifier: identifier.into(),
             compartments,
         }
     }
@@ -382,9 +391,9 @@ impl SarProgram {
 
 impl SarCompartment {
     /// Construct a [`SarCompartment`] with an optional sub-compartment list.
-    pub fn new(identifier: Box<str>, sub_compartments: Box<[Box<str>]>) -> Self {
+    pub fn new(identifier: impl Into<SmolStr>, sub_compartments: Box<[SmolStr]>) -> Self {
         Self {
-            identifier,
+            identifier: identifier.into(),
             sub_compartments,
         }
     }
@@ -2188,7 +2197,7 @@ pub enum SciControlSystem {
     /// An agency-allocated system matching `[A-Z0-9]{2,5}` (per CAPCO-2016
     /// §A.6 p15 `123` example). Stores the raw text exactly as it appeared
     /// in the source.
-    Custom(Box<str>),
+    Custom(SmolStr),
 }
 
 /// A single compartment under an SCI control system.
@@ -2200,18 +2209,18 @@ pub enum SciControlSystem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SciCompartment {
     /// Compartment identifier (alphanumeric). Example: `G` in `SI-G`.
-    pub identifier: Box<str>,
+    pub identifier: SmolStr,
     /// Sub-compartments in source order. Example: `ABCD`, `DEFG` in
     /// `SI-G ABCD DEFG`.
-    pub sub_compartments: Box<[Box<str>]>,
+    pub sub_compartments: Box<[SmolStr]>,
 }
 
 impl SciCompartment {
     /// Construct a new `SciCompartment`. Used by the parser to populate
     /// [`SciMarking::compartments`].
-    pub fn new(identifier: Box<str>, sub_compartments: Box<[Box<str>]>) -> Self {
+    pub fn new(identifier: impl Into<SmolStr>, sub_compartments: Box<[SmolStr]>) -> Self {
         Self {
-            identifier,
+            identifier: identifier.into(),
             sub_compartments,
         }
     }

@@ -49,6 +49,7 @@ use crate::attrs::{
 };
 use crate::canonical::CanonicalAttrs;
 use crate::date::IsmDate;
+use smol_str::SmolStr;
 
 /// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort order
 /// with numbered values first, followed by alphabetic values" at each hierarchical
@@ -200,7 +201,7 @@ impl PageContext {
         // system → compartment_id → set of sub_compartments
         let mut acc: std::collections::BTreeMap<
             SystemKey,
-            std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+            std::collections::BTreeMap<SmolStr, std::collections::BTreeSet<SmolStr>>,
         > = std::collections::BTreeMap::new();
 
         for attrs in &self.portions {
@@ -208,8 +209,8 @@ impl PageContext {
                 let key = SystemKey::from_system(&marking.system);
                 let comp_map = acc.entry(key).or_default();
                 for comp in marking.compartments.iter() {
-                    let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
-                    sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
+                    let sub_set = comp_map.entry(comp.identifier.clone()).or_default();
+                    sub_set.extend(comp.sub_compartments.iter().cloned());
                 }
             }
         }
@@ -220,21 +221,17 @@ impl PageContext {
 
         let mut out: Vec<SciMarking> = Vec::with_capacity(systems.len());
         for (sys_key, comp_map) in systems {
-            let mut comps: Vec<(String, std::collections::BTreeSet<String>)> =
+            let mut comps: Vec<(SmolStr, std::collections::BTreeSet<SmolStr>)> =
                 comp_map.into_iter().collect();
             comps.sort_by(|a, b| sar_sort_key(&a.0).cmp(&sar_sort_key(&b.0)));
 
             let compartments: Vec<SciCompartment> = comps
                 .into_iter()
                 .map(|(id, sub_set)| {
-                    let mut subs: Vec<String> = sub_set.into_iter().collect();
+                    let mut subs: Vec<SmolStr> = sub_set.into_iter().collect();
                     subs.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
-                    let sub_boxes: Box<[Box<str>]> = subs
-                        .into_iter()
-                        .map(|s| s.into_boxed_str())
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice();
-                    SciCompartment::new(id.into_boxed_str(), sub_boxes)
+                    let sub_boxes: Box<[SmolStr]> = subs.into_boxed_slice();
+                    SciCompartment::new(id, sub_boxes)
                 })
                 .collect();
 
@@ -266,17 +263,17 @@ impl PageContext {
         // identifiers. BTreeMap/BTreeSet give deterministic ordering but we
         // re-sort per CAPCO semantics below (BTree's lexicographic order puts
         // "12A" before "2" — wrong for §H.5).
-        let mut programs: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+        let mut programs: BTreeMap<SmolStr, BTreeMap<SmolStr, BTreeSet<SmolStr>>> = BTreeMap::new();
 
         for attrs in &self.portions {
             let Some(sar) = attrs.sar_markings.as_ref() else {
                 continue;
             };
             for prog in sar.programs.iter() {
-                let comps = programs.entry(prog.identifier.to_string()).or_default();
+                let comps = programs.entry(prog.identifier.clone()).or_default();
                 for comp in prog.compartments.iter() {
-                    let subs = comps.entry(comp.identifier.to_string()).or_default();
-                    subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
+                    let subs = comps.entry(comp.identifier.clone()).or_default();
+                    subs.extend(comp.sub_compartments.iter().cloned());
                 }
             }
         }
@@ -286,32 +283,28 @@ impl PageContext {
         }
 
         // Sort each hierarchical level per CAPCO §H.5 (numeric-first, then alpha).
-        let mut prog_keys: Vec<String> = programs.keys().cloned().collect();
+        let mut prog_keys: Vec<SmolStr> = programs.keys().cloned().collect();
         prog_keys.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
 
         let built_programs: Vec<SarProgram> = prog_keys
             .into_iter()
             .map(|pid| {
                 let comp_map = programs.remove(&pid).expect("key enumerated above");
-                let mut comp_keys: Vec<String> = comp_map.keys().cloned().collect();
+                let mut comp_keys: Vec<SmolStr> = comp_map.keys().cloned().collect();
                 comp_keys.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
 
                 let built_compartments: Vec<SarCompartment> = comp_keys
                     .into_iter()
                     .map(|cid| {
                         let subs = comp_map.get(&cid).expect("key enumerated above");
-                        let mut sub_vec: Vec<String> = subs.iter().cloned().collect();
+                        let mut sub_vec: Vec<SmolStr> = subs.iter().cloned().collect();
                         sub_vec.sort_by(|a, b| sar_sort_key(a).cmp(&sar_sort_key(b)));
-                        let boxed: Box<[Box<str>]> = sub_vec
-                            .into_iter()
-                            .map(|s| s.into_boxed_str())
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice();
-                        SarCompartment::new(cid.into_boxed_str(), boxed)
+                        let boxed: Box<[SmolStr]> = sub_vec.into_boxed_slice();
+                        SarCompartment::new(cid, boxed)
                     })
                     .collect();
 
-                SarProgram::new(pid.into_boxed_str(), built_compartments.into_boxed_slice())
+                SarProgram::new(pid, built_compartments.into_boxed_slice())
             })
             .collect();
 
@@ -903,14 +896,14 @@ impl PageContext {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum SystemKey {
     Published(crate::attrs::SciControlBare),
-    Custom(String),
+    Custom(SmolStr),
 }
 
 impl SystemKey {
     fn from_system(sys: &SciControlSystem) -> Self {
         match sys {
             SciControlSystem::Published(b) => SystemKey::Published(*b),
-            SciControlSystem::Custom(s) => SystemKey::Custom(s.to_string()),
+            SciControlSystem::Custom(s) => SystemKey::Custom(s.clone()),
         }
     }
 
@@ -924,7 +917,7 @@ impl SystemKey {
     fn into_system(self) -> SciControlSystem {
         match self {
             SystemKey::Published(b) => SciControlSystem::Published(b),
-            SystemKey::Custom(s) => SciControlSystem::Custom(s.into_boxed_str()),
+            SystemKey::Custom(s) => SciControlSystem::Custom(s),
         }
     }
 }
@@ -1852,16 +1845,16 @@ mod tests {
     }
 
     fn sci_sys_custom(s: &str) -> SciControlSystem {
-        SciControlSystem::Custom(s.to_owned().into_boxed_str())
+        SciControlSystem::Custom(SmolStr::from(s))
     }
 
     fn comp(id: &str, subs: &[&str]) -> SciCompartment {
-        let sub_box: Box<[Box<str>]> = subs
+        let sub_box: Box<[SmolStr]> = subs
             .iter()
-            .map(|s| (*s).to_owned().into_boxed_str())
+            .map(|s| SmolStr::from(*s))
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        SciCompartment::new(id.to_owned().into_boxed_str(), sub_box)
+        SciCompartment::new(id, sub_box)
     }
 
     fn attrs_with_sci_markings(markings: Vec<SciMarking>) -> CanonicalAttrs {
@@ -1876,16 +1869,16 @@ mod tests {
     use crate::attrs::{SarCompartment, SarIndicator, SarMarking, SarProgram};
 
     fn sar_prog(id: &str, comps: Vec<SarCompartment>) -> SarProgram {
-        SarProgram::new(id.into(), comps.into_boxed_slice())
+        SarProgram::new(id, comps.into_boxed_slice())
     }
 
     fn sar_comp(id: &str, subs: &[&str]) -> SarCompartment {
-        let subs: Box<[Box<str>]> = subs
+        let subs: Box<[SmolStr]> = subs
             .iter()
-            .map(|s| (*s).into())
+            .map(|s| SmolStr::from(*s))
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        SarCompartment::new(id.into(), subs)
+        SarCompartment::new(id, subs)
     }
 
     fn attrs_with_sar(sar: SarMarking) -> CanonicalAttrs {

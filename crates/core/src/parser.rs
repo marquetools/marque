@@ -40,6 +40,7 @@ use marque_ism::parsed::{
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
 use smallvec::SmallVec;
+use smol_str::SmolStr;
 use std::str::FromStr;
 
 /// Parse result for a single candidate.
@@ -908,7 +909,7 @@ fn parse_sci_block(
                     text: comp_id.into(),
                 });
 
-                let mut subs: Vec<Box<str>> = Vec::new();
+                let mut subs: Vec<SmolStr> = Vec::new();
                 // Track cursor within segment for sub-compartment offsets.
                 let mut sub_cursor = comp_id.len() + 1; // +1 skips the space
                 for sub in parts {
@@ -925,7 +926,7 @@ fn parse_sci_block(
                     sub_cursor += sub.len() + 1;
                 }
 
-                compartments.push(SciCompartment::new(comp_id.into(), subs.into_boxed_slice()));
+                compartments.push(SciCompartment::new(comp_id, subs.into_boxed_slice()));
             }
         }
 
@@ -1780,7 +1781,7 @@ fn parse_sar_program(
             text: comp_id.into(),
         });
 
-        let mut subs: Vec<Box<str>> = Vec::with_capacity(parts.len());
+        let mut subs: Vec<SmolStr> = Vec::with_capacity(parts.len());
         for (sub_rel_off, sub_id) in parts {
             // FR-015 admission: sub-compartment identifier shape
             // gated through the same canonical predicate as the
@@ -1800,13 +1801,10 @@ fn parse_sar_program(
             subs.push(sub_id.into());
         }
 
-        compartments.push(SarCompartment::new(comp_id.into(), subs.into_boxed_slice()));
+        compartments.push(SarCompartment::new(comp_id, subs.into_boxed_slice()));
     }
 
-    Some(SarProgram::new(
-        prog_id.into(),
-        compartments.into_boxed_slice(),
-    ))
+    Some(SarProgram::new(prog_id, compartments.into_boxed_slice()))
 }
 
 /// Split `s` on `delim`, returning `(offset_in_s, token)` pairs. Unlike
@@ -2963,7 +2961,7 @@ mod tests {
         let m = &parsed.attrs.sci_markings[0];
         assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
         assert_eq!(m.compartments.len(), 1);
-        assert_eq!(m.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m.compartments[0].identifier.as_str(), "G");
         assert!(m.compartments[0].sub_compartments.is_empty());
         assert_eq!(m.canonical_enum, Some(SciControl::SiG));
         assert_eq!(parsed.attrs.sci_controls.as_ref(), &[SciControl::SiG]);
@@ -2975,7 +2973,7 @@ mod tests {
         let parsed = parse_banner("TOP SECRET//HCS-P//NOFORN");
         let m = &parsed.attrs.sci_markings[0];
         assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Hcs));
-        assert_eq!(m.compartments[0].identifier.as_ref(), "P");
+        assert_eq!(m.compartments[0].identifier.as_str(), "P");
         assert_eq!(m.canonical_enum, Some(SciControl::HcsP));
     }
 
@@ -3012,9 +3010,9 @@ mod tests {
         let m = &parsed.attrs.sci_markings[0];
         assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
         assert_eq!(m.compartments.len(), 1);
-        assert_eq!(m.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m.compartments[0].identifier.as_str(), "G");
         assert_eq!(m.compartments[0].sub_compartments.len(), 1);
-        assert_eq!(m.compartments[0].sub_compartments[0].as_ref(), "ABCD");
+        assert_eq!(m.compartments[0].sub_compartments[0].as_str(), "ABCD");
         assert_eq!(m.canonical_enum, None);
         // sci_controls projection: no canonical_enum → no entry
         assert!(parsed.attrs.sci_controls.is_empty());
@@ -3029,20 +3027,20 @@ mod tests {
         assert_eq!(parsed.attrs.sci_markings.len(), 2);
         // Marking 0: Custom("123"), no compartments.
         let m0 = &parsed.attrs.sci_markings[0];
-        assert!(matches!(&m0.system, SciControlSystem::Custom(s) if s.as_ref() == "123"));
+        assert!(matches!(&m0.system, SciControlSystem::Custom(s) if s.as_str() == "123"));
         assert!(m0.compartments.is_empty());
         assert_eq!(m0.canonical_enum, None);
         // Marking 1: Published(SI) with compartments G[ABCD, DEFG] and MMM[AACD].
         let m1 = &parsed.attrs.sci_markings[1];
         assert_eq!(m1.system, SciControlSystem::Published(SciControlBare::Si));
         assert_eq!(m1.compartments.len(), 2);
-        assert_eq!(m1.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m1.compartments[0].identifier.as_str(), "G");
         assert_eq!(m1.compartments[0].sub_compartments.len(), 2);
-        assert_eq!(m1.compartments[0].sub_compartments[0].as_ref(), "ABCD");
-        assert_eq!(m1.compartments[0].sub_compartments[1].as_ref(), "DEFG");
-        assert_eq!(m1.compartments[1].identifier.as_ref(), "MMM");
+        assert_eq!(m1.compartments[0].sub_compartments[0].as_str(), "ABCD");
+        assert_eq!(m1.compartments[0].sub_compartments[1].as_str(), "DEFG");
+        assert_eq!(m1.compartments[1].identifier.as_str(), "MMM");
         assert_eq!(m1.compartments[1].sub_compartments.len(), 1);
-        assert_eq!(m1.compartments[1].sub_compartments[0].as_ref(), "AACD");
+        assert_eq!(m1.compartments[1].sub_compartments[0].as_str(), "AACD");
         // First compartment has sub-comps → canonical_enum is None.
         assert_eq!(m1.canonical_enum, None);
         // No Unknown spans in the SCI block.
@@ -3067,7 +3065,7 @@ mod tests {
         let mut tokens = Vec::new();
         let result = parse_sci_block("99", 0, &mut tokens).expect("99 must parse");
         assert_eq!(result.len(), 1);
-        assert!(matches!(&result[0].system, SciControlSystem::Custom(s) if s.as_ref() == "99"));
+        assert!(matches!(&result[0].system, SciControlSystem::Custom(s) if s.as_str() == "99"));
         assert!(result[0].compartments.is_empty());
         assert_eq!(result[0].canonical_enum, None);
     }
@@ -3124,10 +3122,10 @@ mod tests {
         let m = &parsed.attrs.sci_markings[0];
         assert_eq!(m.system, SciControlSystem::Published(SciControlBare::Si));
         assert_eq!(m.compartments.len(), 1);
-        assert_eq!(m.compartments[0].identifier.as_ref(), "G");
+        assert_eq!(m.compartments[0].identifier.as_str(), "G");
         assert_eq!(m.compartments[0].sub_compartments.len(), 2);
-        assert_eq!(m.compartments[0].sub_compartments[0].as_ref(), "WEIRD");
-        assert_eq!(m.compartments[0].sub_compartments[1].as_ref(), "FOO");
+        assert_eq!(m.compartments[0].sub_compartments[0].as_str(), "WEIRD");
+        assert_eq!(m.compartments[0].sub_compartments[1].as_str(), "FOO");
     }
 
     // -----------------------------------------------------------------------

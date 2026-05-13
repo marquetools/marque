@@ -182,9 +182,9 @@ pub fn render_human(
             let hint = if let Some(tc) = &diag.text_correction {
                 match diag.severity {
                     marque_rules::Severity::Suggest => {
-                        format!(" did you mean {:?}?", tc.replacement.as_ref())
+                        format!(" did you mean {:?}?", tc.replacement.as_str())
                     }
-                    _ => format!(" replace with {:?}", tc.replacement.as_ref()),
+                    _ => format!(" replace with {:?}", tc.replacement.as_str()),
                 }
             } else if let Some(f) = diag.fix.as_ref() {
                 match diag.severity {
@@ -333,7 +333,7 @@ pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
             (None, Some(tc)) => Some(FixJson {
                 source: fix_source_str(tc.source),
                 intent_kind: "TextCorrection",
-                replacement: Some(tc.replacement.as_ref()),
+                replacement: Some(tc.replacement.as_str()),
                 confidence: tc.confidence.combined(),
                 migration_ref: tc.migration_ref,
             }),

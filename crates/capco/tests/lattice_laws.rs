@@ -26,6 +26,7 @@ use marque_ism::{
     SciControlBare, SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
+use smol_str::SmolStr;
 use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
@@ -40,12 +41,12 @@ fn sci_system_with(bare: SciControlBare, comps: &[(&str, &[&str])]) -> SciMarkin
     let compartments: Vec<SciCompartment> = comps
         .iter()
         .map(|(cid, subs)| {
-            let sub_boxes: Box<[Box<str>]> = subs
+            let sub_boxes: Box<[SmolStr]> = subs
                 .iter()
-                .map(|s| (*s).to_string().into_boxed_str())
+                .map(|s| SmolStr::from(*s))
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SciCompartment::new(cid.to_string().into_boxed_str(), sub_boxes)
+            SciCompartment::new(*cid, sub_boxes)
         })
         .collect();
     SciMarking::new(
@@ -152,18 +153,15 @@ fn sar_marking(programs: &[(&str, &[(&str, &[&str])])]) -> SarMarking {
             let comp_boxes: Vec<SarCompartment> = comps
                 .iter()
                 .map(|(cid, subs)| {
-                    let sub_boxes: Box<[Box<str>]> = subs
+                    let sub_boxes: Box<[SmolStr]> = subs
                         .iter()
-                        .map(|s| (*s).to_string().into_boxed_str())
+                        .map(|s| SmolStr::from(*s))
                         .collect::<Vec<_>>()
                         .into_boxed_slice();
-                    SarCompartment::new(cid.to_string().into_boxed_str(), sub_boxes)
+                    SarCompartment::new(*cid, sub_boxes)
                 })
                 .collect();
-            SarProgram::new(
-                pid.to_string().into_boxed_str(),
-                comp_boxes.into_boxed_slice(),
-            )
+            SarProgram::new(*pid, comp_boxes.into_boxed_slice())
         })
         .collect();
     SarMarking::new(SarIndicator::Abbrev, progs.into_boxed_slice())
