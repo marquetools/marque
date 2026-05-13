@@ -219,11 +219,7 @@ fn visit_impl(item_impl: &ItemImpl, ctx: &Context, sink: &mut Vec<FnRecord>) {
 /// matching `Engine` / `CapcoScheme` / etc.
 fn self_type_last_segment(ty: &syn::Type) -> Option<String> {
     match ty {
-        syn::Type::Path(type_path) => type_path
-            .path
-            .segments
-            .last()
-            .map(|s| s.ident.to_string()),
+        syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| s.ident.to_string()),
         syn::Type::Reference(r) => self_type_last_segment(&r.elem),
         syn::Type::Paren(p) => self_type_last_segment(&p.elem),
         syn::Type::Group(g) => self_type_last_segment(&g.elem),

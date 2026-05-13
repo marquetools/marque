@@ -45,10 +45,7 @@ impl Engine {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert!(
-        diags.is_empty(),
-        "expected no diagnostics, got {diags:#?}",
-    );
+    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}",);
 }
 
 #[test]
@@ -99,7 +96,11 @@ fn evil_helper() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC002");
     assert_eq!(diags[0].severity, Severity::Error);
 }
@@ -172,7 +173,11 @@ fn fabricate_leaky_fix() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC001");
     assert_eq!(diags[0].severity, Severity::Error);
 }
@@ -288,7 +293,11 @@ fn top_level_workspace_member_src_is_walked_and_flagged() {
     let tmp = TempDir::new().unwrap();
     // The directory must contain a `Cargo.toml` for the discovery
     // logic to recognize it as a workspace member.
-    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/Cargo.toml",
+        "[package]\nname = \"marque\"\n",
+    );
     write(
         tmp.path(),
         "marque/src/lib.rs",
@@ -299,10 +308,17 @@ fn naughty_in_top_level_member() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected the top-level member's call to be flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the top-level member's call to be flagged, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC002");
     assert!(
-        diags[0].file.to_string_lossy().contains("marque/src/lib.rs"),
+        diags[0]
+            .file
+            .to_string_lossy()
+            .contains("marque/src/lib.rs"),
         "expected the diagnostic to point at the top-level member; got {:?}",
         diags[0].file
     );
@@ -316,7 +332,11 @@ fn top_level_workspace_member_tests_carve_out_is_recognized() {
     // `is_test_path` branch that handles the `<member>/tests/<...>`
     // shape (R6 #1 fix).
     let tmp = TempDir::new().unwrap();
-    write(tmp.path(), "marque/Cargo.toml", "[package]\nname = \"marque\"\n");
+    write(
+        tmp.path(),
+        "marque/Cargo.toml",
+        "[package]\nname = \"marque\"\n",
+    );
     write(
         tmp.path(),
         "marque/tests/integration.rs",
@@ -364,7 +384,11 @@ fn naughty_construct_aliased() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 3, "expected all three aliased/Self call shapes flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        3,
+        "expected all three aliased/Self call shapes flagged, got {diags:#?}"
+    );
     for d in &diags {
         assert_eq!(d.code, "PRC002");
     }
@@ -385,7 +409,11 @@ fn naughty_fqn() {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert_eq!(diags.len(), 1, "expected the FQN call to be flagged, got {diags:#?}");
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the FQN call to be flagged, got {diags:#?}"
+    );
     assert_eq!(diags[0].code, "PRC002");
 }
 

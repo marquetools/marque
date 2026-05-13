@@ -108,8 +108,8 @@ pub fn scan_workspace(workspace_dir: &Path) -> Result<Vec<Diagnostic>> {
     for path in collect_rust_files(workspace_dir)? {
         let source = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let file = syn::parse_file(&source)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let file =
+            syn::parse_file(&source).with_context(|| format!("parsing {}", path.display()))?;
         scan_file(&path, &source, &file, workspace_dir, &mut diagnostics);
     }
     Ok(diagnostics)
@@ -177,15 +177,15 @@ fn collect_rust_files(workspace_dir: &Path) -> Result<Vec<PathBuf>> {
             path.file_name().and_then(|s| s.to_str()),
             Some(
                 "crates"
-                | "tests"
-                | "tools"
-                | "target"
-                | ".git"
-                | "site"
-                | "specs"
-                | "docs"
-                | "scripts"
-                | "benches"
+                    | "tests"
+                    | "tools"
+                    | "target"
+                    | ".git"
+                    | "site"
+                    | "specs"
+                    | "docs"
+                    | "scripts"
+                    | "benches"
             )
         ) {
             continue;
@@ -633,9 +633,7 @@ fn line_comment_contains_marker(line: &str, marker: &str) -> bool {
                     // Raw string: closes on `"` followed by exactly `raw_hashes` `#`s.
                     if b == b'"' {
                         let close = i + 1 + raw_hashes;
-                        if close <= bytes.len()
-                            && bytes[i + 1..close].iter().all(|&h| h == b'#')
-                        {
+                        if close <= bytes.len() && bytes[i + 1..close].iter().all(|&h| h == b'#') {
                             in_str = None;
                             i = close;
                             continue;
