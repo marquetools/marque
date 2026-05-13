@@ -216,13 +216,30 @@ fn r002_does_not_mint_applied_fix() {
     // Localized rule emits a FixIntent that could trigger R002, so
     // `r002_fired == false` here, but the absence-of-R002-fix
     // invariant must hold in either branch).
+    //
+    // This integration test is a canary; it becomes load-bearing
+    // when a future `Phase::Localized` rule lands that can trigger
+    // R002. Today the loop iterates over fixes that R002 cannot
+    // appear in, so the per-fix assertion is vacuously satisfied —
+    // the direct shape pin lives at the unit-test layer in
+    // `engine.rs::tests::build_r002_diagnostic_returns_diagnostic_not_appliedfix`,
+    // which exercises `build_r002_diagnostic` itself and verifies
+    // the returned `Diagnostic` carries neither a `FixIntent` nor a
+    // `TextCorrection` (the two channels a `Diagnostic` can become
+    // an `AppliedFix` through).
     let engine = test_engine();
     let source = b"SECRET//REL TO GBR\n(TS//HCS)\n";
     let result = engine.fix(source, FixMode::Apply);
     for fix in &result.applied {
+        // Compare against the typed constant rather than the string
+        // literal so a future rename of `R002_RULE_ID` (e.g., to
+        // adopt the engine-synthetic namespace
+        // `("engine", "r002.reparse-failed")` referenced in
+        // `MessageTemplate::ReparseFailed`'s doc) is caught here
+        // instead of silently passing on stale identifier drift.
         assert_ne!(
-            fix.rule.as_str(),
-            "R002",
+            fix.rule,
+            marque_engine::R002_RULE_ID,
             "R002 must never appear as an AppliedFix"
         );
     }

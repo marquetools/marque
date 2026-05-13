@@ -28,7 +28,7 @@ mod text_correction;
 pub use batch::{BatchEngine, BatchError, BatchOptions};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use decoder::{DecoderRecognizer, StrictOrDecoderRecognizer};
-pub use engine::{Engine, FixMode, InvalidThreshold};
+pub use engine::{Engine, FixMode, InvalidThreshold, R002_RULE_ID};
 
 /// Type alias marking the intentional CAPCO-pinning of [`Engine`].
 ///

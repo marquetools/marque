@@ -365,6 +365,78 @@ fn no_document_text_leaks_into_diagnostic_messages() {
     }
 }
 
+#[test]
+fn no_document_text_leaks_into_fix_remaining_diagnostics() {
+    // Companion to `no_document_text_leaks_into_diagnostic_messages`.
+    //
+    // The lint-side sweep covers `LintResult.diagnostics`. PR 7b
+    // adds a second stream of `Diagnostic` values that flows out
+    // of the engine: `FixResult.remaining_diagnostics`. R002 — the
+    // synthetic post-pass-1 re-parse-failure diagnostic — lands
+    // exclusively in this stream, not in `LintResult.diagnostics`.
+    // Other diagnostics that the fix path filters in (suggest-only
+    // entries below the confidence threshold, diagnostics whose
+    // fix did not apply due to C-1 overlap, pass-0 dropped
+    // text-correction diagnostics) also reach the caller through
+    // this field. The G13 invariant — no document content in any
+    // `Diagnostic.message` reaching the audit / consumer boundary
+    // — applies identically to both streams; the corpus-level test
+    // requirement from Constitution V Principle V is "engine output
+    // streams," plural.
+    let engine = test_engine();
+
+    let mut sources: Vec<(String, Vec<u8>)> = Vec::new();
+    for path in invalid_fixtures() {
+        sources.push((path.display().to_string(), load_fixture(&path)));
+    }
+    for path in valid_fixtures() {
+        sources.push((path.display().to_string(), load_fixture(&path)));
+    }
+    for path in prose_fixtures() {
+        sources.push((path.display().to_string(), load_fixture(&path)));
+    }
+
+    assert!(
+        !sources.is_empty(),
+        "no fixtures found across invalid/valid/prose — \
+         cannot validate G13 against fix-remaining-diagnostic messages \
+         (vacuous-pass guard)"
+    );
+
+    // Vacuity guard: the test is meaningful only if at least one
+    // fixture produces a remaining diagnostic. The invalid fixture
+    // set is the natural producer (sub-threshold suggestions surface
+    // in `remaining_diagnostics`), but if a future refactor purged
+    // every below-threshold path the assertion below would silently
+    // pass. Fail loudly instead.
+    let mut diagnostics_examined = 0usize;
+
+    for (label, source) in &sources {
+        let result = engine.fix(source, FixMode::Apply);
+        diagnostics_examined += result.remaining_diagnostics.len();
+        for d in &result.remaining_diagnostics {
+            for sentinel in PROSE_SENTINELS {
+                assert!(
+                    !d.message.contains(sentinel),
+                    "G13 violation: prose sentinel {sentinel:?} leaked into \
+                     FixResult.remaining_diagnostics[].message \
+                     (rule: {}, fixture: {label})\n\n\
+                     message: {:?}",
+                    d.rule.as_str(),
+                    d.message
+                );
+            }
+        }
+    }
+
+    assert!(
+        diagnostics_examined > 0,
+        "fix-remaining-diagnostics sweep produced zero diagnostics across the \
+         full corpus — either the corpus is empty or the engine's fix path \
+         no longer surfaces remaining diagnostics (vacuous-pass guard)"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Self-test — the sentinel check actually catches leaks.
 // ---------------------------------------------------------------------------

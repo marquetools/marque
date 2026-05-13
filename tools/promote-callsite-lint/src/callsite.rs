@@ -65,6 +65,21 @@ pub const COMMENT_LOOKBACK_LINES: usize = 5;
 /// names elsewhere in `crates/engine/src/**` is rejected.
 const ENGINE_METHOD_ALLOW_LIST: &[&str] = &["fix_inner", "apply_text_corrections"];
 
+/// Methods on `TwoPassFixer` permitted to call
+/// `AppliedFix::__engine_promote` / `EnginePromotionToken::__engine_construct`
+/// in production code (PR 7b). `TwoPassFixer` is the phase-split fix
+/// orchestrator extracted from `Engine::fix_inner`; the two promotion
+/// call sites that used to live directly inside `fix_inner` now live
+/// inside `TwoPassFixer::apply_kept_fixes`. The Constitution V Principle V
+/// engine-only contract still holds — `TwoPassFixer` is a private
+/// struct in `crates/engine/src/engine.rs`, the promotion token is
+/// minted by the same `engine_promotion_token()` free helper as
+/// before, and the threshold gate / FR-016 sort / C-1 overlap guard
+/// run in the same orchestrator. This list is matched only when the
+/// enclosing `impl` block targets `TwoPassFixer`, so a method with
+/// one of these names on a different type is rejected.
+const TWOPASSFIXER_METHOD_ALLOW_LIST: &[&str] = &["apply_kept_fixes"];
+
 /// Free helper(s) in `crates/engine/src/engine.rs` (the exact file)
 /// that are permitted to mint an `EnginePromotionToken`. Currently
 /// exactly one — the `engine_promotion_token()` token-mint helper.
@@ -328,6 +343,9 @@ impl CallSiteVisitor<'_> {
                             && self.is_engine_canonical_helper_file()
                     }
                     Some("Engine") => ENGINE_METHOD_ALLOW_LIST.contains(&fr.name.as_str()),
+                    Some("TwoPassFixer") => {
+                        TWOPASSFIXER_METHOD_ALLOW_LIST.contains(&fr.name.as_str())
+                    }
                     Some(_) => false,
                 };
                 if allowed {

@@ -204,18 +204,25 @@ pub struct Engine {
     /// means no extra heap allocation in the common case — the
     /// partitions live wherever the `Engine` itself does.
     ///
-    /// **PR 7a behavior.** Stored but unused — both phases still run
-    /// together in pass-2 exactly as before. The partition is READ but
-    /// UNUSED. PR 7b restructures `fix_inner` to dispatch on it; this
-    /// is what makes 7a cleanly revertable.
-    //
-    // `dead_code` is suppressed only for PR 7a — `fix_inner` does not
-    // yet dispatch on the partition (per the umbrella plan, dispatch
-    // lands in 7b). Removing the allow when 7b consumes these fields
-    // is part of that PR's checklist.
-    #[allow(dead_code)]
+    /// **Current consumer.** Read by
+    /// [`TwoPassFixer::localized_rule_id_set`] to build the
+    /// `(Localized rule id) → pass-1` lookup set that drives the
+    /// per-document phase dispatch in `TwoPassFixer::run`. Stable for
+    /// the lifetime of the engine.
     pass1_rule_indices: Pass1Indices,
-    /// See [`Engine::pass1_rule_indices`] for the shape rationale.
+    /// Pass-2 (WholeMarking) partition counterpart of
+    /// [`Engine::pass1_rule_indices`].
+    ///
+    /// **PR 7b behavior.** Stored but not yet read. Pass-2 dispatch
+    /// in `TwoPassFixer::run` currently routes diagnostics to pass-2
+    /// as the **complement** of the pass-1 (Localized) set, which is
+    /// sufficient for today's rule shape — every diagnostic emitted
+    /// by `lint()` comes from a registered rule, so the complement
+    /// equals the WholeMarking partition. PR 7c will switch pass-2 to
+    /// a positive whitelist read off this field for symmetry with
+    /// pass-1 and to make a future "unregistered emitted ID" land in
+    /// neither pass instead of silently in pass-2. See
+    /// [`Engine::pass1_rule_indices`] for the shape rationale.
     #[allow(dead_code)]
     pass2_rule_indices: Pass2Indices,
 }
@@ -1684,6 +1691,20 @@ impl<'engine> TwoPassFixer<'engine> {
             &lint,
         )?;
 
+        // Destructure pass0 into owned locals so the re-parse / R002
+        // branches can move `effective_source` directly (eliminating
+        // the prior `.clone()` of the full document buffer on the
+        // hot path) while `applied` and `dropped_diags` flow through
+        // to the merge step or the R002 assembler without an
+        // intermediate `&Pass0Result` borrow that forces cloning.
+        // After this point `pass0` is consumed — only the three
+        // locals are live.
+        let Pass0Result {
+            effective_source: pass0_effective_source,
+            applied: pass0_applied,
+            dropped_diags: pass0_dropped_diags,
+        } = pass0;
+
         // Re-parse decision. Short-circuit when pass-1 produced no
         // applied fixes — the byte stream is unchanged, so the
         // pass-2 lint baseline is identical to the post-pass-0 lint
@@ -1693,38 +1714,67 @@ impl<'engine> TwoPassFixer<'engine> {
         // parsed_markings is `HashMap<Span, CapcoMarking>`. Moving
         // it in both branches keeps both arms producing the same
         // owned type — no `Cow`, no clone (rust pre-flight Q3).
-        let (pass2_source, pass2_markings) = if pass1.applied.is_empty() {
-            (pass0.effective_source.clone(), parsed_markings)
-        } else {
-            let (_relint, new_markings) = self
-                .engine
-                .lint_with_options_internal(&pass1.post_buffer, &lint_opts);
-            // R002 trigger (PR 7b, FR-024): pass-1 changed bytes,
-            // but the post-pass-1 buffer no longer yields any
-            // parsed markings. Marque's recognizer is total — it
-            // never returns a hard `Err` — so the "re-parse failed"
-            // signal is detected as "pass-1 had markings to begin
-            // with, applied fixes against them, and the post-splice
-            // buffer has zero markings." That's a buffer the
-            // scanner walked clean of every candidate the original
-            // had; pass-2 has nothing to fire against and the
-            // operator needs to know pass-1 may have corrupted the
-            // marking shape.
-            //
-            // A clean conservative trigger (no false positives on
-            // partial cleanups): if the pre-pass-1 buffer had ≥1
-            // marking AND the post-pass-1 buffer has zero, the
-            // pass-1 splice destroyed marking shape.
-            let post_pass1_had_no_markings = new_markings.is_empty();
-            let pre_pass1_had_markings = !parsed_markings.is_empty();
-            if post_pass1_had_no_markings && pre_pass1_had_markings {
-                let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
-                let failure_span = Span::new(0, pass1.post_buffer.len());
-                let r002 = build_r002_diagnostic(contributing, failure_span);
-                return Ok(self.assemble_r002_result(&pass0, pass1, lint, r002));
-            }
-            (pass1.post_buffer.clone(), new_markings)
-        };
+        let (pass2_source, pass2_markings, pass1_applied, pass1_applied_keys) =
+            if pass1.applied.is_empty() {
+                // Short-circuit: pass-1 produced no applied fixes, so the
+                // byte stream is unchanged. Move `pass0_effective_source`
+                // directly into `pass2_source` — no document-buffer clone.
+                // `pass1.applied` is empty so we move it through as-is.
+                let Pass1Result {
+                    post_buffer: _,
+                    applied,
+                    applied_keys,
+                } = pass1;
+                (
+                    pass0_effective_source,
+                    parsed_markings,
+                    applied,
+                    applied_keys,
+                )
+            } else {
+                let (_relint, new_markings) = self
+                    .engine
+                    .lint_with_options_internal(&pass1.post_buffer, &lint_opts);
+                // R002 trigger (PR 7b, FR-024): pass-1 changed bytes,
+                // but the post-pass-1 buffer no longer yields any
+                // parsed markings. Marque's recognizer is total — it
+                // never returns a hard `Err` — so the "re-parse failed"
+                // signal is detected as "pass-1 had markings to begin
+                // with, applied fixes against them, and the post-splice
+                // buffer has zero markings." That's a buffer the
+                // scanner walked clean of every candidate the original
+                // had; pass-2 has nothing to fire against and the
+                // operator needs to know pass-1 may have corrupted the
+                // marking shape.
+                //
+                // A clean conservative trigger (no false positives on
+                // partial cleanups): if the pre-pass-1 buffer had ≥1
+                // marking AND the post-pass-1 buffer has zero, the
+                // pass-1 splice destroyed marking shape.
+                let post_pass1_had_no_markings = new_markings.is_empty();
+                let pre_pass1_had_markings = !parsed_markings.is_empty();
+                if post_pass1_had_no_markings && pre_pass1_had_markings {
+                    let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
+                    let failure_span = Span::new(0, pass1.post_buffer.len());
+                    let r002 = build_r002_diagnostic(contributing, failure_span);
+                    return Ok(self.assemble_r002_result(
+                        pass0_applied,
+                        pass0_dropped_diags,
+                        pass1,
+                        lint,
+                        r002,
+                    ));
+                }
+                // Non-R002 re-parse path: destructure pass1 and move
+                // `post_buffer` directly into `pass2_source` — no
+                // document-buffer clone.
+                let Pass1Result {
+                    post_buffer,
+                    applied,
+                    applied_keys,
+                } = pass1;
+                (post_buffer, new_markings, applied, applied_keys)
+            };
 
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded { partial_lint: lint });
@@ -1739,9 +1789,9 @@ impl<'engine> TwoPassFixer<'engine> {
         // (D-7.6: "applied-fix records emit in the order c001_applied;
         // pass1_applied; pass2_applied").
         let mut all_applied: Vec<AppliedFix<CapcoScheme>> =
-            Vec::with_capacity(pass0.applied.len() + pass1.applied.len() + pass2.applied.len());
-        all_applied.extend(pass0.applied);
-        all_applied.extend(pass1.applied);
+            Vec::with_capacity(pass0_applied.len() + pass1_applied.len() + pass2.applied.len());
+        all_applied.extend(pass0_applied);
+        all_applied.extend(pass1_applied);
         all_applied.extend(pass2.applied);
 
         // Build the applied-keys set from EVERY applied entry so the
@@ -1750,7 +1800,7 @@ impl<'engine> TwoPassFixer<'engine> {
         for a in &all_applied {
             applied_keys.insert((a.rule.clone(), a.span));
         }
-        for k in &pass1.applied_keys {
+        for k in &pass1_applied_keys {
             applied_keys.insert(k.clone());
         }
         for k in &pass2.applied_keys {
@@ -1776,7 +1826,7 @@ impl<'engine> TwoPassFixer<'engine> {
         // pass-2 lint runs on the corrected buffer, so it never
         // re-emits them. The C-1 overlap guard in `apply_text_corrections`
         // recorded the dropped set so we can route it through.
-        for d in pass0.dropped_diags {
+        for d in pass0_dropped_diags {
             remaining_diagnostics.push(d);
         }
 
@@ -2082,16 +2132,22 @@ impl<'engine> TwoPassFixer<'engine> {
 
     /// Assemble the R002 `FixResult` — pass-1 buffer + union of
     /// pass-0/pass-1 applied + R002 diagnostic appended to remaining.
+    ///
+    /// Takes `pass0_applied` and `pass0_dropped_diags` by value (rather
+    /// than borrowing a `&Pass0Result`) so the assembler can `extend`
+    /// directly without per-element clones — `pass0` is dead at the
+    /// caller after destructuring, so move-semantics is appropriate.
     fn assemble_r002_result(
         &self,
-        pass0: &Pass0Result,
+        pass0_applied: Vec<AppliedFix<CapcoScheme>>,
+        pass0_dropped_diags: Vec<Diagnostic<CapcoScheme>>,
         pass1: Pass1Result,
         lint: LintResult,
         r002: Diagnostic<CapcoScheme>,
     ) -> FixResult {
         let mut all_applied: Vec<AppliedFix<CapcoScheme>> =
-            Vec::with_capacity(pass0.applied.len() + pass1.applied.len());
-        all_applied.extend(pass0.applied.iter().cloned());
+            Vec::with_capacity(pass0_applied.len() + pass1.applied.len());
+        all_applied.extend(pass0_applied);
         all_applied.extend(pass1.applied);
 
         let mut applied_keys: HashSet<(RuleId, Span)> = HashSet::with_capacity(all_applied.len());
@@ -2114,9 +2170,7 @@ impl<'engine> TwoPassFixer<'engine> {
                 !fix_applied
             })
             .collect();
-        for d in pass0.dropped_diags.iter().cloned() {
-            remaining_diagnostics.push(d);
-        }
+        remaining_diagnostics.extend(pass0_dropped_diags);
         remaining_diagnostics.push(r002);
 
         // Output buffer: post-pass-1 in Apply mode, original in DryRun.
@@ -2164,9 +2218,14 @@ fn find_containing_marking(
 /// and pass-2 share an identical ordering/dedup pipeline. The
 /// walks are run independently per pass (architect pre-flight §2);
 /// the helper exists to factor the algorithm, not the state.
-fn sort_and_c1_dedup(synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix> {
-    let mut fixes: Vec<&SynthesizedFix> = synthesized.iter().collect();
-    fixes.sort_by(|a, b| {
+///
+/// Sorts `synthesized` **in place** and consumes each kept fix
+/// into the result vector. Avoids the prior intermediate
+/// `Vec<&SynthesizedFix>` reference-vector + per-element clone
+/// (pre-PR-7b allocated and cloned twice; this pass allocates zero
+/// extra `SynthesizedFix` values).
+fn sort_and_c1_dedup(mut synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix> {
+    synthesized.sort_by(|a, b| {
         b.span
             .end
             .cmp(&a.span.end)
@@ -2174,16 +2233,13 @@ fn sort_and_c1_dedup(synthesized: Vec<SynthesizedFix>) -> Vec<SynthesizedFix> {
             .then(a.rule.cmp(&b.rule))
             .then(a.replacement.cmp(&b.replacement))
     });
-    let mut kept_fixes: Vec<SynthesizedFix> = Vec::with_capacity(fixes.len());
+    let mut kept_fixes: Vec<SynthesizedFix> = Vec::with_capacity(synthesized.len());
     let mut next_window_end: Option<usize> = None;
-    for fix in &fixes {
-        let fits = match next_window_end {
-            Some(boundary) => fix.span.end <= boundary,
-            None => true,
-        };
+    for fix in synthesized {
+        let fits = next_window_end.is_none_or(|boundary| fix.span.end <= boundary);
         if fits {
             next_window_end = Some(fix.span.start);
-            kept_fixes.push((*fix).clone());
+            kept_fixes.push(fix);
         }
     }
     kept_fixes
@@ -2234,12 +2290,16 @@ fn apply_pass1_fixes(source: &[u8], fixes: &[SynthesizedFix]) -> Vec<u8> {
 /// This is the **single** place inside `marque-engine` where the engine
 /// grants itself the privilege to promote a `FixProposal` to an
 /// `AppliedFix`. Constitution V Principle V scopes audit-record
-/// promotion to `Engine::fix_inner` and `Engine::apply_text_corrections`
-/// (the three production call sites in this file). Centralizing the
+/// promotion to four production call sites in this file:
+/// `Engine::fix_inner`, `Engine::apply_text_corrections`, this token-
+/// mint helper, and `TwoPassFixer::apply_kept_fixes` (the phase-split
+/// orchestrator extracted from `fix_inner` in PR 7b). Centralizing the
 /// token construction here makes "where does the engine decide to
 /// promote?" a one-grep question, and means a future refactor that
-/// adds a fourth promotion site has to thread through this function
-/// — a deliberate decision, not an accident.
+/// adds a fifth promotion site has to thread through this function
+/// — a deliberate decision, not an accident. The `promote-callsite-lint`
+/// CI gate (`tools/promote-callsite-lint/`) mechanically enforces the
+/// allow-list.
 ///
 /// `EnginePromotionToken`'s sole field is private to `marque-rules`,
 /// so external crates cannot brace-construct one. The
@@ -2664,13 +2724,29 @@ fn build_decoder_diagnostic(
 /// The diagnostic carries:
 /// - [`R002_RULE_ID`] (permitted identifier)
 /// - [`Span`] (permitted identifier — byte offsets only)
-/// - A short fixed message string (no input bytes interpolated)
-/// - `contributing_rule_ids: SmallVec<[RuleId; 4]>` on the
-///   `MessageArgs` payload (permitted identifiers, each a CAPCO
-///   rule ID like `"C001"` / `"E006"` — token canonicals from a
-///   closed vocabulary)
+/// - A short fixed message string with the contributing rule IDs
+///   interpolated by `RuleId::as_str()` (permitted identifiers, each
+///   a CAPCO rule ID like `"C001"` / `"E006"` — token canonicals from
+///   a closed vocabulary)
 ///
 /// No document bytes flow through R002.
+///
+/// # Deferred wire-up to `MessageArgs`
+///
+/// The structured `MessageArgs.contributing_rule_ids` field (PM
+/// D-7.5 / D-7.17) is plumbed at the type level today — the
+/// closed-set destructure-pin test at
+/// `crates/rules/tests/message_args_closed_set.rs` enforces its
+/// presence. The R002 `Diagnostic` currently embeds the contributing
+/// rule IDs in its `Box<str>` message because the
+/// `Diagnostic.message: Box<str>` → `Message<MessageTemplate>`
+/// migration lands in PR 3c.2. When that migration completes, this
+/// function will construct
+/// `Message::new(MessageTemplate::ReparseFailed,
+/// MessageArgs { contributing_rule_ids, .. })` instead of formatting
+/// the IDs inline. The `contributing_rule_ids` parameter is shipped
+/// in the typed form already (`SmallVec<[RuleId; 4]>`, never a string
+/// list) so PR 3c.2's migration is purely additive.
 ///
 /// # Why no `__engine_promote` call
 ///
@@ -2680,13 +2756,16 @@ fn build_decoder_diagnostic(
 /// false-positive audit record claiming a fix was applied when none
 /// was. The audit log integrity invariant (Constitution V Principle V)
 /// forbids it.
-fn build_r002_diagnostic(
+pub(crate) fn build_r002_diagnostic(
     contributing_rule_ids: SmallVec<[RuleId; 4]>,
     failure_span: Span,
 ) -> Diagnostic<CapcoScheme> {
     // Render the contributing rule IDs as a short comma-separated
     // list in the message string. Each entry is a CAPCO rule ID
     // (permitted identifier per Constitution V); no input bytes.
+    // PR 3c.2 will migrate this inline rendering to a
+    // `Message::new(MessageTemplate::ReparseFailed, MessageArgs { .. })`
+    // construction — see the function's "Deferred wire-up" doc section.
     let mut rule_list = String::new();
     for (i, id) in contributing_rule_ids.iter().enumerate() {
         if i > 0 {
@@ -2694,15 +2773,6 @@ fn build_r002_diagnostic(
         }
         rule_list.push_str(id.as_str());
     }
-    // The `MessageArgs.contributing_rule_ids` field carries the
-    // structured payload for the audit emit boundary (PR 7b D-7.5).
-    // PR 3c.2 will migrate `Diagnostic.message: Box<str>` to
-    // `Message` and wire the field through the audit emitter; PR 7b
-    // ships the typed field so the migration is purely additive.
-    let _message_args = marque_rules::MessageArgs {
-        contributing_rule_ids,
-        ..marque_rules::MessageArgs::default()
-    };
 
     let message = if rule_list.is_empty() {
         "post-pass-1 buffer failed to re-parse; pass-2 skipped".to_string()
@@ -2841,15 +2911,12 @@ type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 /// variants.
 ///
 /// Walked once at [`Engine::with_clock`] time and cached on the engine.
-/// Per-document `fix` dispatch reads the cached lists in PR 7b; the
-/// walk does not re-run.
-///
-/// PR 7a behavior: the partition is stored but unused — both phases
-/// still run together in pass-2 exactly as before. The walk runs (so
-/// any future test that inspects the lists sees real data) and the
-/// engine carries the cost of the cached lists (a few dozen
-/// `(usize, usize)` pairs total), but `fix_inner` does not yet
-/// dispatch on the partition.
+/// Per-document `fix` dispatch reads `pass1_rule_indices` via
+/// [`TwoPassFixer::localized_rule_id_set`] (PR 7b); the walk does not
+/// re-run. `pass2_rule_indices` is stored for PR 7c, when pass-2 will
+/// switch from complement-of-pass-1 to a positive whitelist for
+/// symmetry with pass-1 — see [`Engine::pass2_rule_indices`] for the
+/// rationale.
 fn partition_rules_by_phase(
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
 ) -> (Pass1Indices, Pass2Indices) {
@@ -4331,5 +4398,68 @@ mod tests {
         // Very short needle with no near neighbors — threshold is 1 for
         // length 3, and the closest candidate is many edits away.
         assert!(super::suggest_closest("xyz", cands.iter().copied()).is_none());
+    }
+
+    // -------------------------------------------------------------------
+    // PR 7b — `build_r002_diagnostic` shape pin (security finding 2)
+    // -------------------------------------------------------------------
+    //
+    // R002 is a synthetic diagnostic emitted when the post-pass-1 buffer
+    // cannot be re-parsed. Constitution V Principle V forbids R002 from
+    // becoming an `AppliedFix` audit record — R002 carries no replacement
+    // bytes and represents no action taken. The function-level pin below
+    // exercises `build_r002_diagnostic` directly so the no-promotion
+    // contract is enforced at the unit-test layer, not only at the
+    // integration layer where R002 can fire today (which is never — no
+    // production `Phase::Localized` rule emits a `FixIntent` that could
+    // trigger R002 yet). The integration-layer test
+    // (`audit_completeness.rs::r002_does_not_mint_applied_fix`) becomes
+    // load-bearing when a future Localized rule lands; this unit test
+    // makes the shape invariant load-bearing today.
+
+    #[test]
+    fn build_r002_diagnostic_returns_diagnostic_not_appliedfix() {
+        use smallvec::smallvec;
+
+        let contributing: SmallVec<[RuleId; 4]> =
+            smallvec![RuleId::new("C001"), RuleId::new("E006")];
+        let failure_span = Span::new(0, 64);
+        let diag = super::build_r002_diagnostic(contributing, failure_span);
+
+        // The function returns a `Diagnostic<CapcoScheme>`; the type
+        // system already forbids it from being an `AppliedFix`. The
+        // assertions below pin the structural shape that complements
+        // the type-level guarantee: R002 carries no FixIntent and no
+        // TextCorrection — the two channels through which a `Diagnostic`
+        // can subsequently be promoted to an `AppliedFix` by the engine.
+        assert_eq!(diag.rule, super::R002_RULE_ID);
+        assert_eq!(diag.severity, Severity::Error);
+        assert_eq!(diag.span, failure_span);
+        assert!(diag.fix.is_none(), "R002 must carry no FixIntent");
+        assert!(
+            diag.text_correction.is_none(),
+            "R002 must carry no TextCorrection"
+        );
+        // G13: the message must interpolate only permitted identifiers.
+        // The contributing rule IDs are CAPCO rule canonicals, on
+        // Constitution V's permitted-identifier list. No document bytes.
+        let msg = diag.message.as_ref();
+        assert!(msg.contains("C001"));
+        assert!(msg.contains("E006"));
+    }
+
+    #[test]
+    fn build_r002_diagnostic_empty_contributors_uses_generic_message() {
+        let contributing: SmallVec<[RuleId; 4]> = SmallVec::new();
+        let failure_span = Span::new(0, 0);
+        let diag = super::build_r002_diagnostic(contributing, failure_span);
+
+        assert_eq!(diag.rule, super::R002_RULE_ID);
+        assert!(diag.fix.is_none());
+        assert!(diag.text_correction.is_none());
+        // Empty-contributors branch uses the short generic message.
+        let msg = diag.message.as_ref();
+        assert!(msg.contains("post-pass-1 buffer failed to re-parse"));
+        assert!(!msg.contains("from"));
     }
 }

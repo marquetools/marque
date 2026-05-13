@@ -447,3 +447,69 @@ fn naughty_proper_name() {
     );
     assert_eq!(diags[0].code, "PRC002");
 }
+
+#[test]
+fn production_allowed_inside_two_pass_fixer_apply_kept_fixes() {
+    // PR 7b extracts the two `__engine_promote` calls from
+    // `Engine::fix_inner` into `TwoPassFixer::apply_kept_fixes`.
+    // The phase-split orchestrator is a private struct in
+    // `crates/engine/src/engine.rs`; its `apply_kept_fixes` method
+    // is the new authorized production call site. The allow-list
+    // must accept it explicitly so the engine-only contract is
+    // still mechanically enforced by the lint.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct TwoPassFixer;
+impl TwoPassFixer {
+    fn apply_kept_fixes(&self) {
+        let _ = AppliedFix::__engine_promote(
+            (),
+            (),
+            (),
+            false,
+            None,
+            EnginePromotionToken::__engine_construct(),
+        );
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics for TwoPassFixer::apply_kept_fixes, got {diags:#?}",
+    );
+}
+
+#[test]
+fn two_pass_fixer_method_not_on_allow_list_is_denied() {
+    // The `TwoPassFixer` allow-list is closed: only `apply_kept_fixes`
+    // may call `__engine_promote`. A new method on the same struct
+    // calling the promotion API must be rejected, forcing any
+    // future fourth-promotion-site addition to be a deliberate
+    // amendment to the allow-list — exactly the property the
+    // FR-040 contract pins.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct TwoPassFixer;
+impl TwoPassFixer {
+    fn unauthorized_promotion_site(&self) {
+        let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 diagnostic for unauthorized TwoPassFixer method, got {diags:#?}",
+    );
+    assert_eq!(diags[0].code, "PRC002");
+}
