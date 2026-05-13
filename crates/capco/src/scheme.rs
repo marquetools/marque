@@ -5550,6 +5550,12 @@ impl CapcoScheme {
     /// curated CAPCO-2016 table. The `_for_tests` suffix on the
     /// related [`with_extra_rewrite_for_tests`](Self::with_extra_rewrite_for_tests)
     /// helper makes the intent explicit.
+    ///
+    /// Bypasses `validate_intent_rewrites` (the engine's
+    /// construction-time validation pass for `CategoryAction::Intent`
+    /// payloads). Tests that want to exercise validation MUST feed
+    /// the constructed scheme to `Engine::new` so the validation
+    /// runs over the test rewrites.
     pub fn with_rewrites(rewrites: Vec<PageRewrite<CapcoScheme>>) -> Self {
         Self {
             categories: Self::build_categories(),

@@ -123,11 +123,15 @@ pub trait MarkingScheme {
     /// programmer error in the rule's emission (the engine surfaces
     /// this as [`ApplyIntentError::UnknownToken`]).
     ///
-    /// Default implementation panics with `unimplemented!()` so schemes
-    /// that do not yet support intent-based fix application still
-    /// compile — but the panic surfaces at engine-fix time if a rule
-    /// emits a [`FixIntent`] against the scheme, which is the correct
-    /// fail-loud behavior pre-migration.
+    /// Default implementation returns `None` for every token, treating
+    /// the scheme as having no routing table yet. The engine's
+    /// construction-time validation (`validate_intent_rewrites`) and
+    /// `apply_intent` runtime path both treat `None` as
+    /// [`ApplyIntentError::UnknownToken`]; a scheme that has not yet
+    /// overridden `category_of` will surface this as a controlled
+    /// `Err` rather than a panic, preserving Constitution VI's
+    /// non-unwinding guarantee even when the scheme hasn't finished
+    /// the intent-based-fix migration.
     ///
     /// [`ReplacementIntent`]: crate::ReplacementIntent
     /// [`ApplyIntentError`]: ApplyIntentError
@@ -135,11 +139,7 @@ pub trait MarkingScheme {
     where
         Self: Sized,
     {
-        unimplemented!(
-            "category_of not supported by this scheme (PR 3c.B engine-prereq); \
-             a rule emitted a FixIntent but the scheme has no token-to-category \
-             routing table — implement category_of for this scheme."
-        )
+        None
     }
 
     /// Apply a batch of [`ReplacementIntent`]s to a marking, returning

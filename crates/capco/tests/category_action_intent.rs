@@ -243,7 +243,7 @@ fn page_rewrite_intent_recanonicalize_is_no_op() {
 
 /// `Engine::new` walks every `CategoryAction::Intent` in the
 /// scheme's page-rewrites table and validates each intent's
-/// `FactRef`s through `category_of`. A `FactRef::Cve(TokenId(u16::MAX))`
+/// `FactRef`s through `category_of`. A `FactRef::Cve(TokenId(u32::MAX))`
 /// is guaranteed not to map to any category in `CapcoScheme` (the
 /// constants in `capco_token_category` are all under 200), so the
 /// validation fails with `InvalidIntentInPageRewrite`.
@@ -255,7 +255,7 @@ fn page_rewrite_intent_recanonicalize_is_no_op() {
 /// rewrite.
 #[test]
 fn engine_new_rejects_intent_with_unroutable_cve_token() {
-    // TokenId(u16::MAX) is guaranteed not to be wired in
+    // TokenId(u32::MAX) is guaranteed not to be wired in
     // `capco_token_category`'s match arms (which cover only the
     // declared sentinels TOK_NOFORN..=TOK_REL_TO, all under 200).
     let unroutable = TokenId(u32::MAX);

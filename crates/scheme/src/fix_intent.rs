@@ -237,6 +237,10 @@ impl<S: MarkingScheme + ?Sized> Clone for ReplacementIntent<S> {
     }
 }
 
+// Constructor impl — requires `S: Sized` (no `?Sized`) so the
+// `SmallVec` return type has a known size. Calling `fact_remove`
+// from a `?Sized` context is a compile-time error by design;
+// downstream callers always have a concrete scheme.
 impl<S: MarkingScheme> ReplacementIntent<S> {
     /// Construct a single-fact [`FactRemove`](ReplacementIntent::FactRemove) intent.
     ///

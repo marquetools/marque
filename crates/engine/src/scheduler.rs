@@ -89,19 +89,16 @@ where
         ReplacementIntent::Recanonicalize { .. } => Vec::new(),
         // `ReplacementIntent` is `#[non_exhaustive]`. A future variant
         // that introduces new `FactRef`s MUST be handled explicitly
-        // here so engine-construction-time validation covers it; the
-        // wildcard panics in debug builds to force the update.
-        // Release builds return `Vec::new()` (validate nothing) — a
-        // future variant with `FactRef`s and no validation amounts to
-        // a missed bug-catch, not data corruption.
-        _ => {
-            debug_assert!(
-                false,
-                "intent_fact_refs: new ReplacementIntent variant not handled — \
-                 update validate_intent_rewrites coverage",
-            );
-            Vec::new()
-        }
+        // here so engine-construction-time validation covers it.
+        // `unreachable!()` is safe at this site — `intent_fact_refs`
+        // is called from `Engine::new`'s validation pass, not from
+        // the `lint`/`fix` hot path, so a panic surfaces at startup
+        // (the correct loud-failure surface) rather than mid-request.
+        _ => unreachable!(
+            "intent_fact_refs: new ReplacementIntent variant not handled — \
+             add an explicit match arm and update validate_intent_rewrites \
+             coverage before shipping the variant",
+        ),
     }
 }
 
