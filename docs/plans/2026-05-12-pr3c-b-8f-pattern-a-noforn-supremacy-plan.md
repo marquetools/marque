@@ -253,12 +253,18 @@ Failing to update all three sites results in test failures at PR open.
 ## 9. File-by-file change inventory
 
 ```
-crates/capco/src/scheme.rs
-  +~5 lines in `capco_category_contains` (2-arm extension for CAT_NON_IC_DISSEM + NODIS/EXDIS)
-  +~40 lines in `build_page_rewrites`   (2 PageRewrite::declarative entries + per-entry doc + 4 axis-slice consts)
+crates/capco/src/scheme.rs                          +214 lines
+  - capco_category_contains  (2-arm extension for CAT_NON_IC_DISSEM + NODIS/EXDIS)
+  - build_page_rewrites      (2 PageRewrite::declarative entries + per-entry doc-comments + axis-slice consts)
 
-crates/capco/tests/pattern_a_noforn_supremacy.rs    (NEW, ~200 lines, 7 tests)
-crates/capco/tests/corpus_parity.rs   ~+5 -3  (rewrite count bump + message)
+crates/capco/tests/pattern_a_noforn_supremacy.rs    NEW, +525 lines, 9 tests
+crates/capco/tests/corpus_parity.rs                 +/- 17 lines
+  - 2 rewrite-count pins bumped 9 → 11
+  - phase_3_noforn_clearer_runs_after_dissem_transmutations extended with 2 new DISSEM writers (PR-393 review fixup)
+
+# Additional pin sites found at implementation time (not in original spec)
+crates/capco/tests/scheme_equivalence.rs            +/- 49 lines (count + ID arrays + index-shifted citations)
+crates/capco/tests/transmutation_rewrites.rs        +/- 18 lines (engine-construction count)
 
 # Unchanged but verified
 crates/capco/src/rules.rs                       (unchanged — E039 stays)
@@ -270,7 +276,7 @@ crates/engine/                                  (unchanged — validate_intent_r
 crates/ism/                                     (unchanged — Constitution VII)
 ```
 
-Estimated diff: **+45 lines product code**, **+200 lines test code**, no deletions. Net registered rule count unchanged.
+Actual diff: **+214 lines product code**, **+525 lines test code** in the new file, **+84 lines** updates across 3 existing pin-site files. No deletions. Net registered rule count unchanged. (Test count grew from spec's 7 to final 9: tests #7 + #8 + #9 were added during reviewer correction to cover unclassified-NODIS, combined-NODIS+EXDIS, and the G13 execution-deferred posture respectively.)
 
 ---
 

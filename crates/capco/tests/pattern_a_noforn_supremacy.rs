@@ -169,14 +169,28 @@ fn exdis_portion_projects_noforn_to_page_dissem() {
 // Test 3 — `nodis_portion_composes_with_noforn_clears_rel_to`
 // ---------------------------------------------------------------------------
 
-/// `(S//ND)` portion paired with a synthetic prior REL TO: the scheduler
-/// runs `capco/nodis-implies-noforn` BEFORE `capco/noforn-clears-rel-to`.
-/// The projected page must have NOFORN in `dissem_controls` AND an empty
+/// `(S//ND)` portion paired with a synthetic prior REL TO: the
+/// composition `capco/nodis-implies-noforn` → `capco/noforn-clears-rel-to`
+/// produces a projected page with NOFORN in `dissem_controls` AND an empty
 /// `rel_to`.
 ///
-/// This is the load-bearing composition test — it verifies the scheduler's
-/// topological ordering places the two DISSEM-writing rewrites (nodis-/
-/// exdis-implies-noforn) before the DISSEM-reading `noforn-clears-rel-to`.
+/// This is the load-bearing composition test — it verifies the
+/// *declaration order* of rewrites in `CapcoScheme::build_page_rewrites`
+/// places the two DISSEM-writing rewrites (nodis-/exdis-implies-noforn)
+/// before the DISSEM-reading `noforn-clears-rel-to`. `CapcoScheme::project`
+/// applies rewrites in declaration order (`for rw in &self.page_rewrites`
+/// at `crates/capco/src/scheme.rs:3231`), NOT in the scheduler's
+/// topological order — so the test pins the *declaration* invariant.
+///
+/// The scheduler's topological ordering invariant (DISSEM writers
+/// precede `capco/noforn-clears-rel-to`) is covered separately by
+/// `phase_3_noforn_clearer_runs_after_dissem_transmutations` in
+/// `crates/capco/tests/corpus_parity.rs`, which asserts position
+/// inequalities on `Engine::scheduled_rewrites()`. The two layers
+/// complement: declaration order is the runtime guarantee today;
+/// scheduler order is the contract for the future Phase D/E execution
+/// loop that will iterate `scheduled_rewrites` instead of declaration
+/// order.
 ///
 /// The "prior REL TO" is injected by including a second portion that
 /// carries REL TO but no NODIS/EXDIS — simulating a document where one
@@ -210,8 +224,8 @@ fn nodis_portion_composes_with_noforn_clears_rel_to() {
     assert!(
         projected.0.rel_to.is_empty(),
         "REL TO must be cleared after noforn-clears-rel-to fires downstream \
-         of nodis-implies-noforn (scheduler ordering guarantees CAT_DISSEM \
-         writers precede CAT_DISSEM readers); got rel_to = {:?}",
+         of nodis-implies-noforn (declaration order in `build_page_rewrites` \
+         places NODIS writer before NOFORN clearer); got rel_to = {:?}",
         projected.0.rel_to,
     );
 }
@@ -221,9 +235,11 @@ fn nodis_portion_composes_with_noforn_clears_rel_to() {
 // ---------------------------------------------------------------------------
 
 /// Mirror of test 3 for EXDIS. `(S//XD)` portion paired with a synthetic
-/// prior REL TO: the scheduler orders `exdis-implies-noforn` before
+/// prior REL TO: declaration order places `exdis-implies-noforn` before
 /// `noforn-clears-rel-to`, so the projected page has NOFORN and empty
-/// REL TO.
+/// REL TO. (Scheduler-order coverage is in
+/// `phase_3_noforn_clearer_runs_after_dissem_transmutations` in
+/// `corpus_parity.rs`.)
 ///
 /// Authority: CAPCO-2016 §H.9 p172 + §D.2 Table 3 / §H.8 p145.
 #[test]

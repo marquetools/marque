@@ -265,15 +265,23 @@ fn phase_3_scheduler_exposes_eleven_scheduled_rewrites() {
 
 #[test]
 fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
-    // The DISSEM-writing transmutations (entries 5, 6a, 6b — ORCON-
-    // NATO, SBU-NF, LES-NF) all write CAT_DISSEM; `capco/noforn-
-    // clears-rel-to` reads CAT_DISSEM (and writes CAT_REL_TO). The
-    // scheduler must therefore order each DISSEM writer BEFORE the
-    // NOFORN clearer — otherwise a transmutation that emits NOFORN
-    // could fire after the clearer and leave REL TO populated when
-    // it should have been cleared. This ordering is a declarative
-    // guarantee of the scheme's `reads` / `writes` annotations, not
-    // an accident of declaration order.
+    // The DISSEM-writing transmutations all write CAT_DISSEM;
+    // `capco/noforn-clears-rel-to` reads CAT_DISSEM (and writes
+    // CAT_REL_TO). The scheduler must therefore order each DISSEM
+    // writer BEFORE the NOFORN clearer — otherwise a transmutation
+    // that emits NOFORN could fire after the clearer and leave REL TO
+    // populated when it should have been cleared. This ordering is a
+    // declarative guarantee of the scheme's `reads` / `writes`
+    // annotations, not an accident of declaration order.
+    //
+    // DISSEM writers:
+    //   - Entries 5, 6a, 6b — ORCON-NATO, SBU-NF, LES-NF
+    //     transmutations (PR 3b.B).
+    //   - PR 3c.B Sub-PR 8.F Pattern A rewrites —
+    //     `capco/nodis-implies-noforn` (CAPCO-2016 §H.9 p174) and
+    //     `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172) — each
+    //     declares `writes = [CAT_DISSEM]`, so the same DISSEM-writer
+    //     precedence invariant applies.
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
     let nf = scheduled
@@ -284,6 +292,8 @@ fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
         "capco/orcon-nato-to-us-orcon-on-us-contact",
         "capco/sbu-nf-transmutes-on-classified-contact",
         "capco/les-nf-transmutes-on-classified-contact",
+        "capco/nodis-implies-noforn",
+        "capco/exdis-implies-noforn",
     ] {
         let pos = scheduled
             .iter()
