@@ -265,19 +265,22 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
 
     // Assert
     let engine = result.expect(
-        "Engine::new must succeed with the eleven-row rewrite table (nine \
+        "Engine::new must succeed with the thirteen-row rewrite table (nine \
          from PR 3b.B + two from PR 3c.B Sub-PR 8.F: nodis-implies-noforn \
-         and exdis-implies-noforn) — a failure here indicates either a \
-         `RewriteCycle` (a writer/reader dependency loop) or \
-         `UnannotatedCustomAxes` (a `Custom` rewrite declared with empty \
+         and exdis-implies-noforn + two from PR 3c.B Sub-PR 8.F.2: \
+         sbu-nf-implies-noforn and les-nf-implies-noforn) — a failure here \
+         indicates either a `RewriteCycle` (a writer/reader dependency loop) \
+         or `UnannotatedCustomAxes` (a `Custom` rewrite declared with empty \
          reads/writes). Both are scheme-authoring bugs.",
     );
-    // Smoke-check the scheduler exposed the same eleven ids it was
+    // Smoke-check the scheduler exposed the same thirteen ids it was
     // handed; this prevents a regression where construction silently
     // drops a rewrite.
     // PR 3c.B Sub-PR 8.F added capco/nodis-implies-noforn and
     // capco/exdis-implies-noforn (9 → 11).
-    assert_eq!(engine.scheduled_rewrites().len(), 11);
+    // PR 3c.B Sub-PR 8.F.2 added capco/sbu-nf-implies-noforn and
+    // capco/les-nf-implies-noforn (11 → 13).
+    assert_eq!(engine.scheduled_rewrites().len(), 13);
 }
 
 #[test]
