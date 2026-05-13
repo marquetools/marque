@@ -1186,7 +1186,7 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
             if token_span.kind == TokenKind::Separator {
                 continue;
             }
-            let text = token_span.text.as_ref();
+            let text = token_span.text.as_str();
             let Some(replacement) = corrections.get(text) else {
                 continue;
             };
@@ -2563,15 +2563,15 @@ fn sar_missing_programs<'a>(
     expected: &'a marque_ism::SarMarking,
 ) -> Vec<&'a str> {
     let observed_ids: HashSet<&str> = match observed {
-        Some(obs) => obs.programs.iter().map(|p| p.identifier.as_ref()).collect(),
+        Some(obs) => obs.programs.iter().map(|p| p.identifier.as_str()).collect(),
         None => HashSet::new(),
     };
 
     expected
         .programs
         .iter()
-        .filter(|p| !observed_ids.contains(p.identifier.as_ref()))
-        .map(|p| p.identifier.as_ref())
+        .filter(|p| !observed_ids.contains(p.identifier.as_str()))
+        .map(|p| p.identifier.as_str())
         .collect()
 }
 
@@ -2639,7 +2639,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
                     format!(
                         "unpublished SCI control system {:?} present; verify agency \
                          allocation via ODNI/P&S registry",
-                        text.as_ref()
+                        text.as_str()
                     ),
                     "CAPCO-2016 §A.6 p16; §H.4 p61",
                     None,
@@ -3240,7 +3240,7 @@ fn evaluate_sci_banner_rollup(
                             missing.push(format!(
                                 "{}-{} (compartment missing from banner)",
                                 exp_key,
-                                exp_comp.identifier.as_ref()
+                                exp_comp.identifier.as_str()
                             ));
                         }
                         Some(oc) => {
@@ -3249,8 +3249,8 @@ fn evaluate_sci_banner_rollup(
                                     missing.push(format!(
                                         "{}-{} {} (sub-compartment missing from banner)",
                                         exp_key,
-                                        exp_comp.identifier.as_ref(),
-                                        exp_sub.as_ref()
+                                        exp_comp.identifier.as_str(),
+                                        exp_sub.as_str()
                                     ));
                                 }
                             }

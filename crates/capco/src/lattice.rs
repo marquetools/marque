@@ -43,6 +43,7 @@ use marque_ism::{
     SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
+use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 
 // ---------------------------------------------------------------------------
@@ -64,7 +65,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct SciSet {
     /// system → compartment identifier → set of sub-compartment
     /// identifiers.
-    systems: BTreeMap<SystemKey, BTreeMap<String, BTreeSet<String>>>,
+    systems: BTreeMap<SystemKey, BTreeMap<SmolStr, BTreeSet<SmolStr>>>,
 }
 
 /// Stable ordering key for `SciControlSystem`. Published variants and
@@ -74,14 +75,14 @@ pub struct SciSet {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum SystemKey {
     Published(marque_ism::SciControlBare),
-    Custom(String),
+    Custom(SmolStr),
 }
 
 impl SystemKey {
     fn from_system(sys: &SciControlSystem) -> Self {
         match sys {
             SciControlSystem::Published(b) => SystemKey::Published(*b),
-            SciControlSystem::Custom(s) => SystemKey::Custom(s.to_string()),
+            SciControlSystem::Custom(s) => SystemKey::Custom(s.clone()),
         }
     }
 
@@ -95,7 +96,7 @@ impl SystemKey {
     fn into_system(self) -> SciControlSystem {
         match self {
             SystemKey::Published(b) => SciControlSystem::Published(b),
-            SystemKey::Custom(s) => SciControlSystem::Custom(s.into_boxed_str()),
+            SystemKey::Custom(s) => SciControlSystem::Custom(s),
         }
     }
 }
@@ -121,8 +122,8 @@ impl SciSet {
                 continue;
             }
             for comp in m.compartments.iter() {
-                let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
-                sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
+                let sub_set = comp_map.entry(comp.identifier.clone()).or_default();
+                sub_set.extend(comp.sub_compartments.iter().cloned());
             }
         }
         out
@@ -134,7 +135,7 @@ impl SciSet {
     /// per-portion only; a rolled-up structural projection has no
     /// single corresponding enum variant.
     pub fn to_markings(&self) -> Box<[SciMarking]> {
-        let mut systems: Vec<(&SystemKey, &BTreeMap<String, BTreeSet<String>>)> =
+        let mut systems: Vec<(&SystemKey, &BTreeMap<SmolStr, BTreeSet<SmolStr>>)> =
             self.systems.iter().collect();
         systems.sort_by(|a, b| {
             marque_ism::sar_sort_key(a.0.text()).cmp(&marque_ism::sar_sort_key(b.0.text()))
@@ -142,22 +143,22 @@ impl SciSet {
 
         let mut out: Vec<SciMarking> = Vec::with_capacity(systems.len());
         for (sys_key, comp_map) in systems {
-            let mut comps: Vec<(&String, &BTreeSet<String>)> = comp_map.iter().collect();
+            let mut comps: Vec<(&SmolStr, &BTreeSet<SmolStr>)> = comp_map.iter().collect();
             comps.sort_by(|a, b| marque_ism::sar_sort_key(a.0).cmp(&marque_ism::sar_sort_key(b.0)));
 
             let compartments: Vec<SciCompartment> = comps
                 .into_iter()
                 .map(|(id, sub_set)| {
-                    let mut subs: Vec<&String> = sub_set.iter().collect();
+                    let mut subs: Vec<&SmolStr> = sub_set.iter().collect();
                     subs.sort_by(|a, b| {
                         marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b))
                     });
-                    let sub_boxes: Box<[Box<str>]> = subs
+                    let sub_boxes: Box<[SmolStr]> = subs
                         .into_iter()
-                        .map(|s| s.clone().into_boxed_str())
+                        .cloned()
                         .collect::<Vec<_>>()
                         .into_boxed_slice();
-                    SciCompartment::new(id.clone().into_boxed_str(), sub_boxes)
+                    SciCompartment::new(id.clone(), sub_boxes)
                 })
                 .collect();
 
@@ -179,7 +180,7 @@ impl SciSet {
 
     /// Compartments (as `(system-text, compartment-id)` pairs) present
     /// on both sides. Exposed for Phase-C constraint work.
-    pub fn common_compartments(&self, other: &Self) -> Vec<(String, String)> {
+    pub fn common_compartments(&self, other: &Self) -> Vec<(SmolStr, SmolStr)> {
         let mut out = Vec::new();
         for (sys, comps) in &self.systems {
             let Some(other_comps) = other.systems.get(sys) else {
@@ -187,7 +188,7 @@ impl SciSet {
             };
             for cid in comps.keys() {
                 if other_comps.contains_key(cid) {
-                    out.push((sys.text().to_owned(), cid.clone()));
+                    out.push((SmolStr::from(sys.text()), cid.clone()));
                 }
             }
         }
@@ -247,12 +248,12 @@ impl Lattice for SciSet {
             //                           disagree — compartments drop,
             //                           bare system survives)
             //   - `SI-G A ⊓ SI-G B = SI-G` (compartment survives, subs drop)
-            let mut out_comps: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+            let mut out_comps: BTreeMap<SmolStr, BTreeSet<SmolStr>> = BTreeMap::new();
             for (cid, subs) in comp_map {
                 let Some(other_subs) = other_comps.get(cid) else {
                     continue;
                 };
-                let common: BTreeSet<String> = subs.intersection(other_subs).cloned().collect();
+                let common: BTreeSet<SmolStr> = subs.intersection(other_subs).cloned().collect();
                 out_comps.insert(cid.clone(), common);
             }
             out.systems.insert(sys.clone(), out_comps);
@@ -287,7 +288,7 @@ impl Lattice for SciSet {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SarSet {
     /// program id → compartment id → set of sub-compartment ids.
-    programs: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    programs: BTreeMap<SmolStr, BTreeMap<SmolStr, BTreeSet<SmolStr>>>,
 }
 
 impl SarSet {
@@ -301,10 +302,10 @@ impl SarSet {
             return out;
         };
         for prog in sar.programs.iter() {
-            let comps = out.programs.entry(prog.identifier.to_string()).or_default();
+            let comps = out.programs.entry(prog.identifier.clone()).or_default();
             for comp in prog.compartments.iter() {
-                let subs = comps.entry(comp.identifier.to_string()).or_default();
-                subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
+                let subs = comps.entry(comp.identifier.clone()).or_default();
+                subs.extend(comp.sub_compartments.iter().cloned());
             }
         }
         out
@@ -319,14 +320,14 @@ impl SarSet {
             return None;
         }
 
-        let mut prog_keys: Vec<&String> = self.programs.keys().collect();
+        let mut prog_keys: Vec<&SmolStr> = self.programs.keys().collect();
         prog_keys.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
 
         let built_programs: Vec<SarProgram> = prog_keys
             .into_iter()
             .map(|pid| {
                 let comp_map = self.programs.get(pid).expect("key enumerated above");
-                let mut comp_keys: Vec<&String> = comp_map.keys().collect();
+                let mut comp_keys: Vec<&SmolStr> = comp_map.keys().collect();
                 comp_keys
                     .sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
 
@@ -334,23 +335,20 @@ impl SarSet {
                     .into_iter()
                     .map(|cid| {
                         let subs = comp_map.get(cid).expect("key enumerated above");
-                        let mut sub_vec: Vec<&String> = subs.iter().collect();
+                        let mut sub_vec: Vec<&SmolStr> = subs.iter().collect();
                         sub_vec.sort_by(|a, b| {
                             marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b))
                         });
-                        let boxed: Box<[Box<str>]> = sub_vec
+                        let boxed: Box<[SmolStr]> = sub_vec
                             .into_iter()
-                            .map(|s| s.clone().into_boxed_str())
+                            .cloned()
                             .collect::<Vec<_>>()
                             .into_boxed_slice();
-                        SarCompartment::new(cid.clone().into_boxed_str(), boxed)
+                        SarCompartment::new(cid.clone(), boxed)
                     })
                     .collect();
 
-                SarProgram::new(
-                    pid.clone().into_boxed_str(),
-                    built_compartments.into_boxed_slice(),
-                )
+                SarProgram::new(pid.clone(), built_compartments.into_boxed_slice())
             })
             .collect();
 
@@ -384,12 +382,12 @@ impl Lattice for SarSet {
             let Some(other_comps) = other.programs.get(pid) else {
                 continue;
             };
-            let mut out_comps: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+            let mut out_comps: BTreeMap<SmolStr, BTreeSet<SmolStr>> = BTreeMap::new();
             for (cid, subs) in comp_map {
                 let Some(other_subs) = other_comps.get(cid) else {
                     continue;
                 };
-                let common: BTreeSet<String> = subs.intersection(other_subs).cloned().collect();
+                let common: BTreeSet<SmolStr> = subs.intersection(other_subs).cloned().collect();
                 out_comps.insert(cid.clone(), common);
             }
             out.programs.insert(pid.clone(), out_comps);
@@ -584,12 +582,12 @@ mod tests {
         let compartments: Vec<SciCompartment> = comps
             .into_iter()
             .map(|(cid, subs)| {
-                let sub_boxes: Box<[Box<str>]> = subs
+                let sub_boxes: Box<[SmolStr]> = subs
                     .into_iter()
-                    .map(|s| s.to_string().into_boxed_str())
+                    .map(SmolStr::from)
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
-                SciCompartment::new(cid.to_string().into_boxed_str(), sub_boxes)
+                SciCompartment::new(cid, sub_boxes)
             })
             .collect();
         SciMarking::new(system, compartments.into_boxed_slice(), None)
@@ -610,8 +608,8 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].compartments.len(), 1);
         let c = &out[0].compartments[0];
-        assert_eq!(c.identifier.as_ref(), "G");
-        let subs: Vec<&str> = c.sub_compartments.iter().map(|s| s.as_ref()).collect();
+        assert_eq!(c.identifier.as_str(), "G");
+        let subs: Vec<&str> = c.sub_compartments.iter().map(|s| s.as_str()).collect();
         assert_eq!(subs, vec!["ABCD", "DEFG"]);
     }
 
@@ -696,7 +694,7 @@ mod tests {
             vec![("G", vec!["DEFG"])],
         )]);
         let common = a.common_compartments(&b);
-        assert_eq!(common, vec![("SI".to_owned(), "G".to_owned())]);
+        assert_eq!(common, vec![(SmolStr::from("SI"), SmolStr::from("G"))]);
     }
 
     #[test]
@@ -738,18 +736,15 @@ mod tests {
                 let comp_boxes: Vec<SarCompartment> = comps
                     .into_iter()
                     .map(|(cid, subs)| {
-                        let sub_boxes: Box<[Box<str>]> = subs
+                        let sub_boxes: Box<[SmolStr]> = subs
                             .into_iter()
-                            .map(|s| s.to_string().into_boxed_str())
+                            .map(SmolStr::from)
                             .collect::<Vec<_>>()
                             .into_boxed_slice();
-                        SarCompartment::new(cid.to_string().into_boxed_str(), sub_boxes)
+                        SarCompartment::new(cid, sub_boxes)
                     })
                     .collect();
-                SarProgram::new(
-                    pid.to_string().into_boxed_str(),
-                    comp_boxes.into_boxed_slice(),
-                )
+                SarProgram::new(pid, comp_boxes.into_boxed_slice())
             })
             .collect();
         SarMarking::new(SarIndicator::Abbrev, built.into_boxed_slice())
@@ -761,7 +756,7 @@ mod tests {
         let b = SarSet::from_marking(Some(&mk_sar_portion(vec![("CD", vec![])])));
         let j = a.join(&b);
         let out = j.to_marking().expect("nonempty");
-        let ids: Vec<&str> = out.programs.iter().map(|p| p.identifier.as_ref()).collect();
+        let ids: Vec<&str> = out.programs.iter().map(|p| p.identifier.as_str()).collect();
         assert_eq!(ids, vec!["BP", "CD"]);
     }
 
@@ -850,7 +845,7 @@ mod tests {
         // Custom systems (agency-allocated `[A-Z0-9]{2,5}`) should
         // round-trip via from_markings / to_markings.
         let custom = SciMarking::new(
-            SciControlSystem::Custom("99".to_string().into_boxed_str()),
+            SciControlSystem::Custom("99".into()),
             vec![].into_boxed_slice(),
             None,
         );
@@ -858,7 +853,7 @@ mod tests {
         let out = set.to_markings();
         assert_eq!(out.len(), 1);
         match &out[0].system {
-            SciControlSystem::Custom(s) => assert_eq!(s.as_ref(), "99"),
+            SciControlSystem::Custom(s) => assert_eq!(s.as_str(), "99"),
             SciControlSystem::Published(_) => panic!("expected Custom"),
         }
     }
@@ -868,12 +863,12 @@ mod tests {
         // Two customs; ordering in output uses SAR-style sort keys
         // (numeric first, then alpha).
         let custom_alpha = SciMarking::new(
-            SciControlSystem::Custom("AAA".to_string().into_boxed_str()),
+            SciControlSystem::Custom("AAA".into()),
             Box::new([]),
             None,
         );
         let custom_num = SciMarking::new(
-            SciControlSystem::Custom("99".to_string().into_boxed_str()),
+            SciControlSystem::Custom("99".into()),
             Box::new([]),
             None,
         );
@@ -882,7 +877,7 @@ mod tests {
         assert_eq!(out.len(), 2);
         // Numeric `99` sorts before alphabetic `AAA`.
         match &out[0].system {
-            SciControlSystem::Custom(s) => assert_eq!(s.as_ref(), "99"),
+            SciControlSystem::Custom(s) => assert_eq!(s.as_str(), "99"),
             _ => panic!("expected Custom"),
         }
     }
@@ -892,12 +887,8 @@ mod tests {
         let m = SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
             vec![SciCompartment::new(
-                "G".to_string().into_boxed_str(),
-                vec![
-                    "DEFG".to_string().into_boxed_str(),
-                    "ABCD".to_string().into_boxed_str(),
-                ]
-                .into_boxed_slice(),
+                "G",
+                Box::new([SmolStr::from("DEFG"), SmolStr::from("ABCD")]),
             )]
             .into_boxed_slice(),
             None,
@@ -908,7 +899,7 @@ mod tests {
         let subs: Vec<&str> = out[0].compartments[0]
             .sub_compartments
             .iter()
-            .map(|s| s.as_ref())
+            .map(|s| s.as_str())
             .collect();
         assert_eq!(subs, vec!["ABCD", "DEFG"]);
     }
@@ -961,20 +952,12 @@ mod tests {
         // should be empty.
         let a = SciSet::from_markings(&[SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
-            vec![SciCompartment::new(
-                "G".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SciCompartment::new("G", Box::new([]))].into_boxed_slice(),
             None,
         )]);
         let b = SciSet::from_markings(&[SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
-            vec![SciCompartment::new(
-                "H".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SciCompartment::new("H", Box::new([]))].into_boxed_slice(),
             None,
         )]);
         assert!(a.common_compartments(&b).is_empty());
@@ -986,20 +969,12 @@ mod tests {
         // sub-compartments should merge.
         let m1 = SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
-            vec![SciCompartment::new(
-                "G".to_string().into_boxed_str(),
-                vec!["A".to_string().into_boxed_str()].into_boxed_slice(),
-            )]
-            .into_boxed_slice(),
+            vec![SciCompartment::new("G", Box::new([SmolStr::from("A")]))].into_boxed_slice(),
             None,
         );
         let m2 = SciMarking::new(
             SciControlSystem::Published(SciControlBare::Si),
-            vec![SciCompartment::new(
-                "G".to_string().into_boxed_str(),
-                vec!["B".to_string().into_boxed_str()].into_boxed_slice(),
-            )]
-            .into_boxed_slice(),
+            vec![SciCompartment::new("G", Box::new([SmolStr::from("B")]))].into_boxed_slice(),
             None,
         );
         let set = SciSet::from_markings(&[m1, m2]);
@@ -1008,7 +983,7 @@ mod tests {
         let subs: Vec<&str> = out[0].compartments[0]
             .sub_compartments
             .iter()
-            .map(|s| s.as_ref())
+            .map(|s| s.as_str())
             .collect();
         assert_eq!(subs, vec!["A", "B"]);
     }
@@ -1033,11 +1008,7 @@ mod tests {
     fn sar_set_is_empty_false_on_populated() {
         let set = SarSet::from_marking(Some(&SarMarking::new(
             SarIndicator::Abbrev,
-            vec![SarProgram::new(
-                "BP".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SarProgram::new("BP", Box::new([]))].into_boxed_slice(),
         )));
         assert!(!set.is_empty());
     }
@@ -1047,14 +1018,10 @@ mod tests {
         let sar = SarMarking::new(
             SarIndicator::Abbrev,
             vec![SarProgram::new(
-                "BP".to_string().into_boxed_str(),
+                "BP",
                 vec![SarCompartment::new(
-                    "J12".to_string().into_boxed_str(),
-                    vec![
-                        "K20".to_string().into_boxed_str(),
-                        "K15".to_string().into_boxed_str(),
-                    ]
-                    .into_boxed_slice(),
+                    "J12",
+                    Box::new([SmolStr::from("K20"), SmolStr::from("K15")]),
                 )]
                 .into_boxed_slice(),
             )]
@@ -1068,7 +1035,7 @@ mod tests {
         let subs: Vec<&str> = out.programs[0].compartments[0]
             .sub_compartments
             .iter()
-            .map(|s| s.as_ref())
+            .map(|s| s.as_str())
             .collect();
         assert_eq!(subs, vec!["K15", "K20"]);
     }
@@ -1077,19 +1044,11 @@ mod tests {
     fn sar_set_meet_drops_programs_not_on_both_sides() {
         let a = SarSet::from_marking(Some(&SarMarking::new(
             SarIndicator::Abbrev,
-            vec![SarProgram::new(
-                "BP".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SarProgram::new("BP", Box::new([]))].into_boxed_slice(),
         )));
         let b = SarSet::from_marking(Some(&SarMarking::new(
             SarIndicator::Abbrev,
-            vec![SarProgram::new(
-                "CD".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SarProgram::new("CD", Box::new([]))].into_boxed_slice(),
         )));
         assert!(a.meet(&b).is_empty());
     }
@@ -1098,19 +1057,11 @@ mod tests {
     fn sar_set_meet_common_program_keeps_entry() {
         let a = SarSet::from_marking(Some(&SarMarking::new(
             SarIndicator::Abbrev,
-            vec![SarProgram::new(
-                "BP".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SarProgram::new("BP", Box::new([]))].into_boxed_slice(),
         )));
         let b = SarSet::from_marking(Some(&SarMarking::new(
             SarIndicator::Abbrev,
-            vec![SarProgram::new(
-                "BP".to_string().into_boxed_str(),
-                Box::new([]),
-            )]
-            .into_boxed_slice(),
+            vec![SarProgram::new("BP", Box::new([]))].into_boxed_slice(),
         )));
         let m = a.meet(&b);
         assert!(!m.is_empty());

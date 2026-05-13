@@ -21,6 +21,7 @@
 use marque_capco::CapcoScheme;
 use marque_ism::Span;
 use marque_rules::{Confidence, FixIntent, FixSource, RuleId};
+use smol_str::SmolStr;
 
 /// Engine-internal text-correction proposal — see module-level doc.
 #[derive(Debug, Clone)]
@@ -30,7 +31,7 @@ pub(crate) struct TextCorrectionProposal {
     /// Byte range in the source to replace.
     pub span: Span,
     /// Canonical replacement bytes.
-    pub replacement: Box<str>,
+    pub replacement: SmolStr,
     /// Multi-axis confidence; gated against the engine threshold.
     pub confidence: Confidence,
     /// Provenance (typically `FixSource::CorrectionsMap`).

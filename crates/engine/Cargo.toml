@@ -62,6 +62,11 @@ web-time = { workspace = true }
 # is constructed in production code (R001 decoder-path diagnostic
 # synthesis), so smallvec moved out of `[dev-dependencies]`.
 smallvec = { workspace = true }
+# `smol_str` types flow through the engine's text-correction promotion
+# path (`TextCorrectionProposal` internal carrier mirroring
+# `marque_rules::TextCorrection.replacement`, then on into
+# `AppliedFix::__engine_promote_text_correction`). Issue #340.
+smol_str = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

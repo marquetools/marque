@@ -3193,7 +3193,7 @@ mod tests {
         assert_eq!(result.applied[0].rule.as_str(), "C001");
         match &result.applied[0].proposal {
             AppliedFixProposal::TextCorrection { replacement } => {
-                assert_eq!(replacement.as_ref(), "AA");
+                assert_eq!(replacement.as_str(), "AA");
             }
             other => panic!("expected TextCorrection, got {other:?}"),
         }
@@ -3211,7 +3211,7 @@ mod tests {
         assert_eq!(result.applied.len(), 1);
         match &result.applied[0].proposal {
             AppliedFixProposal::TextCorrection { replacement } => {
-                assert_eq!(replacement.as_ref(), "AAA");
+                assert_eq!(replacement.as_str(), "AAA");
             }
             other => panic!("expected TextCorrection, got {other:?}"),
         }

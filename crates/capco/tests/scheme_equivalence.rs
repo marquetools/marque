@@ -249,11 +249,7 @@ fn hcs_structural(level: Classification, compartment: Option<&str>) -> Canonical
 
     let mut attrs = portion(level);
     let compartments: Box<[SciCompartment]> = match compartment {
-        Some(id) => vec![SciCompartment::new(
-            id.to_owned().into_boxed_str(),
-            Box::new([]),
-        )]
-        .into_boxed_slice(),
+        Some(id) => vec![SciCompartment::new(id, Box::new([]))].into_boxed_slice(),
         None => Box::new([]),
     };
     attrs.sci_markings = vec![SciMarking::new(
@@ -811,11 +807,7 @@ fn e036_does_not_fire_on_non_joint_with_hcs() {
     attrs.classification = Some(MarkingClassification::Us(Classification::TopSecret));
     attrs.sci_markings = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Hcs),
-        vec![SciCompartment::new(
-            "P".to_owned().into_boxed_str(),
-            Box::new([]),
-        )]
-        .into(),
+        vec![SciCompartment::new("P", Box::new([]))].into(),
         None,
     )]
     .into();
@@ -1068,11 +1060,12 @@ fn sci_set_from_to_roundtrip_agrees_with_page_context() {
 
     // Build two portions, both with SI-G plus sub-compartments; the
     // rollup should union them.
+    use smol_str::SmolStr;
     let sci1 = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Si),
         vec![SciCompartment::new(
-            "G".to_string().into_boxed_str(),
-            vec!["ABCD".to_string().into_boxed_str()].into_boxed_slice(),
+            "G",
+            Box::new([SmolStr::from("ABCD")]),
         )]
         .into_boxed_slice(),
         None,
@@ -1081,8 +1074,8 @@ fn sci_set_from_to_roundtrip_agrees_with_page_context() {
     let sci2 = vec![SciMarking::new(
         SciControlSystem::Published(SciControlBare::Si),
         vec![SciCompartment::new(
-            "G".to_string().into_boxed_str(),
-            vec!["DEFG".to_string().into_boxed_str()].into_boxed_slice(),
+            "G",
+            Box::new([SmolStr::from("DEFG")]),
         )]
         .into_boxed_slice(),
         None,

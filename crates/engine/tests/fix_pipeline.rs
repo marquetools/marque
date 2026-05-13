@@ -327,7 +327,7 @@ fn applied_fix_to_json(
         }
         marque_rules::AppliedFixProposal::TextCorrection { replacement } => json!({
             "kind": "TextCorrection",
-            "replacement": replacement.as_ref(),
+            "replacement": replacement.as_str(),
         }),
     };
     let mut record = json!({
