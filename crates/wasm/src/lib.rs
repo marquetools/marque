@@ -301,6 +301,23 @@ fn fix_source_str(source: FixSource) -> &'static str {
     }
 }
 
+/// JSON projection of a `FactRef<CapcoScheme>`. Constitution V
+/// Principle V permits CVE token IDs and open-vocab canonical refs
+/// in audit output (token canonicals + category IDs are on the
+/// permitted-identifier list).
+fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::Value {
+    match fact {
+        marque_scheme::FactRef::Cve(token_id) => serde_json::json!({
+            "kind": "Cve",
+            "token_id": token_id.0,
+        }),
+        marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
+            "kind": "OpenVocab",
+            "ref": format!("{r:?}"),
+        }),
+    }
+}
+
 /// Schema-pinned string projection of `Scope`. Used in the audit JSON
 /// `proposal.intent.scope` field — `Debug` would not be a stable wire
 /// format.
@@ -404,15 +421,18 @@ fn proposal_to_json<'a>(
     match proposal {
         marque_rules::AppliedFixProposal::FixIntent(intent) => {
             let inner: serde_json::Value = match &intent.replacement {
-                marque_scheme::ReplacementIntent::FactAdd { scope, .. } => serde_json::json!({
+                marque_scheme::ReplacementIntent::FactAdd { token, scope } => serde_json::json!({
                     "kind": "FactAdd",
                     "scope": scope_str(*scope),
+                    "token": fact_ref_to_json(token),
                 }),
                 marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
+                    let facts_json: Vec<serde_json::Value> =
+                        facts.iter().map(fact_ref_to_json).collect();
                     serde_json::json!({
                         "kind": "FactRemove",
                         "scope": scope_str(*scope),
-                        "fact_count": facts.len(),
+                        "facts": facts_json,
                     })
                 }
                 marque_scheme::ReplacementIntent::Recanonicalize { scope } => {

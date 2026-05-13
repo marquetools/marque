@@ -12,7 +12,11 @@ expression: json
     "proposal": {
       "intent": {
         "kind": "FactAdd",
-        "scope": "Page"
+        "scope": "Page",
+        "token": {
+          "kind": "Cve",
+          "token_id": 104
+        }
       },
       "kind": "FixIntent"
     },

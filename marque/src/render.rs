@@ -444,6 +444,24 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
+/// JSON projection of a `FactRef<CapcoScheme>`. Discriminated by
+/// `kind`. Constitution V Principle V permits emitting CVE token IDs
+/// and category IDs (closed-vocabulary identifiers) and open-vocab
+/// canonical refs (vocab-canonical, not document bytes) in audit
+/// output — these are explicitly on the permitted-identifier list.
+fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::Value {
+    match fact {
+        marque_scheme::FactRef::Cve(token_id) => serde_json::json!({
+            "kind": "Cve",
+            "token_id": token_id.0,
+        }),
+        marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
+            "kind": "OpenVocab",
+            "ref": format!("{r:?}"),
+        }),
+    }
+}
+
 /// Schema-pinned string projection of a `ReplacementIntent` variant
 /// discriminator. The enum is `#[non_exhaustive]` so a wildcard arm
 /// is unavoidable; the helper logs a tracing warning on unknown
@@ -497,17 +515,20 @@ fn proposal_to_json(proposal: &AppliedFixProposal<CapcoScheme>) -> ProposalJson 
             // shape mirrors the `ReplacementIntent` enum
             // discriminator.
             let inner: serde_json::Value = match &intent.replacement {
-                marque_scheme::ReplacementIntent::FactAdd { scope, .. } => {
+                marque_scheme::ReplacementIntent::FactAdd { token, scope } => {
                     serde_json::json!({
                         "kind": "FactAdd",
                         "scope": scope_str(*scope),
+                        "token": fact_ref_to_json(token),
                     })
                 }
                 marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
+                    let facts_json: Vec<serde_json::Value> =
+                        facts.iter().map(fact_ref_to_json).collect();
                     serde_json::json!({
                         "kind": "FactRemove",
                         "scope": scope_str(*scope),
-                        "fact_count": facts.len(),
+                        "facts": facts_json,
                     })
                 }
                 marque_scheme::ReplacementIntent::Recanonicalize { scope } => {

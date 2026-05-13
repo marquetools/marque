@@ -5501,16 +5501,18 @@ pub(crate) fn infer_companion_form(attrs: &marque_ism::CanonicalAttrs) -> Compan
 }
 
 /// Build a diagnostic that points at `anchor_span` (the offending SCI
-/// token) with a zero-width insertion fix appending `/<token>` at the
-/// end of the existing IC dissem block. Diagnostic span and fix span
-/// intentionally differ: the user sees the SCI marking that triggered
-/// the requirement; the edit applies at the dissem block where the
-/// insertion belongs. Same diagnostic-vs-fix-span split used by
-/// `SarPortionFormRule` (E026).
+/// token) with a structural `FixIntent::FactAdd` fix at the marking
+/// scope. Diagnostic span and fix-scope span intentionally differ:
+/// the user sees the SCI marking that triggered the requirement; the
+/// engine's `synthesize_fixes` path applies the intent to the parsed
+/// marking covering `candidate_span` and re-renders the canonical
+/// bytes via `apply_intent` + `render_canonical`. Same
+/// diagnostic-vs-fix-scope split used by `SarPortionFormRule` (E026).
 ///
 /// Falls back to `Severity::Error` no-fix when no dissem block exists
-/// — inserting a whole `//`-separated category block from rule context
-/// is unsafe (no anchor for the `//`). Same policy as E040.
+/// — inserting a whole new dissem category from rule context is
+/// unsafe (the structural addition has no existing block to compose
+/// with for canonical re-rendering). Same policy as E040.
 //
 // 8 args is the irreducible carrying capacity: id/severity for the
 // catalog row, anchor_span/candidate_span for the diagnostic-vs-fix

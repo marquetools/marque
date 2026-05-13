@@ -261,16 +261,37 @@ fn applied_fix_to_json(
     }
     let proposal_json = match &fix.proposal {
         marque_rules::AppliedFixProposal::FixIntent(intent) => {
+            // Inline FactRef projection — mirrored from production
+            // marque/src/render.rs `fact_ref_to_json`.
+            fn fact_ref_to_json(
+                fact: &marque_scheme::FactRef<marque_capco::CapcoScheme>,
+            ) -> serde_json::Value {
+                match fact {
+                    marque_scheme::FactRef::Cve(token_id) => json!({
+                        "kind": "Cve",
+                        "token_id": token_id.0,
+                    }),
+                    marque_scheme::FactRef::OpenVocab(r) => json!({
+                        "kind": "OpenVocab",
+                        "ref": format!("{r:?}"),
+                    }),
+                }
+            }
             let kind_obj = match &intent.replacement {
-                marque_scheme::ReplacementIntent::FactAdd { scope, .. } => json!({
+                marque_scheme::ReplacementIntent::FactAdd { token, scope } => json!({
                     "kind": "FactAdd",
                     "scope": scope_str(*scope),
+                    "token": fact_ref_to_json(token),
                 }),
-                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => json!({
-                    "kind": "FactRemove",
-                    "scope": scope_str(*scope),
-                    "fact_count": facts.len(),
-                }),
+                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
+                    let facts_json: Vec<serde_json::Value> =
+                        facts.iter().map(fact_ref_to_json).collect();
+                    json!({
+                        "kind": "FactRemove",
+                        "scope": scope_str(*scope),
+                        "facts": facts_json,
+                    })
+                }
                 marque_scheme::ReplacementIntent::Recanonicalize { scope } => json!({
                     "kind": "Recanonicalize",
                     "scope": recanon_scope_str(*scope),
