@@ -545,11 +545,12 @@ fn build_deprecation(canonical: &'static str) -> Option<Deprecation<TokenId>> {
         // PR 3d (FR-054): no source data for per-token first-publish
         // version. Defaults to `None` per `project_no_per_token_valid_from`.
         valid_from: None,
-        // PR 3d (FR-054): plumbed for forward compatibility. Wired in
-        // Commit 2 to `migration.valid_until` once `MigrationEntry`
-        // carries that field; defaults to `None` today because no
-        // current migration entry has a cutoff schema version.
-        valid_until: None,
+        // PR 3d (FR-054): read through from the generated migration
+        // entry. Today every entry has `valid_until: None` because no
+        // per-term cutoff data is published in the active ODNI source
+        // package; a future ODNI revision can wire the field without
+        // a trait or signature change.
+        valid_until: migration.valid_until,
         // Map the replacement string back to a sentinel TokenId
         // when the replacement is itself in the active set.
         // Otherwise emit `None` per FR-017 — silence beats

@@ -955,6 +955,16 @@ pub struct MigrationEntry {
     pub confidence: f32,
     /// Policy reference (CAPCO section).
     pub reference: &'static str,
+    /// PR 3d (FR-054) — schema version after which the deprecated
+    /// marking is no longer valid in newly-authored documents.
+    ///
+    /// Plumbed through to `marque_scheme::Deprecation::valid_until`
+    /// by `crates/capco/src/vocabulary.rs::build_deprecation`. Every
+    /// current entry leaves this `None` because no per-token cutoff
+    /// data exists in the ODNI sources today (see
+    /// `project_no_per_token_valid_from`). A future ODNI publication
+    /// that surfaces per-term version metadata can populate it.
+    pub valid_until: Option<&'static str>,
 }
 
 /// Deprecated-marking migration table.
@@ -1005,6 +1015,7 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
         replacement: "25X1",
         confidence: 0.97,
         reference: "CAPCO-2016 §E.6 p34",
+        valid_until: None,
     },
     MigrationEntry {
         deprecated: "50X1-",
@@ -1016,6 +1027,7 @@ pub static MIGRATIONS: &[MigrationEntry] = &[
         // '50X1 - HUM' marking." The trailing-hyphen form `50X1-` is
         // canonicalized to the full replacement form.
         reference: "CAPCO-2016 §E.6 p34",
+        valid_until: None,
     },
 ];
 

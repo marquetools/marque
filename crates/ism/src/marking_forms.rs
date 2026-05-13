@@ -43,7 +43,13 @@
 
 /// A marking where the banner-line abbreviation differs from the portion mark.
 ///
-/// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4.
+/// Fields correspond to the three columns of CAPCO-2016 §G.1 Table 4. PR 3d
+/// (FR-053) added [`Self::description_title`] to carry an ODNI
+/// `<Description>` title that diverges from the CAPCO Register
+/// [`Self::title`]. Default is `None` for every row; a future ODNI revision
+/// (or a CAPCO Register revision) may introduce divergent text, at which
+/// point the row gains `description_title: Some("...")` and the
+/// `crates/ism/tests/description_title_divergence.rs` test's pin updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarkingForm {
     /// Long "Authorized Banner Line Marking Title" form (§G.1 Table 4,
@@ -61,6 +67,22 @@ pub struct MarkingForm {
     /// "Authorized Portion Mark" form (§G.1 Table 4, column 3), e.g., "NF",
     /// "OC".
     pub portion: &'static str,
+    /// PR 3d (FR-053) — ODNI ISM CVE `<Description>` body when it
+    /// diverges from [`Self::title`].
+    ///
+    /// Per `project_odni_description_is_title` (PR 3d preflight notes):
+    /// the ODNI XML `<Description>` element body is the long-form title
+    /// verbatim — no `<title>` sub-element exists, and for every entry in
+    /// the current ODNI ISM schema package (ISM-v2022-DEC) the
+    /// `<Description>` text matches the corresponding CAPCO §G.1 Table 4
+    /// title exactly. `description_title` is therefore `None` for every
+    /// row in `MARKING_FORMS` today. The field exists to be populated
+    /// when a future ODNI / CAPCO publication introduces divergent text —
+    /// at which point the row's `description_title` becomes
+    /// `Some(<the divergent ODNI Description>)` and surfaces in
+    /// `marque-scheme::FormSet::recognized_aliases` with
+    /// `FormKind::IsmDescriptionTitle`.
+    pub description_title: Option<&'static str>,
 }
 
 /// All markings where the long Marking Title differs from the banner
@@ -108,21 +130,25 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "TALENT KEYHOLE",
         banner: "TK",
         portion: "TK",
+        description_title: None,
     },
     MarkingForm {
         title: "RESERVE",
         banner: "RSV",
         portion: "RSV",
+        description_title: None,
     },
     MarkingForm {
         title: "MARVEL",
         banner: "MVL",
         portion: "MVL",
+        description_title: None,
     },
     MarkingForm {
         title: "KLAMATH",
         banner: "KLM",
         portion: "KLM",
+        description_title: None,
     },
     // §H.4 SCI compound forms with distinct banner titles. CAPCO §H.4
     // explicitly publishes a compound (parent control + compartment) as
@@ -136,6 +162,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "SI-ECRU",
         banner: "SI-ECRU",
         portion: "SI-EU",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §H.4 p83: "Authorized Banner Line Marking Title:
@@ -143,6 +170,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "SI-NONBOOK",
         banner: "SI-NONBOOK",
         portion: "SI-NK",
+        description_title: None,
     },
     // §H.7 Non-US Protective Markings — NATO classifications and programs.
     //
@@ -162,30 +190,35 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "COSMIC TOP SECRET",
         banner: "COSMIC TOP SECRET",
         portion: "CTS",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO SECRET | None | NS |`.
         title: "NATO SECRET",
         banner: "NATO SECRET",
         portion: "NS",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO CONFIDENTIAL | None | NC |`.
         title: "NATO CONFIDENTIAL",
         banner: "NATO CONFIDENTIAL",
         portion: "NC",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO RESTRICTED | None | NR |`.
         title: "NATO RESTRICTED",
         banner: "NATO RESTRICTED",
         portion: "NR",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| NATO UNCLASSIFIED | None | NU |`.
         title: "NATO UNCLASSIFIED",
         banner: "NATO UNCLASSIFIED",
         portion: "NU",
+        description_title: None,
     },
     // NATO programs — same-form across all three columns. Included here
     // for §G.1-Table-4 fidelity even though S001 cannot fire on them
@@ -196,18 +229,21 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "ATOMAL",
         banner: "ATOMAL",
         portion: "ATOMAL",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| BALK | None | BALK |`.
         title: "BALK",
         banner: "BALK",
         portion: "BALK",
+        description_title: None,
     },
     MarkingForm {
         // CAPCO-2016 §G.1 Table 4 p36: `| BOHEMIA | None | BOHEMIA |`.
         title: "BOHEMIA",
         banner: "BOHEMIA",
         portion: "BOHEMIA",
+        description_title: None,
     },
     // §H.5 Special Access Program Markings — intentionally omitted.
     // SAR is parametric (`SPECIAL ACCESS REQUIRED-[program identifier]` ↔
@@ -225,31 +261,37 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "RESTRICTED DATA",
         banner: "RD",
         portion: "RD",
+        description_title: None,
     },
     MarkingForm {
         title: "FORMERLY RESTRICTED DATA",
         banner: "FRD",
         portion: "FRD",
+        description_title: None,
     },
     MarkingForm {
         title: "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION",
         banner: "TFNI",
         portion: "TFNI",
+        description_title: None,
     },
     MarkingForm {
         title: "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION",
         banner: "CNWDI",
         portion: "CNWDI",
+        description_title: None,
     },
     MarkingForm {
         title: "DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
         banner: "DOD UCNI",
         portion: "DCNI",
+        description_title: None,
     },
     MarkingForm {
         title: "DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
         banner: "DOE UCNI",
         portion: "UCNI",
+        description_title: None,
     },
     // §H.8 Dissemination Control Markings.
     //
@@ -259,31 +301,37 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "NOT RELEASABLE TO FOREIGN NATIONALS",
         banner: "NOFORN",
         portion: "NF",
+        description_title: None,
     },
     MarkingForm {
         title: "ORIGINATOR CONTROLLED-USGOV",
         banner: "ORCON-USGOV",
         portion: "OC-USGOV",
+        description_title: None,
     },
     MarkingForm {
         title: "ORIGINATOR CONTROLLED",
         banner: "ORCON",
         portion: "OC",
+        description_title: None,
     },
     MarkingForm {
         title: "CONTROLLED IMAGERY",
         banner: "IMCON",
         portion: "IMC",
+        description_title: None,
     },
     MarkingForm {
         title: "CAUTION-PROPRIETARY INFORMATION INVOLVED",
         banner: "PROPIN",
         portion: "PR",
+        description_title: None,
     },
     MarkingForm {
         title: "RISK SENSITIVE",
         banner: "RSEN",
         portion: "RS",
+        description_title: None,
     },
     MarkingForm {
         // §G.1 Table 4 p36: `| DEA SENSITIVE | None | DSEN |`. No
@@ -292,6 +340,7 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "DEA SENSITIVE",
         banner: "DEA SENSITIVE",
         portion: "DSEN",
+        description_title: None,
     },
     // §H.8 same-form entries: banner == portion, but title differs.
     // S001 fires when a banner line spells out the Marking Title instead
@@ -300,75 +349,89 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         title: "FOR OFFICIAL USE ONLY",
         banner: "FOUO",
         portion: "FOUO",
+        description_title: None,
     },
     MarkingForm {
         title: "RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL",
         banner: "RELIDO",
         portion: "RELIDO",
+        description_title: None,
     },
     // from ISM `CVEnumISMDissem` schema
     MarkingForm {
         title: "RAW FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "RAWFISA",
         portion: "RAWFISA",
+        description_title: None,
     },
     MarkingForm {
         title: "FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         banner: "FISA",
         portion: "FISA",
+        description_title: None,
     },
     MarkingForm {
         title: "DISPLAY ONLY",
         banner: "DISPLAY ONLY",
         portion: "DISPLAY ONLY",
+        description_title: None,
     },
     // §H.9 Non-IC Dissemination Control Markings.
     MarkingForm {
         title: "LIMITED DISTRIBUTION",
         banner: "LIMDIS",
         portion: "DS",
+        description_title: None,
     },
     MarkingForm {
         title: "EXCLUSIVE DISTRIBUTION",
         banner: "EXDIS",
         portion: "XD",
+        description_title: None,
     },
     MarkingForm {
         title: "NO DISTRIBUTION",
         banner: "NODIS",
         portion: "ND",
+        description_title: None,
     },
     // §H.9 same-form entries: banner == portion, but title differs.
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED NOFORN",
         banner: "SBU NOFORN",
         portion: "SBU-NF",
+        description_title: None,
     },
     MarkingForm {
         title: "SENSITIVE BUT UNCLASSIFIED",
         banner: "SBU",
         portion: "SBU",
+        description_title: None,
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE NOFORN",
         banner: "LES NOFORN",
         portion: "LES-NF",
+        description_title: None,
     },
     MarkingForm {
         title: "LAW ENFORCEMENT SENSITIVE",
         banner: "LES",
         portion: "LES",
+        description_title: None,
     },
     MarkingForm {
         title: "SENSITIVE SECURITY INFORMATION",
         banner: "SSI",
         portion: "SSI",
+        description_title: None,
     },
     // from ISM `CVEnumISMNonIC` schema
     MarkingForm {
         title: "NAVAL NUCLEAR PROPULSION INFORMATION",
         banner: "NNPI",
         portion: "NNPI",
+        description_title: None,
     },
 ];
 
