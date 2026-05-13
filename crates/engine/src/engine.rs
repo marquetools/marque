@@ -1073,10 +1073,11 @@ impl Engine {
                 // The override value is hoisted once per `lint()` call
                 // above the candidate loop — config is immutable for the
                 // lifetime of the call.
-                diagnostics.extend(
-                    self.scheme
-                        .bridge_sci_per_system_diagnostics(&attrs, e059_override),
-                );
+                diagnostics.extend(self.scheme.bridge_sci_per_system_diagnostics(
+                    &attrs,
+                    candidate.span,
+                    e059_override,
+                ));
             }
         }
 
@@ -1122,6 +1123,9 @@ impl Engine {
                             format!("corrections map: {key:?} → {value:?}"),
                             CORRECTIONS_MAP_CITATION,
                             value.as_ref(),
+                            FixSource::CorrectionsMap,
+                            marque_rules::Confidence::strict(1.0),
+                            None,
                         ));
                     }
                 }
@@ -1649,26 +1653,29 @@ impl Engine {
         // `Severity::Suggest` (because its confidence fell below
         // threshold) must not be auto-applied here either.
         //
-        // Post Commit 10: C001 diagnostics carry their canonical
-        // replacement bytes in `Diagnostic.text_correction`. The
-        // engine synthesizes `TextCorrectionProposal` records from
-        // those diagnostics and promotes them via
-        // `AppliedFix::__engine_promote_text_correction`.
-        let confidence = marque_rules::Confidence::strict(1.0);
+        // Post Commit 10: text-correction diagnostics carry their
+        // canonical replacement bytes + provenance in
+        // `Diagnostic.text_correction` (a `TextCorrection` payload).
+        // The engine synthesizes `TextCorrectionProposal` records
+        // from those diagnostics and promotes them via
+        // `AppliedFix::__engine_promote_text_correction`. Provenance
+        // (`source`, `confidence`, `migration_ref`) is preserved per
+        // the rule's emission — the engine does NOT overwrite it,
+        // because C001 (corrections-map) and E006-shaped (deprecation
+        // migration) and other byte-substitution rules all share this
+        // channel but carry distinct provenance.
         let mut text_fixes: Vec<TextCorrectionProposal> = lint
             .diagnostics
             .iter()
             .filter(|d| d.severity != Severity::Suggest)
             .filter_map(|d| {
-                d.text_correction
-                    .as_ref()
-                    .map(|rep| TextCorrectionProposal {
-                        rule: d.rule.clone(),
-                        span: d.span,
-                        replacement: rep.clone(),
-                        confidence: confidence.clone(),
-                        source: FixSource::CorrectionsMap,
-                    })
+                d.text_correction.as_ref().map(|tc| TextCorrectionProposal {
+                    rule: d.rule.clone(),
+                    span: d.span,
+                    replacement: tc.replacement.clone(),
+                    confidence: tc.confidence.clone(),
+                    source: tc.source,
+                })
             })
             .filter(|p| p.confidence.combined() >= threshold)
             .filter(|p| !p.span.is_empty())
@@ -2494,6 +2501,7 @@ mod tests {
         pub span: Span,
         pub replacement: Box<str>,
         pub confidence: Confidence,
+        pub source: FixSource,
     }
 
     #[test]
@@ -2580,6 +2588,9 @@ mod tests {
                         "stub",
                         "TEST",
                         p.replacement.clone(),
+                        p.source,
+                        p.confidence.clone(),
+                        None,
                     );
                     if p.confidence.combined() < 1.0 {
                         d.fix = Some(FixIntent::<CapcoScheme> {
@@ -2628,6 +2639,7 @@ mod tests {
             span: Span::new(start, end),
             replacement: replacement.into(),
             confidence: marque_rules::Confidence::strict(confidence),
+            source: FixSource::CorrectionsMap,
         }
     }
 

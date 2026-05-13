@@ -734,16 +734,43 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// diagnostics (which carry their replacement bytes in
     /// [`Self::text_correction`] instead).
     pub fix: Option<FixIntent<S>>,
-    /// Canonical replacement bytes for engine-applied text
-    /// corrections (the C001 / `[corrections]` map path).
+    /// Engine-applied byte-substitution payload (the C001 corrections-map
+    /// path, plus the closely-shaped E006 deprecation-migration path).
     ///
-    /// The bytes are corpus-derived canonical tokens (e.g. `"SECRET"`
-    /// replacing the typo `"SERCET"`) — on Constitution V's
+    /// Carries the canonical replacement bytes plus the fix's
+    /// provenance (`source`, `confidence`, `migration_ref`) so the
+    /// engine's `apply_text_corrections` path can promote the fix
+    /// with the rule's true provenance instead of hardcoding
+    /// `FixSource::CorrectionsMap` for every text-correction. The
+    /// replacement bytes are corpus-derived canonical tokens (e.g.
+    /// `"SECRET"` replacing the typo `"SERCET"`, or `"NOFORN"`
+    /// replacing the deprecated `"FOUO"`) — on Constitution V's
     /// permitted-identifier list. Never carries original document
-    /// bytes. Populated only by the C001 emission paths (the
-    /// CAPCO `CorrectionsMapRule` and the engine's pre-scanner
-    /// aho-corasick scan).
-    pub text_correction: Option<Box<str>>,
+    /// bytes.
+    pub text_correction: Option<TextCorrection>,
+}
+
+/// Payload for an engine-applied byte-substitution fix.
+///
+/// Populated on [`Diagnostic::text_correction`] by rules whose repair
+/// is a literal byte substitution that the engine applies atomically
+/// in its pre-scanner pass. Carries the rule's provenance so the
+/// engine's promotion path produces a faithful audit record (without
+/// silently overwriting `FixSource` / `Confidence` / `migration_ref`).
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct TextCorrection {
+    /// Canonical replacement bytes. On Constitution V's permitted-
+    /// identifier list (token canonicals from a closed vocabulary).
+    pub replacement: Box<str>,
+    /// Provenance of the fix.
+    pub source: FixSource,
+    /// Multi-axis confidence. Threshold-gated like any other fix in
+    /// the engine's promotion path.
+    pub confidence: Confidence,
+    /// Reference to the migration document or CAPCO row justifying
+    /// this fix (e.g., a `§F p…` cite for E006 deprecations).
+    pub migration_ref: Option<&'static str>,
 }
 
 // Manual Clone for Diagnostic<S> — see the parallel Clone impl on
@@ -854,6 +881,13 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// `apply_text_corrections` reads this field and promotes it
     /// to an [`AppliedFix`] via
     /// [`AppliedFix::__engine_promote_text_correction`].
+    // 9 args is the irreducible carrying capacity of a text-correction
+    // diagnostic: id/severity/span/message/citation for the diagnostic
+    // surface + replacement/source/confidence/migration_ref for the
+    // engine's promotion path. Constructing this via a builder would
+    // shift the same parameter count onto the builder's `.with_*`
+    // methods without reducing it.
+    #[allow(clippy::too_many_arguments)]
     pub fn text_correction(
         rule: RuleId,
         severity: Severity,
@@ -861,6 +895,9 @@ impl<S: MarkingScheme> Diagnostic<S> {
         message: impl Into<Box<str>>,
         citation: &'static str,
         replacement: impl Into<Box<str>>,
+        source: FixSource,
+        confidence: Confidence,
+        migration_ref: Option<&'static str>,
     ) -> Self {
         Self {
             rule,
@@ -870,7 +907,12 @@ impl<S: MarkingScheme> Diagnostic<S> {
             message: message.into(),
             citation,
             fix: None,
-            text_correction: Some(replacement.into()),
+            text_correction: Some(TextCorrection {
+                replacement: replacement.into(),
+                source,
+                confidence,
+                migration_ref,
+            }),
         }
     }
 

@@ -109,12 +109,12 @@ fn diag_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJson<'_>
                 confidence: f.confidence.combined(),
                 migration_ref: f.migration_ref,
             }),
-            (None, Some(rep)) => Some(FixJson {
-                source: "CorrectionsMap",
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
                 intent_kind: "TextCorrection",
-                replacement: Some(rep.as_ref()),
-                confidence: 1.0,
-                migration_ref: None,
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
             }),
             (None, None) => None,
         },

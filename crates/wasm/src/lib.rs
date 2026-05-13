@@ -301,6 +301,28 @@ fn fix_source_str(source: FixSource) -> &'static str {
     }
 }
 
+/// Schema-pinned string projection of `Scope`. Used in the audit JSON
+/// `proposal.intent.scope` field — `Debug` would not be a stable wire
+/// format.
+fn scope_str(scope: marque_scheme::Scope) -> &'static str {
+    match scope {
+        marque_scheme::Scope::Portion => "Portion",
+        marque_scheme::Scope::Page => "Page",
+        marque_scheme::Scope::Document => "Document",
+        marque_scheme::Scope::Diff => "Diff",
+    }
+}
+
+/// Schema-pinned string projection of `RecanonScope`. Same rationale
+/// as [`scope_str`].
+fn recanon_scope_str(scope: marque_scheme::fix_intent::RecanonScope) -> &'static str {
+    match scope {
+        marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
+        marque_scheme::fix_intent::RecanonScope::Page => "Page",
+        marque_scheme::fix_intent::RecanonScope::Document => "Document",
+    }
+}
+
 fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
@@ -324,12 +346,12 @@ fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
                 confidence: f.confidence.combined(),
                 migration_ref: f.migration_ref,
             }),
-            (None, Some(rep)) => Some(FixJson {
-                source: "CorrectionsMap",
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
                 intent_kind: "TextCorrection",
-                replacement: Some(rep.as_ref()),
-                confidence: 1.0,
-                migration_ref: None,
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
             }),
             (None, None) => None,
         },
@@ -384,19 +406,19 @@ fn proposal_to_json<'a>(
             let inner: serde_json::Value = match &intent.replacement {
                 marque_scheme::ReplacementIntent::FactAdd { scope, .. } => serde_json::json!({
                     "kind": "FactAdd",
-                    "scope": format!("{scope:?}"),
+                    "scope": scope_str(*scope),
                 }),
                 marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
                     serde_json::json!({
                         "kind": "FactRemove",
-                        "scope": format!("{scope:?}"),
+                        "scope": scope_str(*scope),
                         "fact_count": facts.len(),
                     })
                 }
                 marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
                     serde_json::json!({
                         "kind": "Recanonicalize",
-                        "scope": format!("{scope:?}"),
+                        "scope": recanon_scope_str(*scope),
                     })
                 }
                 _ => serde_json::json!({ "kind": "Unknown" }),

@@ -1724,7 +1724,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
             // exclusion is a hard channel-cutoff). The text
             // correction carries the canonical trigraph for
             // renderer / UI display.
-            let _ = (trigraph, SUGGEST_CONFIDENCE);
+            let _ = trigraph;
             diagnostics.push(Diagnostic::text_correction(
                 self.id(),
                 self.default_severity(),
@@ -1732,6 +1732,9 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
                 message,
                 "CAPCO-2016 §H.8 p150–151",
                 candidate.to_owned(),
+                FixSource::BuiltinRule,
+                Confidence::strict(SUGGEST_CONFIDENCE),
+                None,
             ));
         }
 
@@ -2783,20 +2786,19 @@ pub(crate) struct FixDiagnosticParams {
     pub migration_ref: Option<&'static str>,
 }
 
-/// Build a text-correction diagnostic (C001 path) from
-/// [`FixDiagnosticParams`].
+/// Build a text-correction diagnostic from [`FixDiagnosticParams`].
 ///
 /// Post PR 3c.B Commit 10 the engine's `apply_text_corrections`
-/// reads `Diagnostic.text_correction` for the replacement bytes;
-/// the helper preserves the legacy call shape but emits via
-/// [`Diagnostic::text_correction`]. The `original` field is no
-/// longer copied into the audit record (G13). `source`,
-/// `confidence`, and `migration_ref` are encoded on the
-/// `text_correction` diagnostic implicitly (always
-/// `CorrectionsMap` + `confidence = 1.0` + `None` for the C001
-/// path); see [`Diagnostic::text_correction`].
+/// reads `Diagnostic.text_correction` for the replacement bytes +
+/// provenance. The helper preserves the legacy call shape and
+/// faithfully threads `source`, `confidence`, and `migration_ref`
+/// through to the `TextCorrection` payload — every rule that emits
+/// a byte-substitution fix (C001 corrections-map, E006 deprecation
+/// migration, and other [`make_fix_diagnostic`] callers) gets the
+/// correct provenance on its audit record. The `original` field
+/// is discarded (G13 closure on the legacy emission channel).
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
-    let _ = (p.source, p.original, p.migration_ref, p.confidence);
+    let _ = p.original; // G13: never copy document bytes into audit
     Diagnostic::text_correction(
         p.rule,
         p.severity,
@@ -2804,6 +2806,9 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
         p.message,
         p.citation,
         p.replacement,
+        p.source,
+        Confidence::strict(p.confidence),
+        p.migration_ref,
     )
 }
 

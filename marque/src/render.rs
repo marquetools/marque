@@ -179,12 +179,12 @@ pub fn render_human(
             // text-correction diagnostics still carry their canonical
             // replacement bytes via `text_correction`, so those
             // render the legacy "replace with X" form.
-            let hint = if let Some(rep) = diag.text_correction.as_ref() {
+            let hint = if let Some(tc) = &diag.text_correction {
                 match diag.severity {
                     marque_rules::Severity::Suggest => {
-                        format!(" did you mean {:?}?", rep.as_ref())
+                        format!(" did you mean {:?}?", tc.replacement.as_ref())
                     }
-                    _ => format!(" replace with {:?}", rep.as_ref()),
+                    _ => format!(" replace with {:?}", tc.replacement.as_ref()),
                 }
             } else if let Some(f) = diag.fix.as_ref() {
                 match diag.severity {
@@ -325,22 +325,17 @@ pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
         fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
             (Some(f), _) => Some(FixJson {
                 source: fix_source_str(f.source),
-                intent_kind: match &f.replacement {
-                    marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
-                    marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
-                    marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
-                    _ => "Unknown",
-                },
+                intent_kind: intent_kind_str(&f.replacement),
                 replacement: None,
                 confidence: f.confidence.combined(),
                 migration_ref: f.migration_ref,
             }),
-            (None, Some(rep)) => Some(FixJson {
-                source: "CorrectionsMap",
+            (None, Some(tc)) => Some(FixJson {
+                source: fix_source_str(tc.source),
                 intent_kind: "TextCorrection",
-                replacement: Some(rep.as_ref()),
-                confidence: 1.0,
-                migration_ref: None,
+                replacement: Some(tc.replacement.as_ref()),
+                confidence: tc.confidence.combined(),
+                migration_ref: tc.migration_ref,
             }),
             (None, None) => None,
         },
@@ -449,6 +444,50 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     }
 }
 
+/// Schema-pinned string projection of a `ReplacementIntent` variant
+/// discriminator. The enum is `#[non_exhaustive]` so a wildcard arm
+/// is unavoidable; the helper logs a tracing warning on unknown
+/// variants so an unrecognized addition surfaces operationally
+/// (rather than the audit / diagnostic JSON silently emitting
+/// "Unknown").
+fn intent_kind_str(intent: &marque_scheme::ReplacementIntent<CapcoScheme>) -> &'static str {
+    match intent {
+        marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+        marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+        marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+        _ => {
+            tracing::warn!(
+                target: "marque::render",
+                "unrecognized ReplacementIntent variant in audit projection; downstream consumers will see kind=\"Unknown\""
+            );
+            "Unknown"
+        }
+    }
+}
+
+/// Schema-pinned string projection of `Scope`. Used in the audit JSON
+/// `proposal.intent.scope` field — `Debug` would not be a stable wire
+/// format (small refactors / variant renames would change the JSON
+/// silently).
+fn scope_str(scope: marque_scheme::Scope) -> &'static str {
+    match scope {
+        marque_scheme::Scope::Portion => "Portion",
+        marque_scheme::Scope::Page => "Page",
+        marque_scheme::Scope::Document => "Document",
+        marque_scheme::Scope::Diff => "Diff",
+    }
+}
+
+/// Schema-pinned string projection of `RecanonScope`. Same rationale
+/// as [`scope_str`].
+fn recanon_scope_str(scope: marque_scheme::fix_intent::RecanonScope) -> &'static str {
+    match scope {
+        marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
+        marque_scheme::fix_intent::RecanonScope::Page => "Page",
+        marque_scheme::fix_intent::RecanonScope::Document => "Document",
+    }
+}
+
 fn proposal_to_json(proposal: &AppliedFixProposal<CapcoScheme>) -> ProposalJson {
     match proposal {
         AppliedFixProposal::FixIntent(intent) => {
@@ -461,23 +500,29 @@ fn proposal_to_json(proposal: &AppliedFixProposal<CapcoScheme>) -> ProposalJson 
                 marque_scheme::ReplacementIntent::FactAdd { scope, .. } => {
                     serde_json::json!({
                         "kind": "FactAdd",
-                        "scope": format!("{scope:?}"),
+                        "scope": scope_str(*scope),
                     })
                 }
                 marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
                     serde_json::json!({
                         "kind": "FactRemove",
-                        "scope": format!("{scope:?}"),
+                        "scope": scope_str(*scope),
                         "fact_count": facts.len(),
                     })
                 }
                 marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
                     serde_json::json!({
                         "kind": "Recanonicalize",
-                        "scope": format!("{scope:?}"),
+                        "scope": recanon_scope_str(*scope),
                     })
                 }
-                _ => serde_json::json!({ "kind": "Unknown" }),
+                _ => {
+                    tracing::warn!(
+                        target: "marque::render",
+                        "unrecognized ReplacementIntent variant in audit projection; downstream consumers will see kind=\"Unknown\""
+                    );
+                    serde_json::json!({ "kind": "Unknown" })
+                }
             };
             ProposalJson::FixIntent { intent: inner }
         }

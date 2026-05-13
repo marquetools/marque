@@ -354,7 +354,18 @@ pub struct DiagnosticJson {
 
 #[derive(Serialize)]
 pub struct FixJson {
-    pub replacement: String,
+    /// The kind of fix payload — `"FactAdd" | "FactRemove" |
+    /// "Recanonicalize"` for structural rule fixes, `"TextCorrection"`
+    /// for byte-substitution fixes (the corrections-map / migration
+    /// channel). Mirrors the CLI and WASM diagnostic JSON shape.
+    pub intent_kind: &'static str,
+    /// Replacement bytes, present only for `TextCorrection` payloads.
+    /// `None` for structural-intent fixes (the engine synthesizes the
+    /// canonical bytes at fix-application time via `apply_intent` +
+    /// `render_canonical`; the server response carries only the
+    /// structural commitment, not the materialized bytes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<String>,
     pub confidence: f32,
     pub migration_ref: Option<String>,
 }
@@ -606,27 +617,26 @@ fn diagnostics_to_json(result: &marque_engine::LintResult) -> Vec<DiagnosticJson
             end: d.span.end,
             fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
                 (Some(f), _) => Some(FixJson {
+                    intent_kind: match &f.replacement {
+                        marque_scheme::ReplacementIntent::FactAdd { .. } => "FactAdd",
+                        marque_scheme::ReplacementIntent::FactRemove { .. } => "FactRemove",
+                        marque_scheme::ReplacementIntent::Recanonicalize { .. } => "Recanonicalize",
+                        _ => "Unknown",
+                    },
                     // Structural rule fix — replacement bytes are
                     // engine-rendered at promotion time. The server
-                    // surface reports the intent kind as a stand-in
-                    // for the legacy `replacement` field.
-                    replacement: match &f.replacement {
-                        marque_scheme::ReplacementIntent::FactAdd { .. } => "<FactAdd>".to_owned(),
-                        marque_scheme::ReplacementIntent::FactRemove { .. } => {
-                            "<FactRemove>".to_owned()
-                        }
-                        marque_scheme::ReplacementIntent::Recanonicalize { .. } => {
-                            "<Recanonicalize>".to_owned()
-                        }
-                        _ => "<Unknown>".to_owned(),
-                    },
+                    // response carries only the structural commitment;
+                    // callers needing materialized bytes call the fix
+                    // endpoint and read the corrected text.
+                    replacement: None,
                     confidence: f.confidence.combined(),
                     migration_ref: f.migration_ref.map(str::to_owned),
                 }),
-                (None, Some(rep)) => Some(FixJson {
-                    replacement: rep.to_string(),
-                    confidence: 1.0,
-                    migration_ref: None,
+                (None, Some(tc)) => Some(FixJson {
+                    intent_kind: "TextCorrection",
+                    replacement: Some(tc.replacement.to_string()),
+                    confidence: tc.confidence.combined(),
+                    migration_ref: tc.migration_ref.map(str::to_owned),
                 }),
                 (None, None) => None,
             },

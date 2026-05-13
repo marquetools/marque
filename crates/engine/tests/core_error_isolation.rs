@@ -204,10 +204,10 @@ fn lint_does_not_leak_core_error_content() {
             // FixIntent with no byte payload. The diagnostic's
             // `text_correction` field is the only string-bearing
             // channel; assert it doesn't contain the canary.
-            if let Some(rep) = diag.text_correction.as_ref() {
+            if let Some(tc) = diag.text_correction.as_ref() {
                 assert!(
-                    !rep.contains(CANARY),
-                    "Diagnostic.text_correction leaked CoreError-bearing input"
+                    !tc.replacement.contains(CANARY),
+                    "Diagnostic.text_correction.replacement leaked CoreError-bearing input"
                 );
             }
         }
