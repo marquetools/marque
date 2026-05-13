@@ -212,7 +212,15 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             span: Span::new(0, 0), // re-set per attempt below
             kind,
         };
-        let mut scored: Vec<ScoredCandidate> = Vec::new();
+        // Inline-4: the pre-truncate accumulator is bounded above by
+        // `canonical_attempts.len() <= K_MAX_CANDIDATES * 2 = 16`, then
+        // sorted and truncated to `K_MAX_CANDIDATES = 8` at line ~423.
+        // Typical decoder runs see 1-4 viable scored candidates after
+        // the strict-parse and finite-posterior filters; the inline
+        // budget covers the common case while spillover handles the
+        // pre-truncate tail without inflating the stack frame
+        // (ScoredCandidate is ~200 bytes — 4 inline ≈ 800 B).
+        let mut scored: SmallVec<[ScoredCandidate; 4]> = SmallVec::new();
         for attempt in canonical_attempts {
             let candidate = MarkingCandidate {
                 span: Span::new(0, attempt.bytes.len()),
@@ -697,9 +705,9 @@ fn is_cab_head(bytes: &[u8]) -> bool {
 /// Bounded by [`K_MAX_CANDIDATES`] × 2 to keep the strict-parse pass
 /// bounded; duplicates (different feature traces producing the same
 /// canonical bytes) are deduplicated at emit time.
-fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
+fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     let Ok(text) = std::str::from_utf8(bytes) else {
-        return Vec::new();
+        return SmallVec::new();
     };
 
     // Strip surrounding whitespace; preserve leading `(` for portion
@@ -707,10 +715,16 @@ fn generate_candidate_bytes(bytes: &[u8]) -> Vec<CanonicalAttempt> {
     // the same first-non-whitespace byte the recognizer saw.
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        return Vec::new();
+        return SmallVec::new();
     }
 
-    let mut attempts: Vec<CanonicalAttempt> = Vec::new();
+    // Inline-4: bounded above by `K_MAX_CANDIDATES * 2 = 16` via the
+    // hard cap inside the `emit` closure below. Typical input produces
+    // 1-4 attempts (raw + delimiter normalize + occasional fuzzy/sar
+    // repair); the inline budget covers the common case while the
+    // K=16 ceiling spills cleanly. Each `CanonicalAttempt` is ~150 B
+    // with its own inline buffers — 4 inline ≈ 600 B on the stack.
+    let mut attempts: SmallVec<[CanonicalAttempt; 4]> = SmallVec::new();
     let mut emit =
         |bytes: Vec<u8>, features: Vec<FeatureEntry>, fix_source: marque_rules::FixSource| {
             // Hard cap at K_MAX_CANDIDATES × 2 — guarantees the strict-parse
