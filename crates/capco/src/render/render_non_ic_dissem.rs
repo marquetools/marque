@@ -35,6 +35,7 @@ use core::fmt;
 
 use marque_ism::NonIcDissem;
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -50,8 +51,10 @@ pub(crate) fn render_non_ic_dissem(
 
     let portion = matches!(scope, Scope::Portion);
 
-    // Sort by Register order (§H.9 Table 4 row 9 p36).
-    let mut sorted: Vec<&NonIcDissem> = m.0.non_ic_dissem.iter().collect();
+    // Sort by Register order (§H.9 Table 4 row 9 p36). Inline-4
+    // covers FOUO/SBU/LIMDIS/UCNI / DCNI / LES — the practical
+    // ceiling on simultaneous non-IC dissem tokens.
+    let mut sorted: SmallVec<[&NonIcDissem; 4]> = m.0.non_ic_dissem.iter().collect();
     sorted.sort_by_key(|n| register_rank(n));
 
     let mut first = true;

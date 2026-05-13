@@ -60,6 +60,7 @@ use marque_ism::{
     NatoClassification,
 };
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -122,7 +123,9 @@ fn render_fgi(f: &FgiClassification, scope: Scope, out: &mut dyn fmt::Write) -> 
         // sort order (§A.6 p15-16 grammar applied to FGI per the
         // existing tetragraph / trigraph splits handled in the FGI
         // marker axis).
-        let mut codes: Vec<&str> = f.countries.iter().map(|c| c.as_str()).collect();
+        // Inline-4 mirrors the FGI country buffer ceiling (FGI rarely
+        // lists more than 2-3 source countries).
+        let mut codes: SmallVec<[&str; 4]> = f.countries.iter().map(|c| c.as_str()).collect();
         codes.sort_unstable();
         for (i, code) in codes.iter().enumerate() {
             if i > 0 {
@@ -203,8 +206,12 @@ fn render_joint(j: &JointClassification, scope: Scope, out: &mut dyn fmt::Write)
     // constructed JOINT markings (e.g., from a lattice projection or a
     // future parser extension) carrying tetragraphs would otherwise
     // render in a non-canonical interleaved order.
-    let mut trigraphs: Vec<&str> = Vec::new();
-    let mut tetragraphs: Vec<&str> = Vec::new();
+    // Inline-8 / inline-4 matches the REL TO renderer's buckets —
+    // JOINT typically lists Five Eyes plus a small tail of additional
+    // partners (trigraphs), with international organization
+    // tetragraphs spilling cleanly past inline-4.
+    let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
+    let mut tetragraphs: SmallVec<[&str; 4]> = SmallVec::new();
     for c in j.countries.iter() {
         let s = c.as_str();
         if s.len() == 3 {

@@ -42,6 +42,7 @@ use core::fmt;
 
 use marque_ism::FgiMarker;
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -58,8 +59,12 @@ pub(crate) fn render_fgi(m: &CapcoMarking, _scope: Scope, out: &mut dyn fmt::Wri
             // Trigraphs first (alpha), then tetragraphs (alpha) per
             // §A.6 p16. A trigraph is a 3-character code; a
             // tetragraph is a 4-character code.
-            let mut trigraphs: Vec<&str> = Vec::new();
-            let mut tetragraphs: Vec<&str> = Vec::new();
+            //
+            // Inline-8 / inline-4 matches the REL TO renderer's buckets
+            // (typical FGI never lists more than a handful of source
+            // countries).
+            let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
+            let mut tetragraphs: SmallVec<[&str; 4]> = SmallVec::new();
             for c in countries {
                 let s = c.as_str();
                 if s.len() == 3 {

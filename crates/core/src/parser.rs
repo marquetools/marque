@@ -247,8 +247,14 @@ impl<'t> Parser<'t> {
         // substring between consecutive separators (or string ends). Track
         // both the block content and its inner offset so we can compute
         // per-token absolute spans.
-        let separators: Vec<usize> = s.match_indices("//").map(|(i, _)| i).collect();
-        let mut block_ranges: Vec<(usize, usize)> = Vec::with_capacity(separators.len() + 1);
+        // Inline-4 covers typical markings (≤3 `//` separators between
+        // classification + 1-3 control blocks); longer compound markings
+        // (e.g., `TS//SI/TK//FGI GBR//REL TO USA, GBR//NOFORN`) spill to
+        // heap cleanly. The accumulators below pick inline sizes from the
+        // empirical CAPCO grammar (see per-field rationale).
+        let separators: SmallVec<[usize; 4]> = s.match_indices("//").map(|(i, _)| i).collect();
+        let mut block_ranges: SmallVec<[(usize, usize); 4]> =
+            SmallVec::with_capacity(separators.len() + 1);
         let mut prev_end = 0usize;
         for &sep_start in &separators {
             block_ranges.push((prev_end, sep_start));
@@ -256,19 +262,34 @@ impl<'t> Parser<'t> {
         }
         block_ranges.push((prev_end, s.len()));
 
-        let mut token_spans: Vec<TokenSpan> = Vec::new();
+        // Per-block accumulators (consumed at function end via
+        // `.into_boxed_slice()`). Inline sizes are picked from observed
+        // CAPCO marking cardinality:
+        //
+        // - `token_spans`: 4-16 typical (1 per classification/control + 1
+        //   per `//` separator; large multi-axis markings reach the upper
+        //   end);
+        // - `sci` / `dissem`: ≤4 (e.g., `SI/TK/HCS/G` covers all four
+        //   bare SCI control systems; dissem rarely exceeds NF/PR/OC/REL);
+        // - `sci_markings` / `non_ic` / `aea`: ≤2 (per-system SCI is
+        //   usually one or two control systems; AEA RD/FRD pairs at most;
+        //   non-IC FOUO/SBU pairs at most);
+        // - `rel_to`: ≤8 (USA + Five Eyes partners + a couple
+        //   tetragraphs is the typical worst case; matches the inline-8
+        //   buffer in `parse_rel_to_with_spans`).
+        let mut token_spans: SmallVec<[TokenSpan; 16]> = SmallVec::new();
 
-        let mut sci: Vec<SciControl> = Vec::new();
-        let mut sci_markings: Vec<ParsedSciMarking<'src>> = Vec::new();
+        let mut sci: SmallVec<[SciControl; 4]> = SmallVec::new();
+        let mut sci_markings: SmallVec<[ParsedSciMarking<'src>; 2]> = SmallVec::new();
         // SAR: P2 wires the hand-written subparser. Only the FIRST SAR block
         // encountered populates `sar_markings`; any subsequent SAR block
         // is emitted as `TokenKind::Unknown` so rule E030 (indicator-repeat)
         // can flag the duplicate.
         let mut sar_captured = false;
-        let mut aea: Vec<ParsedAea<'src>> = Vec::new();
-        let mut dissem: Vec<ParsedDissem<'src>> = Vec::new();
-        let mut non_ic: Vec<ParsedNonIcDissem<'src>> = Vec::new();
-        let mut rel_to: Vec<ParsedRelToEntry<'src>> = Vec::new();
+        let mut aea: SmallVec<[ParsedAea<'src>; 2]> = SmallVec::new();
+        let mut dissem: SmallVec<[ParsedDissem<'src>; 4]> = SmallVec::new();
+        let mut non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]> = SmallVec::new();
+        let mut rel_to: SmallVec<[ParsedRelToEntry<'src>; 8]> = SmallVec::new();
 
         // When the marking starts with `//`, block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
@@ -790,7 +811,7 @@ fn parse_classification(s: &str) -> Option<Classification> {
 fn parse_sci_block(
     text: &str,
     base: usize,
-    tokens: &mut Vec<TokenSpan>,
+    tokens: &mut SmallVec<[TokenSpan; 16]>,
 ) -> Option<Vec<SciMarking>> {
     if text.is_empty() {
         return None;
@@ -1058,7 +1079,11 @@ fn parse_joint_classification(s: &str) -> Option<JointClassification> {
     // markings, but the parallel of issue #183's REL TO silent-drop
     // is tracked as deferred scope for PR-B / a future issue).
     let country_str = rest[remaining_start..].trim();
-    let mut countries = Vec::new();
+    // Inline-4 covers Five Eyes (USA, GBR, CAN, AUS, NZL) and typical
+    // bilateral / trilateral JOINT markings; larger coalition lists
+    // spill cleanly. Mirrors the `FgiMarker::Acknowledged` inline-4
+    // sizing.
+    let mut countries: SmallVec<[CountryCode; 4]> = SmallVec::new();
     for token in country_str.split_whitespace() {
         if token.len() == 3 {
             if let Some(t) = CountryCode::try_new(token.as_bytes()) {
@@ -1073,7 +1098,7 @@ fn parse_joint_classification(s: &str) -> Option<JointClassification> {
 
     Some(JointClassification {
         level,
-        countries: countries.into(),
+        countries: countries.into_boxed_slice(),
     })
 }
 
@@ -1086,7 +1111,10 @@ fn parse_joint_classification(s: &str) -> Option<JointClassification> {
 /// Returns `None` if no classification level is found (e.g., bare `"FGI"` with
 /// no level — that's an error, not a valid FGI classification).
 fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
-    let tokens: Vec<&str> = s.split_whitespace().collect();
+    // Inline-4 covers `<country> <level>`, `<country> <country> <level>`,
+    // and `<country> TOP SECRET`; longer multi-country FGI is rare in
+    // practice and spills cleanly.
+    let tokens: SmallVec<[&str; 4]> = s.split_whitespace().collect();
     if tokens.len() < 2 {
         return None; // Need at least country + level
     }
@@ -1105,7 +1133,9 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
     };
 
     // Preceding tokens are country trigraphs (or "FGI" placeholder).
-    let mut countries = Vec::new();
+    // Inline-4 mirrors the `FgiMarker::Acknowledged` country buffer;
+    // FGI rarely lists more than 2-3 source countries.
+    let mut countries: SmallVec<[CountryCode; 4]> = SmallVec::new();
     for &token in &tokens[..country_end] {
         if token == "FGI" {
             // FGI as placeholder for unknown country — countries stays empty
@@ -1120,7 +1150,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
     }
 
     Some(FgiClassification {
-        countries: countries.into(),
+        countries: countries.into_boxed_slice(),
         level,
     })
 }
@@ -1356,7 +1386,7 @@ fn parse_rel_to_with_spans<'src>(
     block: &'src str,
     block_offset: usize,
     tokens: &dyn TokenSet,
-    token_spans: &mut Vec<TokenSpan>,
+    token_spans: &mut SmallVec<[TokenSpan; 16]>,
 ) -> RelToParseResult<'src> {
     // Skip the "REL TO" / "REL" prefix to land on the trigraph list. We
     // need the offset of the *trigraph list* within `block` so that each
@@ -3068,7 +3098,7 @@ mod tests {
         // In dispatch, `99` alone wouldn't pass the containment gate; this
         // exercises the parser's custom-only happy path.
         use marque_ism::SciControlSystem;
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         let result = parse_sci_block("99", 0, &mut tokens).expect("99 must parse");
         assert_eq!(result.len(), 1);
         assert!(matches!(&result[0].system, SciControlSystem::Custom(s) if s.as_str() == "99"));
@@ -3079,22 +3109,22 @@ mod tests {
     #[test]
     fn sci_structural_rejections_return_none() {
         // Dangling hyphen.
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         assert!(parse_sci_block("SI-", 0, &mut tokens).is_none());
         // Leading hyphen.
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         assert!(parse_sci_block("-SI", 0, &mut tokens).is_none());
         // Empty.
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         assert!(parse_sci_block("", 0, &mut tokens).is_none());
         // Lowercase.
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         assert!(parse_sci_block("si-g", 0, &mut tokens).is_none());
         // Consecutive hyphens.
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         assert!(parse_sci_block("SI--G", 0, &mut tokens).is_none());
         // Empty slash chunk.
-        let mut tokens = Vec::new();
+        let mut tokens = SmallVec::new();
         assert!(parse_sci_block("SI/", 0, &mut tokens).is_none());
     }
 

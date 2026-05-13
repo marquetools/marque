@@ -46,6 +46,7 @@ use core::fmt;
 
 use marque_ism::AeaMarking;
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -58,8 +59,9 @@ pub(crate) fn render_aea(m: &CapcoMarking, scope: Scope, out: &mut dyn fmt::Writ
         return Ok(());
     }
 
-    // Sort by Register order (§H.6 Table 4 row 6 p36).
-    let mut sorted: Vec<&AeaMarking> = m.0.aea_markings.iter().collect();
+    // Sort by Register order (§H.6 Table 4 row 6 p36). Inline-4 covers
+    // the AEA variants (RD/FRD/TFNI/DCNI/UCNI) on a single marking.
+    let mut sorted: SmallVec<[&AeaMarking; 4]> = m.0.aea_markings.iter().collect();
     sorted.sort_by_key(|a| register_rank(a));
 
     let portion = matches!(scope, Scope::Portion);
@@ -131,8 +133,12 @@ fn write_sigma(sigma: &[u8], label: &str, out: &mut dyn fmt::Write) -> fmt::Resu
     }
     out.write_char('-')?;
     out.write_str(label)?;
-    // Numerical ascending sort per §H.6.
-    let mut numeric: Vec<u8> = sigma.to_vec();
+    // Numerical ascending sort per §H.6. Inline-8 conservatively covers
+    // the four current SIGMA values (14, 15, 18, 20 per CAPCO-2016 §H.6
+    // p108 + p113); even counting obsolete SIGMAs (1-5 and 9-13 per
+    // §H.6 p109, retired and must not be carried forward to new
+    // markings), real-world banners never approach this ceiling.
+    let mut numeric: SmallVec<[u8; 8]> = SmallVec::from_slice(sigma);
     numeric.sort_unstable();
     for n in numeric {
         out.write_char(' ')?;

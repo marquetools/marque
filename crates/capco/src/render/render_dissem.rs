@@ -37,6 +37,7 @@ use core::fmt;
 
 use marque_ism::DissemControl;
 use marque_scheme::Scope;
+use smallvec::SmallVec;
 
 use crate::scheme::CapcoMarking;
 
@@ -56,7 +57,10 @@ pub(crate) fn render_dissem(
     // Sort by Register order (§H.8 Table 4 row 8 p36). The CVE
     // `DissemControl` enum already declares variants in roughly this
     // order; we re-sort defensively to honor the precedent.
-    let mut sorted: Vec<&DissemControl> =
+    //
+    // Inline-4 covers the typical dissem set (NF/PR/OC/REL, IMCON, RS);
+    // longer compositions spill to heap cleanly.
+    let mut sorted: SmallVec<[&DissemControl; 4]> =
         m.0.dissem_controls
             .iter()
             .filter(|d| !(drop_bare_rel && **d == DissemControl::Rel))
