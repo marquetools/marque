@@ -102,7 +102,7 @@ check_one_bench() {
     # bench_target is required: it must be the Cargo bench *file* name
     # (e.g. "lint_latency"), not the Criterion function name (bench_name).
     # cargo bench --bench <target> only compiles/runs that one binary.
-    local bench_target="${2:?check_one_bench: bench_target (arg 2) is required — pass the bench file name, e.g. \"lint_latency\"}"
+    local bench_target="${2:?check_one_bench: bench_target (arg 2) is required -- pass the bench file name, e.g. \"lint_latency\"}"
 
     # Extract baseline upper CI bound (microseconds) and absolute target.
     local baseline_upper_ci target_upper_ci drift_alert
@@ -135,16 +135,16 @@ print(data['$bench_name'].get('drift_alert_upper_ci_us', ''))
         return 1
     fi
 
-    # L-3: Validate that the extracted values are positive integers.
-    if ! [[ "$baseline_upper_ci" =~ ^[0-9]+$ ]]; then
+    # L-3: Validate that the extracted values are positive integers (> 0).
+    if ! [[ "$baseline_upper_ci" =~ ^[1-9][0-9]*$ ]]; then
         echo "bench-check: ERROR — '$bench_name' baseline upper_ci_us is not a positive integer: ${baseline_upper_ci}"
         return 1
     fi
-    if ! [[ "$target_upper_ci" =~ ^[0-9]+$ ]]; then
+    if ! [[ "$target_upper_ci" =~ ^[1-9][0-9]*$ ]]; then
         echo "bench-check: ERROR — '$bench_name' target_upper_ci_us is not a positive integer: ${target_upper_ci}"
         return 1
     fi
-    if [[ -n "$drift_alert" ]] && ! [[ "$drift_alert" =~ ^[0-9]+$ ]]; then
+    if [[ -n "$drift_alert" ]] && ! [[ "$drift_alert" =~ ^[1-9][0-9]*$ ]]; then
         echo "bench-check: ERROR — '$bench_name' drift_alert_upper_ci_us is not a positive integer: ${drift_alert}"
         return 1
     fi
@@ -420,6 +420,11 @@ PY
 # Both benches run in a single `cargo bench` invocation so the harness
 # warms up once; running them separately could let the runner profile
 # differ enough between calls to bias the ratio.
+is_non_negative_int_no_leading_zeros() {
+    local value="$1"
+    [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]]
+}
+
 check_deadline_overhead() {
     local max_ratio_pct
     max_ratio_pct=$(python3 -c "
@@ -434,11 +439,10 @@ print(data['deadline_overhead']['max_ratio_pct'])
         return 1
     fi
 
-    if ! [[ "$max_ratio_pct" =~ ^(0|[1-9][0-9]*)$ ]]; then
-        # Regex `^(0|[1-9][0-9]*)$` accepts exactly `0` (the tightest
-        # gate — "no overhead allowed at all") or a positive integer
-        # without leading zeros; reject non-numeric / negative /
-        # signed / decimal values.
+    if ! is_non_negative_int_no_leading_zeros "$max_ratio_pct"; then
+        # Accept exactly `0` (the tightest gate — "no overhead allowed at all")
+        # or a positive integer without leading zeros; reject non-numeric /
+        # negative / signed / decimal values.
         echo "bench-check[deadline_overhead]: ERROR — max_ratio_pct is not a non-negative integer: ${max_ratio_pct}"
         return 1
     fi

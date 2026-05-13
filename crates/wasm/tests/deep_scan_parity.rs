@@ -40,6 +40,10 @@ use std::sync::OnceLock;
 /// `crates/engine/tests/decoder_dispatch.rs::default_engine_dispatcher_actually_reaches_the_decoder_on_mangled_input`.
 const MANGLED_INPUT: &[u8] = b"(SERCET//NF)";
 
+/// Shared relaxed threshold used by parity tests that need short fuzzy
+/// decoder fixes to auto-apply.
+const RELAXED_CONFIDENCE_THRESHOLD: f32 = 0.80;
+
 fn shared_native_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(|| {
@@ -81,8 +85,8 @@ fn shared_relaxed_engine() -> &'static Engine {
     ENGINE.get_or_init(|| {
         let mut config = Config::default();
         config
-            .set_confidence_threshold(0.80)
-            .expect("0.80 is a valid confidence threshold");
+            .set_confidence_threshold(RELAXED_CONFIDENCE_THRESHOLD)
+            .expect("RELAXED_CONFIDENCE_THRESHOLD is a valid confidence threshold");
         Engine::new(
             config,
             marque_engine::default_ruleset(),
@@ -218,12 +222,15 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     // (`crates/engine/src/engine.rs:748`). Setting only one leaves the
     // other path on the default 0.95 and the fix gets downgraded to
     // a suggestion before `fix_with_options` ever sees it.
-    let relaxed_threshold = 0.80_f32;
-    let config_json = r#"{"confidence_threshold": 0.80}"#;
+    let relaxed_threshold = RELAXED_CONFIDENCE_THRESHOLD;
+    let config_json = format!(
+        r#"{{"confidence_threshold": {}}}"#,
+        RELAXED_CONFIDENCE_THRESHOLD
+    );
     let wasm_json = fix_native(
         std::str::from_utf8(MANGLED_INPUT).expect("MANGLED_INPUT is valid UTF-8"),
         relaxed_threshold,
-        Some(config_json.to_string()),
+        Some(config_json),
     )
     .expect("fix_native must succeed");
     let parsed: serde_json::Value =

@@ -5,8 +5,9 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # flake-watch — quarantine queue
 
-**Cap**: 10 active entries. Cap exceedance blocks PR merges (see
-[README.md](./README.md)).
+**Cap**: 10 active entries. Cap exceedance blocks PR merges via the CI
+gate that counts `^## flake-` headings (see counting details in lines
+34-36 below, and [README.md](./README.md)).
 
 **Active count**: 0 / 10.
 
@@ -31,7 +32,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 <!--
 No active entries at PR 0. Subsequent entries follow the template above.
-The CI gate counts entries by matching the line `^## flake-` (the
-template heading uses a blockquote `> ##` so it does not count toward
-the cap).
+The CI gate counts entries by matching lines that start with `## flake-`
+using the regex `^## flake-` (the template heading uses a blockquote
+`> ##` so it does not count toward the cap).
 -->
