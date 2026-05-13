@@ -437,3 +437,123 @@ The implementer should follow this priority order:
 - `scripts/bench-check.sh` updated.
 
 **No schema bump.** No centralization of R001/R002. No `phase_companion`. No `PreRewriteAttrs`. These are documented as deferred.
+
+---
+
+## D-7.15 Exit-code precedence (post-7b-preflight extension of D-7.6 / D-7.12)
+
+**Decision**: Exit-code aggregation in both `marque/src/main.rs` and the
+batch CLI loop uses an **explicit precedence chain**, NOT numeric `max()`.
+The precedence is:
+
+```text
+EX_R002_PARTIAL (3)  >  EX_DIAG_ERROR (1)  >  EX_DIAG_WARN (2)  >  EX_OK (0)
+```
+
+R002 wins over generic error. Rationale: R002 is the rare, distinguished,
+action-changing signal — pass-2 was skipped because pass-1 made the buffer
+unparseable. A consumer seeing `EX_DIAG_ERROR` thinks "diagnostics found,
+normal exit"; a consumer seeing `EX_R002_PARTIAL` thinks "something unusual
+happened, investigate." When both signals are present in the same document
+or batch, the user needs the R002 signal because it changes workflow.
+
+The 7b architect pre-flight and rust pre-flight disagreed on this point:
+
+- Architect (`pr-7b-architect-preflight.md` §7): "check `r002_fired`
+  BEFORE the `has_errors` / `has_warns` chain" — R002 wins.
+- Rust reviewer (`pr-7b-rust-preflight.md` Q7): `EX_DIAG_ERROR >
+  EX_R002_PARTIAL > EX_DIAG_WARN > EX_OK` — generic error wins.
+
+PM resolution: the architect's precedence is correct for surface ergonomics
+and the rust reviewer is correct that `max()` is the wrong operator.
+Implement the rust reviewer's `merge_exit_code` shape (explicit `match`,
+no `max()`) with the architect's precedence ordering (R002 first).
+
+**Concrete shape:**
+
+```rust
+fn merge_exit_code(current: i32, new_code: i32) -> i32 {
+    match (current, new_code) {
+        (EX_R002_PARTIAL, _) | (_, EX_R002_PARTIAL) => EX_R002_PARTIAL,
+        (EX_DIAG_ERROR, _) | (_, EX_DIAG_ERROR) => EX_DIAG_ERROR,
+        (EX_DIAG_WARN, _) | (_, EX_DIAG_WARN) => EX_DIAG_WARN,
+        _ => EX_OK,
+    }
+}
+```
+
+Per-document branch in `run_fix`: test `result.r002_fired` BEFORE
+`has_errors` / `has_warns`. Batch CLI loop: fold per-row codes through
+`merge_exit_code`. Document the precedence in a `///` doc comment so a
+future reader does not "fix" it to numeric `max()`.
+
+**Test**: `marque/tests/cli_exit_codes.rs` covers: (a) clean run → 0,
+(b) warnings only → 2, (c) errors only → 1, (d) R002 only → 3, (e) R002
++ errors → 3 (R002 wins), (f) batch with rows producing each → 3.
+
+**5-year-maintenance posture**: the explicit precedence chain is the
+load-bearing piece; the order is the policy. If a future R003-class
+signal lands, extending the chain is mechanical — adding it ahead of
+or behind R002 is the policy question for that PR.
+
+---
+
+## D-7.16 First-fire span-shape check placement
+
+**Decision**: The first-fire span-shape check filters fixes
+**before** the FR-016 sort and **before** C-1 overlap dedup, not
+inside the pass-1 dispatch loop.
+
+Rationale (architect pre-flight §5): filtering early is cleaner —
+dropped fixes never enter the sort or the dedup, and the rejection
+is recorded in the audit stream as "0 fixes from this rule for this
+marking" rather than "1 fix dropped late." The dispatch loop
+(rust pre-flight Q10) sees only pre-filtered fixes.
+
+Implementation: place the filter immediately after
+`synthesize_fixes` returns, inside `TwoPassFixer::run_pass1_localized`.
+The predicate `span_is_within_marking(inner, outer) :=
+inner.start >= outer.start && inner.end <= outer.end` (rust
+pre-flight Q10) is correct; endpoints inclusive on both sides
+because a fix exactly matching a token's boundaries is still
+sub-token-shape.
+
+```rust
+let pass1_fixes: Vec<SynthesizedFix> = synthesized
+    .into_iter()
+    .filter(|sf| {
+        if !span_is_within_marking(sf.span, sf.marking_span) {
+            tracing::error!(rule_id = %sf.rule, span = ?sf.span,
+                marking_span = ?sf.marking_span,
+                "Phase::Localized rule emitted non-sub-token span; dropping fix");
+            debug_assert!(false,
+                "Localized rule '{}' emitted span {:?} outside marking {:?}",
+                sf.rule, sf.span, sf.marking_span);
+            return false;
+        }
+        true
+    })
+    .collect();
+```
+
+Position in `run_pass1_localized`: between `synthesize_fixes` and
+the FR-016 sort, before C-1 dedup.
+
+---
+
+## D-7.17 `MessageArgs` destructure-pin update is mandatory in 7b
+
+**Decision**: PR 7b commit that adds `MessageArgs.contributing_rule_ids`
+MUST update `crates/rules/tests/message_args_closed_set.rs`'s
+exhaustive destructure pattern in the SAME commit.
+
+Rationale (rust pre-flight Q5): the closed-set destructure pattern
+is the safety net that catches drift toward "and here's what went
+wrong" string fields. Failing to update it produces `E0027` at
+build time; that is the intended behavior — the build break IS the
+gate. The reviewer panel should verify the test was updated, not
+worked around.
+
+The new destructure arm asserts `contributing_rule_ids == SmallVec::new()`
+for `MessageArgs::default()` and asserts the populated form for the
+R002 case.
