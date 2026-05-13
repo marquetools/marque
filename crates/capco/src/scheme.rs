@@ -3240,6 +3240,7 @@ impl CapcoScheme {
         &self,
         attrs: &CanonicalAttrs,
         candidate_span: marque_ism::Span,
+        fix_scope: marque_scheme::Scope,
         severity_override: Option<marque_rules::Severity>,
     ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
         // FR-008 early-out — `Off` suppresses the entire catalog.
@@ -3258,7 +3259,7 @@ impl CapcoScheme {
             if !(row.presence)(attrs) {
                 continue;
             }
-            for mut diag in sci_per_system_emit(attrs, candidate_span, row) {
+            for mut diag in sci_per_system_emit(attrs, candidate_span, fix_scope, row) {
                 if let Some(sev) = severity_override {
                     diag.severity = sev;
                 }
@@ -5343,11 +5344,15 @@ pub(crate) enum SciPerSystemKind {
     /// The `candidate_span` argument is the full marking-scope span
     /// (portion or banner) that the engine's `synthesize_fixes` path
     /// uses to look up the parsed marking for `apply_intent` +
-    /// `render_canonical`.
+    /// `render_canonical`. `fix_scope` is the scope discriminator
+    /// embedded in any `FactAdd` / `Recanonicalize` intent the row
+    /// emits — `Scope::Portion` for portion candidates, `Scope::Page`
+    /// for banner candidates.
     Custom(
         fn(
             &marque_ism::CanonicalAttrs,
             marque_ism::Span,
+            marque_scheme::Scope,
             &SciPerSystemRow,
         ) -> Vec<marque_rules::Diagnostic<CapcoScheme>>,
     ),
@@ -5518,6 +5523,7 @@ pub(crate) fn emit_companion_insert(
     severity: marque_rules::Severity,
     anchor_span: marque_ism::Span,
     candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     last_dissem: Option<marque_ism::Span>,
     token: &str,
     message: String,
@@ -5527,24 +5533,24 @@ pub(crate) fn emit_companion_insert(
         Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
         Severity,
     };
-    use marque_scheme::{FactRef, ReplacementIntent, Scope};
+    use marque_scheme::{FactRef, ReplacementIntent};
     match last_dissem {
         Some(_dissem_span) => {
-            // Insert the companion token via a `FactAdd` intent at
-            // portion scope; the engine's synthesis path applies the
-            // intent to the parsed marking and renders canonical
-            // companion-block bytes. The string-canonical `token`
-            // maps to a CVE `TokenId` via `dissem_token_id_for_form`;
-            // both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/`ORCON-
-            // USGOV` resolve to the same canonical `TokenId` per
-            // CVE — the engine's `render_canonical` decides surface
-            // form from the inferred companion form (portion vs
-            // banner).
+            // Insert the companion token via a `FactAdd` intent.
+            // `fix_scope` is the caller-derived scope: `Scope::Portion`
+            // for portion candidates, `Scope::Page` for banner
+            // candidates (the banner roll-up's per-page projection).
+            // The string-canonical `token` maps to a CVE `TokenId` via
+            // `dissem_token_id_for_form`; both `NF`/`NOFORN` and
+            // `OC`/`ORCON`/`OC-USGOV`/`ORCON-USGOV` resolve to the
+            // same canonical `TokenId` per CVE — the engine's
+            // `render_canonical` decides surface form from the
+            // inferred companion form.
             let token_id = dissem_token_id_for_form(token);
             let intent = FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::FactAdd {
                     token: FactRef::Cve(token_id),
-                    scope: Scope::Portion,
+                    scope: fix_scope,
                 },
                 confidence: Confidence::strict(0.9),
                 feature_ids: Default::default(),
@@ -5660,6 +5666,7 @@ fn presence_tk_compartment_noforn(attrs: &marque_ism::CanonicalAttrs) -> bool {
 fn emit_hcs_o_companions(
     attrs: &marque_ism::CanonicalAttrs,
     candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -5685,6 +5692,7 @@ fn emit_hcs_o_companions(
             row.severity,
             sci_span,
             candidate_span,
+            fix_scope,
             last_dissem,
             form.orcon(),
             "HCS-O requires ORCON (§H.4 p64)".to_owned(),
@@ -5697,6 +5705,7 @@ fn emit_hcs_o_companions(
             row.severity,
             sci_span,
             candidate_span,
+            fix_scope,
             last_dissem,
             form.noforn(),
             "HCS-O requires NOFORN (§H.4 p64)".to_owned(),
@@ -5727,6 +5736,7 @@ fn emit_hcs_o_companions(
 fn emit_hcs_p_sub_companions(
     attrs: &marque_ism::CanonicalAttrs,
     candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -5751,6 +5761,7 @@ fn emit_hcs_p_sub_companions(
             row.severity,
             sci_span,
             candidate_span,
+            fix_scope,
             last_dissem,
             form.orcon(),
             "HCS-P sub-compartment requires ORCON (§H.4 p68)".to_owned(),
@@ -5780,6 +5791,7 @@ fn emit_hcs_p_sub_companions(
 fn emit_si_g_companions(
     attrs: &marque_ism::CanonicalAttrs,
     candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     use crate::rules::{FixDiagnosticParams, make_fix_diagnostic};
@@ -5804,6 +5816,7 @@ fn emit_si_g_companions(
             row.severity,
             sci_span,
             candidate_span,
+            fix_scope,
             last_dissem,
             form.orcon(),
             "SI-G requires ORCON (§H.4 p80)".to_owned(),
@@ -5852,6 +5865,7 @@ fn emit_si_g_companions(
 fn emit_companion_required(
     attrs: &marque_ism::CanonicalAttrs,
     candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
     dissem: marque_ism::DissemControl,
     token_name: &'static str,
@@ -5901,6 +5915,7 @@ fn emit_companion_required(
         row.severity,
         sci_span,
         candidate_span,
+        fix_scope,
         last_dissem,
         companion_text,
         message,
@@ -5953,6 +5968,7 @@ pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSy
 pub(crate) fn sci_per_system_emit(
     attrs: &marque_ism::CanonicalAttrs,
     candidate_span: marque_ism::Span,
+    fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
     if !(row.presence)(attrs) {
@@ -5960,9 +5976,9 @@ pub(crate) fn sci_per_system_emit(
     }
     match row.kind {
         SciPerSystemKind::CompanionRequired { dissem, token_name } => {
-            emit_companion_required(attrs, candidate_span, row, dissem, token_name)
+            emit_companion_required(attrs, candidate_span, fix_scope, row, dissem, token_name)
         }
-        SciPerSystemKind::Custom(emit_fn) => emit_fn(attrs, candidate_span, row),
+        SciPerSystemKind::Custom(emit_fn) => emit_fn(attrs, candidate_span, fix_scope, row),
     }
 }
 
@@ -5992,16 +6008,21 @@ fn sci_per_system_catalog_eval(
     // Pass an empty span as a sentinel; the resulting fix would be
     // dropped by the engine's `!f.span.is_empty()` filter even if a
     // hypothetical caller threaded it through.
-    sci_per_system_emit(attrs, marque_ism::Span::new(0, 0), row)
-        .into_iter()
-        .map(|d| ConstraintViolation {
-            constraint_label: row.name,
-            message: String::from(d.message),
-            citation: row.citation,
-            span: None,
-            severity: None,
-        })
-        .collect()
+    sci_per_system_emit(
+        attrs,
+        marque_ism::Span::new(0, 0),
+        marque_scheme::Scope::Portion,
+        row,
+    )
+    .into_iter()
+    .map(|d| ConstraintViolation {
+        constraint_label: row.name,
+        message: String::from(d.message),
+        citation: row.citation,
+        span: None,
+        severity: None,
+    })
+    .collect()
 }
 
 // ---------------------------------------------------------------------------

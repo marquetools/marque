@@ -77,7 +77,48 @@ fn assert_fix_results_match_byte_for_byte(
             (
                 marque_rules::AppliedFixProposal::FixIntent(ai),
                 marque_rules::AppliedFixProposal::FixIntent(ei),
-            ) => std::mem::discriminant(&ai.replacement) == std::mem::discriminant(&ei.replacement),
+            ) => {
+                // `ReplacementIntent` doesn't derive PartialEq (Confidence
+                // / Message payloads are not equatable). Compare the key
+                // structural fields per variant — discriminant alone
+                // would treat different scopes / fact lists / token IDs
+                // as equal and let real shim/engine mismatches through.
+                use marque_scheme::ReplacementIntent::*;
+                match (&ai.replacement, &ei.replacement) {
+                    (
+                        FactAdd {
+                            token: ta,
+                            scope: sa,
+                        },
+                        FactAdd {
+                            token: tb,
+                            scope: sb,
+                        },
+                    ) => sa == sb && format!("{ta:?}") == format!("{tb:?}"),
+                    (
+                        FactRemove {
+                            facts: fa,
+                            scope: sa,
+                        },
+                        FactRemove {
+                            facts: fb,
+                            scope: sb,
+                        },
+                    ) => {
+                        sa == sb
+                            && fa.len() == fb.len()
+                            && fa.iter().zip(fb.iter()).all(|(a, b)| {
+                                // FactRef doesn't derive PartialEq —
+                                // Debug-format equality is the cheapest
+                                // structural check that catches both
+                                // Cve(TokenId) and OpenVocab divergence.
+                                format!("{a:?}") == format!("{b:?}")
+                            })
+                    }
+                    (Recanonicalize { scope: sa }, Recanonicalize { scope: sb }) => sa == sb,
+                    _ => false,
+                }
+            }
             _ => false,
         };
         assert!(same, "{label}: applied[{i}].proposal shape differs");

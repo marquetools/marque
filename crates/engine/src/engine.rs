@@ -1073,9 +1073,20 @@ impl Engine {
                 // The override value is hoisted once per `lint()` call
                 // above the candidate loop — config is immutable for the
                 // lifetime of the call.
+                // SCI per-system FactAdd scope tracks the candidate's
+                // marking type: a portion candidate emits at portion
+                // scope; a banner candidate emits at page scope (the
+                // FactAdd applies to the banner roll-up's per-page
+                // projection). CAB / page-break candidates don't
+                // reach here — the outer loop filters them earlier.
+                let fix_scope = match candidate.kind {
+                    MarkingType::Portion => marque_scheme::Scope::Portion,
+                    _ => marque_scheme::Scope::Page,
+                };
                 diagnostics.extend(self.scheme.bridge_sci_per_system_diagnostics(
                     &attrs,
                     candidate.span,
+                    fix_scope,
                     e059_override,
                 ));
             }

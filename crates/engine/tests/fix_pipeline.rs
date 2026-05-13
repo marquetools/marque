@@ -241,21 +241,39 @@ fn applied_fix_to_json(
         marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
         marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
     };
+    // Schema-pinned scope projection — mirrors `scope_str` /
+    // `recanon_scope_str` in `marque/src/render.rs` so the snapshot
+    // helper doesn't drift from the production audit JSON shape.
+    fn scope_str(s: marque_scheme::Scope) -> &'static str {
+        match s {
+            marque_scheme::Scope::Portion => "Portion",
+            marque_scheme::Scope::Page => "Page",
+            marque_scheme::Scope::Document => "Document",
+            marque_scheme::Scope::Diff => "Diff",
+        }
+    }
+    fn recanon_scope_str(s: marque_scheme::fix_intent::RecanonScope) -> &'static str {
+        match s {
+            marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
+            marque_scheme::fix_intent::RecanonScope::Page => "Page",
+            marque_scheme::fix_intent::RecanonScope::Document => "Document",
+        }
+    }
     let proposal_json = match &fix.proposal {
         marque_rules::AppliedFixProposal::FixIntent(intent) => {
             let kind_obj = match &intent.replacement {
                 marque_scheme::ReplacementIntent::FactAdd { scope, .. } => json!({
                     "kind": "FactAdd",
-                    "scope": format!("{scope:?}"),
+                    "scope": scope_str(*scope),
                 }),
                 marque_scheme::ReplacementIntent::FactRemove { scope, facts } => json!({
                     "kind": "FactRemove",
-                    "scope": format!("{scope:?}"),
+                    "scope": scope_str(*scope),
                     "fact_count": facts.len(),
                 }),
                 marque_scheme::ReplacementIntent::Recanonicalize { scope } => json!({
                     "kind": "Recanonicalize",
-                    "scope": format!("{scope:?}"),
+                    "scope": recanon_scope_str(*scope),
                 }),
                 _ => json!({"kind": "Unknown"}),
             };
