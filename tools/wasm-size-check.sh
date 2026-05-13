@@ -43,6 +43,25 @@
 # - `tools/wasm-size-check.sh --update-baseline` — re-measure and
 #   overwrite `tools/wasm-size-baseline.txt` with the new size.
 #   Use after intentional binary-size changes.
+#
+# ## Baseline-measurement environment is CI, not local
+#
+# `tools/wasm-size-baseline.txt` MUST reflect the byte count produced
+# by CI's release-web build (Ubuntu runner + pinned rustc + the
+# pinned `jetli/wasm-pack-action` revision the `.github/workflows/ci.yml`
+# WASM job uses). Local builds produce a meaningfully different
+# artifact size — observed at ~100 KB delta between local and CI
+# even when the source tree is identical, driven by rustc inlining
+# decisions / LLVM version / wasm-pack version drift. Running this
+# script locally is fine for a sanity check, but the committed
+# baseline value MUST come from CI to keep the regression-gate
+# comparison apples-to-apples.
+#
+# When updating the baseline: open a draft PR, push the change,
+# read the CI WASM-build job's "current size" log line, commit that
+# value as the new baseline, and push again. The `--update-baseline`
+# flag is the local fallback for emergency unblocks but the resulting
+# value is NOT authoritative until CI confirms it.
 
 set -euo pipefail
 
