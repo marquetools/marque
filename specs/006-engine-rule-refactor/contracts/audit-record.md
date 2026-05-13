@@ -41,9 +41,12 @@ shapes retired entirely; the accept-list is `["marque-mvp-3"]`.
   "classifier_id": "12345",
   "dry_run": false,
   "input": "/path/file.txt",
-  "recognition": 0.95,
-  "runner_up_ratio": null,
-  "features": []
+  "recognition": 0.95
+  // `runner_up_ratio` omitted when None (strict-path fix); only
+  // emitted by decoder-path R001 records.
+  // `features` omitted when empty; emitted as an array of
+  // `{"id": "...", "delta": <f32>}` when the decoder contributes
+  // explicit feature deltas.
 }
 ```
 

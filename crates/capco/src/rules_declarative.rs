@@ -996,7 +996,6 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
         // was previously Error-no-fix (no audit record emitted).
         // The byte-identity gate is vacuous for E021; correctness
         // is exercised by the per-rule shape tests.
-        let _ = attrs;
         vec![Diagnostic::with_fix_at_span(
             self.id(),
             self.default_severity(),

@@ -393,13 +393,6 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             return vec![];
         }
 
-        let current = attrs
-            .rel_to
-            .iter()
-            .map(|t| t.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-
         let message = if !has_usa {
             "REL TO list missing required USA trigraph"
         } else {
@@ -507,27 +500,18 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         // E002's fix output stays canonical when input also has
         // duplicates — under the C-1 overlap guard E002's narrow span
         // would not deduplicate other rules' edits, so we deduplicate
-        // inline to preserve single-pass idempotency.
-        let mut codes: Vec<marque_ism::CountryCode> = attrs.rel_to.to_vec();
-        if !has_usa {
-            codes.push(marque_ism::CountryCode::USA);
-        }
-        // E002 is REL TO only; pass `usa_first: true` per §H.8 p151.
-        let canonical_codes = dedup_country_codes(&codes);
-        let fixed = canonicalize_trigraph_list(&canonical_codes, true).join(", ");
-
         // PR 3c.B Commit 10: structural FixIntent only. The engine's
         // synthesis path (`synthesize_fixes`) re-renders the canonical
-        // bytes from the per-page projection at promotion time. The
-        // pre-cutover dual-population byte-precise FixProposal retired
-        // with the audit-schema bump.
+        // bytes from the per-page projection at promotion time via
+        // `apply_intent` + `render_canonical`. The rule emits the
+        // structural intent only; no byte-precise replacement
+        // computation lives on this path post-cutover (G13).
         //
         //   - USA missing → `FactAdd { USA, Scope::Portion }`
         //     (USA injection is a fact-set addition mandated by §H.8 p151).
         //   - USA not first → `Recanonicalize { Portion }` (the sort
         //     is renderer territory; `render_canonical` absorbs
         //     USA-first alpha by construction).
-        let _ = (current, fixed); // bytes retired from audit per G13
         let intent_scope_recanon = match ctx.marking_type {
             marque_ism::MarkingType::Portion => RecanonScope::Portion,
             _ => RecanonScope::Page,
@@ -1345,11 +1329,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         // Canonicalize: USA first, remaining trigraphs alphabetical.
         let canonical = canonicalize_trigraph_list(&j.countries, true);
 
-        // JOINT span covers the full `Classification` token. Preserve
-        // the `JOINT <level>` prefix by anchoring on the first
-        // source-order country's position in the token text. (The
-        // pre-PR-3c.B JOINT canonicalization helper used the same
-        // trick — retired alongside E020 / E060.)
+        // Locate the `Classification` token to anchor the diagnostic
+        // span; the replacement-bytes computation retired with the
+        // mvp-3 cutover (the engine's `render_canonical` produces
+        // canonical JOINT bytes at fix-application time).
         let Some(classification_tok) = attrs
             .token_spans
             .iter()
@@ -1357,17 +1340,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
         else {
             return vec![];
         };
-        let classification_text = classification_tok.text.as_ref();
-        let actual_first = j.countries[0].as_str();
-        let prefix_end = classification_text
-            .find(actual_first)
-            .unwrap_or(classification_text.len());
-        let prefix = &classification_text[..prefix_end];
 
         let joined_actual: Vec<&str> = j.countries.iter().map(|t| t.as_str()).collect();
         let joined_actual_str = joined_actual.join(" ");
         let joined_canonical_str = canonical.join(" ");
-        let replacement = format!("{prefix}{joined_canonical_str}");
 
         let message = format!(
             "JOINT country list does not lead with USA: [{joined_actual_str}] \
@@ -1376,14 +1352,10 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
              leads with USA; style rule, disable via S003 = \"off\")"
         );
 
-        // PR 3c.B Commit 6 — dual-population per Path C. The
-        // structural `FixIntent` declares `Recanonicalize { Page }`:
-        // JOINT classification rendering is a page-scope concern (the
-        // banner-line classification axis), and the convention is
-        // layered above the renderer's §H.3 pure-alpha default
-        // (Commit 10 will gate the convention via config rather than
-        // re-render at fix-emit time, so the intent stays meaningful
-        // across the cutover).
+        // PR 3c.B Commit 10 — structural FixIntent only. JOINT
+        // classification rendering is a page-scope concern (the
+        // banner-line classification axis); the convention is layered
+        // above the renderer's §H.3 pure-alpha default.
         let citation = concat!(
             "IC convention (not CAPCO mandate) — §H.3 p56 ",
             "prescribes pure alphabetical for JOINT with no USA-first ",
@@ -1392,7 +1364,6 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             "lists. Style rule; configure S003 = \"off\" for strict ",
             "§H.3 conformance.",
         );
-        let _ = (classification_text, replacement); // bytes retired from audit per G13
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
@@ -1959,6 +1930,12 @@ pub(crate) fn canonicalize_trigraph_list(
 /// redundant by construction. Mirrors the rationale block in
 /// `try_rel_to_fuzzy_trigraph_candidates` (decoder side, issue #233)
 /// for why duplicate-creating fuzzy candidates are filtered.
+// Dead-code allow: the only remaining caller is the inline `mod tests`
+// at line 3606, gated `cfg(any())` pending the post-Commit-10 test
+// rewrite. The helper retains its public-crate visibility because
+// future rule emissions on the REL TO axis may consume it; removing
+// it now would force a re-creation when those tests come back online.
+#[allow(dead_code)]
 pub(crate) fn dedup_country_codes(
     codes: &[marque_ism::CountryCode],
 ) -> Vec<marque_ism::CountryCode> {
