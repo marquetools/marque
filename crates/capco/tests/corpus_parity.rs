@@ -194,12 +194,12 @@ fn rule_count_reflects_registration_changes() {
 }
 
 #[test]
-fn phase_3_declares_eleven_page_rewrites_with_citations() {
+fn phase_3_declares_thirteen_page_rewrites_with_citations() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
-        11,
+        13,
         "PR 3b.B (T026b) declared nine page rewrites — the retained \
          `capco/noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3 \
          transmutation entries from `marque-applied.md` (consultant \
@@ -207,8 +207,11 @@ fn phase_3_declares_eleven_page_rewrites_with_citations() {
          stubs (`joint-promotion`, `fgi-absorption`) were retired in \
          PR 3b.B. PR 3c.B Sub-PR 8.F adds two Pattern A NOFORN-supremacy \
          rewrites: `capco/nodis-implies-noforn` (CAPCO-2016 §H.9 p174) \
-         and `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172), \
-         bringing the total to eleven."
+         and `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172). PR 3c.B \
+         Sub-PR 8.F.2 adds two more Pattern A entries: \
+         `capco/sbu-nf-implies-noforn` (CAPCO-2016 §H.9 p178) and \
+         `capco/les-nf-implies-noforn` (CAPCO-2016 §H.9 p185), bringing \
+         the total to thirteen."
     );
     for rw in rewrites {
         assert!(
@@ -232,17 +235,19 @@ fn phase_3_engine_lint_produces_wellformed_result_on_empty_input() {
 }
 
 #[test]
-fn phase_3_scheduler_exposes_eleven_scheduled_rewrites() {
+fn phase_3_scheduler_exposes_thirteen_scheduled_rewrites() {
     // The scheduler produced a topological order at construction
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
     // property, not a declaration-order one. Set is the retained
     // `noforn-clears-rel-to` plus the eight PR 3b.B transmutations
     // plus the two PR 3c.B Sub-PR 8.F Pattern A rewrites
-    // (`capco/nodis-implies-noforn`, `capco/exdis-implies-noforn`).
+    // (`capco/nodis-implies-noforn`, `capco/exdis-implies-noforn`)
+    // plus the two PR 3c.B Sub-PR 8.F.2 Pattern A rewrites
+    // (`capco/sbu-nf-implies-noforn`, `capco/les-nf-implies-noforn`).
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    assert_eq!(scheduled.len(), 11);
+    assert_eq!(scheduled.len(), 13);
     let mut names: Vec<&str> = scheduled.to_vec();
     names.sort();
     assert_eq!(
@@ -253,10 +258,12 @@ fn phase_3_scheduler_exposes_eleven_scheduled_rewrites() {
             "capco/fgi-rollup-on-us-contact",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/joint-cross-class-rollup",
+            "capco/les-nf-implies-noforn",
             "capco/les-nf-transmutes-on-classified-contact",
             "capco/nodis-implies-noforn",
             "capco/noforn-clears-rel-to",
             "capco/orcon-nato-to-us-orcon-on-us-contact",
+            "capco/sbu-nf-implies-noforn",
             "capco/sbu-nf-transmutes-on-classified-contact",
             "capco/us-presence-promotes-bare-fgi-attribution",
         ]
@@ -282,6 +289,10 @@ fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
     //     `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172) — each
     //     declares `writes = [CAT_DISSEM]`, so the same DISSEM-writer
     //     precedence invariant applies.
+    //   - PR 3c.B Sub-PR 8.F.2 Pattern A rewrites —
+    //     `capco/sbu-nf-implies-noforn` (CAPCO-2016 §H.9 p178) and
+    //     `capco/les-nf-implies-noforn` (CAPCO-2016 §H.9 p185) — same
+    //     `writes = [CAT_DISSEM]` annotation, same precedence invariant.
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
     let nf = scheduled
@@ -294,6 +305,8 @@ fn phase_3_noforn_clearer_runs_after_dissem_transmutations() {
         "capco/les-nf-transmutes-on-classified-contact",
         "capco/nodis-implies-noforn",
         "capco/exdis-implies-noforn",
+        "capco/sbu-nf-implies-noforn",
+        "capco/les-nf-implies-noforn",
     ] {
         let pos = scheduled
             .iter()
