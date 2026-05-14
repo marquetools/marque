@@ -74,6 +74,12 @@
       "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":21,\"end\":29},\"message\":\"REL TO list missing required USA trigraph\",\"citation\":\"CAPCO-2016 §H.8 (REL TO, p150–151)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
+      "name": "nato_longhand_portion.txt",
+      "category": "invalid",
+      "input": "(//NATO S//NOFORN)\n",
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.9959951,\"migration_ref\":null}}\n"
+    },
+    {
       "name": "nodis_exdis_conflict.txt",
       "category": "invalid",
       "input": "SECRET//NOFORN//NODIS/EXDIS\n",

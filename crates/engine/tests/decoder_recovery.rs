@@ -1578,7 +1578,12 @@ use marque_rules::confidence::FeatureId;
 
 /// Return the `NatoClassification` from a marking, or panic.
 fn nato_class(m: &marque_capco::CapcoMarking) -> NatoClassification {
-    match m.0.classification.as_ref().expect("marking has no classification") {
+    match m
+        .0
+        .classification
+        .as_ref()
+        .expect("marking has no classification")
+    {
         MarkingClassification::Nato(n) => *n,
         other => panic!("expected Nato classification, got {other:?}"),
     }
@@ -1696,9 +1701,11 @@ fn nato_secret_long_form_folds_to_ns() {
         "NATO SECRET must fold to NS (NatoSecret)"
     );
     // NOFORN must survive the fold
-    let nf_present = marking.0.dissem_controls.iter().any(|d| {
-        matches!(d, marque_ism::DissemControl::Nf)
-    });
+    let nf_present = marking
+        .0
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     assert!(nf_present, "NOFORN must survive the NATO SECRET fold");
 }
 
@@ -1719,9 +1726,11 @@ fn nato_top_secret_long_form_folds_to_cts() {
         NatoClassification::CosmicTopSecret,
         "NATO TOP SECRET must fold to CTS (CosmicTopSecret)"
     );
-    let nf_present = marking.0.dissem_controls.iter().any(|d| {
-        matches!(d, marque_ism::DissemControl::Nf)
-    });
+    let nf_present = marking
+        .0
+        .dissem_controls
+        .iter()
+        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     assert!(nf_present, "NOFORN must survive the NATO TOP SECRET fold");
 }
 
@@ -1746,8 +1755,11 @@ fn nato_in_rel_to_list_is_not_folded() {
                     );
                 }
                 Some(MarkingClassification::Us(lvl)) => {
-                    assert_eq!(*lvl, marque_ism::Classification::Secret,
-                        "REL TO USA, NATO should parse as US Secret");
+                    assert_eq!(
+                        *lvl,
+                        marque_ism::Classification::Secret,
+                        "REL TO USA, NATO should parse as US Secret"
+                    );
                 }
                 other => panic!("unexpected classification: {other:?}"),
             }
@@ -1784,9 +1796,7 @@ fn nato_in_fgi_list_is_not_folded() {
         Parsed::Ambiguous { candidates } => {
             for c in &candidates {
                 if let Some(MarkingClassification::Nato(_)) = c.marking.0.classification.as_ref() {
-                    panic!(
-                        "fold must NOT inject Nato classification into FGI-list candidate"
-                    );
+                    panic!("fold must NOT inject Nato classification into FGI-list candidate");
                 }
             }
         }

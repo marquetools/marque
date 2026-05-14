@@ -91,7 +91,8 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
 use marque_ism::{
-    CapcoTokenSet, Classification, SciControl, SciControlBare, SciControlSystem,
+    CapcoTokenSet, Classification, MarkingClassification, NatoClassification, SciControl,
+    SciControlBare, SciControlSystem,
     span::{MarkingCandidate, MarkingType, Span},
     token_set::TokenSet as _,
 };
@@ -824,6 +825,50 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
                 delta: -0.3,
             });
             repaired
+        }
+        None => repaired_text,
+    };
+
+    // ---- NATO longhand fold (T129, CAPCO-2016 §G.1 Table 4 pp 36-38).
+    //      Recovers portions like `(NATO S)` / `(NATO S//NF)` by
+    //      substituting the canonical abbreviation (`NS`, `CTS`, etc.)
+    //      before the fuzzy-correction pass operates on it.
+    //
+    //      Fires AFTER SCI repair so the input is already in
+    //      clean-delimiter form, and BEFORE fuzzy_correct_tokens so
+    //      the post-fold canonical tokens (`NS`, `CTS`, …) pass through
+    //      fuzzy correction unchanged. The `SupersededToken` feature
+    //      records the fold in the audit trail. Delta is **zero** (not
+    //      `-0.2` like the COMINT→SI precedent at ~line 1267) because
+    //      the NATO fold is an equivalence transform between two valid
+    //      surface forms, not a deprecated-token penalty. See the
+    //      wire-site comment below for the null-hypothesis interaction
+    //      that motivated dropping the penalty to 0.0.
+    //
+    //      Kind is re-derived from the trimmed text because
+    //      `generate_candidate_bytes` does not carry the `MarkingType`
+    //      inferred by the caller. The same heuristic used by
+    //      `infer_marking_type`: leading `(` ⇒ Portion.
+    let local_kind = if trimmed.starts_with('(') {
+        MarkingType::Portion
+    } else {
+        MarkingType::Banner
+    };
+    let repaired_text = match try_nato_fold(&repaired_text, local_kind) {
+        Some(folded) => {
+            // Delta 0.0: the fold restores a canonical abbreviated form from a
+            // valid longhand variant (`(NATO S)` → `(//NS)`). This is an
+            // equivalence transform, not a superseded-token penalization. A
+            // negative delta here would cause `NR`/`NC` (which use US-equivalent
+            // single-letter tokens `"R"`/`"C"` with high prose frequency) to fail
+            // the null-hypothesis filter even after `canonical_tokens_for` maps to
+            // the low-prose-frequency NATO abbreviation form. The `SupersededToken`
+            // feature still appears in the audit trail for provenance (T129).
+            delim_features.push(FeatureEntry {
+                id: FeatureId::SupersededToken,
+                delta: 0.0,
+            });
+            folded
         }
         None => repaired_text,
     };
@@ -3241,6 +3286,186 @@ fn repair_sci_token(token: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// NATO longhand → canonical portion fold
+// ---------------------------------------------------------------------------
+
+/// Mapping from NATO longhand classification level tokens to canonical
+/// [`NatoClassification`] variants. Keyed on the token string (abbreviation
+/// or full-word form); the canonical portion string (`NS`, `CTS`, etc.) is
+/// derived via [`NatoClassification::portion_str`] so that a future
+/// enum-variant addition (ATOMAL sub-levels, PR 9 T134 BOHEMIA/BALK) is
+/// enough to extend coverage without touching this fold logic.
+///
+/// Rows ordered: abbreviations first (U/R/C/S/TS), then full words. The
+/// lookup is a linear scan over 10 rows — the total set is small and
+/// bounded by the five standard NATO classification levels.
+///
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register).
+const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
+    // Abbreviation forms (single-letter / two-letter)
+    ("U", NatoClassification::NatoUnclassified),
+    ("R", NatoClassification::NatoRestricted),
+    ("C", NatoClassification::NatoConfidential),
+    ("S", NatoClassification::NatoSecret),
+    ("TS", NatoClassification::CosmicTopSecret),
+    // Full-word forms ("TOP SECRET" is a two-word compound handled separately)
+    ("UNCLASSIFIED", NatoClassification::NatoUnclassified),
+    ("RESTRICTED", NatoClassification::NatoRestricted),
+    ("CONFIDENTIAL", NatoClassification::NatoConfidential),
+    ("SECRET", NatoClassification::NatoSecret),
+    // Note: "TOP SECRET" requires two-token detection; see `fold_nato_segment`.
+    // "TOP" alone is not a valid abbreviation and is excluded from this table.
+];
+
+/// Fold NATO longhand classification levels into canonical short forms.
+///
+/// Recovers inputs the strict parser doesn't recognize (e.g. portion
+/// `(//NATO S)` for which CAPCO §G.1 Table 4 pp 36-38 specifies the
+/// canonical form `(//NS)`). The fold fires only when `NATO` appears
+/// as the first non-delimiter token of a `//`-separated segment, so
+/// tetragraph occurrences inside `REL TO USA, NATO` or FGI lists are
+/// not touched.
+///
+/// For `MarkingType::Portion`, NATO long form → portion abbreviation:
+///   NATO U → NU, NATO R → NR, NATO C → NC, NATO S → NS,
+///   NATO TS → CTS, NATO UNCLASSIFIED → NU, … (long-word forms too).
+///   NATO TOP SECRET → CTS (two-word compound, handled explicitly).
+/// For `MarkingType::Banner`/`Cab`/`PageBreak`, banner forms are
+/// already canonical; the function returns `None` on banner input
+/// (let the existing strict reorder path handle it).
+///
+/// **Idempotence**: returns `None` when no segment was changed (including
+/// when the input is already canonical, e.g. `(//NS//NF)`).
+///
+/// **Pure function**: no captures, no global state. `Send + Sync` follows
+/// automatically. Pre-uppercased input assumed (caller passes the
+/// post-`normalize_delimiters_and_case` string).
+///
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register).
+fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
+    // Banner, CAB, and PageBreak inputs are already canonical or handled
+    // by the strict path. The fold is portion-only meaningful.
+    if kind != MarkingType::Portion {
+        return None;
+    }
+    // All NATO classification tokens are pure ASCII; non-ASCII input
+    // cannot contain them.
+    if !text.is_ascii() {
+        return None;
+    }
+
+    // Strip surrounding parens (portion form). The leading `(` and
+    // trailing `)` are preserved and re-added after fold.
+    let (has_parens, inner) = if text.starts_with('(') && text.ends_with(')') {
+        (true, &text[1..text.len() - 1])
+    } else {
+        (false, text)
+    };
+
+    // Split into `//`-separated segments. A leading `//` (canonical
+    // non-US form) produces an empty first element; we track this to
+    // avoid adding a spurious second `//` prefix.
+    let segments: Vec<&str> = inner.split("//").collect();
+    let had_leading_empty = segments.first().map(|s| s.is_empty()).unwrap_or(false);
+
+    let mut any_changed = false;
+    let mut first_segment_folded = false;
+    let mut result_segments: Vec<String> = Vec::with_capacity(segments.len());
+
+    for (i, seg) in segments.iter().enumerate() {
+        match fold_nato_segment(seg) {
+            Some(folded) => {
+                any_changed = true;
+                if i == 0 {
+                    first_segment_folded = true;
+                }
+                result_segments.push(folded);
+            }
+            None => {
+                result_segments.push(seg.to_string());
+            }
+        }
+    }
+
+    if !any_changed {
+        return None;
+    }
+
+    let rejoined = result_segments.join("//");
+
+    // For portions that arrived without a leading `//` (e.g., `(NATO S)` or
+    // `(NATO S//NF)`), the fold converts the first segment to a canonical
+    // NATO abbreviation. Non-US classifications require the `//` prefix per
+    // CAPCO-2016 §A.6 so the strict parser enters the non-US classification
+    // code path. We add it only when the first segment was the one folded
+    // AND the original had no leading empty segment (= no prior `//`).
+    let inner_out = if first_segment_folded && !had_leading_empty {
+        format!("//{rejoined}")
+    } else {
+        rejoined
+    };
+
+    if has_parens {
+        Some(format!("({inner_out})"))
+    } else {
+        Some(inner_out)
+    }
+}
+
+/// Attempt to fold a single `//`-separated segment that starts with the
+/// NATO keyword.
+///
+/// Returns `Some(canonical)` when the segment begins `NATO <level>` (with
+/// `<level>` either an abbreviation from [`NATO_LONGHAND_FOLD`] or the
+/// two-word compound `TOP SECRET`). Returns `None` for all other inputs,
+/// including segments whose first token is not `NATO` (guard against
+/// false-positives inside `REL TO USA, NATO` or FGI country lists).
+///
+/// The `rest` portion of the segment after `NATO <level>` is preserved
+/// verbatim — this handles the unusual (but possible) case where a segment
+/// contains a NATO level token followed by additional content that should
+/// survive the fold unchanged.
+fn fold_nato_segment(seg: &str) -> Option<String> {
+    let trimmed = seg.trim();
+    // Segment-leading guard: the fold ONLY fires when the first
+    // non-delimiter token is the literal keyword `NATO`.
+    let after_nato = trimmed.strip_prefix("NATO ")?;
+    let after_nato = after_nato.trim_start();
+
+    // Special case: "TOP SECRET" is a two-word compound that cannot be
+    // matched as a single entry in `NATO_LONGHAND_FOLD`. Detect it
+    // explicitly before the single-token path.
+    if let Some(after_ts) = after_nato.strip_prefix("TOP SECRET") {
+        let rest = after_ts.trim_start();
+        let canonical = NatoClassification::CosmicTopSecret.portion_str();
+        return Some(if rest.is_empty() {
+            canonical.to_owned()
+        } else {
+            format!("{canonical} {rest}")
+        });
+    }
+
+    // Single-token level: split at the next whitespace to isolate the
+    // level token, then look it up in `NATO_LONGHAND_FOLD`.
+    let (level_token, rest) = match after_nato.find(char::is_whitespace) {
+        Some(pos) => (&after_nato[..pos], after_nato[pos..].trim_start()),
+        None => (after_nato, ""),
+    };
+
+    let nato_level = NATO_LONGHAND_FOLD
+        .iter()
+        .find(|&&(key, _)| key == level_token)
+        .map(|&(_, level)| level)?;
+
+    let canonical = nato_level.portion_str();
+    Some(if rest.is_empty() {
+        canonical.to_owned()
+    } else {
+        format!("{canonical} {rest}")
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Token reordering
 // ---------------------------------------------------------------------------
 
@@ -4123,20 +4348,34 @@ fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'stat
     let mut tokens: BTreeSet<&'static str> = BTreeSet::new();
 
     if let Some(class) = attrs.classification.as_ref() {
-        // Pick the classification form that matches the marking
-        // shape: portions use the abbreviation (`S`, `C`, `U`, `R`,
-        // `TS`), banners and CABs use the full word (`SECRET`,
-        // `CONFIDENTIAL`, etc.). Pre-#258 this always used the
-        // banner form, which silently mismatched the input shape on
-        // portion-marking inputs and made the per-token marking-y
-        // delta `log P(token|marking) − log P(token|prose)` compare
-        // the wrong row in the priors tables — the prose-side prior
-        // for `SECRET` (very rare in prose) instead of `S` (common
-        // in prose), so the null hypothesis could never win on
-        // prose-shaped portion inputs like Federalist-corpus
-        // `Notwithstanding (s) the early prevalence`.
+        // Pick the classification token that matches the marking shape and
+        // classification system.
+        //
+        // For US/FGI/Joint portions: single-letter abbrevs (`S`, `C`, `U`, `TS`)
+        //   via `effective_level().portion_str()`. Pre-#258 this always used the
+        //   banner form; the portion form correctly matches low-prose-frequency
+        //   single-letter tokens vs single-letter prose tokens, enabling the
+        //   null-hypothesis filter to reject prose inputs like Federalist `(s)`.
+        //
+        // For NATO portions: use the NATO-specific abbreviation (`NS`, `NR`, `NC`,
+        //   `NU`, `CTS`) directly from `NatoClassification::portion_str()`. Using
+        //   `effective_level().portion_str()` here would yield `"R"`, `"C"`, etc.
+        //   (US equivalents), which have high prose frequency (e.g., `"R"` appears
+        //   5 797× in prose vs 1× in marking corpus), causing the null-hypothesis
+        //   filter to reject valid NATO-folded portions like `(//NR)`. The NATO
+        //   abbreviations have near-zero prose frequency and fall to
+        //   `MISSING_TOKEN_LOG_PRIOR` (−12.0) on both sides, giving a neutral
+        //   (zero) marking-y delta rather than a prose-weighted penalty. T129 /
+        //   #260 fix; companion to `NATO_PORTION_FORMS` in `marque-ism::token_set`.
+        //
+        // For banner/CAB/PageBreak: always use the full-word form regardless of
+        //   classification system (fold is portion-only; banners reach here via
+        //   the non-folding strict-recognizer path or decoder direct banner inputs).
         let class_token = match kind {
-            MarkingType::Portion => class.effective_level().portion_str(),
+            MarkingType::Portion => match class {
+                MarkingClassification::Nato(n) => n.portion_str(),
+                _ => class.effective_level().portion_str(),
+            },
             MarkingType::Banner | MarkingType::Cab | MarkingType::PageBreak => {
                 class.effective_level().banner_str()
             }
@@ -6528,6 +6767,109 @@ mod tests {
         assert_eq!(
             &*sar.programs[0].identifier, "BUTTER POPCORN",
             "Full-form program identifier must round-trip; got {sar:?}",
+        );
+    }
+
+    // ----- NATO longhand fold unit tests (T130) -----
+    //
+    // These tests exercise the segment-walking logic of `fold_nato_segment`
+    // and `try_nato_fold` directly. End-to-end decode tests live in
+    // `crates/engine/tests/decoder_recovery.rs` (T130 blocks).
+    //
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+
+    #[test]
+    fn fold_nato_segment_abbrev_s_yields_ns() {
+        assert_eq!(
+            fold_nato_segment("NATO S").as_deref(),
+            Some("NS"),
+            "NATO S must fold to NS"
+        );
+    }
+
+    #[test]
+    fn fold_nato_segment_abbrev_ts_yields_cts() {
+        assert_eq!(
+            fold_nato_segment("NATO TS").as_deref(),
+            Some("CTS"),
+            "NATO TS must fold to CTS (COSMIC TOP SECRET)"
+        );
+    }
+
+    #[test]
+    fn fold_nato_segment_full_word_top_secret_yields_cts() {
+        assert_eq!(
+            fold_nato_segment("NATO TOP SECRET").as_deref(),
+            Some("CTS"),
+            "NATO TOP SECRET must fold to CTS"
+        );
+    }
+
+    #[test]
+    fn fold_nato_segment_returns_none_for_non_nato_segment() {
+        // Segment-leading guard: segments not starting with "NATO " must
+        // not be folded.
+        assert!(
+            fold_nato_segment("NS").is_none(),
+            "canonical NATO abbrev must not re-fold"
+        );
+        assert!(
+            fold_nato_segment("NOFORN").is_none(),
+            "non-NATO segment must not fold"
+        );
+        assert!(fold_nato_segment("SI").is_none(), "SCI token must not fold");
+        assert!(
+            fold_nato_segment("REL TO USA, NATO").is_none(),
+            "NATO-in-list must not fold"
+        );
+    }
+
+    #[test]
+    fn fold_nato_segment_returns_none_for_empty() {
+        assert!(
+            fold_nato_segment("").is_none(),
+            "empty segment must not fold"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_portion_without_leading_slash_gets_slash_added() {
+        // `(NATO S)` → inner = `NATO S` → segments = [`NATO S`]
+        // → fold to `NS` → no leading empty → add `//` → `(//NS)`
+        assert_eq!(
+            try_nato_fold("(NATO S)", MarkingType::Portion).as_deref(),
+            Some("(//NS)"),
+            "fold must add leading // for non-US classification position"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_portion_with_leading_slash_preserves_it() {
+        // `(//NATO S//NF)` → inner = `//NATO S//NF` → segments = [``, `NATO S`, `NF`]
+        // → fold to [``, `NS`, `NF`] → had_leading_empty=true → no extra //
+        // → `(//NS//NF)`
+        assert_eq!(
+            try_nato_fold("(//NATO S//NF)", MarkingType::Portion).as_deref(),
+            Some("(//NS//NF)"),
+            "fold must preserve existing leading //"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_returns_none_for_canonical_input() {
+        // Already canonical: `(//NS//NF)` — no `NATO ` segment → None
+        assert!(
+            try_nato_fold("(//NS//NF)", MarkingType::Portion).is_none(),
+            "canonical input must return None (idempotent)"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_returns_none_for_banner_kind() {
+        // Banner inputs are handled by the strict path; fold must return None.
+        assert!(
+            try_nato_fold("NATO SECRET//NOFORN", MarkingType::Banner).is_none(),
+            "banner kind must always return None from NATO fold"
         );
     }
 }

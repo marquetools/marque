@@ -152,10 +152,30 @@ const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
 /// excessive false-positive fuzzy corrections on unrelated text.
 const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 
+/// NATO portion-form abbreviations not present in `ALL_CVE_TOKENS`.
+///
+/// The five base NATO classification levels use short portion abbreviations
+/// (`NU`, `NR`, `NC`, `NS`, `CTS`) that are NOT emitted by ODNI CVE XML
+/// (which records only vocabulary enum values, not the derived portion forms).
+/// Without these entries in the fuzzy-correction vocabulary, `fuzzy_correct_tokens`
+/// in `marque-engine` cannot distinguish `CTS` (canonical COSMIC TOP SECRET
+/// portion form) from `TS` (edit-distance 1) and silently rewrites it, destroying
+/// the NATO-longhand fold's output.
+///
+/// Round-trip safety: the strict parser in `marque-core` accepts `(//NU)`,
+/// `(//NR)`, `(//NC)`, `(//NS)`, `(//CTS)` as valid non-US portion markings
+/// mapping to the corresponding [`crate::NatoClassification`] variant. Adding
+/// these tokens to the correction vocab makes `FuzzyVocabMatcher::correct`
+/// return `None` for exact-match inputs (binary-search fast path), causing
+/// `fuzzy_correct_tokens` to pass them through unchanged (Case 4 verbatim).
+///
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+const NATO_PORTION_FORMS: &[&str] = &["CTS", "NC", "NR", "NS", "NU"];
+
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
 /// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`] ∪
 /// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`] ∪
-/// [`AEA_SCI_STRUCTURAL_KEYWORDS`],
+/// [`AEA_SCI_STRUCTURAL_KEYWORDS`] ∪ [`NATO_PORTION_FORMS`],
 /// sorted and deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
@@ -200,6 +220,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(NATO_CLASSIFICATION_KEYWORDS);
     v.extend_from_slice(AEA_SCI_STRUCTURAL_KEYWORDS);
+    v.extend_from_slice(NATO_PORTION_FORMS);
     v.sort();
     v.dedup();
     v

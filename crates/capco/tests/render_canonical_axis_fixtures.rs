@@ -110,11 +110,32 @@ fn classification_fgi_concealed_banner() {
 
 #[test]
 fn classification_nato_banner() {
-    // Authority: CAPCO-2016 §H.3 + Table 4 §3 p36 — NATO Secret
-    // banner = `NATO SECRET`.
+    // Authority: CAPCO-2016 §A.6 p15 + §H.3 p55 + Table 4 §3 p36.
+    // Non-US markings must start with `//` (the absent US-classification
+    // slot per §A.6 p15). NATO Secret banner = `//NATO SECRET`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
-    assert_eq!(render_banner(a), "NATO SECRET");
+    assert_eq!(render_banner(a), "//NATO SECRET");
+}
+
+#[test]
+fn classification_nato_portion() {
+    // Authority: CAPCO-2016 §A.6 p15 + §G.1 Table 4 pp 36-38.
+    // Non-US markings start with `//`; NATO Secret portion = `//NS`.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+    assert_eq!(render_portion(a), "//NS");
+}
+
+#[test]
+fn classification_nato_cosmic_top_secret_portion() {
+    // Authority: CAPCO-2016 §A.6 p15 + §G.1 Table 4 pp 36-38.
+    // COSMIC TOP SECRET portion abbreviation = `CTS`; with `//` prefix: `//CTS`.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Nato(
+        NatoClassification::CosmicTopSecret,
+    ));
+    assert_eq!(render_portion(a), "//CTS");
 }
 
 #[test]
