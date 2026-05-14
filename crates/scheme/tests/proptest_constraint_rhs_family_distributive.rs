@@ -291,6 +291,52 @@ proptest! {
             [1u8, 3, 5, 7].iter().filter(|&&n| (bits >> n) & 1 == 1).collect::<Vec<_>>(),
             family_violations.len()
         );
+
+        // IDENTITY check (Copilot PR 3.7 review #9): compare the
+        // normalized violation IDENTITIES, not just counts. A broken
+        // ConflictsWithFamily impl could emit the right count for the
+        // wrong matching tokens (e.g., always emit one violation
+        // matching token-index 1 regardless of which odd-indexed bits
+        // are actually present). The identity check normalizes each
+        // violation to its message string (which encodes the matching
+        // RHS token's Debug shape — `TokenRef::Token(TokenId(N))`)
+        // and asserts the same sorted multiset on both sides.
+        let normalize = |vs: &[marque_scheme::ConstraintViolation]| -> Vec<String> {
+            let mut out: Vec<String> = vs
+                .iter()
+                .map(|v| format!("{}|{}", v.constraint_label, v.message))
+                .collect();
+            out.sort();
+            out
+        };
+        // The enumerated form's messages are `"conflicting tokens: <LHS> and <RHS>"`
+        // (per `marque_scheme::constraint::evaluate`'s `Conflicts` arm); the family
+        // form's messages have a trailing `" (family match)"` suffix to mark the
+        // row source. The matched (LHS, RHS) pair text is verbatim in both;
+        // stripping the suffix from family messages aligns them with enumerated
+        // messages for an apples-to-apples multiset comparison. Same multiset →
+        // same set of matching (LHS, RHS) pairs → distributive equivalence.
+        let strip_family_suffix = |s: &str| -> String {
+            s.strip_suffix(" (family match)").map(str::to_owned).unwrap_or_else(|| s.to_owned())
+        };
+        let mut family_pairs: Vec<String> = family_violations
+            .iter()
+            .map(|v| strip_family_suffix(&v.message))
+            .collect();
+        let mut enum_pairs: Vec<String> = enum_violations.iter().map(|v| v.message.clone()).collect();
+        family_pairs.sort();
+        enum_pairs.sort();
+        prop_assert_eq!(
+            family_pairs.clone(),
+            enum_pairs.clone(),
+            "marking bits={:08b}: family form's matched-token set differs from enumerated form's. \
+             family (suffix-stripped)={:?} enumerated={:?}",
+            bits, family_pairs, enum_pairs
+        );
+        // Silence unused-variable warning from the normalize closure
+        // (kept for future identity-check variants that include the
+        // constraint_label in the comparison).
+        let _ = normalize(&family_violations);
     }
 }
 

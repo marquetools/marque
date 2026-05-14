@@ -2403,59 +2403,80 @@ impl CapcoScheme {
                 name: "E038/nodis-or-exdis-requires-noforn",
                 label: "CAPCO-2016 §H.9 p172 + p174",
             },
-            // ---- E054 + E055 (compacted): RELIDO ⊥ FD&R-dominator-family
+            // ---- E054: RELIDO ⊥ NOFORN (§H.8 p154) ------------------
             //
-            // PR 3.7 Stage D (T108b): two enumerated Conflicts rows (E054:
-            // RELIDO ⊥ NOFORN, E055: RELIDO ⊥ DISPLAY ONLY) compacted into
-            // one ConflictsWithFamily row using the `is_fdr_dominator`
-            // predicate. Distributive equivalence: for any marking that
-            // carried RELIDO with NOFORN or RELIDO with DISPLAY ONLY, the
-            // ConflictsWithFamily row fires once per matching present token
-            // — identical diagnostic set to the two enumerated rows.
+            // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
+            // "Cannot be used with NOFORN or DISPLAY ONLY."
             //
-            // Source: §H.8 RELIDO entry p154, Relationship(s) to Other
-            // Markings: "Cannot be used with NOFORN or DISPLAY ONLY."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
-            // REL TO (CAT_REL_TO) is added via the predicate's category
-            // arm per `marque-applied.md` §3.4.2 — RELIDO is structurally
-            // incompatible with any REL TO list per the FD&R chain
-            // (§D.2 Table 3 p28).
+            // PR 3.7 update: this row STAYS as an enumerated `Conflicts`
+            // (reverted from Stage D's compaction). The wrapper layer
+            // (`rules_declarative.rs::E054RelidoConflictsNoforn`) dispatches
+            // by name through `violations_for(attrs, "E054/...")`; without
+            // an enumerated row here, the wrapper silently emits no
+            // diagnostics. PR 4 (T112) will rebuild the wrapper dispatch
+            // to be family-aware and then retire this row. Per plan rev 1
+            // §0 "Non-scope (deferred to PR 4): RELIDO Conflicts compaction".
+            Constraint::Conflicts {
+                name: "E054/relido-conflicts-noforn",
+                left: TokenRef::Token(TOK_RELIDO),
+                right: TokenRef::Token(TOK_NOFORN),
+                label: "CAPCO-2016 §H.8 p154",
+            },
+            // ---- E055: RELIDO ⊥ DISPLAY ONLY (§H.8 p154) ------------
             //
-            // The `scheme_equivalence` test at
-            // `crates/capco/tests/scheme_equivalence.rs` asserts that the
-            // diagnostic set is identical to the pre-compaction enumerated
-            // form for all inputs that triggered E054/E055.
+            // §H.8 RELIDO entry p154, same Relationship(s) prose.
+            Constraint::Conflicts {
+                name: "E055/relido-conflicts-display-only",
+                left: TokenRef::Token(TOK_RELIDO),
+                right: TokenRef::Token(TOK_DISPLAY_ONLY),
+                label: "CAPCO-2016 §H.8 p154",
+            },
+            // ---- E056: ORCON ⊥ RELIDO (§H.8 p136) -------------------
             //
-            // LHS = asserting token (RELIDO at p154); family predicate
-            // matches the RHS tokens per PM Q1 resolution.
+            // §H.8 ORCON entry p136: "May not be used with RELIDO."
+            Constraint::Conflicts {
+                name: "E056/orcon-conflicts-relido",
+                left: TokenRef::Token(TOK_ORCON),
+                right: TokenRef::Token(TOK_RELIDO),
+                label: "CAPCO-2016 §H.8 p136",
+            },
+            // ---- E057: ORCON-USGOV ⊥ RELIDO (§H.8 p140) -------------
+            //
+            // §H.8 ORCON-USGOV entry p140: same exclusion as ORCON.
+            Constraint::Conflicts {
+                name: "E057/orcon-usgov-conflicts-relido",
+                left: TokenRef::Token(TOK_ORCON_USGOV),
+                right: TokenRef::Token(TOK_RELIDO),
+                label: "CAPCO-2016 §H.8 p140",
+            },
+            // ---- capco/relido-conflicts-fdr-family — ADDITIVE primitive showcase (PR 3.7 T108b)
+            //
+            // Distributively-equivalent to E054 + E055 + the FD&R-chain
+            // category extension (REL TO). Exercises the new
+            // `ConflictsWithFamily` primitive without replacing the
+            // enumerated diagnostic-emission path. Reachable via the
+            // generic `marque_scheme::evaluate` walker and via
+            // `evaluate_named_constraint`'s `ConflictsWithFamily` dispatch.
+            // PR 4 (T112) retires the enumerated E054/E055 rows once the
+            // wrapper layer is family-aware.
+            //
+            // Source: §H.8 RELIDO entry p154 + §D.2 Table 3 p28
+            // (FD&R-chain extension) + `marque-applied.md` family-
+            // predicate framing (RELIDO incompatibility roster).
             Constraint::ConflictsWithFamily {
                 name: "capco/relido-conflicts-fdr-family",
                 left: TokenRef::Token(TOK_RELIDO),
                 family: FamilyPredicate(is_fdr_dominator),
                 label: "CAPCO-2016 §H.8 p154",
             },
-            // ---- E056 + E057 (compacted): ORCON-family ⊥ RELIDO -----
+            // ---- capco/orcon-family-conflicts-relido — ADDITIVE primitive showcase (PR 3.7 T108b)
             //
-            // PR 3.7 Stage D (T108b): two enumerated Conflicts rows
-            // (E056: ORCON ⊥ RELIDO at §H.8 p136; E057: ORCON-USGOV ⊥
-            // RELIDO at §H.8 p140) compacted into one ConflictsWithFamily
-            // row using the `is_orcon_family` predicate.
+            // Distributively-equivalent to E056 + E057. Same additive
+            // staging as `capco/relido-conflicts-fdr-family`.
             //
-            // Note directionality: E056/E057 had LHS=ORCON/ORCON-USGOV,
-            // RHS=RELIDO (asserting prose is in the ORCON template, not
-            // RELIDO's p154). The family row preserves this by putting
-            // RELIDO as `left` and ORCON-family as `family` — ConflictsWithFamily
-            // is symmetric (both LHS-in-marking AND any-family-member-in-marking
-            // triggers the violation), so the diagnostic fires whenever
-            // RELIDO co-occurs with ORCON or ORCON-USGOV regardless of which
-            // side the family is on.
-            //
-            // The `scheme_equivalence` test asserts behavioral parity.
-            //
-            // Citation: the asserting prose spans both ORCON (§H.8 p136)
-            // and ORCON-USGOV (§H.8 p140). The family row uses the ORCON
-            // citation (p136) as the primary; ORCON-USGOV (p140) is noted
-            // in this comment per D13 single-citation discipline.
+            // Citation: ORCON (§H.8 p136); ORCON-USGOV (§H.8 p140) is
+            // covered by the family member but not the primary citation
+            // per D13 single-citation discipline.
             Constraint::ConflictsWithFamily {
                 name: "capco/orcon-family-conflicts-relido",
                 left: TokenRef::Token(TOK_RELIDO),
@@ -3064,7 +3085,42 @@ impl CapcoScheme {
             // Note: `Constraint::Implies` was retired in PR 3.7 T108g
             // (decisions.md D19 C) — fact-propagation is handled by
             // the closure operator (ClosureRule) instead.
-            Constraint::Supersedes { .. } | Constraint::ConflictsWithFamily { .. } => Vec::new(),
+            Constraint::Supersedes { .. } => Vec::new(),
+            // `ConflictsWithFamily` evaluates LHS-presence plus the
+            // distributive expansion: emit one violation per token
+            // present in `attrs` for which `family.0` holds. Mirrors
+            // `marque_scheme::constraint::evaluate`'s
+            // `ConflictsWithFamily` arm so wrapper-layer callers
+            // (`rules_declarative.rs::violations_for`) get identical
+            // diagnostics to the generic walker. Per Copilot PR 3.7
+            // review: prior to this fix the fast path treated
+            // `ConflictsWithFamily` as a no-op, silently dropping
+            // every family-row diagnostic — that was a regression
+            // the moment any wrapper dispatched by a family-row name.
+            Constraint::ConflictsWithFamily { left, family, .. } => {
+                if !satisfies_attrs(attrs, left) {
+                    Vec::new()
+                } else {
+                    collect_present_tokens(attrs)
+                        .into_iter()
+                        .filter(|t| family.0(t))
+                        .map(|present| ConstraintViolation {
+                            // G13: `TokenRef` carries only integer IDs
+                            // (`TokenId`/`CategoryId`), never document
+                            // content bytes. Safe to format into the
+                            // audit-stream message per Constitution V
+                            // Principle V audit-content-ignorance.
+                            constraint_label: name,
+                            message: format!(
+                                "conflicting tokens: {left:?} and {present:?} (family match)"
+                            ),
+                            citation: label,
+                            span: None,
+                            severity: None,
+                        })
+                        .collect()
+                }
+            }
             Constraint::Custom { .. } => evaluate_custom_by_attrs(attrs, name)
                 .into_iter()
                 .map(|mut v| {
@@ -3774,119 +3830,134 @@ impl MarkingScheme for CapcoScheme {
         &self,
         marking: &'m Self::Marking,
     ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
-        use marque_ism::{AeaMarking, DissemControl, MarkingClassification, NonIcDissem};
-        let attrs = &marking.0;
-        let mut tokens = Vec::new();
-
-        // Classification tokens
-        if let Some(ref cls) = attrs.classification {
-            match cls {
-                MarkingClassification::Us(_) | MarkingClassification::Conflict { .. } => {}
-                MarkingClassification::Fgi(_) => {
-                    tokens.push(TokenRef::Token(TOK_FGI_MARKER));
-                }
-                MarkingClassification::Nato(_) => {
-                    // NATO classification uses AnyInCategory(CAT_NON_US_CLASSIFICATION).
-                    tokens.push(TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION));
-                }
-                MarkingClassification::Joint(_) => {
-                    tokens.push(TokenRef::Token(TOK_JOINT));
-                }
-            }
-            if cls.effective_level() == marque_ism::Classification::Restricted {
-                tokens.push(TokenRef::Token(TOK_RESTRICTED));
-            }
-        }
-
-        // IC dissemination controls
-        for d in attrs.dissem_controls.iter() {
-            let tok = match d {
-                DissemControl::Nf => Some(TOK_NOFORN),
-                DissemControl::Relido => Some(TOK_RELIDO),
-                DissemControl::Displayonly => Some(TOK_DISPLAY_ONLY),
-                DissemControl::Oc => Some(TOK_ORCON),
-                DissemControl::OcUsgov => Some(TOK_ORCON_USGOV),
-                DissemControl::Imc => Some(TOK_IMCON),
-                DissemControl::Dsen => Some(TOK_DSEN),
-                DissemControl::Rs => Some(TOK_RSEN),
-                DissemControl::Fouo => Some(TOK_FOUO),
-                // Variants without TOK_* sentinels yet:
-                //   Rel, Pr, Eyes, Rawfisa, Fisa, ExemptFromIcd501Discovery
-                //
-                // DRIFT GUARD: `DissemControl` is `#[non_exhaustive]`. If
-                // a future ODNI ISM schema bump adds a new variant, it
-                // silently falls through to `None` here — meaning any
-                // `Constraint::ConflictsWithFamily` row whose family
-                // predicate should match the new control will silently
-                // stop firing on it. When adding a new dissem control,
-                // also: (a) add a `TOK_*` sentinel above, (b) add the
-                // arm here, (c) consider whether existing family
-                // predicates (`is_fdr_dominator`, `is_orcon_family`)
-                // should include it. The compile-time signal is the
-                // missing TOK_*; this code path is the runtime
-                // backstop.
-                _ => None,
-            };
-            if let Some(id) = tok {
-                tokens.push(TokenRef::Token(id));
-            }
-        }
-
-        // Non-IC dissemination controls
-        for d in attrs.non_ic_dissem.iter() {
-            let tok = match d {
-                NonIcDissem::Nodis => Some(TOK_NODIS),
-                NonIcDissem::Exdis => Some(TOK_EXDIS),
-                NonIcDissem::SbuNf => Some(TOK_SBU_NF),
-                NonIcDissem::LesNf => Some(TOK_LES_NF),
-                NonIcDissem::Limdis => Some(TOK_LIMDIS),
-                NonIcDissem::Les => Some(TOK_LES),
-                NonIcDissem::Sbu => Some(TOK_SBU),
-                NonIcDissem::Ssi => Some(TOK_SSI),
-                // NonIcDissem is non-exhaustive; future variants fall through.
-                _ => None,
-            };
-            if let Some(id) = tok {
-                tokens.push(TokenRef::Token(id));
-            }
-        }
-
-        // REL TO countries — emit AnyInCategory(CAT_REL_TO) if any country present
-        if !attrs.rel_to.is_empty() {
-            tokens.push(TokenRef::AnyInCategory(CAT_REL_TO));
-        }
-
-        // AEA markings
-        for a in attrs.aea_markings.iter() {
-            let tok = match a {
-                AeaMarking::Rd(_) => Some(TOK_RD),
-                AeaMarking::Frd(_) => Some(TOK_FRD),
-                AeaMarking::Tfni => Some(TOK_TFNI),
-                AeaMarking::DodUcni | AeaMarking::DoeUcni => Some(TOK_UCNI),
-                _ => None,
-            };
-            if let Some(id) = tok {
-                tokens.push(TokenRef::Token(id));
-            }
-        }
-
-        // SCI controls
-        if !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty() {
-            tokens.push(TokenRef::AnyInCategory(CAT_SCI));
-        }
-
-        // SAR markings
-        if attrs.sar_markings.is_some() {
-            tokens.push(TokenRef::AnyInCategory(CAT_SAR));
-        }
-
-        // FGI marker
-        if attrs.fgi_marker.is_some() {
-            tokens.push(TokenRef::Token(TOK_FGI_MARKER));
-        }
-
-        Box::new(tokens.into_iter())
+        Box::new(collect_present_tokens(&marking.0).into_iter())
     }
+}
+
+/// Free-function form of [`CapcoScheme::iter_present_tokens`] that
+/// works directly on `&CanonicalAttrs`. Used by the trait impl above
+/// AND by [`CapcoScheme::evaluate_named_constraint`]'s
+/// `ConflictsWithFamily` dispatch (which receives raw attrs, not a
+/// `CapcoMarking` — so it cannot call the trait method that wraps
+/// `&marking.0`).
+///
+/// Per Copilot PR review on PR 3.7 (`evaluate_named_constraint` was
+/// silently treating `ConflictsWithFamily` as a no-op): the fast-path
+/// dispatch must emit one violation per (LHS, present_token) pair
+/// where the family predicate holds — same algorithm as
+/// `marque_scheme::constraint::evaluate`'s `ConflictsWithFamily` arm.
+pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<TokenRef> {
+    use marque_ism::{AeaMarking, DissemControl, MarkingClassification, NonIcDissem};
+    let mut tokens = Vec::new();
+
+    // Classification tokens
+    if let Some(ref cls) = attrs.classification {
+        match cls {
+            MarkingClassification::Us(_) | MarkingClassification::Conflict { .. } => {}
+            MarkingClassification::Fgi(_) => {
+                tokens.push(TokenRef::Token(TOK_FGI_MARKER));
+            }
+            MarkingClassification::Nato(_) => {
+                // NATO classification uses AnyInCategory(CAT_NON_US_CLASSIFICATION).
+                tokens.push(TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION));
+            }
+            MarkingClassification::Joint(_) => {
+                tokens.push(TokenRef::Token(TOK_JOINT));
+            }
+        }
+        if cls.effective_level() == marque_ism::Classification::Restricted {
+            tokens.push(TokenRef::Token(TOK_RESTRICTED));
+        }
+    }
+
+    // IC dissemination controls
+    for d in attrs.dissem_controls.iter() {
+        let tok = match d {
+            DissemControl::Nf => Some(TOK_NOFORN),
+            DissemControl::Relido => Some(TOK_RELIDO),
+            DissemControl::Displayonly => Some(TOK_DISPLAY_ONLY),
+            DissemControl::Oc => Some(TOK_ORCON),
+            DissemControl::OcUsgov => Some(TOK_ORCON_USGOV),
+            DissemControl::Imc => Some(TOK_IMCON),
+            DissemControl::Dsen => Some(TOK_DSEN),
+            DissemControl::Rs => Some(TOK_RSEN),
+            DissemControl::Fouo => Some(TOK_FOUO),
+            // Variants without TOK_* sentinels yet:
+            //   Rel, Pr, Eyes, Rawfisa, Fisa, ExemptFromIcd501Discovery
+            //
+            // DRIFT GUARD: `DissemControl` is `#[non_exhaustive]`. If
+            // a future ODNI ISM schema bump adds a new variant, it
+            // silently falls through to `None` here — meaning any
+            // `Constraint::ConflictsWithFamily` row whose family
+            // predicate should match the new control will silently
+            // stop firing on it. When adding a new dissem control,
+            // also: (a) add a `TOK_*` sentinel above, (b) add the
+            // arm here, (c) consider whether existing family
+            // predicates (`is_fdr_dominator`, `is_orcon_family`)
+            // should include it. The compile-time signal is the
+            // missing TOK_*; this code path is the runtime
+            // backstop.
+            _ => None,
+        };
+        if let Some(id) = tok {
+            tokens.push(TokenRef::Token(id));
+        }
+    }
+
+    // Non-IC dissemination controls
+    for d in attrs.non_ic_dissem.iter() {
+        let tok = match d {
+            NonIcDissem::Nodis => Some(TOK_NODIS),
+            NonIcDissem::Exdis => Some(TOK_EXDIS),
+            NonIcDissem::SbuNf => Some(TOK_SBU_NF),
+            NonIcDissem::LesNf => Some(TOK_LES_NF),
+            NonIcDissem::Limdis => Some(TOK_LIMDIS),
+            NonIcDissem::Les => Some(TOK_LES),
+            NonIcDissem::Sbu => Some(TOK_SBU),
+            NonIcDissem::Ssi => Some(TOK_SSI),
+            // NonIcDissem is non-exhaustive; future variants fall through.
+            _ => None,
+        };
+        if let Some(id) = tok {
+            tokens.push(TokenRef::Token(id));
+        }
+    }
+
+    // REL TO countries — emit AnyInCategory(CAT_REL_TO) if any country present
+    if !attrs.rel_to.is_empty() {
+        tokens.push(TokenRef::AnyInCategory(CAT_REL_TO));
+    }
+
+    // AEA markings
+    for a in attrs.aea_markings.iter() {
+        let tok = match a {
+            AeaMarking::Rd(_) => Some(TOK_RD),
+            AeaMarking::Frd(_) => Some(TOK_FRD),
+            AeaMarking::Tfni => Some(TOK_TFNI),
+            AeaMarking::DodUcni | AeaMarking::DoeUcni => Some(TOK_UCNI),
+            _ => None,
+        };
+        if let Some(id) = tok {
+            tokens.push(TokenRef::Token(id));
+        }
+    }
+
+    // SCI controls
+    if !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty() {
+        tokens.push(TokenRef::AnyInCategory(CAT_SCI));
+    }
+
+    // SAR markings
+    if attrs.sar_markings.is_some() {
+        tokens.push(TokenRef::AnyInCategory(CAT_SAR));
+    }
+
+    // FGI marker
+    if attrs.fgi_marker.is_some() {
+        tokens.push(TokenRef::Token(TOK_FGI_MARKER));
+    }
+
+    tokens
 }
 
 // ---------------------------------------------------------------------------
@@ -4035,10 +4106,23 @@ const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
 const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
     name: "capco/noforn-if-fgi",
     label: "CAPCO-2016 §H.7 p122",
-    // `AnyInCategory(CAT_FGI_MARKER)` already covers the explicit
-    // `TOK_FGI_MARKER` sentinel; one trigger entry suffices per
-    // lattice-consultant G4 (avoids structurally-redundant double-firing).
-    triggers: &[TokenRef::AnyInCategory(CAT_FGI_MARKER)],
+    // BOTH triggers are required to cover the two FGI sources per
+    // Copilot PR 3.7 review #12:
+    //   - `TokenRef::Token(TOK_FGI_MARKER)` is satisfied by
+    //     `MarkingClassification::Fgi` (foreign-classified portions
+    //     like `//GBR SECRET`) because `satisfies_attrs`'s
+    //     classification arm emits `TOK_FGI_MARKER` for that case.
+    //   - `TokenRef::AnyInCategory(CAT_FGI_MARKER)` is satisfied by
+    //     `attrs.fgi_marker` (explicit `FGI` token).
+    // An earlier cleanup dropped the explicit token thinking
+    // `AnyInCategory` was a superset; it is NOT — they cover
+    // disjoint FGI surfaces. Both must be present so a foreign-
+    // classified portion like `//GBR SECRET` reaches the
+    // implicit-NOFORN closure.
+    triggers: &[
+        TokenRef::Token(TOK_FGI_MARKER),
+        TokenRef::AnyInCategory(CAT_FGI_MARKER),
+    ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
@@ -4120,7 +4204,16 @@ const CLOSURE_RELIDO_US_CLASS: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_CLASSIFICATION)],
     suppressors: FDR_OR_RELIDO_INCOMPAT,
     cone: &[TokenRef::Token(TOK_RELIDO)],
-    default_severity: Severity::Info,
+    // Severity::Off — the CAT_CLASSIFICATION trigger fires on ANY
+    // US classification including SCI-bearing markings, but Trio 2
+    // is only correct when no SCI/SAR/AEA is present (per Trio 1).
+    // Without a stronger trigger that filters out SCI-bearing
+    // markings, this row would over-fire on every SCI page before
+    // the SCI rows add their suppressors. Per Copilot PR 3.7
+    // review #4: gate dormant until PR 4 wires `closure()` with
+    // pipeline ordering that adds Trio-1 SCI facts before Trio-2
+    // RELIDO evaluation (or reshapes the trigger to exclude SCI).
+    default_severity: Severity::Off,
 };
 
 /// Trio 2, row 2: RSEN or FOUO implies RELIDO unless FD&R-marked or
@@ -4175,7 +4268,12 @@ const CLOSURE_REL_USA_NATO_IF_NATO: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::AnyInCategory(CAT_REL_TO)], // placeholder; PR 4 wires the specific USA+NATO add
-    default_severity: Severity::Info,
+    // Severity::Off — the cone is a `AnyInCategory` placeholder, not
+    // the actual `REL TO USA, NATO` fact. The cone cannot be applied
+    // by the closure operator until open-vocab country-list FactAdd
+    // lands in PR 4 T112. Per Copilot PR 3.7 review #5: ship dormant
+    // catalog data, do not fire diagnostics with a non-functional cone.
+    default_severity: Severity::Off,
 };
 
 // --- Per-marking unconditional implications ---
@@ -4199,7 +4297,13 @@ const CLOSURE_HCS_O_NOFORN_ORCON: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // HCS-O presence — no bare TOK_HCS_O sentinel yet
     suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
-    default_severity: Severity::Info,
+    // Severity::Off because the CAT_SCI proxy trigger over-fires
+    // (it matches bare `SI`, `TK`, etc., not just HCS-O). PR 4
+    // splits the trigger to TOK_HCS_O once that sentinel lands and
+    // re-enables this row at Severity::Info. Per Copilot PR 3.7
+    // review #3: ship dormant data rather than firing wrong
+    // implicit-NOFORN/ORCON on every SCI marking.
+    default_severity: Severity::Off,
 };
 // NOTE: The trigger above fires on ANY SCI control (CAT_SCI), not specifically
 // HCS-O. A dedicated TOK_HCS_O sentinel + satisfies_attrs arm would allow
@@ -4228,7 +4332,9 @@ const CLOSURE_SI_G_ORCON: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // SI-G presence — no bare TOK_SI_G yet
     suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_ORCON)],
-    default_severity: Severity::Info,
+    // Severity::Off pending TOK_SI_G sentinel (PR 4). See
+    // CLOSURE_HCS_O_NOFORN_ORCON comment.
+    default_severity: Severity::Off,
 };
 // NOTE: Same coalesced-trigger caveat as CLOSURE_HCS_O_NOFORN_ORCON.
 // TODO: Add TOK_SI_G sentinel (deferred to PR 4).
@@ -4243,7 +4349,8 @@ const CLOSURE_TK_BLFH_NOFORN: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-BLFH — no bare sentinel yet
     suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info,
+    // Severity::Off pending TOK_TK_BLFH sentinel (PR 4).
+    default_severity: Severity::Off,
 };
 // NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_BLFH (PR 4).
 
@@ -4256,7 +4363,8 @@ const CLOSURE_TK_KAND_NOFORN: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-KAND — no bare sentinel yet
     suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info,
+    // Severity::Off pending TOK_TK_KAND sentinel (PR 4).
+    default_severity: Severity::Off,
 };
 // NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_KAND (PR 4).
 
@@ -4270,7 +4378,8 @@ const CLOSURE_TK_IDIT_NOFORN: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-IDIT — no bare sentinel yet
     suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info,
+    // Severity::Off pending TOK_TK_IDIT sentinel (PR 4).
+    default_severity: Severity::Off,
 };
 // NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_IDIT (PR 4).
 

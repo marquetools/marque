@@ -19,12 +19,25 @@
 //! 3. **Idempotent**: applying closure twice yields the same result as
 //!    applying it once — the fixed point is stable.
 //!
-//! The default [`MarkingScheme::closure()`] implementation walks
-//! `closure_rules()` to Kleene fixpoint, bounded by
-//! [`MAX_CLOSURE_ITERATIONS`] to catch catalog bugs. A scheme that
-//! provides closure rules MUST also implement
-//! [`MarkingScheme::token_category()`] and [`MarkingScheme::closure()`]
-//! to make the closure operator functional.
+//! ## Default `closure()` behavior — PR 3.7 ships catalog only
+//!
+//! The default [`MarkingScheme::closure()`] implementation is a **no-op**
+//! in PR 3.7: it returns the input marking unchanged. The trait default
+//! cannot generically apply a closure rule's `cone` to `Self::Marking`
+//! without a scheme-specific singleton-construction hook, so a scheme
+//! that wants closure semantics MUST override `closure()` itself.
+//!
+//! [`MAX_CLOSURE_ITERATIONS`] is the iteration cap a scheme's
+//! `closure()` override SHOULD respect for Kleene-fixpoint walks — see
+//! the constant's doc comment. PR 3.7 ships [`ClosureRule`] data and
+//! the trait scaffold; `CapcoScheme::closure()` override + engine
+//! call-site wiring at `Engine::project` lands in PR 4 (T112).
+//!
+//! Until then, calling [`MarkingScheme::closure()`] on a scheme with
+//! declared closure rules will silently return the input unchanged.
+//! Production code paths in PR 3.7 do NOT call `closure()`; the
+//! catalog is exposed as public data via [`MarkingScheme::closure_rules()`]
+//! for tooling and proptest exercise only.
 //!
 //! ## Architecture note
 //!

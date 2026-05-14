@@ -340,17 +340,24 @@ proptest! {
 //   that even when rules fire transitively, monotonicity holds across all
 //   input pairs.
 //
-//   Note on suppressor-based rules: A suppressor-bearing rule is monotone
-//   only under the "disjoint suppressor" structural invariant from
-//   docs/plans/2026-05-01-lattice-design.md §4.7.3: suppressor tokens must
-//   be tokens that are NEVER added by any cone rule. A generic test catalog
-//   using suppressors requires encoding this same invariant, which is
-//   non-trivial to express in a property test. The CAPCO catalog enforces
-//   it by construction (FD&R dominators are never in any cone and are stable
-//   under the closure operator). The negative test in
-//   proptest_closure_rejects_non_monotone.rs demonstrates the suppressor-
-//   based violation scenario (showing that naive suppressors break
-//   monotonicity).
+//   PR 3.7 CAVEAT (per Copilot PR review #13): the plan also called for a
+//   "suppression-doesn't-break-monotonicity" property — i.e., a stub
+//   catalog WITH suppressors that exercises the §4.7.3 table-design-
+//   property monotonicity proof under suppressor-stability. Property 4
+//   here does NOT cover that case (no suppressors in the stub catalog);
+//   it covers transitive-chain monotonicity over unconditional rules.
+//   The suppression-stability property requires a stub catalog encoding
+//   the disjoint-suppressor invariant (suppressor tokens must be tokens
+//   that are NEVER added by any cone rule), which is non-trivial to
+//   express in property-test form without recreating CAPCO's specific
+//   FDR_DOMINATORS / cone separation. The CAPCO catalog enforces the
+//   invariant by construction; the per-row CAPCO monotonicity attestation
+//   that PR 3.7's §9 acceptance defers to PR 4 is the actual gate for
+//   suppression-stability in the production catalog.
+//
+//   The negative test in `proptest_closure_rejects_non_monotone.rs`
+//   demonstrates the suppressor-based violation scenario from the
+//   theoretical side.
 //
 //   The redundancy with Property 1 is intentional — Property 1 tests the
 //   base statement; Property 4 stresses it with transitive chains.
@@ -400,18 +407,28 @@ proptest! {
     fn closure_output_does_not_leak_document_bytes(
         bits in any::<u8>(),
         // Simulate a "document content" string: arbitrary ASCII text
-        // constrained to letters that are NOT hex digits (a-f / A-F).
-        // The stub's `render_banner` emits `"bits=0x{:02x}"`, so a
-        // doc_content regex that admits hex characters would
-        // false-positive when a random substring like "xfa" appears
-        // in both the document content AND the hex-formatted output
-        // by chance (observed in CI: doc_content="AxfaA", bits=122
-        // rendering as "0xfa" → 3-byte substring "xfa" matched in
-        // both, yielding a spurious G13 failure). Excluding hex
-        // digits eliminates the collision class while preserving
-        // the proptest's real assertion: no document-content bytes
-        // surface in the closure operator's rendered output.
-        doc_content in "[g-zG-Z][g-zG-Z ]{4,20}",
+        // restricted to letters that cannot appear in the stub
+        // scheme's render output.
+        //
+        // The stub `render_banner` emits `"bits=0x{:02x}"`. To prevent
+        // chance collisions where a random doc_content substring
+        // matches part of the constant render prefix (`bits`) or the
+        // hex digits (a-f / A-F), exclude every letter in
+        // {b, i, t, s, x, a, c, d, e, f} case-insensitively. The
+        // earlier exclusion {a-f / A-F} alone left "its" as a
+        // collision class with `bits=0x...` (Copilot PR 3.7 review #7).
+        //
+        // Allowed lowercase: g, h, j, k, l, m, n, o, p, q, r, u, v, w, y, z.
+        // Allowed uppercase: G, H, J, K, L, M, N, O, P, Q, R, U, V, W, Y, Z.
+        //
+        // The proptest's actual G13 invariant is preserved: no
+        // document-content bytes surface in the closure operator's
+        // rendered output. The regex restriction only eliminates the
+        // collision class for THIS particular stub render shape; the
+        // production CapcoScheme renderer (PR 4) will need a parallel
+        // exclusion against its own format-string constants.
+        doc_content in "[ghjk-rmnop-rqu-wyzGHJK-RMNOP-RQU-WYZ]\
+                        [ghjk-rmnop-rqu-wyzGHJK-RMNOP-RQU-WYZ ]{4,20}",
     ) {
         let scheme = ClosureStubScheme;
         let m = BitMarking::with(bits);

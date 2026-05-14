@@ -112,7 +112,7 @@ impl std::fmt::Debug for FamilyPredicate {
 ///   `"CAPCO-2016 §H.4"`). Shared across a catalog is fine — many
 ///   distinct rules may share a citation.
 ///
-/// The four active variants are:
+/// The five active variants are:
 ///
 /// - [`Conflicts`](Self::Conflicts): exact pair conflict (LHS ∦ RHS).
 /// - [`ConflictsWithFamily`](Self::ConflictsWithFamily): LHS conflicts

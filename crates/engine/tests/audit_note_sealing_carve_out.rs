@@ -53,7 +53,7 @@ use marque_ism::Span;
 use marque_rules::{
     AuditNote, AuditNoteKind, AuditNoteStructural, Confidence, EnginePromotionToken, RuleId,
 };
-use marque_scheme::{Scope, TokenId};
+use marque_scheme::{Scope, TokenId, TokenRef};
 
 /// Smoke test: construct a synthetic `AuditNote` via the sealed
 /// `__engine_promote` constructor and verify (a) construction succeeds,
@@ -65,7 +65,7 @@ fn audit_note_engine_promote_sealing_pattern() {
     // commingled with engine output.
     let token = EnginePromotionToken::__engine_construct();
 
-    let cone: &'static [TokenId] = &[TokenId(42), TokenId(99)];
+    let cone: &'static [TokenRef] = &[TokenRef::Token(TokenId(42)), TokenRef::Token(TokenId(99))];
 
     let structural = AuditNoteStructural {
         row_name: "capco/noforn-if-no-fdr",
@@ -130,7 +130,7 @@ fn audit_note_clone_does_not_require_scheme_clone() {
     // carve-out as the sealing-pattern test above; this test exercises
     // the Clone surface.
     let token = EnginePromotionToken::__engine_construct();
-    let cone: &'static [TokenId] = &[TokenId(1)];
+    let cone: &'static [TokenRef] = &[TokenRef::Token(TokenId(1))];
     let structural = AuditNoteStructural {
         row_name: "test/clone",
         cone,
@@ -167,7 +167,7 @@ fn audit_note_clone_does_not_require_scheme_clone() {
 fn audit_note_structural_suppressed_by_slot_populated() {
     // Test-fixture carve-out per Constitution V Principle V — exercise
     // the M4 forward-compat slot without constructing a full AuditNote.
-    let cone: &'static [TokenId] = &[TokenId(1)];
+    let cone: &'static [TokenRef] = &[TokenRef::Token(TokenId(1))];
     let structural = AuditNoteStructural {
         row_name: "test/suppressed",
         cone,

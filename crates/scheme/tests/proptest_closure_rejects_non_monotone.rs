@@ -304,3 +304,162 @@ fn non_monotone_scenario_is_detectable() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Synthetic non-monotone scheme: catalog rule A→B suppressed by C.
+//
+// This violates the disjoint-suppressor invariant from §4.7.3 (C is in
+// `NON_MONOTONE_RULES`'s suppressor set AND TOK_C can be added by other
+// rules in a future catalog — i.e., C is not a "stable dominator"). We
+// build it deliberately to exercise the synthetic-catalog ⇒
+// observable-violation path per Copilot PR 3.7 review #8.
+// ---------------------------------------------------------------------------
+
+static NON_MONOTONE_RULES: &[ClosureRule] = &[ClosureRule {
+    name: "stub/a-implies-b-suppressed-by-c",
+    label: "non-monotone test fixture",
+    triggers: &[TokenRef::Token(TOK_A)],
+    // SUPPRESSOR shape that creates non-monotonicity: C is a token that
+    // CAN be present in a marking (it's in our 3-token universe), so a
+    // marking with `{A}` fires the rule but a marking with `{A, C}` does
+    // not. Adding a fact (C) to a marking REMOVES facts (B) from the
+    // closure result — that's the non-monotone violation.
+    suppressors: &[TokenRef::Token(TOK_C)],
+    cone: &[TokenRef::Token(TOK_B)],
+    default_severity: Severity::Info,
+}];
+
+struct NonMonotoneScheme;
+
+impl MarkingScheme for NonMonotoneScheme {
+    type Token = TokenId;
+    type Marking = BitMarking;
+    type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+
+    fn name(&self) -> &str {
+        "non-monotone-stub"
+    }
+    fn schema_version(&self) -> &str {
+        "v0"
+    }
+    fn categories(&self) -> &[Category] {
+        &[]
+    }
+    fn constraints(&self) -> &[Constraint] {
+        &[]
+    }
+    fn templates(&self) -> &[Template] {
+        &[]
+    }
+    fn parse(&self, _: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        Err(())
+    }
+    fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
+        match token_ref {
+            TokenRef::Token(id) => bit_index(*id).is_some_and(|n| marking.has_token(n)),
+            TokenRef::AnyInCategory(_) => false,
+        }
+    }
+    fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
+        BitMarking::default()
+    }
+    fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &[]
+    }
+    fn evaluate_custom(&self, _: &'static str, _: &Self::Marking) -> Vec<ConstraintViolation> {
+        Vec::new()
+    }
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        _: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        write!(out, "bits={:08b}", m.bits)
+    }
+    fn closure_rules(&self) -> &[ClosureRule] {
+        NON_MONOTONE_RULES
+    }
+    fn iter_present_tokens<'m>(
+        &self,
+        marking: &'m Self::Marking,
+    ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
+        let bits = marking.bits;
+        Box::new(
+            [TOK_A, TOK_B, TOK_C]
+                .into_iter()
+                .filter(move |t| bit_index(*t).is_some_and(|n| (bits >> n) & 1 == 1))
+                .map(TokenRef::Token),
+        )
+    }
+    fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        let mut working = marking;
+        for _iter in 0..marque_scheme::closure::MAX_CLOSURE_ITERATIONS {
+            let prev = working.bits;
+            for rule in NON_MONOTONE_RULES {
+                let trigger_fired = rule.triggers.iter().any(|t| self.satisfies(&working, t));
+                let suppressor_fired = rule.suppressors.iter().any(|s| self.satisfies(&working, s));
+                if trigger_fired && !suppressor_fired {
+                    for cone_ref in rule.cone {
+                        if let TokenRef::Token(id) = cone_ref {
+                            if let Some(n) = bit_index(*id) {
+                                working.bits |= 1 << n;
+                            }
+                        }
+                    }
+                }
+            }
+            if working.bits == prev {
+                return working;
+            }
+        }
+        panic!(
+            "non-monotone closure did not converge in {} iterations",
+            marque_scheme::closure::MAX_CLOSURE_ITERATIONS
+        );
+    }
+}
+
+/// Observable monotonicity violation: a synthetic non-monotone scheme
+/// produces `closure(m1) ⊄ closure(m2)` even though `m1 ⊑ m2`.
+///
+/// Per Copilot PR 3.7 review #8: the prior test `non_monotone_scenario_is_detectable`
+/// only hand-asserted the violation conceptually; this test actually
+/// constructs a `NonMonotoneScheme` with a parity-suppressor-shaped
+/// rule (A→B suppressed by C, where C is a token that can appear in
+/// markings) and observes the monotonicity violation through the
+/// closure operator. This is the load-bearing test that verifies the
+/// negative property: a non-monotone catalog IS detectable by running
+/// the closure() impl against deliberately-chosen inputs.
+#[test]
+fn non_monotone_synthetic_scheme_violates_monotonicity_observably() {
+    let scheme = NonMonotoneScheme;
+
+    // m1 = {A}, m2 = {A, C}: m1 ⊑ m2.
+    let m1 = BitMarking::with(0b001); // TOK_A
+    let m2 = BitMarking::with(0b101); // TOK_A + TOK_C
+
+    assert!(m1.le(&m2), "test setup: m1 must be ⊑ m2");
+
+    let c1 = scheme.closure(m1);
+    let c2 = scheme.closure(m2);
+
+    // closure({A}) = {A, B} (rule fires, no suppressor present)
+    // closure({A, C}) = {A, C} (rule suppressed by C, doesn't fire)
+    // c1.bits = 0b011, c2.bits = 0b101. c1 contains TOK_B (bit 1),
+    // c2 doesn't — so c1 ⊄ c2 — monotonicity violation.
+    assert_eq!(c1.bits, 0b011, "closure({{A}}) should be {{A, B}}");
+    assert_eq!(
+        c2.bits, 0b101,
+        "closure({{A, C}}) should be {{A, C}} (rule suppressed)"
+    );
+
+    assert!(
+        !c1.le(&c2),
+        "expected monotonicity violation: closure(m1)={:08b} should NOT be ⊑ closure(m2)={:08b} \
+         (TOK_B is in c1 but not c2), but le() returned true",
+        c1.bits,
+        c2.bits
+    );
+}

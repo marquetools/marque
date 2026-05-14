@@ -33,7 +33,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use marque_ism::Span;
-use marque_scheme::{MarkingScheme, Scope, TokenId};
+use marque_scheme::{MarkingScheme, Scope, TokenId, TokenRef};
 
 use crate::{Confidence, EnginePromotionToken, RuleId};
 
@@ -74,8 +74,17 @@ pub struct AuditNoteStructural {
     /// The `ClosureRule.name` that fired (e.g., `"capco/noforn-if-no-fdr"`).
     pub row_name: &'static str,
     /// The closure rule's `cone` slice — the tokens this firing added.
-    /// `&'static` because closure-rule catalogs are static data.
-    pub cone: &'static [TokenId],
+    /// `&'static [TokenRef]` matches `ClosureRule.cone`'s shape so an
+    /// audit note can represent every cone shape declared in a
+    /// `closure_rules()` catalog, including category-scoped cones like
+    /// `AnyInCategory(CAT_REL_TO)` used by Trio 3
+    /// (`capco/rel-usa-nato-if-nato`). Earlier drafts narrowed the field
+    /// to `&[TokenId]` for explicitness, but that shape cannot represent
+    /// `AnyInCategory` cones — Copilot PR 3.7 review surfaced this
+    /// mismatch. `&[TokenRef]` keeps the audit-note payload G13-pure
+    /// (TokenId / CategoryId integers only) while remaining a faithful
+    /// projection of the catalog row.
+    pub cone: &'static [TokenRef],
     /// The scope at which the firing applied (Portion / Page / Document).
     pub scope: Scope,
     /// Source-position anchor for the firing, when one is available.
