@@ -35,5 +35,13 @@
   "deadline_overhead": {
     "max_ratio_pct": 10,
     "_note": "Spec 005 T018/T019. Compares `deadline_overhead_baseline` (Engine::lint, no deadline) against `deadline_overhead_with_deadline` (Engine::lint_with_options with a 1-hour deadline that never trips). The ratio is computed from Criterion's mean (middle CI value), not the upper-CI bound — clock jitter inflates CI width and would convert noise into false positives on a tight ratio gate. The gate is set at 10% (permissive starting point) rather than the 2% design target from `specs/005-engine-deadlines/spec.md` because the per-candidate Instant::now() cost varies dramatically by host: native Linux x86 vDSO clock_gettime is ~10–30ns and the spec's ≤2% target is reachable, but WSL2's virtualized HV clock is ~500–700ns and observed end-to-end overhead is 7–12% on the same fixture. Tightening this gate to 2% is a follow-up once a CI-runner baseline is captured (mirrors the `MARQUE_BENCH_SKIP_REGRESSION` pattern for the +10% absolute regression gate). Enforced by `scripts/bench-check.sh::check_deadline_overhead`."
+  },
+  "fix_10kb_pass2_only": {
+    "target_upper_ci_us": 16000,
+    "_note": "PR 7c (T085) — SC-001 absolute target for the two-pass fix pipeline's pass-2-only path. Exercises the no-reshape short-circuit: pass-1 produces zero applied fixes, the pre-pass-1 cache stays empty, the re-parse arm short-circuits, and pass-2 dispatches against the post-pass-0 buffer. No `upper_ci_us` baseline captured here — capture and add to enable the +10% regression gate; the absolute SC-001 16ms ceiling stays load-bearing in the meantime. Capture procedure: run `cargo bench --bench fix_10kb -- --save-baseline pr7c` on this branch and on `origin/staging` (pre-pr7c), then add the `upper_ci_us` / `p99_us` fields. FR-033 delta gate (p99 ≤ baseline × 1.05) activates automatically once `p99_us` lands. See `crates/engine/benches/fix_10kb.rs`."
+  },
+  "fix_10kb_two_pass": {
+    "target_upper_ci_us": 16000,
+    "_note": "PR 7c (T085) — SC-001 absolute target for the two-pass fix pipeline's full path. Exercises pass-0 corrections, pass-1 Localized fixes (C001 typo correction), the pre-pass-1 attrs cache population, post-pass-1 re-lint via `lint_with_options_internal_with_cache`, FR-023 disambiguation, I-18 overlap demotion, and `PrecedingFixPenalty` application at the pass-2 threshold gate. As with `fix_10kb_pass2_only`, no `upper_ci_us` baseline is captured here — operator runs `cargo bench --bench fix_10kb -- --save-baseline pr7c` to populate. The SC-001 16ms absolute target is the load-bearing gate. See `crates/engine/benches/fix_10kb.rs`."
   }
 }
