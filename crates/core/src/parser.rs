@@ -404,6 +404,45 @@ impl<'t> Parser<'t> {
                 rel_to.extend(parsed.countries);
                 dissem.extend(parsed.trailing_dissem);
                 non_ic.extend(parsed.trailing_non_ic);
+            } else if let Some(long_form) = recognize_deprecated_sci_long_form(trimmed) {
+                // Deprecated SCI long-form (T135a / issue #307 Group D).
+                // Runs BEFORE the SCI structural path so compound forms like
+                // `KDK-BLUEFISH` (3-byte custom-control shape that would
+                // otherwise be claimed as `SciControlSystem::Custom("KDK")`)
+                // route through this recognizer instead. Source bytes are
+                // preserved verbatim in `TokenSpan.text`; the walker rule
+                // (E065 in `marque-capco::rules_declarative`) consumes the
+                // original text to emit canonicalization fixes.
+                //
+                // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+                let compartments: Box<[SciCompartment]> = match &long_form.compartment {
+                    Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                    None => Box::new([]),
+                };
+                let canonical_enum = if compartments.is_empty() {
+                    SciControl::parse(long_form.system.as_str())
+                } else {
+                    compartments.first().and_then(|c| {
+                        let composite = format!("{}-{}", long_form.system.as_str(), c.identifier);
+                        SciControl::parse(&composite)
+                    })
+                };
+                let marking = SciMarking::new(
+                    SciControlSystem::Published(long_form.system),
+                    compartments,
+                    canonical_enum,
+                );
+                if let Some(ctrl) = marking.canonical_enum {
+                    sci.push(ctrl);
+                }
+                sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
+                // Source bytes preserved verbatim — walker rule reads
+                // `TokenSpan.text` to identify the deprecated form.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciControl,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if (trimmed.contains('-')
                 || trimmed.contains('/')
                 || is_bare_cve_value(trimmed)
@@ -1051,6 +1090,209 @@ fn is_known_non_sci_token(s: &str) -> bool {
         || parse_non_ic_full_form(s).is_some()
         || AeaMarking::parse(s).is_some()
         || DeclassExemption::parse(s).is_some()
+}
+
+// =============================================================================
+// Deprecated SCI long-form recognition (T135a / issue #307 Group D)
+// =============================================================================
+
+/// Result of recognizing a deprecated SCI long-form block.
+///
+/// Holds the parser's internal classification (canonical SCI control system
+/// with optional compartment / sub-compartment context). Source bytes are
+/// preserved verbatim in the caller's `TokenSpan.text` — this struct does
+/// NOT rewrite the user's input. The walker rule in
+/// `marque-capco::rules_declarative` (E065) consumes the original
+/// `TokenSpan.text` plus this canonical projection to emit
+/// `Diagnostic::text_correction` fixes.
+///
+/// Authority (per-variant citations in [`recognize_deprecated_sci_long_form`]):
+/// CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+#[derive(Debug, Clone)]
+struct DeprecatedSciLongForm {
+    /// Canonical control system this long-form maps to.
+    /// `Hcs` for HUMINT-family, `Si` for COMINT / ECI / EL family,
+    /// `Tk` for KDK / KLONDIKE family.
+    system: SciControlBare,
+    /// Compartment identifier (e.g., `BLUEFISH` for `KDK-BLUEFISH`,
+    /// `ABC` for `ECI ABC`, `ECRU` for `EL ECRU`). `None` for bare
+    /// long-forms (`HUMINT`, `COMINT`, `ECI` alone, `KDK` alone).
+    /// Byte offset of compartment within `trimmed` recorded separately
+    /// in the second tuple element of `recognize_deprecated_sci_long_form`'s
+    /// return.
+    compartment: Option<SmolStr>,
+}
+
+/// Recognize a deprecated SCI long-form block.
+///
+/// Returns `Some((form, full_byte_len))` when `trimmed` is a recognized
+/// deprecated form. `full_byte_len` is the byte length of the longest
+/// matched prefix within `trimmed` — used by the caller to set up the
+/// `TokenSpan.span` and the `SciMarking` source span. For bare-form
+/// matches, `full_byte_len == trimmed.len()`; for compound forms with a
+/// compartment tail, the recognizer accepts the full block.
+///
+/// The recognition is intentionally **lenient on case** for the form
+/// keyword (the SCI long-forms are universally uppercase in practice
+/// per §H.4) and **strict on shape** for the compartment slot — the
+/// compartment must be `[A-Z0-9]+` per §H.4 p61 + p76.
+///
+/// # Authority (per row)
+///
+/// - `HUMINT` / `HUMINT CONTROL SYSTEM` → HCS — CAPCO-2016 §H.4 p62
+///   (Legacy section: "When incorporating legacy material marked 'HCS'
+///   into a new product, re-mark the new document and associated
+///   portion according to the instructions in the HCS-O and HCS-P
+///   marking templates.").
+/// - `COMINT` / `SPECIAL INTELLIGENCE` → SI — CAPCO-2016 §H.4 p74:
+///   "The COMINT title for the Special Intelligence (SI) control
+///   system is no longer valid".
+/// - `ECI <COMP>` / `EXCEPTIONALLY CONTROLLED INFORMATION <COMP>` →
+///   SI-`<COMP>` — CAPCO-2016 §H.4 p76: "information formerly marked
+///   TS//SI-ECI ABC must now be marked TS//SI-ABC". §H.4 p61: "ECI
+///   grouping markings are NOT used in banner/portion".
+/// - `EL <SUB>` / `ENDSEAL <SUB>` → SI-`<SUB>` (typically `ECRU` or
+///   `NONBOOK`) — CAPCO-2016 §H.4 p78: "the EL control system is
+///   being retired and all associated compartments moved to the SI
+///   control system". §H.4 p83 mirrors for `NONBOOK`.
+/// - `KDK-<COMP>` / `KLONDIKE-<COMP>` → TK-`<COMP>` — CAPCO-2016
+///   §H.4 p85 (NSG PM 3802 Closure of KLONDIKE Control System):
+///   "When incorporating legacy material marked 'KLONDIKE' into a new
+///   product, re-mark the new document and associated portions
+///   according to the instructions in the TK-BLFH, TK-IDIT, and
+///   TK-KAND marking templates."
+///
+/// Bare `ECI` / `ENDSEAL` / `KDK` (no compartment) are accepted — the
+/// walker rule emits a suggest-only diagnostic for them because the
+/// compartment context required to migrate is unknown at the parser
+/// level.
+fn recognize_deprecated_sci_long_form(trimmed: &str) -> Option<DeprecatedSciLongForm> {
+    // -----------------------------------------------------------------
+    // HCS family — §H.4 p62
+    // -----------------------------------------------------------------
+    // Multi-word phrase checks must come before the single-word ones
+    // (longest-prefix wins — same pattern as `parse_nato_classification`).
+    if trimmed == "HUMINT CONTROL SYSTEM" || trimmed == "HUMINT" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Hcs,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (COMINT / SPECIAL INTELLIGENCE) — §H.4 p74
+    // -----------------------------------------------------------------
+    if trimmed == "SPECIAL INTELLIGENCE" || trimmed == "COMINT" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (ECI / EXCEPTIONALLY CONTROLLED INFORMATION) — §H.4 p61 + p76
+    // -----------------------------------------------------------------
+    // Compound forms: `ECI <COMP>` and `EXCEPTIONALLY CONTROLLED
+    // INFORMATION <COMP>`. Bare `ECI` (no compartment) is also recognized;
+    // the walker emits a suggest-only diagnostic because the compartment
+    // is unknown.
+    if let Some(comp) = trimmed.strip_prefix("EXCEPTIONALLY CONTROLLED INFORMATION ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("ECI ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "EXCEPTIONALLY CONTROLLED INFORMATION" || trimmed == "ECI" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (EL / ENDSEAL) — §H.4 p78 + p83
+    // -----------------------------------------------------------------
+    // §H.4 p78: "the EL control system is being retired and all
+    // associated compartments moved to the SI control system". `EL
+    // ECRU` → `SI-ECRU`; `EL NONBOOK` → `SI-NONBOOK` (per §H.4 p83
+    // line 1938). Bare `ENDSEAL` / `EL` are recognized so the walker
+    // can emit a suggest-only diagnostic.
+    if let Some(comp) = trimmed.strip_prefix("ENDSEAL ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("EL ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "ENDSEAL" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+    // `EL` alone: 2 letters; would also collide with the SciControl
+    // bare-CVE path if `SciControl::parse("EL")` were ever to match.
+    // Today `EL` is NOT a published SciControl bare value (the ODNI
+    // schema retired the EL control system per §H.4 p78), so accepting
+    // it here is unambiguous.
+    if trimmed == "EL" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // TK family (KDK / KLONDIKE) — §H.4 p85 (NSG PM 3802 closure)
+    // -----------------------------------------------------------------
+    // Compound forms: `KDK-<COMP>` and `KLONDIKE-<COMP>`. The closure
+    // note's per-compartment migration list is `TK-BLFH` / `TK-IDIT`
+    // / `TK-KAND`, but the recognizer accepts any alphanumeric
+    // compartment — unknown legacy compartments still need walker-level
+    // diagnostic surface.
+    if let Some(comp) = trimmed.strip_prefix("KLONDIKE-")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("KDK-")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "KLONDIKE" || trimmed == "KDK" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: None,
+        });
+    }
+
+    None
 }
 
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
@@ -3419,6 +3661,260 @@ mod tests {
     #[test]
     fn is_declass_date_rejects_day_zero() {
         assert!(!is_declass_date("20030100")); // day 0 is impossible
+    }
+
+    // -------------------------------------------------------------------
+    // T135a — deprecated SCI long-form recognition (issue #307 Group D).
+    //
+    // The recognizer accepts the deprecated long forms (HUMINT, COMINT,
+    // SPECIAL INTELLIGENCE, ECI <COMP>, EL <COMP>, KDK-<COMP>,
+    // KLONDIKE-<COMP>, etc.) as their canonical SCI category internally
+    // while preserving source bytes verbatim in `TokenSpan.text`. The
+    // Commit 3 walker rule (E065) consumes the preserved text to emit
+    // canonicalization fixes.
+    //
+    // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn humint_bare_recognized_as_hcs_with_source_preserved() {
+        // §H.4 p62 — HUMINT is the legacy long form for HCS.
+        let parsed = parse_banner("TOP SECRET//HUMINT//NOFORN");
+        assert!(
+            parsed.attrs.sci_controls.contains(&SciControl::Hcs),
+            "HUMINT must map to SciControl::Hcs internally; sci_controls = {:?}",
+            parsed.attrs.sci_controls
+        );
+        let humint_span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "HUMINT")
+            .expect("source bytes must be preserved verbatim in a TokenSpan");
+        assert_eq!(humint_span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn humint_control_system_recognized_as_hcs() {
+        // §H.4 p62 — HUMINT CONTROL SYSTEM is the spelled-out form.
+        let parsed = parse_banner("TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Hcs));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "HUMINT CONTROL SYSTEM")
+            .expect("multi-word phrase preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn comint_recognized_as_si() {
+        // §H.4 p74 — "The COMINT title for the Special Intelligence (SI)
+        // control system is no longer valid".
+        let parsed = parse_banner("TOP SECRET//COMINT//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Si));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "COMINT")
+            .expect("COMINT preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn special_intelligence_recognized_as_si() {
+        let parsed = parse_banner("TOP SECRET//SPECIAL INTELLIGENCE//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Si));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "SPECIAL INTELLIGENCE")
+            .expect("SPECIAL INTELLIGENCE preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn eci_with_compartment_maps_to_si_compartment() {
+        // §H.4 p76 — "information formerly marked TS//SI-ECI ABC must
+        // now be marked TS//SI-ABC".
+        let parsed = parse_banner("TOP SECRET//ECI ABC//NOFORN");
+        // Compound form: canonical_enum may or may not resolve depending
+        // on whether `SI-ABC` is a published CVE entry. The structural
+        // SciMarking must carry the compartment regardless.
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for ECI ABC");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(marking.compartments.len(), 1);
+        assert_eq!(&*marking.compartments[0].identifier, "ABC");
+        // Source bytes preserved.
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "ECI ABC")
+            .expect("ECI compound form preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn bare_eci_recognized_as_si_no_compartment() {
+        // Bare ECI (no compartment) is recognized so the walker can
+        // emit a suggest-only diagnostic asking the author to contact
+        // the originator for the compartment context.
+        let parsed = parse_banner("TOP SECRET//ECI//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for bare ECI");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(marking.compartments.len(), 0);
+    }
+
+    #[test]
+    fn el_ecru_maps_to_si_with_ecru_compartment() {
+        // §H.4 p78 — "the EL control system is being retired and all
+        // associated compartments moved to the SI control system".
+        // The structural form is SI + compartment ECRU. The textual
+        // CAPCO canonical is `SI-ECRU` per §H.4 p78 prose, but the
+        // ODNI CVE catalog publishes only `SI-EU` (the 5-char abbreviated
+        // banner-abbreviation form per §H.4 p78), so `canonical_enum`
+        // resolves to None here — the walker emits the fix using the
+        // textual canonical (`SI-ECRU`), not the CVE abbreviation.
+        let parsed = parse_banner("TOP SECRET//EL ECRU//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for EL ECRU");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "ECRU");
+    }
+
+    #[test]
+    fn endseal_with_compartment_maps_to_si() {
+        let parsed = parse_banner("TOP SECRET//ENDSEAL ECRU//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for ENDSEAL ECRU");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "ECRU");
+    }
+
+    #[test]
+    fn kdk_bluefish_maps_to_tk_blfh() {
+        // §H.4 p85 (NSG PM 3802 closure) — "re-mark the new document
+        // and associated portions according to the instructions in the
+        // TK-BLFH, TK-IDIT, and TK-KAND marking templates".
+        //
+        // CRITICAL: pre-T135a, KDK-BLUEFISH would have routed through
+        // `parse_sci_block` as `SciControlSystem::Custom("KDK")` with
+        // compartment `BLUEFISH` because `KDK` is a 3-letter custom-
+        // control shape match. The new recognizer must fire FIRST to
+        // route it to SciControlBare::Tk + compartment "BLUEFISH".
+        let parsed = parse_banner("TOP SECRET//KDK-BLUEFISH//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for KDK-BLUEFISH");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk),
+            "KDK-BLUEFISH must map to TK, not Custom(\"KDK\")"
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "BLUEFISH");
+    }
+
+    #[test]
+    fn klondike_iditarod_maps_to_tk() {
+        let parsed = parse_banner("TOP SECRET//KLONDIKE-IDITAROD//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for KLONDIKE-IDITAROD");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "IDITAROD");
+    }
+
+    #[test]
+    fn bare_kdk_recognized_as_tk_no_compartment() {
+        // Bare KDK (compartment context missing) is recognized so the
+        // walker can emit a suggest-only diagnostic.
+        let parsed = parse_banner("TOP SECRET//KDK//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for bare KDK");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk)
+        );
+        assert_eq!(marking.compartments.len(), 0);
+    }
+
+    #[test]
+    fn source_bytes_preserved_for_all_long_forms() {
+        // Regression guard: the parser must NEVER rewrite the user's
+        // input. Every recognized deprecated long form must carry its
+        // original source bytes verbatim in `TokenSpan.text`. The
+        // walker rule (Commit 3) uses these bytes to emit the
+        // canonicalization fix.
+        for input in [
+            "TOP SECRET//HUMINT//NOFORN",
+            "TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN",
+            "TOP SECRET//COMINT//NOFORN",
+            "TOP SECRET//SPECIAL INTELLIGENCE//NOFORN",
+            "TOP SECRET//ECI ABC//NOFORN",
+            "TOP SECRET//EXCEPTIONALLY CONTROLLED INFORMATION ABC//NOFORN",
+            "TOP SECRET//EL ECRU//NOFORN",
+            "TOP SECRET//ENDSEAL ECRU//NOFORN",
+            "TOP SECRET//KDK-BLUEFISH//NOFORN",
+            "TOP SECRET//KLONDIKE-IDITAROD//NOFORN",
+        ] {
+            let parsed = parse_banner(input);
+            // The first `//` after TOP SECRET, then the long-form block.
+            let want = input
+                .strip_prefix("TOP SECRET//")
+                .and_then(|s| s.strip_suffix("//NOFORN"))
+                .unwrap();
+            assert!(
+                parsed.attrs.token_spans.iter().any(|t| &*t.text == want),
+                "{input:?}: source bytes {want:?} must appear verbatim in token_spans"
+            );
+        }
     }
 }
 
