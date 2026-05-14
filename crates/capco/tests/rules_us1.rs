@@ -73,6 +73,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
             position: None,
             candidate_span: candidate.span,
             page_context: ctx_page,
+            page_marking: None,
             corrections: None,
             pre_pass_1_attrs: None,
         };

@@ -87,20 +87,20 @@ fn conflict_classification_routes_dissem_to_dissem_us() {
     // dissem_us because Conflict carries a US axis. Replace the
     // earlier vacuous `||` assertion (passed when both fields were
     // empty) with a total-count gate: only assert direction when the
-    // parser actually recognised at least one dissem.
+    // parser actually recognized at least one dissem.
     let total = attrs.dissem_us.len() + attrs.dissem_nato.len();
     if total > 0 {
-        // Parser recognised at least one dissem — verify attribution direction.
+        // Parser recognized at least one dissem — verify attribution direction.
         assert!(
             attrs.dissem_nato.is_empty(),
             "Conflict with US axis → dissem_nato must be empty; got {:?}",
             attrs.dissem_nato,
         );
-        // If NF was the recognised token, verify it's specifically in dissem_us.
+        // If NF was the recognized token, verify it's specifically in dissem_us.
         if attrs.dissem_us.iter().any(|p| p.value == DissemControl::Nf) {
             // Pinned — NF correctly attributed to US channel.
         } else {
-            // Parser recognised some other dissem; the attribution direction
+            // Parser recognized some other dissem; the attribution direction
             // (US, not NATO) is the load-bearing assertion regardless.
         }
     } else {

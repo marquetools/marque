@@ -1460,10 +1460,11 @@ fn e055_intent_absent_when_fix_helper_returns_none() {
     // `Diagnostic::new(..., None)` fall-through.
     //
     // Constructing a triggering attrs whose `build_relido_removal_fix`
-    // returns None requires a `attrs.dissem_controls` containing both
-    // RELIDO and DISPLAY ONLY but with NO RELIDO token span (parser
-    // gap). The wrapper's `violations_for` predicate fires on the
-    // dissem-controls set; the fix helper needs the token span.
+    // returns None requires `attrs.dissem_us` containing both RELIDO
+    // and DISPLAY ONLY but with NO RELIDO token span (parser gap).
+    // The wrapper's `violations_for` predicate fires on the dissem-
+    // axis set (queried namespace-agnostically via `dissem_iter()`);
+    // the fix helper needs the token span.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.dissem_us = vec![DissemControl::Relido, DissemControl::Displayonly].into_boxed_slice();

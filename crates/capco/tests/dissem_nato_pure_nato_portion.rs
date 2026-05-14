@@ -58,7 +58,7 @@ fn pure_nato_portion_attributes_dissem_to_dissem_nato() {
 
     // This is an *insurance* fixture: its entire purpose is to fail
     // loud if the pure-NATO attribution path breaks. Soft-skipping
-    // when the parser doesn't recognise CTS as NATO would forfeit
+    // when the parser doesn't recognize CTS as NATO would forfeit
     // that purpose. The CTS classification is pinned at
     // crates/core/src/parser.rs:1681; if this assertion fires the
     // pin has drifted and the load-bearing FR-046 path needs review.

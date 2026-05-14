@@ -120,7 +120,8 @@ fn engine() -> Engine {
 // ---------------------------------------------------------------------------
 
 /// `(S//ND)` portion: `scheme.project(Scope::Page, ...)` must produce
-/// a page-level marking whose `dissem_controls` contains NOFORN.
+/// a page-level marking whose dissem (`dissem_us` ∪ `dissem_nato`)
+/// contains NOFORN.
 ///
 /// Exercises the `capco/nodis-implies-noforn` PageRewrite:
 /// `Contains(CAT_NON_IC_DISSEM, TOK_NODIS)` fires → `FactAdd(NOFORN,
@@ -138,8 +139,9 @@ fn nodis_portion_projects_noforn_to_page_dissem() {
         projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/nodis-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains NODIS (CAPCO-2016 §H.9 p174 'Requires NOFORN.'); \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -148,7 +150,8 @@ fn nodis_portion_projects_noforn_to_page_dissem() {
 // ---------------------------------------------------------------------------
 
 /// `(S//XD)` portion: `scheme.project(Scope::Page, ...)` must produce
-/// a page-level marking whose `dissem_controls` contains NOFORN.
+/// a page-level marking whose dissem (`dissem_us` ∪ `dissem_nato`)
+/// contains NOFORN.
 ///
 /// Exercises the `capco/exdis-implies-noforn` PageRewrite:
 /// `Contains(CAT_NON_IC_DISSEM, TOK_EXDIS)` fires → `FactAdd(NOFORN,
@@ -166,8 +169,9 @@ fn exdis_portion_projects_noforn_to_page_dissem() {
         projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/exdis-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains EXDIS (CAPCO-2016 §H.9 p172 'Requires NOFORN.'); \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -177,8 +181,8 @@ fn exdis_portion_projects_noforn_to_page_dissem() {
 
 /// `(S//ND)` portion paired with a synthetic prior REL TO: the
 /// composition `capco/nodis-implies-noforn` → `capco/noforn-clears-rel-to`
-/// produces a projected page with NOFORN in `dissem_controls` AND an empty
-/// `rel_to`.
+/// produces a projected page with NOFORN in dissem (`dissem_us` ∪
+/// `dissem_nato`) AND an empty `rel_to`.
 ///
 /// This is the load-bearing composition test — it verifies the
 /// *declaration order* of rewrites in `CapcoScheme::build_page_rewrites`
@@ -223,8 +227,9 @@ fn nodis_portion_composes_with_noforn_clears_rel_to() {
     assert!(
         projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after nodis-implies-noforn fires; \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 
     assert!(
@@ -260,8 +265,9 @@ fn exdis_portion_composes_with_noforn_clears_rel_to() {
     assert!(
         projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after exdis-implies-noforn fires; \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 
     assert!(
@@ -295,8 +301,9 @@ fn portion_without_nodis_or_exdis_does_not_inject_noforn() {
     assert!(
         !projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "A plain (S) portion must not have NOFORN injected by the \
-         NODIS/EXDIS-implies-noforn rewrites; got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         NODIS/EXDIS-implies-noforn rewrites; got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -315,7 +322,7 @@ fn portion_without_nodis_or_exdis_does_not_inject_noforn() {
 fn nodis_portion_with_noforn_already_present_is_idempotent() {
     let scheme = CapcoScheme::new();
 
-    // `(S//NF//ND)` — NOFORN already in dissem_controls; NODIS in non_ic_dissem.
+    // `(S//NF//ND)` — NOFORN already in dissem_us; NODIS in non_ic_dissem.
     let portion = portion_with_non_ic_and_dissem(
         Classification::Secret,
         &[NonIcDissem::Nodis],
@@ -326,8 +333,7 @@ fn nodis_portion_with_noforn_already_present_is_idempotent() {
 
     let noforn_count = projected
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .filter(|d| matches!(d, DissemControl::Nf))
         .count();
 
@@ -336,8 +342,8 @@ fn nodis_portion_with_noforn_already_present_is_idempotent() {
         "NOFORN must appear exactly once after nodis-implies-noforn fires on \
          a portion that already has NOFORN — the FactAdd idempotence path \
          (`apply_fact_add → IntentInapplicable` silent no-op) must not \
-         double-add; got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         double-add; got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us, projected.0.dissem_nato,
     );
 
     // Mirror: EXDIS with NOFORN already present.
@@ -351,8 +357,7 @@ fn nodis_portion_with_noforn_already_present_is_idempotent() {
 
     let exdis_noforn_count = exdis_projected
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .filter(|d| matches!(d, DissemControl::Nf))
         .count();
 
@@ -360,8 +365,8 @@ fn nodis_portion_with_noforn_already_present_is_idempotent() {
         exdis_noforn_count, 1,
         "NOFORN must appear exactly once after exdis-implies-noforn fires on \
          a portion that already has NOFORN — same idempotence invariant; \
-         got dissem_controls = {:?}",
-        exdis_projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        exdis_projected.0.dissem_us, exdis_projected.0.dissem_nato,
     );
 }
 
@@ -387,12 +392,13 @@ fn unclassified_nodis_and_exdis_portions_still_inject_noforn() {
     assert!(
         projected_nodis
             .0
-            .dissem_controls
-            .contains(&DissemControl::Nf),
+            .dissem_iter()
+            .any(|d| d == &DissemControl::Nf),
         "capco/nodis-implies-noforn must fire on UNCLASSIFIED NODIS portions \
          (CAPCO-2016 §H.9 p174: 'May be used with ... UNCLASSIFIED. Requires \
-         NOFORN.'); got dissem_controls = {:?}",
-        projected_nodis.0.dissem_controls,
+         NOFORN.'); got dissem_us = {:?}, dissem_nato = {:?}",
+        projected_nodis.0.dissem_us,
+        projected_nodis.0.dissem_nato,
     );
 
     // `(U//XD)` — unclassified EXDIS portion.
@@ -402,12 +408,13 @@ fn unclassified_nodis_and_exdis_portions_still_inject_noforn() {
     assert!(
         projected_exdis
             .0
-            .dissem_controls
-            .contains(&DissemControl::Nf),
+            .dissem_iter()
+            .any(|d| d == &DissemControl::Nf),
         "capco/exdis-implies-noforn must fire on UNCLASSIFIED EXDIS portions \
          (CAPCO-2016 §H.9 p172: 'May be used with ... UNCLASSIFIED. Requires \
-         NOFORN.'); got dissem_controls = {:?}",
-        projected_exdis.0.dissem_controls,
+         NOFORN.'); got dissem_us = {:?}, dissem_nato = {:?}",
+        projected_exdis.0.dissem_us,
+        projected_exdis.0.dissem_nato,
     );
 }
 
@@ -442,8 +449,7 @@ fn portion_with_both_nodis_and_exdis_is_safe() {
 
     let noforn_count = projected
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .filter(|d| matches!(d, DissemControl::Nf))
         .count();
 
@@ -452,8 +458,8 @@ fn portion_with_both_nodis_and_exdis_is_safe() {
         "Both NODIS and EXDIS rewrites fire, but NOFORN must appear exactly \
          once — the second FactAdd hits the idempotence path \
          (IntentInapplicable silent no-op); no panic expected; \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us, projected.0.dissem_nato,
     );
 }
 

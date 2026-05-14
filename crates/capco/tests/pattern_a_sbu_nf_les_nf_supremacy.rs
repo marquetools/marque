@@ -138,7 +138,8 @@ fn engine() -> Engine {
 // ---------------------------------------------------------------------------
 
 /// `(U//SBU-NF)` portion: `scheme.project(Scope::Page, ...)` must produce
-/// a page-level marking whose `dissem_controls` contains NOFORN.
+/// a page-level marking whose dissem (`dissem_us` ∪ `dissem_nato`)
+/// contains NOFORN.
 ///
 /// This is the load-bearing unclassified-stratum test. §H.9 p178 at
 /// `CAPCO-2016.md:4410` says SBU-NF "May only be used with UNCLASSIFIED"
@@ -171,8 +172,9 @@ fn sbu_nf_portion_projects_noforn_to_page_dissem_unclassified() {
         "capco/sbu-nf-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains SBU-NF (CAPCO-2016 §H.9 p178 banner-form \
          heading 'SENSITIVE BUT UNCLASSIFIED NOFORN'); \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -181,7 +183,8 @@ fn sbu_nf_portion_projects_noforn_to_page_dissem_unclassified() {
 // ---------------------------------------------------------------------------
 
 /// `(C//SBU-NF)` portion: `scheme.project(Scope::Page, ...)` must
-/// produce a page-level marking whose `dissem_controls` contains NOFORN.
+/// produce a page-level marking whose dissem (`dissem_us` ∪
+/// `dissem_nato`) contains NOFORN.
 ///
 /// **`(C//SBU-NF)` is a malformed pre-transmutation input** — §H.9 p178
 /// at `CAPCO-2016.md:4410` says SBU-NF "May only be used with
@@ -216,8 +219,9 @@ fn sbu_nf_malformed_classified_still_injects_noforn() {
          'May only be used with UNCLASSIFIED'; the Pattern A predicate is \
          classification-agnostic and fires defensively until Pattern C \
          classified-strips-sbu transmutes the portion); \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -226,7 +230,8 @@ fn sbu_nf_malformed_classified_still_injects_noforn() {
 // ---------------------------------------------------------------------------
 
 /// `(U//LES-NF)` portion: `scheme.project(Scope::Page, ...)` must
-/// produce a page-level marking whose `dissem_controls` contains NOFORN.
+/// produce a page-level marking whose dissem (`dissem_us` ∪
+/// `dissem_nato`) contains NOFORN.
 ///
 /// `(U//LES-NF)` is the example portion mark explicitly given on the
 /// §H.9 p185 entry (banner-form heading at `CAPCO-2016.md:4542`:
@@ -253,8 +258,9 @@ fn les_nf_portion_projects_noforn_to_page_dissem_unclassified() {
         "capco/les-nf-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains LES-NF (CAPCO-2016 §H.9 p185 banner-form \
          heading 'LAW ENFORCEMENT SENSITIVE NOFORN'); \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -263,7 +269,8 @@ fn les_nf_portion_projects_noforn_to_page_dissem_unclassified() {
 // ---------------------------------------------------------------------------
 
 /// `(S//LES-NF)` portion: `scheme.project(Scope::Page, ...)` must
-/// produce a page-level marking whose `dissem_controls` contains NOFORN.
+/// produce a page-level marking whose dissem (`dissem_us` ∪
+/// `dissem_nato`) contains NOFORN.
 ///
 /// Unlike SBU-NF, LES-NF is a **valid form** in classified portions.
 /// §H.9 p185 at `CAPCO-2016.md:4554` (Relationship(s) field) says
@@ -304,8 +311,9 @@ fn les_nf_portion_projects_noforn_to_page_dissem_classified() {
          LES-NF portions (CAPCO-2016 §H.9 p185 at `:4554`: LES-NF 'May be \
          used with TOP SECRET, SECRET, CONFIDENTIAL, or UNCLASSIFIED'; \
          §H.9 p185 at `:4558` Precedence Rule: SECRET//NOFORN//LES); \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 }
 
@@ -315,8 +323,8 @@ fn les_nf_portion_projects_noforn_to_page_dissem_classified() {
 
 /// `(U//SBU-NF)` portion paired with a synthetic prior REL TO: the
 /// composition `capco/sbu-nf-implies-noforn` → `capco/noforn-clears-rel-to`
-/// produces a projected page with NOFORN in `dissem_controls` AND an empty
-/// `rel_to`.
+/// produces a projected page with NOFORN in dissem (`dissem_us` ∪
+/// `dissem_nato`) AND an empty `rel_to`.
 ///
 /// This is the load-bearing composition test for SBU-NF — it verifies
 /// the *declaration order* of rewrites in `CapcoScheme::build_page_rewrites`
@@ -362,8 +370,9 @@ fn sbu_nf_portion_composes_with_noforn_clears_rel_to() {
     assert!(
         projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after sbu-nf-implies-noforn fires; \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 
     assert!(
@@ -402,8 +411,9 @@ fn les_nf_portion_composes_with_noforn_clears_rel_to() {
     assert!(
         projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after les-nf-implies-noforn fires; \
-         got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us,
+        projected.0.dissem_nato,
     );
 
     assert!(
@@ -443,8 +453,9 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
             .dissem_iter()
             .any(|d| d == &DissemControl::Nf),
         "A plain (U//SBU) portion must not have NOFORN injected by the \
-         SBU-NF/LES-NF-implies-noforn rewrites; got dissem_controls = {:?}",
-        projected_sbu.0.dissem_controls,
+         SBU-NF/LES-NF-implies-noforn rewrites; got dissem_us = {:?}, dissem_nato = {:?}",
+        projected_sbu.0.dissem_us,
+        projected_sbu.0.dissem_nato,
     );
 
     // Plain `(U//LES)` — plain LES, NOT LES-NF.
@@ -456,8 +467,9 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
             .dissem_iter()
             .any(|d| d == &DissemControl::Nf),
         "A plain (U//LES) portion must not have NOFORN injected by the \
-         SBU-NF/LES-NF-implies-noforn rewrites; got dissem_controls = {:?}",
-        projected_les.0.dissem_controls,
+         SBU-NF/LES-NF-implies-noforn rewrites; got dissem_us = {:?}, dissem_nato = {:?}",
+        projected_les.0.dissem_us,
+        projected_les.0.dissem_nato,
     );
 
     // Empty portion — sanity-check: a plain `(S)` portion also must not
@@ -467,11 +479,12 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
     assert!(
         !projected_plain
             .0
-            .dissem_controls
-            .contains(&DissemControl::Nf),
+            .dissem_iter()
+            .any(|d| d == &DissemControl::Nf),
         "A plain (S) portion must not have NOFORN injected by the \
-         SBU-NF/LES-NF-implies-noforn rewrites; got dissem_controls = {:?}",
-        projected_plain.0.dissem_controls,
+         SBU-NF/LES-NF-implies-noforn rewrites; got dissem_us = {:?}, dissem_nato = {:?}",
+        projected_plain.0.dissem_us,
+        projected_plain.0.dissem_nato,
     );
 }
 
@@ -480,7 +493,7 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
 // ---------------------------------------------------------------------------
 
 /// `(C//SBU-NF/NF)` (synthetic): `non_ic_dissem` has `SbuNf` AND
-/// `dissem_controls` has `Nf`. The `capco/sbu-nf-implies-noforn` rewrite
+/// `dissem_us` has `Nf`. The `capco/sbu-nf-implies-noforn` rewrite
 /// fires but `apply_fact_add` returns `IntentInapplicable` (silent
 /// per-intent no-op). The projected marking must contain NOFORN
 /// exactly once — no panic, no double-add.
@@ -491,7 +504,8 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
 /// Pattern A action emits `FactAdd(FactRef::Cve(TOK_NOFORN), Scope::Page)`.
 /// `TOK_NOFORN` maps to `CAT_DISSEM` via `capco_token_category`. The
 /// action target is `CAT_DISSEM`, so the second FactAdd's idempotence
-/// check runs against the `dissem_controls` axis (the
+/// check runs against the dissem axis (`dissem_us` ∪ `dissem_nato`,
+/// queried via `dissem_iter()`); the
 /// `if attrs.dissem_iter().any(|d| d == &target)` check returns
 /// `IntentInapplicable`). The unmatched-arm fallthrough is forward-
 /// compatibility only — it exists so Pattern C
@@ -509,7 +523,7 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
 fn sbu_nf_portion_with_noforn_already_present_is_idempotent() {
     let scheme = CapcoScheme::new();
 
-    // `(C//SBU-NF/NF)` — NOFORN already in dissem_controls; SBU-NF in
+    // `(C//SBU-NF/NF)` — NOFORN already in dissem_us; SBU-NF in
     // non_ic_dissem. Synthetic test fixture to isolate the idempotence
     // path — the form does not need to be a real CAPCO portion.
     let portion = portion_with_non_ic_and_dissem(
@@ -522,8 +536,7 @@ fn sbu_nf_portion_with_noforn_already_present_is_idempotent() {
 
     let noforn_count = projected
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .filter(|d| matches!(d, DissemControl::Nf))
         .count();
 
@@ -533,8 +546,8 @@ fn sbu_nf_portion_with_noforn_already_present_is_idempotent() {
          a portion that already has NOFORN — the FactAdd idempotence path \
          (`apply_fact_add → IntentInapplicable` silent no-op at the \
          CAT_DISSEM arm in `apply_fact_add`, NOT the unmatched-arm \
-         fallthrough) must not double-add; got dissem_controls = {:?}",
-        projected.0.dissem_controls,
+         fallthrough) must not double-add; got dissem_us = {:?}, dissem_nato = {:?}",
+        projected.0.dissem_us, projected.0.dissem_nato,
     );
 
     // Mirror: LES-NF with NOFORN already present.
@@ -548,8 +561,7 @@ fn sbu_nf_portion_with_noforn_already_present_is_idempotent() {
 
     let les_nf_noforn_count = les_nf_projected
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .filter(|d| matches!(d, DissemControl::Nf))
         .count();
 
@@ -557,8 +569,8 @@ fn sbu_nf_portion_with_noforn_already_present_is_idempotent() {
         les_nf_noforn_count, 1,
         "NOFORN must appear exactly once after les-nf-implies-noforn fires on \
          a portion that already has NOFORN — same idempotence invariant \
-         (CAT_DISSEM arm); got dissem_controls = {:?}",
-        les_nf_projected.0.dissem_controls,
+         (CAT_DISSEM arm); got dissem_us = {:?}, dissem_nato = {:?}",
+        les_nf_projected.0.dissem_us, les_nf_projected.0.dissem_nato,
     );
 }
 
