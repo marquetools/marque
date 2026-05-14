@@ -639,10 +639,11 @@ place (Constitution VI).
 `PRECEDING_FIX_PENALTY_DELTA: f32 = -0.10` constant lives in
 `crates/engine/src/engine.rs` (or a sibling module). When `TwoPassFixer`
 dispatches pass-2 and a diagnostic's span matches a pass-1-reshaped
-marking, the engine multiplies the rule axis of the `Confidence`
-struct (or adds to `features` if structural appending is preferred —
-implementer chooses; the audit envelope already carries a
-`features: SmallVec<[FeatureId; 4]>` field per `marque-mvp-3`).
+marking, the engine applies the intended rule-axis adjustment to the
+`Confidence` struct and also appends
+`FeatureContribution { id: FeatureId::PrecedingFixPenalty, delta: -0.10 }`
+to `features`; the audit envelope already carries a
+`features: SmallVec<[FeatureContribution; 4]>` field per `marque-mvp-3`.
 
 **FeatureId variant addition**: still required. The variant fills a
 reserved slot per D-7.10 and the inventory audit. The doc comment at

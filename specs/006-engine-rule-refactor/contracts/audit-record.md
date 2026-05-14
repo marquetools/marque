@@ -6,7 +6,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 # Contract: Audit Record (NDJSON)
 
 **Active schema**: `marque-mvp-3` (PR 3c.B Commit 10 — see §0).
-**Post-keystone target**: `marque-1.0` — lands at PR 3c.2 (see body sections below). The 2-tuple `(scheme, predicate_id)` rule encoding documented in §1+ defers further to its own post-PR-10 PR per FR-049; PR 3c.2 carries the other three structural commitments (Canonical wiring, BLAKE3 digesting, closed MessageTemplate JSON) and keeps the 1-tuple `RuleId` form for `marque-1.0`. The `rule` field shape in §1+ is therefore the eventual target, not the shape PR 3c.2 emits.
+**Post-keystone target**: `marque-1.0` — lands at PR 3c.2 (see body sections below). The 2-tuple `(scheme, predicate_id)` rule encoding documented in §1+ defers further to its own post-PR-10 PR per FR-049; PR 3c.2 carries the other four structural commitments (Canonical wiring, BLAKE3 digesting, closed MessageTemplate JSON, and `from_parsed_unchecked` deletion) and keeps the 1-tuple `RuleId` form for `marque-1.0`. The `rule` field shape in §1+ is therefore the eventual target, not the shape PR 3c.2 emits.
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-037, FR-041
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 

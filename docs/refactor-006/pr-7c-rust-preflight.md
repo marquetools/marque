@@ -170,7 +170,7 @@ The following files must be LEFT UNCHANGED in this PR:
 
 The `build_rs_accept_list_pinned` test (`audit_schema_accept_list.rs:35`) will catch
 an accidental schema flip. The `AUDIT_SCHEMA_IS_V3` const rename (to `AUDIT_SCHEMA_IS_V1_0`
-or deletion) is deferred to the PR 3c `marque-mvp-3 → marque-1.0` bump.
+or deletion) is deferred to the PR 3c.2 `marque-mvp-3 → marque-1.0` bump.
 
 ---
 
