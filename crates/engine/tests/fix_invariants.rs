@@ -55,9 +55,7 @@ fn engine() -> &'static Engine {
 /// identifier list (token canonical).
 fn engine_with_corrections() -> Engine {
     let mut config = Config::default();
-    config
-        .corrections
-        .insert("SERCET".into(), "SECRET".into());
+    config.corrections.insert("SERCET".into(), "SECRET".into());
     Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],

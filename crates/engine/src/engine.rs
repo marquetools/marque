@@ -1874,12 +1874,11 @@ impl<'engine> TwoPassFixer<'engine> {
                 // see the borrow at evaluation time; the engine reads
                 // the cache directly at the pass-2 threshold gate for
                 // the `PrecedingFixPenalty` application.
-                let (relint, new_markings) =
-                    self.engine.lint_with_options_internal_with_cache(
-                        &pass1.post_buffer,
-                        &lint_opts,
-                        Some(&pre_pass_1_cache),
-                    );
+                let (relint, new_markings) = self.engine.lint_with_options_internal_with_cache(
+                    &pass1.post_buffer,
+                    &lint_opts,
+                    Some(&pre_pass_1_cache),
+                );
                 // R002 trigger (PR 7b, FR-024): pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
                 // parsed markings. Marque's recognizer is total — it
@@ -2641,12 +2640,10 @@ fn apply_fr023_and_i18(
         // any pass-1 promoted span at promote-eligible severity. The
         // overlap check uses `key_span` so a sub-token pass-2 finding
         // within a reshaped marking is also caught.
-        let needs_demote = matches!(
-            d.severity,
-            Severity::Error | Severity::Warn | Severity::Fix
-        ) && pass1_applied_keys
-            .iter()
-            .any(|(_, p1_span)| spans_overlap(key_span, *p1_span));
+        let needs_demote = matches!(d.severity, Severity::Error | Severity::Warn | Severity::Fix)
+            && pass1_applied_keys
+                .iter()
+                .any(|(_, p1_span)| spans_overlap(key_span, *p1_span));
 
         let mut cloned = d.clone();
         if needs_demote {
@@ -2887,8 +2884,8 @@ fn synthesize_fixes(
     threshold: f32,
     pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
 ) -> Vec<SynthesizedFix> {
-    use std::collections::BTreeMap;
     use marque_rules::confidence::{FeatureContribution, FeatureId};
+    use std::collections::BTreeMap;
 
     // Group diagnostics by candidate_span (falls back to span when
     // `candidate_span` is unset) so multi-intent batches on the same
@@ -2904,10 +2901,7 @@ fn synthesize_fixes(
     // threshold under the penalty are excluded from auto-apply but
     // remain in `remaining_diagnostics` (existing engine flow).
     #[allow(clippy::type_complexity)]
-    let mut groups: BTreeMap<
-        (usize, usize),
-        (Span, Vec<PenaltyAdjustedDiag>),
-    > = BTreeMap::new();
+    let mut groups: BTreeMap<(usize, usize), (Span, Vec<PenaltyAdjustedDiag>)> = BTreeMap::new();
     for &d in diagnostics {
         let Some(intent) = d.fix.as_ref() else {
             continue;

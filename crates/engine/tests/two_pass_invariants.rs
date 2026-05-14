@@ -62,13 +62,7 @@ fn engine() -> &'static Engine {
 static CLASSIFICATIONS: &[&str] = &["TOP SECRET", "SECRET", "CONFIDENTIAL", "UNCLASSIFIED"];
 
 /// Dissem suffixes that participate in banner/CAB roll-up.
-static DISSEM_SUFFIXES: &[&str] = &[
-    "",
-    "//NOFORN",
-    "//REL TO USA, GBR",
-    "//RELIDO",
-    "//FOUO",
-];
+static DISSEM_SUFFIXES: &[&str] = &["", "//NOFORN", "//REL TO USA, GBR", "//RELIDO", "//FOUO"];
 
 /// Portion classifications.
 static PORTION_CLASS: &[&str] = &["TS", "S", "C", "U"];

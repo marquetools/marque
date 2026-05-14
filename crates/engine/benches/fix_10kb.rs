@@ -80,7 +80,7 @@ fn build_pass2_only_input(target_bytes: usize) -> Vec<u8> {
 /// dispatches against the corrected buffer.
 fn build_two_pass_input(target_bytes: usize) -> Vec<u8> {
     let block = concat!(
-        "SERCET//NOFORN\n",  // C001 trigger: SERCET → SECRET
+        "SERCET//NOFORN\n", // C001 trigger: SERCET → SECRET
         "\n",
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
         "eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
@@ -119,9 +119,7 @@ fn build_engine_default() -> Engine {
 
 fn build_engine_with_corrections() -> Engine {
     let mut config = Config::default();
-    config
-        .corrections
-        .insert("SERCET".into(), "SECRET".into());
+    config.corrections.insert("SERCET".into(), "SECRET".into());
     Engine::new(
         config,
         marque_engine::default_ruleset(),

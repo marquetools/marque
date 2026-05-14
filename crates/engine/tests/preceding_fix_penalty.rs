@@ -66,9 +66,7 @@ fn engine_with_corrections() -> Engine {
     // is independent of pass-1's rule channel), so a corrections-
     // driven input is a useful negation case for "the penalty must
     // NOT fire on pass-0 reshapes."
-    config
-        .corrections
-        .insert("SERCET".into(), "SECRET".into());
+    config.corrections.insert("SERCET".into(), "SECRET".into());
     Engine::new(
         config,
         vec![Box::new(CapcoRuleSet::new())],
