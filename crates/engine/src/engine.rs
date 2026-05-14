@@ -1864,9 +1864,19 @@ impl<'engine> TwoPassFixer<'engine> {
                     lint,
                 )
             } else {
-                let (relint, new_markings) = self
-                    .engine
-                    .lint_with_options_internal(&pass1.post_buffer, &lint_opts);
+                // PR 7c — pass the pre-pass-1 attrs cache into the
+                // post-pass-1 re-lint so every candidate's RuleContext
+                // gets a populated `pre_pass_1_attrs` field when its
+                // span overlaps a pass-1-reshaped marking. Rules then
+                // see the borrow at evaluation time; the engine reads
+                // the cache directly at the pass-2 threshold gate for
+                // the `PrecedingFixPenalty` application.
+                let (relint, new_markings) =
+                    self.engine.lint_with_options_internal_with_cache(
+                        &pass1.post_buffer,
+                        &lint_opts,
+                        Some(&pre_pass_1_cache),
+                    );
                 // R002 trigger (PR 7b, FR-024): pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
                 // parsed markings. Marque's recognizer is total — it
@@ -1939,7 +1949,13 @@ impl<'engine> TwoPassFixer<'engine> {
         let pass2 = {
             let (_pass1_diags_post, pass2_diags) =
                 partition_diags_by_phase(&lint.diagnostics, &localized_ids);
-            self.run_pass2_whole_marking(&pass2_source, &pass2_markings, &pass2_diags, &lint)?
+            self.run_pass2_whole_marking(
+                &pass2_source,
+                &pass2_markings,
+                &pass2_diags,
+                &pass1_applied_keys,
+                &lint,
+            )?
         };
 
         // Merge applied lists: pass-0 corrections, then pass-1, then
@@ -2138,11 +2154,36 @@ impl<'engine> TwoPassFixer<'engine> {
     /// WholeMarking fixes. Because the partitions are disjoint by
     /// rule phase, the union of winners has no rule-and-span
     /// collision.
+    ///
+    /// PR 7c adds two reshape-aware adjustments before the fixes
+    /// pass into [`synthesize_fixes`]:
+    ///
+    /// - **FR-023 disambiguation**: a pass-2 diagnostic whose
+    ///   `(rule, span)` equals a pass-1 promoted fix is dropped. The
+    ///   same rule has already fired on the same marking-scope span;
+    ///   re-emitting it after the reshape would double-fire and
+    ///   pollute `remaining_diagnostics`.
+    /// - **I-18 overlap demotion**: a pass-2 diagnostic whose span
+    ///   overlaps ANY pass-1 promoted fix span (any rule) at
+    ///   `Severity::{Error, Warn, Fix}` is demoted to
+    ///   `Severity::Suggest`. The pass-1 fix already shipped, so
+    ///   pass-2 MUST NOT auto-apply on the same byte range
+    ///   (Constitution V audit-record integrity); `Suggest` surfaces
+    ///   the finding as advisory and is excluded from the audit
+    ///   stream by `synthesize_fixes`' existing filter (FR-042 —
+    ///   `Suggest` does not trigger `EX_DIAG_WARN`).
+    ///
+    /// Both adjustments operate on owned clones of the affected
+    /// diagnostics so the input reference vector stays unmodified
+    /// (pass-1 dispatch may still hold references into the same
+    /// `LintResult.diagnostics` storage; cloning is the only sound
+    /// way to alter severity without aliasing).
     fn run_pass2_whole_marking(
         &self,
         pass2_source: &[u8],
         parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
         pass2_diags: &[&Diagnostic<CapcoScheme>],
+        pass1_applied_keys: &HashSet<(RuleId, Span)>,
         lint: &LintResult,
     ) -> Result<Pass2Result, EngineError> {
         if pass2_diags.is_empty() {
@@ -2156,11 +2197,20 @@ impl<'engine> TwoPassFixer<'engine> {
             });
         }
 
+        // PR 7c FR-023 disambiguation + I-18 overlap demotion. The
+        // owned vector holds the post-adjustment diagnostics; a ref
+        // vector keyed to its addresses feeds `synthesize_fixes`
+        // (which signature still takes `&[&Diagnostic]`). The owned
+        // vector lives for the duration of this function so the
+        // refs are valid.
+        let adjusted_owned = apply_fr023_and_i18(pass2_diags, pass1_applied_keys);
+        let adjusted_refs: Vec<&Diagnostic<CapcoScheme>> = adjusted_owned.iter().collect();
+
         let synthesized = synthesize_fixes(
             &self.engine.scheme,
             parsed_markings,
             pass2_source,
-            pass2_diags,
+            &adjusted_refs,
             self.threshold,
         );
         let kept_fixes = sort_and_c1_dedup(synthesized);
@@ -2502,6 +2552,85 @@ fn partition_diags_by_phase<'a>(
 #[inline]
 fn span_is_within_marking(inner: Span, outer: Span) -> bool {
     inner.start >= outer.start && inner.end <= outer.end
+}
+
+/// True when two byte spans overlap (share at least one byte). Used
+/// by PR 7c's I-18 overlap demotion to detect pass-2 diagnostics that
+/// land on byte ranges already promoted by pass-1.
+///
+/// The half-open `[start, end)` convention matches the rest of
+/// `marque-ism::Span`: spans `(0, 5)` and `(5, 10)` are adjacent but
+/// do NOT overlap. Empty spans (`start == end`) never overlap
+/// anything by construction.
+#[inline]
+fn spans_overlap(a: Span, b: Span) -> bool {
+    a.start < b.end && b.start < a.end
+}
+
+/// PR 7c FR-023 + I-18 — apply reshape-aware disambiguation and
+/// overlap demotion to a pass-2 diagnostic partition. Returns an
+/// owned vector of post-adjustment diagnostics.
+///
+/// Adjustments:
+///
+/// - **FR-023 disambiguation**: a pass-2 diagnostic whose
+///   `(rule, candidate_span ?? span)` matches a pass-1 promoted fix is
+///   dropped. The same rule already fired on the same marking-scope
+///   span; re-emitting it after the reshape would double-fire.
+/// - **I-18 overlap demotion**: a pass-2 diagnostic whose
+///   marking-scope span overlaps ANY pass-1 promoted span (any rule)
+///   at `Severity::{Error, Warn, Fix}` is demoted to
+///   `Severity::Suggest`. The pass-1 fix already shipped, so pass-2
+///   MUST NOT auto-apply on the same byte range
+///   (Constitution V audit-record integrity).
+///
+/// Short-circuit: when `pass1_applied_keys` is empty (the common
+/// case: pass-1 produced no applied fixes), returns clones of every
+/// input diagnostic without filtering. The clone cost is bounded by
+/// `pass2_diags.len()`, which is typically ≤32 (the
+/// `Pass2DiagRefs` inline cap). When pass-1 DID apply fixes, the
+/// same clones happen — the reshape-aware path is the slow path by
+/// construction.
+///
+/// Cloning the entire partition (rather than threading an index +
+/// owned-only-on-demotion vector through Rust's borrow checker) is
+/// the safe-code shape that satisfies Constitution `forbid(unsafe_code)`.
+/// On the FR-023 / I-18 hot path the allocation is one `Vec` with
+/// ≤32 `Diagnostic` clones — well below the SC-001 budget at 10 KB.
+fn apply_fr023_and_i18(
+    pass2_diags: &[&Diagnostic<CapcoScheme>],
+    pass1_applied_keys: &HashSet<(RuleId, Span)>,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    let mut out: Vec<Diagnostic<CapcoScheme>> = Vec::with_capacity(pass2_diags.len());
+    for &d in pass2_diags {
+        // FR-023: drop diagnostics with the same (rule, span) as a
+        // pass-1 promoted fix. The candidate_span is the marking-
+        // scope anchor — match against it (falling back to `span` for
+        // diagnostics that don't carry a candidate span; matches the
+        // `apply_kept_fixes` keying convention at engine.rs:2228+).
+        let key_span = d.candidate_span.unwrap_or(d.span);
+        if pass1_applied_keys.contains(&(d.rule.clone(), key_span)) {
+            continue;
+        }
+
+        // I-18: demote diagnostics whose marking-scope span overlaps
+        // any pass-1 promoted span at promote-eligible severity. The
+        // overlap check uses `key_span` so a sub-token pass-2 finding
+        // within a reshaped marking is also caught.
+        let needs_demote = matches!(
+            d.severity,
+            Severity::Error | Severity::Warn | Severity::Fix
+        ) && pass1_applied_keys
+            .iter()
+            .any(|(_, p1_span)| spans_overlap(key_span, *p1_span));
+
+        let mut cloned = d.clone();
+        if needs_demote {
+            cloned.severity = Severity::Suggest;
+        }
+        out.push(cloned);
+    }
+    out
 }
 
 /// Find the marking span (key in `parsed_markings`) whose byte range
