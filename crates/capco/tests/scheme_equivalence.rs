@@ -1528,18 +1528,49 @@ fn relido_conflict_label_set_on_relido_plus_noforn_plus_orcon() {
     );
 }
 
-/// Retired enumerated constraint names (E054/E055/E056/E057) must NOT
-/// appear in the scheme's constraint catalog. This is the catalog
-/// regression guard: if anyone re-adds the enumerated rows alongside
-/// the family rows (or reverts the compaction), this test catches it.
+/// Enumerated `E054/...` through `E057/...` RELIDO constraint names
+/// MUST be present in the catalog alongside the two additive
+/// `ConflictsWithFamily` rows (`capco/relido-conflicts-fdr-family` and
+/// `capco/orcon-family-conflicts-relido`).
+///
+/// History: this test was originally named
+/// `retired_relido_enumerated_constraint_names_absent_from_catalog` and
+/// asserted the OPPOSITE invariant — that the enumerated rows had been
+/// retired by the Stage D compaction. Copilot's first review pass
+/// caught that the compaction silently broke `rules_declarative.rs`'s
+/// wrapper layer (which dispatches diagnostics by named-catalog
+/// lookup on E054/.../E057/ keys); the PR reverted the compaction so
+/// production diagnostics keep firing. The wrapper-layer refactor +
+/// actual compaction land in PR 4 (T112) per plan rev 1 §0
+/// "Non-scope (deferred to PR 4): RELIDO Conflicts compaction".
+///
+/// Until PR 4 retires the wrappers, the catalog MUST keep all four
+/// enumerated rows plus the additive family rows. This test pins
+/// both invariants.
 #[test]
-fn retired_relido_enumerated_constraint_names_absent_from_catalog() {
+fn relido_enumerated_and_family_rows_coexist_in_catalog() {
     let scheme = CapcoScheme::new();
-    let labels: Vec<&str> = scheme.constraints().iter().map(|c| c.name()).collect();
-    for retired in ["E054/", "E055/", "E056/", "E057/"] {
+    let names: Vec<&str> = scheme.constraints().iter().map(|c| c.name()).collect();
+    for enumerated in [
+        "E054/relido-conflicts-noforn",
+        "E055/relido-conflicts-display-only",
+        "E056/orcon-conflicts-relido",
+        "E057/orcon-usgov-conflicts-relido",
+    ] {
         assert!(
-            !labels.iter().any(|l| l.starts_with(retired)),
-            "retired RELIDO constraint {retired} must not have a catalog entry; got: {labels:?}"
+            names.contains(&enumerated),
+            "enumerated RELIDO row {enumerated} MUST be in the catalog \
+             (rules_declarative.rs wrappers dispatch by this name); got: {names:?}"
+        );
+    }
+    for family in [
+        "capco/relido-conflicts-fdr-family",
+        "capco/orcon-family-conflicts-relido",
+    ] {
+        assert!(
+            names.contains(&family),
+            "additive RELIDO family row {family} MUST be in the catalog \
+             (ConflictsWithFamily primitive showcase); got: {names:?}"
         );
     }
 }

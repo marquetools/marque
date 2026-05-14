@@ -359,13 +359,24 @@ fn closure_rules_unknown_severity_rejected() {
         "unknown severity string in [closure_rules] must produce \
          UnknownClosureRuleSeverity, got: {err:?}"
     );
-    // The error message must NOT contain `"fix"` as an expected value
-    // (the closure-rule variant explicitly omits it).
+    // The error message must NOT list `"fix"` in the expected-value list.
+    // The pattern is "expected one of \"off\", ..., \"error\"" — `"fix"`
+    // must not appear in that comma-separated list. The message MAY mention
+    // "fix" elsewhere (e.g., a parenthetical pedagogical note saying
+    // "closure rules do not accept fix"); only the expected-list is
+    // forbidden from including it. Per Copilot PR 3.7 review #3.
     let err_text = format!("{err}");
+    // Extract the "expected one of ..." substring and assert "fix" is
+    // not inside it.
+    let expected_list = err_text
+        .split("expected one of ")
+        .nth(1)
+        .map(|tail| tail.split(" (").next().unwrap_or(tail))
+        .expect("UnknownClosureRuleSeverity message should contain an expected-list");
     assert!(
-        !err_text.contains("\"fix\""),
-        "UnknownClosureRuleSeverity error message must not list \"fix\" as an \
-         expected value (closure rules reject \"fix\"), got: {err_text}"
+        !expected_list.contains("\"fix\""),
+        "UnknownClosureRuleSeverity expected-value list must not include \"fix\" \
+         (closure rules reject \"fix\"); expected list was: {expected_list}"
     );
     assert_eq!(err.exit_code(), 65);
     let _ = fs::remove_dir_all(&dir);
