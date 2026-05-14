@@ -15,13 +15,18 @@
 //!   (e.g., `OC/NF`, `SAR-A/B/C`, `NODIS/EXDIS`); `//` is the
 //!   between-category separator.
 //!
-//! Engineering tolerance note: the dissem / SCI variant of
-//! `split_slash_with_separator_offsets` spans any **trailing** ASCII
-//! whitespace adjacent to the `/` byte into the Separator span. This is
-//! engineering tolerance for author drift, NOT a §A.6 rule — the manual
-//! is silent on dissem-`/` and SCI-`/` whitespace (it forbids whitespace
-//! only for SAP-`/` at §A.6 p16). The SAR variant is strict per §A.6 p16
-//! and produces a 1-byte separator span.
+//! Engineering tolerance note: CAPCO-2016 §A.6 p16 forbids interjected
+//! whitespace between within-category `/` separators for SAP (line 328),
+//! AEA (line 330), dissem (line 334), and non-IC dissem (line 336)
+//! alike, with substantively identical wording. The parser adopts an
+//! engineering relaxation that consumes adjacent ASCII whitespace into
+//! the Separator span when an author writes `OC / NF` instead of the
+//! mandated `OC/NF`, so downstream rules see one token spanning the
+//! inter-token byte range rather than failing recognition. This is a
+//! Marque tolerance, NOT a §A.6-permitted variant. This test pins that
+//! relaxation behavior. The SAR variant produces a strict 1-byte
+//! separator span (parser.rs ~2103-2107) — no relaxation needed
+//! because the corpus never demands it.
 
 use marque_core::Parser;
 use marque_ism::attrs::{TokenKind, TokenSpan};

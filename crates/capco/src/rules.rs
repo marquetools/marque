@@ -2917,14 +2917,14 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
         // (Severity::Suggest is a hard exclusion in Engine::fix); the
         // candidates surface in the editor / CLI for human selection.
         //
-        // The Diagnostic.severity emitted is Suggest, even though the
-        // rule's `default_severity()` is Warn. Per S005/S006 pattern
-        // (crates/capco/src/rules.rs:2089-2108), the engine overwrites
-        // emitted severity with the rule's configured severity, so
-        // these diagnostics will appear at Warn at the user surface.
-        // Suggest is set here to ensure the per-candidate fix is never
-        // auto-applied even if a future engine refactor decouples the
-        // severity-overwrite from the auto-apply gate.
+        // Diagnostics emit at Severity::Suggest by default — the engine
+        // preserves the per-diagnostic severity when no
+        // `.marque.toml [rules] E062 = "..."` override is configured
+        // (engine.rs:1001-1007 applies the override only when present).
+        // Suggest prevents auto-apply, so the classifier picks among
+        // the three candidates. To escalate to Warn or Error at the
+        // user surface, the operator configures
+        // `[rules] E062 = "warn"` in `.marque.toml`.
         let candidates: &[&str] = &["HCS-O", "HCS-P", "HCS-O-P"];
         let mut out = Vec::with_capacity(candidates.len());
         for candidate in candidates {
@@ -3035,8 +3035,18 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
 // block (the parser preserves `<TRIGRAPHS> EYES [ONLY]` source text
 // verbatim in `TokenSpan.text` per the Commit 2 recognizer). The
 // replacement is the canonical `REL TO USA, <list>` form: USA
-// prepended per §H.3 trigraph convention, remaining codes sorted
-// alphabetically, comma-space delimited per §A.6 p16.
+// prepended per §A.6 p16 + §H.8 p150-151 REL TO template, remaining
+// codes sorted alphabetically, comma-space delimited per §A.6 p16.
+//
+// Note: the EYES source format is trigraph-only per §H.8 p157 line
+// 3874-3875 ("Country trigraph codes are separated by single forward
+// slashes"), so the recognizer rejects tetragraph inputs in the EYES
+// prefix. The diagnostic message still mirrors §H.8 p158's
+// "trigraph/tetragraph" wording verbatim because that wording refers
+// to the carry-forward from the source-document banner line, where
+// tetragraphs may legitimately appear. A future page-context-aware
+// pass may surface banner-line tetragraphs into REL TO output, but
+// is out of PR 9a scope.
 //
 // Implementation note: cross-axis migration (remove EYES from dissem +
 // add trigraphs to rel_to) is not expressible as a single
@@ -3119,7 +3129,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                 token.span,
                 concat!(
                     "EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
-                    "convert to REL TO and carry forward the trigraph codes",
+                    "convert to REL TO and carry forward the trigraph/tetragraph codes",
                 )
                 .to_owned(),
                 "CAPCO-2016 §H.8 p157 + p158",
@@ -3146,9 +3156,11 @@ fn parse_eyes_trigraphs(prefix: &str) -> Vec<String> {
 
 /// Build the canonical `REL TO USA, <list>` replacement string.
 ///
-/// Per §H.3 the country list begins with USA when USA is present;
-/// remaining codes are sorted alphabetically. The list separator is
-/// `, ` (comma-space) per §A.6 p16.
+/// Per CAPCO-2016 §A.6 p16 + §H.8 p150-151 the country list begins
+/// with USA when USA is present; remaining codes are sorted
+/// alphabetically. The list separator is `, ` (comma-space) per
+/// §A.6 p16. (§H.3's USA-first rule applies to JOINT's own
+/// `[LIST]`, not to REL TO.)
 fn build_rel_to_replacement(trigraphs: &[String]) -> String {
     if trigraphs.is_empty() {
         return String::new();
@@ -3159,17 +3171,14 @@ fn build_rel_to_replacement(trigraphs: &[String]) -> String {
             deduped.push(t.clone());
         }
     }
-    let has_usa = deduped.iter().any(|t| t == "USA");
+    // After dedup the list is non-empty by virtue of the caller's
+    // parser shape gate plus the early-return above; `rest` may be
+    // empty (input was just `USA`), but `out` always starts with
+    // `REL TO USA`, so no truncated partial output is possible.
     let mut rest: Vec<String> = deduped.into_iter().filter(|t| t != "USA").collect();
     rest.sort();
     let mut out = String::with_capacity(8 + 5 * (rest.len() + 1));
     out.push_str("REL TO USA");
-    if !has_usa && rest.is_empty() {
-        // Defensive: no trigraphs at all (should not happen — the
-        // parser shape gate requires at least one). Return empty so
-        // the caller's no-op guard skips emission.
-        return String::new();
-    }
     for code in rest {
         out.push_str(", ");
         out.push_str(&code);

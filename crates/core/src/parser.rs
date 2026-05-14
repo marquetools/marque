@@ -752,13 +752,25 @@ impl<'t> Parser<'t> {
                     // within-category is `"/"`, between-category is `"//"`.
                     //
                     // CAPCO-2016 §A.6 p16 forbids interjected whitespace
-                    // in SAP-`/` but is silent on dissem-`/` and SCI-`/`.
-                    // `split_slash_with_separator_offsets` spans any
-                    // trailing ASCII whitespace into the Separator span
-                    // as an engineering tolerance for author drift — NOT
-                    // a §A.6 rule. Downstream rules treating the Separator
-                    // as a single token can then own the full inter-token
-                    // byte range even when the author wrote `OC / NF`.
+                    // between within-category `/` separators for SAP
+                    // (line 328: "without interjected spaces"), AEA
+                    // (line 330: "with no interjected space"), dissem
+                    // (line 334: "A single forward slash with no
+                    // interjected space must be used to separate multiple
+                    // dissemination controls"), and non-IC dissem (line
+                    // 336: "with no interjected space") alike, with
+                    // substantively identical wording. The parser adopts
+                    // an engineering relaxation:
+                    // `split_slash_with_separator_offsets` consumes any
+                    // adjacent ASCII whitespace around `/` into the
+                    // Separator span when an author drifts and writes
+                    // `OC / NF` instead of `OC/NF`, so downstream rules
+                    // see one token spanning the inter-token byte range
+                    // rather than failing recognition. This is a Marque
+                    // tolerance, NOT a §A.6-permitted variant. SAR keeps
+                    // a strict 1-byte separator span (parser.rs ~2103-
+                    // 2107) — no relaxation needed because the corpus
+                    // never demands it.
                     for (slash_off, slash_end) in &slash_offsets {
                         let abs_slash_start = abs_start + slash_off;
                         let abs_slash_end = abs_start + slash_end;
