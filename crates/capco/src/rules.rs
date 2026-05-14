@@ -129,6 +129,7 @@ impl CapcoRuleSet {
             DeclarativeNonUsMissingDissemRule, DeclarativeOrconRelidoConflictRule,
             DeclarativeOrconUsgovRelidoConflictRule, DeclarativeRdPrecedenceRule,
             DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+            DeprecatedSciLongFormRule,
         };
         Self {
             rules: vec![
@@ -289,6 +290,31 @@ impl CapcoRuleSet {
                 Box::new(DeclarativeRelidoDisplayOnlyConflictRule),
                 Box::new(DeclarativeOrconRelidoConflictRule),
                 Box::new(DeclarativeOrconUsgovRelidoConflictRule),
+                // PR 9a T135a (issue #307 Group D): canonicalization
+                // walker for deprecated SCI long-form tokens (HUMINT →
+                // HCS, COMINT / SPECIAL INTELLIGENCE → SI, ECI <COMP> →
+                // SI-<COMP>, EL / ENDSEAL <COMP> → SI-<COMP>,
+                // KDK / KLONDIKE-<COMP> → TK-<COMP>). Catalog ordered
+                // longer-prefix-first inside `rules_declarative.rs`.
+                // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+                Box::new(DeprecatedSciLongFormRule),
+                // PR 9a (issue #307): class-specific bare-HCS / bare-RSV
+                // rules per §H.4.
+                //   E061  hcs-bare-at-confidential-legacy-remark  (§H.4 p62)
+                //   E062  hcs-bare-suggest-subcompartment         (§H.4 p62)
+                //   E063  rsv-bare-requires-compartment           (§H.4 p70)
+                // E061 / E062 complement E010 with class-specific
+                // guidance; E063 is net new (no prior coverage).
+                Box::new(HcsBareAtConfidentialLegacyRemarkRule),
+                Box::new(HcsBareSuggestSubcompartmentRule),
+                Box::new(RsvBareRequiresCompartmentRule),
+                // PR 9a T135a Commit 5 (issue #307): EYES / EYES ONLY →
+                // REL TO conversion per §H.8 p157 + p158. NSA-only and
+                // deprecated since the markings waiver expired 1 Oct 2017.
+                // The fix emits a byte-precise text_correction on the
+                // compound EYES block span; trigraphs carry forward to the
+                // new REL TO list.
+                Box::new(EyesOnlyConvertToRelToRule),
             ],
         }
     }
@@ -2725,6 +2751,455 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
         }
         out
     }
+}
+
+// ===========================================================================
+// E061 — Bare HCS at CONFIDENTIAL (class-specific legacy guidance)
+// ===========================================================================
+//
+// §H.4 p62 carries a class-specific note for legacy CONFIDENTIAL//HCS
+// information: "When legacy information at the CONFIDENTIAL//HCS level
+// is discovered, contact the originator for guidance prior to reusing
+// the information." Distinct from the general bare-HCS guidance that
+// recommends the HCS-O / HCS-P / HCS-O-P templates (covered by E010).
+//
+// E061 fires only when classification is CONFIDENTIAL AND a bare HCS
+// is present. The diagnostic carries no fix (the manual prescribes
+// contacting the originator, not a mechanical re-mark).
+//
+// Bare HCS is a structurally-incomplete marking, not an invalid one —
+// the HCS control system is canonical per §H.4 p62; the user just
+// hasn't specified the required compartment. Marque can't pick the
+// compartment without content-domain context. Severity::Warn (not
+// Error): the marking will be valid once the user adds the compartment;
+// the rule's job is to surface the gap, not to claim the marking is
+// structurally invalid. Contrast with E065's deprecated-control-system
+// rows (bare KDK/KLONDIKE/EL/ENDSEAL/ECI) where the source control
+// system itself is retired and the marking has no canonical migration.
+
+/// Rule E061 — bare HCS at CONFIDENTIAL: legacy guidance per §H.4 p62.
+struct HcsBareAtConfidentialLegacyRemarkRule;
+
+impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E061")
+    }
+    fn name(&self) -> &'static str {
+        "hcs-bare-at-confidential-legacy-remark"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: needs cross-token classification + SCI
+    /// state to determine "bare HCS at CONFIDENTIAL" class-specific
+    /// trigger. No fix emitted; the manual prescribes contacting the
+    /// originator.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{Classification, SciControlBare, SciControlSystem};
+
+        // Class-specific gate: only fires at CONFIDENTIAL.
+        if attrs.us_classification() != Some(Classification::Confidential) {
+            return vec![];
+        }
+
+        // Find bare HCS (Published Hcs system with no compartments).
+        let bare_hcs_idx = attrs.sci_markings.iter().position(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                && m.compartments.is_empty()
+        });
+        let Some(idx) = bare_hcs_idx else {
+            return vec![];
+        };
+
+        // Anchor span at the bare HCS SciSystem token. The structural
+        // parser emits one `TokenKind::SciSystem` per SCI marking; we
+        // index by position to align with the matched `sci_markings`
+        // entry. Defensive fallback to `Span::new(0, 0)` if the spans
+        // got out of sync (would indicate a parser regression caught
+        // elsewhere).
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+        let span = sys_spans
+            .get(idx)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "When legacy information at the CONFIDENTIAL//HCS level is discovered, \
+             contact the originator for guidance prior to reusing the information \
+             (CAPCO-2016 §H.4 p62)"
+                .to_owned(),
+            "CAPCO-2016 §H.4 p62",
+            None,
+        )]
+    }
+}
+
+// ===========================================================================
+// E062 — Bare HCS at SECRET / TOP SECRET (legacy form; suggest templates)
+// ===========================================================================
+//
+// §H.4 p62 (general bare-HCS guidance): "When incorporating legacy
+// material marked 'HCS' into a new product, re-mark the new document
+// and associated portion according to the instructions in the HCS-O
+// and HCS-P marking templates."
+//
+// E062 fires at SECRET / TOP SECRET (the class levels where HCS-O /
+// HCS-P / HCS-O-P are authorized). It emits per-candidate Suggest-
+// severity diagnostics for HCS-O, HCS-P, and HCS-O-P. The choice
+// between them is a content-domain decision Marque cannot make:
+// HCS-O is operational source information; HCS-P is analytical
+// product; HCS-O-P is both. Surfacing 3 candidates lets the
+// classifier pick.
+//
+// Distinct from E010: E010 fires at any class level with a single
+// text-only "consult HCS-O/HCS-P templates" message. E062 emits
+// per-candidate text_corrections so editors can offer one-click
+// substitution. Orgs that want either rule silenced configure
+// `.marque.toml [rules] E062 = "off"` (or E010 = "off").
+
+/// Rule E062 — bare HCS at S/TS: suggest HCS-O / HCS-P / HCS-O-P
+/// templates per §H.4 p62.
+struct HcsBareSuggestSubcompartmentRule;
+
+impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E062")
+    }
+    fn name(&self) -> &'static str {
+        "hcs-bare-suggest-subcompartment"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: needs cross-token classification + SCI
+    /// state to gate "S/TS class level". Emits per-candidate
+    /// text_corrections at Suggest severity so the engine never
+    /// auto-applies; the classifier picks via UI.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{Classification, SciControlBare, SciControlSystem};
+
+        // Class-specific gate: only fires at SECRET / TOP SECRET.
+        let class = attrs.us_classification();
+        if !matches!(
+            class,
+            Some(Classification::Secret) | Some(Classification::TopSecret)
+        ) {
+            return vec![];
+        }
+
+        // Find bare HCS (Published Hcs system with no compartments).
+        let Some(idx) = attrs.sci_markings.iter().position(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                && m.compartments.is_empty()
+        }) else {
+            return vec![];
+        };
+
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+        let span = sys_spans
+            .get(idx)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        // Emit per-candidate Suggest-severity diagnostics. Each carries
+        // a text_correction whose `replacement` is the canonical short
+        // form for the matching sub-compartment. The engine never
+        // auto-applies Suggest-severity diagnostics by construction
+        // (Severity::Suggest is a hard exclusion in Engine::fix); the
+        // candidates surface in the editor / CLI for human selection.
+        //
+        // Diagnostics emit at Severity::Suggest by default — the engine
+        // preserves the per-diagnostic severity when no
+        // `.marque.toml [rules] E062 = "..."` override is configured
+        // (engine.rs:1001-1007 applies the override only when present).
+        // Suggest prevents auto-apply, so the classifier picks among
+        // the three candidates. To escalate to Warn or Error at the
+        // user surface, the operator configures
+        // `[rules] E062 = "warn"` in `.marque.toml`.
+        let candidates: &[&str] = &["HCS-O", "HCS-P", "HCS-O-P"];
+        let mut out = Vec::with_capacity(candidates.len());
+        for candidate in candidates {
+            out.push(Diagnostic::text_correction(
+                self.id(),
+                Severity::Suggest,
+                span,
+                format!(
+                    "Bare HCS is the legacy form per CAPCO-2016 §H.4 p62; new content \
+                     must use HCS-O / HCS-P / HCS-O-P depending on Operations vs \
+                     Product content. Suggested replacement: {candidate}"
+                ),
+                "CAPCO-2016 §H.4 p62",
+                *candidate,
+                FixSource::BuiltinRule,
+                // Confidence 0.75: the canonical replacement is one of
+                // three, and Marque cannot pick the right one. The
+                // value is below typical auto-apply thresholds (0.95)
+                // so even an engine that ignored the Suggest gate
+                // would not auto-apply.
+                Confidence::strict(0.75),
+                None,
+            ));
+        }
+        out
+    }
+}
+
+// ===========================================================================
+// E063 — Bare RSV requires compartment (§H.4 p70)
+// ===========================================================================
+//
+// §H.4 p70: "the RSV marking may not be used alone and requires the
+// associated compartment". §H.4 p72: `RSV-[COMPARTMENT]` (3-alnum),
+// TS/S only, requires RESERVE.
+//
+// Bare RSV is a structurally-incomplete marking, not an invalid one —
+// the RESERVE control system is canonical per §H.4 p70; the user just
+// hasn't specified the required compartment. Marque can't pick the
+// compartment without content-domain context (the compartment identifier
+// is org-private and not in the public vocabulary). Severity::Warn (not
+// Error): the marking will be valid once the user adds the compartment;
+// the rule's job is to surface the gap, not to claim the marking is
+// structurally invalid. Contrast with E065's deprecated-control-system
+// rows (bare KDK/KLONDIKE/EL/ENDSEAL/ECI) where the source control
+// system itself is retired and the marking has no canonical migration.
+// Suggest-only (no fix proposed) because the compartment identifier is
+// org-private content beyond Marque's vocabulary.
+
+/// Rule E063 — bare RSV requires compartment per §H.4 p70.
+struct RsvBareRequiresCompartmentRule;
+
+impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E063")
+    }
+    fn name(&self) -> &'static str {
+        "rsv-bare-requires-compartment"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: needs cross-token SCI state to find bare
+    /// RSV (no compartment). No fix emitted; the compartment
+    /// identifier is org-private content beyond Marque's vocabulary.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{SciControlBare, SciControlSystem};
+
+        // Find bare RSV (Published Rsv system with no compartments).
+        let Some(idx) = attrs.sci_markings.iter().position(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Rsv))
+                && m.compartments.is_empty()
+        }) else {
+            return vec![];
+        };
+
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+        let span = sys_spans
+            .get(idx)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RSV marking may not be used alone and requires the associated \
+             3-alphanumeric compartment (CAPCO-2016 §H.4 p70)"
+                .to_owned(),
+            "CAPCO-2016 §H.4 p70",
+            None,
+        )]
+    }
+}
+
+// ===========================================================================
+// E064 — EYES / EYES ONLY → REL TO conversion (T135a Commit 5)
+// ===========================================================================
+//
+// Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
+//
+// §H.8 p157: EYES ONLY is NSA-only and deprecated; the markings waiver
+// expired 1 Oct 2017 (post-manual). §H.8 p158: "When extracting EYES
+// ONLY portions from SIGINT reporting, convert the EYES ONLY portion
+// marks to REL TO" and "carry forward the trigraph/tetragraph codes
+// listed in the source document banner line to the new portion mark."
+//
+// E064 emits a `text_correction` covering the source-bytes of the EYES
+// block (the parser preserves `<TRIGRAPHS> EYES [ONLY]` source text
+// verbatim in `TokenSpan.text` per the Commit 2 recognizer). The
+// replacement is the canonical `REL TO USA, <list>` form: USA
+// prepended per §A.6 p16 + §H.8 p150-151 REL TO template, remaining
+// codes sorted alphabetically, comma-space delimited per §A.6 p16.
+//
+// Note: the EYES source format is trigraph-only per §H.8 p157 line
+// 3874-3875 ("Country trigraph codes are separated by single forward
+// slashes"), so the recognizer rejects tetragraph inputs in the EYES
+// prefix. The diagnostic message still mirrors §H.8 p158's
+// "trigraph/tetragraph" wording verbatim because that wording refers
+// to the carry-forward from the source-document banner line, where
+// tetragraphs may legitimately appear. A future page-context-aware
+// pass may surface banner-line tetragraphs into REL TO output, but
+// is out of PR 9a scope.
+//
+// Implementation note: cross-axis migration (remove EYES from dissem +
+// add trigraphs to rel_to) is not expressible as a single
+// `ReplacementIntent` — the intent vocabulary's `FactAdd` /
+// `FactRemove` / `Recanonicalize` variants are strictly single-axis-
+// scoped. A `FixIntent` mirror of the E041 pattern would either need a
+// new `Migrate { from, to, scope }` intent variant (engine/scheme
+// edit out of scope here) or an engine-side composition of two atomic
+// intents (architectural change beyond Commit 5's scope). The
+// `text_correction` channel is the existing route that delivers the
+// same user-facing outcome — a byte-precise canonicalization splice
+// at the EYES block span. The brief's "FixIntent / mirror E041"
+// guidance assumed intra-axis migration shape; the EYES → REL TO
+// case is documented as cross-axis in `project_incompatibility_class.md`
+// (memory). Selecting the existing text_correction path is the
+// citation-honest implementation under today's intent vocabulary.
+
+/// Rule E064 — convert EYES / EYES ONLY portions to REL TO per §H.8 p157.
+struct EyesOnlyConvertToRelToRule;
+
+impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E064")
+    }
+    fn name(&self) -> &'static str {
+        "eyes-only-convert-to-rel-to"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+    /// Phase::Localized: the diagnostic span covers a single
+    /// `TokenKind::DissemControl` block (the EYES compound block).
+    /// `text_correction` is a byte-precise single-span splice that
+    /// fits inside one token boundary — exactly the Localized
+    /// contract. Pass-1 applies the fix; the re-parse for pass-2
+    /// sees the canonical REL TO output.
+    fn phase(&self) -> Phase {
+        Phase::Localized
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        let mut out = Vec::new();
+        for token in attrs.token_spans.iter() {
+            if token.kind != TokenKind::DissemControl {
+                continue;
+            }
+            // The compound EYES block carries `<trigraph>(/<trigraph>)*
+            // EYES [ONLY]`. We detect the compound form by suffix-
+            // matching `EYES ONLY` / `EYES` with a non-empty prefix.
+            // Bare `EYES` tokens (no preceding country list) are
+            // E064-out-of-scope — the user wrote EYES with no specific
+            // country list, so Marque cannot synthesize one (and §H.8
+            // p158's "carry forward the trigraph codes" guidance does
+            // not apply when no codes were given).
+            let text = token.text.as_str();
+            let (prefix, _full_form) = if let Some(p) = text.strip_suffix(" EYES ONLY") {
+                (p, true)
+            } else if let Some(p) = text.strip_suffix(" EYES") {
+                (p, false)
+            } else {
+                continue;
+            };
+            if prefix.is_empty() {
+                continue;
+            }
+
+            // Parse the trigraph list, USA-first sort the rest.
+            let trigraphs = parse_eyes_trigraphs(prefix);
+            let canonical = build_rel_to_replacement(&trigraphs);
+
+            // No-op guard: if the trigraph list is somehow empty after
+            // sorting (should not happen given the parser's
+            // shape gate), skip emission.
+            if canonical.is_empty() {
+                continue;
+            }
+
+            out.push(Diagnostic::text_correction(
+                self.id(),
+                self.default_severity(),
+                token.span,
+                concat!(
+                    "EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
+                    "convert to REL TO and carry forward the trigraph/tetragraph codes",
+                )
+                .to_owned(),
+                "CAPCO-2016 §H.8 p157 + p158",
+                canonical,
+                FixSource::BuiltinRule,
+                Confidence::strict(1.0),
+                None,
+            ));
+        }
+        out
+    }
+}
+
+/// Parse the `/`-delimited trigraph prefix of an EYES block into a
+/// `Vec<String>`. The prefix is the part before ` EYES` / ` EYES ONLY`.
+/// Trigraphs are uppercase 3-letter codes per §H.8 p150-151.
+fn parse_eyes_trigraphs(prefix: &str) -> Vec<String> {
+    prefix
+        .split('/')
+        .map(|s| s.to_owned())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Build the canonical `REL TO USA, <list>` replacement string.
+///
+/// Per CAPCO-2016 §A.6 p16 + §H.8 p150-151 the country list begins
+/// with USA when USA is present; remaining codes are sorted
+/// alphabetically. The list separator is `, ` (comma-space) per
+/// §A.6 p16. (§H.3's USA-first rule applies to JOINT's own
+/// `[LIST]`, not to REL TO.)
+fn build_rel_to_replacement(trigraphs: &[String]) -> String {
+    if trigraphs.is_empty() {
+        return String::new();
+    }
+    let mut deduped: Vec<String> = Vec::with_capacity(trigraphs.len());
+    for t in trigraphs {
+        if !deduped.contains(t) {
+            deduped.push(t.clone());
+        }
+    }
+    // After dedup the list is non-empty by virtue of the caller's
+    // parser shape gate plus the early-return above; `rest` may be
+    // empty (input was just `USA`), but `out` always starts with
+    // `REL TO USA`, so no truncated partial output is possible.
+    let mut rest: Vec<String> = deduped.into_iter().filter(|t| t != "USA").collect();
+    rest.sort();
+    let mut out = String::with_capacity(8 + 5 * (rest.len() + 1));
+    out.push_str("REL TO USA");
+    for code in rest {
+        out.push_str(", ");
+        out.push_str(&code);
+    }
+    out
 }
 
 /// Citation string for E035 — shared between the with-fix and no-fix

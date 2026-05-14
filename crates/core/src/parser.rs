@@ -404,6 +404,101 @@ impl<'t> Parser<'t> {
                 rel_to.extend(parsed.countries);
                 dissem.extend(parsed.trailing_dissem);
                 non_ic.extend(parsed.trailing_non_ic);
+            } else if let Some(long_form) = recognize_deprecated_sci_long_form(trimmed) {
+                // Deprecated SCI long-form (T135a / issue #307 Group D).
+                // Runs BEFORE the SCI structural path so compound forms like
+                // `KDK-BLUEFISH` (3-byte custom-control shape that would
+                // otherwise be claimed as `SciControlSystem::Custom("KDK")`)
+                // route through this recognizer instead. Source bytes are
+                // preserved verbatim in `TokenSpan.text`; the walker rule
+                // (E065 in `marque-capco::rules_declarative`) consumes the
+                // original text to emit canonicalization fixes.
+                //
+                // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+                let compartments: Box<[SciCompartment]> = match &long_form.compartment {
+                    Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                    None => Box::new([]),
+                };
+                let canonical_enum = if compartments.is_empty() {
+                    SciControl::parse(long_form.system.as_str())
+                } else {
+                    compartments.first().and_then(|c| {
+                        let composite = format!("{}-{}", long_form.system.as_str(), c.identifier);
+                        SciControl::parse(&composite)
+                    })
+                };
+                let marking = SciMarking::new(
+                    SciControlSystem::Published(long_form.system),
+                    compartments,
+                    canonical_enum,
+                );
+                if let Some(ctrl) = marking.canonical_enum {
+                    sci.push(ctrl);
+                }
+                sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
+                // Source bytes preserved verbatim — walker rule reads
+                // `TokenSpan.text` to identify the deprecated form.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciControl,
+                    span,
+                    text: trimmed.into(),
+                });
+                // Emit a SciSystem span coincident with the SciControl
+                // span so rule-layer span anchoring (E061 / E062 / E063
+                // + any future SCI rule that locates spans via
+                // `TokenKind::SciSystem` filter + index lookup) works
+                // uniformly for long-form-derived markings the same way
+                // it does for structural-parser markings. The
+                // structural path (see ~lines 998-1009 below) always
+                // emits both a block-level `SciControl` span AND a
+                // narrower `SciSystem` span for the control identifier
+                // itself; without the matching emission here, rules
+                // that index `sys_spans[idx]` would fall through to
+                // their defensive `Span::new(0, 0)` fallback and produce
+                // audit records pointing at byte 0..0 of the input.
+                //
+                // For long-form input the source bytes ARE the system
+                // identifier (e.g., `HUMINT` becomes HCS at the marking
+                // level, but the byte range we anchor on remains the
+                // input's `HUMINT` token). Both spans cover the same
+                // bytes — the rule layer reads spans for byte anchoring,
+                // not for token-string content. This invariant
+                // ("exactly one `TokenKind::SciSystem` span per
+                // `sci_markings` entry, regardless of recognizer path")
+                // is what makes the rule-layer span lookup pattern
+                // sound; see `crates/core/tests/sci_long_form_spans.rs`
+                // for the pinned coverage.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciSystem,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if recognize_eyes_only_block(trimmed, self.tokens).is_some() {
+                // EYES / EYES ONLY block with `/`-delimited trigraphs
+                // (T135a Commit 5, issue #307). CAPCO-2016 §H.8 p157:
+                // "When extracting EYES ONLY portions from SIGINT
+                // reporting, convert the EYES ONLY portion marks to
+                // REL TO" and "carry forward the trigraph/tetragraph
+                // codes listed in the source document banner line to
+                // the new portion mark."
+                //
+                // The block has the shape `<TRIGRAPH>(/<TRIGRAPH>)*
+                // EYES [ONLY]`. Without this recognizer the parser's
+                // multi-token block handler would split on `/` and
+                // emit each token as Unknown, so the walker rule
+                // (E064) cannot find the block. Source bytes are
+                // preserved verbatim in `TokenSpan.text`; the walker
+                // builds the canonical `REL TO USA, <list>` replacement
+                // and emits a `text_correction` covering the whole
+                // block span.
+                //
+                // Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
+                dissem.push(ParsedDissem::new(DissemControl::Eyes, trimmed, span));
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DissemControl,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if (trimmed.contains('-')
                 || trimmed.contains('/')
                 || is_bare_cve_value(trimmed)
@@ -590,10 +685,14 @@ impl<'t> Parser<'t> {
 
                 // Inline-4: a `/`-separated slash block typically carries
                 // 2-4 sub-tokens (e.g. `SI/TK`, `NF/LIMDIS`, `SI/TK/HCS`);
-                // see [`split_slash_with_offsets`] for the matching scratch
-                // budget on the index side.
+                // see [`split_slash_with_separator_offsets`] for the matching
+                // scratch budget on the index side. We pull the per-`/`
+                // byte offsets out alongside the token offsets so we can
+                // emit `TokenKind::Separator` spans for within-category
+                // single-slash separators (T131 / issue #106).
+                let (token_offsets, slash_offsets) = split_slash_with_separator_offsets(trimmed);
                 let mut results: SmallVec<[SubResult<'_>; 4]> = SmallVec::new();
-                for (sub_off, sub_tok) in split_slash_with_offsets(trimmed) {
+                for (sub_off, sub_tok) in token_offsets {
                     let sub_abs_start = abs_start + sub_off;
                     let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
                     if let Some(ctrl) = SciControl::parse(sub_tok) {
@@ -674,8 +773,122 @@ impl<'t> Parser<'t> {
                         span,
                         text: trimmed.into(),
                     });
+                } else if first_parsed_kind.is_none() {
+                    // All-Unknown block (e.g. `FOO/BAR` with no recognized
+                    // category): emit the whole trimmed block as one
+                    // `TokenKind::Unknown` span — mirroring the mixed-
+                    // category branch above. The per-token Unknown +
+                    // per-slash Separator emission that would otherwise
+                    // run here is incoherent: there's no committed
+                    // category for the Separator to sit between, and a
+                    // downstream byte-precise splice rule (E041 auto-fix,
+                    // canonical-rendering) keyed on `TokenKind::Separator`
+                    // would silently consume bytes from a non-category
+                    // context. Closes Copilot R3 channel on PR #416.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
                 } else {
-                    // Same category (or all unknown): commit sub-token results.
+                    // Same-category block with at least one committed
+                    // sub-token: commit sub-token results. Emit
+                    // `TokenKind::Separator` spans for within-category
+                    // `/` bytes (T131 / issue #106). Disambiguated from
+                    // between-category `//` separators by `text`:
+                    // within-category is `"/"`, between-category is
+                    // `"//"`.
+                    //
+                    // **Emission contract for `TokenKind::Separator`**: a
+                    // Separator span MUST sit between two committed
+                    // non-Unknown same-category tokens. Empty-boundary
+                    // slashes (trailing `OC/`, leading `/OC`,
+                    // back-to-back `//`) and slashes adjacent to an
+                    // Unknown sub-token (e.g. `OC/FOO` where FOO is
+                    // unrecognized) violate the contract; downstream
+                    // byte-precise splice rules trust it. We map each
+                    // [`SlashSeparator`] to its `results`-array
+                    // neighbors via a running `committed_idx`: whenever
+                    // a slash has `left_nonempty = true`,
+                    // `results[committed_idx]` is its left neighbor;
+                    // `right_nonempty = true` →
+                    // `results[committed_idx + 1]` is its right
+                    // neighbor. Emit only when BOTH neighbors exist AND
+                    // both are non-Unknown AND share the same SubKind.
+                    // Closes Copilot R3 channel on PR #416.
+                    //
+                    // CAPCO-2016 §A.6 p16 forbids interjected whitespace
+                    // between within-category `/` separators for SAP
+                    // (line 328: "without interjected spaces"), AEA
+                    // (line 330: "with no interjected space"), dissem
+                    // (line 334: "A single forward slash with no
+                    // interjected space must be used to separate multiple
+                    // dissemination controls"), and non-IC dissem (line
+                    // 336: "with no interjected space") alike, with
+                    // substantively identical wording. The parser adopts
+                    // an engineering relaxation:
+                    // `split_slash_with_separator_offsets` consumes any
+                    // adjacent ASCII whitespace around `/` into the
+                    // Separator span when an author drifts and writes
+                    // `OC / NF` instead of `OC/NF`, so downstream rules
+                    // see one token spanning the inter-token byte range
+                    // rather than failing recognition. This is a Marque
+                    // tolerance, NOT a §A.6-permitted variant. SAR keeps
+                    // a strict 1-byte separator span (parser.rs ~2103-
+                    // 2107) — no relaxation needed because the corpus
+                    // never demands it.
+                    let mut committed_idx: usize = 0;
+                    for sep in &slash_offsets {
+                        // Walk results in lockstep with the slash list.
+                        // Because empty `s.split('/')` parts do NOT push
+                        // to `results`, the running `committed_idx` is
+                        // always the next un-claimed entry. If
+                        // `left_nonempty`, `results[committed_idx]` IS
+                        // this slash's left neighbor and we advance
+                        // past it; if `right_nonempty`, the next slash's
+                        // (or end's) neighbor view starts after
+                        // `committed_idx + 1`.
+                        let left_idx = if sep.left_nonempty {
+                            let idx = committed_idx;
+                            committed_idx += 1;
+                            Some(idx)
+                        } else {
+                            None
+                        };
+                        let right_idx = if sep.right_nonempty {
+                            Some(committed_idx)
+                        } else {
+                            None
+                        };
+                        let emit = match (left_idx, right_idx) {
+                            (Some(li), Some(ri)) => {
+                                // Defensive index check — should always
+                                // hold given the loop invariant, but
+                                // protects against future refactors.
+                                let left = results.get(li);
+                                let right = results.get(ri);
+                                matches!(
+                                    (left, right),
+                                    (Some(l), Some(r))
+                                        if l.kind != SubKind::Unknown
+                                            && r.kind != SubKind::Unknown
+                                            && l.kind == r.kind
+                                )
+                            }
+                            // At least one neighbor empty → no
+                            // Separator (empty-boundary slash).
+                            _ => false,
+                        };
+                        if emit {
+                            let abs_slash_start = abs_start + sep.start;
+                            let abs_slash_end = abs_start + sep.end;
+                            token_spans.push(TokenSpan {
+                                kind: TokenKind::Separator,
+                                span: Span::new(abs_slash_start, abs_slash_end),
+                                text: "/".into(),
+                            });
+                        }
+                    }
                     for r in results {
                         match r.kind {
                             SubKind::Sci => {
@@ -859,6 +1072,84 @@ fn parse_sci_block(
             return None;
         }
 
+        // Deprecated SCI long-form per-chunk recognition (PR 9a Copilot R4,
+        // PR #416). When the chunk matches a deprecated long-form
+        // (`HUMINT`, `COMINT`, `KDK-BLUEFISH`, `ECI ABC`, ...), route it
+        // through the canonical-system enum path BEFORE the structural
+        // CVE-bare / custom-control checks below — otherwise:
+        //
+        // - `HUMINT` / `COMINT` / `KLONDIKE-IDIT` (>5 chars) would fall
+        //   through to `is_valid_custom_control`, fail (length cap), and
+        //   reject the whole block, so multi-system inputs like
+        //   `(TS//COMINT/TK//NF)` get tagged Unknown and the E065 walker
+        //   never sees them.
+        // - `KDK-BLUEFISH` (3-char prefix → fits `is_valid_custom_control`)
+        //   currently lands as `SciControlSystem::Custom("KDK")` with a
+        //   `BLUEFISH` compartment; the walker still fires via the
+        //   `TokenKind::SciControl` text-prefix match, but the resulting
+        //   `SciMarking` is structurally Custom (triggering W034
+        //   unpublished-control noise) instead of canonical `Published(Tk)`
+        //   with the canonical `BLFH` compartment.
+        // - `ECI ABC` / `EL ECRU` (space inside the chunk) parses neither
+        //   as CVE-bare nor custom-control and rejects the whole block.
+        //
+        // Routing through `recognize_deprecated_sci_long_form` here yields
+        // a canonical `SciMarking`, dual-emits `TokenKind::SciControl` +
+        // `TokenKind::SciSystem` spans with the chunk source bytes
+        // verbatim (so the E065 walker can identify the deprecated form
+        // via `TokenSpan.text`), and preserves the per-chunk
+        // all-or-nothing parse semantic — if the recognizer doesn't match,
+        // we fall through to the existing CVE-bare / custom-control
+        // path; if it does match, we `continue` to the next chunk.
+        //
+        // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85 — see
+        // per-row citations in `recognize_deprecated_sci_long_form`.
+        if let Some(long_form) = recognize_deprecated_sci_long_form(chunk) {
+            // Build compartments from the recognizer's optional compartment
+            // slot. The recognizer guarantees `is_alnum_upper(comp)` for
+            // every PrefixSpace/PrefixHyphen variant (see the
+            // `recognize_deprecated_sci_long_form` body), so this is safe.
+            let compartments: Box<[SciCompartment]> = match &long_form.compartment {
+                Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                None => Box::new([]),
+            };
+            // Canonical-enum lookup mirrors the whole-block long-form path
+            // at parser.rs ~line 422: bare control → `SciControl::parse`
+            // on the system name (`HCS` / `SI` / `TK`); compound form →
+            // `{ctrl}-{comp}` lookup (e.g., `TK-BLFH`).
+            let canonical_enum = if compartments.is_empty() {
+                SciControl::parse(long_form.system.as_str())
+            } else {
+                compartments.first().and_then(|c| {
+                    let composite = format!("{}-{}", long_form.system.as_str(), c.identifier);
+                    SciControl::parse(&composite)
+                })
+            };
+            // Source bytes preserved verbatim — the E065 walker reads
+            // `TokenSpan.text` to identify the deprecated form. Dual-emit
+            // SciControl + SciSystem spans matching the whole-block
+            // long-form path's invariant (parser.rs ~lines 441-475) and
+            // the structural path's pattern (lines 1107-1118 below).
+            let chunk_abs = base + chunk_off;
+            let chunk_span = Span::new(chunk_abs, chunk_abs + chunk.len());
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciControl,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciSystem,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            markings.push(SciMarking::new(
+                SciControlSystem::Published(long_form.system),
+                compartments,
+                canonical_enum,
+            ));
+            continue;
+        }
+
         // Split chunk on first `-` into (control, rest). If no `-`, the
         // whole chunk is the control with no compartments.
         let (ctrl_str, rest_opt) = match chunk.find('-') {
@@ -1025,6 +1316,314 @@ fn is_known_non_sci_token(s: &str) -> bool {
         || parse_non_ic_full_form(s).is_some()
         || AeaMarking::parse(s).is_some()
         || DeclassExemption::parse(s).is_some()
+}
+
+// =============================================================================
+// Deprecated SCI long-form recognition (T135a / issue #307 Group D)
+// =============================================================================
+
+/// Result of recognizing a deprecated SCI long-form block.
+///
+/// Holds the parser's internal classification (canonical SCI control system
+/// with optional compartment / sub-compartment context). Source bytes are
+/// preserved verbatim in the caller's `TokenSpan.text` — this struct does
+/// NOT rewrite the user's input. The walker rule in
+/// `marque-capco::rules_declarative` (E065) consumes the original
+/// `TokenSpan.text` plus this canonical projection to emit
+/// `Diagnostic::text_correction` fixes.
+///
+/// Authority (per-variant citations in [`recognize_deprecated_sci_long_form`]):
+/// CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+#[derive(Debug, Clone)]
+struct DeprecatedSciLongForm {
+    /// Canonical control system this long-form maps to.
+    /// `Hcs` for HUMINT-family, `Si` for COMINT / ECI / EL family,
+    /// `Tk` for KDK / KLONDIKE family.
+    system: SciControlBare,
+    /// Compartment identifier (e.g., `BLUEFISH` for `KDK-BLUEFISH`,
+    /// `ABC` for `ECI ABC`, `ECRU` for `EL ECRU`). `None` for bare
+    /// long-forms (`HUMINT`, `COMINT`, `ECI` alone, `KDK` alone).
+    /// Byte offset of compartment within `trimmed` recorded separately
+    /// in the second tuple element of `recognize_deprecated_sci_long_form`'s
+    /// return.
+    compartment: Option<SmolStr>,
+}
+
+/// Recognize a deprecated SCI long-form block.
+///
+/// Returns `Some((form, full_byte_len))` when `trimmed` is a recognized
+/// deprecated form. `full_byte_len` is the byte length of the longest
+/// matched prefix within `trimmed` — used by the caller to set up the
+/// `TokenSpan.span` and the `SciMarking` source span. For bare-form
+/// matches, `full_byte_len == trimmed.len()`; for compound forms with a
+/// compartment tail, the recognizer accepts the full block.
+///
+/// The recognition is intentionally **lenient on case** for the form
+/// keyword (the SCI long-forms are universally uppercase in practice
+/// per §H.4) and **strict on shape** for the compartment slot — the
+/// compartment must be `[A-Z0-9]+` per §H.4 p61 + p76.
+///
+/// # Authority (per row)
+///
+/// - `HUMINT` / `HUMINT CONTROL SYSTEM` → HCS — CAPCO-2016 §H.4 p62
+///   (Legacy section: "When incorporating legacy material marked 'HCS'
+///   into a new product, re-mark the new document and associated
+///   portion according to the instructions in the HCS-O and HCS-P
+///   marking templates.").
+/// - `COMINT` / `SPECIAL INTELLIGENCE` → SI — CAPCO-2016 §H.4 p74:
+///   "The COMINT title for the Special Intelligence (SI) control
+///   system is no longer valid".
+/// - `ECI <COMP>` / `EXCEPTIONALLY CONTROLLED INFORMATION <COMP>` →
+///   SI-`<COMP>` — CAPCO-2016 §H.4 p76: "information formerly marked
+///   TS//SI-ECI ABC must now be marked TS//SI-ABC". §H.4 p61: "ECI
+///   grouping markings are NOT used in banner/portion".
+/// - `EL <SUB>` / `ENDSEAL <SUB>` → SI-`<SUB>` (typically `ECRU` or
+///   `NONBOOK`) — CAPCO-2016 §H.4 p78: "the EL control system is
+///   being retired and all associated compartments moved to the SI
+///   control system". §H.4 p83 mirrors for `NONBOOK`.
+/// - `KDK-<COMP>` / `KLONDIKE-<COMP>` → TK-`<COMP>` — CAPCO-2016
+///   §H.4 p85 (NSG PM 3802 Closure of KLONDIKE Control System):
+///   "When incorporating legacy material marked 'KLONDIKE' into a new
+///   product, re-mark the new document and associated portions
+///   according to the instructions in the TK-BLFH, TK-IDIT, and
+///   TK-KAND marking templates."
+///
+/// Bare `ECI` / `ENDSEAL` / `KDK` (no compartment) are accepted — the
+/// walker rule emits a suggest-only diagnostic for them because the
+/// compartment context required to migrate is unknown at the parser
+/// level.
+fn recognize_deprecated_sci_long_form(trimmed: &str) -> Option<DeprecatedSciLongForm> {
+    // -----------------------------------------------------------------
+    // HCS family — §H.4 p62
+    // -----------------------------------------------------------------
+    // Multi-word phrase checks must come before the single-word ones
+    // (longest-prefix wins — same pattern as `parse_nato_classification`).
+    if trimmed == "HUMINT CONTROL SYSTEM" || trimmed == "HUMINT" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Hcs,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (COMINT / SPECIAL INTELLIGENCE) — §H.4 p74
+    // -----------------------------------------------------------------
+    if trimmed == "SPECIAL INTELLIGENCE" || trimmed == "COMINT" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (ECI / EXCEPTIONALLY CONTROLLED INFORMATION) — §H.4 p61 + p76
+    // -----------------------------------------------------------------
+    // Compound forms: `ECI <COMP>` and `EXCEPTIONALLY CONTROLLED
+    // INFORMATION <COMP>`. Bare `ECI` (no compartment) is also recognized;
+    // the walker emits a suggest-only diagnostic because the compartment
+    // is unknown.
+    if let Some(comp) = trimmed.strip_prefix("EXCEPTIONALLY CONTROLLED INFORMATION ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("ECI ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "EXCEPTIONALLY CONTROLLED INFORMATION" || trimmed == "ECI" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (EL / ENDSEAL) — §H.4 p78 + p83
+    // -----------------------------------------------------------------
+    // §H.4 p78: "the EL control system is being retired and all
+    // associated compartments moved to the SI control system". `EL
+    // ECRU` → `SI-ECRU`; `EL NONBOOK` → `SI-NONBOOK` (per §H.4 p83
+    // line 1938). Bare `ENDSEAL` / `EL` are recognized so the walker
+    // can emit a suggest-only diagnostic.
+    if let Some(comp) = trimmed.strip_prefix("ENDSEAL ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("EL ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "ENDSEAL" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+    // `EL` alone: 2 letters; would also collide with the SciControl
+    // bare-CVE path if `SciControl::parse("EL")` were ever to match.
+    // Today `EL` is NOT a published SciControl bare value (the ODNI
+    // schema retired the EL control system per §H.4 p78), so accepting
+    // it here is unambiguous.
+    if trimmed == "EL" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // TK family (KDK / KLONDIKE) — §H.4 p85 (NSG PM 3802 closure)
+    // -----------------------------------------------------------------
+    // Compound forms: `KDK-<COMP>` and `KLONDIKE-<COMP>`. The closure
+    // note's per-compartment migration list is `TK-BLFH` / `TK-IDIT`
+    // / `TK-KAND`, but the recognizer accepts any alphanumeric
+    // compartment — unknown legacy compartments still need walker-level
+    // diagnostic surface.
+    if let Some(comp) = trimmed.strip_prefix("KLONDIKE-")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("KDK-")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "KLONDIKE" || trimmed == "KDK" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: None,
+        });
+    }
+
+    None
+}
+
+// =============================================================================
+// EYES / EYES ONLY compound block recognizer (T135a Commit 5, issue #307)
+// =============================================================================
+
+/// Result of recognizing an EYES ONLY compound block (CAPCO-2016 §H.8 p157).
+///
+/// The block carries `/`-delimited country trigraphs followed by the
+/// dissem-axis `EYES` (or `EYES ONLY`) marker. Without compound
+/// recognition the parser's multi-token block handler splits on `/`
+/// and tags each trigraph as Unknown — the walker rule (E064) needs
+/// the structural block to emit a canonicalization fix.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // walker rule re-parses TokenSpan.text; these fields are recognizer-internal
+struct EyesOnlyBlock<'a> {
+    /// The country trigraph tokens in source order.
+    trigraphs: SmallVec<[&'a str; 8]>,
+    /// `true` iff the block ended with `EYES ONLY` (the full form);
+    /// `false` for bare trailing `EYES`. Diagnostic / fix construction
+    /// is identical in both cases.
+    full_form: bool,
+}
+
+/// Recognize a `<TRIGRAPH>(/ <TRIGRAPH>)* (SPACE)? EYES [ONLY]` block.
+///
+/// Returns `Some(block)` when `trimmed` matches the §H.8 p157 EYES
+/// ONLY compound shape AND every trigraph in the prefix is a
+/// CAPCO-registered country code. Returns `None` for bare `EYES` /
+/// `EYES ONLY` without any preceding trigraphs (those fall through
+/// to `parse_dissem_full_form` which handles the bare dissem-token
+/// case correctly) AND for shape-matching blocks whose prefix
+/// contains any unregistered trigraph.
+///
+/// Grammar (per CAPCO-2016 §A.6 p16 + §H.8 p157):
+///   EYES_BLOCK := TRIGRAPH ('/' TRIGRAPH)* (' ' EYES_LIT)?
+///   EYES_LIT   := 'EYES' | 'EYES ONLY'
+///   TRIGRAPH   := registered CAPCO trigraph (3 alpha, in trigraph set)
+///
+/// Country-code registry gate (PR 9a Copilot R3, PR #416). The
+/// shape gate alone — `[A-Z]{3}` — accepts arbitrary uppercase
+/// triples like `AAA` or `XYZ`. Without registry validation, the
+/// E064 walker would build `REL TO USA, AAA, XYZ` canonical output
+/// — silent fabrication of trigraphs in the audit-stream. Per
+/// Constitution Principle VIII (Authoritative Source Fidelity),
+/// canonical output MUST reference real CAPCO registry entries.
+/// Validation mirrors `parse_rel_to_with_spans` (parser.rs ~1870-
+/// 1871): `tokens.is_trigraph` filters by the registered trigraph
+/// surface; `CountryCode::try_new` re-confirms the byte-set
+/// invariant. An unregistered trigraph rejects the whole block —
+/// the EYES recognizer is all-or-nothing; partial registry
+/// matches fall through to Unknown.
+///
+/// Note: the brief's §H.8 p157 example wording uses `/` as the
+/// trigraph separator within the EYES block — collision with the
+/// dissem-category `/` separator per §A.6 p16. This is a real-world
+/// CAPCO grammar wart, not a marque idiosyncrasy.
+fn recognize_eyes_only_block<'a>(
+    trimmed: &'a str,
+    tokens: &dyn TokenSet,
+) -> Option<EyesOnlyBlock<'a>> {
+    // The block must end with `EYES` or `EYES ONLY`. Strip the trailing
+    // marker first to identify the trigraph-list prefix.
+    let (prefix, full_form) = if let Some(p) = trimmed.strip_suffix(" EYES ONLY") {
+        (p, true)
+    } else if let Some(p) = trimmed.strip_suffix(" EYES") {
+        (p, false)
+    } else {
+        return None;
+    };
+
+    // Prefix is the trigraph list. Must be non-empty (otherwise it's
+    // a bare `EYES` / `EYES ONLY` block, handled by the dissem-full-form
+    // path).
+    if prefix.is_empty() {
+        return None;
+    }
+
+    // Split the prefix on `/` and require each segment to be a 3-letter
+    // ASCII uppercase trigraph. Per §A.6 p16 the separator inside the
+    // EYES block is `/` (not `, ` like REL TO).
+    let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
+    for seg in prefix.split('/') {
+        // Shape gate: exactly 3 ASCII uppercase letters.
+        if seg.len() != 3 || !seg.bytes().all(|b| b.is_ascii_uppercase()) {
+            return None;
+        }
+        // Registry gate (Copilot R3, PR #416). Constitution
+        // Principle VIII: fabricated trigraphs in canonical autofix
+        // output are a correctness defect. Mirrors the validation
+        // pattern in `parse_rel_to_with_spans` (~lines 1870-1871).
+        if !tokens.is_trigraph(seg) || CountryCode::try_new(seg.as_bytes()).is_none() {
+            return None;
+        }
+        trigraphs.push(seg);
+    }
+
+    if trigraphs.is_empty() {
+        return None;
+    }
+
+    Some(EyesOnlyBlock {
+        trigraphs,
+        full_form,
+    })
 }
 
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
@@ -1590,27 +2189,126 @@ fn is_declass_date(s: &str) -> bool {
     IsmDate::from_str(s).is_ok()
 }
 
-/// Splits `s` on `/` and returns `(offset, trimmed_token)` pairs where
-/// `offset` is the byte offset of the trimmed token within `s`.
+/// `(offset, trimmed_token)` per non-empty slash-separated sub-token.
+type SlashTokens<'a> = SmallVec<[(usize, &'a str); 4]>;
+
+/// Per-`/` byte separator descriptor. Carries the byte span plus
+/// `left_nonempty` / `right_nonempty` flags indicating whether the
+/// trimmed `s.split('/')` part on each side of the slash was non-empty
+/// (i.e., produced an entry in `SlashTokens`). The flags let the
+/// emission site enforce the `TokenKind::Separator` contract: a
+/// Separator span lives between two *committed* same-category tokens.
+/// Empty-boundary slashes — trailing `/`, leading `/`, or a slash
+/// between empty parts — have `false` on at least one side and MUST
+/// NOT emit a Separator (downstream byte-precise splice rules rely on
+/// the invariant; see Copilot R3 fix on PR #416).
+#[derive(Clone, Copy, Debug)]
+struct SlashSeparator {
+    start: usize,
+    end: usize,
+    left_nonempty: bool,
+    right_nonempty: bool,
+}
+
+type SlashSeparators = SmallVec<[SlashSeparator; 4]>;
+
+/// Splits `s` on `/` and returns both the tokens and the separator
+/// positions.
 ///
-/// Used by the multi-token block fallback to handle CAPCO §D.1 blocks like
-/// `"SI/TK"` or `"NF/LIMDIS"` where multiple entries share one `//` block.
-fn split_slash_with_offsets(s: &str) -> SmallVec<[(usize, &str); 4]> {
-    // Inline-4: a multi-token slash block (e.g. `SI/TK`, `NF/LIMDIS`)
-    // typically carries 2-4 sub-tokens; the same scale as the
-    // `results: SmallVec<[SubResult<'_>; 4]>` accumulator at the sole
-    // caller in the multi-token block fallback.
-    let mut result: SmallVec<[(usize, &str); 4]> = SmallVec::new();
+/// Returns a pair of vectors:
+/// - `.0` — `(token_offset, trimmed_token)` per non-empty token.
+/// - `.1` — one [`SlashSeparator`] per `/` byte, carrying the span
+///   `(start, end)` and two `*_nonempty` flags identifying whether the
+///   adjacent trimmed `s.split('/')` parts on each side produced a
+///   committed token. `start` is `slash_offset` minus any ASCII
+///   whitespace immediately preceding the slash (bounded by the end of
+///   the previous emitted token, so the span never crosses into the
+///   previous token's bytes). `end` is `slash_offset + 1` plus any
+///   ASCII whitespace immediately following the slash. The span covers
+///   the `/` plus any whitespace an author drifted into the gap on
+///   either side of the slash.
+///
+/// CAPCO-2016 §A.6 p16 disallows interjected whitespace in SAP-`/` but is
+/// silent for dissem-`/` and SCI-`/`. Spanning adjacent ASCII whitespace
+/// on both sides is engineering tolerance for author drift, NOT a §A.6
+/// rule — it lets downstream rules see a single Separator token that
+/// owns the inter-token byte range whether the author wrote `OC/NF`,
+/// `OC /NF`, `OC/ NF`, or `OC / NF`. The bidirectional coverage is what
+/// makes audit-record byte ranges contiguous: every byte between adjacent
+/// non-empty tokens belongs to exactly one span (token or separator),
+/// with no gaps.
+///
+/// The `*_nonempty` flags on each [`SlashSeparator`] are emission-side
+/// gates: callers MUST drop separators whose either neighbor is empty
+/// (e.g., trailing `OC/`, leading `/OC`, all-empty `//`). Combined with
+/// a same-category check against the emitted token results, this is
+/// what enforces the Separator-between-two-committed-same-category-
+/// tokens contract.
+fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparators) {
+    let mut tokens: SlashTokens<'_> = SmallVec::new();
+    let mut separators: SlashSeparators = SmallVec::new();
+    let bytes = s.as_bytes();
     let mut pos = 0usize;
-    for part in s.split('/') {
+    // Tracks the end byte of the previously emitted non-empty trimmed
+    // token. Bounds the leading-whitespace walk-back of the next
+    // separator so the separator span cannot cross into the previous
+    // token's bytes. Initialized to 0 so the first separator's
+    // walk-back stops at the start of the slice (which is what we want:
+    // any leading whitespace at the very start belongs to neither a
+    // token nor a separator and stays uncovered by design).
+    let mut prev_token_end: usize = 0;
+    // Tracks whether the trimmed part immediately preceding the next
+    // slash was non-empty (i.e., produced a token push). For each
+    // slash, this becomes the `left_nonempty` flag; the right flag is
+    // determined by the next iteration's `trimmed.is_empty()` check
+    // via back-patching.
+    let mut prev_part_nonempty = false;
+    for (i, part) in s.split('/').enumerate() {
+        if i > 0 {
+            // The slash byte sits at index `pos - 1` (we advanced past the
+            // previous part and the `/` separator). Span the slash plus
+            // any ASCII whitespace on both sides, bounded by
+            // `prev_token_end` on the left so the separator never
+            // overlaps the previous emitted token.
+            let slash_pos = pos - 1;
+            let mut slash_start = slash_pos;
+            while slash_start > prev_token_end && bytes[slash_start - 1].is_ascii_whitespace() {
+                slash_start -= 1;
+            }
+            let mut slash_end = slash_pos + 1;
+            while slash_end < bytes.len() && bytes[slash_end].is_ascii_whitespace() {
+                slash_end += 1;
+            }
+            // `left_nonempty` is decided now (it's the prior part's
+            // status). `right_nonempty` is back-patched after we
+            // classify the current part below.
+            separators.push(SlashSeparator {
+                start: slash_start,
+                end: slash_end,
+                left_nonempty: prev_part_nonempty,
+                right_nonempty: false, // filled in below
+            });
+        }
         let trim_lead = part.len() - part.trim_start().len();
         let trimmed = part.trim();
-        if !trimmed.is_empty() {
-            result.push((pos + trim_lead, trimmed));
+        let part_nonempty = !trimmed.is_empty();
+        if part_nonempty {
+            let token_start = pos + trim_lead;
+            tokens.push((token_start, trimmed));
+            prev_token_end = token_start + trimmed.len();
         }
+        // Back-patch the just-pushed separator's `right_nonempty` with
+        // the current part's status. The first iteration (i == 0)
+        // pushes no separator, so there's nothing to patch.
+        if i > 0 {
+            if let Some(sep) = separators.last_mut() {
+                sep.right_nonempty = part_nonempty;
+            }
+        }
+        prev_part_nonempty = part_nonempty;
         pos += part.len() + 1; // +1 for the `/` separator
     }
-    result
+    (tokens, separators)
 }
 
 // ===========================================================================
@@ -1699,9 +2397,23 @@ fn parse_sar_category(
 
     // Split the remainder on `/` into program chunks. Each chunk is a
     // `PROGRAM` production: `PROG_ID` optionally followed by `-COMPARTMENT`.
+    //
+    // Emit a `TokenKind::Separator` span (text = `"/"`) for each within-
+    // category `/` byte (T131 / issue #106). The SAR variant is strict:
+    // CAPCO-2016 §A.6 p16 forbids interjected whitespace in SAP-`/`, so
+    // the separator span is always exactly the single `/` byte — no
+    // adjacent-whitespace tolerance like the dissem/SCI multi-token path.
     let mut chunk_offset = rest_offset; // offset within block_text
     for (i, prog_chunk) in rest.split('/').enumerate() {
         if i > 0 {
+            // The `/` byte we just consumed sits at `chunk_offset` (in
+            // `block_text` coordinates). Record it before bumping past.
+            let slash_abs = base + chunk_offset;
+            spans.push(TokenSpan {
+                kind: TokenKind::Separator,
+                span: Span::new(slash_abs, slash_abs + 1),
+                text: "/".into(),
+            });
             chunk_offset += 1; // account for the `/` just consumed
         }
         let program_base = base + chunk_offset;
@@ -3352,6 +4064,347 @@ mod tests {
     #[test]
     fn is_declass_date_rejects_day_zero() {
         assert!(!is_declass_date("20030100")); // day 0 is impossible
+    }
+
+    // -------------------------------------------------------------------
+    // T135a — deprecated SCI long-form recognition (issue #307 Group D).
+    //
+    // The recognizer accepts the deprecated long forms (HUMINT, COMINT,
+    // SPECIAL INTELLIGENCE, ECI <COMP>, EL <COMP>, KDK-<COMP>,
+    // KLONDIKE-<COMP>, etc.) as their canonical SCI category internally
+    // while preserving source bytes verbatim in `TokenSpan.text`. The
+    // Commit 3 walker rule (E065) consumes the preserved text to emit
+    // canonicalization fixes.
+    //
+    // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn humint_bare_recognized_as_hcs_with_source_preserved() {
+        // §H.4 p62 — HUMINT is the legacy long form for HCS.
+        let parsed = parse_banner("TOP SECRET//HUMINT//NOFORN");
+        assert!(
+            parsed.attrs.sci_controls.contains(&SciControl::Hcs),
+            "HUMINT must map to SciControl::Hcs internally; sci_controls = {:?}",
+            parsed.attrs.sci_controls
+        );
+        let humint_span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "HUMINT")
+            .expect("source bytes must be preserved verbatim in a TokenSpan");
+        assert_eq!(humint_span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn humint_control_system_recognized_as_hcs() {
+        // §H.4 p62 — HUMINT CONTROL SYSTEM is the spelled-out form.
+        let parsed = parse_banner("TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Hcs));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "HUMINT CONTROL SYSTEM")
+            .expect("multi-word phrase preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn comint_recognized_as_si() {
+        // §H.4 p74 — "The COMINT title for the Special Intelligence (SI)
+        // control system is no longer valid".
+        let parsed = parse_banner("TOP SECRET//COMINT//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Si));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "COMINT")
+            .expect("COMINT preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn special_intelligence_recognized_as_si() {
+        let parsed = parse_banner("TOP SECRET//SPECIAL INTELLIGENCE//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Si));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "SPECIAL INTELLIGENCE")
+            .expect("SPECIAL INTELLIGENCE preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn eci_with_compartment_maps_to_si_compartment() {
+        // §H.4 p76 — "information formerly marked TS//SI-ECI ABC must
+        // now be marked TS//SI-ABC".
+        let parsed = parse_banner("TOP SECRET//ECI ABC//NOFORN");
+        // Compound form: canonical_enum may or may not resolve depending
+        // on whether `SI-ABC` is a published CVE entry. The structural
+        // SciMarking must carry the compartment regardless.
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for ECI ABC");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(marking.compartments.len(), 1);
+        assert_eq!(&*marking.compartments[0].identifier, "ABC");
+        // Source bytes preserved.
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "ECI ABC")
+            .expect("ECI compound form preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn bare_eci_recognized_as_si_no_compartment() {
+        // Bare ECI (no compartment) is recognized so the walker can
+        // emit a suggest-only diagnostic asking the author to contact
+        // the originator for the compartment context.
+        let parsed = parse_banner("TOP SECRET//ECI//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for bare ECI");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(marking.compartments.len(), 0);
+    }
+
+    #[test]
+    fn el_ecru_maps_to_si_with_ecru_compartment() {
+        // §H.4 p78 — "the EL control system is being retired and all
+        // associated compartments moved to the SI control system".
+        // The structural form is SI + compartment ECRU. The textual
+        // CAPCO canonical is `SI-ECRU` per §H.4 p78 prose, but the
+        // ODNI CVE catalog publishes only `SI-EU` (the 5-char abbreviated
+        // banner-abbreviation form per §H.4 p78), so `canonical_enum`
+        // resolves to None here — the walker emits the fix using the
+        // textual canonical (`SI-ECRU`), not the CVE abbreviation.
+        let parsed = parse_banner("TOP SECRET//EL ECRU//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for EL ECRU");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "ECRU");
+    }
+
+    #[test]
+    fn endseal_with_compartment_maps_to_si() {
+        let parsed = parse_banner("TOP SECRET//ENDSEAL ECRU//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for ENDSEAL ECRU");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "ECRU");
+    }
+
+    #[test]
+    fn kdk_bluefish_maps_to_tk_blfh() {
+        // §H.4 p85 (NSG PM 3802 closure) — "re-mark the new document
+        // and associated portions according to the instructions in the
+        // TK-BLFH, TK-IDIT, and TK-KAND marking templates".
+        //
+        // CRITICAL: pre-T135a, KDK-BLUEFISH would have routed through
+        // `parse_sci_block` as `SciControlSystem::Custom("KDK")` with
+        // compartment `BLUEFISH` because `KDK` is a 3-letter custom-
+        // control shape match. The new recognizer must fire FIRST to
+        // route it to SciControlBare::Tk + compartment "BLUEFISH".
+        let parsed = parse_banner("TOP SECRET//KDK-BLUEFISH//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for KDK-BLUEFISH");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk),
+            "KDK-BLUEFISH must map to TK, not Custom(\"KDK\")"
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "BLUEFISH");
+    }
+
+    #[test]
+    fn klondike_iditarod_maps_to_tk() {
+        let parsed = parse_banner("TOP SECRET//KLONDIKE-IDITAROD//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for KLONDIKE-IDITAROD");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "IDITAROD");
+    }
+
+    #[test]
+    fn bare_kdk_recognized_as_tk_no_compartment() {
+        // Bare KDK (compartment context missing) is recognized so the
+        // walker can emit a suggest-only diagnostic.
+        let parsed = parse_banner("TOP SECRET//KDK//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for bare KDK");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk)
+        );
+        assert_eq!(marking.compartments.len(), 0);
+    }
+
+    // -------------------------------------------------------------------
+    // T135a Commit 5 — EYES / EYES ONLY compound block recognition
+    // (issue #307). CAPCO-2016 §H.8 p157.
+    //
+    // The recognizer accepts `<TRIGRAPH>(/<TRIGRAPH>)* EYES [ONLY]` as
+    // a single block-token in the dissem axis, populating
+    // `DissemControl::Eyes` and preserving source bytes verbatim in
+    // `TokenSpan.text`. Without this recognizer the multi-token block
+    // handler splits on `/` and emits each trigraph as Unknown.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn eyes_only_compound_block_recognized() {
+        // §H.8 p157 — EYES ONLY block with Five Eyes trigraph list.
+        // Pre-T135a Commit 5 this would be a 3-token Unknown soup;
+        // now it lands as a single DissemControl::Eyes block with
+        // source bytes preserved verbatim.
+        let parsed = parse_portion("(S//USA/GBR/CAN EYES ONLY)");
+        let eyes_tokens: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl && &*t.text == "USA/GBR/CAN EYES ONLY")
+            .collect();
+        assert_eq!(
+            eyes_tokens.len(),
+            1,
+            "exactly one DissemControl token preserving the source-bytes block expected"
+        );
+
+        // Dissem axis carries EYES.
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .contains(&marque_ism::DissemControl::Eyes),
+            "DissemControl::Eyes must be populated"
+        );
+
+        // No Unknown tokens — the recognizer succeeded.
+        let unknowns: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            .collect();
+        assert!(
+            unknowns.is_empty(),
+            "no Unknown tokens expected; got {:?}",
+            unknowns.iter().map(|t| &*t.text).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn eyes_only_short_form_recognized() {
+        // `EYES` without `ONLY` is also accepted per §H.8 p157.
+        let parsed = parse_portion("(S//USA/GBR EYES)");
+        let eyes_tokens: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl && &*t.text == "USA/GBR EYES")
+            .collect();
+        assert_eq!(eyes_tokens.len(), 1);
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .contains(&marque_ism::DissemControl::Eyes)
+        );
+    }
+
+    #[test]
+    fn eyes_only_bare_block_unaffected() {
+        // `EYES` alone (no trigraph list) is the bare CVE dissem-token
+        // case; it flows through `DissemControl::parse` unchanged.
+        // This regression guard catches a stray recognizer match.
+        let parsed = parse_portion("(S//EYES)");
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .contains(&marque_ism::DissemControl::Eyes),
+            "bare EYES must parse as DissemControl::Eyes via the CVE path"
+        );
+    }
+
+    #[test]
+    fn source_bytes_preserved_for_all_long_forms() {
+        // Regression guard: the parser must NEVER rewrite the user's
+        // input. Every recognized deprecated long form must carry its
+        // original source bytes verbatim in `TokenSpan.text`. The
+        // walker rule (Commit 3) uses these bytes to emit the
+        // canonicalization fix.
+        for input in [
+            "TOP SECRET//HUMINT//NOFORN",
+            "TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN",
+            "TOP SECRET//COMINT//NOFORN",
+            "TOP SECRET//SPECIAL INTELLIGENCE//NOFORN",
+            "TOP SECRET//ECI ABC//NOFORN",
+            "TOP SECRET//EXCEPTIONALLY CONTROLLED INFORMATION ABC//NOFORN",
+            "TOP SECRET//EL ECRU//NOFORN",
+            "TOP SECRET//ENDSEAL ECRU//NOFORN",
+            "TOP SECRET//KDK-BLUEFISH//NOFORN",
+            "TOP SECRET//KLONDIKE-IDITAROD//NOFORN",
+        ] {
+            let parsed = parse_banner(input);
+            // The first `//` after TOP SECRET, then the long-form block.
+            let want = input
+                .strip_prefix("TOP SECRET//")
+                .and_then(|s| s.strip_suffix("//NOFORN"))
+                .unwrap();
+            assert!(
+                parsed.attrs.token_spans.iter().any(|t| &*t.text == want),
+                "{input:?}: source bytes {want:?} must appear verbatim in token_spans"
+            );
+        }
     }
 }
 
