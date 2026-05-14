@@ -164,7 +164,7 @@ fn sbu_nf_portion_projects_noforn_to_page_dissem_unclassified() {
     let projected = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/sbu-nf-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains SBU-NF (CAPCO-2016 §H.9 p178 banner-form \
          heading 'SENSITIVE BUT UNCLASSIFIED NOFORN'); \
@@ -207,7 +207,7 @@ fn sbu_nf_malformed_classified_still_injects_noforn() {
     let projected = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/sbu-nf-implies-noforn rewrite must fire even on malformed \
          classified SBU-NF input (CAPCO-2016 §H.9 p178 at `:4410` says SBU-NF \
          'May only be used with UNCLASSIFIED'; the Pattern A predicate is \
@@ -246,7 +246,7 @@ fn les_nf_portion_projects_noforn_to_page_dissem_unclassified() {
     let projected = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/les-nf-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains LES-NF (CAPCO-2016 §H.9 p185 banner-form \
          heading 'LAW ENFORCEMENT SENSITIVE NOFORN'); \
@@ -296,7 +296,7 @@ fn les_nf_portion_projects_noforn_to_page_dissem_classified() {
     let projected = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/les-nf-implies-noforn rewrite must fire on classified \
          LES-NF portions (CAPCO-2016 §H.9 p185 at `:4554`: LES-NF 'May be \
          used with TOP SECRET, SECRET, CONFIDENTIAL, or UNCLASSIFIED'; \
@@ -357,7 +357,7 @@ fn sbu_nf_portion_composes_with_noforn_clears_rel_to() {
     let projected = scheme.project(Scope::Page, &[sbu_nf_portion, rel_to_portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after sbu-nf-implies-noforn fires; \
          got dissem_controls = {:?}",
         projected.0.dissem_controls,
@@ -397,7 +397,7 @@ fn les_nf_portion_composes_with_noforn_clears_rel_to() {
     let projected = scheme.project(Scope::Page, &[les_nf_portion, rel_to_portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after les-nf-implies-noforn fires; \
          got dissem_controls = {:?}",
         projected.0.dissem_controls,
@@ -435,7 +435,10 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
     let sbu = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::Sbu]);
     let projected_sbu = scheme.project(Scope::Page, &[sbu]);
     assert!(
-        !projected_sbu.0.dissem_controls.contains(&DissemControl::Nf),
+        !projected_sbu
+            .0
+            .dissem_iter()
+            .any(|d| d == &DissemControl::Nf),
         "A plain (U//SBU) portion must not have NOFORN injected by the \
          SBU-NF/LES-NF-implies-noforn rewrites; got dissem_controls = {:?}",
         projected_sbu.0.dissem_controls,
@@ -445,7 +448,10 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
     let les = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::Les]);
     let projected_les = scheme.project(Scope::Page, &[les]);
     assert!(
-        !projected_les.0.dissem_controls.contains(&DissemControl::Nf),
+        !projected_les
+            .0
+            .dissem_iter()
+            .any(|d| d == &DissemControl::Nf),
         "A plain (U//LES) portion must not have NOFORN injected by the \
          SBU-NF/LES-NF-implies-noforn rewrites; got dissem_controls = {:?}",
         projected_les.0.dissem_controls,
@@ -483,7 +489,7 @@ fn portion_without_sbu_nf_or_les_nf_does_not_inject_noforn() {
 /// `TOK_NOFORN` maps to `CAT_DISSEM` via `capco_token_category`. The
 /// action target is `CAT_DISSEM`, so the second FactAdd's idempotence
 /// check runs against the `dissem_controls` axis (the
-/// `if attrs.dissem_controls.contains(&target)` check returns
+/// `if attrs.dissem_iter().any(|d| d == &target)` check returns
 /// `IntentInapplicable`). The unmatched-arm fallthrough is forward-
 /// compatibility only — it exists so Pattern C
 /// `classified-strips-{sbu,les}` rewrites can land later without silent

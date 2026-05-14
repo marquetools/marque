@@ -132,7 +132,7 @@ fn nodis_portion_projects_noforn_to_page_dissem() {
     let projected = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/nodis-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains NODIS (CAPCO-2016 §H.9 p174 'Requires NOFORN.'); \
          got dissem_controls = {:?}",
@@ -160,7 +160,7 @@ fn exdis_portion_projects_noforn_to_page_dissem() {
     let projected = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "capco/exdis-implies-noforn rewrite must add NOFORN to page dissem \
          when a portion contains EXDIS (CAPCO-2016 §H.9 p172 'Requires NOFORN.'); \
          got dissem_controls = {:?}",
@@ -218,7 +218,7 @@ fn nodis_portion_composes_with_noforn_clears_rel_to() {
     let projected = scheme.project(Scope::Page, &[nodis_portion, rel_to_portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after nodis-implies-noforn fires; \
          got dissem_controls = {:?}",
         projected.0.dissem_controls,
@@ -255,7 +255,7 @@ fn exdis_portion_composes_with_noforn_clears_rel_to() {
     let projected = scheme.project(Scope::Page, &[exdis_portion, rel_to_portion]);
 
     assert!(
-        projected.0.dissem_controls.contains(&DissemControl::Nf),
+        projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be present in page dissem after exdis-implies-noforn fires; \
          got dissem_controls = {:?}",
         projected.0.dissem_controls,
@@ -290,7 +290,7 @@ fn portion_without_nodis_or_exdis_does_not_inject_noforn() {
     let projected = scheme.project(Scope::Page, &[plain]);
 
     assert!(
-        !projected.0.dissem_controls.contains(&DissemControl::Nf),
+        !projected.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "A plain (S) portion must not have NOFORN injected by the \
          NODIS/EXDIS-implies-noforn rewrites; got dissem_controls = {:?}",
         projected.0.dissem_controls,

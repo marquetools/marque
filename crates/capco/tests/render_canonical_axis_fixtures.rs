@@ -489,7 +489,7 @@ fn dissem_noforn_banner() {
     // form maps to `NOFORN` banner form.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     assert_eq!(render_banner(a), "SECRET//NOFORN");
 }
 
@@ -498,7 +498,7 @@ fn dissem_noforn_portion() {
     // Authority: CAPCO-2016 §H.8 Table 4 §8 p36 — `NF` portion form.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     assert_eq!(render_portion(a), "S//NF");
 }
 
@@ -508,7 +508,7 @@ fn dissem_orcon_banner_form() {
     // `ORCON` banner.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    a.dissem_controls = vec![DissemControl::Oc].into();
+    a.dissem_us = vec![DissemControl::Oc].into();
     assert_eq!(render_banner(a), "TOP SECRET//ORCON");
 }
 
@@ -518,7 +518,7 @@ fn dissem_register_order_orcon_before_noforn() {
     // order ORCON < NOFORN < RELIDO.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf, DissemControl::Oc].into();
+    a.dissem_us = vec![DissemControl::Relido, DissemControl::Nf, DissemControl::Oc].into();
     assert_eq!(render_banner(a), "TOP SECRET//ORCON/NOFORN/RELIDO");
 }
 
@@ -530,7 +530,7 @@ fn dissem_bare_rel_dropped_when_rel_to_present() {
     // `REL TO USA, ...` once).
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Rel].into();
+    a.dissem_us = vec![DissemControl::Rel].into();
     a.rel_to = vec![cc("USA"), cc("GBR")].into();
     assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR");
 }
@@ -726,7 +726,7 @@ fn full_composition_class_sci_aea_dissem_relto() {
         None,
     )]
     .into();
-    a.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
     a.rel_to = vec![cc("USA"), cc("GBR")].into();
     assert_eq!(
         render_banner(a),
@@ -741,7 +741,7 @@ fn full_composition_class_aea_dissem() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     assert_eq!(render_banner(a), "SECRET//RD//NOFORN");
 }
 

@@ -113,7 +113,7 @@ fn non_ic_sbu_nf_splits_in_classified() {
     assert!(!non_ic.contains(&NonIcDissem::SbuNf));
     assert!(needs_nf);
 
-    let dissem = ctx.expected_dissem_controls();
+    let dissem = ctx.expected_dissem_us();
     assert!(dissem.contains(&DissemControl::Nf));
 }
 
@@ -141,18 +141,18 @@ fn dissem_oc_usgov_drops_partial() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
-    p1.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    p1.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
-    p2.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    p2.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
     ctx.add_portion(p2);
 
     let mut p3 = portion(Classification::Secret);
-    p3.dissem_controls = vec![DissemControl::Oc].into();
+    p3.dissem_us = vec![DissemControl::Oc].into();
     ctx.add_portion(p3);
 
-    let dissem = ctx.expected_dissem_controls();
+    let dissem = ctx.expected_dissem_us();
     assert!(dissem.contains(&DissemControl::Oc));
     assert!(!dissem.contains(&DissemControl::OcUsgov));
 }
@@ -163,14 +163,14 @@ fn dissem_oc_usgov_kept_when_all() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
-    p1.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    p1.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
-    p2.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    p2.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
     ctx.add_portion(p2);
 
-    let dissem = ctx.expected_dissem_controls();
+    let dissem = ctx.expected_dissem_us();
     assert!(dissem.contains(&DissemControl::OcUsgov));
 }
 
@@ -180,12 +180,12 @@ fn dissem_fouo_drops_classified() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Unclassified);
-    p1.dissem_controls = vec![DissemControl::Fouo].into();
+    p1.dissem_us = vec![DissemControl::Fouo].into();
     ctx.add_portion(p1);
 
     ctx.add_portion(portion(Classification::Secret));
 
-    let dissem = ctx.expected_dissem_controls();
+    let dissem = ctx.expected_dissem_us();
     assert!(!dissem.contains(&DissemControl::Fouo));
 }
 
@@ -195,10 +195,10 @@ fn dissem_fouo_kept_unclassified() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Unclassified);
-    p1.dissem_controls = vec![DissemControl::Fouo].into();
+    p1.dissem_us = vec![DissemControl::Fouo].into();
     ctx.add_portion(p1);
 
-    let dissem = ctx.expected_dissem_controls();
+    let dissem = ctx.expected_dissem_us();
     assert!(dissem.contains(&DissemControl::Fouo));
 }
 
@@ -212,7 +212,7 @@ fn country_rel_intersection() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
-    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.dissem_us = vec![DissemControl::Rel].into();
     p1.rel_to = vec![
         CountryCode::USA,
         CountryCode::try_new(b"AUS").unwrap(),
@@ -222,7 +222,7 @@ fn country_rel_intersection() {
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
-    p2.dissem_controls = vec![DissemControl::Rel].into();
+    p2.dissem_us = vec![DissemControl::Rel].into();
     p2.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"AUS").unwrap()].into();
     ctx.add_portion(p2);
 
@@ -238,16 +238,16 @@ fn country_noforn_supersedes_rel() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
-    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.dissem_us = vec![DissemControl::Rel].into();
     p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     ctx.add_portion(p1);
 
     let mut p2 = portion(Classification::Secret);
-    p2.dissem_controls = vec![DissemControl::Nf].into();
+    p2.dissem_us = vec![DissemControl::Nf].into();
     ctx.add_portion(p2);
 
     assert!(ctx.expected_rel_to().is_empty());
-    assert!(ctx.expected_dissem_controls().contains(&DissemControl::Nf));
+    assert!(ctx.expected_dissem_us().contains(&DissemControl::Nf));
 }
 
 /// PR 3c.B-8F-engine-gap: NODIS in any portion injects NOFORN into the
@@ -264,7 +264,7 @@ fn banner_renders_noforn_when_portion_has_nodis() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
-    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.dissem_us = vec![DissemControl::Rel].into();
     p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     ctx.add_portion(p1);
 
@@ -303,7 +303,7 @@ fn banner_renders_noforn_when_portion_has_exdis() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
-    p1.dissem_controls = vec![DissemControl::Rel].into();
+    p1.dissem_us = vec![DissemControl::Rel].into();
     p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     ctx.add_portion(p1);
 

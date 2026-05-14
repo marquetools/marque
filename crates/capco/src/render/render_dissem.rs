@@ -58,11 +58,17 @@ pub(crate) fn render_dissem(
     // `DissemControl` enum already declares variants in roughly this
     // order; we re-sort defensively to honor the precedent.
     //
+    // PR 9b (T132): render walks the unified `dissem_iter` (US-then-
+    // NATO) and lets the Register-order sort below merge them. The
+    // canonical wire form is namespace-indistinguishable — CAPCO-2016
+    // p41 reciprocity means OC/REL TO render the same way regardless
+    // of attribution — so the renderer joins the two and emits one
+    // sequence per §A.6 ordering.
+    //
     // Inline-4 covers the typical dissem set (NF/PR/OC/REL, IMCON, RS);
     // longer compositions spill to heap cleanly.
     let mut sorted: SmallVec<[&DissemControl; 4]> =
-        m.0.dissem_controls
-            .iter()
+        m.0.dissem_iter()
             .filter(|d| !(drop_bare_rel && **d == DissemControl::Rel))
             .collect();
     sorted.sort_by_key(|d| register_rank(d));

@@ -33,6 +33,7 @@ use crate::attrs::{
     NonIcDissem, SarMarking, SciControl, SciMarking, TokenSpan,
 };
 use crate::date::IsmDate;
+use crate::dissem_attribution::DefaultOrigin;
 use crate::span::Span;
 
 /// Where in the document the parser ran.
@@ -118,11 +119,36 @@ pub struct ParsedAttrs<'src> {
     /// which means the marking IS foreign-classified.
     pub fgi_marker: Option<ParsedFgiMarker<'src>>,
 
-    /// IC dissemination controls (NOFORN, ORCON, RELIDO, FOUO, ...).
-    /// Single field at PR 3a; PR 9 (FR-046) splits into `dissem_us`
-    /// and `dissem_nato` once the parser tracks separator spans
-    /// (#106). Until then, every dissem token lands here.
-    pub dissem_controls: Box<[ParsedDissem<'src>]>,
+    /// US-attributed IC dissemination controls (NOFORN, ORCON, RELIDO,
+    /// FOUO, ...). Holds the dissem tokens whose parent portion has any
+    /// US classification axis (`MarkingClassification::Us` or
+    /// `Conflict { us, .. }`), OR whose parent portion has no
+    /// classification axis at all and the configured
+    /// [`DefaultOrigin`] is [`DefaultOrigin::Us`] (CAPCO's default).
+    ///
+    /// **CAPCO-2016 p41 reciprocity rule.** CAPCO defines exactly two
+    /// dissemination controls applicable to NATO content (ORCON and
+    /// REL TO / [LIST] ONLY) and deliberately did NOT introduce
+    /// NATO-specific forms like `ORCON-NATO`. When OC / ORCON / REL TO
+    /// appear in a US-classified marking, they ARE the US controls;
+    /// NATO-origin dissems transmute to US-attributed by reciprocity.
+    /// The split exists so non-CAPCO consumers (future cross-system
+    /// translation, audit-trail provenance) can distinguish the two —
+    /// when both fields could apply, US wins, and `dissem_nato`
+    /// populates only when the parent portion has no US classification
+    /// axis (i.e., a pure-NATO portion).
+    pub dissem_us: Box<[ParsedDissem<'src>]>,
+
+    /// NATO-attributed IC dissemination controls. Populated only for
+    /// pure-NATO portions — i.e., the parent portion's
+    /// `classification` is `MarkingClassification::Nato(_)` with no US
+    /// axis. Mixed or US-classified portions route every dissem to
+    /// [`Self::dissem_us`] per the reciprocity rule documented there.
+    ///
+    /// Tokens that are NATO-only by spec (ATOMAL, BALK, BOHEMIA) are
+    /// NOT dissems and route to the AEA / SCI axes per FR-047 — they
+    /// never appear here.
+    pub dissem_nato: Box<[ParsedDissem<'src>]>,
 
     /// Non-IC dissemination controls (LIMDIS/LES/SBU/SSI/...).
     /// Separate authority framework per CAPCO §H.9 (pp 169–191).
@@ -182,7 +208,8 @@ impl<'src> ParsedAttrs<'src> {
         sar_markings: Option<ParsedSarMarking<'src>>,
         aea_markings: Box<[ParsedAea<'src>]>,
         fgi_marker: Option<ParsedFgiMarker<'src>>,
-        dissem_controls: Box<[ParsedDissem<'src>]>,
+        dissem_us: Box<[ParsedDissem<'src>]>,
+        dissem_nato: Box<[ParsedDissem<'src>]>,
         non_ic_dissem: Box<[ParsedNonIcDissem<'src>]>,
         rel_to: Box<[ParsedRelToEntry<'src>]>,
         declassify_on: Option<ParsedDeclassifyOn<'src>>,
@@ -199,7 +226,8 @@ impl<'src> ParsedAttrs<'src> {
             sar_markings,
             aea_markings,
             fgi_marker,
-            dissem_controls,
+            dissem_us,
+            dissem_nato,
             non_ic_dissem,
             rel_to,
             declassify_on,
@@ -210,6 +238,29 @@ impl<'src> ParsedAttrs<'src> {
             source_bytes_origin,
         }
     }
+
+    /// Iterate every IC dissem control on this marking across both
+    /// namespace fields ([`Self::dissem_us`] then [`Self::dissem_nato`]).
+    ///
+    /// Use this when the consumer cares about "any IC dissem regardless
+    /// of namespace" (e.g., the renderer, the
+    /// `is_nontrivial_marking` decoder check). When the consumer cares
+    /// specifically about US-attributed or NATO-attributed dissems
+    /// (e.g., a future cross-system translator), read the underlying
+    /// fields directly.
+    ///
+    /// The returned iterator is `Clone` so multi-pass consumers (e.g.,
+    /// a renderer that walks twice for line-length accounting) do not
+    /// need to re-construct it.
+    pub fn dissem_iter(&self) -> impl Iterator<Item = &ParsedDissem<'src>> + Clone {
+        self.dissem_us.iter().chain(self.dissem_nato.iter())
+    }
+
+    /// Default origin to use when [`Self::classification`] is `None`.
+    /// Mirrors the [`crate::dissem_attribution::attribute_dissems`]
+    /// rule; exposed as an associated constant so call sites can pin
+    /// the CAPCO default without re-importing the enum.
+    pub const DEFAULT_ORIGIN_CAPCO: DefaultOrigin = DefaultOrigin::Us;
 }
 
 // ---------------------------------------------------------------------

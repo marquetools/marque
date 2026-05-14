@@ -2359,8 +2359,7 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
     // PR #249; expanded to cover triggers 3–4 in PR
     // 3c.B-8F-engine-gap.
     let any_portion_noforn = page.portions().iter().any(|p| {
-        p.dissem_controls
-            .iter()
+        p.dissem_iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf))
     });
     if any_portion_noforn {

@@ -82,7 +82,7 @@ fn arb_ism_attrs() -> impl Strategy<Value = CanonicalAttrs> {
             // CanonicalAttrs is #[non_exhaustive] so use Default + field mutation.
             let mut attrs = CanonicalAttrs::default();
             attrs.classification = classification;
-            attrs.dissem_controls = dissem_controls.into_boxed_slice();
+            attrs.dissem_us = dissem_controls.into_boxed_slice();
             attrs.rel_to = rel_to.into_boxed_slice();
             attrs
         })
@@ -119,7 +119,7 @@ proptest! {
         );
     }
 
-    // Every DissemControl on any portion must appear in expected_dissem_controls().
+    // Every DissemControl on any portion must appear in expected_dissem_us().
     #[test]
     fn dissem_controls_union_superset(portions in arb_portions()) {
         let mut ctx = PageContext::new();
@@ -127,10 +127,10 @@ proptest! {
             ctx.add_portion(p.clone());
         }
         let rolled: std::collections::BTreeSet<DissemControl> =
-            ctx.expected_dissem_controls().into_iter().collect();
+            ctx.expected_dissem_us().into_iter().collect();
 
         for portion in &portions {
-            for ctrl in portion.dissem_controls.iter() {
+            for ctrl in portion.dissem_iter() {
                 prop_assert!(
                     rolled.contains(ctrl),
                     "dissem control {ctrl:?} in portion but missing from roll-up",

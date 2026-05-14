@@ -965,7 +965,7 @@ fn helper_banner_form_double_slash_neighbor() {
     // here to mirror what the real parser produces.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    a.dissem_controls = vec![DissemControl::Nf, DissemControl::Relido].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Nf, DissemControl::Relido].into_boxed_slice();
     // Real parser layout for `TOP SECRET//NOFORN//RELIDO` (verified by
     // running `marque check` against `/tmp/banner.txt` during PR review):
     //   Classification "TOP SECRET" @ [0, 10]
@@ -1032,7 +1032,7 @@ fn helper_returns_none_when_no_recognized_layout() {
     // (no prior, no following). All three cases fall through.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Relido].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
     a.token_spans = vec![TokenSpan {
         kind: TokenKind::DissemControl,
         text: "RELIDO".to_string().into_boxed_str(),
@@ -1459,7 +1459,7 @@ fn e055_intent_absent_when_fix_helper_returns_none() {
     // dissem-controls set; the fix helper needs the token span.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Relido, DissemControl::Displayonly].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Relido, DissemControl::Displayonly].into_boxed_slice();
     // Deliberately omit RELIDO from token_spans to force the None arm.
     a.token_spans = vec![TokenSpan {
         kind: TokenKind::DissemControl,

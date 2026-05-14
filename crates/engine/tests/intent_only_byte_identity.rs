@@ -72,8 +72,7 @@ impl Rule<CapcoScheme> for IntentOnlyRelidoRule {
         // to verify the synthesis path emits the right bytes regardless
         // of the underlying rule semantics.
         let has_relido = attrs
-            .dissem_controls
-            .iter()
+            .dissem_iter()
             .any(|d| matches!(d, DissemControl::Relido));
         if !has_relido {
             return Vec::new();
@@ -225,8 +224,7 @@ fn intent_only_path_below_threshold_becomes_suggest() {
         }
         fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
             if !attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Relido))
             {
                 return Vec::new();
@@ -341,13 +339,9 @@ impl Rule<CapcoScheme> for DualIntentRule {
         Severity::Fix
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        let has_nf = attrs
-            .dissem_controls
-            .iter()
-            .any(|d| matches!(d, DissemControl::Nf));
+        let has_nf = attrs.dissem_iter().any(|d| matches!(d, DissemControl::Nf));
         let has_relido = attrs
-            .dissem_controls
-            .iter()
+            .dissem_iter()
             .any(|d| matches!(d, DissemControl::Relido));
         if !has_nf || !has_relido {
             return Vec::new();
@@ -474,10 +468,7 @@ impl Rule<CapcoScheme> for TestRuleA {
         Severity::Fix
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        let has_nf = attrs
-            .dissem_controls
-            .iter()
-            .any(|d| matches!(d, DissemControl::Nf));
+        let has_nf = attrs.dissem_iter().any(|d| matches!(d, DissemControl::Nf));
         if !has_nf {
             return Vec::new();
         }
@@ -514,8 +505,7 @@ impl Rule<CapcoScheme> for TestRuleZ {
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let has_relido = attrs
-            .dissem_controls
-            .iter()
+            .dissem_iter()
             .any(|d| matches!(d, DissemControl::Relido));
         if !has_relido {
             return Vec::new();
@@ -638,10 +628,7 @@ impl Rule<CapcoScheme> for BannerNoforn {
         Severity::Fix
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        let has_nf = attrs
-            .dissem_controls
-            .iter()
-            .any(|d| matches!(d, DissemControl::Nf));
+        let has_nf = attrs.dissem_iter().any(|d| matches!(d, DissemControl::Nf));
         if !has_nf {
             return Vec::new();
         }

@@ -18,7 +18,8 @@
 //! | `classification`       | `max()` (most restrictive) | Higher classification wins                |
 //! | `sci_controls`         | union                    | Any control on any portion applies to page  |
 //! | `sar_identifiers`      | union                    | Any SAR on any portion applies to page      |
-//! | `dissem_controls`      | union                    | Any restriction on any portion applies      |
+//! | `dissem_us`            | union (per namespace)    | Any US-attributed restriction on any portion applies |
+//! | `dissem_nato`          | union (per namespace)    | Any NATO-attributed restriction on any portion applies |
 //! | `rel_to`               | intersection             | Page is releasable only to countries that   |
 //! |                        |                          | appear in *every* REL TO portion            |
 //! | `declassify_on`        | max date (furthest out)  | Most conservative declassification applies  |
@@ -139,7 +140,8 @@ impl PageContext {
     /// Most banner-validation rules want one of the rolled-up
     /// `expected_*` accessors (defined later in this `impl`:
     /// [`Self::expected_classification`],
-    /// [`Self::expected_dissem_controls`], [`Self::expected_rel_to`],
+    /// [`Self::expected_dissem_us`], [`Self::expected_dissem_nato`],
+    /// [`Self::expected_rel_to`],
     /// etc.) — those collapse the per-portion information through a
     /// category-specific lattice (max for classification, union for
     /// SCI, intersection for REL TO, …). A handful of rules —
@@ -314,24 +316,36 @@ impl PageContext {
         ))
     }
 
-    /// All dissemination controls that must appear on the banner.
+    /// US-attributed dissemination controls that must appear on the
+    /// banner.
     ///
-    /// Base rule is union, with important exceptions per ISM-Rollup XSLT:
+    /// Base rule is union over [`crate::CanonicalAttrs::dissem_us`]
+    /// across portions, with the following CAPCO-2016 exceptions
+    /// per ISM-Rollup XSLT — all of which are US-context behaviors
+    /// (none apply to the NATO-attributed channel):
     ///
-    /// - **OC-USGOV**: Drops if not present on ALL OC-carrying portions
-    /// - **FOUO**: Drops in classified documents (stays in unclassified)
-    /// - **DSEN**: Overrides/replaces FOUO when both present
-    /// - **NF injection**: Added when non-IC SBU-NF/LES-NF split occurs
-    ///   in classified docs (caller should check `expected_non_ic_dissem()`)
-    pub fn expected_dissem_controls(&self) -> Vec<DissemControl> {
+    /// - **OC-USGOV** (§H.8 p139): Drops if not present on ALL
+    ///   OC-carrying portions.
+    /// - **FOUO** (§H.8 p134): Drops in classified documents (stays
+    ///   in unclassified).
+    /// - **DSEN** (§H.8 p159): Overrides FOUO regardless of
+    ///   classification level (`DSEN wins over FOUO`).
+    /// - **NF injection** (§H.9 p178 / p185): Added when the non-IC
+    ///   SBU-NF / LES-NF classified-context split fires
+    ///   (`expected_non_ic_dissem` second tuple element).
+    ///
+    /// **PR 9b (FR-046 / T132).** Replaces the prior single
+    /// `expected_dissem_controls()` accessor. NATO-attributed dissems
+    /// flow through the sibling [`Self::expected_dissem_nato`].
+    pub fn expected_dissem_us(&self) -> Vec<DissemControl> {
         let classified = self.is_classified();
 
-        // Step 1: Basic union of all dissem controls.
+        // Step 1: Basic union of all US-attributed dissem controls.
         let mut seen = std::collections::BTreeSet::new();
         seen.extend(
             self.portions
                 .iter()
-                .flat_map(|attrs| attrs.dissem_controls.iter().copied()),
+                .flat_map(|attrs| attrs.dissem_us.iter().copied()),
         );
 
         // Step 2: OC-USGOV drops if not on ALL OC-carrying portions.
@@ -339,12 +353,12 @@ impl PageContext {
             let oc_portions: Vec<_> = self
                 .portions
                 .iter()
-                .filter(|a| a.dissem_controls.contains(&DissemControl::Oc))
+                .filter(|a| a.dissem_us.contains(&DissemControl::Oc))
                 .collect();
             if !oc_portions.is_empty() {
                 let all_have_usgov = oc_portions
                     .iter()
-                    .all(|a| a.dissem_controls.contains(&DissemControl::OcUsgov));
+                    .all(|a| a.dissem_us.contains(&DissemControl::OcUsgov));
                 if !all_have_usgov {
                     seen.remove(&DissemControl::OcUsgov);
                 }
@@ -367,6 +381,28 @@ impl PageContext {
         seen.into_iter().collect()
     }
 
+    /// NATO-attributed dissemination controls that must appear on the
+    /// banner.
+    ///
+    /// Plain union over [`crate::CanonicalAttrs::dissem_nato`] across
+    /// portions. None of the US-context exceptions (OC-USGOV drop,
+    /// FOUO drop, DSEN override, NF injection) apply — those are
+    /// §H.8 US-attributed behaviors. NATO contributes only ORCON and
+    /// REL TO per CAPCO-2016 p41, both of which compose by simple
+    /// union at the banner level.
+    ///
+    /// **PR 9b (FR-046 / T132).** The split companion to
+    /// [`Self::expected_dissem_us`].
+    pub fn expected_dissem_nato(&self) -> Vec<DissemControl> {
+        let mut seen = std::collections::BTreeSet::new();
+        seen.extend(
+            self.portions
+                .iter()
+                .flat_map(|attrs| attrs.dissem_nato.iter().copied()),
+        );
+        seen.into_iter().collect()
+    }
+
     /// The REL TO country-code list the banner must carry.
     ///
     /// The result is the **intersection** of all REL TO lists across
@@ -386,11 +422,15 @@ impl PageContext {
     /// controls.
     pub fn expected_rel_to(&self) -> Vec<CountryCode> {
         // If any portion is NOFORN, NOFORN wins — REL TO is superseded.
-        let any_noforn = self.portions.iter().any(|a| {
-            a.dissem_controls
-                .iter()
-                .any(|d| matches!(d, DissemControl::Nf))
-        });
+        // NOFORN is a US-context dissem (§H.8 p145); the NATO-attributed
+        // channel carries only ORCON and REL TO per CAPCO-2016 p41 and
+        // contains no NOFORN, so checking `dissem_us` alone is correct
+        // by spec. The `dissem_iter()` call below would also work but
+        // costs an extra chain link per portion.
+        let any_noforn = self
+            .portions
+            .iter()
+            .any(|a| a.dissem_us.iter().any(|d| matches!(d, DissemControl::Nf)));
         if any_noforn {
             return vec![];
         }
@@ -833,12 +873,23 @@ impl PageContext {
         }
 
         // Dissem controls + REL TO — dissem controls and REL TO together, each
-        // category already collected by expected_dissem_controls().
+        // category already collected by `expected_dissem_us` + `expected_dissem_nato`.
         // DissemControl::as_str() returns the portion abbreviation ("NF", "RELIDO"),
         // so convert to banner form via marking_forms::portion_to_banner().
+        //
+        // PR 9b (T132): banner emits the union of US- and NATO-attributed
+        // dissems because the wire form is identical (`OC` / `REL TO`
+        // tokens are namespace-indistinguishable on the banner line).
+        // Render-order is dictated by §A.6 / Register Table 4 row 8;
+        // BTreeSet collection at the source ensures the union is
+        // duplicate-free.
         let rel_to = self.expected_rel_to();
         let (non_ic, needs_nf) = self.expected_non_ic_dissem();
-        let dissem = self.expected_dissem_controls();
+        let mut dissem_set: std::collections::BTreeSet<DissemControl> =
+            std::collections::BTreeSet::new();
+        dissem_set.extend(self.expected_dissem_us());
+        dissem_set.extend(self.expected_dissem_nato());
+        let dissem: Vec<DissemControl> = dissem_set.into_iter().collect();
 
         let mut dissem_parts: Vec<String> = Vec::new();
         for d in &dissem {
@@ -1137,7 +1188,7 @@ mod tests {
         };
         // Portion 2: NOFORN
         let a2 = CanonicalAttrs {
-            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         };
         ctx.add_portion(a1);
@@ -1675,10 +1726,10 @@ mod tests {
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
-            dissem_controls: vec![DissemControl::Fouo].into(),
+            dissem_us: vec![DissemControl::Fouo].into(),
             ..Default::default()
         });
-        let dissem = ctx.expected_dissem_controls();
+        let dissem = ctx.expected_dissem_us();
         assert!(
             !dissem.contains(&DissemControl::Fouo),
             "FOUO should drop in classified doc: {dissem:?}"
@@ -1690,10 +1741,10 @@ mod tests {
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
-            dissem_controls: vec![DissemControl::Fouo].into(),
+            dissem_us: vec![DissemControl::Fouo].into(),
             ..Default::default()
         });
-        let dissem = ctx.expected_dissem_controls();
+        let dissem = ctx.expected_dissem_us();
         assert!(
             dissem.contains(&DissemControl::Fouo),
             "FOUO should stay in unclassified: {dissem:?}"
@@ -1706,10 +1757,10 @@ mod tests {
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
-            dissem_controls: vec![DissemControl::Dsen, DissemControl::Fouo].into(),
+            dissem_us: vec![DissemControl::Dsen, DissemControl::Fouo].into(),
             ..Default::default()
         });
-        let dissem = ctx.expected_dissem_controls();
+        let dissem = ctx.expected_dissem_us();
         assert!(
             !dissem.contains(&DissemControl::Fouo),
             "FOUO should drop when DSEN is present, even unclassified: {dissem:?}"
@@ -1726,15 +1777,15 @@ mod tests {
         // Two OC portions, only one has OC-USGOV.
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
-            dissem_controls: vec![DissemControl::Oc, DissemControl::OcUsgov].into(),
+            dissem_us: vec![DissemControl::Oc, DissemControl::OcUsgov].into(),
             ..Default::default()
         });
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
-            dissem_controls: vec![DissemControl::Oc].into(),
+            dissem_us: vec![DissemControl::Oc].into(),
             ..Default::default()
         });
-        let dissem = ctx.expected_dissem_controls();
+        let dissem = ctx.expected_dissem_us();
         assert!(dissem.contains(&DissemControl::Oc));
         assert!(
             !dissem.contains(&DissemControl::OcUsgov),
@@ -1750,7 +1801,7 @@ mod tests {
             non_ic_dissem: vec![NonIcDissem::SbuNf].into(),
             ..Default::default()
         });
-        let dissem = ctx.expected_dissem_controls();
+        let dissem = ctx.expected_dissem_us();
         assert!(
             dissem.contains(&DissemControl::Nf),
             "NF should be injected from SBU-NF split: {dissem:?}"
@@ -1773,7 +1824,7 @@ mod tests {
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_controls: vec![SciControl::Si, SciControl::Tk].into_boxed_slice(),
-            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
         assert_eq!(
@@ -1789,12 +1840,12 @@ mod tests {
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::TopSecret)),
             sci_controls: vec![SciControl::Si, SciControl::Tk].into_boxed_slice(),
-            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
-            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
         ctx.add_portion(CanonicalAttrs {
@@ -1812,7 +1863,7 @@ mod tests {
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
-            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
         assert_eq!(
@@ -2165,7 +2216,7 @@ mod tests {
                 SarIndicator::Abbrev,
                 vec![sar_prog("BP", vec![sar_comp("J12", &["J54"])])].into_boxed_slice(),
             )),
-            dissem_controls: vec![DissemControl::Nf].into_boxed_slice(),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
         assert_eq!(
