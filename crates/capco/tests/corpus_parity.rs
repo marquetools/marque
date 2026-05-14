@@ -178,18 +178,26 @@ fn rule_count_reflects_registration_changes() {
     // path so fixes (`FixProposal`) survive the deletion. Net delta:
     // -2 (7.3 -1; 7.4 -1). Final: 33 - 2 = 31.
     //
+    // PR 9a T135a (issue #307 Group D): added
+    // `DeprecatedSciLongFormRule` (E065) — canonicalization walker for
+    // deprecated SCI long-form tokens per CAPCO-2016 §H.4 pp 61, 62, 74,
+    // 76, 78, 85. Net delta: +1. Final: 31 + 1 = 32.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        31,
+        32,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
          `DeclarativeSciPerSystemRule` (E059); their 27 + 5 catalog \
          rows fire via the engine's bridge — net delta -2. Final: \
-         31. See \
+         31. PR 9a T135a adds `DeprecatedSciLongFormRule` (E065) — \
+         canonicalization walker for deprecated SCI long-form tokens \
+         per CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85; net delta +1. \
+         Final: 32. See \
          `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

@@ -129,6 +129,7 @@ impl CapcoRuleSet {
             DeclarativeNonUsMissingDissemRule, DeclarativeOrconRelidoConflictRule,
             DeclarativeOrconUsgovRelidoConflictRule, DeclarativeRdPrecedenceRule,
             DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
+            DeprecatedSciLongFormRule,
         };
         Self {
             rules: vec![
@@ -289,6 +290,14 @@ impl CapcoRuleSet {
                 Box::new(DeclarativeRelidoDisplayOnlyConflictRule),
                 Box::new(DeclarativeOrconRelidoConflictRule),
                 Box::new(DeclarativeOrconUsgovRelidoConflictRule),
+                // PR 9a T135a (issue #307 Group D): canonicalization
+                // walker for deprecated SCI long-form tokens (HUMINT →
+                // HCS, COMINT / SPECIAL INTELLIGENCE → SI, ECI <COMP> →
+                // SI-<COMP>, EL / ENDSEAL <COMP> → SI-<COMP>,
+                // KDK / KLONDIKE-<COMP> → TK-<COMP>). Catalog ordered
+                // longer-prefix-first inside `rules_declarative.rs`.
+                // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+                Box::new(DeprecatedSciLongFormRule),
             ],
         }
     }

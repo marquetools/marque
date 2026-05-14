@@ -95,6 +95,12 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("E055", Phase::WholeMarking),
     ("E056", Phase::WholeMarking),
     ("E057", Phase::WholeMarking),
+    // PR 9a T135a (issue #307 Group D): deprecated SCI long-form
+    // canonicalization walker. Phase::Localized because every emitted
+    // diagnostic carries a span that covers a single TokenSpan (the
+    // deprecated long-form token); text-correction replacements are
+    // byte-precise single-token splices.
+    ("E065", Phase::Localized),
     ("S003", Phase::WholeMarking),
     ("S005", Phase::WholeMarking),
     ("S006", Phase::WholeMarking),
