@@ -2383,9 +2383,16 @@ impl<'engine> TwoPassFixer<'engine> {
                 // PR 7b in_shape filter; if one slips through it
                 // means a violated phase contract elsewhere. Log and
                 // skip — never panic on the audit hot path.
+                // Use explicit byte-offset fields rather than `?fix.span`
+                // so the log line stays G13-clean independent of any
+                // future `Span::Debug` impl change. Other span logging
+                // in this file already follows this pattern (engine.rs
+                // `start = ..., end = ...`); making it consistent here
+                // closes the implicit dependency.
                 tracing::warn!(
                     rule_id = %fix.rule,
-                    fix_span = ?fix.span,
+                    fix_span_start = %fix.span.start,
+                    fix_span_end = %fix.span.end,
                     "pass-1 applied fix has no enclosing parsed marking; \
                      skipping pre-pass-1 cache entry"
                 );
