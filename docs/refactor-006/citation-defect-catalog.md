@@ -30,6 +30,23 @@ failing any PR that introduces a new citation defect.
 | `doubled-page-anchor` | `p150–151 p151` form; FR-020 known defect |
 | `legacy-line-form` | Retired `line NNNN` citation form (commit b340bec) |
 
+## Summary
+
+Total defects: **2**
+
+| Class | Count |
+|-------|-------|
+| `bare-section` | 2 |
+
 ## Catalog
 
-No defects detected. Citation-lint is clean.
+### `crates/capco/src/scheme.rs`
+
+- **3739:14** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§4`
+  - **Defect**: bare section without subsection letter
+- **4342:28** — `bare-section`
+  - **Source kind**: `DocComment`
+  - **Raw**: `§3`
+  - **Defect**: bare section without subsection letter

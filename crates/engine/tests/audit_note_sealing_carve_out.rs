@@ -138,6 +138,8 @@ fn audit_note_clone_does_not_require_scheme_clone() {
         span: None,
         suppressed_by: None,
     };
+    // Test-fixture carve-out per Constitution V Principle V — synthetic
+    // AuditNote construction for the Clone-surface test below.
     let note: AuditNote<CapcoScheme> = AuditNote::__engine_promote(
         RuleId::new("test/clone"),
         "TEST §0",

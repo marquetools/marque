@@ -3736,7 +3736,7 @@ impl MarkingScheme for CapcoScheme {
         capco_token_category(id)
     }
 
-    /// CAPCO §4.7 implicit-fact propagation catalog.
+    /// CAPCO implicit-fact propagation catalog (closure operator).
     ///
     /// Returns the static catalog of [`ClosureRule`] rows implementing
     /// the three FD&R-suppressed implicit defaults (Trio 1–3 in
@@ -4339,7 +4339,8 @@ static CAPCO_CLOSURE_RULES: &[ClosureRule] = &[
 /// SFDRA-deferred-release semantic conflicts with the manifest FD&R
 /// authority of the dominator.
 ///
-/// Per `marque-applied.md` §3.4.2 + CAPCO-2016 §H.8 p154 (RELIDO
+/// Per the family-predicate framing in `marque-applied.md` (RELIDO
+/// incompatibility roster) + CAPCO-2016 §H.8 p154 (RELIDO
 /// Relationship(s) to Other Markings: "Cannot be used with NOFORN or
 /// DISPLAY ONLY") + §D.2 Table 3 p28.
 ///

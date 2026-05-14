@@ -399,10 +399,19 @@ proptest! {
     #[test]
     fn closure_output_does_not_leak_document_bytes(
         bits in any::<u8>(),
-        // Simulate a "document content" string: some arbitrary ASCII text.
-        // We ensure it's non-empty and not a hex representation to avoid
-        // trivial matches.
-        doc_content in "[a-zA-Z][a-zA-Z ]{4,20}",
+        // Simulate a "document content" string: arbitrary ASCII text
+        // constrained to letters that are NOT hex digits (a-f / A-F).
+        // The stub's `render_banner` emits `"bits=0x{:02x}"`, so a
+        // doc_content regex that admits hex characters would
+        // false-positive when a random substring like "xfa" appears
+        // in both the document content AND the hex-formatted output
+        // by chance (observed in CI: doc_content="AxfaA", bits=122
+        // rendering as "0xfa" → 3-byte substring "xfa" matched in
+        // both, yielding a spurious G13 failure). Excluding hex
+        // digits eliminates the collision class while preserving
+        // the proptest's real assertion: no document-content bytes
+        // surface in the closure operator's rendered output.
+        doc_content in "[g-zG-Z][g-zG-Z ]{4,20}",
     ) {
         let scheme = ClosureStubScheme;
         let m = BitMarking::with(bits);
