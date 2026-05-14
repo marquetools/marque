@@ -6,17 +6,21 @@
 //!
 //! Pins the pure-NATO portion → `dissem_nato` attribution from
 //! parser → canonical → page projection, so that a future regression
-//! that silently re-attributes NATO dissems to `dissem_us` (the
-//! CAPCO-2016 p41 reciprocity rule's failure mode) trips the test
-//! suite before it reaches users.
+//! that silently re-attributes NATO dissems to `dissem_us` (a
+//! violation of the CAPCO-2016 §G.2 Table 5 NATO-dissem ARH rule)
+//! trips the test suite before it reaches users.
 //!
 //! ATOMAL recognition lands in PR 9c, so the fixture below uses a
 //! plain `COSMIC TOP SECRET` classification with `OC/REL TO USA,
 //! NATO` dissems — no ATOMAL token required.
 //!
-//! Authority: CAPCO-2016 §H.7 p123 (FGI / NATO grammar), p41
-//! (reciprocity rule for the two NATO-applicable dissems: ORCON and
-//! REL TO).
+//! Authority: CAPCO-2016 §H.7 p123 (FGI / NATO grammar) and §G.2
+//! Table 5 (pp 40-45), which enumerates the two NATO dissemination
+//! control markings (ORCON, REL TO / [LIST] ONLY) and directs their
+//! ARH to "See US X ARH requirements" — no NATO-specific dissem form
+//! exists, so a US-classified marking carrying these tokens routes
+//! them to `dissem_us`; the NATO namespace populates only on
+//! pure-NATO portions.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{
@@ -52,24 +56,28 @@ fn pure_nato_portion_attributes_dissem_to_dissem_nato() {
         Some(marque_ism::MarkingClassification::Nato(_))
     );
 
-    // If the parser produced a different shape (e.g., it treats
-    // `CTS` as something other than NATO COSMIC TOP SECRET), this
-    // fixture cannot exercise the NATO-dissem attribution path —
-    // skip with an explicit note rather than fail mysteriously.
+    // This is an *insurance* fixture: its entire purpose is to fail
+    // loud if the pure-NATO attribution path breaks. Soft-skipping
+    // when the parser doesn't recognise CTS as NATO would forfeit
+    // that purpose. The CTS classification is pinned at
+    // crates/core/src/parser.rs:1681; if this assertion fires the
+    // pin has drifted and the load-bearing FR-046 path needs review.
     if !is_nato_only {
-        eprintln!(
-            "skipping NATO-dissem fixture: parser classification = {:?} \
-             (expected MarkingClassification::Nato)",
-            attrs.classification
+        panic!(
+            "PR 9b insurance fixture: parser did NOT produce \
+             MarkingClassification::Nato for portion `(//CTS//OC/REL TO USA, NATO)`. \
+             Got: {:?}. This is a load-bearing test of the FR-046 pure-NATO \
+             attribution path; soft-failing forfeits its purpose. CTS \
+             classification is pinned at parser.rs:1681.",
+            attrs.classification,
         );
-        return;
     }
 
     // Reciprocity: NATO classification → dissems in dissem_nato.
     assert!(
         attrs.dissem_us.is_empty(),
-        "pure-NATO portion must NOT populate dissem_us (CAPCO-2016 p41 \
-         reciprocity rule); got dissem_us = {:?}",
+        "pure-NATO portion must NOT populate dissem_us (CAPCO-2016 \
+         §G.2 Table 5 NATO-dissem ARH rule); got dissem_us = {:?}",
         attrs.dissem_us,
     );
     assert!(
@@ -87,10 +95,14 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
         attrs.classification,
         Some(marque_ism::MarkingClassification::Nato(_))
     ) {
-        eprintln!(
-            "skipping NATO-dissem rollup fixture: parser did not produce NATO classification"
+        panic!(
+            "PR 9b insurance fixture: parser did NOT produce \
+             MarkingClassification::Nato for portion `(//CTS//OC/REL TO USA, NATO)`. \
+             Got: {:?}. This rollup test is load-bearing for the FR-046 \
+             pure-NATO page-projection path; soft-failing forfeits its \
+             purpose. CTS classification is pinned at parser.rs:1681.",
+            attrs.classification,
         );
-        return;
     }
 
     let portion = CapcoMarking::new(attrs);

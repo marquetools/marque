@@ -102,7 +102,10 @@ fn lookup_constraint<'a>(scheme: &'a CapcoScheme, name: &str) -> &'a Constraint 
 fn attrs_with_dissem(controls: &[DissemControl]) -> CanonicalAttrs {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = controls.to_vec().into_boxed_slice();
+    // PR 9b T132 / FR-046: field renamed from `dissem_controls` to
+    // `dissem_us` (US-classified fixtures route here per CAPCO-2016
+    // §G.2 Table 5).
+    a.dissem_us = controls.to_vec().into_boxed_slice();
     a
 }
 
@@ -132,7 +135,10 @@ fn attrs_for_dissem_block(
 ) -> (CanonicalAttrs, String) {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = dissem
+    // PR 9b T132 / FR-046: field renamed from `dissem_controls` to
+    // `dissem_us` (US-classified fixtures route here per CAPCO-2016
+    // §G.2 Table 5).
+    a.dissem_us = dissem
         .iter()
         .map(|(d, _)| *d)
         .collect::<Vec<_>>()

@@ -126,24 +126,27 @@ pub struct ParsedAttrs<'src> {
     /// classification axis at all and the configured
     /// [`DefaultOrigin`] is [`DefaultOrigin::Us`] (CAPCO's default).
     ///
-    /// **CAPCO-2016 p41 reciprocity rule.** CAPCO defines exactly two
-    /// dissemination controls applicable to NATO content (ORCON and
-    /// REL TO / [LIST] ONLY) and deliberately did NOT introduce
-    /// NATO-specific forms like `ORCON-NATO`. When OC / ORCON / REL TO
-    /// appear in a US-classified marking, they ARE the US controls;
-    /// NATO-origin dissems transmute to US-attributed by reciprocity.
-    /// The split exists so non-CAPCO consumers (future cross-system
-    /// translation, audit-trail provenance) can distinguish the two —
-    /// when both fields could apply, US wins, and `dissem_nato`
-    /// populates only when the parent portion has no US classification
-    /// axis (i.e., a pure-NATO portion).
+    /// **CAPCO-2016 §G.2 Table 5 (pp 40-45) NATO-dissem ARH rule.**
+    /// Table 5 enumerates two NATO dissemination control markings —
+    /// "ORCON (NATO dissemination control marking)" and "RELEASEABLE
+    /// TO or [LIST] ONLY" — and directs the ARH for both to "See US X
+    /// ARH requirements." No NATO-specific dissem form (e.g.,
+    /// `ORCON-NATO`) exists in the Register. Operational consequence:
+    /// when OC or REL TO appears in a US-classified marking, the
+    /// resolved namespace is US (the NATO-origin form shares the US
+    /// ARH machinery). The split exists so non-CAPCO consumers (future
+    /// cross-system translation, audit-trail provenance) can
+    /// distinguish the two — `dissem_nato` populates only when the
+    /// parent portion has no US classification axis (i.e., a
+    /// pure-NATO portion).
     pub dissem_us: Box<[ParsedDissem<'src>]>,
 
     /// NATO-attributed IC dissemination controls. Populated only for
     /// pure-NATO portions — i.e., the parent portion's
     /// `classification` is `MarkingClassification::Nato(_)` with no US
     /// axis. Mixed or US-classified portions route every dissem to
-    /// [`Self::dissem_us`] per the reciprocity rule documented there.
+    /// [`Self::dissem_us`] per the §G.2 Table 5 ARH rule documented
+    /// there.
     ///
     /// Tokens that are NATO-only by spec (ATOMAL, BALK, BOHEMIA) are
     /// NOT dissems and route to the AEA / SCI axes per FR-047 — they

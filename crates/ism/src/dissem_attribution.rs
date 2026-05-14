@@ -4,16 +4,23 @@
 
 //! IC dissem attribution — the post-parse pass that splits a parser's
 //! single dissem-token stream into [`ParsedAttrs::dissem_us`] vs.
-//! [`ParsedAttrs::dissem_nato`] per CAPCO-2016 p41's reciprocity rule.
+//! [`ParsedAttrs::dissem_nato`] per the CAPCO-2016 §G.2 Table 5
+//! (pp 40-45) NATO-dissem ARH rule.
 //!
 //! # The rule
 //!
-//! CAPCO-2016 p41 defines exactly two dissemination controls applicable
-//! to NATO content: ORCON and REL TO / [LIST] ONLY. CAPCO deliberately
-//! did NOT introduce a NATO-specific form (e.g., `ORCON-NATO`). By
-//! reciprocity, when OC / ORCON / REL TO appear in a US-classified
-//! marking, they ARE the US controls; the NATO-origin dissem
-//! transmutes to US-attributed automatically.
+//! CAPCO-2016 §G.2 Table 5 (pp 40-45) enumerates two NATO dissemination
+//! control markings — "ORCON (NATO dissemination control marking)" and
+//! "RELEASEABLE TO or [LIST] ONLY" — and directs the Access Rights and
+//! Handling (ARH) for both to "See US X ARH requirements." No
+//! NATO-specific dissem form (e.g., `ORCON-NATO`) exists in the
+//! Register.
+//!
+//! Operational consequence: when OC or REL TO appears in a US-classified
+//! marking, the resolved namespace is US — the NATO-origin form shares
+//! the US ARH machinery and the token is US-attributed. The NATO
+//! namespace populates only when no US classification axis is present
+//! (pure-NATO portions like `(//CTS//OC/REL TO USA, NATO)`).
 //!
 //! Tokens that are NATO-only by spec (ATOMAL, BALK, BOHEMIA) are NOT
 //! dissems and route to the AEA / SCI axes per FR-047 — they never
@@ -70,7 +77,10 @@ pub enum DefaultOrigin {
 }
 
 /// Partition `attrs.dissem_us + attrs.dissem_nato` into the two output
-/// slices per the CAPCO-2016 p41 reciprocity rule.
+/// slices per CAPCO-2016 §G.2 Table 5 (pp 40-45): NATO's two dissem
+/// markings (ORCON, REL TO / [LIST] ONLY) inherit US ARH, so any
+/// US-classified marking carrying those tokens routes them to
+/// `dissem_us`. The NATO namespace populates only on pure-NATO portions.
 ///
 /// **Idempotent.** Reads both incoming fields, merges them, and writes
 /// the partitioned result back. Calling twice with the same `default`

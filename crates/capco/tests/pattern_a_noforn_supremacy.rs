@@ -82,7 +82,10 @@ fn portion_with_non_ic_and_dissem(
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(c));
     a.non_ic_dissem = non_ic.to_vec().into_boxed_slice();
-    a.dissem_controls = dissem.to_vec().into_boxed_slice();
+    // PR 9b T132 / FR-046: field renamed from `dissem_controls` to
+    // `dissem_us` (US-classified fixtures route here per CAPCO-2016
+    // §G.2 Table 5).
+    a.dissem_us = dissem.to_vec().into_boxed_slice();
     CapcoMarking::new(a)
 }
 

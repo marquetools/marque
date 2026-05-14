@@ -118,9 +118,10 @@ pub const TOK_NODIS: TokenId = TokenId(122);
 pub const TOK_EXDIS: TokenId = TokenId(123);
 
 // PR 3b.C (T026c): RELIDO incompatibility roster sentinels.
-// Resolved via `satisfies_attrs` against `attrs.dissem_controls` —
-// all four tokens are IC dissem controls living in
-// `marque_ism::DissemControl`.
+// Resolved via `satisfies_attrs` against `attrs.dissem_iter()`
+// (the namespace-agnostic walk over `dissem_us ++ dissem_nato`,
+// post PR 9b / FR-046 split) — all four tokens are IC dissem
+// controls living in `marque_ism::DissemControl`.
 //
 // DissemControl variant → CVE string form (from generated values.rs):
 //   Relido     → "RELIDO"
@@ -813,6 +814,10 @@ fn apply_fact_add(
         }
         let mut next: Vec<DissemControl> = attrs.dissem_us.to_vec();
         next.push(target);
+        // D9b-1 (decisions.md): FactAdd writes to dissem_us unconditionally;
+        // pure-NATO portions needing FactAdd on dissem_nato require namespace-
+        // aware intent. Deferred to PR 10+ if cross-system translation surfaces
+        // the need.
         attrs.dissem_us = next.into_boxed_slice();
         return Ok(());
     }
@@ -1090,8 +1095,9 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
     // `_needs_nf` (second tuple element) is intentionally discarded here.
-    // NOFORN injection into `out.dissem_controls` for the non-IC dissem
-    // trigger family (SBU-NF/LES-NF classified-context split, and
+    // NOFORN injection into `out.dissem_us` (post PR 9b / FR-046 split;
+    // the field was `out.dissem_controls` pre-split) for the non-IC
+    // dissem trigger family (SBU-NF/LES-NF classified-context split, and
     // NODIS/EXDIS imply-NF per CAPCO-2016 §H.9 p172 / p174) is handled at
     // the final-projection layer by the PageRewrites
     // `capco/{sbu-nf,les-nf,nodis,exdis}-implies-noforn`
@@ -2867,8 +2873,10 @@ pub enum CapcoParseError {
 ///   `aea_markings`", etc.
 /// - [`TokenRef::AnyInCategory(cat)`] returns true when the category
 ///   has at least one populated value. `CAT_DISSEM` intentionally
-///   counts both `dissem_controls` AND `rel_to` as dissem-flavored
-///   presence, matching the historical E015 predicate.
+///   counts both the dissem axis (`dissem_us` and `dissem_nato`
+///   together, walked via `attrs.dissem_iter()` post PR 9b / FR-046
+///   split) AND `rel_to` as dissem-flavored presence, matching the
+///   historical E015 predicate.
 ///
 /// `MarkingClassification::Conflict` is deliberately excluded from
 /// `TOK_NON_US_CLASSIFICATION` / `CAT_NON_US_CLASSIFICATION` — that
@@ -2977,8 +2985,10 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Exdis)),
             // PR 3b.C (T026c): RELIDO incompatibility sentinels.
-            // Pattern mirrors TOK_NOFORN above — scan `dissem_controls`
-            // for the matching DissemControl variant. All four variants
+            // Pattern mirrors TOK_NOFORN above — scan via
+            // `attrs.dissem_iter()` (namespace-agnostic walk over
+            // `dissem_us ++ dissem_nato` post PR 9b / FR-046 split) for
+            // the matching DissemControl variant. All four variants
             // exist in the generated values.rs; no new marque-ism edits
             // needed (Constitution VII compliance verified).
             TOK_RELIDO => attrs
@@ -3486,8 +3496,10 @@ impl MarkingScheme for CapcoScheme {
     ///   documented inline below.
     /// - [`TokenRef::AnyInCategory(cat)`] returns true when the
     ///   category has at least one populated value. `CAT_DISSEM`
-    ///   intentionally counts both `dissem_controls` AND `rel_to` as
-    ///   dissem-flavored presence, matching the historical E015
+    ///   intentionally counts both the dissem axis (`dissem_us` and
+    ///   `dissem_nato` together, walked via `attrs.dissem_iter()`
+    ///   post PR 9b / FR-046 split) AND `rel_to` as dissem-flavored
+    ///   presence, matching the historical E015
     ///   predicate ("non-US classification needs SOME dissem").
     ///
     /// Sentinel `TokenId`s not used by the current catalog
@@ -5350,8 +5362,9 @@ fn class_floor_satisfied(attrs: &marque_ism::CanonicalAttrs, policy: ClassFloorP
 // ---------------------------------------------------------------------------
 //
 // Each predicate iterates the relevant axis (`attrs.sci_markings`,
-// `attrs.aea_markings`, `attrs.dissem_controls`, etc.) looking for any
-// token matching the family pattern. Family granularity is the §3.4.6
+// `attrs.aea_markings`, `attrs.dissem_iter()` over the namespace
+// split, etc.) looking for any token matching the family pattern.
+// Family granularity is the §3.4.6
 // author's choice — the predicates pattern-match across all marking-
 // template-level leaves that belong to the family.
 
@@ -7319,9 +7332,11 @@ mod tests {
     /// over-reach into axes whose migration is still queued.
     ///
     /// Case (a): bare classification marking → FactAdd(NOFORN, Portion)
-    /// places NOFORN into `attrs.dissem_controls`. The lone Secret
-    /// classification on `mk_attrs()` has an empty dissem axis
-    /// pre-call; post-call the axis contains exactly `[Nf]`.
+    /// places NOFORN into `attrs.dissem_us` (post PR 9b / FR-046 split;
+    /// see D9b-1 in decisions.md re the dissem_us-only write target).
+    /// The lone Secret classification on `mk_attrs()` has an empty
+    /// dissem axis pre-call; post-call `dissem_us` contains exactly
+    /// `[Nf]`.
     ///
     /// Case (b): marking already containing NOFORN — FactAdd(NOFORN)
     /// is a per-intent no-op and `apply_fact_add` returns

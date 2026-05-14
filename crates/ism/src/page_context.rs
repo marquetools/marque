@@ -155,9 +155,26 @@ impl PageContext {
     /// inspecting the union of portion-contributed dissems / SCI /
     /// REL TO etc.); a future migration that needs the post-rewrite
     /// form should plumb that separately.
+    ///
+    /// **Known gap (PR 5 / FR-007)**: the `classification` field below
+    /// wraps the rolled-up US classification level as
+    /// `MarkingClassification::Us(_)` unconditionally. This contradicts
+    /// `ProjectedMarking::classification`'s documented invariant that
+    /// pure-foreign pages should project as `None` (no US contribution)
+    /// or as the foreign variant. FGI/NATO classification provenance is
+    /// currently lost at projection time. No banner rule reads
+    /// `page.classification` directly today, so the gap is latent. Full
+    /// `MarkingClassification` roll-up — including a parallel
+    /// `expected_classification_full()` that distinguishes US / NATO /
+    /// FGI provenance — lands in PR 5 (see `research.md` / FR-007).
+    /// Read sites MUST tolerate this gap until then.
     pub fn project(&self) -> ProjectedMarking {
         ProjectedMarking {
             scope: Scope::Page,
+            // TODO(PR5/FR-007): classification narrowed to Us(_) here; FGI/NATO
+            // provenance is currently lost. Full MarkingClassification roll-up
+            // lands when PR 5 wires `expected_classification_full()` (see
+            // research.md / FR-007). Read sites must tolerate this gap until then.
             classification: self
                 .expected_classification()
                 .map(MarkingClassification::Us),
