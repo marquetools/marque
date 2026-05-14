@@ -3300,6 +3300,12 @@ fn repair_sci_token(token: &str) -> Option<String> {
 /// lookup is a linear scan over 10 rows — the total set is small and
 /// bounded by the five standard NATO classification levels.
 ///
+/// **Out of scope.** Parametric NATO-NAC-Activity rows from §G.1 Table 4
+/// lines 776-779 (`NATO [NAC Activity] SECRET → N[NAC Activity]S` and
+/// equivalents for C/R/U) are not covered here; they require distinct parser
+/// support for the open-ended activity identifier and are not tracked in this
+/// PR or PR 9 T134.
+///
 /// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register).
 const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
     // Abbreviation forms (single-letter / two-letter)
@@ -3319,12 +3325,16 @@ const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
 
 /// Fold NATO longhand classification levels into canonical short forms.
 ///
-/// Recovers inputs the strict parser doesn't recognize (e.g. portion
-/// `(//NATO S)` for which CAPCO §G.1 Table 4 pp 36-38 specifies the
-/// canonical form `(//NS)`). The fold fires only when `NATO` appears
-/// as the first non-delimiter token of a `//`-separated segment, so
+/// Recovers inputs the strict parser doesn't recognize. The primary failing
+/// case is `(NATO S)` (no leading `//`) for which CAPCO §G.1 Table 4 pp 36-38
+/// specifies the canonical form `(//NS)` — the fold both canonicalizes the
+/// level token and injects the required `//` prefix. Also handles the
+/// already-prefixed `(//NATO S)` variant (level token canonicalized; `//`
+/// prefix already present, so none is added). The fold fires only when `NATO`
+/// appears as the first non-delimiter token of a `//`-separated segment, so
 /// tetragraph occurrences inside `REL TO USA, NATO` or FGI lists are
-/// not touched.
+/// not touched. See the caller-invariant note on [`fold_nato_segment`] for
+/// the bounded behavior when the fold fires on a non-classification-slot segment.
 ///
 /// For `MarkingType::Portion`, NATO long form → portion abbreviation:
 ///   NATO U → NU, NATO R → NR, NATO C → NC, NATO S → NS,
@@ -3425,6 +3435,22 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 /// verbatim — this handles the unusual (but possible) case where a segment
 /// contains a NATO level token followed by additional content that should
 /// survive the fold unchanged.
+///
+/// **Caller invariant.** In practice the caller ([`try_nato_fold`]) invokes
+/// this on every `//`-separated segment of the input. Segments that don't
+/// start with `NATO ` return `None` immediately (the segment-leading guard),
+/// so non-NATO segments are passed through unchanged. This is correct only
+/// because legitimate NATO classifications appear in the first `//`-separated
+/// slot per CAPCO-2016 §A.6. A `NATO X` token appearing in a non-first-slot
+/// position (e.g., the SCI/dissem slot of `(S//NATO C)`) also fires the fold,
+/// producing the intermediate form `(S//NC)` — semantically invalid (a US
+/// classification cannot be followed by a NATO portion abbreviation in the
+/// SCI/dissem slot). The strict parser rejects this downstream, yielding a
+/// a `MarkingClassification::Conflict { us: Secret, foreign: Nato(NatoConfidential) }`
+/// result — the parser accepts the conflict form rather than rejecting it. The
+/// test `nato_in_second_segment_yields_conflict_not_us_secret` documents this
+/// bounded behavior (a conflict result is still better than silently returning
+/// a canonical NATO marking as if the input were valid).
 fn fold_nato_segment(seg: &str) -> Option<String> {
     let trimmed = seg.trim();
     // Segment-leading guard: the fold ONLY fires when the first

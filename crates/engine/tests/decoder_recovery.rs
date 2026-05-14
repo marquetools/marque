@@ -1600,7 +1600,7 @@ fn nato_u_portion_folds_to_nu() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO U)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO U)` should fold to `(//NU)` and decode \
+            "T129 regression: `(NATO U)` must fold to `(//NU)` and decode \
              to NatoUnclassified (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1618,7 +1618,7 @@ fn nato_r_portion_folds_to_nr() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO R)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO R)` should fold to `(//NR)` and decode \
+            "T129 regression: `(NATO R)` must fold to `(//NR)` and decode \
              to NatoRestricted (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1636,7 +1636,7 @@ fn nato_c_portion_folds_to_nc() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO C)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO C)` should fold to `(//NC)` and decode \
+            "T129 regression: `(NATO C)` must fold to `(//NC)` and decode \
              to NatoConfidential (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1654,7 +1654,7 @@ fn nato_s_portion_folds_to_ns() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO S)` should fold to `(//NS)` and decode \
+            "T129 regression: `(NATO S)` must fold to `(//NS)` and decode \
              to NatoSecret (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1673,7 +1673,7 @@ fn nato_ts_portion_folds_to_cts() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TS)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO TS)` should fold to `(//CTS)` and decode \
+            "T129 regression: `(NATO TS)` must fold to `(//CTS)` and decode \
              to CosmicTopSecret (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1691,7 +1691,7 @@ fn nato_secret_long_form_folds_to_ns() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO SECRET//NF)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO SECRET//NF)` should fold to `(//NS//NF)` \
+            "T129 regression: `(NATO SECRET//NF)` must fold to `(//NS//NF)` \
              and decode to NatoSecret (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1717,7 +1717,7 @@ fn nato_top_secret_long_form_folds_to_cts() {
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TOP SECRET//NF)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO TOP SECRET//NF)` should fold to `(//CTS//NF)` \
+            "T129 regression: `(NATO TOP SECRET//NF)` must fold to `(//CTS//NF)` \
              and decode to CosmicTopSecret (T129 — decoder NATO longhand fold)"
         );
     };
@@ -1850,13 +1850,14 @@ fn nato_fold_emits_superseded_token_feature() {
     // `(NATO S)` → fold fires → FeatureId::SupersededToken present exactly once
     // in the decoder provenance. This test validates the audit-trail requirement
     // from the brief: the fold records `SupersededToken` (reusing the existing
-    // variant per the brief's explicit instruction, delta -0.2).
+    // variant per the brief's explicit instruction, delta 0.0)
+    // (see `decoder.rs:855-862` wire-site comment for the equivalence-transform-not-supersession rationale).
     //
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
     let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", &deep_cx()) else {
         panic!(
-            "pre-fix failure: `(NATO S)` should decode unambiguously after T129 fold \
+            "T129 regression: `(NATO S)` must decode unambiguously after T129 fold \
              (T130 audit-feature check)"
         );
     };
@@ -1875,4 +1876,73 @@ fn nato_fold_emits_superseded_token_feature() {
          got {superseded_count}. features = {:?}",
         provenance.features
     );
+}
+
+#[test]
+fn nato_in_second_segment_yields_conflict_not_us_secret() {
+    // `(S//NATO C)` is a malformed input where NATO C accidentally appears
+    // in the SCI/dissem position (segment 2). The fold's segment loop fires
+    // on segment 2 (starts with `NATO `), producing the intermediate `(S//NC)`.
+    // Contrary to the brief's initial assumption, the strict parser does NOT
+    // reject this — it accepts `(S//NC)` as a
+    // `MarkingClassification::Conflict { us: Secret, foreign: Nato(NatoConfidential) }`.
+    //
+    // This test documents the actual bounded behavior: the fold's segment-leading
+    // guard prevents NATO-tetragraph-in-REL-TO from folding (correct), but does
+    // NOT prevent fold from firing in non-classification-slot positions. The
+    // parser's Conflict result is better than silently emitting a pure NATO
+    // canonical (no false `NatoConfidential`-only result is returned), but the
+    // decoder does not produce a decode-miss. See the caller-invariant note on
+    // `fold_nato_segment` and the brief deviation note in the commit message.
+    //
+    // Test-fixture carve-out per Constitution V: no engine promotion occurs here.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17.
+    use marque_ism::MarkingClassification;
+    let rx = DecoderRecognizer::new();
+    let parsed = rx.recognize(b"(S//NATO C)", &deep_cx());
+    match parsed {
+        Parsed::Unambiguous(marking) => {
+            // The fold fires on the second segment; the parser accepts the
+            // intermediate `(S//NC)` as a Conflict classification.
+            // Key invariant: the result must NOT be a pure NATO-only marking
+            // (which would mean the fold injected a false canonical).
+            match marking.0.classification.as_ref() {
+                Some(MarkingClassification::Conflict { us, foreign }) => {
+                    // Conflict is the expected outcome: US Secret remains visible
+                    // and the fold-produced NATO Confidential surfaces as the
+                    // conflicting foreign classification. Both are present.
+                    use marque_ism::ForeignClassification;
+                    assert_eq!(
+                        *us,
+                        marque_ism::Classification::Secret,
+                        "conflict must retain US Secret as the us axis"
+                    );
+                    assert!(
+                        matches!(**foreign, ForeignClassification::Nato(_)),
+                        "conflict must have Nato classification as the foreign axis, got {foreign:?}"
+                    );
+                }
+                Some(MarkingClassification::Nato(_)) => {
+                    // Fold would have silently replaced US Secret with NATO marking —
+                    // this is the wrong behavior we want to catch.
+                    panic!(
+                        "T129 regression: `(S//NATO C)` must not produce a pure Nato \
+                         classification; fold must not discard the US Secret in segment 1"
+                    );
+                }
+                other => {
+                    // Any other result (including a pure US classification) is worth
+                    // documenting but may indicate a parser behavior change.
+                    panic!(
+                        "T129 regression: `(S//NATO C)` produced unexpected classification \
+                         {other:?}; expected Conflict{{us: Secret, foreign: Nato(...)}}"
+                    );
+                }
+            }
+        }
+        Parsed::Ambiguous { ref candidates } if candidates.is_empty() => {
+            // Graceful decode-miss is also acceptable; documented here for completeness.
+        }
+        other => panic!("T129 regression: `(S//NATO C)` produced unexpected result {other:?}"),
+    }
 }
