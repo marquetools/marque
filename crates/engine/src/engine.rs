@@ -213,16 +213,19 @@ pub struct Engine {
     /// Pass-2 (WholeMarking) partition counterpart of
     /// [`Engine::pass1_rule_indices`].
     ///
-    /// **PR 7b behavior.** Stored but not yet read. Pass-2 dispatch
-    /// in `TwoPassFixer::run` currently routes diagnostics to pass-2
-    /// as the **complement** of the pass-1 (Localized) set, which is
-    /// sufficient for today's rule shape — every diagnostic emitted
-    /// by `lint()` comes from a registered rule, so the complement
-    /// equals the WholeMarking partition. PR 7c will switch pass-2 to
-    /// a positive whitelist read off this field for symmetry with
-    /// pass-1 and to make a future "unregistered emitted ID" land in
-    /// neither pass instead of silently in pass-2. See
-    /// [`Engine::pass1_rule_indices`] for the shape rationale.
+    /// **Post-PR-7c behavior.** Stored but not yet read at dispatch
+    /// time. Pass-2 in `TwoPassFixer::run` routes diagnostics as the
+    /// **complement** of the pass-1 (Localized) set via
+    /// `partition_diags_by_phase` — sufficient for today's rule
+    /// shape because every diagnostic emitted by `lint()` comes
+    /// from a registered rule, so the complement equals the
+    /// WholeMarking partition. PR 7c retained this dispatch shape
+    /// (implementer Decision #4) rather than flipping to a positive
+    /// whitelist; the field stays available for a deferred future
+    /// PR that wants the symmetry with pass-1 and the "unregistered
+    /// emitted ID falls into neither pass" property. No schedule for
+    /// that work is set. See [`Engine::pass1_rule_indices`] for the
+    /// shape rationale.
     #[allow(dead_code)]
     pass2_rule_indices: Pass2Indices,
 }
@@ -517,6 +520,29 @@ impl Engine {
         &self,
         source: &[u8],
         opts: &LintOptions,
+    ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
+        // Public entry point — no pre-pass-1 cache is available
+        // outside the two-pass fix orchestrator. Delegates to the
+        // cache-aware path with `None`.
+        self.lint_with_options_internal_with_cache(source, opts, None)
+    }
+
+    /// Cache-aware variant of [`Self::lint_with_options_internal`]
+    /// used by [`TwoPassFixer`] for the post-pass-1 re-lint. The
+    /// `pre_pass_1_cache` is a borrow into a `SmallVec` that lives
+    /// on `TwoPassFixer::run`'s stack frame; each candidate's
+    /// [`marque_rules::RuleContext::pre_pass_1_attrs`] field is
+    /// populated by a containment scan over the cache entries.
+    ///
+    /// `None` (every caller outside the engine's two-pass fix path)
+    /// retains the pre-7c behavior: rules see
+    /// `pre_pass_1_attrs: None` because no pass-1 fix has been
+    /// applied yet for this lint invocation.
+    fn lint_with_options_internal_with_cache(
+        &self,
+        source: &[u8],
+        opts: &LintOptions,
+        pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
     ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
         use marque_core::Scanner;
         use marque_ism::{MarkingType, PageContext};
@@ -818,6 +844,15 @@ impl Engine {
             } else {
                 None
             };
+            // PR 7c: look up the pre-pass-1 attrs for this marking
+            // span when the engine is dispatching the post-pass-1
+            // re-lint (`TwoPassFixer` threads a cache through here
+            // via `lint_with_options_internal`'s `pre_pass_1_cache`
+            // parameter). First-lint dispatch (pass-0) and any
+            // external `lint_with_options` call see `None` because no
+            // pass-1 fix has yet been promoted.
+            let pre_pass_1_attrs =
+                pre_pass_1_cache.and_then(|cache| pre_pass_1_attrs_for_span(cache, candidate.span));
             let ctx = RuleContext {
                 marking_type: candidate.kind,
                 zone: None,
@@ -832,6 +867,7 @@ impl Engine {
                 candidate_span: candidate.span,
                 page_context: ctx_page,
                 corrections: corrections_arc.clone(),
+                pre_pass_1_attrs,
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {
@@ -1569,6 +1605,58 @@ type AppliedTuple = (
     HashSet<(RuleId, Span)>,
 );
 
+/// Pre-pass-1 attribute cache entries (PR 7c / FR-023 / R-4).
+///
+/// One entry per marking whose span overlaps a pass-1 fix. The
+/// engine builds the cache before the pass-1 splice so the
+/// `CanonicalAttrs` snapshot reflects the bytes the rule originally
+/// matched against. Inline-4 matches the existing
+/// `Phase::Localized` rule cap (C001 / E006 / E007 / S004 — at most
+/// one fix per Localized rule per marking; the typical document
+/// has ≤4 reshape sites). Spills to heap on dense documents.
+///
+/// The `Span` keys are the **marking spans** (i.e., scanner
+/// candidate spans), not the fix sub-spans. Lookup is a linear scan
+/// using `span_is_within_marking` so a query span (a candidate
+/// span at re-lint time) finds the cache entry whose marking
+/// contains it. The post-pass-1 re-lint may produce candidates with
+/// shifted offsets (the splice changed byte positions), so an
+/// exact-equality keying scheme would miss every entry. The
+/// containment scan is robust because spans grow monotonically
+/// left-to-right; for any post-splice candidate the originating
+/// pre-pass-1 marking is the unique cache entry whose pre-splice
+/// span contained the same source bytes.
+///
+/// Inline-4 storage is 4 × `sizeof(Span) + sizeof(CanonicalAttrs)`
+/// ≈ 4 × (16 + 112) = ~512 B on the stack. SmallVec spill to heap
+/// is acceptable when documents exceed the cap (rust pre-flight §2).
+type PrePass1Cache = SmallVec<[(Span, marque_ism::CanonicalAttrs); 4]>;
+
+/// Look up the pre-pass-1 attrs for a marking whose span contains
+/// `query_span`. Linear scan over the ≤4-entry cache; the call is
+/// per-candidate inside `lint_with_options_internal_with_cache` and
+/// the inline-4 bound makes the scan stack-only on typical inputs.
+///
+/// Returns `Some(&attrs)` when a cache entry's marking span contains
+/// the query span; `None` otherwise. The CONTENT of the entry
+/// (`CanonicalAttrs`) is borrowed into `RuleContext.pre_pass_1_attrs`
+/// as the architectural two-pass-reshape signal — no current rule
+/// reads it, but the field stays plumbed for future consumers
+/// (D-7.22).
+#[inline]
+fn pre_pass_1_attrs_for_span(
+    cache: &[(Span, marque_ism::CanonicalAttrs)],
+    query_span: Span,
+) -> Option<&marque_ism::CanonicalAttrs> {
+    cache.iter().find_map(|(marking_span, attrs)| {
+        if span_is_within_marking(query_span, *marking_span) {
+            Some(attrs)
+        } else {
+            None
+        }
+    })
+}
+
 /// Outcome of pass-0 (text-corrections, UNCHANGED behavior).
 struct Pass0Result {
     /// Source bytes after pass-0 text corrections have been applied.
@@ -1684,6 +1772,22 @@ impl<'engine> TwoPassFixer<'engine> {
             )?
         };
 
+        // PR 7c — capture pre-pass-1 attrs for every marking whose
+        // span overlaps a pass-1 applied fix. The cache is owned on
+        // this stack frame so the references it spawns
+        // (`RuleContext.pre_pass_1_attrs`) cannot outlive `run()`.
+        // `parsed_markings` is still the pre-pass-1 cache at this
+        // point — the re-parse arm below will move ownership of it
+        // (replacing it with a fresh post-pass-1 cache), so the
+        // snapshot has to land BEFORE that branch. Empty when pass-1
+        // promoted no fixes; the field-only consumer
+        // (`RuleContext.pre_pass_1_attrs`) sees `None` in that case.
+        // The originally-planned `PrecedingFixPenalty` consumer of
+        // this cache was retired in PR 7c per D-7.22; the cache + the
+        // field stay as the architectural two-pass-reshape signal
+        // for future rule consumers.
+        let pre_pass_1_cache = self.populate_pre_pass_1_cache(&pass1.applied, &parsed_markings);
+
         // Destructure pass0 into owned locals so the re-parse / R002
         // branches can move `effective_source` directly (eliminating
         // the prior `.clone()` of the full document buffer on the
@@ -1767,9 +1871,20 @@ impl<'engine> TwoPassFixer<'engine> {
                     lint,
                 )
             } else {
-                let (relint, new_markings) = self
-                    .engine
-                    .lint_with_options_internal(&pass1.post_buffer, &lint_opts);
+                // PR 7c — pass the pre-pass-1 attrs cache into the
+                // post-pass-1 re-lint so every candidate's RuleContext
+                // gets a populated `pre_pass_1_attrs` field when its
+                // span overlaps a pass-1-reshaped marking. The field
+                // is the architectural two-pass-reshape signal kept
+                // for future rule consumers (D-7.22 retired the
+                // originally-planned `PrecedingFixPenalty` engine
+                // consumer; the field's data source — the cache —
+                // stays plumbed.)
+                let (relint, new_markings) = self.engine.lint_with_options_internal_with_cache(
+                    &pass1.post_buffer,
+                    &lint_opts,
+                    Some(&pre_pass_1_cache),
+                );
                 // R002 trigger (PR 7b, FR-024): pass-1 changed bytes,
                 // but the post-pass-1 buffer no longer yields any
                 // parsed markings. Marque's recognizer is total — it
@@ -1842,7 +1957,13 @@ impl<'engine> TwoPassFixer<'engine> {
         let pass2 = {
             let (_pass1_diags_post, pass2_diags) =
                 partition_diags_by_phase(&lint.diagnostics, &localized_ids);
-            self.run_pass2_whole_marking(&pass2_source, &pass2_markings, &pass2_diags, &lint)?
+            self.run_pass2_whole_marking(
+                &pass2_source,
+                &pass2_markings,
+                &pass2_diags,
+                &pass1_applied_keys,
+                &lint,
+            )?
         };
 
         // Merge applied lists: pass-0 corrections, then pass-1, then
@@ -2041,11 +2162,36 @@ impl<'engine> TwoPassFixer<'engine> {
     /// WholeMarking fixes. Because the partitions are disjoint by
     /// rule phase, the union of winners has no rule-and-span
     /// collision.
+    ///
+    /// PR 7c adds two reshape-aware adjustments before the fixes
+    /// pass into [`synthesize_fixes`]:
+    ///
+    /// - **FR-023 disambiguation**: a pass-2 diagnostic whose
+    ///   `(rule, span)` equals a pass-1 promoted fix is dropped. The
+    ///   same rule has already fired on the same marking-scope span;
+    ///   re-emitting it after the reshape would double-fire and
+    ///   pollute `remaining_diagnostics`.
+    /// - **I-18 overlap demotion**: a pass-2 diagnostic whose span
+    ///   overlaps ANY pass-1 promoted fix span (any rule) at
+    ///   `Severity::{Error, Warn, Fix}` is demoted to
+    ///   `Severity::Suggest`. The pass-1 fix already shipped, so
+    ///   pass-2 MUST NOT auto-apply on the same byte range
+    ///   (Constitution V audit-record integrity); `Suggest` surfaces
+    ///   the finding as advisory and is excluded from the audit
+    ///   stream by `synthesize_fixes`' existing filter (FR-042 —
+    ///   `Suggest` does not trigger `EX_DIAG_WARN`).
+    ///
+    /// Both adjustments operate on owned clones of the affected
+    /// diagnostics so the input reference vector stays unmodified
+    /// (pass-1 dispatch may still hold references into the same
+    /// `LintResult.diagnostics` storage; cloning is the only sound
+    /// way to alter severity without aliasing).
     fn run_pass2_whole_marking(
         &self,
         pass2_source: &[u8],
         parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
         pass2_diags: &[&Diagnostic<CapcoScheme>],
+        pass1_applied_keys: &HashSet<(RuleId, Span)>,
         lint: &LintResult,
     ) -> Result<Pass2Result, EngineError> {
         if pass2_diags.is_empty() {
@@ -2059,11 +2205,20 @@ impl<'engine> TwoPassFixer<'engine> {
             });
         }
 
+        // PR 7c FR-023 disambiguation + I-18 overlap demotion. The
+        // owned vector holds the post-adjustment diagnostics; a ref
+        // vector keyed to its addresses feeds `synthesize_fixes`
+        // (which signature still takes `&[&Diagnostic]`). The owned
+        // vector lives for the duration of this function so the
+        // refs are valid.
+        let adjusted_owned = apply_fr023_and_i18(pass2_diags, pass1_applied_keys);
+        let adjusted_refs: Vec<&Diagnostic<CapcoScheme>> = adjusted_owned.iter().collect();
+
         let synthesized = synthesize_fixes(
             &self.engine.scheme,
             parsed_markings,
             pass2_source,
-            pass2_diags,
+            &adjusted_refs,
             self.threshold,
         );
         let kept_fixes = sort_and_c1_dedup(synthesized);
@@ -2178,6 +2333,72 @@ impl<'engine> TwoPassFixer<'engine> {
             }
         }
         out
+    }
+
+    /// Capture pre-pass-1 attribute snapshots for every marking
+    /// whose span overlaps a pass-1 applied fix (PR 7c / FR-023 / R-4).
+    /// Returns an empty cache when pass-1 promoted no fixes — pass-2
+    /// has no reshape to disambiguate against and the
+    /// `RuleContext.pre_pass_1_attrs` field is `None` everywhere on
+    /// the post-pass-1 re-lint.
+    ///
+    /// Cache shape: at most one entry per pass-1-reshaped marking.
+    /// `Phase::Localized` rules emit sub-token fix spans (PR 7b
+    /// D-7.16 first-fire check), so a single fix always anchors to a
+    /// single parent marking. Two fixes against the same marking
+    /// dedupe to one cache entry. Inline-4 storage matches the
+    /// existing Localized rule cap (C001 / E006 / E007 / S004).
+    ///
+    /// The `parsed_markings` map is the pre-pass-1 cache from
+    /// `lint_with_options_internal`: its `CapcoMarking.0` is the
+    /// `CanonicalAttrs` snapshot the rule originally fired against.
+    /// Cloning the attrs is unavoidable here because the cache
+    /// outlives the `parsed_markings` map (the engine moves
+    /// `parsed_markings` into the re-parse arm).
+    fn populate_pre_pass_1_cache(
+        &self,
+        pass1_applied: &[AppliedFix<CapcoScheme>],
+        parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+    ) -> PrePass1Cache {
+        let mut cache: PrePass1Cache = SmallVec::new();
+        if pass1_applied.is_empty() {
+            return cache;
+        }
+        // For each applied pass-1 fix, find the marking whose span
+        // contains the fix span and dedupe into the cache. Sub-token
+        // span containment is what `find_containing_marking` already
+        // checks for the PR 7b first-fire path, so reuse it.
+        for fix in pass1_applied {
+            let Some(marking_span) = find_containing_marking(parsed_markings, fix.span) else {
+                // A Localized rule whose fix span has no enclosing
+                // marking should already have been dropped by the
+                // PR 7b in_shape filter; if one slips through it
+                // means a violated phase contract elsewhere. Log and
+                // skip — never panic on the audit hot path.
+                // Use explicit byte-offset fields rather than `?fix.span`
+                // so the log line stays G13-clean independent of any
+                // future `Span::Debug` impl change. Other span logging
+                // in this file already follows this pattern (engine.rs
+                // `start = ..., end = ...`); making it consistent here
+                // closes the implicit dependency.
+                tracing::warn!(
+                    rule_id = %fix.rule,
+                    fix_span_start = %fix.span.start,
+                    fix_span_end = %fix.span.end,
+                    "pass-1 applied fix has no enclosing parsed marking; \
+                     skipping pre-pass-1 cache entry"
+                );
+                continue;
+            };
+            if cache.iter().any(|(span, _)| *span == marking_span) {
+                continue;
+            }
+            let Some(marking) = parsed_markings.get(&marking_span) else {
+                continue;
+            };
+            cache.push((marking_span, marking.0.clone()));
+        }
+        cache
     }
 
     /// Collect the unique contributing pass-1 rule IDs in
@@ -2347,6 +2568,87 @@ fn partition_diags_by_phase<'a>(
 #[inline]
 fn span_is_within_marking(inner: Span, outer: Span) -> bool {
     inner.start >= outer.start && inner.end <= outer.end
+}
+
+/// True when two byte spans overlap (share at least one byte). Used
+/// by PR 7c's I-18 overlap demotion to detect pass-2 diagnostics that
+/// land on byte ranges already promoted by pass-1.
+///
+/// The half-open `[start, end)` convention matches the rest of
+/// `marque-ism::Span`: spans `(0, 5)` and `(5, 10)` are adjacent but
+/// do NOT overlap. Empty spans (`start == end`) never overlap
+/// anything by construction.
+#[inline]
+fn spans_overlap(a: Span, b: Span) -> bool {
+    a.start < b.end && b.start < a.end
+}
+
+/// PR 7c FR-023 + I-18 — apply reshape-aware disambiguation and
+/// overlap demotion to a pass-2 diagnostic partition. Returns an
+/// owned vector of post-adjustment diagnostics.
+///
+/// Adjustments:
+///
+/// - **FR-023 disambiguation**: a pass-2 diagnostic whose
+///   `(rule, candidate_span ?? span)` matches a pass-1 promoted fix is
+///   dropped. The same rule already fired on the same marking-scope
+///   span; re-emitting it after the reshape would double-fire.
+/// - **I-18 overlap demotion**: a pass-2 diagnostic whose
+///   marking-scope span overlaps ANY pass-1 promoted span (any rule)
+///   at `Severity::{Error, Warn, Fix}` is demoted to
+///   `Severity::Suggest`. The pass-1 fix already shipped, so pass-2
+///   MUST NOT auto-apply on the same byte range
+///   (Constitution V audit-record integrity).
+///
+/// Short-circuit: when `pass1_applied_keys` is empty (the common
+/// case: pass-1 produced no applied fixes), returns clones of every
+/// input diagnostic without filtering. The clone cost is bounded by
+/// `pass2_diags.len()`, which is typically ≤32 (the
+/// `Pass2DiagRefs` inline cap). When pass-1 DID apply fixes, the
+/// same clones happen — the reshape-aware path is the slow path by
+/// construction.
+///
+/// Cloning the entire partition (rather than threading an index +
+/// owned-only-on-demotion vector through Rust's borrow checker) is
+/// the safe-code shape that satisfies Constitution `forbid(unsafe_code)`.
+/// On the FR-023 / I-18 hot path the allocation is one `Vec` with
+/// ≤32 `Diagnostic` clones — well below the SC-001 budget at 10 KB.
+fn apply_fr023_and_i18(
+    pass2_diags: &[&Diagnostic<CapcoScheme>],
+    pass1_applied_keys: &HashSet<(RuleId, Span)>,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    let mut out: Vec<Diagnostic<CapcoScheme>> = Vec::with_capacity(pass2_diags.len());
+    for &d in pass2_diags {
+        // FR-023: drop diagnostics with the same (rule, span) as a
+        // pass-1 promoted fix. The candidate_span is the marking-
+        // scope anchor — match against it (falling back to `span` for
+        // diagnostics that don't carry a candidate span; matches the
+        // `apply_kept_fixes` keying convention at engine.rs:2228+).
+        let key_span = d.candidate_span.unwrap_or(d.span);
+        if pass1_applied_keys.contains(&(d.rule.clone(), key_span)) {
+            continue;
+        }
+
+        // I-18: demote diagnostics whose marking-scope span overlaps
+        // any pass-1 promoted span at promote-eligible severity. The
+        // overlap check uses `key_span` so a sub-token pass-2 finding
+        // within a reshaped marking is also caught. The predicate
+        // `Severity::is_promote_eligible` is the single source of
+        // truth shared with `synthesize_fixes` (engine.rs:~2850) —
+        // see its doc comment for why drift between the two sites
+        // would re-open the I-18 leak channel.
+        let needs_demote = d.severity.is_promote_eligible()
+            && pass1_applied_keys
+                .iter()
+                .any(|(_, p1_span)| spans_overlap(key_span, *p1_span));
+
+        let mut cloned = d.clone();
+        if needs_demote {
+            cloned.severity = Severity::Suggest;
+        }
+        out.push(cloned);
+    }
+    out
 }
 
 /// Find the marking span (key in `parsed_markings`) whose byte range
@@ -2549,14 +2851,20 @@ fn synthesize_fixes(
         let Some(intent) = d.fix.as_ref() else {
             continue;
         };
-        if d.severity == Severity::Suggest {
-            continue;
-        }
-        if intent.confidence.combined() < threshold {
+        // Pass-2 promotion gate. Uses the single-source-of-truth
+        // `Severity::is_promote_eligible` so this site and the I-18
+        // overlap-demotion guard in `apply_fr023_and_i18` stay aligned
+        // by construction — any future severity-classification change
+        // updates both sites at once.
+        if !d.severity.is_promote_eligible() {
             continue;
         }
         let cspan = d.candidate_span.unwrap_or(d.span);
         if cspan.is_empty() {
+            continue;
+        }
+
+        if intent.confidence.combined() < threshold {
             continue;
         }
         groups
@@ -2675,13 +2983,14 @@ fn synthesize_fixes(
 
         let min_combined: f32 = group_diags
             .iter()
-            .filter_map(|d| d.fix.as_ref())
-            .map(|i| i.confidence.combined())
+            .filter_map(|d| d.fix.as_ref().map(|i| i.confidence.combined()))
             .fold(f32::INFINITY, f32::min);
         let mut combined_intent = owning_intent.clone();
-        if min_combined < combined_intent.confidence.combined()
-            && combined_intent.confidence.rule > 0.0
-        {
+        // Within-group audit-collapse scaling. The owning diagnostic's
+        // `rule` axis is scaled down so `combined()` equals the
+        // minimum across the group.
+        let combined_intent_combined = combined_intent.confidence.combined();
+        if min_combined < combined_intent_combined && combined_intent.confidence.rule > 0.0 {
             let scaled_rule = (min_combined
                 / combined_intent
                     .confidence
@@ -3079,10 +3388,13 @@ type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 /// Walked once at [`Engine::with_clock`] time and cached on the engine.
 /// Per-document `fix` dispatch reads `pass1_rule_indices` via
 /// [`TwoPassFixer::localized_rule_id_set`] (PR 7b); the walk does not
-/// re-run. `pass2_rule_indices` is stored for PR 7c, when pass-2 will
-/// switch from complement-of-pass-1 to a positive whitelist for
-/// symmetry with pass-1 — see [`Engine::pass2_rule_indices`] for the
-/// rationale.
+/// re-run. `pass2_rule_indices` is stored against a deferred future
+/// migration that would switch pass-2 from the current
+/// complement-of-pass-1 dispatch to a positive whitelist (read off
+/// that field) for symmetry with pass-1. PR 7c retained the
+/// complement dispatch (implementer Decision #4); see
+/// [`Engine::pass2_rule_indices`] for the rationale and the
+/// deferred-migration framing.
 fn partition_rules_by_phase(
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
 ) -> (Pass1Indices, Pass2Indices) {

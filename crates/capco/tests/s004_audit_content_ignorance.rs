@@ -66,6 +66,7 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
             candidate_span: candidate.span,
             page_context: ctx_page,
             corrections: None,
+            pre_pass_1_attrs: None,
         };
         for rule in rule_set.rules() {
             out.extend(rule.check(&attrs, &ctx));

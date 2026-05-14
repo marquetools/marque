@@ -696,3 +696,63 @@ issue ships with the PR 7c PM addendum so it cannot be silently
 forgotten.
 
 ---
+
+## D-7.22 `PrecedingFixPenalty` mechanism retired
+
+**Decision** (2026-05-14, PM clarification): Retire the `PrecedingFixPenalty`
+mechanism entirely. Remove the `FeatureId::PrecedingFixPenalty` variant, the
+engine-applied multiplicative `rule` reduction, the `FeatureContribution` audit
+trace, the `PRECEDING_FIX_PENALTY_DELTA = -0.10` constant, and the watchdog
+test suite (`crates/engine/tests/preceding_fix_penalty.rs`).
+
+**Supersedes** D-7.10 (`FeatureId::PrecedingFixPenalty` reservation),
+D-7.19 (engine-applied penalty at pass-2 threshold gate),
+D-7.21 (penalty magnitude recalibration follow-up).
+
+**Rationale**:
+
+The mechanism was misunderstanding-derived. The user's original concern — raised
+in an earlier conversation that didn't survive into the active spec/plan
+documents — was decoder-specific: when the decoder makes multiple corpus-inferred
+changes on top of each other, the iterated posterior accumulation can create
+a confidence-loop pathology. That concern is legitimate and remains open.
+But it was captured in plan/spec docs as a generalized cross-pass penalty
+mechanism, which is not what the user intended and has no evidence basis. The
+remediation phase of PR 7c also independently confirmed the path is unreachable
+under current real CAPCO inputs (all four `Phase::Localized` rules — C001, E006,
+E007, S004 — emit via `Diagnostic::text_correction` through pass-0, not pass-1's
+rule channel; `pass1.applied` is always empty in production; the cache never
+populates; the penalty is dead code).
+
+Two corroborating signals → no evidence basis + dead code → retire.
+
+**What stays**:
+
+- `RuleContext<'a>` lifetime parameter + `pub pre_pass_1_attrs: Option<&'a CanonicalAttrs>` field
+- Pre-pass-1 attrs cache on `TwoPassFixer`
+- FR-023 disambiguation (engine-side `pass1_applied_keys` lookup)
+- I-18 overlap demotion (pass-2 diagnostics overlapping pass-1 spans → `Severity::Suggest`)
+
+These are load-bearing for the two-pass model independent of the penalty.
+The `pre_pass_1_attrs` field is the architectural signal "this marking was
+reshaped by pass-1"; no current rule consumes it, but the lifetime parameter
+has been threaded through every rule's `check` signature and removing it would
+be viral churn for no gain.
+
+**Open research item** (NOT scoped to any current PR):
+
+The user's original decoder confidence-loop concern remains unaddressed.
+A concrete statistical framing is the right approach — candidate framings
+include KL-divergence-bounded posterior accumulation, a Bayesian-update floor
+on iterated decoder applications, or a depth-limited recursion guard. This is
+a separate research item; when a design lands, it will likely live in
+`marque-engine`'s decoder path (`engine.rs::DecoderRecognizer`) rather than
+as a generalized rule-context mechanism.
+
+**Audit-schema implication**: the originally-planned `PrecedingFixPenalty` slot
+reservation in `marque-mvp-3` was prose-only (in spec / plan / CLAUDE.md), not
+a structural commitment in the audit envelope. No audit record has ever emitted
+`PrecedingFixPenalty`. Removing the (closed) `FeatureId` variant is safe by
+construction — no consumer breaks. No schema bump required.
+
+---
