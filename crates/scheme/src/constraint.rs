@@ -17,6 +17,16 @@
 //! responsible for evaluating. `Constraint` is a `&[…]`-returned value;
 //! schemes own the actual predicate logic privately.
 //!
+//! ## Conflict variant family
+//!
+//! [`Constraint::Conflicts`] covers exact pair conflicts. For cases where
+//! one token conflicts with a whole family of tokens (e.g., RELIDO conflicts
+//! with any FD&R dominator), [`Constraint::ConflictsWithFamily`] expresses
+//! this as a [`FamilyPredicate`] over the right-hand side. The family form
+//! is distributively equivalent to one `Conflicts` row per matching token
+//! present in the marking (per `docs/plans/2026-05-13-pr3.7-lattice-
+//! resolution-gate-plan.md` §2, lattice-preflight M3).
+//!
 //! ## Citations (FR-021, Constitution VIII)
 //!
 //! Every variant carries a `label: &'static str` holding the
@@ -47,6 +57,44 @@ pub enum TokenRef {
     AnyInCategory(CategoryId),
 }
 
+/// A predicate over [`TokenRef`] used by [`Constraint::ConflictsWithFamily`]
+/// to express family-shaped conflicts without enumerating every right-hand
+/// side member.
+///
+/// Newtype wrapping `fn(&TokenRef) -> bool` per
+/// `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
+/// finding B2 — the bare `fn`-pointer doesn't implement [`Debug`], so we
+/// wrap and manually implement it. `fn`-pointers are `Copy + Send + Sync +
+/// 'static` by construction, so `FamilyPredicate` inherits those properties.
+///
+/// ## Closure captures are NOT supported
+///
+/// The inner pointer is a named `fn` item, not a closure. Closures with
+/// captures would break the `'static` and `Send + Sync` guarantees. All
+/// family predicates MUST be defined as named `pub fn` items, not closures.
+///
+/// ## Distributive expansion property
+///
+/// The family-predicate form is algebraically equivalent to one
+/// [`Constraint::Conflicts`] row per token in the marking that matches the
+/// predicate:
+///
+/// ```text
+/// emit(ConflictsWithFamily(LHS, p)) =
+///   union_{t in present_tokens(marking), p(t)} emit(Conflicts(LHS, Token(t)))
+/// ```
+///
+/// Property tests in `crates/scheme/tests/proptest_constraint_rhs_family_distributive.rs`
+/// verify this equivalence holds for any marking and predicate.
+#[derive(Copy, Clone)]
+pub struct FamilyPredicate(pub fn(&TokenRef) -> bool);
+
+impl std::fmt::Debug for FamilyPredicate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FamilyPredicate(<fn>)")
+    }
+}
+
 /// A declarative invariant the scheme enforces.
 ///
 /// Every variant carries two `&'static str` identifiers:
@@ -64,8 +112,28 @@ pub enum TokenRef {
 ///   `"CAPCO-2016 §H.4"`). Shared across a catalog is fine — many
 ///   distinct rules may share a citation.
 ///
+/// The four active variants are:
+///
+/// - [`Conflicts`](Self::Conflicts): exact pair conflict (LHS ∦ RHS).
+/// - [`ConflictsWithFamily`](Self::ConflictsWithFamily): LHS conflicts
+///   with any token in a family, using a [`FamilyPredicate`] for the
+///   right-hand side. Distributively equivalent to one `Conflicts` row
+///   per matching token in the marking.
+/// - [`Requires`](Self::Requires): LHS requires RHS.
+/// - [`Supersedes`](Self::Supersedes): LHS supersedes RHS at banner scope.
+/// - [`Custom`](Self::Custom): scheme-specific n-ary predicate.
+///
+/// Note: `Constraint::Implies` was retired in PR 3.7 (T108g, `decisions.md`
+/// D19 C). Fact-propagation is now handled by the closure operator
+/// ([`crate::closure::ClosureRule`] / [`MarkingScheme::closure_rules`]),
+/// which runs before constraint validation. After closure, implied facts are
+/// present in the marking before `Requires` checks evaluate, so "missing X"
+/// false positives disappear automatically.
+///
 /// See the module-level docs for the full rationale and Constitution
 /// VIII for citation discipline.
+///
+/// [`MarkingScheme::closure_rules`]: crate::scheme::MarkingScheme::closure_rules
 #[derive(Debug, Clone)]
 pub enum Constraint {
     /// Two tokens cannot co-occur in one marking. Example: NOFORN and
@@ -76,17 +144,36 @@ pub enum Constraint {
         right: TokenRef,
         label: &'static str,
     },
+    /// One token conflicts with an entire family of tokens, expressed
+    /// via a [`FamilyPredicate`] over the right-hand side.
+    ///
+    /// This is the distributive-expansion form: at evaluation time,
+    /// the evaluator walks the marking's present tokens via
+    /// [`MarkingScheme::iter_present_tokens`], applies the predicate
+    /// to each, and emits one [`ConstraintViolation`] per matching
+    /// token that co-occurs with `left`. This is algebraically
+    /// equivalent to one [`Constraint::Conflicts`] row per matching
+    /// token (see [`FamilyPredicate`] doc for the formal equivalence).
+    ///
+    /// Example use case: RELIDO conflicts with any FD&R dominator —
+    /// rather than enumerating each dominator as a separate `Conflicts`
+    /// row, a single `ConflictsWithFamily` row with an `is_fdr_dominator`
+    /// predicate compacts the catalog.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D17 +
+    /// `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
+    /// §2 T108b.
+    ///
+    /// [`MarkingScheme::iter_present_tokens`]: crate::scheme::MarkingScheme::iter_present_tokens
+    ConflictsWithFamily {
+        name: &'static str,
+        left: TokenRef,
+        family: FamilyPredicate,
+        label: &'static str,
+    },
     /// If the left is present, the right must also be present.
     /// Example: HCS requires NOFORN.
     Requires {
-        name: &'static str,
-        left: TokenRef,
-        right: TokenRef,
-        label: &'static str,
-    },
-    /// If the left is present, the right is implied (safe to omit).
-    /// The engine uses this to avoid false "missing X" diagnostics.
-    Implies {
         name: &'static str,
         left: TokenRef,
         right: TokenRef,
@@ -128,8 +215,8 @@ impl Constraint {
     pub fn name(&self) -> &'static str {
         match self {
             Constraint::Conflicts { name, .. }
+            | Constraint::ConflictsWithFamily { name, .. }
             | Constraint::Requires { name, .. }
-            | Constraint::Implies { name, .. }
             | Constraint::Supersedes { name, .. }
             | Constraint::Custom { name, .. } => name,
         }
@@ -140,8 +227,8 @@ impl Constraint {
     pub fn label(&self) -> &'static str {
         match self {
             Constraint::Conflicts { label, .. }
+            | Constraint::ConflictsWithFamily { label, .. }
             | Constraint::Requires { label, .. }
-            | Constraint::Implies { label, .. }
             | Constraint::Supersedes { label, .. }
             | Constraint::Custom { label, .. } => label,
         }
@@ -200,14 +287,28 @@ pub struct ConstraintViolation {
 }
 
 /// Walk a scheme's declarative constraints and emit one
-/// [`ConstraintViolation`] per dyadic variant whose predicate fires
-/// against `marking`.
+/// [`ConstraintViolation`] per variant whose predicate fires against `marking`.
 ///
-/// `evaluate` covers the four dyadic variants (`Conflicts`, `Requires`,
-/// `Implies`, `Supersedes`) by asking the scheme to resolve each
-/// [`TokenRef`] via [`MarkingScheme::satisfies`]. The `Custom` variant
-/// is dispatched through [`MarkingScheme::evaluate_custom`] so the
-/// scheme owns its bespoke predicate bodies.
+/// `evaluate` covers the active variants:
+/// - [`Constraint::Conflicts`]: exact pair — fires when both tokens are present.
+/// - [`Constraint::ConflictsWithFamily`]: family form — fires once per
+///   present token that matches the [`FamilyPredicate`], when `left` is
+///   present. Distributively equivalent to one `Conflicts` row per matching
+///   present token (see [`FamilyPredicate`] and the property tests in
+///   `crates/scheme/tests/proptest_constraint_rhs_family_distributive.rs`).
+/// - [`Constraint::Requires`]: fires when `left` is present but `right` is
+///   absent.
+/// - [`Constraint::Supersedes`]: rewrite hint for banner roll-up, not a
+///   violation trigger — silently skipped.
+/// - [`Constraint::Custom`]: dispatched through
+///   [`MarkingScheme::evaluate_custom`] so the scheme owns its bespoke
+///   predicate bodies.
+///
+/// Note: `Constraint::Implies` was retired in PR 3.7 (T108g). Fact-
+/// propagation is now handled by the closure operator
+/// ([`crate::closure::ClosureRule`] / [`MarkingScheme::closure_rules`]),
+/// which runs before constraint validation, eliminating false "missing X"
+/// positives automatically.
 ///
 /// Contract (FR-007, Phase 3 US1):
 /// - **Deterministic**: same input returns identical output on every
@@ -216,7 +317,9 @@ pub struct ConstraintViolation {
 ///   preserved in the returned violation vec.
 /// - **Allocation-bounded**: the only heap allocations come from the
 ///   returned `Vec` and the violation-message strings each variant
-///   constructs. The loop itself does not allocate.
+///   constructs. The loop itself does not allocate beyond the `Vec`.
+///
+/// [`MarkingScheme::closure_rules`]: crate::scheme::MarkingScheme::closure_rules
 pub fn evaluate<S>(scheme: &S, marking: &S::Marking) -> Vec<ConstraintViolation>
 where
     S: MarkingScheme + ?Sized,
@@ -240,6 +343,33 @@ where
                     });
                 }
             }
+            Constraint::ConflictsWithFamily {
+                name,
+                left,
+                family,
+                label,
+            } => {
+                // Distributive expansion: if `left` is present, walk
+                // every token that is present in the marking and apply
+                // the family predicate. Each matching token emits one
+                // violation — algebraically equivalent to one
+                // `Conflicts(left, Token(t))` row per matching token.
+                if scheme.satisfies(marking, left) {
+                    for present_token in scheme.iter_present_tokens(marking) {
+                        if family.0(&present_token) {
+                            out.push(ConstraintViolation {
+                                constraint_label: name,
+                                message: format!(
+                                    "conflicting tokens: {left:?} and {present_token:?} (family match)"
+                                ),
+                                citation: label,
+                                span: None,
+                                severity: None,
+                            });
+                        }
+                    }
+                }
+            }
             Constraint::Requires {
                 name,
                 left,
@@ -255,12 +385,6 @@ where
                         severity: None,
                     });
                 }
-            }
-            Constraint::Implies { .. } => {
-                // `Implies` is an information statement, not a
-                // violation trigger: it tells other engine paths that
-                // `right` is safe to omit when `left` is present. No
-                // diagnostic emission.
             }
             Constraint::Supersedes { .. } => {
                 // `Supersedes` is a rewrite hint for banner roll-up,

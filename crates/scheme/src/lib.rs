@@ -68,6 +68,7 @@ pub mod ambiguity;
 pub mod builtins;
 pub mod canonical;
 pub mod category;
+pub mod closure;
 pub mod codec;
 pub mod constraint;
 pub mod fix_intent;
@@ -92,8 +93,9 @@ pub use category::{
     AggregationOp, Cardinality, Category, CategoryId, CategoryShape, ExpansionFn, IntraOrdering,
     TokenId, reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,
 };
+pub use closure::{ClosureRule, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};
-pub use constraint::{Constraint, ConstraintViolation, TokenRef};
+pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{BoundedLattice, Lattice};
 pub use page_rewrite::{

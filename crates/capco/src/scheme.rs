@@ -3045,10 +3045,12 @@ impl CapcoScheme {
                     Vec::new()
                 }
             }
-            // `Implies` is informational; `Supersedes` is a lattice
-            // hint. Neither emits diagnostics — matches the behavior
-            // of `marque_scheme::constraint::evaluate`.
-            Constraint::Implies { .. } | Constraint::Supersedes { .. } => Vec::new(),
+            // `Supersedes` is a lattice hint for banner roll-up, not
+            // a violation trigger. No diagnostic emission.
+            // Note: `Constraint::Implies` was retired in PR 3.7 T108g
+            // (decisions.md D19 C) — fact-propagation is handled by
+            // the closure operator (ClosureRule) instead.
+            Constraint::Supersedes { .. } | Constraint::ConflictsWithFamily { .. } => Vec::new(),
             Constraint::Custom { .. } => evaluate_custom_by_attrs(attrs, name)
                 .into_iter()
                 .map(|mut v| {
