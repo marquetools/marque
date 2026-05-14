@@ -3075,13 +3075,36 @@ fn synthesize_fixes(
             })
             .fold(f32::INFINITY, f32::min);
         let mut combined_intent = owning_intent.clone();
+        // Step 1: within-group audit-collapse scaling. The owning
+        // diagnostic's `rule` axis is scaled down so `combined()`
+        // equals the minimum across the group (`min_combined`
+        // already accounts for any penalty on the contributing
+        // diagnostics, see the fold above).
+        let combined_intent_combined = combined_intent.confidence.combined();
+        if min_combined < combined_intent_combined && combined_intent.confidence.rule > 0.0 {
+            let scaled_rule = (min_combined
+                / combined_intent
+                    .confidence
+                    .recognition
+                    .max(f32::MIN_POSITIVE))
+            .clamp(0.0, 1.0);
+            combined_intent.confidence.rule = scaled_rule;
+        }
+        // Step 2: apply the PrecedingFixPenalty AFTER scaling so the
+        // `rule` axis written into the promoted `AppliedFix` reflects
+        // the same -0.10 reduction the `FeatureContribution` records.
+        // Doing this in the opposite order (penalty first, then
+        // scaling) lets the scaling block overwrite the penalty in
+        // the multi-diagnostic case where `min_combined` is smaller
+        // than the penalized owning-diag's combined score —
+        // producing an audit record where the recorded delta does
+        // not match the actual reduction applied. Constitution V
+        // Principle V: audit records must tell the truth about the
+        // value they describe. Clamping is defensive — the -0.10
+        // delta starting from a valid `[0.0, 1.0]` axis cannot
+        // escape the unit range, but the validator below relies on
+        // the bound.
         if group_penalty_applied {
-            // Reduce `rule` axis multiplicatively and log the
-            // contribution for audit traceability. Clamping to
-            // `[0.0, 1.0]` is defensive — the inception delta
-            // (-0.10) starting from a valid rule axis can never
-            // exceed the unit range, but the validator below relies
-            // on the bound.
             combined_intent.confidence.rule = (combined_intent.confidence.rule
                 * (1.0 + PRECEDING_FIX_PENALTY_DELTA))
                 .clamp(0.0, 1.0);
@@ -3092,16 +3115,6 @@ fn synthesize_fixes(
                     id: FeatureId::PrecedingFixPenalty,
                     delta: PRECEDING_FIX_PENALTY_DELTA,
                 });
-        }
-        let combined_intent_combined = combined_intent.confidence.combined();
-        if min_combined < combined_intent_combined && combined_intent.confidence.rule > 0.0 {
-            let scaled_rule = (min_combined
-                / combined_intent
-                    .confidence
-                    .recognition
-                    .max(f32::MIN_POSITIVE))
-            .clamp(0.0, 1.0);
-            combined_intent.confidence.rule = scaled_rule;
         }
 
         out.push(SynthesizedFix {
