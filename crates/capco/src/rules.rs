@@ -3023,7 +3023,7 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
 // E064 — EYES / EYES ONLY → REL TO conversion (T135a Commit 5)
 // ===========================================================================
 //
-// Authority: CAPCO-2016 §H.8 p157 line 3858 + §H.8 p158 line 3892.
+// Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
 //
 // §H.8 p157: EYES ONLY is NSA-only and deprecated; the markings waiver
 // expired 1 Oct 2017 (post-manual). §H.8 p158: "When extracting EYES

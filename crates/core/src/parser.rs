@@ -492,8 +492,7 @@ impl<'t> Parser<'t> {
                 // and emits a `text_correction` covering the whole
                 // block span.
                 //
-                // Authority: CAPCO-2016 §H.8 p157 line 3858 +
-                // §H.8 p158 line 3892.
+                // Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
                 dissem.push(ParsedDissem::new(DissemControl::Eyes, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::DissemControl,
