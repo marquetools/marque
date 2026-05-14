@@ -420,10 +420,13 @@ pub trait MarkingScheme {
     /// Rather than add a generic `singleton_marking(TokenId) -> Self::Marking`
     /// method (which would impose an additional implementation burden on
     /// every scheme), the default `closure()` is a no-op. Schemes that
-    /// declare closure rules MUST override this method with their own
-    /// fixpoint implementation. The default is safe for schemes without
-    /// closure rules — those schemes' `closure_rules()` returns `&[]` and
-    /// no propagation is needed.
+    /// want **runtime cone application** override this method with their
+    /// own fixpoint implementation; schemes that ship `closure_rules()`
+    /// purely as inspection surface (catalog-data-only mode — see the
+    /// note on [`Self::closure_rules`] above) can leave the default in
+    /// place. The default is safe for schemes without closure rules —
+    /// those schemes' `closure_rules()` returns `&[]` and no
+    /// propagation is needed.
     ///
     /// ## Invariants (schemes that override MUST preserve these)
     ///

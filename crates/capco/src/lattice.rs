@@ -436,9 +436,11 @@ impl Lattice for SarSet {
 ///
 /// ## §4.8.5 worked example
 ///
-/// Two portions: `(C//NF)` and `(//GBR-TS)`. The first portion carries US
-/// CONFIDENTIAL + NOFORN; the second carries FGI `GBR` at the TS level.
-/// After page-level join the result is:
+/// Two portions: `(C//NF)` and `(//GBR TS)`. The first portion carries US
+/// CONFIDENTIAL + NOFORN; the second carries FGI `GBR` at the TS level
+/// (FGI classification blocks are space-delimited per `parse_fgi_classification`;
+/// the hyphenated form `GBR-TS` does not match the grammar). After
+/// page-level join the result is:
 ///
 /// - Classification: `TOP SECRET` (max of C and TS = TS)
 /// - FGI: `Present { concealed: false, countries: {GBR} }` (GBR from portion 2)

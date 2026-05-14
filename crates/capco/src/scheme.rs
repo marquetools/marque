@@ -3849,18 +3849,33 @@ impl MarkingScheme for CapcoScheme {
     /// CAPCO implicit-fact propagation catalog (closure operator).
     ///
     /// Returns the static catalog of [`ClosureRule`] rows. The PR 3.7
-    /// catalog contains **only the Trio 1 NOFORN rows** (seven rows
-    /// covering ORCON, PROPIN, IMCON, FISA, DSEN, NONICCONTROLS-family,
-    /// and the NOFORN-if-no-FDR default). The Trio 2 / Trio 3
-    /// placeholder rows and the per-marking SCI implication rows
-    /// (HCS-O/P[sub] ⇒ {NOFORN, ORCON}; TK-BLFH/KAND/IDIT ⇒ {NOFORN};
-    /// SI-G ⇒ {ORCON}) were removed in PR 3.7 review pass 4 because
-    /// their proxy triggers (`AnyInCategory(CAT_SCI)`,
-    /// `AnyInCategory(CAT_CLASSIFICATION)`) were imprecise relative
-    /// to the actual `marque-applied.md` §4.7.1 semantics; the
-    /// precise sentinel-based rows land in PR 4 once the per-marking
-    /// SCI sentinels and open-vocab country-list FactAdd primitive
-    /// are available.
+    /// catalog contains **only the Trio 1 NOFORN rows**, seven rows
+    /// covering the implicit-NOFORN markings whose default release
+    /// posture is "no foreign disclosure" unless an explicit FD&R
+    /// decision is present:
+    ///
+    /// | Rule key                              | Triggers                          |
+    /// |---------------------------------------|-----------------------------------|
+    /// | `capco/noforn-if-sar`                 | any SAR program                   |
+    /// | `capco/noforn-if-aea`                 | RD / FRD / TFNI                   |
+    /// | `capco/noforn-if-ucni`                | UCNI                              |
+    /// | `capco/noforn-if-fgi`                 | any FGI atom                      |
+    /// | `capco/noforn-if-orcon`               | ORCON / ORCON-USGOV               |
+    /// | `capco/noforn-if-imcon-dsen`          | IMCON / DSEN                      |
+    /// | `capco/noforn-if-non-ic-controls`     | LIMDIS / LES / SBU / SSI          |
+    ///
+    /// Each row is suppressed by `FDR_DOMINATORS` (any present
+    /// FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES, DISPLAY ONLY).
+    ///
+    /// The Trio 2 / Trio 3 placeholder rows and the per-marking SCI
+    /// implication rows (HCS-O/P[sub] ⇒ {NOFORN, ORCON};
+    /// TK-BLFH/KAND/IDIT ⇒ {NOFORN}; SI-G ⇒ {ORCON}) were removed in
+    /// PR 3.7 review pass 4 because their proxy triggers
+    /// (`AnyInCategory(CAT_SCI)`, `AnyInCategory(CAT_CLASSIFICATION)`)
+    /// were imprecise relative to the actual `marque-applied.md`
+    /// §4.7.1 semantics; the precise sentinel-based rows land in PR 4
+    /// once the per-marking SCI sentinels and open-vocab country-list
+    /// FactAdd primitive are available.
     ///
     /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
     /// PUBLIC catalog surface — visible to tooling, scheme-exploration
@@ -3931,6 +3946,22 @@ impl MarkingScheme for CapcoScheme {
 /// dispatch must emit one violation per (LHS, present_token) pair
 /// where the family predicate holds — same algorithm as
 /// `marque_scheme::constraint::evaluate`'s `ConflictsWithFamily` arm.
+///
+/// ## Forward-compat note (FGI / JOINT family predicates)
+///
+/// This function emits `TokenRef::Token(TOK_FGI_MARKER)` for FGI
+/// classifications and `TokenRef::Token(TOK_JOINT)` for JOINT
+/// classifications (concrete sentinels), but NATO is emitted as
+/// `TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION)` (category
+/// shape). Family predicates that need to match FGI or JOINT MUST
+/// accept either shape — a predicate that only matches
+/// `AnyInCategory(CAT_FGI_MARKER)` will silently miss FGI portions
+/// emitted as `Token(TOK_FGI_MARKER)`. PR 3.7 has no active
+/// FGI- or JOINT-targeting family predicate so the asymmetry is
+/// dormant; a future row that does match those axes should be
+/// written as
+/// `|t| matches!(t, TokenRef::Token(TOK_FGI_MARKER) | TokenRef::AnyInCategory(CAT_FGI_MARKER))`
+/// (and analogously for JOINT / NATO).
 pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<TokenRef> {
     use marque_ism::{AeaMarking, DissemControl, MarkingClassification, NonIcDissem};
     let mut tokens = Vec::new();
@@ -4152,7 +4183,7 @@ const CLOSURE_NOFORN_SAR: ClosureRule = ClosureRule {
 /// for the IC marking context. Per CAPCO-2016 §H.6 (pp104-121) and
 /// §B.3 Table 2 p21.
 const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
-    name: "capco/noforn-if-aea-rd",
+    name: "capco/noforn-if-aea",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[
         TokenRef::Token(TOK_RD),

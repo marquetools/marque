@@ -555,6 +555,7 @@ fn env_var_overrides_closure_rule_file_value() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let _env = EnvGuard::set("MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR", "warn");
     let config = marque_config::load(&dir).expect("load should succeed");
 
@@ -579,6 +580,7 @@ fn env_var_adds_closure_rule_when_absent_in_file() {
     write_project_config(&dir, "");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let _env = EnvGuard::set("MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR", "error");
     let config = marque_config::load(&dir).expect("load should succeed");
 
@@ -603,6 +605,7 @@ fn env_var_fix_severity_rejected() {
     write_project_config(&dir, "");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let _env = EnvGuard::set("MARQUE_CLOSURE_RULES_CAPCO__FOO", "fix");
     let err = marque_config::load(&dir).unwrap_err();
 
@@ -623,6 +626,7 @@ fn env_var_unknown_severity_rejected() {
     write_project_config(&dir, "");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let _env = EnvGuard::set("MARQUE_CLOSURE_RULES_CAPCO__FOO", "err");
     let err = marque_config::load(&dir).unwrap_err();
 

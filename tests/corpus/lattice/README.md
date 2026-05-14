@@ -27,16 +27,29 @@ property-test runner and pins the post-lattice expected diagnostics as
 
 ## Format
 
-Each `.txt` file is a multi-line marking input:
+The four FOUO / FGI / SCI fixtures are multi-line marking inputs:
 - `(...)` — one or more portion markings (one per line if multi-portion)
 - A banner line — the rolled-up classification banner expected after
   per-axis join + closure operator + PageRewrites
 
-The five fixtures here cover the five cross-axis dominance classes
-the lattice-design doc names: classification × dissem (FOUO eviction
-two-axis matrix), within-dissem (FOUO + non-FD&R), classification + FGI
-+ NOFORN-clears-REL-TO (multi-axis composition), SCI cross-system
-within-axis, and AEA × calendar-date heterogeneous join.
+`aea-commingling.txt` uses a different shape because the §8 / §E.4
+worked example is about Classification Authority Block (CAB)
+commingling, not portion-marked banner roll-up. It contains
+`Classified By` / `Derived From` / `Declassify On` metadata blocks
+in lieu of portions + banner. PR 4's property-test runner is
+expected to dispatch on the fixture's structural shape (presence of
+a CAB header vs. portion-marking pattern) when it wires this
+subdirectory in.
+
+The five fixtures cover four cross-axis dominance classes the
+lattice-design doc names: classification × dissem (FOUO eviction
+two-axis matrix), within-dissem (FOUO + non-FD&R), classification +
+FGI + closure (multi-axis composition with ORCON ⇒ NOFORN closure),
+SCI cross-system within-axis, and AEA × calendar-date heterogeneous
+join. NOFORN-clears-REL-TO (the PageRewrite path) is not yet covered
+by an in-tree fixture — that case lands in PR 4 once
+`Engine::project::closure()` is wired and the post-rewrite expected
+state can be pinned in a `.expected.json` sidecar.
 
 ## Why this subdirectory is not yet scanned by the corpus harness
 
