@@ -3260,12 +3260,10 @@ fn render_sci_block(markings: &[SciMarking]) -> String {
     parts.join("/")
 }
 
-/// Thin wrapper around `PageContext::expected_sci_markings()` that returns
-/// a `Vec<SciMarking>` for E035's internal use. P4 landed the inherent
-/// method returning `Box<[SciMarking]>`; this helper normalizes to `Vec`.
-fn page_expected_sci_markings(page: &marque_ism::PageContext) -> Vec<SciMarking> {
-    page.expected_sci_markings().into_vec()
-}
+// PR 9b (T133): the `page_expected_sci_markings` helper retired with
+// the migration of `evaluate_sci_banner_rollup` to read
+// `ProjectedMarking::sci_markings` directly. Banner-validation rules
+// no longer need a `&PageContext`-to-`Vec<SciMarking>` adapter.
 
 // Helpers
 // ---------------------------------------------------------------------------
@@ -3413,12 +3411,17 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
             return vec![];
         }
 
-        let Some(page) = ctx.page_context.as_ref() else {
+        // PR 9b (T133): banner-validation reads `ctx.page_marking`
+        // (the `ProjectedMarking`) instead of going through
+        // `PageContext::expected_non_ic_dissem`. The projection's
+        // `non_ic_dissem` field carries the same supersession-
+        // resolved roll-up.
+        let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
         };
 
-        let (expected_non_ic, _needs_nf) = page.expected_non_ic_dissem();
-        let has_nodis_or_exdis = expected_non_ic
+        let has_nodis_or_exdis = page
+            .non_ic_dissem
             .iter()
             .any(|d| matches!(d, NonIcDissem::Nodis | NonIcDissem::Exdis));
         if !has_nodis_or_exdis {
@@ -3515,8 +3518,13 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
         if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
             return vec![];
         }
-        // Page-context guard.
-        let Some(page) = ctx.page_context.as_ref() else {
+        // PR 9b (T133 / FR-006): banner-validation rules read the
+        // rolled-up shape via `ctx.page_marking` (the
+        // `ProjectedMarking` projection) instead of going through
+        // `PageContext::expected_*` accessors. The per-portion view
+        // stays on `ctx.page_context` for rules that need it
+        // (S005/S006).
+        let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
         };
         // Dispatch loop.
@@ -3566,9 +3574,15 @@ struct BannerCategoryRow {
     /// Pure function returning the diagnostics this row produces for
     /// the given banner attributes and page projection. Implemented as a
     /// fn pointer so the catalog can be a `const`.
+    ///
+    /// PR 9b (T133 / FR-006): receives `&ProjectedMarking` (the
+    /// engine-facing rolled-up shape) instead of `&PageContext`.
+    /// Banner-validation rules don't need per-portion membership —
+    /// the union/intersection/max math is already performed by the
+    /// projection at the engine boundary.
     evaluate: fn(
         &CanonicalAttrs,
-        &marque_ism::PageContext,
+        &marque_ism::ProjectedMarking,
         &BannerCategoryRow,
     ) -> Vec<Diagnostic<CapcoScheme>>,
 }
@@ -3617,15 +3631,20 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
 /// `SarBannerRollupRule::check`, parameterized over the page projection
 /// and the catalog row (so the row supplies the rule ID + severity).
 ///
+/// PR 9b (T133): reads `&ProjectedMarking` — the field
+/// `sar_markings` carries the union of portion-contributed SAR
+/// programs in the same shape `PageContext::expected_sar_marking`
+/// used to compute.
+///
 /// Authority: CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion
 /// marks must always appear in the banner line; hierarchy depiction
 /// optional per §H.5 p101 + p99).
 fn evaluate_sar_banner_rollup(
     attrs: &CanonicalAttrs,
-    page_context: &marque_ism::PageContext,
+    page: &marque_ism::ProjectedMarking,
     row: &BannerCategoryRow,
 ) -> Vec<Diagnostic<CapcoScheme>> {
-    let Some(expected) = page_context.expected_sar_marking() else {
+    let Some(expected) = page.sar_markings.as_ref() else {
         return vec![];
     };
     if expected.programs.is_empty() {
@@ -3638,7 +3657,7 @@ fn evaluate_sar_banner_rollup(
     // banner hierarchy depth optional even when portions carry
     // hierarchy. See the `sar_missing_programs` helper doc for
     // the authority trail.
-    let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), &expected);
+    let missing_ids: Vec<&str> = sar_missing_programs(attrs.sar_markings.as_ref(), expected);
     if missing_ids.is_empty() {
         return vec![];
     }
@@ -3769,10 +3788,13 @@ fn evaluate_sar_banner_rollup(
 /// per-category §H.4 reference is the row's primary citation.
 fn evaluate_sci_banner_rollup(
     attrs: &CanonicalAttrs,
-    page: &marque_ism::PageContext,
+    page: &marque_ism::ProjectedMarking,
     row: &BannerCategoryRow,
 ) -> Vec<Diagnostic<CapcoScheme>> {
-    let expected = page_expected_sci_markings(page);
+    // PR 9b (T133): SCI rollup reads `page.sci_markings` directly.
+    // `ProjectedMarking` carries the union with §A.6 ordering already
+    // applied by `PageContext::expected_sci_markings`.
+    let expected: Vec<marque_ism::SciMarking> = page.sci_markings.to_vec();
     if expected.is_empty() {
         // Either P4 has not landed yet (helper returns empty) or no
         // portions have been accumulated. Either way, nothing to check.
@@ -3894,16 +3916,27 @@ fn evaluate_sci_banner_rollup(
 /// roll-up rule.
 fn evaluate_non_ic_dissem_banner_rollup(
     attrs: &CanonicalAttrs,
-    page: &marque_ism::PageContext,
+    page: &marque_ism::ProjectedMarking,
     row: &BannerCategoryRow,
 ) -> Vec<Diagnostic<CapcoScheme>> {
     use marque_ism::NonIcDissem;
 
-    let (expected_non_ic, _) = page.expected_non_ic_dissem();
-    let portions_have_nodis = expected_non_ic
+    // PR 9b (T133): the NODIS/EXDIS supersession logic in
+    // `PageContext::expected_non_ic_dissem` is preserved inside
+    // `PageContext::project` (the `non_ic_dissem` field on the
+    // projection comes from `expected_non_ic_dissem().0`). The
+    // second tuple element (`needs_nf` injection signal) is
+    // intentionally not surfaced here — this evaluator does not
+    // consume it. If a future change needs it, plumb it through
+    // either a `ProjectionProvenance` extension or a dedicated
+    // accessor that returns the pre-projection
+    // `(non_ic, needs_nf)` pair.
+    let portions_have_nodis = page
+        .non_ic_dissem
         .iter()
         .any(|d| matches!(d, NonIcDissem::Nodis));
-    let portions_have_exdis = expected_non_ic
+    let portions_have_exdis = page
+        .non_ic_dissem
         .iter()
         .any(|d| matches!(d, NonIcDissem::Exdis));
 
@@ -5156,6 +5189,7 @@ mod tests {
             // directly and do not exercise intent-only synthesis.
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
+            page_marking: None,
             corrections: None,
             // No two-pass fix path is in play for this defensive
             // unit test — leave the cache slot empty.
@@ -6629,6 +6663,7 @@ mod tests {
             // directly and do not exercise intent-only synthesis.
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
+            page_marking: None,
             corrections: None,
             // Unit test for the declarative-rule layer; no engine
             // two-pass pipeline.
@@ -6700,6 +6735,7 @@ mod tests {
             // directly and do not exercise intent-only synthesis.
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
+            page_marking: None,
             corrections: None,
             // Unit test for the declarative-rule layer; no engine
             // two-pass pipeline.
@@ -8073,12 +8109,26 @@ pub(crate) mod marque_capco_test_support {
             } else {
                 None
             };
+            // PR 9b (T133): mirror the engine's lazy projection for
+            // the test driver so banner-validation rules reading
+            // `ctx.page_marking` get the same shape they see in
+            // production. Computed each iteration when needed because
+            // this is a small synthetic test loop, not a perf-critical
+            // hot path; the engine caches across consecutive banner
+            // candidates.
+            let ctx_page_marking =
+                if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+                    Some(Arc::new(page_context.project()))
+                } else {
+                    None
+                };
             let ctx = RuleContext {
                 marking_type: candidate.kind,
                 zone: None,
                 position: None,
                 candidate_span: candidate.span,
                 page_context: ctx_page,
+                page_marking: ctx_page_marking,
                 corrections: None,
                 // Test-driver synthetic context; no two-pass fix
                 // pipeline is in play, so the pre-pass-1 cache slot

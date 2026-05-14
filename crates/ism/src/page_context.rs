@@ -50,6 +50,8 @@ use crate::attrs::{
 };
 use crate::canonical::CanonicalAttrs;
 use crate::date::IsmDate;
+use crate::projected::{ProjectedMarking, ProjectionProvenance};
+use marque_scheme::Scope;
 use smol_str::SmolStr;
 
 /// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort order
@@ -133,6 +135,44 @@ impl PageContext {
     /// Whether any portions have been accumulated.
     pub fn is_empty(&self) -> bool {
         self.portions.is_empty()
+    }
+
+    /// Materialize the current accumulator as a [`ProjectedMarking`]
+    /// under [`Scope::Page`]. Wired by PR 9b (T133 / FR-006) for the
+    /// engine's `RuleContext::page_marking` field, so banner-validation
+    /// rules can consume the rolled-up shape directly without going
+    /// through the `expected_*` accessor surface.
+    ///
+    /// Mirrors the field-by-field composition `page_context_to_attrs`
+    /// performs for `CanonicalAttrs`, but emits the engine-facing
+    /// projection type instead. The page-rewrite layer (CAPCO's
+    /// `capco/noforn-clears-rel-to` etc.) is NOT applied here —
+    /// `PageContext` does not have access to a scheme's
+    /// `page_rewrites` table; the engine applies those by going
+    /// through `MarkingScheme::project` separately when it needs the
+    /// post-rewrite form. PR 9b consumers reading `page_marking`
+    /// today only need the pre-rewrite shape (banner-validation rules
+    /// inspecting the union of portion-contributed dissems / SCI /
+    /// REL TO etc.); a future migration that needs the post-rewrite
+    /// form should plumb that separately.
+    pub fn project(&self) -> ProjectedMarking {
+        ProjectedMarking {
+            scope: Scope::Page,
+            classification: self
+                .expected_classification()
+                .map(MarkingClassification::Us),
+            sci_controls: self.expected_sci_controls().into_boxed_slice(),
+            sci_markings: self.expected_sci_markings(),
+            sar_markings: self.expected_sar_marking(),
+            aea_markings: self.expected_aea_markings().into_boxed_slice(),
+            fgi_marker: self.expected_fgi_marker(),
+            dissem_us: self.expected_dissem_us().into_boxed_slice(),
+            dissem_nato: self.expected_dissem_nato().into_boxed_slice(),
+            non_ic_dissem: self.expected_non_ic_dissem().0.into_boxed_slice(),
+            rel_to: self.expected_rel_to().into_boxed_slice(),
+            declassify_on: self.expected_declassify_on().cloned(),
+            provenance: ProjectionProvenance::default(),
+        }
     }
 
     /// Borrow the raw accumulated portion attributes, in document order.

@@ -601,6 +601,15 @@ impl Engine {
         // invalidated (set to None) whenever a new portion is accumulated or
         // a page break resets the context.
         let mut page_context_arc: Option<Arc<PageContext>> = None;
+        // PR 9b (T133 / FR-006). Cache of the page-marking projection
+        // for `RuleContext::page_marking`. Same invalidation
+        // semantics as `page_context_arc` — lazy on first banner/CAB
+        // consumer, dropped on portion accumulation and on page
+        // break. The projection is built from `PageContext::project`
+        // so banner-validation rules see the same page-rolled view
+        // regardless of whether they read through `PageContext` or
+        // `ProjectedMarking` during the migration window.
+        let mut page_marking_arc: Option<Arc<marque_ism::ProjectedMarking>> = None;
 
         // FR-011: per-page strict classification floor. Tracks the
         // highest classification rank produced by the strict path on
@@ -699,6 +708,10 @@ impl Engine {
             if candidate.kind == MarkingType::PageBreak {
                 page_context = PageContext::new();
                 page_context_arc = None;
+                // PR 9b (T133): the page-marking cache resets on the
+                // same boundary as the PageContext (Constitution VI
+                // invariant — page-rollup state is per-page).
+                page_marking_arc = None;
                 classification_floor = None;
                 // PR 3c.B Commit 4: clear the per-page render
                 // scratch buffer at the same boundary as the
@@ -826,6 +839,9 @@ impl Engine {
                 // Invalidate the cached Arc so the next banner/CAB gets a
                 // fresh snapshot. We rebuild it lazily below.
                 page_context_arc = None;
+                // PR 9b (T133): the projected page marking also goes
+                // stale when a new portion arrives.
+                page_marking_arc = None;
             }
 
             // Phase 3: zone and position are Option-typed and stay None
@@ -844,6 +860,24 @@ impl Engine {
             } else {
                 None
             };
+            // PR 9b (T133): same lazy/cached construction for the
+            // page-marking projection. Built from `PageContext::project`
+            // so banner-validation rules see the rolled-up shape
+            // (classification / SCI / SAR / AEA / dissem_us /
+            // dissem_nato / REL TO) without going through
+            // `PageContext::expected_*` accessors. Sharing the Arc
+            // across consecutive banner/CAB candidates on the same
+            // page mirrors the `page_context_arc` discipline.
+            let ctx_page_marking =
+                if candidate.kind != MarkingType::Portion && !page_context.is_empty() {
+                    Some(
+                        page_marking_arc
+                            .get_or_insert_with(|| Arc::new(page_context.project()))
+                            .clone(),
+                    )
+                } else {
+                    None
+                };
             // PR 7c: look up the pre-pass-1 attrs for this marking
             // span when the engine is dispatching the post-pass-1
             // re-lint (`TwoPassFixer` threads a cache through here
@@ -866,6 +900,7 @@ impl Engine {
                 // result via `MarkingScheme::render_canonical`.
                 candidate_span: candidate.span,
                 page_context: ctx_page,
+                page_marking: ctx_page_marking,
                 corrections: corrections_arc.clone(),
                 pre_pass_1_attrs,
             };
