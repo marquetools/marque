@@ -1769,6 +1769,18 @@ impl<'engine> TwoPassFixer<'engine> {
             )?
         };
 
+        // PR 7c — capture pre-pass-1 attrs for every marking whose
+        // span overlaps a pass-1 applied fix. The cache is owned on
+        // this stack frame so the references it spawns
+        // (`RuleContext.pre_pass_1_attrs`) cannot outlive `run()`.
+        // `parsed_markings` is still the pre-pass-1 cache at this
+        // point — the re-parse arm below will move ownership of it
+        // (replacing it with a fresh post-pass-1 cache), so the
+        // snapshot has to land BEFORE that branch. Empty when pass-1
+        // promoted no fixes; the cache + the engine-applied
+        // `PrecedingFixPenalty` then short-circuit to no-ops in pass-2.
+        let pre_pass_1_cache = self.populate_pre_pass_1_cache(&pass1.applied, &parsed_markings);
+
         // Destructure pass0 into owned locals so the re-parse / R002
         // branches can move `effective_source` directly (eliminating
         // the prior `.clone()` of the full document buffer on the
@@ -2263,6 +2275,64 @@ impl<'engine> TwoPassFixer<'engine> {
             }
         }
         out
+    }
+
+    /// Capture pre-pass-1 attribute snapshots for every marking
+    /// whose span overlaps a pass-1 applied fix (PR 7c / FR-023 / R-4).
+    /// Returns an empty cache when pass-1 promoted no fixes — pass-2
+    /// has no reshape to disambiguate against and the engine-applied
+    /// `PrecedingFixPenalty` short-circuits to a no-op.
+    ///
+    /// Cache shape: at most one entry per pass-1-reshaped marking.
+    /// `Phase::Localized` rules emit sub-token fix spans (PR 7b
+    /// D-7.16 first-fire check), so a single fix always anchors to a
+    /// single parent marking. Two fixes against the same marking
+    /// dedupe to one cache entry. Inline-4 storage matches the
+    /// existing Localized rule cap (C001 / E006 / E007 / S004).
+    ///
+    /// The `parsed_markings` map is the pre-pass-1 cache from
+    /// `lint_with_options_internal`: its `CapcoMarking.0` is the
+    /// `CanonicalAttrs` snapshot the rule originally fired against.
+    /// Cloning the attrs is unavoidable here because the cache
+    /// outlives the `parsed_markings` map (the engine moves
+    /// `parsed_markings` into the re-parse arm).
+    fn populate_pre_pass_1_cache(
+        &self,
+        pass1_applied: &[AppliedFix<CapcoScheme>],
+        parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+    ) -> PrePass1Cache {
+        let mut cache: PrePass1Cache = SmallVec::new();
+        if pass1_applied.is_empty() {
+            return cache;
+        }
+        // For each applied pass-1 fix, find the marking whose span
+        // contains the fix span and dedupe into the cache. Sub-token
+        // span containment is what `find_containing_marking` already
+        // checks for the PR 7b first-fire path, so reuse it.
+        for fix in pass1_applied {
+            let Some(marking_span) = find_containing_marking(parsed_markings, fix.span) else {
+                // A Localized rule whose fix span has no enclosing
+                // marking should already have been dropped by the
+                // PR 7b in_shape filter; if one slips through it
+                // means a violated phase contract elsewhere. Log and
+                // skip — never panic on the audit hot path.
+                tracing::warn!(
+                    rule_id = %fix.rule,
+                    fix_span = ?fix.span,
+                    "pass-1 applied fix has no enclosing parsed marking; \
+                     skipping pre-pass-1 cache entry"
+                );
+                continue;
+            };
+            if cache.iter().any(|(span, _)| *span == marking_span) {
+                continue;
+            }
+            let Some(marking) = parsed_markings.get(&marking_span) else {
+                continue;
+            };
+            cache.push((marking_span, marking.0.clone()));
+        }
+        cache
     }
 
     /// Collect the unique contributing pass-1 rule IDs in
