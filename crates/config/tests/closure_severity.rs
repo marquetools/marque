@@ -13,13 +13,13 @@
 
 use marque_config::ConfigError;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// Create a unique tempdir with a process-id + test-name discriminator.
 fn make_tmpdir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir()
-        .join(format!("marque-closure-test-{name}-{}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("marque-closure-test-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create tmpdir");
     dir
@@ -73,10 +73,8 @@ impl Drop for EnvGuard {
 
 /// Write a standard `.marque.toml` with the compiled schema version and
 /// an optional `[closure_rules]` payload appended.
-fn write_project_config(dir: &PathBuf, closure_rules_section: &str) {
-    let content = format!(
-        "[capco]\nversion = \"{SCHEMA_VERSION}\"\n\n{closure_rules_section}"
-    );
+fn write_project_config(dir: &Path, closure_rules_section: &str) {
+    let content = format!("[capco]\nversion = \"{SCHEMA_VERSION}\"\n\n{closure_rules_section}");
     fs::write(dir.join(".marque.toml"), content).unwrap();
 }
 
@@ -349,7 +347,11 @@ fn rules_and_closure_rules_are_section_isolated() {
 
     // [closure_rules] → config.closure_rules.overrides
     assert_eq!(
-        config.closure_rules.overrides.get("capco/foo").map(String::as_str),
+        config
+            .closure_rules
+            .overrides
+            .get("capco/foo")
+            .map(String::as_str),
         Some("error"),
         "[closure_rules] capco/foo must be 'error'"
     );
@@ -357,7 +359,11 @@ fn rules_and_closure_rules_are_section_isolated() {
     // Cross-talk: [rules] must not see the closure value and vice versa.
     assert_ne!(
         config.rules.overrides.get("capco/foo").map(String::as_str),
-        config.closure_rules.overrides.get("capco/foo").map(String::as_str),
+        config
+            .closure_rules
+            .overrides
+            .get("capco/foo")
+            .map(String::as_str),
         "rules and closure_rules must NOT cross-talk for the same key"
     );
 
@@ -369,10 +375,7 @@ fn rules_and_closure_rules_are_section_isolated() {
 #[test]
 fn rules_section_does_not_populate_closure_rules() {
     let dir = make_tmpdir("closure-no-bleed");
-    write_project_config(
-        &dir,
-        "[rules]\n\"E001\" = \"warn\"\n",
-    );
+    write_project_config(&dir, "[rules]\n\"E001\" = \"warn\"\n");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let config = marque_config::load(&dir).expect("load should succeed");

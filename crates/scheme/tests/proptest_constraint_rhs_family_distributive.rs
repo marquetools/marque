@@ -101,7 +101,7 @@ fn is_odd_indexed(token_ref: &TokenRef) -> bool {
         TokenRef::Token(id) => {
             let idx = TOK.iter().position(|t| *t == *id);
             // Odd index and not the LHS (index > 0 and odd)
-            idx.map_or(false, |i| i % 2 == 1)
+            idx.is_some_and(|i| i % 2 == 1)
         }
         TokenRef::AnyInCategory(_) => false,
     }
@@ -198,7 +198,7 @@ impl MarkingScheme for FamilyScheme {
     }
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
         match token_ref {
-            TokenRef::Token(id) => tok_bit(*id).map_or(false, |n| marking.has_bit(n)),
+            TokenRef::Token(id) => tok_bit(*id).is_some_and(|n| marking.has_bit(n)),
             TokenRef::AnyInCategory(_) => false,
         }
     }
@@ -227,7 +227,7 @@ impl MarkingScheme for FamilyScheme {
         let bits = marking.bits;
         Box::new(
             TOK.iter()
-                .filter(move |t| tok_bit(**t).map_or(false, |n| (bits >> n) & 1 == 1))
+                .filter(move |t| tok_bit(**t).is_some_and(|n| (bits >> n) & 1 == 1))
                 .copied()
                 .map(TokenRef::Token),
         )

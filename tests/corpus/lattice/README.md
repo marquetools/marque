@@ -1,7 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2026 Knitli Inc.
 
-SPDX-License-Identifier: MIT OR Apache-2.0
+SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
 # Cross-axis dominance corpus (`tests/corpus/lattice/`)

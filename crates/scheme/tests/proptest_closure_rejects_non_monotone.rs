@@ -139,7 +139,7 @@ impl MarkingScheme for MonotoneScheme {
     }
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
         match token_ref {
-            TokenRef::Token(id) => bit_index(*id).map_or(false, |n| marking.has_token(n)),
+            TokenRef::Token(id) => bit_index(*id).is_some_and(|n| marking.has_token(n)),
             TokenRef::AnyInCategory(_) => false,
         }
     }
@@ -171,7 +171,7 @@ impl MarkingScheme for MonotoneScheme {
         Box::new(
             [TOK_A, TOK_B, TOK_C]
                 .into_iter()
-                .filter(move |t| bit_index(*t).map_or(false, |n| (bits >> n) & 1 == 1))
+                .filter(move |t| bit_index(*t).is_some_and(|n| (bits >> n) & 1 == 1))
                 .map(TokenRef::Token),
         )
     }

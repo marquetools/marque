@@ -334,6 +334,10 @@ where
                 label,
             } => {
                 if scheme.satisfies(marking, left) && scheme.satisfies(marking, right) {
+                    // G13: `TokenRef` variants carry only integer IDs
+                    // (`TokenId` / `CategoryId`), never document content
+                    // bytes. Safe to format into audit-stream messages
+                    // per Constitution V Principle V audit-content-ignorance.
                     out.push(ConstraintViolation {
                         constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
@@ -357,6 +361,9 @@ where
                 if scheme.satisfies(marking, left) {
                     for present_token in scheme.iter_present_tokens(marking) {
                         if family.0(&present_token) {
+                            // G13: same audit-content-ignorance argument
+                            // as the `Conflicts` arm above — `TokenRef`
+                            // is integer-ID-only.
                             out.push(ConstraintViolation {
                                 constraint_label: name,
                                 message: format!(

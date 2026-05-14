@@ -71,7 +71,10 @@ fn audit_note_engine_promote_sealing_pattern() {
         row_name: "capco/noforn-if-no-fdr",
         cone,
         scope: Scope::Page,
-        span: Some(Span { start: 100, end: 120 }),
+        span: Some(Span {
+            start: 100,
+            end: 120,
+        }),
         suppressed_by: None, // InferredFact always has None per D19 A.
     };
 

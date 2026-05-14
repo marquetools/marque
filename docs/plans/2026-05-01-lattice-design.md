@@ -379,7 +379,31 @@ the dissem axis:
 |---|---|---|---|---|
 | `capco/noforn-if-no-fdr` | SAP / RD / FRD / TFNI / DCNI / UCNI / FGI [non-NATO] / ORCON / IMCON / DSEN / LIMDIS / LES / SBU / SSI / NNPI present | `has_fdr(page)` | `{NOFORN}` | §H.8 NOFORN p145 (top of FD&R); §B.3 Table 2 p21 (FD&R roster) |
 | `capco/relido-if-no-fdr-and-not-incompat` | Bare SCI / U / collateral / RSEN / FOUO present | `has_fdr(page) ∨ has_relido_incompat(page)` | `{RELIDO}` | §H.8 RELIDO p154 |
-| `capco/rel-usa-nato-if-no-fdr-and-nato` | Any NATO portion or banner | `has_fdr(page)` | `{REL TO USA, NATO}` (on FD&R axis) | §H.3 NATO p55-59 |
+| `capco/rel-usa-nato-if-no-fdr-and-nato` | Any NATO portion or banner | `has_fdr(page)` | `{REL TO USA, NATO}` (on FD&R axis) **(placeholder — see implementation note below)** | §H.3 NATO p55-59 |
+| HCS-O / HCS-P[sub] | SCI presence (proxy) | `&[]` (unconditional) | `{NOFORN, ORCON}` **(proxy trigger — see implementation note below)** | §H.4 HCS pp64-69 |
+| SI-G | SCI presence (proxy) | `&[]` (unconditional) | `{ORCON}` **(proxy trigger — see implementation note below)** | §H.4 SI p80 |
+| TK-BLFH / TK-KAND / TK-IDIT | SCI presence (proxy) | `&[]` (unconditional) | `{NOFORN}` **(proxy trigger — see implementation note below)** | §H.4 TK pp87-98 |
+
+**Implementation note (PR 3.7 → PR 4)**: The five per-marking SCI
+implication rows (HCS-O / HCS-P[sub] / SI-G / TK-BLFH / TK-KAND / TK-IDIT)
+ship in PR 3.7 with `AnyInCategory(CAT_SCI)` as a coalesced trigger
+because per-compartment sentinel `TokenId`s (`TOK_HCS_O`, `TOK_SI_G`,
+`TOK_TK_BLFH`, etc.) do not yet exist in the in-tree vocabulary. The
+catalog therefore **over-fires** on bare `SI` / bare `TK` portions
+relative to `marque-applied.md` §4.7.1's per-marking spec. PR 4 (T112)
+splits the trigger to per-compartment `TokenRef::Token(...)` values
+when those sentinels land alongside the per-category `Lattice` impls.
+
+The Trio 3 `capco/rel-usa-nato-if-no-fdr-and-nato` row ships with
+`cone: &[TokenRef::AnyInCategory(CAT_REL_TO)]` as a placeholder: the
+open-vocab "add `REL TO USA, NATO` specifically" closure-step lands
+in PR 4 once `Engine::project::closure()` is wired and the
+country-list payload mechanic exists.
+
+**Both deferrals are dormant in PR 3.7** because `CapcoScheme::closure()`
+is not overridden in this PR — the catalog ships as data, the runtime
+wiring lands at PR 4. See `crates/capco/src/scheme.rs` inline TODOs
+(per-row) for the precise sentinel/wiring tasks.
 
 Closure fires **after** per-axis join, **before** the
 NOFORN-clears-REL-TO PageRewrite (per `marque-applied.md` §4.7.4
@@ -413,13 +437,13 @@ Then PageRewrite capco/noforn-clears-rel-to fires (defensive cleanup):
 Banner output: SECRET//NOFORN
 ```
 
-**Example 2 — REL TO trigraph-payload intersection (§H.8 p152):**
+**Example 2 — REL TO trigraph-payload intersection (§D.2 Table 3 p28 Rules 9 + 21; §H.8 pp150-153 worked examples):**
 ```
 Inputs:  (S//REL TO USA, FVEY) (S//REL TO USA, FVEY, GBR)
 Per-portion dissem:
   portion 1: REL TO[USA, FVEY]
   portion 2: REL TO[USA, FVEY, GBR]
-Per-axis join (REL TO payload-intersection per §H.8 p152):
+Per-axis join (REL TO payload-intersection per §D.2 Table 3 p28 Rule 9 + Rule 21; §H.8 p152 worked example illustrates):
   The banner can release only to countries every portion authorizes.
   page.rel_to_countries = {USA, FVEY} ∩ {USA, FVEY, GBR} = {USA, FVEY}
   page.fdr = REL TO[USA, FVEY]
@@ -1158,8 +1182,12 @@ PageRewrite handle the validation and cleanup.
   — Example 1 fixture.
 - `crates/capco/tests/cross_axis_dominance.rs::nato_portion_triggers_implicit_rel_to`
   — Example 2 closure-operator fixture.
-- `tests/corpus/lattice/nato-only-page.json` — corpus fixture for
-  pure-NATO-page banner roll-up.
+- `tests/corpus/lattice/nato-only-page.txt` *(deferred to PR 4)* —
+  pure-NATO-page banner roll-up. PR 3.7 ships five cross-axis dominance
+  fixtures per §3 (e) trio coverage; the NATO-only fixture lands in PR 4
+  alongside `tests/corpus/lattice/`'s `.expected.json` sidecars and the
+  property-test runner (NATO closure-operator behavior depends on
+  `Engine::project::closure()` wiring deferred to PR 4 per `tasks.md` T112).
 
 ### Open questions — resolved
 
@@ -1414,8 +1442,16 @@ resolved within this document, not punted forward.
       independently read §§2-8 and is authorized to take primary
       ownership if the primary stalls past 1 week.
 - [ ] Per-row monotonicity attestation for the ~12 CAPCO ClosureRule
-      rows (citing `marque-applied.md` §4.7.3 table-design property
-      as basis) is in the PR description.
+      rows is in the PR description. PR 3.7 verifies the monotonicity /
+      extensivity / idempotence laws via stub-scheme proptests at
+      `crates/scheme/tests/proptest_closure.rs` (5 positive properties
+      + G13 + negative non-monotonicity catalog). Per-row CAPCO catalog
+      verification — i.e. running `CapcoScheme::closure()` against each
+      of the 15 catalog rows under random fact-sets — rides on PR 4
+      (T112), which wires `Engine::project::closure()` and overrides
+      `CapcoScheme::closure()`. The PR 3.7 attestation cites the
+      stub-scheme proptest as proxy and `marque-applied.md` §4.7.3
+      table-design property as the algebraic basis.
 
 ---
 

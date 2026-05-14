@@ -26,8 +26,8 @@ use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, Span,
 use marque_scheme::{
     AggregationOp, ApplyIntentError, Cardinality, Category, CategoryAction, CategoryId,
     CategoryPredicate, ClosureRule, Constraint, ConstraintViolation, FactRef, FamilyPredicate,
-    IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
-    Severity, Template, TokenId, TokenRef,
+    IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope, Severity,
+    Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -3810,7 +3810,22 @@ impl MarkingScheme for CapcoScheme {
                 DissemControl::Dsen => Some(TOK_DSEN),
                 DissemControl::Rs => Some(TOK_RSEN),
                 DissemControl::Fouo => Some(TOK_FOUO),
-                _ => None, // REL, Pr, Eyes, Rawfisa, Fisa, ExemptFromIcd501Discovery
+                // Variants without TOK_* sentinels yet:
+                //   Rel, Pr, Eyes, Rawfisa, Fisa, ExemptFromIcd501Discovery
+                //
+                // DRIFT GUARD: `DissemControl` is `#[non_exhaustive]`. If
+                // a future ODNI ISM schema bump adds a new variant, it
+                // silently falls through to `None` here — meaning any
+                // `Constraint::ConflictsWithFamily` row whose family
+                // predicate should match the new control will silently
+                // stop firing on it. When adding a new dissem control,
+                // also: (a) add a `TOK_*` sentinel above, (b) add the
+                // arm here, (c) consider whether existing family
+                // predicates (`is_fdr_dominator`, `is_orcon_family`)
+                // should include it. The compile-time signal is the
+                // missing TOK_*; this code path is the runtime
+                // backstop.
+                _ => None,
             };
             if let Some(id) = tok {
                 tokens.push(TokenRef::Token(id));
@@ -3904,6 +3919,20 @@ impl MarkingScheme for CapcoScheme {
 // Note: LES-NF and SBU-NF are NOT included. They are non-IC dissem controls
 // that carry NOFORN treatment via PageRewrite, not FD&R markers themselves.
 // The §B.3 Table 2 enumeration is the authoritative source for the FD&R set.
+//
+// Algebraic note (re: `marque-applied.md` §4.7.3 has_fdr definition):
+// §4.7.3 defines `has_fdr(x)` to include LES-NF / SBU-NF for the
+// table-design-property monotonicity proof. The in-tree FDR_DOMINATORS
+// omits them because (a) LES-NF and SBU-NF entail NOFORN through their
+// own PageRewrite (so the operational behavior is preserved — when LES-NF
+// is present, NOFORN is added via PageRewrite, and the Trio-1 row would
+// then be suppressed by the post-PageRewrite NOFORN regardless), and
+// (b) the §4.7.3 case-2 table-design property is preserved per-row because
+// the suppressed cone {NOFORN} is exactly the fact that LES-NF / SBU-NF's
+// PageRewrite would have added. The monotonicity proof holds via the
+// downstream PageRewrite step rather than via FDR_DOMINATORS membership;
+// the Trio-1 row is permitted to over-fire on bare-LES-NF / bare-SBU-NF
+// because the PageRewrite supplies the suppressor fact downstream.
 static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_NOFORN),
     TokenRef::Token(TOK_RELIDO),
@@ -3967,7 +3996,7 @@ const CLOSURE_NOFORN_SAR: ClosureRule = ClosureRule {
 ///
 /// Atomic Energy Act markings (Restricted Data, Formerly Restricted Data,
 /// Transclassified Foreign Nuclear Information) carry NOFORN by definition
-/// for the IC marking context. Per CAPCO-2016 §H.6 (pp103-121) and
+/// for the IC marking context. Per CAPCO-2016 §H.6 (pp104-121) and
 /// §B.3 Table 2 p21.
 const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
     name: "capco/noforn-if-aea-rd",
@@ -3986,8 +4015,9 @@ const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
 ///
 /// Unclassified Controlled Nuclear Information markings carry a NOFORN
 /// treatment in the IC context per §B.3 Table 2 p21. The UCNI marking
-/// itself is constrained to UNCLASSIFIED per §H.6 DOD UCNI p107 and
-/// §H.6 DOE UCNI p112; the NOFORN closure fires regardless of class.
+/// itself is constrained to UNCLASSIFIED per §H.6 DCNI pp116-117 (DoD)
+/// and §H.6 UCNI pp118-119 (DoE); the NOFORN closure fires regardless
+/// of class.
 const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
     name: "capco/noforn-if-ucni",
     label: "CAPCO-2016 §B.3 Table 2 p21",
@@ -4005,10 +4035,10 @@ const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
 const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
     name: "capco/noforn-if-fgi",
     label: "CAPCO-2016 §H.7 p122",
-    triggers: &[
-        TokenRef::Token(TOK_FGI_MARKER),
-        TokenRef::AnyInCategory(CAT_FGI_MARKER),
-    ],
+    // `AnyInCategory(CAT_FGI_MARKER)` already covers the explicit
+    // `TOK_FGI_MARKER` sentinel; one trigger entry suffices per
+    // lattice-consultant G4 (avoids structurally-redundant double-firing).
+    triggers: &[TokenRef::AnyInCategory(CAT_FGI_MARKER)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
@@ -4023,10 +4053,7 @@ const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
 const CLOSURE_NOFORN_ORCON: ClosureRule = ClosureRule {
     name: "capco/noforn-if-orcon",
     label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[
-        TokenRef::Token(TOK_ORCON),
-        TokenRef::Token(TOK_ORCON_USGOV),
-    ],
+    triggers: &[TokenRef::Token(TOK_ORCON), TokenRef::Token(TOK_ORCON_USGOV)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
@@ -4041,10 +4068,7 @@ const CLOSURE_NOFORN_ORCON: ClosureRule = ClosureRule {
 const CLOSURE_NOFORN_IMCON_DSEN: ClosureRule = ClosureRule {
     name: "capco/noforn-if-imcon-dsen",
     label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[
-        TokenRef::Token(TOK_IMCON),
-        TokenRef::Token(TOK_DSEN),
-    ],
+    triggers: &[TokenRef::Token(TOK_IMCON), TokenRef::Token(TOK_DSEN)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
@@ -4109,10 +4133,7 @@ const CLOSURE_RELIDO_US_CLASS: ClosureRule = ClosureRule {
 const CLOSURE_RELIDO_RSEN_FOUO: ClosureRule = ClosureRule {
     name: "capco/relido-if-rsen-fouo",
     label: "CAPCO-2016 §H.8 p154",
-    triggers: &[
-        TokenRef::Token(TOK_RSEN),
-        TokenRef::Token(TOK_FOUO),
-    ],
+    triggers: &[TokenRef::Token(TOK_RSEN), TokenRef::Token(TOK_FOUO)],
     suppressors: FDR_OR_RELIDO_INCOMPAT,
     cone: &[TokenRef::Token(TOK_RELIDO)],
     default_severity: Severity::Info,
@@ -4176,11 +4197,8 @@ const CLOSURE_HCS_O_NOFORN_ORCON: ClosureRule = ClosureRule {
     name: "capco/hcs-o-implies-noforn-orcon",
     label: "CAPCO-2016 §H.4 p64",
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // HCS-O presence — no bare TOK_HCS_O sentinel yet
-    suppressors: &[], // unconditional
-    cone: &[
-        TokenRef::Token(TOK_NOFORN),
-        TokenRef::Token(TOK_ORCON),
-    ],
+    suppressors: &[],                              // unconditional
+    cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
     default_severity: Severity::Info,
 };
 // NOTE: The trigger above fires on ANY SCI control (CAT_SCI), not specifically
@@ -4202,13 +4220,13 @@ const CLOSURE_HCS_O_NOFORN_ORCON: ClosureRule = ClosureRule {
 /// SI-G implies {ORCON} unconditionally.
 ///
 /// Per CAPCO-2016 §H.4 SI p80 (GAMMA compartment requires ORCON). The class
-/// floor (TS-required per §H.4 SI p78) is a Constraint::Custom row, not
+/// floor (TS-required per §H.4 SI p81) is a Constraint::Custom row, not
 /// closure.
 const CLOSURE_SI_G_ORCON: ClosureRule = ClosureRule {
     name: "capco/si-g-implies-orcon",
     label: "CAPCO-2016 §H.4 p80",
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // SI-G presence — no bare TOK_SI_G yet
-    suppressors: &[], // unconditional
+    suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_ORCON)],
     default_severity: Severity::Info,
 };
@@ -4223,7 +4241,7 @@ const CLOSURE_TK_BLFH_NOFORN: ClosureRule = ClosureRule {
     name: "capco/tk-blfh-implies-noforn",
     label: "CAPCO-2016 §H.4 p87",
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-BLFH — no bare sentinel yet
-    suppressors: &[], // unconditional
+    suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
 };
@@ -4236,7 +4254,7 @@ const CLOSURE_TK_KAND_NOFORN: ClosureRule = ClosureRule {
     name: "capco/tk-kand-implies-noforn",
     label: "CAPCO-2016 §H.4 p95",
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-KAND — no bare sentinel yet
-    suppressors: &[], // unconditional
+    suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
 };
@@ -4250,7 +4268,7 @@ const CLOSURE_TK_IDIT_NOFORN: ClosureRule = ClosureRule {
     name: "capco/tk-idit-implies-noforn",
     label: "CAPCO-2016 §H.4 p91",
     triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-IDIT — no bare sentinel yet
-    suppressors: &[], // unconditional
+    suppressors: &[],                              // unconditional
     cone: &[TokenRef::Token(TOK_NOFORN)],
     default_severity: Severity::Info,
 };
@@ -4333,10 +4351,9 @@ pub fn is_fdr_dominator(t: &TokenRef) -> bool {
         TokenRef::Token(id) => {
             matches!(
                 *id,
-                TOK_NOFORN | TOK_DISPLAY_ONLY
-                // Note: EYES (TOK_EYES placeholder) and RELIDO are also FD&R
-                // dominators over RELIDO per §D.2 Table 3, but RELIDO-vs-RELIDO
-                // is a tautology and TOK_EYES doesn't exist yet.
+                TOK_NOFORN | TOK_DISPLAY_ONLY // Note: EYES (TOK_EYES placeholder) and RELIDO are also FD&R
+                                              // dominators over RELIDO per §D.2 Table 3, but RELIDO-vs-RELIDO
+                                              // is a tautology and TOK_EYES doesn't exist yet.
             )
         }
         TokenRef::AnyInCategory(cat) => {
