@@ -2632,8 +2632,12 @@ fn apply_fr023_and_i18(
         // I-18: demote diagnostics whose marking-scope span overlaps
         // any pass-1 promoted span at promote-eligible severity. The
         // overlap check uses `key_span` so a sub-token pass-2 finding
-        // within a reshaped marking is also caught.
-        let needs_demote = matches!(d.severity, Severity::Error | Severity::Warn | Severity::Fix)
+        // within a reshaped marking is also caught. The predicate
+        // `Severity::is_promote_eligible` is the single source of
+        // truth shared with `synthesize_fixes` (engine.rs:~2850) —
+        // see its doc comment for why drift between the two sites
+        // would re-open the I-18 leak channel.
+        let needs_demote = d.severity.is_promote_eligible()
             && pass1_applied_keys
                 .iter()
                 .any(|(_, p1_span)| spans_overlap(key_span, *p1_span));
@@ -2847,7 +2851,12 @@ fn synthesize_fixes(
         let Some(intent) = d.fix.as_ref() else {
             continue;
         };
-        if d.severity == Severity::Suggest {
+        // Pass-2 promotion gate. Uses the single-source-of-truth
+        // `Severity::is_promote_eligible` so this site and the I-18
+        // overlap-demotion guard in `apply_fr023_and_i18` stay aligned
+        // by construction — any future severity-classification change
+        // updates both sites at once.
+        if !d.severity.is_promote_eligible() {
             continue;
         }
         let cspan = d.candidate_span.unwrap_or(d.span);
