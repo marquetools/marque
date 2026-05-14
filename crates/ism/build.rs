@@ -1773,12 +1773,10 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                     b"MembershipSupressed" if in_membership => {
                         current_suppressed = true;
                     }
-                    // spellchecker:on
                     _ => {}
                 }
             }
             Ok(Event::Empty(ref e))
-                // spellchecker:off
                 if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
                 // spelllchecker:on
             {
