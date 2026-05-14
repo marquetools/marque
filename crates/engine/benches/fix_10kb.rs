@@ -16,8 +16,7 @@
 //!   triggers (C001 typos that the corrections map fixes) AND
 //!   `Phase::WholeMarking` triggers. Exercises the full two-pass path:
 //!   pre-pass-1 cache population, post-pass-1 re-lint, FR-023
-//!   disambiguation, I-18 overlap demotion, `PrecedingFixPenalty`
-//!   application at the threshold gate.
+//!   disambiguation, and I-18 overlap demotion.
 //!
 //! Both benches construct the engine ONCE outside the `b.iter` loop —
 //! constructing the AhoCorasick automaton on every iteration would
@@ -151,8 +150,7 @@ fn fix_10kb_two_pass(c: &mut Criterion) {
     let engine = build_engine_with_corrections();
     // Sanity-check: pass-0 / pass-1 produces ≥1 applied fix (a C001
     // text correction), driving the engine through the post-pass-1
-    // re-parse arm and exercising the FR-023 / I-18 / PrecedingFixPenalty
-    // codepaths.
+    // re-parse arm and exercising the FR-023 / I-18 codepaths.
     let result = engine.fix(&input, FixMode::Apply);
     debug_assert!(
         !result.applied.is_empty(),
