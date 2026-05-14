@@ -1316,3 +1316,230 @@ fn constraint_joint_with_usa_everywhere_is_silent() {
         v
     );
 }
+
+// ---------------------------------------------------------------------------
+// Stage D (PR 3.7 T108b): RELIDO family-row compaction behavioral equivalence
+//
+// These tests pin the observable contract of the two `ConflictsWithFamily`
+// rows that replaced four enumerated `Conflicts` rows (E054/E055/E056/E057)
+// during PR 3.7 Stage D. Each test verifies:
+//   - the compacted row fires for the same inputs as the retired rows, and
+//   - no false positives appear on valid markings that do NOT trigger RELIDO
+//     incompatibility.
+//
+// The two family rows:
+//   "capco/relido-conflicts-fdr-family"  — RELIDO ⊥ any FD&R dominator
+//     (replaces E054: RELIDO ⊥ NOFORN; E055: RELIDO ⊥ DISPLAY ONLY)
+//   "capco/orcon-family-conflicts-relido" — RELIDO ⊥ ORCON-family
+//     (replaces E056: ORCON ⊥ RELIDO; E057: ORCON-USGOV ⊥ RELIDO)
+//
+// Authority: CAPCO-2016 §H.8 p154 (RELIDO cannot be used with NOFORN or
+// DISPLAY ONLY); §H.8 p136 (ORCON may not be used with RELIDO); §H.8 p140
+// (ORCON-USGOV may not be used with RELIDO).
+// ---------------------------------------------------------------------------
+
+/// RELIDO + NOFORN fires the FD&R-family row (covers retired E054).
+#[test]
+fn relido_fdr_family_fires_on_relido_plus_noforn() {
+    let mut attrs = portion(Classification::Secret);
+    attrs.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/relido-conflicts-fdr-family"),
+        "expected RELIDO⊥NOFORN via fdr-family row (E054 compaction); got: {violations:?}"
+    );
+}
+
+/// RELIDO + DISPLAY ONLY fires the FD&R-family row (covers retired E055).
+#[test]
+fn relido_fdr_family_fires_on_relido_plus_display_only() {
+    let mut attrs = portion(Classification::Secret);
+    attrs.dissem_controls = vec![DissemControl::Relido, DissemControl::Displayonly].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/relido-conflicts-fdr-family"),
+        "expected RELIDO⊥DISPLAY ONLY via fdr-family row (E055 compaction); got: {violations:?}"
+    );
+}
+
+/// RELIDO + REL TO (any country list) fires the FD&R-family row.
+///
+/// REL TO is an FD&R dominator over RELIDO per CAPCO-2016 §H.8 p150-153
+/// (mutual-exclusion peer in the FD&R family). The `is_fdr_dominator`
+/// predicate returns `true` for `AnyInCategory(CAT_REL_TO)`, and
+/// `iter_present_tokens` emits that variant whenever `attrs.rel_to` is
+/// non-empty.
+#[test]
+fn relido_fdr_family_fires_on_relido_plus_rel_to() {
+    let mut attrs = portion(Classification::Secret);
+    attrs.dissem_controls = vec![DissemControl::Relido].into();
+    attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/relido-conflicts-fdr-family"),
+        "expected RELIDO⊥REL TO via fdr-family row; got: {violations:?}"
+    );
+}
+
+/// RELIDO alone (no FD&R dominator present) does NOT fire the FD&R-family row.
+#[test]
+fn relido_fdr_family_silent_on_relido_without_fdr_dominator() {
+    let mut attrs = portion(Classification::Secret);
+    attrs.dissem_controls = vec![DissemControl::Relido].into();
+    // No NOFORN, DISPLAY ONLY, or REL TO.
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/relido-conflicts-fdr-family"),
+        "fdr-family row must not fire when no FD&R dominator is present; got: {violations:?}"
+    );
+}
+
+/// NOFORN without RELIDO does NOT fire the FD&R-family row (row is
+/// directional: `left` = RELIDO).
+#[test]
+fn relido_fdr_family_silent_on_noforn_without_relido() {
+    let mut attrs = portion(Classification::Secret);
+    attrs.dissem_controls = vec![DissemControl::Nf].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/relido-conflicts-fdr-family"),
+        "fdr-family row must not fire when RELIDO is absent; got: {violations:?}"
+    );
+}
+
+/// ORCON + RELIDO fires the ORCON-family row (covers retired E056).
+#[test]
+fn orcon_family_fires_on_orcon_plus_relido() {
+    let mut attrs = portion(Classification::TopSecret);
+    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::Relido].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/orcon-family-conflicts-relido"),
+        "expected ORCON⊥RELIDO via orcon-family row (E056 compaction); got: {violations:?}"
+    );
+}
+
+/// ORCON-USGOV + RELIDO fires the ORCON-family row (covers retired E057).
+#[test]
+fn orcon_family_fires_on_orcon_usgov_plus_relido() {
+    let mut attrs = portion(Classification::TopSecret);
+    attrs.dissem_controls = vec![DissemControl::OcUsgov, DissemControl::Relido].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/orcon-family-conflicts-relido"),
+        "expected ORCON-USGOV⊥RELIDO via orcon-family row (E057 compaction); got: {violations:?}"
+    );
+}
+
+/// ORCON without RELIDO does NOT fire the ORCON-family row.
+#[test]
+fn orcon_family_silent_on_orcon_without_relido() {
+    let mut attrs = portion(Classification::TopSecret);
+    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/orcon-family-conflicts-relido"),
+        "orcon-family row must not fire when RELIDO is absent; got: {violations:?}"
+    );
+}
+
+/// RELIDO without ORCON-family does NOT fire the ORCON-family row.
+#[test]
+fn orcon_family_silent_on_relido_without_orcon() {
+    let mut attrs = portion(Classification::Secret);
+    // RELIDO present but no ORCON or ORCON-USGOV.
+    attrs.dissem_controls = vec![DissemControl::Relido].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+    assert!(
+        !violations
+            .iter()
+            .any(|v| v.constraint_label == "capco/orcon-family-conflicts-relido"),
+        "orcon-family row must not fire when no ORCON-family token is present; got: {violations:?}"
+    );
+}
+
+/// The exact set of RELIDO-conflict labels fired matches what the
+/// retired enumerated rows (E054/E055/E056/E057) would have produced:
+/// two violations for a marking with RELIDO + NOFORN + ORCON (both
+/// fdr-family and orcon-family fire).
+#[test]
+fn relido_conflict_label_set_on_relido_plus_noforn_plus_orcon() {
+    // Contrived but valid as a constraint-coverage fixture: S//RELIDO/NF/OC
+    // triggers both family rows.
+    let mut attrs = portion(Classification::Secret);
+    attrs.dissem_controls =
+        vec![DissemControl::Relido, DissemControl::Nf, DissemControl::Oc].into();
+
+    let scheme = CapcoScheme::new();
+    let violations = scheme.validate(&CapcoMarking::new(attrs));
+
+    // The FD&R-family row fires once (NOFORN matches).
+    let fdr_count = violations
+        .iter()
+        .filter(|v| v.constraint_label == "capco/relido-conflicts-fdr-family")
+        .count();
+    assert_eq!(
+        fdr_count, 1,
+        "expected exactly one fdr-family violation (NOFORN match); got: {violations:?}"
+    );
+
+    // The ORCON-family row fires once (ORCON matches).
+    let orcon_count = violations
+        .iter()
+        .filter(|v| v.constraint_label == "capco/orcon-family-conflicts-relido")
+        .count();
+    assert_eq!(
+        orcon_count, 1,
+        "expected exactly one orcon-family violation (ORCON match); got: {violations:?}"
+    );
+}
+
+/// Retired enumerated constraint names (E054/E055/E056/E057) must NOT
+/// appear in the scheme's constraint catalog. This is the catalog
+/// regression guard: if anyone re-adds the enumerated rows alongside
+/// the family rows (or reverts the compaction), this test catches it.
+#[test]
+fn retired_relido_enumerated_constraint_names_absent_from_catalog() {
+    let scheme = CapcoScheme::new();
+    let labels: Vec<&str> = scheme.constraints().iter().map(|c| c.name()).collect();
+    for retired in ["E054/", "E055/", "E056/", "E057/"] {
+        assert!(
+            !labels.iter().any(|l| l.starts_with(retired)),
+            "retired RELIDO constraint {retired} must not have a catalog entry; got: {labels:?}"
+        );
+    }
+}

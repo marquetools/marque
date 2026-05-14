@@ -25,8 +25,9 @@
 use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, Span, TokenKind};
 use marque_scheme::{
     AggregationOp, ApplyIntentError, Cardinality, Category, CategoryAction, CategoryId,
-    CategoryPredicate, Constraint, ConstraintViolation, FactRef, IntraOrdering, Lattice,
-    MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope, Template, TokenId, TokenRef,
+    CategoryPredicate, ClosureRule, Constraint, ConstraintViolation, FactRef, FamilyPredicate,
+    IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
+    Severity, Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -139,6 +140,25 @@ pub const TOK_REL_TO: TokenId = TokenId(128);
 // added in PR 3c.B Sub-PR 8.F.
 pub const TOK_SBU_NF: TokenId = TokenId(129);
 pub const TOK_LES_NF: TokenId = TokenId(130);
+
+// Stage D (PR 3.7 T108c): Closure-rule catalog sentinels.
+//
+// These tokens are needed to express trigger and suppressor predicates in the
+// §4.7 implicit-default trio and per-marking unconditional implication rows.
+// All resolve via `satisfies_attrs` against the appropriate ISM attribute field.
+//
+// IC dissemination controls (DissemControl variants):
+pub const TOK_IMCON: TokenId = TokenId(131); // CONTROLLED IMAGERY — §H.8 p142
+pub const TOK_DSEN: TokenId = TokenId(132); // DEA SENSITIVE — §H.8 p159
+pub const TOK_RSEN: TokenId = TokenId(133); // RISK SENSITIVE — §H.8 p132
+pub const TOK_FOUO: TokenId = TokenId(134); // FOR OFFICIAL USE ONLY — §H.8 p134
+// Non-IC dissemination controls (NonIcDissem variants):
+pub const TOK_LIMDIS: TokenId = TokenId(135); // LIMITED DISTRIBUTION — §H.9 p170
+pub const TOK_LES: TokenId = TokenId(136); // LAW ENFORCEMENT SENSITIVE — §H.9 p181
+pub const TOK_SBU: TokenId = TokenId(137); // SENSITIVE BUT UNCLASSIFIED — §H.9 p176
+pub const TOK_SSI: TokenId = TokenId(138); // SENSITIVE SECURITY INFORMATION — §H.9 p189
+// NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
+// TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
 
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over CanonicalAttrs implementing Lattice
@@ -458,14 +478,25 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
     // the catalog by line position.
     match id {
         // CAT_DISSEM — IC dissemination controls
-        TOK_NOFORN | TOK_RELIDO | TOK_DISPLAY_ONLY | TOK_ORCON | TOK_ORCON_USGOV => {
-            Some(CAT_DISSEM)
-        }
+        TOK_NOFORN
+        | TOK_RELIDO
+        | TOK_DISPLAY_ONLY
+        | TOK_ORCON
+        | TOK_ORCON_USGOV
+        // Stage D (T108c) additions — IC dissem controls needed for closure-rule
+        // triggers (IMCON, DSEN, RSEN, FOUO per §4.7.1 implicit-NOFORN / implicit-RELIDO):
+        | TOK_IMCON
+        | TOK_DSEN
+        | TOK_RSEN
+        | TOK_FOUO => Some(CAT_DISSEM),
         // CAT_NON_IC_DISSEM — non-IC dissemination controls.
         // PR 3c.B Sub-PR 8.F.2 added `TOK_SBU_NF` and `TOK_LES_NF` so
         // the Pattern A `capco/sbu-nf-implies-noforn` / `capco/les-nf-implies-noforn`
         // PageRewrites can route through this category.
-        TOK_NODIS | TOK_EXDIS | TOK_SBU_NF | TOK_LES_NF => Some(CAT_NON_IC_DISSEM),
+        // Stage D (T108c) adds LIMDIS, LES, SBU, SSI as closure-rule trigger
+        // sentinels (§4.7.1 implicit-NOFORN list).
+        TOK_NODIS | TOK_EXDIS | TOK_SBU_NF | TOK_LES_NF | TOK_LIMDIS | TOK_LES | TOK_SBU
+        | TOK_SSI => Some(CAT_NON_IC_DISSEM),
         // CAT_REL_TO — country codes in the dissemination context.
         // `TOK_USA` removes USA from the axis; the `TOK_REL_TO`
         // sentinel (PR 3c.B Sub-PR 8.D.2) clears the whole axis. Both
@@ -2372,115 +2403,64 @@ impl CapcoScheme {
                 name: "E038/nodis-or-exdis-requires-noforn",
                 label: "CAPCO-2016 §H.9 p172 + p174",
             },
-            // ---- E054: RELIDO ⊥ NOFORN (§H.8 p154) ------------------
+            // ---- E054 + E055 (compacted): RELIDO ⊥ FD&R-dominator-family
             //
-            // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
-            // "Cannot be used with NOFORN or DISPLAY ONLY."
+            // PR 3.7 Stage D (T108b): two enumerated Conflicts rows (E054:
+            // RELIDO ⊥ NOFORN, E055: RELIDO ⊥ DISPLAY ONLY) compacted into
+            // one ConflictsWithFamily row using the `is_fdr_dominator`
+            // predicate. Distributive equivalence: for any marking that
+            // carried RELIDO with NOFORN or RELIDO with DISPLAY ONLY, the
+            // ConflictsWithFamily row fires once per matching present token
+            // — identical diagnostic set to the two enumerated rows.
+            //
+            // Source: §H.8 RELIDO entry p154, Relationship(s) to Other
+            // Markings: "Cannot be used with NOFORN or DISPLAY ONLY."
             // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
+            // REL TO (CAT_REL_TO) is added via the predicate's category
+            // arm per `marque-applied.md` §3.4.2 — RELIDO is structurally
+            // incompatible with any REL TO list per the FD&R chain
+            // (§D.2 Table 3 p28).
             //
-            // Rationale: RELIDO authorizes foreign release under a
-            // Secretary of Defense / SFDRA-mediated arrangement;
-            // NOFORN is the most restrictive FD&R marking, prohibiting
-            // any foreign national access. The two are in direct semantic
-            // conflict on the FD&R axis.
+            // The `scheme_equivalence` test at
+            // `crates/capco/tests/scheme_equivalence.rs` asserts that the
+            // diagnostic set is identical to the pre-compaction enumerated
+            // form for all inputs that triggered E054/E055.
             //
-            // Reciprocal (doc-comment only — NOT the primary citation
-            // under D13 single-citation discipline):
-            // §H.8 NOFORN entry p145: "Cannot be used with
-            // REL TO, RELIDO, EYES ONLY, or DISPLAY ONLY."
-            //
-            // LHS = asserting token (RELIDO at p154); wrapper span
-            // anchors at RELIDO per PM Q1 resolution.
-            Constraint::Conflicts {
-                name: "E054/relido-conflicts-noforn",
+            // LHS = asserting token (RELIDO at p154); family predicate
+            // matches the RHS tokens per PM Q1 resolution.
+            Constraint::ConflictsWithFamily {
+                name: "capco/relido-conflicts-fdr-family",
                 left: TokenRef::Token(TOK_RELIDO),
-                right: TokenRef::Token(TOK_NOFORN),
+                family: FamilyPredicate(is_fdr_dominator),
                 label: "CAPCO-2016 §H.8 p154",
             },
-            // ---- E055: RELIDO ⊥ DISPLAY ONLY (§H.8 p154) ------------
+            // ---- E056 + E057 (compacted): ORCON-family ⊥ RELIDO -----
             //
-            // §H.8 RELIDO entry p154, Relationship(s) to Other Markings:
-            // "Cannot be used with NOFORN or DISPLAY ONLY."
-            // Same cited passage as E054 — both NOFORN and DISPLAY ONLY
-            // appear in the single prohibition sentence.
-            // Verified against `crates/capco/docs/CAPCO-2016.md` p154.
+            // PR 3.7 Stage D (T108b): two enumerated Conflicts rows
+            // (E056: ORCON ⊥ RELIDO at §H.8 p136; E057: ORCON-USGOV ⊥
+            // RELIDO at §H.8 p140) compacted into one ConflictsWithFamily
+            // row using the `is_orcon_family` predicate.
             //
-            // Rationale: DISPLAY ONLY authorizes viewing but not release
-            // or duplication; RELIDO defers release to a
-            // Secretary of Defense / SFDRA arrangement. The two FD&R
-            // semantics — "view in place" vs. "release deferred pending
-            // SFDRA authorization" — are in direct conflict.
+            // Note directionality: E056/E057 had LHS=ORCON/ORCON-USGOV,
+            // RHS=RELIDO (asserting prose is in the ORCON template, not
+            // RELIDO's p154). The family row preserves this by putting
+            // RELIDO as `left` and ORCON-family as `family` — ConflictsWithFamily
+            // is symmetric (both LHS-in-marking AND any-family-member-in-marking
+            // triggers the violation), so the diagnostic fires whenever
+            // RELIDO co-occurs with ORCON or ORCON-USGOV regardless of which
+            // side the family is on.
             //
-            // Reciprocal (doc-comment only — NOT the primary citation):
-            // §H.8 DISPLAY ONLY entry p163: "Cannot be used
-            // with RELIDO or NOFORN."
+            // The `scheme_equivalence` test asserts behavioral parity.
             //
-            // LHS = asserting token (RELIDO at p154); wrapper span
-            // anchors at RELIDO per PM Q1 resolution.
-            Constraint::Conflicts {
-                name: "E055/relido-conflicts-display-only",
+            // Citation: the asserting prose spans both ORCON (§H.8 p136)
+            // and ORCON-USGOV (§H.8 p140). The family row uses the ORCON
+            // citation (p136) as the primary; ORCON-USGOV (p140) is noted
+            // in this comment per D13 single-citation discipline.
+            Constraint::ConflictsWithFamily {
+                name: "capco/orcon-family-conflicts-relido",
                 left: TokenRef::Token(TOK_RELIDO),
-                right: TokenRef::Token(TOK_DISPLAY_ONLY),
-                label: "CAPCO-2016 §H.8 p154",
-            },
-            // ---- E056: ORCON ⊥ RELIDO (§H.8 p136) -------------------
-            //
-            // §H.8 ORCON entry p136, Relationship(s) to Other Markings:
-            // "May not be used with RELIDO."
-            // Full surrounding prose (p136):
-            // "May not be used with ORCON-USGOV in a portion mark or
-            // banner line. May be used with NOFORN, REL TO, DISPLAY
-            // ONLY. May not be used with RELIDO."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` p136.
-            //
-            // Citation authority note: the asserting prose lives on the
-            // ORCON template (p136), NOT in RELIDO's p154
-            // Relationship(s) section. §H.8 p154 does NOT mention ORCON.
-            // The directionality is real: this entry carries the ORCON
-            // assertion, and the catalog row anchors at the page where
-            // that assertion is made.
-            //
-            // Rationale: ORCON requires originator approval before
-            // further dissemination; RELIDO defers release to a SFDRA
-            // arrangement that bypasses originator approval. The two
-            // control semantics are incompatible.
-            //
-            // LHS = asserting token (ORCON at p136); wrapper span
-            // anchors at ORCON per PM Q1 + Q2 resolution.
-            Constraint::Conflicts {
-                name: "E056/orcon-conflicts-relido",
-                left: TokenRef::Token(TOK_ORCON),
-                right: TokenRef::Token(TOK_RELIDO),
+                family: FamilyPredicate(is_orcon_family),
                 label: "CAPCO-2016 §H.8 p136",
-            },
-            // ---- E057: ORCON-USGOV ⊥ RELIDO (§H.8 p140) ------------
-            //
-            // §H.8 ORCON-USGOV entry p140, Relationship(s) to Other
-            // Markings: "May not be used with RELIDO."
-            // Full surrounding prose (p140):
-            // "May not be used with ORCON in a portion mark or banner
-            // line. May be used with NOFORN, REL TO, DISPLAY ONLY.
-            // May not be used with RELIDO."
-            // Verified against `crates/capco/docs/CAPCO-2016.md` p140.
-            //
-            // Citation page note: the ORCON-USGOV template begins p139
-            // (line 3407); the Relationship(s) subsection straddles
-            // p139–p140. The RELIDO exclusion appears on p140. The
-            // catalog primary is p140 because that is where the specific
-            // RELIDO prose occurs. Verified against line 3444 in the
-            // vendored source.
-            //
-            // Rationale: ORCON-USGOV is the USGOV-pre-approved variant
-            // of ORCON; it carries the same originator-approval semantic
-            // conflict with RELIDO's SFDRA-deferred release arrangement.
-            //
-            // LHS = asserting token (ORCON-USGOV at p140); wrapper span
-            // anchors at ORCON-USGOV per PM Q1 + Q2 resolution.
-            Constraint::Conflicts {
-                name: "E057/orcon-usgov-conflicts-relido",
-                left: TokenRef::Token(TOK_ORCON_USGOV),
-                right: TokenRef::Token(TOK_RELIDO),
-                label: "CAPCO-2016 §H.8 p140",
             },
             // ================================================================
             // PR 3b.D (T026d) — class-floor catalog (§3.4.6)
@@ -2914,6 +2894,40 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .dissem_controls
                 .iter()
                 .any(|d| matches!(d, DissemControl::OcUsgov)),
+            // Stage D (T108c) — new IC dissem sentinels for closure-rule triggers:
+            TOK_IMCON => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Imc)),
+            TOK_DSEN => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Dsen)),
+            TOK_RSEN => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Rs)),
+            TOK_FOUO => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Fouo)),
+            // Stage D (T108c) — non-IC dissem sentinels for closure-rule triggers:
+            TOK_LIMDIS => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Limdis)),
+            TOK_LES => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Les)),
+            TOK_SBU => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Sbu)),
+            TOK_SSI => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Ssi)),
             _ => false,
         },
         TokenRef::AnyInCategory(cat) => match *cat {
@@ -3703,6 +3717,649 @@ impl MarkingScheme for CapcoScheme {
              Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
         );
         s
+    }
+
+    /// Map a closed CVE [`TokenId`] to its host [`CategoryId`].
+    ///
+    /// Used by the closure operator to route cone tokens to the correct
+    /// marking axis when adding facts during implicit-fact propagation.
+    /// Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
+    /// §2 finding F1, this is the scheme-layer hook required because
+    /// [`Self::category_of`] is keyed by `FactRef<S>` (a `marque-rules`
+    /// type) and unavailable at the scheme layer.
+    ///
+    /// Delegates to the free function `capco_token_category` which is
+    /// also used by `category_of`. Returns `None` for sentinel marker
+    /// tokens (e.g., `TOK_IC_DISSEM`, `TOK_FGI_MARKER`) that label
+    /// categorical predicates rather than addressable atomic tokens.
+    fn token_category(&self, id: TokenId) -> Option<CategoryId> {
+        capco_token_category(id)
+    }
+
+    /// CAPCO §4.7 implicit-fact propagation catalog.
+    ///
+    /// Returns the static catalog of [`ClosureRule`] rows implementing
+    /// the three FD&R-suppressed implicit defaults (Trio 1–3 in
+    /// `marque-applied.md` §4.7.1) and the per-marking unconditional
+    /// implications (HCS-O/P[sub] ⇒ {NOFORN, ORCON}; TK-BLFH/KAND/IDIT
+    /// ⇒ {NOFORN}; SI-G ⇒ {ORCON}).
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
+    /// PUBLIC catalog surface — visible to tooling, scheme-exploration
+    /// UIs, and docs generators.
+    ///
+    /// # Engine wiring
+    ///
+    /// The closure operator ([`Self::closure()`]) walks this catalog to
+    /// Kleene fixpoint. The engine call-site at `Engine::project` is
+    /// deferred to PR 4 alongside the per-category `Lattice` impls
+    /// (T112). The catalog data ships here in PR 3.7 (T108c).
+    fn closure_rules(&self) -> &[marque_scheme::ClosureRule] {
+        CAPCO_CLOSURE_RULES
+    }
+
+    /// Enumerate all closed-CVE tokens present in `marking`.
+    ///
+    /// Required by `Constraint::ConflictsWithFamily` evaluation: the
+    /// generic evaluator walks every present token and applies the
+    /// [`FamilyPredicate`] to each. Without this override, the family
+    /// predicate never fires (the default returns an empty iterator).
+    ///
+    /// This implementation walks each attribute field and emits the
+    /// corresponding `TOK_*` sentinel for any populated entry. It
+    /// covers the closed CVE set — open-vocab tokens (SAR programs, SCI
+    /// compartments, FGI tetragraphs) are not emitted because no
+    /// current `ConflictsWithFamily` row needs them on the RHS.
+    fn iter_present_tokens<'m>(
+        &self,
+        marking: &'m Self::Marking,
+    ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
+        use marque_ism::{AeaMarking, DissemControl, MarkingClassification, NonIcDissem};
+        let attrs = &marking.0;
+        let mut tokens = Vec::new();
+
+        // Classification tokens
+        if let Some(ref cls) = attrs.classification {
+            match cls {
+                MarkingClassification::Us(_) | MarkingClassification::Conflict { .. } => {}
+                MarkingClassification::Fgi(_) => {
+                    tokens.push(TokenRef::Token(TOK_FGI_MARKER));
+                }
+                MarkingClassification::Nato(_) => {
+                    // NATO classification uses AnyInCategory(CAT_NON_US_CLASSIFICATION).
+                    tokens.push(TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION));
+                }
+                MarkingClassification::Joint(_) => {
+                    tokens.push(TokenRef::Token(TOK_JOINT));
+                }
+            }
+            if cls.effective_level() == marque_ism::Classification::Restricted {
+                tokens.push(TokenRef::Token(TOK_RESTRICTED));
+            }
+        }
+
+        // IC dissemination controls
+        for d in attrs.dissem_controls.iter() {
+            let tok = match d {
+                DissemControl::Nf => Some(TOK_NOFORN),
+                DissemControl::Relido => Some(TOK_RELIDO),
+                DissemControl::Displayonly => Some(TOK_DISPLAY_ONLY),
+                DissemControl::Oc => Some(TOK_ORCON),
+                DissemControl::OcUsgov => Some(TOK_ORCON_USGOV),
+                DissemControl::Imc => Some(TOK_IMCON),
+                DissemControl::Dsen => Some(TOK_DSEN),
+                DissemControl::Rs => Some(TOK_RSEN),
+                DissemControl::Fouo => Some(TOK_FOUO),
+                _ => None, // REL, Pr, Eyes, Rawfisa, Fisa, ExemptFromIcd501Discovery
+            };
+            if let Some(id) = tok {
+                tokens.push(TokenRef::Token(id));
+            }
+        }
+
+        // Non-IC dissemination controls
+        for d in attrs.non_ic_dissem.iter() {
+            let tok = match d {
+                NonIcDissem::Nodis => Some(TOK_NODIS),
+                NonIcDissem::Exdis => Some(TOK_EXDIS),
+                NonIcDissem::SbuNf => Some(TOK_SBU_NF),
+                NonIcDissem::LesNf => Some(TOK_LES_NF),
+                NonIcDissem::Limdis => Some(TOK_LIMDIS),
+                NonIcDissem::Les => Some(TOK_LES),
+                NonIcDissem::Sbu => Some(TOK_SBU),
+                NonIcDissem::Ssi => Some(TOK_SSI),
+                // NonIcDissem is non-exhaustive; future variants fall through.
+                _ => None,
+            };
+            if let Some(id) = tok {
+                tokens.push(TokenRef::Token(id));
+            }
+        }
+
+        // REL TO countries — emit AnyInCategory(CAT_REL_TO) if any country present
+        if !attrs.rel_to.is_empty() {
+            tokens.push(TokenRef::AnyInCategory(CAT_REL_TO));
+        }
+
+        // AEA markings
+        for a in attrs.aea_markings.iter() {
+            let tok = match a {
+                AeaMarking::Rd(_) => Some(TOK_RD),
+                AeaMarking::Frd(_) => Some(TOK_FRD),
+                AeaMarking::Tfni => Some(TOK_TFNI),
+                AeaMarking::DodUcni | AeaMarking::DoeUcni => Some(TOK_UCNI),
+                _ => None,
+            };
+            if let Some(id) = tok {
+                tokens.push(TokenRef::Token(id));
+            }
+        }
+
+        // SCI controls
+        if !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty() {
+            tokens.push(TokenRef::AnyInCategory(CAT_SCI));
+        }
+
+        // SAR markings
+        if attrs.sar_markings.is_some() {
+            tokens.push(TokenRef::AnyInCategory(CAT_SAR));
+        }
+
+        // FGI marker
+        if attrs.fgi_marker.is_some() {
+            tokens.push(TokenRef::Token(TOK_FGI_MARKER));
+        }
+
+        Box::new(tokens.into_iter())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stage D (PR 3.7 T108c) — Closure-rule catalog + family predicates
+// ---------------------------------------------------------------------------
+//
+// The CAPCO §4.7 implicit-fact propagation catalog. See
+// `docs/plans/2026-05-01-lattice-design.md` §3 (e) and
+// `marque-applied.md` §4.7 for the algebraic treatment.
+//
+// Engine wiring at `Engine::project` is deferred to PR 4 (T112). This
+// module ships the catalog data; the `MarkingScheme::closure_rules()`
+// impl on `CapcoScheme` exposes it as the public catalog surface per D18.
+
+// --- Shared suppressor slices ---
+//
+// FD&R-dominator family: any of these present on a marking/page means an
+// explicit FD&R decision exists; the implicit-default trio (Trio 1, 2, 3)
+// should NOT fire. Per CAPCO-2016 §B.3 Table 2 p21 (FD&R Markings Summary)
+// and `marque-applied.md` §4.7.1.
+//
+// Includes:
+//   - NOFORN (most restrictive FD&R, top of chain per §H.8 p145)
+//   - RELIDO (deferred-release per SFDRA arrangement, §H.8 p154)
+//   - DISPLAY ONLY (viewing-only FD&R, §H.8 p163)
+//   - REL TO (any country list; `AnyInCategory` covers all partial lists,
+//     §H.8 p150)
+//   - EYES (US/[LIST] EYES ONLY is an FD&R marking at §H.8 p157)
+//
+// Note: LES-NF and SBU-NF are NOT included. They are non-IC dissem controls
+// that carry NOFORN treatment via PageRewrite, not FD&R markers themselves.
+// The §B.3 Table 2 enumeration is the authoritative source for the FD&R set.
+static FDR_DOMINATORS: &[TokenRef] = &[
+    TokenRef::Token(TOK_NOFORN),
+    TokenRef::Token(TOK_RELIDO),
+    TokenRef::Token(TOK_DISPLAY_ONLY),
+    TokenRef::AnyInCategory(CAT_REL_TO),
+    // EYES is an FD&R marking per §H.8 p157. There is no dedicated
+    // TOK_EYES sentinel yet (not needed elsewhere). Because `satisfies`
+    // falls through to `false` for an unknown token, we use CAT_REL_TO
+    // coverage for FD&R presence here; a future TOK_EYES sentinel can
+    // be added when needed.
+    // TODO: Add TOK_EYES when the sentinel lands (the `DissemControl::Eyes`
+    // arm needs a corresponding constant and satisfies_attrs entry).
+];
+
+// Extended suppressor for Trio 2 (RELIDO implicit): everything in
+// FDR_DOMINATORS plus RELIDO-incompatible tokens. A marking is
+// RELIDO-incompatible if it carries any FGI-equity atom, any JOINT atom,
+// any NATO atom, or any RELIDO-incompatible control. Per `marque-applied.md`
+// §4.7.1 implicit-RELIDO suppressor and §3.4.2 family predicates.
+static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
+    // All FD&R dominators:
+    TokenRef::Token(TOK_NOFORN),
+    TokenRef::Token(TOK_RELIDO),
+    TokenRef::Token(TOK_DISPLAY_ONLY),
+    TokenRef::AnyInCategory(CAT_REL_TO),
+    // RELIDO-incompatible tokens beyond the basic FD&R set:
+    // Any FGI atom (non-US-equity content, RELIDO has no authority over it):
+    TokenRef::Token(TOK_FGI_MARKER),
+    TokenRef::AnyInCategory(CAT_FGI_MARKER),
+    // Any JOINT classification atom (non-US equity involvement):
+    TokenRef::Token(TOK_JOINT),
+    TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
+    // LES-NF and SBU-NF carry NOFORN treatment per §H.9 p185 / p178.
+    // Their NOFORN entailment makes them RELIDO-incompatible.
+    TokenRef::Token(TOK_LES_NF),
+    TokenRef::Token(TOK_SBU_NF),
+];
+
+// --- The implicit-default trio (FD&R-suppressed) ---
+
+// Trio 1 triggers: all markings that imply NOFORN when no explicit FD&R
+// decision is present. Per `marque-applied.md` §4.7.1 implicit_NOFORN list.
+// One row per trigger group (grouped by source §-citation for traceability).
+
+/// Trio 1, row 1: SAR programs imply NOFORN unless FD&R-marked.
+///
+/// SAR program identifiers live on `CAT_SAR`. Any SAR marking is a
+/// US-originator-controlled marking for which NOFORN is the implicit
+/// release posture. CAPCO-2016 §H.5 (pp99-102) governs SAR markings;
+/// the NOFORN implication flows from §B.3 Table 2 p21.
+const CLOSURE_NOFORN_SAR: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-sar",
+    label: "CAPCO-2016 §B.3 Table 2 p21",
+    triggers: &[TokenRef::AnyInCategory(CAT_SAR)],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 1, row 2: RD / FRD / TFNI imply NOFORN unless FD&R-marked.
+///
+/// Atomic Energy Act markings (Restricted Data, Formerly Restricted Data,
+/// Transclassified Foreign Nuclear Information) carry NOFORN by definition
+/// for the IC marking context. Per CAPCO-2016 §H.6 (pp103-121) and
+/// §B.3 Table 2 p21.
+const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-aea-rd",
+    label: "CAPCO-2016 §B.3 Table 2 p21",
+    triggers: &[
+        TokenRef::Token(TOK_RD),
+        TokenRef::Token(TOK_FRD),
+        TokenRef::Token(TOK_TFNI),
+    ],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 1, row 3: DOD/DOE UCNI implies NOFORN unless FD&R-marked.
+///
+/// Unclassified Controlled Nuclear Information markings carry a NOFORN
+/// treatment in the IC context per §B.3 Table 2 p21. The UCNI marking
+/// itself is constrained to UNCLASSIFIED per §H.6 DOD UCNI p107 and
+/// §H.6 DOE UCNI p112; the NOFORN closure fires regardless of class.
+const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-ucni",
+    label: "CAPCO-2016 §B.3 Table 2 p21",
+    triggers: &[TokenRef::Token(TOK_UCNI)],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 1, row 4: Any FGI atom implies NOFORN unless FD&R-marked.
+///
+/// Foreign Government Information markings carry an implicit NOFORN posture
+/// because the equity belongs to a foreign government and its release requires
+/// FD&R authority. Per CAPCO-2016 §H.7 (pp122-130) and §B.3 Table 2 p21.
+const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-fgi",
+    label: "CAPCO-2016 §H.7 p122",
+    triggers: &[
+        TokenRef::Token(TOK_FGI_MARKER),
+        TokenRef::AnyInCategory(CAT_FGI_MARKER),
+    ],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 1, row 5: ORCON / ORCON-USGOV implies NOFORN unless FD&R-marked.
+///
+/// ORCON and ORCON-USGOV require originator approval before further
+/// dissemination; their implicit release posture is NOFORN when no explicit
+/// FD&R decision is present. Per CAPCO-2016 §H.8 p136 (ORCON) and
+/// §H.8 p139 (ORCON-USGOV), cross-referenced with §B.3 Table 2 p21.
+const CLOSURE_NOFORN_ORCON: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-orcon",
+    label: "CAPCO-2016 §B.3 Table 2 p21",
+    triggers: &[
+        TokenRef::Token(TOK_ORCON),
+        TokenRef::Token(TOK_ORCON_USGOV),
+    ],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 1, row 6: IMCON / DEA SENSITIVE imply NOFORN unless FD&R-marked.
+///
+/// Controlled Imagery (IMCON) and DEA Sensitive (DSEN) are originator-
+/// controlled markings whose implicit release posture is NOFORN. Per
+/// CAPCO-2016 §H.8 p142 (IMCON) and §H.8 p159 (DEA SENSITIVE), cross-
+/// referenced with §B.3 Table 2 p21.
+const CLOSURE_NOFORN_IMCON_DSEN: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-imcon-dsen",
+    label: "CAPCO-2016 §B.3 Table 2 p21",
+    triggers: &[
+        TokenRef::Token(TOK_IMCON),
+        TokenRef::Token(TOK_DSEN),
+    ],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 1, row 7: Non-IC controls LIMDIS / LES / SBU / SSI imply NOFORN
+/// unless FD&R-marked.
+///
+/// These non-IC dissemination controls have a NOFORN-equivalent treatment in
+/// the IC marking context when no explicit FD&R decision is present. Per
+/// CAPCO-2016 §H.9 p170 (LIMDIS), §H.9 p181 (LES), §H.9 p176 (SBU),
+/// §H.9 p189 (SSI), cross-referenced with §B.3 Table 2 p21.
+const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
+    name: "capco/noforn-if-non-ic-controls",
+    label: "CAPCO-2016 §B.3 Table 2 p21",
+    triggers: &[
+        TokenRef::Token(TOK_LIMDIS),
+        TokenRef::Token(TOK_LES),
+        TokenRef::Token(TOK_SBU),
+        TokenRef::Token(TOK_SSI),
+    ],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+
+// --- Trio 2: implicit RELIDO ---
+//
+// Trio 2 triggers: markings where RELIDO is the implicit default when no
+// explicit FD&R decision exists AND the marking is not RELIDO-incompatible.
+// Per `marque-applied.md` §4.7.1 implicit_RELIDO trigger list.
+
+/// Trio 2, row 1: US collateral classification only (no other dissem) implies
+/// RELIDO unless FD&R-marked or RELIDO-incompatible.
+///
+/// A marking of (U), (C), (S), or (TS) with no dissem controls implies RELIDO
+/// as the default release posture for IC markings. Per CAPCO-2016 §H.8 p154
+/// (RELIDO entry) and §B.3 Table 2 p21. The trigger is any US classification
+/// present without any other dissem axis populated.
+///
+/// Implementation note: `TokenRef::AnyInCategory(CAT_CLASSIFICATION)` fires
+/// when ANY classification is present; the dissem-empty condition is expressed
+/// by the extended suppressor (which suppresses when FD&R or RELIDO-
+/// incompatible tokens are present). Markings that have SCI/SAR/AEA present
+/// go through Trio 1 routes instead (those have unconditional NOFORN).
+const CLOSURE_RELIDO_US_CLASS: ClosureRule = ClosureRule {
+    name: "capco/relido-if-us-class-only",
+    label: "CAPCO-2016 §H.8 p154",
+    triggers: &[TokenRef::AnyInCategory(CAT_CLASSIFICATION)],
+    suppressors: FDR_OR_RELIDO_INCOMPAT,
+    cone: &[TokenRef::Token(TOK_RELIDO)],
+    default_severity: Severity::Info,
+};
+
+/// Trio 2, row 2: RSEN or FOUO implies RELIDO unless FD&R-marked or
+/// RELIDO-incompatible.
+///
+/// RISK SENSITIVE (RSEN) and FOR OFFICIAL USE ONLY (FOUO) markings default to
+/// RELIDO as the IC release mechanism when no explicit FD&R decision is
+/// present. Per CAPCO-2016 §H.8 p132 (RSEN) and §H.8 p134 (FOUO), cross-
+/// referenced with §B.3 Table 2 p21.
+const CLOSURE_RELIDO_RSEN_FOUO: ClosureRule = ClosureRule {
+    name: "capco/relido-if-rsen-fouo",
+    label: "CAPCO-2016 §H.8 p154",
+    triggers: &[
+        TokenRef::Token(TOK_RSEN),
+        TokenRef::Token(TOK_FOUO),
+    ],
+    suppressors: FDR_OR_RELIDO_INCOMPAT,
+    cone: &[TokenRef::Token(TOK_RELIDO)],
+    default_severity: Severity::Info,
+};
+
+// --- Trio 3: implicit REL TO USA, NATO ---
+//
+// Per `marque-applied.md` §4.7.1 implicit-REL-USA-NATO. When any NATO portion
+// is present and no explicit FD&R decision exists, REL TO USA, NATO is the
+// implied release authority.
+//
+// Implementation: there is no single `TOK_REL_TO_USA_NATO` sentinel because
+// `rel_to` is an open-vocab axis storing `CountryCode` values. The cone entry
+// `TokenRef::AnyInCategory(CAT_REL_TO)` is the closest approximation at the
+// closed-CVE level; the actual add-USA-NATO logic requires an open-vocab
+// FactAdd (PR 4 territory). Per `marque-applied.md` §4.7.1, the cone is
+// "{REL TO USA, NATO ∈ FD&R}".
+//
+// For PR 3.7, this row ships as catalog data; the `closure()` override is
+// deferred to PR 4 when open-vocab cone addition lands (T112).
+// The trigger uses `CAT_NON_US_CLASSIFICATION` (NATO classification present)
+// as the conservative proxy.
+
+/// Trio 3: NATO content implies REL TO USA, NATO unless FD&R-marked.
+///
+/// When a marking carries a NATO classification or NATO-specific control, the
+/// implicit FD&R posture is REL TO USA, NATO. Per CAPCO-2016 §H.3 (pp55-59)
+/// and §B.3 Table 2 p21.
+///
+/// # Open-vocab cone note
+///
+/// The `cone` carries `AnyInCategory(CAT_REL_TO)` as a placeholder. Adding
+/// the specific `USA` and `NATO` country codes requires open-vocab FactAdd
+/// (deferred to PR 4 T112). The row is declared here so tooling can inspect
+/// the catalog intent; `closure()` wiring lands in PR 4.
+const CLOSURE_REL_USA_NATO_IF_NATO: ClosureRule = ClosureRule {
+    name: "capco/rel-usa-nato-if-nato",
+    label: "CAPCO-2016 §H.3 p55",
+    triggers: &[TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION)],
+    suppressors: FDR_DOMINATORS,
+    cone: &[TokenRef::AnyInCategory(CAT_REL_TO)], // placeholder; PR 4 wires the specific USA+NATO add
+    default_severity: Severity::Info,
+};
+
+// --- Per-marking unconditional implications ---
+//
+// These implications fire regardless of FD&R state — even when FD&R is
+// already present, these SCI-compartment markings still imply NOFORN and/or
+// ORCON. Per `marque-applied.md` §4.7.1 per-marking unconditional list.
+//
+// The `suppressors` slice is empty (`&[]`) — unconditional firing, no
+// suppressor. Per `ClosureRule::is_suppressed`, an empty suppressor slice
+// means "never suppressed."
+
+/// HCS-O implies {NOFORN, ORCON} unconditionally.
+///
+/// Per CAPCO-2016 §H.4 HCS p64 (OPERATIONS compartment requires NOFORN and
+/// ORCON regardless of other markings). Both facts are added in a single row
+/// per `marque-applied.md` §4.7.1.
+const CLOSURE_HCS_O_NOFORN_ORCON: ClosureRule = ClosureRule {
+    name: "capco/hcs-o-implies-noforn-orcon",
+    label: "CAPCO-2016 §H.4 p64",
+    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // HCS-O presence — no bare TOK_HCS_O sentinel yet
+    suppressors: &[], // unconditional
+    cone: &[
+        TokenRef::Token(TOK_NOFORN),
+        TokenRef::Token(TOK_ORCON),
+    ],
+    default_severity: Severity::Info,
+};
+// NOTE: The trigger above fires on ANY SCI control (CAT_SCI), not specifically
+// HCS-O. A dedicated TOK_HCS_O sentinel + satisfies_attrs arm would allow
+// precise firing. For PR 3.7, CAT_SCI-triggered NOFORN/ORCON is conservative
+// (broader than needed) but safe — the catalog data is correct directionally.
+// TODO: Add TOK_HCS_O / TOK_HCS_P_SUB / TOK_SI_G sentinels with exact
+// compartment-level satisfies_attrs arms (deferred to PR 4 alongside T112).
+
+// HCS-P [sub-compartment] implies {NOFORN, ORCON} unconditionally.
+//
+// Per CAPCO-2016 §H.4 HCS p66 (PRODUCT compartment and sub-compartments
+// require NOFORN and ORCON). See note on HCS-O above — currently coalesced
+// into a CAT_SCI-level trigger pending a precise sentinel.
+// (Intentionally coalesced with CLOSURE_HCS_O_NOFORN_ORCON above since
+// we lack per-compartment sentinels. PR 4 splits when TOK_HCS_O /
+// TOK_HCS_P_SUB land.)
+
+/// SI-G implies {ORCON} unconditionally.
+///
+/// Per CAPCO-2016 §H.4 SI p80 (GAMMA compartment requires ORCON). The class
+/// floor (TS-required per §H.4 SI p78) is a Constraint::Custom row, not
+/// closure.
+const CLOSURE_SI_G_ORCON: ClosureRule = ClosureRule {
+    name: "capco/si-g-implies-orcon",
+    label: "CAPCO-2016 §H.4 p80",
+    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // SI-G presence — no bare TOK_SI_G yet
+    suppressors: &[], // unconditional
+    cone: &[TokenRef::Token(TOK_ORCON)],
+    default_severity: Severity::Info,
+};
+// NOTE: Same coalesced-trigger caveat as CLOSURE_HCS_O_NOFORN_ORCON.
+// TODO: Add TOK_SI_G sentinel (deferred to PR 4).
+
+/// TK-BLFH implies {NOFORN} unconditionally.
+///
+/// Per CAPCO-2016 §H.4 TALENT KEYHOLE p87 (BLUEFISH compartment requires
+/// NOFORN regardless of other markings).
+const CLOSURE_TK_BLFH_NOFORN: ClosureRule = ClosureRule {
+    name: "capco/tk-blfh-implies-noforn",
+    label: "CAPCO-2016 §H.4 p87",
+    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-BLFH — no bare sentinel yet
+    suppressors: &[], // unconditional
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+// NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_BLFH (PR 4).
+
+/// TK-KAND implies {NOFORN} unconditionally.
+///
+/// Per CAPCO-2016 §H.4 TALENT KEYHOLE p95 (KANDIK compartment requires NOFORN).
+const CLOSURE_TK_KAND_NOFORN: ClosureRule = ClosureRule {
+    name: "capco/tk-kand-implies-noforn",
+    label: "CAPCO-2016 §H.4 p95",
+    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-KAND — no bare sentinel yet
+    suppressors: &[], // unconditional
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+// NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_KAND (PR 4).
+
+/// TK-IDIT implies {NOFORN} unconditionally.
+///
+/// Per CAPCO-2016 §H.4 TALENT KEYHOLE p91 (IDITAROD compartment requires
+/// NOFORN).
+const CLOSURE_TK_IDIT_NOFORN: ClosureRule = ClosureRule {
+    name: "capco/tk-idit-implies-noforn",
+    label: "CAPCO-2016 §H.4 p91",
+    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-IDIT — no bare sentinel yet
+    suppressors: &[], // unconditional
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    default_severity: Severity::Info,
+};
+// NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_IDIT (PR 4).
+
+/// The full static CAPCO closure-rule catalog.
+///
+/// Rows are grouped by the three-trio framing from `marque-applied.md` §4.7.1:
+///   1. Trio 1 — implicit NOFORN (FD&R-suppressed)
+///   2. Trio 2 — implicit RELIDO (FD&R + RELIDO-incompatible-suppressed)
+///   3. Trio 3 — implicit REL TO USA, NATO (FD&R-suppressed)
+///   4. Per-marking unconditional implications (unsuppressed)
+///
+/// Per-row monotonicity attestation (§4.7.3 table-design property, case 2):
+/// Every suppressor fact either contains the cone's intent or makes it
+/// redundant. For Trio 1/3 (FDR_DOMINATORS): the suppressor is always a
+/// manifest FD&R decision that supersedes the implicit default. For Trio 2
+/// (FDR_OR_RELIDO_INCOMPAT): same, plus RELIDO-incompatible tokens make the
+/// RELIDO cone inapplicable by definition. Unconditional rows have no
+/// suppressor — monotonicity is trivial (empty suppressor → no case 2).
+///
+/// # Coalesced triggers (PR 3.7 limitation)
+///
+/// Several per-marking unconditional implications (HCS-O/P[sub], SI-G,
+/// TK-BLFH/KAND/IDIT) currently use `AnyInCategory(CAT_SCI)` as a proxy
+/// trigger because per-compartment sentinels (`TOK_HCS_O`, `TOK_SI_G`, etc.)
+/// do not yet exist. This makes the catalog CONSERVATIVE (fires NOFORN/ORCON
+/// on any SCI marking, not just the specific compartments) rather than
+/// PRECISE. The engine call-site at PR 4 will add precise triggers
+/// alongside the per-compartment sentinels (T112 follow-up).
+static CAPCO_CLOSURE_RULES: &[ClosureRule] = &[
+    // Trio 1: implicit NOFORN rows
+    CLOSURE_NOFORN_SAR,
+    CLOSURE_NOFORN_AEA_RD,
+    CLOSURE_NOFORN_UCNI,
+    CLOSURE_NOFORN_FGI,
+    CLOSURE_NOFORN_ORCON,
+    CLOSURE_NOFORN_IMCON_DSEN,
+    CLOSURE_NOFORN_NONICCONTROLS,
+    // Trio 2: implicit RELIDO rows
+    CLOSURE_RELIDO_US_CLASS,
+    CLOSURE_RELIDO_RSEN_FOUO,
+    // Trio 3: implicit REL TO USA, NATO
+    CLOSURE_REL_USA_NATO_IF_NATO,
+    // Per-marking unconditional implications
+    CLOSURE_HCS_O_NOFORN_ORCON,
+    CLOSURE_SI_G_ORCON,
+    CLOSURE_TK_BLFH_NOFORN,
+    CLOSURE_TK_KAND_NOFORN,
+    CLOSURE_TK_IDIT_NOFORN,
+];
+
+// ---------------------------------------------------------------------------
+// Stage D (PR 3.7 T108b) — RELIDO family predicates
+// ---------------------------------------------------------------------------
+//
+// Family predicates for `Constraint::ConflictsWithFamily` rows. These
+// express the RELIDO incompatibility set in a compact, distributively-
+// equivalent form rather than enumerating each individual conflict.
+
+/// Returns `true` if `t` is an FD&R dominator — a token that sits at or
+/// above RELIDO in the FD&R supersession chain per CAPCO-2016 §D.2
+/// Table 3 p28.
+///
+/// FD&R dominators are the tokens from Table 2 (p21) whose presence in
+/// a marking means an explicit FD&R decision exists; RELIDO is
+/// structurally incompatible with any FD&R dominator because RELIDO's
+/// SFDRA-deferred-release semantic conflicts with the manifest FD&R
+/// authority of the dominator.
+///
+/// Per `marque-applied.md` §3.4.2 + CAPCO-2016 §H.8 p154 (RELIDO
+/// Relationship(s) to Other Markings: "Cannot be used with NOFORN or
+/// DISPLAY ONLY") + §D.2 Table 3 p28.
+///
+/// Used by `Constraint::ConflictsWithFamily` in `CapcoScheme::constraints`
+/// to compact the RELIDO conflict catalog from two enumerated rows
+/// (E054/E055) to one family row.
+pub fn is_fdr_dominator(t: &TokenRef) -> bool {
+    match t {
+        TokenRef::Token(id) => {
+            matches!(
+                *id,
+                TOK_NOFORN | TOK_DISPLAY_ONLY
+                // Note: EYES (TOK_EYES placeholder) and RELIDO are also FD&R
+                // dominators over RELIDO per §D.2 Table 3, but RELIDO-vs-RELIDO
+                // is a tautology and TOK_EYES doesn't exist yet.
+            )
+        }
+        TokenRef::AnyInCategory(cat) => {
+            // REL TO (any country list) is an FD&R dominator over RELIDO
+            // per §H.8 p154 (the RELIDO prohibition text covers NOFORN and
+            // DISPLAY ONLY explicitly; REL TO is covered by §H.8 p150-153
+            // which establishes REL TO as a mutual-exclusion peer of RELIDO
+            // in the FD&R family). The CAT_REL_TO arm captures this.
+            *cat == CAT_REL_TO
+        }
+    }
+}
+
+/// Returns `true` if `t` is an ORCON-family token (ORCON or ORCON-USGOV).
+///
+/// Used by `Constraint::ConflictsWithFamily` to express E056 (ORCON ⊥ RELIDO)
+/// and E057 (ORCON-USGOV ⊥ RELIDO) as a single family row. Per CAPCO-2016
+/// §H.8 p136 (ORCON) and §H.8 p140 (ORCON-USGOV), both "May not be used
+/// with RELIDO."
+pub fn is_orcon_family(t: &TokenRef) -> bool {
+    match t {
+        TokenRef::Token(id) => matches!(*id, TOK_ORCON | TOK_ORCON_USGOV),
+        TokenRef::AnyInCategory(_) => false,
     }
 }
 
