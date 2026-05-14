@@ -76,7 +76,9 @@ fn audit_note_engine_promote_sealing_pattern() {
     };
 
     let timestamp = SystemTime::UNIX_EPOCH; // deterministic for snapshot
-    let classifier_id: Option<Arc<str>> = Some(Arc::from("test-classifier-id"));
+    // Use the SC-006 allowlisted test sentinel (see marque/tests/no_classifier_id_in_commits.rs
+    // ALLOWED_SENTINELS list — TEST-AUDIT-99 is the audit-test-scoped sentinel).
+    let classifier_id: Option<Arc<str>> = Some(Arc::from("TEST-AUDIT-99"));
 
     // Confidence::strict(1.0) — strict-path recognizer, rule certainty 1.0.
     let confidence = Confidence::strict(1.0);
