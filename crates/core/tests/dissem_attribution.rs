@@ -180,6 +180,55 @@ fn no_classification_overridden_origin_nato_routes_to_dissem_nato() {
 }
 
 #[test]
+fn parser_with_default_origin_nato_routes_no_classification_dissems_to_dissem_nato() {
+    // R3 regression-catch: pin the end-to-end plumbing from
+    // `Parser::with_default_origin(DefaultOrigin::Nato)` through `parse`
+    // into `attribute_dissems`. The earlier
+    // `no_classification_overridden_origin_nato_routes_to_dissem_nato`
+    // test constructs `ParsedAttrs` directly and calls
+    // `marque_ism::attribute_dissems` — that pins the IC-crate
+    // attribution function but does NOT pin the parser's use of
+    // `self.default_origin`. A `parse()` regression that ignored the
+    // builder's value and always passed `DefaultOrigin::Us` to
+    // `attribute_dissems` would pass every other test in this file.
+    //
+    // Fixture: `(JUNK//NF)`. Block 0 (`JUNK`) does not parse as a US
+    // classification, so `parser.rs:335-348` leaves
+    // `attrs.classification` as `None` while still consuming the slot.
+    // Block 1 (`NF`) parses as a dissem control via
+    // `DissemControl::parse` at `parser.rs:591-599`. With no
+    // classification axis, `attribute_dissems` falls through to the
+    // builder's `default_origin` per the contract in
+    // `crates/ism/src/dissem_attribution.rs:121-138`, routing `NF` to
+    // `dissem_nato` instead of `dissem_us`.
+    //
+    // Authority: CAPCO-2016 §G.2 Table 5 (pp 40-45) — the NATO-dissem
+    // ARH rule that the post-parse `attribute_dissems` pass implements;
+    // see `marque_ism::dissem_attribution` module docs.
+    let tokens = CapcoTokenSet;
+    let parser = Parser::new(&tokens).with_default_origin(DefaultOrigin::Nato);
+    let src = b"(JUNK//NF)";
+    let attrs = parse_portion_us(&parser, src);
+    assert!(
+        attrs.classification.is_none(),
+        "fixture must reach the no-classification path; got {:?}",
+        attrs.classification,
+    );
+    assert!(
+        attrs.dissem_us.is_empty(),
+        "with_default_origin(Nato) must NOT populate dissem_us; got {:?}",
+        attrs.dissem_us,
+    );
+    assert_eq!(
+        attrs.dissem_nato.len(),
+        1,
+        "with_default_origin(Nato) must route NF to dissem_nato; got {:?}",
+        attrs.dissem_nato,
+    );
+    assert_eq!(attrs.dissem_nato[0].value, DissemControl::Nf);
+}
+
+#[test]
 fn fgi_classification_routes_dissem_to_dissem_us() {
     // FGI portion (no US axis) still routes to dissem_us by the
     // attribute_dissems contract: NATO is the only foreign classification
