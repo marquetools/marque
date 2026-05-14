@@ -331,16 +331,20 @@ pub struct RuleContext<'a> {
     /// the pass-1 splice. The borrow lifetime `'a` is tied to that
     /// cache and dies when pass-2 dispatch completes.
     ///
-    /// At PR 7c (this commit) the field is plumbed in for advisory
-    /// rule logic and to anchor the engine-applied
-    /// `PrecedingFixPenalty` at the pass-2 confidence-threshold gate.
-    /// Rules that need to differentiate "this defect existed before
-    /// pass-1" from "pass-1 exposed this defect by reshaping bytes"
-    /// can branch on `pre_pass_1_attrs.is_some()`. Future evolution
-    /// (deferred to a follow-up PR per PM decision D-7.7) replaces
-    /// this borrow with `Arc<CanonicalAttrs>` when the parse cache
-    /// adopts refcount-shared attrs alongside the v0.2 LMDB
-    /// incremental cache.
+    /// The field is the architectural two-pass-reshape signal: rules
+    /// that need to differentiate "this defect existed before pass-1"
+    /// from "pass-1 exposed this defect by reshaping bytes" can branch
+    /// on `pre_pass_1_attrs.is_some()`. No current rule consumes the
+    /// signal — it is plumbed through every rule's `check` signature
+    /// so future consumers can read it without re-threading the
+    /// lifetime parameter. The engine-applied `PrecedingFixPenalty`
+    /// mechanism originally planned to consume the field's PRESENCE
+    /// was retired in PR 7c per D-7.22 (misunderstanding-derived,
+    /// path was independently confirmed dead code under current
+    /// `Phase::Localized` rules). Future evolution (deferred per
+    /// D-7.7) replaces this borrow with `Arc<CanonicalAttrs>` when
+    /// the parse cache adopts refcount-shared attrs alongside the
+    /// v0.2 LMDB incremental cache.
     pub pre_pass_1_attrs: Option<&'a CanonicalAttrs>,
 }
 

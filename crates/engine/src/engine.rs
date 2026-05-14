@@ -2838,8 +2838,11 @@ fn synthesize_fixes(
     // `candidate_span` is unset) so multi-intent batches on the same
     // marking apply atomically. BTreeMap keyed on (start, end) so
     // iteration order is deterministic — Span itself doesn't impl Ord.
-    let mut groups: BTreeMap<(usize, usize), (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>)> =
-        BTreeMap::new();
+    #[allow(clippy::type_complexity)]
+    let mut groups: BTreeMap<
+        (usize, usize),
+        (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
+    > = BTreeMap::new();
     for &d in diagnostics {
         let Some(intent) = d.fix.as_ref() else {
             continue;
