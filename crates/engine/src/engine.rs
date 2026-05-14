@@ -1641,10 +1641,10 @@ type PrePass1Cache = SmallVec<[(Span, marque_ism::CanonicalAttrs); 4]>;
 /// (`CanonicalAttrs`) is borrowed into `RuleContext.pre_pass_1_attrs`
 /// for advisory rule logic.
 #[inline]
-fn pre_pass_1_attrs_for_span<'a>(
-    cache: &'a [(Span, marque_ism::CanonicalAttrs)],
+fn pre_pass_1_attrs_for_span(
+    cache: &[(Span, marque_ism::CanonicalAttrs)],
     query_span: Span,
-) -> Option<&'a marque_ism::CanonicalAttrs> {
+) -> Option<&marque_ism::CanonicalAttrs> {
     cache.iter().find_map(|(marking_span, attrs)| {
         if span_is_within_marking(query_span, *marking_span) {
             Some(attrs)
