@@ -103,3 +103,8 @@ mis = "mis"
 
 # "unparseable" is acceptable (both forms exist in English)
 unparseable = "unparseable"
+# in crates/ism/build.rs there are multiple references to a
+# spelling mistake in the ODNI ISM canonical source
+# "Supressed" with one 'p'
+Supressed = "Supressed"
+[
