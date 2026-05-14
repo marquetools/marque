@@ -2,45 +2,38 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Negative property test: non-monotone catalog bugs are detected.
+//! Negative property test: non-monotone closure-catalog bugs produce
+//! an observable monotonicity violation.
 //!
-//! This test verifies that a scheme with a pathologically non-monotone
-//! closure catalog — one where the suppressor depends on a dynamic fact
-//! count rather than a static token presence — eventually panics (or
-//! fails monotonicity) before reaching `MAX_CLOSURE_ITERATIONS`.
+//! ## What this file actually tests (post-Copilot review)
 //!
-//! A non-monotone catalog would prevent the operator from converging,
-//! because adding a fact could re-suppress a previous addition, which
-//! would cause the addition to be un-done on the next pass — but removing
-//! facts is forbidden by the extensiveness requirement. The implementation
-//! in `proptest_closure.rs` uses a bitset where OR is the only operation
-//! (extensive by construction); non-monotone catalogs that try to remove
-//! bits cannot be expressed in this model.
+//! Three tests exercise the negative property in increasing fidelity:
 //!
-//! Instead, this test uses a custom marking type where the suppressor
-//! is a parity check (fires when an even number of bits are set), which
-//! is non-monotone: adding a bit can toggle the suppressor from off to on
-//! and vice versa. The monotonicity proptest should find a counterexample
-//! for such a catalog.
+//! 1. `monotone_catalog_satisfies_monotonicity` — positive reference
+//!    case (a `MonotoneScheme` with an unconditional A→B rule satisfies
+//!    `closure(m1) ⊑ closure(m2)` for `m1 ⊑ m2`).
+//! 2. `non_monotone_scenario_is_detectable` — hand-computed asserts
+//!    that the violation can be EXPRESSED as a data structure;
+//!    asserts the disjoint-suppressor invariant on the monotone
+//!    catalog (no suppressor token appears in any cone).
+//! 3. `non_monotone_synthetic_scheme_violates_monotonicity_observably`
+//!    — constructs a `NonMonotoneScheme` with the `A→B suppressed by C`
+//!    token-presence rule (C is in the marking universe and can be
+//!    added by other rules, so the disjoint-suppressor invariant is
+//!    violated); observes that `closure({A}) = {A, B}` but
+//!    `closure({A, C}) = {A, C}` — a real monotonicity violation
+//!    produced by walking the synthetic scheme's `closure()` impl.
 //!
-//! ## How this test works
-//!
-//! We do NOT use `#[should_panic]` on the proptest itself, because proptest
-//! machinery catches panics internally. Instead, we:
-//!
-//! 1. Construct a "non-monotone" scheme with a parity-suppressed rule.
-//! 2. Manually construct a pair (m1, m2) where m1 ⊑ m2 but the parity
-//!    suppressor fires differently for m1 and m2, demonstrating that
-//!    closure(m1) ⊄ closure(m2) — a monotonicity violation.
-//! 3. Assert the violation is observable.
-//!
-//! This validates that the monotonicity proptest in `proptest_closure.rs`
-//! would correctly catch this class of catalog bug.
+//! The third test is the load-bearing one (per Copilot PR 3.7 review
+//! #8): the prior version of this file relied only on the hand-
+//! computed assertion at #2; #3 was added to exercise the negative
+//! property through the closure operator itself rather than via
+//! hand-rolled bool arithmetic.
 //!
 //! Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
 //! finding R3 (architect-preflight): "negative proptest per architect-preflight
 //! R3 — synthetic closure rule with non-monotone suppressor; assert the
-//! closure operator's idempotence/monotonicity proptest fails."
+//! closure operator's monotonicity property fails."
 
 use marque_scheme::{
     Category, Constraint, ConstraintViolation, Lattice, MarkingScheme, PageRewrite, Parsed, Scope,

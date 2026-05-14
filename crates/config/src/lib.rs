@@ -76,6 +76,21 @@ pub enum ConfigError {
     )]
     UnknownSeverity { rule: String, value: String },
 
+    /// Closure-rule severity string in `[closure_rules]` config is not one
+    /// of the recognized values. Differs from `UnknownSeverity` because
+    /// closure rules do not accept `"fix"` (closure firings propagate
+    /// facts, not byte-level fixes), so the user-facing error message
+    /// should not list `"fix"` as an expected value.
+    /// Per Copilot PR 3.7 review #3 — Constitution VIII fidelity for
+    /// the diagnostic surface (don't tell the user `"fix"` is acceptable
+    /// for closure rules then reject `"fix"` on the next code path).
+    #[error(
+        "closure rule {rule:?} has unrecognized severity {value:?} — expected one of \
+         \"off\", \"suggest\", \"info\", \"warn\", \"error\" (note: closure rules \
+         do not accept \"fix\")"
+    )]
+    UnknownClosureRuleSeverity { rule: String, value: String },
+
     /// Timezone offset string is not a recognized ISO 8601 UTC offset form.
     #[error("invalid timezone offset {value:?} — expected \"Z\", \"+HH:MM\", or \"-HH:MM\"")]
     InvalidTimezone { value: String },
@@ -136,6 +151,7 @@ impl ConfigError {
             Self::ThresholdOutOfRange { .. } => EX_DATAERR,
             Self::InvalidEnvVar { .. } => EX_DATAERR,
             Self::UnknownSeverity { .. } => EX_DATAERR,
+            Self::UnknownClosureRuleSeverity { .. } => EX_DATAERR,
             Self::InvalidTimezone { .. } => EX_DATAERR,
             Self::CorpusOverrideParse { .. } => EX_DATAERR,
             Self::CorpusOverrideSchemaMismatch { .. } => EX_DATAERR,
@@ -455,11 +471,14 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
     config.rules.overrides.extend(file.rules);
 
     // D19 B: validate closure-rule severity overrides. "fix" is rejected because
-    // closure firings propagate facts, not byte-level edits.
+    // closure firings propagate facts, not byte-level edits. Unknown values
+    // route to `UnknownClosureRuleSeverity` (whose error message excludes
+    // "fix" from the expected list) rather than the generic `UnknownSeverity`,
+    // per Copilot PR 3.7 review #3.
     for (rule, value) in &file.closure_rules {
         match Severity::parse_config(value) {
             None => {
-                return Err(ConfigError::UnknownSeverity {
+                return Err(ConfigError::UnknownClosureRuleSeverity {
                     rule: rule.clone(),
                     value: value.clone(),
                 });
@@ -565,7 +584,7 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
         if let Some(rule_name) = env_var_to_closure_rule_name(&key) {
             match Severity::parse_config(&value) {
                 None => {
-                    return Err(ConfigError::UnknownSeverity {
+                    return Err(ConfigError::UnknownClosureRuleSeverity {
                         rule: rule_name,
                         value,
                     });

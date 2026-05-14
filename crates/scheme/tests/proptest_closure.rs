@@ -4,15 +4,21 @@
 
 //! Property tests for the closure operator.
 //!
-//! Tests the five mathematical properties required by
+//! Tests the mathematical properties required by
 //! `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` §2
-//! (T108c, Stage B):
+//! (T108c, Stage B). Five properties land in this file:
 //!
 //! 1. **Monotone**: if `m1 ⊑ m2` then `closure(m1) ⊑ closure(m2)`.
 //! 2. **Extensive**: `closure(m) ⊒ m` for all markings.
 //! 3. **Idempotent**: `closure(closure(m)) == closure(m)`.
-//! 4. **Suppression-monotonicity**: FD&R-like suppressors don't break
-//!    monotonicity. Monotonicity holds even when some rules are suppressed.
+//! 4. **Unconditional-catalog monotonicity (chain-depth stress test)**:
+//!    a transitive-chain catalog (A→B and C→D rules) with NO suppressors
+//!    preserves monotonicity. NOTE (per Copilot PR 3.7 review #13):
+//!    this property does NOT cover suppression-stability. The plan's
+//!    "suppression-doesn't-break-monotonicity" property is satisfied
+//!    by the CAPCO catalog's disjoint-suppressor invariant (verified
+//!    structurally in `proptest_closure_rejects_non_monotone.rs`) and
+//!    by per-row CAPCO monotonicity attestation that lands in PR 4.
 //! 5. **G13 content-ignorance regression**: closure output contains no
 //!    input bytes verbatim (Constitution V Principle V).
 //!

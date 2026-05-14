@@ -71,6 +71,47 @@ impl Drop for EnvGuard {
     }
 }
 
+/// RAII guard: removes every ambient `MARQUE_CLOSURE_RULES_*` env var
+/// from the process environment for the duration of the test, then
+/// restores them on drop. Tests that assert an EMPTY `closure_rules`
+/// overrides map must use this guard to avoid false failures from
+/// ambient env vars in the developer/CI shell.
+///
+/// Per Copilot PR 3.7 review #4: `load()` imports every variable
+/// matching the `MARQUE_CLOSURE_RULES_*` pattern, so a stray env var
+/// in the test environment would cause `closure_rules.overrides` to
+/// be non-empty even for tests that explicitly write an empty
+/// `[closure_rules]` section. Caller must hold `ENV_MUTEX`.
+struct AmbientClosureEnvCleanGuard {
+    saved: Vec<(String, String)>,
+}
+
+impl AmbientClosureEnvCleanGuard {
+    fn new() -> Self {
+        let saved: Vec<(String, String)> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("MARQUE_CLOSURE_RULES_"))
+            .collect();
+        // SAFETY: single-threaded access ensured by caller holding ENV_MUTEX.
+        unsafe {
+            for (k, _) in &saved {
+                std::env::remove_var(k);
+            }
+        }
+        Self { saved }
+    }
+}
+
+impl Drop for AmbientClosureEnvCleanGuard {
+    fn drop(&mut self) {
+        // SAFETY: single-threaded access ensured by caller holding ENV_MUTEX.
+        unsafe {
+            for (k, v) in &self.saved {
+                std::env::set_var(k, v);
+            }
+        }
+    }
+}
+
 /// Write a standard `.marque.toml` with the compiled schema version and
 /// an optional `[closure_rules]` payload appended.
 fn write_project_config(dir: &Path, closure_rules_section: &str) {
@@ -90,6 +131,9 @@ fn default_empty_closure_rules() {
     write_project_config(&dir, "");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    // Clear ambient MARQUE_CLOSURE_RULES_* env vars to prevent
+    // developer/CI shell pollution from causing a false failure.
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert!(
@@ -106,6 +150,7 @@ fn explicit_empty_closure_rules_section() {
     write_project_config(&dir, "[closure_rules]\n");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert!(
@@ -292,8 +337,12 @@ fn closure_rules_fix_severity_rejected() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Unknown severity string in `[closure_rules]` must fail with `UnknownSeverity`
-/// (not `InvalidClosureRuleSeverity`).
+/// Unknown severity string in `[closure_rules]` must fail with
+/// `UnknownClosureRuleSeverity` (NOT `UnknownSeverity` and NOT
+/// `InvalidClosureRuleSeverity`). The closure-rule variant's error
+/// message omits "fix" from the expected-value list because closure
+/// rules reject "fix" on the next code path — listing "fix" as
+/// "expected" would mislead the user. Per Copilot PR 3.7 review #3.
 #[test]
 fn closure_rules_unknown_severity_rejected() {
     let dir = make_tmpdir("closure-unknown-severity");
@@ -306,8 +355,17 @@ fn closure_rules_unknown_severity_rejected() {
     let err = marque_config::load(&dir).unwrap_err();
 
     assert!(
-        matches!(err, ConfigError::UnknownSeverity { .. }),
-        "unknown severity string must produce UnknownSeverity, got: {err:?}"
+        matches!(err, ConfigError::UnknownClosureRuleSeverity { .. }),
+        "unknown severity string in [closure_rules] must produce \
+         UnknownClosureRuleSeverity, got: {err:?}"
+    );
+    // The error message must NOT contain `"fix"` as an expected value
+    // (the closure-rule variant explicitly omits it).
+    let err_text = format!("{err}");
+    assert!(
+        !err_text.contains("\"fix\""),
+        "UnknownClosureRuleSeverity error message must not list \"fix\" as an \
+         expected value (closure rules reject \"fix\"), got: {err_text}"
     );
     assert_eq!(err.exit_code(), 65);
     let _ = fs::remove_dir_all(&dir);
@@ -445,6 +503,9 @@ fn closure_rules_multiple_entries_all_loaded() {
     fs::write(dir.join(".marque.toml"), content).unwrap();
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    // Clear ambient MARQUE_CLOSURE_RULES_* env vars to ensure the
+    // count assertion measures the file-derived overrides only.
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(config.closure_rules.overrides.len(), 3);
@@ -529,7 +590,8 @@ fn env_var_fix_severity_rejected() {
 }
 
 /// `MARQUE_CLOSURE_RULES_CAPCO__FOO=err` (unknown) must be rejected with
-/// `ConfigError::UnknownSeverity`.
+/// `ConfigError::UnknownClosureRuleSeverity` (closure-rule-specific variant,
+/// per Copilot PR 3.7 review #3).
 #[test]
 fn env_var_unknown_severity_rejected() {
     let dir = make_tmpdir("closure-env-unknown");
@@ -540,8 +602,8 @@ fn env_var_unknown_severity_rejected() {
     let err = marque_config::load(&dir).unwrap_err();
 
     assert!(
-        matches!(err, ConfigError::UnknownSeverity { .. }),
-        "MARQUE_CLOSURE_RULES_* with unknown severity must produce UnknownSeverity, got: {err:?}"
+        matches!(err, ConfigError::UnknownClosureRuleSeverity { .. }),
+        "MARQUE_CLOSURE_RULES_* with unknown severity must produce UnknownClosureRuleSeverity, got: {err:?}"
     );
     assert_eq!(err.exit_code(), 65);
     let _ = fs::remove_dir_all(&dir);
@@ -554,6 +616,11 @@ fn unrelated_env_vars_do_not_affect_closure_rules() {
     write_project_config(&dir, "");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    // Clear ambient MARQUE_CLOSURE_RULES_* env vars first so the
+    // assertion below tests the actual property (unrelated env vars
+    // don't bleed in) rather than incidentally passing/failing on
+    // developer-shell pollution.
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     // MARQUE_RULES_* does not exist yet; MARQUE_CLASSIFIER_ID should not bleed in.
     let _env1 = EnvGuard::set("MARQUE_CLASSIFIER_ID", "test-classifier");
     let config = marque_config::load(&dir).expect("load should succeed");

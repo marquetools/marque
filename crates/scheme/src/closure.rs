@@ -188,13 +188,29 @@ impl ClosureRule {
             .any(|s| scheme.satisfies(marking, s))
     }
 
-    /// Returns `true` if this rule should fire: trigger fires AND not
-    /// suppressed.
+    /// Returns `true` if this rule should fire: it is not disabled, its
+    /// trigger fires, AND it is not suppressed.
+    ///
+    /// Per `decisions.md` D19 B, `default_severity: Severity::Off`
+    /// disables the row entirely (no firing, no propagation). This check
+    /// is the load-bearing gate: a row with `Severity::Off` reports
+    /// `should_fire = false` regardless of trigger/suppressor state, so
+    /// any closure-operator implementation that walks the catalog via
+    /// `should_fire` correctly treats `Off` rows as inert.
+    ///
+    /// (Per the Copilot review on PR 3.7: an earlier version of this
+    /// method ignored `default_severity`, which made `Severity::Off`
+    /// non-load-bearing — placeholder rows that authors marked `Off` as
+    /// "ship-as-dormant-data" still fired through any consumer that
+    /// called `should_fire`. This check closes that gap.)
     #[inline]
     pub fn should_fire<S>(&self, scheme: &S, marking: &S::Marking) -> bool
     where
         S: crate::scheme::MarkingScheme,
     {
+        if self.default_severity == Severity::Off {
+            return false;
+        }
         self.trigger_fires(scheme, marking) && !self.is_suppressed(scheme, marking)
     }
 

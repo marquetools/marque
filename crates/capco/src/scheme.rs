@@ -2463,11 +2463,20 @@ impl CapcoScheme {
             // Source: §H.8 RELIDO entry p154 + §D.2 Table 3 p28
             // (FD&R-chain extension) + `marque-applied.md` family-
             // predicate framing (RELIDO incompatibility roster).
+            // Citation note: the family-row label cites BOTH §H.8 p154
+            // (which establishes RELIDO ⊥ NOFORN and RELIDO ⊥ DISPLAY ONLY)
+            // AND §D.2 Table 3 p28 (which establishes RELIDO's place in the
+            // FD&R-precedence chain that extends the conflict to REL TO).
+            // The family predicate `is_fdr_dominator` returns true for
+            // {NOFORN, DISPLAY ONLY, REL TO[any country list]} — REL TO
+            // is in the conflict family per §D.2 Table 3 p28, NOT per
+            // §H.8 p154, so the citation must list both passages.
+            // Per Copilot PR 3.7 review #5 (Constitution VIII fidelity).
             Constraint::ConflictsWithFamily {
                 name: "capco/relido-conflicts-fdr-family",
                 left: TokenRef::Token(TOK_RELIDO),
                 family: FamilyPredicate(is_fdr_dominator),
-                label: "CAPCO-2016 §H.8 p154",
+                label: "CAPCO-2016 §H.8 p154 + §D.2 Table 3 p28",
             },
             // ---- capco/orcon-family-conflicts-relido — ADDITIVE primitive showcase (PR 3.7 T108b)
             //
@@ -4009,13 +4018,26 @@ static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_RELIDO),
     TokenRef::Token(TOK_DISPLAY_ONLY),
     TokenRef::AnyInCategory(CAT_REL_TO),
-    // EYES is an FD&R marking per §H.8 p157. There is no dedicated
-    // TOK_EYES sentinel yet (not needed elsewhere). Because `satisfies`
-    // falls through to `false` for an unknown token, we use CAT_REL_TO
-    // coverage for FD&R presence here; a future TOK_EYES sentinel can
-    // be added when needed.
-    // TODO: Add TOK_EYES when the sentinel lands (the `DissemControl::Eyes`
-    // arm needs a corresponding constant and satisfies_attrs entry).
+    // NOTE on EYES coverage gap (Copilot PR 3.7 review #6):
+    // EYES is an FD&R marking per §H.8 p157, but it is NOT covered by
+    // this suppressor slice. `CAT_REL_TO` only matches via `attrs.rel_to`
+    // (which is empty for an EYES-marked portion); there is no
+    // `TOK_EYES` sentinel and `DissemControl::Eyes` is not mapped in
+    // `iter_present_tokens` or `satisfies_attrs`.
+    //
+    // Operational impact: an EYES-only portion (no other FD&R marking)
+    // will NOT suppress the implicit-NOFORN trio rows. The post-2017
+    // §H.8 p157 EYES-deprecation framing routes EYES portions through
+    // the parser's migration table to `REL TO`, so the lattice never
+    // sees a bare-EYES atom in practice (per `marque-applied.md`
+    // §3.4.5c). Both of those mitigations apply in production, but the
+    // FDR_DOMINATORS slice as data is still incomplete relative to its
+    // §B.3 Table 2 p21 spec.
+    //
+    // TODO (#407 follow-on): add `TOK_EYES` sentinel + corresponding
+    // `DissemControl::Eyes` mapping in `iter_present_tokens` +
+    // `satisfies_attrs::DissemControl::Eyes` arm, then add
+    // `TokenRef::Token(TOK_EYES)` to this slice.
 ];
 
 // Extended suppressor for Trio 2 (RELIDO implicit): everything in
@@ -4040,6 +4062,19 @@ static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
     // Their NOFORN entailment makes them RELIDO-incompatible.
     TokenRef::Token(TOK_LES_NF),
     TokenRef::Token(TOK_SBU_NF),
+    // ORCON family is declared incompatible with RELIDO by the
+    // enumerated rows E056 (§H.8 p136) and E057 (§H.8 p140) and by
+    // the `is_orcon_family` family predicate in
+    // `capco/orcon-family-conflicts-relido`. Both ORCON variants must
+    // suppress the implicit-RELIDO trio for symmetric correctness:
+    // when a marking carries ORCON or ORCON-USGOV, the implicit-RELIDO
+    // cone would fire RELIDO into the dissem axis, then the E056/E057
+    // Conflicts walker would flag the (ORCON, RELIDO) pair as a
+    // violation. Suppressing here closes that path so the implicit
+    // never produces a fact the constraint walker then complains about.
+    // Per Copilot PR 3.7 review #10.
+    TokenRef::Token(TOK_ORCON),
+    TokenRef::Token(TOK_ORCON_USGOV),
 ];
 
 // --- The implicit-default trio (FD&R-suppressed) ---

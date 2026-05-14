@@ -28,9 +28,10 @@
 //! ## Scheme setup
 //!
 //! `FamilyStubScheme` uses a bitset marking (8 bits) and a family predicate
-//! that matches even-indexed tokens (bits 0, 2, 4, 6). The LHS is TOK_A
-//! (bit 0). When TOK_A is present and any even-indexed token other than
-//! TOK_A is present, the `ConflictsWithFamily` row fires once per such token.
+//! `is_odd_indexed` that matches ODD-indexed tokens (bits 1, 3, 5, 7).
+//! The LHS is TOK_LHS (bit 0). When TOK_LHS is present and any
+//! odd-indexed token is present, the `ConflictsWithFamily` row fires once
+//! per such token.
 
 use marque_scheme::{
     Category, Constraint, ConstraintViolation, FamilyPredicate, Lattice, MarkingScheme,

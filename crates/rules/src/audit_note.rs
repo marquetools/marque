@@ -21,12 +21,16 @@
 //! call site, including AuditNote's, by last-path-segment matching.
 //! See `AppliedFix::__engine_promote` for the full engine-only contract.
 //!
-//! **Note on production status**: PR 3.7 lands the type, sealing, and
-//! NDJSON projection helpers. The production engine **construct-site**
-//! lands in PR 4 (alongside `Engine::project::closure()` wiring) and the
-//! production **NDJSON renderer dispatch** lands in PR 7's `marque-1.0`
-//! audit schema cutover. PR 3.7's `AuditNote` is exercised via the
-//! Stage C.5 test-fixture carve-out integration test
+//! **Note on production status**: PR 3.7 lands the type definition and
+//! the `__engine_promote` sealed constructor ONLY. No NDJSON projection
+//! helper, no renderer dispatch, no production engine call-site land
+//! in PR 3.7. The production engine **construct-site** lands in PR 4
+//! (alongside `Engine::project::closure()` wiring); the NDJSON renderer
+//! dispatch + `"type"` discriminator land in the audit-schema-bump
+//! precursor PR per the plan rev 1.1 retargeting (the bump itself is
+//! also non-scope for PR 7c per `decisions.md` D-7.18 — see PR #412).
+//! PR 3.7's `AuditNote` is exercised via the Stage C.5 test-fixture
+//! carve-out integration test
 //! (`crates/engine/tests/audit_note_sealing_carve_out.rs`).
 
 use std::sync::Arc;
