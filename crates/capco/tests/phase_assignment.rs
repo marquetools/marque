@@ -103,6 +103,11 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("E061", Phase::WholeMarking),
     ("E062", Phase::WholeMarking),
     ("E063", Phase::WholeMarking),
+    // PR 9a Commit 5 (issue #307): EYES / EYES ONLY → REL TO
+    // conversion per §H.8 p157 + p158. Phase::Localized — the
+    // text_correction span covers a single TokenKind::DissemControl
+    // block (the EYES compound token).
+    ("E064", Phase::Localized),
     // PR 9a T135a (issue #307 Group D): deprecated SCI long-form
     // canonicalization walker. Phase::Localized because every emitted
     // diagnostic carries a span that covers a single TokenSpan (the

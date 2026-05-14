@@ -443,6 +443,33 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
+            } else if recognize_eyes_only_block(trimmed).is_some() {
+                // EYES / EYES ONLY block with `/`-delimited trigraphs
+                // (T135a Commit 5, issue #307). CAPCO-2016 §H.8 p157:
+                // "When extracting EYES ONLY portions from SIGINT
+                // reporting, convert the EYES ONLY portion marks to
+                // REL TO" and "carry forward the trigraph/tetragraph
+                // codes listed in the source document banner line to
+                // the new portion mark."
+                //
+                // The block has the shape `<TRIGRAPH>(/<TRIGRAPH>)*
+                // EYES [ONLY]`. Without this recognizer the parser's
+                // multi-token block handler would split on `/` and
+                // emit each token as Unknown, so the walker rule
+                // (E064) cannot find the block. Source bytes are
+                // preserved verbatim in `TokenSpan.text`; the walker
+                // builds the canonical `REL TO USA, <list>` replacement
+                // and emits a `text_correction` covering the whole
+                // block span.
+                //
+                // Authority: CAPCO-2016 §H.8 p157 line 3858 +
+                // §H.8 p158 line 3892.
+                dissem.push(ParsedDissem::new(DissemControl::Eyes, trimmed, span));
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DissemControl,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if (trimmed.contains('-')
                 || trimmed.contains('/')
                 || is_bare_cve_value(trimmed)
@@ -1293,6 +1320,84 @@ fn recognize_deprecated_sci_long_form(trimmed: &str) -> Option<DeprecatedSciLong
     }
 
     None
+}
+
+// =============================================================================
+// EYES / EYES ONLY compound block recognizer (T135a Commit 5, issue #307)
+// =============================================================================
+
+/// Result of recognizing an EYES ONLY compound block (CAPCO-2016 §H.8 p157).
+///
+/// The block carries `/`-delimited country trigraphs followed by the
+/// dissem-axis `EYES` (or `EYES ONLY`) marker. Without compound
+/// recognition the parser's multi-token block handler splits on `/`
+/// and tags each trigraph as Unknown — the walker rule (E064) needs
+/// the structural block to emit a canonicalization fix.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // walker rule re-parses TokenSpan.text; these fields are recognizer-internal
+struct EyesOnlyBlock<'a> {
+    /// The country trigraph tokens in source order.
+    trigraphs: SmallVec<[&'a str; 8]>,
+    /// `true` iff the block ended with `EYES ONLY` (the full form);
+    /// `false` for bare trailing `EYES`. Diagnostic / fix construction
+    /// is identical in both cases.
+    full_form: bool,
+}
+
+/// Recognize a `<TRIGRAPH>(/ <TRIGRAPH>)* (SPACE)? EYES [ONLY]` block.
+///
+/// Returns `Some(block)` when `trimmed` matches the §H.8 p157 EYES
+/// ONLY compound shape. Returns `None` for bare `EYES` / `EYES ONLY`
+/// without any preceding trigraphs (those fall through to
+/// `parse_dissem_full_form` which handles the bare dissem-token case
+/// correctly).
+///
+/// Grammar (per CAPCO-2016 §A.6 p16 + §H.8 p157):
+///   EYES_BLOCK := TRIGRAPH ('/' TRIGRAPH)* (' ' EYES_LIT)?
+///   EYES_LIT   := 'EYES' | 'EYES ONLY'
+///   TRIGRAPH   := [A-Z]{3}
+///
+/// Note: the brief's §H.8 p157 example wording uses `/` as the
+/// trigraph separator within the EYES block — collision with the
+/// dissem-category `/` separator per §A.6 p16. This is a real-world
+/// CAPCO grammar wart, not a marque idiosyncrasy.
+fn recognize_eyes_only_block(trimmed: &str) -> Option<EyesOnlyBlock<'_>> {
+    // The block must end with `EYES` or `EYES ONLY`. Strip the trailing
+    // marker first to identify the trigraph-list prefix.
+    let (prefix, full_form) = if let Some(p) = trimmed.strip_suffix(" EYES ONLY") {
+        (p, true)
+    } else if let Some(p) = trimmed.strip_suffix(" EYES") {
+        (p, false)
+    } else {
+        return None;
+    };
+
+    // Prefix is the trigraph list. Must be non-empty (otherwise it's
+    // a bare `EYES` / `EYES ONLY` block, handled by the dissem-full-form
+    // path).
+    if prefix.is_empty() {
+        return None;
+    }
+
+    // Split the prefix on `/` and require each segment to be a 3-letter
+    // ASCII uppercase trigraph. Per §A.6 p16 the separator inside the
+    // EYES block is `/` (not `, ` like REL TO).
+    let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
+    for seg in prefix.split('/') {
+        if seg.len() != 3 || !seg.bytes().all(|b| b.is_ascii_uppercase()) {
+            return None;
+        }
+        trigraphs.push(seg);
+    }
+
+    if trigraphs.is_empty() {
+        return None;
+    }
+
+    Some(EyesOnlyBlock {
+        trigraphs,
+        full_form,
+    })
 }
 
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
@@ -3883,6 +3988,93 @@ mod tests {
             SciControlSystem::Published(SciControlBare::Tk)
         );
         assert_eq!(marking.compartments.len(), 0);
+    }
+
+    // -------------------------------------------------------------------
+    // T135a Commit 5 — EYES / EYES ONLY compound block recognition
+    // (issue #307). CAPCO-2016 §H.8 p157.
+    //
+    // The recognizer accepts `<TRIGRAPH>(/<TRIGRAPH>)* EYES [ONLY]` as
+    // a single block-token in the dissem axis, populating
+    // `DissemControl::Eyes` and preserving source bytes verbatim in
+    // `TokenSpan.text`. Without this recognizer the multi-token block
+    // handler splits on `/` and emits each trigraph as Unknown.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn eyes_only_compound_block_recognized() {
+        // §H.8 p157 — EYES ONLY block with Five Eyes trigraph list.
+        // Pre-T135a Commit 5 this would be a 3-token Unknown soup;
+        // now it lands as a single DissemControl::Eyes block with
+        // source bytes preserved verbatim.
+        let parsed = parse_portion("(S//USA/GBR/CAN EYES ONLY)");
+        let eyes_tokens: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl && &*t.text == "USA/GBR/CAN EYES ONLY")
+            .collect();
+        assert_eq!(
+            eyes_tokens.len(),
+            1,
+            "exactly one DissemControl token preserving the source-bytes block expected"
+        );
+
+        // Dissem axis carries EYES.
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .contains(&marque_ism::DissemControl::Eyes),
+            "DissemControl::Eyes must be populated"
+        );
+
+        // No Unknown tokens — the recognizer succeeded.
+        let unknowns: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            .collect();
+        assert!(
+            unknowns.is_empty(),
+            "no Unknown tokens expected; got {:?}",
+            unknowns.iter().map(|t| &*t.text).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn eyes_only_short_form_recognized() {
+        // `EYES` without `ONLY` is also accepted per §H.8 p157.
+        let parsed = parse_portion("(S//USA/GBR EYES)");
+        let eyes_tokens: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl && &*t.text == "USA/GBR EYES")
+            .collect();
+        assert_eq!(eyes_tokens.len(), 1);
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .contains(&marque_ism::DissemControl::Eyes)
+        );
+    }
+
+    #[test]
+    fn eyes_only_bare_block_unaffected() {
+        // `EYES` alone (no trigraph list) is the bare CVE dissem-token
+        // case; it flows through `DissemControl::parse` unchanged.
+        // This regression guard catches a stray recognizer match.
+        let parsed = parse_portion("(S//EYES)");
+        assert!(
+            parsed
+                .attrs
+                .dissem_controls
+                .contains(&marque_ism::DissemControl::Eyes),
+            "bare EYES must parse as DissemControl::Eyes via the CVE path"
+        );
     }
 
     #[test]

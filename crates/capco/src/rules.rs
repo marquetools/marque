@@ -308,6 +308,13 @@ impl CapcoRuleSet {
                 Box::new(HcsBareAtConfidentialLegacyRemarkRule),
                 Box::new(HcsBareSuggestSubcompartmentRule),
                 Box::new(RsvBareRequiresCompartmentRule),
+                // PR 9a T135a Commit 5 (issue #307): EYES / EYES ONLY →
+                // REL TO conversion per §H.8 p157 + p158. NSA-only and
+                // deprecated since the markings waiver expired 1 Oct 2017.
+                // The fix emits a byte-precise text_correction on the
+                // compound EYES block span; trigraphs carry forward to the
+                // new REL TO list.
+                Box::new(EyesOnlyConvertToRelToRule),
             ],
         }
     }
@@ -3010,6 +3017,164 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
             None,
         )]
     }
+}
+
+// ===========================================================================
+// E064 — EYES / EYES ONLY → REL TO conversion (T135a Commit 5)
+// ===========================================================================
+//
+// Authority: CAPCO-2016 §H.8 p157 line 3858 + §H.8 p158 line 3892.
+//
+// §H.8 p157: EYES ONLY is NSA-only and deprecated; the markings waiver
+// expired 1 Oct 2017 (post-manual). §H.8 p158: "When extracting EYES
+// ONLY portions from SIGINT reporting, convert the EYES ONLY portion
+// marks to REL TO" and "carry forward the trigraph/tetragraph codes
+// listed in the source document banner line to the new portion mark."
+//
+// E064 emits a `text_correction` covering the source-bytes of the EYES
+// block (the parser preserves `<TRIGRAPHS> EYES [ONLY]` source text
+// verbatim in `TokenSpan.text` per the Commit 2 recognizer). The
+// replacement is the canonical `REL TO USA, <list>` form: USA
+// prepended per §H.3 trigraph convention, remaining codes sorted
+// alphabetically, comma-space delimited per §A.6 p16.
+//
+// Implementation note: cross-axis migration (remove EYES from dissem +
+// add trigraphs to rel_to) is not expressible as a single
+// `ReplacementIntent` — the intent vocabulary's `FactAdd` /
+// `FactRemove` / `Recanonicalize` variants are strictly single-axis-
+// scoped. A `FixIntent` mirror of the E041 pattern would either need a
+// new `Migrate { from, to, scope }` intent variant (engine/scheme
+// edit out of scope here) or an engine-side composition of two atomic
+// intents (architectural change beyond Commit 5's scope). The
+// `text_correction` channel is the existing route that delivers the
+// same user-facing outcome — a byte-precise canonicalization splice
+// at the EYES block span. The brief's "FixIntent / mirror E041"
+// guidance assumed intra-axis migration shape; the EYES → REL TO
+// case is documented as cross-axis in `project_incompatibility_class.md`
+// (memory). Selecting the existing text_correction path is the
+// citation-honest implementation under today's intent vocabulary.
+
+/// Rule E064 — convert EYES / EYES ONLY portions to REL TO per §H.8 p157.
+struct EyesOnlyConvertToRelToRule;
+
+impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E064")
+    }
+    fn name(&self) -> &'static str {
+        "eyes-only-convert-to-rel-to"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+    /// Phase::Localized: the diagnostic span covers a single
+    /// `TokenKind::DissemControl` block (the EYES compound block).
+    /// `text_correction` is a byte-precise single-span splice that
+    /// fits inside one token boundary — exactly the Localized
+    /// contract. Pass-1 applies the fix; the re-parse for pass-2
+    /// sees the canonical REL TO output.
+    fn phase(&self) -> Phase {
+        Phase::Localized
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        let mut out = Vec::new();
+        for token in attrs.token_spans.iter() {
+            if token.kind != TokenKind::DissemControl {
+                continue;
+            }
+            // The compound EYES block carries `<trigraph>(/<trigraph>)*
+            // EYES [ONLY]`. We detect the compound form by suffix-
+            // matching `EYES ONLY` / `EYES` with a non-empty prefix.
+            // Bare `EYES` tokens (no preceding country list) are
+            // E064-out-of-scope — the user wrote EYES with no specific
+            // country list, so Marque cannot synthesize one (and §H.8
+            // p158's "carry forward the trigraph codes" guidance does
+            // not apply when no codes were given).
+            let text = token.text.as_str();
+            let (prefix, _full_form) = if let Some(p) = text.strip_suffix(" EYES ONLY") {
+                (p, true)
+            } else if let Some(p) = text.strip_suffix(" EYES") {
+                (p, false)
+            } else {
+                continue;
+            };
+            if prefix.is_empty() {
+                continue;
+            }
+
+            // Parse the trigraph list, USA-first sort the rest.
+            let trigraphs = parse_eyes_trigraphs(prefix);
+            let canonical = build_rel_to_replacement(&trigraphs);
+
+            // No-op guard: if the trigraph list is somehow empty after
+            // sorting (should not happen given the parser's
+            // shape gate), skip emission.
+            if canonical.is_empty() {
+                continue;
+            }
+
+            out.push(Diagnostic::text_correction(
+                self.id(),
+                self.default_severity(),
+                token.span,
+                concat!(
+                    "EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
+                    "convert to REL TO and carry forward the trigraph codes",
+                )
+                .to_owned(),
+                "CAPCO-2016 §H.8 p157 + p158",
+                canonical,
+                FixSource::BuiltinRule,
+                Confidence::strict(1.0),
+                None,
+            ));
+        }
+        out
+    }
+}
+
+/// Parse the `/`-delimited trigraph prefix of an EYES block into a
+/// `Vec<String>`. The prefix is the part before ` EYES` / ` EYES ONLY`.
+/// Trigraphs are uppercase 3-letter codes per §H.8 p150-151.
+fn parse_eyes_trigraphs(prefix: &str) -> Vec<String> {
+    prefix
+        .split('/')
+        .map(|s| s.to_owned())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Build the canonical `REL TO USA, <list>` replacement string.
+///
+/// Per §H.3 the country list begins with USA when USA is present;
+/// remaining codes are sorted alphabetically. The list separator is
+/// `, ` (comma-space) per §A.6 p16.
+fn build_rel_to_replacement(trigraphs: &[String]) -> String {
+    if trigraphs.is_empty() {
+        return String::new();
+    }
+    let mut deduped: Vec<String> = Vec::with_capacity(trigraphs.len());
+    for t in trigraphs {
+        if !deduped.contains(t) {
+            deduped.push(t.clone());
+        }
+    }
+    let has_usa = deduped.iter().any(|t| t == "USA");
+    let mut rest: Vec<String> = deduped.into_iter().filter(|t| t != "USA").collect();
+    rest.sort();
+    let mut out = String::with_capacity(8 + 5 * (rest.len() + 1));
+    out.push_str("REL TO USA");
+    if !has_usa && rest.is_empty() {
+        // Defensive: no trigraphs at all (should not happen — the
+        // parser shape gate requires at least one). Return empty so
+        // the caller's no-op guard skips emission.
+        return String::new();
+    }
+    for code in rest {
+        out.push_str(", ");
+        out.push_str(&code);
+    }
+    out
 }
 
 /// Citation string for E035 — shared between the with-fix and no-fix

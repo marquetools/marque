@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-3c.B-Commit-7.4 registration pin (PR 9a updates: 31 → 35).
+//! Post-PR-3c.B-Commit-7.4 registration pin (PR 9a updates: 31 → 36).
 //!
-//! Asserts the **exact set** of 35 registered `Rule::id()` values in
-//! `CapcoRuleSet::new()` after PR 9a (T135a + E061/E062/E063 additions)
-//! lands. The umbrella's structural commitment: the per-commit tests
+//! Asserts the **exact set** of 36 registered `Rule::id()` values in
+//! `CapcoRuleSet::new()` after PR 9a (T135a + E061/E062/E063/E064/E065
+//! additions) lands. The umbrella's structural commitment: the per-commit tests
 //! pin per-rule behavior; this pins the closed set the workspace
 //! delivers.
 //!
@@ -35,7 +35,7 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 35 registered `Rule::id()` strings post-PR-9a.
+/// The closed set of 36 registered `Rule::id()` strings post-PR-9a.
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
@@ -47,7 +47,9 @@ use std::collections::BTreeSet;
 /// canonicalization walker per CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78,
 /// 85 (31 → 32). PR 9a (issue #307) adds three class-specific
 /// bare-HCS / bare-RSV rules (E061 / E062 / E063) per §H.4 pp 62, 70
-/// (32 → 35). The 27 class-floor + 5 SCI per-system catalog rows
+/// (32 → 35). PR 9a Commit 5 adds `EyesOnlyConvertToRelToRule` (E064)
+/// — EYES / EYES ONLY → REL TO conversion per §H.8 p157 + p158
+/// (35 → 36). The 27 class-floor + 5 SCI per-system catalog rows
 /// still fire; they emit through the bridge as
 /// `Diagnostic.rule = "E058"` and `Diagnostic.rule = "E059"`
 /// respectively (audit-stream + `[rules] E058 = "off"` /
@@ -56,24 +58,24 @@ use std::collections::BTreeSet;
 const EXPECTED_RULE_IDS: &[&str] = &[
     "C001", "E002", "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016", "E021",
     "E024", "E031", "E036", "E037", "E038", "E039", "E041", "E053", "E054", "E055", "E056", "E057",
-    "E061", "E062", "E063", "E065", "S003", "S004", "S005", "S006", "W002", "W003", "W034",
+    "E061", "E062", "E063", "E064", "E065", "S003", "S004", "S005", "S006", "W002", "W003", "W034",
 ];
 
 #[test]
-fn post_pr_9a_registers_exact_35_rule_ids() {
+fn post_pr_9a_registers_exact_36_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "35 unique IDs from 35
-    // registrations" from "35 unique IDs from 36 registrations
+    // assertion below cannot distinguish "36 unique IDs from 36
+    // registrations" from "36 unique IDs from 37 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 35,
-        "post-PR-9a raw rule slice length drifted from 35 \
+        raw_len, 36,
+        "post-PR-9a raw rule slice length drifted from 36 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -90,16 +92,16 @@ fn post_pr_9a_registers_exact_35_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        35,
-        "EXPECTED_RULE_IDS does not contain 35 unique entries: {expected:?}",
+        36,
+        "EXPECTED_RULE_IDS does not contain 36 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        35,
-        "post-PR-9a registered rule count drifted from 35: actual={actual:?}",
+        36,
+        "post-PR-9a registered rule count drifted from 36: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
