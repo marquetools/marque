@@ -557,3 +557,141 @@ worked around.
 The new destructure arm asserts `contributing_rule_ids == SmallVec::new()`
 for `MessageArgs::default()` and asserts the populated form for the
 R002 case.
+
+---
+
+## D-7.18 `marque-mvp-3 → marque-1.0` audit-schema bump deferred to its own PR (PR 3c.2)
+
+**Decision**: PR 7c does **NOT** bump the audit schema. The
+`marque-mvp-3 → marque-1.0` cutover defers to a new dedicated PR
+(PR 3c.2) that lands the full structural delta atomically. PR 7c
+remains on `marque-mvp-3` throughout.
+
+**Context** (2026-05-14): A misread of the FR-035 / consolidated-plan
+sequencing initially placed the `marque-1.0` bump inside PR 7c's scope.
+The PR 7c architect + Rust pre-flights independently surfaced a BLOCKING
+contradiction: the `marque-1.0` envelope in `contracts/audit-record.md`
+§1+ is structurally distinct from `marque-mvp-3`, not just a renamed
+label. The four structural commitments — `Canonical<S>` provenance
+wired into audit emit, BLAKE3 audit-record digesting, closed
+`MessageTemplate` JSON serialization, `from_parsed_unchecked` adapter
+deletion — are **all unshipped reserved slots** in the current codebase
+(2026-05-14 inventory across four parallel Explore agents confirms this:
+no `blake3` Cargo dependency, no digest fields in `AppliedFix`, no
+`message` field in `AuditRecordJsonV3`, 27 surviving `from_parsed_unchecked`
+call sites). A "label flip" `mvp-3 → 1.0` without the structural backing
+would emit `"schema": "marque-1.0"` on records lacking the four
+commitments the contract defines — Constitution V (audit-first compliance)
+and Constitution VIII (authoritative source fidelity) both forbid this.
+
+Three resolution paths were considered:
+
+| Option | What it means | Trade-off | Adopted? |
+|---|---|---|---|
+| A. Label-flip only | Rename `mvp-3 → 1.0` in `build.rs` + doc sites | Emits the `1.0` label without structural backing — violates contract + Constitution V/VIII | No |
+| B. Full structural bump in 7c | Land all 4 commitments in 7c | Massive scope expansion; doubles or triples 7c's size; mixes concerns | No |
+| C. Defer to PR 3c.2 (adopted) | 7c stays on `mvp-3`; dedicated PR lands `marque-1.0` cutover atomically | 7c stays scoped; `1.0` lands honestly when its structural commitments do | **YES** |
+
+**Implementation impact on PR 7c**: removes the audit-schema bump from
+T080-T085 scope entirely. `MARQUE_AUDIT_SCHEMA` remains pinned at
+`marque-mvp-3`; `AUDIT_SCHEMA_IS_V3` const stays as-is. The new
+`FeatureId::PrecedingFixPenalty` variant added in 7c fills a reserved
+slot in `marque-mvp-3` (per D-7.10 — confirmed by the audit) and does
+not itself require a schema bump.
+
+**Out of FR-035a's scope**: the `(scheme, predicate-id)` 2-tuple `RuleId`
+form defers further still, to its own post-PR-10 PR per FR-049 (stability
+freeze begins at PR 10 merge; the 2-tuple change requires the freeze to
+be unfrozen). PR 3c.2 ships `marque-1.0` with the 1-tuple `RuleId` form
+intact (`"rule": "E054"` string in audit records).
+
+The deferral was preceded by a pre-deferral audit confirming no
+earlier-landed work depends on the bump being done. Findings recorded
+in `pr-7c-architect-preflight.md` §7 and four parallel inventory reports
+on the inception date.
+
+---
+
+## D-7.19 `FeatureId::PrecedingFixPenalty` is engine-applied, not rule-applied
+
+**Decision**: The `PrecedingFixPenalty` contribution is applied by the
+engine at the pass-2 confidence-threshold gate, **not** inside a rule's
+`evaluate` body. The penalty fires for every pass-2 diagnostic whose
+marking was reshaped by a pass-1 fix (`RuleContext.pre_pass_1_attrs.is_some()`
+is True). Magnitude: `-0.10` (confirmed from D-7.10's recommendation;
+recalibration tracked in D-7.21).
+
+**Rationale** (replaces the E003 portion of D-7.10): E003
+(`MisorderedBlocksRule`) was retired in PR 3b.F → E060 — verified at
+`crates/capco/src/rules.rs:143` comment. Both T082 and D-7.10's text
+"E003 applies the penalty" are stale relative to current state. Wiring
+the penalty to E003 would be a silent no-op.
+
+The penalty is a cross-rule structural fact ("this marking was
+reshaped by a previous pass") that doesn't belong inside any one rule's
+`evaluate` body. The engine already has the data on hand at the
+threshold gate where it decides whether to promote a pass-2
+`FixProposal` to an `AppliedFix`. The engine-side application keeps
+rules stateless (Constitution IV) and centralizes the policy in one
+place (Constitution VI).
+
+**Application site** (architect pre-flight §3.D recommendation): the
+`PRECEDING_FIX_PENALTY_DELTA: f32 = -0.10` constant lives in
+`crates/engine/src/engine.rs` (or a sibling module). When `TwoPassFixer`
+dispatches pass-2 and a diagnostic's span matches a pass-1-reshaped
+marking, the engine multiplies the rule axis of the `Confidence`
+struct (or adds to `features` if structural appending is preferred —
+implementer chooses; the audit envelope already carries a
+`features: SmallVec<[FeatureId; 4]>` field per `marque-mvp-3`).
+
+**FeatureId variant addition**: still required. The variant fills a
+reserved slot per D-7.10 and the inventory audit. The doc comment at
+`crates/rules/src/confidence.rs:198` updates per D-7.10, with the E003
+wording replaced by "engine applies the penalty at the pass-2 threshold
+gate."
+
+---
+
+## D-7.20 `AUDIT_SCHEMA_IS_V3` const stays as-is in PR 7c
+
+**Decision**: The `AUDIT_SCHEMA_IS_V3` const at `crates/engine/src/lib.rs:98`
+is **not** renamed or retired in PR 7c. It stays as the
+forward-compat detection sentinel for `marque-mvp-3`.
+
+**Rationale**: The architect pre-flight initially flagged this const's
+fate as an open question (whether to rename to `AUDIT_SCHEMA_IS_V1_0`,
+retire entirely, or keep). With D-7.18 deferring the `marque-1.0` cutover
+to PR 3c.2, that decision belongs to PR 3c.2's scope, not PR 7c's. The
+const continues to serve its existing purpose (build-time sentinel that
+gates the renderer's `marque-mvp-3` JSON shape) and PR 7c does not touch
+it.
+
+PR 3c.2 will either rename it to `AUDIT_SCHEMA_IS_V1_0` (paired with the
+label flip) or introduce a parallel sentinel and retire `_V3` once the
+bump completes. The architect pre-flight's recommendation propagates
+forward to PR 3c.2's design phase; not actionable in 7c.
+
+---
+
+## D-7.21 `PrecedingFixPenalty` magnitude recalibration follow-up tracked
+
+**Decision**: The `-0.10` magnitude from D-7.10 + D-7.19 is the
+inception value. Recalibration against corpus data is tracked as a
+follow-up item, not blocking on PR 7c's merge.
+
+**Rationale**: D-7.10 noted: "Exact magnitude is the rule author's
+choice — recommend `-0.10` based on the same calibration as other
+corpus-derived penalties (verify against `marque-priors-2` baseline;
+if uncertain, leave a follow-up issue to recalibrate)." The
+verification against `marque-priors-2` requires corpus runs that
+extend beyond PR 7c's scope. PR 7c lands the variant + the
+engine-side application + the inception `-0.10` magnitude;
+recalibration is a separate corpus-data exercise.
+
+Follow-up: a GitHub issue opens at PR 7c merge documenting (a) the
+inception magnitude, (b) the corpus signals that should be measured
+to calibrate it, (c) the file:line where the constant lives. The
+issue ships with the PR 7c PM addendum so it cannot be silently
+forgotten.
+
+---

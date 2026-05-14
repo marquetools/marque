@@ -23,7 +23,13 @@ unrepresentable rather than carve-out-enforced; drives page-level rollup
 through `MarkingScheme::project(Scope::Page, ...)` and deletes
 `PageContext`; phase-tags rules at registration with `Phase::Localized
 | WholeMarking` and re-parses the buffer between passes; cuts over the
-audit schema once (`marque-mvp-2 → marque-1.0`) under clean-break;
+audit schema in two stages under clean-break (`marque-mvp-2 → marque-mvp-3`
+at PR 3c.B Commit 10, then `marque-mvp-3 → marque-1.0` at PR 3c.2 — the
+original "single cutover at PR 3c" plan was conservatively split when
+PR 3c.B Commit 10 landed only the proposal sub-object envelope; the
+remaining four structural commitments [Canonical wired into audit emit,
+BLAKE3 digesting, closed MessageTemplate JSON, `from_parsed_unchecked`
+delete] move to PR 3c.2 per FR-035a, added 2026-05-14);
 adds three AST-based CI lints (citation, masking-pin, promote-callsite);
 and gates PR 4's per-category `Lattice` impls behind PR 3.7 — a spike
 that fills `2026-05-01-lattice-design.md` §§2–8 with the actual math
