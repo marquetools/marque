@@ -355,3 +355,200 @@ fn no_whitespace_separator_remains_one_byte() {
 
     assert_contiguous_coverage(src, &spans);
 }
+
+// -----------------------------------------------------------------------
+// Separator scope — PR 9a Copilot R3 Fix 1 (PR #416).
+//
+// `TokenKind::Separator` (text = `"/"`) must sit between two non-empty
+// same-category committed tokens. Empty-boundary slashes (trailing
+// `OC/`, leading `/NF`) and slashes adjacent to an Unknown sub-token
+// (e.g. `OC/FOO` where FOO is unrecognized) violate the contract;
+// downstream byte-precise splice rules (E041 auto-fix path, canonical
+// rendering) trust the invariant. All-Unknown blocks (`FOO/BAR` with
+// no recognized category) emit a single block-level `TokenKind::
+// Unknown` span — mirroring the mixed-category branch — rather than
+// per-token Unknowns + Separator emission, since there is no committed
+// category for the Separator to live within.
+// -----------------------------------------------------------------------
+
+#[test]
+fn trailing_slash_emits_no_separator() {
+    // `(S//OC/)`: the inner-block content `OC/` has a trailing slash
+    // with an empty right neighbor (`s.split('/') = ["OC", ""]`). The
+    // empty boundary means the contract "Separator between two
+    // committed tokens" cannot hold — no Separator must be emitted.
+    // The `OC` token itself is still committed as a DissemControl.
+    let src = "(S//OC/)";
+    let spans = parse_portion(src);
+    let seps = separators(&spans);
+    let slash_seps: Vec<&&TokenSpan> = seps.iter().filter(|s| &*s.text == "/").collect();
+    assert_eq!(
+        slash_seps.len(),
+        0,
+        "trailing slash must NOT emit a within-category Separator; got {:?}",
+        slash_seps.iter().map(|s| s.span).collect::<Vec<_>>()
+    );
+
+    // Sanity: the OC token IS committed (the empty boundary doesn't
+    // suppress legitimate token emission).
+    let dissems: Vec<&TokenSpan> = spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::DissemControl)
+        .collect();
+    assert_eq!(
+        dissems.len(),
+        1,
+        "OC must still be emitted as DissemControl"
+    );
+    assert_eq!(&*dissems[0].text, "OC");
+}
+
+#[test]
+fn leading_slash_emits_no_separator() {
+    // `(S///NF)` — the scanner splits on `//`, so block 2 arrives at the
+    // slash-block path as the raw inner `/NF`. `s.split('/')` →
+    // `["", "NF"]`: the leading slash has an empty left neighbor.
+    // Per the Separator contract no within-category `/` Separator must
+    // be emitted (committed_idx machinery would otherwise try to read
+    // `results[-1]`, which is exactly the bug class this fix
+    // eliminates). `NF` itself is still committed.
+    let src = "(S///NF)";
+    let spans = parse_portion(src);
+    let seps = separators(&spans);
+    let slash_seps: Vec<&&TokenSpan> = seps.iter().filter(|s| &*s.text == "/").collect();
+    assert_eq!(
+        slash_seps.len(),
+        0,
+        "leading slash must NOT emit a within-category Separator; got {:?}",
+        slash_seps.iter().map(|s| s.span).collect::<Vec<_>>()
+    );
+
+    // The NF token is still committed even with the leading slash.
+    let dissems: Vec<&TokenSpan> = spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::DissemControl)
+        .collect();
+    assert!(
+        dissems.iter().any(|d| &*d.text == "NF"),
+        "NF must still be emitted as DissemControl; got {:?}",
+        dissems.iter().map(|d| &*d.text).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn all_unknown_block_emits_single_unknown_no_separators() {
+    // `(S//FOOBAR/BARFOO)` — neither token is recognized: both fail
+    // the SCI custom-control shape gate (`[A-Z0-9]{2,5}` — 6 chars
+    // each is too long) AND no other category claims them. Pre-fix
+    // the parser emitted Separator + per-token Unknown spans even
+    // though no committed category existed for the Separator to live
+    // within. Post-fix the whole `FOOBAR/BARFOO` block is a single
+    // `TokenKind::Unknown` span — mirroring the mixed-category branch
+    // — and no Separator is emitted.
+    //
+    // Test-input note: 3-letter pure-alpha tokens (e.g. `FOO`/`BAR`)
+    // are accepted by the SCI structural path as
+    // `SciControlSystem::Custom`, so they would never reach the
+    // slash-block all-Unknown branch. 6-char tokens fail the SCI
+    // custom-control shape and exercise the branch this fix targets.
+    let src = "(S//FOOBAR/BARFOO)";
+    let spans = parse_portion(src);
+
+    let seps = separators(&spans);
+    let slash_seps: Vec<&&TokenSpan> = seps.iter().filter(|s| &*s.text == "/").collect();
+    assert_eq!(
+        slash_seps.len(),
+        0,
+        "all-Unknown block must NOT emit any within-category Separator; \
+         the block has no committed category for a Separator to live within"
+    );
+
+    // The whole `FOOBAR/BARFOO` range must be covered by exactly one
+    // `TokenKind::Unknown` span — not two per-token Unknowns.
+    let unknowns: Vec<&TokenSpan> = spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    // `(S//FOOBAR/BARFOO)`: `FOOBAR/BARFOO` covers bytes 4..17.
+    let block_unknowns: Vec<&&TokenSpan> = unknowns
+        .iter()
+        .filter(|u| u.span.start >= 4 && u.span.end <= 17)
+        .collect();
+    assert_eq!(
+        block_unknowns.len(),
+        1,
+        "all-Unknown block must emit exactly one block-level Unknown span, \
+         not per-token Unknowns; got {:?}",
+        block_unknowns
+            .iter()
+            .map(|u| (u.span, &*u.text))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(block_unknowns[0].span.start, 4);
+    assert_eq!(block_unknowns[0].span.end, 17);
+    assert_eq!(&*block_unknowns[0].text, "FOOBAR/BARFOO");
+}
+
+#[test]
+fn same_category_with_mixed_unknown_neighbor_skips_separator() {
+    // `(S//OC/FOOBAR)` — `OC` is a recognized DissemControl, `FOOBAR`
+    // is unknown (6 chars fails the SCI custom-control shape gate).
+    // `first_parsed_kind = Some(Dissem)` so the same-category branch
+    // fires, but the slash sits between a committed Dissem and an
+    // Unknown. The contract "Separator between two same-category
+    // committed tokens" is violated; the Separator MUST be skipped.
+    // OC is still committed; FOOBAR is still emitted as per-token
+    // Unknown (since the block has at least one committed category).
+    //
+    // Test-input note: 3-letter pure-alpha `FOO` would be accepted by
+    // the SCI structural path as a custom control, never reaching this
+    // code path. 6-char `FOOBAR` is the smallest reliable unknown.
+    let src = "(S//OC/FOOBAR)";
+    let spans = parse_portion(src);
+
+    let seps = separators(&spans);
+    let slash_seps: Vec<&&TokenSpan> = seps.iter().filter(|s| &*s.text == "/").collect();
+    assert_eq!(
+        slash_seps.len(),
+        0,
+        "slash adjacent to an Unknown sub-token must NOT emit Separator; got {:?}",
+        slash_seps.iter().map(|s| s.span).collect::<Vec<_>>()
+    );
+
+    // OC committed; FOOBAR emitted as per-token Unknown.
+    let dissems: Vec<&TokenSpan> = spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::DissemControl)
+        .collect();
+    assert!(dissems.iter().any(|d| &*d.text == "OC"));
+    let unknowns: Vec<&TokenSpan> = spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(
+        unknowns.iter().any(|u| &*u.text == "FOOBAR"),
+        "FOOBAR must surface as per-token Unknown when the block has \
+         at least one committed category; got {:?}",
+        unknowns.iter().map(|u| &*u.text).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn regression_oc_slash_nf_still_emits_separator() {
+    // Non-regression lock-in: `(S//OC/NF)` has two committed Dissem
+    // tokens with a `/` between them. The Separator emission contract
+    // is satisfied; one within-category `/` Separator must still be
+    // emitted exactly as before the R3 fix.
+    let src = "(S//OC/NF)";
+    let spans = parse_portion(src);
+    let seps = separators(&spans);
+    let slash_seps: Vec<&&TokenSpan> = seps.iter().filter(|s| &*s.text == "/").collect();
+    assert_eq!(
+        slash_seps.len(),
+        1,
+        "OC/NF (both committed Dissem) must emit exactly one Separator"
+    );
+    // `/` byte at position 6 in `(S//OC/NF)`.
+    assert_eq!(slash_seps[0].span.start, 6);
+    assert_eq!(slash_seps[0].span.end, 7);
+}

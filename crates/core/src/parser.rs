@@ -473,7 +473,7 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
-            } else if recognize_eyes_only_block(trimmed).is_some() {
+            } else if recognize_eyes_only_block(trimmed, self.tokens).is_some() {
                 // EYES / EYES ONLY block with `/`-delimited trigraphs
                 // (T135a Commit 5, issue #307). CAPCO-2016 §H.8 p157:
                 // "When extracting EYES ONLY portions from SIGINT
@@ -773,12 +773,49 @@ impl<'t> Parser<'t> {
                         span,
                         text: trimmed.into(),
                     });
+                } else if first_parsed_kind.is_none() {
+                    // All-Unknown block (e.g. `FOO/BAR` with no recognized
+                    // category): emit the whole trimmed block as one
+                    // `TokenKind::Unknown` span — mirroring the mixed-
+                    // category branch above. The per-token Unknown +
+                    // per-slash Separator emission that would otherwise
+                    // run here is incoherent: there's no committed
+                    // category for the Separator to sit between, and a
+                    // downstream byte-precise splice rule (E041 auto-fix,
+                    // canonical-rendering) keyed on `TokenKind::Separator`
+                    // would silently consume bytes from a non-category
+                    // context. Closes Copilot R3 channel on PR #416.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
                 } else {
-                    // Same category (or all unknown): commit sub-token results.
-                    // Emit `TokenKind::Separator` spans for each within-
-                    // category `/` byte (T131 / issue #106). Disambiguated
-                    // from the between-category `//` separators by `text`:
-                    // within-category is `"/"`, between-category is `"//"`.
+                    // Same-category block with at least one committed
+                    // sub-token: commit sub-token results. Emit
+                    // `TokenKind::Separator` spans for within-category
+                    // `/` bytes (T131 / issue #106). Disambiguated from
+                    // between-category `//` separators by `text`:
+                    // within-category is `"/"`, between-category is
+                    // `"//"`.
+                    //
+                    // **Emission contract for `TokenKind::Separator`**: a
+                    // Separator span MUST sit between two committed
+                    // non-Unknown same-category tokens. Empty-boundary
+                    // slashes (trailing `OC/`, leading `/OC`,
+                    // back-to-back `//`) and slashes adjacent to an
+                    // Unknown sub-token (e.g. `OC/FOO` where FOO is
+                    // unrecognized) violate the contract; downstream
+                    // byte-precise splice rules trust it. We map each
+                    // [`SlashSeparator`] to its `results`-array
+                    // neighbors via a running `committed_idx`: whenever
+                    // a slash has `left_nonempty = true`,
+                    // `results[committed_idx]` is its left neighbor;
+                    // `right_nonempty = true` →
+                    // `results[committed_idx + 1]` is its right
+                    // neighbor. Emit only when BOTH neighbors exist AND
+                    // both are non-Unknown AND share the same SubKind.
+                    // Closes Copilot R3 channel on PR #416.
                     //
                     // CAPCO-2016 §A.6 p16 forbids interjected whitespace
                     // between within-category `/` separators for SAP
@@ -800,14 +837,57 @@ impl<'t> Parser<'t> {
                     // a strict 1-byte separator span (parser.rs ~2103-
                     // 2107) — no relaxation needed because the corpus
                     // never demands it.
-                    for (slash_off, slash_end) in &slash_offsets {
-                        let abs_slash_start = abs_start + slash_off;
-                        let abs_slash_end = abs_start + slash_end;
-                        token_spans.push(TokenSpan {
-                            kind: TokenKind::Separator,
-                            span: Span::new(abs_slash_start, abs_slash_end),
-                            text: "/".into(),
-                        });
+                    let mut committed_idx: usize = 0;
+                    for sep in &slash_offsets {
+                        // Walk results in lockstep with the slash list.
+                        // Because empty `s.split('/')` parts do NOT push
+                        // to `results`, the running `committed_idx` is
+                        // always the next un-claimed entry. If
+                        // `left_nonempty`, `results[committed_idx]` IS
+                        // this slash's left neighbor and we advance
+                        // past it; if `right_nonempty`, the next slash's
+                        // (or end's) neighbor view starts after
+                        // `committed_idx + 1`.
+                        let left_idx = if sep.left_nonempty {
+                            let idx = committed_idx;
+                            committed_idx += 1;
+                            Some(idx)
+                        } else {
+                            None
+                        };
+                        let right_idx = if sep.right_nonempty {
+                            Some(committed_idx)
+                        } else {
+                            None
+                        };
+                        let emit = match (left_idx, right_idx) {
+                            (Some(li), Some(ri)) => {
+                                // Defensive index check — should always
+                                // hold given the loop invariant, but
+                                // protects against future refactors.
+                                let left = results.get(li);
+                                let right = results.get(ri);
+                                matches!(
+                                    (left, right),
+                                    (Some(l), Some(r))
+                                        if l.kind != SubKind::Unknown
+                                            && r.kind != SubKind::Unknown
+                                            && l.kind == r.kind
+                                )
+                            }
+                            // At least one neighbor empty → no
+                            // Separator (empty-boundary slash).
+                            _ => false,
+                        };
+                        if emit {
+                            let abs_slash_start = abs_start + sep.start;
+                            let abs_slash_end = abs_start + sep.end;
+                            token_spans.push(TokenSpan {
+                                kind: TokenKind::Separator,
+                                span: Span::new(abs_slash_start, abs_slash_end),
+                                text: "/".into(),
+                            });
+                        }
                     }
                     for r in results {
                         match r.kind {
@@ -1388,21 +1468,40 @@ struct EyesOnlyBlock<'a> {
 /// Recognize a `<TRIGRAPH>(/ <TRIGRAPH>)* (SPACE)? EYES [ONLY]` block.
 ///
 /// Returns `Some(block)` when `trimmed` matches the §H.8 p157 EYES
-/// ONLY compound shape. Returns `None` for bare `EYES` / `EYES ONLY`
-/// without any preceding trigraphs (those fall through to
-/// `parse_dissem_full_form` which handles the bare dissem-token case
-/// correctly).
+/// ONLY compound shape AND every trigraph in the prefix is a
+/// CAPCO-registered country code. Returns `None` for bare `EYES` /
+/// `EYES ONLY` without any preceding trigraphs (those fall through
+/// to `parse_dissem_full_form` which handles the bare dissem-token
+/// case correctly) AND for shape-matching blocks whose prefix
+/// contains any unregistered trigraph.
 ///
 /// Grammar (per CAPCO-2016 §A.6 p16 + §H.8 p157):
 ///   EYES_BLOCK := TRIGRAPH ('/' TRIGRAPH)* (' ' EYES_LIT)?
 ///   EYES_LIT   := 'EYES' | 'EYES ONLY'
-///   TRIGRAPH   := [A-Z]{3}
+///   TRIGRAPH   := registered CAPCO trigraph (3 alpha, in trigraph set)
+///
+/// Country-code registry gate (PR 9a Copilot R3, PR #416). The
+/// shape gate alone — `[A-Z]{3}` — accepts arbitrary uppercase
+/// triples like `AAA` or `XYZ`. Without registry validation, the
+/// E064 walker would build `REL TO USA, AAA, XYZ` canonical output
+/// — silent fabrication of trigraphs in the audit-stream. Per
+/// Constitution Principle VIII (Authoritative Source Fidelity),
+/// canonical output MUST reference real CAPCO registry entries.
+/// Validation mirrors `parse_rel_to_with_spans` (parser.rs ~1870-
+/// 1871): `tokens.is_trigraph` filters by the registered trigraph
+/// surface; `CountryCode::try_new` re-confirms the byte-set
+/// invariant. An unregistered trigraph rejects the whole block —
+/// the EYES recognizer is all-or-nothing; partial registry
+/// matches fall through to Unknown.
 ///
 /// Note: the brief's §H.8 p157 example wording uses `/` as the
 /// trigraph separator within the EYES block — collision with the
 /// dissem-category `/` separator per §A.6 p16. This is a real-world
 /// CAPCO grammar wart, not a marque idiosyncrasy.
-fn recognize_eyes_only_block(trimmed: &str) -> Option<EyesOnlyBlock<'_>> {
+fn recognize_eyes_only_block<'a>(
+    trimmed: &'a str,
+    tokens: &dyn TokenSet,
+) -> Option<EyesOnlyBlock<'a>> {
     // The block must end with `EYES` or `EYES ONLY`. Strip the trailing
     // marker first to identify the trigraph-list prefix.
     let (prefix, full_form) = if let Some(p) = trimmed.strip_suffix(" EYES ONLY") {
@@ -1425,7 +1524,15 @@ fn recognize_eyes_only_block(trimmed: &str) -> Option<EyesOnlyBlock<'_>> {
     // EYES block is `/` (not `, ` like REL TO).
     let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
     for seg in prefix.split('/') {
+        // Shape gate: exactly 3 ASCII uppercase letters.
         if seg.len() != 3 || !seg.bytes().all(|b| b.is_ascii_uppercase()) {
+            return None;
+        }
+        // Registry gate (Copilot R3, PR #416). Constitution
+        // Principle VIII: fabricated trigraphs in canonical autofix
+        // output are a correctness defect. Mirrors the validation
+        // pattern in `parse_rel_to_with_spans` (~lines 1870-1871).
+        if !tokens.is_trigraph(seg) || CountryCode::try_new(seg.as_bytes()).is_none() {
             return None;
         }
         trigraphs.push(seg);
@@ -2007,23 +2114,41 @@ fn is_declass_date(s: &str) -> bool {
 /// `(offset, trimmed_token)` per non-empty slash-separated sub-token.
 type SlashTokens<'a> = SmallVec<[(usize, &'a str); 4]>;
 
-/// `(slash_byte_offset, slash_span_end)` per `/` byte. `slash_span_end`
-/// covers any adjacent trailing ASCII whitespace.
-type SlashSeparators = SmallVec<[(usize, usize); 4]>;
+/// Per-`/` byte separator descriptor. Carries the byte span plus
+/// `left_nonempty` / `right_nonempty` flags indicating whether the
+/// trimmed `s.split('/')` part on each side of the slash was non-empty
+/// (i.e., produced an entry in `SlashTokens`). The flags let the
+/// emission site enforce the `TokenKind::Separator` contract: a
+/// Separator span lives between two *committed* same-category tokens.
+/// Empty-boundary slashes — trailing `/`, leading `/`, or a slash
+/// between empty parts — have `false` on at least one side and MUST
+/// NOT emit a Separator (downstream byte-precise splice rules rely on
+/// the invariant; see Copilot R3 fix on PR #416).
+#[derive(Clone, Copy, Debug)]
+struct SlashSeparator {
+    start: usize,
+    end: usize,
+    left_nonempty: bool,
+    right_nonempty: bool,
+}
+
+type SlashSeparators = SmallVec<[SlashSeparator; 4]>;
 
 /// Splits `s` on `/` and returns both the tokens and the separator
 /// positions.
 ///
 /// Returns a pair of vectors:
 /// - `.0` — `(token_offset, trimmed_token)` per non-empty token.
-/// - `.1` — `(slash_offset_with_leading_ws, slash_end_with_trailing_ws)`
-///   per `/` byte. `slash_offset_with_leading_ws` is `slash_offset` minus
-///   any ASCII whitespace immediately preceding the slash (bounded by the
-///   end of the previous emitted token, so the span never crosses into the
-///   previous token's bytes). `slash_end_with_trailing_ws` is
-///   `slash_offset + 1` plus any ASCII whitespace immediately following
-///   the slash. The span covers the `/` plus any whitespace an author
-///   drifted into the gap on either side of the slash.
+/// - `.1` — one [`SlashSeparator`] per `/` byte, carrying the span
+///   `(start, end)` and two `*_nonempty` flags identifying whether the
+///   adjacent trimmed `s.split('/')` parts on each side produced a
+///   committed token. `start` is `slash_offset` minus any ASCII
+///   whitespace immediately preceding the slash (bounded by the end of
+///   the previous emitted token, so the span never crosses into the
+///   previous token's bytes). `end` is `slash_offset + 1` plus any
+///   ASCII whitespace immediately following the slash. The span covers
+///   the `/` plus any whitespace an author drifted into the gap on
+///   either side of the slash.
 ///
 /// CAPCO-2016 §A.6 p16 disallows interjected whitespace in SAP-`/` but is
 /// silent for dissem-`/` and SCI-`/`. Spanning adjacent ASCII whitespace
@@ -2034,6 +2159,13 @@ type SlashSeparators = SmallVec<[(usize, usize); 4]>;
 /// makes audit-record byte ranges contiguous: every byte between adjacent
 /// non-empty tokens belongs to exactly one span (token or separator),
 /// with no gaps.
+///
+/// The `*_nonempty` flags on each [`SlashSeparator`] are emission-side
+/// gates: callers MUST drop separators whose either neighbor is empty
+/// (e.g., trailing `OC/`, leading `/OC`, all-empty `//`). Combined with
+/// a same-category check against the emitted token results, this is
+/// what enforces the Separator-between-two-committed-same-category-
+/// tokens contract.
 fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparators) {
     let mut tokens: SlashTokens<'_> = SmallVec::new();
     let mut separators: SlashSeparators = SmallVec::new();
@@ -2047,6 +2179,12 @@ fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparat
     // any leading whitespace at the very start belongs to neither a
     // token nor a separator and stays uncovered by design).
     let mut prev_token_end: usize = 0;
+    // Tracks whether the trimmed part immediately preceding the next
+    // slash was non-empty (i.e., produced a token push). For each
+    // slash, this becomes the `left_nonempty` flag; the right flag is
+    // determined by the next iteration's `trimmed.is_empty()` check
+    // via back-patching.
+    let mut prev_part_nonempty = false;
     for (i, part) in s.split('/').enumerate() {
         if i > 0 {
             // The slash byte sits at index `pos - 1` (we advanced past the
@@ -2063,15 +2201,33 @@ fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparat
             while slash_end < bytes.len() && bytes[slash_end].is_ascii_whitespace() {
                 slash_end += 1;
             }
-            separators.push((slash_start, slash_end));
+            // `left_nonempty` is decided now (it's the prior part's
+            // status). `right_nonempty` is back-patched after we
+            // classify the current part below.
+            separators.push(SlashSeparator {
+                start: slash_start,
+                end: slash_end,
+                left_nonempty: prev_part_nonempty,
+                right_nonempty: false, // filled in below
+            });
         }
         let trim_lead = part.len() - part.trim_start().len();
         let trimmed = part.trim();
-        if !trimmed.is_empty() {
+        let part_nonempty = !trimmed.is_empty();
+        if part_nonempty {
             let token_start = pos + trim_lead;
             tokens.push((token_start, trimmed));
             prev_token_end = token_start + trimmed.len();
         }
+        // Back-patch the just-pushed separator's `right_nonempty` with
+        // the current part's status. The first iteration (i == 0)
+        // pushes no separator, so there's nothing to patch.
+        if i > 0 {
+            if let Some(sep) = separators.last_mut() {
+                sep.right_nonempty = part_nonempty;
+            }
+        }
+        prev_part_nonempty = part_nonempty;
         pos += part.len() + 1; // +1 for the `/` separator
     }
     (tokens, separators)
