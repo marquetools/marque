@@ -1954,6 +1954,7 @@ impl<'engine> TwoPassFixer<'engine> {
                 &pass2_markings,
                 &pass2_diags,
                 &pass1_applied_keys,
+                &pre_pass_1_cache,
                 &lint,
             )?
         };
@@ -2071,6 +2072,11 @@ impl<'engine> TwoPassFixer<'engine> {
             effective_source,
             pass1_diags,
             self.threshold,
+            // Pass-1 fires before the pre-pass-1 attrs cache exists —
+            // the cache is populated FROM pass-1's applied set —
+            // so `PrecedingFixPenalty` is unconditionally inapplicable
+            // here.
+            None,
         );
 
         // First-fire span-shape filter (PR 7b D-7.16). For a
@@ -2184,6 +2190,7 @@ impl<'engine> TwoPassFixer<'engine> {
         parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
         pass2_diags: &[&Diagnostic<CapcoScheme>],
         pass1_applied_keys: &HashSet<(RuleId, Span)>,
+        pre_pass_1_cache: &[(Span, marque_ism::CanonicalAttrs)],
         lint: &LintResult,
     ) -> Result<Pass2Result, EngineError> {
         if pass2_diags.is_empty() {
@@ -2206,12 +2213,19 @@ impl<'engine> TwoPassFixer<'engine> {
         let adjusted_owned = apply_fr023_and_i18(pass2_diags, pass1_applied_keys);
         let adjusted_refs: Vec<&Diagnostic<CapcoScheme>> = adjusted_owned.iter().collect();
 
+        // PR 7c: pass the pre-pass-1 attrs cache so the engine can
+        // append `FeatureId::PrecedingFixPenalty` to any `FixIntent`
+        // whose marking was reshaped by pass-1. The penalty reduces
+        // the `rule` confidence axis multiplicatively (D-7.19,
+        // D-7.21). When the cache is empty (no pass-1 fixes), the
+        // synthesize_fixes path short-circuits the penalty lookup.
         let synthesized = synthesize_fixes(
             &self.engine.scheme,
             parsed_markings,
             pass2_source,
             &adjusted_refs,
             self.threshold,
+            Some(pre_pass_1_cache),
         );
         let kept_fixes = sort_and_c1_dedup(synthesized);
         let (post_buffer, applied, applied_keys) =
@@ -2805,29 +2819,84 @@ fn engine_promotion_token() -> EnginePromotionToken {
 /// - `scheme.apply_intent` returns `Err(IntentInapplicable)` → the
 ///   diagnostic is dropped silently (no-op fix).
 ///
+/// # PR 7c `PrecedingFixPenalty`
+///
+/// When `pre_pass_1_cache` is `Some` and a diagnostic's
+/// candidate_span overlaps a cache entry's marking span, the
+/// engine applies a `PrecedingFixPenalty` to the diagnostic's
+/// `Confidence.rule` axis BEFORE the threshold gate. The penalty
+/// is multiplicative (`rule *= 1 + PRECEDING_FIX_PENALTY_DELTA`
+/// = `rule * 0.9`) and is logged as a `FeatureContribution` for
+/// audit traceability. Rules stay stateless; the engine is the
+/// sole site that decides when a pass-2 fix on a reshaped marking
+/// has reduced confidence (D-7.19). Pass-1 passes `None` for the
+/// cache (the cache doesn't exist yet at pass-1 dispatch).
+///
 /// # Audit shape
 ///
 /// The synthesized record carries the rule's `FixIntent` directly;
 /// `__engine_promote` moves it into
 /// `AppliedFixProposal::FixIntent(_)`. Original bytes are never
 /// copied into the audit record — Constitution V Principle V (G13).
+/// PR 7c — multiplicative penalty applied to the `Confidence.rule`
+/// axis of every pass-2 `FixIntent` whose marking was reshaped by a
+/// pass-1 fix. The inception value (D-7.10 / D-7.21) is `-0.10`,
+/// i.e. a 10% reduction. The product form `(1.0 + DELTA)` keeps the
+/// reduction expressible as a pure scalar multiply.
+///
+/// **Recalibration follow-up (D-7.21)**: this magnitude is the
+/// inception value. The intended recalibration is corpus-driven —
+/// run the mangled-corpus suite under two-pass dispatch and tune
+/// the delta against measured false-promote rates. Until that
+/// calibration lands, `-0.10` is a conservative penalty that
+/// (a) keeps fixes with high baseline rule confidence (>0.95)
+/// above the default threshold, (b) demotes borderline fixes
+/// (rule confidence ~0.80–0.85) below threshold so they surface as
+/// suggestions instead of auto-applying on a marking the engine
+/// just reshaped.
+const PRECEDING_FIX_PENALTY_DELTA: f32 = -0.10;
+
+/// PR 7c — diagnostic wrapper that rides through `synthesize_fixes`
+/// alongside the `PrecedingFixPenalty` flag. The flag is computed
+/// once at group-population time (cache lookup per diagnostic) so
+/// the per-group `SynthesizedFix` construction below can apply the
+/// penalty atomically without re-querying the cache. Pass-1
+/// dispatch always sets `penalty_applied = false` because pass-1
+/// produced the fixes that populate the cache; the cache itself is
+/// `None` at pass-1 dispatch.
+struct PenaltyAdjustedDiag<'a> {
+    diag: &'a marque_rules::Diagnostic<CapcoScheme>,
+    penalty_applied: bool,
+}
+
 fn synthesize_fixes(
     scheme: &CapcoScheme,
     parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
     source: &[u8],
     diagnostics: &[&marque_rules::Diagnostic<CapcoScheme>],
     threshold: f32,
+    pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
 ) -> Vec<SynthesizedFix> {
     use std::collections::BTreeMap;
+    use marque_rules::confidence::{FeatureContribution, FeatureId};
 
     // Group diagnostics by candidate_span (falls back to span when
     // `candidate_span` is unset) so multi-intent batches on the same
     // marking apply atomically. BTreeMap keyed on (start, end) so
     // iteration order is deterministic — Span itself doesn't impl Ord.
+    //
+    // PR 7c: when `pre_pass_1_cache` is `Some`, the engine applies
+    // `PrecedingFixPenalty` to any diagnostic whose candidate_span
+    // overlaps a cache entry's marking span BEFORE the threshold
+    // check. The penalty is recorded as both a multiplicative
+    // reduction on `Confidence.rule` and a `FeatureContribution`
+    // entry for audit traceability. Diagnostics that demote below
+    // threshold under the penalty are excluded from auto-apply but
+    // remain in `remaining_diagnostics` (existing engine flow).
     #[allow(clippy::type_complexity)]
     let mut groups: BTreeMap<
         (usize, usize),
-        (Span, Vec<&marque_rules::Diagnostic<CapcoScheme>>),
+        (Span, Vec<PenaltyAdjustedDiag>),
     > = BTreeMap::new();
     for &d in diagnostics {
         let Some(intent) = d.fix.as_ref() else {
@@ -2836,18 +2905,41 @@ fn synthesize_fixes(
         if d.severity == Severity::Suggest {
             continue;
         }
-        if intent.confidence.combined() < threshold {
-            continue;
-        }
         let cspan = d.candidate_span.unwrap_or(d.span);
         if cspan.is_empty() {
+            continue;
+        }
+
+        // PR 7c — pass-2 threshold-gate `PrecedingFixPenalty`. The
+        // cache lookup uses the diagnostic's candidate_span (the
+        // marking-scope anchor); `pre_pass_1_attrs_for_span` does
+        // the containment scan over the inline-4 cache. When the
+        // span overlaps, the penalty applies and an
+        // (adjusted_confidence, penalty_applied=true) pair flows
+        // into the threshold check. When the span doesn't overlap
+        // (or the cache is `None`), the existing confidence flows
+        // through unchanged.
+        let penalty_applied = pre_pass_1_cache
+            .map(|cache| pre_pass_1_attrs_for_span(cache, cspan).is_some())
+            .unwrap_or(false);
+        let effective_combined = if penalty_applied {
+            intent.confidence.recognition
+                * (intent.confidence.rule * (1.0 + PRECEDING_FIX_PENALTY_DELTA))
+        } else {
+            intent.confidence.combined()
+        };
+
+        if effective_combined < threshold {
             continue;
         }
         groups
             .entry((cspan.start, cspan.end))
             .or_insert_with(|| (cspan, Vec::new()))
             .1
-            .push(d);
+            .push(PenaltyAdjustedDiag {
+                diag: d,
+                penalty_applied,
+            });
     }
 
     if groups.is_empty() {
@@ -2886,7 +2978,7 @@ fn synthesize_fixes(
         // batch (trait doc), so slice order is not load-bearing.
         let intents: Vec<marque_scheme::ReplacementIntent<CapcoScheme>> = group_diags
             .iter()
-            .filter_map(|d| d.fix.as_ref().map(|i| i.replacement.clone()))
+            .filter_map(|d| d.diag.fix.as_ref().map(|i| i.replacement.clone()))
             .collect();
 
         let modified = match scheme.apply_intent(marking, &intents) {
@@ -2950,22 +3042,59 @@ fn synthesize_fixes(
         // The owning rule is the lex-smallest rule_id; the carried
         // `intent.confidence.rule` is scaled down so combined() equals
         // the minimum across the group.
-        group_diags.sort_by(|a, b| a.rule.cmp(&b.rule));
-        let owning_diag = group_diags[0];
+        //
+        // PR 7c: the `penalty_applied` flag rides on each adjusted-
+        // diagnostic wrapper. If ANY diagnostic in this group was
+        // penalty-eligible (the marking was reshaped by pass-1),
+        // append a `PrecedingFixPenalty` contribution to the
+        // audit-side `features` and reduce the `rule` axis
+        // multiplicatively. Within a group all diagnostics share
+        // the same candidate_span, so the penalty flag is consistent.
+        group_diags.sort_by(|a, b| a.diag.rule.cmp(&b.diag.rule));
+        let owning_diag = group_diags[0].diag;
+        let group_penalty_applied = group_diags.iter().any(|d| d.penalty_applied);
         let owning_intent = owning_diag
             .fix
             .as_ref()
             .expect("filtered above by fix.is_some()");
 
+        // The within-group min uses the post-penalty combined score
+        // so the audit-collapse scaling reflects the threshold the
+        // gate actually evaluated.
         let min_combined: f32 = group_diags
             .iter()
-            .filter_map(|d| d.fix.as_ref())
-            .map(|i| i.confidence.combined())
+            .filter_map(|d| {
+                d.diag.fix.as_ref().map(|i| {
+                    if d.penalty_applied {
+                        i.confidence.recognition
+                            * (i.confidence.rule * (1.0 + PRECEDING_FIX_PENALTY_DELTA))
+                    } else {
+                        i.confidence.combined()
+                    }
+                })
+            })
             .fold(f32::INFINITY, f32::min);
         let mut combined_intent = owning_intent.clone();
-        if min_combined < combined_intent.confidence.combined()
-            && combined_intent.confidence.rule > 0.0
-        {
+        if group_penalty_applied {
+            // Reduce `rule` axis multiplicatively and log the
+            // contribution for audit traceability. Clamping to
+            // `[0.0, 1.0]` is defensive — the inception delta
+            // (-0.10) starting from a valid rule axis can never
+            // exceed the unit range, but the validator below relies
+            // on the bound.
+            combined_intent.confidence.rule = (combined_intent.confidence.rule
+                * (1.0 + PRECEDING_FIX_PENALTY_DELTA))
+                .clamp(0.0, 1.0);
+            combined_intent
+                .confidence
+                .features
+                .push(FeatureContribution {
+                    id: FeatureId::PrecedingFixPenalty,
+                    delta: PRECEDING_FIX_PENALTY_DELTA,
+                });
+        }
+        let combined_intent_combined = combined_intent.confidence.combined();
+        if min_combined < combined_intent_combined && combined_intent.confidence.rule > 0.0 {
             let scaled_rule = (min_combined
                 / combined_intent
                     .confidence
