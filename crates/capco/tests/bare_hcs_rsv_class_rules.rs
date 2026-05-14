@@ -208,3 +208,69 @@ fn e063_does_not_fire_on_non_rsv_sci() {
     let diags = lint("E063", source);
     assert!(diags.is_empty());
 }
+
+// =========================================================================
+// PR 9a Copilot R2 Fix 3 — span anchoring through the deprecated SCI
+// long-form parser path.
+//
+// E062 (and E061 / E063) locate byte anchors by filtering
+// `attrs.token_spans` for `TokenKind::SciSystem` and indexing by
+// `sci_markings` position. Before the fix, the long-form parser path
+// (HUMINT, COMINT, ECI, EL, ENDSEAL, KDK, KLONDIKE) emitted only a
+// `TokenKind::SciControl` span and no `TokenKind::SciSystem` span; the
+// rule's span lookup silently fell through to `Span::new(0, 0)` and
+// the resulting diagnostic anchored at byte 0..0 of the input — silent
+// audit corruption per Constitution Principle V. The fix adds a
+// coincident SciSystem span at the long-form recognizer site
+// (parser.rs ~line 441), restoring the invariant the rule layer
+// already depended on.
+// =========================================================================
+
+#[test]
+fn e062_humint_long_form_diagnostics_have_non_zero_spans() {
+    // Pre-fix regression test: `(SECRET//HUMINT//NOFORN)` triggered E062
+    // because HUMINT is the deprecated long form of HCS (bare HCS at
+    // S/TS). The walker emitted three Suggest candidates anchored at
+    // `Span::new(0, 0)`. Post-fix the parser emits a SciSystem span
+    // covering bytes 9..15 (`HUMINT`), and every E062 diagnostic
+    // anchors at that span.
+    let source = b"(SECRET//HUMINT//NOFORN)";
+    let diags = lint("E062", source);
+    assert_eq!(diags.len(), 3, "E062 emits three Suggest candidates");
+    for d in &diags {
+        assert_ne!(
+            d.span,
+            marque_ism::span::Span::new(0, 0),
+            "E062 diagnostic must not anchor at Span::new(0, 0); long-form parser \
+             path must emit a SciSystem span (Constitution V audit invariant)"
+        );
+        // `(SECRET//HUMINT//NOFORN)`: `HUMINT` at bytes 9..15.
+        assert_eq!(
+            d.span.start, 9,
+            "E062 diagnostic span must cover the HUMINT bytes"
+        );
+        assert_eq!(d.span.end, 15);
+    }
+}
+
+#[test]
+fn e062_comint_long_form_diagnostics_have_non_zero_spans() {
+    // COMINT is the deprecated long-form for SI (not HCS). Bare HCS
+    // class-specific rules (E062) should not fire on COMINT — the
+    // parser maps COMINT to SI, which is a different SCI control. We
+    // assert that whatever SCI-related rule fires (or doesn't), no
+    // diagnostic anchors at `Span::new(0, 0)` because the long-form
+    // parser path now emits a SciSystem span.
+    let source = b"(SECRET//COMINT//NOFORN)";
+    let engine = engine();
+    let result = engine.lint(source);
+    for d in &result.diagnostics {
+        assert_ne!(
+            d.span,
+            marque_ism::span::Span::new(0, 0),
+            "no diagnostic on COMINT long-form input may anchor at Span::new(0, 0); \
+             got rule {:?}",
+            d.rule.as_str()
+        );
+    }
+}

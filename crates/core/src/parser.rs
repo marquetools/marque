@@ -443,6 +443,36 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
+                // Emit a SciSystem span coincident with the SciControl
+                // span so rule-layer span anchoring (E061 / E062 / E063
+                // + any future SCI rule that locates spans via
+                // `TokenKind::SciSystem` filter + index lookup) works
+                // uniformly for long-form-derived markings the same way
+                // it does for structural-parser markings. The
+                // structural path (see ~lines 998-1009 below) always
+                // emits both a block-level `SciControl` span AND a
+                // narrower `SciSystem` span for the control identifier
+                // itself; without the matching emission here, rules
+                // that index `sys_spans[idx]` would fall through to
+                // their defensive `Span::new(0, 0)` fallback and produce
+                // audit records pointing at byte 0..0 of the input.
+                //
+                // For long-form input the source bytes ARE the system
+                // identifier (e.g., `HUMINT` becomes HCS at the marking
+                // level, but the byte range we anchor on remains the
+                // input's `HUMINT` token). Both spans cover the same
+                // bytes — the rule layer reads spans for byte anchoring,
+                // not for token-string content. This invariant
+                // ("exactly one `TokenKind::SciSystem` span per
+                // `sci_markings` entry, regardless of recognizer path")
+                // is what makes the rule-layer span lookup pattern
+                // sound; see `crates/core/tests/sci_long_form_spans.rs`
+                // for the pinned coverage.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciSystem,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if recognize_eyes_only_block(trimmed).is_some() {
                 // EYES / EYES ONLY block with `/`-delimited trigraphs
                 // (T135a Commit 5, issue #307). CAPCO-2016 §H.8 p157:
@@ -1987,29 +2017,50 @@ type SlashSeparators = SmallVec<[(usize, usize); 4]>;
 ///
 /// Returns a pair of vectors:
 /// - `.0` — `(token_offset, trimmed_token)` per non-empty token.
-/// - `.1` — `(slash_offset, slash_end_with_trailing_ws)` per `/` byte.
-///   `slash_offset` is the byte index of the `/` itself within `s`;
-///   `slash_end_with_trailing_ws` is `slash_offset + 1` plus any trailing
-///   ASCII whitespace immediately following the slash. The span covers the
-///   `/` plus any whitespace an author drifted into the gap.
+/// - `.1` — `(slash_offset_with_leading_ws, slash_end_with_trailing_ws)`
+///   per `/` byte. `slash_offset_with_leading_ws` is `slash_offset` minus
+///   any ASCII whitespace immediately preceding the slash (bounded by the
+///   end of the previous emitted token, so the span never crosses into the
+///   previous token's bytes). `slash_end_with_trailing_ws` is
+///   `slash_offset + 1` plus any ASCII whitespace immediately following
+///   the slash. The span covers the `/` plus any whitespace an author
+///   drifted into the gap on either side of the slash.
 ///
 /// CAPCO-2016 §A.6 p16 disallows interjected whitespace in SAP-`/` but is
-/// silent for dissem-`/` and SCI-`/`. Spanning adjacent trailing ASCII
-/// whitespace is engineering tolerance for author drift, NOT a §A.6 rule —
-/// it lets downstream rules see a single Separator token that owns the
-/// inter-token byte range even when the author wrote `OC / NF`.
+/// silent for dissem-`/` and SCI-`/`. Spanning adjacent ASCII whitespace
+/// on both sides is engineering tolerance for author drift, NOT a §A.6
+/// rule — it lets downstream rules see a single Separator token that
+/// owns the inter-token byte range whether the author wrote `OC/NF`,
+/// `OC /NF`, `OC/ NF`, or `OC / NF`. The bidirectional coverage is what
+/// makes audit-record byte ranges contiguous: every byte between adjacent
+/// non-empty tokens belongs to exactly one span (token or separator),
+/// with no gaps.
 fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparators) {
     let mut tokens: SlashTokens<'_> = SmallVec::new();
     let mut separators: SlashSeparators = SmallVec::new();
     let bytes = s.as_bytes();
     let mut pos = 0usize;
+    // Tracks the end byte of the previously emitted non-empty trimmed
+    // token. Bounds the leading-whitespace walk-back of the next
+    // separator so the separator span cannot cross into the previous
+    // token's bytes. Initialized to 0 so the first separator's
+    // walk-back stops at the start of the slice (which is what we want:
+    // any leading whitespace at the very start belongs to neither a
+    // token nor a separator and stays uncovered by design).
+    let mut prev_token_end: usize = 0;
     for (i, part) in s.split('/').enumerate() {
         if i > 0 {
             // The slash byte sits at index `pos - 1` (we advanced past the
             // previous part and the `/` separator). Span the slash plus
-            // any trailing ASCII whitespace.
-            let slash_start = pos - 1;
-            let mut slash_end = slash_start + 1;
+            // any ASCII whitespace on both sides, bounded by
+            // `prev_token_end` on the left so the separator never
+            // overlaps the previous emitted token.
+            let slash_pos = pos - 1;
+            let mut slash_start = slash_pos;
+            while slash_start > prev_token_end && bytes[slash_start - 1].is_ascii_whitespace() {
+                slash_start -= 1;
+            }
+            let mut slash_end = slash_pos + 1;
             while slash_end < bytes.len() && bytes[slash_end].is_ascii_whitespace() {
                 slash_end += 1;
             }
@@ -2018,7 +2069,9 @@ fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparat
         let trim_lead = part.len() - part.trim_start().len();
         let trimmed = part.trim();
         if !trimmed.is_empty() {
-            tokens.push((pos + trim_lead, trimmed));
+            let token_start = pos + trim_lead;
+            tokens.push((token_start, trimmed));
+            prev_token_end = token_start + trimmed.len();
         }
         pos += part.len() + 1; // +1 for the `/` separator
     }

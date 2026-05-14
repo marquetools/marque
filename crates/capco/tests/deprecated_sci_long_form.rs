@@ -209,16 +209,18 @@ fn bare_el_is_warn_suggest_only() {
 // =========================================================================
 
 #[test]
-fn kdk_bluefish_rewrites_to_tk_bluefish() {
+fn kdk_bluefish_rewrites_to_tk_blfh() {
     // §H.4 p85 (NSG PM 3802 closure): "re-mark the new document and
     // associated portions according to the instructions in the TK-BLFH,
     // TK-IDIT, and TK-KAND marking templates."
     //
-    // Walker substitutes the prefix mechanically; the compartment
-    // identifier (`BLUEFISH`) carries through unchanged. The
-    // BLUEFISH / IDITAROD / KANDIK → BLFH / IDIT / KAND abbreviation
-    // (a separate per-compartment canonicalization) is out of scope
-    // for this walker — it's a follow-up CVE-canonicalization concern.
+    // §H.4 p87 documents the BLUEFISH → BLFH portion-mark abbreviation;
+    // §H.4 p91 documents IDITAROD → IDIT; §H.4 p95 documents KANDIK →
+    // KAND. The walker translates the captured legacy compartment via
+    // `KDK_COMPARTMENT_MAPPING` to the canonical short form. The CVE
+    // vocabulary registers only `TK-BLFH` / `TK-IDIT` / `TK-KAND` — no
+    // entries exist for the long forms, so emitting `TK-BLUEFISH` would
+    // produce a marking with no CVE backing.
     let source = b"(TOP SECRET//KDK-BLUEFISH//NOFORN)";
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
@@ -226,14 +228,56 @@ fn kdk_bluefish_rewrites_to_tk_bluefish() {
     assert!(diags[0].citation.contains("§H.4 p85"));
 
     let fixed = fix_once(source);
-    assert_eq!(fixed, "(TOP SECRET//TK-BLUEFISH//NOFORN)");
+    assert_eq!(fixed, "(TOP SECRET//TK-BLFH//NOFORN)");
 }
 
 #[test]
-fn klondike_iditarod_rewrites_to_tk_iditarod() {
+fn klondike_iditarod_rewrites_to_tk_idit() {
+    // §H.4 p85 + §H.4 p91 (IDITAROD → IDIT portion-mark abbreviation).
     let source = b"(TOP SECRET//KLONDIKE-IDITAROD//NOFORN)";
     let fixed = fix_once(source);
-    assert_eq!(fixed, "(TOP SECRET//TK-IDITAROD//NOFORN)");
+    assert_eq!(fixed, "(TOP SECRET//TK-IDIT//NOFORN)");
+}
+
+#[test]
+fn kdk_kandik_rewrites_to_tk_kand() {
+    // §H.4 p85 + §H.4 p95 (KANDIK → KAND portion-mark abbreviation).
+    let source = b"(TOP SECRET//KDK-KANDIK//NOFORN)";
+    let fixed = fix_once(source);
+    assert_eq!(fixed, "(TOP SECRET//TK-KAND//NOFORN)");
+}
+
+#[test]
+fn kdk_unknown_compartment_emits_warn_no_fix() {
+    // KDK-FROBNITZ — an undocumented compartment. The walker cannot
+    // fabricate a canonical TK- short form (the BLUEFISH → BLFH
+    // pattern is per-compartment, not a general truncation rule), so
+    // it emits a Warn-severity diagnostic with no text correction.
+    // Producing `TK-FROBNITZ` (an invalid CVE) would be strictly
+    // worse than no fix.
+    let source = b"(TOP SECRET//KDK-FROBNITZ//NOFORN)";
+    let diags = lint_e065(source);
+    assert_eq!(diags.len(), 1);
+    assert_eq!(
+        diags[0].severity,
+        Severity::Warn,
+        "unknown KDK compartment must downgrade to Warn (no fabricated fix)"
+    );
+    assert!(
+        diags[0].text_correction.is_none(),
+        "unknown KDK compartment must NOT carry a text_correction"
+    );
+    assert!(
+        diags[0]
+            .message
+            .contains("not a documented KLONDIKE compartment"),
+        "diagnostic message must explain why no fix was emitted; got {:?}",
+        diags[0].message
+    );
+
+    // No-op fix: input unchanged because no text correction was emitted.
+    let fixed = fix_once(source);
+    assert_eq!(fixed, "(TOP SECRET//KDK-FROBNITZ//NOFORN)");
 }
 
 #[test]

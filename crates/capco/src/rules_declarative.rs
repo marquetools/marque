@@ -2425,10 +2425,38 @@ enum ReplacementKind {
     /// pulls the compartment from the source token (via the `PrefixSpace`
     /// / `PrefixHyphen` match).
     WithCompartment { prefix: &'static str },
+    /// Like `WithCompartment` but translates the captured compartment to
+    /// its canonical short form via a `(legacy, canonical)` mapping table
+    /// before prepending the prefix. For compartments not in the mapping,
+    /// the walker emits a Warn-Suggest diagnostic (no text correction) —
+    /// Marque cannot fabricate canonical short forms for compartments the
+    /// authoritative source doesn't document. Used by the KDK / KLONDIKE
+    /// rows where CAPCO-2016 §H.4 p85 + p87/p91/p95 spell out the
+    /// `BLUEFISH → BLFH`, `IDITAROD → IDIT`, `KANDIK → KAND`
+    /// abbreviation and the canonical CVE vocabulary has no entry for
+    /// the long-form (e.g., no `TK-BLUEFISH`).
+    WithMappedCompartment {
+        prefix: &'static str,
+        mapping: &'static [(&'static str, &'static str)],
+    },
     /// Suggest-only — no fix proposal. The walker emits
     /// `Diagnostic::info` instead of `Diagnostic::text_correction`.
     SuggestOnly,
 }
+
+/// CAPCO-2016 §H.4 p85 (KLONDIKE closure: NSG PM 3802) + §H.4 p87
+/// (TK-BLUEFISH portion abbreviation BLFH) + §H.4 p91 (TK-IDITAROD
+/// portion abbreviation IDIT) + §H.4 p95 (TK-KANDIK portion abbreviation
+/// KAND). The legacy long-form compartment names `BLUEFISH` / `IDITAROD`
+/// / `KANDIK` appear under the deprecated `KDK-` / `KLONDIKE-` prefixes;
+/// the canonical CVE vocabulary registers only the abbreviated forms
+/// `TK-BLFH` / `TK-IDIT` / `TK-KAND`. Emitting `TK-BLUEFISH` would
+/// produce a marking with no CVE entry — strictly worse than no fix.
+const KDK_COMPARTMENT_MAPPING: &[(&str, &str)] = &[
+    ("BLUEFISH", "BLFH"),
+    ("IDITAROD", "IDIT"),
+    ("KANDIK", "KAND"),
+];
 
 /// The catalog of deprecated SCI long-form rules.
 ///
@@ -2583,17 +2611,23 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     // according to the instructions in the TK-BLFH, TK-IDIT, and
     // TK-KAND marking templates."
     //
-    // The recognizer accepts arbitrary alphanumeric compartments. The
-    // canonical replacement substitutes the bare TK- prefix and keeps
-    // the compartment intact; if a legacy compartment isn't one of
-    // BLUEFISH / IDITAROD / KANDIK the user gets a fix that produces
-    // an invalid CVE marking and a downstream rule surfaces that —
-    // strictly better than silent acceptance.
+    // The legacy long-form compartment identifiers (BLUEFISH / IDITAROD
+    // / KANDIK) map to canonical short forms (BLFH / IDIT / KAND) per
+    // §H.4 p87 / p91 / p95. The mapping lives in
+    // `KDK_COMPARTMENT_MAPPING`; the walker translates a recognized
+    // legacy compartment to its canonical short form before producing
+    // the `TK-<comp>` replacement. Unknown compartments emit a Warn
+    // suggestion with no text correction — Marque does not fabricate
+    // canonical short forms for compartments the authoritative source
+    // doesn't document.
     DeprecatedSciRow {
         source: "KLONDIKE-",
         match_kind: MatchKind::PrefixHyphen,
         severity: Severity::Error,
-        replacement: ReplacementKind::WithCompartment { prefix: "TK-" },
+        replacement: ReplacementKind::WithMappedCompartment {
+            prefix: "TK-",
+            mapping: KDK_COMPARTMENT_MAPPING,
+        },
         message: "Per CAPCO-2016 §H.4 p85 (NSG PM 3802 closure), re-mark KLONDIKE \
                   compartments to TK-BLFH / TK-IDIT / TK-KAND",
         citation: "CAPCO-2016 §H.4 p85",
@@ -2602,7 +2636,10 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         source: "KDK-",
         match_kind: MatchKind::PrefixHyphen,
         severity: Severity::Error,
-        replacement: ReplacementKind::WithCompartment { prefix: "TK-" },
+        replacement: ReplacementKind::WithMappedCompartment {
+            prefix: "TK-",
+            mapping: KDK_COMPARTMENT_MAPPING,
+        },
         message: "Per CAPCO-2016 §H.4 p85 (NSG PM 3802 closure), re-mark KDK \
                   compartments to TK-BLFH / TK-IDIT / TK-KAND",
         citation: "CAPCO-2016 §H.4 p85",
@@ -2759,6 +2796,47 @@ fn emit_diagnostic(
                 Confidence::strict(1.0),
                 None,
             )
+        }
+        ReplacementKind::WithMappedCompartment { prefix, mapping } => {
+            let comp = compartment.expect("PrefixSpace/PrefixHyphen always supplies compartment");
+            // Translate the captured legacy compartment to its canonical
+            // short form. If the compartment is not in the mapping table,
+            // emit a Warn-Suggest diagnostic (no text correction) —
+            // Marque cannot fabricate canonical short forms for
+            // compartments the authoritative source (CAPCO-2016 §H.4
+            // p85 + p87 / p91 / p95) does not document. Producing an
+            // invalid CVE marking like `TK-FROBNITZ` would be strictly
+            // worse than no fix.
+            let canonical_comp = mapping
+                .iter()
+                .find_map(|(legacy, canonical)| (*legacy == comp).then_some(*canonical));
+            match canonical_comp {
+                Some(canonical) => {
+                    let replacement = format!("{prefix}{canonical}");
+                    Diagnostic::text_correction(
+                        rule_id,
+                        row.severity,
+                        span,
+                        row.message,
+                        row.citation,
+                        replacement,
+                        FixSource::BuiltinRule,
+                        // Authoritative mapping: §H.4 p85 + p87/p91/p95
+                        // document the BLUEFISH→BLFH / IDITAROD→IDIT /
+                        // KANDIK→KAND abbreviation. Full confidence.
+                        Confidence::strict(1.0),
+                        None,
+                    )
+                }
+                None => {
+                    let message = format!(
+                        "'{comp}' is not a documented KLONDIKE compartment per \
+                         CAPCO-2016 §H.4 p85 (only BLUEFISH / IDITAROD / KANDIK \
+                         have canonical TK- mappings); contact the originator"
+                    );
+                    Diagnostic::info(rule_id, Severity::Warn, span, message, row.citation)
+                }
+            }
         }
         ReplacementKind::SuggestOnly => {
             Diagnostic::info(rule_id, row.severity, span, row.message, row.citation)
