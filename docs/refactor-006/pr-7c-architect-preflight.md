@@ -42,10 +42,10 @@ PR 7c lands the last conceptual delta of the PR-7 series:
 7. Property + Layer-3-invariant tests at `crates/engine/tests/two_pass_invariants.rs`
    (FR-022/FR-023) and `.../fix_invariants.rs` (I-1, I-2, I-4, I-18, I-19).
 8. `crates/engine/benches/fix_10kb.rs` Criterion bench — two-bench shape per D-7.11.
-9. **Audit-schema label flip `marque-mvp-3 → marque-1.0`**. PM message asserts "single-shot
-   LABEL flip — no accept-list, no structural envelope change." **This contradicts FR-035,
-   the consolidated plan §4 line 335, D-7.10, audit-record.md §1+, and PR 3c.B Commit 10
-   plan §2.1.** See §7. PM resolution required BEFORE the bump commit lands.
+9. ~~**Audit-schema bump `marque-mvp-3 → marque-1.0`**~~ — **RESOLVED OUT OF SCOPE (D-7.18)**.
+   Deferred to dedicated PR 3c.2. PR 7c proceeds on `marque-mvp-3`; the bump is not part of
+   this PR's deliverables. See §7 for the original blocking analysis; see PM decisions doc
+   for D-7.18 / D-7.19 / D-7.20 / D-7.21.
 
 ---
 

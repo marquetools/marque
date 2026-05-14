@@ -72,11 +72,12 @@ The CLI and WASM emitters compile against the same const so byte-identical
 records flow from both surfaces.
 
 The sections below describe the **post-keystone `marque-1.0` target**,
-which adds `(scheme, predicate_id)` rule encoding, `Canonical<S>`
-provenance, BLAKE3 digesting, closed `MessageTemplate` JSON serialization,
-and content-ignorance canary tooling. The keystone work is scheduled in
-follow-up 006-refactor PRs; this section governs what binaries today
-emit.
+which adds `Canonical<S>` provenance, BLAKE3 digesting, closed
+`MessageTemplate` JSON serialization, and content-ignorance canary
+tooling. The 2-tuple `(scheme, predicate_id)` rule encoding defers to
+its own post-PR-10 PR per FR-049; `marque-1.0` keeps the 1-tuple string
+form. The keystone work is scheduled in follow-up 006-refactor PRs;
+this section governs what binaries today emit.
 
 ---
 
@@ -113,10 +114,7 @@ promotion (I-5).
 {
   "schema": "marque-1.0",
 
-  "rule": {
-    "scheme": "capco",
-    "predicate_id": "banner.classification.usa-trigraph"
-  },
+  "rule": "E054",
 
   "severity": "error",                // "off" | "suggest" | "info" | "warn" | "error" | "fix"
 
@@ -183,7 +181,30 @@ promotion (I-5).
 
 ## Rule ID encoding
 
-`(scheme, predicate-id)` per FR-026 / R-3:
+`marque-1.0` keeps the 1-tuple string form from `marque-mvp-3`:
+
+```jsonc
+"rule": "E054"
+```
+
+```jsonc
+"rule": "R001"   // engine-minted: decoder recognition
+"rule": "R002"   // engine-minted: re-parse failure
+```
+
+The 2-tuple `(scheme, predicate_id)` encoding (FR-026 / R-3) is **not
+part of `marque-1.0`** — it defers to a dedicated post-PR-10 PR per
+FR-049. See **Post-`marque-1.0` RuleId migration** below for the
+planned wire shape.
+
+---
+
+## Post-`marque-1.0` RuleId migration (future, post-PR-10, FR-049)
+
+The 2-tuple `(scheme, predicate-id)` rule encoding lands in a dedicated
+post-keystone PR, after the stability freeze lifts at PR 10 merge. When
+it lands, the schema label will need a coordinated bump. The planned
+wire shape (FR-026 / R-3):
 
 ```jsonc
 "rule": {
@@ -207,7 +228,7 @@ promotion (I-5).
   (`r001.decoder-recognized`, `r002.reparse-failed`).
 
 Engine-minted synthetic diagnostics (R001 decoder recognition, R002
-re-parse failure) carry the sentinel `"engine"` scheme per FR-044
+re-parse failure) will carry the sentinel `"engine"` scheme per FR-044
 (see consolidated source plan §9.4):
 
 ```jsonc
@@ -222,10 +243,10 @@ diagnostic is *about* a CAPCO marking but isn't *from* CAPCO. The
 sentinel scheme keeps `("capco", …)` cleanly meaning "from a CAPCO
 rule" and is forward-compatible with future schemes.
 
-Legacy `E###` / `W###` / `S###` / `C###` IDs do not appear in
-`marque-1.0` records. The one-time mapping table lives at
-`docs/refactor-006/legacy-rule-id-map.md` (R-3) for archaeological
-reference only.
+The one-time mapping table from legacy `E###` / `W###` / `S###` / `C###`
+IDs to their 2-tuple equivalents lives at
+`docs/refactor-006/legacy-rule-id-map.md` (R-3) for post-migration
+reference.
 
 ---
 
