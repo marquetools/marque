@@ -213,16 +213,19 @@ pub struct Engine {
     /// Pass-2 (WholeMarking) partition counterpart of
     /// [`Engine::pass1_rule_indices`].
     ///
-    /// **PR 7b behavior.** Stored but not yet read. Pass-2 dispatch
-    /// in `TwoPassFixer::run` currently routes diagnostics to pass-2
-    /// as the **complement** of the pass-1 (Localized) set, which is
-    /// sufficient for today's rule shape — every diagnostic emitted
-    /// by `lint()` comes from a registered rule, so the complement
-    /// equals the WholeMarking partition. PR 7c will switch pass-2 to
-    /// a positive whitelist read off this field for symmetry with
-    /// pass-1 and to make a future "unregistered emitted ID" land in
-    /// neither pass instead of silently in pass-2. See
-    /// [`Engine::pass1_rule_indices`] for the shape rationale.
+    /// **Post-PR-7c behavior.** Stored but not yet read at dispatch
+    /// time. Pass-2 in `TwoPassFixer::run` routes diagnostics as the
+    /// **complement** of the pass-1 (Localized) set via
+    /// `partition_diags_by_phase` — sufficient for today's rule
+    /// shape because every diagnostic emitted by `lint()` comes
+    /// from a registered rule, so the complement equals the
+    /// WholeMarking partition. PR 7c retained this dispatch shape
+    /// (implementer Decision #4) rather than flipping to a positive
+    /// whitelist; the field stays available for a deferred future
+    /// PR that wants the symmetry with pass-1 and the "unregistered
+    /// emitted ID falls into neither pass" property. No schedule for
+    /// that work is set. See [`Engine::pass1_rule_indices`] for the
+    /// shape rationale.
     #[allow(dead_code)]
     pass2_rule_indices: Pass2Indices,
 }
@@ -3505,10 +3508,13 @@ type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 /// Walked once at [`Engine::with_clock`] time and cached on the engine.
 /// Per-document `fix` dispatch reads `pass1_rule_indices` via
 /// [`TwoPassFixer::localized_rule_id_set`] (PR 7b); the walk does not
-/// re-run. `pass2_rule_indices` is stored for PR 7c, when pass-2 will
-/// switch from complement-of-pass-1 to a positive whitelist for
-/// symmetry with pass-1 — see [`Engine::pass2_rule_indices`] for the
-/// rationale.
+/// re-run. `pass2_rule_indices` is stored against a deferred future
+/// migration that would switch pass-2 from the current
+/// complement-of-pass-1 dispatch to a positive whitelist (read off
+/// that field) for symmetry with pass-1. PR 7c retained the
+/// complement dispatch (implementer Decision #4); see
+/// [`Engine::pass2_rule_indices`] for the rationale and the
+/// deferred-migration framing.
 fn partition_rules_by_phase(
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
 ) -> (Pass1Indices, Pass2Indices) {
