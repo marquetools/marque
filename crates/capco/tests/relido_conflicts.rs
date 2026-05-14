@@ -205,7 +205,7 @@ fn apply_fix(source: &str, span: Span, replacement: &str) -> String {
 
 /// Minimal `RuleContext` for wrapper `check()` calls.
 /// Mirrors the construction pattern from `crates/capco/tests/rules_us1.rs`.
-fn ctx() -> RuleContext {
+fn ctx() -> RuleContext<'static> {
     RuleContext {
         marking_type: MarkingType::Portion,
         zone: None,
@@ -216,6 +216,7 @@ fn ctx() -> RuleContext {
         candidate_span: marque_ism::Span::new(0, 0),
         page_context: None,
         corrections: None,
+        pre_pass_1_attrs: None,
     }
 }
 

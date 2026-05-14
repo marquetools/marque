@@ -4683,6 +4683,9 @@ mod tests {
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
+            // No two-pass fix path is in play for this defensive
+            // unit test — leave the cache slot empty.
+            pre_pass_1_attrs: None,
         };
         let rule = super::RelToTrigraphSuggestRule;
         let diags =
@@ -6153,6 +6156,9 @@ mod tests {
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
+            // Unit test for the declarative-rule layer; no engine
+            // two-pass pipeline.
+            pre_pass_1_attrs: None,
         };
 
         let rule = DeclarativeJointHcsRule;
@@ -6221,6 +6227,9 @@ mod tests {
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
             corrections: None,
+            // Unit test for the declarative-rule layer; no engine
+            // two-pass pipeline.
+            pre_pass_1_attrs: None,
         };
 
         let rule = DeclarativeJointHcsRule;
@@ -7597,6 +7606,10 @@ pub(crate) mod marque_capco_test_support {
                 candidate_span: candidate.span,
                 page_context: ctx_page,
                 corrections: None,
+                // Test-driver synthetic context; no two-pass fix
+                // pipeline is in play, so the pre-pass-1 cache slot
+                // is unconditionally `None`.
+                pre_pass_1_attrs: None,
             };
             for rule in rule_set.rules() {
                 out.extend(rule.check(&attrs, &ctx));

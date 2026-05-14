@@ -5,6 +5,18 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 # PR 7c — Rust Specialist Pre-flight
 
+> **STATUS UPDATE (2026-05-14, D-7.22)**: The `PrecedingFixPenalty` mechanism this
+> preflight discussed has been **retired in its entirety** per PM clarification. The
+> mechanism was misunderstanding-derived (user's original concern was decoder-specific,
+> not a generalized cross-pass penalty) and the remediation phase independently confirmed
+> the path was dead code under current `Phase::Localized` rules. The `FeatureId` variant,
+> engine-applied multiplicative reduction, `FeatureContribution` audit trace,
+> `PRECEDING_FIX_PENALTY_DELTA` const, and watchdog test suite were removed in PR 7c. The
+> portions of this preflight discussing penalty mechanics, threshold-gate placement, and
+> magnitude calibration are now **informational background** for the D-7.22 audit trail;
+> do not re-implement from them. The `RuleContext<'a>` + `pre_pass_1_attrs` field +
+> pre-pass-1 cache + FR-023 disambiguation + I-18 overlap demotion **all stay**.
+
 > **STATUS UPDATE (2026-05-14)**: The `marque-mvp-3 → marque-1.0` audit-schema bump
 > originally part of PR 7c scope is **REMOVED** and deferred to PR 3c.2 per D-7.18.
 > The E003 retirement finding below stands — but the resolution per D-7.19 is that

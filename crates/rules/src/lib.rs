@@ -293,7 +293,7 @@ pub enum Phase {
 /// candidates (form-feed `\f` and `\n\n\n+` heuristics) so the context
 /// reflects only the current page.
 #[derive(Debug, Clone)]
-pub struct RuleContext {
+pub struct RuleContext<'a> {
     pub marking_type: MarkingType,
     /// Document zone (header/footer/body/CAB) when known. `None` in Phase 3
     /// — the scanner cannot prove header vs footer from raw text.
@@ -321,6 +321,31 @@ pub struct RuleContext {
     /// Organization-specific corrections map from config `[corrections]`.
     /// `None` when no corrections are configured.
     pub corrections: Option<Arc<HashMap<String, String>>>,
+    /// Pre-pass-1 attributes for this marking when a pass-1 fix
+    /// reshaped its bytes (FR-023 / R-4). `Some` iff the marking's
+    /// span overlaps a pass-1 fix span; `None` otherwise.
+    ///
+    /// Rules MUST handle `None` — never unconditionally unwrap. The
+    /// field is populated by the engine's `TwoPassFixer` from a stack-
+    /// scoped `SmallVec<[(Span, CanonicalAttrs); 4]>` cache built before
+    /// the pass-1 splice. The borrow lifetime `'a` is tied to that
+    /// cache and dies when pass-2 dispatch completes.
+    ///
+    /// The field is the architectural two-pass-reshape signal: rules
+    /// that need to differentiate "this defect existed before pass-1"
+    /// from "pass-1 exposed this defect by reshaping bytes" can branch
+    /// on `pre_pass_1_attrs.is_some()`. No current rule consumes the
+    /// signal — it is plumbed through every rule's `check` signature
+    /// so future consumers can read it without re-threading the
+    /// lifetime parameter. The engine-applied `PrecedingFixPenalty`
+    /// mechanism originally planned to consume the field's PRESENCE
+    /// was retired in PR 7c per D-7.22 (misunderstanding-derived,
+    /// path was independently confirmed dead code under current
+    /// `Phase::Localized` rules). Future evolution (deferred per
+    /// D-7.7) replaces this borrow with `Arc<CanonicalAttrs>` when
+    /// the parse cache adopts refcount-shared attrs alongside the
+    /// v0.2 LMDB incremental cache.
+    pub pre_pass_1_attrs: Option<&'a CanonicalAttrs>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1034,7 +1059,7 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     fn name(&self) -> &'static str;
     /// Default severity — overridable per rule in `.marque.toml`.
     fn default_severity(&self) -> Severity;
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<S>>;
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext<'_>) -> Vec<Diagnostic<S>>;
 
     /// Dispatch phase for the engine's two-pass fix pipeline (FR-021).
     ///

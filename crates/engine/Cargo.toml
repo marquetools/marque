@@ -39,6 +39,10 @@ name = "fix_throughput"
 harness = false
 name = "fix_latency"
 
+[[bench]]
+harness = false
+name = "fix_10kb"
+
 [dependencies]
 aho-corasick = { workspace = true }
 futures = { workspace = true, optional = true }
