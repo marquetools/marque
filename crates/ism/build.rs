@@ -47,7 +47,7 @@
 //! we don't need a `rerun-if-changed=schemas/` since there's no local
 //! schema tree anymore.
 
-use quick_xml::{events::Event, Reader, XmlVersion};
+use quick_xml::{Reader, XmlVersion, events::Event};
 
 use std::{env, fs, path::Path};
 
