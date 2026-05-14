@@ -24,7 +24,8 @@
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{
-    CanonicalAttrs, CapcoTokenSet, DissemControl, MarkingCandidate, MarkingType, Span,
+    CanonicalAttrs, CapcoTokenSet, Classification, DissemControl, MarkingCandidate,
+    MarkingClassification, MarkingType, Span,
 };
 use marque_scheme::{MarkingScheme, Scope};
 
@@ -140,4 +141,72 @@ fn dissem_iter_yields_both_namespaces_in_order() {
     assert_eq!(collected.len(), 2);
     assert_eq!(collected[0], &DissemControl::Nf, "dissem_us comes first");
     assert_eq!(collected[1], &DissemControl::Oc, "dissem_nato comes second");
+}
+
+/// PR 9b R2 (Copilot inline review at `render_dissem.rs:74`): dissem
+/// render path MUST dedup across namespaces.
+///
+/// `dissem_iter()` chains `dissem_us` and `dissem_nato`, so a page
+/// rollup that contributes the same control from both namespaces
+/// (e.g., a US-classified portion with ORCON and a pure-NATO portion
+/// with ORCON) would otherwise emit `ORCON/ORCON` — an invalid
+/// repeated token.
+///
+/// Authority: CAPCO-2016 §G.2 Table 5 pp 40-45. Table 5 directs NATO
+/// ORCON to "See US ORCON ARH requirements", i.e. they render to the
+/// same canonical token regardless of attribution. The banner must
+/// carry one `ORCON`, not two.
+///
+/// The test constructs a `CapcoMarking` directly with the duplicate
+/// namespace state that a real page rollup would produce — bypassing
+/// the engine for unit-test focus — and asserts that
+/// `render_canonical` collapses the duplicate.
+#[test]
+fn render_dissem_dedups_same_control_across_namespaces() {
+    let scheme = CapcoScheme::new();
+
+    // Construct the post-rollup state: SECRET classification, ORCON
+    // in both `dissem_us` (from a hypothetical US-classified portion)
+    // and `dissem_nato` (from a hypothetical pure-NATO portion). This
+    // is exactly what `CapcoScheme::project(Scope::Page, ...)` would
+    // produce for that fixture pair.
+    let mut attrs = CanonicalAttrs::default();
+    attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+    attrs.dissem_us = vec![DissemControl::Oc].into();
+    attrs.dissem_nato = vec![DissemControl::Oc].into();
+    let marking = CapcoMarking::new(attrs);
+
+    // Render as a page-scope banner. The dissem axis must emit a
+    // single `ORCON`.
+    let mut banner = String::new();
+    scheme
+        .render_canonical(&marking, Scope::Page, &mut banner)
+        .expect("render_canonical(Scope::Page) must succeed");
+
+    let orcon_count = banner.matches("ORCON").count();
+    assert_eq!(
+        orcon_count, 1,
+        "banner must carry one ORCON, not duplicates from cross-namespace rollup; got banner = {banner:?}",
+    );
+    // Negative-form sanity: the broken renderer would emit
+    // `ORCON/ORCON` literally. Pin that exact substring is absent.
+    assert!(
+        !banner.contains("ORCON/ORCON"),
+        "banner must NOT contain `ORCON/ORCON`; got banner = {banner:?}",
+    );
+
+    // Same property at portion scope (portion form uses `OC`).
+    let mut portion = String::new();
+    scheme
+        .render_canonical(&marking, Scope::Portion, &mut portion)
+        .expect("render_canonical(Scope::Portion) must succeed");
+    let oc_count = portion.matches("OC").count();
+    assert_eq!(
+        oc_count, 1,
+        "portion must carry one OC, not duplicates; got portion = {portion:?}",
+    );
+    assert!(
+        !portion.contains("OC/OC"),
+        "portion must NOT contain `OC/OC`; got portion = {portion:?}",
+    );
 }
