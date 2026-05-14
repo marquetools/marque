@@ -42,6 +42,6 @@
   },
   "fix_10kb_two_pass": {
     "target_upper_ci_us": 16000,
-    "_note": "PR 7c (T085) — SC-001 absolute target for the two-pass fix pipeline's full path. Exercises pass-0 corrections, pass-1 Localized fixes (C001 typo correction), the pre-pass-1 attrs cache population, post-pass-1 re-lint via `lint_with_options_internal_with_cache`, FR-023 disambiguation, I-18 overlap demotion, and `PrecedingFixPenalty` application at the pass-2 threshold gate. As with `fix_10kb_pass2_only`, no `upper_ci_us` baseline is captured here — operator runs `cargo bench --bench fix_10kb -- --save-baseline pr7c` to populate. The SC-001 16ms absolute target is the load-bearing gate. See `crates/engine/benches/fix_10kb.rs`."
+    "_note": "PR 7c (T085) — SC-001 absolute target for the two-pass fix pipeline's full path. Exercises pass-0 corrections, pass-1 Localized fixes (C001 typo correction), the pre-pass-1 attrs cache population, post-pass-1 re-lint via `lint_with_options_internal_with_cache`, FR-023 disambiguation, and I-18 overlap demotion. (The originally-planned `PrecedingFixPenalty` application at the pass-2 threshold gate was retired in this same PR per D-7.22; the bench no longer exercises any penalty-application codepath.) As with `fix_10kb_pass2_only`, no `upper_ci_us` baseline is captured here — operator runs `cargo bench --bench fix_10kb -- --save-baseline pr7c` to populate. The SC-001 16ms absolute target is the load-bearing gate. See `crates/engine/benches/fix_10kb.rs`."
   }
 }
