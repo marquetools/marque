@@ -1877,73 +1877,53 @@ fn nato_fold_emits_superseded_token_feature() {
         provenance.features
     );
 }
-
 #[test]
-fn nato_in_second_segment_yields_conflict_not_us_secret() {
-    // `(S//NATO C)` is a malformed input where NATO C accidentally appears
-    // in the SCI/dissem position (segment 2). The fold's segment loop fires
-    // on segment 2 (starts with `NATO `), producing the intermediate `(S//NC)`.
-    // Contrary to the brief's initial assumption, the strict parser does NOT
-    // reject this — it accepts `(S//NC)` as a
-    // `MarkingClassification::Conflict { us: Secret, foreign: Nato(NatoConfidential) }`.
+fn nato_in_second_segment_yields_decode_miss() {
+    // FIX-2: `(S//NATO C)` — NATO C appears in the SCI/dissem slot (second
+    // segment), NOT the classification slot (first segment). After FIX-2 the
+    // fold is restricted to the first non-empty `//`-separated segment only.
+    // The first segment is `S` (doesn't start with "NATO "), so fold_nato_segment
+    // returns None for it, `any_changed = false`, and `try_nato_fold` returns None.
+    // The decoder feeds the original `(S//NATO C)` to the strict parser, which
+    // cannot parse it, and the decoder returns a zero-candidate Ambiguous
+    // (decode-miss).
     //
-    // This test documents the actual bounded behavior: the fold's segment-leading
-    // guard prevents NATO-tetragraph-in-REL-TO from folding (correct), but does
-    // NOT prevent fold from firing in non-classification-slot positions. The
-    // parser's Conflict result is better than silently emitting a pure NATO
-    // canonical (no false `NatoConfidential`-only result is returned), but the
-    // decoder does not produce a decode-miss. See the caller-invariant note on
-    // `fold_nato_segment` and the brief deviation note in the commit message.
+    // Domain rationale (§H.7): NATO commingled with US info should transmute to
+    // FGI (`(S//FGI NATO)`) — not produce a NATO-axis canonical or a Conflict
+    // intermediate. The transmutation is Stage 4 / PR 9+ territory; PR 8
+    // produces a decode-miss to avoid wrong intermediates while the proper fix waits.
     //
-    // Test-fixture carve-out per Constitution V: no engine promotion occurs here.
-    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17.
-    use marque_ism::MarkingClassification;
+    // Replaces `nato_in_second_segment_yields_conflict_not_us_secret` from
+    // the round-2 commit (which documented the old Conflict behavior as "bounded"
+    // but which was itself wrong per CAPCO-2016 §H.7).
+    //
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17; §H.7 p123.
     let rx = DecoderRecognizer::new();
     let parsed = rx.recognize(b"(S//NATO C)", &deep_cx());
     match parsed {
-        Parsed::Unambiguous(marking) => {
-            // The fold fires on the second segment; the parser accepts the
-            // intermediate `(S//NC)` as a Conflict classification.
-            // Key invariant: the result must NOT be a pure NATO-only marking
-            // (which would mean the fold injected a false canonical).
-            match marking.0.classification.as_ref() {
-                Some(MarkingClassification::Conflict { us, foreign }) => {
-                    // Conflict is the expected outcome: US Secret remains visible
-                    // and the fold-produced NATO Confidential surfaces as the
-                    // conflicting foreign classification. Both are present.
-                    use marque_ism::ForeignClassification;
-                    assert_eq!(
-                        *us,
-                        marque_ism::Classification::Secret,
-                        "conflict must retain US Secret as the us axis"
-                    );
-                    assert!(
-                        matches!(**foreign, ForeignClassification::Nato(_)),
-                        "conflict must have Nato classification as the foreign axis, got {foreign:?}"
-                    );
-                }
-                Some(MarkingClassification::Nato(_)) => {
-                    // Fold would have silently replaced US Secret with NATO marking —
-                    // this is the wrong behavior we want to catch.
-                    panic!(
-                        "T129 regression: `(S//NATO C)` must not produce a pure Nato \
-                         classification; fold must not discard the US Secret in segment 1"
-                    );
-                }
-                other => {
-                    // Any other result (including a pure US classification) is worth
-                    // documenting but may indicate a parser behavior change.
-                    panic!(
-                        "T129 regression: `(S//NATO C)` produced unexpected classification \
-                         {other:?}; expected Conflict{{us: Secret, foreign: Nato(...)}}"
-                    );
-                }
-            }
-        }
         Parsed::Ambiguous { ref candidates } if candidates.is_empty() => {
-            // Graceful decode-miss is also acceptable; documented here for completeness.
+            // Expected: decode-miss. The fold doesn't fire on the second segment,
+            // the strict parser can't handle `(S//NATO C)`, and the decoder
+            // correctly surfaces zero candidates (§H.7 FGI transmutation domain).
         }
-        other => panic!("T129 regression: `(S//NATO C)` produced unexpected result {other:?}"),
+        Parsed::Ambiguous { ref candidates } => {
+            // Non-zero candidates: decoder manufactured a partial or Conflict result.
+            panic!(
+                "FIX-2 regression: `(S//NATO C)` must return zero-candidate decode-miss \
+                 (§H.7 FGI transmutation domain); got {} candidate(s): {:?}",
+                candidates.len(),
+                candidates,
+            );
+        }
+        Parsed::Unambiguous(marking) => {
+            // Any Unambiguous result means the fold or decoder fabricated a
+            // marking from a cross-segment NATO input — wrong.
+            panic!(
+                "FIX-2 regression: `(S//NATO C)` must not produce an Unambiguous result; \
+                 got marking = {:?}",
+                marking.0,
+            );
+        }
     }
 }
 
@@ -1982,5 +1962,174 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
             "T129 regression: `(//nato secret atomal//nf)` must decode unambiguously, \
              got {other:?}"
         ),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FIX-1 (T130 banner half): banner-form NATO fold (#260 unimplemented half)
+// ---------------------------------------------------------------------------
+//
+// Before FIX-1, `try_nato_fold` returned None for Banner kind, so inputs
+// like `NATO S//NOFORN` (banner abbreviation) failed because the strict parser
+// only accepts the full banner forms (`NATO SECRET`, `COSMIC TOP SECRET`).
+// FIX-1 extends the fold to handle Banner kind, expanding abbreviations to
+// their canonical banner long forms.
+//
+// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register); §A.6 p15.
+
+#[test]
+fn nato_u_banner_folds_to_nato_unclassified() {
+    // `NATO U//NF\n` — banner abbreviation for NATO UNCLASSIFIED + NOFORN.
+    // The strict parser rejects `NATO U`; the fold expands to `NATO UNCLASSIFIED`,
+    // prepends `//` (§A.6 p15), giving `//NATO UNCLASSIFIED//NF`.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO U//NF\n", &deep_cx()) else {
+        panic!(
+            "FIX-1 regression: `NATO U//NF` must fold to `//NATO UNCLASSIFIED//NF` \
+             and decode to NatoUnclassified (banner NATO fold, #260)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoUnclassified,
+        "NATO U banner must fold to NatoUnclassified"
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive the banner fold; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn nato_r_banner_folds_to_nato_restricted() {
+    // `NATO R//NF` — banner abbreviation for NATO RESTRICTED + NOFORN.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO R//NF", &deep_cx()) else {
+        panic!(
+            "FIX-1 regression: `NATO R//NF` must fold to `//NATO RESTRICTED//NF` \
+             and decode to NatoRestricted (banner NATO fold, #260)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoRestricted,
+        "NATO R banner must fold to NatoRestricted"
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn nato_c_banner_folds_to_nato_confidential() {
+    // `NATO C//NF` — banner abbreviation for NATO CONFIDENTIAL + NOFORN.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO C//NF", &deep_cx()) else {
+        panic!(
+            "FIX-1 regression: `NATO C//NF` must fold to `//NATO CONFIDENTIAL//NF` \
+             and decode to NatoConfidential (banner NATO fold, #260)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoConfidential,
+        "NATO C banner must fold to NatoConfidential"
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn nato_s_banner_folds_to_nato_secret() {
+    // `NATO S//NF` — banner abbreviation for NATO SECRET + NOFORN.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO S//NF", &deep_cx()) else {
+        panic!(
+            "FIX-1 regression: `NATO S//NF` must fold to `//NATO SECRET//NF` \
+             and decode to NatoSecret (banner NATO fold, #260)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoSecret,
+        "NATO S banner must fold to NatoSecret"
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn nato_ts_banner_folds_to_cosmic_top_secret() {
+    // `NATO TS//NF` — banner abbreviation for COSMIC TOP SECRET + NOFORN.
+    // Per CAPCO-2016 §G.1 Table 4 pp 36-38, NATO TOP SECRET maps to
+    // COSMIC TOP SECRET in the canonical Register.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO TS//NF", &deep_cx()) else {
+        panic!(
+            "FIX-1 regression: `NATO TS//NF` must fold to `//COSMIC TOP SECRET//NF` \
+             and decode to CosmicTopSecret (banner NATO fold, #260)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::CosmicTopSecret,
+        "NATO TS banner must fold to CosmicTopSecret"
+    );
+    assert!(
+        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        "NOFORN must survive; attrs = {:?}",
+        marking.0,
+    );
+}
+
+#[test]
+fn nato_secret_banner_already_canonical_no_fold() {
+    // `NATO SECRET//NF` is already the canonical banner long form for NATO SECRET.
+    // The strict recognizer handles it directly (no fold needed). The decoder
+    // either routes through strict-first or the fold returns None (idempotent).
+    // Key invariant: canonical input must NOT emit SupersededToken — the fold
+    // did not fire.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let result = rx.recognize(b"NATO SECRET//NF", &deep_cx());
+    match result {
+        Parsed::Unambiguous(ref marking) => {
+            assert_eq!(
+                nato_class(marking),
+                NatoClassification::NatoSecret,
+                "canonical NATO SECRET must decode as NatoSecret"
+            );
+            // If provenance is present (decoder path), confirm NO SupersededToken.
+            if let Some(prov) = marking.1.as_ref() {
+                let has_superseded = prov
+                    .features
+                    .iter()
+                    .any(|f| f.id == FeatureId::SupersededToken);
+                assert!(
+                    !has_superseded,
+                    "canonical banner form must NOT emit SupersededToken (fold must be idempotent); \
+                     features = {:?}",
+                    prov.features
+                );
+            }
+        }
+        Parsed::Ambiguous { .. } => {
+            // Also acceptable — canonical input should always decode;
+            // an Ambiguous result would indicate a regression elsewhere.
+            panic!("canonical `NATO SECRET//NF` should decode unambiguously");
+        }
     }
 }

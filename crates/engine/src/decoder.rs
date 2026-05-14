@@ -3323,39 +3323,54 @@ const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
     // "TOP" alone is not a valid abbreviation and is excluded from this table.
 ];
 
-/// Fold NATO longhand classification levels into canonical short forms.
+/// Fold NATO longhand classification levels into canonical forms.
 ///
-/// Recovers inputs the strict parser doesn't recognize. The primary failing
-/// case is `(NATO S)` (no leading `//`) for which CAPCO §G.1 Table 4 pp 36-38
-/// specifies the canonical form `(//NS)` — the fold both canonicalizes the
-/// level token and injects the required `//` prefix. Also handles the
-/// already-prefixed `(//NATO S)` variant (level token canonicalized; `//`
-/// prefix already present, so none is added). The fold fires only when `NATO`
-/// appears as the first non-delimiter token of a `//`-separated segment, so
-/// tetragraph occurrences inside `REL TO USA, NATO` or FGI lists are
-/// not touched. See the caller-invariant note on [`fold_nato_segment`] for
-/// the bounded behavior when the fold fires on a non-classification-slot segment.
+/// Recovers inputs the strict parser doesn't recognize. Handles both
+/// portion and banner kinds:
 ///
-/// For `MarkingType::Portion`, NATO long form → portion abbreviation:
+/// For `MarkingType::Portion`, NATO abbreviation → portion abbreviation
+/// (equivalence transform, both are valid surface forms):
 ///   NATO U → NU, NATO R → NR, NATO C → NC, NATO S → NS,
-///   NATO TS → CTS, NATO UNCLASSIFIED → NU, … (long-word forms too).
-///   NATO TOP SECRET → CTS (two-word compound, handled explicitly).
-/// For `MarkingType::Banner`/`Cab`/`PageBreak`, banner forms are
-/// already canonical; the function returns `None` on banner input
-/// (let the existing strict reorder path handle it).
+///   NATO TS → CTS, NATO UNCLASSIFIED → NU, NATO SECRET → NS, … (long-word
+///   forms too). NATO TOP SECRET → CTS (two-word compound, handled explicitly).
+///   Canonical inputs (e.g. `(//NS//NF)`) return `None` (idempotent).
+///
+/// For `MarkingType::Banner`, NATO abbreviation → banner long form:
+///   NATO U → NATO UNCLASSIFIED, NATO R → NATO RESTRICTED,
+///   NATO C → NATO CONFIDENTIAL, NATO S → NATO SECRET,
+///   NATO TS → COSMIC TOP SECRET.
+///   Inputs already in banner canonical form (e.g. `NATO SECRET//NOFORN`)
+///   return `None` (idempotent). This closes the unimplemented half of #260:
+///   the strict parser recognizes full banner forms (`NATO SECRET`,
+///   `COSMIC TOP SECRET`) but not abbreviations (`NATO S`, `NATO TS`), so
+///   a banner input `NATO S//NOFORN` fails strict parse and the fold
+///   recovers it.
+///
+/// For `MarkingType::Cab` and `MarkingType::PageBreak`, returns `None`
+/// (CAB authority lines and page-break sentinels don't carry NATO classifications).
+///
+/// **Segment restriction (FIX-2, CAPCO §H.7 FGI transmutation).** The fold
+/// fires ONLY on the first non-empty `//`-separated segment (the
+/// classification slot). NATO content in a non-first-slot position
+/// (e.g., `(S//NATO C)`) indicates commingled US+NATO info, which per
+/// CAPCO-2016 §H.7 should transmute to FGI (`(S//FGI NATO)`) — not
+/// produce a NATO-axis canonical. PR 8 does not implement the transmutation
+/// (Stage 4 / PR 9+ territory); restricting the fold to the first segment
+/// ensures we don't manufacture wrong intermediates while the proper fix waits.
+/// Cross-segment NATO inputs return decode-miss.
 ///
 /// **Idempotence**: returns `None` when no segment was changed (including
-/// when the input is already canonical, e.g. `(//NS//NF)`).
+/// when the input is already canonical).
 ///
 /// **Pure function**: no captures, no global state. `Send + Sync` follows
 /// automatically. Pre-uppercased input assumed (caller passes the
 /// post-`normalize_delimiters_and_case` string).
 ///
-/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register).
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register);
+/// §A.6 p15 (`//` prefix for non-US classifications); §H.7 (FGI transmutation).
 fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
-    // Banner, CAB, and PageBreak inputs are already canonical or handled
-    // by the strict path. The fold is portion-only meaningful.
-    if kind != MarkingType::Portion {
+    // CAB and PageBreak inputs don't carry NATO classifications.
+    if matches!(kind, MarkingType::Cab | MarkingType::PageBreak) {
         return None;
     }
     // All NATO classification tokens are pure ASCII; non-ASCII input
@@ -3364,13 +3379,15 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
         return None;
     }
 
-    // Strip surrounding parens (portion form). The leading `(` and
-    // trailing `)` are preserved and re-added after fold.
-    let (has_parens, inner) = if text.starts_with('(') && text.ends_with(')') {
-        (true, &text[1..text.len() - 1])
-    } else {
-        (false, text)
-    };
+    // Strip surrounding parens — only portion form has them. Banner inputs
+    // like `NATO S//NOFORN` never carry parens so this branch is
+    // naturally a no-op for Banner kind.
+    let (has_parens, inner) =
+        if kind == MarkingType::Portion && text.starts_with('(') && text.ends_with(')') {
+            (true, &text[1..text.len() - 1])
+        } else {
+            (false, text)
+        };
 
     // Split into `//`-separated segments. A leading `//` (canonical
     // non-US form) produces an empty first element; we track this to
@@ -3378,22 +3395,43 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
     let segments: Vec<&str> = inner.split("//").collect();
     let had_leading_empty = segments.first().map(|s| s.is_empty()).unwrap_or(false);
 
+    // Determine the index of the first non-empty segment (the
+    // classification slot). The fold ONLY fires on that segment;
+    // all other segments are passed through verbatim.
+    //
+    // Rationale: NATO classifications always occupy the first
+    // `//`-separated slot per CAPCO-2016 §A.6. `NATO X` in a
+    // non-first slot (e.g., `(S//NATO C)`) indicates commingled
+    // US+NATO info. Correct canonical form per §H.7 is FGI transmutation
+    // (`(S//FGI NATO)`), not a NATO-axis canonical. PR 9+ handles that
+    // transmutation; PR 8 produces a decode-miss to avoid wrong intermediates.
+    let first_nonempty_idx = segments.iter().position(|s| !s.is_empty());
+    let Some(class_slot_idx) = first_nonempty_idx else {
+        return None; // All empty — degenerate input, nothing to fold.
+    };
+
     let mut any_changed = false;
     let mut first_segment_folded = false;
     let mut result_segments: Vec<String> = Vec::with_capacity(segments.len());
 
     for (i, seg) in segments.iter().enumerate() {
-        match fold_nato_segment(seg) {
-            Some(folded) => {
-                any_changed = true;
-                if i == 0 {
-                    first_segment_folded = true;
+        if i == class_slot_idx {
+            // Classification slot — attempt the fold.
+            match fold_nato_segment(seg, kind) {
+                Some(folded) => {
+                    any_changed = true;
+                    if i == 0 {
+                        first_segment_folded = true;
+                    }
+                    result_segments.push(folded);
                 }
-                result_segments.push(folded);
+                None => {
+                    result_segments.push(seg.to_string());
+                }
             }
-            None => {
-                result_segments.push(seg.to_string());
-            }
+        } else {
+            // Non-classification slot — pass through unchanged.
+            result_segments.push(seg.to_string());
         }
     }
 
@@ -3403,12 +3441,17 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 
     let rejoined = result_segments.join("//");
 
-    // For portions that arrived without a leading `//` (e.g., `(NATO S)` or
+    // For portion inputs that arrived without a leading `//` (e.g., `(NATO S)` or
     // `(NATO S//NF)`), the fold converts the first segment to a canonical
     // NATO abbreviation. Non-US classifications require the `//` prefix per
-    // CAPCO-2016 §A.6 so the strict parser enters the non-US classification
+    // CAPCO-2016 §A.6 p15 so the strict parser enters the non-US classification
     // code path. We add it only when the first segment was the one folded
     // AND the original had no leading empty segment (= no prior `//`).
+    //
+    // The same `//` logic applies to banner inputs: banner `NATO S//NF`
+    // (no leading `//`) folds to `NATO SECRET//NF` → needs `//NATO SECRET//NF`
+    // per §A.6 p15. The `first_segment_folded` flag is set whenever the
+    // classification-slot segment folds, regardless of kind.
     let inner_out = if first_segment_folded && !had_leading_empty {
         format!("//{rejoined}")
     } else {
@@ -3427,9 +3470,19 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 ///
 /// Returns `Some(canonical)` when the segment begins `NATO <level>` (with
 /// `<level>` either an abbreviation from [`NATO_LONGHAND_FOLD`] or the
-/// two-word compound `TOP SECRET`). Returns `None` for all other inputs,
-/// including segments whose first token is not `NATO` (guard against
-/// false-positives inside `REL TO USA, NATO` or FGI country lists).
+/// two-word compound `TOP SECRET`) AND the result differs from the input
+/// (idempotence guard). Returns `None` for all other inputs, including
+/// segments whose first token is not `NATO` (guard against false-positives
+/// inside `REL TO USA, NATO` or FGI country lists).
+///
+/// The `kind` parameter controls the emission form:
+/// - `MarkingType::Portion` — emits the portion abbreviation
+///   (`NS`, `NC`, `CTS`, …) via [`NatoClassification::portion_str`].
+/// - `MarkingType::Banner` — emits the banner long form
+///   (`NATO SECRET`, `COSMIC TOP SECRET`, …) via
+///   [`NatoClassification::banner_str`]. Idempotent: if the input segment
+///   is already in banner long form (e.g. `NATO SECRET`), the emitted
+///   `banner_str()` equals the input and `None` is returned.
 ///
 /// Returns `None` when the segment is `NATO <level> <rest>` with non-empty
 /// `<rest>` — compound SAP forms (ATOMAL, BOHEMIA, BALK) defer to PR 9 T134;
@@ -3437,27 +3490,24 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 /// (e.g., `NATO SECRET ATOMAL` → `NatoSecretAtomal`), and the fold must not
 /// truncate the suffix. The fold's job is the 5-base-level path only.
 ///
-/// **Caller invariant.** In practice the caller ([`try_nato_fold`]) invokes
-/// this on every `//`-separated segment of the input. Segments that don't
-/// start with `NATO ` return `None` immediately (the segment-leading guard),
-/// so non-NATO segments are passed through unchanged. This is correct only
-/// because legitimate NATO classifications appear in the first `//`-separated
-/// slot per CAPCO-2016 §A.6. A `NATO X` token appearing in a non-first-slot
-/// position (e.g., the SCI/dissem slot of `(S//NATO C)`) also fires the fold,
-/// producing the intermediate form `(S//NC)` — semantically invalid (a US
-/// classification cannot be followed by a NATO portion abbreviation in the
-/// SCI/dissem slot). The strict parser accepts this downstream, yielding a
-/// `MarkingClassification::Conflict { us: Secret, foreign: Nato(NatoConfidential) }`
-/// result — a Conflict rather than a clean parse. The test
-/// `nato_in_second_segment_yields_conflict_not_us_secret` documents this
-/// bounded behavior (a conflict result is still better than silently returning
-/// a canonical NATO marking as if the input were valid).
-fn fold_nato_segment(seg: &str) -> Option<String> {
+/// **Caller invariant.** The caller ([`try_nato_fold`]) restricts invocation
+/// to the first non-empty `//`-separated segment (the classification slot) so
+/// that `NATO X` in a non-classification-slot position (e.g., `(S//NATO C)`)
+/// never reaches this function. This is defense-in-depth: the segment-leading
+/// guard (`strip_prefix("NATO ")`) would also prevent non-NATO segments from
+/// firing, but the first-segment restriction in the caller is the primary
+/// mechanism ensuring semantic correctness per CAPCO-2016 §H.7. A
+/// `NATO X` token in the SCI/dissem slot indicates commingled US+NATO info
+/// that should transmute to FGI — not produce a NATO-axis canonical.
+fn fold_nato_segment(seg: &str, kind: MarkingType) -> Option<String> {
     let trimmed = seg.trim();
     // Segment-leading guard: the fold ONLY fires when the first
     // non-delimiter token is the literal keyword `NATO`.
     let after_nato = trimmed.strip_prefix("NATO ")?;
     let after_nato = after_nato.trim_start();
+
+    // Determine the `NatoClassification` variant from the level token(s).
+    let nato_level: NatoClassification;
 
     // Special case: "TOP SECRET" is a two-word compound that cannot be
     // matched as a single entry in `NATO_LONGHAND_FOLD`. Detect it
@@ -3473,31 +3523,55 @@ fn fold_nato_segment(seg: &str) -> Option<String> {
             // PR 9 T134 will land an explicit fold for these compounds.
             return None;
         }
-        return Some(NatoClassification::CosmicTopSecret.portion_str().to_owned());
+        nato_level = NatoClassification::CosmicTopSecret;
+    } else {
+        // Single-token level: split at the next whitespace to isolate the
+        // level token, then look it up in `NATO_LONGHAND_FOLD`.
+        let (level_token, rest) = match after_nato.find(char::is_whitespace) {
+            Some(pos) => (&after_nato[..pos], after_nato[pos..].trim_start()),
+            None => (after_nato, ""),
+        };
+
+        let found = NATO_LONGHAND_FOLD
+            .iter()
+            .find(|&&(key, _)| key == level_token)
+            .map(|&(_, level)| level)?;
+
+        if !rest.is_empty() {
+            // Same rationale as the TOP SECRET branch: compound SAP forms
+            // (NATO SECRET ATOMAL, NATO CONFIDENTIAL ATOMAL, etc.) are out of
+            // scope. The strict parser handles them; the fold must not truncate
+            // the suffix. PR 9 T134 will land the explicit ATOMAL/BOHEMIA/BALK
+            // fold.
+            return None;
+        }
+        nato_level = found;
     }
 
-    // Single-token level: split at the next whitespace to isolate the
-    // level token, then look it up in `NATO_LONGHAND_FOLD`.
-    let (level_token, rest) = match after_nato.find(char::is_whitespace) {
-        Some(pos) => (&after_nato[..pos], after_nato[pos..].trim_start()),
-        None => (after_nato, ""),
+    // Emit the canonical form for the requested kind, then check idempotence.
+    // For portion: `NATO SECRET` → `NS` (changed → emit). `NATO NS` would
+    // not match (strip_prefix "NATO " yields "NS" which is not in table when
+    // looked up as level_token; actually "NS" IS not in the table — only
+    // abbreviations U/R/C/S/TS and long words). Idempotence fires on banner:
+    // `NATO SECRET` → `banner_str() = "NATO SECRET"` — segment is the same.
+    // But `seg` here is just the classification content without "NATO ",
+    // so we need the full composed string for comparison.
+    let canonical = match kind {
+        MarkingType::Portion => nato_level.portion_str().to_owned(),
+        // Banner form is the full level string (e.g. "NATO SECRET").
+        // `banner_str()` already returns "NATO SECRET" / "COSMIC TOP SECRET"
+        // etc. — it INCLUDES the "NATO " prefix for all non-CTS levels.
+        _ => nato_level.banner_str().to_owned(),
     };
 
-    let nato_level = NATO_LONGHAND_FOLD
-        .iter()
-        .find(|&&(key, _)| key == level_token)
-        .map(|&(_, level)| level)?;
-
-    if !rest.is_empty() {
-        // Same rationale as the TOP SECRET branch: compound SAP forms
-        // (NATO SECRET ATOMAL, NATO CONFIDENTIAL ATOMAL, etc.) are out of
-        // scope. The strict parser handles them; the fold must not truncate
-        // the suffix. PR 9 T134 will land the explicit ATOMAL/BOHEMIA/BALK
-        // fold.
+    // Idempotence: if the emitted canonical equals the input segment
+    // (trimmed), no actual change occurred — return None so `any_changed`
+    // stays false and `try_nato_fold` returns None overall.
+    if canonical == trimmed {
         return None;
     }
 
-    Some(nato_level.portion_str().to_owned())
+    Some(canonical)
 }
 
 // ---------------------------------------------------------------------------
@@ -6816,7 +6890,7 @@ mod tests {
     #[test]
     fn fold_nato_segment_abbrev_s_yields_ns() {
         assert_eq!(
-            fold_nato_segment("NATO S").as_deref(),
+            fold_nato_segment("NATO S", MarkingType::Portion).as_deref(),
             Some("NS"),
             "NATO S must fold to NS"
         );
@@ -6825,7 +6899,7 @@ mod tests {
     #[test]
     fn fold_nato_segment_abbrev_ts_yields_cts() {
         assert_eq!(
-            fold_nato_segment("NATO TS").as_deref(),
+            fold_nato_segment("NATO TS", MarkingType::Portion).as_deref(),
             Some("CTS"),
             "NATO TS must fold to CTS (COSMIC TOP SECRET)"
         );
@@ -6834,7 +6908,7 @@ mod tests {
     #[test]
     fn fold_nato_segment_full_word_top_secret_yields_cts() {
         assert_eq!(
-            fold_nato_segment("NATO TOP SECRET").as_deref(),
+            fold_nato_segment("NATO TOP SECRET", MarkingType::Portion).as_deref(),
             Some("CTS"),
             "NATO TOP SECRET must fold to CTS"
         );
@@ -6845,16 +6919,19 @@ mod tests {
         // Segment-leading guard: segments not starting with "NATO " must
         // not be folded.
         assert!(
-            fold_nato_segment("NS").is_none(),
+            fold_nato_segment("NS", MarkingType::Portion).is_none(),
             "canonical NATO abbrev must not re-fold"
         );
         assert!(
-            fold_nato_segment("NOFORN").is_none(),
+            fold_nato_segment("NOFORN", MarkingType::Portion).is_none(),
             "non-NATO segment must not fold"
         );
-        assert!(fold_nato_segment("SI").is_none(), "SCI token must not fold");
         assert!(
-            fold_nato_segment("REL TO USA, NATO").is_none(),
+            fold_nato_segment("SI", MarkingType::Portion).is_none(),
+            "SCI token must not fold"
+        );
+        assert!(
+            fold_nato_segment("REL TO USA, NATO", MarkingType::Portion).is_none(),
             "NATO-in-list must not fold"
         );
     }
@@ -6862,7 +6939,7 @@ mod tests {
     #[test]
     fn fold_nato_segment_returns_none_for_empty() {
         assert!(
-            fold_nato_segment("").is_none(),
+            fold_nato_segment("", MarkingType::Portion).is_none(),
             "empty segment must not fold"
         );
     }
@@ -6900,11 +6977,58 @@ mod tests {
     }
 
     #[test]
-    fn try_nato_fold_returns_none_for_banner_kind() {
-        // Banner inputs are handled by the strict path; fold must return None.
+    fn try_nato_fold_banner_abbreviation_folds_to_long_form() {
+        // FIX-1: banner kind now supported. Abbreviation → long form.
+        // `NATO S//NOFORN` is the banner abbreviation form; the strict parser
+        // accepts `NATO SECRET//NOFORN` (long form) but NOT `NATO S//NOFORN`.
+        // The fold expands the abbreviation to the long form and prepends `//`
+        // per §A.6 p15.
+        assert_eq!(
+            try_nato_fold("NATO S//NOFORN", MarkingType::Banner).as_deref(),
+            Some("//NATO SECRET//NOFORN"),
+            "banner abbreviation must fold to long form with // prefix"
+        );
+        assert_eq!(
+            try_nato_fold("NATO TS//NOFORN", MarkingType::Banner).as_deref(),
+            Some("//COSMIC TOP SECRET//NOFORN"),
+            "NATO TS banner must fold to COSMIC TOP SECRET with // prefix"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_banner_long_form_is_idempotent() {
+        // `NATO SECRET//NOFORN` is already canonical banner form.
+        // After FIX-1 the fold handles banner kind, but canonical inputs
+        // must return None (idempotent) — otherwise every pass through the
+        // decoder would fire the SupersededToken feature on already-canonical inputs.
+        // `NATO SECRET` → `fold_nato_segment` → `banner_str() = "NATO SECRET"` = trimmed
+        // → idempotence guard returns None → `any_changed = false` → outer None.
         assert!(
             try_nato_fold("NATO SECRET//NOFORN", MarkingType::Banner).is_none(),
-            "banner kind must always return None from NATO fold"
+            "canonical banner long-form must be idempotent (no fold needed)"
+        );
+        assert!(
+            try_nato_fold("COSMIC TOP SECRET//NOFORN", MarkingType::Banner).is_none(),
+            "canonical COSMIC TOP SECRET must be idempotent"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_banner_without_leading_slash_gets_slash_added() {
+        // `NATO U` (bare, no trailing dissem) folds to `//NATO UNCLASSIFIED`
+        assert_eq!(
+            try_nato_fold("NATO U", MarkingType::Banner).as_deref(),
+            Some("//NATO UNCLASSIFIED"),
+            "banner NATO U must fold to //NATO UNCLASSIFIED"
+        );
+    }
+
+    #[test]
+    fn try_nato_fold_cab_kind_returns_none() {
+        // CAB authority lines don't carry NATO classifications.
+        assert!(
+            try_nato_fold("NATO SECRET//NOFORN", MarkingType::Cab).is_none(),
+            "Cab kind must always return None"
         );
     }
 
@@ -6918,15 +7042,15 @@ mod tests {
         // Regression guard for the FIX-A correctness fix in the PR 8 round-2
         // reviewer response. Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
         assert!(
-            fold_nato_segment("NATO SECRET ATOMAL").is_none(),
+            fold_nato_segment("NATO SECRET ATOMAL", MarkingType::Portion).is_none(),
             "fold must not fire on NATO SECRET ATOMAL (compound SAP — deferred to PR 9 T134)"
         );
         assert!(
-            fold_nato_segment("NATO CONFIDENTIAL ATOMAL").is_none(),
+            fold_nato_segment("NATO CONFIDENTIAL ATOMAL", MarkingType::Portion).is_none(),
             "fold must not fire on NATO CONFIDENTIAL ATOMAL"
         );
         assert!(
-            fold_nato_segment("NATO TOP SECRET ATOMAL").is_none(),
+            fold_nato_segment("NATO TOP SECRET ATOMAL", MarkingType::Portion).is_none(),
             "fold must not fire on NATO TOP SECRET ATOMAL"
         );
     }
@@ -6939,11 +7063,11 @@ mod tests {
         //
         // Regression guard for FIX-A. Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
         assert!(
-            fold_nato_segment("NATO TOP SECRET-BOHEMIA").is_none(),
+            fold_nato_segment("NATO TOP SECRET-BOHEMIA", MarkingType::Portion).is_none(),
             "fold must not fire on NATO TOP SECRET-BOHEMIA (CTS-B deferred to PR 9 T134)"
         );
         assert!(
-            fold_nato_segment("NATO TOP SECRET-BALK").is_none(),
+            fold_nato_segment("NATO TOP SECRET-BALK", MarkingType::Portion).is_none(),
             "fold must not fire on NATO TOP SECRET-BALK (CTS-BALK deferred to PR 9 T134)"
         );
     }
