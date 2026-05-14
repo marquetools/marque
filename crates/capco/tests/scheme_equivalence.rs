@@ -1316,3 +1316,45 @@ fn constraint_joint_with_usa_everywhere_is_silent() {
         v
     );
 }
+
+/// PR 3.7 RELIDO catalog invariant: only the four enumerated
+/// `E054/...` through `E057/...` Conflicts rows are present. The
+/// `ConflictsWithFamily` "primitive showcase" rows that briefly
+/// appeared alongside them in PR 3.7 rev 1-2 were removed in rev 3
+/// per Copilot review: keeping them in the active catalog caused
+/// `CapcoScheme::validate()` to emit DOUBLE diagnostics for any
+/// (RELIDO, NOFORN/DISPLAY_ONLY/ORCON/ORCON-USGOV) input.
+///
+/// PR 4 (T112) lands the coordinated compaction: delete E054-E057
+/// AND add the family rows AND rewire `rules_declarative.rs`
+/// wrapper dispatch to family-row names — all in one PR so the
+/// catalog never has both shapes active at once.
+#[test]
+fn relido_enumerated_present_and_family_rows_absent() {
+    let scheme = CapcoScheme::new();
+    let names: Vec<&str> = scheme.constraints().iter().map(|c| c.name()).collect();
+    for enumerated in [
+        "E054/relido-conflicts-noforn",
+        "E055/relido-conflicts-display-only",
+        "E056/orcon-conflicts-relido",
+        "E057/orcon-usgov-conflicts-relido",
+    ] {
+        assert!(
+            names.contains(&enumerated),
+            "enumerated RELIDO row {enumerated} MUST be in the catalog \
+             (rules_declarative.rs wrappers dispatch by this name); got: {names:?}"
+        );
+    }
+    for family in [
+        "capco/relido-conflicts-fdr-family",
+        "capco/orcon-family-conflicts-relido",
+    ] {
+        assert!(
+            !names.contains(&family),
+            "PR 3.7 rev 3 removed family row {family} from the active catalog \
+             to prevent double-diagnostic emission alongside the enumerated \
+             E054-E057 rows; the row reappears in PR 4 T112 in a coordinated \
+             compaction. names: {names:?}"
+        );
+    }
+}

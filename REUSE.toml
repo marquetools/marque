@@ -98,6 +98,7 @@ SPDX-License-Identifier = "LicenseRef-MarqueLicense-1.0"
 [[annotations]]
 path = [
   "tests/corpus/invalid/**",
+  "tests/corpus/lattice/**",
   "tests/corpus/valid/**",
   "tests/corpus/prose/**",
 ]
