@@ -409,22 +409,68 @@ impl Lattice for SarSet {
 
 /// FGI marker in lattice form.
 ///
-/// CAPCO's FGI marker has two independent axes: a set of source
-/// countries and a source-concealed flag. Source-concealed supersedes
-/// source-acknowledged on join — if any portion carries FGI with no
-/// countries (concealed), the banner must also be concealed. Meet
-/// (§3.3a policy b) intersects countries and clears concealment unless
-/// both sides were concealed.
+/// CAPCO's FGI marker has two independent axes: a set of source countries
+/// and a source-concealed flag. Source-concealed supersedes source-
+/// acknowledged on join — if any portion carries FGI with no countries
+/// (concealed), the banner must also be concealed. Meet (§3.3a policy b)
+/// intersects countries and clears concealment unless both sides were
+/// concealed.
 ///
 /// `FgiSet::None` is the bottom (no FGI anywhere).
+///
+/// # Source authority
+///
+/// Governed by CAPCO-2016 §H.7 (pp122-130) "FOREIGN GOVERNMENT INFORMATION"
+/// and specifically §H.7 p123 for the source-concealed banner grammar.
+/// The canonical operational rules are:
+///
+/// - FGI with a known source is marked as `FGI [TRIGRAPH]` in the portion
+///   mark and `FGI [COUNTRY]` in the banner line (§H.7 p122-123).
+/// - FGI from an unknown or concealed source uses the bare `FGI` marker
+///   (no trigraph) per §H.7 p123 ("If the specific country is unknown,
+///   the marking FGI may be used without identifying the country").
+///   This maps to `Present { concealed: true, countries: [] }`.
+///
+/// Per `docs/plans/2026-05-01-lattice-design.md` §4.8 and `marque-applied.md`
+/// §4.8.
+///
+/// ## §4.8.5 worked example
+///
+/// Two portions: `(C//NF)` and `(//GBR TS)`. The first portion carries US
+/// CONFIDENTIAL + NOFORN; the second carries FGI `GBR` at the TS level
+/// (FGI classification blocks are space-delimited per `parse_fgi_classification`;
+/// the hyphenated form `GBR-TS` does not match the grammar). After
+/// page-level join the result is:
+///
+/// - Classification: `TOP SECRET` (max of C and TS = TS)
+/// - FGI: `Present { concealed: false, countries: {GBR} }` (GBR from portion 2)
+/// - Dissem: `NOFORN` (from portion 1)
+///
+/// Banner: `TOP SECRET//FGI GBR//NOFORN`
+///
+/// The FgiSet join absorbs the UK classification into the page state via the
+/// FGI country presence; the classification axis uses OrdMax to reach TS.
+///
+/// ## Coverage delimitation
+///
+/// `FgiSet` models FGI-attribution (country of origin) only. JOINT-attribution
+/// (content jointly produced by two or more governments) is modeled separately
+/// via `MarkingClassification::Joint` on the classification axis. The two are
+/// mutually exclusive at the portion level. Cross-system join (e.g., a page
+/// that mixes FGI GBR portions with JOINT USA GBR portions) is not modeled
+/// by `FgiSet` — that is the JOINT-attribution incompatibility-class reframe
+/// deferred to Stage 4 of the engine refactor (per
+/// `docs/plans/2026-05-01-lattice-design.md` §4.7, open question "FGI vs
+/// JOINT attribution").
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum FgiSet {
     /// No FGI present.
     #[default]
     None,
-    /// FGI present. `concealed = true` means "source-concealed" —
-    /// countries must be empty when this is set; join preserves
-    /// concealment.
+    /// FGI present. `concealed = true` means "source-concealed" (bare `FGI`
+    /// marker per §H.7 p123) — countries must be empty when this is set;
+    /// join preserves concealment because a source-concealed entry on any
+    /// portion requires a source-concealed banner.
     Present {
         concealed: bool,
         countries: BTreeSet<CountryCode>,

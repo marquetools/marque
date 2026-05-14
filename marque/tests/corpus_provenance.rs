@@ -49,6 +49,13 @@ fn is_registered_pattern(relative: &str) -> bool {
         // tests/corpus/mangled/threshold.toml; the registered-
         // pattern check was not updated in the same commit)
         ("mangled/", ".toml"),
+        // lattice fixtures: cross-axis dominance worked examples from
+        // docs/plans/2026-05-01-lattice-design.md §§2-8. Data-only at PR 3.7
+        // (T109); PR 4 wires the property-test runner and adds
+        // .expected.json sidecars. See tests/corpus/lattice/README.md.
+        ("lattice/", ".txt"),
+        ("lattice/", ".expected.json"),
+        ("lattice/", ".md"),
     ];
 
     // Top-level files

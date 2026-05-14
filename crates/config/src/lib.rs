@@ -76,6 +76,21 @@ pub enum ConfigError {
     )]
     UnknownSeverity { rule: String, value: String },
 
+    /// Closure-rule severity string in `[closure_rules]` config is not one
+    /// of the recognized values. Differs from `UnknownSeverity` because
+    /// closure rules do not accept `"fix"` (closure firings propagate
+    /// facts, not byte-level fixes), so the user-facing error message
+    /// should not list `"fix"` as an expected value.
+    /// Per Copilot PR 3.7 review #3 — Constitution VIII fidelity for
+    /// the diagnostic surface (don't tell the user `"fix"` is acceptable
+    /// for closure rules then reject `"fix"` on the next code path).
+    #[error(
+        "closure rule {rule:?} has unrecognized severity {value:?} — expected one of \
+         \"off\", \"suggest\", \"info\", \"warn\", \"error\" (note: closure rules \
+         do not accept \"fix\")"
+    )]
+    UnknownClosureRuleSeverity { rule: String, value: String },
+
     /// Timezone offset string is not a recognized ISO 8601 UTC offset form.
     #[error("invalid timezone offset {value:?} — expected \"Z\", \"+HH:MM\", or \"-HH:MM\"")]
     InvalidTimezone { value: String },
@@ -108,6 +123,21 @@ pub enum ConfigError {
         key: String,
         reason: &'static str,
     },
+
+    /// Closure rule severity override uses "fix", which is rejected per
+    /// `decisions.md` D19 B. Closure firings propagate facts, not byte-level
+    /// edits, so the only valid severities for closure rules are
+    /// `off / suggest / info / warn / error`.
+    #[error(
+        "closure rule {rule:?} cannot use 'fix' severity; \
+        use 'warn' or 'error' (or 'off'/'info'/'suggest' for non-blocking surfaces)"
+    )]
+    InvalidClosureRuleSeverity {
+        rule: String,
+        /// Hint string for downstream tooling (e.g., the CLI surface) — not
+        /// used in the Display impl but available for richer surfaces.
+        hint: &'static str,
+    },
 }
 
 impl ConfigError {
@@ -121,10 +151,12 @@ impl ConfigError {
             Self::ThresholdOutOfRange { .. } => EX_DATAERR,
             Self::InvalidEnvVar { .. } => EX_DATAERR,
             Self::UnknownSeverity { .. } => EX_DATAERR,
+            Self::UnknownClosureRuleSeverity { .. } => EX_DATAERR,
             Self::InvalidTimezone { .. } => EX_DATAERR,
             Self::CorpusOverrideParse { .. } => EX_DATAERR,
             Self::CorpusOverrideSchemaMismatch { .. } => EX_DATAERR,
             Self::CorpusOverrideInvalidValue { .. } => EX_DATAERR,
+            Self::InvalidClosureRuleSeverity { .. } => EX_DATAERR,
         }
     }
 }
@@ -134,6 +166,12 @@ impl ConfigError {
 pub struct Config {
     pub user: UserConfig,
     pub rules: RuleConfig,
+    /// Per-closure-rule severity overrides from `[closure_rules]` in `.marque.toml`.
+    ///
+    /// Keyed by closure rule name (e.g., `"capco/noforn-if-no-fdr"`).
+    /// `Severity::Fix` is rejected at config load — closure firings propagate
+    /// facts, not byte-level edits. See `decisions.md` D19 B.
+    pub closure_rules: ClosureRuleConfig,
     /// Organization-specific typo corrections from `[corrections]` in `.marque.toml`.
     ///
     /// **Do not mutate after passing to `Engine::new`** — the engine caches
@@ -151,6 +189,7 @@ impl Default for Config {
         Self {
             user: UserConfig::default(),
             rules: RuleConfig::default(),
+            closure_rules: ClosureRuleConfig::default(),
             corrections: HashMap::new(),
             capco: CapcoConfig::default(),
             confidence_threshold: 0.95,
@@ -187,6 +226,20 @@ pub struct UserConfig {
 #[derive(Debug, Clone, Default)]
 pub struct RuleConfig {
     /// Map of rule ID → configured severity string ("fix", "warn", "error", "off").
+    pub overrides: HashMap<String, String>,
+}
+
+/// Per-closure-rule severity overrides.
+///
+/// Per `decisions.md` D19 B + plan §1.5: section-isolated from `[rules]`.
+/// Keyed by `ClosureRule.name` (slash-containing, e.g.
+/// `"capco/noforn-if-no-fdr"`). `Severity::Fix` is rejected at config
+/// load because closure firings are not byte-level fixes — see
+/// `ConfigError::InvalidClosureRuleSeverity`.
+#[derive(Debug, Clone, Default)]
+pub struct ClosureRuleConfig {
+    /// Map of closure-rule name → configured severity string
+    /// ("off", "suggest", "info", "warn", "error"). "fix" is rejected.
     pub overrides: HashMap<String, String>,
 }
 
@@ -229,6 +282,17 @@ struct ConfigFile {
     user: Option<UserConfigFile>,
     #[serde(default)]
     rules: HashMap<String, String>,
+    /// Closure-rule severity overrides. Keys use quoted TOML form because
+    /// slash-containing names like `"capco/noforn-if-no-fdr"` are not valid
+    /// as bare TOML keys (rust-preflight B4). Example:
+    ///
+    /// ```toml
+    /// [closure_rules]
+    /// "capco/noforn-if-no-fdr" = "warn"
+    /// "capco/relido-if-no-fdr" = "off"
+    /// ```
+    #[serde(default)]
+    closure_rules: HashMap<String, String>,
     #[serde(default)]
     corrections: HashMap<String, String>,
     #[serde(default)]
@@ -274,7 +338,10 @@ struct CapcoConfigFile {
 ///    so a stray `.marque.local.toml` in a parent directory cannot silently
 ///    attach to a child project's config.
 /// 3. Environment variables (`MARQUE_CLASSIFIER_ID`, `MARQUE_CONFIDENCE_THRESHOLD`,
-///    `MARQUE_LOG`).
+///    `MARQUE_LOG`, `MARQUE_DEFAULT_TIMEZONE`, and the
+///    `MARQUE_CLOSURE_RULES_*` parallel namespace for `[closure_rules]`
+///    per-row severity overrides — see [`Config::closure_rules`] and the
+///    naming convention documented at [`env_var_to_closure_rule_name`]).
 ///
 /// Hard-fail validators run after merging all layers.
 pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
@@ -405,6 +472,31 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
         }
     }
     config.rules.overrides.extend(file.rules);
+
+    // D19 B: validate closure-rule severity overrides. "fix" is rejected because
+    // closure firings propagate facts, not byte-level edits. Unknown values
+    // route to `UnknownClosureRuleSeverity` (whose error message excludes
+    // "fix" from the expected list) rather than the generic `UnknownSeverity`,
+    // per Copilot PR 3.7 review #3.
+    for (rule, value) in &file.closure_rules {
+        match Severity::parse_config(value) {
+            None => {
+                return Err(ConfigError::UnknownClosureRuleSeverity {
+                    rule: rule.clone(),
+                    value: value.clone(),
+                });
+            }
+            Some(Severity::Fix) => {
+                return Err(ConfigError::InvalidClosureRuleSeverity {
+                    rule: rule.clone(),
+                    hint: "closure rows propagate facts, not byte-level fixes",
+                });
+            }
+            Some(_) => { /* valid */ }
+        }
+    }
+    config.closure_rules.overrides.extend(file.closure_rules);
+
     config.corrections.extend(file.corrections);
     if let Some(v) = file.capco.version {
         config.capco.version = v;
@@ -478,7 +570,64 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
                     })?;
         }
     }
+    // D19 B / plan §1.5b: MARQUE_CLOSURE_RULES_* env-var namespace.
+    //
+    // Naming convention: MARQUE_CLOSURE_RULES_<NAME> where <NAME> is the
+    // closure rule name with '/' replaced by '__' and the whole suffix
+    // lowercased. Examples:
+    //   MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR=warn
+    //     → "capco/noforn-if-no-fdr"
+    //   MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR=off
+    //     → "capco/relido-if-no-fdr"
+    //
+    // Note: MARQUE_RULES_* per-rule env-var overrides do not exist for the
+    // [rules] section as of this implementation; MARQUE_CLOSURE_RULES_* is
+    // the first per-row env-var surface in the config system.
+    for (key, value) in std::env::vars() {
+        if let Some(rule_name) = env_var_to_closure_rule_name(&key) {
+            match Severity::parse_config(&value) {
+                None => {
+                    return Err(ConfigError::UnknownClosureRuleSeverity {
+                        rule: rule_name,
+                        value,
+                    });
+                }
+                Some(Severity::Fix) => {
+                    return Err(ConfigError::InvalidClosureRuleSeverity {
+                        rule: rule_name,
+                        hint: "closure rows propagate facts, not byte-level fixes",
+                    });
+                }
+                Some(_) => {
+                    config.closure_rules.overrides.insert(rule_name, value);
+                }
+            }
+        }
+    }
     Ok(())
+}
+
+/// Convert a `MARQUE_CLOSURE_RULES_*` env-var key to a closure rule name.
+///
+/// Encoding convention (env var → rule name):
+/// 1. Strip the `MARQUE_CLOSURE_RULES_` prefix.
+/// 2. Replace `__` (double-underscore) with `/` (domain separator).
+/// 3. Replace remaining `_` (single-underscore) with `-` (word separator).
+/// 4. Lowercase the whole result.
+///
+/// Examples:
+/// - `MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR` → `"capco/noforn-if-no-fdr"`
+/// - `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR` → `"capco/relido-if-no-fdr"`
+///
+/// Returns `None` if the key does not have the expected prefix.
+fn env_var_to_closure_rule_name(env_key: &str) -> Option<String> {
+    const PREFIX: &str = "MARQUE_CLOSURE_RULES_";
+    let suffix = env_key.strip_prefix(PREFIX)?;
+    // Step 1: replace `__` with `/` first so single-underscore pass doesn't
+    // corrupt the double-underscore separator.
+    // Step 2: replace remaining `_` with `-`.
+    // Step 3: lowercase.
+    Some(suffix.replace("__", "/").replace('_', "-").to_lowercase())
 }
 
 /// T023: validate schema version matches compiled marque-ism (FR-011).

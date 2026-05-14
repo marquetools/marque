@@ -15,7 +15,8 @@ use core::fmt::Debug;
 use core::hash::Hash;
 
 use crate::ambiguity::Parsed;
-use crate::category::{Category, CategoryId};
+use crate::category::{Category, CategoryId, TokenId};
+use crate::closure::ClosureRule;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
 use crate::lattice::Lattice;
@@ -292,6 +293,170 @@ pub trait MarkingScheme {
     /// Default: no rewrites. Schemes override to declare their table.
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &[]
+    }
+
+    /// Declared closure rules for this scheme.
+    ///
+    /// Closure rules implement the §4.7 implicit-fact propagation operator
+    /// from `docs/plans/2026-05-01-lattice-design.md` §3 (e). They
+    /// propagate facts that the marking system doesn't require to be written
+    /// explicitly — for example, that a CAPCO marking with no explicit FD&R
+    /// control implies NOFORN as the effective release restriction.
+    ///
+    /// Schemes opt in by overriding this method to return their catalog.
+    /// The default [`Self::closure()`] implementation is a **no-op** —
+    /// because a truly generic Kleene-fixpoint walker requires a
+    /// scheme-level fact-join operation that this trait does not
+    /// currently expose, schemes that want runtime cone application
+    /// must also override `closure()` with their own implementation
+    /// (typically walking the catalog to fixpoint, bounded by
+    /// [`crate::closure::MAX_CLOSURE_ITERATIONS`]).
+    ///
+    /// Returning closure rules without overriding `closure()` is a
+    /// supported **catalog-data-only mode** used by tooling, scheme-
+    /// exploration UIs, and proptest harnesses that walk
+    /// `should_fire` directly without applying the cone. This is the
+    /// mode `CapcoScheme` ships in PR 3.7: the catalog is published
+    /// PUBLIC inspection surface (D18); the `closure()` override that
+    /// applies the cone at runtime lands in PR 4 alongside
+    /// `Engine::project::closure()` wiring.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
+    /// PUBLIC catalog surface — visible to tooling, scheme-exploration UIs,
+    /// and docs generators — not a private engine detail.
+    ///
+    /// Default: empty slice (no closure rules declared).
+    fn closure_rules(&self) -> &[ClosureRule] {
+        &[]
+    }
+
+    /// Returns the host [`CategoryId`] for a given [`TokenId`], used by
+    /// the closure operator to route cone tokens to their appropriate
+    /// category when adding facts.
+    ///
+    /// This method is the scheme-layer hook required by the closure
+    /// operator: `closure()` needs to know which category a cone token
+    /// belongs to so it can add the fact to the right axis of the marking.
+    /// The existing `category_of` method is keyed by `FactRef<Self>` (a
+    /// `marque-rules` type) and is unavailable at the `marque-scheme`
+    /// layer; this method provides the same routing over the simpler
+    /// `TokenId` key.
+    ///
+    /// Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
+    /// §2 finding F1: this method was added specifically to resolve the
+    /// scheme-layer / rules-layer boundary constraint on the closure
+    /// operator's token routing.
+    ///
+    /// Returns `None` when the token is not known to this scheme. Schemes
+    /// that do not implement closure rules do not need to override this
+    /// method (the default `closure()` is a no-op).
+    ///
+    /// Default: returns `None` for every token.
+    fn token_category(&self, _id: TokenId) -> Option<CategoryId> {
+        None
+    }
+
+    /// Enumerate all [`TokenRef::Token`] references that are currently
+    /// present in `marking`.
+    ///
+    /// Used by the [`crate::constraint::evaluate`] function when dispatching
+    /// [`crate::constraint::Constraint::ConflictsWithFamily`] rows: it walks
+    /// every token present in the marking and applies the
+    /// [`crate::constraint::FamilyPredicate`] to each, emitting one
+    /// violation per match that co-occurs with the LHS token.
+    ///
+    /// Schemes MUST override this method if they declare any
+    /// `ConflictsWithFamily` constraints — the default returns an empty
+    /// iterator, which would silently cause the family predicate to never
+    /// fire. Schemes without family constraints do not need to override.
+    ///
+    /// The iterator yields `TokenRef` values for facts currently present
+    /// in the marking. Both variants are permitted:
+    ///
+    /// - `TokenRef::Token(id)` for concrete present tokens whose
+    ///   identity matters (the common case).
+    /// - `TokenRef::AnyInCategory(cat)` for facts whose presence is
+    ///   axis-level only (e.g., `CAT_REL_TO` for "some REL TO country
+    ///   list is present" without enumerating the specific countries).
+    ///   Family predicates may match on category granularity rather
+    ///   than per-token (e.g., CapcoScheme's `is_fdr_dominator`
+    ///   matches `AnyInCategory(CAT_REL_TO)` to capture REL TO as an
+    ///   FD&R-chain member without enumerating each country).
+    ///
+    /// An earlier rev of this contract restricted the output to
+    /// `TokenRef::Token` only; that restriction was lifted in PR 3.7
+    /// rev 3 to align with CapcoScheme's actual emission (which
+    /// emits `AnyInCategory(CAT_REL_TO)`, `CAT_SCI`, `CAT_SAR`, and
+    /// `CAT_NON_US_CLASSIFICATION` for axis-level facts) and the
+    /// family-predicate idiom that depends on it. Per Copilot
+    /// PR 3.7 review pass 3.
+    ///
+    /// Default: empty iterator (no present tokens enumerated).
+    fn iter_present_tokens<'m>(
+        &self,
+        _marking: &'m Self::Marking,
+    ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
+        Box::new(core::iter::empty())
+    }
+
+    /// Apply the closure operator to `marking`, returning the closed
+    /// marking (the smallest superset of `marking` that satisfies all
+    /// declared closure rules).
+    ///
+    /// The closure operator walks [`Self::closure_rules()`] to Kleene
+    /// fixpoint: in each iteration, rules whose triggers fire and whose
+    /// suppressors are absent add their cone facts to the working set.
+    /// Iteration stops when no new facts are added (fixed point reached).
+    ///
+    /// ## Why the default is a no-op
+    ///
+    /// A truly generic Kleene-fixpoint implementation would need a
+    /// scheme-level operation to join a cone token into `Self::Marking`
+    /// (i.e., "add this token to the marking's fact set for its host
+    /// category"). `Self::Marking` is an associated type with no
+    /// constructor surface on this trait; constructing a singleton marking
+    /// for a cone token and joining it requires scheme-internal knowledge.
+    ///
+    /// Rather than add a generic `singleton_marking(TokenId) -> Self::Marking`
+    /// method (which would impose an additional implementation burden on
+    /// every scheme), the default `closure()` is a no-op. Schemes that
+    /// want **runtime cone application** override this method with their
+    /// own fixpoint implementation; schemes that ship `closure_rules()`
+    /// purely as inspection surface (catalog-data-only mode — see the
+    /// note on [`Self::closure_rules`] above) can leave the default in
+    /// place. The default is safe for schemes without closure rules —
+    /// those schemes' `closure_rules()` returns `&[]` and no
+    /// propagation is needed.
+    ///
+    /// ## Invariants (schemes that override MUST preserve these)
+    ///
+    /// 1. **Extensive**: `closure(m) ⊒ m` — the result is a superset of
+    ///    the input (only facts are added, never removed).
+    /// 2. **Idempotent**: `closure(closure(m)) == closure(m)` — the
+    ///    fixed point is stable.
+    /// 3. **Monotone**: if `m1 ⊑ m2` then `closure(m1) ⊑ closure(m2)`.
+    ///
+    /// The override MUST panic if it exceeds
+    /// [`crate::closure::MAX_CLOSURE_ITERATIONS`] iterations without
+    /// reaching a fixed point. This cap detects **non-convergence**
+    /// (a catalog whose fact-set grows unbounded), but it does NOT
+    /// detect every non-monotone catalog: a non-monotone catalog with
+    /// a suppressor depending on facts in another rule's cone can
+    /// converge quickly to a fixed point while still violating
+    /// monotonicity 3. Monotonicity violations are caught by the
+    /// proptest harness at
+    /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`,
+    /// not by the iteration cap. The cap exists as a runtime
+    /// safeguard against catalog regressions that lead to
+    /// non-termination, not as a monotonicity oracle.
+    ///
+    /// Default: returns `marking` unchanged (no-op).
+    fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        // Default no-op: schemes without closure rules don't need
+        // fact propagation. Schemes with closure rules override this
+        // method. The no-op is correct for any scheme where
+        // closure_rules() returns &[].
+        marking
     }
 
     /// Render a marking in canonical form for the given `scope`,

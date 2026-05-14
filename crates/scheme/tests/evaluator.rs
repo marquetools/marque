@@ -293,23 +293,10 @@ fn constraint_label_maps_to_declared_name_per_entry() {
 }
 
 // ---------------------------------------------------------------------------
-// Bonus — Implies / Supersedes are quiet; Custom dispatches.
+// Bonus — Supersedes is quiet; Custom dispatches.
+// Note: Constraint::Implies was retired in PR 3.7 T108g (decisions.md D19 C).
+// Fact-propagation is now handled by the closure operator (ClosureRule).
 // ---------------------------------------------------------------------------
-
-#[test]
-fn implies_does_not_emit_diagnostics() {
-    let scheme = StubScheme::new(vec![Constraint::Implies {
-        name: "test/implies",
-        left: TokenRef::Token(TOK_A),
-        right: TokenRef::Token(TOK_B),
-        label: "TEST §implies",
-    }]);
-    let marking = StubMarking {
-        tokens: vec![TOK_A],
-        category_members: vec![],
-    };
-    assert!(evaluate(&scheme, &marking).is_empty());
-}
 
 #[test]
 fn supersedes_does_not_emit_diagnostics() {
