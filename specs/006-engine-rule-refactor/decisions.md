@@ -68,13 +68,9 @@ constraint is detection without JSON parsing.
 
 ---
 
-### D2 — PR 3.7 stall-recovery
+### D2 — PR 3.7 monolithic shape
 
-**Decision**: PR 3.7 stays **monolithic** (no wave-split). NEW
-requirement: a **named alternate owner** in the PR description who
-has independently read §§2–8 of `2026-05-01-lattice-design.md`
-*before PR 3c merges*. The alternate takes ownership without
-escalation if the primary owner stalls past 1 week.
+**Decision**: PR 3.7 stays **monolithic** (no wave-split).
 
 **Lands in**: `spec.md` Assumptions section amendment (PR 3.7 entry).
 
@@ -83,11 +79,25 @@ property — PR 4 deletes `CapcoMarking::join`'s PageContext
 delegation "with no equivalence shim," which forbids partial lattice
 coverage. Cross-axis fixtures span categories (FOUO eviction depends
 on classification AND dissem lattices) and cannot wave-isolate.
-Bus-factor mitigation via alternate owner is cheaper than scope
-mitigation via split, without compromising PR 4.
+Monolithic shape preserves PR 4's clean break.
 
-**Audibles permitted**: deadline slip beyond 2 weeks still requires
-explicit team review (existing constraint preserved).
+**Amendment (2026-05-13)**: The original D2 also required a **named
+alternate owner** in the PR description as a bus-factor mitigation
+for stall scenarios. That requirement is **retired** because marque
+is a solo-driven project today — the bus-factor framing presupposed a
+team context that doesn't apply. The alternate-owner gate served no
+purpose when the same person is both primary and (de facto) alternate;
+it would only add ceremony. Stall-recovery in the solo context
+collapses to "PR sits open until the primary picks it back up." If
+marque transitions to multi-contributor staffing the requirement can
+be re-introduced via a follow-on amendment.
+
+**Audibles permitted**: deadline slip beyond 2 weeks still warrants
+self-review of scope and either an explicit re-commitment or a
+strategic split. The "2 weeks" framing predates the solo-project
+amendment but the underlying signal — "this PR has been open
+unusually long; is something stuck?" — remains a useful sanity check
+to self-apply.
 
 ---
 

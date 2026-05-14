@@ -1438,9 +1438,13 @@ resolved within this document, not punted forward.
       comment. Per Constitution VIII (citation fidelity), a fabricated,
       hallucinated, misattributed, or silently-drifted citation is a
       correctness defect of the same severity as a wrong predicate.
-- [ ] **Named alternate reviewer** (per D2 stall-recovery) has
+- [x] ~~**Named alternate reviewer** (per D2 stall-recovery) has
       independently read §§2-8 and is authorized to take primary
-      ownership if the primary stalls past 1 week.
+      ownership if the primary stalls past 1 week.~~ **Retired
+      2026-05-13** per `decisions.md` D2 amendment — marque is a
+      solo-driven project; the bus-factor mitigation framing
+      presupposed a team context that doesn't apply. Stall-recovery
+      reverts to "PR sits open until the primary returns to it."
 - [ ] Per-row monotonicity attestation for the ~12 CAPCO ClosureRule
       rows is in the PR description. PR 3.7 verifies the monotonicity /
       extensivity / idempotence laws via stub-scheme proptests at
