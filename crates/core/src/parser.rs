@@ -590,10 +590,14 @@ impl<'t> Parser<'t> {
 
                 // Inline-4: a `/`-separated slash block typically carries
                 // 2-4 sub-tokens (e.g. `SI/TK`, `NF/LIMDIS`, `SI/TK/HCS`);
-                // see [`split_slash_with_offsets`] for the matching scratch
-                // budget on the index side.
+                // see [`split_slash_with_separator_offsets`] for the matching
+                // scratch budget on the index side. We pull the per-`/`
+                // byte offsets out alongside the token offsets so we can
+                // emit `TokenKind::Separator` spans for within-category
+                // single-slash separators (T131 / issue #106).
+                let (token_offsets, slash_offsets) = split_slash_with_separator_offsets(trimmed);
                 let mut results: SmallVec<[SubResult<'_>; 4]> = SmallVec::new();
-                for (sub_off, sub_tok) in split_slash_with_offsets(trimmed) {
+                for (sub_off, sub_tok) in token_offsets {
                     let sub_abs_start = abs_start + sub_off;
                     let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
                     if let Some(ctrl) = SciControl::parse(sub_tok) {
@@ -676,6 +680,28 @@ impl<'t> Parser<'t> {
                     });
                 } else {
                     // Same category (or all unknown): commit sub-token results.
+                    // Emit `TokenKind::Separator` spans for each within-
+                    // category `/` byte (T131 / issue #106). Disambiguated
+                    // from the between-category `//` separators by `text`:
+                    // within-category is `"/"`, between-category is `"//"`.
+                    //
+                    // CAPCO-2016 §A.6 p16 forbids interjected whitespace
+                    // in SAP-`/` but is silent on dissem-`/` and SCI-`/`.
+                    // `split_slash_with_separator_offsets` spans any
+                    // trailing ASCII whitespace into the Separator span
+                    // as an engineering tolerance for author drift — NOT
+                    // a §A.6 rule. Downstream rules treating the Separator
+                    // as a single token can then own the full inter-token
+                    // byte range even when the author wrote `OC / NF`.
+                    for (slash_off, slash_end) in &slash_offsets {
+                        let abs_slash_start = abs_start + slash_off;
+                        let abs_slash_end = abs_start + slash_end;
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::Separator,
+                            span: Span::new(abs_slash_start, abs_slash_end),
+                            text: "/".into(),
+                        });
+                    }
                     for r in results {
                         match r.kind {
                             SubKind::Sci => {
@@ -1590,27 +1616,54 @@ fn is_declass_date(s: &str) -> bool {
     IsmDate::from_str(s).is_ok()
 }
 
-/// Splits `s` on `/` and returns `(offset, trimmed_token)` pairs where
-/// `offset` is the byte offset of the trimmed token within `s`.
+/// `(offset, trimmed_token)` per non-empty slash-separated sub-token.
+type SlashTokens<'a> = SmallVec<[(usize, &'a str); 4]>;
+
+/// `(slash_byte_offset, slash_span_end)` per `/` byte. `slash_span_end`
+/// covers any adjacent trailing ASCII whitespace.
+type SlashSeparators = SmallVec<[(usize, usize); 4]>;
+
+/// Splits `s` on `/` and returns both the tokens and the separator
+/// positions.
 ///
-/// Used by the multi-token block fallback to handle CAPCO §D.1 blocks like
-/// `"SI/TK"` or `"NF/LIMDIS"` where multiple entries share one `//` block.
-fn split_slash_with_offsets(s: &str) -> SmallVec<[(usize, &str); 4]> {
-    // Inline-4: a multi-token slash block (e.g. `SI/TK`, `NF/LIMDIS`)
-    // typically carries 2-4 sub-tokens; the same scale as the
-    // `results: SmallVec<[SubResult<'_>; 4]>` accumulator at the sole
-    // caller in the multi-token block fallback.
-    let mut result: SmallVec<[(usize, &str); 4]> = SmallVec::new();
+/// Returns a pair of vectors:
+/// - `.0` — `(token_offset, trimmed_token)` per non-empty token.
+/// - `.1` — `(slash_offset, slash_end_with_trailing_ws)` per `/` byte.
+///   `slash_offset` is the byte index of the `/` itself within `s`;
+///   `slash_end_with_trailing_ws` is `slash_offset + 1` plus any trailing
+///   ASCII whitespace immediately following the slash. The span covers the
+///   `/` plus any whitespace an author drifted into the gap.
+///
+/// CAPCO-2016 §A.6 p16 disallows interjected whitespace in SAP-`/` but is
+/// silent for dissem-`/` and SCI-`/`. Spanning adjacent trailing ASCII
+/// whitespace is engineering tolerance for author drift, NOT a §A.6 rule —
+/// it lets downstream rules see a single Separator token that owns the
+/// inter-token byte range even when the author wrote `OC / NF`.
+fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparators) {
+    let mut tokens: SlashTokens<'_> = SmallVec::new();
+    let mut separators: SlashSeparators = SmallVec::new();
+    let bytes = s.as_bytes();
     let mut pos = 0usize;
-    for part in s.split('/') {
+    for (i, part) in s.split('/').enumerate() {
+        if i > 0 {
+            // The slash byte sits at index `pos - 1` (we advanced past the
+            // previous part and the `/` separator). Span the slash plus
+            // any trailing ASCII whitespace.
+            let slash_start = pos - 1;
+            let mut slash_end = slash_start + 1;
+            while slash_end < bytes.len() && bytes[slash_end].is_ascii_whitespace() {
+                slash_end += 1;
+            }
+            separators.push((slash_start, slash_end));
+        }
         let trim_lead = part.len() - part.trim_start().len();
         let trimmed = part.trim();
         if !trimmed.is_empty() {
-            result.push((pos + trim_lead, trimmed));
+            tokens.push((pos + trim_lead, trimmed));
         }
         pos += part.len() + 1; // +1 for the `/` separator
     }
-    result
+    (tokens, separators)
 }
 
 // ===========================================================================
@@ -1699,9 +1752,23 @@ fn parse_sar_category(
 
     // Split the remainder on `/` into program chunks. Each chunk is a
     // `PROGRAM` production: `PROG_ID` optionally followed by `-COMPARTMENT`.
+    //
+    // Emit a `TokenKind::Separator` span (text = `"/"`) for each within-
+    // category `/` byte (T131 / issue #106). The SAR variant is strict:
+    // CAPCO-2016 §A.6 p16 forbids interjected whitespace in SAP-`/`, so
+    // the separator span is always exactly the single `/` byte — no
+    // adjacent-whitespace tolerance like the dissem/SCI multi-token path.
     let mut chunk_offset = rest_offset; // offset within block_text
     for (i, prog_chunk) in rest.split('/').enumerate() {
         if i > 0 {
+            // The `/` byte we just consumed sits at `chunk_offset` (in
+            // `block_text` coordinates). Record it before bumping past.
+            let slash_abs = base + chunk_offset;
+            spans.push(TokenSpan {
+                kind: TokenKind::Separator,
+                span: Span::new(slash_abs, slash_abs + 1),
+                text: "/".into(),
+            });
             chunk_offset += 1; // account for the `/` just consumed
         }
         let program_base = base + chunk_offset;
