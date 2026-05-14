@@ -141,17 +141,27 @@ FeatureId::PrecedingFixPenalty => "PrecedingFixPenalty",
 /// that one variant in PR 7 does not require a schema bump. ANY OTHER variant does.
 ```
 
-**Penalty application** (once the correct rule is identified per §Critical Finding):
+**Penalty application** (engine-side at the pass-2 confidence-threshold gate, per D-7.19):
+
+Rule implementations should identify the correct rule and emit `base_confidence`
+unchanged. The `PrecedingFixPenalty` mutation is then applied by the engine during
+pass 2 threshold evaluation when preceding-fix context is present; do **not** apply
+this in rule-side matching/scoring or via the stale E003 path.
 
 ```rust
+// Rule-side scoring returns `base_confidence` unchanged.
+//
+// Engine-side pass-2 threshold gate applies the penalty, e.g.:
 let final_confidence = if ctx.pre_pass_1_attrs.is_some() {
     Confidence {
-        rule: base_confidence.rule * 0.90,   // -10% per D-7.10
+        rule: base_confidence.rule * 0.90,   // -10% per D-7.10 / D-7.19
         features: smallvec![FeatureContribution {
             id: FeatureId::PrecedingFixPenalty, delta: -0.10 }],
         ..base_confidence
     }
-} else { base_confidence };
+} else {
+    base_confidence
+};
 ```
 
 ---
