@@ -2541,6 +2541,15 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     DeprecatedSciRow {
         source: "EXCEPTIONALLY CONTROLLED INFORMATION",
         match_kind: MatchKind::Exact,
+        // Bare EXCEPTIONALLY CONTROLLED INFORMATION fires at Error
+        // severity: ECI was never a control system at all — it was a
+        // 'control group' (a classification-of-SCIs attribute that
+        // appeared alongside SI before the migration). The entire concept
+        // is fully replaced by SI per §H.4 p61 ("ECI grouping markings
+        // are NOT used in banner/portion") + §H.4 p76. Most severely
+        // deprecated of the bare-X cases. Suggest-only — Marque can't
+        // synthesize the compartment that the user originally intended
+        // under the legacy SI-ECI nesting.
         severity: Severity::Error,
         replacement: ReplacementKind::SuggestOnly,
         message: "Bare 'EXCEPTIONALLY CONTROLLED INFORMATION' is not a control system \
@@ -2550,6 +2559,14 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     DeprecatedSciRow {
         source: "ECI",
         match_kind: MatchKind::Exact,
+        // Bare ECI fires at Error severity: ECI was never a control system
+        // at all — it was a 'control group' (a classification-of-SCIs
+        // attribute that appeared alongside SI before the migration). The
+        // entire concept is fully replaced by SI per §H.4 p61 ("ECI
+        // grouping markings are NOT used in banner/portion") + §H.4 p76.
+        // Most severely deprecated of the bare-X cases. Suggest-only —
+        // Marque can't synthesize the compartment that the user originally
+        // intended under the legacy SI-ECI nesting.
         severity: Severity::Error,
         replacement: ReplacementKind::SuggestOnly,
         message: "Bare ECI is not a control system per CAPCO-2016 §H.4 p61; \
@@ -2584,10 +2601,15 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     DeprecatedSciRow {
         source: "ENDSEAL",
         match_kind: MatchKind::Exact,
-        // Warn (not Error) for bare ENDSEAL: the walker cannot determine
-        // the sub-compartment context required to migrate; the manual
-        // does not say bare ENDSEAL is itself an error.
-        severity: Severity::Warn,
+        // Bare ENDSEAL fires at Error severity: the control system itself
+        // was retired (EL/ENDSEAL → SI; transition predates CAPCO-2016,
+        // likely in the 2013 manual). Unlike bare HCS/RSV (E061/E063 —
+        // valid controls needing compartment context), the bare form here
+        // has no canonical migration because the source control system is
+        // gone — the user MUST contact the originator for the compartment
+        // to complete the migration. Suggest-only (no auto-fix) because
+        // Marque can't fabricate the compartment.
+        severity: Severity::Error,
         replacement: ReplacementKind::SuggestOnly,
         message: "ENDSEAL is being retired into SI per CAPCO-2016 §H.4 p78; \
                   sub-compartment context required to migrate; contact the originator",
@@ -2596,7 +2618,15 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     DeprecatedSciRow {
         source: "EL",
         match_kind: MatchKind::Exact,
-        severity: Severity::Warn,
+        // Bare EL fires at Error severity: the control system itself was
+        // retired (EL/ENDSEAL → SI; transition predates CAPCO-2016,
+        // likely in the 2013 manual). Unlike bare HCS/RSV (E061/E063 —
+        // valid controls needing compartment context), the bare form here
+        // has no canonical migration because the source control system is
+        // gone — the user MUST contact the originator for the compartment
+        // to complete the migration. Suggest-only (no auto-fix) because
+        // Marque can't fabricate the compartment.
+        severity: Severity::Error,
         replacement: ReplacementKind::SuggestOnly,
         message: "EL control system is being retired into SI per CAPCO-2016 §H.4 p78; \
                   compartment context required to migrate; contact the originator",
@@ -2647,7 +2677,15 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     DeprecatedSciRow {
         source: "KLONDIKE",
         match_kind: MatchKind::Exact,
-        severity: Severity::Warn,
+        // Bare KLONDIKE fires at Error severity: the control system itself
+        // was retired (KDK/KLONDIKE → TK; transition predates CAPCO-2016,
+        // documented in NSG PM 3802). Unlike bare HCS/RSV (E061/E063 —
+        // valid controls needing compartment context), the bare form here
+        // has no canonical migration because the source control system is
+        // gone — the user MUST contact the originator for the compartment
+        // to complete the migration. Suggest-only (no auto-fix) because
+        // Marque can't fabricate the compartment.
+        severity: Severity::Error,
         replacement: ReplacementKind::SuggestOnly,
         message: "KLONDIKE closed per NSG PM 3802 (CAPCO-2016 §H.4 p85); \
                   compartment context required to migrate to TK-<compartment>",
@@ -2656,7 +2694,15 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
     DeprecatedSciRow {
         source: "KDK",
         match_kind: MatchKind::Exact,
-        severity: Severity::Warn,
+        // Bare KDK fires at Error severity: the control system itself was
+        // retired (KDK/KLONDIKE → TK; transition predates CAPCO-2016,
+        // documented in NSG PM 3802). Unlike bare HCS/RSV (E061/E063 —
+        // valid controls needing compartment context), the bare form here
+        // has no canonical migration because the source control system is
+        // gone — the user MUST contact the originator for the compartment
+        // to complete the migration. Suggest-only (no auto-fix) because
+        // Marque can't fabricate the compartment.
+        severity: Severity::Error,
         replacement: ReplacementKind::SuggestOnly,
         message: "KDK closed per NSG PM 3802 (CAPCO-2016 §H.4 p85); \
                   compartment context required to migrate to TK-<compartment>",

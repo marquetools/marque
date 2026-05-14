@@ -2765,9 +2765,17 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
 //
 // E061 fires only when classification is CONFIDENTIAL AND a bare HCS
 // is present. The diagnostic carries no fix (the manual prescribes
-// contacting the originator, not a mechanical re-mark). Warn severity
-// because the manual's guidance is "contact the originator", not "the
-// marking is invalid as-is" — a softer signal than Error.
+// contacting the originator, not a mechanical re-mark).
+//
+// Bare HCS is a structurally-incomplete marking, not an invalid one —
+// the HCS control system is canonical per §H.4 p62; the user just
+// hasn't specified the required compartment. Marque can't pick the
+// compartment without content-domain context. Severity::Warn (not
+// Error): the marking will be valid once the user adds the compartment;
+// the rule's job is to surface the gap, not to claim the marking is
+// structurally invalid. Contrast with E065's deprecated-control-system
+// rows (bare KDK/KLONDIKE/EL/ENDSEAL/ECI) where the source control
+// system itself is retired and the marking has no canonical migration.
 
 /// Rule E061 — bare HCS at CONFIDENTIAL: legacy guidance per §H.4 p62.
 struct HcsBareAtConfidentialLegacyRemarkRule;
@@ -2961,10 +2969,18 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
 // associated compartment". §H.4 p72: `RSV-[COMPARTMENT]` (3-alnum),
 // TS/S only, requires RESERVE.
 //
-// Bare RSV is a structural error — the manual explicitly says it
-// "may not be used alone". Marque cannot suggest the missing
-// compartment (org-private compartment identifier; not in vocabulary).
-// Error severity, suggest-only (no fix proposed).
+// Bare RSV is a structurally-incomplete marking, not an invalid one —
+// the RESERVE control system is canonical per §H.4 p70; the user just
+// hasn't specified the required compartment. Marque can't pick the
+// compartment without content-domain context (the compartment identifier
+// is org-private and not in the public vocabulary). Severity::Warn (not
+// Error): the marking will be valid once the user adds the compartment;
+// the rule's job is to surface the gap, not to claim the marking is
+// structurally invalid. Contrast with E065's deprecated-control-system
+// rows (bare KDK/KLONDIKE/EL/ENDSEAL/ECI) where the source control
+// system itself is retired and the marking has no canonical migration.
+// Suggest-only (no fix proposed) because the compartment identifier is
+// org-private content beyond Marque's vocabulary.
 
 /// Rule E063 — bare RSV requires compartment per §H.4 p70.
 struct RsvBareRequiresCompartmentRule;
@@ -2977,7 +2993,7 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
         "rsv-bare-requires-compartment"
     }
     fn default_severity(&self) -> Severity {
-        Severity::Error
+        Severity::Warn
     }
     /// Phase::WholeMarking: needs cross-token SCI state to find bare
     /// RSV (no compartment). No fix emitted; the compartment

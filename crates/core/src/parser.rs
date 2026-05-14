@@ -1072,6 +1072,84 @@ fn parse_sci_block(
             return None;
         }
 
+        // Deprecated SCI long-form per-chunk recognition (PR 9a Copilot R4,
+        // PR #416). When the chunk matches a deprecated long-form
+        // (`HUMINT`, `COMINT`, `KDK-BLUEFISH`, `ECI ABC`, ...), route it
+        // through the canonical-system enum path BEFORE the structural
+        // CVE-bare / custom-control checks below — otherwise:
+        //
+        // - `HUMINT` / `COMINT` / `KLONDIKE-IDIT` (>5 chars) would fall
+        //   through to `is_valid_custom_control`, fail (length cap), and
+        //   reject the whole block, so multi-system inputs like
+        //   `(TS//COMINT/TK//NF)` get tagged Unknown and the E065 walker
+        //   never sees them.
+        // - `KDK-BLUEFISH` (3-char prefix → fits `is_valid_custom_control`)
+        //   currently lands as `SciControlSystem::Custom("KDK")` with a
+        //   `BLUEFISH` compartment; the walker still fires via the
+        //   `TokenKind::SciControl` text-prefix match, but the resulting
+        //   `SciMarking` is structurally Custom (triggering W034
+        //   unpublished-control noise) instead of canonical `Published(Tk)`
+        //   with the canonical `BLFH` compartment.
+        // - `ECI ABC` / `EL ECRU` (space inside the chunk) parses neither
+        //   as CVE-bare nor custom-control and rejects the whole block.
+        //
+        // Routing through `recognize_deprecated_sci_long_form` here yields
+        // a canonical `SciMarking`, dual-emits `TokenKind::SciControl` +
+        // `TokenKind::SciSystem` spans with the chunk source bytes
+        // verbatim (so the E065 walker can identify the deprecated form
+        // via `TokenSpan.text`), and preserves the per-chunk
+        // all-or-nothing parse semantic — if the recognizer doesn't match,
+        // we fall through to the existing CVE-bare / custom-control
+        // path; if it does match, we `continue` to the next chunk.
+        //
+        // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85 — see
+        // per-row citations in `recognize_deprecated_sci_long_form`.
+        if let Some(long_form) = recognize_deprecated_sci_long_form(chunk) {
+            // Build compartments from the recognizer's optional compartment
+            // slot. The recognizer guarantees `is_alnum_upper(comp)` for
+            // every PrefixSpace/PrefixHyphen variant (see the
+            // `recognize_deprecated_sci_long_form` body), so this is safe.
+            let compartments: Box<[SciCompartment]> = match &long_form.compartment {
+                Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                None => Box::new([]),
+            };
+            // Canonical-enum lookup mirrors the whole-block long-form path
+            // at parser.rs ~line 422: bare control → `SciControl::parse`
+            // on the system name (`HCS` / `SI` / `TK`); compound form →
+            // `{ctrl}-{comp}` lookup (e.g., `TK-BLFH`).
+            let canonical_enum = if compartments.is_empty() {
+                SciControl::parse(long_form.system.as_str())
+            } else {
+                compartments.first().and_then(|c| {
+                    let composite = format!("{}-{}", long_form.system.as_str(), c.identifier);
+                    SciControl::parse(&composite)
+                })
+            };
+            // Source bytes preserved verbatim — the E065 walker reads
+            // `TokenSpan.text` to identify the deprecated form. Dual-emit
+            // SciControl + SciSystem spans matching the whole-block
+            // long-form path's invariant (parser.rs ~lines 441-475) and
+            // the structural path's pattern (lines 1107-1118 below).
+            let chunk_abs = base + chunk_off;
+            let chunk_span = Span::new(chunk_abs, chunk_abs + chunk.len());
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciControl,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciSystem,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            markings.push(SciMarking::new(
+                SciControlSystem::Published(long_form.system),
+                compartments,
+                canonical_enum,
+            ));
+            continue;
+        }
+
         // Split chunk on first `-` into (control, rest). If no `-`, the
         // whole chunk is the control with no compartments.
         let (ctrl_str, rest_opt) = match chunk.find('-') {

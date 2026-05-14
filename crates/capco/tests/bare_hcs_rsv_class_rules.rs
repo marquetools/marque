@@ -21,8 +21,13 @@
 //!
 //! - **E063** (`rsv-bare-requires-compartment`): bare RSV — per §H.4
 //!   p70 "the RSV marking may not be used alone and requires the
-//!   associated compartment". Error severity, no fix (the compartment
+//!   associated compartment". Warn severity, no fix (the compartment
 //!   identifier is org-private content beyond Marque's vocabulary).
+//!   Bare RSV is a structurally-incomplete marking (RESERVE is itself
+//!   canonical; just missing the compartment), not invalid — Warn
+//!   surfaces the gap without claiming the marking is structurally
+//!   broken. Contrast with E065's deprecated-control-system rows where
+//!   the source control system itself is retired.
 
 use marque_capco::capco_rules;
 use marque_config::Config;
@@ -173,10 +178,18 @@ fn e062_does_not_fire_when_hcs_has_compartment() {
 fn e063_fires_on_bare_rsv() {
     // §H.4 p70: "the RSV marking may not be used alone and requires
     // the associated compartment".
+    //
+    // Severity::Warn (not Error): bare RSV is a structurally-incomplete
+    // marking — RESERVE is canonical per §H.4 p70; the user just hasn't
+    // specified the required compartment. The rule surfaces the gap;
+    // the marking will be valid once the user adds the compartment.
+    // Contrast with E065's deprecated-control-system rows (bare KDK /
+    // KLONDIKE / EL / ENDSEAL / ECI) which fire at Error because the
+    // source control system itself is gone.
     let source = b"(TOP SECRET//RSV//NOFORN)";
     let diags = lint("E063", source);
     assert_eq!(diags.len(), 1);
-    assert_eq!(diags[0].severity, Severity::Error);
+    assert_eq!(diags[0].severity, Severity::Warn);
     assert!(
         diags[0].citation.contains("§H.4 p70"),
         "citation must cite §H.4 p70; got {:?}",
