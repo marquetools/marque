@@ -319,12 +319,12 @@ pub struct RuleId(pub &'static str /* scheme */, pub &'static str /* predicate_i
 
 **Validation rules**:
 - `AppliedFix::__engine_promote(...)` is `pub #[doc(hidden)]` and reachable only from `Engine::fix_inner` in production code (FR-005). Test-fixture carve-out per Constitution V Principle V remains in effect; promote-callsite lint (FR-040, AST-based) enforces.
-- `AppliedFix.fix.replacement` carries `Canonical<S>`; the `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed). `FixReplacement::Strict | Decoder` discriminant tracks the recognizer that produced the fix.
-- `AppliedFix.message` is `Message` (template + args), never a free-form string (FR-003).
-- `RuleId` is `(scheme, predicate-id)` form; legacy `E###`/`W###`/`S###`/`C###` IDs do not appear in v2 records (FR-026, R-3).
-- Pre-cutover (`marque-mvp-2`) records are unreadable by post-cutover binaries (FR-037); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034).
+- `AppliedFix.fix.replacement` carries `Canonical<S>` after PR 3c.2 (per FR-035a); `marque-mvp-3` records (PR 3c.B Commit 10 through PR 3c.2 inclusive) carry the `FixIntent | TextCorrection` discriminated `proposal` sub-object instead. The `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed); `FixReplacement::Strict | Decoder` discriminant tracks the recognizer that produced the fix in `marque-1.0` records.
+- `AppliedFix.message` is `Message` (template + args) in `marque-1.0` records (FR-003 fully closed at PR 3c.2); `marque-mvp-3` records emit no `message` field at all (the closed enum exists in code but isn't yet serialized into audit envelopes — see `pr-7c-architect-preflight.md` audit findings).
+- `RuleId` is the 1-tuple `(&'static str)` form through `marque-1.0`; the 2-tuple `(scheme, predicate-id)` migration is post-PR-10 per FR-049 (the stability freeze begins at PR 10 merge; the 2-tuple change requires the freeze to be unfrozen). Legacy `E###`/`W###`/`S###`/`C###` IDs are retired from rule-id surface during PR 3c per FR-026, but the wire-format remains the 1-tuple string through `marque-1.0`.
+- Pre-cutover (`marque-mvp-2`) records are unreadable by `marque-mvp-3` and later binaries; `marque-mvp-3` records are unreadable by `marque-1.0` binaries (FR-037 — clean break at each stage); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034).
 
-**Serialization**: NDJSON. Schema field is `"schema": "marque-1.0"` (FR-035). The exact JSON shape is documented in `contracts/audit-record.md`.
+**Serialization**: NDJSON. Schema field is `"schema": "marque-mvp-3"` today (per PR 3c.B Commit 10); `"schema": "marque-1.0"` after PR 3c.2 (FR-035 amended, FR-035a). The exact JSON shape per stage is documented in `contracts/audit-record.md` (§0 = active `marque-mvp-3`; §1+ = `marque-1.0` target shape modulo the 1-tuple-RuleId caveat).
 
 ---
 
@@ -733,8 +733,9 @@ Vec<Diagnostic { fix: Option<FixIntent<S>> }>       ◀── FR-025: rules emit
    │   - render FixIntent → Canonical<S> via S::render_canonical
    │   - construct AppliedFix via __engine_promote
 Vec<AppliedFix>       ◀── FR-002: content-ignorant
-   │                     ◀── FR-026: (scheme, predicate-id) RuleId
-   │                     ◀── FR-035: schema "marque-1.0"
+   │                     ◀── FR-026: rule-id surface (string form through marque-1.0;
+   │                     │           2-tuple post-PR-10 per FR-049)
+   │                     ◀── FR-035: schema "marque-mvp-3" today; "marque-1.0" after PR 3c.2 (FR-035a)
    ▼ NDJSON serializer
 Audit log                                      ◀── SC-001: canary scan finds zero input bytes
 
