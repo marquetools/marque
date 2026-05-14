@@ -195,9 +195,18 @@ pub struct FeatureContribution {
 
 /// Closed enumeration of features the decoder can record.
 ///
-/// New variants MUST bump the audit schema version (see
-/// `MARQUE_AUDIT_SCHEMA` in `crates/engine/build.rs`). Treat this
-/// enum as part of the on-the-wire audit contract.
+/// New variants ordinarily require a coordinated bump of
+/// `MARQUE_AUDIT_SCHEMA` (in `crates/engine/build.rs`). PR 3c
+/// reserved a slot for `PrecedingFixPenalty` in `marque-mvp-3`,
+/// so adding that one variant in PR 7 does not require a schema
+/// bump (D-7.10). Any *other* variant addition still does. Treat
+/// this enum as part of the on-the-wire audit contract.
+///
+/// The `PrecedingFixPenalty` variant is engine-applied at the pass-2
+/// confidence-threshold gate (D-7.19) — it fires for every pass-2
+/// `FixIntent` whose marking was reshaped by a pass-1 fix. The
+/// penalty is a workflow signal, not a corpus-derived prior; it
+/// does not belong in `crates/capco/corpus/priors.json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FeatureId {
     /// Observed form is edit-distance 1 from a canonical token.
@@ -221,6 +230,17 @@ pub enum FeatureId {
     /// the posterior. Recorded so an auditor can identify fixes
     /// produced under organizational overrides vs. stock priors.
     CorpusOverrideInEffect,
+    /// A preceding pass-1 localized fix rewrote this marking's bytes
+    /// before pass-2 evaluated it (FR-023 / R-4). The engine appends
+    /// this contribution at the pass-2 confidence-threshold gate
+    /// (D-7.19) — rule crates do NOT emit it directly. The associated
+    /// `FeatureContribution.delta` records the magnitude of the
+    /// penalty applied to the `rule` confidence axis; the inception
+    /// value is `PRECEDING_FIX_PENALTY_DELTA` in
+    /// `crates/engine/src/engine.rs` (D-7.10 / D-7.21 recalibration
+    /// follow-up). Reserved slot in `marque-mvp-3` — filling it does
+    /// not bump the audit schema.
+    PrecedingFixPenalty,
 }
 
 impl FeatureId {
@@ -247,6 +267,7 @@ impl FeatureId {
             FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
             FeatureId::StrictContextClassification => "StrictContextClassification",
             FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
+            FeatureId::PrecedingFixPenalty => "PrecedingFixPenalty",
         }
     }
 }
@@ -312,6 +333,7 @@ mod tests {
                 "StrictContextClassification",
             ),
             (FeatureId::CorpusOverrideInEffect, "CorpusOverrideInEffect"),
+            (FeatureId::PrecedingFixPenalty, "PrecedingFixPenalty"),
         ];
         for (id, expected) in cases {
             assert_eq!(id.as_str(), *expected, "label drift for {id:?}");
