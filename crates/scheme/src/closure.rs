@@ -188,29 +188,36 @@ impl ClosureRule {
             .any(|s| scheme.satisfies(marking, s))
     }
 
-    /// Returns `true` if this rule should fire: it is not disabled, its
-    /// trigger fires, AND it is not suppressed.
+    /// Returns `true` if this rule's structural firing condition is met:
+    /// the trigger fires AND no suppressor matches.
     ///
-    /// Per `decisions.md` D19 B, `default_severity: Severity::Off`
-    /// disables the row entirely (no firing, no propagation). This check
-    /// is the load-bearing gate: a row with `Severity::Off` reports
-    /// `should_fire = false` regardless of trigger/suppressor state, so
-    /// any closure-operator implementation that walks the catalog via
-    /// `should_fire` correctly treats `Off` rows as inert.
+    /// **Does NOT consult severity.** Per `decisions.md` D19 B, severity
+    /// is **runtime-resolved**: a closure-operator implementation reads
+    /// the `[closure_rules]` config table first (per-row overrides from
+    /// `.marque.toml` / `MARQUE_CLOSURE_RULES_*` env vars) and falls
+    /// back to `ClosureRule.default_severity` only when no override
+    /// exists. A row declared `default_severity: Severity::Off` in the
+    /// catalog can still be re-enabled by user configuration; baking
+    /// the catalog default into `should_fire` would make user override
+    /// impossible.
     ///
-    /// (Per the Copilot review on PR 3.7: an earlier version of this
-    /// method ignored `default_severity`, which made `Severity::Off`
-    /// non-load-bearing — placeholder rows that authors marked `Off` as
-    /// "ship-as-dormant-data" still fired through any consumer that
-    /// called `should_fire`. This check closes that gap.)
+    /// Callers integrating with the engine should evaluate the runtime-
+    /// resolved severity separately before applying the cone. The
+    /// trait-level `MarkingScheme::closure()` impl is where the
+    /// severity-gating policy lives (PR 4 wires `Engine::project`
+    /// through a config-aware closure pass).
+    ///
+    /// (An earlier PR 3.7 rev briefly added a `default_severity == Off`
+    /// short-circuit here to make "dormant placeholder rows" inert.
+    /// Copilot PR 3.7 review pass 4 flagged that this contradicted
+    /// D19 B's runtime-resolved-severity contract; the short-circuit
+    /// was reverted and the placeholder rows were removed from
+    /// `CapcoScheme::closure_rules()` entirely.)
     #[inline]
     pub fn should_fire<S>(&self, scheme: &S, marking: &S::Marking) -> bool
     where
         S: crate::scheme::MarkingScheme,
     {
-        if self.default_severity == Severity::Off {
-            return false;
-        }
         self.trigger_fires(scheme, marking) && !self.is_suppressed(scheme, marking)
     }
 

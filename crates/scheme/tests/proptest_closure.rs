@@ -28,8 +28,13 @@
 //! marking (up to 8 tokens, each a single bit). Each bit represents a
 //! distinct token. The scheme implements:
 //!
-//! - A set of closure rules that add bit B when bit A is set (no suppressor),
-//!   and bit C when bit D is set but bit E is NOT set (with suppressor).
+//! - A set of closure rules that add bit B when bit A is set, and a
+//!   transitive-chain pair (A→B, C→D) for the chain-depth stress test.
+//!   All rules in `CLOSURE_RULES` are **unconditional** (no suppressors)
+//!   so the catalog is trivially monotone for properties 1–4. A
+//!   suppressor-bearing closure rule is exercised only in the negative
+//!   companion file `proptest_closure_rejects_non_monotone.rs` (see
+//!   property 4 NOTE above for the rationale).
 //! - `iter_present_tokens`: yields `TokenRef::Token` for each set bit.
 //! - `closure()`: the actual Kleene-fixpoint implementation.
 //!

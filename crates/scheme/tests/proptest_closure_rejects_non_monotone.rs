@@ -252,8 +252,14 @@ fn non_monotone_scenario_is_detectable() {
     // (the FD&R dominators set is disjoint from all cones).
 
     // We demonstrate the violation exists conceptually by hand-computing
-    // what a non-monotone catalog WOULD produce (without implementing it,
-    // since implementing it would cause the closure operator to panic):
+    // what a non-monotone catalog would produce. The companion test
+    // `non_monotone_synthetic_scheme_violates_monotonicity_observably`
+    // (test #3, below) constructs `NonMonotoneScheme` and runs its
+    // `closure()` impl to observe the violation through the operator —
+    // not through hand-rolled bool arithmetic. The closure operator does
+    // NOT panic on a non-monotone catalog; it converges to a fact-set
+    // that exposes the monotonicity break to the assertion in test #3.
+    // The hand-computation below is kept for didactic clarity:
 
     // m1 = {A}: no suppressor
     let m1_has_a = true;

@@ -24,11 +24,17 @@
 //! **Note on production status**: PR 3.7 lands the type definition and
 //! the `__engine_promote` sealed constructor ONLY. No NDJSON projection
 //! helper, no renderer dispatch, no production engine call-site land
-//! in PR 3.7. The production engine **construct-site** lands in PR 4
-//! (alongside `Engine::project::closure()` wiring); the NDJSON renderer
-//! dispatch + `"type"` discriminator land in the audit-schema-bump
-//! precursor PR per the plan rev 1.1 retargeting (the bump itself is
-//! also non-scope for PR 7c per `decisions.md` D-7.18 — see PR #412).
+//! in PR 3.7.
+//!
+//! Deferral targets:
+//!
+//! - **Engine production construct-site**: lands in PR 4 (T112), alongside
+//!   `Engine::project::closure()` wiring.
+//! - **NDJSON renderer dispatch + `"type"` discriminator**: lands in the
+//!   **audit-schema-bump precursor PR**, not in PR 7 (PR 7b verified the
+//!   bump did not occur; the bump retargeted to a future precursor PR
+//!   per plan §1.2 rev 1.1 and PR 3c.2 per `decisions.md` D-7.18 / PR #412).
+//!
 //! PR 3.7's `AuditNote` is exercised via the Stage C.5 test-fixture
 //! carve-out integration test
 //! (`crates/engine/tests/audit_note_sealing_carve_out.rs`).

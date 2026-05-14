@@ -405,6 +405,10 @@ fn rules_and_closure_rules_are_section_isolated() {
     fs::write(dir.join(".marque.toml"), content).unwrap();
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    // Clear ambient MARQUE_CLOSURE_RULES_* env vars — a stray override
+    // on the same key would silently flip the [closure_rules] expectation
+    // away from "error" and make this test fail nondeterministically.
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     // [rules] → config.rules.overrides
@@ -447,6 +451,7 @@ fn rules_section_does_not_populate_closure_rules() {
     write_project_config(&dir, "[rules]\n\"E001\" = \"warn\"\n");
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert!(
@@ -557,8 +562,9 @@ fn env_var_overrides_closure_rule_file_value() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `MARQUE_CLOSURE_RULES_CAPCO__NOFORN_IF_NO_FDR=info` without a file-level
-/// entry must add the override to `config.closure_rules.overrides`.
+/// `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR=error` without a file-level
+/// entry must add the override to `config.closure_rules.overrides` (the env
+/// var is the sole source of the row's severity).
 #[test]
 fn env_var_adds_closure_rule_when_absent_in_file() {
     let dir = make_tmpdir("closure-env-add");

@@ -304,13 +304,19 @@ pub trait MarkingScheme {
     /// control implies NOFORN as the effective release restriction.
     ///
     /// Schemes opt in by overriding this method to return their catalog.
-    /// The default [`Self::closure()`] implementation walks the catalog
-    /// to Kleene fixpoint (bounded by
-    /// [`crate::closure::MAX_CLOSURE_ITERATIONS`]). However, because a
-    /// truly generic fixpoint implementation requires a scheme-level
-    /// fact-join operation that this trait does not currently expose, the
-    /// default `closure()` is a no-op — schemes that provide closure rules
-    /// MUST also override `closure()` with their own fixpoint implementation.
+    /// The default [`Self::closure()`] implementation is a **no-op** —
+    /// because a truly generic Kleene-fixpoint walker requires a
+    /// scheme-level fact-join operation that this trait does not
+    /// currently expose, schemes that declare closure rules MUST also
+    /// override `closure()` with their own implementation (typically
+    /// walking the catalog to fixpoint, bounded by
+    /// [`crate::closure::MAX_CLOSURE_ITERATIONS`]).
+    ///
+    /// Returning closure rules without overriding `closure()` is the
+    /// catalog-data-only mode used by tooling, scheme-exploration UIs,
+    /// and proptest harnesses that walk `should_fire` directly without
+    /// applying the cone. Production engines that want runtime cone
+    /// application override `closure()`.
     ///
     /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
     /// PUBLIC catalog surface — visible to tooling, scheme-exploration UIs,

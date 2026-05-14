@@ -516,7 +516,14 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         | TOK_IMCON
         | TOK_DSEN
         | TOK_RSEN
-        | TOK_FOUO => Some(CAT_DISSEM),
+        | TOK_FOUO
+        // EYES (USA/[LIST] EYES ONLY) routes through the IC dissem axis.
+        // The sentinel landed in PR 3.7 rev 3; the category routing
+        // here is PR 3.7 rev 4 per Copilot review pass 4 (token_category
+        // returning None would break any closure/intent/tooling path
+        // that needs the host category for cone-addition or audit-note
+        // projection).
+        | TOK_EYES => Some(CAT_DISSEM),
         // CAT_NON_IC_DISSEM — non-IC dissemination controls.
         // PR 3c.B Sub-PR 8.F.2 added `TOK_SBU_NF` and `TOK_LES_NF` so
         // the Pattern A `capco/sbu-nf-implies-noforn` / `capco/les-nf-implies-noforn`
@@ -3851,12 +3858,17 @@ impl MarkingScheme for CapcoScheme {
     /// PUBLIC catalog surface — visible to tooling, scheme-exploration
     /// UIs, and docs generators.
     ///
-    /// # Engine wiring
+    /// # Engine wiring (PR 4 future)
     ///
-    /// The closure operator ([`Self::closure()`]) walks this catalog to
-    /// Kleene fixpoint. The engine call-site at `Engine::project` is
-    /// deferred to PR 4 alongside the per-category `Lattice` impls
-    /// (T112). The catalog data ships here in PR 3.7 (T108c).
+    /// `CapcoScheme` does NOT override `MarkingScheme::closure()` in
+    /// PR 3.7 — it inherits the trait's no-op default. The catalog
+    /// data ships here as PUBLIC inspection surface (tooling, proptest
+    /// harnesses, docs generators can read it via `should_fire`) but
+    /// no production code path applies the cone in PR 3.7. PR 4 (T112)
+    /// lands both the `CapcoScheme::closure()` override (with Kleene-
+    /// fixpoint cone application via the runtime-resolved severity
+    /// per `decisions.md` D19 B) and the `Engine::project` call-site
+    /// that drives it.
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule] {
         CAPCO_CLOSURE_RULES
     }
@@ -4070,46 +4082,21 @@ static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_EYES),
 ];
 
-// Extended suppressor for Trio 2 (RELIDO implicit): everything in
-// FDR_DOMINATORS plus RELIDO-incompatible tokens. A marking is
-// RELIDO-incompatible if it carries any FGI-equity atom, any JOINT atom,
-// any NATO atom, or any RELIDO-incompatible control. Per `marque-applied.md`
-// §4.7.1 implicit-RELIDO suppressor and §3.4.2 family predicates.
-static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
-    // All FD&R dominators:
-    TokenRef::Token(TOK_NOFORN),
-    TokenRef::Token(TOK_RELIDO),
-    TokenRef::Token(TOK_DISPLAY_ONLY),
-    TokenRef::AnyInCategory(CAT_REL_TO),
-    // RELIDO-incompatible tokens beyond the basic FD&R set:
-    // Any FGI atom (non-US-equity content, RELIDO has no authority over it):
-    TokenRef::Token(TOK_FGI_MARKER),
-    TokenRef::AnyInCategory(CAT_FGI_MARKER),
-    // Any JOINT classification atom (non-US equity involvement):
-    TokenRef::Token(TOK_JOINT),
-    TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
-    // LES-NF and SBU-NF carry NOFORN treatment per §H.9 p185 / p178.
-    // Their NOFORN entailment makes them RELIDO-incompatible.
-    TokenRef::Token(TOK_LES_NF),
-    TokenRef::Token(TOK_SBU_NF),
-    // ORCON family is declared incompatible with RELIDO by the
-    // enumerated rows E056 (§H.8 p136) and E057 (§H.8 p140) and by
-    // the `is_orcon_family` family predicate in
-    // `capco/orcon-family-conflicts-relido`. Both ORCON variants must
-    // suppress the implicit-RELIDO trio for symmetric correctness:
-    // when a marking carries ORCON or ORCON-USGOV, the implicit-RELIDO
-    // cone would fire RELIDO into the dissem axis, then the E056/E057
-    // Conflicts walker would flag the (ORCON, RELIDO) pair as a
-    // violation. Suppressing here closes that path so the implicit
-    // never produces a fact the constraint walker then complains about.
-    // Per Copilot PR 3.7 review #10.
-    TokenRef::Token(TOK_ORCON),
-    TokenRef::Token(TOK_ORCON_USGOV),
-    // EYES — same coverage as in FDR_DOMINATORS; per Copilot PR 3.7
-    // review pass 3 the parser still recognizes DissemControl::Eyes,
-    // so the suppressor must include the sentinel.
-    TokenRef::Token(TOK_EYES),
-];
+// `FDR_OR_RELIDO_INCOMPAT` (the Trio 2 / Trio 3 extended suppressor
+// covering FD&R dominators + RELIDO-incompatible tokens like FGI / JOINT
+// / NATO / ORCON / LES-NF / SBU-NF) was removed from the active catalog
+// in PR 3.7 rev 4. It was consumed by `CLOSURE_RELIDO_US_CLASS` and
+// `CLOSURE_RELIDO_RSEN_FOUO` (the Trio 2 placeholder rows), both of
+// which retired alongside the SCI per-marking placeholder rows because
+// their over-broad triggers (`AnyInCategory(CAT_CLASSIFICATION)` and
+// `Token(TOK_RSEN)`/`Token(TOK_FOUO)`) would over-fire on SCI-bearing
+// markings before the SCI rows could add their suppressors.
+//
+// PR 4 (T112) re-introduces the suppressor data when the Trio 2 rows
+// land with proper triggers + the closure() engine wiring + runtime-
+// resolved severity (per D19 B). For now the suppressor knowledge
+// lives only in the inline comments on E054/E055/E056/E057 rows; the
+// algebraic shape is documented in `marque-applied.md` §4.7.1.
 
 // --- The implicit-default trio (FD&R-suppressed) ---
 
@@ -4248,209 +4235,6 @@ const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
     default_severity: Severity::Info,
 };
 
-// --- Trio 2: implicit RELIDO ---
-//
-// Trio 2 triggers: markings where RELIDO is the implicit default when no
-// explicit FD&R decision exists AND the marking is not RELIDO-incompatible.
-// Per `marque-applied.md` §4.7.1 implicit_RELIDO trigger list.
-
-/// Trio 2, row 1: US collateral classification only (no other dissem) implies
-/// RELIDO unless FD&R-marked or RELIDO-incompatible.
-///
-/// A marking of (U), (C), (S), or (TS) with no dissem controls implies RELIDO
-/// as the default release posture for IC markings. Per CAPCO-2016 §H.8 p154
-/// (RELIDO entry) and §B.3 Table 2 p21. The trigger is any US classification
-/// present without any other dissem axis populated.
-///
-/// Implementation note: `TokenRef::AnyInCategory(CAT_CLASSIFICATION)` fires
-/// when ANY classification is present; the dissem-empty condition is expressed
-/// by the extended suppressor (which suppresses when FD&R or RELIDO-
-/// incompatible tokens are present). Markings that have SCI/SAR/AEA present
-/// go through Trio 1 routes instead (those have unconditional NOFORN).
-const CLOSURE_RELIDO_US_CLASS: ClosureRule = ClosureRule {
-    name: "capco/relido-if-us-class-only",
-    label: "CAPCO-2016 §H.8 p154",
-    triggers: &[TokenRef::AnyInCategory(CAT_CLASSIFICATION)],
-    suppressors: FDR_OR_RELIDO_INCOMPAT,
-    cone: &[TokenRef::Token(TOK_RELIDO)],
-    // Severity::Off — the CAT_CLASSIFICATION trigger fires on ANY
-    // US classification including SCI-bearing markings, but Trio 2
-    // is only correct when no SCI/SAR/AEA is present (per Trio 1).
-    // Without a stronger trigger that filters out SCI-bearing
-    // markings, this row would over-fire on every SCI page before
-    // the SCI rows add their suppressors. Per Copilot PR 3.7
-    // review #4: gate dormant until PR 4 wires `closure()` with
-    // pipeline ordering that adds Trio-1 SCI facts before Trio-2
-    // RELIDO evaluation (or reshapes the trigger to exclude SCI).
-    default_severity: Severity::Off,
-};
-
-/// Trio 2, row 2: RSEN or FOUO implies RELIDO unless FD&R-marked or
-/// RELIDO-incompatible.
-///
-/// RISK SENSITIVE (RSEN) and FOR OFFICIAL USE ONLY (FOUO) markings default to
-/// RELIDO as the IC release mechanism when no explicit FD&R decision is
-/// present. Per CAPCO-2016 §H.8 p132 (RSEN) and §H.8 p134 (FOUO), cross-
-/// referenced with §B.3 Table 2 p21.
-const CLOSURE_RELIDO_RSEN_FOUO: ClosureRule = ClosureRule {
-    name: "capco/relido-if-rsen-fouo",
-    label: "CAPCO-2016 §H.8 p154",
-    triggers: &[TokenRef::Token(TOK_RSEN), TokenRef::Token(TOK_FOUO)],
-    suppressors: FDR_OR_RELIDO_INCOMPAT,
-    cone: &[TokenRef::Token(TOK_RELIDO)],
-    default_severity: Severity::Info,
-};
-
-// --- Trio 3: implicit REL TO USA, NATO ---
-//
-// Per `marque-applied.md` §4.7.1 implicit-REL-USA-NATO. When any NATO portion
-// is present and no explicit FD&R decision exists, REL TO USA, NATO is the
-// implied release authority.
-//
-// Implementation: there is no single `TOK_REL_TO_USA_NATO` sentinel because
-// `rel_to` is an open-vocab axis storing `CountryCode` values. The cone entry
-// `TokenRef::AnyInCategory(CAT_REL_TO)` is the closest approximation at the
-// closed-CVE level; the actual add-USA-NATO logic requires an open-vocab
-// FactAdd (PR 4 territory). Per `marque-applied.md` §4.7.1, the cone is
-// "{REL TO USA, NATO ∈ FD&R}".
-//
-// For PR 3.7, this row ships as catalog data; the `closure()` override is
-// deferred to PR 4 when open-vocab cone addition lands (T112).
-// The trigger uses `CAT_NON_US_CLASSIFICATION` (NATO classification present)
-// as the conservative proxy.
-
-/// Trio 3: NATO content implies REL TO USA, NATO unless FD&R-marked.
-///
-/// When a marking carries a NATO classification or NATO-specific control, the
-/// implicit FD&R posture is REL TO USA, NATO. Per CAPCO-2016 §H.3 (pp55-59)
-/// and §B.3 Table 2 p21.
-///
-/// # Open-vocab cone note
-///
-/// The `cone` carries `AnyInCategory(CAT_REL_TO)` as a placeholder. Adding
-/// the specific `USA` and `NATO` country codes requires open-vocab FactAdd
-/// (deferred to PR 4 T112). The row is declared here so tooling can inspect
-/// the catalog intent; `closure()` wiring lands in PR 4.
-const CLOSURE_REL_USA_NATO_IF_NATO: ClosureRule = ClosureRule {
-    name: "capco/rel-usa-nato-if-nato",
-    label: "CAPCO-2016 §H.3 p55",
-    triggers: &[TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION)],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::AnyInCategory(CAT_REL_TO)], // placeholder; PR 4 wires the specific USA+NATO add
-    // Severity::Off — the cone is a `AnyInCategory` placeholder, not
-    // the actual `REL TO USA, NATO` fact. The cone cannot be applied
-    // by the closure operator until open-vocab country-list FactAdd
-    // lands in PR 4 T112. Per Copilot PR 3.7 review #5: ship dormant
-    // catalog data, do not fire diagnostics with a non-functional cone.
-    default_severity: Severity::Off,
-};
-
-// --- Per-marking unconditional implications ---
-//
-// These implications fire regardless of FD&R state — even when FD&R is
-// already present, these SCI-compartment markings still imply NOFORN and/or
-// ORCON. Per `marque-applied.md` §4.7.1 per-marking unconditional list.
-//
-// The `suppressors` slice is empty (`&[]`) — unconditional firing, no
-// suppressor. Per `ClosureRule::is_suppressed`, an empty suppressor slice
-// means "never suppressed."
-
-/// HCS-O implies {NOFORN, ORCON} unconditionally.
-///
-/// Per CAPCO-2016 §H.4 HCS p64 (OPERATIONS compartment requires NOFORN and
-/// ORCON regardless of other markings). Both facts are added in a single row
-/// per `marque-applied.md` §4.7.1.
-const CLOSURE_HCS_O_NOFORN_ORCON: ClosureRule = ClosureRule {
-    name: "capco/hcs-o-implies-noforn-orcon",
-    label: "CAPCO-2016 §H.4 p64",
-    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // HCS-O presence — no bare TOK_HCS_O sentinel yet
-    suppressors: &[],                              // unconditional
-    cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
-    // Severity::Off because the CAT_SCI proxy trigger over-fires
-    // (it matches bare `SI`, `TK`, etc., not just HCS-O). PR 4
-    // splits the trigger to TOK_HCS_O once that sentinel lands and
-    // re-enables this row at Severity::Info. Per Copilot PR 3.7
-    // review #3: ship dormant data rather than firing wrong
-    // implicit-NOFORN/ORCON on every SCI marking.
-    default_severity: Severity::Off,
-};
-// NOTE: The trigger above fires on ANY SCI control (CAT_SCI), not specifically
-// HCS-O. A dedicated TOK_HCS_O sentinel + satisfies_attrs arm would allow
-// precise firing. For PR 3.7, CAT_SCI-triggered NOFORN/ORCON is conservative
-// (broader than needed) but safe — the catalog data is correct directionally.
-// TODO: Add TOK_HCS_O / TOK_HCS_P_SUB / TOK_SI_G sentinels with exact
-// compartment-level satisfies_attrs arms (deferred to PR 4 alongside T112).
-
-// HCS-P [sub-compartment] implies {NOFORN, ORCON} unconditionally.
-//
-// Per CAPCO-2016 §H.4 HCS p66 (PRODUCT compartment and sub-compartments
-// require NOFORN and ORCON). See note on HCS-O above — currently coalesced
-// into a CAT_SCI-level trigger pending a precise sentinel.
-// (Intentionally coalesced with CLOSURE_HCS_O_NOFORN_ORCON above since
-// we lack per-compartment sentinels. PR 4 splits when TOK_HCS_O /
-// TOK_HCS_P_SUB land.)
-
-/// SI-G implies {ORCON} unconditionally.
-///
-/// Per CAPCO-2016 §H.4 SI p80 (GAMMA compartment requires ORCON). The class
-/// floor (TS-required per §H.4 SI p81) is a Constraint::Custom row, not
-/// closure.
-const CLOSURE_SI_G_ORCON: ClosureRule = ClosureRule {
-    name: "capco/si-g-implies-orcon",
-    label: "CAPCO-2016 §H.4 p80",
-    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // SI-G presence — no bare TOK_SI_G yet
-    suppressors: &[],                              // unconditional
-    cone: &[TokenRef::Token(TOK_ORCON)],
-    // Severity::Off pending TOK_SI_G sentinel (PR 4). See
-    // CLOSURE_HCS_O_NOFORN_ORCON comment.
-    default_severity: Severity::Off,
-};
-// NOTE: Same coalesced-trigger caveat as CLOSURE_HCS_O_NOFORN_ORCON.
-// TODO: Add TOK_SI_G sentinel (deferred to PR 4).
-
-/// TK-BLFH implies {NOFORN} unconditionally.
-///
-/// Per CAPCO-2016 §H.4 TALENT KEYHOLE p87 (BLUEFISH compartment requires
-/// NOFORN regardless of other markings).
-const CLOSURE_TK_BLFH_NOFORN: ClosureRule = ClosureRule {
-    name: "capco/tk-blfh-implies-noforn",
-    label: "CAPCO-2016 §H.4 p87",
-    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-BLFH — no bare sentinel yet
-    suppressors: &[],                              // unconditional
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    // Severity::Off pending TOK_TK_BLFH sentinel (PR 4).
-    default_severity: Severity::Off,
-};
-// NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_BLFH (PR 4).
-
-/// TK-KAND implies {NOFORN} unconditionally.
-///
-/// Per CAPCO-2016 §H.4 TALENT KEYHOLE p95 (KANDIK compartment requires NOFORN).
-const CLOSURE_TK_KAND_NOFORN: ClosureRule = ClosureRule {
-    name: "capco/tk-kand-implies-noforn",
-    label: "CAPCO-2016 §H.4 p95",
-    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-KAND — no bare sentinel yet
-    suppressors: &[],                              // unconditional
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    // Severity::Off pending TOK_TK_KAND sentinel (PR 4).
-    default_severity: Severity::Off,
-};
-// NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_KAND (PR 4).
-
-/// TK-IDIT implies {NOFORN} unconditionally.
-///
-/// Per CAPCO-2016 §H.4 TALENT KEYHOLE p91 (IDITAROD compartment requires
-/// NOFORN).
-const CLOSURE_TK_IDIT_NOFORN: ClosureRule = ClosureRule {
-    name: "capco/tk-idit-implies-noforn",
-    label: "CAPCO-2016 §H.4 p91",
-    triggers: &[TokenRef::AnyInCategory(CAT_SCI)], // TK-IDIT — no bare sentinel yet
-    suppressors: &[],                              // unconditional
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    // Severity::Off pending TOK_TK_IDIT sentinel (PR 4).
-    default_severity: Severity::Off,
-};
-// NOTE: Same coalesced-trigger caveat. TODO: Add TOK_TK_IDIT (PR 4).
 
 /// The full static CAPCO closure-rule catalog.
 ///
@@ -4478,7 +4262,10 @@ const CLOSURE_TK_IDIT_NOFORN: ClosureRule = ClosureRule {
 /// PRECISE. The engine call-site at PR 4 will add precise triggers
 /// alongside the per-compartment sentinels (T112 follow-up).
 static CAPCO_CLOSURE_RULES: &[ClosureRule] = &[
-    // Trio 1: implicit NOFORN rows
+    // Trio 1: implicit NOFORN rows — these have correct token-level
+    // triggers and ship as functional catalog data. The Trio 1 rows
+    // are the load-bearing closure-operator entries the engine wires
+    // through `Engine::project` at PR 4.
     CLOSURE_NOFORN_SAR,
     CLOSURE_NOFORN_AEA_RD,
     CLOSURE_NOFORN_UCNI,
@@ -4486,17 +4273,27 @@ static CAPCO_CLOSURE_RULES: &[ClosureRule] = &[
     CLOSURE_NOFORN_ORCON,
     CLOSURE_NOFORN_IMCON_DSEN,
     CLOSURE_NOFORN_NONICCONTROLS,
-    // Trio 2: implicit RELIDO rows
-    CLOSURE_RELIDO_US_CLASS,
-    CLOSURE_RELIDO_RSEN_FOUO,
-    // Trio 3: implicit REL TO USA, NATO
-    CLOSURE_REL_USA_NATO_IF_NATO,
-    // Per-marking unconditional implications
-    CLOSURE_HCS_O_NOFORN_ORCON,
-    CLOSURE_SI_G_ORCON,
-    CLOSURE_TK_BLFH_NOFORN,
-    CLOSURE_TK_KAND_NOFORN,
-    CLOSURE_TK_IDIT_NOFORN,
+    // Trio 2 (implicit RELIDO), Trio 3 (implicit REL TO USA, NATO),
+    // and the per-marking unconditional SCI implications (HCS-O,
+    // HCS-P[sub], SI-G, TK-BLFH, TK-KAND, TK-IDIT) were REMOVED
+    // from the active catalog in PR 3.7 rev 4 per Copilot review
+    // pass 4. Three reasons:
+    //   1. Their triggers proxy via broad `AnyInCategory(CAT_SCI)` or
+    //      `AnyInCategory(CAT_CLASSIFICATION)` because per-compartment
+    //      sentinels (TOK_HCS_O, TOK_SI_G, etc.) don't exist yet —
+    //      they over-fire on bare `SI` / bare `TK` / any classified
+    //      marking respectively.
+    //   2. The Trio 3 cone was an `AnyInCategory(CAT_REL_TO)`
+    //      placeholder, structurally incapable of adding the specific
+    //      `REL TO USA, NATO` fact.
+    //   3. The previous "Severity::Off as catalog-data dormancy gate"
+    //      mitigation contradicted D19 B (severity is runtime-resolved,
+    //      not catalog-baked), so any user enabling these rows via
+    //      `[closure_rules]` config would trigger the over-firing.
+    // PR 4 (T112) lands these rows with proper sentinels, real
+    // cone-addition machinery (open-vocab FactAdd for the Trio 3
+    // country-list case), and the engine wiring to consult runtime
+    // severity per-row.
 ];
 
 // ---------------------------------------------------------------------------
