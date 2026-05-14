@@ -518,6 +518,29 @@ impl Engine {
         source: &[u8],
         opts: &LintOptions,
     ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
+        // Public entry point — no pre-pass-1 cache is available
+        // outside the two-pass fix orchestrator. Delegates to the
+        // cache-aware path with `None`.
+        self.lint_with_options_internal_with_cache(source, opts, None)
+    }
+
+    /// Cache-aware variant of [`Self::lint_with_options_internal`]
+    /// used by [`TwoPassFixer`] for the post-pass-1 re-lint. The
+    /// `pre_pass_1_cache` is a borrow into a `SmallVec` that lives
+    /// on `TwoPassFixer::run`'s stack frame; each candidate's
+    /// [`marque_rules::RuleContext::pre_pass_1_attrs`] field is
+    /// populated by a containment scan over the cache entries.
+    ///
+    /// `None` (every caller outside the engine's two-pass fix path)
+    /// retains the pre-7c behavior: rules see
+    /// `pre_pass_1_attrs: None` because no pass-1 fix has been
+    /// applied yet for this lint invocation.
+    fn lint_with_options_internal_with_cache(
+        &self,
+        source: &[u8],
+        opts: &LintOptions,
+        pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
+    ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
         use marque_core::Scanner;
         use marque_ism::{MarkingType, PageContext};
         use marque_rules::RuleContext;
@@ -818,6 +841,15 @@ impl Engine {
             } else {
                 None
             };
+            // PR 7c: look up the pre-pass-1 attrs for this marking
+            // span when the engine is dispatching the post-pass-1
+            // re-lint (`TwoPassFixer` threads a cache through here
+            // via `lint_with_options_internal`'s `pre_pass_1_cache`
+            // parameter). First-lint dispatch (pass-0) and any
+            // external `lint_with_options` call see `None` because no
+            // pass-1 fix has yet been promoted.
+            let pre_pass_1_attrs =
+                pre_pass_1_cache.and_then(|cache| pre_pass_1_attrs_for_span(cache, candidate.span));
             let ctx = RuleContext {
                 marking_type: candidate.kind,
                 zone: None,
@@ -832,6 +864,7 @@ impl Engine {
                 candidate_span: candidate.span,
                 page_context: ctx_page,
                 corrections: corrections_arc.clone(),
+                pre_pass_1_attrs,
             };
             for rule_set in &self.rule_sets {
                 for rule in rule_set.rules() {
@@ -1568,6 +1601,58 @@ type AppliedTuple = (
     Vec<AppliedFix<CapcoScheme>>,
     HashSet<(RuleId, Span)>,
 );
+
+/// Pre-pass-1 attribute cache entries (PR 7c / FR-023 / R-4).
+///
+/// One entry per marking whose span overlaps a pass-1 fix. The
+/// engine builds the cache before the pass-1 splice so the
+/// `CanonicalAttrs` snapshot reflects the bytes the rule originally
+/// matched against. Inline-4 matches the existing
+/// `Phase::Localized` rule cap (C001 / E006 / E007 / S004 — at most
+/// one fix per Localized rule per marking; the typical document
+/// has ≤4 reshape sites). Spills to heap on dense documents.
+///
+/// The `Span` keys are the **marking spans** (i.e., scanner
+/// candidate spans), not the fix sub-spans. Lookup is a linear scan
+/// using `span_is_within_marking` so a query span (a candidate
+/// span at re-lint time) finds the cache entry whose marking
+/// contains it. The post-pass-1 re-lint may produce candidates with
+/// shifted offsets (the splice changed byte positions), so an
+/// exact-equality keying scheme would miss every entry. The
+/// containment scan is robust because spans grow monotonically
+/// left-to-right; for any post-splice candidate the originating
+/// pre-pass-1 marking is the unique cache entry whose pre-splice
+/// span contained the same source bytes.
+///
+/// Inline-4 storage is 4 × `sizeof(Span) + sizeof(CanonicalAttrs)`
+/// ≈ 4 × (16 + 112) = ~512 B on the stack. SmallVec spill to heap
+/// is acceptable when documents exceed the cap (rust pre-flight §2).
+type PrePass1Cache = SmallVec<[(Span, marque_ism::CanonicalAttrs); 4]>;
+
+/// Look up the pre-pass-1 attrs for a marking whose span contains
+/// `query_span`. Linear scan over the ≤4-entry cache; the call is
+/// per-candidate inside `lint_with_options_internal_with_cache` and
+/// the inline-4 bound makes the scan stack-only on typical inputs.
+///
+/// Returns `Some(&attrs)` when a cache entry's marking span contains
+/// the query span; `None` otherwise. The PRESENCE of an entry is
+/// what the engine uses to apply the `PrecedingFixPenalty` at the
+/// pass-2 confidence-threshold gate; the CONTENT of the entry
+/// (`CanonicalAttrs`) is borrowed into `RuleContext.pre_pass_1_attrs`
+/// for advisory rule logic.
+#[inline]
+fn pre_pass_1_attrs_for_span<'a>(
+    cache: &'a [(Span, marque_ism::CanonicalAttrs)],
+    query_span: Span,
+) -> Option<&'a marque_ism::CanonicalAttrs> {
+    cache.iter().find_map(|(marking_span, attrs)| {
+        if span_is_within_marking(query_span, *marking_span) {
+            Some(attrs)
+        } else {
+            None
+        }
+    })
+}
 
 /// Outcome of pass-0 (text-corrections, UNCHANGED behavior).
 struct Pass0Result {
