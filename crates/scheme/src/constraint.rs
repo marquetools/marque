@@ -247,9 +247,10 @@ impl Constraint {
 /// `span` and `severity` are `Option`-typed and were added in PR 3c.B
 /// Commit 7.1 to let the scheme-side constraint catalog produce
 /// diagnostics that today require a walker rule to decorate. The
-/// dyadic-constraint arms in [`evaluate`] (Conflicts/Requires/Implies/
-/// Supersedes) have no natural span or severity from the constraint
-/// declaration itself and continue to emit `None` for both fields;
+/// dyadic-constraint arms in [`evaluate`] (Conflicts / ConflictsWithFamily
+/// / Requires / Supersedes; `Implies` retired in PR 3.7 T108g) have no
+/// natural span or severity from the constraint declaration itself and
+/// continue to emit `None` for both fields;
 /// downstream engine layers treat `ConstraintViolation`s with `None`
 /// span or `None` severity as advisory and do NOT surface them as
 /// user-facing diagnostics. Schemes that want their `Custom` constraint
@@ -315,9 +316,16 @@ pub struct ConstraintViolation {
 ///   call, regardless of thread or iteration order.
 /// - **Declaration-ordered**: the scheme's declared constraint order is
 ///   preserved in the returned violation vec.
-/// - **Allocation-bounded**: the only heap allocations come from the
-///   returned `Vec` and the violation-message strings each variant
-///   constructs. The loop itself does not allocate beyond the `Vec`.
+/// - **Allocation-bounded** (per-variant): the dyadic arms (Conflicts /
+///   Requires / Supersedes) allocate only the violation-message strings
+///   they construct plus the returned `Vec`. The `ConflictsWithFamily`
+///   arm additionally allocates the iterator returned by
+///   `MarkingScheme::iter_present_tokens` (typically a boxed `Vec` of
+///   present tokens — see `crates/capco/src/scheme.rs::collect_present_tokens`),
+///   so its allocation cost is O(|present tokens|) per row. The `Custom`
+///   arm delegates to `scheme.evaluate_custom`, whose allocation cost is
+///   scheme-defined. The loop body itself does not allocate beyond the
+///   returned `Vec`.
 ///
 /// [`MarkingScheme::closure_rules`]: crate::scheme::MarkingScheme::closure_rules
 pub fn evaluate<S>(scheme: &S, marking: &S::Marking) -> Vec<ConstraintViolation>

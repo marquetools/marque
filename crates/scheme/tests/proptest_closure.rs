@@ -129,6 +129,7 @@ fn bit_index(id: TokenId) -> Option<u8> {
 // ---------------------------------------------------------------------------
 
 static CLOSURE_RULES: &[ClosureRule] = &[
+    // Row 1: A→B (one-hop)
     ClosureRule {
         name: "stub/a-implies-b",
         label: "StubScheme proptest fixture",
@@ -137,6 +138,21 @@ static CLOSURE_RULES: &[ClosureRule] = &[
         cone: &[TokenRef::Token(TOK_B)],
         default_severity: Severity::Info,
     },
+    // Row 2: B→C (chains off row 1 — A→B→C is a true transitive
+    // multi-iteration chain; without this row Property 4's
+    // "chain-depth stress test" framing was misleading per Copilot
+    // PR 3.7 review pass 3).
+    ClosureRule {
+        name: "stub/b-implies-c",
+        label: "StubScheme proptest fixture",
+        triggers: &[TokenRef::Token(TOK_B)],
+        suppressors: &[],
+        cone: &[TokenRef::Token(TOK_C)],
+        default_severity: Severity::Info,
+    },
+    // Row 3: C→D (extends the chain to depth 3 — A→B→C→D is the
+    // worst-case depth the CAPCO catalog observes per
+    // marque-applied.md §4.7.3 chain-depth walk).
     ClosureRule {
         name: "stub/c-implies-d",
         label: "StubScheme proptest fixture",
@@ -145,6 +161,7 @@ static CLOSURE_RULES: &[ClosureRule] = &[
         cone: &[TokenRef::Token(TOK_D)],
         default_severity: Severity::Info,
     },
+    // Row 4: independent F→{G,H} (multi-cone, no chain interaction)
     ClosureRule {
         name: "stub/f-implies-g-h",
         label: "StubScheme proptest fixture",

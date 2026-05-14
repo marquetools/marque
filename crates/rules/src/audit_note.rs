@@ -41,16 +41,29 @@ use marque_scheme::{MarkingScheme, Scope, TokenId, TokenRef};
 
 use crate::{Confidence, EnginePromotionToken, RuleId};
 
-/// Closed-set kind discriminator for `AuditNote`.
+/// Kind discriminator for `AuditNote`. v1 ships `InferredFact` only.
 ///
-/// v1 ships `InferredFact` only. Per D19 A, additional kinds
-/// (`SuppressedByFact`, `DisabledByConfig`) are deferred to a
-/// debug-tracing follow-up — engineer-facing tools, not load-bearing
-/// for compliance.
+/// The two terms operate at different layers:
 ///
-/// Adding a variant requires a coordinated bump of
-/// `MARQUE_AUDIT_SCHEMA` (currently `marque-mvp-3`; PR 7+ bumps to
-/// `marque-1.0`).
+/// - `#[non_exhaustive]` is the Rust source-level contract: downstream
+///   crates MUST use a wildcard `_ =>` arm when matching on this enum,
+///   so an internal addition of a new variant in a later marque release
+///   does not break downstream compile.
+/// - The `MARQUE_AUDIT_SCHEMA` env-pinned schema is the wire-level
+///   contract: the *set* of variants permitted at a given schema
+///   version is closed by build-time validation. Adding a variant
+///   requires a coordinated schema bump (currently `marque-mvp-3`;
+///   a future precursor PR bumps to `marque-1.0` per the PR 3.7 plan
+///   §1.2 rev 1.1) so that downstream NDJSON consumers can dispatch on
+///   schema version without per-variant introspection.
+///
+/// Both contracts apply together: `#[non_exhaustive]` covers the
+/// source layer, the schema bump covers the wire layer. They are
+/// orthogonal, not in tension.
+///
+/// Per D19 A, deferred kinds (`SuppressedByFact`, `DisabledByConfig`)
+/// are engineer-facing tools, not load-bearing for compliance, and
+/// will land in a debug-tracing follow-up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AuditNoteKind {
@@ -77,17 +90,27 @@ pub enum AuditNoteKind {
 pub struct AuditNoteStructural {
     /// The `ClosureRule.name` that fired (e.g., `"capco/noforn-if-no-fdr"`).
     pub row_name: &'static str,
-    /// The closure rule's `cone` slice — the tokens this firing added.
+    /// The closure rule's **declared cone slice** — a verbatim reference
+    /// to the `ClosureRule.cone` of the firing rule. This is the
+    /// catalog declaration, NOT necessarily the set of facts newly
+    /// added by this firing: if the marking already carried some
+    /// cone members before closure ran, the audit note still cites
+    /// the full declared cone. A downstream auditor needing
+    /// "which facts did this firing materially add" must diff the
+    /// pre- and post-closure marking; the cone field is the
+    /// declaration the auditor would consult to understand the
+    /// rule's intent.
+    ///
+    /// Per Copilot PR 3.7 review pass 3: this distinction is now
+    /// explicit in the field doc to prevent over-attribution by
+    /// downstream tooling that reads `cone` and assumes "all of
+    /// these were newly inferred."
+    ///
     /// `&'static [TokenRef]` matches `ClosureRule.cone`'s shape so an
     /// audit note can represent every cone shape declared in a
     /// `closure_rules()` catalog, including category-scoped cones like
-    /// `AnyInCategory(CAT_REL_TO)` used by Trio 3
-    /// (`capco/rel-usa-nato-if-nato`). Earlier drafts narrowed the field
-    /// to `&[TokenId]` for explicitness, but that shape cannot represent
-    /// `AnyInCategory` cones — Copilot PR 3.7 review surfaced this
-    /// mismatch. `&[TokenRef]` keeps the audit-note payload G13-pure
-    /// (TokenId / CategoryId integers only) while remaining a faithful
-    /// projection of the catalog row.
+    /// `AnyInCategory(CAT_REL_TO)`. Stays G13-pure: `TokenRef` carries
+    /// only `TokenId` / `CategoryId` integers, never document bytes.
     pub cone: &'static [TokenRef],
     /// The scope at which the firing applied (Portion / Page / Document).
     pub scope: Scope,
@@ -201,6 +224,26 @@ impl<S: MarkingScheme> AuditNote<S> {
         confidence: Confidence,
         _token: EnginePromotionToken,
     ) -> Self {
+        // Per-kind invariant enforcement (D19 A v1):
+        //   - `InferredFact` MUST carry `suppressed_by: None` (suppression
+        //     is the future `SuppressedByFact` kind's territory).
+        //
+        // Per Copilot PR 3.7 review pass 3 ("suppressed_by invariant
+        // unenforced"): make the documented invariant load-bearing
+        // rather than purely documentary. `debug_assert!` rather
+        // than `assert!` because the wire-format schema's `kind`
+        // field also expresses the constraint (a v1 audit consumer
+        // sees `kind: "InferredFact"` and knows `suppressed_by` is
+        // semantically empty regardless of the field value), and a
+        // hard panic in production would bring down the engine on
+        // a misconfigured callsite. Test builds catch the misuse;
+        // release builds tolerate it as a content-ignorant byte
+        // anomaly that the schema layer absorbs.
+        debug_assert!(
+            !(matches!(kind, AuditNoteKind::InferredFact) && structural.suppressed_by.is_some()),
+            "AuditNoteKind::InferredFact must have suppressed_by = None per D19 A v1; \
+             populating suppressed_by is reserved for the future SuppressedByFact kind."
+        );
         Self {
             rule,
             citation,

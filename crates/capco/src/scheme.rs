@@ -24,10 +24,34 @@
 
 use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, Span, TokenKind};
 use marque_scheme::{
-    AggregationOp, ApplyIntentError, Cardinality, Category, CategoryAction, CategoryId,
-    CategoryPredicate, ClosureRule, Constraint, ConstraintViolation, FactRef, FamilyPredicate,
-    IntraOrdering, Lattice, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope, Severity,
-    Template, TokenId, TokenRef,
+    AggregationOp,
+    ApplyIntentError,
+    Cardinality,
+    Category,
+    CategoryAction,
+    CategoryId,
+    // `FamilyPredicate` is referenced by `is_fdr_dominator` and
+    // `is_orcon_family` (public free fns); the actual catalog rows
+    // using ConflictsWithFamily were removed in PR 3.7 rev 3 per
+    // Copilot review (see scheme.rs:2452 note). The fns remain as
+    // public API for PR 4 to wire into the rebuilt rule-wrapper
+    // dispatch when the enumerated E054-E057 rows retire.
+    CategoryPredicate,
+    ClosureRule,
+    Constraint,
+    ConstraintViolation,
+    FactRef,
+    IntraOrdering,
+    Lattice,
+    MarkingScheme,
+    PageRewrite,
+    Parsed,
+    ReplacementIntent,
+    Scope,
+    Severity,
+    Template,
+    TokenId,
+    TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -157,6 +181,10 @@ pub const TOK_LIMDIS: TokenId = TokenId(135); // LIMITED DISTRIBUTION — §H.9 
 pub const TOK_LES: TokenId = TokenId(136); // LAW ENFORCEMENT SENSITIVE — §H.9 p181
 pub const TOK_SBU: TokenId = TokenId(137); // SENSITIVE BUT UNCLASSIFIED — §H.9 p176
 pub const TOK_SSI: TokenId = TokenId(138); // SENSITIVE SECURITY INFORMATION — §H.9 p189
+pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p157
+// (deprecated 2017-10-01 per §H.8 p157;
+// parser preserves DissemControl::Eyes
+// for legacy-input recognition).
 // NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
 // TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
 
@@ -2449,49 +2477,23 @@ impl CapcoScheme {
                 right: TokenRef::Token(TOK_RELIDO),
                 label: "CAPCO-2016 §H.8 p140",
             },
-            // ---- capco/relido-conflicts-fdr-family — ADDITIVE primitive showcase (PR 3.7 T108b)
+            // NOTE — ConflictsWithFamily primitive showcase removed in PR 3.7 rev 3.
             //
-            // Distributively-equivalent to E054 + E055 + the FD&R-chain
-            // category extension (REL TO). Exercises the new
-            // `ConflictsWithFamily` primitive without replacing the
-            // enumerated diagnostic-emission path. Reachable via the
-            // generic `marque_scheme::evaluate` walker and via
-            // `evaluate_named_constraint`'s `ConflictsWithFamily` dispatch.
-            // PR 4 (T112) retires the enumerated E054/E055 rows once the
-            // wrapper layer is family-aware.
-            //
-            // Source: §H.8 RELIDO entry p154 + §D.2 Table 3 p28
-            // (FD&R-chain extension) + `marque-applied.md` family-
-            // predicate framing (RELIDO incompatibility roster).
-            // Citation note: the family-row label cites BOTH §H.8 p154
-            // (which establishes RELIDO ⊥ NOFORN and RELIDO ⊥ DISPLAY ONLY)
-            // AND §D.2 Table 3 p28 (which establishes RELIDO's place in the
-            // FD&R-precedence chain that extends the conflict to REL TO).
-            // The family predicate `is_fdr_dominator` returns true for
-            // {NOFORN, DISPLAY ONLY, REL TO[any country list]} — REL TO
-            // is in the conflict family per §D.2 Table 3 p28, NOT per
-            // §H.8 p154, so the citation must list both passages.
-            // Per Copilot PR 3.7 review #5 (Constitution VIII fidelity).
-            Constraint::ConflictsWithFamily {
-                name: "capco/relido-conflicts-fdr-family",
-                left: TokenRef::Token(TOK_RELIDO),
-                family: FamilyPredicate(is_fdr_dominator),
-                label: "CAPCO-2016 §H.8 p154 + §D.2 Table 3 p28",
-            },
-            // ---- capco/orcon-family-conflicts-relido — ADDITIVE primitive showcase (PR 3.7 T108b)
-            //
-            // Distributively-equivalent to E056 + E057. Same additive
-            // staging as `capco/relido-conflicts-fdr-family`.
-            //
-            // Citation: ORCON (§H.8 p136); ORCON-USGOV (§H.8 p140) is
-            // covered by the family member but not the primary citation
-            // per D13 single-citation discipline.
-            Constraint::ConflictsWithFamily {
-                name: "capco/orcon-family-conflicts-relido",
-                left: TokenRef::Token(TOK_RELIDO),
-                family: FamilyPredicate(is_orcon_family),
-                label: "CAPCO-2016 §H.8 p136",
-            },
+            // An earlier rev added two additive `ConflictsWithFamily` rows
+            // (`capco/relido-conflicts-fdr-family` and
+            // `capco/orcon-family-conflicts-relido`) alongside the
+            // enumerated E054/E055/E056/E057 rows above as a "primitive
+            // showcase". Copilot PR 3.7 review pass 3 surfaced that this
+            // shape causes `CapcoScheme::validate()` to emit DOUBLE
+            // diagnostics for any input that triggers both the enumerated
+            // row and the family row (the same matching pair appears once
+            // per row). The primitive is already exercised on a stub scheme
+            // by `crates/scheme/tests/proptest_constraint_rhs_family_distributive.rs`;
+            // the CAPCO catalog does not need active family-row entries to
+            // validate the primitive. PR 4 (T112) lands the actual
+            // compaction (delete E054-E057 enumerated rows AND add the
+            // family rows AND rewire `rules_declarative.rs` wrappers to
+            // dispatch by family-row name) as one coordinated change.
             // ================================================================
             // PR 3b.D (T026d) — class-floor catalog (§3.4.6)
             // ================================================================
@@ -2873,7 +2875,24 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                         matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
                     })
             }
-            TOK_FGI_MARKER => attrs.fgi_marker.is_some(),
+            TOK_FGI_MARKER => {
+                // FGI presence covers two disjoint axes:
+                //   - `attrs.fgi_marker` for explicit `FGI` token in
+                //     the dissem-axis position
+                //   - `MarkingClassification::Fgi(_)` for foreign-classified
+                //     portions like `//GBR SECRET` (the FGI lives on the
+                //     classification axis, not the dissem-axis fgi_marker)
+                // Per Copilot PR 3.7 review pass 3: prior to this fix
+                // `satisfies_attrs(TOK_FGI_MARKER)` checked only
+                // `attrs.fgi_marker.is_some()`, missing the
+                // classification-axis case. The closure rule
+                // `capco/noforn-if-fgi` would therefore not fire on
+                // foreign-classified portions even though the trigger
+                // declares both `TOK_FGI_MARKER` and
+                // `AnyInCategory(CAT_FGI_MARKER)`.
+                attrs.fgi_marker.is_some()
+                    || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
+            }
             TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
             // `Conflict` deliberately excluded — see fn doc.
             TOK_NON_US_CLASSIFICATION => matches!(
@@ -2958,6 +2977,19 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Ssi)),
+            // EYES sentinel for FD&R-set coverage (§H.8 p157). Per
+            // Copilot PR 3.7 review pass 3: earlier comments claimed
+            // EYES was covered via `CAT_REL_TO` fallthrough, which is
+            // false — `CAT_REL_TO` only checks `attrs.rel_to`. EYES is
+            // a `DissemControl::Eyes` variant produced by the parser
+            // (deprecated 2017-10-01 per §H.8 p157 but still recognized
+            // for legacy-input compatibility); this arm provides the
+            // satisfies_attrs path that `FDR_DOMINATORS` membership
+            // and `is_fdr_dominator` rely on.
+            TOK_EYES => attrs
+                .dissem_controls
+                .iter()
+                .any(|d| matches!(d, DissemControl::Eyes)),
             _ => false,
         },
         TokenRef::AnyInCategory(cat) => match *cat {
@@ -2977,7 +3009,13 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
             CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
             CAT_SAR => attrs.sar_markings.is_some(),
             CAT_AEA => !attrs.aea_markings.is_empty(),
-            CAT_FGI_MARKER => attrs.fgi_marker.is_some(),
+            CAT_FGI_MARKER => {
+                // Mirror TOK_FGI_MARKER (above): cover BOTH the
+                // dissem-axis explicit-FGI token and the
+                // classification-axis MarkingClassification::Fgi case.
+                attrs.fgi_marker.is_some()
+                    || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
+            }
             CAT_DISSEM => !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty(),
             CAT_REL_TO => !attrs.rel_to.is_empty(),
             CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
@@ -3891,8 +3929,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             DissemControl::Dsen => Some(TOK_DSEN),
             DissemControl::Rs => Some(TOK_RSEN),
             DissemControl::Fouo => Some(TOK_FOUO),
+            DissemControl::Eyes => Some(TOK_EYES),
             // Variants without TOK_* sentinels yet:
-            //   Rel, Pr, Eyes, Rawfisa, Fisa, ExemptFromIcd501Discovery
+            //   Rel, Pr, Rawfisa, Fisa, ExemptFromIcd501Discovery
             //
             // DRIFT GUARD: `DissemControl` is `#[non_exhaustive]`. If
             // a future ODNI ISM schema bump adds a new variant, it
@@ -4018,26 +4057,17 @@ static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_RELIDO),
     TokenRef::Token(TOK_DISPLAY_ONLY),
     TokenRef::AnyInCategory(CAT_REL_TO),
-    // NOTE on EYES coverage gap (Copilot PR 3.7 review #6):
-    // EYES is an FD&R marking per §H.8 p157, but it is NOT covered by
-    // this suppressor slice. `CAT_REL_TO` only matches via `attrs.rel_to`
-    // (which is empty for an EYES-marked portion); there is no
-    // `TOK_EYES` sentinel and `DissemControl::Eyes` is not mapped in
-    // `iter_present_tokens` or `satisfies_attrs`.
-    //
-    // Operational impact: an EYES-only portion (no other FD&R marking)
-    // will NOT suppress the implicit-NOFORN trio rows. The post-2017
-    // §H.8 p157 EYES-deprecation framing routes EYES portions through
-    // the parser's migration table to `REL TO`, so the lattice never
-    // sees a bare-EYES atom in practice (per `marque-applied.md`
-    // §3.4.5c). Both of those mitigations apply in production, but the
-    // FDR_DOMINATORS slice as data is still incomplete relative to its
-    // §B.3 Table 2 p21 spec.
-    //
-    // TODO (#407 follow-on): add `TOK_EYES` sentinel + corresponding
-    // `DissemControl::Eyes` mapping in `iter_present_tokens` +
-    // `satisfies_attrs::DissemControl::Eyes` arm, then add
-    // `TokenRef::Token(TOK_EYES)` to this slice.
+    // EYES (USA/[LIST] EYES ONLY) is an FD&R marking per §H.8 p157.
+    // The sentinel (`TOK_EYES`), the `satisfies_attrs` arm, and the
+    // `iter_present_tokens` mapping all land in PR 3.7 rev 3 so that
+    // EYES-only portions correctly suppress the implicit-NOFORN
+    // trio rows. Per Copilot PR 3.7 review pass 3: an earlier rev
+    // claimed EYES was covered via `CAT_REL_TO` fallthrough, which
+    // was false — `CAT_REL_TO` only checks `attrs.rel_to`. EYES is
+    // a `DissemControl::Eyes` variant produced by the parser
+    // (deprecated 2017-10-01 per §H.8 p157 but still recognized for
+    // legacy-input compatibility).
+    TokenRef::Token(TOK_EYES),
 ];
 
 // Extended suppressor for Trio 2 (RELIDO implicit): everything in
@@ -4075,6 +4105,10 @@ static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
     // Per Copilot PR 3.7 review #10.
     TokenRef::Token(TOK_ORCON),
     TokenRef::Token(TOK_ORCON_USGOV),
+    // EYES — same coverage as in FDR_DOMINATORS; per Copilot PR 3.7
+    // review pass 3 the parser still recognizes DissemControl::Eyes,
+    // so the suppressor must include the sentinel.
+    TokenRef::Token(TOK_EYES),
 ];
 
 // --- The implicit-default trio (FD&R-suppressed) ---
@@ -4494,12 +4528,15 @@ static CAPCO_CLOSURE_RULES: &[ClosureRule] = &[
 pub fn is_fdr_dominator(t: &TokenRef) -> bool {
     match t {
         TokenRef::Token(id) => {
-            matches!(
-                *id,
-                TOK_NOFORN | TOK_DISPLAY_ONLY // Note: EYES (TOK_EYES placeholder) and RELIDO are also FD&R
-                                              // dominators over RELIDO per §D.2 Table 3, but RELIDO-vs-RELIDO
-                                              // is a tautology and TOK_EYES doesn't exist yet.
-            )
+            // NOFORN, DISPLAY_ONLY, and EYES are FD&R dominators over
+            // RELIDO per §D.2 Table 3 p28. RELIDO-vs-RELIDO is a
+            // tautology and is omitted. EYES added in PR 3.7 rev 3
+            // per Copilot review pass 3: the parser produces
+            // `DissemControl::Eyes` for legacy `(U//EYES)` inputs
+            // (deprecated 2017-10-01 per §H.8 p157 but still
+            // recognized), so `is_fdr_dominator` must match it for
+            // RELIDO + EYES conflicts to be reportable.
+            matches!(*id, TOK_NOFORN | TOK_DISPLAY_ONLY | TOK_EYES)
         }
         TokenRef::AnyInCategory(cat) => {
             // REL TO (any country list) is an FD&R dominator over RELIDO

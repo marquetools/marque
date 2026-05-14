@@ -39,6 +39,7 @@ use marque_scheme::{
     Category, Constraint, ConstraintViolation, Lattice, MarkingScheme, PageRewrite, Parsed, Scope,
     Template, TokenId, TokenRef, closure::ClosureRule, severity::Severity,
 };
+use proptest::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Bitset marking (same as proptest_closure.rs but standalone).
@@ -414,22 +415,16 @@ impl MarkingScheme for NonMonotoneScheme {
     }
 }
 
-/// Observable monotonicity violation: a synthetic non-monotone scheme
-/// produces `closure(m1) ⊄ closure(m2)` even though `m1 ⊑ m2`.
-///
-/// Per Copilot PR 3.7 review #8: the prior test `non_monotone_scenario_is_detectable`
-/// only hand-asserted the violation conceptually; this test actually
-/// constructs a `NonMonotoneScheme` with a parity-suppressor-shaped
-/// rule (A→B suppressed by C, where C is a token that can appear in
-/// markings) and observes the monotonicity violation through the
-/// closure operator. This is the load-bearing test that verifies the
-/// negative property: a non-monotone catalog IS detectable by running
-/// the closure() impl against deliberately-chosen inputs.
+/// Observable monotonicity violation: the synthetic `NonMonotoneScheme`
+/// (rule `A→B suppressed by C`) violates the monotone property for the
+/// specific scenario `m1 = {A}, m2 = {A, C}`. This is the load-bearing
+/// test that verifies the negative property end-to-end — the prior
+/// `non_monotone_scenario_is_detectable` test only hand-asserted the
+/// violation conceptually.
 #[test]
 fn non_monotone_synthetic_scheme_violates_monotonicity_observably() {
     let scheme = NonMonotoneScheme;
 
-    // m1 = {A}, m2 = {A, C}: m1 ⊑ m2.
     let m1 = BitMarking::with(0b001); // TOK_A
     let m2 = BitMarking::with(0b101); // TOK_A + TOK_C
 
@@ -438,16 +433,11 @@ fn non_monotone_synthetic_scheme_violates_monotonicity_observably() {
     let c1 = scheme.closure(m1);
     let c2 = scheme.closure(m2);
 
-    // closure({A}) = {A, B} (rule fires, no suppressor present)
-    // closure({A, C}) = {A, C} (rule suppressed by C, doesn't fire)
-    // c1.bits = 0b011, c2.bits = 0b101. c1 contains TOK_B (bit 1),
-    // c2 doesn't — so c1 ⊄ c2 — monotonicity violation.
     assert_eq!(c1.bits, 0b011, "closure({{A}}) should be {{A, B}}");
     assert_eq!(
         c2.bits, 0b101,
         "closure({{A, C}}) should be {{A, C}} (rule suppressed)"
     );
-
     assert!(
         !c1.le(&c2),
         "expected monotonicity violation: closure(m1)={:08b} should NOT be ⊑ closure(m2)={:08b} \
@@ -455,4 +445,61 @@ fn non_monotone_synthetic_scheme_violates_monotonicity_observably() {
         c1.bits,
         c2.bits
     );
+}
+
+proptest! {
+    /// Property-based extension of the hardcoded-pair test above
+    /// (per Copilot PR 3.7 review pass 3: "the load-bearing
+    /// negative check uses one hard-coded pair of inputs and
+    /// imports no proptest strategies").
+    ///
+    /// For random `a` and `c` byte-pattern inputs constructed so
+    /// `m1 = a_only` and `m2 = a_only | c_only` always satisfy
+    /// `m1 ⊑ m2`, the `NonMonotoneScheme`'s `closure()` impl must
+    /// produce a result that demonstrably violates monotonicity
+    /// whenever C is in m2 and m1 has no C bit — which is the
+    /// failure mode the synthetic rule `A→B suppressed by C`
+    /// encodes. Property: for any (a_present, c_present) pair
+    /// where C is present in m2 only, closure(m1) ⊄ closure(m2).
+    ///
+    /// This covers the broader negative-property class without
+    /// committing to enumerated bits.
+    #[test]
+    fn non_monotone_synthetic_scheme_violation_proptest(
+        // Construct m1 with bit 0 (TOK_A) set; m2 with bits 0 and 2 (TOK_A + TOK_C).
+        // Other bits 1, 3-7 are random for m1, and m2 = m1 | TOK_C-bit.
+        m1_extra_bits in any::<u8>().prop_map(|b| b & 0b1111_1010), // exclude TOK_A (bit 0) and TOK_C (bit 2)
+    ) {
+        let scheme = NonMonotoneScheme;
+        let m1 = BitMarking::with(0b001 | m1_extra_bits); // TOK_A + arbitrary
+        let m2 = BitMarking::with(m1.bits | 0b100);       // m1 + TOK_C
+
+        prop_assert!(m1.le(&m2), "test setup: m1 = {:08b} must be ⊑ m2 = {:08b}", m1.bits, m2.bits);
+
+        let c1 = scheme.closure(m1.clone());
+        let c2 = scheme.closure(m2.clone());
+
+        // m1 doesn't carry TOK_C, so the rule fires and adds TOK_B (bit 1).
+        // m2 carries TOK_C, so the rule is suppressed.
+        prop_assert!(
+            c1.has_token(1),
+            "non-monotone rule should fire on m1 (no TOK_C suppressor): m1={:08b}, c1={:08b}",
+            m1.bits, c1.bits
+        );
+        // c2's bit 1 is only set if m1 already had it (bit 1 in m1_extra_bits).
+        // If m1 didn't carry TOK_B, c2 won't have TOK_B either (rule suppressed).
+        if !m1.has_token(1) {
+            prop_assert!(
+                !c2.has_token(1),
+                "non-monotone rule should NOT fire on m2 (TOK_C suppressor present): m2={:08b}, c2={:08b}",
+                m2.bits, c2.bits
+            );
+            // The monotonicity violation: c1 has TOK_B but c2 doesn't.
+            prop_assert!(
+                !c1.le(&c2),
+                "expected monotonicity violation: c1={:08b} should NOT be ⊑ c2={:08b}",
+                c1.bits, c2.bits
+            );
+        }
+    }
 }

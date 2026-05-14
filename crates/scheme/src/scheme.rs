@@ -361,9 +361,26 @@ pub trait MarkingScheme {
     /// iterator, which would silently cause the family predicate to never
     /// fire. Schemes without family constraints do not need to override.
     ///
-    /// The iterator yields `TokenRef::Token(id)` for each token present.
-    /// `AnyInCategory` entries are NOT expected in the output — this
-    /// method enumerates concrete tokens, not category references.
+    /// The iterator yields `TokenRef` values for facts currently present
+    /// in the marking. Both variants are permitted:
+    ///
+    /// - `TokenRef::Token(id)` for concrete present tokens whose
+    ///   identity matters (the common case).
+    /// - `TokenRef::AnyInCategory(cat)` for facts whose presence is
+    ///   axis-level only (e.g., `CAT_REL_TO` for "some REL TO country
+    ///   list is present" without enumerating the specific countries).
+    ///   Family predicates may match on category granularity rather
+    ///   than per-token (e.g., CapcoScheme's `is_fdr_dominator`
+    ///   matches `AnyInCategory(CAT_REL_TO)` to capture REL TO as an
+    ///   FD&R-chain member without enumerating each country).
+    ///
+    /// An earlier rev of this contract restricted the output to
+    /// `TokenRef::Token` only; that restriction was lifted in PR 3.7
+    /// rev 3 to align with CapcoScheme's actual emission (which
+    /// emits `AnyInCategory(CAT_REL_TO)`, `CAT_SCI`, `CAT_SAR`, and
+    /// `CAT_NON_US_CLASSIFICATION` for axis-level facts) and the
+    /// family-predicate idiom that depends on it. Per Copilot
+    /// PR 3.7 review pass 3.
     ///
     /// Default: empty iterator (no present tokens enumerated).
     fn iter_present_tokens<'m>(
