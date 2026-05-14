@@ -1558,3 +1558,311 @@ fn decoder_recognizer_implements_recognizer_for_capco_scheme() {
 // `score_candidate_splits_prior_and_posterior` in `decoder.rs`,
 // which constructs a known `CanonicalAttempt` + marking and asserts
 // the split exactly.
+
+// ---------------------------------------------------------------------------
+// T129/T130: NATO longhand fold (FR-039 Rule 5 — tests written pre-fix)
+// ---------------------------------------------------------------------------
+//
+// These tests verify that the decoder's `try_nato_fold` preprocessing helper
+// recovers NATO longhand classification levels from mangled portion markings.
+// Per FR-039 Rule 5, this block was committed before the fold implementation
+// to demonstrate tests-fail-before / tests-pass-after. Failure proof in
+// `docs/refactor-006/pr-8-t130-failure-proof.md`.
+//
+// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register — NATO
+// portion abbreviations NU/NR/NC/NS/CTS for the five base levels).
+
+use marque_ism::NatoClassification;
+use marque_ism::attrs::MarkingClassification;
+use marque_rules::confidence::FeatureId;
+
+/// Return the `NatoClassification` from a marking, or panic.
+fn nato_class(m: &marque_capco::CapcoMarking) -> NatoClassification {
+    match m.0.classification.as_ref().expect("marking has no classification") {
+        MarkingClassification::Nato(n) => *n,
+        other => panic!("expected Nato classification, got {other:?}"),
+    }
+}
+
+#[test]
+fn nato_u_portion_folds_to_nu() {
+    // `(NATO U)` — NATO UNCLASSIFIED longhand abbrev → NU
+    // Pre-fix: decoder returns zero candidates (strict parser doesn't recognize
+    // `NATO U` as a valid non-US classification segment without the `//` prefix).
+    // Post-fix: decoder folds to `(//NU)` → strict-parses to NatoUnclassified.
+    //
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO U)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO U)` should fold to `(//NU)` and decode \
+             to NatoUnclassified (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoUnclassified,
+        "NATO U must fold to NU (NatoUnclassified)"
+    );
+}
+
+#[test]
+fn nato_r_portion_folds_to_nr() {
+    // `(NATO R)` — NATO RESTRICTED longhand abbrev → NR
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO R)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO R)` should fold to `(//NR)` and decode \
+             to NatoRestricted (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoRestricted,
+        "NATO R must fold to NR (NatoRestricted)"
+    );
+}
+
+#[test]
+fn nato_c_portion_folds_to_nc() {
+    // `(NATO C)` — NATO CONFIDENTIAL longhand abbrev → NC
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO C)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO C)` should fold to `(//NC)` and decode \
+             to NatoConfidential (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoConfidential,
+        "NATO C must fold to NC (NatoConfidential)"
+    );
+}
+
+#[test]
+fn nato_s_portion_folds_to_ns() {
+    // `(NATO S)` — NATO SECRET longhand abbrev → NS
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO S)` should fold to `(//NS)` and decode \
+             to NatoSecret (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoSecret,
+        "NATO S must fold to NS (NatoSecret)"
+    );
+}
+
+#[test]
+fn nato_ts_portion_folds_to_cts() {
+    // `(NATO TS)` — NATO TOP SECRET longhand abbrev → CTS
+    // Per CAPCO-2016 §G.1 Table 4 pp 36-38, NATO TOP SECRET maps to
+    // COSMIC TOP SECRET (CTS) in the canonical Register.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TS)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO TS)` should fold to `(//CTS)` and decode \
+             to CosmicTopSecret (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::CosmicTopSecret,
+        "NATO TS must fold to CTS (CosmicTopSecret)"
+    );
+}
+
+#[test]
+fn nato_secret_long_form_folds_to_ns() {
+    // `(NATO SECRET//NF)` — NATO SECRET full-word longhand with NOFORN
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO SECRET//NF)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO SECRET//NF)` should fold to `(//NS//NF)` \
+             and decode to NatoSecret (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::NatoSecret,
+        "NATO SECRET must fold to NS (NatoSecret)"
+    );
+    // NOFORN must survive the fold
+    let nf_present = marking.0.dissem_controls.iter().any(|d| {
+        matches!(d, marque_ism::DissemControl::Nf)
+    });
+    assert!(nf_present, "NOFORN must survive the NATO SECRET fold");
+}
+
+#[test]
+fn nato_top_secret_long_form_folds_to_cts() {
+    // `(NATO TOP SECRET//NF)` — NATO TOP SECRET full-word longhand → CTS
+    // Two-token level requires treating "TOP SECRET" as a compound in the fold.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TOP SECRET//NF)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO TOP SECRET//NF)` should fold to `(//CTS//NF)` \
+             and decode to CosmicTopSecret (T129 — decoder NATO longhand fold)"
+        );
+    };
+    assert_eq!(
+        nato_class(&marking),
+        NatoClassification::CosmicTopSecret,
+        "NATO TOP SECRET must fold to CTS (CosmicTopSecret)"
+    );
+    let nf_present = marking.0.dissem_controls.iter().any(|d| {
+        matches!(d, marque_ism::DissemControl::Nf)
+    });
+    assert!(nf_present, "NOFORN must survive the NATO TOP SECRET fold");
+}
+
+#[test]
+fn nato_in_rel_to_list_is_not_folded() {
+    // `(S//REL TO USA, NATO)` — `NATO` is a country tetragraph inside
+    // REL TO, not a classification keyword. The fold's segment-leading
+    // guard must not fire here because the `S` segment (US classification)
+    // comes first and the `REL TO USA, NATO` segment does not start with
+    // `NATO`.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (fold guard invariant).
+    let rx = DecoderRecognizer::new();
+    let result = rx.recognize(b"(S//REL TO USA, NATO)", &deep_cx());
+    match result {
+        Parsed::Unambiguous(marking) => {
+            // Must parse as US Secret, not Nato(NatoSecret)
+            match marking.0.classification.as_ref() {
+                Some(MarkingClassification::Nato(_)) => {
+                    panic!(
+                        "fold must NOT fire on NATO in REL TO list; got Nato classification \
+                         instead of Us(Secret)"
+                    );
+                }
+                Some(MarkingClassification::Us(lvl)) => {
+                    assert_eq!(*lvl, marque_ism::Classification::Secret,
+                        "REL TO USA, NATO should parse as US Secret");
+                }
+                other => panic!("unexpected classification: {other:?}"),
+            }
+        }
+        Parsed::Ambiguous { .. } => {
+            // Also acceptable — the key invariant is that Nato classification
+            // was NOT injected by the fold. If the decoder doesn't recognize
+            // this input at all, that's fine; what matters is that a false
+            // Nato fold didn't fire.
+        }
+    }
+}
+
+#[test]
+fn nato_in_fgi_list_is_not_folded() {
+    // `(//FGI USA NATO C)` — `NATO` is a tetragraph in the FGI country list,
+    // not the first token of the segment. The fold's segment-leading guard
+    // must not substitute `NATO C` as if it were a classification.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (fold guard invariant).
+    let rx = DecoderRecognizer::new();
+    let result = rx.recognize(b"(//FGI USA NATO C)", &deep_cx());
+    // The invariant: if any candidate is returned, none should have
+    // MarkingClassification::Nato(_) as the primary classification from the fold.
+    match result {
+        Parsed::Unambiguous(marking) => {
+            // A valid FGI marking parsed; confirm fold didn't inject Nato class
+            if let Some(MarkingClassification::Nato(_)) = marking.0.classification.as_ref() {
+                panic!(
+                    "fold must NOT fire on NATO inside FGI country list; \
+                     got Nato classification from fold"
+                );
+            }
+        }
+        Parsed::Ambiguous { candidates } => {
+            for c in &candidates {
+                if let Some(MarkingClassification::Nato(_)) = c.marking.0.classification.as_ref() {
+                    panic!(
+                        "fold must NOT inject Nato classification into FGI-list candidate"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn already_canonical_ns_is_idempotent() {
+    // `(//NS//NF)` is the canonical NATO SECRET NOFORN portion.
+    // The strict recognizer handles it directly; the decoder is not
+    // invoked at all (strict parse succeeds). The fold's None-return
+    // on already-canonical input means no SupersededToken feature is
+    // added.
+    //
+    // This test exercises the engine path (via DecoderRecognizer) to
+    // confirm that canonical input doesn't trigger the fold path.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let result = rx.recognize(b"(//NS//NF)", &deep_cx());
+    // Canonical input should decode correctly (strict recognizer handles it,
+    // but even via decoder the result must be NatoSecret + Noforn).
+    match result {
+        Parsed::Unambiguous(marking) => {
+            assert_eq!(
+                nato_class(&marking),
+                NatoClassification::NatoSecret,
+                "canonical (//NS//NF) must decode to NatoSecret"
+            );
+            // If provenance is present (decoder path), the features must NOT
+            // include SupersededToken (no fold was needed).
+            if let Some(prov) = marking.1.as_ref() {
+                let has_superseded = prov
+                    .features
+                    .iter()
+                    .any(|f| f.id == FeatureId::SupersededToken);
+                assert!(
+                    !has_superseded,
+                    "canonical input must NOT emit SupersededToken feature; \
+                     fold only fires on longhand input"
+                );
+            }
+        }
+        Parsed::Ambiguous { .. } => {
+            // Also acceptable — the key invariant is absence of the fold feature.
+        }
+    }
+}
+
+#[test]
+fn nato_fold_emits_superseded_token_feature() {
+    // `(NATO S)` → fold fires → FeatureId::SupersededToken present exactly once
+    // in the decoder provenance. This test validates the audit-trail requirement
+    // from the brief: the fold records `SupersededToken` (reusing the existing
+    // variant per the brief's explicit instruction, delta -0.2).
+    //
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", &deep_cx()) else {
+        panic!(
+            "pre-fix failure: `(NATO S)` should decode unambiguously after T129 fold \
+             (T130 audit-feature check)"
+        );
+    };
+    let provenance = marking
+        .1
+        .as_ref()
+        .expect("decoder path must carry DecoderProvenance for (NATO S)");
+    let superseded_count = provenance
+        .features
+        .iter()
+        .filter(|f| f.id == FeatureId::SupersededToken)
+        .count();
+    assert_eq!(
+        superseded_count, 1,
+        "fold must emit SupersededToken exactly once in provenance features; \
+         got {superseded_count}. features = {:?}",
+        provenance.features
+    );
+}
