@@ -1778,7 +1778,7 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
             }
             Ok(Event::Empty(ref e))
                 if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
-                // spelllchecker:on
+            // spelllchecker:on
             {
                 current_suppressed = true;
             }
