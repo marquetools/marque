@@ -55,6 +55,7 @@
 //! replacing a typo); it never carries the document's original bytes.
 //! Audit records emit no `original` field as of `marque-mvp-3`.
 
+pub mod audit_note;
 pub mod confidence;
 pub mod fix_intent;
 pub mod message;
@@ -66,6 +67,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
 // Re-export `SmallVec` + the `smallvec!` macro so external consumers
@@ -711,6 +713,9 @@ impl<S: MarkingScheme> AppliedFix<S> {
 /// external crate can brace-construct one, and the constructor is
 /// `#[doc(hidden)]` and named to make the bypass intent obvious at the
 /// call site.
+///
+/// Reused by `AuditNote::__engine_promote` (T108e) under the same
+/// engine-only contract.
 ///
 /// This is the type-level seal for Constitution V Principle V's
 /// engine-only contract on audit-record promotion. See

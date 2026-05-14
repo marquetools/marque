@@ -1,0 +1,203 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! Audit-stream record for `ClosureRule` firings.
+//!
+//! `AuditNote` is the audit-stream counterpart to `AppliedFix` —
+//! `AppliedFix` records that the engine applied a byte-level fix;
+//! `AuditNote` records that the engine inferred (or suppressed, in
+//! future variants) a fact via the §4.7 closure operator.
+//!
+//! Per Constitution V Principle V (audit content-ignorance / G13):
+//! `AuditNote` carries ONLY token canonicals, category IDs, span
+//! offsets, and catalog row identifiers. Document content NEVER appears
+//! in an audit record.
+//!
+//! Per `decisions.md` D19 A, AuditNote is **engine-promoted only**.
+//! The `__engine_promote` constructor reuses `EnginePromotionToken`
+//! (the same seal as `AppliedFix::__engine_promote`); the FR-040
+//! `tools/promote-callsite-lint` catches every `__engine_promote`-shaped
+//! call site, including AuditNote's, by last-path-segment matching.
+//! See `AppliedFix::__engine_promote` for the full engine-only contract.
+//!
+//! **Note on production status**: PR 3.7 lands the type, sealing, and
+//! NDJSON projection helpers. The production engine **construct-site**
+//! lands in PR 4 (alongside `Engine::project::closure()` wiring) and the
+//! production **NDJSON renderer dispatch** lands in PR 7's `marque-1.0`
+//! audit schema cutover. PR 3.7's `AuditNote` is exercised via the
+//! Stage C.5 test-fixture carve-out integration test
+//! (`crates/engine/tests/audit_note_sealing_carve_out.rs`).
+
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use marque_ism::Span;
+use marque_scheme::{MarkingScheme, Scope, TokenId};
+
+use crate::{Confidence, EnginePromotionToken, RuleId};
+
+/// Closed-set kind discriminator for `AuditNote`.
+///
+/// v1 ships `InferredFact` only. Per D19 A, additional kinds
+/// (`SuppressedByFact`, `DisabledByConfig`) are deferred to a
+/// debug-tracing follow-up — engineer-facing tools, not load-bearing
+/// for compliance.
+///
+/// Adding a variant requires a coordinated bump of
+/// `MARQUE_AUDIT_SCHEMA` (currently `marque-mvp-3`; PR 7+ bumps to
+/// `marque-1.0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AuditNoteKind {
+    /// A `ClosureRule` fired and added a fact to the marking.
+    /// The structural payload carries `row_name`, `cone`, `scope`,
+    /// and the firing's span (if available); `suppressed_by` is `None`
+    /// for `InferredFact` (the future `SuppressedByFact` kind populates it).
+    InferredFact,
+}
+
+/// Structural-only payload for an `AuditNote`, satisfying the
+/// Constitution V Principle V content-ignorance invariant (G13).
+///
+/// Permitted identifiers: token canonicals (`TokenId`), category IDs
+/// (transitively via `TokenId` lookup), span offsets, catalog row
+/// names (`&'static`), enumerated `Scope` value. Document content
+/// (bytes, message-arg free-form text) is FORBIDDEN.
+///
+/// `suppressed_by` is a forward-compatibility slot per the PR 3.7 plan
+/// (lattice-preflight M4): when the deferred `SuppressedByFact` kind
+/// lands, it populates `suppressed_by` with the TokenIds of suppressing
+/// facts. For `InferredFact`, `suppressed_by` is always `None`.
+#[derive(Debug, Clone)]
+pub struct AuditNoteStructural {
+    /// The `ClosureRule.name` that fired (e.g., `"capco/noforn-if-no-fdr"`).
+    pub row_name: &'static str,
+    /// The closure rule's `cone` slice — the tokens this firing added.
+    /// `&'static` because closure-rule catalogs are static data.
+    pub cone: &'static [TokenId],
+    /// The scope at which the firing applied (Portion / Page / Document).
+    pub scope: Scope,
+    /// Source-position anchor for the firing, when one is available.
+    /// `None` when the firing is a whole-marking fact-set property with
+    /// no single blameable token.
+    pub span: Option<Span>,
+    /// Forward-compat slot for the future `SuppressedByFact` kind
+    /// (PR 3.7 plan lattice-preflight M4). Always `None` for v1's
+    /// `InferredFact` kind.
+    pub suppressed_by: Option<Box<[TokenId]>>,
+}
+
+/// A single audit-stream record for a closure-operator firing.
+///
+/// `AuditNote` is the audit counterpart to `AppliedFix`. Together they
+/// form the audit stream: `AppliedFix` for byte-level fixes,
+/// `AuditNote` for fact-level inferences. The two streams serve
+/// different consumers (compliance reviewers + content authors) and
+/// are not conflated; the NDJSON emission carries a `"type"`
+/// discriminator to distinguish them (the discriminator + dispatch
+/// renderer land in PR 7's `marque-1.0` audit schema cutover).
+#[derive(Debug)]
+pub struct AuditNote<S: MarkingScheme> {
+    /// The closure rule's RuleId (e.g., scheme="capco", predicate_id="noforn-if-no-fdr").
+    pub rule: RuleId,
+    /// Authoritative-source citation verbatim from the closure rule's `label`.
+    pub citation: &'static str,
+    /// Discriminator (v1: `InferredFact` only).
+    pub kind: AuditNoteKind,
+    /// Timestamp of emission (clock-injected by the engine).
+    pub timestamp: SystemTime,
+    /// Classifier identity from runtime config. `None` if not configured.
+    pub classifier_id: Option<Arc<str>>,
+    /// `true` if produced under `--dry-run`.
+    pub dry_run: bool,
+    /// Structural payload (G13 content-ignorant).
+    pub structural: AuditNoteStructural,
+    /// Confidence propagated from the underlying parse/recognition step.
+    /// Mirrors `AppliedFix.confidence` semantics; closure firings carry
+    /// the recognition confidence of the trigger fact that caused the firing.
+    pub confidence: Confidence,
+    /// Scheme phantom; AuditNote is parameterized over MarkingScheme so
+    /// downstream tooling can dispatch on scheme identity if needed.
+    _scheme: std::marker::PhantomData<S>,
+}
+
+// Manual Clone (mirroring AppliedFix<S>'s rationale at lib.rs:429):
+// the scheme S is never cloned; what matters is that scheme-internal
+// types stay Clone-able. AuditNote currently carries only S-agnostic
+// payload, so derive(Clone) would work — but we mirror AppliedFix's
+// pattern for consistency in case future fields couple to S::OpenVocabRef.
+impl<S: MarkingScheme> Clone for AuditNote<S> {
+    fn clone(&self) -> Self {
+        Self {
+            rule: self.rule.clone(),
+            citation: self.citation,
+            kind: self.kind,
+            timestamp: self.timestamp,
+            classifier_id: self.classifier_id.clone(),
+            dry_run: self.dry_run,
+            structural: self.structural.clone(),
+            confidence: self.confidence.clone(),
+            _scheme: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<S: MarkingScheme> AuditNote<S> {
+    /// Promote a closure firing to an `AuditNote` with runtime context.
+    ///
+    /// # Reserved name (FR-040 lint contract)
+    ///
+    /// The function name `__engine_promote` is reserved by the marque
+    /// project. The `tools/promote-callsite-lint/` CI lint (FR-040) flags
+    /// every call site whose path's last segment is `__engine_promote`,
+    /// regardless of leading qualifier. See `AppliedFix::__engine_promote`
+    /// for the full lint contract — this constructor inherits the same
+    /// constraints.
+    ///
+    /// # Engine-only contract (production code)
+    ///
+    /// In production code, this MUST only be called from
+    /// `Engine::fix_inner` or `Engine::apply_text_corrections` (or
+    /// future allow-listed engine helpers). Rule crates and CLI code
+    /// must never construct `AuditNote` directly.
+    ///
+    /// # Type-level seal
+    ///
+    /// The `_token: EnginePromotionToken` parameter reuses the same
+    /// type-level seal as `AppliedFix::__engine_promote`. See that
+    /// function's doc for the full seal rationale; AuditNote does not
+    /// re-derive a parallel seal.
+    ///
+    /// Test code MAY call this directly (and mint a token via
+    /// `EnginePromotionToken::__engine_construct`) per the Constitution V
+    /// Principle V test-fixture carve-out, when constructing synthetic
+    /// AuditNote fixtures for emitter / renderer / sentinel tests.
+    /// Each test call site MUST carry an inline comment naming the
+    /// carve-out.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn __engine_promote(
+        rule: RuleId,
+        citation: &'static str,
+        kind: AuditNoteKind,
+        timestamp: SystemTime,
+        classifier_id: Option<Arc<str>>,
+        dry_run: bool,
+        structural: AuditNoteStructural,
+        confidence: Confidence,
+        _token: EnginePromotionToken,
+    ) -> Self {
+        Self {
+            rule,
+            citation,
+            kind,
+            timestamp,
+            classifier_id,
+            dry_run,
+            structural,
+            confidence,
+            _scheme: std::marker::PhantomData,
+        }
+    }
+}
