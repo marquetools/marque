@@ -3431,10 +3431,11 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 /// including segments whose first token is not `NATO` (guard against
 /// false-positives inside `REL TO USA, NATO` or FGI country lists).
 ///
-/// The `rest` portion of the segment after `NATO <level>` is preserved
-/// verbatim — this handles the unusual (but possible) case where a segment
-/// contains a NATO level token followed by additional content that should
-/// survive the fold unchanged.
+/// Returns `None` when the segment is `NATO <level> <rest>` with non-empty
+/// `<rest>` — compound SAP forms (ATOMAL, BOHEMIA, BALK) defer to PR 9 T134;
+/// the strict parser at `parser.rs:1043-1052` already handles them directly
+/// (e.g., `NATO SECRET ATOMAL` → `NatoSecretAtomal`), and the fold must not
+/// truncate the suffix. The fold's job is the 5-base-level path only.
 ///
 /// **Caller invariant.** In practice the caller ([`try_nato_fold`]) invokes
 /// this on every `//`-separated segment of the input. Segments that don't
@@ -3445,10 +3446,10 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 /// position (e.g., the SCI/dissem slot of `(S//NATO C)`) also fires the fold,
 /// producing the intermediate form `(S//NC)` — semantically invalid (a US
 /// classification cannot be followed by a NATO portion abbreviation in the
-/// SCI/dissem slot). The strict parser rejects this downstream, yielding a
-/// a `MarkingClassification::Conflict { us: Secret, foreign: Nato(NatoConfidential) }`
-/// result — the parser accepts the conflict form rather than rejecting it. The
-/// test `nato_in_second_segment_yields_conflict_not_us_secret` documents this
+/// SCI/dissem slot). The strict parser accepts this downstream, yielding a
+/// `MarkingClassification::Conflict { us: Secret, foreign: Nato(NatoConfidential) }`
+/// result — a Conflict rather than a clean parse. The test
+/// `nato_in_second_segment_yields_conflict_not_us_secret` documents this
 /// bounded behavior (a conflict result is still better than silently returning
 /// a canonical NATO marking as if the input were valid).
 fn fold_nato_segment(seg: &str) -> Option<String> {
@@ -3463,12 +3464,16 @@ fn fold_nato_segment(seg: &str) -> Option<String> {
     // explicitly before the single-token path.
     if let Some(after_ts) = after_nato.strip_prefix("TOP SECRET") {
         let rest = after_ts.trim_start();
-        let canonical = NatoClassification::CosmicTopSecret.portion_str();
-        return Some(if rest.is_empty() {
-            canonical.to_owned()
-        } else {
-            format!("{canonical} {rest}")
-        });
+        if !rest.is_empty() {
+            // Compound NATO SAP forms (ATOMAL, BOHEMIA, BALK) are out of scope
+            // for PR 8. The strict parser already accepts
+            // `NATO TOP SECRET ATOMAL` / `NATO TOP SECRET-BOHEMIA` /
+            // `NATO TOP SECRET-BALK` (parser.rs:1043-1052); folding the first
+            // half would mangle the suffix and regress recovery.
+            // PR 9 T134 will land an explicit fold for these compounds.
+            return None;
+        }
+        return Some(NatoClassification::CosmicTopSecret.portion_str().to_owned());
     }
 
     // Single-token level: split at the next whitespace to isolate the
@@ -3483,12 +3488,16 @@ fn fold_nato_segment(seg: &str) -> Option<String> {
         .find(|&&(key, _)| key == level_token)
         .map(|&(_, level)| level)?;
 
-    let canonical = nato_level.portion_str();
-    Some(if rest.is_empty() {
-        canonical.to_owned()
-    } else {
-        format!("{canonical} {rest}")
-    })
+    if !rest.is_empty() {
+        // Same rationale as the TOP SECRET branch: compound SAP forms
+        // (NATO SECRET ATOMAL, NATO CONFIDENTIAL ATOMAL, etc.) are out of
+        // scope. The strict parser handles them; the fold must not truncate
+        // the suffix. PR 9 T134 will land the explicit ATOMAL/BOHEMIA/BALK
+        // fold.
+        return None;
+    }
+
+    Some(nato_level.portion_str().to_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -6896,6 +6905,46 @@ mod tests {
         assert!(
             try_nato_fold("NATO SECRET//NOFORN", MarkingType::Banner).is_none(),
             "banner kind must always return None from NATO fold"
+        );
+    }
+
+    #[test]
+    fn fold_nato_segment_returns_none_for_atomal_compound() {
+        // `NATO SECRET ATOMAL` is a legitimate NATO+SAP marking the strict
+        // parser handles (NatoSecretAtomal). The fold MUST NOT fire on it —
+        // otherwise the suffix gets truncated and recovery regresses.
+        // ATOMAL fold itself defers to PR 9 T134.
+        //
+        // Regression guard for the FIX-A correctness fix in the PR 8 round-2
+        // reviewer response. Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+        assert!(
+            fold_nato_segment("NATO SECRET ATOMAL").is_none(),
+            "fold must not fire on NATO SECRET ATOMAL (compound SAP — deferred to PR 9 T134)"
+        );
+        assert!(
+            fold_nato_segment("NATO CONFIDENTIAL ATOMAL").is_none(),
+            "fold must not fire on NATO CONFIDENTIAL ATOMAL"
+        );
+        assert!(
+            fold_nato_segment("NATO TOP SECRET ATOMAL").is_none(),
+            "fold must not fire on NATO TOP SECRET ATOMAL"
+        );
+    }
+
+    #[test]
+    fn fold_nato_segment_returns_none_for_bohemia_balk() {
+        // Hyphen-separated NATO SAP variants (BOHEMIA, BALK) are also out of
+        // scope; the strict parser handles them via `CTS-B` / `CTS-BALK`.
+        // PR 9 T134 will add the explicit fold for these compounds.
+        //
+        // Regression guard for FIX-A. Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+        assert!(
+            fold_nato_segment("NATO TOP SECRET-BOHEMIA").is_none(),
+            "fold must not fire on NATO TOP SECRET-BOHEMIA (CTS-B deferred to PR 9 T134)"
+        );
+        assert!(
+            fold_nato_segment("NATO TOP SECRET-BALK").is_none(),
+            "fold must not fire on NATO TOP SECRET-BALK (CTS-BALK deferred to PR 9 T134)"
         );
     }
 }

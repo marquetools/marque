@@ -1946,3 +1946,41 @@ fn nato_in_second_segment_yields_conflict_not_us_secret() {
         other => panic!("T129 regression: `(S//NATO C)` produced unexpected result {other:?}"),
     }
 }
+
+#[test]
+fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
+    // T129 regression guard: lowercase `(//nato secret atomal//nf)` pre-PR-8
+    // was case-normalized by the decoder then strict-parsed as NatoSecretAtomal.
+    // The NATO fold in this PR must NOT mangle the `ATOMAL` suffix —
+    // verified at the helper level by `fold_nato_segment_returns_none_for_atomal_compound`
+    // in decoder.rs unit tests; this test verifies the end-to-end engine
+    // recovery path still produces the correct result.
+    //
+    // Pipeline: lowercase input → normalize_delimiters_and_case → uppercase →
+    // try_nato_fold("NATO SECRET ATOMAL") returns None (FIX-A) →
+    // fuzzy_correct_tokens passes ATOMAL through (in NATO_CLASSIFICATION_KEYWORDS) →
+    // generate_candidate_bytes emits `(//NATO SECRET ATOMAL//NF)` →
+    // strict parser's parse_nato_classification("NATO SECRET ATOMAL") →
+    // NatoSecretAtomal. ✓
+    //
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    let rx = DecoderRecognizer::new();
+    let parsed = rx.recognize(b"(//nato secret atomal//nf)", &deep_cx());
+    match parsed {
+        Parsed::Unambiguous(ref marking) => {
+            match marking.0.classification.as_ref() {
+                Some(MarkingClassification::Nato(NatoClassification::NatoSecretAtomal)) => {
+                    // Expected: case-normalization path recovers correctly.
+                }
+                other => panic!(
+                    "T129 regression: `(//nato secret atomal//nf)` must recover as \
+                     NatoSecretAtomal, got {other:?}"
+                ),
+            }
+        }
+        other => panic!(
+            "T129 regression: `(//nato secret atomal//nf)` must decode unambiguously, \
+             got {other:?}"
+        ),
+    }
+}

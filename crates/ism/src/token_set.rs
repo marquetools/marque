@@ -161,12 +161,13 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// **Why all 10 are needed (latent-bug fix, not speculative PR 9 T134 work).**
 /// The fuzzy-correction pass that runs over decoder input tokens uses
 /// edit-distance-1 rewriting. `CTSA` (the canonical portion for
-/// `NatoConfidentialAtomal` — `NCA`) is at edit-distance 1 from `CTS`
-/// (COSMIC TOP SECRET). Without `CTSA` in the no-fuzz vocabulary, a user
-/// typing the legitimate portion mark `(//CTSA//NF)` that reaches the decoder
-/// through some other malformation would be silently corrupted to `(//CTS//NF)`
-/// — the wrong classification level. The same risk applies to `NCA` (distance 1
-/// from `NC`) and `NSAT` (distance 1 from `NS`). Adding all five ATOMAL /
+/// `CosmicTopSecretAtomal`) is at edit-distance 1 from `CTS` (COSMIC TOP
+/// SECRET). Without `CTSA` in the no-fuzz vocabulary, a user typing the
+/// legitimate portion mark `(//CTSA//NF)` that reaches the decoder through
+/// some other malformation would be silently corrupted to `(//CTS//NF)` —
+/// the wrong classification level. The same risk applies to `NCA`
+/// (`NatoConfidentialAtomal`, distance 1 from `NC`) and `NSAT`
+/// (`NatoSecretAtomal`, distance 1 from `NS`). Adding all five ATOMAL /
 /// BOHEMIA / BALK forms to this constant prevents that corruption today and
 /// naturally extends coverage when PR 9 T134's ATOMAL fold lands.
 ///
