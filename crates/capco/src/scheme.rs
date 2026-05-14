@@ -4235,7 +4235,6 @@ const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
     default_severity: Severity::Info,
 };
 
-
 /// The full static CAPCO closure-rule catalog.
 ///
 /// Rows are grouped by the three-trio framing from `marque-applied.md` §4.7.1:
