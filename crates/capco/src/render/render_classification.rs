@@ -36,8 +36,13 @@
 //!   line `//JOINT SECRET CAN GBR USA`).
 //! - Portion JOINT: `//JOINT S CAN GBR USA` (same ordering rules, level
 //!   abbreviated).
-//! - Banner NATO: `NATO SECRET`.
-//! - Portion NATO: `NS`.
+//! - Banner NATO: `//NATO SECRET` (with `//` prefix per §A.6 p15, e.g.
+//!   `//NATO SECRET//NOFORN`). The `//` is part of the non-US classification
+//!   token, not prepended by the dispatch loop — this axis writes it.
+//! - Portion NATO: `(//NS)` (canonical abbreviation form, e.g. `(//NS//NF)`).
+//!   The `//` prefix is required per §A.6 p15 for all non-US classifications.
+//!   Without `//`, the strict parser cannot enter the non-US classification
+//!   code path.
 //!
 //! Per §A.6 p15 the leading `//` is part of the non-US / JOINT
 //! classification token because it occludes the absent US-classification
@@ -143,6 +148,13 @@ fn render_fgi(f: &FgiClassification, scope: Scope, out: &mut dyn fmt::Write) -> 
 }
 
 fn render_nato(n: NatoClassification, scope: Scope, out: &mut dyn fmt::Write) -> fmt::Result {
+    // Leading `//` per §A.6 p15: "For non-US or Joint information, the banner
+    // line and portion mark must always start with a double forward slash (`//`)
+    // with no interjected space, followed by the non-US or JOINT classification
+    // marking." NATO is non-US, so the `//` is part of the classification axis
+    // output — matching the pattern in `render_fgi` and `render_joint`.
+    // CAPCO-2016 §H.3 p55 + §G.1 Table 4 pp 36-38.
+    out.write_str("//")?;
     let s = match scope {
         Scope::Portion => n.portion_str(),
         _ => n.banner_str(),

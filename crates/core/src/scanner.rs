@@ -111,6 +111,7 @@ impl Scanner {
         // markings with the RESTRICTED level.
         const BANNER_PREFIXES: &[&[u8]] = &[
             b"TOP SECRET",
+            b"COSMIC TOP SECRET",
             b"TS//",
             b"SECRET",
             b"S//",
@@ -120,6 +121,13 @@ impl Scanner {
             b"UNCLASSIFIED",
             b"U//",
             b"//",
+            // NATO longhand banner forms — the strict parser accepts
+            // `NATO SECRET` / `COSMIC TOP SECRET` etc.; these prefixes
+            // allow the decoder to recover abbreviated forms like
+            // `NATO S` / `NATO TS` via `try_nato_fold`. Without this,
+            // the decoder never sees these candidates.
+            // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+            b"NATO ",
         ];
 
         for line in source.split(|&b| b == b'\n') {

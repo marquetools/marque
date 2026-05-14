@@ -152,10 +152,53 @@ const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
 /// excessive false-positive fuzzy corrections on unrelated text.
 const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 
+/// NATO portion-form abbreviations not present in `ALL_CVE_TOKENS`.
+///
+/// Covers all 10 current [`crate::NatoClassification`] variants: the five base
+/// level short forms (`NU`, `NR`, `NC`, `NS`, `CTS`) plus the five ATOMAL /
+/// BOHEMIA / BALK portion forms (`NCA`, `NSAT`, `CTSA`, `CTS-B`, `CTS-BALK`).
+///
+/// **Why all 10 are needed (latent-bug fix, not speculative PR 9 T134 work).**
+/// The fuzzy-correction pass that runs over decoder input tokens uses
+/// edit-distance-1 rewriting. `CTSA` (the canonical portion for
+/// `CosmicTopSecretAtomal`) is at edit-distance 1 from `CTS` (COSMIC TOP
+/// SECRET). Without `CTSA` in the no-fuzz vocabulary, a user typing the
+/// legitimate portion mark `(//CTSA//NF)` that reaches the decoder through
+/// some other malformation would be silently corrupted to `(//CTS//NF)` —
+/// the wrong classification level. The same risk applies to `NCA`
+/// (`NatoConfidentialAtomal`, distance 1 from `NC`) and `NSAT`
+/// (`NatoSecretAtomal`, distance 1 from `NS`). Adding all five ATOMAL /
+/// BOHEMIA / BALK forms to this constant prevents that corruption today and
+/// naturally extends coverage when PR 9 T134's ATOMAL fold lands.
+///
+/// The five base-level forms are NOT emitted by ODNI CVE XML (which records
+/// only vocabulary enum values, not the derived portion forms). Without these
+/// entries in the fuzzy-correction vocabulary, `fuzzy_correct_tokens` in
+/// `marque-engine` cannot distinguish `CTS` from `TS` (edit-distance 1) and
+/// silently rewrites it, destroying the NATO-longhand fold's output.
+///
+/// Round-trip safety: the strict parser in `marque-core` accepts all 10 forms
+/// as valid non-US portion markings mapping to the corresponding
+/// [`crate::NatoClassification`] variant. Adding these tokens to the correction
+/// vocab makes `FuzzyVocabMatcher::correct` return `None` for exact-match inputs
+/// (binary-search fast path), causing `fuzzy_correct_tokens` to pass them
+/// through unchanged (Case 4 verbatim).
+///
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+const NATO_PORTION_FORMS: &[&str] = &[
+    // Five base-level portion forms (CAPCO-2016 §G.1 Table 4)
+    "CTS", "NC", "NR", "NS", "NU",
+    // Five ATOMAL / BOHEMIA / BALK portion forms — current latent-bug fix.
+    // Edit-distance-1 risk: CTSA↔CTS, NCA↔NC, NSAT↔NS without these entries.
+    // Defensive against fuzzy corruption today; also prepares for PR 9 T134 ATOMAL fold.
+    // Source: NatoClassification::portion_str() in crates/ism/src/attrs.rs.
+    "CTS-B", "CTS-BALK", "CTSA", "NCA", "NSAT",
+];
+
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
 /// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`] ∪
 /// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`] ∪
-/// [`AEA_SCI_STRUCTURAL_KEYWORDS`],
+/// [`AEA_SCI_STRUCTURAL_KEYWORDS`] ∪ [`NATO_PORTION_FORMS`],
 /// sorted and deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
@@ -200,6 +243,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(NATO_CLASSIFICATION_KEYWORDS);
     v.extend_from_slice(AEA_SCI_STRUCTURAL_KEYWORDS);
+    v.extend_from_slice(NATO_PORTION_FORMS);
     v.sort();
     v.dedup();
     v
