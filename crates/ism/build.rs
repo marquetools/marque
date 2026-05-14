@@ -1574,7 +1574,9 @@ enum TaxMembership {
     /// without re-parsing the XML at runtime; surfaced through
     /// [`TETRAGRAPH_PROVENANCE`].
     Description(String),
+    // spellcheck:off
     /// `<MembershipSupressed/>` sentinel (ODNI's spelling — single `p`).
+    // spellcheck:on
     Suppressed,
 }
 
@@ -1776,7 +1778,9 @@ fn parse_tetragraph_taxonomy(path: &Path) -> Vec<TaxEntry> {
                 }
             }
             Ok(Event::Empty(ref e))
+                // spellchecker:off
                 if in_membership && local_name(e.name().as_ref()) == b"MembershipSupressed" =>
+                // spelllchecker:on
             {
                 current_suppressed = true;
             }
