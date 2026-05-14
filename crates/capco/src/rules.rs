@@ -298,6 +298,16 @@ impl CapcoRuleSet {
                 // longer-prefix-first inside `rules_declarative.rs`.
                 // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
                 Box::new(DeprecatedSciLongFormRule),
+                // PR 9a (issue #307): class-specific bare-HCS / bare-RSV
+                // rules per §H.4.
+                //   E061  hcs-bare-at-confidential-legacy-remark  (§H.4 p62)
+                //   E062  hcs-bare-suggest-subcompartment         (§H.4 p62)
+                //   E063  rsv-bare-requires-compartment           (§H.4 p70)
+                // E061 / E062 complement E010 with class-specific
+                // guidance; E063 is net new (no prior coverage).
+                Box::new(HcsBareAtConfidentialLegacyRemarkRule),
+                Box::new(HcsBareSuggestSubcompartmentRule),
+                Box::new(RsvBareRequiresCompartmentRule),
             ],
         }
     }
@@ -2733,6 +2743,272 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
             }
         }
         out
+    }
+}
+
+// ===========================================================================
+// E061 — Bare HCS at CONFIDENTIAL (class-specific legacy guidance)
+// ===========================================================================
+//
+// §H.4 p62 carries a class-specific note for legacy CONFIDENTIAL//HCS
+// information: "When legacy information at the CONFIDENTIAL//HCS level
+// is discovered, contact the originator for guidance prior to reusing
+// the information." Distinct from the general bare-HCS guidance that
+// recommends the HCS-O / HCS-P / HCS-O-P templates (covered by E010).
+//
+// E061 fires only when classification is CONFIDENTIAL AND a bare HCS
+// is present. The diagnostic carries no fix (the manual prescribes
+// contacting the originator, not a mechanical re-mark). Warn severity
+// because the manual's guidance is "contact the originator", not "the
+// marking is invalid as-is" — a softer signal than Error.
+
+/// Rule E061 — bare HCS at CONFIDENTIAL: legacy guidance per §H.4 p62.
+struct HcsBareAtConfidentialLegacyRemarkRule;
+
+impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E061")
+    }
+    fn name(&self) -> &'static str {
+        "hcs-bare-at-confidential-legacy-remark"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: needs cross-token classification + SCI
+    /// state to determine "bare HCS at CONFIDENTIAL" class-specific
+    /// trigger. No fix emitted; the manual prescribes contacting the
+    /// originator.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{Classification, SciControlBare, SciControlSystem};
+
+        // Class-specific gate: only fires at CONFIDENTIAL.
+        if attrs.us_classification() != Some(Classification::Confidential) {
+            return vec![];
+        }
+
+        // Find bare HCS (Published Hcs system with no compartments).
+        let bare_hcs_idx = attrs.sci_markings.iter().position(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                && m.compartments.is_empty()
+        });
+        let Some(idx) = bare_hcs_idx else {
+            return vec![];
+        };
+
+        // Anchor span at the bare HCS SciSystem token. The structural
+        // parser emits one `TokenKind::SciSystem` per SCI marking; we
+        // index by position to align with the matched `sci_markings`
+        // entry. Defensive fallback to `Span::new(0, 0)` if the spans
+        // got out of sync (would indicate a parser regression caught
+        // elsewhere).
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+        let span = sys_spans
+            .get(idx)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "When legacy information at the CONFIDENTIAL//HCS level is discovered, \
+             contact the originator for guidance prior to reusing the information \
+             (CAPCO-2016 §H.4 p62)"
+                .to_owned(),
+            "CAPCO-2016 §H.4 p62",
+            None,
+        )]
+    }
+}
+
+// ===========================================================================
+// E062 — Bare HCS at SECRET / TOP SECRET (legacy form; suggest templates)
+// ===========================================================================
+//
+// §H.4 p62 (general bare-HCS guidance): "When incorporating legacy
+// material marked 'HCS' into a new product, re-mark the new document
+// and associated portion according to the instructions in the HCS-O
+// and HCS-P marking templates."
+//
+// E062 fires at SECRET / TOP SECRET (the class levels where HCS-O /
+// HCS-P / HCS-O-P are authorized). It emits per-candidate Suggest-
+// severity diagnostics for HCS-O, HCS-P, and HCS-O-P. The choice
+// between them is a content-domain decision Marque cannot make:
+// HCS-O is operational source information; HCS-P is analytical
+// product; HCS-O-P is both. Surfacing 3 candidates lets the
+// classifier pick.
+//
+// Distinct from E010: E010 fires at any class level with a single
+// text-only "consult HCS-O/HCS-P templates" message. E062 emits
+// per-candidate text_corrections so editors can offer one-click
+// substitution. Orgs that want either rule silenced configure
+// `.marque.toml [rules] E062 = "off"` (or E010 = "off").
+
+/// Rule E062 — bare HCS at S/TS: suggest HCS-O / HCS-P / HCS-O-P
+/// templates per §H.4 p62.
+struct HcsBareSuggestSubcompartmentRule;
+
+impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E062")
+    }
+    fn name(&self) -> &'static str {
+        "hcs-bare-suggest-subcompartment"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: needs cross-token classification + SCI
+    /// state to gate "S/TS class level". Emits per-candidate
+    /// text_corrections at Suggest severity so the engine never
+    /// auto-applies; the classifier picks via UI.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{Classification, SciControlBare, SciControlSystem};
+
+        // Class-specific gate: only fires at SECRET / TOP SECRET.
+        let class = attrs.us_classification();
+        if !matches!(
+            class,
+            Some(Classification::Secret) | Some(Classification::TopSecret)
+        ) {
+            return vec![];
+        }
+
+        // Find bare HCS (Published Hcs system with no compartments).
+        let Some(idx) = attrs.sci_markings.iter().position(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
+                && m.compartments.is_empty()
+        }) else {
+            return vec![];
+        };
+
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+        let span = sys_spans
+            .get(idx)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        // Emit per-candidate Suggest-severity diagnostics. Each carries
+        // a text_correction whose `replacement` is the canonical short
+        // form for the matching sub-compartment. The engine never
+        // auto-applies Suggest-severity diagnostics by construction
+        // (Severity::Suggest is a hard exclusion in Engine::fix); the
+        // candidates surface in the editor / CLI for human selection.
+        //
+        // The Diagnostic.severity emitted is Suggest, even though the
+        // rule's `default_severity()` is Warn. Per S005/S006 pattern
+        // (crates/capco/src/rules.rs:2089-2108), the engine overwrites
+        // emitted severity with the rule's configured severity, so
+        // these diagnostics will appear at Warn at the user surface.
+        // Suggest is set here to ensure the per-candidate fix is never
+        // auto-applied even if a future engine refactor decouples the
+        // severity-overwrite from the auto-apply gate.
+        let candidates: &[&str] = &["HCS-O", "HCS-P", "HCS-O-P"];
+        let mut out = Vec::with_capacity(candidates.len());
+        for candidate in candidates {
+            out.push(Diagnostic::text_correction(
+                self.id(),
+                Severity::Suggest,
+                span,
+                format!(
+                    "Bare HCS is the legacy form per CAPCO-2016 §H.4 p62; new content \
+                     must use HCS-O / HCS-P / HCS-O-P depending on Operations vs \
+                     Product content. Suggested replacement: {candidate}"
+                ),
+                "CAPCO-2016 §H.4 p62",
+                *candidate,
+                FixSource::BuiltinRule,
+                // Confidence 0.75: the canonical replacement is one of
+                // three, and Marque cannot pick the right one. The
+                // value is below typical auto-apply thresholds (0.95)
+                // so even an engine that ignored the Suggest gate
+                // would not auto-apply.
+                Confidence::strict(0.75),
+                None,
+            ));
+        }
+        out
+    }
+}
+
+// ===========================================================================
+// E063 — Bare RSV requires compartment (§H.4 p70)
+// ===========================================================================
+//
+// §H.4 p70: "the RSV marking may not be used alone and requires the
+// associated compartment". §H.4 p72: `RSV-[COMPARTMENT]` (3-alnum),
+// TS/S only, requires RESERVE.
+//
+// Bare RSV is a structural error — the manual explicitly says it
+// "may not be used alone". Marque cannot suggest the missing
+// compartment (org-private compartment identifier; not in vocabulary).
+// Error severity, suggest-only (no fix proposed).
+
+/// Rule E063 — bare RSV requires compartment per §H.4 p70.
+struct RsvBareRequiresCompartmentRule;
+
+impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E063")
+    }
+    fn name(&self) -> &'static str {
+        "rsv-bare-requires-compartment"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Error
+    }
+    /// Phase::WholeMarking: needs cross-token SCI state to find bare
+    /// RSV (no compartment). No fix emitted; the compartment
+    /// identifier is org-private content beyond Marque's vocabulary.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{SciControlBare, SciControlSystem};
+
+        // Find bare RSV (Published Rsv system with no compartments).
+        let Some(idx) = attrs.sci_markings.iter().position(|m| {
+            matches!(m.system, SciControlSystem::Published(SciControlBare::Rsv))
+                && m.compartments.is_empty()
+        }) else {
+            return vec![];
+        };
+
+        let sys_spans: Vec<&TokenSpan> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::SciSystem)
+            .collect();
+        let span = sys_spans
+            .get(idx)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            span,
+            "RSV marking may not be used alone and requires the associated \
+             3-alphanumeric compartment (CAPCO-2016 §H.4 p70)"
+                .to_owned(),
+            "CAPCO-2016 §H.4 p70",
+            None,
+        )]
     }
 }
 
