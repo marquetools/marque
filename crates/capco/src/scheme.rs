@@ -3848,11 +3848,19 @@ impl MarkingScheme for CapcoScheme {
 
     /// CAPCO implicit-fact propagation catalog (closure operator).
     ///
-    /// Returns the static catalog of [`ClosureRule`] rows implementing
-    /// the three FD&R-suppressed implicit defaults (Trio 1–3 in
-    /// `marque-applied.md` §4.7.1) and the per-marking unconditional
-    /// implications (HCS-O/P[sub] ⇒ {NOFORN, ORCON}; TK-BLFH/KAND/IDIT
-    /// ⇒ {NOFORN}; SI-G ⇒ {ORCON}).
+    /// Returns the static catalog of [`ClosureRule`] rows. The PR 3.7
+    /// catalog contains **only the Trio 1 NOFORN rows** (seven rows
+    /// covering ORCON, PROPIN, IMCON, FISA, DSEN, NONICCONTROLS-family,
+    /// and the NOFORN-if-no-FDR default). The Trio 2 / Trio 3
+    /// placeholder rows and the per-marking SCI implication rows
+    /// (HCS-O/P[sub] ⇒ {NOFORN, ORCON}; TK-BLFH/KAND/IDIT ⇒ {NOFORN};
+    /// SI-G ⇒ {ORCON}) were removed in PR 3.7 review pass 4 because
+    /// their proxy triggers (`AnyInCategory(CAT_SCI)`,
+    /// `AnyInCategory(CAT_CLASSIFICATION)`) were imprecise relative
+    /// to the actual `marque-applied.md` §4.7.1 semantics; the
+    /// precise sentinel-based rows land in PR 4 once the per-marking
+    /// SCI sentinels and open-vocab country-list FactAdd primitive
+    /// are available.
     ///
     /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
     /// PUBLIC catalog surface — visible to tooling, scheme-exploration
@@ -3873,18 +3881,36 @@ impl MarkingScheme for CapcoScheme {
         CAPCO_CLOSURE_RULES
     }
 
-    /// Enumerate all closed-CVE tokens present in `marking`.
+    /// Enumerate all tokens present in `marking`.
     ///
     /// Required by `Constraint::ConflictsWithFamily` evaluation: the
     /// generic evaluator walks every present token and applies the
     /// [`FamilyPredicate`] to each. Without this override, the family
     /// predicate never fires (the default returns an empty iterator).
     ///
-    /// This implementation walks each attribute field and emits the
-    /// corresponding `TOK_*` sentinel for any populated entry. It
-    /// covers the closed CVE set — open-vocab tokens (SAR programs, SCI
-    /// compartments, FGI tetragraphs) are not emitted because no
-    /// current `ConflictsWithFamily` row needs them on the RHS.
+    /// This implementation walks each attribute field and emits two
+    /// shapes of `TokenRef` per the trait contract on
+    /// [`MarkingScheme::iter_present_tokens`]:
+    ///
+    /// - `TokenRef::Token(id)` for concrete closed-CVE tokens whose
+    ///   identity matters (the common case — dissem controls, AEA
+    ///   markings, non-IC dissem, classification sentinels).
+    /// - `TokenRef::AnyInCategory(cat)` for facts whose presence is
+    ///   axis-level only: `CAT_REL_TO` when a REL TO country list is
+    ///   present, `CAT_SCI` when any SCI marking is present, `CAT_SAR`
+    ///   when any SAR program is present, and `CAT_NON_US_CLASSIFICATION`
+    ///   for FGI / NATO / JOINT classifications. The
+    ///   `AnyInCategory` shape lets family predicates (e.g.
+    ///   `is_fdr_dominator`) match against an axis without enumerating
+    ///   each open-vocab token (REL TO trigraphs, SAR program names,
+    ///   SCI compartments).
+    ///
+    /// Open-vocab tokens whose **identity** is needed (specific REL TO
+    /// trigraphs, individual SAR program names, individual SCI
+    /// compartments) are not emitted as `TokenRef::Token` because no
+    /// current `ConflictsWithFamily` row needs them on the RHS. If a
+    /// future family predicate needs per-token granularity on those
+    /// axes, this method's emission set should be extended.
     fn iter_present_tokens<'m>(
         &self,
         marking: &'m Self::Marking,

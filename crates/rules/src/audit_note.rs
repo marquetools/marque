@@ -136,9 +136,13 @@ pub struct AuditNoteStructural {
 /// form the audit stream: `AppliedFix` for byte-level fixes,
 /// `AuditNote` for fact-level inferences. The two streams serve
 /// different consumers (compliance reviewers + content authors) and
-/// are not conflated; the NDJSON emission carries a `"type"`
+/// are not conflated; the NDJSON emission will carry a `"type"`
 /// discriminator to distinguish them (the discriminator + dispatch
-/// renderer land in PR 7's `marque-1.0` audit schema cutover).
+/// renderer land in a future audit-schema-bump precursor PR per
+/// `decisions.md` D-7.18 — PR 7b did NOT perform the marque-mvp-3 →
+/// marque-1.0 bump because the BLAKE3 digesting + closed
+/// `MessageTemplate` JSON + content-ignorant canary tooling
+/// preconditions were not yet in place).
 #[derive(Debug)]
 pub struct AuditNote<S: MarkingScheme> {
     /// The closure rule's RuleId (e.g., scheme="capco", predicate_id="noforn-if-no-fdr").

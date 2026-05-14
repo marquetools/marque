@@ -174,6 +174,7 @@ fn closure_rules_severity_off() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
@@ -198,6 +199,7 @@ fn closure_rules_severity_suggest() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
@@ -222,6 +224,7 @@ fn closure_rules_severity_info() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
@@ -246,6 +249,7 @@ fn closure_rules_severity_warn() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
@@ -270,6 +274,7 @@ fn closure_rules_severity_error() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(
@@ -302,6 +307,7 @@ fn closure_rules_fix_severity_rejected() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let err = marque_config::load(&dir).unwrap_err();
 
     match &err {
@@ -352,6 +358,7 @@ fn closure_rules_unknown_severity_rejected() {
     );
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let err = marque_config::load(&dir).unwrap_err();
 
     assert!(
@@ -481,6 +488,7 @@ fn closure_rules_quoted_key_with_slash_parses() {
     fs::write(dir.join(".marque.toml"), content).unwrap();
 
     let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ambient = AmbientClosureEnvCleanGuard::new();
     let config = marque_config::load(&dir).expect("load should succeed");
 
     assert_eq!(

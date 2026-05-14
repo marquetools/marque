@@ -307,16 +307,19 @@ pub trait MarkingScheme {
     /// The default [`Self::closure()`] implementation is a **no-op** —
     /// because a truly generic Kleene-fixpoint walker requires a
     /// scheme-level fact-join operation that this trait does not
-    /// currently expose, schemes that declare closure rules MUST also
-    /// override `closure()` with their own implementation (typically
-    /// walking the catalog to fixpoint, bounded by
+    /// currently expose, schemes that want runtime cone application
+    /// must also override `closure()` with their own implementation
+    /// (typically walking the catalog to fixpoint, bounded by
     /// [`crate::closure::MAX_CLOSURE_ITERATIONS`]).
     ///
-    /// Returning closure rules without overriding `closure()` is the
-    /// catalog-data-only mode used by tooling, scheme-exploration UIs,
-    /// and proptest harnesses that walk `should_fire` directly without
-    /// applying the cone. Production engines that want runtime cone
-    /// application override `closure()`.
+    /// Returning closure rules without overriding `closure()` is a
+    /// supported **catalog-data-only mode** used by tooling, scheme-
+    /// exploration UIs, and proptest harnesses that walk
+    /// `should_fire` directly without applying the cone. This is the
+    /// mode `CapcoScheme` ships in PR 3.7: the catalog is published
+    /// PUBLIC inspection surface (D18); the `closure()` override that
+    /// applies the cone at runtime lands in PR 4 alongside
+    /// `Engine::project::closure()` wiring.
     ///
     /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
     /// PUBLIC catalog surface — visible to tooling, scheme-exploration UIs,
@@ -430,11 +433,19 @@ pub trait MarkingScheme {
     ///    fixed point is stable.
     /// 3. **Monotone**: if `m1 ⊑ m2` then `closure(m1) ⊑ closure(m2)`.
     ///
-    /// A non-monotone catalog (a suppressor that depends on the count of
-    /// facts, for example) would cause non-termination. The override MUST
-    /// panic if it exceeds [`crate::closure::MAX_CLOSURE_ITERATIONS`]
-    /// iterations without reaching a fixed point — this surfaces catalog
-    /// bugs rather than silently looping.
+    /// The override MUST panic if it exceeds
+    /// [`crate::closure::MAX_CLOSURE_ITERATIONS`] iterations without
+    /// reaching a fixed point. This cap detects **non-convergence**
+    /// (a catalog whose fact-set grows unbounded), but it does NOT
+    /// detect every non-monotone catalog: a non-monotone catalog with
+    /// a suppressor depending on facts in another rule's cone can
+    /// converge quickly to a fixed point while still violating
+    /// monotonicity 3. Monotonicity violations are caught by the
+    /// proptest harness at
+    /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`,
+    /// not by the iteration cap. The cap exists as a runtime
+    /// safeguard against catalog regressions that lead to
+    /// non-termination, not as a monotonicity oracle.
     ///
     /// Default: returns `marking` unchanged (no-op).
     fn closure(&self, marking: Self::Marking) -> Self::Marking {

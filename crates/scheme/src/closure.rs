@@ -241,9 +241,18 @@ impl ClosureRule {
 /// implication → trio suppressor → trio re-evaluation → fixed point).
 /// `N=16` is 5× safety padding over that observed maximum.
 ///
-/// A fixpoint that does NOT converge within `N=16` iterations indicates a
-/// non-monotone catalog bug and causes a panic at runtime. Non-termination
-/// of the closure operator is a catalog correctness failure — monotone
-/// catalogs always reach a fixpoint in at most `|fact_universe|` iterations,
-/// which is bounded for any finite scheme.
+/// A fixpoint that does NOT converge within `N=16` iterations causes a
+/// panic at runtime. Non-termination of the closure operator is a
+/// catalog correctness failure — monotone catalogs always reach a
+/// fixpoint in at most `|fact_universe|` iterations, which is bounded
+/// for any finite scheme.
+///
+/// The iteration cap is a **non-convergence guard**, not a
+/// monotonicity oracle: a non-monotone catalog with a suppressor
+/// depending on a fact in another rule's cone can converge quickly to
+/// a fixed point while still violating
+/// `m1 ⊑ m2 ⇒ closure(m1) ⊑ closure(m2)`. The companion proptest at
+/// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
+/// exercises that observable violation directly; the cap here only
+/// catches the unbounded-growth failure mode.
 pub const MAX_CLOSURE_ITERATIONS: usize = 16;
