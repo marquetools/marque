@@ -289,15 +289,19 @@ impl CapcoMarking {
     /// `Lattice::join` impl (which still delegates to `PageContext`).
     /// The parity-gate test
     /// `crates/capco/tests/page_context_lattice_parity.rs` (Commit 8)
-    /// proves byte-identity between the two paths across 32 synthetic
-    /// fixtures with six+ documented divergences (M-8 PR 4b-B
-    /// follow-up: G-1 FOUO-classified, G-2 AEA-UCNI-classified, G-3
-    /// pure-NATO, G-3' mixed-US-plus-NATO, G-4 JOINT-unanimous-no-
-    /// double-FGI-mark, G-5 explicit-FGI-marker-merges-with-derived,
-    /// plus the relido-plus-noforn-dominates fixture from the
-    /// earlier round). Corpus-fixture coverage is deferred to PR
-    /// 4b-D when `CapcoScheme::project(Scope::Page, ...)` flips to
-    /// use this path.
+    /// proves byte-identity between the two paths across 35 `#[test]`
+    /// fixtures with **six documented divergences** (enumerated in
+    /// `crates/capco/CAPCO-CONTEXT.md` §3): G-1 FOUO-classified, G-2
+    /// AEA-UCNI-classified, G-3 pure-NATO, the
+    /// RELIDO+NOFORN-dominates correctness divergence, plus the two
+    /// pure-JOINT cases (`joint_unanimous_two_portions` /
+    /// `joint_single_portion_no_us`) where the lattice produces
+    /// `Joint(_)` per §H.3 p56 banner-fidelity and PageContext
+    /// produces `Us(_)`. G-4..G-9 land as parity-RESTORING fixtures
+    /// (each cited inline against its §). Corpus-fixture coverage
+    /// is deferred to PR 4b-D when
+    /// `CapcoScheme::project(Scope::Page, ...)` flips to use this
+    /// path.
     ///
     /// **Two residues** preserved from PageContext for one more PR:
     ///

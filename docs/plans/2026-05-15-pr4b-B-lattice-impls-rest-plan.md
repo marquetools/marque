@@ -59,11 +59,11 @@ agent proceeds under them unless overridden.
 - JOINT producer-unanimity-or-collapse-to-FGI logic, including the new
   Warn diagnostic (`W004` per §6.3 rule-ID note).
 - Parity gate at `crates/capco/tests/page_context_lattice_parity.rs`
-  covering 23 synthetic multi-portion fixtures plus 7 documented-
-  divergence fixtures (PR 4b-B follow-up M-4: corpus-fixture coverage
-  is deferred to PR 4b-D when the hot path flips), with documented
-  divergences for the
-  OC-USGOV correction and the JOINT-disunity collapse.
+  covering 35 `#[test]` fixtures total — 29 byte-identity parity
+  cases + 6 documented-divergence fixtures (post C-9 / G-9 follow-up;
+  PR 4b-B follow-up M-4: corpus-fixture coverage is deferred to PR
+  4b-D when the hot path flips). The six divergences are enumerated
+  in `crates/capco/CAPCO-CONTEXT.md` §3 with §-citations.
 - §-citations for every new doc-comment, diagnostic, and design-doc
   row re-verified against `crates/capco/docs/CAPCO-2016.md` at the
   point of authorship (Principle VIII, propagation re-verification).
@@ -1105,11 +1105,12 @@ self-resolves.
 - [ ] Commit 5's W004 diagnostic carries no document text
       (`joint_disunity_warn_diagnostic_carries_no_document_text`
       test). Audit-record content-ignorance per Constitution V G13.
-- [ ] Commit 8 parity gate covers 23 synthetic fixtures plus 7
-      documented-divergence fixtures (PR 4b-B follow-up M-4 + G-1..G-7);
-      each divergence carries an inline `§X.Y pNN` citation. Corpus-
-      fixture coverage is deferred to PR 4b-D when the project()
-      hot path flips.
+- [ ] Commit 8 parity gate covers 35 `#[test]` fixtures total — 29
+      byte-identity parity cases + 6 documented-divergence fixtures
+      (PR 4b-B follow-up M-4 + G-1..G-9); each divergence carries an
+      inline `§X.Y pNN` citation. The six divergences are enumerated
+      in `crates/capco/CAPCO-CONTEXT.md` §3. Corpus-fixture coverage
+      is deferred to PR 4b-D when the project() hot path flips.
 - [ ] Commit 9 bumps the rule count pin (38 → 39 — corrected M-5 in
       PR 4b-B follow-up) and adds W004 to the exact-set pin.
 - [ ] Reviewer chain (rust-reviewer + code-reviewer +
