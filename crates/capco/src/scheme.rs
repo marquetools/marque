@@ -289,16 +289,21 @@ impl CapcoMarking {
     /// `Lattice::join` impl (which still delegates to `PageContext`).
     /// The parity-gate test
     /// `crates/capco/tests/page_context_lattice_parity.rs` (Commit 8)
-    /// proves byte-identity between the two paths on every corpus
-    /// fixture + a synthetic-fixture matrix; PR 4b-D will then flip
-    /// `CapcoScheme::project(Scope::Page, ...)` to use this path.
+    /// proves byte-identity between the two paths on 23 synthetic
+    /// fixtures with three documented divergences (M-4 PR 4b-B
+    /// follow-up: corpus-fixture coverage deferred to PR 4b-D, when
+    /// `CapcoScheme::project(Scope::Page, ...)` flips to use this
+    /// path).
     ///
     /// **Two residues** preserved from PageContext for one more PR:
     ///
     /// 1. `non_ic_dissem` axis (classification-gated SBU-NF/LES-NF
     ///    split + the implied-NF injection family). Documented in
     ///    the plan §3.3 as a `Constraint::Custom("capco/fouo-eviction")`
-    ///    PR 4b-C migration target.
+    ///    PR 4b-C migration target. The `needs_nf` flag is propagated
+    ///    into `out.dissem_us` (G-6 PR 4b-B follow-up) so SBU-NF /
+    ///    LES-NF classified pages produce the correct NOFORN
+    ///    injection on the lattice path.
     /// 2. The JOINT non-US producer FGI migration — Commit 5's
     ///    `JointSet::DisunityCollapse` carries the producer set,
     ///    and the W004 rule (Commit 9) surfaces it, but the
@@ -316,6 +321,27 @@ impl CapcoMarking {
 
         let mut out = CanonicalAttrs::default();
 
+        // Page-composition introspection used by several axes below.
+        // A page is "solely non-US" when it carries at least one
+        // non-US classification AND no US-classification portion.
+        // Per §H.7 pp123-125 reciprocal-raise: when ANY US portion is
+        // present, NATO/FGI variants normalize to `Us(effective_level)`
+        // at banner time; the non-US variant survives only when the
+        // page has no US contribution at all. G-3 (PR 4b-B follow-up).
+        let mut has_us_class = false;
+        let mut has_non_us_class = false;
+        for p in portions {
+            match &p.classification {
+                Some(MarkingClassification::Us(_)) => has_us_class = true,
+                Some(MarkingClassification::Fgi(_))
+                | Some(MarkingClassification::Nato(_)) => has_non_us_class = true,
+                Some(MarkingClassification::Joint(_))
+                | Some(MarkingClassification::Conflict { .. })
+                | None => {}
+            }
+        }
+        let solely_non_us = has_non_us_class && !has_us_class;
+
         // Axis 1: classification — variant-preserving OrdMax with
         // JointSet override. §H.1 pp47-54 + §H.7 pp123-125 +
         // §H.3 p57.
@@ -330,21 +356,37 @@ impl CapcoMarking {
         //   ClassificationLattice wins, BUT any Joint(_) variants on
         //   per-portion classifications are flattened to their
         //   effective_level (Us) so the banner doesn't carry forward
-        //   JOINT shape per §H.3 p57.
+        //   JOINT shape per §H.3 p57. G-3: in this non-JOINT branch,
+        //   when the page is NOT solely-non-US, ALSO flatten
+        //   Nato(_) / Fgi(_) variants to Us(effective_level) per the
+        //   §H.7 pp123-125 reciprocal-raise — preserves PageContext
+        //   parity on mixed US+NATO/FGI pages.
         let joint_set = JointSet::from_attrs_iter(portions);
         out.classification = match joint_set.to_marking_classification() {
             Some(mc) => Some(mc),
             None => {
-                // Filter Joint(_) variants out of the
-                // ClassificationLattice input so the lattice picks
-                // the highest US-level variant rather than carrying
-                // a Joint-shape into a mixed-US banner. §H.3 p57.
                 let filtered: Vec<CanonicalAttrs> = portions
                     .iter()
                     .map(|p| {
                         let mut q = p.clone();
-                        if let Some(MarkingClassification::Joint(j)) = &p.classification {
-                            q.classification = Some(MarkingClassification::Us(j.level));
+                        match &p.classification {
+                            // Always flatten JOINT to its US level in
+                            // this non-JOINT branch (§H.3 p57).
+                            Some(MarkingClassification::Joint(j)) => {
+                                q.classification = Some(MarkingClassification::Us(j.level));
+                            }
+                            // §H.7 reciprocal-raise: NATO/FGI flatten
+                            // to US level when ANY US portion is in
+                            // scope. The solely-non-US case keeps the
+                            // non-US variant intact.
+                            Some(MarkingClassification::Nato(n)) if !solely_non_us => {
+                                q.classification =
+                                    Some(MarkingClassification::Us(n.us_equivalent()));
+                            }
+                            Some(MarkingClassification::Fgi(f)) if !solely_non_us => {
+                                q.classification = Some(MarkingClassification::Us(f.level));
+                            }
+                            _ => {}
                         }
                         q
                     })
@@ -394,25 +436,35 @@ impl CapcoMarking {
             .collect();
         out.aea_markings = AeaSet::from_markings(&aea_markings_concat).to_markings();
 
-        // FGI marker — compose via FgiSet from per-portion markers.
-        // FgiSet's from_marker constructor takes a single FgiMarker;
-        // join composes across portions.
+        // FGI marker — compose via FgiSet from per-portion markers
+        // AND merge with classification-derived producers
+        // (PageContext::expected_fgi_marker unions NATO/JOINT/FGI
+        // classification countries into the same axis).
+        //
+        // G-4 (PR 4b-B follow-up): when JointSet is
+        // `UnanimousProducers`, the producers are already captured in
+        // the JOINT classification — we must NOT also FGI-mark them,
+        // because §H.3 p56 + §H.7 p123 say JOINT subsumes the FGI
+        // marker for those producers.
+        //
+        // G-5 (PR 4b-B follow-up): when both an explicit FgiSet
+        // marker AND classification-derived producers are present,
+        // UNION the producer sets rather than discarding the
+        // classification-derived ones.
         let mut fgi_acc = FgiSet::empty();
         for p in portions {
             let part = FgiSet::from_marker(p.fgi_marker.as_ref());
             fgi_acc = fgi_acc.join(&part);
         }
-        // Per §H.7 reciprocal flow: NATO / FGI / JOINT classifications
-        // contribute their non-US producers to the FGI axis. Fold the
-        // existing PageContext expected_fgi_marker semantic here to
-        // preserve byte-parity with the production path (the lattice
-        // form FgiSet does not see classification-side trigraphs
-        // today — that's a PR 4b-C / 4b-D migration when classification
-        // lattice composes with FgiSet at the scheme layer).
-        out.fgi_marker = match (fgi_acc.to_marker(), tmp_ctx.expected_fgi_marker()) {
-            (Some(_), _) => fgi_acc.to_marker(),
-            (None, ctx_marker) => ctx_marker,
+        let ctx_fgi_marker = if matches!(joint_set, JointSet::UnanimousProducers { .. }) {
+            // JOINT-unanimous page: producers ride on the Joint(_)
+            // classification, not on the FGI axis. Suppress the
+            // PageContext FGI fallback.
+            None
+        } else {
+            tmp_ctx.expected_fgi_marker()
         };
+        out.fgi_marker = merge_fgi_markers(fgi_acc.to_marker(), ctx_fgi_marker);
 
         // Axis 6-7: dissem_us / dissem_nato.
         out.dissem_us = DissemSet::from_attrs_iter(portions).into_boxed_slice();
@@ -432,7 +484,16 @@ impl CapcoMarking {
         // Residue 1: non_ic_dissem — classification-gated SBU-NF/
         // LES-NF split + implied-NF stays on PageContext for one
         // more PR (PR 4b-C migration target).
-        let (non_ic, _needs_nf) = tmp_ctx.expected_non_ic_dissem();
+        //
+        // G-6 (PR 4b-B follow-up): propagate `needs_nf` from
+        // `expected_non_ic_dissem`. When set, inject NOFORN into
+        // `dissem_us` AND clear REL TO — matches
+        // PageContext::expected_dissem_us step 4 + the implicit
+        // REL TO clear via §H.9 p178 (SBU-NF) / §H.9 p185 (LES-NF).
+        // Pre-fix, the lattice path ignored this flag and a
+        // classified page with REL TO + SBU-NF / LES-NF kept REL TO
+        // and missed NOFORN.
+        let (non_ic, needs_nf) = tmp_ctx.expected_non_ic_dissem();
         out.non_ic_dissem = non_ic.into_boxed_slice();
 
         // NOFORN-clears-REL-TO interaction:
@@ -445,14 +506,57 @@ impl CapcoMarking {
         // PageRewrite's post-projection effect. This keeps the
         // lattice path self-consistent with the PageContext path's
         // final shape.
-        if rel_to_was_noforn_superseded {
+        if rel_to_was_noforn_superseded || needs_nf {
             use marque_ism::DissemControl;
             let mut dissem = out.dissem_us.iter().copied().collect::<BTreeSet<_>>();
             dissem.insert(DissemControl::Nf);
             out.dissem_us = dissem.into_iter().collect::<Vec<_>>().into_boxed_slice();
+            // G-6: SBU-NF / LES-NF on a classified page also clears
+            // REL TO — match PageContext::expected_rel_to which
+            // short-circuits to an empty slice when needs_nf fires.
+            if needs_nf {
+                out.rel_to = Box::new([]);
+            }
         }
 
         out
+    }
+}
+
+/// Merge two optional `FgiMarker` values, preserving the
+/// source-concealed sentinel and unioning the producer country
+/// sets when both sides carry acknowledged markers.
+///
+/// G-5 (PR 4b-B follow-up): pre-fix, the `join_via_lattice` FGI
+/// composition discarded `expected_fgi_marker`'s
+/// classification-derived producers whenever an explicit FGI marker
+/// existed. This helper unions both sources so the lattice output
+/// preserves every non-US producer the PageContext path would
+/// surface.
+fn merge_fgi_markers(
+    a: Option<marque_ism::FgiMarker>,
+    b: Option<marque_ism::FgiMarker>,
+) -> Option<marque_ism::FgiMarker> {
+    use marque_ism::FgiMarker;
+    match (a, b) {
+        (None, None) => None,
+        (Some(x), None) | (None, Some(x)) => Some(x),
+        // Source-concealed dominates per §H.7 p123 — bare `FGI` (no
+        // LIST) is the most-restrictive marker. Either operand
+        // carrying it produces SourceConcealed.
+        (Some(FgiMarker::SourceConcealed), _) | (_, Some(FgiMarker::SourceConcealed)) => {
+            Some(FgiMarker::SourceConcealed)
+        }
+        (
+            Some(FgiMarker::Acknowledged { countries: c1, .. }),
+            Some(FgiMarker::Acknowledged { countries: c2, .. }),
+        ) => {
+            // Union the producer sets, deduplicated and sorted.
+            let mut all: std::collections::BTreeSet<marque_ism::CountryCode> =
+                c1.iter().copied().collect();
+            all.extend(c2.iter().copied());
+            FgiMarker::acknowledged(all.into_iter())
+        }
     }
 }
 

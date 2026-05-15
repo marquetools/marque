@@ -29,8 +29,9 @@
 
 use marque_capco::CapcoMarking;
 use marque_ism::{
-    CanonicalAttrs, Classification, CountryCode, DissemControl, JointClassification,
-    MarkingClassification, NonIcDissem, PageContext,
+    AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiClassification,
+    FgiMarker, JointClassification, MarkingClassification, NatoClassification, NonIcDissem,
+    PageContext,
 };
 
 // ---------------------------------------------------------------------------
@@ -364,27 +365,24 @@ fn rel_to_intersect_common() {
 #[test]
 fn rel_to_intersect_empty() {
     // §D.2 Table 3 row 9: no-common-LIST → NOFORN (post-projection
-    // PageRewrite). Both paths must agree that rel_to is empty AND
-    // NOFORN appears in dissem_us.
+    // PageRewrite). Both paths produce empty rel_to. The §D.2 Table
+    // 3 row 9 NOFORN injection is a project() concern, not a
+    // per-axis lattice concern — both paths leave dissem alone here.
+    //
+    // G-7 (PR 4b-B follow-up): strengthen to full byte-identity
+    // rather than only checking the `rel_to` axis; a regression
+    // touching `dissem_us` / classification / FGI would have slipped
+    // through the prior partial assertion.
     let portions = [
         portion_with_rel_to(Classification::Secret, &["GBR", "CAN"]),
         portion_with_rel_to(Classification::Secret, &["FRA", "DEU"]),
     ];
-    let pc = project_via_page_context(&portions);
-    let lat = project_via_lattice(&portions);
-    // Both paths produce empty rel_to. Whether they additionally
-    // inject NOFORN at this layer is the eventual question for PR
-    // 4b-D when project() flips. For now, the PageContext path
-    // injects NF via expected_rel_to short-circuit + expected_dissem
-    // injection-from-needs_nf; the lattice path also injects NF when
-    // RelToBlock::NofornSuperseded fires. But empty-intersection
-    // (no NOFORN portion present) is a Bottom, not NofornSuperseded —
-    // so the lattice path leaves dissem alone, while PageContext also
-    // leaves dissem alone in this specific case (the §D.2 Table 3
-    // row 9 injection is a project() concern, not a per-axis lattice
-    // concern). The two paths agree here at the byte level.
-    assert!(pc.rel_to.is_empty());
-    assert!(lat.rel_to.is_empty());
+    assert_byte_identity(
+        "rel_to_intersect_empty",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
 }
 
 #[test]
@@ -480,32 +478,54 @@ fn joint_disunity_two_portions_different_producers() {
     // migrate to FGI. The W004 Warn rule (registered in Commit 9)
     // surfaces this transformation.
     //
-    // DIVERGENCE: PageContext path produces Us(Secret) + FGI marker
-    // containing the union of non-US producers. Lattice path's
-    // JointSet::DisunityCollapse produces Us(highest_level), and
-    // the fgi_marker rides via the existing PageContext fallback
-    // we wired into `join_via_lattice`. Both should produce the
-    // same banner shape — Us class + FGI[non-US-producers].
+    // G-7 (PR 4b-B follow-up): strengthen to assert the EXACT
+    // producer set on both `fgi_marker` values rather than just
+    // "some FGI marker present" — a regression that lost a producer
+    // would have slipped through.
+    //
+    // Both paths produce Us(Secret) classification and FGI marker
+    // carrying { GBR, CAN } (the union of non-US producers across
+    // disunity-collapse portions).
     let portions = [
         portion_joint(Classification::Secret, &["USA", "GBR"]),
         portion_joint(Classification::Secret, &["USA", "CAN"]),
     ];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
-    // Both produce Us(Secret) for the classification — JOINT was
-    // not unanimous, so the lattice produces DisunityCollapse →
-    // Us(highest_level).
-    assert!(matches!(
+    assert_eq!(
         pc.classification,
-        Some(MarkingClassification::Us(_))
-    ));
-    assert!(matches!(
+        Some(MarkingClassification::Us(Classification::Secret))
+    );
+    assert_eq!(
         lat.classification,
-        Some(MarkingClassification::Us(_))
-    ));
-    // Both should produce an FGI marker carrying GBR + CAN.
-    assert!(pc.fgi_marker.is_some());
-    assert!(lat.fgi_marker.is_some());
+        Some(MarkingClassification::Us(Classification::Secret))
+    );
+    let expected_producers = {
+        let mut s = std::collections::BTreeSet::new();
+        s.insert(cc("CAN"));
+        s.insert(cc("GBR"));
+        s
+    };
+    let extract_producers = |m: &Option<marque_ism::FgiMarker>| {
+        use marque_ism::FgiMarker;
+        match m {
+            Some(FgiMarker::Acknowledged { countries, .. }) => {
+                countries.iter().copied().collect::<std::collections::BTreeSet<_>>()
+            }
+            Some(FgiMarker::SourceConcealed) => std::collections::BTreeSet::new(),
+            None => std::collections::BTreeSet::new(),
+        }
+    };
+    assert_eq!(
+        extract_producers(&pc.fgi_marker),
+        expected_producers,
+        "PageContext FGI producer set must be {{CAN, GBR}}"
+    );
+    assert_eq!(
+        extract_producers(&lat.fgi_marker),
+        expected_producers,
+        "Lattice FGI producer set must be {{CAN, GBR}}"
+    );
 }
 
 #[test]
@@ -617,4 +637,208 @@ fn nodis_clears_rel_to() {
     // should contain NOFORN.
     assert!(pc.dissem_us.contains(&DissemControl::Nf));
     assert!(lat.dissem_us.contains(&DissemControl::Nf));
+}
+
+// ===========================================================================
+// PR 4b-B follow-up parity divergences — documented w/ citation
+// ===========================================================================
+
+#[test]
+fn fouo_classified_lattice_vs_pagecontext_diverges() {
+    // G-1 (PR 4b-B follow-up) documented divergence: a classified
+    // page with a FOUO portion. PageContext::expected_dissem_us
+    // drops FOUO (§H.8 p134 — FOUO is U-only); the lattice path's
+    // DissemSet does NOT apply the cross-axis FOUO eviction (that
+    // logic stays on PageContext under the "Constraint::Custom
+    // capco/fouo-eviction" migration target — see the §3.3 plan
+    // text and project memory `project_noforn_supremacy_composition.md`
+    // Pattern B). This divergence is RESOLVED in PR 4b-C, not here.
+    //
+    // Citation: §H.8 p134 (FOUO classification gate) +
+    // project memory `project_noforn_supremacy_composition.md`
+    // Pattern B (PR 4b-C scope).
+    let portions = [portion_with_dissem_us(
+        Classification::Secret,
+        &[DissemControl::Fouo],
+    )];
+    let pc = project_via_page_context(&portions);
+    let lat = project_via_lattice(&portions);
+    assert!(
+        !pc.dissem_us.contains(&DissemControl::Fouo),
+        "PageContext drops FOUO on classified page per §H.8 p134"
+    );
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Fouo),
+        "Lattice path keeps FOUO until PR 4b-C ships the cross-axis \
+         FOUO-eviction rewrite per §H.8 p134"
+    );
+}
+
+#[test]
+fn aea_ucni_classified_lattice_vs_pagecontext_diverges() {
+    // G-2 (PR 4b-B follow-up) documented divergence: a classified
+    // page with DOD UCNI. PageContext::expected_aea_markings strips
+    // UCNI (§H.6 p116 + p118 — UCNI is U-only); the lattice path's
+    // `AeaSet::to_markings` does NOT apply the classification gate
+    // (Pattern C in `project_noforn_supremacy_composition.md`; PR
+    // 4b-C migration target).
+    //
+    // Citation: §H.6 p116 (DOD UCNI) + §H.6 p118 (DOE UCNI).
+    let mut p = portion_us(Classification::Secret);
+    p.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+    let portions = [p];
+    let pc = project_via_page_context(&portions);
+    let lat = project_via_lattice(&portions);
+    assert!(
+        !pc.aea_markings.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
+        "PageContext strips DOD UCNI on classified page per §H.6 p116"
+    );
+    assert!(
+        lat.aea_markings.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
+        "Lattice path keeps DOD UCNI until PR 4b-C ships the cross-axis \
+         classification-gate rewrite per §H.6 p116"
+    );
+}
+
+#[test]
+fn pure_nato_lattice_vs_pagecontext_diverges() {
+    // G-3 (PR 4b-B follow-up) documented divergence: a SOLELY-NATO
+    // page (no US portion). PageContext::expected_classification
+    // always returns `Us(_)` (it flattens variants); the lattice
+    // path preserves the `Nato(_)` variant per §H.7 pp123-125
+    // reciprocal normalization, which is "Us-equivalent at portion-
+    // parse time when ANY US portion is present, but the non-US
+    // variant survives at banner when the page has no US
+    // contribution."
+    //
+    // G-3 sharper framing: when a page has even one US portion in
+    // scope, the lattice path now flattens NATO/FGI to
+    // `Us(effective_level)` (matching PageContext), so the
+    // divergence is scoped to truly solely-non-US pages.
+    //
+    // Citation: §H.7 pp123-125 (reciprocal-raise rule).
+    let mut nato_portion = CanonicalAttrs::default();
+    nato_portion.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+    let portions = [nato_portion];
+    let pc = project_via_page_context(&portions);
+    let lat = project_via_lattice(&portions);
+    assert!(
+        matches!(pc.classification, Some(MarkingClassification::Us(_))),
+        "PageContext flattens non-US to Us(_) at banner"
+    );
+    assert!(
+        matches!(lat.classification, Some(MarkingClassification::Nato(_))),
+        "Lattice preserves Nato variant on solely-NATO page per §H.7 pp123-125"
+    );
+}
+
+#[test]
+fn mixed_us_plus_nato_lattice_flattens_to_us() {
+    // G-3 sharper-framing follow-up: mixed US+NATO must flatten the
+    // NATO variant to Us(effective_level) on both paths. This is
+    // the §H.7 reciprocal-raise rule applied correctly — when any
+    // US portion is in scope, the banner classification surface is
+    // US, not NATO.
+    let mut nato_portion = CanonicalAttrs::default();
+    nato_portion.classification =
+        Some(MarkingClassification::Nato(NatoClassification::CosmicTopSecret));
+    let portions = [portion_us(Classification::Secret), nato_portion];
+    assert_byte_identity(
+        "mixed_us_plus_nato_lattice_flattens_to_us",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn classified_sbu_nf_injects_noforn_and_clears_rel_to() {
+    // G-6 (PR 4b-B follow-up): classified page with a portion
+    // carrying SBU-NF (or LES-NF) and another carrying REL TO must
+    // produce a banner with NOFORN in dissem_us AND empty rel_to.
+    // Pre-fix the lattice path discarded the `needs_nf` flag from
+    // `expected_non_ic_dissem` and kept REL TO + missed NOFORN.
+    //
+    // Citation: §H.9 p178 (SBU-NF on classified pages) +
+    // §H.9 p185 (LES-NF on classified pages) — both inject NOFORN
+    // and supersede REL TO when commingled.
+    let mut sbunf = portion_us(Classification::Secret);
+    sbunf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
+    let portions = [
+        portion_with_rel_to(Classification::Secret, &["USA", "GBR"]),
+        sbunf,
+    ];
+    let pc = project_via_page_context(&portions);
+    let lat = project_via_lattice(&portions);
+    // Both paths inject NOFORN.
+    assert!(pc.dissem_us.contains(&DissemControl::Nf), "PageContext injects NF");
+    assert!(lat.dissem_us.contains(&DissemControl::Nf), "Lattice injects NF (G-6)");
+    // Both paths clear REL TO.
+    assert!(pc.rel_to.is_empty(), "PageContext clears REL TO");
+    assert!(lat.rel_to.is_empty(), "Lattice clears REL TO (G-6)");
+}
+
+#[test]
+fn joint_unanimous_does_not_double_mark_with_fgi() {
+    // G-4 (PR 4b-B follow-up): JointSet::UnanimousProducers carries
+    // the producer list in the JOINT classification itself. The
+    // lattice path must NOT additionally FGI-mark those same
+    // producers, because §H.3 p56 + §H.7 p123 say JOINT subsumes
+    // the FGI marker for the JOINT producer list.
+    //
+    // Citation: §H.3 p56 (JOINT grammar — producer list is on the
+    // JOINT marking) + §H.7 p123 (JOINT subsumes FGI for the same
+    // producers).
+    let portions = [
+        portion_joint(Classification::Secret, &["USA", "GBR"]),
+        portion_joint(Classification::Secret, &["USA", "GBR"]),
+    ];
+    let lat = project_via_lattice(&portions);
+    assert!(
+        matches!(lat.classification, Some(MarkingClassification::Joint(_))),
+        "lattice should produce Joint classification on unanimous JOINT"
+    );
+    assert!(
+        lat.fgi_marker.is_none(),
+        "lattice must NOT double-mark JOINT producers as FGI per §H.3 p56 + §H.7 p123"
+    );
+}
+
+#[test]
+fn explicit_fgi_marker_merges_with_classification_derived_producers() {
+    // G-5 (PR 4b-B follow-up): when both an explicit FGI marker AND
+    // classification-derived FGI producers are present, both sets
+    // must appear in the final FGI marker. Pre-fix, the
+    // `(Some(_), _) => fgi_acc.to_marker()` match arm preferred the
+    // explicit marker wholesale and lost the classification-derived
+    // producers.
+    //
+    // Citation: §H.7 p123 (FGI source-acknowledged form unions all
+    // foreign sources observed on the page).
+    let mut p1 = CanonicalAttrs::default();
+    p1.classification = Some(MarkingClassification::Us(Classification::Secret));
+    p1.fgi_marker = Some(FgiMarker::acknowledged([cc("FRA")]).unwrap());
+    // Second portion carries an Fgi classification, which the
+    // PageContext path folds into the FGI axis as a producer.
+    let mut p2 = CanonicalAttrs::default();
+    p2.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("DEU")]),
+    }));
+    let portions = [p1, p2];
+    let lat = project_via_lattice(&portions);
+    // Lattice must union FRA (explicit) + DEU (classification-derived).
+    if let Some(FgiMarker::Acknowledged { countries, .. }) = lat.fgi_marker {
+        let set: std::collections::BTreeSet<CountryCode> = countries.iter().copied().collect();
+        assert!(
+            set.contains(&cc("FRA")),
+            "lattice must include explicit FGI producer FRA"
+        );
+        assert!(
+            set.contains(&cc("DEU")),
+            "lattice must include classification-derived FGI producer DEU (G-5)"
+        );
+    } else {
+        panic!("expected Acknowledged FGI marker, got {:?}", lat.fgi_marker);
+    }
 }
