@@ -6,7 +6,7 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP75-00149R000500450043-4/CIA-RDP75-00149R000500450043-4.pdf",
     "cab": {
-      "classified_by": 938485,
+      "classified_by": "938485",
       "derived_from": "How We Got Here, CIA TS-0321-09",
       "declassify_on": "N/A to AEA portions, see source list for NSI portions"
     },

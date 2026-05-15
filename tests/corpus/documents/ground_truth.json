@@ -5,9 +5,9 @@
     "year": 1990,
     "source_pdf": "https://archive.org/download/CIA-RDP01M00147R000100350002-7/CIA-RDP01M00147R000100350002-7.pdf",
     "cab": {
-      "classified_by": 187902,
+      "classified_by": "187902",
       "derived_from": "CIA-SCG-1234 10 May 2010",
-      "declassify_on": 20370402
+      "declassify_on": "20370402"
     },
     "pages": [
       {
@@ -21,8 +21,8 @@
           },
           {
             "mark": "S//NF",
-            "text": "```table\n<table><tr><td rowspan=27 colspan=3>TO:1113162122</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td></td></tr><tr><td rowspan=3 colspan=1></td><td rowspan=3 colspan=1></td><td rowspan=3 colspan=1>ACTION</td><td rowspan=3 colspan=1>INFO</td><td></td><td></td><td></td></tr><tr><td></td><td></td><td rowspan=25 colspan=1></td></tr><tr><td rowspan=1 colspan=1>DATE</td><td rowspan=1 colspan=1>INITIAL</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>DCI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>2</td><td rowspan=1 colspan=1>DDCI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>3</td><td rowspan=1 colspan=1>D/ICS</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>4</td><td rowspan=1 colspan=1>DDA</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>5</td><td rowspan=1 colspan=1>DDI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>6</td><td rowspan=1 colspan=1>DDO</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>7</td><td rowspan=1 colspan=1>DDP&amp;C</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>8</td><td rowspan=1 colspan=1>DDS&amp;T</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>9</td><td rowspan=1 colspan=1>IG</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>10</td><td rowspan=1 colspan=1>COMPT</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>x</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>11</td><td rowspan=1 colspan=1>D/OCA</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>12</td><td rowspan=1 colspan=1>GC</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X (!5</td><td rowspan=1 colspan=1>JAN 91)</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>13</td><td rowspan=1 colspan=1>Chm/NIC</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>14</td><td rowspan=1 colspan=1>D/PAO</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>15</td><td rowspan=1 colspan=1>COUNSEL/DCI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>16</td><td rowspan=1 colspan=1>D/ALA/DI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>17</td><td rowspan=1 colspan=1>C/LA/DO</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>18</td><td rowspan=1 colspan=1>NIO/LA</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>19</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>20</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>21</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>22</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=5>SUSPENSEDate</td></tr><tr><td></td><td rowspan=1 colspan=8>Remarks</td></tr><tr><td rowspan=1 colspan=9>ER 90-0398Executive Secretary25 Jan &#x27;90Date3637 (10-81)</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td rowspan=27 colspan=3>TO:1113162122</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td></td></tr><tr><td rowspan=3 colspan=1></td><td rowspan=3 colspan=1></td><td rowspan=3 colspan=1>ACTION</td><td rowspan=3 colspan=1>INFO</td><td></td><td></td><td></td></tr><tr><td></td><td></td><td rowspan=25 colspan=1></td></tr><tr><td rowspan=1 colspan=1>DATE</td><td rowspan=1 colspan=1>INITIAL</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>DCI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>2</td><td rowspan=1 colspan=1>DDCI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>3</td><td rowspan=1 colspan=1>D/ICS</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>4</td><td rowspan=1 colspan=1>DDA</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>5</td><td rowspan=1 colspan=1>DDI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>6</td><td rowspan=1 colspan=1>DDO</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>7</td><td rowspan=1 colspan=1>DDP&amp;C</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>8</td><td rowspan=1 colspan=1>DDS&amp;T</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>9</td><td rowspan=1 colspan=1>IG</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>10</td><td rowspan=1 colspan=1>COMPT</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>x</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>11</td><td rowspan=1 colspan=1>D/OCA</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>12</td><td rowspan=1 colspan=1>GC</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X (!5</td><td rowspan=1 colspan=1>JAN 91)</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>13</td><td rowspan=1 colspan=1>Chm/NIC</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>14</td><td rowspan=1 colspan=1>D/PAO</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>15</td><td rowspan=1 colspan=1>COUNSEL/DCI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>16</td><td rowspan=1 colspan=1>D/ALA/DI</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>17</td><td rowspan=1 colspan=1>C/LA/DO</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>18</td><td rowspan=1 colspan=1>NIO/LA</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>X</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>19</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>20</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>21</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>22</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=5>SUSPENSEDate</td></tr><tr><td></td><td rowspan=1 colspan=8>Remarks</td></tr><tr><td rowspan=1 colspan=9>ER 90-0398Executive Secretary25 Jan &#x27;90Date3637 (10-81)</td></tr></table>",
+            "is_table": true
           }
         ]
       },
@@ -37,8 +37,8 @@
           },
           {
             "mark": "S//NF",
-            "text": "```table\n<table><tr><td rowspan=1 colspan=6></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=3 colspan=1></td></tr><tr><td rowspan=3 colspan=1></td><td rowspan=3 colspan=2></td><td rowspan=3 colspan=1></td><td rowspan=3 colspan=2>ACTION</td><td rowspan=3 colspan=2>INFO</td><td rowspan=3 colspan=2>DATE</td></tr><tr><td rowspan=25 colspan=1></td></tr><tr><td rowspan=1 colspan=1>INITIAL</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>1</td><td rowspan=1 colspan=1>DCI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>2</td><td rowspan=1 colspan=1>DDCI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2>1/29</td><td rowspan=1 colspan=1>RK</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>3</td><td rowspan=1 colspan=1>D/ICS</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>4</td><td rowspan=1 colspan=1>DDA</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>5</td><td rowspan=1 colspan=1>DDI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>6</td><td rowspan=1 colspan=1>DDO</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>7</td><td rowspan=1 colspan=1>DDP&amp;C</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>8</td><td rowspan=1 colspan=1>DDS&amp;T</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=15 colspan=2></td><td rowspan=1 colspan=1>9</td><td rowspan=1 colspan=1>IG</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>10</td><td rowspan=1 colspan=1>COMPT</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>x</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>11</td><td rowspan=1 colspan=1>D/OCA</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>12</td><td rowspan=1 colspan=1>GC</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td></tr><tr><td rowspan=1 colspan=2>13</td><td rowspan=1 colspan=1>Chm/NIC</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td></tr><tr><td rowspan=1 colspan=2>14</td><td rowspan=1 colspan=1>D/PAO</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td></tr><tr><td rowspan=1 colspan=2>15</td><td rowspan=1 colspan=2>COUNSEL/DCI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>16</td><td rowspan=1 colspan=2>D/ALA/DI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>17</td><td rowspan=1 colspan=2>C/LA/DO</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>18</td><td rowspan=1 colspan=2>NIO/LA</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>19</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>20</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>21</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>22</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=9>SUSPENSEDate</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td rowspan=1 colspan=6></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=3 colspan=1></td></tr><tr><td rowspan=3 colspan=1></td><td rowspan=3 colspan=2></td><td rowspan=3 colspan=1></td><td rowspan=3 colspan=2>ACTION</td><td rowspan=3 colspan=2>INFO</td><td rowspan=3 colspan=2>DATE</td></tr><tr><td rowspan=25 colspan=1></td></tr><tr><td rowspan=1 colspan=1>INITIAL</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>1</td><td rowspan=1 colspan=1>DCI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>2</td><td rowspan=1 colspan=1>DDCI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2>1/29</td><td rowspan=1 colspan=1>RK</td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>3</td><td rowspan=1 colspan=1>D/ICS</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>4</td><td rowspan=1 colspan=1>DDA</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>5</td><td rowspan=1 colspan=1>DDI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>6</td><td rowspan=1 colspan=1>DDO</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>7</td><td rowspan=1 colspan=1>DDP&amp;C</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>8</td><td rowspan=1 colspan=1>DDS&amp;T</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=15 colspan=2></td><td rowspan=1 colspan=1>9</td><td rowspan=1 colspan=1>IG</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>10</td><td rowspan=1 colspan=1>COMPT</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>x</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>11</td><td rowspan=1 colspan=1>D/OCA</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>12</td><td rowspan=1 colspan=1>GC</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td></tr><tr><td rowspan=1 colspan=2>13</td><td rowspan=1 colspan=1>Chm/NIC</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td></tr><tr><td rowspan=1 colspan=2>14</td><td rowspan=1 colspan=1>D/PAO</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td></tr><tr><td rowspan=1 colspan=2>15</td><td rowspan=1 colspan=2>COUNSEL/DCI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>16</td><td rowspan=1 colspan=2>D/ALA/DI</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>17</td><td rowspan=1 colspan=2>C/LA/DO</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>18</td><td rowspan=1 colspan=2>NIO/LA</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2>X</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>19</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>20</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>21</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>22</td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=2></td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=9>SUSPENSEDate</td></tr></table>",
+            "is_table": true
           },
           {
             "mark": "TS",
@@ -102,8 +102,8 @@
           },
           {
             "mark": "U",
-            "text": "```table\n<table><tr><td>Serial SUBJECT No.</td><td>No. of Notification.</td><td>Office of OOrigin</td><td>Pago</td></tr><tr><td>1. Interim Constitution of the Republic of Iraq.</td><td>3 ..\u2022</td><td>C.M.</td><td>37</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td>Serial SUBJECT No.</td><td>No. of Notification.</td><td>Office of OOrigin</td><td>Pago</td></tr><tr><td>1. Interim Constitution of the Republic of Iraq.</td><td>3 ..\u2022</td><td>C.M.</td><td>37</td></tr></table>",
+            "is_table": true
           }
         ]
       },
@@ -247,9 +247,9 @@
     "year": 1991,
     "source_pdf": "https://archive.org/download/CIA-RDP09T00207R001000100012-1/CIA-RDP09T00207R001000100012-1.pdf",
     "cab": {
-      "classified_by": 3269019,
+      "classified_by": "3269019",
       "derived_from": "NSC SCG 22 JUN 1995",
-      "declassify_on": 20110503
+      "declassify_on": "20110503"
     },
     "pages": [
       {
@@ -436,7 +436,7 @@
     "cab": {
       "classified_by": "S.P. Combs, EXA-RD/NNTI",
       "derived_from": "OG-SCG v2.3",
-      "declassify_on": 20150802
+      "declassify_on": "20150802"
     },
     "pages": [
       {
@@ -1055,7 +1055,7 @@
     "cab": {
       "classified_by": "JL Dunning",
       "derived_from": "multiple Sources",
-      "declassify_on": 20450820
+      "declassify_on": "20450820"
     },
     "pages": [
       {
@@ -1121,7 +1121,7 @@
     "cab": {
       "classified_by": "Harley S.",
       "derived_from": "NNTS-76-2931",
-      "declassify_on": 20001103
+      "declassify_on": "20001103"
     },
     "pages": [
       {
@@ -1196,7 +1196,7 @@
     "cab": {
       "classified_by": "R. Early, CMD-ANZ-TF23",
       "derived_from": "MS",
-      "declassify_on": 20000530
+      "declassify_on": "20000530"
     },
     "pages": [
       {
@@ -1272,7 +1272,7 @@
     "cab": {
       "classified_by": "28J38103",
       "derived_from": "some-SCG 230",
-      "declassify_on": "NA for RD portions, 203108020"
+      "declassify_on": "NA for RD portions, 2031-08-20"
     },
     "pages": [
       {
@@ -1371,7 +1371,7 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP73B00148A000200150009-6/CIA-RDP73B00148A000200150009-6.pdf",
     "cab": {
-      "classified_by": 987654,
+      "classified_by": "987654",
       "derived_from": "NGA SCG 23 AUG 22",
       "declassify_on": "N/A to AEA and NATO portions, 20220909"
     },
@@ -1434,7 +1434,7 @@
     "cab": {
       "classified_by": "E. Claire, RDDS, NRO",
       "derived_from": "multiple sources",
-      "declassify_on": 201045
+      "declassify_on": "2010-04-05"
     },
     "pages": [
       {
@@ -1581,7 +1581,7 @@
     "cab": {
       "classified_by": "McCarthy K. Kommunist",
       "derived_from": "NSA Security Classification Guide v5.23 2025",
-      "declassify_on": 20510601
+      "declassify_on": "20510601"
     },
     "pages": [
       {
@@ -1646,7 +1646,7 @@
     "cab": {
       "classified_by": "SFC D. Hammond, USA",
       "derived_from": "USA-SCG-92-D-21",
-      "declassify_on": 20400820
+      "declassify_on": "20400820"
     },
     "pages": [
       {
@@ -1701,7 +1701,7 @@
     "cab": {
       "classified_by": "J.T. Kirk, GG-20, SPLU",
       "derived_from": "SPLU SCG 10 Oct 2010",
-      "declassify_on": 20250802
+      "declassify_on": "20250802"
     },
     "pages": [
       {
@@ -1829,7 +1829,7 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP75-00149R000500450043-4/CIA-RDP75-00149R000500450043-4.pdf",
     "cab": {
-      "classified_by": 938485,
+      "classified_by": "938485",
       "derived_from": "How We Got Here, CIA TS-0321-09",
       "declassify_on": "N/A to AEA portions, see source list for NSI portions"
     },
@@ -2166,9 +2166,9 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP80-00809A000500340084-9/CIA-RDP80-00809A000500340084-9.pdf",
     "cab": {
-      "classified_by": 2345567,
+      "classified_by": "2345567",
       "derived_from": "MS",
-      "declassify_on": 20330502
+      "declassify_on": "20330502"
     },
     "pages": [
       {
@@ -2459,7 +2459,7 @@
     "cab": {
       "classified_by": "Jane M., MIO-3",
       "derived_from": "DDT SCG Nov 1985",
-      "declassify_on": 20320325
+      "declassify_on": "20320325"
     },
     "pages": [
       {
@@ -2593,7 +2593,7 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP80B01676R000200140013-3/CIA-RDP80B01676R000200140013-3.pdf",
     "cab": {
-      "classified_by": 12345,
+      "classified_by": "12345",
       "derived_from": "'RE: CHECK THIS OUT', 22 May 2012, d182372z",
       "declassify_on": "50X1-HUM"
     },
@@ -2630,8 +2630,8 @@
           },
           {
             "mark": "S",
-            "text": "```table\n<table><tr><td colspan=\"5\">Millions of dollars</td></tr><tr><td></td><td>1960</td><td>1961</td><td>1962</td><td>1963 (lst qtr.)</td></tr><tr><td>U.S. purchase of new foreign issues</td><td>573</td><td>523</td><td>1,076</td><td>512</td></tr><tr><td>U.S. purchases of outstanding issues</td><td>177</td><td>353</td><td>55</td><td>26</td></tr><tr><td>Total U.S. purchases of foreign securities</td><td>750</td><td>876</td><td>1,131</td><td>538</td></tr><tr><td>From Western Europe</td><td>133</td><td>266</td><td>195</td><td>84</td></tr><tr><td>From Canada</td><td>241</td><td>327</td><td>379</td><td>316</td></tr><tr><td>All others</td><td>376</td><td>283</td><td>557</td><td>138</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td colspan=\"5\">Millions of dollars</td></tr><tr><td></td><td>1960</td><td>1961</td><td>1962</td><td>1963 (lst qtr.)</td></tr><tr><td>U.S. purchase of new foreign issues</td><td>573</td><td>523</td><td>1,076</td><td>512</td></tr><tr><td>U.S. purchases of outstanding issues</td><td>177</td><td>353</td><td>55</td><td>26</td></tr><tr><td>Total U.S. purchases of foreign securities</td><td>750</td><td>876</td><td>1,131</td><td>538</td></tr><tr><td>From Western Europe</td><td>133</td><td>266</td><td>195</td><td>84</td></tr><tr><td>From Canada</td><td>241</td><td>327</td><td>379</td><td>316</td></tr><tr><td>All others</td><td>376</td><td>283</td><td>557</td><td>138</td></tr></table>",
+            "is_table": true
           },
           {
             "mark": "U//NF//XD",
@@ -2650,7 +2650,6 @@
     "source_pdf": "https://archive.org/download/CIA-RDP90B01370R000801120005-5/CIA-RDP90B01370R000801120005-5.pdf",
     "cab": {
       "classified_by": "F. Nightingale, AMEMB LAPAZ",
-      "derived_from": null,
       "declassify_on": "NA for AEA portions, see source list for NSI portions"
     },
     "pages": [
@@ -2738,7 +2737,7 @@
     "cab": {
       "classified_by": "J HALL",
       "derived_from": "COOLGUY SCG",
-      "declassify_on": 20200623
+      "declassify_on": "20200623"
     },
     "pages": [
       {
@@ -2964,8 +2963,8 @@
         "paragraphs": [
           {
             "mark": "U//SBU-NF",
-            "text": "```table\n<table><tr><td colspan=\"2\">TRANSMITTAL SLIP,</td><td colspan=\"4\">or ReleaSe 2009703/20 : CIA-RDP90-00269R0002 DATE 12/21/90 *</td></tr><tr><td colspan=\"2\">TO:</td><td colspan=\"4\"></td></tr><tr><td>ROOM.</td><td colspan=\"5\"></td></tr><tr><td colspan=\"5\">REMARKS: Attached are copies of the latest drafts of both HN 1-14-52 and Also attached are the only comments made on the proposed notice by the Office of General Counsel. You may recall that one of the matters of contention at the time we suspended</td></tr><tr><td colspan=\"5\">action was the organization chart. There are 3 different versions in this package. Please let me know if I can be of any further assistance.</td></tr><tr><td>FROM:</td><td>RPD/DDA</td><td colspan=\"2\"></td><td>EXTENSION</td></tr><tr><td>ROOM NO. 1112</td><td colspan=\"4\">BUILDING Ames</td></tr><tr><td>FORM NO. FEB 5 41</td><td colspan=\"4\">REPLACES FORM 36-8 (47) WHICH MAY BE USED. GPO : 1988 0 - 207-558</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td colspan=\"2\">TRANSMITTAL SLIP,</td><td colspan=\"4\">or ReleaSe 2009703/20 : CIA-RDP90-00269R0002 DATE 12/21/90 *</td></tr><tr><td colspan=\"2\">TO:</td><td colspan=\"4\"></td></tr><tr><td>ROOM.</td><td colspan=\"5\"></td></tr><tr><td colspan=\"5\">REMARKS: Attached are copies of the latest drafts of both HN 1-14-52 and Also attached are the only comments made on the proposed notice by the Office of General Counsel. You may recall that one of the matters of contention at the time we suspended</td></tr><tr><td colspan=\"5\">action was the organization chart. There are 3 different versions in this package. Please let me know if I can be of any further assistance.</td></tr><tr><td>FROM:</td><td>RPD/DDA</td><td colspan=\"2\"></td><td>EXTENSION</td></tr><tr><td>ROOM NO. 1112</td><td colspan=\"4\">BUILDING Ames</td></tr><tr><td>FORM NO. FEB 5 41</td><td colspan=\"4\">REPLACES FORM 36-8 (47) WHICH MAY BE USED. GPO : 1988 0 - 207-558</td></tr></table>",
+            "is_table": true
           }
         ]
       }
@@ -2980,7 +2979,7 @@
     "cab": {
       "classified_by": "ANA P. MONTEGUE",
       "derived_from": "MS",
-      "declassify_on": 20050301
+      "declassify_on": "20050301"
     },
     "pages": [
       {
@@ -3629,7 +3628,7 @@
     "cab": {
       "classified_by": "M. Anderson, SAIC, FBI-Halloweentown",
       "derived_from": "FBI NS SCG AUG 23",
-      "declassify_on": 20430202
+      "declassify_on": "20430202"
     },
     "pages": [
       {
@@ -3653,8 +3652,8 @@
           },
           {
             "mark": "U",
-            "text": "```table\n<table><tr><td>Armenia</td><td>Azerbaijan</td><td>Belarus</td><td>Estonia</td></tr><tr><td>Levon Ter-Petrosyan President</td><td>Ebulfez Elcibey President</td><td>Stanislav Shushkevich Chairman, Supreme Soviet</td><td>Lennart Meri President</td></tr><tr><td>Gagik Arutyunyan Vice President</td><td>Ali Misimov Acting Prime Minister</td><td>Vyacheslav Kebich Prime Minister</td><td>Mart Laar Prime Minister</td></tr><tr><td>Grant Bagratyan Acting Prime Minister</td><td>Isa Gambarov Chairman, Milli Majlis</td><td>Pavel Kozlovskiy Minister of Defense</td><td>Hain Rebas Minister of Defense</td></tr><tr><td>Vazgen Sarkisyan, Maj. Gen. Minister of Defense</td><td>(National Parliament) Rakhim Gaziyev Minister of Defense</td><td>Petr Kravchanka Minister of Foreign Affairs</td><td>Trivimi Velliste Minister of Foreign Affairs</td></tr><tr><td>Arman Kirakosyan Minister of Foreign Affairs</td><td colspan=\"3\">Tofig Kasymov</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td>Armenia</td><td>Azerbaijan</td><td>Belarus</td><td>Estonia</td></tr><tr><td>Levon Ter-Petrosyan President</td><td>Ebulfez Elcibey President</td><td>Stanislav Shushkevich Chairman, Supreme Soviet</td><td>Lennart Meri President</td></tr><tr><td>Gagik Arutyunyan Vice President</td><td>Ali Misimov Acting Prime Minister</td><td>Vyacheslav Kebich Prime Minister</td><td>Mart Laar Prime Minister</td></tr><tr><td>Grant Bagratyan Acting Prime Minister</td><td>Isa Gambarov Chairman, Milli Majlis</td><td>Pavel Kozlovskiy Minister of Defense</td><td>Hain Rebas Minister of Defense</td></tr><tr><td>Vazgen Sarkisyan, Maj. Gen. Minister of Defense</td><td>(National Parliament) Rakhim Gaziyev Minister of Defense</td><td>Petr Kravchanka Minister of Foreign Affairs</td><td>Trivimi Velliste Minister of Foreign Affairs</td></tr><tr><td>Arman Kirakosyan Minister of Foreign Affairs</td><td colspan=\"3\">Tofig Kasymov</td></tr></table>",
+            "is_table": true
           }
         ]
       },
@@ -3664,8 +3663,8 @@
         "paragraphs": [
           {
             "mark": "U//UCNI//NF",
-            "text": "```table\n<table><tr><td rowspan=1 colspan=1>Georgia</td><td rowspan=1 colspan=1></td><td></td><td></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Eduard Shevardnadze</td><td></td><td></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Chairman, Parliament</td><td rowspan=1 colspan=1>President</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Tengiz Sigua</td><td rowspan=1 colspan=1>Yerik Asanbayev</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Feliks Kulov</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=1>Vice President</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Vice President</td></tr><tr><td rowspan=1 colspan=2>Tengiz Kitovani</td><td rowspan=1 colspan=1>Serikbolsyn Abdildin</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Medetkan Sherimkulov</td></tr><tr><td rowspan=1 colspan=2>Minister of Defense</td><td rowspan=1 colspan=1>Chairman, Supreme Council</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Aleksandr Chikvaidze</td><td rowspan=1 colspan=1>Sergey Tereshchenko</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Tursunbek Chyngyshev</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Minister of Foreign Affairs</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Prime Minister</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Prime Minister</td><td></td></tr><tr><td rowspan=2 colspan=2></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Tuleutai Suleymenov</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Minister of Foreign Affairs</td><td></td><td></td></tr><tr><td rowspan=1 colspan=1>Lithuania</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Moldova</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Russia</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>(Presidential elections 14 February 1993)</td><td rowspan=1 colspan=2>Mircea Snegur</td><td rowspan=1 colspan=2>Boris Yel&#x27;tsin</td></tr><tr><td rowspan=1 colspan=2>Algirdas Brazauskas</td><td rowspan=1 colspan=2>President</td><td rowspan=1 colspan=1>President</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Acting President</td><td rowspan=1 colspan=1>Andrei Sangheli</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Aleksandr Rutskoy</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Bronislovas Lubys</td><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=1>Vice President</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=2>Pavel Creanga</td><td rowspan=1 colspan=1>Ruslan Khasbulatov</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Audrius Butkevicius</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Minister of Defense</td><td rowspan=1 colspan=1>Chairman, Supreme Soviet</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Minister of National Defense</td><td rowspan=2 colspan=2>Nicolae TiuMinister of Foreign Affairs</td><td rowspan=1 colspan=1>Viktor Chernomyrdin</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Povilas Gylys</td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td rowspan=1 colspan=1>Premier</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Turkmenistan</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Ukraine</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Uzbekistan</td><td></td></tr><tr><td rowspan=1 colspan=2>Saparmurad Niyazov</td><td></td><td></td><td></td><td></td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td rowspan=1 colspan=1>Georgia</td><td rowspan=1 colspan=1></td><td></td><td></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Eduard Shevardnadze</td><td></td><td></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Chairman, Parliament</td><td rowspan=1 colspan=1>President</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Tengiz Sigua</td><td rowspan=1 colspan=1>Yerik Asanbayev</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Feliks Kulov</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=1>Vice President</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Vice President</td></tr><tr><td rowspan=1 colspan=2>Tengiz Kitovani</td><td rowspan=1 colspan=1>Serikbolsyn Abdildin</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Medetkan Sherimkulov</td></tr><tr><td rowspan=1 colspan=2>Minister of Defense</td><td rowspan=1 colspan=1>Chairman, Supreme Council</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Aleksandr Chikvaidze</td><td rowspan=1 colspan=1>Sergey Tereshchenko</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Tursunbek Chyngyshev</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Minister of Foreign Affairs</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Prime Minister</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Prime Minister</td><td></td></tr><tr><td rowspan=2 colspan=2></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Tuleutai Suleymenov</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Minister of Foreign Affairs</td><td></td><td></td></tr><tr><td rowspan=1 colspan=1>Lithuania</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Moldova</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Russia</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>(Presidential elections 14 February 1993)</td><td rowspan=1 colspan=2>Mircea Snegur</td><td rowspan=1 colspan=2>Boris Yel&#x27;tsin</td></tr><tr><td rowspan=1 colspan=2>Algirdas Brazauskas</td><td rowspan=1 colspan=2>President</td><td rowspan=1 colspan=1>President</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Acting President</td><td rowspan=1 colspan=1>Andrei Sangheli</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Aleksandr Rutskoy</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Bronislovas Lubys</td><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=1>Vice President</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=2>Pavel Creanga</td><td rowspan=1 colspan=1>Ruslan Khasbulatov</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Audrius Butkevicius</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Minister of Defense</td><td rowspan=1 colspan=1>Chairman, Supreme Soviet</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Minister of National Defense</td><td rowspan=2 colspan=2>Nicolae TiuMinister of Foreign Affairs</td><td rowspan=1 colspan=1>Viktor Chernomyrdin</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Povilas Gylys</td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td rowspan=1 colspan=1>Premier</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Turkmenistan</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Ukraine</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Uzbekistan</td><td></td></tr><tr><td rowspan=1 colspan=2>Saparmurad Niyazov</td><td></td><td></td><td></td><td></td></tr></table>",
+            "is_table": true
           }
         ]
       }
@@ -3680,7 +3679,7 @@
     "cab": {
       "classified_by": "938192abe",
       "derived_from": "'RE: MEMO -- Did you get the memo?' 5 July 2010, D-1245-10",
-      "declassify_on": 20350119
+      "declassify_on": "20350119"
     },
     "pages": [
       {
@@ -3786,7 +3785,7 @@
     "cab": {
       "classified_by": "D Amodei, Director, WD",
       "derived_from": "WD SCG JUN 08",
-      "declassify_on": 20180903
+      "declassify_on": "20180903"
     },
     "pages": [
       {
@@ -3850,8 +3849,8 @@
           },
           {
             "mark": "C",
-            "text": "```table\n<table><tr><td colspan=\"2\"></td></tr><tr><td>Classhed by:</td><td></td></tr><tr><td>Declassty</td><td>OADR</td></tr><tr><td>Der rved From</td><td>Multipte</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td colspan=\"2\"></td></tr><tr><td>Classhed by:</td><td></td></tr><tr><td>Declassty</td><td>OADR</td></tr><tr><td>Der rved From</td><td>Multipte</td></tr></table>",
+            "is_table": true
           },
           {
             "mark": "S//SI//REL TO USA, FVEY",

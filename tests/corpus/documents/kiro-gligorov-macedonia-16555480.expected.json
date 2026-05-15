@@ -8,7 +8,7 @@
     "cab": {
       "classified_by": "D Amodei, Director, WD",
       "derived_from": "WD SCG JUN 08",
-      "declassify_on": 20180903
+      "declassify_on": "20180903"
     },
     "pages": [
       {
@@ -72,8 +72,8 @@
           },
           {
             "mark": "C",
-            "text": "```table\n<table><tr><td colspan=\"2\"></td></tr><tr><td>Classhed by:</td><td></td></tr><tr><td>Declassty</td><td>OADR</td></tr><tr><td>Der rved From</td><td>Multipte</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td colspan=\"2\"></td></tr><tr><td>Classhed by:</td><td></td></tr><tr><td>Declassty</td><td>OADR</td></tr><tr><td>Der rved From</td><td>Multipte</td></tr></table>",
+            "is_table": true
           },
           {
             "mark": "S//SI//REL TO USA, FVEY",

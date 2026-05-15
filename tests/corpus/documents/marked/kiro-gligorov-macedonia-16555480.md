@@ -22,9 +22,8 @@ SECRET//SI//NOFORN/RAWFISA
 
 (U) (b)(3)
 
-(C) ```table
+(C)
 <table><tr><td colspan="2"></td></tr><tr><td>Classhed by:</td><td></td></tr><tr><td>Declassty</td><td>OADR</td></tr><tr><td>Der rved From</td><td>Multipte</td></tr></table>
-```
 
 (S//SI//REL TO USA, FVEY) (cont.) · LDA M 92-15275
 

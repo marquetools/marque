@@ -61,8 +61,9 @@ classified, controlled, or sensitive content.
 - No fixture may contain a real `classifier_id` value (SC-006)
 - No fixture may contain token strings outside the generated CVE
   enumerations in `marque_ism::generated::values` (SC-002a)
-- `documents/` fixtures except where intended to test open CVEs, and may only use prose from documents that have
-  completed formal declassification review and are public domain;
-  marking content overlaid on that prose remains synthetic
+- `documents/` fixtures MUST lint as zero-diagnostic valid input, except where
+  explicitly designated for open-CVE coverage; they may only use prose from
+  documents that have completed formal declassification review and are public
+  domain, and marking content overlaid on that prose remains synthetic
 - This document must be updated and the reviewer line filled before
   the `mvp-corpus-v1` tag is created

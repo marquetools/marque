@@ -6,7 +6,7 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP73B00148A000200150009-6/CIA-RDP73B00148A000200150009-6.pdf",
     "cab": {
-      "classified_by": 987654,
+      "classified_by": "987654",
       "derived_from": "NGA SCG 23 AUG 22",
       "declassify_on": "N/A to AEA and NATO portions, 20220909"
     },

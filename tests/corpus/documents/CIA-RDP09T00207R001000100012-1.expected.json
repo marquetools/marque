@@ -6,9 +6,9 @@
     "year": 1991,
     "source_pdf": "https://archive.org/download/CIA-RDP09T00207R001000100012-1/CIA-RDP09T00207R001000100012-1.pdf",
     "cab": {
-      "classified_by": 3269019,
+      "classified_by": "3269019",
       "derived_from": "NSC SCG 22 JUN 1995",
-      "declassify_on": 20110503
+      "declassify_on": "20110503"
     },
     "pages": [
       {

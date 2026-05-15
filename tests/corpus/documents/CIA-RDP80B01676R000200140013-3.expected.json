@@ -6,7 +6,7 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP80B01676R000200140013-3/CIA-RDP80B01676R000200140013-3.pdf",
     "cab": {
-      "classified_by": 12345,
+      "classified_by": "12345",
       "derived_from": "'RE: CHECK THIS OUT', 22 May 2012, d182372z",
       "declassify_on": "50X1-HUM"
     },
@@ -43,8 +43,8 @@
           },
           {
             "mark": "S",
-            "text": "```table\n<table><tr><td colspan=\"5\">Millions of dollars</td></tr><tr><td></td><td>1960</td><td>1961</td><td>1962</td><td>1963 (lst qtr.)</td></tr><tr><td>U.S. purchase of new foreign issues</td><td>573</td><td>523</td><td>1,076</td><td>512</td></tr><tr><td>U.S. purchases of outstanding issues</td><td>177</td><td>353</td><td>55</td><td>26</td></tr><tr><td>Total U.S. purchases of foreign securities</td><td>750</td><td>876</td><td>1,131</td><td>538</td></tr><tr><td>From Western Europe</td><td>133</td><td>266</td><td>195</td><td>84</td></tr><tr><td>From Canada</td><td>241</td><td>327</td><td>379</td><td>316</td></tr><tr><td>All others</td><td>376</td><td>283</td><td>557</td><td>138</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td colspan=\"5\">Millions of dollars</td></tr><tr><td></td><td>1960</td><td>1961</td><td>1962</td><td>1963 (lst qtr.)</td></tr><tr><td>U.S. purchase of new foreign issues</td><td>573</td><td>523</td><td>1,076</td><td>512</td></tr><tr><td>U.S. purchases of outstanding issues</td><td>177</td><td>353</td><td>55</td><td>26</td></tr><tr><td>Total U.S. purchases of foreign securities</td><td>750</td><td>876</td><td>1,131</td><td>538</td></tr><tr><td>From Western Europe</td><td>133</td><td>266</td><td>195</td><td>84</td></tr><tr><td>From Canada</td><td>241</td><td>327</td><td>379</td><td>316</td></tr><tr><td>All others</td><td>376</td><td>283</td><td>557</td><td>138</td></tr></table>",
+            "is_table": true
           },
           {
             "mark": "U//NF//XD",

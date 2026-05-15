@@ -6,9 +6,9 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP80-00809A000500340084-9/CIA-RDP80-00809A000500340084-9.pdf",
     "cab": {
-      "classified_by": 2345567,
+      "classified_by": "2345567",
       "derived_from": "MS",
-      "declassify_on": 20330502
+      "declassify_on": "20330502"
     },
     "pages": [
       {

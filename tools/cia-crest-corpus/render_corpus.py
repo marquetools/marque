@@ -116,12 +116,26 @@ def _extract_mark(paragraph: str) -> tuple[str | None, str]:
     return m.group(1).strip(), m.group(2).lstrip()
 
 
+def _normalize_cab(raw_cab: object) -> dict[str, str] | None:
+    if not isinstance(raw_cab, dict):
+        return None
+    normalized: dict[str, str] = {}
+    for key, value in raw_cab.items():
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            normalized[str(key)] = text
+    return normalized or None
+
+
 def parse_spec(path: Path) -> ParsedSpec:
     text = path.read_text(encoding="utf-8")
     fm = FRONTMATTER_RE.match(text)
     if not fm:
         raise ValueError(f"{path.name}: missing YAML frontmatter")
     front = yaml.safe_load(fm.group(1)) or {}
+    front_raw = yaml.load(fm.group(1), Loader=yaml.BaseLoader) or {}
     body = text[fm.end() :]
 
     parts = PAGE_HEADER_RE.split(body)
@@ -149,7 +163,9 @@ def parse_spec(path: Path) -> ParsedSpec:
 
         page = ParsedPage(page_num=page_num, banner=banner)
         for raw_para in _split_paragraphs(raw_body):
-            if raw_para.startswith("(?)") and "\n```table" in raw_para:
+            mark, rest = _extract_mark(raw_para)
+
+            if rest.startswith("```table"):
                 mark, rest = _extract_mark(raw_para)
                 inner = rest.split("\n", 1)[1] if rest.startswith("```") else rest
                 if inner.rstrip().endswith("```"):
@@ -159,7 +175,6 @@ def parse_spec(path: Path) -> ParsedSpec:
                 )
                 continue
 
-            mark, rest = _extract_mark(raw_para)
             if mark is None:
                 warnings.append(
                     f"page {page_num}: paragraph has no leading (mark) — "
@@ -175,7 +190,7 @@ def parse_spec(path: Path) -> ParsedSpec:
         title=front.get("title", ""),
         year=front.get("year"),
         source_pdf=front.get("source_pdf"),
-        cab=front.get("cab"),
+        cab=_normalize_cab(front_raw.get("cab")),
         pages=pages,
         warnings=warnings,
     )
@@ -191,6 +206,7 @@ def render_cab(cab: dict | None) -> str:
     for key, label in [
         ("classified_by", "Classified By"),
         ("derived_from", "Derived From"),
+        ("reason", "Reason"),
         ("declassify_on", "Declassify On"),
     ]:
         val = cab.get(key)
@@ -286,11 +302,13 @@ def main() -> int:
 
     truths: list[dict] = []
     total_warnings = 0
+    parse_failures = 0
     for spec_path in sorted(specs_dir.glob("*.md")):
         try:
             spec = parse_spec(spec_path)
         except Exception as e:
             print(f"[fail] {spec_path.name}: {e}")
+            parse_failures += 1
             continue
         marked = render_marked(spec)
         (marked_dir / spec_path.name).write_text(marked, encoding="utf-8")
@@ -312,6 +330,13 @@ def main() -> int:
                 print(f"       (+{len(spec.warnings) - 3} more)")
         else:
             print(f"[ok]   {spec_path.stem}")
+
+    if parse_failures:
+        print(
+            f"\nfailed to parse {parse_failures} spec(s); aborting without writing aggregate ground truth",
+            file=sys.stderr,
+        )
+        return 1
 
     truth_path.write_text(json.dumps(truths, indent=2, default=str))
     print(f"\nwrote {len(truths)} marked docs to {marked_dir}")

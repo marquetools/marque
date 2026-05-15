@@ -108,6 +108,10 @@ def randomize_spec(
             new_mark = rng.choice(pool)
             out.append(f"{new_mark}{m.group(2)}{m.group(3)}")
             replacements += 1
+        elif line.startswith("(?)"):
+            paragraphs_seen += 1
+            out.append(rng.choice(pool))
+            replacements += 1
         else:
             out.append(line)
 

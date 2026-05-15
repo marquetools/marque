@@ -52,8 +52,8 @@
           },
           {
             "mark": "U",
-            "text": "```table\n<table><tr><td>Serial SUBJECT No.</td><td>No. of Notification.</td><td>Office of OOrigin</td><td>Pago</td></tr><tr><td>1. Interim Constitution of the Republic of Iraq.</td><td>3 ..\u2022</td><td>C.M.</td><td>37</td></tr></table>\n```",
-            "is_table": false
+            "text": "<table><tr><td>Serial SUBJECT No.</td><td>No. of Notification.</td><td>Office of OOrigin</td><td>Pago</td></tr><tr><td>1. Interim Constitution of the Republic of Iraq.</td><td>3 ..\u2022</td><td>C.M.</td><td>37</td></tr></table>",
+            "is_table": true
           }
         ]
       },

@@ -42,17 +42,17 @@ edit a spec by hand, re-render, ship.
 ## Quick Start
 
 ```sh
-pip3 install -r requirements.txt
+uv --version
 
 # One-time construction (requires MinerU separately):
-python3 fetch_crest.py
+uv run --script fetch_crest.py
 # ... run MinerU on work/pdfs/*.pdf, output to work/md/<stem>/ ...
-python3 extract_clean.py
-python3 make_specs.py
+uv run --script extract_clean.py
+uv run --script make_specs.py
 
 # Re-run path (after editing a spec):
-python3 randomize_portions.py             # optional: re-shuffle portion marks
-python3 render_corpus.py
+uv run --script randomize_portions.py     # optional: re-shuffle portion marks
+uv run --script render_corpus.py
 ```
 
 CLI flags worth knowing:
