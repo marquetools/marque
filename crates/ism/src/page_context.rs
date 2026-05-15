@@ -233,6 +233,54 @@ impl PageContext {
             .max()
     }
 
+    /// Returns `true` when **every** accumulated portion carries a NATO
+    /// classification axis ([`MarkingClassification::Nato`]) and has no
+    /// populated `fgi_marker`. Empty-accumulator returns `false`.
+    ///
+    /// # Authority
+    ///
+    /// CAPCO-2016 §H.7 p127 Notional Example 2 worked example —
+    /// `(//CTS//BOHEMIA//REL TO USA, NATO)` is the canonical form for a
+    /// bare-NATO portion in a *US-classified* document. By extension, a
+    /// document whose portions are *solely* NATO does not need a NATO
+    /// portion to carry an explicit `REL TO USA, NATO` block — alliance
+    /// ownership is implicit.
+    ///
+    /// # Predicate
+    ///
+    /// 1. `!self.portions.is_empty()` — an empty accumulator is **not**
+    ///    "solely NATO". Without this guard the
+    ///    [`Iterator::all`] short-circuit would return `true` on the
+    ///    empty set, causing S007 (the current consumer) to wrongly
+    ///    suppress on a freshly-reset page or before any portion has
+    ///    been observed.
+    /// 2. Each portion has `classification` matching
+    ///    [`MarkingClassification::Nato`]`(_)`. US, FGI, JOINT, or
+    ///    Conflict classifications disqualify the page.
+    /// 3. Each portion has `fgi_marker.is_none()`. A populated
+    ///    [`FgiMarker`] elevates the portion out of "pure NATO"
+    ///    status — NATO commingled with FGI is a *commingled-NATO*
+    ///    document, distinct from the pure-NATO case the §H.7 p127
+    ///    worked example endorses. (Project memory:
+    ///    `project_nato_transmutes_to_fgi.md` — NATO transmutes to
+    ///    FGI when commingled.)
+    ///
+    /// # Current consumer
+    ///
+    /// Rule **S007** (`bare-nato-requires-rel-to-usa-nato`) reads this
+    /// predicate to silence the bare-NATO → `REL TO USA, NATO`
+    /// suggestion in solely-NATO documents. This helper lives on
+    /// [`PageContext`] rather than as a free function because it is
+    /// derived from the accumulator's existing per-portion state — no
+    /// new accumulator field is required.
+    pub fn is_solely_nato_classified(&self) -> bool {
+        !self.portions.is_empty()
+            && self.portions.iter().all(|a| {
+                matches!(&a.classification, Some(MarkingClassification::Nato(_)))
+                    && a.fgi_marker.is_none()
+            })
+    }
+
     /// All SCI controls that must appear on the banner (union of all portions).
     pub fn expected_sci_controls(&self) -> Vec<SciControl> {
         let mut seen = std::collections::BTreeSet::new();
@@ -1170,6 +1218,90 @@ mod tests {
             Some(Classification::Secret),
             "NS (NATO SECRET) should drive banner to SECRET"
         );
+    }
+
+    // -----------------------------------------------------------------
+    // is_solely_nato_classified — predicate for S007 (FR-048).
+    // CAPCO-2016 §H.7 p127 Notional Example 2 is the authority.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn is_solely_nato_classified_empty_is_false() {
+        // Empty accumulator returns false: an empty page is not
+        // "solely NATO." Without the `!is_empty()` guard, S007 would
+        // wrongly suppress on a freshly-reset page.
+        let ctx = PageContext::new();
+        assert!(!ctx.is_solely_nato_classified());
+    }
+
+    #[test]
+    fn is_solely_nato_classified_one_bare_nato_portion_is_true() {
+        use crate::attrs::NatoClassification::CosmicTopSecret;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(CosmicTopSecret)),
+            ..Default::default()
+        });
+        assert!(
+            ctx.is_solely_nato_classified(),
+            "single bare-NATO portion is a solely-NATO page"
+        );
+    }
+
+    #[test]
+    fn is_solely_nato_classified_nato_plus_us_is_false() {
+        // §H.7 p127 worked example surface: NATO portion sitting in a
+        // US-classified document. The US portion disqualifies the
+        // page from "solely NATO" — S007 must fire on the NATO portion.
+        use crate::attrs::NatoClassification::NatoSecret;
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(NatoSecret)),
+            ..Default::default()
+        });
+        ctx.add_portion(attrs_with_classification(Classification::Secret));
+        assert!(!ctx.is_solely_nato_classified());
+    }
+
+    #[test]
+    fn is_solely_nato_classified_nato_plus_nato_with_fgi_marker_is_false() {
+        // A NATO portion that carries a populated `fgi_marker` is
+        // commingled-NATO, not pure NATO — project memory
+        // `project_nato_transmutes_to_fgi`. The presence of an FGI
+        // marker on any single NATO portion disqualifies the page.
+        use crate::attrs::{FgiMarker, NatoClassification::NatoSecret};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(NatoSecret)),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(NatoSecret)),
+            fgi_marker: Some(FgiMarker::SourceConcealed),
+            ..Default::default()
+        });
+        assert!(!ctx.is_solely_nato_classified());
+    }
+
+    #[test]
+    fn is_solely_nato_classified_nato_plus_fgi_classified_is_false() {
+        // A NATO portion + an FGI-classified portion is also not
+        // solely-NATO. Tests the classification-variant gate
+        // independently from the fgi_marker gate.
+        use crate::attrs::{CountryCode, FgiClassification, NatoClassification::NatoSecret};
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(NatoSecret)),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: vec![CountryCode::try_new(b"DEU").unwrap()].into(),
+            })),
+            ..Default::default()
+        });
+        assert!(!ctx.is_solely_nato_classified());
     }
 
     #[test]

@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-3c.B-Commit-7.4 registration pin (PR 9a updates: 31 → 36).
+//! Post-PR-3c.B-Commit-7.4 registration pin (PR 9c.2 updates: 31 → 38).
 //!
-//! Asserts the **exact set** of 36 registered `Rule::id()` values in
-//! `CapcoRuleSet::new()` after PR 9a (T135a + E061/E062/E063/E064/E065
-//! additions) lands. The umbrella's structural commitment: the per-commit tests
-//! pin per-rule behavior; this pins the closed set the workspace
-//! delivers.
+//! Asserts the **exact set** of 38 registered `Rule::id()` values in
+//! `CapcoRuleSet::new()` after PR 9c.2 (FR-048 / S007) lands. The
+//! umbrella's structural commitment: the per-commit tests pin per-rule
+//! behavior; this pins the closed set the workspace delivers.
 //!
 //! # Why a separate test from the count pin
 //!
@@ -35,7 +34,7 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 36 registered `Rule::id()` strings post-PR-9a.
+/// The closed set of 38 registered `Rule::id()` strings post-PR-9c.2.
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
@@ -49,8 +48,13 @@ use std::collections::BTreeSet;
 /// bare-HCS / bare-RSV rules (E061 / E062 / E063) per §H.4 pp 62, 70
 /// (32 → 35). PR 9a Commit 5 adds `EyesOnlyConvertToRelToRule` (E064)
 /// — EYES / EYES ONLY → REL TO conversion per §H.8 p157 + p158
-/// (35 → 36). The 27 class-floor + 5 SCI per-system catalog rows
-/// still fire; they emit through the bridge as
+/// (35 → 36). PR 9c.1 T134 adds `LegacyNatoCompoundRemarkRule` (E066)
+/// — legacy NATO compound text re-marking per §G.2 p40 + §H.7 p122 +
+/// §H.7 p127 (36 → 37). PR 9c.2 (this PR) adds
+/// `BareNatoRequiresRelToRule` (S007) — bare NATO classification in a
+/// US-classified document should carry `REL TO USA, NATO` per §H.7
+/// p127 Notional Example 2 (37 → 38). The 27 class-floor + 5 SCI
+/// per-system catalog rows still fire; they emit through the bridge as
 /// `Diagnostic.rule = "E058"` and `Diagnostic.rule = "E059"`
 /// respectively (audit-stream + `[rules] E058 = "off"` /
 /// `[rules] E059 = "off"` config-override continuity) but are no
@@ -64,26 +68,30 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // standalone registered control markings) + §H.7 p122 (ATOMAL
     // → AEA worked example) + §H.7 p127 (BALK/BOHEMIA → SCI
     // worked example).
-    "E066", "S003", "S004", "S005", "S006", "W002", "W003", "W034",
+    "E066", "S003", "S004", "S005", "S006",
+    // PR 9c.2 / FR-048: bare NATO classification in a US-classified
+    // document should carry `REL TO USA, NATO` per §H.7 p127 Notional
+    // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
+    "S007", "W002", "W003", "W034",
 ];
 
 #[test]
-fn post_pr_9a_registers_exact_37_rule_ids() {
+fn post_pr_9c2_registers_exact_38_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "37 unique IDs from 37
-    // registrations" from "37 unique IDs from 38 registrations
+    // assertion below cannot distinguish "38 unique IDs from 38
+    // registrations" from "38 unique IDs from 39 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
-    // PR 9c.1 T134 (this PR) added E066 — bumped from 36 to 37.
+    // PR 9c.2 (this PR) added S007 — bumped from 37 to 38.
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 37,
-        "post-PR-9c.1 raw rule slice length drifted from 37 \
+        raw_len, 38,
+        "post-PR-9c.2 raw rule slice length drifted from 38 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -100,16 +108,16 @@ fn post_pr_9a_registers_exact_37_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        37,
-        "EXPECTED_RULE_IDS does not contain 37 unique entries: {expected:?}",
+        38,
+        "EXPECTED_RULE_IDS does not contain 38 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        37,
-        "post-PR-9c.1 registered rule count drifted from 37: actual={actual:?}",
+        38,
+        "post-PR-9c.2 registered rule count drifted from 38: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -125,7 +133,7 @@ fn post_pr_9a_registers_exact_37_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-PR-9a registered rule-ID set drifted. \
+        "post-PR-9c.2 registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \
