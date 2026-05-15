@@ -352,8 +352,41 @@ impl<'t> Parser<'t> {
             // Block 1 when non-US: foreign classification
             // ---------------------------------------------------------------
             if idx == 1 && is_non_us {
-                let parsed_cls = if let Some(nato) = parse_nato_classification(trimmed) {
-                    Some(MarkingClassification::Nato(nato))
+                // PR 9c.1 T134: `parse_nato_classification` now returns
+                // a `NatoBlock` carrying the canonical bare NATO class
+                // plus an optional AEA/SCI companion. Legacy compound
+                // text (CTSA / CTS-B / CTS-BALK / ...) canonicalizes
+                // at parse time per CAPCO-2016 §H.7 p123 + §G.2 p41 +
+                // §H.7 p127.
+                let parsed_cls = if let Some(nato_block) = parse_nato_classification(trimmed) {
+                    let NatoBlock { class, companion } = nato_block;
+                    match companion {
+                        NatoCompanion::None => {}
+                        NatoCompanion::Aea(aea_marking) => {
+                            // Companion write into the AEA axis. Same
+                            // source span as the classification token —
+                            // the legacy text carries both meanings at
+                            // the same byte range; the autofix rule R009
+                            // surfaces this and proposes the canonical
+                            // multi-block form.
+                            aea.push(ParsedAea::new(aea_marking, trimmed, span));
+                        }
+                        NatoCompanion::Sci(nato_sap) => {
+                            // Companion write into the SCI axis as a
+                            // structural `SciMarking` anchored on
+                            // `SciControlSystem::NatoSap`. No
+                            // compartments / sub-compartments — NATO
+                            // SAPs render standalone per §G.2 p41 +
+                            // §H.7 p127.
+                            let sci_marking = SciMarking::new(
+                                SciControlSystem::NatoSap(nato_sap),
+                                Box::new([]),
+                                None,
+                            );
+                            sci_markings.push(ParsedSciMarking::new(sci_marking, trimmed, span));
+                        }
+                    }
+                    Some(MarkingClassification::Nato(class))
                 } else if let Some(joint) = parse_joint_classification(trimmed) {
                     Some(MarkingClassification::Joint(joint))
                 } else {
@@ -1657,36 +1690,131 @@ fn recognize_eyes_only_block<'a>(
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
 /// `"COSMIC TOP SECRET"`, etc.) or portion form (`"NS"`, `"CTS"`, etc.).
 ///
-/// Includes SAP variants (ATOMAL, BOHEMIA, BALK). Longer patterns are checked
-/// first to avoid prefix ambiguity (e.g., `"COSMIC TOP SECRET ATOMAL"` before
-/// `"COSMIC TOP SECRET"`).
-fn parse_nato_classification(s: &str) -> Option<NatoClassification> {
+/// Parse a NATO classification block.
+///
+/// Returns a [`NatoBlock`] carrying the bare NATO classification level
+/// (the canonical structural form, never the legacy compound variants)
+/// plus optional companion writes for either the AEA axis (ATOMAL per
+/// CAPCO-2016 §H.7 p123) or the SCI axis (BALK / BOHEMIA per §G.2 p41
+/// + §H.7 p127).
+///
+/// # Legacy text canonicalization (PR 9c.1 T134)
+///
+/// Pre-PR-9c.1 the legacy text forms `CTSA` / `NSAT` / `NCA` /
+/// `CTS-A` / `NS-A` / `NC-A` / `CTS-B` / `CTS-BALK` parsed into
+/// fused `NatoClassification::*Atomal` / `*Bohemia` / `*Balk`
+/// variants. Per CAPCO-2016 §H.7 line 4702 (history note for the
+/// December 2010 revision) those forms are **structurally wrong**:
+/// ATOMAL is an AEA-axis marking shared with NATO+UK under
+/// bilateral §123/§144 agreements, and BOHEMIA/BALK are NATO SAPs
+/// in the SCI category position. The legacy compound variants
+/// were retired in PR 9c.1 Commit 5; this parser canonicalizes the
+/// legacy text at parse time so existing markings produce the
+/// correct structural canonical form.
+///
+/// Per CAPCO-2016 §H.7 line 4702, "re-marking of legacy information
+/// is not required; upon re-use, markings must be modified, if
+/// possible, to reflect the current standard." Marque's autofix
+/// channel (rule R009 in `marque-capco/src/rules.rs`) drives the
+/// re-marking when the rule severity is configured to fire.
+///
+/// Longer patterns are checked first to avoid prefix ambiguity
+/// (e.g., `"COSMIC TOP SECRET ATOMAL"` before `"COSMIC TOP SECRET"`).
+fn parse_nato_classification(s: &str) -> Option<NatoBlock> {
+    use marque_ism::{AtomalBlock, NatoSap};
     // Check longer patterns first to avoid prefix matches.
-    match s {
-        // Banner forms (full words) — longer patterns first
-        "COSMIC TOP SECRET ATOMAL" => Some(NatoClassification::CosmicTopSecretAtomal),
-        "COSMIC TOP SECRET-BOHEMIA" => Some(NatoClassification::CosmicTopSecretBohemia),
-        "COSMIC TOP SECRET-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
-        "COSMIC TOP SECRET" => Some(NatoClassification::CosmicTopSecret),
-        "NATO SECRET ATOMAL" => Some(NatoClassification::NatoSecretAtomal),
-        "NATO SECRET" => Some(NatoClassification::NatoSecret),
-        "NATO CONFIDENTIAL ATOMAL" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NATO CONFIDENTIAL" => Some(NatoClassification::NatoConfidential),
-        "NATO RESTRICTED" => Some(NatoClassification::NatoRestricted),
-        "NATO UNCLASSIFIED" => Some(NatoClassification::NatoUnclassified),
-        // Portion forms — primary (CAPCO Register)
-        "CTSA" | "CTS-A" => Some(NatoClassification::CosmicTopSecretAtomal),
-        "CTS-B" => Some(NatoClassification::CosmicTopSecretBohemia),
-        "CTS-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
-        "CTS" => Some(NatoClassification::CosmicTopSecret),
-        "NSAT" | "NS-A" => Some(NatoClassification::NatoSecretAtomal),
-        "NS" => Some(NatoClassification::NatoSecret),
-        "NCA" | "NC-A" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NC" => Some(NatoClassification::NatoConfidential),
-        "NR" => Some(NatoClassification::NatoRestricted),
-        "NU" => Some(NatoClassification::NatoUnclassified),
-        _ => None,
-    }
+    let (class, companion) = match s {
+        // Banner forms (full words) — longer patterns first.
+        // Companion AEA = ATOMAL; companion SCI = BALK / BOHEMIA.
+        "COSMIC TOP SECRET ATOMAL" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "COSMIC TOP SECRET-BOHEMIA" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Bohemia),
+        ),
+        "COSMIC TOP SECRET-BALK" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Balk),
+        ),
+        "COSMIC TOP SECRET" => (NatoClassification::CosmicTopSecret, NatoCompanion::None),
+        "NATO SECRET ATOMAL" => (
+            NatoClassification::NatoSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NATO SECRET" => (NatoClassification::NatoSecret, NatoCompanion::None),
+        "NATO CONFIDENTIAL ATOMAL" => (
+            NatoClassification::NatoConfidential,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NATO CONFIDENTIAL" => (NatoClassification::NatoConfidential, NatoCompanion::None),
+        "NATO RESTRICTED" => (NatoClassification::NatoRestricted, NatoCompanion::None),
+        "NATO UNCLASSIFIED" => (NatoClassification::NatoUnclassified, NatoCompanion::None),
+        // Portion forms — primary (CAPCO Register) + legacy compounds.
+        // Legacy `CTSA` / `CTS-A` / `NSAT` / `NS-A` / `NCA` / `NC-A`
+        // canonicalize to bare class + AEA::Atomal companion.
+        // Legacy `CTS-B` / `CTS-BALK` canonicalize to bare class + SCI
+        // (BOHEMIA / BALK NatoSap) companion.
+        "CTSA" | "CTS-A" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "CTS-B" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Bohemia),
+        ),
+        "CTS-BALK" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Balk),
+        ),
+        "CTS" => (NatoClassification::CosmicTopSecret, NatoCompanion::None),
+        "NSAT" | "NS-A" => (
+            NatoClassification::NatoSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NS" => (NatoClassification::NatoSecret, NatoCompanion::None),
+        "NCA" | "NC-A" => (
+            NatoClassification::NatoConfidential,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NC" => (NatoClassification::NatoConfidential, NatoCompanion::None),
+        "NR" => (NatoClassification::NatoRestricted, NatoCompanion::None),
+        "NU" => (NatoClassification::NatoUnclassified, NatoCompanion::None),
+        _ => return None,
+    };
+    Some(NatoBlock { class, companion })
+}
+
+/// Result of parsing a NATO classification block.
+///
+/// The block carries the canonical bare NATO class plus an optional
+/// companion write to either the AEA axis (ATOMAL) or the SCI axis
+/// (BALK / BOHEMIA). PR 9c.1 T134 introduced this split so the
+/// classification axis no longer fuses sub-markings into wrong
+/// classification-variant identities; see [`parse_nato_classification`]
+/// doc for the rationale.
+struct NatoBlock {
+    class: NatoClassification,
+    companion: NatoCompanion,
+}
+
+/// Optional companion writes for [`NatoBlock`]. At most one — ATOMAL
+/// can in principle co-occur with BALK/BOHEMIA on the same portion
+/// (`(//CTS//BOHEMIA//ATOMAL)`), but that would arrive as a
+/// well-formed multi-block input (separate `//`-blocks for the
+/// classification and the SCI/AEA marker), not as a legacy compound
+/// text. The fused legacy text always carries exactly one companion.
+enum NatoCompanion {
+    None,
+    /// AEA companion — ATOMAL per CAPCO-2016 §H.7 p123. Written into
+    /// `attrs.aea_markings`.
+    Aea(AeaMarking),
+    /// SCI companion — BALK / BOHEMIA per CAPCO-2016 §G.2 p41 +
+    /// §H.7 p127. Written into `attrs.sci_markings` as a structural
+    /// [`SciMarking`] whose `system` is the corresponding
+    /// [`marque_ism::NatoSap`] variant.
+    Sci(marque_ism::NatoSap),
 }
 
 /// Parse a JOINT classification block: `"JOINT S USA GBR"` or `"JOINT SECRET USA GBR"`.
@@ -1950,9 +2078,32 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
 /// Used as a fallback in the block loop to detect conflict scenarios
 /// (e.g., `SECRET//NATO SECRET//NOFORN`) where a foreign classification
 /// appears alongside a US classification.
+///
+/// # PR 9c.1 T134 — companion drop in conflict scenarios
+///
+/// Post-PR-9c.1, [`parse_nato_classification`] returns a `NatoBlock`
+/// carrying the bare NATO class plus an optional AEA/SCI companion.
+/// In the conflict-scenario fallback (this function), the companion
+/// is **dropped** — the conflict path stores only the foreign
+/// classification axis; there's no `ForeignClassification` carrier
+/// shape for companion AEA/SCI writes. A conflict input like
+/// `SECRET//CTSA//NOFORN` records the foreign class as `CosmicTopSecret`
+/// (the bare class) and loses the implicit ATOMAL companion.
+///
+/// This is acceptable for PR 9c.1 because:
+///   - The conflict shape itself is malformed input (US + foreign
+///     classifications shouldn't both appear), and dedicated rules
+///     surface that condition first.
+///   - The R009 legacy-text autofix reads raw source text via
+///     `attrs.token_spans`, so the legacy-text suggestion still
+///     fires even when the structural companion is dropped here.
+///   - If a future revision requires conflict-aware companion
+///     plumbing, the change is local to `ForeignClassification` +
+///     this function — no rule-surface impact.
 fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
-    if let Some(nato) = parse_nato_classification(s) {
-        Some(ForeignClassification::Nato(nato))
+    if let Some(nato_block) = parse_nato_classification(s) {
+        // Drop the companion in the conflict path; see fn doc above.
+        Some(ForeignClassification::Nato(nato_block.class))
     } else if let Some(joint) = parse_joint_classification(s) {
         Some(ForeignClassification::Joint(joint))
     } else {
@@ -2996,64 +3147,209 @@ mod tests {
     // Non-US classification parsing
     // -----------------------------------------------------------------------
 
+    /// What companion writes a NATO block should produce alongside
+    /// the bare classification. Mirrors the parser's `NatoCompanion`
+    /// enum without re-exporting it from the parser module.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ExpectedCompanion {
+        None,
+        Atomal,
+        Balk,
+        Bohemia,
+    }
+
+    fn assert_nato_companion(parsed: &CanonicalParsed, expected: ExpectedCompanion) {
+        use marque_ism::{AeaMarking, NatoSap, SciControlSystem};
+        let aea_atomal = parsed
+            .attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Atomal(_)));
+        let sci_balk = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Balk)));
+        let sci_bohemia = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Bohemia)));
+        match expected {
+            ExpectedCompanion::None => {
+                assert!(!aea_atomal, "did not expect AEA ATOMAL companion");
+                assert!(!sci_balk, "did not expect SCI BALK companion");
+                assert!(!sci_bohemia, "did not expect SCI BOHEMIA companion");
+            }
+            ExpectedCompanion::Atomal => {
+                assert!(aea_atomal, "expected AEA ATOMAL companion to be written");
+            }
+            ExpectedCompanion::Balk => {
+                assert!(sci_balk, "expected SCI BALK companion to be written");
+            }
+            ExpectedCompanion::Bohemia => {
+                assert!(sci_bohemia, "expected SCI BOHEMIA companion to be written");
+            }
+        }
+    }
+
+    /// PR 9c.1 T134: legacy compound NATO classification text (e.g.,
+    /// `COSMIC TOP SECRET ATOMAL`) is canonicalized at parse time to
+    /// bare class + companion AEA/SCI write per CAPCO-2016 §H.7 p123 +
+    /// §G.2 p41 + §H.7 p127. The class axis carries only the bare
+    /// `NatoClassification::CosmicTopSecret` / `NatoSecret` /
+    /// `NatoConfidential` form; the marking-specific concern (ATOMAL,
+    /// BALK, BOHEMIA) lives on its grammar-correct axis.
     #[test]
     fn nato_banner_parses_all_variants() {
-        for (input, expected) in [
-            ("//NATO UNCLASSIFIED", NatoClassification::NatoUnclassified),
-            ("//NATO RESTRICTED", NatoClassification::NatoRestricted),
-            ("//NATO CONFIDENTIAL", NatoClassification::NatoConfidential),
+        for (input, expected_class, expected_companion) in [
+            (
+                "//NATO UNCLASSIFIED",
+                NatoClassification::NatoUnclassified,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO RESTRICTED",
+                NatoClassification::NatoRestricted,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO CONFIDENTIAL",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::None,
+            ),
             (
                 "//NATO CONFIDENTIAL ATOMAL",
-                NatoClassification::NatoConfidentialAtomal,
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
             ),
-            ("//NATO SECRET", NatoClassification::NatoSecret),
-            ("//NATO SECRET ATOMAL", NatoClassification::NatoSecretAtomal),
-            ("//COSMIC TOP SECRET", NatoClassification::CosmicTopSecret),
+            (
+                "//NATO SECRET",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO SECRET ATOMAL",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "//COSMIC TOP SECRET",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::None,
+            ),
             (
                 "//COSMIC TOP SECRET ATOMAL",
-                NatoClassification::CosmicTopSecretAtomal,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
             ),
             (
                 "//COSMIC TOP SECRET-BOHEMIA",
-                NatoClassification::CosmicTopSecretBohemia,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Bohemia,
             ),
             (
                 "//COSMIC TOP SECRET-BALK",
-                NatoClassification::CosmicTopSecretBalk,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Balk,
             ),
         ] {
             let parsed = parse_banner(input);
             assert_eq!(
                 parsed.attrs.classification,
-                Some(MarkingClassification::Nato(expected)),
-                "failed for banner: {input}"
+                Some(MarkingClassification::Nato(expected_class)),
+                "failed bare-class for banner: {input}"
             );
+            assert_nato_companion(&parsed, expected_companion);
         }
     }
 
+    /// PR 9c.1 T134: portion-form legacy compounds (`CTSA`, `CTS-A`,
+    /// `CTS-B`, `CTS-BALK`, `NSAT`, `NS-A`, `NCA`, `NC-A`) canonicalize
+    /// to bare class + companion AEA/SCI per CAPCO-2016 §G.1 Table 4
+    /// p38 (portion-form column) + §H.7 line 4702 history note
+    /// ("re-marking of legacy information ... markings must be modified
+    /// ... to reflect the current standard"). Marque's R009 autofix
+    /// rule emits the canonical multi-block form as a text correction;
+    /// the parser canonicalizes the data shape so rules consuming
+    /// `attrs.{classification,aea_markings,sci_markings}` see the
+    /// structural truth.
     #[test]
     fn nato_portion_parses_all_variants() {
-        for (input, expected) in [
-            ("(//NU)", NatoClassification::NatoUnclassified),
-            ("(//NR)", NatoClassification::NatoRestricted),
-            ("(//NC)", NatoClassification::NatoConfidential),
-            ("(//NCA)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NC-A)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NS)", NatoClassification::NatoSecret),
-            ("(//NSAT)", NatoClassification::NatoSecretAtomal),
-            ("(//NS-A)", NatoClassification::NatoSecretAtomal),
-            ("(//CTS)", NatoClassification::CosmicTopSecret),
-            ("(//CTSA)", NatoClassification::CosmicTopSecretAtomal),
-            ("(//CTS-A)", NatoClassification::CosmicTopSecretAtomal),
-            ("(//CTS-B)", NatoClassification::CosmicTopSecretBohemia),
-            ("(//CTS-BALK)", NatoClassification::CosmicTopSecretBalk),
+        for (input, expected_class, expected_companion) in [
+            (
+                "(//NU)",
+                NatoClassification::NatoUnclassified,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NR)",
+                NatoClassification::NatoRestricted,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NC)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NCA)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NC-A)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NS)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NSAT)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NS-A)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//CTSA)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS-A)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS-B)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Bohemia,
+            ),
+            (
+                "(//CTS-BALK)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Balk,
+            ),
         ] {
             let parsed = parse_portion(input);
             assert_eq!(
                 parsed.attrs.classification,
-                Some(MarkingClassification::Nato(expected)),
-                "failed for portion: {input}"
+                Some(MarkingClassification::Nato(expected_class)),
+                "failed bare-class for portion: {input}"
             );
+            assert_nato_companion(&parsed, expected_companion);
         }
     }
 

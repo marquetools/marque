@@ -1946,15 +1946,33 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
     let parsed = rx.recognize(b"(//nato secret atomal//nf)", &deep_cx());
     match parsed {
         Parsed::Unambiguous(ref marking) => {
+            // PR 9c.1 T134: legacy `NATO SECRET ATOMAL` text canonicalizes
+            // to bare `NatoClassification::NatoSecret` plus an AEA-axis
+            // `Atomal` companion (CAPCO-2016 §H.7 p123 + line 4702
+            // history note). Pre-PR-9c.1 this assertion expected the
+            // fused `NatoClassification::NatoSecretAtomal` variant; that
+            // variant was retired in PR 9c.1 Commit 5 as a structurally
+            // wrong fusion of classification and AEA semantics.
             match marking.0.classification.as_ref() {
-                Some(MarkingClassification::Nato(NatoClassification::NatoSecretAtomal)) => {
-                    // Expected: case-normalization path recovers correctly.
+                Some(MarkingClassification::Nato(NatoClassification::NatoSecret)) => {
+                    // Expected canonical bare-class outcome.
                 }
                 other => panic!(
-                    "T129 regression: `(//nato secret atomal//nf)` must recover as \
-                     NatoSecretAtomal, got {other:?}"
+                    "T129 regression: `(//nato secret atomal//nf)` must recover with \
+                     canonical bare class NatoSecret, got {other:?}"
                 ),
             }
+            let has_atomal = marking
+                .0
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, marque_ism::AeaMarking::Atomal(_)));
+            assert!(
+                has_atomal,
+                "T129 regression: ATOMAL companion must be written into the AEA \
+                 axis when the legacy `NATO SECRET ATOMAL` form is recovered \
+                 (CAPCO-2016 §H.7 p123)"
+            );
         }
         other => panic!(
             "T129 regression: `(//nato secret atomal//nf)` must decode unambiguously, \
