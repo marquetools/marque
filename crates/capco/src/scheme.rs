@@ -555,7 +555,7 @@ fn merge_fgi_markers(
             let mut all: std::collections::BTreeSet<marque_ism::CountryCode> =
                 c1.iter().copied().collect();
             all.extend(c2.iter().copied());
-            FgiMarker::acknowledged(all.into_iter())
+            FgiMarker::acknowledged(all)
         }
     }
 }

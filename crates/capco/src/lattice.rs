@@ -1582,20 +1582,12 @@ impl DissemSet {
 
 impl Lattice for DissemSet {
     fn join(&self, other: &Self) -> Self {
-        // The static-table pointer-equality guard ensures that
-        // every `DissemSet` reachable from real construction paths
-        // shares the same supersession table; ad-hoc copies in test
-        // code would trip this in debug builds.
-        debug_assert!(
-            std::ptr::eq(
-                DISSEM_SUPERSESSION_TABLE.as_ptr(),
-                DISSEM_SUPERSESSION_TABLE.as_ptr()
-            ),
-            "DISSEM_SUPERSESSION_TABLE must be the single static \
-             table; ad-hoc copies in test code are forbidden \
-             (rust-reviewer Gotcha 2)"
-        );
-
+        // The single-static-table convention is enforced by the
+        // crate-private `apply_overlays` API taking
+        // `DISSEM_SUPERSESSION_TABLE` directly (it has no other call
+        // sites). H-4 PR 4b-B follow-up removed a tautological
+        // `debug_assert!` that compared the table pointer to itself
+        // — always true, false protection.
         let mut set = self.set.clone();
         set.extend(other.set.iter().copied());
 

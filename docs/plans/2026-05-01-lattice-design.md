@@ -2215,10 +2215,16 @@ implementation:
 
 - Compares two `MarkingClassification`s by `effective_level()`.
 - Returns the variant with the higher level **as-is**.
-- On equal level, preserves the variant from the left operand (the
-  `Lattice` contract requires the result to round-trip with at least
-  one of the operands; `Us` is preferred when both are `Us`-shaped so
-  the most-common case is the no-op).
+- On equal effective level, applies a deterministic, order-
+  independent variant precedence: `Us < Fgi < Nato < Joint <
+  Conflict` (lower rank wins). The US-canonical preference matches
+  §H.7 pp123-125 reciprocal normalization — Us is the post-
+  normalization canonical variant when a US classification is in
+  scope. This makes the join commutative across mixed variants:
+  `Us(Secret).join(Fgi(Secret)) == Fgi(Secret).join(Us(Secret)) ==
+  Us(Secret)`. (PR 4b-B follow-up C-1 corrected this site — the
+  original "left operand wins" tiebreak was order-dependent and
+  broke commutativity.)
 
 This preserves the variant-tag information that `JointSet`/`FgiSet`
 need for accurate banner attribution downstream.

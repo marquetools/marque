@@ -506,8 +506,18 @@ impl PageContext {
     /// per ISM-Rollup XSLT — all of which are US-context behaviors
     /// (none apply to the NATO-attributed channel):
     ///
-    /// - **OC-USGOV** (§H.8 p139): Drops if not present on ALL
-    ///   OC-carrying portions.
+    /// - **OC-USGOV supersession** (§H.8 p136 + p140): Drops when
+    ///   any portion carries `Oc`. The constituency relationship
+    ///   `ORCON ⊐ ORCON-USGOV` makes ORCON the broader marker; one
+    ///   ORCON portion wins the banner over any number of
+    ///   ORCON-USGOV portions. (PR 4b-B Commit 2 — was a
+    ///   unanimity-drop pre-fix; the supersession reading matches
+    ///   the worked example on §H.8 p136.)
+    /// - **RELIDO observed-unanimity** (§H.8 pp155-156): Drops when
+    ///   any portion lacks `Relido`. Layer 1 only — the Layer 2
+    ///   case where Marque infers RELIDO from §B.3 Table 2
+    ///   ("classified, uncaveated, on/after 28 Jun 2010") defers to
+    ///   PR 4b-D.
     /// - **FOUO** (§H.8 p134): Drops in classified documents (stays
     ///   in unclassified).
     /// - **DSEN** (§H.8 p159): Overrides FOUO regardless of
@@ -2351,15 +2361,23 @@ mod tests {
 
     #[test]
     fn dissem_oc_usgov_supersession_single_orcon_drops_many_usgov() {
-        // PR 4b-B Commit 2 regression: one ORCON portion + multiple
-        // ORCON-USGOV portions → banner gets ORCON only (USGOV drops).
-        // Per §H.8 p136 + p140 — the pre-fix unanimity-drop logic would
-        // INCORRECTLY have kept USGOV here (it wasn't "missing from any
-        // OC-carrying portion" because every OC-carrying portion
-        // technically had USGOV; only the one bare-ORCON portion lacked
-        // it, but the unanimity logic only inspected OC-carrying
-        // portions). The supersession logic is unambiguous: ORCON
-        // present + ORCON-USGOV present → drop USGOV.
+        // PR 4b-B Commit 2 regression: one bare-ORCON portion + three
+        // OC+OC-USGOV portions → banner gets ORCON only (USGOV drops).
+        // Per §H.8 p136 + p140 — supersession is unambiguous: any
+        // ORCON portion anywhere on the page wins over any number of
+        // ORCON-USGOV portions, regardless of co-occurrence on the
+        // same portion.
+        //
+        // M-2 PR 4b-B follow-up: this fixture does NOT distinguish
+        // pre-fix unanimity-drop from post-fix supersession (both
+        // would drop USGOV here, because the bare-ORCON portion
+        // breaks the "all OC-carrying portions have USGOV" condition
+        // anyway). The clean distinguishing case lives in the
+        // pure-OC-USGOV-with-one-ORCON-elsewhere shape: the
+        // `dissem_oc_usgov_rolls_up_when_no_orcon_in_any_portion`
+        // sibling test plus the pure-OC-USGOV parity-gate fixture
+        // (`page_context_lattice_parity::oc_usgov_pure_usgov`)
+        // together cover the unanimity-vs-supersession split.
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),

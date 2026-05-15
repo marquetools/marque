@@ -46,17 +46,23 @@ agent proceeds under them unless overridden.
   (`MarkingClassification`, `NonUsClassification`/NATO,
   `JointClassification`, `DissemSet` for US dissem + REL TO, `RelToBlock`,
   `DeclassifyOn`).
-- Replace `CapcoMarking::join`'s PageContext delegation
-  (`crates/capco/src/scheme.rs:324`) with component-wise per-category
-  joins.
+- Add a parallel `CapcoMarking::join_via_lattice` method
+  (`crates/capco/src/scheme.rs`) using component-wise per-category
+  joins. The production `Lattice::join` continues to delegate to
+  PageContext at PR 4b-B; the hot-path flip lands in PR 4b-D once
+  the corpus-parity gate is fully wired (M-4 PR 4b-B follow-up
+  correction: plan originally said "replace", actual scope is "add
+  parallel path + parity-gate the two").
 - OC-USGOV supersession **bugfix** in `crates/ism/src/page_context.rs`
   (the `expected_dissem_us` "unanimity-drop" branch is wrong; replace
   with supersession).
 - JOINT producer-unanimity-or-collapse-to-FGI logic, including the new
   Warn diagnostic (`W004` per §6.3 rule-ID note).
 - Parity gate at `crates/capco/tests/page_context_lattice_parity.rs`
-  covering every `tests/corpus/valid/` fixture + synthetic
-  multi-portion fixtures, with documented divergences for the
+  covering 23 synthetic multi-portion fixtures plus 7 documented-
+  divergence fixtures (PR 4b-B follow-up M-4: corpus-fixture coverage
+  is deferred to PR 4b-D when the hot path flips), with documented
+  divergences for the
   OC-USGOV correction and the JOINT-disunity collapse.
 - §-citations for every new doc-comment, diagnostic, and design-doc
   row re-verified against `crates/capco/docs/CAPCO-2016.md` at the
@@ -494,13 +500,23 @@ Sequencing rationale at §5.
     - Replacement intent: `ReplacementIntent::FactRemove` of the
       `JOINT` category from each disunity portion + `FactAdd` of
       `FGI [non-US producers]` to the FGI axis. Cross-axis, so this
-      is a `text_correction` route per the `marque-applied.md`
+      would be a `text_correction` route per the `marque-applied.md`
       §3.10 Move 7 + PR 9a T135a Commit 5 precedent (EYES → REL TO
       conversion was the first cross-axis migration on text_correction
       route).
     - Confidence: 0.85 (matches the W003 / E064 baselines; cross-
       axis migrations are inherently judgment calls).
     - Source: `FixSource::Walker { walker = "W004" }`.
+    - **PR 4b-B follow-up H-1 — declined in scope.** The fix payload
+      lands later. JOINT-disunity is a multi-span page-level
+      transformation: removing the JOINT block from each portion
+      AND emitting a new banner-shaped FGI [LIST] elsewhere is
+      cross-axis AND multi-span; `text_correction` is single-span
+      and `ReplacementIntent` is single-axis. The
+      `MarkingScheme::render_canonical` trait surface (PR 5+ Stage 4)
+      is the correct home for this transformation. W004 ships as
+      Warn-only today; the audit trail surfaces the transformation
+      so users can act on it.
 - **Test fixtures (`joint_disunity_collapse.rs`)**:
   - `joint_unanimous_two_portions_same_producers_passes_through`
     — `(//JOINT S USA GBR) (//JOINT S USA GBR)` → banner
@@ -706,8 +722,11 @@ Sequencing rationale at §5.
 - **Subject**: `feat(capco): register W004 joint-disunity-collapse (006 T112 PR 4b-B Commit 9)`
 - **Content**:
   - Add `JointDisunityCollapseRule` registration to `CapcoRuleSet::new()`.
-  - Bump expected rule count from 36 → 37 in
+  - Bump expected rule count from 38 → 39 in
     `corpus_parity.rs` count pin + add W004 to `post_3b_registration_pin.rs`.
+    (Plan written before the PR 9c.2 S007 registration shifted the
+    baseline from 36 to 38; the actual delta is 38 → 39. PR 4b-B
+    follow-up M-5 corrected this site.)
   - W004 severity defaults to `Warn`; configurable in `.marque.toml`
     via standard `[rules]` table.
 - **§-citations verified**: §H.3 p56 + §H.7 p123 (re-checked at the
@@ -1086,11 +1105,13 @@ self-resolves.
 - [ ] Commit 5's W004 diagnostic carries no document text
       (`joint_disunity_warn_diagnostic_carries_no_document_text`
       test). Audit-record content-ignorance per Constitution V G13.
-- [ ] Commit 8 parity gate covers all corpus fixtures + synthetic
-      (≥30) cases; each documented divergence carries an inline
-      `§X.Y pNN` citation.
-- [ ] Commit 9 bumps the rule count pin (36 → 37) and adds W004 to
-      the exact-set pin.
+- [ ] Commit 8 parity gate covers 23 synthetic fixtures plus 7
+      documented-divergence fixtures (PR 4b-B follow-up M-4 + G-1..G-7);
+      each divergence carries an inline `§X.Y pNN` citation. Corpus-
+      fixture coverage is deferred to PR 4b-D when the project()
+      hot path flips.
+- [ ] Commit 9 bumps the rule count pin (38 → 39 — corrected M-5 in
+      PR 4b-B follow-up) and adds W004 to the exact-set pin.
 - [ ] Reviewer chain (rust-reviewer + code-reviewer +
       capco-classification-validator + capco-dissem-validator) ran
       BEFORE `gh pr create`; attestations recorded in PR description.

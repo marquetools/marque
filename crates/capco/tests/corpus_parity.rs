@@ -217,7 +217,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        38,
+        39,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -237,6 +237,11 @@ fn rule_count_reflects_registration_changes() {
          `BareNatoRequiresRelToRule` (S007) — bare NATO classification \
          in a US-classified document should carry `REL TO USA, NATO` \
          per §H.7 p127 Notional Example 2; net delta +1. Final: 38. \
+         PR 4b-B (006 T112) adds `JointDisunityCollapseRule` (W004) — \
+         JOINT producer-disunity-collapse-to-FGI per §H.3 p56 + \
+         §H.7 p123 (Warn-only; cross-axis fix deferred to renderer in \
+         PR 5+ per H-1 PR 4b-B follow-up triage); net delta +1. \
+         Final: 39. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
