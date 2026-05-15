@@ -1030,7 +1030,7 @@ mod dissem_set {
     }
 
     #[test]
-    fn dissem_set_empty_constructors_agree() {
+    fn dissem_set_all_empty_constructors_agree() {
         // C-5 (PR 4b-B follow-up): `from_attrs_iter(&[])` must
         // return the same value as `DissemSet::empty()`. Pre-fix,
         // `from_attrs_iter(&[])` set `relido_observed_unanimous =
@@ -1043,6 +1043,52 @@ mod dissem_set {
         assert_eq!(from_empty, empty);
         assert!(from_empty.relido_unanimous());
         assert!(from_empty.as_set().is_empty());
+
+        // C-8 (PR 4b-B follow-up): `DissemSet::default()` MUST also
+        // agree with `DissemSet::empty()`. Pre-fix, `#[derive(Default)]`
+        // produced `relido_observed_unanimous = false` (bool's Default)
+        // while `empty()` uses `true` (vacuous-truth over empty
+        // portion list). The two bottom states were `PartialEq`-
+        // different, and joining a `Default::default()` operand into
+        // a unanimous-RELIDO set dropped RELIDO under the
+        // unanimity-AND-propagation rule.
+        let default = DissemSet::default();
+        assert_eq!(default, empty, "C-8: Default == empty()");
+        assert!(
+            default.relido_unanimous(),
+            "C-8: Default is vacuously unanimous"
+        );
+        assert!(default.as_set().is_empty(), "C-8: Default is the empty bag");
+    }
+
+    #[test]
+    fn dissem_set_default_does_not_drop_relido_when_joined() {
+        // C-8 (PR 4b-B follow-up): concrete regression — joining a
+        // unanimous-RELIDO set with `DissemSet::default()` MUST
+        // preserve RELIDO. Pre-fix, the derived `Default` set
+        // `relido_observed_unanimous = false`, so the AND-propagation
+        // in `join` flipped the flag, and the overlay then dropped
+        // RELIDO from the set.
+        let unanimous_relido = DissemSet::from_attrs_iter(&[portion(&[DissemControl::Relido])]);
+        let default = DissemSet::default();
+        let joined_left = unanimous_relido.join(&default);
+        let joined_right = default.join(&unanimous_relido);
+        assert!(
+            joined_left.as_set().contains(&DissemControl::Relido),
+            "C-8: RELIDO preserved across join with Default (left)"
+        );
+        assert!(
+            joined_right.as_set().contains(&DissemControl::Relido),
+            "C-8: RELIDO preserved across join with Default (right)"
+        );
+        assert!(
+            joined_left.relido_unanimous(),
+            "C-8: unanimity preserved across join with Default (left)"
+        );
+        assert!(
+            joined_right.relido_unanimous(),
+            "C-8: unanimity preserved across join with Default (right)"
+        );
     }
 
     #[test]

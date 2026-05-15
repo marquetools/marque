@@ -1638,7 +1638,16 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
 /// - §H.8 p145 (NOFORN dominates REL TO / RELIDO / DISPLAY ONLY).
 /// - §H.8 pp155-156 (RELIDO unanimity for banner rollup).
 /// - §D.2 Table 3 rows 1-2 (NOFORN dominates dominated FD&R).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// **`Default`** (C-8 PR 4b-B follow-up). `Default` MUST agree with
+/// `empty()` — both are the lattice bottom with the vacuous-truth
+/// `relido_observed_unanimous = true` flag. A derived `Default` would
+/// produce `relido_observed_unanimous = false` (bool's Default), which
+/// would break `Default == empty()` and silently drop RELIDO when a
+/// `Default::default()` value was joined into a unanimous-RELIDO set.
+/// The manual `Default` impl delegates to `empty()` so the two
+/// constructors agree.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DissemSet {
     /// The post-overlay set of dissem controls.
     set: BTreeSet<DissemControl>,
@@ -1651,6 +1660,17 @@ pub struct DissemSet {
     /// portion, the unanimity bit is vacuous and stays at true so
     /// joining with a fresh non-Relido set is no-op; etc.
     relido_observed_unanimous: bool,
+}
+
+impl Default for DissemSet {
+    /// `Default` MUST agree with `DissemSet::empty()` (C-8 PR 4b-B
+    /// follow-up). See the struct doc comment for the rationale —
+    /// the derived `Default` set `relido_observed_unanimous = false`
+    /// (bool's Default) and broke C-5's `from_attrs_iter(&[]) ==
+    /// empty()` agreement on a third constructor.
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 impl DissemSet {
