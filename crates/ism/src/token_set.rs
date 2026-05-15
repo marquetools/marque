@@ -164,7 +164,7 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// `NatoClassification::CosmicTopSecretAtomal` /
 /// `CosmicTopSecretBohemia` / `CosmicTopSecretBalk` /
 /// `NatoSecretAtomal` / `NatoConfidentialAtomal` variants for these
-/// inputs. Per CAPCO-2016 §H.7 line 4702 those forms are
+/// inputs. Per CAPCO-2016 §G.2 p41 + §H.7 p123 those forms are
 /// **structurally wrong** — ATOMAL is an AEA-axis marking and
 /// BOHEMIA/BALK are NATO SAPs in the SCI position. PR 9c.1 retired
 /// the fused variants; the parser now canonicalizes the legacy text
@@ -198,7 +198,8 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// (Case 4 verbatim).
 ///
 /// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (portion-form column);
-/// §H.7 line 4702 (history note on legacy re-marking).
+/// §G.2 p41 + §H.7 p123 (the normative anchors for the canonical
+/// AEA-axis / SCI-axis placement of ATOMAL / BOHEMIA / BALK).
 const NATO_PORTION_FORMS: &[&str] = &[
     // Five base-level portion forms (CAPCO-2016 §G.1 Table 4)
     "CTS", "NC", "NR", "NS", "NU",

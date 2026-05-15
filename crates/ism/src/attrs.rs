@@ -651,10 +651,11 @@ pub struct FgiClassification {
 ///
 /// # Canonical structural model (PR 9c.1 T134)
 ///
-/// CAPCO-2016 §H.7 line 4702 (December 2010 history note) identifies
-/// ATOMAL / BOHEMIA / BALK as **NATO control markings, not NATO
-/// classifications**. Per CAPCO-2016 §H.7 p123 + §G.2 p41 + §H.7
-/// p127 worked examples:
+/// Per CAPCO-2016 §G.2 p41 (Table 5: ARH by Registered Marking),
+/// ATOMAL / BOHEMIA / BALK are **registered NATO control markings,
+/// not NATO classifications** — each has its own ARH row with
+/// `Requires {marking} read-in`. The §H.7 p123 + §H.7 p127 worked
+/// examples place them in their proper category positions:
 ///
 /// - **ATOMAL** is an AEA-axis marking shared with NATO+UK under
 ///   §123/§144 sharing agreements (Atomic Energy Act). It travels
@@ -861,8 +862,9 @@ impl Default for FrdBlock {
 
 /// ATOMAL block.
 ///
-/// Currently empty: CAPCO-2016 §H.7 Appendix B does not register
-/// ATOMAL sub-markings. The carrier struct mirrors the [`RdBlock`] /
+/// Currently empty: CAPCO-2016 §G.2 p41 + §H.7 p123 register
+/// ATOMAL as a standalone control marking with no enumerated
+/// sub-markings. The carrier struct mirrors the [`RdBlock`] /
 /// [`FrdBlock`] shape so that adding sub-markings in a future CAPCO
 /// publication remains a planned, intentional grammar extension
 /// rather than a structural-shape change at the variant level.
@@ -2218,7 +2220,7 @@ impl SciMarking {
 /// One of three variants: a published bare system drawn from the live
 /// ODNI CVE, an agency-allocated custom identifier (per CAPCO-2016
 /// §A.6 p15), or a NATO Special Access Program identifier (CAPCO-2016
-/// §G.2 p41 + §H.7 Appendix B).
+/// §G.2 p41 + §H.7 p127).
 ///
 /// NATO SAPs (`BOHEMIA`, `BALK`) are not in the ODNI ISM CVE — they're
 /// CAPCO-only registered NATO control markings. They render standalone

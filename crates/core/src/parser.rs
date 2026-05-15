@@ -1703,20 +1703,22 @@ fn recognize_eyes_only_block<'a>(
 /// Pre-PR-9c.1 the legacy text forms `CTSA` / `NSAT` / `NCA` /
 /// `CTS-A` / `NS-A` / `NC-A` / `CTS-B` / `CTS-BALK` parsed into
 /// fused `NatoClassification::*Atomal` / `*Bohemia` / `*Balk`
-/// variants. Per CAPCO-2016 §H.7 line 4702 (history note for the
-/// December 2010 revision) those forms are **structurally wrong**:
-/// ATOMAL is an AEA-axis marking shared with NATO+UK under
-/// bilateral §123/§144 agreements, and BOHEMIA/BALK are NATO SAPs
-/// in the SCI category position. The legacy compound variants
-/// were retired in PR 9c.1 Commit 5; this parser canonicalizes the
-/// legacy text at parse time so existing markings produce the
-/// correct structural canonical form.
+/// variants. Per CAPCO-2016 §G.2 p41 (Table 5: ARH by Registered
+/// Marking) those forms are **structurally wrong**: ATOMAL,
+/// BOHEMIA, and BALK each have their own ARH row at §G.2 p41,
+/// confirming they are registered control markings, not classification
+/// suffixes. The §H.7 p123 worked example
+/// (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL in the AEA
+/// axis alongside RD; the §H.7 p127 worked example
+/// (`TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN`) places
+/// BOHEMIA in the SCI category position.
 ///
-/// Per CAPCO-2016 §H.7 line 4702, "re-marking of legacy information
-/// is not required; upon re-use, markings must be modified, if
-/// possible, to reflect the current standard." Marque's autofix
-/// channel (rule R009 in `marque-capco/src/rules.rs`) drives the
-/// re-marking when the rule severity is configured to fire.
+/// The legacy compound variants were retired in PR 9c.1 Commit 5;
+/// this parser canonicalizes the legacy text at parse time so
+/// existing markings produce the correct structural canonical form.
+/// Marque's autofix channel (rule E066 in `marque-capco/src/rules.rs`)
+/// drives the source-text re-marking when the rule severity is
+/// configured to fire.
 ///
 /// Longer patterns are checked first to avoid prefix ambiguity
 /// (e.g., `"COSMIC TOP SECRET ATOMAL"` before `"COSMIC TOP SECRET"`).
@@ -3267,13 +3269,15 @@ mod tests {
     /// PR 9c.1 T134: portion-form legacy compounds (`CTSA`, `CTS-A`,
     /// `CTS-B`, `CTS-BALK`, `NSAT`, `NS-A`, `NCA`, `NC-A`) canonicalize
     /// to bare class + companion AEA/SCI per CAPCO-2016 §G.1 Table 4
-    /// p38 (portion-form column) + §H.7 line 4702 history note
-    /// ("re-marking of legacy information ... markings must be modified
-    /// ... to reflect the current standard"). Marque's R009 autofix
-    /// rule emits the canonical multi-block form as a text correction;
-    /// the parser canonicalizes the data shape so rules consuming
-    /// `attrs.{classification,aea_markings,sci_markings}` see the
-    /// structural truth.
+    /// p38 (portion-form column) + §G.2 p41 (Table 5: ARH by Registered
+    /// Marking — ATOMAL/BOHEMIA/BALK as registered control markings) +
+    /// §H.7 p123 (ATOMAL worked example) + §H.7 p127 (BOHEMIA worked
+    /// example in SCI block position).
+    ///
+    /// Marque's E066 autofix rule emits the canonical multi-block form
+    /// as a Recanonicalize fix; the parser canonicalizes the data shape
+    /// so rules consuming `attrs.{classification,aea_markings,sci_markings}`
+    /// see the structural truth.
     #[test]
     fn nato_portion_parses_all_variants() {
         for (input, expected_class, expected_companion) in [

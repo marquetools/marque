@@ -3707,9 +3707,9 @@ fn classify_segment(seg: &str) -> SegmentClass {
         // strict parser, post-PR-9c.1 T134, canonicalizes them into
         // bare class + AEA/SCI companion writes (CAPCO-2016 §H.7 p123
         // for ATOMAL → AEA; §G.2 p41 + §H.7 p127 for BALK/BOHEMIA →
-        // SCI). The R009 autofix rule then surfaces the text-level
-        // re-marking suggestion per the §H.7 line 4702 derivative-use
-        // guidance.
+        // SCI). The E066 autofix rule then surfaces the text-level
+        // re-marking suggestion per the §G.2 p41 Table 5 registration
+        // of the canonical control-marking forms.
         "NS",
         "NC",
         "NU",

@@ -224,8 +224,8 @@ fn rule_count_reflects_registration_changes() {
          / EYES ONLY → REL TO conversion per §H.8 p157 + p158; \
          net delta +1. Final: 36. PR 9c.1 T134 adds \
          `LegacyNatoCompoundRemarkRule` (E066) — legacy NATO \
-         compound text re-marking per §H.7 line 4702 + §H.7 p123 + \
-         §G.2 p41 + §H.7 p127; net delta +1. Final: 37. See \
+         compound text re-marking per §G.2 p41 (Table 5) + §H.7 p123 + \
+         §H.7 p127; net delta +1. Final: 37. See \
          `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

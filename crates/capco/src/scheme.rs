@@ -5630,7 +5630,8 @@ fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
 }
 
 /// BALK / BOHEMIA / ATOMAL — NATO control markings (not NATO
-/// classifications) per CAPCO-2016 §H.7 line 4702 history note.
+/// classifications) per CAPCO-2016 §G.2 p41 Table 5 (ARH by
+/// Registered Marking).
 ///
 /// PR 9c.1 T134 corrected the structural model:
 ///   - ATOMAL is an AEA-axis marking (CAPCO-2016 §H.7 p123 worked

@@ -316,15 +316,17 @@ impl CapcoRuleSet {
                 // new REL TO list.
                 Box::new(EyesOnlyConvertToRelToRule),
                 // PR 9c.1 T134 (rule E066): legacy NATO compound text
-                // re-marking per CAPCO-2016 §H.7 line 4702 ("upon
-                // re-use, markings must be modified to reflect the
-                // current standard"). Catches the eight legacy
-                // portion-form patterns (CTSA / CTS-A / CTS-B /
-                // CTS-BALK / NSAT / NS-A / NCA / NC-A) plus the five
-                // banner-form equivalents, and emits a Recanonicalize
-                // fix at confidence 1.0. The parser canonicalizes the
-                // input attrs structure at parse time; this rule
-                // surfaces the text-level re-marking.
+                // re-marking per CAPCO-2016 §G.2 p41 (Table 5: ARH
+                // registers ATOMAL/BOHEMIA/BALK as standalone control
+                // markings) + §H.7 p123 (ATOMAL worked example in AEA
+                // axis) + §H.7 p127 (BOHEMIA worked example in SCI
+                // axis). Catches the eight legacy portion-form patterns
+                // (CTSA / CTS-A / CTS-B / CTS-BALK / NSAT / NS-A / NCA
+                // / NC-A) plus the five banner-form equivalents, and
+                // emits a Recanonicalize fix at confidence 1.0. The
+                // parser canonicalizes the input attrs structure at
+                // parse time; this rule surfaces the text-level
+                // re-marking.
                 Box::new(LegacyNatoCompoundRemarkRule),
             ],
         }
@@ -4227,11 +4229,27 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
 // E066 — Legacy NATO compound text re-marking (PR 9c.1 T134)
 // ===========================================================================
 //
-// CAPCO-2016 §H.7 line 4702 (December 2010 history note):
-//   "Identified ATOMAL, BOHEMIA, and BALK as NATO control markings, not
-//    NATO classifications. ... Re-marking of legacy information is not
-//    required. Upon re-use, markings must be modified, if possible, to
-//    reflect the current standard."
+// Authority chain:
+//   §G.2 p41 (Table 5: ARH by Registered Marking) lists ATOMAL,
+//     BOHEMIA, and BALK as registered NATO control markings — each
+//     has its own row with `Requires {marking} read-in`, confirming
+//     they are control markings registered alongside (not fused with)
+//     the NATO classification ladder.
+//   §H.7 p123 worked example places ATOMAL in the AEA category
+//     position: `SECRET//RD/ATOMAL//FGI NATO//NOFORN` ("ATOMAL is a
+//     NATO Atomic Energy Act marking that follows the registered US
+//     Atomic Energy Act marking RD").
+//   §H.7 p127 worked example places BOHEMIA in the SCI category
+//     position: `(//CTS//BOHEMIA//REL TO USA, NATO)`.
+//   §G.1 Table 4 p38 portion-form column lists `ATOMAL` / `BALK` /
+//     `BOHEMIA` as same-form across title / banner-abbrev / portion
+//     (standalone canonical names — no `SAR-` prefix, no fused
+//     class form).
+//
+// Per project memory `remark-on-derivative-use-is-marque-autofix`,
+// "Marque exists precisely to automate the re-marking the manual
+// permits doing by hand" — the §H.7 worked-example canonical forms
+// ARE the autofix targets.
 //
 // E066 fires when the strict parser canonicalizes legacy NATO compound
 // text (`CTSA`, `CTS-A`, `NSAT`, `NS-A`, `NCA`, `NC-A`, `CTS-B`,
@@ -4260,8 +4278,9 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
 // (`Recanonicalize`); the engine snapshots the canonical replacement
 // at promotion time without any rule-side byte stringification.
 
-/// Rule E066 — legacy NATO compound text re-marking per §H.7 line 4702
-/// + §H.7 p123 (ATOMAL → AEA) + §G.2 p41 + §H.7 p127 (BALK/BOHEMIA → SCI).
+/// Rule E066 — legacy NATO compound text re-marking per §G.2 p41
+/// (Table 5 registration) + §H.7 p123 (ATOMAL → AEA) + §G.2 p41 +
+/// §H.7 p127 (BALK/BOHEMIA → SCI).
 struct LegacyNatoCompoundRemarkRule;
 
 impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
@@ -4352,15 +4371,16 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
             _ => RecanonScope::Page,
         };
 
-        // CAPCO-2016 §H.7 line 4702 is the December 2010 history-note
-        // anchor for the deprecation; §H.7 p123 is the AEA worked
-        // example; §G.2 p41 + §H.7 p127 are the SCI worked examples.
-        // Choose the most-precise structural citation based on which
-        // companion was written; line 4702 is the deprecation rationale.
+        // §G.2 p41 (Table 5: ARH by Registered Marking) registers
+        // ATOMAL/BOHEMIA/BALK as control markings. §H.7 p123 worked
+        // example shows ATOMAL in the AEA position; §H.7 p127 worked
+        // example shows BOHEMIA in the SCI position. Choose the
+        // structurally-most-precise anchor based on which companion
+        // was written.
         let citation = if has_atomal {
-            "CAPCO-2016 §H.7 p123 + §H.7 line 4702"
+            "CAPCO-2016 §H.7 p123 + §G.2 p41"
         } else {
-            "CAPCO-2016 §G.2 p41 + §H.7 p127 + §H.7 line 4702"
+            "CAPCO-2016 §G.2 p41 + §H.7 p127"
         };
 
         // G13 audit-content-ignorance: the message text references only
@@ -4416,7 +4436,8 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
 /// coordinated edit in both places — the natural propagation point.
 ///
 /// Citations: CAPCO-2016 §G.1 Table 4 p38 (portion-form column);
-/// §H.7 line 4702 (deprecation history note).
+/// §G.2 p41 (Table 5 — registers ATOMAL/BOHEMIA/BALK as standalone
+/// control markings, not classification suffixes).
 fn is_legacy_nato_compound_text(text: &str) -> bool {
     matches!(
         text,

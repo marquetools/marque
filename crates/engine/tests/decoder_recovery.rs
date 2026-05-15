@@ -1945,16 +1945,18 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
     //
     // Citations: CAPCO-2016 §G.1 Table 4 pp 36-38 (legacy text
     // recognition); §H.7 p123 (ATOMAL as AEA, canonical structural
-    // model); §H.7 line 4702 (re-marking of legacy information on
-    // derivative use).
+    // model); §G.2 p41 (Table 5: registers ATOMAL as standalone
+    // control marking, the autofix target per project memory
+    // `remark-on-derivative-use-is-marque-autofix`).
     let rx = DecoderRecognizer::new();
     let parsed = rx.recognize(b"(//nato secret atomal//nf)", &deep_cx());
     match parsed {
         Parsed::Unambiguous(ref marking) => {
             // PR 9c.1 T134: legacy `NATO SECRET ATOMAL` text canonicalizes
             // to bare `NatoClassification::NatoSecret` plus an AEA-axis
-            // `Atomal` companion (CAPCO-2016 §H.7 p123 + line 4702
-            // history note). Pre-PR-9c.1 this assertion expected the
+            // `Atomal` companion (CAPCO-2016 §H.7 p123 worked example
+            // + §G.2 p41 Table 5 registration of ATOMAL as a standalone
+            // control marking). Pre-PR-9c.1 this assertion expected the
             // fused `NatoClassification::NatoSecretAtomal` variant; that
             // variant was retired in PR 9c.1 Commit 5 as a structurally
             // wrong fusion of classification and AEA semantics.
