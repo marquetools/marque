@@ -2536,12 +2536,31 @@ mod tests {
             ctx_default.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
             "PageContext::default should pre-size identically to new() (issue #430)"
         );
-        // Empty-ctx clone — the exact failure case if `Clone` were
-        // derived: derived `Vec::clone()` would size to `len() == 0`.
+        // Empty-ctx clone — proves the pre-size survives clone at the
+        // boundary, but is NOT the engine's actual hand-off path: the
+        // engine guards on `!page_context.is_empty()` at
+        // `engine.rs:1019-1025` so it never clones an empty ctx in
+        // production.
         let ctx_cloned_empty = ctx.clone();
         assert!(
             ctx_cloned_empty.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
             "PageContext::clone of an empty ctx must preserve the pre-size (issue #430)"
+        );
+        // Non-empty clone — the engine's REAL hand-off path. The
+        // failure window for the pre-size invariant under derived
+        // `Clone` is `len() ∈ [1, DEFAULT_PORTIONS_CAPACITY)`: derived
+        // `Vec::clone()` would size the cloned buffer to exactly
+        // `len()`, dropping below the pre-size floor on every small
+        // page (e.g., a 2-portion page would clone into a Vec with
+        // capacity 2). This is the case the manual `Clone` impl
+        // actually exists to defend.
+        let mut ctx_with_portions = PageContext::new();
+        ctx_with_portions.add_portion(attrs_with_classification(Classification::Unclassified));
+        ctx_with_portions.add_portion(attrs_with_classification(Classification::Unclassified));
+        let ctx_cloned_nonempty = ctx_with_portions.clone();
+        assert!(
+            ctx_cloned_nonempty.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
+            "PageContext::clone of a non-empty ctx must preserve the pre-size — the engine clones at this state (issue #430)"
         );
     }
 }
