@@ -115,9 +115,12 @@ pub struct PageContext {
     /// because the typical CAPCO document carries 1-10 portions per page
     /// (the scanner emits PageBreak candidates at form-feed and `\n\n\n+`
     /// runs, slicing larger docs into multiple per-page contexts). 8
-    /// covers the typical case in zero reallocations; larger pages pay
-    /// one realloc at portion 9 instead of three (Vec growth 4 → 8 → 16
-    /// → 32) starting from `Vec::new()`. Issue #430.
+    /// covers the typical case in zero reallocations; larger pages
+    /// pay only the reallocations needed past 8 instead of the early
+    /// growth sequence a `Vec::new()` path would incur on the first
+    /// several pushes (the exact stdlib growth schedule is an
+    /// implementation detail, but pre-sizing eliminates it for the
+    /// 1-10 portion range). Issue #430.
     ///
     /// The pre-size flows through `Default` AND `Clone` — see the manual
     /// impls below. Derived `Clone` would call `Vec::clone()`, which
