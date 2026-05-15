@@ -2678,13 +2678,23 @@ impl CapcoScheme {
                 name: "class-floor/TK-BLFH",
                 label: "CAPCO-2016 §H.4",
             },
+            // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+            // to "§G.2 p41". §G.2 p41 is the authoritative anchor —
+            // CAPCO-2016 Table 5 (ARH by Registered Marking) lists
+            // BALK / BOHEMIA at p40 as registered NATO control
+            // markings; the December 2010 history note at §H.7 line
+            // 4702 confirms they are control markings (not
+            // classifications). The §H.7 Appendix B reference was an
+            // imprecise pre-PR-9c.1 anchor; the manual's actual
+            // Appendix B is the NATO classification ladder
+            // appendix, not the BALK/BOHEMIA registration.
             Constraint::Custom {
                 name: "class-floor/BALK",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §G.2 p41",
             },
             Constraint::Custom {
                 name: "class-floor/BOHEMIA",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §G.2 p41",
             },
             // ---- §2.2 Floor S — TS-or-S allowed (8 rows) --------------
             Constraint::Custom {
@@ -2749,9 +2759,15 @@ impl CapcoScheme {
                 name: "class-floor/TFNI",
                 label: "CAPCO-2016 §H.6 p107",
             },
+            // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+            // to "§H.7 p123". §H.7 p123 is the worked example showing
+            // ATOMAL in the AEA axis: `SECRET//RD/ATOMAL//FGI NATO//
+            // NOFORN` — the direct, structurally-grounded citation for
+            // the canonical AEA-axis placement (paralleling §H.6's
+            // RD/CNWDI worked-example citations).
             Constraint::Custom {
                 name: "class-floor/ATOMAL",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §H.7 p123",
             },
             Constraint::Custom {
                 name: "class-floor/ORCON",
@@ -5779,7 +5795,13 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §G.2 p41",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem),
+        // `None` falls through to the Classification token span. PR
+        // 9c.1 Commit 3's parser writes the BALK SciMarking but does
+        // not push a `TokenKind::SciSystem` span for the legacy
+        // compound text (`CTS-BALK` is a single Classification token
+        // that carries both the bare-class and the companion semantic);
+        // anchoring at the Classification token is the right UX.
+        primary_kind: None,
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
@@ -5789,7 +5811,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §G.2 p41",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem),
+        primary_kind: None,
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
@@ -5934,6 +5956,14 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
     // direct, worked-example-grounded citation (parallel depth to
     // §H.6's class-floor citations for RD/FRD), distinguishing it from
     // the softer §G.2 p41 BALK/BOHEMIA citation.
+    //
+    // `primary_kind: None` (falls back to Classification): same
+    // rationale as BALK/BOHEMIA — legacy compound text like `NCA` /
+    // `CTSA` is a single `TokenKind::Classification` carrying both
+    // the bare-class and the AEA companion semantic; the parser does
+    // not emit a separate `TokenKind::AeaMarking` span for the
+    // canonicalized companion write. Anchoring at the Classification
+    // token is the right UX for the legacy-compound case.
     ClassFloorRow {
         name: "class-floor/ATOMAL",
         marking_label: "ATOMAL (NATO)",
@@ -5942,7 +5972,7 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.7 p123",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking),
+        primary_kind: None,
     },
     ClassFloorRow {
         name: "class-floor/ORCON",

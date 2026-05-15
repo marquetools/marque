@@ -97,6 +97,48 @@ fn catalog_declares_27_class_floor_rows() {
     );
 }
 
+/// PR 9c.1 T134 (architect D5): pin the citation anchors for the
+/// three NATO control-marking rows so a future edit can't silently
+/// drift them.
+///
+/// BALK / BOHEMIA cite §G.2 p41 (their authoritative anchor — the
+/// ARH table where the manual identifies them as SAPs). ATOMAL
+/// cites §H.7 p123 (the worked example showing `SECRET//RD/ATOMAL//
+/// FGI NATO//NOFORN`).
+///
+/// The companion severity pin (BALK/BOHEMIA = Warn, ATOMAL = Error)
+/// is internal to the catalog row's `severity` field and verified
+/// at firing time via the engine's class-floor emit path. Severity
+/// drift would change exit codes for downstream audit consumers and
+/// would need to be an intentional, documented change.
+///
+/// Citations: CAPCO-2016 §G.2 p41 (BALK/BOHEMIA — ARH table only,
+/// soft); §H.7 p123 (ATOMAL — worked example in §H.7).
+#[test]
+fn pr_9c_1_nato_rows_pin_citation_anchors() {
+    let scheme = CapcoScheme::new();
+    let expected: &[(&str, &str)] = &[
+        ("class-floor/BALK", "CAPCO-2016 §G.2 p41"),
+        ("class-floor/BOHEMIA", "CAPCO-2016 §G.2 p41"),
+        ("class-floor/ATOMAL", "CAPCO-2016 §H.7 p123"),
+    ];
+
+    for (row_name, expected_cite) in expected {
+        let row = scheme
+            .constraints()
+            .iter()
+            .find(|c| c.name() == *row_name)
+            .unwrap_or_else(|| panic!("missing catalog row {row_name:?}"));
+        assert_eq!(
+            row.label(),
+            *expected_cite,
+            "{row_name} citation drifted (PR 9c.1 D5 pin); \
+             expected {expected_cite:?}, got {actual:?}",
+            actual = row.label(),
+        );
+    }
+}
+
 #[test]
 fn catalog_row_names_are_unique() {
     let scheme = CapcoScheme::new();
