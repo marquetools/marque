@@ -1235,11 +1235,17 @@ mod rel_to_block {
     }
 
     #[test]
-    fn rel_to_block_empty_intersection_returns_bottom() {
-        // §D.2 Table 3 row 9: no-common-LIST → NOFORN. But the
-        // lattice produces Bottom; the post-projection PageRewrite
-        // injects NF into DissemSet. This pins the lattice-side
-        // behavior — Bottom, not NofornSuperseded.
+    fn rel_to_block_empty_intersection_returns_empty() {
+        // §D.2 Table 3 row 9: no-common-LIST → NOFORN. The lattice
+        // produces `Empty` (a distinct state from `Bottom`); the
+        // post-projection PageRewrite injects NF into DissemSet.
+        //
+        // C-2 regression (PR 4b-B follow-up): before this fix,
+        // disjoint intersection returned `Bottom`, conflating the
+        // "no portions observed" identity with the "intersected
+        // to empty" absorbing state. That broke join associativity
+        // (see `rel_to_block_associative_under_empty_intersection`
+        // below).
         let portions = [rel_portion(&["USA", "GBR"]), rel_portion(&["USA", "FRA"])];
         let b = RelToBlock::from_attrs_iter(&portions);
         match b {
@@ -1254,7 +1260,11 @@ mod rel_to_block {
         // Now a truly disjoint case.
         let portions = [rel_portion(&["GBR", "CAN"]), rel_portion(&["FRA", "DEU"])];
         let b = RelToBlock::from_attrs_iter(&portions);
-        assert!(matches!(b, RelToBlock::Bottom));
+        assert!(matches!(b, RelToBlock::Empty));
+        assert!(!b.is_noforn_superseded());
+        assert!(b.is_empty_intersection());
+        // Both `Empty` and `Bottom` render to an empty REL TO list.
+        assert!(b.to_vec().is_empty());
     }
 
     #[test]
@@ -1295,10 +1305,11 @@ mod rel_to_block {
     fn rel_to_block_lattice_laws() {
         let bottom = RelToBlock::Bottom;
         let nf = RelToBlock::NofornSuperseded;
+        let empty = RelToBlock::Empty;
         let a = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "GBR", "CAN"])]);
         let b = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "GBR"])]);
         let c = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "CAN"])]);
-        let states = [bottom, nf, a, b, c];
+        let states = [bottom, nf, empty, a, b, c];
 
         for s1 in &states {
             for s2 in &states {
@@ -1313,5 +1324,46 @@ mod rel_to_block {
                 }
             }
         }
+    }
+
+    #[test]
+    fn rel_to_block_associative_under_empty_intersection() {
+        // C-2 (PR 4b-B follow-up) regression: pre-fix, disjoint
+        // intersection collapsed to `Bottom`, which `join` treats as
+        // the identity. The associativity check below would have
+        // failed:
+        //
+        //   ({GBR} ⊔ {FRA}) ⊔ {FRA}  →  Bottom ⊔ {FRA}  =  {FRA}
+        //   {GBR} ⊔ ({FRA} ⊔ {FRA})  →  {GBR} ⊔ {FRA}   =  Bottom
+        //
+        // With the new `Empty` variant the left side reaches `Empty`
+        // (absorbing), which stays `Empty` after joining `{FRA}`.
+        let gbr_only = RelToBlock::from_attrs_iter(&[rel_portion(&["GBR"])]);
+        let fra_only = RelToBlock::from_attrs_iter(&[rel_portion(&["FRA"])]);
+        let lhs = gbr_only.join(&fra_only).join(&fra_only);
+        let rhs = gbr_only.join(&fra_only.join(&fra_only));
+        assert_eq!(lhs, rhs, "assoc: ({{GBR}} ⊔ {{FRA}}) ⊔ {{FRA}}");
+        assert_eq!(lhs, RelToBlock::Empty);
+    }
+
+    #[test]
+    fn rel_to_block_empty_absorbs_lattice_in_join() {
+        let empty = RelToBlock::Empty;
+        let gbr = RelToBlock::from_attrs_iter(&[rel_portion(&["GBR"])]);
+        assert_eq!(empty.join(&gbr), RelToBlock::Empty);
+        assert_eq!(gbr.join(&empty), RelToBlock::Empty);
+    }
+
+    #[test]
+    fn rel_to_block_noforn_superseded_dominates_empty() {
+        // NofornSuperseded > Empty in the join lattice — NOFORN is
+        // an explicit "do not release" signal; an empty-intersection
+        // is the §D.2 Table 3 row 9 path that requires post-
+        // projection NF injection. Both are absorbing; their join
+        // resolves to the more conservative outcome.
+        let empty = RelToBlock::Empty;
+        let nf = RelToBlock::NofornSuperseded;
+        assert_eq!(empty.join(&nf), RelToBlock::NofornSuperseded);
+        assert_eq!(nf.join(&empty), RelToBlock::NofornSuperseded);
     }
 }
