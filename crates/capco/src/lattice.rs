@@ -40,9 +40,9 @@
 
 use marque_ism::{
     AeaMarking, AtomalBlock, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker,
-    FrdBlock, IsmDate, JointClassification, MarkingClassification, NatoClassification, RdBlock,
-    SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlSystem,
-    SciMarking,
+    FrdBlock, IsmDate, JointClassification, MarkingClassification, NatoClassification, NonIcDissem,
+    RdBlock, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
+    SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use smol_str::SmolStr;
@@ -2014,6 +2014,219 @@ impl Lattice for JointSet {
 // open-vocabulary over `CountryCode`, and there is no lawful finite
 // top variant under the §H.3 grammar. Use `JointSet::empty()` /
 // `JointSet::default()` for the bottom.
+
+// ---------------------------------------------------------------------------
+// RelToBlock — IntersectSet with NOFORN supersession
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the REL TO axis.
+///
+/// The state space is a closed three-variant enum that captures the
+/// CAPCO-2016 §H.8 pp150-151 REL TO grammar + §D.2 Table 3 rows
+/// 9-13 supersession behavior:
+///
+/// - `Bottom`: no REL TO portions, or the intersection produced an
+///   empty country set. (§D.2 Table 3 row 9 says "no-common-LIST →
+///   NOFORN" — but the **lattice** produces `Bottom`; the
+///   post-projection pipeline injects NOFORN into `DissemSet` via the
+///   existing `capco/noforn-clears-rel-to` PageRewrite. The lattice
+///   cannot introduce NOFORN into a different axis.)
+/// - `NofornSuperseded`: some portion carries NOFORN, NODIS, or
+///   EXDIS. NOFORN clears REL TO; NODIS/EXDIS clear REL TO per
+///   §H.9 p172 + p174. The sentinel absorbs subsequent joins.
+/// - `Lattice { countries }`: post-tetragraph-expansion intersection,
+///   non-empty.
+///
+/// **Tetragraph expansion** (FVEY → {AUS, CAN, GBR, NZL, USA}; ACGU
+/// → {AUS, CAN, GBR, USA}) happens at `from_attrs_iter` time via
+/// the existing `marque_ism::lookup_tetragraph_members` table. Once
+/// the state is `Lattice { countries }`, joining is intersection
+/// over already-canonical trigraphs.
+///
+/// `BoundedLattice` is NOT implemented — CountryCode vocabulary is
+/// open-extensible. The SciSet/SarSet/FgiSet precedent applies.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.8 pp150-151 (REL TO grammar — banner form `AUTHORIZED FOR
+///   RELEASE TO [USA, LIST]`).
+/// - §D.2 Table 3 rows 9-13 (REL TO supersession by NOFORN and the
+///   disjoint-LIST → NOFORN rule).
+/// - §H.8 p152 worked example (intersection on roll-up).
+/// - §H.9 p172 + p174 (NODIS / EXDIS clear REL TO).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum RelToBlock {
+    /// No REL TO portions, or the intersection produced an empty
+    /// set. The post-projection `capco/noforn-clears-rel-to`
+    /// PageRewrite is what injects NOFORN into the dissem axis when
+    /// this happens.
+    #[default]
+    Bottom,
+
+    /// Some portion carries NOFORN (or the NODIS/EXDIS REL-TO-clear
+    /// equivalents). The sentinel absorbs further joins.
+    NofornSuperseded,
+
+    /// Post-tetragraph-expansion intersection, non-empty.
+    Lattice {
+        /// Sorted USA-first then alphabetical per §H.8 p151.
+        countries: BTreeSet<CountryCode>,
+    },
+}
+
+impl RelToBlock {
+    /// An empty REL TO block — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::Bottom
+    }
+
+    /// Construct a `RelToBlock` from a slice of `CanonicalAttrs`.
+    ///
+    /// 1. If any portion carries `Nf` in `dissem_us` OR NODIS/EXDIS
+    ///    in `non_ic_dissem` → `NofornSuperseded`. (§D.2 Table 3
+    ///    rows 1-2 + §H.9 p172/p174.)
+    /// 2. Else expand each portion's REL TO list via
+    ///    `lookup_tetragraph_members` (FVEY/ACGU/... → constituent
+    ///    trigraphs; opaque tetragraphs pass through).
+    /// 3. Intersect the expanded sets across portions.
+    /// 4. Empty intersection → `Bottom`. Non-empty → `Lattice {
+    ///    countries }`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        // NOFORN / NODIS / EXDIS supersession.
+        for p in portions {
+            if p.dissem_us.iter().any(|d| matches!(d, DissemControl::Nf))
+                || p.non_ic_dissem
+                    .iter()
+                    .any(|d| matches!(d, NonIcDissem::Nodis | NonIcDissem::Exdis))
+            {
+                return Self::NofornSuperseded;
+            }
+        }
+
+        // Gather only portions with a non-empty REL TO list.
+        let rel_to_portions: Vec<&CanonicalAttrs> =
+            portions.iter().filter(|a| !a.rel_to.is_empty()).collect();
+
+        if rel_to_portions.is_empty() {
+            return Self::Bottom;
+        }
+
+        // Expand each portion's REL TO into a set of trigraph
+        // strings, resolving tetragraphs to constituents.
+        let expanded: Vec<BTreeSet<&str>> = rel_to_portions
+            .iter()
+            .map(|a| {
+                let mut set = BTreeSet::new();
+                for t in a.rel_to.iter() {
+                    let s = t.as_str();
+                    if let Some(members) = marque_ism::lookup_tetragraph_members(s) {
+                        for &m in members {
+                            set.insert(m);
+                        }
+                    } else {
+                        set.insert(s);
+                    }
+                }
+                set
+            })
+            .collect();
+
+        // Intersect across all expanded sets.
+        let mut result: BTreeSet<&str> = expanded[0].clone();
+        for set in &expanded[1..] {
+            result = result.intersection(set).copied().collect();
+        }
+
+        if result.is_empty() {
+            return Self::Bottom;
+        }
+
+        // Convert back to CountryCode; defensive filter_map
+        // discards anything that fails to round-trip.
+        let countries: BTreeSet<CountryCode> = result
+            .iter()
+            .filter_map(|s| CountryCode::try_new(s.as_bytes()))
+            .collect();
+
+        if countries.is_empty() {
+            Self::Bottom
+        } else {
+            Self::Lattice { countries }
+        }
+    }
+
+    /// Render to a `Box<[CountryCode]>` with USA first then
+    /// alphabetical, per §H.8 p151.
+    pub fn into_boxed_slice(self) -> Box<[CountryCode]> {
+        match self {
+            Self::Bottom | Self::NofornSuperseded => Box::new([]),
+            Self::Lattice { countries } => {
+                let mut codes: Vec<CountryCode> = countries.into_iter().collect();
+                if let Some(pos) = codes.iter().position(|c| *c == CountryCode::USA)
+                    && pos != 0
+                {
+                    let usa = codes.remove(pos);
+                    codes.insert(0, usa);
+                }
+                codes.into_boxed_slice()
+            }
+        }
+    }
+
+    /// Render to a `Vec<CountryCode>` mirroring
+    /// `PageContext::expected_rel_to`'s shape.
+    pub fn to_vec(&self) -> Vec<CountryCode> {
+        match self {
+            Self::Bottom | Self::NofornSuperseded => Vec::new(),
+            Self::Lattice { countries } => {
+                let mut codes: Vec<CountryCode> = countries.iter().copied().collect();
+                if let Some(pos) = codes.iter().position(|c| *c == CountryCode::USA)
+                    && pos != 0
+                {
+                    let usa = codes.remove(pos);
+                    codes.insert(0, usa);
+                }
+                codes
+            }
+        }
+    }
+
+    /// Whether the block is the `NofornSuperseded` sentinel.
+    pub fn is_noforn_superseded(&self) -> bool {
+        matches!(self, Self::NofornSuperseded)
+    }
+}
+
+impl Lattice for RelToBlock {
+    fn join(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::NofornSuperseded, _) | (_, Self::NofornSuperseded) => Self::NofornSuperseded,
+            (Self::Bottom, x) | (x, Self::Bottom) => x.clone(),
+            (Self::Lattice { countries: a }, Self::Lattice { countries: b }) => {
+                let common: BTreeSet<CountryCode> = a.intersection(b).copied().collect();
+                if common.is_empty() {
+                    Self::Bottom
+                } else {
+                    Self::Lattice { countries: common }
+                }
+            }
+        }
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        // Meet over REL TO — union of country lists, semantically
+        // "the broader release that BOTH sides could have authored."
+        // The NofornSuperseded sentinel is meet-bottom: a side that
+        // forbids all release dominates a side that permits some.
+        match (self, other) {
+            (Self::NofornSuperseded, _) | (_, Self::NofornSuperseded) => Self::NofornSuperseded,
+            (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
+            (Self::Lattice { countries: a }, Self::Lattice { countries: b }) => {
+                let union: BTreeSet<CountryCode> = a.union(b).copied().collect();
+                Self::Lattice { countries: union }
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tests

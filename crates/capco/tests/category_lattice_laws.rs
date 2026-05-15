@@ -1048,3 +1048,168 @@ mod joint_set {
         }
     }
 }
+
+// ===========================================================================
+// PR 4b-B Commit 6 — RelToBlock
+// ===========================================================================
+// CAPCO-2016 §H.8 pp150-151 (REL TO grammar) + §D.2 Table 3 rows 9-13
+// (REL TO supersession) + §H.9 p172 + p174 (NODIS/EXDIS clear REL TO).
+// Verified 2026-05-15 against CAPCO-2016.md.
+
+mod rel_to_block {
+    use marque_capco::RelToBlock;
+    use marque_ism::{CanonicalAttrs, CountryCode, DissemControl, NonIcDissem};
+    use marque_scheme::Lattice;
+
+    fn cc(s: &str) -> CountryCode {
+        CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
+    }
+
+    fn rel_portion(rel_to: &[&str]) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.rel_to = rel_to
+            .iter()
+            .map(|s| cc(s))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        a
+    }
+
+    fn nf_portion() -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+        a
+    }
+
+    fn nodis_portion() -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.non_ic_dissem = vec![NonIcDissem::Nodis].into_boxed_slice();
+        a
+    }
+
+    #[test]
+    fn rel_to_block_intersection_common_list() {
+        // §H.8 p152 worked example: two portions, common LIST →
+        // banner gets the intersection.
+        let portions = [
+            rel_portion(&["USA", "GBR", "CAN"]),
+            rel_portion(&["USA", "GBR", "AUS"]),
+        ];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        match &b {
+            RelToBlock::Lattice { countries } => {
+                assert!(countries.contains(&cc("USA")));
+                assert!(countries.contains(&cc("GBR")));
+                assert!(!countries.contains(&cc("CAN")));
+                assert!(!countries.contains(&cc("AUS")));
+                assert_eq!(countries.len(), 2);
+            }
+            other => panic!("expected Lattice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rel_to_block_noforn_supersedes() {
+        // §D.2 Table 3 + §H.8 p145: NOFORN in any portion → empty
+        // REL TO; lattice returns NofornSuperseded.
+        let portions = [
+            rel_portion(&["USA", "GBR"]),
+            nf_portion(),
+        ];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        assert!(b.is_noforn_superseded());
+        assert!(b.into_boxed_slice().is_empty());
+    }
+
+    #[test]
+    fn rel_to_block_nodis_supersedes() {
+        // §H.9 p174: NODIS clears REL TO.
+        let portions = [rel_portion(&["USA", "GBR"]), nodis_portion()];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        assert!(b.is_noforn_superseded());
+    }
+
+    #[test]
+    fn rel_to_block_empty_intersection_returns_bottom() {
+        // §D.2 Table 3 row 9: no-common-LIST → NOFORN. But the
+        // lattice produces Bottom; the post-projection PageRewrite
+        // injects NF into DissemSet. This pins the lattice-side
+        // behavior — Bottom, not NofornSuperseded.
+        let portions = [rel_portion(&["USA", "GBR"]), rel_portion(&["USA", "FRA"])];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        match b {
+            RelToBlock::Lattice { countries } => {
+                // USA survives — both portions have USA.
+                assert!(countries.contains(&cc("USA")));
+                assert_eq!(countries.len(), 1);
+            }
+            _ => panic!("expected non-empty intersection (USA common)"),
+        }
+
+        // Now a truly disjoint case.
+        let portions = [rel_portion(&["GBR", "CAN"]), rel_portion(&["FRA", "DEU"])];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        assert!(matches!(b, RelToBlock::Bottom));
+    }
+
+    #[test]
+    fn rel_to_block_tetragraph_expansion_fvey() {
+        // FVEY expands to {AUS, CAN, GBR, NZL, USA}.
+        let portions = [
+            rel_portion(&["FVEY"]),
+            rel_portion(&["USA", "GBR", "CAN"]),
+        ];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        match b {
+            RelToBlock::Lattice { countries } => {
+                assert!(countries.contains(&cc("USA")));
+                assert!(countries.contains(&cc("GBR")));
+                assert!(countries.contains(&cc("CAN")));
+                // AUS / NZL drop because the second portion didn't list them.
+                assert!(!countries.contains(&cc("AUS")));
+                assert!(!countries.contains(&cc("NZL")));
+            }
+            other => panic!("expected Lattice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rel_to_block_usa_first_ordering() {
+        // §H.8 p151: USA first, rest alphabetical.
+        let portions = [
+            rel_portion(&["GBR", "CAN", "USA", "AUS"]),
+            rel_portion(&["GBR", "CAN", "USA", "AUS"]),
+        ];
+        let b = RelToBlock::from_attrs_iter(&portions);
+        let codes = b.to_vec();
+        assert_eq!(codes[0], cc("USA"));
+        // The rest are alphabetical: AUS, CAN, GBR.
+        assert_eq!(codes[1], cc("AUS"));
+        assert_eq!(codes[2], cc("CAN"));
+        assert_eq!(codes[3], cc("GBR"));
+    }
+
+    #[test]
+    fn rel_to_block_lattice_laws() {
+        let bottom = RelToBlock::Bottom;
+        let nf = RelToBlock::NofornSuperseded;
+        let a = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "GBR", "CAN"])]);
+        let b = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "GBR"])]);
+        let c = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "CAN"])]);
+        let states = [bottom, nf, a, b, c];
+
+        for s1 in &states {
+            for s2 in &states {
+                assert_eq!(s1.join(s2), s2.join(s1), "comm: {s1:?} vs {s2:?}");
+                assert_eq!(s1.join(s1), s1.clone(), "idem");
+                for s3 in &states {
+                    assert_eq!(
+                        s1.join(s2).join(s3),
+                        s1.join(&s2.join(s3)),
+                        "assoc: ({s1:?}, {s2:?}, {s3:?})"
+                    );
+                }
+            }
+        }
+    }
+}
