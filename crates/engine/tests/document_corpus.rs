@@ -27,36 +27,14 @@
 //! inside paragraph body produces a banner-shaped line the scanner
 //! correctly detects).
 
+use marque_capco::CapcoMarking;
 use marque_core::{MarkingType, Parser, Scanner};
-use marque_ism::{CapcoTokenSet, ParsedAttrs};
+use marque_engine::decoder::is_nontrivial_marking;
+use marque_ism::CapcoTokenSet;
 use marque_test_utils::{
     DocumentGroundTruth, load_document_ground_truth, marked_document_fixtures,
 };
 use std::collections::HashMap;
-
-/// Predicate: does this parse carry actual marking content?
-///
-/// Mirrors `marque_engine::decoder::is_nontrivial_marking`. A
-/// `(...)` candidate that parses with empty fields (e.g., an
-/// English parenthetical like `(GAO)`) does NOT count as a
-/// detected marking — the parser will succeed but produce a
-/// zero-attribute `ParsedAttrs`, and the engine drops these from
-/// the rule layer. This test applies the same filter.
-fn is_nontrivial(attrs: &ParsedAttrs<'_>) -> bool {
-    attrs.classification.is_some()
-        || !attrs.sci_markings.is_empty()
-        || !attrs.sci_controls.is_empty()
-        || attrs.sar_markings.is_some()
-        || !attrs.aea_markings.is_empty()
-        || attrs.fgi_marker.is_some()
-        || attrs.dissem_iter().next().is_some()
-        || !attrs.non_ic_dissem.is_empty()
-        || !attrs.rel_to.is_empty()
-        || attrs.classified_by.is_some()
-        || attrs.derived_from.is_some()
-        || attrs.declassify_on.is_some()
-        || attrs.declass_exemption.is_some()
-}
 
 /// Allowlist entry: a document whose detected portion/banner counts
 /// legitimately deviate from ground truth, with the delta and a
@@ -162,7 +140,14 @@ fn scanner_counts_match_ground_truth() {
             let Ok(parsed) = parser.parse(cand, &source) else {
                 continue;
             };
-            if !is_nontrivial(&parsed.attrs) {
+            // Route the parse through the engine's own
+            // `is_nontrivial_marking` predicate so the test cannot
+            // drift from what the engine surfaces to the rule layer.
+            // `from_parsed_unchecked` + `CapcoMarking::new` mirrors
+            // the decoder's `recognize` step 3a/3b flow.
+            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+            let marking = CapcoMarking::new(attrs);
+            if !is_nontrivial_marking(&marking) {
                 continue;
             }
             match cand.kind {

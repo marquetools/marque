@@ -4281,6 +4281,14 @@ fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
     if body_had_separator && !body_had_digit && !body_had_opener {
         return false;
     }
+    // `bracket_depth` is intentionally unconstrained at end-of-
+    // loop. The structural terminator (`)` / `]`) lives in `last`
+    // and is consumed before the body iteration; for `(a)` /
+    // `[a]` the body ends with `bracket_depth == 1` because the
+    // matching closer was never seen by the body walk. The
+    // variable's only meaningful use is the in-loop "are we
+    // inside parens right now" gate for the alpha-only run cap,
+    // so its terminal value carries no failure consequence.
     // Reject empty alphanumeric body (e.g., `()`, `..`). Covered
     // partially by `trimmed.len() < 2` above; this final check
     // catches `()` (3 bytes total, body is `(`).
@@ -4297,10 +4305,26 @@ fn candidate_has_lowercase(bytes: &[u8]) -> bool {
     bytes.iter().any(|b| b.is_ascii_lowercase())
 }
 
+/// Maximum number of context features [`compute_context_features`]
+/// can emit per call. Bounded by the function's contract:
+///
+/// - At most one of [`FeatureId::LinePositionPenalty`] /
+///   [`FeatureId::BulletAnchorBonus`] (mutually exclusive).
+/// - At most one of [`FeatureId::LowercaseSurroundingContext`].
+///
+/// Total ≤ 2. The `SmallVec` inline capacity in
+/// [`compute_context_features`]'s return type matches this so the
+/// common case (and every case, today) stays heap-free. A future
+/// third positional feature MUST bump this bound and the `SmallVec`
+/// capacity in lock-step — the const exists so the doc comment on
+/// `compute_context_features` and the storage shape can't drift
+/// independently.
+const CONTEXT_FEATURE_MAX: usize = 2;
+
 /// Compute the context features that apply to every scored candidate
 /// at this byte position, regardless of canonical-token content.
 ///
-/// Returns up to 2 `(FeatureId, delta)` pairs:
+/// Returns up to [`CONTEXT_FEATURE_MAX`] `(FeatureId, delta)` pairs:
 ///
 /// - At most one of [`FeatureId::LinePositionPenalty`] (line offset
 ///   exceeds [`LINE_POSITION_BUDGET`] and the line prefix doesn't
@@ -4316,21 +4340,27 @@ fn candidate_has_lowercase(bytes: &[u8]) -> bool {
 /// a portion (banners/CABs are not subject to these features), or
 /// when the engine did not populate `line_offset` / `line_prefix`
 /// (e.g., direct test-code callers using `ParseContext::default()`).
-/// Maximum number of context features [`compute_context_features`]
-/// can emit per call. Bounded by the function's contract:
 ///
-/// - At most one of [`FeatureId::LinePositionPenalty`] /
-///   [`FeatureId::BulletAnchorBonus`] (mutually exclusive).
-/// - At most one of [`FeatureId::LowercaseSurroundingContext`].
-///
-/// Total ≤ 2. The `SmallVec` inline capacity below matches this so
-/// the common case (and every case, today) stays heap-free. A
-/// future third positional feature MUST bump this bound and the
-/// `SmallVec` capacity in lock-step — the const exists so the doc
-/// comment on `compute_context_features` and the storage shape
-/// can't drift independently.
-const CONTEXT_FEATURE_MAX: usize = 2;
-
+/// **Dispatch semantics.** The features are added uniformly to
+/// every surviving scored candidate before the sort/null-filter
+/// step. For **single-letter portion candidates** (`(s)`, `(c)`,
+/// `(u)`, `(r)`) the features actively gate output: the null
+/// filter at [`NULL_HYPOTHESIS_LOG_MARGIN`] compares each
+/// candidate's posterior against its own (unshifted)
+/// `null_posterior`, so a `-2.0` position or lowercase penalty
+/// directly determines whether the candidate clears the prose
+/// hypothesis. For **multi-letter portion candidates** (`(NU)`,
+/// `(NC)`, `(TS)`, `(SI//NF)`, …) the null filter does not apply,
+/// so the uniform additive shift does not change the marking-vs-
+/// marking sort order. The features still influence dispatch
+/// through the recognition-runner-up calculation
+/// (`max(marking_runner_up, top.null_posterior)`) because
+/// `null_posterior` is unshifted: a sufficiently large penalty
+/// can let the prose null hypothesis win the runner-up slot,
+/// lowering the emitted recognition score even when the dispatch
+/// stays Unambiguous. The features are also recorded in the audit
+/// feature trace for every survivor regardless of dispatch
+/// behavior, so post-hoc analysis can see what the decoder saw.
 fn compute_context_features(
     kind: MarkingType,
     bytes: &[u8],
@@ -4371,7 +4401,24 @@ fn compute_context_features(
 /// banner scanner and produces a zero-attribute parse); without
 /// the filter, every `X//Y` prose fragment would materialize a
 /// fabricated empty marking candidate.
-fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
+/// True when a parsed marking carries enough recognized fields to
+/// surface as a real `CapcoMarking` candidate to the rule layer.
+///
+/// The strict parser is lenient by design — `FROBNITZ//WIBBLE` will
+/// trip the banner scanner and produce a zero-attribute parse — so
+/// this predicate filters out shape-matches that didn't resolve any
+/// tokens against the CVE vocabulary. Used by
+/// [`DecoderRecognizer::recognize`] step 3c to discard fabricated
+/// empty candidates and by integration tests that need the same
+/// "real marking?" predicate to count engine-relevant candidates.
+///
+/// **Public for test use.** Integration tests in `crates/engine/tests/`
+/// (notably `document_corpus.rs`) need this exact predicate to compute
+/// the candidate count the engine actually surfaces to the rule
+/// layer. Exporting it eliminates the divergence risk a hand-rolled
+/// copy-of-the-predicate would carry — silent edits here would
+/// otherwise invalidate every count assertion downstream.
+pub fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
     let a = &marking.0;
     a.classification.is_some()
         || !a.sci_controls.is_empty()
