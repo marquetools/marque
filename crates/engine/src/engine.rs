@@ -277,11 +277,15 @@ pub struct Engine {
     ///
     /// **Hot-loop consumers.** Read by Sites B (per-diagnostic
     /// `retain_mut` rewrite), C (bridge `ConstraintViolation`
-    /// envelope), and D (C001 corrections-map post-pass). Subsumes the
-    /// pre-hoist per-`lint()` `e059_override` hoist — the same lookup
-    /// against `"E059"` happens here at construction time and is
-    /// passed through to `bridge_sci_per_system_diagnostics` per call
-    /// site.
+    /// envelope), and D (C001 corrections-map post-pass). This field
+    /// handles the construction-time part of the optimization by
+    /// precomputing emitted-ID override severities once, so hot paths
+    /// avoid repeated parse/canonicalization work. The pre-`lint()`
+    /// `e059_override` hoist still exists intentionally: each `lint()`
+    /// call does `self.emitted_id_overrides.get("E059").copied()`
+    /// once and passes that cached value through to
+    /// `bridge_sci_per_system_diagnostics`, avoiding per-candidate
+    /// `HashMap` probes.
     emitted_id_overrides: EmittedIdOverrides,
 }
 
