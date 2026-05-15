@@ -1279,8 +1279,9 @@ fills the gap.
   appears in the banner line and the 'TFNI' marking does not appear
   in the banner line."
 - **§H.7 p122 — FGI section worked example** (NOT a §H.7 ATOMAL
-  subsection — ATOMAL has no dedicated §H entry, its registration
-  lives in §G.2 Table 5 p40; this citation is for the worked example
+  subsection — ATOMAL has no dedicated subsection in §H.1 through
+  §H.9; its registration lives in §G.2 Table 5 p40; this citation
+  is for the worked example
   found inside the FGI section that demonstrates the AEA-axis
   placement). Key prose: "*SECRET//RD/ATOMAL//FGI NATO//NOFORN,
   where ATOMAL is a NATO Atomic Energy Act marking that follows the

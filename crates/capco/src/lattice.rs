@@ -689,9 +689,10 @@ pub enum UcniKind {
 ///    control marking; ARH = AEA) + §H.7 p122 FGI-section worked
 ///    example (`SECRET//RD/ATOMAL//FGI NATO//NOFORN` places ATOMAL
 ///    in the AEA `//` axis position — note §H.7 is the FGI section,
-///    not an ATOMAL subsection; ATOMAL has no dedicated §H entry,
-///    its registration lives in §G.2 Table 5). The PR 9c.1 T134
-///    routing decision tracked this through the parser layer.
+///    not an ATOMAL subsection; ATOMAL has no dedicated subsection
+///    in §H.1 through §H.9, its registration lives in §G.2 Table 5).
+///    The PR 9c.1 T134 routing decision tracked this through the
+///    parser layer.
 ///
 /// `AeaSet` round-trips with `&[AeaMarking]` via
 /// [`AeaSet::from_markings`] / [`AeaSet::to_markings`], mirroring
