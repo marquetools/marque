@@ -464,7 +464,7 @@ fn document_fixtures_lint_against_expected() {
         let expected_content = std::fs::read_to_string(&expected_path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", expected_path.display()));
         let expected: marque_test_utils::ExpectedFixture = serde_json::from_str(&expected_content)
-            .unwrap_or_else(|e| panic!("failed to parse {}: {e}", expected_path.display()));
+            .unwrap_or_else(|e| panic!("failed to parse {}: {e:?}", expected_path.display()));
         let result = engine.lint(&source);
 
         for exp in &expected.diagnostics {

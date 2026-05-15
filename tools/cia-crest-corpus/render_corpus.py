@@ -135,6 +135,8 @@ def parse_spec(path: Path) -> ParsedSpec:
     if not fm:
         raise ValueError(f"{path.name}: missing YAML frontmatter")
     front = yaml.safe_load(fm.group(1)) or {}
+    # BaseLoader keeps scalars as strings so CAB metadata schema stays
+    # consistently textual in emitted JSON (no YAML numeric coercion).
     front_raw = yaml.load(fm.group(1), Loader=yaml.BaseLoader) or {}
     body = text[fm.end() :]
 
@@ -166,7 +168,6 @@ def parse_spec(path: Path) -> ParsedSpec:
             mark, rest = _extract_mark(raw_para)
 
             if rest.startswith("```table"):
-                mark, rest = _extract_mark(raw_para)
                 inner = rest.split("\n", 1)[1] if rest.startswith("```") else rest
                 if inner.rstrip().endswith("```"):
                     inner = inner.rsplit("```", 1)[0].rstrip()
