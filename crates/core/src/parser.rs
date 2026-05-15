@@ -1048,11 +1048,36 @@ impl<'t> Parser<'t> {
                                 // at the `trimmed.starts_with("REL TO")`
                                 // branch above), then delegate to
                                 // `parse_rel_to_with_spans` for country
-                                // and trailing-control parsing. The
-                                // final `token_spans.sort_unstable_by_key`
+                                // parsing. The final
+                                // `token_spans.sort_unstable_by_key`
                                 // pass at the end of `parse_inner`
                                 // places everything in document order
                                 // regardless of emit order.
+                                //
+                                // `r.tok` is a `/`-split sub-token from
+                                // `split_slash_with_separator_offsets`,
+                                // so it cannot contain an internal `/`
+                                // — any `/<control>` tail (e.g. the
+                                // `/NF` in `REL TO USA, FVEY/NF` when
+                                // that block appears as the whole
+                                // between-`//` segment via the
+                                // early-path branch) was already peeled
+                                // into a separate sub-token and routed
+                                // through this same `for r in results`
+                                // loop's `SubKind::Dissem` / `NonIc`
+                                // arms. The `trailing_dissem` /
+                                // `trailing_non_ic` result fields of
+                                // `parse_rel_to_with_spans` are
+                                // therefore always empty on this path
+                                // — but the function returns them
+                                // regardless, so we make the invariant
+                                // explicit with a `debug_assert!`. If a
+                                // future change to
+                                // `split_slash_with_separator_offsets`
+                                // ever stops splitting on `/` inside a
+                                // REL TO sub-token, this assertion
+                                // fires loud rather than silently
+                                // dropping controls.
                                 //
                                 // Authority: CAPCO-2016 §H.8 p150-151
                                 // (REL TO is a dissem control; the
@@ -1070,8 +1095,12 @@ impl<'t> Parser<'t> {
                                     &mut token_spans,
                                 );
                                 rel_to.extend(parsed.countries);
-                                dissem.extend(parsed.trailing_dissem);
-                                non_ic.extend(parsed.trailing_non_ic);
+                                debug_assert!(
+                                    parsed.trailing_dissem.is_empty()
+                                        && parsed.trailing_non_ic.is_empty(),
+                                    "multi-token RelTo path should never observe trailing \
+                                     controls (sub-token splitting peels them first)"
+                                );
                             }
                             SubKind::NonIc => {
                                 non_ic.push(ParsedNonIcDissem::new(r.nic.unwrap(), r.tok, r.span));

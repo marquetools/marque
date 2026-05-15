@@ -152,16 +152,26 @@ fn rel_to_with_tetragraph_after_orcon() {
 
 #[test]
 fn rel_to_with_trailing_dissem_after_orcon() {
-    // `OC/REL TO USA, NOR/NF` — the new commit branch routes through
-    // `parse_rel_to_with_spans`, which splits the trailing `/NF` off
-    // the last comma entry as a `trailing_dissem` control. The
-    // commit-branch code then extends the outer `dissem` vec from
-    // that result. This test pins the wiring; without it a refactor
-    // that drops the `dissem.extend(parsed.trailing_dissem)` call
-    // would silently lose the trailing NOFORN.
+    // `OC/REL TO USA, NOR/NF` — exercises the three-sub-token shape
+    // through the multi-token block handler. The outer
+    // `split_slash_with_separator_offsets` splits on every `/`, so
+    // the parser sees three sub-tokens: `OC` (Dissem), `REL TO USA,
+    // NOR` (RelTo), and `NF` (Dissem). The category-family check
+    // accepts the mix (RelTo folds to Dissem via `category_family`),
+    // and the per-sub-token commit emits each on its own axis.
     //
-    // Authority: CAPCO-2016 §H.8 p150-151 (REL TO syntax allows
-    // trailing same-category controls separated by `/`).
+    // Note: this test does NOT exercise the `trailing_dissem` /
+    // `trailing_non_ic` absorption inside `parse_rel_to_with_spans`,
+    // because by the time the new RelTo commit arm sees `r.tok`,
+    // the outer slash-split has already peeled the trailing `/NF`
+    // into its own Dissem sub-token. That absorption path is only
+    // hit by the early-path branch at `trimmed.starts_with("REL TO")`
+    // when the whole between-`//` segment is the REL TO block (e.g.
+    // `(S//REL TO USA, FVEY/NF)`). The `debug_assert!` in the
+    // commit arm guards the invariant.
+    //
+    // Authority: CAPCO-2016 §H.8 p150-151 (REL TO is dissem-category;
+    // same-category continuations separated by `/`).
     let src = "(S//OC/REL TO USA, NOR/NF)";
     let attrs = parse(src);
     let unknown: Vec<_> = attrs
@@ -222,6 +232,59 @@ fn rel_lookalike_mangled_token_does_not_match() {
     assert!(
         attrs.rel_to.is_empty(),
         "mangled token must not have routed through parse_rel_to_with_spans"
+    );
+}
+
+#[test]
+fn bare_rel_portion_shorthand_after_orcon_routes_via_dissem_control() {
+    // CAPCO-2016 §H.8 p150-151 portion form column: when every
+    // portion's REL TO list matches the banner's, the banner carries
+    // `REL TO [USA, LIST]` and each portion uses the bare shorthand
+    // `REL` (no `TO`, no list). marque models bare `REL` as
+    // `DissemControl::Rel` (token registered at
+    // `crates/ism/src/token_set.rs:470`, rendered via
+    // `crates/capco/src/render/render_dissem.rs:150`, deduplicated
+    // against full REL TO at page-context roll-up time in
+    // `crates/ism/src/page_context.rs:1019-1020`).
+    //
+    // The tightened guard `starts_with("REL TO ") || == "REL TO"`
+    // intentionally does NOT match bare `REL` — bare REL has no
+    // country list to parse, so routing it through
+    // `parse_rel_to_with_spans` would be wrong. Instead it falls
+    // through to `DissemControl::parse("REL") → Some(Rel)` via the
+    // existing speculative loop, exactly as the engine already
+    // models it. This test pins that interaction so a future guard
+    // tightening doesn't accidentally claim bare REL.
+    let src = "(S//OC/REL)";
+    let attrs = parse(src);
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "bare REL must remain a recognized DissemControl::Rel sub-token; \
+         got Unknown spans: {:?}",
+        unknown
+            .iter()
+            .map(|t| (&*t.text, t.span.start, t.span.end))
+            .collect::<Vec<_>>()
+    );
+
+    let dissem_tokens: Vec<&str> = attrs.dissem_us.iter().map(|d| d.bytes).collect();
+    assert!(
+        dissem_tokens.contains(&"OC"),
+        "OC should be on the dissem axis; got {dissem_tokens:?}"
+    );
+    assert!(
+        dissem_tokens.contains(&"REL"),
+        "bare REL should be on the dissem axis; got {dissem_tokens:?}"
+    );
+    assert!(
+        attrs.rel_to.is_empty(),
+        "bare REL must not have routed through parse_rel_to_with_spans; \
+         rel_to should be empty"
     );
 }
 
