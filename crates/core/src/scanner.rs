@@ -76,8 +76,8 @@ impl Scanner {
         // loop: we emit on the THIRD newline of a run (equality, not `>=`)
         // and do not reset after emit, so a longer run (`\n\n\n\n\n+`)
         // still emits exactly one PageBreak — at the third newline.
-        let mut run: usize = 0;
-        let mut prev_pos: Option<usize> = None;
+        let mut run = 0usize;
+        let mut prev_pos = None;
         for pos in memchr_iter(b'\n', source) {
             let continuous = match prev_pos {
                 Some(p) => source[p + 1..pos].iter().all(|&b| b == b'\r'),
@@ -359,6 +359,27 @@ mod tests {
         assert_eq!(breaks.len(), 1);
         assert_eq!(breaks[0].span.start, 3);
         assert_eq!(breaks[0].span.end, 3);
+    }
+
+    #[test]
+    fn empty_gap_between_newlines_counts_as_continuous() {
+        // Adjacent newlines have an empty inter-newline gap. The
+        // `\r`-transparency check (`source[p+1..pos].iter().all(|&b| b == b'\r')`)
+        // returns vacuously `true` on an empty slice, which is the load-bearing
+        // property that makes pure-LF `\n\n\n` emit a PageBreak. This pins the
+        // vacuous-truth case explicitly so a future tighter predicate that
+        // doesn't preserve it (e.g., `gap.is_empty() || gap.iter().all(...)`)
+        // would still pass, but a buggier one (e.g., `!gap.is_empty() && ...`)
+        // would fail here independently of the other page-break tests.
+        let src = b"\n\n\n";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 2);
+        assert_eq!(breaks[0].span.end, 2);
     }
 
     #[test]
