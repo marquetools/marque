@@ -180,22 +180,46 @@ portions have Y, the banner FD&R becomes Z".
 | 26 | DISPLAY ONLY | REL TO (with common LIST) | DISPLAY ONLY [common LIST] (release implies disclosure) |
 | 27 | REL TO/DISPLAY ONLY | REL TO/DISPLAY ONLY (with common LISTs in each) | REL TO [common]/DISPLAY ONLY [common] |
 
-**Marque gap (current, 2026-05-02).** Our `PageRewrite` layer covers
-the symmetric meet for SCI / SAP / AEA categories and the supersession
-for `NOFORN clears REL TO` (rule 1+2). The FD&R rows that are NOT yet
-fully implemented:
+**Marque gap (current, 2026-05-15 after PR 4b-B).** PR 4b-B (006 T112)
+installed per-category Lattice impls in `marque-capco::lattice`
+(ClassificationLattice, NatoClassLattice, JointSet, DissemSet,
+NatoDissemSet, RelToBlock, DeclassifyOnLattice) and fixed two
+PageContext bugs in lock-step:
+
+- OC-USGOV supersession (replaces unanimity-drop) per §H.8 p136 + p140.
+- RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
+
+PR 4b-B also adds `W004 joint-disunity-collapse-to-FGI` (Warn) per
+§H.3 p56 + §H.7 p123 — fires when all-JOINT portions disagree on
+their producer lists; surfaces the cross-axis FGI migration.
+
+The `CapcoMarking::join_via_lattice` sibling method composes the new
+lattice types; the production `Lattice::join` still delegates to
+PageContext, and the parity gate at
+`crates/capco/tests/page_context_lattice_parity.rs` proves
+byte-identity (with three documented divergences) between the two
+paths. PR 4b-D will flip `CapcoScheme::project(Scope::Page, ...)` to
+use the lattice path.
+
+Remaining FD&R rows the lattice path does NOT yet fully model
+(deferred to PR 4b-D's closure-operator landing per `docs/plans/
+2026-05-01-lattice-design.md` §3 (e)):
 
 - Rule 17: RELIDO date-pivot + non-FD&R-caveat ambiguity (depends on
-  Table 2 lookup).
-- Rule 23: `TEYE / ACGU / FVEY` tetragraph **expansion** during
-  common-LIST roll-up.
+  Table 2 lookup — Layer 2 FD&R inference is PR 4b-D territory).
 - Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
   release-implies-disclosure".
 - Rule 27: dual-channel REL TO/DISPLAY ONLY composition where each
   channel has its own common-LIST.
 
+PR 4b-B closed:
+
+- Rule 23 tetragraph expansion (FVEY → constituent trigraphs) lives
+  in `RelToBlock::from_attrs_iter` via the existing
+  `marque_ism::lookup_tetragraph_members` table.
+
 These are tracked against the lattice / engine refactor at
-`docs/plans/2026-05-01-lattice-design.md`.
+`docs/plans/2026-05-01-lattice-design.md` §11.
 
 > Authority: CAPCO-2016 §D.2 + Table 3, pp 28–30.
 
