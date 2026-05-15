@@ -331,17 +331,30 @@ impl CapcoMarking {
         // present, NATO/FGI variants normalize to `Us(effective_level)`
         // at banner time; the non-US variant survives only when the
         // page has no US contribution at all. G-3 (PR 4b-B follow-up).
+        //
+        // G-9 (PR 4b-B follow-up): `MarkingClassification::Conflict`
+        // carries an implicit US classification (`us: Classification`,
+        // see `MarkingClassification::Conflict` doc comment at
+        // `crates/ism/src/attrs.rs:521`). Conflict portions are
+        // therefore US-bearing for the purposes of the solely-non-US
+        // gate; treating them otherwise breaks parity with
+        // `PageContext::expected_classification`, which uses
+        // `effective_level()` over Conflict (returning the implicit
+        // `us` level) and wraps the result in `Us(_)`. Pre-G-9 the
+        // lattice path returned `Conflict(...)` on a Conflict-only
+        // page (or `Nato(_)` on a Conflict+NATO page) while
+        // PageContext returned `Us(level)` — same authority, same
+        // §H.7 reciprocal-normalization rule.
         let mut has_us_class = false;
         let mut has_non_us_class = false;
         for p in portions {
             match &p.classification {
-                Some(MarkingClassification::Us(_)) => has_us_class = true,
+                Some(MarkingClassification::Us(_))
+                | Some(MarkingClassification::Conflict { .. }) => has_us_class = true,
                 Some(MarkingClassification::Fgi(_)) | Some(MarkingClassification::Nato(_)) => {
                     has_non_us_class = true
                 }
-                Some(MarkingClassification::Joint(_))
-                | Some(MarkingClassification::Conflict { .. })
-                | None => {}
+                Some(MarkingClassification::Joint(_)) | None => {}
             }
         }
         let solely_non_us = has_non_us_class && !has_us_class;
@@ -389,6 +402,22 @@ impl CapcoMarking {
                             }
                             Some(MarkingClassification::Fgi(f)) if !solely_non_us => {
                                 q.classification = Some(MarkingClassification::Us(f.level));
+                            }
+                            // G-9 (PR 4b-B follow-up): Conflict always
+                            // flattens to its implicit `us` level in
+                            // this non-JOINT branch. PageContext's
+                            // `expected_classification` uses
+                            // `effective_level()` over Conflict, which
+                            // returns the `us` field, and wraps the
+                            // result in `Us(_)`. The lattice path
+                            // matches that semantic: Conflict is the
+                            // parser's way of recording "I saw two
+                            // classification systems; US wins per
+                            // §H.7"; the foreign side rides separately
+                            // through the FGI axis. Authority:
+                            // CAPCO-2016 §H.7 pp123-125.
+                            Some(MarkingClassification::Conflict { us, .. }) => {
+                                q.classification = Some(MarkingClassification::Us(*us));
                             }
                             _ => {}
                         }

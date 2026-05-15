@@ -30,8 +30,8 @@
 use marque_capco::CapcoMarking;
 use marque_ism::{
     AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiClassification,
-    FgiMarker, JointClassification, MarkingClassification, NatoClassification, NonIcDissem,
-    PageContext,
+    FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
+    NatoClassification, NonIcDissem, PageContext,
 };
 
 // ---------------------------------------------------------------------------
@@ -920,4 +920,105 @@ fn explicit_fgi_marker_merges_with_classification_derived_producers() {
     } else {
         panic!("expected Acknowledged FGI marker, got {:?}", lat.fgi_marker);
     }
+}
+
+// ===========================================================================
+// G-9 (PR 4b-B follow-up) — Conflict participates in the solely-non-US gate
+// ===========================================================================
+//
+// `MarkingClassification::Conflict { us, foreign }` carries an implicit US
+// classification (`us: Classification`). `PageContext::expected_classification`
+// uses `effective_level()` over every variant — including Conflict — and
+// wraps the result in `Us(_)`. The lattice path's `join_via_lattice`
+// gate-check at scheme.rs:334 originally only counted explicit
+// `MarkingClassification::Us(_)` portions as US-bearing, so a page with
+// a Conflict portion (or Conflict mixed with NATO/FGI) skipped the
+// `solely_non_us = false` branch and the §H.7 pp123-125 reciprocal-raise
+// to `Us(level)`. The lattice returned `Conflict(...)`, PageContext
+// returned `Us(level)` → parity broke for Conflict inputs.
+//
+// G-9 closes the gap by treating Conflict as US-bearing in the
+// `has_us_class` accumulation at scheme.rs:334.
+//
+// Citation: §H.7 pp123-125 (reciprocal-classification rule — same
+// authority that motivated G-3 for explicit US+NATO/FGI mixes). The
+// Conflict variant exists because of the same rule: it's the parser's
+// way of recording "the source had two classification systems; the
+// US side wins, upgraded to the greater level" (see
+// `MarkingClassification::Conflict` doc comment in
+// `crates/ism/src/attrs.rs:521-526`).
+// ===========================================================================
+
+fn portion_conflict(us_level: Classification, foreign: ForeignClassification) -> CanonicalAttrs {
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Conflict {
+        us: us_level,
+        foreign: Box::new(foreign),
+    });
+    a
+}
+
+#[test]
+fn conflict_classification_flattens_to_us() {
+    // G-9: a page with a single Conflict portion. PageContext returns
+    // `Us(effective_level)`; the lattice path must do the same.
+    let portions = [portion_conflict(
+        Classification::TopSecret,
+        ForeignClassification::Nato(NatoClassification::CosmicTopSecret),
+    )];
+    assert_byte_identity(
+        "conflict_classification_flattens_to_us",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn conflict_plus_nato_flattens_to_us() {
+    // G-9: Conflict + NATO. Conflict carries implicit US, so the page
+    // is NOT solely-non-US; both the NATO portion and the Conflict
+    // portion must reciprocal-raise to Us(effective_level).
+    let mut nato_portion = CanonicalAttrs::default();
+    nato_portion.classification = Some(MarkingClassification::Nato(
+        NatoClassification::NatoSecret,
+    ));
+    let portions = [
+        portion_conflict(
+            Classification::Secret,
+            ForeignClassification::Nato(NatoClassification::NatoSecret),
+        ),
+        nato_portion,
+    ];
+    assert_byte_identity(
+        "conflict_plus_nato_flattens_to_us",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn conflict_plus_us_flattens_to_us() {
+    // G-9 baseline: Conflict + explicit Us. Both paths produce
+    // Us(max_level). This was already passing pre-G-9 because
+    // `has_us_class = true` from the explicit Us portion regardless of
+    // Conflict; the test pins the established behavior so a future
+    // regression on the mixed case names itself.
+    let portions = [
+        portion_conflict(
+            Classification::Confidential,
+            ForeignClassification::Fgi(FgiClassification {
+                level: Classification::Confidential,
+                countries: Box::new([cc("GBR")]),
+            }),
+        ),
+        portion_us(Classification::Secret),
+    ];
+    assert_byte_identity(
+        "conflict_plus_us_flattens_to_us",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
 }
