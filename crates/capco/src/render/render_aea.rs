@@ -78,10 +78,20 @@ pub(crate) fn render_aea(m: &CapcoMarking, scope: Scope, out: &mut dyn fmt::Writ
 }
 
 /// Register order per CAPCO-2016 Table 4 row 6 (p36, expanded p108).
-/// Lower rank = earlier in register. The wildcard arm covers any
-/// future variant added to the `#[non_exhaustive]` `AeaMarking` enum
-/// — such a variant lands at the end pending a re-audit against the
-/// Register.
+/// Lower rank = earlier in register.
+///
+/// ATOMAL (PR 9c.1 T134) lands at rank 5 — last in the AEA register
+/// — per the §H.7 p123 worked example `SECRET//RD/ATOMAL//FGI NATO//
+/// NOFORN`. The manual's Register Table 4 row 6 does not enumerate
+/// ATOMAL in the AEA sequence (Table 4 lists only US-domestic AEA
+/// markings); the §H.7 worked example shows RD before ATOMAL, and
+/// the §H.7 prose ("ATOMAL is a NATO Atomic Energy Act marking
+/// that follows the registered US Atomic Energy Act marking RD")
+/// confirms ATOMAL trails the US-domestic AEA family.
+///
+/// The wildcard arm covers any future variant added to the
+/// `#[non_exhaustive]` `AeaMarking` enum — such a variant lands at
+/// the end pending a re-audit against the Register.
 fn register_rank(aea: &AeaMarking) -> u8 {
     match aea {
         AeaMarking::Rd(_) => 0,
@@ -89,6 +99,7 @@ fn register_rank(aea: &AeaMarking) -> u8 {
         AeaMarking::DodUcni => 2,
         AeaMarking::DoeUcni => 3,
         AeaMarking::Tfni => 4,
+        AeaMarking::Atomal(_) => 5,
         _ => u8::MAX,
     }
 }
@@ -119,9 +130,16 @@ fn write_aea(aea: &AeaMarking, portion: bool, out: &mut dyn fmt::Write) -> fmt::
         AeaMarking::Tfni => {
             out.write_str("TFNI")?;
         }
+        // PR 9c.1 T134: ATOMAL renders same-form across banner and
+        // portion (CAPCO-2016 §G.1 Table 4 p38 row "ATOMAL" — same
+        // canonical name in all three columns). No sub-markings to
+        // emit; `AtomalBlock` is the empty carrier.
+        AeaMarking::Atomal(_) => {
+            out.write_str("ATOMAL")?;
+        }
         // `AeaMarking` is `#[non_exhaustive]`. Future variants land
-        // here pending a re-audit against §H.6; emit nothing rather
-        // than panic.
+        // here pending a re-audit against §H.6 / §H.7; emit nothing
+        // rather than panic.
         _ => {}
     }
     Ok(())
