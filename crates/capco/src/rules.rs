@@ -3344,9 +3344,9 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 /// NATO, which §H.7 p127's literal example does not endorse. We also
 /// deliberately do **NOT** add a `CountryCode::NATO` constant: that
 /// would bump the `marque-ism` public surface for a single use site
-/// without a second consumer — Constitution VII §IV "shallow adapter"
-/// discipline. Byte-compare at the one site is the right idiom until a
-/// second consumer materializes.
+/// without a second consumer — Constitution VII Principle IV "shallow
+/// adapter" discipline. Byte-compare at the one site is the right idiom
+/// until a second consumer materializes.
 ///
 /// # Splice strategy (two helpers, two responsibilities)
 ///
