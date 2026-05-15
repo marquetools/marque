@@ -331,6 +331,54 @@ fn lint_prose_heavy_benchmark(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Portion-dense advisory bench (perf/scanner-presize-allocators, issue #430)
+// ---------------------------------------------------------------------------
+//
+// `lint_portion_dense` measures the scanner-output-SmallVec + PageContext
+// portions-Vec allocator cost on a portion-rich input (20+ portion markings
+// in a 10KB doc). This is the input shape that most exercises the pre-sized
+// floors. Advisory bench — no entry in `benches/baseline.json`, same pattern
+// as `lint_prose_heavy`. Report the number in PRs that touch the scanner or
+// PageContext; don't gate on it.
+
+fn build_portion_dense_input(target_bytes: usize) -> Vec<u8> {
+    let block = concat!(
+        "(U) Background paragraph one with unclassified portion marking.\n",
+        "(C) Confidential portion follows. (S//NF) And a secret one.\n",
+        "(U) Another unclassified portion in the running text.\n",
+        "(S//REL TO USA, GBR) Secret releasable portion here.\n",
+        "(U) Closing unclassified portion for this block.\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn lint_portion_dense_benchmark(c: &mut Criterion) {
+    let input = build_portion_dense_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: portion-dense bench pins the strict
+    // recognizer to isolate scanner + PageContext allocator cost
+    // from the dispatcher's decoder fallback. Issue #430.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_portion_dense", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
 criterion_group!(
     benches,
     lint_latency_benchmark,
@@ -338,5 +386,6 @@ criterion_group!(
     lint_default_config_benchmark,
     lint_off_heavy_config_benchmark,
     lint_prose_heavy_benchmark,
+    lint_portion_dense_benchmark,
 );
 criterion_main!(benches);

@@ -109,10 +109,29 @@ pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
 /// # Thread-safety
 /// `PageContext` is not `Sync` — the engine builds it sequentially during a single
 /// document pass. If future batch processing requires sharing, wrap in `Arc<Mutex<_>>`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PageContext {
-    /// Accumulated portion attributes, in document order.
+    /// Accumulated portion attributes, in document order. Pre-sized to 8
+    /// because the typical CAPCO document carries 1-10 portions per page
+    /// (the scanner emits PageBreak candidates at form-feed and `\n\n\n+`
+    /// runs, slicing larger docs into multiple per-page contexts). 8
+    /// covers the typical case in zero reallocations; larger pages pay
+    /// one realloc at portion 9 instead of three (Vec growth 4 → 8 → 16
+    /// → 32) starting from `Vec::new()`. Issue #430.
     portions: Vec<CanonicalAttrs>,
+}
+
+/// Default capacity for `PageContext.portions`. Sized to the typical
+/// CAPCO per-page portion count; see field doc on `PageContext::portions`
+/// for the rationale (issue #430).
+const DEFAULT_PORTIONS_CAPACITY: usize = 8;
+
+impl Default for PageContext {
+    fn default() -> Self {
+        Self {
+            portions: Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY),
+        }
+    }
 }
 
 impl PageContext {
@@ -2459,5 +2478,24 @@ mod tests {
         assert!(sar_sort_key("AC") < sar_sort_key("BP"));
         // Numeric ordering by value, not lex: "2" < "10" despite lex.
         assert!(sar_sort_key("2") < sar_sort_key("10"));
+    }
+
+    #[test]
+    fn portions_pre_sized_to_typical_page() {
+        // Regression guard: PageContext pre-sizes its portions Vec to
+        // DEFAULT_PORTIONS_CAPACITY so that typical-page accumulation hits
+        // zero reallocations. If a future refactor lowers the capacity or
+        // drops the pre-size, this test breaks. Issue #430.
+        let ctx = PageContext::new();
+        assert!(
+            ctx.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
+            "PageContext::new should pre-size portions to at least {} (issue #430)",
+            DEFAULT_PORTIONS_CAPACITY
+        );
+        let ctx_default = PageContext::default();
+        assert!(
+            ctx_default.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
+            "PageContext::default should pre-size identically to new() (issue #430)"
+        );
     }
 }
