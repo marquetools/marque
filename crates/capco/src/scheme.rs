@@ -544,7 +544,7 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
 /// The mapping mirrors the existing per-token presence semantics in
 /// `satisfies_attrs` so a rule emitting `FactRemove(TOK_X)` lands on
 /// the same axis where `satisfies_attrs` would look for `X`.
-fn capco_token_category(id: TokenId) -> Option<CategoryId> {
+pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
     // Sentinel IDs are declared in the const block above (lines 60+).
     // Keep the matches in declaration order so a reviewer can trace
     // the catalog by line position.
@@ -4199,8 +4199,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 //
 // FD&R-dominator family: any of these present on a marking/page means an
 // explicit FD&R decision exists; the implicit-default trio (Trio 1, 2, 3)
-// should NOT fire. Per CAPCO-2016 §B.3 Table 2 p21 (FD&R Markings Summary)
-// and `marque-applied.md` §4.7.1.
+// should NOT fire. Per CAPCO-2016 §B.3.a p19 (canonical enumeration —
+// "NOFORN, REL TO, RELIDO, or DISPLAY ONLY"), §B.3 Table 2 pp 21-22
+// (scenario-summary table, derivative), and `marque-applied.md` §4.7.1.
 //
 // Includes:
 //   - NOFORN (most restrictive FD&R, top of chain per §H.8 p145)
@@ -4212,7 +4213,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 //
 // Note: LES-NF and SBU-NF are NOT included. They are non-IC dissem controls
 // that carry NOFORN treatment via PageRewrite, not FD&R markers themselves.
-// The §B.3 Table 2 enumeration is the authoritative source for the FD&R set.
+// §B.3.a p19 is the authoritative enumeration of the FD&R set; §B.3 Table 2
+// pp 21-22 is the per-scenario marking-summary table (derivative, not the
+// definition).
 //
 // Algebraic note (re: `marque-applied.md` §4.7.3 has_fdr definition):
 // §4.7.3 defines `has_fdr(x)` to include LES-NF / SBU-NF for the
@@ -4227,7 +4230,44 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 // downstream PageRewrite step rather than via FDR_DOMINATORS membership;
 // the Trio-1 row is permitted to over-fire on bare-LES-NF / bare-SBU-NF
 // because the PageRewrite supplies the suppressor fact downstream.
-static FDR_DOMINATORS: &[TokenRef] = &[
+// `pub(crate)` so the `Vocabulary::is_fdr_dissem` override in
+// `crates/capco/src/vocabulary.rs` and the bidirectional value-pin test
+// (`mod fdr_dissem_pin` in the same file) can read this slice as the
+// single source-of-truth.
+//
+// **Maintenance contract.** This slice and the neighboring
+// `is_fdr_dominator` function answer *different* questions about
+// the FD&R family, and the two enumerations are independent on
+// purpose:
+//   - `FDR_DOMINATORS` (this slice) enumerates **FD&R-set
+//     membership** per §B.3.a p19 — the four canonical FD&R
+//     markings (NOFORN / REL TO / RELIDO / DISPLAY ONLY) plus the
+//     §H.8 p157 EYES legacy. `Vocabulary::is_fdr_dissem` walks
+//     this slice and is the authoritative FD&R-membership API.
+//   - `is_fdr_dominator` (below) enumerates **FD&R dominators
+//     *over* RELIDO** for the `Constraint::ConflictsWithFamily`
+//     dispatch on the RELIDO conflict catalog (E054/E055). It
+//     deliberately **excludes RELIDO itself** because RELIDO-vs-
+//     RELIDO is a tautology in the conflict family — there is no
+//     such conflict to detect.
+// The intersection of the two sets is "FD&R members that conflict
+// with RELIDO" (NOFORN, DISPLAY ONLY, REL TO, EYES). The slice is
+// the strict superset. Do not collapse them: a future refactor
+// that delegates `is_fdr_dissem` through `is_fdr_dominator` will
+// silently under-fire on RELIDO and is pinned against in
+// `vocabulary.rs::fdr_dissem_pin::relido_admits_despite_is_fdr_dominator_excluding_it`.
+//
+// Adding a `Token` entry to this slice requires:
+//   1. Considering whether the new token should also dominate
+//      RELIDO. If yes, add a parallel arm to `is_fdr_dominator`'s
+//      `matches!`. If no, leave `is_fdr_dominator` alone.
+//   2. The `Vocabulary::is_fdr_dissem` override picks up the new
+//      entry automatically — it iterates this slice directly.
+// Adding an `AnyInCategory(CAT_X)` entry requires updating the
+// override's per-category routing in `vocabulary.rs` because the
+// override receives a single `TokenId` and dispatches through
+// `capco_token_category` rather than passing a `TokenRef`.
+pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_NOFORN),
     TokenRef::Token(TOK_RELIDO),
     TokenRef::Token(TOK_DISPLAY_ONLY),

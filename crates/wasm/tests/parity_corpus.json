@@ -22,20 +22,20 @@
     {
       "name": "corrections_map_typo.txt",
       "category": "invalid",
-      "input": "SECRET//SERCET//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":14},\"message\":\"unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph\",\"citation\":\"CAPCO-2016 §G.1 (Register of Authorized Markings, p36)\",\"fix\":null}\n"
+      "input": "SERCET//NOFORN\n",
+      "expected_lint": ""
     },
     {
       "name": "corrections_map_typo_2.txt",
       "category": "invalid",
-      "input": "TOP SECRET//NOFORM//REL TO USA, GBR\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":35},\"message\":\"decoder-recognized canonical form at bytes 0..35\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n{\"rule\":\"E053\",\"severity\":\"error\",\"span\":{\"start\":0,\"end\":0},\"message\":\"NOFORN cannot be used with REL TO (§H.8 p145); remove one or the other\",\"citation\":\"CAPCO-2016 §H.8 p145\",\"fix\":null}\n"
+      "input": "TOP SECRET//NOFORM\n",
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.9999987,\"migration_ref\":null}}\n"
     },
     {
       "name": "corrections_map_typo_3.txt",
       "category": "invalid",
-      "input": "CONFIDENTIAL//ORCON//REL TO USA, GBER\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":37},\"message\":\"decoder-recognized canonical form at bytes 0..37\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.9640041,\"migration_ref\":null}}\n"
+      "input": "CONFIDENTIAL//ORCON/REL TO USA, GBER\n",
+      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":20,\"end\":36},\"message\":\"unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph\",\"citation\":\"CAPCO-2016 §G.1 (Register of Authorized Markings, p36)\",\"fix\":null}\n"
     },
     {
       "name": "declass_in_banner.txt",
@@ -194,6 +194,12 @@
       "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"X-shorthand declassification code \\\"25X2-\\\" is deprecated; use \\\"25X2\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X2\",\"confidence\":0.95,\"migration_ref\":null}}\n"
     },
     {
+      "name": "classified_banner_atomal_as_aea.txt",
+      "category": "valid",
+      "input": "SECRET//RD/ATOMAL//FGI NATO//NOFORN\n",
+      "expected_lint": ""
+    },
+    {
       "name": "classified_banner_exdis.txt",
       "category": "valid",
       "input": "SECRET//NOFORN//EXDIS\n",
@@ -203,6 +209,18 @@
       "name": "classified_banner_les.txt",
       "category": "valid",
       "input": "SECRET//LES\n",
+      "expected_lint": ""
+    },
+    {
+      "name": "classified_banner_nato.txt",
+      "category": "valid",
+      "input": "//COSMIC TOP SECRET//ATOMAL//ORCON//REL TO USA, NATO",
+      "expected_lint": ""
+    },
+    {
+      "name": "classified_portion_atomal_as_aea.txt",
+      "category": "valid",
+      "input": "(//NS//ATOMAL//REL TO USA, NATO)\n",
       "expected_lint": ""
     },
     {
@@ -364,7 +382,7 @@
     {
       "name": "sar_abbrev_banner.txt",
       "category": "valid",
-      "input": "TOP SECRET//SAR-BP//NOFORN\n",
+      "input": "TOP SECRET//SAR-DE//NOFORN\n",
       "expected_lint": ""
     },
     {

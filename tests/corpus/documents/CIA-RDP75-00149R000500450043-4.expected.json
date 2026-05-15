@@ -1,0 +1,58 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP75-00149R000500450043-4",
+    "title": "NIXON CITES IKE BACK CUBA CHARGE",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP75-00149R000500450043-4/CIA-RDP75-00149R000500450043-4.pdf",
+    "cab": {
+      "classified_by": "938485",
+      "derived_from": "How We Got Here, CIA TS-0321-09",
+      "declassify_on": "N/A to AEA portions, see source list for NSI portions"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//RD//NOFORN/PROPIN",
+        "paragraphs": [
+          {
+            "mark": "C",
+            "text": "Nixon Cites Ike to Back Cuba Charge",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "LOS ANGELES, March 21 (UPI) Former Vice President Richard M. Nixon today stuck by a statement in his new book, \"Six Crises,\" that President Kennedy was told during the 1960 election campaign about U. S. plans to support an invasion of Cuba.",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "Nixon said former President Eisenhower had authorized him to state \"he had given instructions that in regard to U. S. intelligence activities abroad, Senator Kennedy was to be as fully briefed on our foreign problems as I was.\"",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "(In Palm Desert, Gen. Eisenhower's secretary said the former President \"has nothing else to say.\" She confirmed Gen. Eisenhower had authorized the Nixon remark.)",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "[In Washington yesterday, Mr. Kennedy said at his news conference that he considered the incident closed.]",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "Nixon now is a candidate for the Republican nomination for Governor.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "The White House and Allen Dulles denied yesterday that President Kennedy was advised of the ill-fated plan for a Cuban invasion. The suggestion that he was, the statement grew out of a misunderstanding.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

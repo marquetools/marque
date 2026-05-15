@@ -1,0 +1,129 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP96-00289R000200030004-1",
+    "title": "ORGANIZATIONAL CHANGE DIRECTORATE OF ADMINISTRATION",
+    "year": 1991,
+    "source_pdf": "https://archive.org/download/CIA-RDP96-00289R000200030004-1/CIA-RDP96-00289R000200030004-1.pdf",
+    "cab": {
+      "classified_by": "J HALL",
+      "derived_from": "COOLGUY SCG",
+      "declassify_on": "20200623"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//SI/TK-BLFH//SAR-BP 52X3//RSEN/NOFORN//NNPI",
+        "paragraphs": [
+          {
+            "mark": "C",
+            "text": "ORGANIZATIONAL CHANGE DIRECTORATE OF ADMINISTRATION",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "1. Effective 1 October 1990, the Office of General Administration (OGA) was established in the Directorate of Administration (DA) to manage the MG (Management Generalist) Career Subgroup by overseeing career development planning, assignments, and Career Service counseling for MG officers. The Director of General Administration will be a voting member on the Senior Personnel Review Board (SPRB) representing OGA. Basic responsibilities will include:",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "a. Overseeing the coordination and operation of the MG Board and all MG personnel evaluation panels.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "b. Providing career development counseling to MG officers, either at the request of the employee or as recommended by personnel evaluation panels and the Board, to the extent deemed necessary or appropriate at the discretion of the Director of General Administration or designee.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "c. Initiating and coordinating new training courses for MG officers at headquarters and overseas, using internal and external resources.",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "d. Targeting individuals for specific training based on recommendations from evaluation panels and the career board or based on developmental needs as determined by the Director of General Administration.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "e.  Ensuring adequate staffing including recommending experienced MG officers for nontraditional rotational tours of duty.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "f. Maintaining contacts with other offices in order to provide rotational opportunities into MG positions for appropriate officers of other Career Services.",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF",
+            "text": "g. Maintaining contact with Office of Personnel and Office of Training and Education (OTE) elements involved in recruitment and training of Career Trainees (CTs).",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "h. Counseling individual CTs on job-related matters and speaking at various training courses and general meetings of CTs.",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "TOP SECRET//SI/TK-BLFH//SAR-BP 52X3//RSEN/NOFORN//NNPI",
+        "paragraphs": [
+          {
+            "mark": "C",
+            "text": "i. Providing daily supervision of the Protocol Branch.",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "j. Representing the Deputy Director for Administration (DDA) in all directorate-wide Employee Review Panel and Personnel Evaluation Board cases.",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "2. The Career Management Staff (CMS) will continue to be responsible for developing and implementing personnel management and training policies and procedures for the directorate in compliance with Federal laws, Executive orders, and Agency regulations. In practical terms, this means developing and maintaining evaluation systems, career development programs, foreign language training, and incentive systems. The primary responsibilities of the staff are forecasting the impact of demographic and sociological trends on the DA work force and ensuring that the needs of the directorate are met. The staff is the DA representative and advocate for ensuring that Agency policies take into account the unique requirements of the directorate and, in the absence of needed policies and programs, prompts the appropriate Agency system to address these issues.",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "a. CMS acts for the DDA in approving personnel and training actions within the DA and in approving the use of nonstaff personnel including engaging or employing U.S. Government annuitants (subject to any additional or special approvals that may be required). The Chief, CMS also serves as:",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "(1) Secretary to the SPRB, which recommends Senior Intelligence Service promotions.",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "(2) The referent within the DA to respond to all questions pertaining to honor, merit, and incentive awards eligibility, policy, and procedures within the directorate.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "b. The Senior Training Officer (STO) is the principal adviser to the DDA in all training matters within the directorate. The STO/DA serves as the focal point for consultation among DA offices and staffs on training requirements, objectives, courses, and enrollment procedures and office support to training and office-conducted training. Basic responsibilities include:",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "(1) Preparing studies and recommendations for improvement of training, training standards, and course criteria for DA personnel concerning internal and external training programs.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "text": "(2)  Serving as the formal channel of communications between DA offices, OTE, and the senior training officers of the other directorates.",
+            "is_table": false
+          },
+          {
+            "mark": "C",
+            "text": "(3) Initiating and coordinating new training courses for DA personnel using both internal and external resources.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}
