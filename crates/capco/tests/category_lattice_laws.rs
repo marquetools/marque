@@ -596,10 +596,19 @@ mod classification_lattice {
         use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
         let usa = CountryCode::try_new(b"USA").expect("USA");
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let can = CountryCode::try_new(b"CAN").expect("CAN");
+        let fra = CountryCode::try_new(b"FRA").expect("FRA");
         // Pair a few representative variants at the same effective
         // level. NATO uses `us_equivalent`; pick the variant whose
         // us_equivalent matches `level` for the five-level chain
         // (U / R / C / S / TS — H-5 PR 4b-B follow-up adds R).
+        //
+        // C-7 / H-7 (PR 4b-B follow-up): include multiple distinct
+        // payloads at the same variant-rank/same-level so commutativity
+        // is exercised on the payload tiebreaker as well as the
+        // variant tiebreaker. Pre-C-7 the join fell through `ra <= rb`
+        // returning the left operand on same-variant/same-level —
+        // non-commutative.
         let nato = match level {
             Classification::TopSecret => Some(NatoClassification::CosmicTopSecret),
             Classification::Secret => Some(NatoClassification::NatoSecret),
@@ -608,17 +617,35 @@ mod classification_lattice {
             Classification::Unclassified => Some(NatoClassification::NatoUnclassified),
         };
         let mut out = vec![
-            // Us
+            // Us — only one payload (the level itself).
             ClassificationLattice::new(Some(MarkingClassification::Us(level))),
-            // Fgi
+            // Fgi — two payloads with different country lists at same
+            // level. Pre-C-7 these joined non-commutatively.
             ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level,
                 countries: Box::new([gbr]),
             }))),
-            // Joint
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+                level,
+                countries: Box::new([can]),
+            }))),
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+                level,
+                countries: Box::new([can, gbr]),
+            }))),
+            // Joint — two payloads with different co-owner lists at
+            // same level.
             ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
                 level,
                 countries: Box::new([usa, gbr]),
+            }))),
+            ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
+                level,
+                countries: Box::new([usa, can]),
+            }))),
+            ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
+                level,
+                countries: Box::new([usa, can, fra]),
             }))),
         ];
         if let Some(n) = nato {

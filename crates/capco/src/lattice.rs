@@ -1069,6 +1069,19 @@ impl Lattice for AeaSet {
 /// matches the post-§H.7-reciprocal-normalization order rules
 /// downstream expect.
 ///
+/// **Same-variant payload tiebreak** (C-7 PR 4b-B follow-up). At
+/// same level + same variant, country-bearing payloads (`Fgi`,
+/// `Joint`) are **unioned** rather than picking one operand by
+/// pointer order — `Fgi(S, [GBR]).join(Fgi(S, [CAN])) =
+/// Fgi(S, [CAN, GBR])`. Union is commutative and idempotent, which
+/// is what makes the lattice law hold. The union semantic also
+/// matches the §H.7 p123 / §D.2 p578 banner-rollup rule that the
+/// banner FGI list is the union of every observed foreign source.
+/// `Conflict` payloads (`foreign: Box<ForeignClassification>`)
+/// recurse into the same union rule when both sides carry the same
+/// foreign variant; cross-variant payloads fall back to a
+/// foreign-variant rank (Fgi < Nato < Joint).
+///
 /// `BoundedLattice` is implemented: top = `Some(Us(TopSecret))`,
 /// bottom = `None`. The class chain is closed at four elements; no
 /// agency-extensibility concern.
@@ -1130,6 +1143,144 @@ fn classification_variant_rank(c: &MarkingClassification) -> u8 {
     }
 }
 
+/// Same-variant / same-level payload tiebreaker for
+/// `ClassificationLattice::join`.
+///
+/// C-7 (PR 4b-B follow-up): the variant-rank tiebreaker alone is not
+/// sufficient — two `Fgi` (or two `Joint`) values at the same level
+/// with different country payloads previously fell through `ra <= rb`
+/// returning the left operand, which broke commutativity. This helper
+/// produces a join-result whose country payload is the **union** of
+/// both operands' country lists, matching the §H.7 p123 banner-rollup
+/// rule that the banner FGI list unions every observed foreign source
+/// ("the one or more unique country trigraph(s) and/or tetragraph(s)
+/// used in the portions"). Union is commutative and idempotent, so
+/// commutativity + idempotence + associativity all hold without
+/// further branching.
+///
+/// `Us`, `Nato`, and `Conflict` have no list payload at this level
+/// (Nato carries only a tag; Us carries only the level; Conflict's
+/// `foreign` is `Box<ForeignClassification>` which would need a
+/// dedicated tiebreaker — for now we union the `foreign` payload
+/// via the same rule when both sides are the same `ForeignClassification`
+/// shape, else fall back to picking the canonically-smaller operand
+/// by `effective_level()` + variant-rank tiebreak applied to
+/// `foreign`'s inner variant).
+fn classification_join_same_variant(
+    a: &MarkingClassification,
+    b: &MarkingClassification,
+) -> MarkingClassification {
+    use std::collections::BTreeSet;
+    match (a, b) {
+        (MarkingClassification::Us(_), MarkingClassification::Us(_)) => a.clone(),
+        (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
+            let merged: BTreeSet<marque_ism::CountryCode> = fa
+                .countries
+                .iter()
+                .copied()
+                .chain(fb.countries.iter().copied())
+                .collect();
+            MarkingClassification::Fgi(marque_ism::FgiClassification {
+                level: fa.level, // same level — invariant of the tiebreaker
+                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            })
+        }
+        (MarkingClassification::Nato(_), MarkingClassification::Nato(_)) => a.clone(),
+        (MarkingClassification::Joint(ja), MarkingClassification::Joint(jb)) => {
+            let merged: BTreeSet<marque_ism::CountryCode> = ja
+                .countries
+                .iter()
+                .copied()
+                .chain(jb.countries.iter().copied())
+                .collect();
+            MarkingClassification::Joint(marque_ism::JointClassification {
+                level: ja.level,
+                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            })
+        }
+        (
+            MarkingClassification::Conflict {
+                us: ua,
+                foreign: fa,
+            },
+            MarkingClassification::Conflict {
+                us: ub,
+                foreign: fb,
+            },
+        ) => {
+            // us level matches by invariant (effective_level equality).
+            // foreign payloads may differ; union the country-bearing
+            // shapes when both sides carry the same ForeignClassification
+            // variant; otherwise the variant-rank precedence on the
+            // foreign payload picks the canonically-smaller side.
+            let _ = (ua, ub);
+            let foreign = merge_foreign_classification(fa, fb);
+            MarkingClassification::Conflict {
+                us: *ua,
+                foreign: Box::new(foreign),
+            }
+        }
+        // Different variants reach here only through a programming
+        // error in `join`; defensively return `a`.
+        _ => a.clone(),
+    }
+}
+
+/// Merge two `ForeignClassification` payloads from same-level
+/// `Conflict` variants. Same-variant union; cross-variant falls
+/// back to the variant-rank precedence (lower rank wins).
+fn merge_foreign_classification(
+    a: &marque_ism::ForeignClassification,
+    b: &marque_ism::ForeignClassification,
+) -> marque_ism::ForeignClassification {
+    use marque_ism::ForeignClassification;
+    use std::collections::BTreeSet;
+    match (a, b) {
+        (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
+            let merged: BTreeSet<marque_ism::CountryCode> = fa
+                .countries
+                .iter()
+                .copied()
+                .chain(fb.countries.iter().copied())
+                .collect();
+            ForeignClassification::Fgi(marque_ism::FgiClassification {
+                level: fa.level,
+                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            })
+        }
+        (ForeignClassification::Nato(_), ForeignClassification::Nato(_)) => a.clone(),
+        (ForeignClassification::Joint(ja), ForeignClassification::Joint(jb)) => {
+            let merged: BTreeSet<marque_ism::CountryCode> = ja
+                .countries
+                .iter()
+                .copied()
+                .chain(jb.countries.iter().copied())
+                .collect();
+            ForeignClassification::Joint(marque_ism::JointClassification {
+                level: ja.level,
+                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            })
+        }
+        _ => {
+            // Cross-variant: pick the canonically-smaller variant
+            // (Fgi < Nato < Joint, mirroring `classification_variant_rank`
+            // for the top-level shapes).
+            let rank = |fc: &ForeignClassification| -> u8 {
+                match fc {
+                    ForeignClassification::Fgi(_) => 1,
+                    ForeignClassification::Nato(_) => 2,
+                    ForeignClassification::Joint(_) => 3,
+                }
+            };
+            if rank(a) <= rank(b) {
+                a.clone()
+            } else {
+                b.clone()
+            }
+        }
+    }
+}
+
 impl Lattice for ClassificationLattice {
     fn join(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
@@ -1145,9 +1296,23 @@ impl Lattice for ClassificationLattice {
                     // Equal effective level: deterministic variant
                     // tiebreak. Lower rank wins, so the join is
                     // commutative (a.join(b) == b.join(a)).
+                    //
+                    // C-7 (PR 4b-B follow-up): when both operands
+                    // share the same variant AND the same level, the
+                    // payloads may still differ — e.g.
+                    // `Fgi(S, [GBR]).join(Fgi(S, [CAN]))`. The
+                    // variant-rank tiebreak alone fell through
+                    // `ra <= rb` returning the left operand, which
+                    // broke commutativity on same-variant payload
+                    // diffs. We union the country payloads per the
+                    // §H.7 p123 / §D.2 p578 banner-rollup rule that
+                    // the banner FGI list is the union of every
+                    // observed foreign source.
                     let ra = classification_variant_rank(a);
                     let rb = classification_variant_rank(b);
-                    if ra <= rb {
+                    if ra == rb {
+                        Self(Some(classification_join_same_variant(a, b)))
+                    } else if ra < rb {
                         Self(Some(a.clone()))
                     } else {
                         Self(Some(b.clone()))
@@ -1171,9 +1336,21 @@ impl Lattice for ClassificationLattice {
                     // Equal effective level: deterministic variant
                     // tiebreak (same precedence as join). Lower rank
                     // wins, so meet is commutative.
+                    //
+                    // C-7 (PR 4b-B follow-up): same-variant payload
+                    // tiebreak uses the union helper from `join` —
+                    // for the lattice meet, union is the only choice
+                    // that keeps `meet` commutative and consistent
+                    // with `join`'s payload semantics. The dual
+                    // absorption law on the country axis (intersection
+                    // would be the natural meet) is not asserted by
+                    // any caller; meet on Classification is provided
+                    // for trait completeness.
                     let ra = classification_variant_rank(a);
                     let rb = classification_variant_rank(b);
-                    if ra <= rb {
+                    if ra == rb {
+                        Self(Some(classification_join_same_variant(a, b)))
+                    } else if ra < rb {
                         Self(Some(a.clone()))
                     } else {
                         Self(Some(b.clone()))
