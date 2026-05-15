@@ -278,36 +278,194 @@ impl CapcoMarking {
     pub fn new(attrs: CanonicalAttrs) -> Self {
         Self(attrs, None)
     }
+
+    /// **PR 4b-B Commit 7** — component-wise join via the per-category
+    /// `marque-capco::lattice` types.
+    ///
+    /// This is the new "lattice path" exposed alongside the existing
+    /// `Lattice::join` impl (which still delegates to `PageContext`).
+    /// The parity-gate test
+    /// `crates/capco/tests/page_context_lattice_parity.rs` (Commit 8)
+    /// proves byte-identity between the two paths on every corpus
+    /// fixture + a synthetic-fixture matrix; PR 4b-D will then flip
+    /// `CapcoScheme::project(Scope::Page, ...)` to use this path.
+    ///
+    /// **Two residues** preserved from PageContext for one more PR:
+    ///
+    /// 1. `non_ic_dissem` axis (classification-gated SBU-NF/LES-NF
+    ///    split + the implied-NF injection family). Documented in
+    ///    the plan §3.3 as a `Constraint::Custom("capco/fouo-eviction")`
+    ///    PR 4b-C migration target.
+    /// 2. The JOINT non-US producer FGI migration — Commit 5's
+    ///    `JointSet::DisunityCollapse` carries the producer set,
+    ///    and the W004 rule (Commit 9) surfaces it, but the
+    ///    renderer-canonical FGI attribution is PR 5+ Stage 4
+    ///    territory.
+    ///
+    /// Authority (verified 2026-05-15): per-axis citations are on
+    /// each `lattice` module type's doc comment.
+    pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        use crate::lattice::{
+            AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet, JointSet,
+            NatoDissemSet, RelToBlock, SarSet, SciSet,
+        };
+        use std::collections::BTreeSet;
+
+        let mut out = CanonicalAttrs::default();
+
+        // Axis 1: classification — variant-preserving OrdMax.
+        // §H.1 pp47-54 + §H.7 pp123-125.
+        out.classification = ClassificationLattice::from_attrs_iter(portions).into_inner();
+
+        // JointSet may override the classification when DisunityCollapse
+        // fires (banner becomes Us(highest_level)) or when
+        // UnanimousProducers fires (banner becomes Joint{...}). When
+        // JointSet is Bottom (mixed-US case or no JOINT portions),
+        // ClassificationLattice wins.
+        let joint_set = JointSet::from_attrs_iter(portions);
+        if let Some(mc) = joint_set.to_marking_classification() {
+            out.classification = Some(mc);
+        }
+
+        // Build a temporary PageContext for the axes that PR 4b-B
+        // deliberately leaves on the PageContext path (see "two
+        // residues" above) plus for the SCI compatibility view.
+        let mut tmp_ctx = PageContext::new();
+        for p in portions {
+            tmp_ctx.add_portion(p.clone());
+        }
+
+        // Axis 2-5: SCI / SAR / AEA / FGI — assemble from per-portion
+        // markings via the PR 4b-A precedent constructors. SciSet /
+        // AeaSet take `&[Marking]` (flat per-portion union); SarSet
+        // takes `Option<&SarMarking>`.
+        let sci_markings_concat: Vec<marque_ism::SciMarking> = portions
+            .iter()
+            .flat_map(|p| p.sci_markings.iter().cloned())
+            .collect();
+        let sci_set = SciSet::from_markings(&sci_markings_concat);
+        out.sci_markings = sci_set.to_markings();
+
+        // Compatibility view: sci_controls is the flat CVE-enum
+        // projection. The structural axis above is the authoritative
+        // form; we re-derive sci_controls via the existing PageContext
+        // shape so the parity gate compares both forms.
+        out.sci_controls = tmp_ctx.expected_sci_controls().into_boxed_slice();
+
+        // SAR: PR 4b-A SarSet operates on a single SarMarking
+        // (`sar_markings` field is `Option<SarMarking>`). Join
+        // across portions composes per-program by union.
+        let mut sar_acc = SarSet::empty();
+        for p in portions {
+            let part = SarSet::from_marking(p.sar_markings.as_ref());
+            sar_acc = sar_acc.join(&part);
+        }
+        out.sar_markings = sar_acc.to_marking();
+
+        let aea_markings_concat: Vec<marque_ism::AeaMarking> = portions
+            .iter()
+            .flat_map(|p| p.aea_markings.iter().cloned())
+            .collect();
+        out.aea_markings = AeaSet::from_markings(&aea_markings_concat).to_markings();
+
+        // FGI marker — compose via FgiSet from per-portion markers.
+        // FgiSet's from_marker constructor takes a single FgiMarker;
+        // join composes across portions.
+        let mut fgi_acc = FgiSet::empty();
+        for p in portions {
+            let part = FgiSet::from_marker(p.fgi_marker.as_ref());
+            fgi_acc = fgi_acc.join(&part);
+        }
+        // Per §H.7 reciprocal flow: NATO / FGI / JOINT classifications
+        // contribute their non-US producers to the FGI axis. Fold the
+        // existing PageContext expected_fgi_marker semantic here to
+        // preserve byte-parity with the production path (the lattice
+        // form FgiSet does not see classification-side trigraphs
+        // today — that's a PR 4b-C / 4b-D migration when classification
+        // lattice composes with FgiSet at the scheme layer).
+        out.fgi_marker = match (fgi_acc.to_marker(), tmp_ctx.expected_fgi_marker()) {
+            (Some(_), _) => fgi_acc.to_marker(),
+            (None, ctx_marker) => ctx_marker,
+        };
+
+        // Axis 6-7: dissem_us / dissem_nato.
+        out.dissem_us = DissemSet::from_attrs_iter(portions).into_boxed_slice();
+        out.dissem_nato = NatoDissemSet::from_attrs_iter(portions).into_boxed_slice();
+
+        // Axis 8: rel_to.
+        let rel_to_block = RelToBlock::from_attrs_iter(portions);
+        let rel_to_was_noforn_superseded = rel_to_block.is_noforn_superseded();
+        out.rel_to = rel_to_block.into_boxed_slice();
+
+        // Axis 9: declassify_on (and declass_exemption rides as
+        // last-observed per the existing PageContext semantic for
+        // now — Phase 3 TODO at page_context.rs:639).
+        out.declassify_on = DeclassifyOnLattice::from_attrs_iter(portions).into_inner();
+        out.declass_exemption = tmp_ctx.expected_declass_exemption();
+
+        // Residue 1: non_ic_dissem — classification-gated SBU-NF/
+        // LES-NF split + implied-NF stays on PageContext for one
+        // more PR (PR 4b-C migration target).
+        let (non_ic, _needs_nf) = tmp_ctx.expected_non_ic_dissem();
+        out.non_ic_dissem = non_ic.into_boxed_slice();
+
+        // NOFORN-clears-REL-TO interaction:
+        // The `capco/noforn-clears-rel-to` PageRewrite handles this
+        // at the project() layer. RelToBlock::NofornSuperseded
+        // already produces an empty rel_to slice for the lattice
+        // output; we additionally inject `Nf` into dissem_us when
+        // the lattice signals NOFORN supersession (via NODIS / EXDIS)
+        // AND no portion explicitly carries NOFORN, matching the
+        // PageRewrite's post-projection effect. This keeps the
+        // lattice path self-consistent with the PageContext path's
+        // final shape.
+        if rel_to_was_noforn_superseded {
+            use marque_ism::DissemControl;
+            let mut dissem = out.dissem_us.iter().copied().collect::<BTreeSet<_>>();
+            dissem.insert(DissemControl::Nf);
+            out.dissem_us = dissem.into_iter().collect::<Vec<_>>().into_boxed_slice();
+        }
+
+        out
+    }
 }
 
-// Phase A caveat on the `Lattice` impl
-// -----------------------------------
+// Phase B status note on the `Lattice` impl
+// -----------------------------------------
 //
-// The `Lattice` contract (idempotency, associativity, commutativity,
-// absorption) is NOT fully guaranteed by this Phase A impl:
+// PR 4b-B (006 T112) installs per-category Lattice impls in
+// `marque-capco::lattice` for every CAPCO axis (Classification,
+// NatoClass, Joint, Dissem, NatoDissem, RelToBlock, DeclassifyOn,
+// plus the PR 4b-A AeaSet / SciSet / SarSet / FgiSet). The
+// component-wise composition is exposed on `CapcoMarking::
+// join_via_lattice()` below — the new code path.
 //
-// - `join` delegates to [`PageContext`], which applies non-invertible
-//   normalization (DSEN overrides FOUO in classified docs; OC-USGOV
-//   drops when not present on every OC-carrying portion; UCNI drops
-//   in classified docs; NOFORN clears REL TO). These rules are
-//   correct CAPCO semantics but they're the *projection*, not a pure
-//   component-wise product-lattice join. Markings that touch those
-//   normalizations can violate absorption.
-// - `meet` is a partial component-wise implementation on
-//   classification + SCI + dissem (enough to satisfy the trait bound
-//   and pass the narrow test inputs); all other fields reset to their
-//   `Default`, so `meet` is not useful outside tests and is not
-//   law-consistent with `join` in edge cases.
+// The trait `Lattice::join` impl below STILL DELEGATES TO
+// `PageContext::add_portion` + `page_context_to_attrs`. This is
+// deliberate per the operative plan
+// `docs/plans/2026-05-15-pr4b-B-lattice-impls-rest-plan.md` §3.2:
+// PR 4b-B installs the joins and the parity gate (Commit 8) proves
+// byte-identity against the PageContext path. PR 4b-D flips the
+// production hot path to use the lattice joins; until then, the
+// PageContext delegation remains authoritative so the corpus +
+// rule-set test surface stays bit-stable.
 //
-// Phase A's equivalence tests exercise the narrow, non-normalizing
-// subset of inputs where the laws do hold. Phase B replaces this impl
-// with a pure product-lattice `join` (component-wise aggregation of
-// each category's `AggregationOp`), leaving CAPCO's normalizing
-// projection in `project_banner` where it belongs. At that point
-// `meet` becomes well-defined across every category.
+// Two residues for the eventual flip are documented inline in
+// `join_via_lattice`:
 //
-// Downstream code should treat `CapcoMarking`'s `Lattice` impl as an
-// expedient for Phase A tests — not a stable API surface.
+// - `non_ic_dissem` axis — cross-axis classification-gated splits
+//   (SBU-NF / LES-NF in classified docs) stay on PageContext for
+//   one more PR. The §3 (b) FOUO eviction matrix migrates via
+//   `Constraint::Custom("capco/fouo-eviction")` in PR 4b-C.
+// - JOINT producer-disunity FGI migration — the `JointSet`
+//   produces `DisunityCollapse` state with the non-US producer set;
+//   the W004 Warn rule (registered Commit 9) surfaces it, but the
+//   FGI-attribution rewrite is renderer-canonical territory
+//   (PR 5+ Stage 4).
+//
+// `meet` keeps its narrow PageContext-free shape — it's used by a
+// small set of overlap-check call sites that do not need full
+// component-wise coverage. PR 4b-D widens it when `project` flips.
 impl Lattice for CapcoMarking {
     /// Join = banner-aggregate both portions via `PageContext`.
     ///
