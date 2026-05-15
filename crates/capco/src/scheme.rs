@@ -1778,22 +1778,57 @@ impl CapcoScheme {
                 NF_WRITES,
             ),
             // Entry 4 — `capco/frd-sigma-consolidates-into-rd-sigma`.
-            // §H.6 p113 (FRD-SIGMA Precedence Rules for Banner Line
-            // Guidance): "If both RD and FRD SIGMA [#] portions are
-            // in a document, the RD-SIGMA [#] marking takes
-            // precedence over the FRD-SIGMA [#] marking in the
-            // banner line and all SIGMA numbers are listed in the
-            // banner line RD-SIGMA [#] marking, regardless of whether
-            // the information was RD or FRD." Within-axis transform
-            // — drops FRD-SIGMA atoms from CAT_AEA and folds their
-            // numbers into the surviving RD-SIGMA atom.
+            //
+            // CAPCO-2016 §H.6 states this same precedence rule from
+            // two complementary vantages — the RD-SIGMA subsection
+            // (§H.6 p108-109) and the FRD-SIGMA subsection (§H.6
+            // p113). The two passages are mutual references with
+            // identical operational content:
+            //
+            //   §H.6 p109 (top-of-page continuation from the p108
+            //   RD-SIGMA Precedence Rules block): "If both RD and FRD
+            //   SIGMA [#] portions are in a document, the RD-SIGMA [#]
+            //   marking takes precedence over the FRD-SIGMA [#]
+            //   marking in the banner line and all SIGMA numbers are
+            //   listed in the RD-SIGMA [#] marking in the banner line,
+            //   regardless of whether the information was RD or FRD."
+            //
+            //   §H.6 p113 (FRD-SIGMA Precedence Rules for Banner Line
+            //   Guidance): "If both RD and FRD SIGMA [#] portions are
+            //   in a document, the RD-SIGMA [#] marking takes
+            //   precedence over the FRD-SIGMA [#] marking in the
+            //   banner line and all SIGMA numbers are listed in the
+            //   banner line RD-SIGMA [#] marking, regardless of
+            //   whether the information was RD or FRD."
+            //
+            // Within-axis transform — drops FRD-SIGMA atoms from
+            // CAT_AEA and folds their numbers into the surviving
+            // RD-SIGMA atom. The `lattice::AeaSet` `Product`
+            // composition implements this as the union of axis 3
+            // (SIGMA numbers) when axis 1's supersession join lands
+            // on `Rd`; see `docs/plans/2026-05-01-lattice-design.md`
+            // §7.5 Example 1 for the worked end-to-end case.
+            //
+            // PR 4b-A (this row's doc-comment update) cites BOTH
+            // §H.6 p108-109 and §H.6 p113 in this comment so future
+            // readers find the rule from whichever subsection they
+            // open first. The row's `citation` field stays
+            // `§H.6 p113` (the original landing's citation) — the
+            // double-citation lives in this doc-comment, not in the
+            // citation string, because Marque's audit emitter reads
+            // the citation field as a single token. The brief's
+            // working name (`capco/rd-coalesces-sigmas`, §H.6 p108)
+            // refers to the same rewrite as this row — same algebra,
+            // same axis, same body, mutually-cited subsections.
             //
             // Monotonicity: shrinking on CAT_AEA (FRD-SIGMA atoms
             // dropped). Sound under fixed topological order.
             //
             // Phase-3 stub: trigger is `never_fires` and action is
             // `noop_action` because runtime dispatch stays in
-            // `PageContext` until Phase D/E. Only the
+            // `PageContext` until Phase D/E (specifically, PR 4b-B
+            // wires the runtime `AeaSet`-driven mutation through
+            // `CapcoScheme::project(Scope::Page, ...)`). Only the
             // `reads` / `writes` annotations are consumed (by the
             // scheduler). Topologically independent of every other
             // entry: the AEA axis is otherwise un-written.
@@ -2399,6 +2434,39 @@ impl CapcoScheme {
             Constraint::Custom {
                 name: "E021/aea-requires-noforn",
                 label: "CAPCO-2016 §H.6 p104",
+            },
+            // ---- E067: CNWDI requires RD (§H.6 p106) -------------
+            //
+            // §H.6 CNWDI entry p106 (Relationship(s) to Other
+            // Markings):
+            //   "- May only be used with TOP SECRET RD or SECRET RD.
+            //    - Must be used as a subset of RD in accordance
+            //      with DOD or joint DOE-DoD guidance."
+            //
+            // The CNWDI marking is a sub-modifier on RD: a portion
+            // marked CNWDI without RD is malformed input. The class-
+            // floor constraint (`E058/CNWDI-classification-floor`)
+            // separately enforces the "TOP SECRET RD or SECRET RD"
+            // class half; this row enforces the "subset of RD"
+            // companion-required half.
+            //
+            // PR 4b-A (this PR) adds this row alongside `AeaSet`'s
+            // landing. The `AeaSet` lattice admits the syntactically-
+            // reachable state `cnwdi=true, primary=None` (the lattice
+            // is intentionally permissive so the validator can catch
+            // the violation rather than the lattice silently
+            // synthesizing RD). E067 catches the violation at
+            // `CapcoScheme::validate()` time via the standard dyadic
+            // `Requires` evaluator.
+            //
+            // Per Constitution VIII: §H.6 p106 verified at
+            // `crates/capco/docs/CAPCO-2016.md:2584-2586` (RD
+            // subset clause) at PR 4b-A landing time.
+            Constraint::Requires {
+                name: "E067/cnwdi-requires-rd",
+                left: TokenRef::Token(TOK_CNWDI),
+                right: TokenRef::Token(TOK_RD),
+                label: "CAPCO-2016 §H.6 p106",
             },
             // ---- E022 retired in PR 3b.D (T026d) -----------------
             //
