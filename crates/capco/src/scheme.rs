@@ -4233,19 +4233,36 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 // single source-of-truth.
 //
 // **Maintenance contract.** This slice and the neighboring
-// `is_fdr_dominator` function each enumerate FD&R membership for
-// distinct callers — they share the same conceptual source (CAPCO
-// §B.3.a p19), but each function hard-codes its own `Token` arms
-// rather than deriving from the other. Adding a `Token` entry here
-// requires:
-//   1. Updating `is_fdr_dominator`'s `matches!` arm if the new token
-//      should also be an FD&R dominator OVER RELIDO (the RELIDO-
-//      conflict-family role).
-//   2. The `Vocabulary::is_fdr_dissem` override picks up new entries
-//      automatically — it iterates this slice directly.
+// `is_fdr_dominator` function answer *different* questions about
+// the FD&R family, and the two enumerations are independent on
+// purpose:
+//   - `FDR_DOMINATORS` (this slice) enumerates **FD&R-set
+//     membership** per §B.3.a p19 — the four canonical FD&R
+//     markings (NOFORN / REL TO / RELIDO / DISPLAY ONLY) plus the
+//     §H.8 p157 EYES legacy. `Vocabulary::is_fdr_dissem` walks
+//     this slice and is the authoritative FD&R-membership API.
+//   - `is_fdr_dominator` (below) enumerates **FD&R dominators
+//     *over* RELIDO** for the `Constraint::ConflictsWithFamily`
+//     dispatch on the RELIDO conflict catalog (E054/E055). It
+//     deliberately **excludes RELIDO itself** because RELIDO-vs-
+//     RELIDO is a tautology in the conflict family — there is no
+//     such conflict to detect.
+// The intersection of the two sets is "FD&R members that conflict
+// with RELIDO" (NOFORN, DISPLAY ONLY, REL TO, EYES). The slice is
+// the strict superset. Do not collapse them: a future refactor
+// that delegates `is_fdr_dissem` through `is_fdr_dominator` will
+// silently under-fire on RELIDO and is pinned against in
+// `vocabulary.rs::fdr_dissem_pin::relido_admits_despite_is_fdr_dominator_excluding_it`.
+//
+// Adding a `Token` entry to this slice requires:
+//   1. Considering whether the new token should also dominate
+//      RELIDO. If yes, add a parallel arm to `is_fdr_dominator`'s
+//      `matches!`. If no, leave `is_fdr_dominator` alone.
+//   2. The `Vocabulary::is_fdr_dissem` override picks up the new
+//      entry automatically — it iterates this slice directly.
 // Adding an `AnyInCategory(CAT_X)` entry requires updating the
-// override's per-category match arms in `vocabulary.rs` because the
-// override receives a single `TokenId` and routes through
+// override's per-category routing in `vocabulary.rs` because the
+// override receives a single `TokenId` and dispatches through
 // `capco_token_category` rather than passing a `TokenRef`.
 pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_NOFORN),

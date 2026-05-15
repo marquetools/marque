@@ -1015,9 +1015,11 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
     /// CAPCO FD&R-membership predicate.
     ///
     /// Iterates over [`crate::scheme::FDR_DOMINATORS`] — the slice
-    /// that defines the FD&R set itself per CAPCO-2016 §B.3 Table 2
-    /// p21 — so this method and the slice stay in lock-step against
-    /// a single source-of-truth. Adding *any* entry to
+    /// that defines the FD&R set itself per CAPCO-2016 §B.3.a p19
+    /// ("NOFORN, REL TO, RELIDO, or DISPLAY ONLY"; §B.3 Table 2 pp
+    /// 21-22 is a scenario-summary table, not the definition) —
+    /// so this method and the slice stay in lock-step against a
+    /// single source-of-truth. Adding *any* entry to
     /// `FDR_DOMINATORS` (whether a `TokenRef::Token` or a
     /// `TokenRef::AnyInCategory`) automatically updates this method.
     ///
@@ -1031,7 +1033,7 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
     /// deliberately excludes RELIDO itself (RELIDO-vs-RELIDO is a
     /// tautology) — so delegating through it would under-fire on
     /// `is_fdr_dissem(TOK_RELIDO)`. RELIDO is unambiguously an FD&R
-    /// member per §B.3 Table 2, so this method iterates over the
+    /// member per §B.3.a p19, so this method iterates over the
     /// full `FDR_DOMINATORS` slice directly.
     ///
     /// # Open-vocab routing
@@ -1750,8 +1752,8 @@ mod fdr_dissem_pin {
         let v = vocab();
         assert!(
             v.is_fdr_dissem(&TOK_RELIDO),
-            "RELIDO is unambiguously an FD&R member per §B.3 Table 2 \
-             p21. The override must not delegate through \
+            "RELIDO is unambiguously an FD&R member per §B.3.a p19. \
+             The override must not delegate through \
              `is_fdr_dominator`, which deliberately excludes RELIDO \
              for the RELIDO-conflict family predicate.",
         );
