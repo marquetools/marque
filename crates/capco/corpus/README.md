@@ -66,13 +66,21 @@ python3 tools/corpus-analysis/analyze.py \
 Re-run whenever the corpus contents change or the decoder's scoring
 shape changes.
 
-**Marking-stratum coverage caveat (issue #258).** As of the schema-3
-landing the marking stratum is just `tests/corpus/valid/` (~34 short
-fixtures). Coverage is sparse — most CAPCO tokens have single-digit
-counts, and tokens absent from the fixture set fall back to the
-Laplace-smoothed zero-count log-prior. Decoder accuracy on marking
-recovery improves as the marking stratum grows; expansion to a
-larger mock-classified corpus is tracked as follow-up work.
+**Marking-stratum coverage.** The marking stratum is the union of
+`tests/corpus/valid/` (~34 short per-rule fixtures) and
+`tests/corpus/documents/marked/` (40 synthetic-positive multi-page
+documents derived from declassified CIA CREST prose with synthetic
+CAPCO markings overlaid). The documents stratum supplies the
+banner + CAB + portion-marked paragraph distributions a per-rule
+fixture set cannot — full banner roll-ups, multi-portion pages, REL
+TO trigraph diversity, and real document-shaped token co-occurrence.
+Together they close most of the "single-digit token counts" gap that
+schema-3 (issue #258) called out when only `valid/` was wired in.
+Residual gaps that don't yet appear with meaningful frequency in
+either stratum (SAR program identifiers, deep SCI sub-compartments,
+some FGI trigraph combinations) still fall back to the
+Laplace-smoothed zero-count log-prior; expanding to a larger
+mock-classified corpus remains follow-up work.
 
 ## JSON schema
 

@@ -32,11 +32,8 @@ use marque_scheme::recognizer::{ParseContext, Recognizer};
 fn deep_cx() -> ParseContext {
     ParseContext {
         strict_evidence: false,
-        zone: None,
-        position: None,
-        classification_floor: None,
-        as_of: None,
         preceded_by_whitespace: true,
+        ..ParseContext::default()
     }
 }
 

@@ -125,6 +125,128 @@ const K_MAX_CANDIDATES: usize = 8;
 /// (`P(top)/P(runner_up)`), not a probability ratio.
 const UNAMBIGUOUS_LOG_MARGIN: f32 = 1.6;
 
+/// Minimum log-margin a candidate's marking-side posterior must hold
+/// over its prose null posterior to clear the per-candidate prose
+/// filter (issue #258, expanded after the documents-corpus marking
+/// stratum landed in PR1).
+///
+/// Originally the filter required only `posterior >= null_posterior`
+/// (a zero-margin gate). That was sufficient when the marking
+/// stratum was just `tests/corpus/valid/` (~34 short fixtures); the
+/// per-token marking-vs-prose delta `log P(token|marking) − log
+/// P(token|prose)` for short tokens like `S` and `U` stayed near
+/// zero and the Federalist `(s)` mid-prose case suppressed cleanly.
+///
+/// After PR1 added `tests/corpus/documents/marked/` (40 multi-page
+/// synthetic-positive documents with hundreds of `(S//*)` portion
+/// marks) the marking-side prior for `S` strengthened from
+/// `log_prior ≈ -3.97` to `-3.28`, while the prose-side prior
+/// (Enron + Congressional Record + GAO + CIA CREST) sat at `-5.11` —
+/// a `+1.83` delta. The zero-margin filter let the marking
+/// hypothesis win for isolated `(s)` candidates and re-introduced
+/// the SC-003a regression on `Notwithstanding (s) the early`.
+///
+/// `2.5` (e^2.5 ≈ 12.2×) is the smallest margin that suppresses the
+/// Federalist `(s)` regression at its actual marking-vs-null delta of
+/// `+2.21` (`S`: marking `-3.28`, prose `-5.49`). `(c)` at `+1.08`
+/// and most other single-letter portions are rejected at the same
+/// threshold by construction. `(u)` at `+2.86` survives this margin
+/// — a lowercase `(u)` mid-prose canonicalizing to UNCLASSIFIED is
+/// the residual false-positive surface; it has not been observed in
+/// the test corpus, and the prose-glue heuristic
+/// (`preceded_by_whitespace = false`) suppresses the much more
+/// common `letter(s)` / `function(c)` cases independently.
+///
+/// **This margin applies to single-letter portion candidates only.**
+/// `(s)`, `(c)`, `(u)`, `(r)` are the prose-glyph overlap cases —
+/// plural-suffix, copyright, pronoun, etc. — where short-token
+/// marking-vs-prose priors collide directly with English usage.
+/// Multi-letter portion candidates (`(NU)`, `(NC)`, `(NR)`, `(TS)`,
+/// `(SI)`, ...) and banner-form candidates (`UNCLASSIFIED`,
+/// `CONFIDENTIAL`, etc.) bypass the null filter entirely: their
+/// shapes are long enough that English prose doesn't fabricate them
+/// by glyph coincidence, and pinning any positive margin on them
+/// would reject legitimate NATO/IC abbreviation recovery (NU at
+/// marking `-8.43`, prose `-8.34`, delta `-0.09`; NC at marking
+/// `-8.43`, prose `-5.89`, delta `-2.54`) where the marking
+/// stratum has zero examples but the strict grammar still
+/// recognizes the token. The strict parser + scanner provide the
+/// structural discrimination they need.
+const NULL_HYPOTHESIS_LOG_MARGIN: f32 = 2.5;
+
+/// Maximum line-column at which a portion candidate is considered
+/// "near the start of its line" and does NOT receive the
+/// [`FeatureId::LinePositionPenalty`] (Task 9, user brainstorm a).
+///
+/// Real portion markings appear at column 0 or after a short
+/// bullet/anchor prefix (`1. (S)`, `* (S//NF)`, `1B.a.3.(c)`). A
+/// portion-shaped `(x)` more than this many bytes into a line that
+/// does not look like an enumeration anchor is overwhelmingly a
+/// prose glyph — parenthetical aside, plural suffix, copyright
+/// notice. 4 bytes covers the common short-bullet case (`1. `,
+/// `(a) `) for the rare path where `looks_like_bullet_anchor`
+/// returns false despite a short prefix.
+///
+/// **This budget gates the LinePositionPenalty only — bullet
+/// anchors are recognized independently by
+/// [`looks_like_bullet_anchor`].** [`compute_context_features`]
+/// runs the anchor check first and emits the bullet bonus instead
+/// of the penalty whenever the prefix shape is anchor-like,
+/// regardless of `offset` value. The budget therefore fires only
+/// for prefixes that fail anchor recognition AND exceed 4 bytes —
+/// the residual "long non-anchor prefix" case, which is almost
+/// always running prose.
+const LINE_POSITION_BUDGET: usize = 4;
+
+/// Negative log-odds delta added to a portion candidate's posterior
+/// when its line position exceeds [`LINE_POSITION_BUDGET`] AND its
+/// preceding bytes do not match a bullet/section-anchor pattern
+/// (Task 9, [`FeatureId::LinePositionPenalty`]).
+///
+/// `-2.0` empirically reproduces the suppression behavior the
+/// per-candidate null filter already gives single-letter portions
+/// (the `(s)`-mid-Federalist case) for the broader class of
+/// mid-line portion-shaped prose glyphs (e.g., `Foo (SOMETHING)
+/// bar` where `SOMETHING` happens to fuzzy-match a CAPCO token).
+/// Combined with the null filter (margin `2.5`), most single-letter
+/// portion glyphs that survived the null filter under PR1 priors
+/// alone are now suppressed by the additional position evidence.
+const LINE_POSITION_PENALTY: f32 = -2.0;
+
+/// Positive log-odds delta added when a portion candidate's
+/// same-line preceding bytes look like a bullet or section anchor
+/// (Task 9, [`FeatureId::BulletAnchorBonus`]).
+///
+/// Mutually exclusive with [`LINE_POSITION_PENALTY`] — when the
+/// anchor pattern matches, the position penalty is skipped and this
+/// bonus is recorded instead. `+1.5` ensures a legitimate
+/// `1B.a.3.(c)` IC-document enumeration sails past the per-candidate
+/// null filter even when the candidate itself is a single-letter
+/// portion (those glyphs would otherwise lose to the prose
+/// hypothesis under [`NULL_HYPOTHESIS_LOG_MARGIN`]).
+const BULLET_ANCHOR_BONUS: f32 = 1.5;
+
+/// Negative log-odds delta added to a candidate's posterior when the
+/// candidate contains lowercase ASCII letters AND the surrounding
+/// source context (`±` [`crate::engine::LOWERCASE_WINDOW_RADIUS`]
+/// bytes) is lowercase-dominant (Task 10,
+/// [`FeatureId::LowercaseSurroundingContext`]).
+///
+/// Lowercase markings in lowercase prose are overwhelmingly NOT
+/// markings — they are parenthetical asides, plural suffixes,
+/// copyright notices, sentence-internal references. Archival
+/// all-caps documents short-circuit this feature naturally: the
+/// candidate itself is uppercase in those documents, so the
+/// "candidate has lowercase letters" predicate never trips.
+///
+/// `-2.0` matches the position penalty magnitude — both are
+/// secondary signals on top of token-prior evidence, both should be
+/// strong enough to flip the null filter when token priors leave
+/// the candidate borderline. The two penalties are additive when
+/// both apply (e.g., lowercase `(secret)` mid-prose: `-4.0` total
+/// before the null filter).
+const LOWERCASE_CONTEXT_PENALTY: f32 = -2.0;
+
 /// Phase-D probabilistic marking recognizer.
 ///
 /// Stateless — all priors are baked `&'static` tables consumed at
@@ -368,6 +490,39 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             };
         }
 
+        // 4-bis. Context features. The features computed here depend
+        // on the candidate's POSITION in the source document, not on
+        // its canonical token content, so they apply uniformly to
+        // every surviving scored candidate. Two signals:
+        //
+        // - **Line position** (Task 9): a portion candidate deep
+        //   into a non-anchor line is overwhelmingly prose. The
+        //   penalty is mutually exclusive with the bullet-anchor
+        //   bonus: when `line_prefix` looks like an enumeration
+        //   anchor (`1B.a.3.`, `(a) `, `* `, …), the bonus fires
+        //   and the penalty is skipped.
+        //
+        // - **Lowercase surrounding context** (Task 10): a candidate
+        //   with lowercase letters embedded in lowercase prose is
+        //   overwhelmingly a parenthetical glyph, not a marking.
+        //   Archival all-caps documents short-circuit naturally —
+        //   the candidate stays uppercase, so the
+        //   `candidate_has_lowercase` predicate never trips.
+        //
+        // Both features apply ONLY to portion candidates today.
+        // Banner and CAB shapes have richer structural evidence
+        // (line breaks, fielded labels) and don't share the prose-
+        // glyph confusability that motivates these features.
+        let context_features = compute_context_features(kind, bytes, cx);
+        if !context_features.is_empty() {
+            for candidate in &mut scored {
+                for &(id, delta) in &context_features {
+                    candidate.posterior += delta;
+                    candidate.features.push(FeatureEntry { id, delta });
+                }
+            }
+        }
+
         // 5. Drop any candidate with a non-finite posterior, sort
         //    descending, keep top K=8.
         //
@@ -414,7 +569,22 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             scored.iter().all(|c| c.null_posterior.is_finite()),
             "decoder produced non-finite null_posterior — invariant violated"
         );
-        scored.retain(|c| c.posterior >= c.null_posterior);
+        // Single-letter portion candidates (`(s)`, `(c)`, `(u)`,
+        // `(r)`) require a positive margin over the null because
+        // their parenthesized form collides directly with English
+        // prose glyphs (plural suffix, copyright, pronoun, etc.).
+        // Multi-letter portion forms and banner/CAB candidates
+        // bypass the null filter entirely — their shapes are long
+        // enough that English prose doesn't fabricate them by glyph
+        // coincidence, and a zero-margin gate would still reject
+        // legitimate NATO/IC abbreviation recovery (`(NU)` /
+        // `(NC)`) and banner-form recovery (`CONFIDENTIAL`) whose
+        // marking stratum has zero or near-zero examples. See
+        // [`NULL_HYPOTHESIS_LOG_MARGIN`] doc for the data behind
+        // the split.
+        if kind == MarkingType::Portion && is_single_letter_portion(bytes) {
+            scored.retain(|c| c.posterior >= c.null_posterior + NULL_HYPOTHESIS_LOG_MARGIN);
+        }
         if scored.is_empty() {
             // Every candidate's prose hypothesis beat its marking
             // hypothesis — prose-shaped input that round-tripped
@@ -3973,6 +4143,186 @@ fn is_single_letter_portion(bytes: &[u8]) -> bool {
     matches!(trimmed, [b'(', inner, b')'] if inner.is_ascii_alphabetic())
 }
 
+/// Does this prefix look like a bullet, list, or section anchor?
+///
+/// Recognizes the common forms of enumeration prefix that precede
+/// portion markings in legitimate IC and legal-style documents:
+///
+/// - `1. `, `12. `, `1) `, `1.2.3.` — numeric/alphanumeric with dot/paren
+/// - `a. `, `a) `, `(a) `, `[a] ` — letter or parenthesized letter
+/// - `1B.a.3.` — mixed alphanumeric with dot separators
+/// - `* `, `- `, `• ` — bullet glyphs
+///
+/// Trailing whitespace is stripped before evaluation; the prefix
+/// must end on a structural punctuation character that anchors the
+/// enumeration (`.`, `)`, `]`, `*`, `-`).
+fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
+    /// Maximum length of any single alphanumeric run inside an
+    /// enumeration body. `1B` (2), `12` (2), `123` (3) pass cleanly
+    /// because they contain a digit. `iii` (3, Roman numeral) only
+    /// passes when wrapped in parens — `(iii)` is accepted, bare
+    /// `iii.` is not. The cap plus the digit-or-bracketed constraint
+    /// is what distinguishes enumeration anchors from running prose
+    /// ending in a short word + period (`the.`, `for.`, `its.`).
+    const ANCHOR_RUN_MAX: usize = 3;
+    /// Maximum length of an alpha-only (no digit) run that is NOT
+    /// inside parens/brackets. `a.` and `b.` (1) and `ii.` (2,
+    /// short Roman numeral) pass; bare `the.` (3) does not. Inside
+    /// brackets the longer `(iii)` form is accepted by the alpha
+    /// path via the bracket-context check below.
+    const ANCHOR_ALPHA_BARE_RUN_MAX: usize = 2;
+
+    // Trim ASCII whitespace from both ends. Engine-emitted line
+    // prefixes can carry leading indentation (`    * `, `\t- `) and
+    // trailing space after the bullet glyph (`* `); we want the
+    // bullet/anchor token in isolation for the equality test below.
+    let mut start = 0;
+    let mut end = prefix.len();
+    while start < end && prefix[start].is_ascii_whitespace() {
+        start += 1;
+    }
+    while end > start && prefix[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let trimmed = &prefix[start..end];
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    // Single-glyph bullet anchors. Exact-match so a hyphenated word
+    // fragment like `re-` / `un-` / `co-` (which trims to a 3-byte
+    // tail ending in `-`) is correctly NOT treated as a bullet
+    // anchor. ASCII `*` / `-` plus the Unicode bullet `•` (U+2022 =
+    // `\xE2\x80\xA2`).
+    if matches!(trimmed, b"*" | b"-" | b"\xE2\x80\xA2") {
+        return true;
+    }
+
+    let last = trimmed[trimmed.len() - 1];
+    // Structural anchor must end on `.`, `)`, or `]`.
+    if !matches!(last, b'.' | b')' | b']') {
+        return false;
+    }
+
+    // The body (bytes before the anchor punctuation) must be a
+    // short alphanumeric/separator sequence. Constraints:
+    //
+    // - Each alphanumeric run is ≤ ANCHOR_RUN_MAX (3) characters.
+    // - Alpha-only runs (no digit in the run) are limited to
+    //   ANCHOR_ALPHA_BARE_RUN_MAX (2) characters UNLESS the run
+    //   sits inside an open bracket — so `(iii)` works but `the.`
+    //   does not.
+    //
+    // This is what distinguishes `1B.a.3.` (runs of 2, 1, 1, with
+    // a digit in the first), `(iii)`, and `(a)` from `prose.`,
+    // `the.`, `Notwithstanding.`.
+    if trimmed.len() < 2 {
+        return false;
+    }
+    let body = &trimmed[..trimmed.len() - 1];
+    let mut current_run = 0usize;
+    let mut current_run_alpha_only = true;
+    let mut bracket_depth: u32 = 0;
+    for &b in body {
+        if b.is_ascii_alphanumeric() {
+            current_run += 1;
+            if b.is_ascii_digit() {
+                current_run_alpha_only = false;
+            }
+            if current_run > ANCHOR_RUN_MAX {
+                return false;
+            }
+            if current_run > ANCHOR_ALPHA_BARE_RUN_MAX
+                && current_run_alpha_only
+                && bracket_depth == 0
+            {
+                return false;
+            }
+        } else if matches!(b, b'(' | b'[') {
+            bracket_depth = bracket_depth.saturating_add(1);
+            current_run = 0;
+            current_run_alpha_only = true;
+        } else if matches!(b, b')' | b']') {
+            bracket_depth = bracket_depth.saturating_sub(1);
+            current_run = 0;
+            current_run_alpha_only = true;
+        } else if b == b'.' {
+            current_run = 0;
+            current_run_alpha_only = true;
+        } else {
+            return false;
+        }
+    }
+    // Reject empty alphanumeric body (e.g., `()`, `..`). Covered
+    // partially by `trimmed.len() < 2` above; this final check
+    // catches `()` (3 bytes total, body is `(`).
+    body.iter().any(|b| b.is_ascii_alphanumeric())
+}
+
+/// Does the candidate byte content contain any lowercase ASCII letter?
+///
+/// Used by [`FeatureId::LowercaseSurroundingContext`] gate: a candidate
+/// composed only of uppercase letters cannot be a lowercase prose
+/// glyph regardless of surrounding context, so the lowercase penalty
+/// is short-circuited (archival all-caps documents never trigger it).
+fn candidate_has_lowercase(bytes: &[u8]) -> bool {
+    bytes.iter().any(|b| b.is_ascii_lowercase())
+}
+
+/// Compute the context features that apply to every scored candidate
+/// at this byte position, regardless of canonical-token content.
+///
+/// Returns up to 2 `(FeatureId, delta)` pairs:
+///
+/// - At most one of [`FeatureId::LinePositionPenalty`] (line offset
+///   exceeds [`LINE_POSITION_BUDGET`] and the line prefix doesn't
+///   look like an enumeration anchor) or
+///   [`FeatureId::BulletAnchorBonus`] (the line prefix matches a
+///   bullet/anchor pattern). Mutually exclusive — bullet wins when
+///   both predicates would otherwise fire.
+/// - [`FeatureId::LowercaseSurroundingContext`] when the candidate
+///   carries lowercase letters AND the surrounding context is
+///   lowercase-dominant.
+///
+/// Empty vec when neither feature applies, when the marking is not
+/// a portion (banners/CABs are not subject to these features), or
+/// when the engine did not populate `line_offset` / `line_prefix`
+/// (e.g., direct test-code callers using `ParseContext::default()`).
+fn compute_context_features(
+    kind: MarkingType,
+    bytes: &[u8],
+    cx: &ParseContext,
+) -> SmallVec<[(FeatureId, f32); 2]> {
+    let mut out: SmallVec<[(FeatureId, f32); 2]> = SmallVec::new();
+
+    // Position features only apply to portion shapes. Banners and
+    // CABs have structural evidence the parser already uses.
+    if !matches!(kind, MarkingType::Portion) {
+        return out;
+    }
+
+    // Engine-populated position context fires position features.
+    // The default `ParseContext` shape (test code, direct WASM
+    // callers) has `line_offset` / `line_prefix` as `None` and skips
+    // this block — identical behavior to the pre-feature decoder.
+    if let (Some(offset), Some(prefix)) = (cx.line_offset, cx.line_prefix.as_ref()) {
+        if looks_like_bullet_anchor(prefix.as_slice()) {
+            out.push((FeatureId::BulletAnchorBonus, BULLET_ANCHOR_BONUS));
+        } else if offset > LINE_POSITION_BUDGET {
+            out.push((FeatureId::LinePositionPenalty, LINE_POSITION_PENALTY));
+        }
+    }
+
+    if cx.surrounding_is_lowercase && candidate_has_lowercase(bytes) {
+        out.push((
+            FeatureId::LowercaseSurroundingContext,
+            LOWERCASE_CONTEXT_PENALTY,
+        ));
+    }
+
+    out
+}
+
 /// Used inside the decoder itself to filter out lenient-parse-
 /// accepts-anything results (`FROBNITZ//WIBBLE` trip-fires the
 /// banner scanner and produces a zero-attribute parse); without
@@ -4656,6 +5006,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use marque_scheme::recognizer::LinePrefix;
 
     #[test]
     fn decoder_is_send_sync_as_trait_object() {
@@ -4668,11 +5019,8 @@ mod tests {
     fn deep_cx() -> ParseContext {
         ParseContext {
             strict_evidence: false,
-            zone: None,
-            position: None,
-            classification_floor: None,
-            as_of: None,
             preceded_by_whitespace: true,
+            ..ParseContext::default()
         }
     }
 
@@ -5846,23 +6194,31 @@ mod tests {
 
     #[test]
     fn decoder_suppresses_single_letter_portion_via_null_hypothesis() {
-        // Issue #258: an isolated `(s)` (preceded by whitespace, so the
-        // prose-glue heuristic is bypassed) is the prose null-hypothesis
-        // case. The marking-side prior for `S` is the Laplace floor
-        // (zero hits in the marking-stratum corpus today) and the
-        // prose-side prior for `S` is high (~4878 hits per ~134M
-        // prose-corpus words from Enron). The decoder's per-token
-        // marking-y delta `log P("S"|marking) − log P("S"|prose)` is
-        // negative, so the null hypothesis wins the dispatch and the
-        // decoder returns zero candidates (FR-015 — "we see signal,
-        // can't resolve").
+        // Issue #258 + PR1 (documents-corpus marking stratum): an
+        // isolated `(s)` (preceded by whitespace, so the prose-glue
+        // heuristic is bypassed) is the prose null-hypothesis case.
+        // The decoder must produce zero candidates so the engine
+        // doesn't synthesize a spurious R001 diagnostic.
         //
-        // This is the exact behavior that closes the SC-003a regression
-        // on Federalist-corpus `Notwithstanding (s) the early
-        // prevalence` — the decoder no longer auto-fixes prose-shaped
-        // single-letter portions to a SECRET portion. Previously the
-        // test asserted Unambiguous; the doc comment explicitly noted
-        // the change was pending issue #258.
+        // Before PR1: the marking-side prior for `S` was the Laplace
+        // floor (zero hits in `tests/corpus/valid/`) so the per-token
+        // marking-y delta `log P("S"|marking) − log P("S"|prose)` was
+        // negative — the null hypothesis won under the original
+        // `posterior >= null_posterior` filter.
+        //
+        // After PR1: `tests/corpus/documents/marked/` contributes 173
+        // hits for `S`, pushing the marking-side delta to `+1.83`. A
+        // zero-margin filter would let the marking hypothesis win
+        // and re-introduce the SC-003a Federalist `(s)` regression.
+        // The `NULL_HYPOTHESIS_LOG_MARGIN = 2.0` floor (see constant
+        // doc) was tuned to keep `(s)` suppressed at +1.83 while
+        // still admitting multi-token candidates whose delta is
+        // many times larger.
+        //
+        // This is the exact behavior that closes the SC-003a
+        // regression on `Notwithstanding (s) the early prevalence` —
+        // the decoder doesn't auto-fix prose-shaped single-letter
+        // portions to a SECRET portion.
         let rx = DecoderRecognizer::new();
         match rx.recognize(b"(s)", &deep_cx()) {
             Parsed::Ambiguous { candidates } => assert!(
@@ -5878,6 +6234,409 @@ mod tests {
             ),
         }
     }
+
+    // ----- Context features (Task 9 + Task 10) -----
+
+    #[test]
+    fn looks_like_bullet_anchor_recognizes_common_forms() {
+        // Numeric/alphanumeric bullets with dot/paren terminator.
+        for prefix in &[
+            b"1. " as &[u8],
+            b"12. ",
+            b"123. ",
+            b"1) ",
+            b"1.2.3.",
+            b"1B.a.3.",
+            b"a. ",
+            b"a) ",
+            b"b) ",
+            b"(a) ",
+            b"(b) ",
+            b"[a] ",
+            b"(i) ",   // single-letter Roman (also single alpha)
+            b"(ii) ",  // 2-char alpha — passes bare-alpha cap
+            b"(iii) ", // 3-char alpha — passes only inside brackets
+            b"(iv) ",
+            b"   * ", // indented bullet, leading whitespace trimmed
+            b"\t- ",  // tab-indented bullet
+        ] {
+            assert!(
+                looks_like_bullet_anchor(prefix),
+                "expected bullet-anchor: {:?}",
+                std::str::from_utf8(prefix).unwrap_or("<bytes>"),
+            );
+        }
+        // Single-character bullet glyphs.
+        for prefix in &[b"* " as &[u8], b"- ", b"*", b"-"] {
+            assert!(
+                looks_like_bullet_anchor(prefix),
+                "expected bullet-anchor: {:?}",
+                std::str::from_utf8(prefix).unwrap_or("<bytes>"),
+            );
+        }
+        // Unicode `•` (U+2022) bullet — three-byte UTF-8 sequence.
+        assert!(
+            looks_like_bullet_anchor(b"\xE2\x80\xA2 "),
+            "expected Unicode `•` to be recognized as a bullet anchor",
+        );
+    }
+
+    #[test]
+    fn looks_like_bullet_anchor_rejects_running_prose() {
+        // Plain prose endings — punctuation that doesn't anchor an
+        // enumeration, or word characters with no terminator.
+        for prefix in &[
+            b"Notwithstanding " as &[u8],
+            b"the early prevalence of ",
+            b"function",
+            b"loss",
+            b"He said: ",
+            b"this, ",
+            b". ",  // bare period — no anchor content before it
+            b"() ", // empty bracket pair, no alphanumeric body
+        ] {
+            assert!(
+                !looks_like_bullet_anchor(prefix),
+                "expected NOT a bullet-anchor: {:?}",
+                std::str::from_utf8(prefix).unwrap_or("<bytes>"),
+            );
+        }
+    }
+
+    #[test]
+    fn looks_like_bullet_anchor_rejects_short_alpha_words_ending_period() {
+        // The substantive false-positive class the bullet-anchor
+        // recognizer must reject: bare 3-letter English words
+        // ending in a period immediately before a portion-shaped
+        // glyph. Pre-fix, `the.`, `for.`, `its.` would have been
+        // treated as enumeration anchors (alphanumeric run of 3,
+        // dot terminator) and triggered BulletAnchorBonus on prose
+        // text. The `ANCHOR_ALPHA_BARE_RUN_MAX = 2` constraint
+        // rejects them while still accepting `(iii)` inside parens.
+        for prefix in &[
+            b"the." as &[u8],
+            b"the. ",
+            b"for.",
+            b"its.",
+            b"and.",
+            b"but.",
+        ] {
+            assert!(
+                !looks_like_bullet_anchor(prefix),
+                "3-char alpha word ending in period must NOT be \
+                 treated as a bullet anchor: {:?}",
+                std::str::from_utf8(prefix).unwrap_or("<bytes>"),
+            );
+        }
+        // Roman-numeral unwrapped variant — accepted false-negative
+        // per the design rationale: legal/IC documents overwhelmingly
+        // use parenthesized form `(iii)`. The reject here is the
+        // necessary cost of suppressing the `the.` / `for.` class.
+        assert!(
+            !looks_like_bullet_anchor(b"iii."),
+            "bare unwrapped Roman numeral is rejected (design \
+             trade-off: parens-wrapped `(iii)` is supported instead)",
+        );
+    }
+
+    #[test]
+    fn looks_like_bullet_anchor_rejects_hyphenated_word_fragments() {
+        // Hyphenated word fragments like `re-`, `un-`, `co-` (3-byte
+        // tails ending in ASCII dash) must NOT be treated as bullet
+        // glyphs. Pre-fix, the single-char-bullet rule used
+        // `trimmed.len() <= 3` which accepted these. The fix
+        // tightens to exact-match (`b"-"`, `b"*"`, Unicode bullet).
+        for prefix in &[b"re-" as &[u8], b"un-", b"co-", b"a-", b"non-"] {
+            assert!(
+                !looks_like_bullet_anchor(prefix),
+                "hyphenated word fragment must NOT be treated as a \
+                 bullet glyph: {:?}",
+                std::str::from_utf8(prefix).unwrap_or("<bytes>"),
+            );
+        }
+    }
+
+    #[test]
+    fn decoder_applies_line_position_penalty_for_mid_line_portion() {
+        // A `(C)` candidate that would otherwise survive (preceded by
+        // whitespace, copyright/CONFIDENTIAL ambiguity is borderline
+        // under the null filter) is suppressed when the engine
+        // reports the candidate sits deep into a line of running text
+        // whose prefix doesn't look like an enumeration anchor.
+        let rx = DecoderRecognizer::new();
+        let mid_line_cx = ParseContext {
+            line_offset: Some(20),
+            line_prefix: Some(LinePrefix::from_slice(b"that's clearly prose ")),
+            ..deep_cx()
+        };
+        match rx.recognize(b"(C)", &mid_line_cx) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "(C) deep into prose line must be zero-candidate, \
+                 got {}",
+                candidates.len(),
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "(C) deep into prose line must be suppressed, \
+                 got Unambiguous({:?})",
+                m.0.classification,
+            ),
+        }
+    }
+
+    #[test]
+    fn decoder_skips_penalty_when_line_prefix_is_bullet_anchor() {
+        // The bullet anchor `1B.a.3.` cancels the position penalty
+        // AND adds a positive bonus, so a `(C)` candidate after an
+        // anchor recovers cleanly. The same `(C)` after running
+        // prose with a non-anchor prefix that exceeds the position
+        // budget gets suppressed. This pair test demonstrates the
+        // bullet-bonus / position-penalty asymmetry directly:
+        // identical input bytes, differing context, divergent result.
+        let rx = DecoderRecognizer::new();
+        let bullet_cx = ParseContext {
+            line_offset: Some(8),
+            line_prefix: Some(LinePrefix::from_slice(b"1B.a.3.")),
+            ..deep_cx()
+        };
+        let prose_cx = ParseContext {
+            line_offset: Some(24),
+            line_prefix: Some(LinePrefix::from_slice(b"the early prevalence of ")),
+            ..deep_cx()
+        };
+        let bullet_result = rx.recognize(b"(C)", &bullet_cx);
+        let prose_result = rx.recognize(b"(C)", &prose_cx);
+
+        // Prose context: position penalty + null filter suppresses.
+        assert!(
+            matches!(
+                &prose_result,
+                Parsed::Ambiguous { candidates } if candidates.is_empty()
+            ),
+            "mid-line `(C)` after running prose must be suppressed, \
+             got {prose_result:?}",
+        );
+        // Bullet context: bonus applied → candidate recovers.
+        match &bullet_result {
+            Parsed::Unambiguous(m) => {
+                let has_bonus = m.1.as_ref().is_some_and(|p| {
+                    p.features
+                        .iter()
+                        .any(|f| matches!(f.id, FeatureId::BulletAnchorBonus))
+                });
+                assert!(
+                    has_bonus,
+                    "bullet-anchor recovery must record \
+                     BulletAnchorBonus in provenance, got {:?}",
+                    m.1,
+                );
+            }
+            Parsed::Ambiguous { candidates } => panic!(
+                "`(C)` after `1B.a.3.` bullet anchor must recover, \
+                 got Ambiguous with {} candidate(s)",
+                candidates.len(),
+            ),
+        }
+    }
+
+    #[test]
+    fn decoder_applies_lowercase_context_penalty_in_lowercase_prose() {
+        // A lowercase candidate (`(c)`) in lowercase-dominant
+        // context: feature fires, posterior drops, null filter
+        // suppresses. This is the prose-glyph case Task 10 targets —
+        // mid-sentence parenthetical copyright `(c)`.
+        let rx = DecoderRecognizer::new();
+        let lowercase_prose = ParseContext {
+            line_offset: Some(12),
+            line_prefix: Some(LinePrefix::from_slice(b"the work ")),
+            surrounding_is_lowercase: true,
+            ..deep_cx()
+        };
+        match rx.recognize(b"(c)", &lowercase_prose) {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "(c) in lowercase prose must be zero-candidate, got {}",
+                candidates.len(),
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "(c) in lowercase prose must be suppressed by the \
+                 combined position + lowercase penalty, got \
+                 Unambiguous({:?})",
+                m.0.classification,
+            ),
+        }
+    }
+
+    #[test]
+    fn decoder_skips_lowercase_penalty_when_candidate_is_uppercase() {
+        // Uppercase candidate (`(S//NF)`) in lowercase-dominant
+        // context. The lowercase-surrounding feature gate requires
+        // the candidate ITSELF to carry lowercase letters; an
+        // uppercase marking surrounded by lowercase prose is the
+        // canonical IC body-text case and must NOT receive the
+        // lowercase penalty.
+        //
+        // `(S//NF)` (not `(S)`) bypasses both the
+        // single-letter-portion null filter (the trigger is
+        // `is_single_letter_portion`, which requires inner to be a
+        // single letter — `S//NF` is multi-token) and the position
+        // penalty (`line_offset: 0`). That isolates the lowercase
+        // feature gate: if the candidate-has-lowercase predicate
+        // is wrong, this test fails; if the gate is correct, the
+        // candidate recovers.
+        let rx = DecoderRecognizer::new();
+        let cx = ParseContext {
+            line_offset: Some(0),
+            line_prefix: Some(LinePrefix::empty()),
+            surrounding_is_lowercase: true,
+            ..deep_cx()
+        };
+        match rx.recognize(b"(S//NF)", &cx) {
+            Parsed::Unambiguous(m) => {
+                // Verify no lowercase-context feature was emitted —
+                // the candidate is fully uppercase, so the gate
+                // must short-circuit.
+                if let Some(p) = m.1.as_ref() {
+                    assert!(
+                        !p.features
+                            .iter()
+                            .any(|f| matches!(f.id, FeatureId::LowercaseSurroundingContext)),
+                        "uppercase candidate must not receive \
+                         LowercaseSurroundingContext, got features \
+                         {:?}",
+                        p.features,
+                    );
+                }
+            }
+            Parsed::Ambiguous { candidates } => panic!(
+                "uppercase `(S//NF)` in lowercase prose must recover \
+                 (lowercase feature gate short-circuits on uppercase \
+                 candidates), got Ambiguous({})",
+                candidates.len(),
+            ),
+        }
+    }
+
+    #[test]
+    fn compute_context_features_skips_banners_and_cabs() {
+        // Position + lowercase features only apply to portion shapes.
+        // A banner candidate at line offset 50 in lowercase prose
+        // must NOT receive any context features (banners are
+        // line-bound by structure; CAB rows have fielded labels).
+        let banner_cx = ParseContext {
+            line_offset: Some(50),
+            line_prefix: Some(LinePrefix::from_slice(b"prose prose prose ")),
+            surrounding_is_lowercase: true,
+            ..deep_cx()
+        };
+        let features = compute_context_features(MarkingType::Banner, b"secret", &banner_cx);
+        assert!(
+            features.is_empty(),
+            "banner shape must not receive position/lowercase context features, got {features:?}",
+        );
+        let cab_cx = banner_cx;
+        let features = compute_context_features(MarkingType::Cab, b"Classified By: foo", &cab_cx);
+        assert!(
+            features.is_empty(),
+            "CAB shape must not receive position/lowercase context features, got {features:?}",
+        );
+    }
+
+    #[test]
+    fn compute_context_features_no_op_without_engine_populated_position() {
+        // Direct callers (test code, WASM) that don't compute
+        // `line_offset` / `line_prefix` get default-empty features —
+        // identical behavior to pre-Task-9/10 decoder.
+        let cx_no_position = ParseContext {
+            line_offset: None,
+            line_prefix: None,
+            surrounding_is_lowercase: false,
+            ..deep_cx()
+        };
+        let features = compute_context_features(MarkingType::Portion, b"(s)", &cx_no_position);
+        assert!(
+            features.is_empty(),
+            "engine without populated position must produce no features, got {features:?}",
+        );
+    }
+
+    #[test]
+    fn compute_context_features_lowercase_fires_independent_of_position() {
+        // The lowercase-surrounding feature is orthogonal to the
+        // position features — it depends on `surrounding_is_lowercase`
+        // + the candidate-has-lowercase predicate alone. Verify the
+        // gates compose correctly: even with `line_offset` /
+        // `line_prefix` left as `None`, a lowercase candidate in
+        // lowercase context still receives the penalty. This locks
+        // in the contract documented in
+        // `compute_context_features_no_op_without_engine_populated_position`
+        // — that the position fields not being populated does NOT
+        // suppress the lowercase feature.
+        let cx = ParseContext {
+            line_offset: None,
+            line_prefix: None,
+            surrounding_is_lowercase: true,
+            ..deep_cx()
+        };
+        let features = compute_context_features(MarkingType::Portion, b"(s)", &cx);
+        assert!(
+            features
+                .iter()
+                .any(|(id, _)| matches!(id, FeatureId::LowercaseSurroundingContext)),
+            "lowercase candidate in lowercase context must receive \
+             LowercaseSurroundingContext regardless of line position \
+             availability, got {features:?}",
+        );
+        assert!(
+            !features.iter().any(|(id, _)| matches!(
+                id,
+                FeatureId::LinePositionPenalty | FeatureId::BulletAnchorBonus
+            )),
+            "position features must not fire without engine-populated \
+             line_offset/line_prefix, got {features:?}",
+        );
+    }
+
+    #[test]
+    fn compute_context_features_emits_bullet_bonus_for_anchor_prefix() {
+        let bullet_cx = ParseContext {
+            line_offset: Some(8),
+            line_prefix: Some(LinePrefix::from_slice(b"1B.a.3.")),
+            ..deep_cx()
+        };
+        let features = compute_context_features(MarkingType::Portion, b"(C)", &bullet_cx);
+        assert!(
+            features
+                .iter()
+                .any(|(id, _)| matches!(id, FeatureId::BulletAnchorBonus)),
+            "expected BulletAnchorBonus, got {features:?}",
+        );
+        assert!(
+            !features
+                .iter()
+                .any(|(id, _)| matches!(id, FeatureId::LinePositionPenalty)),
+            "BulletAnchorBonus and LinePositionPenalty are mutually exclusive, got {features:?}",
+        );
+    }
+
+    #[test]
+    fn compute_context_features_emits_position_penalty_for_non_anchor() {
+        let prose_cx = ParseContext {
+            line_offset: Some(20),
+            line_prefix: Some(LinePrefix::from_slice(b"the early prevalence of ")),
+            ..deep_cx()
+        };
+        let features = compute_context_features(MarkingType::Portion, b"(s)", &prose_cx);
+        let has_position = features
+            .iter()
+            .any(|(id, _)| matches!(id, FeatureId::LinePositionPenalty));
+        assert!(
+            has_position,
+            "expected LinePositionPenalty, got {features:?}",
+        );
+    }
+
+    // ---- end Task 9 / 10 context-feature tests ----
 
     #[test]
     fn decoder_rejects_bare_restricted_via_recognizer_predicate() {
@@ -5955,11 +6714,9 @@ mod tests {
         // dropped.
         let cx = ParseContext {
             strict_evidence: false,
-            zone: None,
-            position: None,
             classification_floor: Some(Classification::Secret as u8),
-            as_of: None,
             preceded_by_whitespace: true,
+            ..ParseContext::default()
         };
         match rx.recognize(b"(U)", &cx) {
             Parsed::Ambiguous { candidates } => assert!(
@@ -5980,11 +6737,9 @@ mod tests {
         // (S//NF) with Confidential floor — SECRET exceeds floor.
         let cx = ParseContext {
             strict_evidence: false,
-            zone: None,
-            position: None,
             classification_floor: Some(Classification::Confidential as u8),
-            as_of: None,
             preceded_by_whitespace: true,
+            ..ParseContext::default()
         };
         match rx.recognize(b"(S//NF)", &cx) {
             Parsed::Unambiguous(m) => {

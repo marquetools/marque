@@ -30,10 +30,19 @@
 //!
 //! ## `features` is closed
 //!
-//! [`FeatureId`] is a non-`#[non_exhaustive]` closed enum. A new
-//! feature means a new variant and a coordinated bump of the audit
-//! schema version (`MARQUE_AUDIT_SCHEMA`) — silent additions would
-//! break the auditability contract on already-emitted records.
+//! [`FeatureId`] is a non-`#[non_exhaustive]` closed enum. The
+//! on-the-wire contract is the `as_str()` table plus the
+//! `feature_id_as_str_matches_audit_contract` pinned-strings test;
+//! both update in lock-step when a variant is added.
+//!
+//! Pre-1.0 the project carries no downstream audit-record
+//! consumers, so the `MARQUE_AUDIT_SCHEMA` pin (in
+//! `crates/engine/build.rs`) is performative — extending
+//! `FeatureId` does not currently require a schema bump. Once
+//! Marque ships GA and external consumers depend on the audit
+//! envelope, the schema-bump-on-variant-add contract becomes
+//! binding and the audit-schema accept-list takes over as the
+//! single source of truth.
 //!
 //! ## `features` storage
 //!
@@ -196,8 +205,11 @@ pub struct FeatureContribution {
 /// Closed enumeration of features the decoder can record.
 ///
 /// Adding ANY variant requires a coordinated bump of
-/// `MARQUE_AUDIT_SCHEMA` (in `crates/engine/build.rs`). Treat this
-/// enum as part of the on-the-wire audit contract.
+/// `MARQUE_AUDIT_SCHEMA` (in `crates/engine/build.rs`) once Marque has
+/// audit-record consumers. Pre-1.0, the audit-schema pin is performative
+/// — there are no downstream readers yet — so the contract is the
+/// `as_str()` mapping plus the `feature_id_as_str_matches_audit_contract`
+/// pinned-strings test, both updated in lock-step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FeatureId {
     /// Observed form is edit-distance 1 from a canonical token.
@@ -221,6 +233,27 @@ pub enum FeatureId {
     /// the posterior. Recorded so an auditor can identify fixes
     /// produced under organizational overrides vs. stock priors.
     CorpusOverrideInEffect,
+    /// Portion candidate appears more than a short prefix into a line
+    /// whose preceding bytes do not look like a bullet or section
+    /// anchor. Real portion markings nearly always appear at the very
+    /// start of a line, after a bullet (`* `, `- `, `• `), or after
+    /// an enumeration anchor (`1.`, `a)`, `1B.a.3.`); a portion-shaped
+    /// `(x)` deep inside a line of running text is overwhelmingly a
+    /// prose glyph (parenthetical, plural, copyright). Negative delta.
+    LinePositionPenalty,
+    /// Portion candidate's same-line preceding bytes look like a
+    /// bullet or section anchor (`1B.a.3.`, `(a)`, `* `, `- `, ...).
+    /// Cancels the line-position penalty so legitimate enumeration
+    /// patterns common in IC/legal documents are not suppressed.
+    /// Positive delta.
+    BulletAnchorBonus,
+    /// Candidate contains lowercase letters AND the surrounding
+    /// document context is lowercase-dominant. Real markings are
+    /// uppercase by convention (CAPCO §A general guidance); a
+    /// lowercase candidate inside lowercase prose is overwhelmingly
+    /// prose, not a mangled marking the decoder should recover.
+    /// Negative delta.
+    LowercaseSurroundingContext,
 }
 
 impl FeatureId {
@@ -247,6 +280,9 @@ impl FeatureId {
             FeatureId::BaseRateCommonMarking => "BaseRateCommonMarking",
             FeatureId::StrictContextClassification => "StrictContextClassification",
             FeatureId::CorpusOverrideInEffect => "CorpusOverrideInEffect",
+            FeatureId::LinePositionPenalty => "LinePositionPenalty",
+            FeatureId::BulletAnchorBonus => "BulletAnchorBonus",
+            FeatureId::LowercaseSurroundingContext => "LowercaseSurroundingContext",
         }
     }
 }
@@ -312,6 +348,12 @@ mod tests {
                 "StrictContextClassification",
             ),
             (FeatureId::CorpusOverrideInEffect, "CorpusOverrideInEffect"),
+            (FeatureId::LinePositionPenalty, "LinePositionPenalty"),
+            (FeatureId::BulletAnchorBonus, "BulletAnchorBonus"),
+            (
+                FeatureId::LowercaseSurroundingContext,
+                "LowercaseSurroundingContext",
+            ),
         ];
         for (id, expected) in cases {
             assert_eq!(id.as_str(), *expected, "label drift for {id:?}");
