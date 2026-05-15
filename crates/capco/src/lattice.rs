@@ -1082,7 +1082,7 @@ impl Lattice for AeaSet {
 /// pointer order — `Fgi(S, [GBR]).join(Fgi(S, [CAN])) =
 /// Fgi(S, [CAN, GBR])`. Union is commutative and idempotent, which
 /// is what makes the lattice law hold. The union semantic also
-/// matches the §H.7 p123 / §D.2 p578 banner-rollup rule that the
+/// matches the §H.7 p123 / §D.2 p28 banner-rollup rule that the
 /// banner FGI list is the union of every observed foreign source.
 /// `Conflict` payloads (`foreign: Box<ForeignClassification>`)
 /// recurse into the same union rule when both sides carry the same
@@ -1313,7 +1313,7 @@ impl Lattice for ClassificationLattice {
                     // `ra <= rb` returning the left operand, which
                     // broke commutativity on same-variant payload
                     // diffs. We union the country payloads per the
-                    // §H.7 p123 / §D.2 p578 banner-rollup rule that
+                    // §H.7 p123 / §D.2 p28 banner-rollup rule that
                     // the banner FGI list is the union of every
                     // observed foreign source.
                     let ra = classification_variant_rank(a);
