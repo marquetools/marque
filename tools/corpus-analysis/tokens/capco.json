@@ -4,15 +4,15 @@
   "categories": {
     "classification_abbrev": {
       "description": "Classification level abbreviations (portion marking form)",
-      "tokens": ["U", "C", "S", "TS", "R"]
+      "tokens": ["U", "C", "S", "TS", "R", "NU", "NR", "NC", "NS", "CTS"]
     },
     "classification_full": {
       "description": "Classification level full words (banner form)",
       "tokens": ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET", "TOP SECRET", "RESTRICTED"]
     },
     "sci_bare": {
-      "description": "SCI control system bare identifiers",
-      "tokens": ["SI", "TK", "G", "HCS", "KLM", "RSV", "BUR", "MVL"]
+      "description": "SCI control system bare identifiers (control and compartment)",
+      "tokens": ["SI", "TK", "G", "HCS", "KLM", "RSV", "BUR", "MVL", "TALENT KEYHOLE", "GAMMA", "PRODUCT", "OPERATIONS", "KLAMATH", "MARVEL", "RESERVE", "NONBOOK", "BLUEFISH", "KANDAK", "IDITAROD", "BUR", "BOHEMIA", "BALK", "R", "ECI", "EXCEPTIONALLY CONTROLLED INFORMATION"]
     },
     "sci_compound": {
       "description": "SCI control-compartment compounds",
@@ -24,49 +24,70 @@
         "BUR-BLG", "BUR-DTP", "BUR-WRG"
       ]
     },
+    "fgi": {
+	"description": "FGI category markings",
+	"tokens": ["FGI", "FOREIGN GOVERNMENT INFORMATION"]
+    },
+    "aea": {
+	"description": "Atomic Energy Act markings (all forms)",
+	"tokens":
+	["RD", "ATOMAL", "CNWDI", "FRD", "TFNI", "UCNI", "DCNI", "RESTRICTED DATA", "CRITICAL NUCLEAR WEAPON DESIGN INFORMATION", "FORMERLY RESTRICTED DATA", "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION", "DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION", "DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION", "SIGMA", "RD-CNWDI", "RD-SIGMA", "FRD-SIGMA", "DOD UCNI", "DOE UCNI", "RD-SG", "FRD-SG"]
+    },
     "dissem": {
       "description": "Dissemination controls",
       "tokens": [
         "NF", "NOFORN",
-        "REL", "REL TO", "RELIDO",
-        "FOUO",
-        "OC", "ORCON",
-        "IMC", "IMCON",
-        "PR", "PROPIN",
-        "RSEN", "RS",
-        "DSEN",
+	"NOT RELEASABLE TO FOREIGN NATIONALS",
+        "REL", "REL TO", "AUTHORIZED FOR RELEASE TO", 
+	"RELIDO",
+	"RELEASABLE BY INFORMATION DISCLOSURE OFFICIAL",
+        "FOUO", "FOR OFFICIAL USE ONLY",
+        "OC", "ORCON", "ORIGINATOR CONTROLLED",
+	"OC-USGOV", "ORIGINATOR CONTROLLED-USGOV",
+        "IMC", "IMCON", "CONTROLLED IMAGERY",
+        "PR", "PROPIN", "CAUTION-PROPRIETARY INFORMATION INVOLVED",
+        "RSEN", "RS", "RISK SENSITIVE",
+        "DSEN", "DEA SENSITIVE",
         "FISA", "RAWFISA",
+	"FOREIGN INTELLIGENCE SURVEILLANCE ACT",
+	"RAW FOREIGN INTELLIGENCE SURVEILLANCE ACT",
         "DISPLAYONLY",
-        "EYES", "EYES ONLY",
-        "NOCON",
-        "AC", "AWP",
-        "DL_ONLY", "FED_ONLY", "FEDCON",
-        "OC-USGOV", "WAIVED"
+	"DISPLAY ONLY",
+        "EYES", "EYES ONLY"
       ]
+    },
+    "non_ic_controls": {
+	"description": "Non-IC control markings",
+        "tokens": [
+	"DS", "LIMDIS", "LIMITED DISTRIBUTION", "XD", "EXDIS", "EXCLUSIVE DISTRIBUTION", "SBU", "SENSITIVE BUT UNCLASSIFIED", "SBU-NF", "LES", "LES-NF", "SSI", "SENSITIVE SECURITY INFORMATION", "LAW ENFORCEMENT SENSITIVE", "NNPI", "NAVAL NUCLEAR PROPULSION INFORMATION"
+	]
     },
     "sar_prefix": {
       "description": "SAR program prefix",
-      "tokens": ["SAR"]
+      "tokens": ["SAR", "SAR-", "SPECIAL ACCESS REQUIRED", "SPECIAL ACCESS REQUIRED-"]
     },
     "declass_exemption": {
       "description": "Declassification exemption markers",
       "tokens": [
         "25X1", "25X2", "25X3", "25X4", "25X5", "25X6", "25X7", "25X8", "25X9",
-        "50X1", "50X1-HUM", "50X2", "50X2-WMD",
-        "AEA"
+        "50X1", "50X1-HUM", "50X2", "50X2-WMD", "75X",
+        "AEA", "NA", "N/A"
       ]
     },
     "structural": {
       "description": "Structural delimiters and markers specific to classification markings",
-      "tokens": ["//"]
+      "tokens": ["//", "/", "-"]
     },
     "trigraph_high_interest": {
-      "description": "Country/entity trigraphs most likely to appear in markings (FVEY + common partners). Full trigraph list is 340 entries; these are the ones worth measuring individually.",
+      "description": "Country/entity trigraphs most likely to appear in markings (FVEY + common partners). Full trigraph list is 340 entries; these are the more common ones.",
       "tokens": [
         "USA", "GBR", "CAN", "AUS", "NZL",
         "FVEY", "NATO", "ACGU",
-        "DEU", "FRA", "NOR", "NLD", "DNK", "ITA", "ESP", "JPN", "KOR", "ISR"
+        "DEU", "FRA", "NOR", "NLD", "DNK", "ITA", "ESP", "JPN", "KOR", "ISR",
+	"SWE", "FIN", "TEYE", "ROU", "POL", "EGY", "SAU", "IRQ", "AFG", "UKR",
+	"LUX", "EST", "LVA","LTU", "COL", "GRC", "PRT", "CZE", "SVK", "TUR", "MEX", "JOR", "HRV", "BEL", "ISR"
       ]
     }
   }
 }
+

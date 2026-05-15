@@ -1,0 +1,89 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP90B01370R000801120005-5",
+    "title": "PERU - ECUADOR BORDER INCIDENT: PRIME MINISTER'S COMMENTS",
+    "year": 1994,
+    "source_pdf": "https://archive.org/download/CIA-RDP90B01370R000801120005-5/CIA-RDP90B01370R000801120005-5.pdf",
+    "cab": {
+      "classified_by": "F. Nightingale, AMEMB LAPAZ",
+      "declassify_on": "NA for AEA portions, see source list for NSI portions"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//RD//NOFORN/PROPIN",
+        "paragraphs": [
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "OLL/LD INCOMING",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "84 3132952 SCO",
+            "is_table": false
+          },
+          {
+            "mark": null,
+            "text": "TOP SECRET//RD//NOFORN/PROPIN 00 RUEAIIB   \nZNY CCCCC ZOC STATE ZZH   \nSTU5731   \n00 RUEHC   \nDE RUESLM #0625 0171854   \nZNY CCCCC ZZH   \nO R 171838Z JAN 84   \nFM AMEMBASSY LIMA   \nTO RUEHC/SECSTATE WASHDC IMMEDIATE 328   \nINFO RUEHBR/AMEMBASSY BRASILIA 2625   \nRUEHBU/AMEMBASSY BUENOS AIRES 5338   \nRUEHLP/AMEMBASSY LA PAZ 7519   \nRUESOI/AMEMBASSY QUITO 5599   \nRUESNA/AMEMBASSY SANTIAGO 6919   \nRUEOEHA/USCINCSO QUARRY HEIGHTS PN   \nRUEKUCS/DIA WASHDC   \nBT",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "25X1",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "DIA FOR IR BRANCH",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "E.O. 12356: DECL: OADR",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "TAGS: PBTS. PGOV, EC, PE",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "SUBJ: PERU - ECUADOR BORDER INCIDENT: PRIME MINISTER'S COMMENTS",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "REF: (A) LIMA 619 (B) LIMA 598",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "State Dept. review completed",
+            "is_table": false
+          },
+          {
+            "mark": "TS//HCS-P CUPCA//OC/NF",
+            "text": "2. DURING CODEL BAKER CALL ON PRIME (AND FOREIGN) MINISTER SCHWALB LATE MORNING JANUARY 17, SENATOR BAKER MADE MENTION OF RECENT INCIDENT ON PERU - ECUADOR BORDER AND ASKED FOR PRIME MINISTER'S EVALUATION OF SITUATION. SCHWALB RESPONDED THAT, FROM GOP VANTAGE POINT, THIS WAS JUST ANOTHER SMALL INCIDENT INVOLVING A BORDER CROSSING BY SOLDIERS IN WHAT IS A CLEARLY DEMARCATED SECTION OF THE BORDER. HE SAID HE DID NOT EXPECT IT WOULD AMOUNT TO MUCH, AND THAT MEDIA WERE MAGNIFYING AND DISTORTING ITS IMPORTANCE. SCHWALB NOTED THAT ECUADOREANS ARE CLAIMING INCIDENT TOOK PLACE IN ECUADOREAN TERRITORY, BUT GOP HAS STRONG REASON TO BELIEVE THAT IT OCCURRED ON PERUVIAN SIDE OF BORDER. HE REVIEWED HISTORY OF DISPUTE AND RESTATED IN BROAD TERMS WELL KNOWN PERUVIAN POSITION ON SUBSTANCE OF BORDER ISSUE. SCHWALB STRESSED THAT GOP HAD NO INTEREST IN CROSSING ECUADOREAN BORDER NOR IN CREATING SCANDALS INVOLVING BORDER. TO CONTRARY, HE ASSERTED, THIS WAS ECUADOR'S GAME. ECUADOR SEEKS SCANDALS OF THIS TYPE TO DRAW INTERNATIONAL ATTENTION TO ITS CLAIMS REGARDING EXISTING BORDER ARRANGEMENT (RIO PROTOCOL). PERUVIAN STRATEGY, SCHWALB STATED, IS NOT TO RESPOND IN SUCH A WAY AS TO CONTRIBUTE TO ACHIEVEMENT OF ECUADOREAN OBJECTIVES.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "3. COMMENT: SCHWALB'S COMMENTS MAKE CLEAR THAT. AS MATTER OF POLICY, GOP IS DOWN PLAYING BORDER INCIDENT AT THIS TIME, AND HOPING ECUADOR WILL DO SAME. OGDEN",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "END OF MESSAGE",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "page 1: paragraph has no leading (mark) \u2014 first 60 chars: 'TOP SECRET//RD//NOFORN/PROPIN 00 RUEAIIB   \\nZNY CCCCC ZOC ST'"
+    ]
+  }
+}

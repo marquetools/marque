@@ -1,0 +1,78 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP75-00149R000500450066-9",
+    "title": "JFK & DULLES DENY NIXON'S CUBA STORY",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP75-00149R000500450066-9/CIA-RDP75-00149R000500450066-9.pdf",
+    "cab": {
+      "classified_by": "MG Class, NGIC",
+      "reason": "(b)",
+      "declassify_on": "N/A to AEA and NATO portions, see source list for NSI portions"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//HCS-P CUPCA/SI-FUN RANDY EMU//RD//FGI NATO//ORCON/NOFORN/PROPIN/FISA",
+        "paragraphs": [
+          {
+            "mark": "TS//HCS-P CUPCA//OC/NF",
+            "text": "Page Denied",
+            "is_table": false
+          },
+          {
+            "mark": "//NR//REL TO USA, NATO",
+            "text": "JFK & Dulles Deny Nixon's Cuba Story",
+            "is_table": false
+          },
+          {
+            "mark": "TS//HCS-P CUPCA//OC/NF",
+            "text": "Washington, March 20 (News Bureau).\u2014The White House and former CIA chief Allen Dulles denied today that President Kennedy had been told of the pending Cuban invasion during the hot political campaign last fall, as asserted by former Vice President Richard Nixon.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI-FUN RANDY EMU//RD//OC-USGOV/NF/FISA",
+            "text": "In his new book, \"Six Crises,\" Nixon accused Kennedy of knowingly endangering the U.S. foreign policy by calling for help for anti-Castro Cubans after being briefed on the invasion plan by CIA officials.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI-FUN RANDY EMU//RD//OC-USGOV/NF/FISA",
+            "text": "Richard Nixon",
+            "is_table": false
+          },
+          {
+            "mark": "TS//HCS-P CUPCA//OC/NF",
+            "text": "Allen Dulles and Richard Bissell of the CIA given in Palm Beach, Fla., on Nov. 18, 1960.\" This was 10 days after the election. Dulles corroborated the White House version in a statement released through the CIA.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//SI-FUN RANDY EMU//RD//OC-USGOV/NF/FISA",
+            "text": "\"Mr. Nixon's account is apparently based on a misunderstanding,\" White House Press Secretary Salinger said. Candidate Kennedy was briefed twice during the campaign by Dulles, then CIA director, and Cuba was \"mentioned,\" Salinger said. But he said the invasion plan was not disclosed to Kennedy.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//HCS-P CUPCA//OC/NF",
+            "text": "The President does not believe that intelligence briefings are a proper subject for public debate,\" Salinger said, replying to Nixon.",
+            "is_table": false
+          },
+          {
+            "mark": "U//NF/PR//SBU-NF",
+            "text": "At Palm Beach, He Says",
+            "is_table": false
+          },
+          {
+            "mark": "//NR//REL TO USA, NATO",
+            "text": "\"But in the light of the account in Mr. Nixon's book, it is necessary to say that the then Sen. Kennedy was told before the election of nothing of the training of troops in Cuba, or of any plans for making an invasion of Cuba,\" Salinger said.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//HCS-P CUPCA//OC/NF",
+            "text": "\"Sen. Kennedy was first informed of any action to which Mr. Nixon refers in a briefing by",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}
