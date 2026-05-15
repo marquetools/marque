@@ -1339,8 +1339,7 @@ fn classification_meet_same_variant(
         (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
             let sa: BTreeSet<marque_ism::CountryCode> = fa.countries.iter().copied().collect();
             let sb: BTreeSet<marque_ism::CountryCode> = fb.countries.iter().copied().collect();
-            let inter: BTreeSet<marque_ism::CountryCode> =
-                sa.intersection(&sb).copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
             if inter.is_empty() {
                 None
             } else {
@@ -1354,15 +1353,16 @@ fn classification_meet_same_variant(
         (MarkingClassification::Joint(ja), MarkingClassification::Joint(jb)) => {
             let sa: BTreeSet<marque_ism::CountryCode> = ja.countries.iter().copied().collect();
             let sb: BTreeSet<marque_ism::CountryCode> = jb.countries.iter().copied().collect();
-            let inter: BTreeSet<marque_ism::CountryCode> =
-                sa.intersection(&sb).copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
             if inter.is_empty() {
                 None
             } else {
-                Some(MarkingClassification::Joint(marque_ism::JointClassification {
-                    level: ja.level,
-                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
-                }))
+                Some(MarkingClassification::Joint(
+                    marque_ism::JointClassification {
+                        level: ja.level,
+                        countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                    },
+                ))
             }
         }
         (
@@ -1401,8 +1401,7 @@ fn meet_foreign_classification(
         (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
             let sa: BTreeSet<marque_ism::CountryCode> = fa.countries.iter().copied().collect();
             let sb: BTreeSet<marque_ism::CountryCode> = fb.countries.iter().copied().collect();
-            let inter: BTreeSet<marque_ism::CountryCode> =
-                sa.intersection(&sb).copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
             if inter.is_empty() {
                 None
             } else {
@@ -1416,15 +1415,16 @@ fn meet_foreign_classification(
         (ForeignClassification::Joint(ja), ForeignClassification::Joint(jb)) => {
             let sa: BTreeSet<marque_ism::CountryCode> = ja.countries.iter().copied().collect();
             let sb: BTreeSet<marque_ism::CountryCode> = jb.countries.iter().copied().collect();
-            let inter: BTreeSet<marque_ism::CountryCode> =
-                sa.intersection(&sb).copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
             if inter.is_empty() {
                 None
             } else {
-                Some(ForeignClassification::Joint(marque_ism::JointClassification {
-                    level: ja.level,
-                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
-                }))
+                Some(ForeignClassification::Joint(
+                    marque_ism::JointClassification {
+                        level: ja.level,
+                        countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                    },
+                ))
             }
         }
         _ => None,

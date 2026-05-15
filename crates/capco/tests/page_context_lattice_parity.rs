@@ -980,9 +980,7 @@ fn conflict_plus_nato_flattens_to_us() {
     // is NOT solely-non-US; both the NATO portion and the Conflict
     // portion must reciprocal-raise to Us(effective_level).
     let mut nato_portion = CanonicalAttrs::default();
-    nato_portion.classification = Some(MarkingClassification::Nato(
-        NatoClassification::NatoSecret,
-    ));
+    nato_portion.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
     let portions = [
         portion_conflict(
             Classification::Secret,

@@ -843,12 +843,11 @@ mod classification_lattice {
         // Fgi(S, [GBR]) ⊓ Us(S) → Fgi(S, [GBR]) (the dominated variant).
         use marque_ism::{CountryCode, FgiClassification};
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
-        let fgi_gbr = ClassificationLattice::new(Some(MarkingClassification::Fgi(
-            FgiClassification {
+        let fgi_gbr =
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level: Classification::Secret,
                 countries: Box::new([gbr]),
-            },
-        )));
+            })));
         let us_s = lvl(Classification::Secret);
         let meet = fgi_gbr.meet(&us_s);
         assert_eq!(
@@ -869,18 +868,16 @@ mod classification_lattice {
         use marque_ism::{CountryCode, FgiClassification};
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
         let can = CountryCode::try_new(b"CAN").expect("CAN");
-        let fgi_gbr = ClassificationLattice::new(Some(MarkingClassification::Fgi(
-            FgiClassification {
+        let fgi_gbr =
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level: Classification::Secret,
                 countries: Box::new([gbr]),
-            },
-        )));
-        let fgi_can = ClassificationLattice::new(Some(MarkingClassification::Fgi(
-            FgiClassification {
+            })));
+        let fgi_can =
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level: Classification::Secret,
                 countries: Box::new([can]),
-            },
-        )));
+            })));
         let meet = fgi_gbr.meet(&fgi_can);
         assert_eq!(
             meet,
@@ -898,18 +895,16 @@ mod classification_lattice {
         use marque_ism::{CountryCode, FgiClassification};
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
         let can = CountryCode::try_new(b"CAN").expect("CAN");
-        let fgi_both = ClassificationLattice::new(Some(MarkingClassification::Fgi(
-            FgiClassification {
+        let fgi_both =
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level: Classification::Secret,
                 countries: Box::new([can, gbr]),
-            },
-        )));
-        let fgi_gbr = ClassificationLattice::new(Some(MarkingClassification::Fgi(
-            FgiClassification {
+            })));
+        let fgi_gbr =
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
                 level: Classification::Secret,
                 countries: Box::new([gbr]),
-            },
-        )));
+            })));
         let meet = fgi_both.meet(&fgi_gbr);
         assert_eq!(meet, fgi_gbr, "C-9: meet picks smaller payload on subset");
         // Symmetric: order shouldn't matter.

@@ -214,7 +214,7 @@ fn w004_message_contains_only_canonical_trigraphs() {
     // Constitution V Principle V G13: the W004 diagnostic message
     // MUST NOT contain document bytes. The message interpolates only
     // canonical CountryCode trigraphs (vocabulary atoms) and the
-    // §-citation literal. Verify by greppping for prose-shape
+    // §-citation literal. Verify by grepping for prose-shape
     // artifacts that would only appear if input bytes leaked.
     let engine = engine_with_fixed_clock();
     // Use a distinctive surrounding prose sentinel that should NEVER
