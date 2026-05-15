@@ -643,37 +643,45 @@ pub struct FgiClassification {
 // NATO classification
 // ---------------------------------------------------------------------------
 
-/// NATO classification ladder with optional SAP designation.
+/// NATO classification ladder.
 ///
 /// NATO uses a separate classification system governed by treaty.
 /// Not everyone with a US clearance is cleared for NATO; many US systems
 /// are not approved for NATO information.
 ///
-/// # NATO SAP markings
+/// # Canonical structural model (PR 9c.1 T134)
 ///
-/// Three NATO SAP programs exist, each with specific constraints:
+/// CAPCO-2016 §H.7 line 4702 (December 2010 history note) identifies
+/// ATOMAL / BOHEMIA / BALK as **NATO control markings, not NATO
+/// classifications**. Per CAPCO-2016 §H.7 p123 + §G.2 p41 + §H.7
+/// p127 worked examples:
 ///
-/// - **ATOMAL**: Applies to CTS, NS, and NC levels. Space-separated in
-///   banner (`COSMIC TOP SECRET ATOMAL`). Portion marks: CTSA, NSAT, NCA.
-///   Alternative portion forms CTS-A, NS-A, NC-A also appear in practice.
-/// - **BOHEMIA**: CTS-only. Hyphenated (`COSMIC TOP SECRET-BOHEMIA` → `CTS-B`).
-/// - **BALK**: CTS-only, exercise replacement for BOHEMIA.
-///   Hyphenated (`COSMIC TOP SECRET-BALK` → `CTS-BALK`).
+/// - **ATOMAL** is an AEA-axis marking shared with NATO+UK under
+///   §123/§144 sharing agreements (Atomic Energy Act). It travels
+///   alongside RD/FRD/TFNI in the AEA block, carried by
+///   [`AeaMarking::Atomal`]. Canonical portion: `(//CTS//ATOMAL)` or
+///   `(//NS//ATOMAL)`, not the legacy `CTSA` / `NSAT` portion-suffix.
+/// - **BOHEMIA** and **BALK** are NATO Special Access Programs in
+///   the SCI category position, carried by
+///   [`SciControlSystem::NatoSap`]. They render standalone with no
+///   `SAR-` prefix. Canonical portion: `(//CTS//BOHEMIA)` or
+///   `(//CTS//BALK)`, not the legacy `CTS-B` / `CTS-BALK`
+///   portion-suffix.
 ///
-/// Per the CAPCO Register, bare `COSMIC TOP SECRET` requires either
-/// BOHEMIA or BALK — standalone CTS without a SAP suffix is an error.
+/// Pre-PR-9c.1 carried five fused variants — `NatoConfidentialAtomal`,
+/// `NatoSecretAtomal`, `CosmicTopSecretAtomal`,
+/// `CosmicTopSecretBohemia`, `CosmicTopSecretBalk` — which conflated
+/// classification with AEA/SCI semantics on a single axis. The
+/// parser ([`crate::parser::parse_nato_classification`] in marque-core)
+/// canonicalizes legacy text at parse time; the R009 autofix rule
+/// rewrites the source text to the canonical multi-block form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NatoClassification {
-    NatoUnclassified,       // NU
-    NatoRestricted,         // NR
-    NatoConfidential,       // NC
-    NatoConfidentialAtomal, // NCA (alt: NC-A)
-    NatoSecret,             // NS
-    NatoSecretAtomal,       // NSAT (alt: NS-A)
-    CosmicTopSecret,        // CTS (requires BOHEMIA or BALK)
-    CosmicTopSecretAtomal,  // CTSA (alt: CTS-A)
-    CosmicTopSecretBohemia, // CTS-B
-    CosmicTopSecretBalk,    // CTS-BALK
+    NatoUnclassified, // NU
+    NatoRestricted,   // NR
+    NatoConfidential, // NC
+    NatoSecret,       // NS
+    CosmicTopSecret,  // CTS
 }
 
 impl NatoClassification {
@@ -683,13 +691,8 @@ impl NatoClassification {
             Self::NatoUnclassified => "NATO UNCLASSIFIED",
             Self::NatoRestricted => "NATO RESTRICTED",
             Self::NatoConfidential => "NATO CONFIDENTIAL",
-            Self::NatoConfidentialAtomal => "NATO CONFIDENTIAL ATOMAL",
             Self::NatoSecret => "NATO SECRET",
-            Self::NatoSecretAtomal => "NATO SECRET ATOMAL",
             Self::CosmicTopSecret => "COSMIC TOP SECRET",
-            Self::CosmicTopSecretAtomal => "COSMIC TOP SECRET ATOMAL",
-            Self::CosmicTopSecretBohemia => "COSMIC TOP SECRET-BOHEMIA",
-            Self::CosmicTopSecretBalk => "COSMIC TOP SECRET-BALK",
         }
     }
 
@@ -699,27 +702,24 @@ impl NatoClassification {
             Self::NatoUnclassified => "NU",
             Self::NatoRestricted => "NR",
             Self::NatoConfidential => "NC",
-            Self::NatoConfidentialAtomal => "NCA",
             Self::NatoSecret => "NS",
-            Self::NatoSecretAtomal => "NSAT",
             Self::CosmicTopSecret => "CTS",
-            Self::CosmicTopSecretAtomal => "CTSA",
-            Self::CosmicTopSecretBohemia => "CTS-B",
-            Self::CosmicTopSecretBalk => "CTS-BALK",
         }
     }
 
-    /// The base classification level (without SAP), for ordering comparisons.
+    /// The base classification level, for ordering comparisons.
+    ///
+    /// PR 9c.1 T134: `base_level` collapses to a trivial mapping
+    /// post-variant-retirement (each variant is its own base level),
+    /// but the indirection stays for API stability and as a hook
+    /// for any future sub-level distinctions.
     pub fn base_level(self) -> NatoLevel {
         match self {
             Self::NatoUnclassified => NatoLevel::NatoUnclassified,
             Self::NatoRestricted => NatoLevel::NatoRestricted,
-            Self::NatoConfidential | Self::NatoConfidentialAtomal => NatoLevel::NatoConfidential,
-            Self::NatoSecret | Self::NatoSecretAtomal => NatoLevel::NatoSecret,
-            Self::CosmicTopSecret
-            | Self::CosmicTopSecretAtomal
-            | Self::CosmicTopSecretBohemia
-            | Self::CosmicTopSecretBalk => NatoLevel::CosmicTopSecret,
+            Self::NatoConfidential => NatoLevel::NatoConfidential,
+            Self::NatoSecret => NatoLevel::NatoSecret,
+            Self::CosmicTopSecret => NatoLevel::CosmicTopSecret,
         }
     }
 
@@ -2347,19 +2347,21 @@ mod tests {
         );
     }
 
+    /// PR 9c.1 T134: `NatoClassification` is now a 5-variant bare-class
+    /// enum; the 5 fused variants (`NatoConfidentialAtomal`,
+    /// `NatoSecretAtomal`, `CosmicTopSecretAtomal`,
+    /// `CosmicTopSecretBohemia`, `CosmicTopSecretBalk`) were retired
+    /// because they conflated classification with AEA/SCI sub-marking
+    /// semantics. ATOMAL now lives in [`AeaMarking::Atomal`];
+    /// BALK/BOHEMIA in [`SciControlSystem::NatoSap`].
     #[test]
     fn nato_banner_portion_round_trip() {
         for n in [
             NatoClassification::NatoUnclassified,
             NatoClassification::NatoRestricted,
             NatoClassification::NatoConfidential,
-            NatoClassification::NatoConfidentialAtomal,
             NatoClassification::NatoSecret,
-            NatoClassification::NatoSecretAtomal,
             NatoClassification::CosmicTopSecret,
-            NatoClassification::CosmicTopSecretAtomal,
-            NatoClassification::CosmicTopSecretBohemia,
-            NatoClassification::CosmicTopSecretBalk,
         ] {
             assert!(!n.banner_str().is_empty());
             assert!(!n.portion_str().is_empty());

@@ -1927,21 +1927,26 @@ fn nato_in_second_segment_yields_decode_miss() {
 
 #[test]
 fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
-    // T129 regression guard: lowercase `(//nato secret atomal//nf)` pre-PR-8
-    // was case-normalized by the decoder then strict-parsed as NatoSecretAtomal.
-    // The NATO fold in this PR must NOT mangle the `ATOMAL` suffix —
-    // verified at the helper level by `fold_nato_segment_returns_none_for_atomal_compound`
-    // in decoder.rs unit tests; this test verifies the end-to-end engine
-    // recovery path still produces the correct result.
+    // T129 regression guard: lowercase `(//nato secret atomal//nf)`
+    // case-normalizes, fuzzy-corrects, and reaches the strict parser
+    // intact (the NATO fold MUST NOT mangle the `ATOMAL` suffix —
+    // verified at the helper level by
+    // `fold_nato_segment_returns_none_for_atomal_compound` in
+    // decoder.rs unit tests). This test verifies the end-to-end engine
+    // recovery path still produces the canonical result.
     //
     // Pipeline: lowercase input → normalize_delimiters_and_case → uppercase →
     // try_nato_fold("NATO SECRET ATOMAL") returns None (FIX-A) →
     // fuzzy_correct_tokens passes ATOMAL through (in NATO_CLASSIFICATION_KEYWORDS) →
     // generate_candidate_bytes emits `(//NATO SECRET ATOMAL//NF)` →
     // strict parser's parse_nato_classification("NATO SECRET ATOMAL") →
-    // NatoSecretAtomal. ✓
+    // PR 9c.1 T134 canonical form: bare class `NatoSecret` + AEA
+    // `Atomal` companion (`(//NS//ATOMAL//NF)` semantic).
     //
-    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+    // Citations: CAPCO-2016 §G.1 Table 4 pp 36-38 (legacy text
+    // recognition); §H.7 p123 (ATOMAL as AEA, canonical structural
+    // model); §H.7 line 4702 (re-marking of legacy information on
+    // derivative use).
     let rx = DecoderRecognizer::new();
     let parsed = rx.recognize(b"(//nato secret atomal//nf)", &deep_cx());
     match parsed {

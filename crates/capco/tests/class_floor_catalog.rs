@@ -279,17 +279,22 @@ fn tk_blfh_does_not_fire_on_bare_tk() {
     );
 }
 
-// NATO BALK / BOHEMIA: presence predicate fires only when the document's
-// NATO classification is exactly `CosmicTopSecretBalk` or
-// `CosmicTopSecretBohemia` (already at TS via reciprocal-raise per
-// §3.4.1 Note (i)). The floor is satisfied by the presence itself in
-// the well-formed case; the row exists to catch data-corruption /
-// mangled input where a BALK/BOHEMIA portion is incorrectly carried
-// with a sub-CTS NATO classification (which the parser cannot
-// construct via the well-formed path because the variant binds them
-// together). These rows are exercised by direct attrs construction in
-// the unit tests in `crates/capco/src/scheme.rs` — the engine path
-// can't construct the divergent state.
+// NATO BALK / BOHEMIA: per PR 9c.1 T134 the presence predicate fires
+// when `attrs.sci_markings` carries a `SciControlSystem::NatoSap`
+// variant. CAPCO-2016 §G.2 p41 identifies BALK/BOHEMIA as NATO SAPs in
+// the SCI category position (rendered standalone, no `SAR-` prefix).
+// The legacy fused variants `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`
+// were retired in PR 9c.1 Commit 5 — pre-PR-9c.1 those variants
+// conflated classification with SCI semantics on a single axis.
+//
+// The row severity is `Warn` (downgrade from `Error` in PR 9c.1
+// Commit 4) because §G.2 p41's citation depth is too soft to drive
+// Error.  Well-formed NATO inputs `//COSMIC TOP SECRET-BALK` /
+// `//COSMIC TOP SECRET-BOHEMIA` parse to bare `CosmicTopSecret` class
+// + `NatoSap::{Balk,Bohemia}` SCI companion — effective level TS via
+// `us_equivalent`; the TS floor is satisfied → no diagnostic. The row
+// fires only when the SCI marking exists at a sub-CTS class
+// (data-corruption / mangled input).
 
 // ===========================================================================
 // §2.2 Floor S — TS-or-S allowed (sample of 8 family rows)
@@ -628,8 +633,9 @@ fn sar_span_anchors_at_sar_indicator_not_classification() {
 
 #[test]
 fn balk_does_not_fire_on_well_formed_cts_balk_banner() {
-    // `//COSMIC TOP SECRET-BALK` parses to `Nato(CosmicTopSecretBalk)`,
-    // effective level TS. BALK floor (TS) is satisfied → no diagnostic.
+    // PR 9c.1 T134: `//COSMIC TOP SECRET-BALK` parses to bare
+    // `Nato(CosmicTopSecret)` class + `NatoSap::Balk` SCI companion.
+    // Effective level TS. BALK floor (TS) is satisfied → no diagnostic.
     let diags = lint("//COSMIC TOP SECRET-BALK\n");
     let balk = e058_diags_for(&diags, "BALK (NATO)");
     assert!(
@@ -904,12 +910,12 @@ fn class_floor_catalog_naming_convention() {
 // §2.1 row #4 — class-floor/BALK: fires-below + absent
 // ---------------------------------------------------------------------------
 //
-// BALK presence is bound to NatoClassification::CosmicTopSecretBalk
-// (the parser binds class+marking together), so "BALK present at
-// sub-CTS class" is a constructed-attrs case — only reachable via
-// the trait/validate path. The well-formed engine-path silence is
-// covered by `balk_does_not_fire_on_well_formed_cts_balk_banner`
-// above.
+// BALK presence is bound to SciControlSystem::NatoSap(NatoSap::Balk)
+// per PR 9c.1 T134. "BALK present at sub-CTS class" is reachable from
+// the engine path because the parser writes the SCI companion
+// independently of the bare NATO classification, so this absence test
+// pairs naturally with the well-formed engine-path silence covered by
+// `balk_does_not_fire_on_well_formed_cts_balk_banner` above.
 
 #[test]
 fn balk_does_not_fire_when_marking_absent() {
