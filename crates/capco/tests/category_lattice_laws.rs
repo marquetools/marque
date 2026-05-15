@@ -722,6 +722,202 @@ mod classification_lattice {
         assert_eq!(us.join(&joint), us);
         assert_eq!(joint.join(&us), us);
     }
+
+    // -----------------------------------------------------------------------
+    // C-9 (PR 4b-B follow-up) — absorption laws across the cross-product
+    // of equal-level variants AND across the partial order on payloads.
+    //
+    // Absorption pair: `a ⊔ (a ⊓ b) = a` and `a ⊓ (a ⊔ b) = a`.
+    //
+    // The C-7 fix introduced a same-variant-payload union tiebreaker on
+    // both `join` and `meet`. That broke absorption: at equal level,
+    // `meet` should return the lattice **bottom** for incomparable
+    // elements (different variants, or same variant with disjoint
+    // payloads), not the union — otherwise
+    // `a.join(a.meet(b)) = union(a, b) ≠ a`.
+    //
+    // The post-C-9 fix:
+    // - Different variants at same level → `meet` returns the lattice
+    //   bottom (`empty()`). They are incomparable.
+    // - Same variant, payload subset (one operand's countries ⊆ the
+    //   other's) → `meet` returns the smaller payload (the GLB on the
+    //   country-list partial order).
+    // - Same variant, disjoint payloads → `meet` returns the lattice
+    //   bottom (no common subset).
+    //
+    // §-authority (verified 2026-05-15 against CAPCO-2016.md):
+    // §H.7 pp123-125 (reciprocal normalization, variant-rank order) +
+    // §H.1 pp47-54 (US class chain).
+    // -----------------------------------------------------------------------
+    #[test]
+    fn classification_lattice_absorption_across_variants_and_payloads() {
+        // Build a small set of representative inputs at one level so
+        // the cross-product stays tractable but still exercises:
+        //   - different variants at same level
+        //   - same variant, payload subset
+        //   - same variant, disjoint payloads
+        //   - bottom and top against everything
+        //
+        // Country payloads are pre-sorted (alphabetical) because the
+        // `classification_join_same_variant` helper canonicalizes via
+        // BTreeSet on cross-payload merges; absorption holds at the
+        // structural-equality level only when the inputs are already
+        // in the canonical order. Production code (parser, page-
+        // context roll-up) emits sorted lists by §H.8 p150-151 / §H.3
+        // p56 (REL TO / JOINT alphabetical-with-USA-first).
+        use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
+        let usa = CountryCode::try_new(b"USA").expect("USA");
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let can = CountryCode::try_new(b"CAN").expect("CAN");
+        let bottom = ClassificationLattice::empty();
+        let top = ClassificationLattice::top();
+        let inputs: Vec<ClassificationLattice> = vec![
+            bottom.clone(),
+            top.clone(),
+            // US at multiple levels.
+            lvl(Classification::Unclassified),
+            lvl(Classification::Confidential),
+            lvl(Classification::Secret),
+            // FGI same level, different payloads (subset + disjoint).
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            }))),
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([can]),
+            }))),
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([can, gbr]),
+            }))),
+            // NATO same level (variant-only mismatch with FGI/US).
+            ClassificationLattice::new(Some(MarkingClassification::Nato(
+                NatoClassification::NatoSecret,
+            ))),
+            // JOINT same level, different payloads. Sorted alphabetical.
+            ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr, usa]),
+            }))),
+            ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
+                level: Classification::Secret,
+                countries: Box::new([can, usa]),
+            }))),
+        ];
+        for a in &inputs {
+            for b in &inputs {
+                let a_meet_b = a.meet(b);
+                let a_join_b = a.join(b);
+                assert_eq!(
+                    a.join(&a_meet_b),
+                    *a,
+                    "C-9: a ⊔ (a ⊓ b) ≠ a for a={a:?}, b={b:?}, \
+                     a⊓b={a_meet_b:?}"
+                );
+                assert_eq!(
+                    a.meet(&a_join_b),
+                    *a,
+                    "C-9: a ⊓ (a ⊔ b) ≠ a for a={a:?}, b={b:?}, \
+                     a⊔b={a_join_b:?}"
+                );
+            }
+        }
+    }
+
+    // C-9 spot-checks: the user-cited counterexamples from the triage,
+    // pinned individually so a regression names them in test output.
+    //
+    // Analysis correction vs. the triage description: at same level,
+    // different variants are NOT incomparable — they are linearly
+    // ordered by the variant-rank join policy (Us < Fgi < Nato <
+    // Joint < Conflict, where lower rank wins join → lower rank is
+    // GREATER in the ≤ order). The meet of Fgi(S,[GBR]) and Us(S) is
+    // therefore Fgi(S,[GBR]) (the dominated, lower-≤ variant), NOT
+    // bottom. Returning bottom would break the dual absorption law
+    // `a.meet(a.join(b)) = a` for the higher-rank operand. §H.7
+    // pp123-125 reciprocal-normalization implicitly defines this
+    // order on variant precedence.
+    #[test]
+    fn classification_meet_different_variants_returns_dominated() {
+        // Fgi(S, [GBR]) ⊓ Us(S) → Fgi(S, [GBR]) (the dominated variant).
+        use marque_ism::{CountryCode, FgiClassification};
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let fgi_gbr = ClassificationLattice::new(Some(MarkingClassification::Fgi(
+            FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            },
+        )));
+        let us_s = lvl(Classification::Secret);
+        let meet = fgi_gbr.meet(&us_s);
+        assert_eq!(
+            meet, fgi_gbr,
+            "C-9: meet at cross-variant same-level returns dominated"
+        );
+        // Symmetric: order shouldn't matter.
+        assert_eq!(us_s.meet(&fgi_gbr), fgi_gbr);
+        // Absorption: a ⊔ (a ⊓ b) = a.
+        assert_eq!(fgi_gbr.join(&meet), fgi_gbr);
+        // Dual: a ⊓ (a ⊔ b) = a.
+        assert_eq!(fgi_gbr.meet(&fgi_gbr.join(&us_s)), fgi_gbr);
+    }
+
+    #[test]
+    fn classification_meet_same_variant_disjoint_payloads_returns_bottom() {
+        // Fgi(S, [GBR]) ⊓ Fgi(S, [CAN]) → bottom (no common subset).
+        use marque_ism::{CountryCode, FgiClassification};
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let can = CountryCode::try_new(b"CAN").expect("CAN");
+        let fgi_gbr = ClassificationLattice::new(Some(MarkingClassification::Fgi(
+            FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            },
+        )));
+        let fgi_can = ClassificationLattice::new(Some(MarkingClassification::Fgi(
+            FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([can]),
+            },
+        )));
+        let meet = fgi_gbr.meet(&fgi_can);
+        assert_eq!(
+            meet,
+            ClassificationLattice::empty(),
+            "C-9: meet of same-variant disjoint payloads must be bottom"
+        );
+        assert_eq!(fgi_gbr.join(&meet), fgi_gbr);
+        assert_eq!(fgi_can.join(&meet), fgi_can);
+    }
+
+    #[test]
+    fn classification_meet_same_variant_payload_subset_returns_smaller() {
+        // Fgi(S, [GBR, CAN]) ⊓ Fgi(S, [GBR]) → Fgi(S, [GBR])
+        // (the smaller set is the GLB on the country partial order).
+        use marque_ism::{CountryCode, FgiClassification};
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let can = CountryCode::try_new(b"CAN").expect("CAN");
+        let fgi_both = ClassificationLattice::new(Some(MarkingClassification::Fgi(
+            FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([can, gbr]),
+            },
+        )));
+        let fgi_gbr = ClassificationLattice::new(Some(MarkingClassification::Fgi(
+            FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            },
+        )));
+        let meet = fgi_both.meet(&fgi_gbr);
+        assert_eq!(meet, fgi_gbr, "C-9: meet picks smaller payload on subset");
+        // Symmetric: order shouldn't matter.
+        assert_eq!(fgi_gbr.meet(&fgi_both), fgi_gbr);
+        // Absorption.
+        assert_eq!(fgi_both.join(&meet), fgi_both);
+        assert_eq!(fgi_gbr.join(&meet), fgi_gbr);
+    }
 }
 
 // ===========================================================================

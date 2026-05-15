@@ -1152,7 +1152,7 @@ fn classification_variant_rank(c: &MarkingClassification) -> u8 {
 }
 
 /// Same-variant / same-level payload tiebreaker for
-/// `ClassificationLattice::join`.
+/// `ClassificationLattice::join` (UNION semantic).
 ///
 /// C-7 (PR 4b-B follow-up): the variant-rank tiebreaker alone is not
 /// sufficient — two `Fgi` (or two `Joint`) values at the same level
@@ -1174,11 +1174,25 @@ fn classification_variant_rank(c: &MarkingClassification) -> u8 {
 /// shape, else fall back to picking the canonically-smaller operand
 /// by `effective_level()` + variant-rank tiebreak applied to
 /// `foreign`'s inner variant).
+///
+/// **Companion**: see [`classification_meet_same_variant`] for the
+/// dual-side semantic (INTERSECTION; bottom on disjoint payloads).
+/// C-9 (PR 4b-B follow-up) split the two operations because using
+/// union for both broke the absorption laws — `a ⊔ (a ⊓ b) = a` and
+/// `a ⊓ (a ⊔ b) = a` cannot hold if `meet` and `join` are the same
+/// op.
 fn classification_join_same_variant(
     a: &MarkingClassification,
     b: &MarkingClassification,
 ) -> MarkingClassification {
     use std::collections::BTreeSet;
+    // Idempotency short-circuit: if a == b, return a unchanged so
+    // input order is preserved through the round-trip (avoids the
+    // BTreeSet canonical-ordering side effect when a caller is
+    // joining a payload with itself).
+    if a == b {
+        return a.clone();
+    }
     match (a, b) {
         (MarkingClassification::Us(_), MarkingClassification::Us(_)) => a.clone(),
         (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
@@ -1289,6 +1303,134 @@ fn merge_foreign_classification(
     }
 }
 
+/// Same-variant / same-level payload tiebreaker for
+/// `ClassificationLattice::meet` (INTERSECTION semantic).
+///
+/// C-9 (PR 4b-B follow-up): the dual of [`classification_join_same_variant`].
+/// `meet` is GLB on the country-list partial order:
+///
+/// - Equal payloads → that value (idempotence).
+/// - One payload ⊆ the other → the smaller payload (it IS the GLB).
+/// - Disjoint payloads → `None` (no common lower bound; meet falls
+///   to the lattice bottom).
+///
+/// Returning `None` on disjoint payloads is what keeps the absorption
+/// laws `a ⊔ (a ⊓ b) = a` and `a ⊓ (a ⊔ b) = a` holding: joining
+/// `a` with `None` gives `a`, and meeting `a` with anything `≥ a`
+/// gives `a`. Using `union` (the join semantic) on the meet side
+/// broke both absorption laws.
+///
+/// `Us` and `Nato` carry no country payload at same level → meet
+/// returns the value directly. `Conflict` is the absorbing top: at
+/// same level + same shape (both Conflict, same foreign), meet is
+/// that value; otherwise meet is `None`.
+fn classification_meet_same_variant(
+    a: &MarkingClassification,
+    b: &MarkingClassification,
+) -> Option<MarkingClassification> {
+    use std::collections::BTreeSet;
+    // Idempotency short-circuit: if a == b, return a unchanged so
+    // input order is preserved through the round-trip.
+    if a == b {
+        return Some(a.clone());
+    }
+    match (a, b) {
+        (MarkingClassification::Us(_), MarkingClassification::Us(_)) => Some(a.clone()),
+        (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
+            let sa: BTreeSet<marque_ism::CountryCode> = fa.countries.iter().copied().collect();
+            let sb: BTreeSet<marque_ism::CountryCode> = fb.countries.iter().copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> =
+                sa.intersection(&sb).copied().collect();
+            if inter.is_empty() {
+                None
+            } else {
+                Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                    level: fa.level,
+                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                }))
+            }
+        }
+        (MarkingClassification::Nato(_), MarkingClassification::Nato(_)) => Some(a.clone()),
+        (MarkingClassification::Joint(ja), MarkingClassification::Joint(jb)) => {
+            let sa: BTreeSet<marque_ism::CountryCode> = ja.countries.iter().copied().collect();
+            let sb: BTreeSet<marque_ism::CountryCode> = jb.countries.iter().copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> =
+                sa.intersection(&sb).copied().collect();
+            if inter.is_empty() {
+                None
+            } else {
+                Some(MarkingClassification::Joint(marque_ism::JointClassification {
+                    level: ja.level,
+                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                }))
+            }
+        }
+        (
+            MarkingClassification::Conflict {
+                us: ua,
+                foreign: fa,
+            },
+            MarkingClassification::Conflict {
+                us: ub,
+                foreign: fb,
+            },
+        ) => {
+            // us level matches by invariant. Conflict carries an
+            // implicit US + a single foreign payload; meet is the
+            // foreign-intersection lifted back into Conflict, or
+            // None if the foreign payloads are incomparable.
+            let _ = (ua, ub);
+            meet_foreign_classification(fa, fb).map(|foreign| MarkingClassification::Conflict {
+                us: *ua,
+                foreign: Box::new(foreign),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Companion to [`merge_foreign_classification`] for the meet side.
+/// Same shape, country intersection; cross-variant → `None`.
+fn meet_foreign_classification(
+    a: &marque_ism::ForeignClassification,
+    b: &marque_ism::ForeignClassification,
+) -> Option<marque_ism::ForeignClassification> {
+    use marque_ism::ForeignClassification;
+    use std::collections::BTreeSet;
+    match (a, b) {
+        (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
+            let sa: BTreeSet<marque_ism::CountryCode> = fa.countries.iter().copied().collect();
+            let sb: BTreeSet<marque_ism::CountryCode> = fb.countries.iter().copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> =
+                sa.intersection(&sb).copied().collect();
+            if inter.is_empty() {
+                None
+            } else {
+                Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                    level: fa.level,
+                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                }))
+            }
+        }
+        (ForeignClassification::Nato(_), ForeignClassification::Nato(_)) => Some(a.clone()),
+        (ForeignClassification::Joint(ja), ForeignClassification::Joint(jb)) => {
+            let sa: BTreeSet<marque_ism::CountryCode> = ja.countries.iter().copied().collect();
+            let sb: BTreeSet<marque_ism::CountryCode> = jb.countries.iter().copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> =
+                sa.intersection(&sb).copied().collect();
+            if inter.is_empty() {
+                None
+            } else {
+                Some(ForeignClassification::Joint(marque_ism::JointClassification {
+                    level: ja.level,
+                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                }))
+            }
+        }
+        _ => None,
+    }
+}
+
 impl Lattice for ClassificationLattice {
     fn join(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
@@ -1341,27 +1483,42 @@ impl Lattice for ClassificationLattice {
                 } else if lb < la {
                     Self(Some(b.clone()))
                 } else {
-                    // Equal effective level: deterministic variant
-                    // tiebreak (same precedence as join). Lower rank
-                    // wins, so meet is commutative.
+                    // Equal effective level: meet must be the GLB
+                    // dual of `join`. The join policy is:
+                    //   - lower variant-rank wins at same level
+                    //     (Us < Fgi < Nato < Joint < Conflict),
+                    //     so the lower-rank variant is the GREATER
+                    //     element in the lattice ≤ order;
+                    //   - same variant + same level, payloads union.
                     //
-                    // C-7 (PR 4b-B follow-up): same-variant payload
-                    // tiebreak uses the union helper from `join` —
-                    // for the lattice meet, union is the only choice
-                    // that keeps `meet` commutative and consistent
-                    // with `join`'s payload semantics. The dual
-                    // absorption law on the country axis (intersection
-                    // would be the natural meet) is not asserted by
-                    // any caller; meet on Classification is provided
-                    // for trait completeness.
+                    // GLB (meet) is therefore the dual:
+                    //   - cross-variant: return the HIGHER variant-
+                    //     rank operand (the dominated, lower-≤ side).
+                    //     §H.7 pp123-125 reciprocal-normalization.
+                    //   - same variant + same level, payloads
+                    //     INTERSECT (country-list GLB). Empty
+                    //     intersection drops to the lattice bottom.
+                    //
+                    // C-9 (PR 4b-B follow-up): pre-fix, meet mirrored
+                    // join's tiebreaker (lower rank wins) AND used
+                    // the UNION helper for same-variant payloads.
+                    // Both branches broke the absorption laws
+                    // `a ⊔ (a ⊓ b) = a` / `a ⊓ (a ⊔ b) = a`.
                     let ra = classification_variant_rank(a);
                     let rb = classification_variant_rank(b);
                     if ra == rb {
-                        Self(Some(classification_join_same_variant(a, b)))
+                        match classification_meet_same_variant(a, b) {
+                            Some(m) => Self(Some(m)),
+                            None => Self(None),
+                        }
                     } else if ra < rb {
-                        Self(Some(a.clone()))
-                    } else {
+                        // a has lower rank → a is GREATER in ≤ →
+                        // b is the meet (the dominated, lower-≤).
                         Self(Some(b.clone()))
+                    } else {
+                        // a has higher rank → a is LESSER in ≤ →
+                        // a is the meet.
+                        Self(Some(a.clone()))
                     }
                 }
             }
