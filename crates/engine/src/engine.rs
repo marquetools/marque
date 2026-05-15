@@ -273,7 +273,7 @@ pub struct Engine {
     /// would have been caught by `canonicalize_rule_overrides`'s
     /// hard-fail; malformed severity strings are silently skipped to
     /// preserve the pre-hoist `.and_then(parse_config)` semantics
-    /// (`build_severity_tables_skips_unparseable_severity` pins this).
+    /// (`build_severity_tables_skips_unparsable_severity` pins this).
     ///
     /// **Hot-loop consumers.** Read by Sites B (per-diagnostic
     /// `retain_mut` rewrite), C (bridge `ConstraintViolation`
@@ -430,8 +430,11 @@ impl Engine {
         // `Severity::parse_config` parses from Sites A/B/C/D in
         // `lint_inner` (a perf-only refactor — semantics preserved
         // byte-for-byte at the audit boundary).
-        let (fast_path_severities, emitted_id_overrides) =
-            build_severity_tables(&rule_sets, &config.rules.overrides);
+        let (fast_path_severities, emitted_id_overrides) = build_severity_tables(
+            &rule_sets,
+            &config.rules.overrides,
+            scheme.bridge_emitted_rule_ids(),
+        );
 
         Ok(Self {
             config,
@@ -3544,9 +3547,24 @@ fn partition_rules_by_phase(
 /// `&'static str` — `RuleId::as_str()` returns `&'static str` — so
 /// `HashMap<&'static str, Severity>::get(rule_id.as_str())` works
 /// directly without an owned allocation.
+///
+/// **`bridge_rule_ids` parameter.** The caller MUST pass the same
+/// bridge IDs slice it handed to `canonicalize_rule_overrides`
+/// (e.g., `scheme.bridge_emitted_rule_ids()` where `scheme` is the
+/// stored `CapcoScheme` instance). Threading the slice through
+/// instead of constructing a second `CapcoScheme::new()` inside this
+/// helper closes a divergence channel both reviewers' HIGH flagged:
+/// if `bridge_emitted_rule_ids()` ever becomes non-deterministic or
+/// differs across `CapcoScheme` instances (a future configurable
+/// constraint catalog, a per-instance bridge override), the
+/// canonicalizer and the severity-table builder MUST see the same
+/// set of bridge IDs or the canonicalizer's "every surviving key has
+/// a registered intern" invariant breaks and the `.expect()` at
+/// Pass 2 panics. Explicit parameter = explicit coupling.
 fn build_severity_tables(
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
     overrides: &HashMap<String, String>,
+    bridge_rule_ids: &'static [(&'static str, &'static str)],
 ) -> (FastPathSeverities, EmittedIdOverrides) {
     // Pass 1: collect every canonical `&'static str` rule ID emitted
     // by the rule set — both registered IDs (`rule.id().as_str()`) and
@@ -3568,9 +3586,13 @@ fn build_severity_tables(
     // canonicalizer. They have no corresponding registered `Rule`
     // impl, but `Engine::lint_inner` emits diagnostics under them
     // from the constraint-bridge path; Sites C/D need their overrides
-    // in `emitted_id_overrides`.
-    let bridge_scheme = CapcoScheme::new();
-    for (bridge_id, _bridge_name) in bridge_scheme.bridge_emitted_rule_ids() {
+    // in `emitted_id_overrides`. The caller passes the same bridge
+    // IDs slice it handed to `canonicalize_rule_overrides`, making
+    // the coupling explicit and ruling out future divergence if
+    // `CapcoScheme::bridge_emitted_rule_ids()` ever becomes
+    // non-deterministic or differs across `CapcoScheme` instances
+    // (both reviewers' HIGH).
+    for (bridge_id, _bridge_name) in bridge_rule_ids {
         known_ids.insert(bridge_id);
     }
 
@@ -4930,7 +4952,7 @@ mod tests {
     }
 
     #[test]
-    fn build_severity_tables_skips_unparseable_severity() {
+    fn build_severity_tables_skips_unparsable_severity() {
         // The canonicalizer accepts arbitrary severity strings (it
         // only validates the rule-key side), so a malformed
         // severity like `"borked"` survives to

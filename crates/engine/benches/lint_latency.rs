@@ -207,7 +207,7 @@ fn decoder_latency_benchmark(c: &mut Criterion) {
 const OFF_RULES: &[&str] = &[
     // PR 9a additions (very rare in clean fixture).
     "E061", "E062", "E063", "E064", "E065", // PR 9c.1 / 9c.2 NATO additions.
-    "E066", "S007", // Warnings (don't fire in this fixture).
+    "E066", "S007", // PR 9c.1 / 9c.2 NATO additions (don't fire in this fixture).
     "W002", "W003", "W034", // Style suggestions.
     "S003", "S004", "S005", "S006",
     // Dissem / SCI / SAR per-axis rules outside the fixture's coverage.
