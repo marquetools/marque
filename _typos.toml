@@ -31,6 +31,7 @@ extend-exclude = [
   # files contain axis-name codes (e.g. `wdth`) that are valid font
   # metadata, not spelling errors.
   "demo/assets/fonts/",
+  "tests/corpus/documents/"
 ]
 
 [default]
@@ -119,3 +120,6 @@ mis = "mis"
 
 # "unparseable" is acceptable (both forms exist in English)
 unparseable = "unparseable"
+
+[type.xml.extend-words]
+HED = "HED"

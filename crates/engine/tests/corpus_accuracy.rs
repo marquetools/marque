@@ -14,7 +14,7 @@
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_test_utils::{
-    invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
+    corpus_root, invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
 };
 use std::collections::HashMap;
 
@@ -417,5 +417,70 @@ fn valid_fixtures_zero_diagnostics() {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
+    }
+}
+
+#[test]
+fn document_fixtures_lint_against_expected() {
+    let engine = make_engine();
+    let docs_root = corpus_root().join("documents");
+    let marked_dir = docs_root.join("marked");
+    assert!(
+        marked_dir.is_dir(),
+        "documents/marked directory missing at {}",
+        marked_dir.display()
+    );
+
+    let mut marked_files: Vec<_> = std::fs::read_dir(&marked_dir)
+        .expect("read documents/marked")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
+        .collect();
+    marked_files.sort();
+    assert!(
+        !marked_files.is_empty(),
+        "no marked document fixtures found in {}",
+        marked_dir.display()
+    );
+
+    for marked in &marked_files {
+        let source = std::fs::read(marked)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", marked.display()));
+        let expected_path = docs_root.join(format!(
+            "{}.expected.json",
+            marked
+                .file_stem()
+                .expect("marked file stem")
+                .to_string_lossy()
+        ));
+        assert!(
+            expected_path.exists(),
+            "missing expected fixture for {} at {}",
+            marked.display(),
+            expected_path.display()
+        );
+
+        let expected_content = std::fs::read_to_string(&expected_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", expected_path.display()));
+        let expected: marque_test_utils::ExpectedFixture = serde_json::from_str(&expected_content)
+            .unwrap_or_else(|e| panic!("failed to parse {}: {e:?}", expected_path.display()));
+        let result = engine.lint(&source);
+
+        for exp in &expected.diagnostics {
+            let found = result.diagnostics.iter().any(|d| {
+                d.rule.as_str() == exp.rule
+                    && d.span.start == exp.span.start
+                    && d.span.end == exp.span.end
+            });
+            assert!(
+                found,
+                "document fixture {} missing expected diagnostic {} at {}..{}",
+                marked.file_name().unwrap().to_string_lossy(),
+                exp.rule,
+                exp.span.start,
+                exp.span.end
+            );
+        }
     }
 }

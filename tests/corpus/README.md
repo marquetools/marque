@@ -12,6 +12,7 @@ Shared fixtures for marque's unit, integration, and accuracy tests.
 
 ```
 tests/corpus/
+  documents/   Known-good marked prose
   valid/       Known-good marking fixtures (zero expected diagnostics)
   invalid/     Known-bad marking fixtures (one or more expected diagnostics)
   prose/       Clean body prose with no markings (SC-003a precision gate)
@@ -19,10 +20,11 @@ tests/corpus/
 
 ## Fixture Format
 
-Each fixture is a plain `.txt` file containing raw text with classification
-markings (or, for `valid/`, correctly formed markings).
+`valid/`, `invalid/`, and `prose/` fixtures are plain `.txt` files containing
+raw text.
 
-Every fixture has a sibling `.expected.json` file with the same stem, e.g.:
+In those directories, every fixture has a sibling `.expected.json` with the
+same stem, e.g.:
 
 ```
 invalid/banner_abbrev.txt
@@ -44,6 +46,11 @@ invalid/banner_abbrev.expected.json
 ```
 
 For `valid/` fixtures, `.expected.json` contains `{ "diagnostics": [] }`.
+
+For `documents/` fixtures, source specs live under `documents/specs/*.md`,
+rendered marked documents under `documents/marked/*.md`, per-document expected
+JSON at `documents/<stem>.expected.json`, and aggregate structural ground truth
+at `documents/ground_truth.json`.
 
 ## Naming Convention
 

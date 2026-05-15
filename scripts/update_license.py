@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ///script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12"
 # ///
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # SPDX-FileCopyrightText: 2026 Knitli Inc.

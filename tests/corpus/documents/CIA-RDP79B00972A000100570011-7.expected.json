@@ -1,0 +1,59 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP79B00972A000100570011-7",
+    "title": "ARMIES AVAILABLE BY MILITARY DISTRICT",
+    "year": 1990,
+    "source_pdf": "https://archive.org/download/CIA-RDP79B00972A000100570011-7/CIA-RDP79B00972A000100570011-7.pdf",
+    "cab": {
+      "classified_by": "ID23195",
+      "derived_from": "ms",
+      "declassify_on": "NA to AEA portions, see source list for NSI portions"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//HCS-OPERATIONS//RD//ORCON/NOFORN/PROPIN",
+        "paragraphs": [
+          {
+            "mark": "S//HCS-O//OC/NF",
+            "text": "ANNEX I ARMIES AVAILABLE BY MILITARY DISTRICT   \nBaltic MD - 11 Guards Army - 4 Motorized Rifle Divisions   \nBelorussian MD - 28th Army - 3 Motorized Rifle Divisions 1 Tank Division 5th Guards Tank Army - 3 Tank Divisions 7th Tank Army - 3 Tank Divisions, 1 Motorized Rifle   \nCarpathian MD - 8th Tank Army - 3 Tank Divisions 13th Army - 3 Motorized Rifle Divisions 38th Army - 4 Motorized Rifle Divisions   \nKiev MD - U/i Tank Army - 1 Motorized Rifle, 2 Tank and 1 Heavy Tank Division U/i Tank Army (Dnepropetrovsk) 4 Tank Divisions",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "Odessa MD - 14th Army - 4 Motorized Rifle Divisions",
+            "is_table": false
+          },
+          {
+            "mark": "S//NF",
+            "text": "Northern Group of Forces - 2 Tank Divisions",
+            "is_table": false
+          },
+          {
+            "mark": "C//TFNI",
+            "text": "Southern Group of Forces - 2 Tank and 2 Motorized Rifle Divisions",
+            "is_table": false
+          },
+          {
+            "mark": "S//NF",
+            "text": "Group of Soviet Forces, Germany - 1 Guards Tank Army - 4 Tank and 1 Motorized Rifle 2nd Guards Army - 1 Tank & 2 Mtz Rifle 3rd Shock Army - 4 Tank & 1 Mtz Rifle 8th Guards Army - 3 Mtz & 1 Tk Division 20th Guards Army - 3 Mtz Rifle Divisions",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "UNCLASSIFIED",
+        "paragraphs": [
+          {
+            "mark": "U",
+            "text": "0",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

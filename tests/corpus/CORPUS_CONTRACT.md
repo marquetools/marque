@@ -51,6 +51,27 @@ positions to exercise the disambiguation heuristic.
 The prose corpus is wired into the accuracy harness as a zero-diagnostic
 precision gate.
 
+### Document Fixtures (`documents/`)
+
+Multi-page synthetic-positive document fixtures derived from declassified
+CIA CREST releases (1990–2010) with synthetic CAPCO markings overlaid on
+the prose. Each fixture is a full document — multiple pages, banner + CAB +
+portion-marked paragraphs — and stresses end-to-end document handling
+rather than per-rule diagnostics.
+
+The corpus MUST contain **at least 40 document fixtures** with:
+
+- A `specs/<stem>.md` source-of-truth file (YAML frontmatter + page blocks).
+- A rendered `marked/<stem>.md` produced by `render_corpus.py`.
+- A per-doc `<stem>.expected.json` declaring `{"diagnostics": []}` and a
+  structural `ground_truth` field (banner per page, portion mark per
+  paragraph, CAB).
+- An aggregate `ground_truth.json` for crawler-style iteration.
+
+Document fixtures are valid (synthetic-positive); zero diagnostics is the
+expectation. Pipeline lives at `tools/cia-crest-corpus/`; see
+`documents/README.md` for format details.
+
 ## Tagging
 
 The corpus is tagged `mvp-corpus-v1` before Phase 7 begins. SC-002, SC-003,

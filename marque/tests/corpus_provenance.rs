@@ -56,6 +56,14 @@ fn is_registered_pattern(relative: &str) -> bool {
         ("lattice/", ".txt"),
         ("lattice/", ".expected.json"),
         ("lattice/", ".md"),
+        // documents/: end-to-end multi-page synthetic-positive document
+        // fixtures rendered from CIA CREST declassified prose with
+        // synthetic CAPCO markings. See tests/corpus/documents/README.md.
+        ("documents/", ".expected.json"),
+        ("documents/marked/", ".md"),
+        ("documents/specs/", ".md"),
+        ("documents/", "/ground_truth.json"),
+        ("documents/", "/README.md"),
     ];
 
     // Top-level files
@@ -272,6 +280,32 @@ fn known_cve_tokens() -> std::collections::HashSet<&'static str> {
         tokens.insert(*s);
     }
 
+    // NATO classifications (CAPCO-2016 §H.7) — abbreviated and full forms.
+    // CTS / NS / NC / NR / NU are the canonical portion-form abbreviations
+    // per §G.2 p40. PR 9c.1 routes NATO classification through the strict
+    // parser as standalone tokens.
+    for s in &[
+        "CTS",
+        "COSMIC TOP SECRET",
+        "NS",
+        "NATO SECRET",
+        "NC",
+        "NATO CONFIDENTIAL",
+        "NR",
+        "NATO RESTRICTED",
+        "NU",
+        "NATO UNCLASSIFIED",
+    ] {
+        tokens.insert(*s);
+    }
+
+    // AEA markings (CAPCO-2016 §H.6) — Atomic Energy Act controls.
+    // ATOMAL is the NATO AEA marking per §G.2 p40 + §H.7 p122; routed
+    // through the AEA axis alongside RD / FRD / TFNI per PR 9c.1.
+    for s in &["RD", "FRD", "TFNI", "ATOMAL", "CNWDI", "DCNI", "UCNI"] {
+        tokens.insert(*s);
+    }
+
     tokens
 }
 
@@ -381,6 +415,13 @@ fn sc002a_fixture_tokens_within_known_vocabulary() {
                 }
                 // Skip "REL TO ..." blocks — trigraph list varies
                 if block.starts_with("REL TO") || block.starts_with("REL ") {
+                    continue;
+                }
+                // Skip "FGI ..." blocks (CAPCO-2016 §H.7) — Foreign
+                // Government Information markings carry an open-ended
+                // trigraph/tetragraph list (e.g., "FGI NATO", "FGI GBR DEU")
+                // that is not CVE-enumerated.
+                if block == "FGI" || block.starts_with("FGI ") {
                     continue;
                 }
                 // Skip SAR blocks — program identifiers are agency-assigned
