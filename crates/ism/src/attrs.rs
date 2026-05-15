@@ -805,6 +805,19 @@ pub enum AeaMarking {
     DoeUcni,
     /// TFNI — standalone
     Tfni,
+    /// ATOMAL — NATO Atomic Energy Act information shared with the US
+    /// and UK under bilateral §123 / §144 agreements (Atomic Energy
+    /// Act §141–§144). Travels in the AEA axis alongside RD/FRD/TFNI
+    /// (CAPCO-2016 §H.7 p123 worked example:
+    /// `SECRET//RD/ATOMAL//FGI NATO//NOFORN`). Rendered as `ATOMAL`
+    /// in both banner and portion forms.
+    ///
+    /// `AtomalBlock` is currently empty — ATOMAL has no registered
+    /// sub-markings in CAPCO-2016 §H.7. The block carrier mirrors
+    /// [`RdBlock`] / [`FrdBlock`] so a future CAPCO publication that
+    /// grammar-extends ATOMAL with sub-markings remains a planned
+    /// migration rather than a breaking-shape change.
+    Atomal(AtomalBlock),
 }
 
 /// Restricted Data block with optional modifiers.
@@ -846,6 +859,16 @@ impl Default for FrdBlock {
     }
 }
 
+/// ATOMAL block.
+///
+/// Currently empty: CAPCO-2016 §H.7 Appendix B does not register
+/// ATOMAL sub-markings. The carrier struct mirrors the [`RdBlock`] /
+/// [`FrdBlock`] shape so that adding sub-markings in a future CAPCO
+/// publication remains a planned, intentional grammar extension
+/// rather than a structural-shape change at the variant level.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct AtomalBlock;
+
 impl AeaMarking {
     /// Banner-line form.
     pub fn banner_str(&self) -> String {
@@ -874,6 +897,7 @@ impl AeaMarking {
             Self::DodUcni => "DOD UCNI".to_owned(),
             Self::DoeUcni => "DOE UCNI".to_owned(),
             Self::Tfni => "TFNI".to_owned(),
+            Self::Atomal(_) => "ATOMAL".to_owned(),
         }
     }
 
@@ -904,6 +928,7 @@ impl AeaMarking {
             Self::DodUcni => "DCNI".to_owned(),
             Self::DoeUcni => "UCNI".to_owned(),
             Self::Tfni => "TFNI".to_owned(),
+            Self::Atomal(_) => "ATOMAL".to_owned(),
         }
     }
 
@@ -917,6 +942,9 @@ impl AeaMarking {
             "DOD UCNI" | "DCNI" => return Some(Self::DodUcni),
             "DOE UCNI" | "UCNI" => return Some(Self::DoeUcni),
             "TFNI" | "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION" => return Some(Self::Tfni),
+            // ATOMAL — NATO §123/§144 sharing per CAPCO-2016 §H.7 p123.
+            // Banner and portion forms are identical (`ATOMAL`).
+            "ATOMAL" => return Some(Self::Atomal(AtomalBlock)),
             _ => {}
         }
 
@@ -2187,9 +2215,17 @@ impl SciMarking {
 
 /// Which kind of SCI control system a [`SciMarking`] anchors on.
 ///
-/// This is a closed set of two variants: either a published bare system
-/// drawn from the live ODNI CVE, or an agency-allocated custom identifier
-/// (per CAPCO-2016 §A.6 p15).
+/// One of three variants: a published bare system drawn from the live
+/// ODNI CVE, an agency-allocated custom identifier (per CAPCO-2016
+/// §A.6 p15), or a NATO Special Access Program identifier (CAPCO-2016
+/// §G.2 p41 + §H.7 Appendix B).
+///
+/// NATO SAPs (`BOHEMIA`, `BALK`) are not in the ODNI ISM CVE — they're
+/// CAPCO-only registered NATO control markings. They render standalone
+/// in their own `//`-separated category (in the SCI block position),
+/// e.g. `//CTS//BOHEMIA` (banner) / `(//CTS//BOHEMIA)` (portion). See
+/// the §H.7 p127 worked example for ordering: US class // US-SCI /
+/// BALK / BOHEMIA // ... .
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SciControlSystem {
     /// One of the published bare control systems.
@@ -2198,6 +2234,47 @@ pub enum SciControlSystem {
     /// §A.6 p15 `123` example). Stores the raw text exactly as it appeared
     /// in the source.
     Custom(SmolStr),
+    /// One of the two NATO Special Access Programs registered in
+    /// CAPCO-2016 §G.2 p41 (`BOHEMIA`, `BALK`). NATO SAPs travel in
+    /// the SCI category position but are CAPCO-only (no ODNI CVE
+    /// entry).
+    NatoSap(NatoSap),
+}
+
+/// Registered NATO Special Access Programs per CAPCO-2016 §G.2 p41 +
+/// §H.7 Appendix B.
+///
+/// Both `Bohemia` and `Balk` render standalone (no `SAR-` prefix) and
+/// are typically CTS-only. The §H.7 p127 worked example renders BALK
+/// before BOHEMIA when both are present (numeric-then-alpha ordering
+/// per §A.6 p15-16; `BALK < BOHEMIA` lexicographically).
+/// Derive `Ord` so [`SciControlSystem::NatoSap`] participates in the
+/// numeric-then-alpha ordering used by `PageContext::expected_sci_markings`
+/// roll-up via `SystemKey`. The variants are declared `Bohemia` then
+/// `Balk` (alphabetical text) but `Ord` here is **not** used as the
+/// canonical render order; `as_str()` text is the sort key consulted by
+/// the renderer and roll-up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NatoSap {
+    /// BALK — NATO SAP per CAPCO-2016 §G.2 p41 (exercise replacement
+    /// for BOHEMIA per legacy Combined Communications-Electronics
+    /// Board guidance referenced in §G.2). BALK sorts before BOHEMIA
+    /// alphabetically — see the §H.7 p127 worked example.
+    Balk,
+    /// BOHEMIA — NATO SAP per CAPCO-2016 §G.2 p41.
+    Bohemia,
+}
+
+impl NatoSap {
+    /// Canonical name as used in both banner and portion forms
+    /// (CAPCO-2016 §G.1 Table 4 p38 row "ATOMAL/BALK/BOHEMIA" — same-
+    /// form across title, banner-abbrev, and portion columns).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Bohemia => "BOHEMIA",
+            Self::Balk => "BALK",
+        }
+    }
 }
 
 /// A single compartment under an SCI control system.

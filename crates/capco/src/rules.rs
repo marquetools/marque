@@ -3235,6 +3235,8 @@ fn sci_system_text(system: &SciControlSystem) -> &str {
     match system {
         SciControlSystem::Published(bare) => bare.as_str(),
         SciControlSystem::Custom(text) => text.as_ref(),
+        // NATO SAPs (BOHEMIA, BALK) per CAPCO-2016 §G.2 p41 + §H.7 p127.
+        SciControlSystem::NatoSap(sap) => sap.as_str(),
     }
 }
 

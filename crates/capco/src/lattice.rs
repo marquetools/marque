@@ -76,6 +76,7 @@ pub struct SciSet {
 enum SystemKey {
     Published(marque_ism::SciControlBare),
     Custom(SmolStr),
+    NatoSap(marque_ism::NatoSap),
 }
 
 impl SystemKey {
@@ -83,6 +84,7 @@ impl SystemKey {
         match sys {
             SciControlSystem::Published(b) => SystemKey::Published(*b),
             SciControlSystem::Custom(s) => SystemKey::Custom(s.clone()),
+            SciControlSystem::NatoSap(sap) => SystemKey::NatoSap(*sap),
         }
     }
 
@@ -90,6 +92,7 @@ impl SystemKey {
         match self {
             SystemKey::Published(b) => b.as_str(),
             SystemKey::Custom(s) => s.as_str(),
+            SystemKey::NatoSap(sap) => sap.as_str(),
         }
     }
 
@@ -97,6 +100,7 @@ impl SystemKey {
         match self {
             SystemKey::Published(b) => SciControlSystem::Published(b),
             SystemKey::Custom(s) => SciControlSystem::Custom(s),
+            SystemKey::NatoSap(sap) => SciControlSystem::NatoSap(sap),
         }
     }
 }
@@ -900,7 +904,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         match &out[0].system {
             SciControlSystem::Custom(s) => assert_eq!(s.as_str(), "99"),
-            SciControlSystem::Published(_) => panic!("expected Custom"),
+            other => panic!("expected Custom, got {other:?}"),
         }
     }
 

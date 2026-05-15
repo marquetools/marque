@@ -38,11 +38,11 @@ pub mod token_set;
 
 // Re-export primary types at crate root for convenience.
 pub use attrs::{
-    AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
-    FgiMarker, ForeignClassification, FrdBlock, JointClassification, MarkingClassification,
-    NatoClassification, NatoLevel, NonIcDissem, RdBlock, SarCompartment, SarIndicator, SarMarking,
-    SarProgram, SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking,
-    TokenKind, TokenSpan,
+    AeaMarking, AtomalBlock, Classification, CountryCode, DeclassExemption, DissemControl,
+    FgiClassification, FgiMarker, ForeignClassification, FrdBlock, JointClassification,
+    MarkingClassification, NatoClassification, NatoLevel, NatoSap, NonIcDissem, RdBlock,
+    SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControl,
+    SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};

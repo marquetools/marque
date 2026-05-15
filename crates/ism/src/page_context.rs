@@ -636,6 +636,7 @@ impl PageContext {
         let mut has_tfni = false;
         let mut has_dod_ucni = false;
         let mut has_doe_ucni = false;
+        let mut has_atomal = false;
 
         for attrs in &self.portions {
             for aea in attrs.aea_markings.iter() {
@@ -654,6 +655,10 @@ impl PageContext {
                     AeaMarking::Tfni => has_tfni = true,
                     AeaMarking::DodUcni => has_dod_ucni = true,
                     AeaMarking::DoeUcni => has_doe_ucni = true,
+                    // ATOMAL — NATO §123/§144 sharing (CAPCO-2016 §H.7 p123).
+                    // Travels alongside RD/FRD in the AEA axis; rolled up
+                    // by presence (no merge state).
+                    AeaMarking::Atomal(_) => has_atomal = true,
                 }
             }
         }
@@ -681,6 +686,15 @@ impl PageContext {
 
         if has_tfni && !has_rd {
             result.push(AeaMarking::Tfni);
+        }
+
+        // ATOMAL rolls up alongside RD/FRD when present. Register order
+        // per CAPCO-2016 §H.7 p123 worked example
+        // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL after RD
+        // and FRD in the AEA axis. The actual render order is owned by
+        // the AEA renderer's `register_rank`.
+        if has_atomal {
+            result.push(AeaMarking::Atomal(crate::attrs::AtomalBlock));
         }
 
         // UCNI/DCNI drop in classified documents.
@@ -1005,6 +1019,7 @@ impl PageContext {
 enum SystemKey {
     Published(crate::attrs::SciControlBare),
     Custom(SmolStr),
+    NatoSap(crate::attrs::NatoSap),
 }
 
 impl SystemKey {
@@ -1012,6 +1027,7 @@ impl SystemKey {
         match sys {
             SciControlSystem::Published(b) => SystemKey::Published(*b),
             SciControlSystem::Custom(s) => SystemKey::Custom(s.clone()),
+            SciControlSystem::NatoSap(sap) => SystemKey::NatoSap(*sap),
         }
     }
 
@@ -1019,6 +1035,7 @@ impl SystemKey {
         match self {
             SystemKey::Published(b) => b.as_str(),
             SystemKey::Custom(s) => s.as_str(),
+            SystemKey::NatoSap(sap) => sap.as_str(),
         }
     }
 
@@ -1026,6 +1043,7 @@ impl SystemKey {
         match self {
             SystemKey::Published(b) => SciControlSystem::Published(b),
             SystemKey::Custom(s) => SciControlSystem::Custom(s),
+            SystemKey::NatoSap(sap) => SciControlSystem::NatoSap(sap),
         }
     }
 }
@@ -1040,6 +1058,7 @@ fn render_sci_markings_block(markings: &[SciMarking]) -> String {
         let sys_text = match &m.system {
             SciControlSystem::Published(b) => b.as_str().to_owned(),
             SciControlSystem::Custom(s) => s.to_string(),
+            SciControlSystem::NatoSap(sap) => sap.as_str().to_owned(),
         };
         if m.compartments.is_empty() {
             systems.push(sys_text);
