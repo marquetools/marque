@@ -592,12 +592,8 @@ mod classification_lattice {
     // suite exhausts the cross-product of `{Us, Fgi, Nato, Joint}` at
     // every level and asserts `a.join(b) == b.join(a)`.
     // -----------------------------------------------------------------------
-    fn arb_classification_variant(
-        level: Classification,
-    ) -> Vec<ClassificationLattice> {
-        use marque_ism::{
-            CountryCode, FgiClassification, JointClassification, NatoClassification,
-        };
+    fn arb_classification_variant(level: Classification) -> Vec<ClassificationLattice> {
+        use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
         let usa = CountryCode::try_new(b"USA").expect("USA");
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
         // Pair a few representative variants at the same effective
@@ -626,7 +622,9 @@ mod classification_lattice {
             }))),
         ];
         if let Some(n) = nato {
-            out.push(ClassificationLattice::new(Some(MarkingClassification::Nato(n))));
+            out.push(ClassificationLattice::new(Some(
+                MarkingClassification::Nato(n),
+            )));
         }
         out
     }
@@ -674,27 +672,22 @@ mod classification_lattice {
         // C-1: US is the canonical variant per §H.7 reciprocal
         // normalization. At equal effective level, joining Us with
         // any other variant produces Us.
-        use marque_ism::{
-            CountryCode, FgiClassification, JointClassification, NatoClassification,
-        };
+        use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
         let usa = CountryCode::try_new(b"USA").expect("USA");
         let us = lvl(Classification::Secret);
-        let fgi = ClassificationLattice::new(Some(MarkingClassification::Fgi(
-            FgiClassification {
-                level: Classification::Secret,
-                countries: Box::new([gbr]),
-            },
-        )));
+        let fgi = ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+            level: Classification::Secret,
+            countries: Box::new([gbr]),
+        })));
         let nato = ClassificationLattice::new(Some(MarkingClassification::Nato(
             NatoClassification::NatoSecret,
         )));
-        let joint = ClassificationLattice::new(Some(MarkingClassification::Joint(
-            JointClassification {
+        let joint =
+            ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
                 level: Classification::Secret,
                 countries: Box::new([usa, gbr]),
-            },
-        )));
+            })));
         assert_eq!(us.join(&fgi), us);
         assert_eq!(fgi.join(&us), us);
         assert_eq!(us.join(&nato), us);
@@ -1251,10 +1244,8 @@ mod joint_set {
             Classification::Secret,
             &["USA", "GBR", "CAN"],
         )]);
-        let b = JointSet::from_attrs_iter(&[joint_portion(
-            Classification::Secret,
-            &["USA", "GBR"],
-        )]);
+        let b =
+            JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
         let meet = a.meet(&b);
         // Different producer sets → meet is Bottom.
         assert!(matches!(meet, JointSet::Bottom));
@@ -1268,14 +1259,10 @@ mod joint_set {
         // UnanimousProducers — this is the "shared truth" of two
         // observations of the same JOINT page at different
         // sensitivities.
-        let a = JointSet::from_attrs_iter(&[joint_portion(
-            Classification::TopSecret,
-            &["USA", "GBR"],
-        )]);
-        let b = JointSet::from_attrs_iter(&[joint_portion(
-            Classification::Secret,
-            &["USA", "GBR"],
-        )]);
+        let a =
+            JointSet::from_attrs_iter(&[joint_portion(Classification::TopSecret, &["USA", "GBR"])]);
+        let b =
+            JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
         let meet = a.meet(&b);
         match meet {
             JointSet::UnanimousProducers { level, producers } => {

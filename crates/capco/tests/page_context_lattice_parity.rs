@@ -509,9 +509,11 @@ fn joint_disunity_two_portions_different_producers() {
     let extract_producers = |m: &Option<marque_ism::FgiMarker>| {
         use marque_ism::FgiMarker;
         match m {
-            Some(FgiMarker::Acknowledged { countries, .. }) => {
-                countries.iter().copied().collect::<std::collections::BTreeSet<_>>()
-            }
+            Some(FgiMarker::Acknowledged { countries, .. }) => countries
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(
+            ),
             Some(FgiMarker::SourceConcealed) => std::collections::BTreeSet::new(),
             None => std::collections::BTreeSet::new(),
         }
@@ -690,11 +692,15 @@ fn aea_ucni_classified_lattice_vs_pagecontext_diverges() {
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     assert!(
-        !pc.aea_markings.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
+        !pc.aea_markings
+            .iter()
+            .any(|m| matches!(m, AeaMarking::DodUcni)),
         "PageContext strips DOD UCNI on classified page per §H.6 p116"
     );
     assert!(
-        lat.aea_markings.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
+        lat.aea_markings
+            .iter()
+            .any(|m| matches!(m, AeaMarking::DodUcni)),
         "Lattice path keeps DOD UCNI until PR 4b-C ships the cross-axis \
          classification-gate rewrite per §H.6 p116"
     );
@@ -740,8 +746,9 @@ fn mixed_us_plus_nato_lattice_flattens_to_us() {
     // US portion is in scope, the banner classification surface is
     // US, not NATO.
     let mut nato_portion = CanonicalAttrs::default();
-    nato_portion.classification =
-        Some(MarkingClassification::Nato(NatoClassification::CosmicTopSecret));
+    nato_portion.classification = Some(MarkingClassification::Nato(
+        NatoClassification::CosmicTopSecret,
+    ));
     let portions = [portion_us(Classification::Secret), nato_portion];
     assert_byte_identity(
         "mixed_us_plus_nato_lattice_flattens_to_us",
@@ -771,8 +778,14 @@ fn classified_sbu_nf_injects_noforn_and_clears_rel_to() {
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     // Both paths inject NOFORN.
-    assert!(pc.dissem_us.contains(&DissemControl::Nf), "PageContext injects NF");
-    assert!(lat.dissem_us.contains(&DissemControl::Nf), "Lattice injects NF (G-6)");
+    assert!(
+        pc.dissem_us.contains(&DissemControl::Nf),
+        "PageContext injects NF"
+    );
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Nf),
+        "Lattice injects NF (G-6)"
+    );
     // Both paths clear REL TO.
     assert!(pc.rel_to.is_empty(), "PageContext clears REL TO");
     assert!(lat.rel_to.is_empty(), "Lattice clears REL TO (G-6)");

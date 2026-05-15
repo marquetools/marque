@@ -12,8 +12,8 @@
 //!
 //! PR 4b-B Commit 5 (006 T112).
 
-use marque_capco::{CapcoRuleSet, JointSet};
 use marque_capco::scheme::CapcoScheme;
+use marque_capco::{CapcoRuleSet, JointSet};
 use marque_config::Config;
 use marque_engine::{Engine, FixedClock};
 use marque_ism::{
@@ -180,10 +180,7 @@ fn w004_fires_on_joint_disunity_banner() {
                    SECRET//FGI CAN GBR//NOFORN\n";
 
     let lint = engine.lint(source);
-    let w004 = lint
-        .diagnostics
-        .iter()
-        .find(|d| d.rule.as_str() == "W004");
+    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
     assert!(
         w004.is_some(),
         "W004 must fire on JOINT-disunity page; diagnostics: {:?}",
@@ -248,9 +245,7 @@ fn w004_does_not_fire_on_pure_us_page() {
                    SECRET\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics
-            .iter()
-            .all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
         "W004 must NOT fire on pure-US page; diagnostics: {:?}",
         lint.diagnostics
             .iter()
@@ -273,9 +268,7 @@ fn w004_does_not_fire_on_mixed_joint_plus_us() {
                    SECRET//FGI GBR//NOFORN\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics
-            .iter()
-            .all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
         "W004 must NOT fire on mixed JOINT+US page per §H.3 p57; diagnostics: {:?}",
         lint.diagnostics
             .iter()
@@ -295,9 +288,7 @@ fn w004_does_not_fire_on_pure_joint_unanimous() {
                    //JOINT SECRET USA, GBR\n";
     let lint = engine.lint(source);
     assert!(
-        lint.diagnostics
-            .iter()
-            .all(|d| d.rule.as_str() != "W004"),
+        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
         "W004 must NOT fire on unanimous-JOINT page; diagnostics: {:?}",
         lint.diagnostics
             .iter()

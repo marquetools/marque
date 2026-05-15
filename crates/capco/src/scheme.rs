@@ -333,8 +333,9 @@ impl CapcoMarking {
         for p in portions {
             match &p.classification {
                 Some(MarkingClassification::Us(_)) => has_us_class = true,
-                Some(MarkingClassification::Fgi(_))
-                | Some(MarkingClassification::Nato(_)) => has_non_us_class = true,
+                Some(MarkingClassification::Fgi(_)) | Some(MarkingClassification::Nato(_)) => {
+                    has_non_us_class = true
+                }
                 Some(MarkingClassification::Joint(_))
                 | Some(MarkingClassification::Conflict { .. })
                 | None => {}
