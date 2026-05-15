@@ -899,3 +899,152 @@ mod nato_dissem_set {
         assert_eq!(bottom.join(&s1), s1);
     }
 }
+
+// ===========================================================================
+// PR 4b-B Commit 5 — JointSet
+// ===========================================================================
+// CAPCO-2016 §H.3 p56 (JOINT grammar) + §H.7 p123 (FGI source-acknowledged
+// form for disunity-collapse migration) + §H.3 p57 line 1288 (mixed-US case
+// bottom). Verified 2026-05-15 against CAPCO-2016.md.
+
+mod joint_set {
+    use marque_capco::JointSet;
+    use marque_ism::{
+        CanonicalAttrs, Classification, CountryCode, JointClassification, MarkingClassification,
+    };
+    use marque_scheme::Lattice;
+
+    fn cc(s: &str) -> CountryCode {
+        CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
+    }
+
+    fn joint_portion(level: Classification, producers: &[&str]) -> CanonicalAttrs {
+        let countries: Box<[CountryCode]> = producers
+            .iter()
+            .map(|s| cc(s))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Joint(JointClassification {
+            level,
+            countries,
+        }));
+        a
+    }
+
+    fn us_portion(level: Classification) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(level));
+        a
+    }
+
+    #[test]
+    fn joint_unanimous_two_portions_same_producers_passes_through() {
+        let portions = [
+            joint_portion(Classification::Secret, &["USA", "GBR"]),
+            joint_portion(Classification::Secret, &["USA", "GBR"]),
+        ];
+        let s = JointSet::from_attrs_iter(&portions);
+        assert!(
+            matches!(&s, JointSet::UnanimousProducers { level, producers }
+                if *level == Classification::Secret
+                    && producers.len() == 2),
+            "expected UnanimousProducers {{S, [USA, GBR]}}, got {s:?}",
+        );
+    }
+
+    #[test]
+    fn joint_unanimous_three_portions_different_levels_picks_highest() {
+        let portions = [
+            joint_portion(Classification::Confidential, &["USA", "GBR"]),
+            joint_portion(Classification::TopSecret, &["USA", "GBR"]),
+            joint_portion(Classification::Secret, &["USA", "GBR"]),
+        ];
+        let s = JointSet::from_attrs_iter(&portions);
+        assert_eq!(s.highest_level(), Some(Classification::TopSecret));
+    }
+
+    #[test]
+    fn joint_disunity_two_portions_different_producers_collapses_to_fgi() {
+        let portions = [
+            joint_portion(Classification::Secret, &["USA", "GBR"]),
+            joint_portion(Classification::Secret, &["USA", "CAN"]),
+        ];
+        let s = JointSet::from_attrs_iter(&portions);
+        assert!(
+            s.is_disunity_collapse(),
+            "expected DisunityCollapse, got {s:?}"
+        );
+        let non_us = s.disunity_collapse_non_us_producers().unwrap();
+        assert!(non_us.contains(&cc("GBR")));
+        assert!(non_us.contains(&cc("CAN")));
+        assert_eq!(non_us.len(), 2);
+    }
+
+    #[test]
+    fn joint_mixed_with_us_portions_returns_bottom_no_w004() {
+        // §H.3 p57 line 1288: JOINT does not roll up in US documents.
+        // No W004 fires; the JOINT non-US producers ride to FgiSet
+        // via the existing PageContext path.
+        let portions = [
+            joint_portion(Classification::Secret, &["USA", "GBR"]),
+            us_portion(Classification::Secret),
+        ];
+        let s = JointSet::from_attrs_iter(&portions);
+        assert!(matches!(s, JointSet::Bottom), "expected Bottom, got {s:?}");
+    }
+
+    #[test]
+    fn joint_empty_producers_normalizes_to_bottom() {
+        // Defensive shape: JOINT requires USA + at least one
+        // co-owner. An empty producer list is malformed. The
+        // constructor should return Bottom rather than constructing
+        // an UnanimousProducers { producers: ∅ }.
+        let portions = [joint_portion(Classification::Secret, &[])];
+        let s = JointSet::from_attrs_iter(&portions);
+        assert!(matches!(s, JointSet::Bottom));
+    }
+
+    #[test]
+    fn joint_set_lattice_laws_assoc_comm_idem() {
+        // Three-variant state space exhausted as 3×3 × representatives
+        // — assoc/comm/idem are pinned over the carefully-chosen
+        // representatives that exercise each transition.
+        let bottom = JointSet::Bottom;
+        let unanim = JointSet::from_attrs_iter(&[joint_portion(
+            Classification::Secret,
+            &["USA", "GBR"],
+        )]);
+        let disunity = JointSet::from_attrs_iter(&[
+            joint_portion(Classification::Secret, &["USA", "GBR"]),
+            joint_portion(Classification::Secret, &["USA", "CAN"]),
+        ]);
+        let states = [bottom, unanim, disunity];
+        for a in &states {
+            for b in &states {
+                // Commutativity.
+                assert_eq!(
+                    a.join(b),
+                    b.join(a),
+                    "comm fail: {a:?} vs {b:?}"
+                );
+                // Idempotency.
+                assert_eq!(a.join(a), *a, "idem fail: {a:?}");
+                for c in &states {
+                    // Associativity.
+                    assert_eq!(
+                        a.join(b).join(c),
+                        a.join(&b.join(c)),
+                        "assoc fail: ({a:?}, {b:?}, {c:?})"
+                    );
+                }
+            }
+        }
+        // Identity with bottom (separate assertion for clarity).
+        let bottom = JointSet::Bottom;
+        for s in &states {
+            assert_eq!(bottom.join(s), s.clone());
+            assert_eq!(s.join(&bottom), s.clone());
+        }
+    }
+}

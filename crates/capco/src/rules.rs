@@ -4958,6 +4958,114 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
     )
 }
 
+// ===========================================================================
+// W004 — JOINT producer-disunity collapse (PR 4b-B Commit 5)
+// ===========================================================================
+//
+// Authority (verified 2026-05-15 against CAPCO-2016.md):
+// - §H.3 p56 (JOINT classification grammar — banner form
+//   `//JOINT [class] [LIST]`).
+// - §H.3 pp55-59 (JOINT worked examples).
+// - §H.7 p123 (FGI source-acknowledged form — disunity-collapse
+//   non-US producers migrate to FGI [LIST]).
+//
+// Constitution V Principle V G13: the W004 diagnostic message MUST
+// NOT contain document text. Permitted identifiers: `CountryCode`
+// canonical trigraphs (vocabulary atoms), `Span` byte offsets,
+// category IDs. The message template below uses placeholders only
+// — no input bytes are interpolated.
+
+/// JOINT producer-disunity collapse rule.
+///
+/// Fires when every portion on a page is JOINT-classified but the
+/// portions disagree on their producer (country) list. The banner
+/// cannot roll up the JOINT marking because the per-portion producer
+/// lists don't share a unanimous set; per §H.7 p123 the non-US
+/// producers migrate to FGI [LIST], and JOINT is dropped from the
+/// banner.
+///
+/// **Mixed JOINT + US portions** (§H.3 p57 line 1288 — "the JOINT
+/// marking is not carried forward to the banner line in US
+/// documents") do **NOT** fire W004. That case is handled by the
+/// existing PageContext-resident `expected_fgi_marker` path; the
+/// JointSet lattice returns `Bottom` and no diagnostic emits.
+///
+/// Severity: `Warn` (per `feedback_dissem_conflicts_emit_subtractive_fix.md`,
+/// JOINT disunity is a subtractive-fix case). No `FixProposal`
+/// attached at this PR — the cross-axis FGI migration is renderer-
+/// canonical territory (PR 5+ Stage 4). The diagnostic surfaces the
+/// transformation so users have an audit trail; the engine's
+/// `CapcoMarking::join` rewrite in Commit 7 produces the FGI-
+/// migrated banner facts that the renderer will emit.
+#[allow(dead_code)] // registered in CapcoRuleSet::new() at Commit 9.
+pub(crate) struct JointDisunityCollapseRule;
+
+impl Rule<CapcoScheme> for JointDisunityCollapseRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W004")
+    }
+    fn name(&self) -> &'static str {
+        "joint-disunity-collapse"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: page-level banner decision reading the
+    /// classification axis across all portions on the page.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::MarkingType;
+        // Fire only on banner candidates — the page context must have
+        // accumulated all portions before we can decide unanimity.
+        if ctx.marking_type != MarkingType::Banner {
+            return vec![];
+        }
+        // Need page_context to inspect per-portion JOINT classifications.
+        let Some(page_ctx) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        let joint_set = crate::lattice::JointSet::from_attrs_iter(page_ctx.portions());
+        if !joint_set.is_disunity_collapse() {
+            return vec![];
+        }
+
+        let Some(non_us) = joint_set.disunity_collapse_non_us_producers() else {
+            return vec![];
+        };
+
+        // Render the producer set as canonical trigraphs, sorted
+        // alphabetically. These are CountryCode vocabulary atoms;
+        // no document text leaks per Constitution V G13.
+        let producers_str: String = non_us
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // The diagnostic span points at the banner candidate itself.
+        // The W004 message identifies the transformation by name and
+        // category ID; producer trigraphs and the JOINT category
+        // label are canonical vocabulary, not document bytes.
+        let message = format!(
+            "joint-disunity-collapse: portions on this page carry distinct \
+             JOINT producer lists; banner cannot roll up JOINT. Non-US \
+             producers migrate to FGI [{producers_str}] per §H.7 p123."
+        );
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            ctx.candidate_span,
+            message,
+            "CAPCO-2016 §H.3 p56 + §H.7 p123",
+            None,
+        )]
+    }
+}
+
 #[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

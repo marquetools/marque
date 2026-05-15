@@ -40,8 +40,9 @@
 
 use marque_ism::{
     AeaMarking, AtomalBlock, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker,
-    FrdBlock, IsmDate, MarkingClassification, NatoClassification, RdBlock, SarCompartment,
-    SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlSystem, SciMarking,
+    FrdBlock, IsmDate, JointClassification, MarkingClassification, NatoClassification, RdBlock,
+    SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlSystem,
+    SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use smol_str::SmolStr;
@@ -1656,6 +1657,363 @@ impl Lattice for NatoDissemSet {
         Self { set }
     }
 }
+
+// ---------------------------------------------------------------------------
+// JointSet — 3-variant state with producer-disunity collapse
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the JOINT classification axis.
+///
+/// The state space is a closed three-variant enum that captures the
+/// decision tree from CAPCO-2016 §H.3 + §H.7:
+///
+/// - Every-portion JOINT, all producer lists match → roll up.
+/// - Every-portion JOINT, lists differ → collapse to FGI.
+/// - Mixed with US portions → bottom.
+///
+/// The transitions on `Lattice::join` are structural operations on
+/// the deterministic state space — NOT "normalization" in the
+/// `Lattice` module-docs Gotcha-1 sense — and the property test
+/// `joint_disunity_lattice_laws` exhausts the 27-element
+/// state-space cube to verify assoc/comm/idem.
+///
+/// **The W004 Warn rule** (in `crates/capco/src/rules.rs`) reads
+/// the post-projection JointSet state from the engine's
+/// `PageContext` flow. The lattice does not itself emit the
+/// diagnostic; the rule does.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+///
+/// - §H.3 p56 (JOINT classification grammar).
+/// - §H.3 pp55-59 (JOINT worked examples).
+/// - §H.3 p57 line 1288 ("JOINT marking not carried forward to
+///   the banner line in US documents").
+/// - §H.7 p123 (FGI source-acknowledged form for disunity-collapse
+///   non-US producer migration).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum JointSet {
+    /// No JOINT portions on the page, OR a mix of JOINT-with-US
+    /// portions (§H.3 p57 line 1288 — JOINT does not roll up in
+    /// US documents). The lattice bottom.
+    #[default]
+    Bottom,
+
+    /// Every portion is JOINT-classified and every portion carries
+    /// the same producer list. The banner is `//JOINT [class]
+    /// [LIST]` per §H.3 p56.
+    UnanimousProducers {
+        /// Highest level observed via OrdMax across portions.
+        level: Classification,
+        /// The unanimous producer list (USA always in).
+        producers: BTreeSet<CountryCode>,
+    },
+
+    /// Disunity observed: every portion is JOINT-classified but the
+    /// producer lists differ across portions. The lattice records the
+    /// union of non-US producers; the engine's banner rendering migrates
+    /// them to FGI [LIST] per §H.7 p123 and the W004 Warn rule
+    /// surfaces the cross-axis transformation to the user.
+    DisunityCollapse {
+        /// Highest level observed via OrdMax across portions.
+        highest_level: Classification,
+        /// Union of non-US producers across JOINT portions.
+        union_non_us_producers: BTreeSet<CountryCode>,
+    },
+}
+
+impl JointSet {
+    /// An empty JointSet — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::Bottom
+    }
+
+    /// Construct from a slice of `CanonicalAttrs`.
+    ///
+    /// Per §H.3 p57 line 1288, the all-JOINT-or-not distinction
+    /// drives the state-space branch:
+    ///
+    /// 1. **No JOINT portions** → `Bottom`.
+    /// 2. **All portions JOINT** with identical producer lists →
+    ///    `UnanimousProducers { OrdMax(level), countries }`.
+    /// 3. **All portions JOINT** with disagreeing producer lists →
+    ///    `DisunityCollapse { OrdMax(level), union_non_us }`.
+    /// 4. **Mixed JOINT + US** → `Bottom`. The §H.3 p57 line 1288
+    ///    "JOINT does not roll up in US documents" rule. **No W004
+    ///    fires** in this case — JOINT non-US producers ride to FGI
+    ///    via the existing PageContext-resident `expected_fgi_marker`
+    ///    path. Pre-existing behavior preserved bit-for-bit.
+    ///
+    /// **Empty-producer-list defensive shape**: an `UnanimousProducers`
+    /// variant with an empty producer set is malformed per §H.3
+    /// (JOINT requires USA + at least one co-owner). This
+    /// constructor returns `Bottom` rather than the malformed
+    /// `UnanimousProducers { producers: ∅ }` to keep the lattice
+    /// state space well-formed.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        if portions.is_empty() {
+            return Self::Bottom;
+        }
+
+        // Separate JOINT portions from non-JOINT portions.
+        let mut joint_portions: Vec<&JointClassification> = Vec::new();
+        let mut has_non_joint = false;
+        for p in portions {
+            match &p.classification {
+                Some(MarkingClassification::Joint(j)) => joint_portions.push(j),
+                Some(_) => has_non_joint = true,
+                None => has_non_joint = true,
+            }
+        }
+
+        if joint_portions.is_empty() {
+            return Self::Bottom;
+        }
+
+        // §H.3 p57 line 1288: in US documents (mixed JOINT + US),
+        // JOINT does not roll up. The FGI-migration path is the
+        // existing PageContext::expected_fgi_marker; we return
+        // Bottom and no W004 fires.
+        if has_non_joint {
+            return Self::Bottom;
+        }
+
+        // All portions JOINT: check unanimity on producer lists.
+        let first_producers: BTreeSet<CountryCode> = joint_portions[0]
+            .countries
+            .iter()
+            .copied()
+            .collect();
+        let highest_level = joint_portions
+            .iter()
+            .map(|j| j.level)
+            .max()
+            .unwrap_or(Classification::Unclassified);
+
+        let unanimous = joint_portions.iter().all(|j| {
+            let set: BTreeSet<CountryCode> = j.countries.iter().copied().collect();
+            set == first_producers
+        });
+
+        if unanimous {
+            if first_producers.is_empty() {
+                // Defensive: malformed JOINT (no producers). Return
+                // Bottom rather than an unrepresentable
+                // UnanimousProducers{}.
+                return Self::Bottom;
+            }
+            Self::UnanimousProducers {
+                level: highest_level,
+                producers: first_producers,
+            }
+        } else {
+            // Disunity: union of non-US producers across all JOINT
+            // portions.
+            let mut union_non_us: BTreeSet<CountryCode> = BTreeSet::new();
+            for j in &joint_portions {
+                for c in j.countries.iter() {
+                    if c.as_str() != "USA" {
+                        union_non_us.insert(*c);
+                    }
+                }
+            }
+            Self::DisunityCollapse {
+                highest_level,
+                union_non_us_producers: union_non_us,
+            }
+        }
+    }
+
+    /// Whether this JointSet represents a disunity-collapse state
+    /// (the W004 rule reads this).
+    pub fn is_disunity_collapse(&self) -> bool {
+        matches!(self, Self::DisunityCollapse { .. })
+    }
+
+    /// Read access to the non-US producer set on a `DisunityCollapse`
+    /// state, or `None` otherwise.
+    pub fn disunity_collapse_non_us_producers(&self) -> Option<&BTreeSet<CountryCode>> {
+        match self {
+            Self::DisunityCollapse {
+                union_non_us_producers,
+                ..
+            } => Some(union_non_us_producers),
+            _ => None,
+        }
+    }
+
+    /// Read access to the highest level observed across JOINT
+    /// portions; `None` for `Bottom`.
+    pub fn highest_level(&self) -> Option<Classification> {
+        match self {
+            Self::Bottom => None,
+            Self::UnanimousProducers { level, .. } => Some(*level),
+            Self::DisunityCollapse { highest_level, .. } => Some(*highest_level),
+        }
+    }
+
+    /// Convert back to a `MarkingClassification` for the banner.
+    ///
+    /// - `Bottom` → `None` (the banner reads the class from
+    ///   `ClassificationLattice` and FGI from `FgiSet` per the
+    ///   existing PageContext flow).
+    /// - `UnanimousProducers { level, producers }` → `Some(Joint(...))`.
+    /// - `DisunityCollapse { highest_level, .. }` → `Some(Us(highest_level))`
+    ///   (the non-US producers ride to FgiSet via a separate flow —
+    ///   see `Commit 7 CapcoMarking::join` rewrite).
+    pub fn to_marking_classification(&self) -> Option<MarkingClassification> {
+        match self {
+            Self::Bottom => None,
+            Self::UnanimousProducers { level, producers } => {
+                let countries: Box<[CountryCode]> = producers
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                Some(MarkingClassification::Joint(JointClassification {
+                    level: *level,
+                    countries,
+                }))
+            }
+            Self::DisunityCollapse { highest_level, .. } => {
+                Some(MarkingClassification::Us(*highest_level))
+            }
+        }
+    }
+}
+
+impl Lattice for JointSet {
+    /// Compose two JointSets per the §H.3 + §H.7 transition table:
+    ///
+    /// - `Bottom ⊔ x = x` (bottom-identity).
+    /// - `UnanimousProducers ⊔ UnanimousProducers` with same
+    ///   producer set → `UnanimousProducers { max(l1,l2), p }`.
+    /// - `UnanimousProducers ⊔ UnanimousProducers` with different
+    ///   producer sets → `DisunityCollapse { max(l1,l2), (p1 ∪ p2) \
+    ///   USA }`.
+    /// - `UnanimousProducers ⊔ DisunityCollapse` → `DisunityCollapse`
+    ///   (absorbs).
+    /// - `DisunityCollapse ⊔ DisunityCollapse` → `DisunityCollapse`
+    ///   with union of non-US producers and max level.
+    fn join(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Bottom, x) | (x, Self::Bottom) => x.clone(),
+            (
+                Self::UnanimousProducers {
+                    level: l1,
+                    producers: p1,
+                },
+                Self::UnanimousProducers {
+                    level: l2,
+                    producers: p2,
+                },
+            ) => {
+                if p1 == p2 {
+                    Self::UnanimousProducers {
+                        level: (*l1).max(*l2),
+                        producers: p1.clone(),
+                    }
+                } else {
+                    let mut non_us: BTreeSet<CountryCode> = BTreeSet::new();
+                    for c in p1.iter().chain(p2.iter()) {
+                        if c.as_str() != "USA" {
+                            non_us.insert(*c);
+                        }
+                    }
+                    Self::DisunityCollapse {
+                        highest_level: (*l1).max(*l2),
+                        union_non_us_producers: non_us,
+                    }
+                }
+            }
+            (
+                Self::UnanimousProducers {
+                    level: lu,
+                    producers: pu,
+                },
+                Self::DisunityCollapse {
+                    highest_level: ld,
+                    union_non_us_producers: nd,
+                },
+            )
+            | (
+                Self::DisunityCollapse {
+                    highest_level: ld,
+                    union_non_us_producers: nd,
+                },
+                Self::UnanimousProducers {
+                    level: lu,
+                    producers: pu,
+                },
+            ) => {
+                let mut non_us = nd.clone();
+                for c in pu.iter() {
+                    if c.as_str() != "USA" {
+                        non_us.insert(*c);
+                    }
+                }
+                Self::DisunityCollapse {
+                    highest_level: (*lu).max(*ld),
+                    union_non_us_producers: non_us,
+                }
+            }
+            (
+                Self::DisunityCollapse {
+                    highest_level: l1,
+                    union_non_us_producers: n1,
+                },
+                Self::DisunityCollapse {
+                    highest_level: l2,
+                    union_non_us_producers: n2,
+                },
+            ) => {
+                let mut non_us = n1.clone();
+                non_us.extend(n2.iter().copied());
+                Self::DisunityCollapse {
+                    highest_level: (*l1).max(*l2),
+                    union_non_us_producers: non_us,
+                }
+            }
+        }
+    }
+
+    /// Meet: pairwise intersection on the producer set; min on the
+    /// level. `Bottom` is meet-absorbing.
+    fn meet(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
+            (
+                Self::UnanimousProducers {
+                    level: l1,
+                    producers: p1,
+                },
+                Self::UnanimousProducers {
+                    level: l2,
+                    producers: p2,
+                },
+            ) => {
+                let common: BTreeSet<CountryCode> =
+                    p1.intersection(p2).copied().collect();
+                if common.is_empty() {
+                    Self::Bottom
+                } else {
+                    Self::UnanimousProducers {
+                        level: (*l1).min(*l2),
+                        producers: common,
+                    }
+                }
+            }
+            // Cross-variant or DisunityCollapse meet falls back to
+            // Bottom — meet across a mixed-shape pair has no well-
+            // defined producer set under the unanimity contract.
+            _ => Self::Bottom,
+        }
+    }
+}
+
+// `JointSet` does NOT implement `BoundedLattice`: producer lists are
+// open-vocabulary over `CountryCode`, and there is no lawful finite
+// top variant under the §H.3 grammar. Use `JointSet::empty()` /
+// `JointSet::default()` for the bottom.
 
 // ---------------------------------------------------------------------------
 // Tests
