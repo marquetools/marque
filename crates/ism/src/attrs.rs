@@ -1207,6 +1207,34 @@ pub enum NonIcDissem {
     LesNf,
     /// SENSITIVE SECURITY INFORMATION / SSI / SSI
     Ssi,
+    /// NAVAL NUCLEAR PROPULSION INFORMATION / NNPI / NNPI
+    ///
+    /// Registered as a non-IC dissemination control in ODNI's
+    /// `CVEnumISMNonIC.xml` (value `NNPI`, description
+    /// `NAVAL NUCLEAR PROPULSION INFORMATION`). CAPCO-2016 §G.1
+    /// Table 4 (Register of Authorized Markings) and §H.9 (Non-IC
+    /// Dissemination Control Markings) do not enumerate NNPI,
+    /// because the marking is governed by separate statutory
+    /// authority (10 USC 7314 / 50 USC 2511; DOE / Naval Nuclear
+    /// Propulsion Program) rather than IC marking policy. Per
+    /// Constitution VIII, an ODNI-registered token whose authority
+    /// lives outside CAPCO is admissible via the ODNI schema
+    /// citation when the normative CAPCO sections cited above are
+    /// silent on the marking itself.
+    ///
+    /// NNPI is a subject-matter marking — it identifies the
+    /// information's content domain (naval nuclear propulsion plant
+    /// reactor safety and radioactivity controls) rather than an
+    /// access-control overlay. NNPI is "DO propagate" for
+    /// `propagates_to_classified_banner` because NNPI can appear in
+    /// either classified or unclassified contexts (unlike the
+    /// LIMDIS / SBU / SBU-NF cluster, which is explicitly
+    /// unclassified-only per §H.9 p178). When NNPI appears in any
+    /// portion of a classified document, the banner must surface it
+    /// — the marking identifies the information itself, not an
+    /// optional access restriction. NNPI does not carry NOFORN
+    /// treatment.
+    Nnpi,
 }
 
 impl NonIcDissem {
@@ -1221,6 +1249,7 @@ impl NonIcDissem {
             Self::Les => "LES",
             Self::LesNf => "LES NOFORN",
             Self::Ssi => "SSI",
+            Self::Nnpi => "NNPI",
         }
     }
 
@@ -1235,6 +1264,7 @@ impl NonIcDissem {
             Self::Les => "LES",
             Self::LesNf => "LES-NF",
             Self::Ssi => "SSI",
+            Self::Nnpi => "NNPI",
         }
     }
 
@@ -1249,6 +1279,13 @@ impl NonIcDissem {
             "LES" => Some(Self::Les),
             "LES NOFORN" | "LES-NF" => Some(Self::LesNf),
             "SSI" => Some(Self::Ssi),
+            // Banner and portion forms collide on `NNPI` (same
+            // single-token form for both, per the `MARKING_FORMS`
+            // row at `crates/ism/src/marking_forms.rs`). The long
+            // form `NAVAL NUCLEAR PROPULSION INFORMATION` resolves
+            // to `NNPI` via `parse_non_ic_full_form`'s
+            // `title_to_portion` fallback, not here.
+            "NNPI" => Some(Self::Nnpi),
             _ => None,
         }
     }
@@ -1275,6 +1312,7 @@ impl NonIcDissem {
     /// | LES      | yes        | §H.9 p181: "The LES marking always appears in the banner line if contained in any portion, regardless of classification level." |
     /// | LES-NF   | yes (*)    | §H.9 p185: "The LES marking always appears in the banner line if LES information (either LES or LES NOFORN) is contained in the document, regardless of the document's classification level." |
     /// | SSI      | yes        | §H.9 p189: "If the SSI marking is contained in any portion of a document it must appear in the banner line, regardless of the document's overall classification level." |
+    /// | NNPI     | yes (‡)    | Not in §H.9. ODNI `CVEnumISMNonIC.xml` registers NNPI as a non-IC dissem control; 10 USC 7314 / 50 USC 2511 (Naval Nuclear Propulsion Program) governs the marking itself. NNPI can appear in either classified or unclassified contexts (unlike the LIMDIS / SBU / SBU-NF cluster, which §H.9 p170 / p176 / p178 restrict to unclassified-only). When NNPI appears in any portion of a classified document, the banner must surface it — the marking identifies the information's content domain (naval nuclear propulsion plant reactor safety + radioactivity controls), not an optional access overlay. |
     ///
     /// (*) LES-NF carries a §H.9 canonicalization that is **not modeled
     ///     here**: in classified docs, `LES NOFORN` → `LES` at the banner
@@ -1288,6 +1326,12 @@ impl NonIcDissem {
     ///     Treating `SECRET//LES NOFORN` as non-canonical (so that the
     ///     canonicalization becomes fixable) is a separate page-rewrite
     ///     concern, not a W003 concern.
+    ///
+    /// (‡) NNPI does not have a §H.9 row at all — its authority lives
+    ///     outside CAPCO's IC-marking scope (10 USC 7314 / 50 USC
+    ///     §2511). Per Constitution VIII, citing the ODNI schema
+    ///     when the normative CAPCO sections cited above are silent
+    ///     on the marking itself is admissible.
     ///
     /// (†) "Does not propagate" for SBU-NF refers to the **SBU** half of
     ///     the marking — the literal `SBU NOFORN` banner form is
@@ -1307,7 +1351,16 @@ impl NonIcDissem {
             // Do NOT propagate — banner-absent in classified documents.
             Self::Limdis | Self::Sbu | Self::SbuNf => false,
             // DO propagate — "must appear in the banner line" per §H.9.
-            Self::Exdis | Self::Nodis | Self::Les | Self::LesNf | Self::Ssi => true,
+            //
+            // NNPI propagates: it is a subject-matter identification
+            // marking (10 USC 7314 / 50 USC 2511 Naval Nuclear
+            // Propulsion Program), not an optional access overlay,
+            // so any portion carrying NNPI requires the banner to
+            // surface it as well. ODNI's `CVEnumISMNonIC.xml`
+            // registers it alongside the §H.9 propagating set; the
+            // governing statutes treat banner visibility as
+            // mandatory for any document containing NNPI content.
+            Self::Exdis | Self::Nodis | Self::Les | Self::LesNf | Self::Ssi | Self::Nnpi => true,
         }
     }
 
@@ -1321,6 +1374,7 @@ impl NonIcDissem {
         Self::Les,
         Self::LesNf,
         Self::Ssi,
+        Self::Nnpi,
     ];
 }
 
