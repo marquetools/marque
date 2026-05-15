@@ -248,11 +248,13 @@ pub enum FeatureId {
     /// Positive delta.
     BulletAnchorBonus,
     /// Candidate contains lowercase letters AND the surrounding
-    /// document context is lowercase-dominant. Real markings are
-    /// uppercase by convention (CAPCO §A general guidance); a
-    /// lowercase candidate inside lowercase prose is overwhelmingly
-    /// prose, not a mangled marking the decoder should recover.
-    /// Negative delta.
+    /// document context is lowercase-dominant. Banner-form markings
+    /// are explicitly required to be uppercase (CAPCO-2016 §D.1
+    /// p27: "The banner line must be in uppercase letters"); portion
+    /// form is silent in the manual but universally uppercase in
+    /// practice. A lowercase candidate inside lowercase prose is
+    /// overwhelmingly prose, not a mangled marking the decoder
+    /// should recover. Negative delta.
     LowercaseSurroundingContext,
 }
 
