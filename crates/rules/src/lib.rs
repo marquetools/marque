@@ -319,7 +319,40 @@ pub struct RuleContext<'a> {
     pub candidate_span: Span,
     /// Accumulated portion data for the current page, reset at every
     /// scanner-emitted `MarkingType::PageBreak`.
+    ///
+    /// **PR 9b (T133) migration in progress.** Portion-level rules that
+    /// reason about per-portion membership (e.g., S005/S006
+    /// "uncertain-codes appeared in some-but-not-every portion") still
+    /// read `page_context.portions()`. Banner-validation rules that
+    /// need only the rolled-up shape SHOULD migrate to
+    /// [`Self::page_marking`] (`&ProjectedMarking`). The two fields
+    /// are populated for the same set of `RuleContext`s during the
+    /// migration; rule code chooses which to read.
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
+    /// Page-level rolled-up marking — the `Scope::Page` projection of
+    /// every portion accumulated since the last
+    /// [`marque_ism::MarkingType::PageBreak`]. PR 9b (T133 / FR-006)
+    /// adds this alongside [`Self::page_context`] for
+    /// banner-validation rules to consume without going through the
+    /// `page_context_to_attrs()` shim or the
+    /// `PageContext::expected_*` accessors.
+    ///
+    /// Populated by the engine for every non-portion candidate
+    /// (Banner, CAB) once at least one portion has accumulated on the
+    /// page. `None` otherwise. The shape mirrors
+    /// [`Self::page_context`]: same engine pass populates both; same
+    /// `PageBreak` reset semantics; same `Arc` clone discipline so a
+    /// per-page snapshot is shared cheaply across all banner-rule
+    /// invocations on that page.
+    ///
+    /// Banner-validation rules read fields directly:
+    ///
+    /// ```ignore
+    /// if let Some(page) = ctx.page_marking.as_ref() {
+    ///     // page.dissem_us / page.dissem_nato / page.sci_markings / ...
+    /// }
+    /// ```
+    pub page_marking: Option<std::sync::Arc<marque_ism::ProjectedMarking>>,
     /// Organization-specific corrections map from config `[corrections]`.
     /// `None` when no corrections are configured.
     pub corrections: Option<Arc<HashMap<String, String>>>,

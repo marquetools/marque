@@ -70,22 +70,36 @@ fn arb_rel_to() -> impl Strategy<Value = Vec<CountryCode>> {
 }
 
 fn arb_ism_attrs() -> impl Strategy<Value = CanonicalAttrs> {
+    // Per CAPCO-2016 §G.2 Table 5 (pp 40-45), pure-NATO portions
+    // contribute to `dissem_nato` rather than `dissem_us`. Generate
+    // both namespaces independently so the per-namespace union
+    // properties below exercise both channels. The NATO subset is
+    // gated to a small probability (1/4 weight) because pure-NATO
+    // portions are rare in practice and we want classification +
+    // dissem_us paths to remain the dominant fixture shape.
     (
         prop_oneof![
             Just(None),
             arb_classification().prop_map(|c| Some(MarkingClassification::Us(c))),
         ],
         arb_dissem_subset(),
+        prop_oneof![
+            3 => Just(Vec::<DissemControl>::new()),
+            1 => arb_dissem_subset(),
+        ],
         arb_rel_to(),
     )
-        .prop_map(|(classification, dissem_controls, rel_to)| {
-            // CanonicalAttrs is #[non_exhaustive] so use Default + field mutation.
-            let mut attrs = CanonicalAttrs::default();
-            attrs.classification = classification;
-            attrs.dissem_controls = dissem_controls.into_boxed_slice();
-            attrs.rel_to = rel_to.into_boxed_slice();
-            attrs
-        })
+        .prop_map(
+            |(classification, dissem_us_subset, dissem_nato_subset, rel_to)| {
+                // CanonicalAttrs is #[non_exhaustive] so use Default + field mutation.
+                let mut attrs = CanonicalAttrs::default();
+                attrs.classification = classification;
+                attrs.dissem_us = dissem_us_subset.into_boxed_slice();
+                attrs.dissem_nato = dissem_nato_subset.into_boxed_slice();
+                attrs.rel_to = rel_to.into_boxed_slice();
+                attrs
+            },
+        )
 }
 
 fn arb_portions() -> impl Strategy<Value = Vec<CanonicalAttrs>> {
@@ -119,21 +133,49 @@ proptest! {
         );
     }
 
-    // Every DissemControl on any portion must appear in expected_dissem_controls().
+    // Every dissem token in any portion's `dissem_us` must appear in
+    // the rolled-up `expected_dissem_us()`. Pins the US-namespace
+    // union direction post PR 9b / FR-046 split — the prior
+    // `dissem_controls_union_superset` name referred to the retired
+    // unified field.
     #[test]
-    fn dissem_controls_union_superset(portions in arb_portions()) {
+    fn dissem_us_union_superset(portions in arb_portions()) {
         let mut ctx = PageContext::new();
         for p in &portions {
             ctx.add_portion(p.clone());
         }
         let rolled: std::collections::BTreeSet<DissemControl> =
-            ctx.expected_dissem_controls().into_iter().collect();
+            ctx.expected_dissem_us().into_iter().collect();
 
         for portion in &portions {
-            for ctrl in portion.dissem_controls.iter() {
+            for ctrl in portion.dissem_us.iter() {
                 prop_assert!(
                     rolled.contains(ctrl),
-                    "dissem control {ctrl:?} in portion but missing from roll-up",
+                    "dissem_us control {ctrl:?} in portion but missing from US roll-up",
+                );
+            }
+        }
+    }
+
+    // Every dissem token in any portion's `dissem_nato` must appear
+    // in the rolled-up `expected_dissem_nato()`. Companion to the
+    // dissem_us property above — exercises the parallel NATO channel
+    // wired by PR 9b T132 / FR-046 (CAPCO-2016 §G.2 Table 5 (pp 40-45):
+    // pure-NATO portions contribute here, not to dissem_us).
+    #[test]
+    fn dissem_nato_union_superset(portions in arb_portions()) {
+        let mut ctx = PageContext::new();
+        for p in &portions {
+            ctx.add_portion(p.clone());
+        }
+        let rolled: std::collections::BTreeSet<DissemControl> =
+            ctx.expected_dissem_nato().into_iter().collect();
+
+        for portion in &portions {
+            for ctrl in portion.dissem_nato.iter() {
+                prop_assert!(
+                    rolled.contains(ctrl),
+                    "dissem_nato control {ctrl:?} in portion but missing from NATO roll-up",
                 );
             }
         }

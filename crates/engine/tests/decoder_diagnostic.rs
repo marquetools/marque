@@ -202,7 +202,7 @@ fn attrs_summary(attrs: &marque_ism::CanonicalAttrs) -> String {
         attrs.classification,
         attrs.sci_markings.len(),
         attrs.sar_markings.is_some() as usize,
-        attrs.dissem_controls.len(),
+        attrs.dissem_iter().count(),
         attrs.rel_to.len(),
         attrs.declassify_on,
     )

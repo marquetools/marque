@@ -58,7 +58,7 @@ fn sercet_decodes_to_secret_via_edit_distance_one() {
     // parser may categorize it as a dissem control or surface it in
     // the non-IC dissem slot. Print-debug shows the exact location
     // if the assertion fails.
-    let dissem_count = marking.0.dissem_controls.len();
+    let dissem_count = marking.0.dissem_iter().count();
     let non_ic_count = marking.0.non_ic_dissem.len();
     assert!(
         dissem_count + non_ic_count > 0,
@@ -315,7 +315,7 @@ fn wrong_case_lowercase_marking_decodes_to_canonical() {
     // the resolved marking. (NOFORN is `DissemControl::Nf`, not a
     // `NonIcDissem` variant.)
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "case normalization must preserve NOFORN; attrs = {:?}",
         marking.0,
     );
@@ -343,7 +343,7 @@ fn garbled_delimiter_extra_space_decodes_to_canonical() {
     // that handled the leading classification but dropped the trailing
     // dissem control would still pass classification-only checks.
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "delimiter normalization must preserve NOFORN; attrs = {:?}",
         marking.0,
     );
@@ -389,7 +389,7 @@ fn superseded_comint_decodes_to_si() {
     // control tail would pass the SI check above and the
     // classification check.
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "COMINT supersession must preserve NOFORN; attrs = {:?}",
         marking.0,
     );
@@ -427,7 +427,7 @@ fn missing_delimiter_secret_noforn_exdis_resolves() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must land in dissem_controls; attrs = {:?}",
         marking.0,
     );
@@ -509,8 +509,8 @@ fn missing_delimiter_top_secret_classification_then_dissem() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Oc)
-            && marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Oc)
+            && marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "ORCON and NOFORN must both land in dissem_controls (the \
          original `ORCON/NOFORN` block contains both); attrs = {:?}",
         marking.0,
@@ -527,7 +527,7 @@ fn missing_delimiter_two_dissems() {
         panic!("SECRET NOFORN//EXDIS should resolve");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret),);
-    assert!(marking.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(marking.0.dissem_iter().any(|d| d == &DissemControl::Nf));
     assert!(marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis));
 }
 
@@ -540,7 +540,7 @@ fn missing_delimiter_hard_splitter_inside_segment() {
         panic!("TOP SECRET//SI/TK NOFORN should resolve");
     };
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must land in dissem_controls; attrs = {:?}",
         marking.0,
     );
@@ -608,7 +608,7 @@ fn missing_delimiter_sar_block_with_trailing_noforn_resolves() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must land in dissem_controls (delim-inserted candidate \
          beats the absorbing one via HARD_SPLITTER_ABSORPTION_PENALTY); \
          attrs = {:?}",
@@ -643,7 +643,7 @@ fn missing_delimiter_full_sar_with_trailing_noforn_resolves() {
         "program identifier must be the clean nickname (no NOFORN absorbed); got {sar:?}",
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must land in dissem_controls; attrs = {:?}",
         marking.0,
     );
@@ -663,7 +663,7 @@ fn missing_delimiter_no_change_on_already_canonical() {
         panic!("SECRET//NOFORN//EXDIS should resolve directly");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
-    assert!(marking.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(marking.0.dissem_iter().any(|d| d == &DissemControl::Nf));
     assert!(marking.0.non_ic_dissem.contains(&NonIcDissem::Exdis));
 }
 
@@ -727,7 +727,7 @@ fn typo_usar_prefix_resolves_via_indicator_repair() {
     assert_eq!(&*sar.programs[1].identifier, "CD");
     assert_eq!(&*sar.programs[2].identifier, "XR");
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -755,7 +755,7 @@ fn typo_sarbp_missing_hyphen_resolves_via_indicator_repair() {
     assert_eq!(sar.programs.len(), 1);
     assert_eq!(&*sar.programs[0].identifier, "BP");
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -790,7 +790,7 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
         &*sar.programs[0].identifier, "BUTTER POPCORN",
         "Full-form program identifier must round-trip; got {sar:?}",
     );
-    assert!(marking.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(marking.0.dissem_iter().any(|d| d == &DissemControl::Nf));
 }
 
 // ---------------------------------------------------------------------------
@@ -832,7 +832,7 @@ fn typo_drop_stray_r_resolves_via_collapse_stray_char_slash() {
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -867,7 +867,7 @@ fn typo_right_attach_n_resolves_via_collapse_stray_char_slash() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must be reconstructed from N + OFORN; attrs = {:?}",
         marking.0,
     );
@@ -953,7 +953,7 @@ fn typo_tpp_resolves_via_top_vocab_addition() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -1347,7 +1347,7 @@ fn heuristic_2char_ts_decodes_portion() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NF must survive the heuristic-corrected canonicalization"
     );
 }
@@ -1366,7 +1366,7 @@ fn heuristic_1char_s_decodes_portion() {
         marking.0,
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NF must survive"
     );
 }
@@ -1703,8 +1703,7 @@ fn nato_secret_long_form_folds_to_ns() {
     // NOFORN must survive the fold
     let nf_present = marking
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     assert!(nf_present, "NOFORN must survive the NATO SECRET fold");
 }
@@ -1728,8 +1727,7 @@ fn nato_top_secret_long_form_folds_to_cts() {
     );
     let nf_present = marking
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     assert!(nf_present, "NOFORN must survive the NATO TOP SECRET fold");
 }
@@ -1996,7 +1994,7 @@ fn nato_u_banner_folds_to_nato_unclassified() {
         "NATO U banner must fold to NatoUnclassified"
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive the banner fold; attrs = {:?}",
         marking.0,
     );
@@ -2019,7 +2017,7 @@ fn nato_r_banner_folds_to_nato_restricted() {
         "NATO R banner must fold to NatoRestricted"
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -2042,7 +2040,7 @@ fn nato_c_banner_folds_to_nato_confidential() {
         "NATO C banner must fold to NatoConfidential"
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -2065,7 +2063,7 @@ fn nato_s_banner_folds_to_nato_secret() {
         "NATO S banner must fold to NatoSecret"
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );
@@ -2089,7 +2087,7 @@ fn nato_ts_banner_folds_to_cosmic_top_secret() {
         "NATO TS banner must fold to CosmicTopSecret"
     );
     assert!(
-        marking.0.dissem_controls.contains(&DissemControl::Nf),
+        marking.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must survive; attrs = {:?}",
         marking.0,
     );

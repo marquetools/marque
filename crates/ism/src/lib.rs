@@ -27,6 +27,7 @@
 pub mod attrs;
 pub mod canonical;
 pub mod date;
+pub mod dissem_attribution;
 pub mod generated;
 pub mod marking_forms;
 pub mod page_context;
@@ -45,6 +46,7 @@ pub use attrs::{
 };
 pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
+pub use dissem_attribution::{DefaultOrigin, attribute_dissems};
 pub use generated::values::{
     ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, TetragraphProvenance,
     is_bare_cve_value, is_decomposable, lookup_tetragraph_members, lookup_tetragraph_provenance,

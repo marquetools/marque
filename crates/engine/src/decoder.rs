@@ -3976,7 +3976,9 @@ fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
         || a.sar_markings.is_some()
         || !a.aea_markings.is_empty()
         || a.fgi_marker.is_some()
-        || !a.dissem_controls.is_empty()
+        // PR 9b (T132): walk the unified dissem_iter — a marking with
+        // any dissem on either namespace is non-trivial.
+        || a.dissem_iter().next().is_some()
         || !a.non_ic_dissem.is_empty()
         || !a.rel_to.is_empty()
         || a.classified_by.is_some()
@@ -4495,7 +4497,10 @@ fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'stat
     for ctrl in attrs.sci_controls.iter() {
         tokens.insert(ctrl.as_str());
     }
-    for dis in attrs.dissem_controls.iter() {
+    // PR 9b (T132): the decoder feature extractor inserts dissem
+    // canonical tokens regardless of namespace — the feature vector
+    // captures "which control names appear?", not their attribution.
+    for dis in attrs.dissem_iter() {
         tokens.insert(dis.as_str());
     }
     for nic in attrs.non_ic_dissem.iter() {
@@ -5732,14 +5737,14 @@ mod tests {
                     // different dissem token (e.g., a misclassified
                     // `Oc`/`Pr`) and still call the test green.
                     assert!(
-                        m.0.dissem_controls
-                            .iter()
+                        m.0.dissem_iter()
                             .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
                         "input {input:?}: expected NOFORN (DissemControl::Nf) to land \
                          as a dissem control (winning candidate must be the delim-\
-                         inserted form, not the absorbing one); got dissem_controls = \
-                         {:?}",
-                        m.0.dissem_controls,
+                         inserted form, not the absorbing one); got dissem_us = \
+                         {:?}, dissem_nato = {:?}",
+                        m.0.dissem_us,
+                        m.0.dissem_nato,
                     );
                     assert!(
                         !absorbs_hard_splitter_in_sar_or_sci(&m),
@@ -6688,8 +6693,7 @@ mod tests {
         assert!(
             marking
                 .0
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
             "NOFORN must survive; attrs = {:?}",
             marking.0,
@@ -6739,8 +6743,7 @@ mod tests {
         assert!(
             marking
                 .0
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
             "NOFORN must be reconstructed; attrs = {:?}",
             marking.0,
@@ -6807,8 +6810,7 @@ mod tests {
         assert!(
             marking
                 .0
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, marque_ism::DissemControl::Nf)),
             "NOFORN must survive; attrs = {:?}",
             marking.0,

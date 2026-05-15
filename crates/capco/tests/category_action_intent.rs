@@ -92,9 +92,9 @@ fn page_rewrite_intent_fact_add_mutates_projection() {
     let out = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        out.0.dissem_controls.contains(&DissemControl::Nf),
-        "FactAdd rewrite must add NOFORN; got dissem_controls = {:?}",
-        out.0.dissem_controls,
+        out.0.dissem_iter().any(|d| d == &DissemControl::Nf),
+        "FactAdd rewrite must add NOFORN; got (dissem_us, dissem_nato) = {:?}",
+        (out.0.dissem_us.as_ref(), out.0.dissem_nato.as_ref()),
     );
 }
 
@@ -126,19 +126,19 @@ fn page_rewrite_intent_fact_remove_mutates_projection() {
     let scheme = CapcoScheme::with_rewrites(vec![rewrite]);
 
     let mut attrs = portion_at(Classification::Secret);
-    attrs.dissem_controls = vec![DissemControl::Nf, DissemControl::Relido].into();
+    attrs.dissem_us = vec![DissemControl::Nf, DissemControl::Relido].into();
     let portion = wrap(attrs);
     let out = scheme.project(Scope::Page, &[portion]);
 
     assert!(
-        out.0.dissem_controls.contains(&DissemControl::Nf),
+        out.0.dissem_iter().any(|d| d == &DissemControl::Nf),
         "NOFORN must remain after FactRemove(RELIDO); got {:?}",
-        out.0.dissem_controls,
+        (out.0.dissem_us.as_ref(), out.0.dissem_nato.as_ref()),
     );
     assert!(
-        !out.0.dissem_controls.contains(&DissemControl::Relido),
+        !out.0.dissem_iter().any(|d| d == &DissemControl::Relido),
         "RELIDO must be removed by the rewrite; got {:?}",
-        out.0.dissem_controls,
+        (out.0.dissem_us.as_ref(), out.0.dissem_nato.as_ref()),
     );
 }
 
@@ -171,22 +171,22 @@ fn page_rewrite_intent_fact_add_idempotent_when_already_present() {
     let scheme = CapcoScheme::with_rewrites(vec![rewrite]);
 
     let mut attrs = portion_at(Classification::Secret);
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Nf].into();
     let portion = wrap(attrs);
     let out = scheme.project(Scope::Page, &[portion]);
 
     // Exactly one NOFORN — not duplicated. No panic.
     let noforn_count = out
         .0
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .filter(|d| matches!(d, DissemControl::Nf))
         .count();
     assert_eq!(
-        noforn_count, 1,
+        noforn_count,
+        1,
         "FactAdd of a token already present must be a no-op (no duplicate); \
-         got dissem_controls = {:?}",
-        out.0.dissem_controls,
+         got (dissem_us, dissem_nato) = {:?}",
+        (out.0.dissem_us.as_ref(), out.0.dissem_nato.as_ref()),
     );
 }
 
@@ -205,7 +205,7 @@ fn page_rewrite_intent_recanonicalize_is_no_op() {
     // Reference: same projection with NO page rewrites.
     let scheme_baseline = CapcoScheme::new();
     let mut attrs = portion_at(Classification::Secret);
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Nf].into();
     let portion_ref = wrap(attrs.clone());
     let baseline = scheme_baseline.project(Scope::Page, &[portion_ref]);
 
@@ -228,7 +228,11 @@ fn page_rewrite_intent_recanonicalize_is_no_op() {
     let out = scheme.project(Scope::Page, &[portion]);
 
     assert_eq!(
-        baseline.0.dissem_controls, out.0.dissem_controls,
+        (
+            baseline.0.dissem_us.as_ref(),
+            baseline.0.dissem_nato.as_ref()
+        ),
+        (out.0.dissem_us.as_ref(), out.0.dissem_nato.as_ref()),
         "Recanonicalize must not mutate the projection's dissem axis",
     );
     assert_eq!(

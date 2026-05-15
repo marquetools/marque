@@ -60,11 +60,32 @@ pub struct ParsedMarking<'src> {
 /// Phase 2+3 parser. Stateless; call [`Parser::parse`] per candidate.
 pub struct Parser<'t> {
     tokens: &'t dyn TokenSet,
+    /// IC dissem attribution fallback for portions with no
+    /// classification axis. PR 9b (T132) wired the post-parse
+    /// `attribute_dissems` pass; CAPCO callers leave this at the
+    /// default ([`DefaultOrigin::Us`]) so that no-context portions
+    /// attribute their dissems to `dissem_us`. A future
+    /// foreign-origin-dominant scheme can override via
+    /// [`Self::with_default_origin`].
+    default_origin: marque_ism::DefaultOrigin,
 }
 
 impl<'t> Parser<'t> {
     pub fn new(tokens: &'t dyn TokenSet) -> Self {
-        Self { tokens }
+        Self {
+            tokens,
+            default_origin: marque_ism::DefaultOrigin::Us,
+        }
+    }
+
+    /// Override the no-classification-context fallback for IC dissem
+    /// attribution. CAPCO's
+    /// [`marque_ism::DefaultOrigin::Us`] is the default; pass
+    /// [`marque_ism::DefaultOrigin::Nato`] for a foreign-origin
+    /// dominant context.
+    pub fn with_default_origin(mut self, origin: marque_ism::DefaultOrigin) -> Self {
+        self.default_origin = origin;
+        self
     }
 
     /// Parse a single scanner candidate into [`ParsedAttrs`].
@@ -204,7 +225,8 @@ impl<'t> Parser<'t> {
                 None,
                 Box::new([]),
                 None,
-                Box::new([]),
+                Box::new([]), // dissem_us
+                Box::new([]), // dissem_nato
                 Box::new([]),
                 Box::new([]),
                 declassify_on,
@@ -958,7 +980,10 @@ impl<'t> Parser<'t> {
 
         let _ = context; // used for future context-aware validation
 
-        Ok(ParsedAttrs::new(
+        // PR 9b (T132): the parser writes every dissem token to
+        // `dissem_us` initially; the post-parse `attribute_dissems`
+        // pass below partitions per CAPCO-2016 p41 reciprocity.
+        let mut attrs = ParsedAttrs::new(
             classification,
             sci_markings.into_boxed_slice(),
             sci.into_boxed_slice(),
@@ -966,6 +991,7 @@ impl<'t> Parser<'t> {
             aea.into_boxed_slice(),
             fgi_marker,
             dissem.into_boxed_slice(),
+            Box::new([]),
             non_ic.into_boxed_slice(),
             rel_to.into_boxed_slice(),
             declassify_on,
@@ -974,7 +1000,9 @@ impl<'t> Parser<'t> {
             declass_exemption,
             token_spans.into_boxed_slice(),
             origin,
-        ))
+        );
+        marque_ism::attribute_dissems(&mut attrs, self.default_origin);
+        Ok(attrs)
     }
 }
 
@@ -2621,8 +2649,8 @@ mod tests {
 
     /// Test-helper output: a [`ParsedMarking`] post-`from_parsed_unchecked`,
     /// so existing assertions on the typed `attrs.classification` /
-    /// `attrs.dissem_controls` shape continue to work without per-test
-    /// edits during the PR 3a rename.
+    /// `attrs.dissem_us` / `attrs.dissem_nato` shape continue to work
+    /// without per-test edits during the PR 3a rename.
     ///
     /// Test-fixture carve-out per Constitution V Principle V — the
     /// adapter is invoked here only to construct test inputs whose
@@ -3526,7 +3554,7 @@ mod tests {
     fn non_ic_dissem_not_confused_with_ic_dissem() {
         // SSI should be non-IC, not IC.
         let parsed = parse_portion("(U//SSI)");
-        assert!(parsed.attrs.dissem_controls.is_empty());
+        assert_eq!(parsed.attrs.dissem_iter().count(), 0);
         assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
         assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Ssi);
     }
@@ -3535,7 +3563,7 @@ mod tests {
     fn non_ic_dissem_alongside_ic_dissem() {
         // Classified portion with both IC and non-IC dissem.
         let parsed = parse_portion("(C//NF//DS)");
-        assert_eq!(parsed.attrs.dissem_controls.len(), 1); // NF
+        assert_eq!(parsed.attrs.dissem_iter().count(), 1); // NF
         assert_eq!(parsed.attrs.non_ic_dissem.len(), 1); // DS = LIMDIS
     }
 
@@ -3702,7 +3730,9 @@ mod tests {
         // Dissem controls can also share a block: "NF/RD" in one // block.
         use marque_ism::DissemControl;
         let parsed = parse_banner("SECRET//SI//NF/RELIDO");
-        let dissem: Vec<DissemControl> = parsed.attrs.dissem_controls.to_vec();
+        // US-classified marking → all dissems attributed to dissem_us
+        // per CAPCO-2016 p41 reciprocity (PR 9b / FR-046).
+        let dissem: Vec<DissemControl> = parsed.attrs.dissem_iter().copied().collect();
         assert!(dissem.contains(&DissemControl::Nf), "must contain NF");
         assert!(
             dissem.contains(&DissemControl::Relido),
@@ -4318,12 +4348,13 @@ mod tests {
             "exactly one DissemControl token preserving the source-bytes block expected"
         );
 
-        // Dissem axis carries EYES.
+        // Dissem axis carries EYES. US-classified portion attributes
+        // dissem to dissem_us per CAPCO-2016 p41 (PR 9b / FR-046).
         assert!(
             parsed
                 .attrs
-                .dissem_controls
-                .contains(&marque_ism::DissemControl::Eyes),
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Eyes),
             "DissemControl::Eyes must be populated"
         );
 
@@ -4355,8 +4386,8 @@ mod tests {
         assert!(
             parsed
                 .attrs
-                .dissem_controls
-                .contains(&marque_ism::DissemControl::Eyes)
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Eyes)
         );
     }
 
@@ -4369,8 +4400,8 @@ mod tests {
         assert!(
             parsed
                 .attrs
-                .dissem_controls
-                .contains(&marque_ism::DissemControl::Eyes),
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Eyes),
             "bare EYES must parse as DissemControl::Eyes via the CVE path"
         );
     }
@@ -4822,8 +4853,8 @@ mod sar_parse_tests {
         assert!(
             parsed
                 .attrs
-                .dissem_controls
-                .contains(&marque_ism::DissemControl::Nf),
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Nf),
             "NOFORN must still be recognized after the SAR block"
         );
     }

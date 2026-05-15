@@ -491,7 +491,7 @@ fn run_sweep() -> AccuracyReport {
                         m.0.classification.as_ref().map(|c| c.effective_level()),
                         m.0.sci_markings.len(),
                         m.0.sar_markings.is_some() as u8,
-                        m.0.dissem_controls.len(),
+                        m.0.dissem_iter().count(),
                         m.0.rel_to.len(),
                     )
                 };

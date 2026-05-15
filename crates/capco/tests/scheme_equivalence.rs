@@ -136,7 +136,7 @@ fn project_banner_noforn_supersedes_rel_to() {
     let mut p1 = portion(Classification::Secret);
     p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     let mut p2 = portion(Classification::Secret);
-    p2.dissem_controls = vec![DissemControl::Nf].into();
+    p2.dissem_us = vec![DissemControl::Nf].into();
 
     let portions = vec![wrap(p1), wrap(p2)];
 
@@ -145,7 +145,9 @@ fn project_banner_noforn_supersedes_rel_to() {
         ctx.add_portion(p.0.clone());
     }
     let expected_rel_to = ctx.expected_rel_to();
-    let expected_dissem = ctx.expected_dissem_controls();
+    // PR 9b (T132): page rollup composes namespaces independently;
+    // for this US-classified fixture, NOFORN attributes to dissem_us.
+    let expected_dissem = ctx.expected_dissem_us();
 
     let scheme = CapcoScheme::new();
     let banner = scheme.project_banner(&portions);
@@ -161,7 +163,7 @@ fn project_banner_noforn_supersedes_rel_to() {
     );
     // NF appears in both dissem lists.
     assert!(expected_dissem.contains(&DissemControl::Nf));
-    assert!(banner.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(banner.0.dissem_iter().any(|d| d == &DissemControl::Nf));
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +201,7 @@ fn lattice_join_agrees_with_project_banner_pairwise() {
 fn constraint_noforn_rel_to_conflict_fires() {
     // Build a marking that has BOTH NOFORN and a REL TO list.
     let mut attrs = portion(Classification::Secret);
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Nf].into();
     attrs.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
 
     let scheme = CapcoScheme::new();
@@ -216,7 +218,7 @@ fn constraint_noforn_rel_to_conflict_fires() {
 fn constraint_noforn_rel_to_conflict_is_silent_when_separate() {
     // NOFORN only — no REL TO → no conflict.
     let mut attrs = portion(Classification::Secret);
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -345,7 +347,7 @@ fn hcs_o_without_orcon_fires() {
 fn hcs_o_with_orcon_usgov_fires() {
     // HCS-O with ORCON-USGOV is forbidden — must be ORCON only.
     let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
-    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
+    attrs.dissem_us = vec![DissemControl::Oc, DissemControl::OcUsgov].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -363,7 +365,7 @@ fn hcs_o_with_orcon_usgov_fires() {
 fn hcs_o_on_confidential_fires_classification_floor() {
     // HCS-O requires SECRET or TOP SECRET.
     let mut attrs = hcs_structural(Classification::Confidential, Some("O"));
-    attrs.dissem_controls = vec![DissemControl::Oc].into();
+    attrs.dissem_us = vec![DissemControl::Oc].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -383,7 +385,7 @@ fn hcs_o_with_orcon_and_noforn_on_top_secret_is_silent() {
     // ORCON-USGOV, NOFORN present. Per CAPCO-2016 §H.4 p64 HCS-O
     // requires BOTH ORCON and NOFORN.
     let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
-    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -405,7 +407,7 @@ fn hcs_o_without_noforn_fires() {
     // HCS-O-requires-NOFORN. This was the gap captured by #304 and
     // resolved by this PR.
     let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
-    attrs.dissem_controls = vec![DissemControl::Oc].into();
+    attrs.dissem_us = vec![DissemControl::Oc].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -425,7 +427,7 @@ fn hcs_o_with_noforn_only_fires_for_missing_orcon() {
     // constraint did not silently dilute the pre-existing
     // HCS-O-requires-ORCON predicate.
     let mut attrs = hcs_structural(Classification::TopSecret, Some("O"));
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -463,7 +465,7 @@ fn hcs_p_with_noforn_is_silent() {
     // "Requires NOFORN. ORCON or ORCON-USGOV may be used."
     // ORCON / ORCON-USGOV are permitted but not required.
     let mut attrs = hcs_structural(Classification::Secret, Some("P"));
-    attrs.dissem_controls = vec![DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -482,7 +484,7 @@ fn hcs_p_with_orcon_and_noforn_is_silent() {
     // HCS-P with ORCON + NOFORN: valid per §H.4 p66 (ORCON permitted,
     // NOFORN required).
     let mut attrs = hcs_structural(Classification::Secret, Some("P"));
-    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -501,7 +503,7 @@ fn hcs_p_with_orcon_usgov_and_noforn_is_silent() {
     // HCS-P with ORCON-USGOV + NOFORN: valid per CAPCO-2016 §H.4 p66
     // (ORCON-USGOV permitted, NOFORN required).
     let mut attrs = hcs_structural(Classification::TopSecret, Some("P"));
-    attrs.dissem_controls = vec![DissemControl::OcUsgov, DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::OcUsgov, DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -522,7 +524,7 @@ fn hcs_p_with_orcon_only_fires_for_missing_noforn() {
     // the regression guard for the prior over-strict / under-strict
     // predicate that demanded ORCON but did not demand NOFORN.
     let mut attrs = hcs_structural(Classification::Secret, Some("P"));
-    attrs.dissem_controls = vec![DissemControl::Oc].into();
+    attrs.dissem_us = vec![DissemControl::Oc].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -541,7 +543,7 @@ fn hcs_p_on_confidential_fires_classification_floor() {
     // ORCON + NOFORN so the only HCS-P violation surfaced is the
     // classification-floor one (§H.4 p66).
     let mut attrs = hcs_structural(Classification::Confidential, Some("P"));
-    attrs.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
+    attrs.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -811,7 +813,7 @@ fn e036_does_not_fire_on_non_joint_with_hcs() {
         None,
     )]
     .into();
-    attrs.dissem_controls = vec![DissemControl::Oc].into();
+    attrs.dissem_us = vec![DissemControl::Oc].into();
 
     let scheme = CapcoScheme::new();
     let violations = scheme.validate(&CapcoMarking::new(attrs));
@@ -1037,7 +1039,7 @@ fn page_rewrite_noforn_clears_rel_to_produces_same_banner() {
     let mut p1 = portion(Classification::Secret);
     p1.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
     let mut p2 = portion(Classification::Secret);
-    p2.dissem_controls = vec![DissemControl::Nf].into();
+    p2.dissem_us = vec![DissemControl::Nf].into();
 
     let portions = vec![wrap(p1), wrap(p2)];
     let scheme = CapcoScheme::new();
@@ -1046,7 +1048,7 @@ fn page_rewrite_noforn_clears_rel_to_produces_same_banner() {
     // After the page rewrite, REL TO should be empty; NF should
     // appear in dissem.
     assert!(banner.0.rel_to.is_empty());
-    assert!(banner.0.dissem_controls.contains(&DissemControl::Nf));
+    assert!(banner.0.dissem_iter().any(|d| d == &DissemControl::Nf));
 }
 
 // ---------------------------------------------------------------------------
@@ -1169,18 +1171,20 @@ fn capco_marking_meet_narrow_components() {
     // component-wise min on classification, SCI, dissem).
     let mut a = portion(Classification::Secret);
     a.sci_controls = vec![SciControl::Si, SciControl::Tk].into();
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     let mut b = portion(Classification::TopSecret);
     b.sci_controls = vec![SciControl::Si].into();
-    b.dissem_controls = vec![DissemControl::Nf, DissemControl::Oc].into();
+    b.dissem_us = vec![DissemControl::Nf, DissemControl::Oc].into();
 
     let m = wrap(a).meet(&wrap(b));
     // classification = min(S, TS) = S (effective_level).
     assert_eq!(m.classification(), Some(Classification::Secret));
     // SCI intersection = {Si}
     assert_eq!(m.0.sci_controls.as_ref(), &[SciControl::Si]);
-    // Dissem intersection = {Nf}
-    assert_eq!(m.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+    // Dissem intersection = {Nf}. Both portions are US-classified so
+    // the meet on dissem_us reflects the intersection.
+    assert_eq!(m.0.dissem_us.as_ref(), &[DissemControl::Nf]);
+    assert!(m.0.dissem_nato.is_empty());
 }
 
 #[test]

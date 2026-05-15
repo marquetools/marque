@@ -255,7 +255,7 @@ fn all_migrated_rule_intents_pass_g13_envelope_walker() {
         // E041 (the engine synthesizes the byte-precise `FixProposal`
         // from the intent + `RuleContext::candidate_span`), but on
         // the FactAdd path: `apply_intent` adds NOFORN to
-        // `dissem_controls` instead of removing a token. §H.9 p172
+        // `dissem_us` instead of removing a token. §H.9 p172
         // (EXDIS) + p174 (NODIS) both use "Requires NOFORN"
         // verbatim, which is what makes `MessageTemplate::
         // RequiredByPresence` the right structured-message variant.
