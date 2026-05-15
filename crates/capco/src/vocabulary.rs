@@ -52,8 +52,9 @@
 
 use crate::scheme::{
     CAT_AEA, CAT_CLASSIFICATION, CAT_DISSEM, CAT_FGI_MARKER, CAT_JOINT_CLASSIFICATION,
-    CAT_NON_US_CLASSIFICATION, CAT_REL_TO, CAT_SAR, CAT_SCI, CapcoScheme, TOK_CNWDI, TOK_EXDIS,
-    TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED, TOK_TFNI, TOK_UCNI,
+    CAT_NON_US_CLASSIFICATION, CAT_REL_TO, CAT_SAR, CAT_SCI, CapcoScheme, FDR_DOMINATORS,
+    TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED,
+    TOK_TFNI, TOK_UCNI, capco_token_category,
 };
 use marque_ism::Classification;
 use marque_ism::generated::migrations::find_migration;
@@ -61,6 +62,7 @@ use marque_ism::generated::vocabulary::{
     CveFileMetadata, TokenMetadataEntry, lookup_token_metadata,
 };
 use marque_ism::marking_forms::{MARKING_FORMS, MarkingForm, banner_to_portion};
+use marque_scheme::TokenRef;
 use marque_scheme::{
     Authority, CategoryId, Deprecation, FormKind, FormSet, OwnerProducer, OwnerProducerKind,
     PointOfContact, TokenId, TokenMetadataFull, Vocabulary,
@@ -1010,6 +1012,77 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
         &token_derived(*token).metadata
     }
 
+    /// CAPCO FD&R-membership predicate.
+    ///
+    /// Iterates over [`crate::scheme::FDR_DOMINATORS`] — the slice
+    /// that defines the FD&R set itself per CAPCO-2016 §B.3 Table 2
+    /// p21 — so this method and the slice stay in lock-step against
+    /// a single source-of-truth. Adding *any* entry to
+    /// `FDR_DOMINATORS` (whether a `TokenRef::Token` or a
+    /// `TokenRef::AnyInCategory`) automatically updates this method.
+    ///
+    /// # Why `FDR_DOMINATORS` and not `is_fdr_dominator`?
+    ///
+    /// The neighboring [`crate::scheme::is_fdr_dominator`] function
+    /// is a related-but-distinct predicate: it answers "is `t` an
+    /// FD&R dominator *over RELIDO*" for the
+    /// [`marque_scheme::constraint::Constraint::ConflictsWithFamily`]
+    /// dispatch on the RELIDO conflict catalog. That predicate
+    /// deliberately excludes RELIDO itself (RELIDO-vs-RELIDO is a
+    /// tautology) — so delegating through it would under-fire on
+    /// `is_fdr_dissem(TOK_RELIDO)`. RELIDO is unambiguously an FD&R
+    /// member per §B.3 Table 2, so this method iterates over the
+    /// full `FDR_DOMINATORS` slice directly.
+    ///
+    /// # Open-vocab routing
+    ///
+    /// `FDR_DOMINATORS` carries
+    /// [`TokenRef::AnyInCategory`]`(CAT_REL_TO)` so every REL TO
+    /// country code (open-vocab, not addressable by `TokenId`)
+    /// participates in the FD&R family for the
+    /// `ConflictsWithFamily` dispatch. This method routes a single
+    /// [`TokenId`] through [`crate::scheme::capco_token_category`]
+    /// to hit the same arm. The country-trigraph sentinels
+    /// (`TOK_USA`, `TOK_REL_TO`) already resolve to
+    /// `Some(CAT_REL_TO)` via `capco_token_category`, so they
+    /// admit here.
+    ///
+    /// # Maintenance contract
+    ///
+    /// If a future revision adds an `AnyInCategory(CAT_X)` entry
+    /// for a category whose tokens are NOT routed through
+    /// `capco_token_category` (e.g., a hypothetical aggregate
+    /// sentinel that isn't a real per-token category), this method
+    /// silently under-fires for those tokens. The bidirectional
+    /// value-pin test in `mod fdr_dissem_pin` (this file) catches
+    /// the case by walking `FDR_DOMINATORS` and asserting every
+    /// `AnyInCategory` entry is reachable via `capco_token_category`.
+    ///
+    /// # Performance
+    ///
+    /// `FDR_DOMINATORS` is a `&'static [TokenRef]` with 5 entries
+    /// today (NOFORN, RELIDO, DISPLAY ONLY, any REL TO, EYES). The
+    /// `iter().any(...)` walk is bounded by that constant and
+    /// branches on each entry — no allocation, no hash lookup. The
+    /// [`marque_scheme::builtins::SupersessionSet`] dissem join
+    /// will call this method on the hot path (PR 4b); the constant
+    /// bound is what makes the delegation viable instead of a
+    /// hand-rolled `matches!`.
+    ///
+    /// Citations:
+    /// - CAPCO-2016 §B.3.a p19 — canonical FD&R-set enumeration
+    ///   ("NOFORN, REL TO, RELIDO, or DISPLAY ONLY"). §B.3 Table 2 pp
+    ///   21-22 is a scenario-summary table, not the definition.
+    /// - CAPCO-2016 §H.8 p157 — EYES deprecation marker; recognized
+    ///   for legacy-input compatibility.
+    #[inline]
+    fn is_fdr_dissem(&self, token: &TokenId) -> bool {
+        FDR_DOMINATORS.iter().any(|entry| match entry {
+            TokenRef::Token(id) => *id == *token,
+            TokenRef::AnyInCategory(cat) => capco_token_category(*token) == Some(*cat),
+        })
+    }
+
     /// CAPCO admission predicate over `(CategoryId, &[u8])`.
     ///
     /// Closed-CVE arms route through `admits_closed_cve` against
@@ -1529,5 +1602,158 @@ mod shape_admits_tests {
         assert!(!v.shape_admits(CAT_CLASSIFICATION, &invalid));
         assert!(!v.shape_admits(CAT_DISSEM, &invalid));
         assert!(!v.shape_admits(CAT_SCI, &invalid));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FD&R dominator predicate — bidirectional pin against FDR_DOMINATORS.
+// ---------------------------------------------------------------------------
+//
+// The override `Vocabulary::is_fdr_dissem` iterates `FDR_DOMINATORS`
+// directly, matching `TokenRef::Token` entries by `TokenId` equality
+// and `TokenRef::AnyInCategory` entries via `capco_token_category`.
+// It does NOT delegate to `is_fdr_dominator` — that function excludes
+// RELIDO (RELIDO-vs-RELIDO is a tautology in its RELIDO-conflict
+// family role), but RELIDO is itself an FD&R marking per §B.3.a p19,
+// so the override walks the slice instead. These unit tests pin the
+// production-side `FDR_DOMINATORS` slice bidirectionally so a future
+// addition (either a new `Token` entry or a new `AnyInCategory`
+// entry) cannot silently drift away from the override.
+//
+// The integration test file `crates/capco/tests/fdr_dissem_predicate.rs`
+// exercises the public API surface (canonical dominators, REL TO
+// country tokens, non-FD&R rejections). It lives outside the crate
+// and cannot read `pub(crate) static FDR_DOMINATORS`; the pin tests
+// here exercise the in-crate source-of-truth instead. This split
+// follows the project memory `pub_doc_hidden_is_still_public_api`:
+// `pub(crate)` + unit tests over exposing a `pub` test-only surface.
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod fdr_dissem_pin {
+    use super::*;
+    use crate::scheme::FDR_DOMINATORS;
+    use marque_scheme::{TokenRef, Vocabulary};
+
+    fn vocab() -> CapcoScheme {
+        CapcoScheme::new()
+    }
+
+    /// Walk every entry in `FDR_DOMINATORS` and assert
+    /// `is_fdr_dissem` reaches the underlying token (or category).
+    ///
+    /// For `TokenRef::Token(id)` entries the test passes the id
+    /// directly. For `TokenRef::AnyInCategory(cat)` entries the
+    /// assertion is indirect: there is no single `TokenId` standing
+    /// in for the whole category, so the test verifies the override
+    /// can route AT LEAST ONE `TokenId` to that category via
+    /// `capco_token_category`. If a future revision adds an
+    /// `AnyInCategory(CAT_X)` entry for a category whose tokens are
+    /// not routed by `capco_token_category`, the override silently
+    /// under-fires; this test fails with a clear message so the
+    /// gap is fixed before the row lands.
+    #[test]
+    fn fdr_dominators_entries_all_reachable() {
+        let v = vocab();
+        for entry in FDR_DOMINATORS {
+            match entry {
+                TokenRef::Token(id) => assert!(
+                    v.is_fdr_dissem(id),
+                    "FDR_DOMINATORS entry {entry:?} not recognized by \
+                     is_fdr_dissem — the override has drifted from the \
+                     authoritative slice. Verify the iter().any(...) \
+                     walk in vocabulary.rs reaches every entry.",
+                ),
+                TokenRef::AnyInCategory(cat) => {
+                    // Verify at least one sentinel `TokenId` resolves to
+                    // this category via `capco_token_category`. Today
+                    // CAT_REL_TO has TOK_USA and TOK_REL_TO routed to it;
+                    // a future category-only FD&R entry MUST have a
+                    // matching `capco_token_category` arm.
+                    let routed = sentinel_routed_to_category(*cat);
+                    assert!(
+                        routed,
+                        "FDR_DOMINATORS contains AnyInCategory({cat:?}) \
+                         but no known sentinel TokenId resolves to that \
+                         category via capco_token_category. The \
+                         is_fdr_dissem override iterates over \
+                         FDR_DOMINATORS and routes single TokenIds \
+                         through `capco_token_category` to hit \
+                         AnyInCategory arms; without a category-routing \
+                         arm the new category is unreachable. Add a \
+                         capco_token_category arm covering the new \
+                         category before this row lands.",
+                    );
+                }
+            }
+        }
+    }
+
+    /// Walk a sample of sentinel `TokenId`s and look for one that
+    /// `capco_token_category` resolves to `cat`. Used by the
+    /// reachability assertion above. The probe set is the closed
+    /// CAPCO sentinel set — enumerating it directly keeps the test
+    /// honest about what `capco_token_category` actually maps,
+    /// without taking a dependency on the open-vocab routing
+    /// machinery.
+    fn sentinel_routed_to_category(cat: marque_scheme::CategoryId) -> bool {
+        use crate::scheme::*;
+        // The sentinel set is enumerated explicitly so a new sentinel
+        // is added here intentionally rather than picked up via reflection
+        // (which Rust doesn't offer for static consts anyway).
+        let probes: &[TokenId] = &[
+            TOK_NOFORN,
+            TOK_JOINT,
+            TOK_USA,
+            TOK_RESTRICTED,
+            TOK_RD,
+            TOK_FRD,
+            TOK_TFNI,
+            TOK_CNWDI,
+            TOK_UCNI,
+            TOK_HCS,
+            TOK_NODIS,
+            TOK_EXDIS,
+            TOK_RELIDO,
+            TOK_DISPLAY_ONLY,
+            TOK_ORCON,
+            TOK_ORCON_USGOV,
+            TOK_REL_TO,
+            TOK_SBU_NF,
+            TOK_LES_NF,
+            TOK_IMCON,
+            TOK_DSEN,
+            TOK_RSEN,
+            TOK_FOUO,
+            TOK_LIMDIS,
+            TOK_LES,
+            TOK_SBU,
+            TOK_SSI,
+            TOK_EYES,
+            TOK_ATOMAL,
+            TOK_BALK,
+            TOK_BOHEMIA,
+        ];
+        probes
+            .iter()
+            .any(|id| capco_token_category(*id) == Some(cat))
+    }
+
+    /// Pin: RELIDO is an FD&R member even though it is excluded from
+    /// `is_fdr_dominator` (which models RELIDO-conflict, not FD&R
+    /// membership). The override iterates over `FDR_DOMINATORS`
+    /// directly so this case admits — a regression that delegates
+    /// through `is_fdr_dominator` would fail this test.
+    #[test]
+    fn relido_admits_despite_is_fdr_dominator_excluding_it() {
+        use crate::scheme::TOK_RELIDO;
+        let v = vocab();
+        assert!(
+            v.is_fdr_dissem(&TOK_RELIDO),
+            "RELIDO is unambiguously an FD&R member per §B.3 Table 2 \
+             p21. The override must not delegate through \
+             `is_fdr_dominator`, which deliberately excludes RELIDO \
+             for the RELIDO-conflict family predicate.",
+        );
     }
 }

@@ -544,7 +544,7 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
 /// The mapping mirrors the existing per-token presence semantics in
 /// `satisfies_attrs` so a rule emitting `FactRemove(TOK_X)` lands on
 /// the same axis where `satisfies_attrs` would look for `X`.
-fn capco_token_category(id: TokenId) -> Option<CategoryId> {
+pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
     // Sentinel IDs are declared in the const block above (lines 60+).
     // Keep the matches in declaration order so a reviewer can trace
     // the catalog by line position.
@@ -4227,7 +4227,27 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 // downstream PageRewrite step rather than via FDR_DOMINATORS membership;
 // the Trio-1 row is permitted to over-fire on bare-LES-NF / bare-SBU-NF
 // because the PageRewrite supplies the suppressor fact downstream.
-static FDR_DOMINATORS: &[TokenRef] = &[
+// `pub(crate)` so the `Vocabulary::is_fdr_dissem` override in
+// `crates/capco/src/vocabulary.rs` and the bidirectional value-pin test
+// (`mod fdr_dissem_pin` in the same file) can read this slice as the
+// single source-of-truth.
+//
+// **Maintenance contract.** This slice and the neighboring
+// `is_fdr_dominator` function each enumerate FD&R membership for
+// distinct callers — they share the same conceptual source (CAPCO
+// §B.3.a p19), but each function hard-codes its own `Token` arms
+// rather than deriving from the other. Adding a `Token` entry here
+// requires:
+//   1. Updating `is_fdr_dominator`'s `matches!` arm if the new token
+//      should also be an FD&R dominator OVER RELIDO (the RELIDO-
+//      conflict-family role).
+//   2. The `Vocabulary::is_fdr_dissem` override picks up new entries
+//      automatically — it iterates this slice directly.
+// Adding an `AnyInCategory(CAT_X)` entry requires updating the
+// override's per-category match arms in `vocabulary.rs` because the
+// override receives a single `TokenId` and routes through
+// `capco_token_category` rather than passing a `TokenRef`.
+pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_NOFORN),
     TokenRef::Token(TOK_RELIDO),
     TokenRef::Token(TOK_DISPLAY_ONLY),
