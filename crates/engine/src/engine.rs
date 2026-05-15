@@ -41,6 +41,61 @@ fn deadline_expired(deadline: Option<Instant>) -> bool {
     deadline.is_some_and(|d| Instant::now() >= d)
 }
 
+/// Window radius (bytes on each side of the candidate) inspected by the
+/// surrounding-lowercase majority check. 64 bytes covers the local
+/// sentence/clause context — enough to distinguish lowercase prose from
+/// an uppercase banner zone, without the cost of scanning the whole
+/// document for every candidate.
+const LOWERCASE_WINDOW_RADIUS: usize = 64;
+
+/// Minimum lowercase-letter count required before the lowercase-majority
+/// flag can trip. Prevents a noise majority on very short windows (e.g.,
+/// a candidate at the very start or end of a tiny document where the
+/// window has only a handful of letters total).
+const LOWERCASE_MIN_COUNT: usize = 3;
+
+/// Whether the ASCII-letter content of the source bytes within
+/// [`LOWERCASE_WINDOW_RADIUS`] before and after `[start, end)` is
+/// lowercase-dominant.
+///
+/// `true` only when lowercase letters outnumber uppercase ASCII letters
+/// AND at least [`LOWERCASE_MIN_COUNT`] lowercase letters were seen.
+/// The double gate keeps tiny windows (sub-3 lowercase letters total)
+/// from producing a noise positive; uppercase-dominant banner/header
+/// zones return `false` so legitimate uppercase markings recovered from
+/// uppercase context aren't penalized.
+fn surrounding_lowercase_majority(source: &[u8], start: usize, end: usize) -> bool {
+    // Bounds-safe even when caller hands us a malformed span with
+    // `start > source.len()` (e.g., a scanner regression). Every
+    // index expression below is clamped to `source.len()` BEFORE
+    // the slice operation so an inverted range (e.g., `lo_start =
+    // 936` from `start - LOWERCASE_WINDOW_RADIUS` paired with
+    // `source.len() = 100`) is impossible. The result on a
+    // degenerate span is an empty window → `false` rather than a
+    // panic. This is what allows the caller in `lint_inner` to
+    // invoke us BEFORE its own `candidate.span.start
+    // .min(source.len())` clamp without re-introducing a possible
+    // out-of-bounds index.
+    let start_clamped = start.min(source.len());
+    let end_clamped = end.min(source.len());
+    let lo_start = start_clamped.saturating_sub(LOWERCASE_WINDOW_RADIUS);
+    let hi_end = end_clamped
+        .saturating_add(LOWERCASE_WINDOW_RADIUS)
+        .min(source.len());
+    let lo_slice = &source[lo_start..start_clamped];
+    let hi_slice = &source[end_clamped..hi_end];
+    let mut lowercase = 0usize;
+    let mut uppercase = 0usize;
+    for &b in lo_slice.iter().chain(hi_slice.iter()) {
+        if b.is_ascii_lowercase() {
+            lowercase += 1;
+        } else if b.is_ascii_uppercase() {
+            uppercase += 1;
+        }
+    }
+    lowercase >= LOWERCASE_MIN_COUNT && lowercase > uppercase
+}
+
 /// Synthetic rule identifier the engine attaches to decoder-path
 /// `FixSource::DecoderPosterior` diagnostics emitted from
 /// `Engine::lint`. Phase 4 PR-4b mints this identifier so the
@@ -809,13 +864,53 @@ impl Engine {
             // positives like `letter(s)` / `loss(s)` /
             // `function(c)`. Start-of-buffer counts as whitespace by
             // the `ParseContext` convention.
-            let preceded_by_whitespace = match candidate.span.start.checked_sub(1) {
+            // Clamp the candidate span to `source.len()` BEFORE any
+            // source indexing in this block. The existing block below
+            // re-clamps for the recognizer call, but the new
+            // preceded_by_whitespace / line_offset / line_prefix /
+            // surrounding_lowercase computations also index into
+            // `source` and must use the same clamped bounds. A
+            // scanner regression that produced `span.start >
+            // source.len()` would otherwise panic in
+            // `source[..candidate.span.start]` before reaching the
+            // existing clamp at the recognizer call site below.
+            let span_start = candidate.span.start.min(source.len());
+            let span_end = candidate.span.end.min(source.len());
+            let preceded_by_whitespace = match span_start.checked_sub(1) {
                 None => true,
                 Some(prev_idx) => source
                     .get(prev_idx)
                     .map(|b| b.is_ascii_whitespace())
                     .unwrap_or(true),
             };
+            // Compute the line/context signals the decoder uses to
+            // discriminate real markings from prose glyphs:
+            //
+            // - `line_offset`: byte distance from the previous '\n'
+            //   to the candidate's start. Used by the position
+            //   penalty — a portion deep into a line of running
+            //   prose is overwhelmingly a parenthetical, not a
+            //   marking.
+            // - `line_prefix`: trailing up-to-32 bytes of the line
+            //   preceding the candidate. Used by the bullet anchor
+            //   bonus — `1B.a.3.(c)` and `(a) (S)` patterns should
+            //   NOT receive the position penalty.
+            // - `surrounding_is_lowercase`: lowercase-vs-uppercase
+            //   majority in a ±64 byte window. Used by the
+            //   lowercase-context penalty — lowercase candidates in
+            //   lowercase prose are overwhelmingly not markings.
+            //   Archival all-caps documents short-circuit naturally
+            //   (the candidate itself stays uppercase).
+            let line_start = source[..span_start]
+                .iter()
+                .rposition(|&b| b == b'\n')
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let line_offset = span_start - line_start;
+            let line_prefix =
+                marque_scheme::recognizer::LinePrefix::from_slice(&source[line_start..span_start]);
+            let surrounding_is_lowercase =
+                surrounding_lowercase_majority(source, span_start, span_end);
             let parse_cx = ParseContext {
                 strict_evidence: false,
                 zone: None,
@@ -823,6 +918,9 @@ impl Engine {
                 classification_floor,
                 as_of: None,
                 preceded_by_whitespace,
+                line_offset: Some(line_offset),
+                line_prefix: Some(line_prefix),
+                surrounding_is_lowercase,
             };
 
             // Route each candidate's bytes through the recognizer. Zero-
@@ -832,8 +930,8 @@ impl Engine {
             // a `CapcoMarking` whose `token_spans` are zero-origin relative
             // to the candidate bytes; shift them back to source-relative
             // offsets before rules see them.
-            let start = candidate.span.start.min(source.len());
-            let end = candidate.span.end.min(source.len());
+            let start = span_start;
+            let end = span_end;
             if start >= end {
                 continue;
             }

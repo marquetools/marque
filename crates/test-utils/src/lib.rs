@@ -88,9 +88,69 @@ pub struct ExpectedSpan {
 }
 
 /// Expected diagnostics loaded from a `.expected.json` file.
+///
+/// `ground_truth` is populated for document fixtures (under
+/// `tests/corpus/documents/`) and absent for the per-rule micro-fixtures
+/// under `valid/` and `invalid/`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExpectedFixture {
     pub diagnostics: Vec<ExpectedDiagnostic>,
+    #[serde(default)]
+    pub ground_truth: Option<DocumentGroundTruth>,
+}
+
+/// Structural ground truth for a document fixture under
+/// `tests/corpus/documents/`. Mirrors the schema produced by
+/// `tools/cia-crest-corpus/render_corpus.py::truth_record`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DocumentGroundTruth {
+    pub identifier: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub year: Option<i32>,
+    #[serde(default)]
+    pub source_pdf: Option<String>,
+    #[serde(default)]
+    pub cab: Option<CabGroundTruth>,
+    pub pages: Vec<PageGroundTruth>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// CAB (Classification Authority Block) ground-truth fields. All
+/// three sub-fields are optional because hand-curated specs may
+/// leave any individual line blank.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CabGroundTruth {
+    #[serde(default)]
+    pub classified_by: Option<String>,
+    #[serde(default)]
+    pub derived_from: Option<String>,
+    #[serde(default)]
+    pub declassify_on: Option<String>,
+}
+
+/// One page of a document fixture: page number, page banner, and the
+/// ordered list of paragraph-level portions.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PageGroundTruth {
+    pub page_num: u32,
+    pub banner: String,
+    pub paragraphs: Vec<ParagraphGroundTruth>,
+}
+
+/// One paragraph in a document fixture. `mark` is `None` for
+/// paragraphs the renderer left unmarked — e.g. the embedded-cable
+/// header block in `CIA-RDP90B01370R000801120005-5` whose body
+/// happens to contain banner-shaped text but is not itself a portion.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ParagraphGroundTruth {
+    #[serde(default)]
+    pub mark: Option<String>,
+    pub text: String,
+    #[serde(default)]
+    pub is_table: bool,
 }
 
 /// Load the `.expected.json` sidecar for a given fixture path.
@@ -115,4 +175,56 @@ pub fn load_expected(fixture_path: &Path) -> ExpectedFixture {
 /// Load fixture text content as bytes.
 pub fn load_fixture(path: &Path) -> Vec<u8> {
     std::fs::read(path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
+}
+
+/// Returns paths to every rendered marked-document fixture under
+/// `tests/corpus/documents/marked/*.md`, sorted by file name.
+///
+/// Each path's sibling `tests/corpus/documents/<stem>.expected.json`
+/// carries the structural ground truth (banner per page, mark per
+/// paragraph, CAB) via [`ExpectedFixture::ground_truth`].
+pub fn marked_document_fixtures() -> Vec<PathBuf> {
+    let dir = corpus_root().join("documents").join("marked");
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .expect("failed to read documents/marked directory")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// Load the per-document ground-truth fixture (`<stem>.expected.json`)
+/// for a marked document path under `tests/corpus/documents/marked/`.
+///
+/// Panics if the sidecar is missing, malformed, or lacks the
+/// `ground_truth` field — the documents corpus contract requires
+/// every marked fixture to carry structural ground truth.
+pub fn load_document_ground_truth(marked_path: &Path) -> (ExpectedFixture, DocumentGroundTruth) {
+    let stem = marked_path
+        .file_stem()
+        .unwrap_or_else(|| panic!("marked path has no file stem: {}", marked_path.display()));
+    let expected_path = corpus_root()
+        .join("documents")
+        .join(format!("{}.expected.json", stem.to_string_lossy()));
+    if !expected_path.exists() {
+        panic!(
+            "missing expected fixture for {}: {}",
+            marked_path.display(),
+            expected_path.display()
+        );
+    }
+    let content = std::fs::read_to_string(&expected_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", expected_path.display()));
+    let fixture: ExpectedFixture = serde_json::from_str(&content)
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", expected_path.display()));
+    let ground_truth = fixture
+        .ground_truth
+        .clone()
+        .unwrap_or_else(|| panic!("{} missing ground_truth field", expected_path.display()));
+    (fixture, ground_truth)
 }

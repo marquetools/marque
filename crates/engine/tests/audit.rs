@@ -824,7 +824,10 @@ fn decoder_path_record_shape() {
                 | FeatureId::SupersededToken
                 | FeatureId::BaseRateCommonMarking
                 | FeatureId::StrictContextClassification
-                | FeatureId::CorpusOverrideInEffect => {}
+                | FeatureId::CorpusOverrideInEffect
+                | FeatureId::LinePositionPenalty
+                | FeatureId::BulletAnchorBonus
+                | FeatureId::LowercaseSurroundingContext => {}
             }
             assert!(
                 feature.delta.is_finite(),
