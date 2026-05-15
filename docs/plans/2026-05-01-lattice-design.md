@@ -1301,7 +1301,7 @@ fills the gap.
   category 2 (Non-US Protective Markings) — the cross-category
   routing decision is governed by §H.7 p122 (above), not by Table 4
   category 6 ordering.
-- **§G.1 Table 5 pp39-40** — ARH by Registered Marking. Lists ATOMAL,
+- **§G.2 Table 5 pp39-40** — ARH by Registered Marking. Lists ATOMAL,
   BALK, BOHEMIA at p40 under "Non-US Protective Markings". ATOMAL's
   ARH row reads "Requires ATOMAL read-in." which is independent of
   the §H.7 p122 routing decision; this entry confirms ATOMAL is a
@@ -1421,7 +1421,7 @@ Join: OptionalSingleton::join(a, b) = a ∨ b
 ```
 
 §-authority: §H.7 p122 (ATOMAL travels in AEA category per worked
-example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`); §G.1 Table 5 p40
+example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`); §G.2 Table 5 p40
 (ATOMAL is a registered standalone control marking with no
 enumerated sub-markings — the `AtomalBlock` is an empty carrier
 struct that mirrors `RdBlock` / `FrdBlock` so a future CAPCO grammar
@@ -1462,7 +1462,7 @@ in the `Constraint` / `PageRewrite` catalogs on `CapcoScheme`:
 
 | Constraint shape | §-authority | Surface |
 |---|---|---|
-| `CNWDI requires RD` | §H.6 p106 ("must be used as a subset of RD") | `Constraint::Requires { left: TOK_CNWDI, right: TOK_RD }` row E067 on `CapcoScheme::build_constraints()`. The lattice admits `cnwdi=true, primary=None` as a syntactically-reachable but operationally-invalid state; E067 catches the violation at validation time. |
+| `CNWDI requires RD` | §H.6 p106 ("must be used as a subset of RD") | **Enforced by data model, NOT by constraint catalog.** CNWDI is structurally a `bool` field on `AeaMarking::Rd(RdBlock { cnwdi })` in `marque-ism`'s type system — there is no `AeaMarking::Cnwdi` variant. A portion that bears CNWDI necessarily bears RD because CNWDI presence is gated by the surrounding `Rd(...)` variant. An earlier draft added a `Constraint::Requires { TOK_CNWDI, TOK_RD }` row but Copilot review caught it as unreachable: `TOK_CNWDI` is satisfied only by `Rd(rd) if rd.cnwdi`, so `TOK_RD` is always present when `TOK_CNWDI` is. §H.6 p106's "subset of RD" invariant lives at the data-model level. **If a future change splits CNWDI into a sibling variant**, the satisfies_attrs predicate for `TOK_CNWDI` must be amended AND a Constraint::Requires row re-introduced. |
 | `CNWDI requires class ≥ S` | §H.6 p106 ("May only be used with TOP SECRET RD or SECRET RD") | Already in the class-floor catalog (`E058/CNWDI-classification-floor`, see PR 3b.D T026d). No new wiring in PR 4b-A. |
 | `SIGMA cross-modifier coalescing (banner)` | §H.6 p108-109 + §H.6 p113 | `PageRewrite("capco/frd-sigma-consolidates-into-rd-sigma")` already declared in `CapcoScheme::build_page_rewrites()` at §-citation `§H.6 p113`. PR 4b-A re-doc-comments the row to also cite §H.6 p108-109 (the RD-side vantage) — same algebraic rule from both subsections. Body remains the Phase-3 `never_fires` / `noop_action` stub; PR 4b-B wires the runtime `AeaSet`-driven mutation. |
 | `UCNI strip on classified` | §H.6 p116-117 (DOD UCNI) + p118-119 (DOE UCNI) | Post-projection cross-axis rewrite: when banner classification > U and the AEA set carries UCNI, the UCNI atom is suppressed from banner render AND NOFORN is added to the dissem axis if no stricter FD&R marker exists. **Deferred to PR 4b-C (FOUO eviction pattern wiring)** because the algebraic shape is identical to the FOUO-eviction matrix in §3 (b) — both are classification-ascent strips with NOFORN-promotion. PR 4b-A documents the predicate; the catalog row lands in PR 4b-C. |
@@ -1525,7 +1525,7 @@ faithfully; the post-projection rewrite enforces both rules together
 because they are coupled — suppressing UCNI without promoting NOFORN
 would lose the foreign-disclosure constraint UCNI carries.
 
-**Example 3 — ATOMAL routing (PR 9c.1 §H.7 p122 + §G.1 Table 5 p40):**
+**Example 3 — ATOMAL routing (PR 9c.1 §H.7 p122 + §G.2 Table 5 p40):**
 
 ```
 Input:   (//CTS//RD/ATOMAL//FGI NATO//NOFORN)
@@ -1575,7 +1575,7 @@ canonical re-rendering of legacy `(//CTSA)` etc. into the
   — Example 2 fixture (§H.6 p116/p118 documented predicate; runtime
   wiring deferred to PR 4b-C).
 - `crates/capco/tests/cross_axis_dominance.rs::aea_atomal_routes_to_aea_not_nato_class`
-  — Example 3 fixture (§H.7 p122 + §G.1 Table 5 p40 ATOMAL routing).
+  — Example 3 fixture (§H.7 p122 + §G.2 Table 5 p40 ATOMAL routing).
 - `tests/corpus/lattice/aea-commingling.txt` — corpus fixture
   (already exists from the §8 Declassify-on AEA-commingling case);
   reused for AEA-axis end-to-end coverage.
@@ -1590,10 +1590,17 @@ canonical re-rendering of legacy `(//CTSA)` etc. into the
    silently add RD when CNWDI appears alone — but per §H.6 p106 a
    CNWDI portion without RD is **malformed input that the classifier
    needs to fix**, not a representation marque should silently
-   complete. The lattice admits `cnwdi=true, primary=None` as a
-   syntactically-reachable state precisely so the constraint can
-   catch and surface it. The `Constraint::Requires` row E067 makes
-   the diagnostic emit; the algebra stays clean.
+   complete. **However, the data model in `marque-ism` already
+   enforces this**: CNWDI is a `bool` field on
+   `AeaMarking::Rd(RdBlock { cnwdi })`, not a sibling variant, so
+   `cnwdi=true, primary=None` is *not* a representable state at the
+   `AeaMarking` level — only at `AeaSet`'s internal representation,
+   which can never be populated from valid parser output. The
+   §H.6 p106 invariant therefore lives at the type level, and no
+   `Constraint::Requires` row is needed. (An earlier draft of
+   PR 4b-A added an `E067/cnwdi-requires-rd` row; Copilot review
+   caught it as unreachable per the satisfies_attrs predicate, and
+   it was removed.) The algebra stays clean either way.
 2. **SIGMA cross-modifier coalescing — within-axis lattice law or
    page-scope `PageRewrite`?** → **PageRewrite at page scope.** The
    `FlatSet<SigmaNumber>` axis produces the union faithfully at any
@@ -1888,7 +1895,7 @@ remain unresolved.
 | 10 | **NEW (2026-05-07) — §3 RELIDO incompatibility via `Constraint::Conflicts::RhsFamily(predicate)`** | Lands in PR 3.7 as `Constraint::Conflicts::RhsFamily(FamilyPredicate)` variant + walker dispatch + distributive-expansion proptest (per lattice-preflight M3 correction — NOT "commutativity"). PR 4 compacts PR 3b's enumerated RELIDO rows to ~2 family rows. | §3 (e) + Plan Stage B + Plan Stage D |
 | 11 | **NEW (2026-05-07) — §6 FgiSet consensus-or-fallback already models §4.8** | Resolved 2026-05-07: existing `FgiSet::Present { concealed, countries }` implements §4.8.2 consensus-or-fallback exactly. T108d collapses to doc-comment amendment only at `crates/capco/src/lattice.rs` (Stage D of the plan). Q-FgiSet-vs-§4.8 and Q-5.3 closed. JOINT-attribution explicitly deferred to Stage 4. | §6 entire section + §6 "Open questions — resolved" + Plan Stage D |
 | 12 | **NEW (2026-05-15) — §7.5 AEA category missing from earlier rev** | Resolved 2026-05-15 in PR 4b-A: `AeaSet = Product<SupersessionSet<AeaPrimary>, FlatSet<bool>, FlatSet<u8>, FlatSet<UcniKind>, OptionalSingleton<AtomalBlock>>` per §H.6 pp104-121 + §H.7 p122. Implementation in `crates/capco/src/lattice.rs` alongside `SciSet`/`SarSet`/`FgiSet`. `BoundedLattice` deliberately not implemented (axis 3 SIGMA is open-vocabulary per §H.6 p108). | §7.5 entire section |
-| 13 | **NEW (2026-05-15) — §7.5 CNWDI semantic shape** (Constraint::Requires vs ClosureRule) | **Constraint::Requires.** §H.6 p106 reads as validation requirement, not implicit-default fact-propagation. Row E067 added to `CapcoScheme::build_constraints()`. | §7.5 "Cross-axis constraints" + §7.5 "Open questions — resolved" #1 |
+| 13 | **NEW (2026-05-15) — §7.5 CNWDI semantic shape** (Constraint::Requires vs ClosureRule vs data-model enforcement) | **Data-model enforcement** (revised post-Copilot-review). The initial PR-4b-A draft added `E067/cnwdi-requires-rd` as a `Constraint::Requires` row. Copilot caught it as unreachable: `TOK_CNWDI` is satisfied only by `AeaMarking::Rd(rd) if rd.cnwdi`, so the right-hand side `TOK_RD` is necessarily true whenever the left-hand side is. The §H.6 p106 "subset of RD" invariant lives at the `marque-ism` type level (CNWDI is a `bool` field on `RdBlock`, not a sibling variant), so no runtime constraint row is required. The row was removed before merge. | §7.5 "Cross-axis constraints" + §7.5 "Open questions — resolved" #1 |
 | 14 | **NEW (2026-05-15) — §7.5 SIGMA cross-modifier coalescing** (within-axis lattice vs PageRewrite) | **PageRewrite at page scope.** The existing `capco/frd-sigma-consolidates-into-rd-sigma` row at `§H.6 p113` IS the rd-coalesces-sigmas semantics — same rule from both subsections' vantage. No duplicate row; doc-comment updated to cite both §H.6 p108-109 (RD side) and §H.6 p113 (FRD side). | §7.5 "Cross-axis constraints" + §7.5 "Open questions — resolved" #2 |
 
 **These are the points where the previous attempt skimmed.** Each

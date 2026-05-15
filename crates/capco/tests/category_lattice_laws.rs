@@ -212,7 +212,7 @@ fn aea_ucni_flatset_assoc_comm_idem() {
 // AEA: Axis 5 — `OptionalSingleton<AtomalBlock>`
 // ===========================================================================
 
-/// CAPCO-2016 §H.7 p122 + §G.1 Table 5 p40: ATOMAL composes as
+/// CAPCO-2016 §H.7 p122 + §G.2 Table 5 p40: ATOMAL composes as
 /// `OptionalSingleton::join = a.or(b)`. Tested by exhausting the
 /// four-element pair-state.
 #[test]
@@ -360,4 +360,132 @@ fn aea_set_identity_with_default() {
     assert_eq!(rich.join(&bottom), rich);
     assert!(bottom.is_empty());
     assert!(!rich.is_empty());
+}
+
+// ===========================================================================
+// AeaSet — `Lattice::meet` laws
+// ===========================================================================
+//
+// `Lattice` requires meet to be commutative, associative, idempotent, and to
+// absorb against join: `a.meet(a.join(&b)) == a` and `a.join(a.meet(&b)) == a`.
+// The PR 4b-A `AeaSet::meet` impl was not exercised by the original test
+// suite; Copilot review (PR #426) flagged the gap. These tests pin the meet
+// algebra component-wise per sub-axis + the Product-level laws.
+
+/// `AeaSet::meet` is commutative and idempotent over the primary axis
+/// (SupersessionSet meet is the *min* under `Tfni ⊏ Frd ⊏ Rd`).
+#[test]
+fn aea_primary_supersession_meet_assoc_comm_idem() {
+    let rd = AeaSet::from_markings(&[AeaMarking::Rd(RdBlock::default())]);
+    let frd = AeaSet::from_markings(&[AeaMarking::Frd(FrdBlock::default())]);
+    let tfni = AeaSet::from_markings(&[AeaMarking::Tfni]);
+    let bottom = AeaSet::default();
+
+    // Commutativity.
+    assert_eq!(rd.meet(&frd), frd.meet(&rd));
+    assert_eq!(frd.meet(&tfni), tfni.meet(&frd));
+    assert_eq!(rd.meet(&tfni), tfni.meet(&rd));
+
+    // Associativity.
+    assert_eq!(rd.meet(&frd).meet(&tfni), rd.meet(&frd.meet(&tfni)));
+
+    // Idempotency.
+    assert_eq!(rd.meet(&rd), rd);
+    assert_eq!(frd.meet(&frd), frd);
+    assert_eq!(tfni.meet(&tfni), tfni);
+
+    // Meet with bottom is bottom (bottom is the meet absorber).
+    assert_eq!(rd.meet(&bottom), bottom);
+    assert_eq!(bottom.meet(&frd), bottom);
+
+    // Meet matches the §H.6 p104 supersession-min: RD ⊓ FRD = FRD;
+    // RD ⊓ TFNI = TFNI; FRD ⊓ TFNI = TFNI.
+    assert_eq!(rd.meet(&frd).primary(), Some(AeaPrimary::Frd));
+    assert_eq!(rd.meet(&tfni).primary(), Some(AeaPrimary::Tfni));
+    assert_eq!(frd.meet(&tfni).primary(), Some(AeaPrimary::Tfni));
+}
+
+/// `AeaSet::meet` on the SIGMA FlatSet axis is set-intersection.
+#[test]
+fn aea_sigma_flatset_meet_intersect() {
+    let s14_18 = AeaSet::from_markings(&[AeaMarking::Rd(RdBlock {
+        cnwdi: false,
+        sigma: Box::new([14, 18]),
+    })]);
+    let s18_20 = AeaSet::from_markings(&[AeaMarking::Rd(RdBlock {
+        cnwdi: false,
+        sigma: Box::new([18, 20]),
+    })]);
+
+    let intersect: Vec<u8> = s14_18.meet(&s18_20).sigmas().iter().copied().collect();
+    assert_eq!(intersect, vec![18]);
+
+    // Commutativity.
+    assert_eq!(s14_18.meet(&s18_20), s18_20.meet(&s14_18));
+
+    // Idempotency.
+    assert_eq!(s14_18.meet(&s14_18), s14_18);
+}
+
+/// `AeaSet::meet` on the UCNI FlatSet axis is set-intersection.
+#[test]
+fn aea_ucni_flatset_meet_intersect() {
+    let dod = AeaSet::from_markings(&[AeaMarking::DodUcni]);
+    let doe = AeaSet::from_markings(&[AeaMarking::DoeUcni]);
+    let both = AeaSet::from_markings(&[AeaMarking::DodUcni, AeaMarking::DoeUcni]);
+
+    // Disjoint single-element sets meet to empty.
+    assert!(dod.meet(&doe).ucni().is_empty());
+
+    // {Dod} ⊓ {Dod, Doe} = {Dod}.
+    assert_eq!(dod.meet(&both).ucni().len(), 1);
+    assert!(dod.meet(&both).ucni().contains(&UcniKind::DodUcni));
+
+    // Commutativity.
+    assert_eq!(dod.meet(&doe), doe.meet(&dod));
+
+    // Idempotency.
+    assert_eq!(both.meet(&both), both);
+}
+
+/// `AeaSet::meet` on the ATOMAL OptionalSingleton axis is `Option::and`.
+#[test]
+fn aea_atomal_optional_singleton_meet() {
+    let atomal = AeaSet::from_markings(&[AeaMarking::Atomal(AtomalBlock)]);
+    let bottom = AeaSet::default();
+
+    // Some ⊓ Some = Some (AtomalBlock is unit; all Some are equal).
+    assert!(atomal.meet(&atomal).atomal().is_some());
+
+    // Some ⊓ None = None.
+    assert!(atomal.meet(&bottom).atomal().is_none());
+    assert!(bottom.meet(&atomal).atomal().is_none());
+
+    // Commutativity.
+    assert_eq!(atomal.meet(&bottom), bottom.meet(&atomal));
+}
+
+/// Product-level meet absorption against join: `a ⊓ (a ⊔ b) = a` and
+/// `a ⊔ (a ⊓ b) = a`. These are the two absorption laws every lattice must
+/// satisfy.
+#[test]
+fn aea_set_meet_join_absorption() {
+    let a = AeaSet::from_markings(&[AeaMarking::Rd(RdBlock {
+        cnwdi: true,
+        sigma: Box::new([14]),
+    })]);
+    let b = AeaSet::from_markings(&[
+        AeaMarking::Frd(FrdBlock {
+            sigma: Box::new([18]),
+        }),
+        AeaMarking::DodUcni,
+    ]);
+
+    // Absorption: a ⊓ (a ⊔ b) = a.
+    let a_join_b = a.join(&b);
+    assert_eq!(a.meet(&a_join_b), a);
+
+    // Absorption: a ⊔ (a ⊓ b) = a.
+    let a_meet_b = a.meet(&b);
+    assert_eq!(a.join(&a_meet_b), a);
 }

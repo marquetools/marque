@@ -2435,39 +2435,41 @@ impl CapcoScheme {
                 name: "E021/aea-requires-noforn",
                 label: "CAPCO-2016 §H.6 p104",
             },
-            // ---- E067: CNWDI requires RD (§H.6 p106) -------------
+            // ---- §H.6 p106 CNWDI subset-of-RD: enforced by data
+            //      model, NO Constraint row needed -----------------
             //
-            // §H.6 CNWDI entry p106 (Relationship(s) to Other
-            // Markings):
-            //   "- May only be used with TOP SECRET RD or SECRET RD.
-            //    - Must be used as a subset of RD in accordance
-            //      with DOD or joint DOE-DoD guidance."
+            // CNWDI is structurally a `bool` field on
+            // `AeaMarking::Rd(RdBlock { cnwdi })` in `marque-ism`'s
+            // type system. There is no `AeaMarking::Cnwdi` variant.
+            // A portion that bears CNWDI necessarily bears RD
+            // because CNWDI presence is gated by the surrounding
+            // `Rd(...)` variant.
             //
-            // The CNWDI marking is a sub-modifier on RD: a portion
-            // marked CNWDI without RD is malformed input. The class-
-            // floor constraint (`E058/CNWDI-classification-floor`)
-            // separately enforces the "TOP SECRET RD or SECRET RD"
-            // class half; this row enforces the "subset of RD"
-            // companion-required half.
+            // The `TOK_CNWDI` sentinel is satisfied only by
+            // `AeaMarking::Rd(rd) if rd.cnwdi` (see `satisfies_attrs`
+            // earlier in this file); `TOK_RD` is satisfied by any
+            // `AeaMarking::Rd(_)`. The two are not independently
+            // settable — `TOK_CNWDI` strictly implies `TOK_RD` at
+            // the predicate level. An earlier draft of PR 4b-A
+            // added a `Constraint::Requires { TOK_CNWDI, TOK_RD }`
+            // row to enforce the §H.6 p106 "subset of RD" rule, but
+            // Copilot review caught that the row is unreachable —
+            // it can never fire because the right-hand side is
+            // necessarily true whenever the left-hand side is true.
             //
-            // PR 4b-A (this PR) adds this row alongside `AeaSet`'s
-            // landing. The `AeaSet` lattice admits the syntactically-
-            // reachable state `cnwdi=true, primary=None` (the lattice
-            // is intentionally permissive so the validator can catch
-            // the violation rather than the lattice silently
-            // synthesizing RD). E067 catches the violation at
-            // `CapcoScheme::validate()` time via the standard dyadic
-            // `Requires` evaluator.
+            // The §H.6 p106 invariant therefore lives at the data-
+            // model level rather than the constraint-catalog level.
+            // See `docs/plans/2026-05-01-lattice-design.md` §7.5
+            // "Cross-axis constraints" for the §-cited record of
+            // this decision.
             //
-            // Per Constitution VIII: §H.6 p106 verified at
-            // `crates/capco/docs/CAPCO-2016.md:2584-2586` (RD
-            // subset clause) at PR 4b-A landing time.
-            Constraint::Requires {
-                name: "E067/cnwdi-requires-rd",
-                left: TokenRef::Token(TOK_CNWDI),
-                right: TokenRef::Token(TOK_RD),
-                label: "CAPCO-2016 §H.6 p106",
-            },
+            // If a future change to `AeaMarking` ever splits CNWDI
+            // into a sibling variant (decoupling it from `Rd`), the
+            // §H.6 p106 enforcement MUST be re-introduced as a
+            // Constraint::Requires or equivalent — and the
+            // satisfies_attrs predicate for `TOK_CNWDI` MUST be
+            // amended to no longer match through the `Rd(...)`
+            // variant.
             // ---- E022 retired in PR 3b.D (T026d) -----------------
             //
             // The CNWDI classification floor moved into the class-

@@ -23,7 +23,7 @@
 //!    Tested as the documented predicate; the runtime rewrite
 //!    lands in PR 4b-C.
 //! 4. **ATOMAL routes to AEA, not classification** — §H.7 p122 +
-//!    §G.1 Table 5 p40 (ATOMAL is a registered standalone control
+//!    §G.2 Table 5 p40 (ATOMAL is a registered standalone control
 //!    marking that travels in the AEA category alongside RD/FRD/TFNI).
 
 use marque_capco::lattice::{AeaPrimary, AeaSet, UcniKind};
@@ -195,7 +195,7 @@ fn aea_ucni_strips_when_classified() {
 /// //NOFORN, where ATOMAL is a NATO Atomic Energy Act marking that
 /// follows the registered US Atomic Energy Act marking RD.*"
 ///
-/// Confirmed by §G.1 Table 5 p40 (Conceptual Access Rights and
+/// Confirmed by §G.2 Table 5 p40 (Conceptual Access Rights and
 /// Handling by Registered Marking): ATOMAL is a registered standalone
 /// control marking under "Non-US Protective Markings" with an
 /// "ATOMAL read-in" handling requirement — the marking's *handling

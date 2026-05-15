@@ -867,11 +867,19 @@ impl AeaSet {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        // Axis 1 + cross-axis SIGMA coalescing per §H.6 p108-109.
-        // SIGMA rides on the primary axis output (RD or FRD); under
-        // Tfni-primary the SIGMA set is silently dropped because §H.6
-        // p120 has no SIGMA modifier and the inputs that produced it
-        // would have come from RD or FRD portions that got superseded.
+        // Emission order matches the §G.1 Table 4 cat-6 register:
+        // `RD → FRD → DOD UCNI → DOE UCNI → TFNI → ATOMAL`. The
+        // primary axis collapses to at most one of {RD, FRD, TFNI}
+        // under supersession, and TFNI emits AFTER the UCNI atoms
+        // per Table 4's register-order — not in the same arm as RD
+        // and FRD. SIGMA rides on whichever of RD or FRD survives
+        // per the §H.6 p108-109 cross-modifier coalescing rule;
+        // under Tfni-primary the SIGMA set is silently dropped
+        // because §H.6 p120 has no SIGMA modifier and the inputs
+        // that produced it came from RD or FRD portions that got
+        // superseded.
+
+        // Step 1: RD or FRD (if either is the primary).
         match self.primary {
             Some(AeaPrimary::Rd) => {
                 out.push(AeaMarking::Rd(RdBlock {
@@ -880,35 +888,35 @@ impl AeaSet {
                 }));
             }
             Some(AeaPrimary::Frd) => {
-                // CNWDI is RD-only per §H.6 p106 — if the lattice
-                // joined to `cnwdi=true, primary=Frd`, the input was
-                // malformed (caught by the E067/cnwdi-requires-rd
-                // Constraint). The render here drops cnwdi silently
-                // because the FRD block has no CNWDI modifier.
+                // CNWDI is RD-only per §H.6 p106 — the marque-ism
+                // type system already enforces this (CNWDI is a
+                // `bool` field on `RdBlock`, not on `FrdBlock`), so
+                // a `cnwdi=true, primary=Frd` state cannot arise
+                // from valid parser output. The render here drops
+                // cnwdi silently as a defensive measure against
+                // lattice-internal-only constructions.
                 out.push(AeaMarking::Frd(FrdBlock { sigma: sigmas }));
             }
-            Some(AeaPrimary::Tfni) => {
-                out.push(AeaMarking::Tfni);
-            }
-            None => {
-                // No primary AEA marking on the page; CNWDI / SIGMA
-                // alone are not renderable without a primary anchor.
-                // The E067 Constraint catches CNWDI-without-RD; SIGMA
-                // without a primary is similarly invalid input but
-                // not currently constrained (§H.6 p108 says SIGMA
-                // "Requires RD" but Marque does not yet emit a
-                // `SIGMA-requires-RD` constraint — tracked as future
-                // work, not regression here).
+            Some(AeaPrimary::Tfni) | None => {
+                // TFNI emission is deferred to Step 3 (post-UCNI)
+                // to honor the §G.1 Table 4 register order.
+                // None — no primary on the page; CNWDI / SIGMA
+                // alone are not renderable without a primary
+                // anchor.
             }
         }
-        // Axis 4 — UCNI variants in §G.1 Table 4 order.
+        // Step 2: UCNI variants per §G.1 Table 4 register order.
         if self.ucni.contains(&UcniKind::DodUcni) {
             out.push(AeaMarking::DodUcni);
         }
         if self.ucni.contains(&UcniKind::DoeUcni) {
             out.push(AeaMarking::DoeUcni);
         }
-        // Axis 5 — ATOMAL.
+        // Step 3: TFNI (if primary; emits AFTER UCNI per Table 4).
+        if matches!(self.primary, Some(AeaPrimary::Tfni)) {
+            out.push(AeaMarking::Tfni);
+        }
+        // Step 4: ATOMAL.
         if let Some(block) = self.atomal {
             out.push(AeaMarking::Atomal(block));
         }
