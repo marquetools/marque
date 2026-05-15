@@ -22,7 +22,10 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{CanonicalAttrs, Classification, CountryCode, PageContext, Span, TokenKind};
+use marque_ism::{
+    CanonicalAttrs, Classification, CountryCode, MarkingClassification, PageContext, Span,
+    TokenKind,
+};
 use marque_scheme::{
     AggregationOp,
     ApplyIntentError,
@@ -313,19 +316,42 @@ impl CapcoMarking {
 
         let mut out = CanonicalAttrs::default();
 
-        // Axis 1: classification — variant-preserving OrdMax.
-        // §H.1 pp47-54 + §H.7 pp123-125.
-        out.classification = ClassificationLattice::from_attrs_iter(portions).into_inner();
-
-        // JointSet may override the classification when DisunityCollapse
-        // fires (banner becomes Us(highest_level)) or when
-        // UnanimousProducers fires (banner becomes Joint{...}). When
-        // JointSet is Bottom (mixed-US case or no JOINT portions),
-        // ClassificationLattice wins.
+        // Axis 1: classification — variant-preserving OrdMax with
+        // JointSet override. §H.1 pp47-54 + §H.7 pp123-125 +
+        // §H.3 p57 line 1288.
+        //
+        // Decision tree:
+        // - JointSet::UnanimousProducers → banner is Joint(_,_) and
+        //   ClassificationLattice's output is replaced.
+        // - JointSet::DisunityCollapse → banner is Us(highest_level)
+        //   from JointSet (non-US producers ride to FGI separately).
+        // - JointSet::Bottom (mixed-US case OR no JOINT portions) →
+        //   ClassificationLattice wins, BUT any Joint(_) variants on
+        //   per-portion classifications are flattened to their
+        //   effective_level (Us) so the banner doesn't carry forward
+        //   JOINT shape per §H.3 p57 line 1288.
         let joint_set = JointSet::from_attrs_iter(portions);
-        if let Some(mc) = joint_set.to_marking_classification() {
-            out.classification = Some(mc);
-        }
+        out.classification = match joint_set.to_marking_classification() {
+            Some(mc) => Some(mc),
+            None => {
+                // Filter Joint(_) variants out of the
+                // ClassificationLattice input so the lattice picks
+                // the highest US-level variant rather than carrying
+                // a Joint-shape into a mixed-US banner. §H.3 p57
+                // line 1288.
+                let filtered: Vec<CanonicalAttrs> = portions
+                    .iter()
+                    .map(|p| {
+                        let mut q = p.clone();
+                        if let Some(MarkingClassification::Joint(j)) = &p.classification {
+                            q.classification = Some(MarkingClassification::Us(j.level));
+                        }
+                        q
+                    })
+                    .collect();
+                ClassificationLattice::from_attrs_iter(&filtered).into_inner()
+            }
+        };
 
         // Build a temporary PageContext for the axes that PR 4b-B
         // deliberately leaves on the PageContext path (see "two
