@@ -1096,16 +1096,22 @@ mod joint_set {
     }
 
     #[test]
-    fn joint_mixed_with_us_portions_returns_bottom_no_w004() {
+    fn joint_mixed_with_us_portions_returns_mixed_no_w004() {
         // §H.3 p57: JOINT does not roll up in US documents.
-        // No W004 fires; the JOINT non-US producers ride to FgiSet
-        // via the existing PageContext path.
+        // PR 4b-B follow-up C-3: the constructor returns `Mixed`
+        // (a distinct, absorbing state) — pre-fix it returned
+        // `Bottom`, which `join` treats as the identity, breaking
+        // associativity under grouped folds. No W004 fires on
+        // `Mixed`; the JOINT non-US producers ride to FgiSet via
+        // the existing PageContext path.
         let portions = [
             joint_portion(Classification::Secret, &["USA", "GBR"]),
             us_portion(Classification::Secret),
         ];
         let s = JointSet::from_attrs_iter(&portions);
-        assert!(matches!(s, JointSet::Bottom), "expected Bottom, got {s:?}");
+        assert!(matches!(s, JointSet::Mixed), "expected Mixed, got {s:?}");
+        assert!(s.is_mixed());
+        assert!(!s.is_disunity_collapse());
     }
 
     #[test]
@@ -1121,17 +1127,21 @@ mod joint_set {
 
     #[test]
     fn joint_set_lattice_laws_assoc_comm_idem() {
-        // Three-variant state space exhausted as 3×3 × representatives
-        // — assoc/comm/idem are pinned over the carefully-chosen
-        // representatives that exercise each transition.
+        // Four-variant state space exhausted as 4×4×4 over
+        // representatives that exercise each transition. C-3
+        // (PR 4b-B follow-up) added the `Mixed` variant; without
+        // it, `(Mixed + Bottom).join(Unanimous)` would have
+        // resurrected an `UnanimousProducers` value, breaking
+        // associativity.
         let bottom = JointSet::Bottom;
+        let mixed = JointSet::Mixed;
         let unanim =
             JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
         let disunity = JointSet::from_attrs_iter(&[
             joint_portion(Classification::Secret, &["USA", "GBR"]),
             joint_portion(Classification::Secret, &["USA", "CAN"]),
         ]);
-        let states = [bottom, unanim, disunity];
+        let states = [bottom, mixed, unanim, disunity];
         for a in &states {
             for b in &states {
                 // Commutativity.
@@ -1154,6 +1164,26 @@ mod joint_set {
             assert_eq!(bottom.join(s), s.clone());
             assert_eq!(s.join(&bottom), s.clone());
         }
+    }
+
+    #[test]
+    fn joint_set_mixed_absorbs_unanimous_under_grouped_join() {
+        // C-3 (PR 4b-B follow-up) regression case: with the pre-fix
+        // 3-variant state space, `Mixed` was conflated with `Bottom`.
+        // Grouped joins could resurrect `UnanimousProducers` from a
+        // page that should have collapsed to mixed JOINT+US:
+        //
+        //   [JOINT, US] becomes `Bottom` (under the pre-fix);
+        //   `Bottom.join(JointSet::from([JOINT])) = JointSet::from([JOINT])`
+        //   → JOINT banner on a mixed page (wrong per §H.3 p57).
+        //
+        // With `Mixed` as a distinct absorbing state, the same fold
+        // stays at `Mixed`, preserving the §H.3 p57 decision.
+        let mixed = JointSet::Mixed;
+        let unanim =
+            JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
+        assert_eq!(mixed.join(&unanim), JointSet::Mixed);
+        assert_eq!(unanim.join(&mixed), JointSet::Mixed);
     }
 }
 

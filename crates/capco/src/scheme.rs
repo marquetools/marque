@@ -325,7 +325,8 @@ impl CapcoMarking {
         //   ClassificationLattice's output is replaced.
         // - JointSet::DisunityCollapse → banner is Us(highest_level)
         //   from JointSet (non-US producers ride to FGI separately).
-        // - JointSet::Bottom (mixed-US case OR no JOINT portions) →
+        // - JointSet::Mixed (JOINT + non-JOINT both seen, §H.3 p57)
+        //   AND JointSet::Bottom (no JOINT portions) →
         //   ClassificationLattice wins, BUT any Joint(_) variants on
         //   per-portion classifications are flattened to their
         //   effective_level (Us) so the banner doesn't carry forward

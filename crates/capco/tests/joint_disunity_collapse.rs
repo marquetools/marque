@@ -100,13 +100,18 @@ fn joint_disunity_two_portions_different_producers_collapses_to_fgi() {
 #[test]
 fn joint_mixed_with_us_portions_no_w004_fires() {
     // §H.3 p57: mixed (JOINT + US) → JOINT does not roll
-    // up. Lattice returns Bottom; the existing PageContext path
-    // handles FGI migration.
+    // up. Lattice returns `Mixed` (PR 4b-B follow-up C-3: was
+    // `Bottom` before but that conflated identity with absorption,
+    // breaking associativity under grouped joins); the existing
+    // PageContext path handles FGI migration.
     let mut us = CanonicalAttrs::default();
     us.classification = Some(MarkingClassification::Us(Classification::Secret));
     let portions = [joint_portion(Classification::Secret, &["USA", "GBR"]), us];
     let s = JointSet::from_attrs_iter(&portions);
-    assert!(matches!(s, JointSet::Bottom));
+    assert!(matches!(s, JointSet::Mixed));
+    assert!(s.is_mixed());
+    // W004 only fires on DisunityCollapse; Mixed should not fire it.
+    assert!(!s.is_disunity_collapse());
 }
 
 #[test]

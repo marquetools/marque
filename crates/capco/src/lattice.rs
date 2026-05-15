@@ -1693,23 +1693,38 @@ impl Lattice for NatoDissemSet {
 
 /// Lattice form of the JOINT classification axis.
 ///
-/// The state space is a closed three-variant enum that captures the
-/// decision tree from CAPCO-2016 §H.3 + §H.7:
+/// The state space is a closed four-variant enum that captures the
+/// decision tree from CAPCO-2016 §H.3 + §H.7. The `Mixed` variant
+/// (added in PR 4b-B follow-up C-3) distinguishes "no JOINT seen"
+/// (the lattice identity `Bottom`) from "JOINT and non-JOINT both
+/// observed" (an absorbing state) so `join` stays **associative**.
 ///
-/// - Every-portion JOINT, all producer lists match → roll up.
-/// - Every-portion JOINT, lists differ → collapse to FGI.
-/// - Mixed with US portions → bottom.
+/// - `Bottom`: no JOINT-bearing portion observed. Lattice identity.
+/// - `UnanimousProducers`: every observed portion is JOINT with the
+///   same producer set. The banner is `//JOINT [class] [LIST]` per
+///   §H.3 p56.
+/// - `DisunityCollapse`: every observed portion is JOINT but the
+///   producer lists differ. Non-US producers migrate to FGI per
+///   §H.7 p123.
+/// - `Mixed`: at least one JOINT portion AND at least one
+///   non-JOINT portion observed. Absorbing for the JOINT axis —
+///   §H.3 p57 "JOINT marking is not carried forward to the banner
+///   line in US documents." Once `Mixed`, the JOINT axis cannot
+///   resurrect to `UnanimousProducers` regardless of subsequent
+///   joins.
 ///
 /// The transitions on `Lattice::join` are structural operations on
 /// the deterministic state space — NOT "normalization" in the
 /// `Lattice` module-docs Gotcha-1 sense — and the property test
-/// `joint_disunity_lattice_laws` exhausts the 27-element
-/// state-space cube to verify assoc/comm/idem.
+/// `joint_disunity_lattice_laws` exhausts the state-space cube to
+/// verify assoc/comm/idem.
 ///
 /// **The W004 Warn rule** (in `crates/capco/src/rules.rs`) reads
 /// the post-projection JointSet state from the engine's
-/// `PageContext` flow. The lattice does not itself emit the
-/// diagnostic; the rule does.
+/// `PageContext` flow. W004 fires only on `DisunityCollapse`;
+/// `Mixed` is the §H.3 p57 case where FGI migration rides through
+/// `expected_fgi_marker` and no W004 fires. The lattice does not
+/// itself emit the diagnostic; the rule does.
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 ///
@@ -1721,9 +1736,7 @@ impl Lattice for NatoDissemSet {
 ///   non-US producer migration).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum JointSet {
-    /// No JOINT portions on the page, OR a mix of JOINT-with-US
-    /// portions (§H.3 p57 — JOINT does not roll up in
-    /// US documents). The lattice bottom.
+    /// No JOINT-bearing portion observed. Lattice identity for `join`.
     #[default]
     Bottom,
 
@@ -1748,6 +1761,14 @@ pub enum JointSet {
         /// Union of non-US producers across JOINT portions.
         union_non_us_producers: BTreeSet<CountryCode>,
     },
+
+    /// At least one JOINT portion AND at least one non-JOINT
+    /// portion observed. §H.3 p57: JOINT does not roll up to the
+    /// banner in US documents. Absorbing for the JOINT axis — once
+    /// `Mixed`, subsequent joins cannot resurrect a JOINT roll-up
+    /// state. Non-US producers ride to `FgiSet` via
+    /// `expected_fgi_marker`; no W004 fires on `Mixed`.
+    Mixed,
 }
 
 impl JointSet {
@@ -1761,12 +1782,12 @@ impl JointSet {
     /// Per §H.3 p57, the all-JOINT-or-not distinction
     /// drives the state-space branch:
     ///
-    /// 1. **No JOINT portions** → `Bottom`.
+    /// 1. **No portions / no JOINT portion** → `Bottom` (identity).
     /// 2. **All portions JOINT** with identical producer lists →
     ///    `UnanimousProducers { OrdMax(level), countries }`.
     /// 3. **All portions JOINT** with disagreeing producer lists →
     ///    `DisunityCollapse { OrdMax(level), union_non_us }`.
-    /// 4. **Mixed JOINT + US** → `Bottom`. The §H.3 p57
+    /// 4. **Mixed JOINT + non-JOINT** → `Mixed`. The §H.3 p57
     ///    "JOINT does not roll up in US documents" rule. **No W004
     ///    fires** in this case — JOINT non-US producers ride to FGI
     ///    via the existing PageContext-resident `expected_fgi_marker`
@@ -1801,9 +1822,9 @@ impl JointSet {
         // §H.3 p57: in US documents (mixed JOINT + US),
         // JOINT does not roll up. The FGI-migration path is the
         // existing PageContext::expected_fgi_marker; we return
-        // Bottom and no W004 fires.
+        // `Mixed` (absorbing) and no W004 fires.
         if has_non_joint {
-            return Self::Bottom;
+            return Self::Mixed;
         }
 
         // All portions JOINT: check unanimity on producer lists.
@@ -1868,27 +1889,38 @@ impl JointSet {
     }
 
     /// Read access to the highest level observed across JOINT
-    /// portions; `None` for `Bottom`.
+    /// portions; `None` for `Bottom` and `Mixed` (the latter does
+    /// not carry a per-axis level since JOINT doesn't roll up).
     pub fn highest_level(&self) -> Option<Classification> {
         match self {
-            Self::Bottom => None,
+            Self::Bottom | Self::Mixed => None,
             Self::UnanimousProducers { level, .. } => Some(*level),
             Self::DisunityCollapse { highest_level, .. } => Some(*highest_level),
         }
     }
 
+    /// Whether the page is in the `Mixed` state — JOINT and non-JOINT
+    /// portions both observed. JOINT does not roll up to the banner
+    /// in this case (§H.3 p57).
+    pub fn is_mixed(&self) -> bool {
+        matches!(self, Self::Mixed)
+    }
+
     /// Convert back to a `MarkingClassification` for the banner.
     ///
-    /// - `Bottom` → `None` (the banner reads the class from
-    ///   `ClassificationLattice` and FGI from `FgiSet` per the
-    ///   existing PageContext flow).
+    /// - `Bottom` → `None` (no JOINT portion observed; the banner
+    ///   reads the class from `ClassificationLattice` and FGI from
+    ///   `FgiSet` per the existing PageContext flow).
+    /// - `Mixed` → `None` (§H.3 p57: JOINT does not roll up in US
+    ///   documents; the banner reads the class from `Us(_)` and FGI
+    ///   from the cross-axis fold).
     /// - `UnanimousProducers { level, producers }` → `Some(Joint(...))`.
     /// - `DisunityCollapse { highest_level, .. }` → `Some(Us(highest_level))`
     ///   (the non-US producers ride to FgiSet via a separate flow —
     ///   see `Commit 7 CapcoMarking::join` rewrite).
     pub fn to_marking_classification(&self) -> Option<MarkingClassification> {
         match self {
-            Self::Bottom => None,
+            Self::Bottom | Self::Mixed => None,
             Self::UnanimousProducers { level, producers } => {
                 let countries: Box<[CountryCode]> = producers
                     .iter()
@@ -1911,6 +1943,10 @@ impl Lattice for JointSet {
     /// Compose two JointSets per the §H.3 + §H.7 transition table:
     ///
     /// - `Bottom ⊔ x = x` (bottom-identity).
+    /// - `Mixed ⊔ x = Mixed` for `x ∈ {Mixed, Unanimous, Disunity}`
+    ///   (absorbing — §H.3 p57: once JOINT and non-JOINT both
+    ///   observed, JOINT cannot resurrect a roll-up state regardless
+    ///   of subsequent joins).
     /// - `UnanimousProducers ⊔ UnanimousProducers` with same
     ///   producer set → `UnanimousProducers { max(l1,l2), p }`.
     /// - `UnanimousProducers ⊔ UnanimousProducers` with different
@@ -1922,6 +1958,10 @@ impl Lattice for JointSet {
     ///   with union of non-US producers and max level.
     fn join(&self, other: &Self) -> Self {
         match (self, other) {
+            // Mixed is absorbing for non-Bottom operands. §H.3 p57.
+            // We deliberately let Bottom ⊔ Mixed = Mixed propagate
+            // (Bottom is the identity, Mixed is the new state).
+            (Self::Mixed, _) | (_, Self::Mixed) => Self::Mixed,
             (Self::Bottom, x) | (x, Self::Bottom) => x.clone(),
             (
                 Self::UnanimousProducers {
