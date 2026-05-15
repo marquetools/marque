@@ -4199,8 +4199,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 //
 // FD&R-dominator family: any of these present on a marking/page means an
 // explicit FD&R decision exists; the implicit-default trio (Trio 1, 2, 3)
-// should NOT fire. Per CAPCO-2016 §B.3 Table 2 p21 (FD&R Markings Summary)
-// and `marque-applied.md` §4.7.1.
+// should NOT fire. Per CAPCO-2016 §B.3.a p19 (canonical enumeration —
+// "NOFORN, REL TO, RELIDO, or DISPLAY ONLY"), §B.3 Table 2 pp 21-22
+// (scenario-summary table, derivative), and `marque-applied.md` §4.7.1.
 //
 // Includes:
 //   - NOFORN (most restrictive FD&R, top of chain per §H.8 p145)
@@ -4212,7 +4213,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 //
 // Note: LES-NF and SBU-NF are NOT included. They are non-IC dissem controls
 // that carry NOFORN treatment via PageRewrite, not FD&R markers themselves.
-// The §B.3 Table 2 enumeration is the authoritative source for the FD&R set.
+// §B.3.a p19 is the authoritative enumeration of the FD&R set; §B.3 Table 2
+// pp 21-22 is the per-scenario marking-summary table (derivative, not the
+// definition).
 //
 // Algebraic note (re: `marque-applied.md` §4.7.3 has_fdr definition):
 // §4.7.3 defines `has_fdr(x)` to include LES-NF / SBU-NF for the

@@ -1019,9 +1019,21 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
     /// ("NOFORN, REL TO, RELIDO, or DISPLAY ONLY"; §B.3 Table 2 pp
     /// 21-22 is a scenario-summary table, not the definition) —
     /// so this method and the slice stay in lock-step against a
-    /// single source-of-truth. Adding *any* entry to
-    /// `FDR_DOMINATORS` (whether a `TokenRef::Token` or a
-    /// `TokenRef::AnyInCategory`) automatically updates this method.
+    /// single source-of-truth.
+    ///
+    /// **Adding a `TokenRef::Token` entry to `FDR_DOMINATORS`
+    /// automatically updates this method** — the iteration walks
+    /// every entry and matches `Token` arms by `TokenId` equality.
+    /// **Adding a `TokenRef::AnyInCategory(CAT_X)` entry only
+    /// admits tokens that `capco_token_category` routes to
+    /// `Some(CAT_X)`** — the override receives a single `TokenId`
+    /// and must route through `capco_token_category` to hit the
+    /// category arm. If a new `AnyInCategory(CAT_NEW)` lands and
+    /// `capco_token_category` has no arm for `CAT_NEW`'s
+    /// participating tokens, those tokens silently fall through
+    /// to `false`. See the maintenance contract on
+    /// `FDR_DOMINATORS` in `crates/capco/src/scheme.rs` for the
+    /// dual-update rule.
     ///
     /// # Why `FDR_DOMINATORS` and not `is_fdr_dominator`?
     ///

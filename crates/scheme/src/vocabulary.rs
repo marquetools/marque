@@ -336,11 +336,19 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     ///    NOFORN by default (Trio 1 of `marque-applied.md` §4.7.1):
     ///    an FD&R token already present in a portion suppresses the
     ///    implicit-NOFORN inference.
-    /// 3. The bidirectional definition site for the FD&R dominator
-    ///    list — the static slice the constraint-evaluator's family
-    ///    predicate `is_fdr_dominator` uses for the
-    ///    [`crate::constraint::Constraint::ConflictsWithFamily`]
-    ///    dispatch in `marque-capco`.
+    /// 3. The canonical FD&R-set-membership accessor. In `marque-capco`
+    ///    the implementation iterates a private `FDR_DOMINATORS` slice
+    ///    (in `crates/capco/src/scheme.rs`); that same slice is the
+    ///    data backing `Constraint::ConflictsWithFamily` predicates
+    ///    such as `is_fdr_dominator`. **The two predicates answer
+    ///    different questions** and intentionally diverge on RELIDO:
+    ///    `is_fdr_dissem` answers "is `token` an FD&R *member*" and
+    ///    admits RELIDO; `is_fdr_dominator` answers "is `token` an
+    ///    FD&R *dominator over RELIDO*" for the RELIDO-conflict
+    ///    family role and excludes RELIDO (RELIDO-vs-RELIDO is a
+    ///    tautology). Do not delegate `is_fdr_dissem` through
+    ///    `is_fdr_dominator` — see the maintenance contract on
+    ///    `FDR_DOMINATORS` in `crates/capco/src/scheme.rs`.
     ///
     /// # Default impl returns `false`
     ///
