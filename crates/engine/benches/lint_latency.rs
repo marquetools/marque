@@ -166,5 +166,103 @@ fn decoder_latency_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, lint_latency_benchmark, decoder_latency_benchmark);
+// ---------------------------------------------------------------------------
+// Severity-override-hoist benchmarks (perf/engine-severity-override-hoisting)
+// ---------------------------------------------------------------------------
+//
+// These two variants pin the speedup expected from pre-resolving rule
+// severity overrides at engine construction time. Both run on the same
+// `build_representative_input(10_000)` fixture as `lint_10kb` and pin
+// the `StrictRecognizer` for the same reason (isolate strict-path
+// latency from the decoder-dispatcher's fallback overhead).
+//
+//   - `lint_default_config`   — empty `Config::default()` (no overrides).
+//                               Baseline; the hoist removes per-candidate
+//                               HashMap probes + per-diagnostic parse_config
+//                               calls that previously fired in the hot loop
+//                               even with an empty override map.
+//   - `lint_off_heavy_config` — `OFF_RULES` (below) set to `"off"` in
+//                               `config.rules.overrides`. This is the
+//                               configuration where the hoist matters
+//                               most: pre-hoist, every (candidate × rule)
+//                               pair did an `overrides.get + parse_config`
+//                               just to decide whether to skip the rule;
+//                               post-hoist, each pair is one indexed
+//                               array load.
+
+/// Rules disabled in the `lint_off_heavy_config` bench. Chosen to maximize
+/// the number of pre-resolved Off entries the lint hot loop's Site A
+/// short-circuits past, while avoiding the rules the bench fixture is
+/// known to exercise (E031, the banner-roll-up walker; E002, the
+/// missing-USA-trigraph rule that doesn't actually fire on this fixture
+/// since `REL TO USA, GBR` already contains USA).
+///
+/// Source set: the 38 registered rule IDs pinned by
+/// `crates/capco/tests/post_3b_registration_pin.rs::EXPECTED_RULE_IDS`.
+/// The picks below cover the long-tail of rules the bench fixture
+/// doesn't trigger — every PR 9a-era addition (E061-E065), the
+/// PR 9c.1 / 9c.2 NATO additions (E066, S007), the warning suite, and
+/// the rare-fire dissem / SCI rules. Together they exercise the
+/// Site A fast-path Off-skip on every candidate (~10 per 10KB).
+const OFF_RULES: &[&str] = &[
+    // PR 9a additions (very rare in clean fixture).
+    "E061", "E062", "E063", "E064", "E065", // PR 9c.1 / 9c.2 NATO additions.
+    "E066", "S007", // Warnings (don't fire in this fixture).
+    "W002", "W003", "W034", // Style suggestions.
+    "S003", "S004", "S005", "S006",
+    // Dissem / SCI / SAR per-axis rules outside the fixture's coverage.
+    "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016",
+    // Misc rare-fire rules.
+    "E021", "E024", "E036",
+];
+
+fn lint_default_config_benchmark(c: &mut Criterion) {
+    let input = build_representative_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: matches lint_10kb's recognizer pin so the
+    // severity-hoist delta is measured against a pure strict-path
+    // baseline. Same rationale as the SC-001 bench.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_default_config", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+fn lint_off_heavy_config_benchmark(c: &mut Criterion) {
+    let input = build_representative_input(10_000);
+    let mut config = Config::default();
+    for rule_id in OFF_RULES {
+        config
+            .rules
+            .overrides
+            .insert((*rule_id).to_owned(), "off".to_owned());
+    }
+    let engine = Engine::new(
+        config,
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: same recognizer pin as the baseline so the
+    // measured delta isolates the per-rule override resolution cost.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_off_heavy_config", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+criterion_group!(
+    benches,
+    lint_latency_benchmark,
+    decoder_latency_benchmark,
+    lint_default_config_benchmark,
+    lint_off_heavy_config_benchmark,
+);
 criterion_main!(benches);
