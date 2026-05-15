@@ -164,7 +164,7 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// `NatoClassification::CosmicTopSecretAtomal` /
 /// `CosmicTopSecretBohemia` / `CosmicTopSecretBalk` /
 /// `NatoSecretAtomal` / `NatoConfidentialAtomal` variants for these
-/// inputs. Per CAPCO-2016 §G.2 p41 + §H.7 p123 those forms are
+/// inputs. Per CAPCO-2016 §G.2 p40 + §H.7 p122 those forms are
 /// **structurally wrong** — ATOMAL is an AEA-axis marking and
 /// BOHEMIA/BALK are NATO SAPs in the SCI position. PR 9c.1 retired
 /// the fused variants; the parser now canonicalizes the legacy text
@@ -176,7 +176,7 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 ///    in the no-fuzz vocabulary, `(//CTSA//NF)` would be silently
 ///    corrupted to `(//CTS//NF)` (losing the ATOMAL signal). Same
 ///    risk for `NCA` (vs `NC`) and `NSAT` (vs `NS`).
-/// 2. The R009 autofix rule (in `marque-capco`) needs the strict
+/// 2. The E066 autofix rule (in `marque-capco`) needs the strict
 ///    parser to ACCEPT these forms so it can detect them via raw
 ///    token spans and emit the canonical-text fix.
 ///
@@ -198,7 +198,7 @@ const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 /// (Case 4 verbatim).
 ///
 /// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (portion-form column);
-/// §G.2 p41 + §H.7 p123 (the normative anchors for the canonical
+/// §G.2 p40 + §H.7 p122 (the normative anchors for the canonical
 /// AEA-axis / SCI-axis placement of ATOMAL / BOHEMIA / BALK).
 const NATO_PORTION_FORMS: &[&str] = &[
     // Five base-level portion forms (CAPCO-2016 §G.1 Table 4)
@@ -207,7 +207,7 @@ const NATO_PORTION_FORMS: &[&str] = &[
     // canonicalizes these to bare class + AEA/SCI companion. They
     // stay in the no-fuzz vocabulary so fuzzy correction can't
     // silently rewrite them to the bare-class form before the strict
-    // parser sees them, and so R009 autofix can detect them.
+    // parser sees them, and so E066 autofix can detect them.
     "CTS-B", "CTS-BALK", "CTSA", "NCA", "NSAT",
 ];
 

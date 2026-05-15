@@ -60,8 +60,8 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     "E024", "E031", "E036", "E037", "E038", "E039", "E041", "E053", "E054", "E055", "E056", "E057",
     "E061", "E062", "E063", "E064", "E065",
     // PR 9c.1 T134: legacy NATO compound text re-marking per
-    // CAPCO-2016 §G.2 p41 (Table 5 — ATOMAL/BOHEMIA/BALK as
-    // standalone registered control markings) + §H.7 p123 (ATOMAL
+    // CAPCO-2016 §G.2 p40 (Table 5 — ATOMAL/BOHEMIA/BALK as
+    // standalone registered control markings) + §H.7 p122 (ATOMAL
     // → AEA worked example) + §H.7 p127 (BALK/BOHEMIA → SCI
     // worked example).
     "E066", "S003", "S004", "S005", "S006", "W002", "W003", "W034",

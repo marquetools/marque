@@ -81,7 +81,7 @@ pub(crate) fn render_aea(m: &CapcoMarking, scope: Scope, out: &mut dyn fmt::Writ
 /// Lower rank = earlier in register.
 ///
 /// ATOMAL (PR 9c.1 T134) lands at rank 5 — last in the AEA register
-/// — per the §H.7 p123 worked example `SECRET//RD/ATOMAL//FGI NATO//
+/// — per the §H.7 p122 worked example `SECRET//RD/ATOMAL//FGI NATO//
 /// NOFORN`. The manual's Register Table 4 row 6 does not enumerate
 /// ATOMAL in the AEA sequence (Table 4 lists only US-domestic AEA
 /// markings); the §H.7 worked example shows RD before ATOMAL, and

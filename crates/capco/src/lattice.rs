@@ -425,13 +425,13 @@ impl Lattice for SarSet {
 /// # Source authority
 ///
 /// Governed by CAPCO-2016 §H.7 (pp122-130) "FOREIGN GOVERNMENT INFORMATION"
-/// and specifically §H.7 p123 for the source-concealed banner grammar.
+/// and specifically §H.7 p122 for the source-concealed banner grammar.
 /// The canonical operational rules are:
 ///
 /// - FGI with a known source is marked as `FGI [TRIGRAPH]` in the portion
 ///   mark and `FGI [COUNTRY]` in the banner line (§H.7 p122-123).
 /// - FGI from an unknown or concealed source uses the bare `FGI` marker
-///   (no trigraph) per §H.7 p123 ("If the specific country is unknown,
+///   (no trigraph) per §H.7 p122 ("If the specific country is unknown,
 ///   the marking FGI may be used without identifying the country").
 ///   This maps to `Present { concealed: true, countries: [] }`.
 ///
@@ -472,7 +472,7 @@ pub enum FgiSet {
     #[default]
     None,
     /// FGI present. `concealed = true` means "source-concealed" (bare `FGI`
-    /// marker per §H.7 p123) — countries must be empty when this is set;
+    /// marker per §H.7 p122) — countries must be empty when this is set;
     /// join preserves concealment because a source-concealed entry on any
     /// portion requires a source-concealed banner.
     Present {

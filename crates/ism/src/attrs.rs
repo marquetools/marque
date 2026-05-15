@@ -651,10 +651,10 @@ pub struct FgiClassification {
 ///
 /// # Canonical structural model (PR 9c.1 T134)
 ///
-/// Per CAPCO-2016 §G.2 p41 (Table 5: ARH by Registered Marking),
+/// Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking),
 /// ATOMAL / BOHEMIA / BALK are **registered NATO control markings,
 /// not NATO classifications** — each has its own ARH row with
-/// `Requires {marking} read-in`. The §H.7 p123 + §H.7 p127 worked
+/// `Requires {marking} read-in`. The §H.7 p122 + §H.7 p127 worked
 /// examples place them in their proper category positions:
 ///
 /// - **ATOMAL** is an AEA-axis marking shared with NATO+UK under
@@ -674,7 +674,7 @@ pub struct FgiClassification {
 /// `CosmicTopSecretBohemia`, `CosmicTopSecretBalk` — which conflated
 /// classification with AEA/SCI semantics on a single axis. The
 /// parser ([`crate::parser::parse_nato_classification`] in marque-core)
-/// canonicalizes legacy text at parse time; the R009 autofix rule
+/// canonicalizes legacy text at parse time; the E066 autofix rule
 /// rewrites the source text to the canonical multi-block form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NatoClassification {
@@ -809,7 +809,7 @@ pub enum AeaMarking {
     /// ATOMAL — NATO Atomic Energy Act information shared with the US
     /// and UK under bilateral §123 / §144 agreements (Atomic Energy
     /// Act §141–§144). Travels in the AEA axis alongside RD/FRD/TFNI
-    /// (CAPCO-2016 §H.7 p123 worked example:
+    /// (CAPCO-2016 §H.7 p122 worked example:
     /// `SECRET//RD/ATOMAL//FGI NATO//NOFORN`). Rendered as `ATOMAL`
     /// in both banner and portion forms.
     ///
@@ -862,7 +862,7 @@ impl Default for FrdBlock {
 
 /// ATOMAL block.
 ///
-/// Currently empty: CAPCO-2016 §G.2 p41 + §H.7 p123 register
+/// Currently empty: CAPCO-2016 §G.2 p40 + §H.7 p122 register
 /// ATOMAL as a standalone control marking with no enumerated
 /// sub-markings. The carrier struct mirrors the [`RdBlock`] /
 /// [`FrdBlock`] shape so that adding sub-markings in a future CAPCO
@@ -944,7 +944,7 @@ impl AeaMarking {
             "DOD UCNI" | "DCNI" => return Some(Self::DodUcni),
             "DOE UCNI" | "UCNI" => return Some(Self::DoeUcni),
             "TFNI" | "TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION" => return Some(Self::Tfni),
-            // ATOMAL — NATO §123/§144 sharing per CAPCO-2016 §H.7 p123.
+            // ATOMAL — NATO §123/§144 sharing per CAPCO-2016 §H.7 p122.
             // Banner and portion forms are identical (`ATOMAL`).
             "ATOMAL" => return Some(Self::Atomal(AtomalBlock)),
             _ => {}
@@ -1058,7 +1058,7 @@ impl std::fmt::Display for AeaMarking {
 ///
 /// # Authoritative source
 ///
-/// CAPCO-2016 §H.7 p123 defines two banner forms:
+/// CAPCO-2016 §H.7 p122 defines two banner forms:
 ///
 /// | Variant | Banner | Portion |
 /// |---|---|---|
@@ -1086,14 +1086,14 @@ impl std::fmt::Display for AeaMarking {
 /// [`acknowledged`]: FgiMarker::acknowledged
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FgiMarker {
-    /// Source-concealed FGI per CAPCO-2016 §H.7 p123.
+    /// Source-concealed FGI per CAPCO-2016 §H.7 p122.
     ///
     /// Banner: `FOREIGN GOVERNMENT INFORMATION` (abbr `FGI`) with no
     /// country list. Used when revealing the country list would
     /// compromise the foreign source.
     SourceConcealed,
 
-    /// Source-acknowledged FGI per CAPCO-2016 §H.7 p123.
+    /// Source-acknowledged FGI per CAPCO-2016 §H.7 p122.
     ///
     /// Banner: `FOREIGN GOVERNMENT INFORMATION [LIST]` (abbr
     /// `FGI [LIST]`). The country list is non-empty by construction —
@@ -1130,7 +1130,7 @@ impl FgiMarker {
     /// is genuinely concealed (use [`FgiMarker::SourceConcealed`]
     /// directly).
     ///
-    /// Authority: CAPCO-2016 §H.7 p123 (the `FGI [LIST]` banner form
+    /// Authority: CAPCO-2016 §H.7 p122 (the `FGI [LIST]` banner form
     /// requires a non-empty `[LIST]`).
     pub fn acknowledged<I>(countries: I) -> Option<Self>
     where
@@ -1159,7 +1159,7 @@ impl FgiMarker {
     }
 
     /// `true` iff this is a source-concealed marker (the bare `FGI`
-    /// banner form, CAPCO-2016 §H.7 p123).
+    /// banner form, CAPCO-2016 §H.7 p122).
     pub fn is_concealed(&self) -> bool {
         matches!(self, Self::SourceConcealed)
     }
@@ -1475,10 +1475,10 @@ impl CountryCode {
     /// underscore (for `AUSTRALIA_GROUP`), and any 2-byte through
     /// 16-byte alphanumeric/underscore code.
     ///
-    /// Authority: CAPCO-2016 §H.7 p123 (FGI Register Annex B trigraph
+    /// Authority: CAPCO-2016 §H.7 p122 (FGI Register Annex B trigraph
     /// country codes) + §A.6 p16 (alphabetic order of FGI list
     /// tokens). This predicate is the trigraph-only slice of the
-    /// admission grammar; the FGI/REL TO list grammar at §H.7 p123
+    /// admission grammar; the FGI/REL TO list grammar at §H.7 p122
     /// and §H.8 p150 admits trigraphs *and* tetragraphs (e.g.,
     /// `SECRET//FGI GBR JPN NATO`, where `NATO` is a four-letter
     /// tetragraph from Register Annex A). Use
@@ -1562,12 +1562,12 @@ impl CountryCode {
     /// enforced at the rule layer (rules walk
     /// `marque_ism::TETRAGRAPH_MEMBERS` / `marque_ism::TRIGRAPHS`)
     /// and the rule-layer ordering invariant (trigraphs alphabetic,
-    /// then tetragraphs alphabetic — §H.7 p123) is likewise a
+    /// then tetragraphs alphabetic — §H.7 p122) is likewise a
     /// separate concern. This mirrors how `admits_fgi_trigraph`
     /// admits any 3 ASCII upper bytes, not only Annex B-registered
     /// codes.
     ///
-    /// Authority: CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph
+    /// Authority: CAPCO-2016 §H.7 p122 ("Multiple FGI trigraph
     /// country codes or tetragraph codes must be separated by a
     /// single space ... A tetragraph is a four-letter code ... used
     /// to represent an international organization, alliance, or
@@ -1845,7 +1845,7 @@ mod country_code_tests {
     // -------------------------------------------------------------------
     // admits_country_token — full FGI/REL TO list-token shape predicate
     //
-    // Per CAPCO-2016 §H.7 p123, the FGI list grammar admits BOTH 3-letter
+    // Per CAPCO-2016 §H.7 p122, the FGI list grammar admits BOTH 3-letter
     // Annex B trigraphs and 4-letter Annex A tetragraphs (canonical
     // example: `SECRET//FGI GBR JPN NATO`). The §H.8 REL TO surface
     // accepts the same shape. These tests pin the trigraph-or-tetragraph
@@ -1864,7 +1864,7 @@ mod country_code_tests {
 
     #[test]
     fn admits_country_token_accepts_tetragraphs() {
-        // Per CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph country
+        // Per CAPCO-2016 §H.7 p122 ("Multiple FGI trigraph country
         // codes or tetragraph codes must be separated by a single
         // space ... example may appear as: SECRET//FGI GBR JPN
         // NATO//REL TO USA, GBR, JPN, NATO."), tetragraphs admit at
@@ -2220,7 +2220,7 @@ impl SciMarking {
 /// One of three variants: a published bare system drawn from the live
 /// ODNI CVE, an agency-allocated custom identifier (per CAPCO-2016
 /// §A.6 p15), or a NATO Special Access Program identifier (CAPCO-2016
-/// §G.2 p41 + §H.7 p127).
+/// §G.2 p40 + §H.7 p127).
 ///
 /// NATO SAPs (`BOHEMIA`, `BALK`) are not in the ODNI ISM CVE — they're
 /// CAPCO-only registered NATO control markings. They render standalone
@@ -2237,13 +2237,13 @@ pub enum SciControlSystem {
     /// in the source.
     Custom(SmolStr),
     /// One of the two NATO Special Access Programs registered in
-    /// CAPCO-2016 §G.2 p41 (`BOHEMIA`, `BALK`). NATO SAPs travel in
+    /// CAPCO-2016 §G.2 p40 (`BOHEMIA`, `BALK`). NATO SAPs travel in
     /// the SCI category position but are CAPCO-only (no ODNI CVE
     /// entry).
     NatoSap(NatoSap),
 }
 
-/// Registered NATO Special Access Programs per CAPCO-2016 §G.2 p41 +
+/// Registered NATO Special Access Programs per CAPCO-2016 §G.2 p40 +
 /// §H.7 Appendix B.
 ///
 /// Both `Bohemia` and `Balk` render standalone (no `SAR-` prefix) and
@@ -2252,18 +2252,21 @@ pub enum SciControlSystem {
 /// per §A.6 p15-16; `BALK < BOHEMIA` lexicographically).
 /// Derive `Ord` so [`SciControlSystem::NatoSap`] participates in the
 /// numeric-then-alpha ordering used by `PageContext::expected_sci_markings`
-/// roll-up via `SystemKey`. The variants are declared `Bohemia` then
-/// `Balk` (alphabetical text) but `Ord` here is **not** used as the
-/// canonical render order; `as_str()` text is the sort key consulted by
-/// the renderer and roll-up.
+/// roll-up via `SystemKey`. The variants are declared `Balk` then
+/// `Bohemia` (alphabetical text), so the derived `Ord` orders `Balk <
+/// Bohemia` — which matches `as_str()`-based lexicographic ordering.
+/// `as_str()` text remains the sort key consulted by the renderer and
+/// roll-up; the derived `Ord` is a co-monotone alignment, not a
+/// separate canonical order.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NatoSap {
-    /// BALK — NATO SAP per CAPCO-2016 §G.2 p41 (exercise replacement
+    /// BALK — NATO SAP per CAPCO-2016 §G.2 p40 (exercise replacement
     /// for BOHEMIA per legacy Combined Communications-Electronics
     /// Board guidance referenced in §G.2). BALK sorts before BOHEMIA
     /// alphabetically — see the §H.7 p127 worked example.
     Balk,
-    /// BOHEMIA — NATO SAP per CAPCO-2016 §G.2 p41.
+    /// BOHEMIA — NATO SAP per CAPCO-2016 §G.2 p40.
     Bohemia,
 }
 

@@ -316,9 +316,9 @@ impl CapcoRuleSet {
                 // new REL TO list.
                 Box::new(EyesOnlyConvertToRelToRule),
                 // PR 9c.1 T134 (rule E066): legacy NATO compound text
-                // re-marking per CAPCO-2016 §G.2 p41 (Table 5: ARH
+                // re-marking per CAPCO-2016 §G.2 p40 (Table 5: ARH
                 // registers ATOMAL/BOHEMIA/BALK as standalone control
-                // markings) + §H.7 p123 (ATOMAL worked example in AEA
+                // markings) + §H.7 p122 (ATOMAL worked example in AEA
                 // axis) + §H.7 p127 (BOHEMIA worked example in SCI
                 // axis). Catches the eight legacy portion-form patterns
                 // (CTSA / CTS-A / CTS-B / CTS-BALK / NSAT / NS-A / NCA
@@ -3248,7 +3248,7 @@ fn sci_system_text(system: &SciControlSystem) -> &str {
     match system {
         SciControlSystem::Published(bare) => bare.as_str(),
         SciControlSystem::Custom(text) => text.as_ref(),
-        // NATO SAPs (BOHEMIA, BALK) per CAPCO-2016 §G.2 p41 + §H.7 p127.
+        // NATO SAPs (BOHEMIA, BALK) per CAPCO-2016 §G.2 p40 + §H.7 p127.
         SciControlSystem::NatoSap(sap) => sap.as_str(),
     }
 }
@@ -4230,12 +4230,12 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
 // ===========================================================================
 //
 // Authority chain:
-//   §G.2 p41 (Table 5: ARH by Registered Marking) lists ATOMAL,
+//   §G.2 p40 (Table 5: ARH by Registered Marking) lists ATOMAL,
 //     BOHEMIA, and BALK as registered NATO control markings — each
 //     has its own row with `Requires {marking} read-in`, confirming
 //     they are control markings registered alongside (not fused with)
 //     the NATO classification ladder.
-//   §H.7 p123 worked example places ATOMAL in the AEA category
+//   §H.7 p122 worked example places ATOMAL in the AEA category
 //     position: `SECRET//RD/ATOMAL//FGI NATO//NOFORN` ("ATOMAL is a
 //     NATO Atomic Energy Act marking that follows the registered US
 //     Atomic Energy Act marking RD").
@@ -4265,7 +4265,7 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
 // scope: Portion | Page }` — the engine re-renders the candidate via
 // `MarkingScheme::render_canonical`, which emits the canonical
 // multi-block form (`(//CTS//ATOMAL)`, `(//CTS//BOHEMIA)`, etc.) per
-// the §H.7 p123 + §G.2 p41 + §H.7 p127 worked examples.
+// the §H.7 p122 + §G.2 p40 + §H.7 p127 worked examples.
 //
 // Severity: `Fix` (auto-applies when confidence ≥ engine threshold).
 // Confidence: `strict(1.0)` — the canonical form is unambiguous; the
@@ -4278,8 +4278,8 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
 // (`Recanonicalize`); the engine snapshots the canonical replacement
 // at promotion time without any rule-side byte stringification.
 
-/// Rule E066 — legacy NATO compound text re-marking per §G.2 p41
-/// (Table 5 registration) + §H.7 p123 (ATOMAL → AEA) + §G.2 p41 +
+/// Rule E066 — legacy NATO compound text re-marking per §G.2 p40
+/// (Table 5 registration) + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 +
 /// §H.7 p127 (BALK/BOHEMIA → SCI).
 struct LegacyNatoCompoundRemarkRule;
 
@@ -4331,13 +4331,14 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         }
 
         // Locate the classification TokenSpan and verify its raw text
-        // matches one of the eight legacy compound forms. The parser
-        // writes a Classification token-span for the NATO block; the
-        // span's `.text` carries the original bytes. We match against
-        // the closed set of legacy forms — well-formed canonical
-        // multi-block inputs (`(//CTS//ATOMAL)`, `(//CTS//BOHEMIA)`)
-        // will NOT match here because the classification block in
-        // those inputs is just `CTS`.
+        // matches one of the thirteen legacy compound patterns (eight
+        // portion forms + five banner forms). The parser writes a
+        // Classification token-span for the NATO block; the span's
+        // `.text` carries the original bytes. We match against the
+        // closed set of legacy forms — well-formed canonical multi-block
+        // inputs (`(//CTS//ATOMAL)`, `(//CTS//BOHEMIA)`) will NOT match
+        // here because the classification block in those inputs is just
+        // `CTS`.
         let Some(classification_tok) = attrs
             .token_spans
             .iter()
@@ -4359,10 +4360,14 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
             match nato_sap {
                 Some(NatoSap::Balk) => crate::scheme::TOK_BALK,
                 Some(NatoSap::Bohemia) => crate::scheme::TOK_BOHEMIA,
-                // Unreachable: the early-return above guarantees
-                // exactly one of (has_atomal, nato_sap.is_some()) is
-                // true at this point.
-                None => return vec![],
+                // `None` is unreachable: the early-return above
+                // guarantees exactly one of (has_atomal,
+                // nato_sap.is_some()) is true at this point. The
+                // `Some(_)` wildcard covers a future `NatoSap`
+                // variant introduced after PR 9c.1 ([`NatoSap`] is
+                // `#[non_exhaustive]`); defensively skip-emit until
+                // the rule explicitly learns the new variant.
+                None | Some(_) => return vec![],
             }
         };
 
@@ -4371,16 +4376,16 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
             _ => RecanonScope::Page,
         };
 
-        // §G.2 p41 (Table 5: ARH by Registered Marking) registers
-        // ATOMAL/BOHEMIA/BALK as control markings. §H.7 p123 worked
+        // §G.2 p40 (Table 5: ARH by Registered Marking) registers
+        // ATOMAL/BOHEMIA/BALK as control markings. §H.7 p122 worked
         // example shows ATOMAL in the AEA position; §H.7 p127 worked
         // example shows BOHEMIA in the SCI position. Choose the
         // structurally-most-precise anchor based on which companion
         // was written.
         let citation = if has_atomal {
-            "CAPCO-2016 §H.7 p123 + §G.2 p41"
+            "CAPCO-2016 §H.7 p122 + §G.2 p40"
         } else {
-            "CAPCO-2016 §G.2 p41 + §H.7 p127"
+            "CAPCO-2016 §G.2 p40 + §H.7 p127"
         };
 
         // G13 audit-content-ignorance: the message text references only
@@ -4389,11 +4394,11 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         // of the input bytes.
         let message_text = if has_atomal {
             "legacy NATO compound classification text — ATOMAL is an AEA-axis \
-             marking per §H.7 p123; re-mark to the canonical multi-block form"
+             marking per §H.7 p122; re-mark to the canonical multi-block form"
                 .to_owned()
         } else {
             "legacy NATO compound classification text — BALK/BOHEMIA are NATO \
-             SAPs in the SCI category per §G.2 p41 + §H.7 p127; re-mark to \
+             SAPs in the SCI category per §G.2 p40 + §H.7 p127; re-mark to \
              the canonical multi-block form"
                 .to_owned()
         };
@@ -4425,8 +4430,9 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
     }
 }
 
-/// Returns `true` when `text` is one of the eight legacy NATO compound
-/// classification text forms retired by PR 9c.1 T134.
+/// Returns `true` when `text` matches one of the thirteen legacy NATO
+/// compound patterns (eight portion forms + five banner forms) retired
+/// by PR 9c.1 T134.
 ///
 /// The closed set is exactly the patterns the parser's
 /// `parse_nato_classification` accepts in the legacy branch — anything
@@ -4436,7 +4442,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
 /// coordinated edit in both places — the natural propagation point.
 ///
 /// Citations: CAPCO-2016 §G.1 Table 4 p38 (portion-form column);
-/// §G.2 p41 (Table 5 — registers ATOMAL/BOHEMIA/BALK as standalone
+/// §G.2 p40 (Table 5 — registers ATOMAL/BOHEMIA/BALK as standalone
 /// control markings, not classification suffixes).
 fn is_legacy_nato_compound_text(text: &str) -> bool {
     matches!(

@@ -198,7 +198,7 @@ fn rule_count_reflects_registration_changes() {
     //
     // PR 9c.1 T134: added `LegacyNatoCompoundRemarkRule` (E066) —
     // legacy NATO compound text re-marking per CAPCO-2016 §H.7 line
-    // 4702 + §H.7 p123 (ATOMAL → AEA) + §G.2 p41 + §H.7 p127
+    // 4702 + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 + §H.7 p127
     // (BALK/BOHEMIA → SCI). The rule fires when the parser
     // canonicalizes legacy compound text into bare class + AEA/SCI
     // companion and emits a Recanonicalize fix at confidence 1.0.
@@ -224,7 +224,7 @@ fn rule_count_reflects_registration_changes() {
          / EYES ONLY → REL TO conversion per §H.8 p157 + p158; \
          net delta +1. Final: 36. PR 9c.1 T134 adds \
          `LegacyNatoCompoundRemarkRule` (E066) — legacy NATO \
-         compound text re-marking per §G.2 p41 (Table 5) + §H.7 p123 + \
+         compound text re-marking per §G.2 p40 (Table 5) + §H.7 p122 + \
          §H.7 p127; net delta +1. Final: 37. See \
          `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \

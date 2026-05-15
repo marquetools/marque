@@ -1020,10 +1020,10 @@ fn scheme_declares_phase3_rewrites() {
     assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.9 p185");
     assert_eq!(rewrites[4].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
     assert_eq!(rewrites[5].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.7 p123");
-    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.7 p122");
     assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.7 p122");
     assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.8 p136");
     assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.9 p178");
     assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.9 p185");

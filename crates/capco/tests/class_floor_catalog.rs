@@ -101,9 +101,9 @@ fn catalog_declares_27_class_floor_rows() {
 /// three NATO control-marking rows so a future edit can't silently
 /// drift them.
 ///
-/// BALK / BOHEMIA cite §G.2 p41 (their authoritative anchor — the
+/// BALK / BOHEMIA cite §G.2 p40 (their authoritative anchor — the
 /// ARH table where the manual identifies them as SAPs). ATOMAL
-/// cites §H.7 p123 (the worked example showing `SECRET//RD/ATOMAL//
+/// cites §H.7 p122 (the worked example showing `SECRET//RD/ATOMAL//
 /// FGI NATO//NOFORN`).
 ///
 /// The companion severity pin (BALK/BOHEMIA = Warn, ATOMAL = Error)
@@ -112,15 +112,15 @@ fn catalog_declares_27_class_floor_rows() {
 /// drift would change exit codes for downstream audit consumers and
 /// would need to be an intentional, documented change.
 ///
-/// Citations: CAPCO-2016 §G.2 p41 (BALK/BOHEMIA — ARH table only,
-/// soft); §H.7 p123 (ATOMAL — worked example in §H.7).
+/// Citations: CAPCO-2016 §G.2 p40 (BALK/BOHEMIA — ARH table only,
+/// soft); §H.7 p122 (ATOMAL — worked example in §H.7).
 #[test]
 fn pr_9c_1_nato_rows_pin_citation_anchors() {
     let scheme = CapcoScheme::new();
     let expected: &[(&str, &str)] = &[
-        ("class-floor/BALK", "CAPCO-2016 §G.2 p41"),
-        ("class-floor/BOHEMIA", "CAPCO-2016 §G.2 p41"),
-        ("class-floor/ATOMAL", "CAPCO-2016 §H.7 p123"),
+        ("class-floor/BALK", "CAPCO-2016 §G.2 p40"),
+        ("class-floor/BOHEMIA", "CAPCO-2016 §G.2 p40"),
+        ("class-floor/ATOMAL", "CAPCO-2016 §H.7 p122"),
     ];
 
     for (row_name, expected_cite) in expected {
@@ -323,14 +323,14 @@ fn tk_blfh_does_not_fire_on_bare_tk() {
 
 // NATO BALK / BOHEMIA: per PR 9c.1 T134 the presence predicate fires
 // when `attrs.sci_markings` carries a `SciControlSystem::NatoSap`
-// variant. CAPCO-2016 §G.2 p41 identifies BALK/BOHEMIA as NATO SAPs in
+// variant. CAPCO-2016 §G.2 p40 identifies BALK/BOHEMIA as NATO SAPs in
 // the SCI category position (rendered standalone, no `SAR-` prefix).
 // The legacy fused variants `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`
 // were retired in PR 9c.1 Commit 5 — pre-PR-9c.1 those variants
 // conflated classification with SCI semantics on a single axis.
 //
 // The row severity is `Warn` (downgrade from `Error` in PR 9c.1
-// Commit 4) because §G.2 p41's citation depth is too soft to drive
+// Commit 4) because §G.2 p40's citation depth is too soft to drive
 // Error.  Well-formed NATO inputs `//COSMIC TOP SECRET-BALK` /
 // `//COSMIC TOP SECRET-BOHEMIA` parse to bare `CosmicTopSecret` class
 // + `NatoSap::{Balk,Bohemia}` SCI companion — effective level TS via

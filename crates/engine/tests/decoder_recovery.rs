@@ -1895,7 +1895,7 @@ fn nato_in_second_segment_yields_decode_miss() {
     // the round-2 commit (which documented the old Conflict behavior as "bounded"
     // but which was itself wrong per CAPCO-2016 §H.7).
     //
-    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17; §H.7 p123.
+    // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17; §H.7 p122.
     let rx = DecoderRecognizer::new();
     let parsed = rx.recognize(b"(S//NATO C)", &deep_cx());
     match parsed {
@@ -1944,8 +1944,8 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
     // `Atomal` companion (`(//NS//ATOMAL//NF)` semantic).
     //
     // Citations: CAPCO-2016 §G.1 Table 4 pp 36-38 (legacy text
-    // recognition); §H.7 p123 (ATOMAL as AEA, canonical structural
-    // model); §G.2 p41 (Table 5: registers ATOMAL as standalone
+    // recognition); §H.7 p122 (ATOMAL as AEA, canonical structural
+    // model); §G.2 p40 (Table 5: registers ATOMAL as standalone
     // control marking, the autofix target per project memory
     // `remark-on-derivative-use-is-marque-autofix`).
     let rx = DecoderRecognizer::new();
@@ -1954,8 +1954,8 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
         Parsed::Unambiguous(ref marking) => {
             // PR 9c.1 T134: legacy `NATO SECRET ATOMAL` text canonicalizes
             // to bare `NatoClassification::NatoSecret` plus an AEA-axis
-            // `Atomal` companion (CAPCO-2016 §H.7 p123 worked example
-            // + §G.2 p41 Table 5 registration of ATOMAL as a standalone
+            // `Atomal` companion (CAPCO-2016 §H.7 p122 worked example
+            // + §G.2 p40 Table 5 registration of ATOMAL as a standalone
             // control marking). Pre-PR-9c.1 this assertion expected the
             // fused `NatoClassification::NatoSecretAtomal` variant; that
             // variant was retired in PR 9c.1 Commit 5 as a structurally
@@ -1978,7 +1978,7 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
                 has_atomal,
                 "T129 regression: ATOMAL companion must be written into the AEA \
                  axis when the legacy `NATO SECRET ATOMAL` form is recovered \
-                 (CAPCO-2016 §H.7 p123)"
+                 (CAPCO-2016 §H.7 p122)"
             );
         }
         other => panic!(

@@ -3488,7 +3488,7 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 /// `<rest>` — compound forms like `NATO SECRET ATOMAL` parse through the
 /// strict parser's `parse_nato_classification`, which now (PR 9c.1 T134)
 /// canonicalizes legacy compound text into bare class + AEA/SCI companion
-/// per CAPCO-2016 §H.7 p123 + §G.2 p41 + §H.7 p127. The fold must not
+/// per CAPCO-2016 §H.7 p122 + §G.2 p40 + §H.7 p127. The fold must not
 /// truncate the suffix; its job is the 5-base-level path only.
 ///
 /// **Caller invariant.** The caller ([`try_nato_fold`]) restricts invocation
@@ -3705,10 +3705,10 @@ fn classify_segment(seg: &str) -> SegmentClass {
         // The five legacy compound forms (CTSA / NSAT / NCA / CTS-B /
         // CTS-BALK) stay in the decoder recognition set because the
         // strict parser, post-PR-9c.1 T134, canonicalizes them into
-        // bare class + AEA/SCI companion writes (CAPCO-2016 §H.7 p123
-        // for ATOMAL → AEA; §G.2 p41 + §H.7 p127 for BALK/BOHEMIA →
+        // bare class + AEA/SCI companion writes (CAPCO-2016 §H.7 p122
+        // for ATOMAL → AEA; §G.2 p40 + §H.7 p127 for BALK/BOHEMIA →
         // SCI). The E066 autofix rule then surfaces the text-level
-        // re-marking suggestion per the §G.2 p41 Table 5 registration
+        // re-marking suggestion per the §G.2 p40 Table 5 registration
         // of the canonical control-marking forms.
         "NS",
         "NC",
@@ -7051,7 +7051,7 @@ mod tests {
         // the suffix gets truncated and recovery regresses.
         //
         // Regression guard for the FIX-A correctness fix in the PR 8
-        // round-2 reviewer response. Citation: CAPCO-2016 §H.7 p123
+        // round-2 reviewer response. Citation: CAPCO-2016 §H.7 p122
         // (ATOMAL as AEA-axis marking, worked example).
         assert!(
             fold_nato_segment("NATO SECRET ATOMAL", MarkingType::Portion).is_none(),
@@ -7073,9 +7073,9 @@ mod tests {
         // `NATO TOP SECRET-BALK`) are also out of scope for the fold;
         // the strict parser canonicalizes them via PR 9c.1 T134 into
         // bare `CosmicTopSecret` class + SCI `NatoSap` companion
-        // (CAPCO-2016 §G.2 p41 + §H.7 p127).
+        // (CAPCO-2016 §G.2 p40 + §H.7 p127).
         //
-        // Regression guard for FIX-A. Citation: CAPCO-2016 §G.2 p41 +
+        // Regression guard for FIX-A. Citation: CAPCO-2016 §G.2 p40 +
         // §H.7 p127.
         assert!(
             fold_nato_segment("NATO TOP SECRET-BOHEMIA", MarkingType::Portion).is_none(),

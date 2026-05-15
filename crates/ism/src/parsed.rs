@@ -338,7 +338,7 @@ impl<'src> ParsedSarMarking<'src> {
 /// `FgiMarker` is the post-PR-2 enum (`SourceConcealed` |
 /// `Acknowledged { countries: SmallVec<[CountryCode; N]> }`, see
 /// `crate::attrs::FgiMarker`). Lawful source-concealed FGI per
-/// CAPCO-2016 §H.7 p123 is the `SourceConcealed` variant; an
+/// CAPCO-2016 §H.7 p122 is the `SourceConcealed` variant; an
 /// acknowledged country list is `Acknowledged { countries }` with the
 /// constructor (`FgiMarker::acknowledged`) rejecting the empty list.
 #[non_exhaustive]

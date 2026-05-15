@@ -267,7 +267,7 @@ static BANNER_PAIRS: &[CanonPair] = &[
         canonical: "//JOINT SECRET AUS GBR USA",
         citation: "CAPCO-2016 §A.6 p15-16 + §H.3 p56",
     },
-    // §A.6 p16 + §H.7 p123: FGI marker — trigraphs alpha first,
+    // §A.6 p16 + §H.7 p122: FGI marker — trigraphs alpha first,
     // then tetragraphs alpha, space-separated. (NB: the FGI content
     // marker; not the FGI classification system.)
     CanonPair {
@@ -275,7 +275,7 @@ static BANNER_PAIRS: &[CanonPair] = &[
         a: "SECRET//FGI NATO GBR JPN//REL TO USA, GBR, JPN, NATO",
         b: "SECRET//FGI JPN GBR NATO//REL TO USA, GBR, JPN, NATO",
         canonical: "SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO",
-        citation: "CAPCO-2016 §A.6 p16 + §H.7 p123",
+        citation: "CAPCO-2016 §A.6 p16 + §H.7 p122",
     },
 ];
 

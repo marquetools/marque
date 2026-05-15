@@ -813,7 +813,7 @@ fn classification_banner_to_portion(s: &str) -> Option<&'static str> {
 /// ASCII uppercase letters (registered 2-letter exception code,
 /// Annex B trigraph, or Annex A tetragraph respectively).
 ///
-/// Per CAPCO-2016 §H.7 p123, a lawful FGI list mixes trigraphs and
+/// Per CAPCO-2016 §H.7 p122, a lawful FGI list mixes trigraphs and
 /// tetragraphs (canonical example: `SECRET//FGI GBR JPN
 /// NATO//REL TO USA, GBR, JPN, NATO`). §H.8 p150 admits the same
 /// shape on REL TO. The 2-letter exception (notably `EU`, shipped
@@ -1073,7 +1073,7 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
 
             // FGI marker list-token: 3 ASCII upper (Annex B
             // trigraph) OR 4 ASCII upper (Annex A tetragraph).
-            // CAPCO-2016 §H.7 p123 admits both shapes in a single
+            // CAPCO-2016 §H.7 p122 admits both shapes in a single
             // FGI list ("Multiple FGI trigraph country codes or
             // tetragraph codes must be separated by a single
             // space ... example may appear as: SECRET//FGI GBR
@@ -1093,7 +1093,7 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
             // set — including 15-byte registered codes like
             // `AUSTRALIA_GROUP` that cannot be encoded as a
             // byte-class shape predicate. CAT_FGI_MARKER does NOT
-            // widen this way — §H.7 p123 admits trigraphs and
+            // widen this way — §H.7 p122 admits trigraphs and
             // tetragraphs only.
             // CAPCO-2016 §H.8 p150 + §A.6 p17 ("'USA' trigraph
             // code must be listed first, followed by trigraph
@@ -1143,7 +1143,7 @@ mod shape_admits_tests {
 
     // -------- FGI / REL TO list-token (open vocab — 3 OR 4 ASCII upper) -
     //
-    // Per CAPCO-2016 §H.7 p123 ("Multiple FGI trigraph country codes
+    // Per CAPCO-2016 §H.7 p122 ("Multiple FGI trigraph country codes
     // or tetragraph codes must be separated by a single space ...
     // example may appear as: SECRET//FGI GBR JPN NATO//REL TO USA,
     // GBR, JPN, NATO."), FGI lists admit BOTH 3-letter Annex B
@@ -1161,7 +1161,7 @@ mod shape_admits_tests {
 
     #[test]
     fn fgi_country_token_admits_tetragraphs() {
-        // Per CAPCO-2016 §H.7 p123, the FGI list grammar admits
+        // Per CAPCO-2016 §H.7 p122, the FGI list grammar admits
         // tetragraphs (e.g., NATO, FVEY, ISAF). Registry membership
         // is rule-layer; this gate is pure shape.
         let v = vocab();
@@ -1269,7 +1269,7 @@ mod shape_admits_tests {
     #[test]
     fn fgi_marker_rejects_australia_group_class_codes() {
         // CAT_FGI_MARKER does NOT widen via TRIGRAPHS membership —
-        // CAPCO §H.7 p123 admits trigraphs + tetragraphs only;
+        // CAPCO §H.7 p122 admits trigraphs + tetragraphs only;
         // AUSTRALIA_GROUP-class registered codes are not lawful
         // FGI material. This test pins the asymmetry between
         // CAT_FGI_MARKER and CAT_REL_TO so a future cleanup

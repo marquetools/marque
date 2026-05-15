@@ -119,7 +119,7 @@ fn system_text(system: &SciControlSystem) -> &str {
         SciControlSystem::Published(b) => b.as_str(),
         SciControlSystem::Custom(s) => s.as_ref(),
         // NATO SAPs (BOHEMIA, BALK) render their canonical name standalone
-        // in the SCI block position. CAPCO-2016 §G.2 p41 + §H.7 p127.
+        // in the SCI block position. CAPCO-2016 §G.2 p40 + §H.7 p127.
         SciControlSystem::NatoSap(sap) => sap.as_str(),
     }
 }

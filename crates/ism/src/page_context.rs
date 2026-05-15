@@ -655,7 +655,7 @@ impl PageContext {
                     AeaMarking::Tfni => has_tfni = true,
                     AeaMarking::DodUcni => has_dod_ucni = true,
                     AeaMarking::DoeUcni => has_doe_ucni = true,
-                    // ATOMAL — NATO §123/§144 sharing (CAPCO-2016 §H.7 p123).
+                    // ATOMAL — NATO §123/§144 sharing (CAPCO-2016 §H.7 p122).
                     // Travels alongside RD/FRD in the AEA axis; rolled up
                     // by presence (no merge state).
                     AeaMarking::Atomal(_) => has_atomal = true,
@@ -689,7 +689,7 @@ impl PageContext {
         }
 
         // ATOMAL rolls up alongside RD/FRD when present. Register order
-        // per CAPCO-2016 §H.7 p123 worked example
+        // per CAPCO-2016 §H.7 p122 worked example
         // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL after RD
         // and FRD in the AEA axis. The actual render order is owned by
         // the AEA renderer's `register_rank`.
@@ -779,7 +779,7 @@ impl PageContext {
             return None;
         }
 
-        // Source-concealed supersedes all open sources (CAPCO §H.7 p123).
+        // Source-concealed supersedes all open sources (CAPCO §H.7 p122).
         if has_source_concealed {
             return Some(FgiMarker::SourceConcealed);
         }
