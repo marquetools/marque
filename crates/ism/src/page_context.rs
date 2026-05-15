@@ -109,7 +109,7 @@ pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
 /// # Thread-safety
 /// `PageContext` is not `Sync` — the engine builds it sequentially during a single
 /// document pass. If future batch processing requires sharing, wrap in `Arc<Mutex<_>>`.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PageContext {
     /// Accumulated portion attributes, in document order. Pre-sized to 8
     /// because the typical CAPCO document carries 1-10 portions per page
@@ -118,6 +118,14 @@ pub struct PageContext {
     /// covers the typical case in zero reallocations; larger pages pay
     /// one realloc at portion 9 instead of three (Vec growth 4 → 8 → 16
     /// → 32) starting from `Vec::new()`. Issue #430.
+    ///
+    /// The pre-size flows through `Default` AND `Clone` — see the manual
+    /// impls below. Derived `Clone` would call `Vec::clone()`, which
+    /// strips capacity to `len()` (the engine clones at
+    /// `engine.rs:1025` via `Arc::new(page_context.clone())` when
+    /// handing the page roll-up to banner/CAB rules); the manual impl
+    /// preserves the invariant "every `PageContext` has at least
+    /// `DEFAULT_PORTIONS_CAPACITY` headroom" through every code path.
     portions: Vec<CanonicalAttrs>,
 }
 
@@ -131,6 +139,22 @@ impl Default for PageContext {
         Self {
             portions: Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY),
         }
+    }
+}
+
+impl Clone for PageContext {
+    fn clone(&self) -> Self {
+        // Derived `Clone` would forward to `Vec::clone()` which sizes
+        // the new buffer to `self.portions.len()`, stripping the
+        // pre-size on every clone. The engine clones at
+        // `engine.rs:1025` to wrap in `Arc<PageContext>` for the
+        // banner/CAB rule hand-off; without this impl, that path would
+        // silently undo the pre-size for any page with fewer than
+        // `DEFAULT_PORTIONS_CAPACITY` portions accumulated so far. Issue #430.
+        let cap = self.portions.capacity().max(DEFAULT_PORTIONS_CAPACITY);
+        let mut portions = Vec::with_capacity(cap);
+        portions.extend(self.portions.iter().cloned());
+        Self { portions }
     }
 }
 
@@ -2484,8 +2508,10 @@ mod tests {
     fn portions_pre_sized_to_typical_page() {
         // Regression guard: PageContext pre-sizes its portions Vec to
         // DEFAULT_PORTIONS_CAPACITY so that typical-page accumulation hits
-        // zero reallocations. If a future refactor lowers the capacity or
-        // drops the pre-size, this test breaks. Issue #430.
+        // zero reallocations. Covers `new()`, `default()`, AND `clone()`
+        // — the engine clones via `Arc::new(page_context.clone())` at
+        // `engine.rs:1025` when handing the page roll-up to banner/CAB
+        // rules, so the pre-size must survive that path too. Issue #430.
         let ctx = PageContext::new();
         assert!(
             ctx.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
@@ -2496,6 +2522,13 @@ mod tests {
         assert!(
             ctx_default.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
             "PageContext::default should pre-size identically to new() (issue #430)"
+        );
+        // Empty-ctx clone — the exact failure case if `Clone` were
+        // derived: derived `Vec::clone()` would size to `len() == 0`.
+        let ctx_cloned_empty = ctx.clone();
+        assert!(
+            ctx_cloned_empty.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
+            "PageContext::clone of an empty ctx must preserve the pre-size (issue #430)"
         );
     }
 }
