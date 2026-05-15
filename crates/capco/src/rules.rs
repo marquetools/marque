@@ -462,37 +462,41 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
         // `SECRET//REL TO GBR//NF//REL TO AUS`), a single first→last
         // splice would delete intervening `//...//` content. In that
         // case we emit a diagnostic with no FixProposal and let the
-        // author resolve manually.
-        let rel_to_blocks: Vec<&TokenSpan> = attrs
+        // author resolve manually. The discriminator only needs to
+        // distinguish 0 / 1 / many, so we pull two iterator items and
+        // match on the shape rather than allocating a `Vec`.
+        let mut rel_to_blocks_iter = attrs
             .token_spans
             .iter()
-            .filter(|t| t.kind == TokenKind::RelToBlock)
-            .collect();
-        let Some(&block) = rel_to_blocks.first() else {
-            // No block tagging (defensive: `attrs.rel_to` non-empty
-            // should imply at least one `RelToBlock` token). Emit
-            // diagnostic without a fix rather than risk mis-splice.
-            return vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                Span::new(0, 0),
-                message.to_owned(),
-                citation,
-                None,
-            )];
+            .filter(|t| t.kind == TokenKind::RelToBlock);
+        let block = match (rel_to_blocks_iter.next(), rel_to_blocks_iter.next()) {
+            (Some(first), None) => first,
+            (None, _) => {
+                // No block tagging (defensive: `attrs.rel_to` non-empty
+                // should imply at least one `RelToBlock` token). Emit
+                // diagnostic without a fix rather than risk mis-splice.
+                return vec![Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    Span::new(0, 0),
+                    message.to_owned(),
+                    citation,
+                    None,
+                )];
+            }
+            (Some(first), Some(_)) => {
+                return vec![Diagnostic::new(
+                    self.id(),
+                    self.default_severity(),
+                    first.span,
+                    format!(
+                        "{message} (multiple REL TO blocks present; fix suppressed to avoid cross-block corruption — resolve manually)"
+                    ),
+                    citation,
+                    None,
+                )];
+            }
         };
-        if rel_to_blocks.len() > 1 {
-            return vec![Diagnostic::new(
-                self.id(),
-                self.default_severity(),
-                block.span,
-                format!(
-                    "{message} (multiple REL TO blocks present; fix suppressed to avoid cross-block corruption — resolve manually)"
-                ),
-                citation,
-                None,
-            )];
-        }
 
         // Collect RelToTrigraph spans that fall inside the single
         // RelToBlock. Filtering on block containment is defensive
@@ -3565,58 +3569,64 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         //      malformed shape), we skip the rule rather than risk
         //      cross-block corruption — the cleaner authoring
         //      decision is deferred to the operator.
-        let rel_to_blocks: Vec<&TokenSpan> = attrs
+        // The discriminator only needs to distinguish 0 / 1 / many
+        // RelToBlock tokens, so we pull two iterator items and match
+        // on the shape rather than allocating a `Vec`.
+        let mut rel_to_blocks_iter = attrs
             .token_spans
             .iter()
-            .filter(|t| t.kind == TokenKind::RelToBlock)
-            .collect();
-
-        let (span, replacement) = if rel_to_blocks.is_empty() {
-            // No existing REL TO block — insertion branch. We replace
-            // the **classification token's span** (a non-empty span;
-            // the engine's `text_correction` synthesizer rejects empty
-            // spans) with `<class>//REL TO USA, NATO`, where `<class>`
-            // is the canonical portion abbreviation. The result for
-            // `(//NS)` is `(//NS//REL TO USA, NATO)`.
-            //
-            // INVARIANT: `attrs.rel_to` is empty in this branch. The
-            // parser populates `attrs.rel_to` from `RelToBlock` token
-            // spans (`marque-core::parser::parse_rel_to_block`), so an
-            // empty `rel_to_blocks` set implies an empty
-            // `attrs.rel_to`. We re-check defensively so a future
-            // parser change that populates `attrs.rel_to` from a
-            // non-`RelToBlock` source can't silently corrupt the
-            // splice.
-            debug_assert!(
-                attrs.rel_to.is_empty(),
-                "S007 insertion branch requires empty attrs.rel_to (no \
-                 RelToBlock tokens implies no rel_to entries); the \
-                 augmentation branch (build_bare_nato_rel_to_augmentation) \
-                 owns the non-empty case",
-            );
-            let Some(class_tok) = attrs
-                .token_spans
-                .iter()
-                .find(|t| t.kind == TokenKind::Classification)
-            else {
-                // Defensive: a NATO classification axis without a
-                // Classification token span would mean the parser
-                // failed to emit the token. Skip emission rather than
-                // risk a wrong-span splice.
+            .filter(|t| t.kind == TokenKind::RelToBlock);
+        let (span, replacement) = match (rel_to_blocks_iter.next(), rel_to_blocks_iter.next()) {
+            (None, _) => {
+                // No existing REL TO block — insertion branch. We
+                // replace the **classification token's span** (a
+                // non-empty span; the engine's `text_correction`
+                // synthesizer rejects empty spans) with
+                // `<class>//REL TO USA, NATO`, where `<class>` is the
+                // canonical portion abbreviation. The result for
+                // `(//NS)` is `(//NS//REL TO USA, NATO)`.
+                //
+                // INVARIANT: `attrs.rel_to` is empty in this branch.
+                // The parser populates `attrs.rel_to` from
+                // `RelToBlock` token spans
+                // (`marque-core::parser::parse_rel_to_block`), so no
+                // `RelToBlock` tokens implies an empty
+                // `attrs.rel_to`. We re-check defensively so a future
+                // parser change that populates `attrs.rel_to` from a
+                // non-`RelToBlock` source can't silently corrupt the
+                // splice.
+                debug_assert!(
+                    attrs.rel_to.is_empty(),
+                    "S007 insertion branch requires empty attrs.rel_to (no \
+                     RelToBlock tokens implies no rel_to entries); the \
+                     augmentation branch (build_bare_nato_rel_to_augmentation) \
+                     owns the non-empty case",
+                );
+                let Some(class_tok) = attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::Classification)
+                else {
+                    // Defensive: a NATO classification axis without a
+                    // Classification token span would mean the parser
+                    // failed to emit the token. Skip emission rather
+                    // than risk a wrong-span splice.
+                    return vec![];
+                };
+                let body = build_bare_nato_rel_to_insertion(nato_class);
+                (class_tok.span, body)
+            }
+            (Some(block), None) => {
+                // Single existing REL TO block — augmentation branch.
+                let body = build_bare_nato_rel_to_augmentation(&attrs.rel_to);
+                (block.span, body)
+            }
+            (Some(_), Some(_)) => {
+                // Multiple REL TO blocks is structurally malformed; an
+                // E002 / parser-shape diagnostic owns that case. Skip
+                // S007 emission to avoid splice-collision damage.
                 return vec![];
-            };
-            let body = build_bare_nato_rel_to_insertion(nato_class);
-            (class_tok.span, body)
-        } else if rel_to_blocks.len() > 1 {
-            // Multiple REL TO blocks is structurally malformed; an
-            // E002 / parser-shape diagnostic owns that case. Skip
-            // S007 emission to avoid splice-collision damage.
-            return vec![];
-        } else {
-            // Single existing REL TO block — augmentation branch.
-            let block = rel_to_blocks[0];
-            let body = build_bare_nato_rel_to_augmentation(&attrs.rel_to);
-            (block.span, body)
+            }
         };
 
         vec![Diagnostic::text_correction(
