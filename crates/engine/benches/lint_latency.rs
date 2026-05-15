@@ -258,11 +258,85 @@ fn lint_off_heavy_config_benchmark(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Prose-heavy advisory bench (perf/scanner-memchr-page-breaks)
+// ---------------------------------------------------------------------------
+//
+// `lint_prose_heavy` measures the scanner-pass cost on pure-prose input
+// (newline-sparse text, no marking tokens). This is the input shape that
+// most exercises `Scanner::scan_page_breaks` and the other newline-driven
+// sub-passes; it isolates the perf delta from a SIMD-driven newline
+// stride against the previous byte-by-byte iter loop.
+//
+// Advisory bench — no entry in `benches/baseline.json`, same pattern as
+// `lint_default_config` / `lint_off_heavy_config`. Report the number in
+// PRs that touch the scanner; don't gate on it.
+
+/// Build a ~10KB pure-prose input. Lorem-ipsum-style sentences with `\n`
+/// line breaks and `\n\n` paragraph breaks. Explicitly NO marking tokens
+/// (no `(U)`, no `//`, no banners) and NO `\n\n\n+` runs that would
+/// trigger soft page breaks — the bench measures scanner cost on the
+/// happy-path prose case, not page-break emission.
+fn build_prose_input(target_bytes: usize) -> Vec<u8> {
+    let block = concat!(
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut\n",
+        "enim ad minim veniam, quis nostrud exercitation ullamco laboris\n",
+        "nisi ut aliquip ex ea commodo consequat.\n",
+        "\n",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse\n",
+        "cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat\n",
+        "cupidatat non proident, sunt in culpa qui officia deserunt\n",
+        "mollit anim id est laborum.\n",
+        "\n",
+        "Sed ut perspiciatis unde omnis iste natus error sit voluptatem\n",
+        "accusantium doloremque laudantium, totam rem aperiam, eaque ipsa\n",
+        "quae ab illo inventore veritatis et quasi architecto beatae vitae\n",
+        "dicta sunt explicabo.\n",
+        "\n",
+    );
+
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    // Truncate to a block-aligned boundary so we don't split mid-sentence.
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    // Pad with spaces to reach exactly `target_bytes` so the bench name
+    // (`lint_prose_heavy`) corresponds to a true 10KB input. Trailing
+    // whitespace does not change scanner output.
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn lint_prose_heavy_benchmark(c: &mut Criterion) {
+    let input = build_prose_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pure-prose bench pins the strict recognizer
+    // for the same reason `lint_10kb` does — isolate scanner cost from
+    // the dispatcher's decoder fallback. The prose input contains no
+    // tokens the decoder would fire on, but pinning matches the
+    // sibling benches and keeps the measurement deterministic.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_prose_heavy", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
 criterion_group!(
     benches,
     lint_latency_benchmark,
     decoder_latency_benchmark,
     lint_default_config_benchmark,
     lint_off_heavy_config_benchmark,
+    lint_prose_heavy_benchmark,
 );
 criterion_main!(benches);
