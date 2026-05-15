@@ -578,6 +578,124 @@ mod classification_lattice {
         // wins. Variant preservation is the key property here.
         assert_eq!(joined, nato_cts);
     }
+
+    // -----------------------------------------------------------------------
+    // PR 4b-B follow-up — C-1 commutativity tiebreak across equal-level
+    // variants. The original PR 4b-B impl always returned the left
+    // operand on equal level, breaking commutativity. This regression
+    // suite exhausts the cross-product of `{Us, Fgi, Nato, Joint}` at
+    // every level and asserts `a.join(b) == b.join(a)`.
+    // -----------------------------------------------------------------------
+    fn arb_classification_variant(
+        level: Classification,
+    ) -> Vec<ClassificationLattice> {
+        use marque_ism::{
+            CountryCode, FgiClassification, JointClassification, NatoClassification,
+        };
+        let usa = CountryCode::try_new(b"USA").expect("USA");
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        // Pair a few representative variants at the same effective
+        // level. NATO uses `us_equivalent`; we pick the variant whose
+        // us_equivalent matches `level` when possible (UC for U, NR
+        // for U-ish, NC for C, NS for S, CTS for TS).
+        let nato = match level {
+            Classification::TopSecret => Some(NatoClassification::CosmicTopSecret),
+            Classification::Secret => Some(NatoClassification::NatoSecret),
+            Classification::Confidential => Some(NatoClassification::NatoConfidential),
+            Classification::Unclassified => Some(NatoClassification::NatoUnclassified),
+            _ => None,
+        };
+        let mut out = vec![
+            // Us
+            ClassificationLattice::new(Some(MarkingClassification::Us(level))),
+            // Fgi
+            ClassificationLattice::new(Some(MarkingClassification::Fgi(FgiClassification {
+                level,
+                countries: Box::new([gbr]),
+            }))),
+            // Joint
+            ClassificationLattice::new(Some(MarkingClassification::Joint(JointClassification {
+                level,
+                countries: Box::new([usa, gbr]),
+            }))),
+        ];
+        if let Some(n) = nato {
+            out.push(ClassificationLattice::new(Some(MarkingClassification::Nato(n))));
+        }
+        out
+    }
+
+    #[test]
+    fn classification_join_commutative_across_variants() {
+        // C-1 regression: at each effective level, every pair of
+        // distinct-variant classifications must commute under join.
+        for level in ALL {
+            let variants = arb_classification_variant(level);
+            for a in &variants {
+                for b in &variants {
+                    assert_eq!(
+                        a.join(b),
+                        b.join(a),
+                        "C-1: join not commutative at level {level:?}: \
+                         {a:?} vs {b:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn classification_meet_commutative_across_variants() {
+        // Companion check: the same tiebreak applies to `meet` so
+        // both ops stay commutative and consistent.
+        for level in ALL {
+            let variants = arb_classification_variant(level);
+            for a in &variants {
+                for b in &variants {
+                    assert_eq!(
+                        a.meet(b),
+                        b.meet(a),
+                        "C-1: meet not commutative at level {level:?}: \
+                         {a:?} vs {b:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn classification_us_wins_equal_level_tiebreak() {
+        // C-1: US is the canonical variant per §H.7 reciprocal
+        // normalization. At equal effective level, joining Us with
+        // any other variant produces Us.
+        use marque_ism::{
+            CountryCode, FgiClassification, JointClassification, NatoClassification,
+        };
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let usa = CountryCode::try_new(b"USA").expect("USA");
+        let us = lvl(Classification::Secret);
+        let fgi = ClassificationLattice::new(Some(MarkingClassification::Fgi(
+            FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            },
+        )));
+        let nato = ClassificationLattice::new(Some(MarkingClassification::Nato(
+            NatoClassification::NatoSecret,
+        )));
+        let joint = ClassificationLattice::new(Some(MarkingClassification::Joint(
+            JointClassification {
+                level: Classification::Secret,
+                countries: Box::new([usa, gbr]),
+            },
+        )));
+        assert_eq!(us.join(&fgi), us);
+        assert_eq!(fgi.join(&us), us);
+        assert_eq!(us.join(&nato), us);
+        assert_eq!(nato.join(&us), us);
+        assert_eq!(us.join(&joint), us);
+        assert_eq!(joint.join(&us), us);
+    }
 }
 
 // ===========================================================================

@@ -1052,11 +1052,22 @@ impl Lattice for AeaSet {
 /// would lose `Nato` / `Fgi` / `Joint` / `Conflict` variant tags. The
 /// join compares two `MarkingClassification`s by `effective_level()`
 /// and returns the variant with the higher level **as-is**. On
-/// equal level, the implementation prefers `Us` when both operands
-/// are `Us`-shaped (the common case → no-op); otherwise it preserves
-/// the left operand's variant. Downstream attribution (`JointSet`,
-/// `FgiSet`, `NatoClassLattice`) reads from these tags, so losing
-/// them on join would silently corrupt banner output.
+/// equal level the implementation applies a deterministic, order-
+/// independent variant precedence (lower number wins, so the
+/// "canonical" variant of a level survives):
+///
+/// 1. `Us` (canonical per §H.7 reciprocal normalization)
+/// 2. `Fgi`
+/// 3. `Nato`
+/// 4. `Joint`
+/// 5. `Conflict`
+///
+/// Concretely, `Us(Secret).join(Fgi(Secret)) ==
+/// Fgi(Secret).join(Us(Secret)) == Us(Secret)`, so commutativity
+/// holds. Downstream attribution (`JointSet`, `FgiSet`,
+/// `NatoClassLattice`) reads from these tags; the chosen precedence
+/// matches the post-§H.7-reciprocal-normalization order rules
+/// downstream expect.
 ///
 /// `BoundedLattice` is implemented: top = `Some(Us(TopSecret))`,
 /// bottom = `None`. The class chain is closed at four elements; no
@@ -1101,6 +1112,24 @@ impl ClassificationLattice {
     }
 }
 
+/// Deterministic variant-precedence rank for equal-effective-level
+/// tiebreaks in `ClassificationLattice::join` / `meet`. Lower rank
+/// wins. Order rationale: per CAPCO-2016 §H.7 pp123-125 reciprocal
+/// normalization, `Us` is the canonical form at portion-parse time
+/// for any portion that carries a US classification; the remaining
+/// variants are foreign-source (`Fgi`), foreign-system (`Nato`),
+/// or co-owned (`Joint`), with `Conflict` as the absorbing top
+/// (it already carries the US-upgraded level in `us`).
+fn classification_variant_rank(c: &MarkingClassification) -> u8 {
+    match c {
+        MarkingClassification::Us(_) => 0,
+        MarkingClassification::Fgi(_) => 1,
+        MarkingClassification::Nato(_) => 2,
+        MarkingClassification::Joint(_) => 3,
+        MarkingClassification::Conflict { .. } => 4,
+    }
+}
+
 impl Lattice for ClassificationLattice {
     fn join(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
@@ -1113,16 +1142,15 @@ impl Lattice for ClassificationLattice {
                 } else if lb > la {
                     Self(Some(b.clone()))
                 } else {
-                    // Equal level: prefer Us if both are Us-shaped (common
-                    // case → no-op); otherwise preserve the left operand
-                    // variant. This preserves variant tags downstream
-                    // attribution (JointSet, FgiSet, NatoClassLattice)
-                    // depends on.
-                    match (a, b) {
-                        (MarkingClassification::Us(_), MarkingClassification::Us(_)) => {
-                            Self(Some(a.clone()))
-                        }
-                        _ => Self(Some(a.clone())),
+                    // Equal effective level: deterministic variant
+                    // tiebreak. Lower rank wins, so the join is
+                    // commutative (a.join(b) == b.join(a)).
+                    let ra = classification_variant_rank(a);
+                    let rb = classification_variant_rank(b);
+                    if ra <= rb {
+                        Self(Some(a.clone()))
+                    } else {
+                        Self(Some(b.clone()))
                     }
                 }
             }
@@ -1135,10 +1163,21 @@ impl Lattice for ClassificationLattice {
             (Some(a), Some(b)) => {
                 let la = a.effective_level();
                 let lb = b.effective_level();
-                if la <= lb {
+                if la < lb {
                     Self(Some(a.clone()))
-                } else {
+                } else if lb < la {
                     Self(Some(b.clone()))
+                } else {
+                    // Equal effective level: deterministic variant
+                    // tiebreak (same precedence as join). Lower rank
+                    // wins, so meet is commutative.
+                    let ra = classification_variant_rank(a);
+                    let rb = classification_variant_rank(b);
+                    if ra <= rb {
+                        Self(Some(a.clone()))
+                    } else {
+                        Self(Some(b.clone()))
+                    }
                 }
             }
         }
