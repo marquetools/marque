@@ -1472,9 +1472,7 @@ impl DissemSet {
     /// production; the `debug_assert!` in `join` pins this.
     fn apply_overlays(&mut self, table: &'static [(DissemControl, DissemControl)]) {
         // Overlay 1: OC-USGOV supersession (§H.8 p136 + p140).
-        if self.set.contains(&DissemControl::Oc)
-            && self.set.contains(&DissemControl::OcUsgov)
-        {
+        if self.set.contains(&DissemControl::Oc) && self.set.contains(&DissemControl::OcUsgov) {
             self.set.remove(&DissemControl::OcUsgov);
         }
 
@@ -1560,11 +1558,7 @@ impl Lattice for DissemSet {
         // the smaller set's overlay state is preserved (the overlay
         // rules only ever REMOVE elements; removing more from a
         // smaller set is a no-op).
-        let set: BTreeSet<DissemControl> = self
-            .set
-            .intersection(&other.set)
-            .copied()
-            .collect();
+        let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
         // Meet propagates unanimity as AND (both sides must agree).
         let relido_observed_unanimous =
             self.relido_observed_unanimous && other.relido_observed_unanimous;
@@ -1649,11 +1643,7 @@ impl Lattice for NatoDissemSet {
     }
 
     fn meet(&self, other: &Self) -> Self {
-        let set: BTreeSet<DissemControl> = self
-            .set
-            .intersection(&other.set)
-            .copied()
-            .collect();
+        let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
         Self { set }
     }
 }
@@ -1778,11 +1768,8 @@ impl JointSet {
         }
 
         // All portions JOINT: check unanimity on producer lists.
-        let first_producers: BTreeSet<CountryCode> = joint_portions[0]
-            .countries
-            .iter()
-            .copied()
-            .collect();
+        let first_producers: BTreeSet<CountryCode> =
+            joint_portions[0].countries.iter().copied().collect();
         let highest_level = joint_portions
             .iter()
             .map(|j| j.level)
@@ -1991,8 +1978,7 @@ impl Lattice for JointSet {
                     producers: p2,
                 },
             ) => {
-                let common: BTreeSet<CountryCode> =
-                    p1.intersection(p2).copied().collect();
+                let common: BTreeSet<CountryCode> = p1.intersection(p2).copied().collect();
                 if common.is_empty() {
                     Self::Bottom
                 } else {

@@ -48,9 +48,7 @@ fn project_via_page_context(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
         ctx.add_portion(p.clone());
     }
     let mut out = CanonicalAttrs::default();
-    out.classification = ctx
-        .expected_classification()
-        .map(MarkingClassification::Us);
+    out.classification = ctx.expected_classification().map(MarkingClassification::Us);
     out.sci_controls = ctx.expected_sci_controls().into_boxed_slice();
     out.sci_markings = ctx.expected_sci_markings();
     out.sar_markings = ctx.expected_sar_marking();
@@ -83,10 +81,7 @@ fn assert_byte_identity(
     macro_rules! check_eq {
         ($field:ident, $name:literal) => {
             if pc.$field != lat.$field {
-                diffs.push((
-                    $name,
-                    format!("pc={:?}, lat={:?}", pc.$field, lat.$field),
-                ));
+                diffs.push(($name, format!("pc={:?}, lat={:?}", pc.$field, lat.$field)));
             }
         };
     }
@@ -446,10 +441,7 @@ fn joint_unanimous_two_portions() {
     // = None or PageContext fallback.
     // We assert the lattice path produces the §H.3 p56-correct shape:
     assert!(
-        matches!(
-            lat.classification,
-            Some(MarkingClassification::Joint(_))
-        ),
+        matches!(lat.classification, Some(MarkingClassification::Joint(_))),
         "lattice should produce Joint classification on unanimous JOINT"
     );
     // PageContext path's known behavior — Us classification at
@@ -460,7 +452,10 @@ fn joint_unanimous_two_portions() {
     // pure-JOINT-page concern that PR 4b-B's JointSet correctly
     // models. Divergence acceptable; the §H.3 p56 + §H.3 p57 line
     // 1288 citations document the asymmetry.
-    assert!(matches!(pc.classification, Some(MarkingClassification::Us(_))));
+    assert!(matches!(
+        pc.classification,
+        Some(MarkingClassification::Us(_))
+    ));
 }
 
 #[test]
@@ -500,8 +495,14 @@ fn joint_disunity_two_portions_different_producers() {
     // Both produce Us(Secret) for the classification — JOINT was
     // not unanimous, so the lattice produces DisunityCollapse →
     // Us(highest_level).
-    assert!(matches!(pc.classification, Some(MarkingClassification::Us(_))));
-    assert!(matches!(lat.classification, Some(MarkingClassification::Us(_))));
+    assert!(matches!(
+        pc.classification,
+        Some(MarkingClassification::Us(_))
+    ));
+    assert!(matches!(
+        lat.classification,
+        Some(MarkingClassification::Us(_))
+    ));
     // Both should produce an FGI marker carrying GBR + CAN.
     assert!(pc.fgi_marker.is_some());
     assert!(lat.fgi_marker.is_some());
@@ -531,8 +532,14 @@ fn joint_single_portion_no_us() {
     let portions = [portion_joint(Classification::Secret, &["USA", "GBR"])];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
-    assert!(matches!(pc.classification, Some(MarkingClassification::Us(_))));
-    assert!(matches!(lat.classification, Some(MarkingClassification::Joint(_))));
+    assert!(matches!(
+        pc.classification,
+        Some(MarkingClassification::Us(_))
+    ));
+    assert!(matches!(
+        lat.classification,
+        Some(MarkingClassification::Joint(_))
+    ));
 }
 
 // ===========================================================================

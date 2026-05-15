@@ -104,10 +104,7 @@ fn joint_mixed_with_us_portions_no_w004_fires() {
     // handles FGI migration.
     let mut us = CanonicalAttrs::default();
     us.classification = Some(MarkingClassification::Us(Classification::Secret));
-    let portions = [
-        joint_portion(Classification::Secret, &["USA", "GBR"]),
-        us,
-    ];
+    let portions = [joint_portion(Classification::Secret, &["USA", "GBR"]), us];
     let s = JointSet::from_attrs_iter(&portions);
     assert!(matches!(s, JointSet::Bottom));
 }

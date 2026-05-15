@@ -613,11 +613,7 @@ mod nato_class_lattice {
                 assert_eq!(la.join(&la), la, "idem");
                 for c in ALL {
                     let lc = n(c);
-                    assert_eq!(
-                        la.join(&lb).join(&lc),
-                        la.join(&lb.join(&lc)),
-                        "assoc"
-                    );
+                    assert_eq!(la.join(&lb).join(&lc), la.join(&lb.join(&lc)), "assoc");
                 }
             }
             assert_eq!(bottom.join(&n(a)), n(a));
@@ -876,7 +872,7 @@ mod nato_dissem_set {
         // NATO contributes only ORCON-NATO and REL TO (CAPCO-2016 p41);
         // plain BTreeSet union, no supersession overlays.
         let portions = [
-            portion(&[DissemControl::Oc]),  // ORCON in NATO namespace
+            portion(&[DissemControl::Oc]), // ORCON in NATO namespace
             portion(&[DissemControl::Rel]),
         ];
         let s = NatoDissemSet::from_attrs_iter(&portions);
@@ -1011,10 +1007,8 @@ mod joint_set {
         // — assoc/comm/idem are pinned over the carefully-chosen
         // representatives that exercise each transition.
         let bottom = JointSet::Bottom;
-        let unanim = JointSet::from_attrs_iter(&[joint_portion(
-            Classification::Secret,
-            &["USA", "GBR"],
-        )]);
+        let unanim =
+            JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
         let disunity = JointSet::from_attrs_iter(&[
             joint_portion(Classification::Secret, &["USA", "GBR"]),
             joint_portion(Classification::Secret, &["USA", "CAN"]),
@@ -1023,11 +1017,7 @@ mod joint_set {
         for a in &states {
             for b in &states {
                 // Commutativity.
-                assert_eq!(
-                    a.join(b),
-                    b.join(a),
-                    "comm fail: {a:?} vs {b:?}"
-                );
+                assert_eq!(a.join(b), b.join(a), "comm fail: {a:?} vs {b:?}");
                 // Idempotency.
                 assert_eq!(a.join(a), *a, "idem fail: {a:?}");
                 for c in &states {
@@ -1112,10 +1102,7 @@ mod rel_to_block {
     fn rel_to_block_noforn_supersedes() {
         // §D.2 Table 3 + §H.8 p145: NOFORN in any portion → empty
         // REL TO; lattice returns NofornSuperseded.
-        let portions = [
-            rel_portion(&["USA", "GBR"]),
-            nf_portion(),
-        ];
+        let portions = [rel_portion(&["USA", "GBR"]), nf_portion()];
         let b = RelToBlock::from_attrs_iter(&portions);
         assert!(b.is_noforn_superseded());
         assert!(b.into_boxed_slice().is_empty());
@@ -1155,10 +1142,7 @@ mod rel_to_block {
     #[test]
     fn rel_to_block_tetragraph_expansion_fvey() {
         // FVEY expands to {AUS, CAN, GBR, NZL, USA}.
-        let portions = [
-            rel_portion(&["FVEY"]),
-            rel_portion(&["USA", "GBR", "CAN"]),
-        ];
+        let portions = [rel_portion(&["FVEY"]), rel_portion(&["USA", "GBR", "CAN"])];
         let b = RelToBlock::from_attrs_iter(&portions);
         match b {
             RelToBlock::Lattice { countries } => {
