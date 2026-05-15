@@ -70,6 +70,7 @@ Per `CapcoScheme::categories()`:
 | `SarSet` | `marque-capco::lattice::SarSet` | Functional |
 | `FgiSet` | `marque-capco::lattice::FgiSet` | Functional but render-canonical drops redundant `FGI` token (PR 5) |
 | NATO control set | None | New: ATOMAL/BOHEMIA additions in PR 9 (#246) |
+| **AEA control set** (`CAT_AEA`) | None | **New: lands in PR 4b-A — see §7.5** (`AeaSet`: RD/FRD/TFNI supersession + CNWDI + SIGMA + UCNI + ATOMAL routing per §H.6 pp103-121 + §G.2 Table 5 p40 + §H.7 p122 FGI-section worked example) |
 | Declassify-on / `MaxDate` | `MaxDate` | Functional for dates; AEA/NATO canned strings (#266) deferred |
 
 Each section below is a stub. **A reviewer signing off on PR 4 is
@@ -1209,6 +1210,419 @@ PageRewrite handle the validation and cleanup.
 
 ---
 
+## 7.5. AEA control set (`CAT_AEA`)
+
+The AEA control set carries Atomic Energy Act information markings —
+RD, FRD, TFNI, the CNWDI sub-modifier, SIGMA program numbers, the two
+UCNI variants (DoD UCNI = `DCNI`, DoE UCNI = `UCNI`), and ATOMAL
+(NATO §123/§144 AEA-sharing marker). It is the **largest of the seven
+categories by token surface area** — five algebraically-distinct
+sub-axes within one category — and was missing from earlier revs of
+this design doc (it appeared only in §1 inadvertently). This section
+fills the gap.
+
+### §-citations
+
+- **§H.6 pp103-121** — Atomic Energy Act Information Markings, overall
+  section. The §H.6 section header sits on p103 along with the
+  introductory paragraph naming the five AEA markings the Register
+  lists; the first marking subsection (RD) begins on p104; the
+  section ends on p121 (TFNI worked example).
+- **§H.6 p104** — RESTRICTED DATA (RD). Includes the
+  "Relationship(s) to Other Markings" + Precedence Rules sections.
+  Key prose: "Is always used with NOFORN unless a sharing agreement
+  has been established per the Atomic Energy Act"; "CNWDI can only
+  be used with RD as designated by DOE or joint DOE-DoD guidance";
+  "SIGMA 14, 15, 18, and 20 can only be used with TOP SECRET and
+  SECRET RD"; "If RD, FRD, and TFNI portions are in a document, the
+  RD takes precedence and is conveyed in the banner line."
+- **§H.6 p106** — CRITICAL NUCLEAR WEAPON DESIGN INFORMATION (CNWDI).
+  Key prose: "May only be used with TOP SECRET RD or SECRET RD";
+  "Must be used as a subset of RD in accordance with DOD or joint
+  DOE-DoD guidance"; "CNWDI-marked information must be segregated
+  from classified NSI portions."
+- **§H.6 p108-109** — SIGMA [#]. Key prose: "Requires RD" /
+  "SIGMA # currently represents one or more of the following
+  numbers: 14, 15, 18, and 20"; "Multiple SIGMA numbers must be
+  listed in numerical order with a space preceding each value";
+  "If both RD and FRD SIGMA [#] portions are in a document, the
+  RD-SIGMA [#] marking takes precedence over the FRD-SIGMA [#]
+  marking in the banner line and all SIGMA numbers are listed in
+  the RD-SIGMA [#] marking in the banner line, regardless of
+  whether the information was RD or FRD" (p109, top-of-page
+  continuation from the p108 Precedence Rules block).
+- **§H.6 p111** — FORMERLY RESTRICTED DATA (FRD). Key prose:
+  "If the FRD marking is contained in any portion of a document, it
+  must appear in the banner line (except when RD is present.)"; "If
+  RD and FRD portions are in a document, the RD marking takes
+  precedence in the banner line and is conveyed in the banner line."
+- **§H.6 p113** — FRD-SIGMA. Key prose: "Requires FRD"; same
+  precedence rule as §H.6 p109 (mutual reference — the rule is
+  stated once from each subsection's vantage).
+- **§H.6 p116-117** — DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION
+  (DOD UCNI / `DCNI`). Key prose: "May only be used with
+  UNCLASSIFIED"; "Classified documents: DOD UCNI does not appear in
+  the banner line; however, NOFORN must be applied if a less
+  restrictive FD&R marking would otherwise be conveyed with the
+  classified information."
+- **§H.6 p118-119** — DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION
+  (DOE UCNI / `UCNI`). Symmetric structure to DOD UCNI: "May only be
+  used with UNCLASSIFIED"; "Classified documents: DOE UCNI does not
+  appear in the banner line; however, use NOFORN if a less
+  restrictive FD&R marking would otherwise be conveyed with the
+  classified information."
+- **§H.6 p120-121** — TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION
+  (TFNI). Key prose: "May only be used with TOP SECRET, SECRET, or
+  CONFIDENTIAL"; "If the TFNI marking is contained in any portion of
+  a document that contains portions of RD and/or FRD, the RD or FRD
+  takes precedence. The 'RD' or 'FRD' marking, as appropriate,
+  appears in the banner line and the 'TFNI' marking does not appear
+  in the banner line."
+- **§H.7 p122 — FGI section worked example** (NOT a §H.7 ATOMAL
+  subsection — ATOMAL has no dedicated subsection in §H.1 through
+  §H.9; its registration lives in §G.2 Table 5 p40; this citation
+  is for the worked example
+  found inside the FGI section that demonstrates the AEA-axis
+  placement). Key prose: "*SECRET//RD/ATOMAL//FGI NATO//NOFORN,
+  where ATOMAL is a NATO Atomic Energy Act marking that follows the
+  registered US Atomic Energy Act marking RD*". This is the
+  operative authority that ATOMAL travels in the AEA category
+  alongside RD/FRD/TFNI, not on the classification axis (the PR 9c.1
+  T134 routing change).
+- **§G.2 Table 5 p40** — ARH (Authorization, Registration, Handling)
+  by Registered Marking. ATOMAL row registers ATOMAL as a standalone
+  control marking with ARH = AEA. Table 5 lives in §G.2 (the ARH
+  subsection); Table 4 lives in §G.1 (the Register of Authorized
+  Markings). Do not conflate.
+- **§G.1 Table 4 pp36-38** — Register of Authorized Classification and
+  Control Markings. AEA Register-order sequence for category 6
+  (banner roll-up display order): RD → CNWDI → SIGMA → FRD → SIGMA
+  → DOD UCNI → DOE UCNI → TFNI. ATOMAL is listed in Table 4
+  category 2 (Non-US Protective Markings) — the cross-category
+  routing decision is governed by §H.7 p122 (above), not by Table 4
+  category 6 ordering.
+- **§G.2 Table 5 pp39-40** — ARH by Registered Marking. Lists ATOMAL,
+  BALK, BOHEMIA at p40 under "Non-US Protective Markings". ATOMAL's
+  ARH row reads "Requires ATOMAL read-in." which is independent of
+  the §H.7 p122 routing decision; this entry confirms ATOMAL is a
+  registered standalone control marking (the relevant fact for
+  T134's AEA-axis placement).
+
+### Formal join semantics
+
+The AEA category is modeled as a five-axis `Product` composition.
+Each sub-axis carries an algebraically-distinct join law; rendering
+the surface as one `Product` rather than five separate
+`MarkingScheme::Category` rows keeps the §G.1 Table 4 category-6
+roll-up sequence — which is single-category — algebraically faithful.
+
+```text
+AeaSet = Product<
+    SupersessionSet<AeaPrimary>,    // axis 1: RD ⊐ FRD ⊐ TFNI per §H.6 p104+p111+p120
+    FlatSet<CnwdiPresence>,         // axis 2: CNWDI presence (true/false) per §H.6 p106
+    FlatSet<SigmaNumber>,           // axis 3: SIGMA {14, 15, 18, 20} per §H.6 p108
+    FlatSet<UcniKind>,              // axis 4: {DodUcni, DoeUcni} per §H.6 p116-119
+    OptionalSingleton<AtomalBlock>, // axis 5: ATOMAL routed per PR 9c.1 T134
+>
+```
+
+**Axis 1 — `SupersessionSet<AeaPrimary>` where `AeaPrimary ∈ {Rd, Frd, Tfni}`:**
+
+```text
+Join: SupersessionSet::join(a, b) = supremum under total order
+      Tfni ⊏ Frd ⊏ Rd.
+
+  Pre:  a, b ∈ {None, Tfni, Frd, Rd}.
+  Post: result is the supremum under §H.6 p104 + p111 + p120 total order.
+        Identity (bottom): None.
+        Top: Rd.
+```
+
+§-authority: §H.6 p104 (RD takes precedence over FRD and TFNI);
+§H.6 p111 (FRD evicted from banner when RD present); §H.6 p120 (TFNI
+evicted from banner when RD or FRD present). The three subsections
+state the same total-order rule from each marking's vantage; the
+combined supersession order is the unique consistent solution.
+
+**Axis 2 — `FlatSet<CnwdiPresence>` (closed singleton on `bool`):**
+
+```text
+Join: CnwdiPresence::join(a, b) = a ∨ b.
+
+  Pre:  a, b ∈ {false, true}.
+  Post: result is the OR of the two presence flags.
+        Identity (bottom): false.
+        Top: true.
+```
+
+§-authority: §H.6 p106 (CNWDI is a sub-modifier on RD; presence
+propagates monotonically through page roll-up — once any RD portion
+carries CNWDI, the banner RD block carries it).
+
+**Axis 3 — `FlatSet<SigmaNumber>` where `SigmaNumber = u8` (open
+vocabulary, currently {14, 15, 18, 20}):**
+
+```text
+Join: FlatSet::join(A, B) = A ∪ B (set-union).
+
+  Pre:  A, B ⊆ ℕ (with SIGMA-vocabulary semantics: 14, 15, 18, 20
+        in the current revision per §H.6 p108).
+  Post: result is the union of the two sets, sorted ascending
+        per §H.6 p108 ("Multiple SIGMA numbers must be listed in
+        numerical order with a space preceding each value").
+        Identity (bottom): ∅.
+        No top: §H.6 p108 lists 14/15/18/20 but explicitly admits
+        future numbers ("SIGMA # currently represents one or more
+        of the following numbers"). The open vocabulary precludes
+        a finite top.
+```
+
+§-authority: §H.6 p108 (SIGMA list grammar + numerical-order
+canonical form) + §H.6 p109 ("all SIGMA numbers are listed in the
+RD-SIGMA [#] marking in the banner line, regardless of whether the
+information was RD or FRD" — the cross-modifier coalescing that
+makes `Axis 3` a flat union rather than per-modifier sets).
+
+**Axis 4 — `FlatSet<UcniKind>` where `UcniKind ∈ {DodUcni, DoeUcni}`:**
+
+```text
+Join: FlatSet::join(A, B) = A ∪ B.
+
+  Pre:  A, B ⊆ {DodUcni, DoeUcni}.
+  Post: result is the set-union.
+        Identity (bottom): ∅.
+        Top: {DodUcni, DoeUcni} (closed two-element vocabulary).
+```
+
+§-authority: §H.6 p116-117 (DOD UCNI / `DCNI`) and §H.6 p118-119
+(DOE UCNI / `UCNI`). The two are independent vocabularies — the
+distinct DoD vs DoE proponency keeps them as separate atoms
+even when they co-occur. The on-classified-banner suppression
+("DOD UCNI does not appear in the banner line; however, NOFORN
+must be applied if a less restrictive FD&R marking would otherwise
+be conveyed") is a **cross-axis post-projection rewrite**, not a
+within-axis join transform — the lattice produces the UCNI fact
+set, the rewrite (post-projection) decides whether the banner
+renders it.
+
+**Axis 5 — `OptionalSingleton<AtomalBlock>`:**
+
+```text
+Join: OptionalSingleton::join(a, b) = a ∨ b
+                                    = case (a, b) of
+                                        (None, None)       → None
+                                        (Some(_), _)       → Some(AtomalBlock)
+                                        (_, Some(_))       → Some(AtomalBlock)
+
+  Pre:  a, b ∈ {None, Some(AtomalBlock)}.
+  Post: result is the OR of the two presences.
+        Identity (bottom): None.
+        Top: Some(AtomalBlock).
+```
+
+§-authority: §H.7 p122 (ATOMAL travels in AEA category per worked
+example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`); §G.2 Table 5 p40
+(ATOMAL is a registered standalone control marking with no
+enumerated sub-markings — the `AtomalBlock` is an empty carrier
+struct that mirrors `RdBlock` / `FrdBlock` so a future CAPCO grammar
+extension stays a planned migration rather than a shape-change).
+
+**Product composition:**
+
+```text
+Join: AeaSet::join(s1, s2) = componentwise join of all five axes.
+
+  Pre:  s1, s2 are well-formed AeaSet values (CNWDI=true ⇒ primary=Rd is
+        a validation invariant, not a lattice law — see "Cross-axis
+        constraints" below).
+  Post: result has primary = SupersessionSet::join(s1.primary, s2.primary),
+        cnwdi  = s1.cnwdi || s2.cnwdi,
+        sigmas = s1.sigmas ∪ s2.sigmas,
+        ucni   = s1.ucni   ∪ s2.ucni,
+        atomal = s1.atomal.or(s2.atomal).
+        Identity (bottom): AeaSet::default() (all five sub-axes at bottom).
+        No top: axis 3 (SIGMA numbers) is open-vocabulary; axes 1, 2, 4, 5
+        are bounded but the Product is unbounded by axis 3.
+
+Lattice laws (associativity, commutativity, idempotency) follow
+componentwise from the five sub-axes' laws.
+```
+
+**`BoundedLattice` is intentionally NOT implemented** for `AeaSet`.
+Per the SciSet / SarSet precedent in this codebase, open-vocabulary
+axes (here: SIGMA numbers per §H.6 p108) preclude a lawful finite
+top. Callers needing the bottom use `AeaSet::default()` or
+`AeaSet::empty()`.
+
+### Cross-axis constraints (validation, not lattice)
+
+Three cross-axis rules apply to AEA markings but are **not** lattice
+laws — they are validation predicates that ride alongside the lattice
+in the `Constraint` / `PageRewrite` catalogs on `CapcoScheme`:
+
+| Constraint shape | §-authority | Surface |
+|---|---|---|
+| `CNWDI requires RD` | §H.6 p106 ("must be used as a subset of RD") | **Enforced by data model, NOT by constraint catalog.** CNWDI is structurally a `bool` field on `AeaMarking::Rd(RdBlock { cnwdi })` in `marque-ism`'s type system — there is no `AeaMarking::Cnwdi` variant. A portion that bears CNWDI necessarily bears RD because CNWDI presence is gated by the surrounding `Rd(...)` variant. An earlier draft added a `Constraint::Requires { TOK_CNWDI, TOK_RD }` row but Copilot review caught it as unreachable: `TOK_CNWDI` is satisfied only by `Rd(rd) if rd.cnwdi`, so `TOK_RD` is always present when `TOK_CNWDI` is. §H.6 p106's "subset of RD" invariant lives at the data-model level. **If a future change splits CNWDI into a sibling variant**, the satisfies_attrs predicate for `TOK_CNWDI` must be amended AND a Constraint::Requires row re-introduced. |
+| `CNWDI requires class ≥ S` | §H.6 p106 ("May only be used with TOP SECRET RD or SECRET RD") | Already in the class-floor catalog (`E058/CNWDI-classification-floor`, see PR 3b.D T026d). No new wiring in PR 4b-A. |
+| `SIGMA cross-modifier coalescing (banner)` | §H.6 p108-109 + §H.6 p113 | `PageRewrite("capco/frd-sigma-consolidates-into-rd-sigma")` already declared in `CapcoScheme::build_page_rewrites()` at §-citation `§H.6 p113`. PR 4b-A re-doc-comments the row to also cite §H.6 p108-109 (the RD-side vantage) — same algebraic rule from both subsections. Body remains the Phase-3 `never_fires` / `noop_action` stub; PR 4b-B wires the runtime `AeaSet`-driven mutation. |
+| `UCNI strip on classified` | §H.6 p116-117 (DOD UCNI) + p118-119 (DOE UCNI) | Post-projection cross-axis rewrite: when banner classification > U and the AEA set carries UCNI, the UCNI atom is suppressed from banner render AND NOFORN is added to the dissem axis if no stricter FD&R marker exists. **Deferred to PR 4b-C (FOUO eviction pattern wiring)** because the algebraic shape is identical to the FOUO-eviction matrix in §3 (b) — both are classification-ascent strips with NOFORN-promotion. PR 4b-A documents the predicate; the catalog row lands in PR 4b-C. |
+| `SIGMA requires RD or FRD` | §H.6 p108 ("Requires RD") + §H.6 p113 ("Requires FRD"; same precedence rule) | **DEFERRED — tracking issue TBD before PR 4b-B opens.** The §H.6 p108 prose says SIGMA "Requires RD" but §H.6 p113 also accepts SIGMA on FRD (FRD-SIGMA is its own template), so the constraint is "SIGMA requires RD OR FRD on the same portion." The AeaSet lattice's `sigmas` field is shared across `primary` states; a `(S//SIGMA 14)` portion (SIGMA without primary) is syntactically reachable but operationally invalid. PR 4b-A does NOT land this constraint — the cleanest shape (`Constraint::Requires` with an OR predicate on the right side OR two separate `Requires` rows) requires PM sign-off and engine-side support that PR 4b-B is the right home for. Open an issue and link it here before PR 4b-B opens. |
+
+### Worked examples
+
+**Example 1 — mainline RD/FRD/SIGMA cross-modifier coalescing
+(§H.6 p104 + p108-109 + p111):**
+
+```
+Inputs:  (S//RD/SIGMA 14) (S//FRD/SIGMA 18)
+Per-portion AeaSet:
+  portion 1: {primary=Rd,  cnwdi=false, sigmas={14}, ucni=∅, atomal=None}
+  portion 2: {primary=Frd, cnwdi=false, sigmas={18}, ucni=∅, atomal=None}
+Per-axis joins:
+  primary: SupersessionSet::join(Rd, Frd) = Rd  (per §H.6 p104 + §H.6 p111)
+  cnwdi:   false ∨ false = false
+  sigmas:  {14} ∪ {18}   = {14, 18}
+  ucni:    ∅              (both empty)
+  atomal:  None
+Per-axis-joined AeaSet: {primary=Rd, sigmas={14, 18}}
+Banner render (post canonical-form sort, §H.6 p108): SECRET//RD-SIGMA 14 18
+Classification axis: S ⊔ S = S
+Final banner: SECRET//RESTRICTED DATA-SIGMA 14 18
+```
+
+This is the §H.6 p109 worked example end-to-end — the RD-SIGMA
+banner marking carries SIGMA numbers from both RD and FRD portions
+because the supersession join promotes the primary axis to `Rd`,
+and the SIGMA set-union runs orthogonally on axis 3.
+
+**Example 2 — UCNI strip on classified (§H.6 p116):**
+
+```
+Inputs:  (U//DOD UCNI//FOUO) (S)
+Per-portion AeaSet:
+  portion 1: {primary=None, cnwdi=false, sigmas=∅, ucni={DodUcni}, atomal=None}
+  portion 2: AeaSet::default()
+Per-axis joins:
+  primary: None ⊔ None = None
+  cnwdi:   false
+  sigmas:  ∅
+  ucni:    {DodUcni} ∪ ∅ = {DodUcni}
+  atomal:  None
+Per-axis-joined AeaSet: {ucni={DodUcni}}
+Classification axis: U ⊔ S = S
+Cross-axis post-projection rewrite (§H.6 p116, deferred PR 4b-C):
+  banner classification = S ⊐ U  →  UCNI suppressed from banner.
+  No stricter FD&R marker on page  →  add NOFORN to dissem axis.
+Pre-projection AeaSet at banner: {} (empty after suppress)
+Banner dissem: {NOFORN}
+Final banner: SECRET//NOFORN
+```
+
+Edge: the §H.6 p116 prose carries TWO operational rules in one
+sentence — UCNI's banner-line suppression on classified docs AND the
+NOFORN-promotion requirement. The lattice produces the union
+faithfully; the post-projection rewrite enforces both rules together
+because they are coupled — suppressing UCNI without promoting NOFORN
+would lose the foreign-disclosure constraint UCNI carries.
+
+**Example 3 — ATOMAL routing (PR 9c.1 §H.7 p122 + §G.2 Table 5 p40):**
+
+```
+Input:   (//CTS//RD/ATOMAL//FGI NATO//NOFORN)
+  — single NATO Cosmic Top Secret portion that co-bundles RD,
+    ATOMAL, FGI NATO source-attribution, and NOFORN.
+Per-portion AeaSet:
+  {primary=Rd, cnwdi=false, sigmas=∅, ucni=∅, atomal=Some(AtomalBlock)}
+Per-axis (single-portion is identity case):
+  primary = Rd
+  atomal  = Some(AtomalBlock)
+Banner render (per §H.6 + §G.1 Table 4 cat-6 order: RD then ATOMAL):
+  RD/ATOMAL
+Classification axis (reciprocal-normalized CTS → US TS per §H.7):
+  TS
+Other axes: FGI={NATO}, dissem={NOFORN}
+Final banner: TOP SECRET//RD/ATOMAL//FGI NATO//NOFORN  (exactly the §H.7 p122 worked example)
+```
+
+This example confirms ATOMAL stays in `AeaSet` rather than routing
+through `NatoClassification` (the legacy `NatoSecretAtomal` /
+`CosmicTopSecretAtomal` etc. variants retired in PR 9c.1 T134). The
+canonical re-rendering of legacy `(//CTSA)` etc. into the
+`(//CTS//ATOMAL)` form is the autofix Marque exists to automate
+(per project memory `remark-on-derivative-use-is-marque-autofix`).
+
+### Property-test fixtures (this PR)
+
+- `crates/capco/tests/category_lattice_laws.rs::aea_primary_supersession_assoc_comm_idem`
+  — axis 1 lattice laws (RD ⊐ FRD ⊐ TFNI total-order supersession).
+- `crates/capco/tests/category_lattice_laws.rs::aea_sigma_flatset_assoc_comm_idem`
+  — axis 3 lattice laws (SIGMA flat-set union).
+- `crates/capco/tests/category_lattice_laws.rs::aea_ucni_flatset_assoc_comm_idem`
+  — axis 4 lattice laws (UCNI flat-set union over `{DodUcni, DoeUcni}`).
+- `crates/capco/tests/category_lattice_laws.rs::aea_cnwdi_flatset_assoc_comm_idem`
+  — axis 2 lattice laws (CNWDI presence OR).
+- `crates/capco/tests/category_lattice_laws.rs::aea_atomal_optional_singleton_identity`
+  — axis 5 lattice laws (ATOMAL `OptionalSingleton::join` = `or`).
+- `crates/capco/tests/category_lattice_laws.rs::aea_set_join_assoc_comm_idem`
+  — Product composition: lattice laws over the full `AeaSet`.
+- `crates/capco/tests/category_lattice_laws.rs::aea_set_identity_with_default`
+  — `AeaSet::default()` is identity element for join.
+- `crates/capco/tests/cross_axis_dominance.rs::aea_rd_evicts_frd_tfni`
+  — Example 1 fixture (§H.6 p104 + p111 + p120 supersession).
+- `crates/capco/tests/cross_axis_dominance.rs::aea_sigma_coalesces_under_rd`
+  — Example 1 fixture (§H.6 p108-109 cross-modifier SIGMA union).
+- `crates/capco/tests/cross_axis_dominance.rs::aea_ucni_strips_when_classified`
+  — Example 2 fixture (§H.6 p116/p118 documented predicate; runtime
+  wiring deferred to PR 4b-C).
+- `crates/capco/tests/cross_axis_dominance.rs::aea_atomal_routes_to_aea_not_nato_class`
+  — Example 3 fixture (§H.7 p122 + §G.2 Table 5 p40 ATOMAL routing).
+- `tests/corpus/lattice/aea-commingling.txt` — corpus fixture
+  (already exists from the §8 Declassify-on AEA-commingling case);
+  reused for AEA-axis end-to-end coverage.
+
+### Open questions — resolved
+
+1. **CNWDI semantic shape — `Constraint::Requires` or a `ClosureRule`
+   that implicitly adds RD?** → **`Constraint::Requires`.** §H.6 p106
+   ("must be used as a subset of RD in accordance with DOD or joint
+   DOE-DoD guidance") reads as a validation requirement, not an
+   implicit-default fact-propagation. A `ClosureRule` shape would
+   silently add RD when CNWDI appears alone — but per §H.6 p106 a
+   CNWDI portion without RD is **malformed input that the classifier
+   needs to fix**, not a representation marque should silently
+   complete. **However, the data model in `marque-ism` already
+   enforces this**: CNWDI is a `bool` field on
+   `AeaMarking::Rd(RdBlock { cnwdi })`, not a sibling variant, so
+   `cnwdi=true, primary=None` is *not* a representable state at the
+   `AeaMarking` level — only at `AeaSet`'s internal representation,
+   which can never be populated from valid parser output. The
+   §H.6 p106 invariant therefore lives at the type level, and no
+   `Constraint::Requires` row is needed. (An earlier draft of
+   PR 4b-A added an `E067/cnwdi-requires-rd` row; Copilot review
+   caught it as unreachable per the satisfies_attrs predicate, and
+   it was removed.) The algebra stays clean either way.
+2. **SIGMA cross-modifier coalescing — within-axis lattice law or
+   page-scope `PageRewrite`?** → **PageRewrite at page scope.** The
+   `FlatSet<SigmaNumber>` axis produces the union faithfully at any
+   scope, but §H.6 p108-109 + p113 specifies that the **banner** uses
+   the RD-SIGMA marking *when both RD and FRD SIGMA portions exist*
+   — which is a primary-axis-dependent decision, not a SIGMA-axis
+   transform. The existing `capco/frd-sigma-consolidates-into-rd-sigma`
+   PageRewrite (`reads: [CAT_AEA], writes: [CAT_AEA]`, citation
+   `§H.6 p113`) captures this; PR 4b-A re-doc-comments it to also
+   cite §H.6 p108-109 (the RD-side vantage of the same rule). No new
+   PageRewrite row added — the existing one IS the rd-coalesces-sigmas
+   semantics; the brief's working name (`capco/rd-coalesces-sigmas`)
+   and the in-tree id (`capco/frd-sigma-consolidates-into-rd-sigma`)
+   refer to the same rewrite.
+3. **UCNI strip-when-classified — deferred to PR 4b-C.** Same
+   algebraic shape as the §3 (b) FOUO eviction matrix (cross-axis
+   strip on classification ascent + NOFORN promotion). PR 4b-A
+   documents the predicate; PR 4b-C wires the catalog row alongside
+   the FOUO eviction work.
+
+---
+
 ## 8. Declassify-on / `MaxDate`
 
 ### §-citations
@@ -1480,6 +1894,9 @@ remain unresolved.
 | 9 | **NEW (2026-05-07) — §3 closure operator primitive** (`marque-applied.md` §4.7; D18 catalog shape pivot) | Lands in PR 3.7 as `ClosureRule` catalog + `MarkingScheme::closure_rules()` trait method per D18. Shared `FDR_DOMINATORS: &'static [TokenRef]` suppressor (Q-4.7-Cl_supp resolved). Implicit-default trio + per-marking unconditional implications. | §3 (e) + Plan `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` Stage B |
 | 10 | **NEW (2026-05-07) — §3 RELIDO incompatibility via `Constraint::Conflicts::RhsFamily(predicate)`** | Lands in PR 3.7 as `Constraint::Conflicts::RhsFamily(FamilyPredicate)` variant + walker dispatch + distributive-expansion proptest (per lattice-preflight M3 correction — NOT "commutativity"). PR 4 compacts PR 3b's enumerated RELIDO rows to ~2 family rows. | §3 (e) + Plan Stage B + Plan Stage D |
 | 11 | **NEW (2026-05-07) — §6 FgiSet consensus-or-fallback already models §4.8** | Resolved 2026-05-07: existing `FgiSet::Present { concealed, countries }` implements §4.8.2 consensus-or-fallback exactly. T108d collapses to doc-comment amendment only at `crates/capco/src/lattice.rs` (Stage D of the plan). Q-FgiSet-vs-§4.8 and Q-5.3 closed. JOINT-attribution explicitly deferred to Stage 4. | §6 entire section + §6 "Open questions — resolved" + Plan Stage D |
+| 12 | **NEW (2026-05-15) — §7.5 AEA category missing from earlier rev** | Resolved 2026-05-15 in PR 4b-A: `AeaSet = Product<SupersessionSet<AeaPrimary>, FlatSet<bool>, FlatSet<u8>, FlatSet<UcniKind>, OptionalSingleton<AtomalBlock>>` per §H.6 pp104-121 + §H.7 p122. Implementation in `crates/capco/src/lattice.rs` alongside `SciSet`/`SarSet`/`FgiSet`. `BoundedLattice` deliberately not implemented (axis 3 SIGMA is open-vocabulary per §H.6 p108). | §7.5 entire section |
+| 13 | **NEW (2026-05-15) — §7.5 CNWDI semantic shape** (Constraint::Requires vs ClosureRule vs data-model enforcement) | **Data-model enforcement** (revised post-Copilot-review). The initial PR-4b-A draft added `E067/cnwdi-requires-rd` as a `Constraint::Requires` row. Copilot caught it as unreachable: `TOK_CNWDI` is satisfied only by `AeaMarking::Rd(rd) if rd.cnwdi`, so the right-hand side `TOK_RD` is necessarily true whenever the left-hand side is. The §H.6 p106 "subset of RD" invariant lives at the `marque-ism` type level (CNWDI is a `bool` field on `RdBlock`, not a sibling variant), so no runtime constraint row is required. The row was removed before merge. | §7.5 "Cross-axis constraints" + §7.5 "Open questions — resolved" #1 |
+| 14 | **NEW (2026-05-15) — §7.5 SIGMA cross-modifier coalescing** (within-axis lattice vs PageRewrite) | **PageRewrite at page scope.** The existing `capco/frd-sigma-consolidates-into-rd-sigma` row at `§H.6 p113` IS the rd-coalesces-sigmas semantics — same rule from both subsections' vantage. No duplicate row; doc-comment updated to cite both §H.6 p108-109 (RD side) and §H.6 p113 (FRD side). | §7.5 "Cross-axis constraints" + §7.5 "Open questions — resolved" #2 |
 
 **These are the points where the previous attempt skimmed.** Each
 resolution above carries the §-citation and the algebraic shape; the
