@@ -228,6 +228,65 @@ pub struct Engine {
     /// shape rationale.
     #[allow(dead_code)]
     pass2_rule_indices: Pass2Indices,
+
+    /// Pre-resolved severity for every registered rule's *registered* ID,
+    /// indexed outer-by-rule-set, inner-by-rule-index-within-set. Built
+    /// once at construction time by [`build_severity_tables`] and read
+    /// from the lint hot loop (Site A — fast-path Off-skip) instead of
+    /// the per-candidate `config.rules.overrides` HashMap probe + per-
+    /// candidate `Severity::parse_config` parse.
+    ///
+    /// **Population.** For each registered rule, the entry is
+    /// `overrides.get(rule.id().as_str()).and_then(parse_config)
+    /// .unwrap_or(rule.default_severity())` — preserving the pre-hoist
+    /// semantics exactly. Walker rules (those with non-empty
+    /// `additional_emitted_ids()`) get an entry too; Site A's
+    /// `additional_emitted_ids().is_empty()` guard means the entry is
+    /// populated-but-unread for walkers. The per-emitted-id path
+    /// (Site B — `diags.retain_mut`) handles walker rule overrides
+    /// against [`Engine::emitted_id_overrides`] instead.
+    ///
+    /// **Invariant.** Built once in [`Engine::with_clock`] post-
+    /// `canonicalize_rule_overrides`; the backing slice is never
+    /// mutated after construction. Indices match
+    /// [`Engine::pass1_rule_indices`] / [`Engine::pass2_rule_indices`]
+    /// — the same `(set_idx, rule_idx)` pair that addresses
+    /// `self.rule_sets[set_idx].rules()[rule_idx]` addresses
+    /// `self.fast_path_severities[set_idx][rule_idx]`.
+    fast_path_severities: FastPathSeverities,
+
+    /// Pre-resolved per-emitted-ID severity overrides. Keys are the
+    /// `&'static str` rule-ID slices carried by [`RuleId`]; values are
+    /// the user-configured [`Severity`] resolved through
+    /// [`Severity::parse_config`]. **Absence means "no override"** —
+    /// callers preserve the diagnostic's emitted severity unchanged
+    /// (which for non-walker rules matches `rule.default_severity()`
+    /// by convention; for walker rules carries the per-row catalog
+    /// severity, e.g. `Fix` for E031 vs `Error` for E035 / E040).
+    ///
+    /// **Population.** Built once in [`Engine::with_clock`] from
+    /// `config.rules.overrides` post-`canonicalize_rule_overrides`.
+    /// Every canonical override key that parses to a non-malformed
+    /// severity AND has a known `&'static str` intern (from the
+    /// registered rules' `id()` / `additional_emitted_ids()` plus the
+    /// bridge's `bridge_emitted_rule_ids()`) is inserted. Unknown keys
+    /// would have been caught by `canonicalize_rule_overrides`'s
+    /// hard-fail; malformed severity strings are silently skipped to
+    /// preserve the pre-hoist `.and_then(parse_config)` semantics
+    /// (`build_severity_tables_skips_unparsable_severity` pins this).
+    ///
+    /// **Hot-loop consumers.** Read by Sites B (per-diagnostic
+    /// `retain_mut` rewrite), C (bridge `ConstraintViolation`
+    /// envelope), and D (C001 corrections-map post-pass). This field
+    /// handles the construction-time part of the optimization by
+    /// precomputing emitted-ID override severities once, so hot paths
+    /// avoid repeated parse/canonicalization work. The pre-`lint()`
+    /// `e059_override` hoist still exists intentionally: each `lint()`
+    /// call does `self.emitted_id_overrides.get("E059").copied()`
+    /// once and passes that cached value through to
+    /// `bridge_sci_per_system_diagnostics`, avoiding per-candidate
+    /// `HashMap` probes.
+    emitted_id_overrides: EmittedIdOverrides,
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -369,6 +428,18 @@ impl Engine {
         // it.
         let (pass1_rule_indices, pass2_rule_indices) = partition_rules_by_phase(&rule_sets);
 
+        // Pre-resolve all rule severity overrides into indexed lookup
+        // tables consumed by the lint hot loop. Drops the per-candidate
+        // `config.rules.overrides` HashMap probes + per-candidate
+        // `Severity::parse_config` parses from Sites A/B/C/D in
+        // `lint_inner` (a perf-only refactor — semantics preserved
+        // byte-for-byte at the audit boundary).
+        let (fast_path_severities, emitted_id_overrides) = build_severity_tables(
+            &rule_sets,
+            &config.rules.overrides,
+            scheme.bridge_emitted_rule_ids(),
+        );
+
         Ok(Self {
             config,
             rule_sets,
@@ -382,6 +453,8 @@ impl Engine {
             corpus_override: None,
             pass1_rule_indices,
             pass2_rule_indices,
+            fast_path_severities,
+            emitted_id_overrides,
         })
     }
 
@@ -625,6 +698,17 @@ impl Engine {
         // would self-justify by raising the floor it then clears).
         let mut classification_floor: Option<u8> = None;
 
+        // Per-`lint()` hoist for the `E059` bridge-emitted override.
+        // The construction-time `emitted_id_overrides` table eliminates
+        // the per-call `Severity::parse_config` cost, but the
+        // per-candidate HashMap probe remains if the lookup is inlined
+        // at the bridge call site. The SCI per-system bridge runs on
+        // every SCI-bearing candidate, so hoisting the `Option<Severity>`
+        // out of the loop matches the precedent established by the
+        // pre-PR-427 `e059_override` hoist (rust-reviewer MEDIUM on
+        // commit a2fbf12b) and keeps the per-candidate path probe-free.
+        let e059_override: Option<Severity> = self.emitted_id_overrides.get("E059").copied();
+
         // PR 3c.B Commit 4 — per-page scratch buffer for
         // `MarkingScheme::render_canonical`. The writer-passing
         // contract on `render_canonical` (caller pre-allocates and
@@ -650,20 +734,6 @@ impl Engine {
         // per-portion `render_canonical` call site reuses this
         // buffer instead of allocating a fresh `String` per call.
         let mut render_scratch = String::new();
-
-        // Hoist the `[rules] E059 = ...` config override resolution once
-        // per `lint()` call. The override map is immutable for the
-        // lifetime of a single lint invocation, and the bridge SCI
-        // per-system walk consults this value on every SCI-bearing
-        // candidate. Matches the hoisting pattern used for
-        // `c001_severity` below (rust-reviewer MEDIUM finding on
-        // commit a2fbf12b).
-        let e059_override = self
-            .config
-            .rules
-            .overrides
-            .get("E059")
-            .and_then(|s| Severity::parse_config(s));
 
         for candidate in &candidates {
             // T008: per-candidate deadline check. Checking at the top
@@ -904,8 +974,8 @@ impl Engine {
                 corrections: corrections_arc.clone(),
                 pre_pass_1_attrs,
             };
-            for rule_set in &self.rule_sets {
-                for rule in rule_set.rules() {
+            for (set_idx, rule_set) in self.rule_sets.iter().enumerate() {
+                for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
                     // Hybrid Off handling:
                     //
                     //   - **Fast path** (every non-walker rule): when
@@ -935,14 +1005,20 @@ impl Engine {
                     // The condition reads a `&'static [...]` length —
                     // branch prediction handles the dispatch and the
                     // fast path stays free.
+                    //
+                    // The configured-severity lookup is pre-resolved
+                    // at engine construction time
+                    // (`fast_path_severities[set_idx][rule_idx]`,
+                    // built by `build_severity_tables`) — the
+                    // pre-hoist code did a `HashMap<String, String>`
+                    // probe + a `Severity::parse_config` parse on
+                    // every (candidate × rule) pair; both moved to
+                    // construction time. Walker rules also have an
+                    // entry here but it stays unread because the
+                    // `additional_emitted_ids().is_empty()` guard
+                    // gates this whole block.
                     if rule.additional_emitted_ids().is_empty() {
-                        let configured_severity = self
-                            .config
-                            .rules
-                            .overrides
-                            .get(rule.id().as_str())
-                            .and_then(|s| Severity::parse_config(s))
-                            .unwrap_or(rule.default_severity());
+                        let configured_severity = self.fast_path_severities[set_idx][rule_idx];
                         if configured_severity == Severity::Off {
                             continue;
                         }
@@ -1023,20 +1099,19 @@ impl Engine {
                     // override translates the rule's emitted severity
                     // to the configured one).
                     // Single-pass per-emitted-id resolution: one HashMap
-                    // lookup + one parse_config per diagnostic. Off drops
+                    // lookup per diagnostic against the pre-resolved
+                    // `emitted_id_overrides` table (built once at
+                    // engine construction; the per-diagnostic
+                    // `Severity::parse_config` parse the pre-hoist
+                    // code did in the hot loop is gone). Off drops
                     // the diagnostic; a non-Off override replaces the
-                    // rule-emitted severity; absence keeps it (which for
-                    // non-walker rules matches `rule.default_severity()`
-                    // by convention; for walker rules carries the per-row
-                    // catalog severity).
+                    // rule-emitted severity; absence keeps it (which
+                    // for non-walker rules matches
+                    // `rule.default_severity()` by convention; for
+                    // walker rules carries the per-row catalog
+                    // severity).
                     diags.retain_mut(|d| {
-                        match self
-                            .config
-                            .rules
-                            .overrides
-                            .get(d.rule.as_str())
-                            .and_then(|s| Severity::parse_config(s))
-                        {
+                        match self.emitted_id_overrides.get(d.rule.as_str()).copied() {
                             Some(Severity::Off) => false,
                             Some(override_severity) => {
                                 d.severity = override_severity;
@@ -1165,11 +1240,9 @@ impl Engine {
                     };
                     let rule_id = RuleId::new(rule_id_str);
                     let final_severity = self
-                        .config
-                        .rules
-                        .overrides
+                        .emitted_id_overrides
                         .get(rule_id.as_str())
-                        .and_then(|s| Severity::parse_config(s))
+                        .copied()
                         .unwrap_or(severity);
                     if final_severity == Severity::Off {
                         continue;
@@ -1223,9 +1296,12 @@ impl Engine {
                 // `CapcoScheme::bridge_emitted_rule_ids`). `Severity::Off`
                 // suppresses the entire catalog (FR-008); a non-`Off`
                 // override replaces each emitted diagnostic's severity.
-                // The override value is hoisted once per `lint()` call
-                // above the candidate loop — config is immutable for the
-                // lifetime of the call.
+                // The override value is pre-resolved at engine
+                // construction time in `emitted_id_overrides` (no parse
+                // cost per call) and additionally hoisted to
+                // `e059_override` once per `lint()` call (no per-candidate
+                // HashMap probe). Both layers are loop-invariant by
+                // construction.
                 // SCI per-system FactAdd scope tracks the candidate's
                 // marking type: a portion candidate emits at portion
                 // scope; a banner candidate emits at page scope (the
@@ -1255,11 +1331,9 @@ impl Engine {
         // pipeline above. Spans reference the original source buffer.
         if let Some(cached) = &self.corrections_ac {
             let c001_severity = self
-                .config
-                .rules
-                .overrides
+                .emitted_id_overrides
                 .get("C001")
-                .and_then(|s| Severity::parse_config(s))
+                .copied()
                 .unwrap_or(Severity::Fix);
 
             if c001_severity != Severity::Off {
@@ -3410,6 +3484,19 @@ type Pass1Indices = SmallVec<[(usize, usize); 4]>;
 /// for the same rationale at greater length.
 type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 
+/// Pre-resolved registered-ID severity table consumed by Site A's
+/// fast-path Off-skip. Outer-indexed by rule-set, inner by rule-index-
+/// within-set — same shape as [`Pass1Indices`] / [`Pass2Indices`].
+/// See [`Engine::fast_path_severities`] for the full invariant.
+type FastPathSeverities = Box<[Box<[Severity]>]>;
+
+/// Pre-resolved per-emitted-ID severity overrides. Keyed by `&'static
+/// str` because [`RuleId::as_str()`] returns `&'static str`, so the
+/// lookup `map.get(d.rule.as_str())` works without an owned
+/// allocation. See [`Engine::emitted_id_overrides`] for the full
+/// invariant.
+type EmittedIdOverrides = HashMap<&'static str, Severity>;
+
 /// Partition the registered rules by their declared [`Phase`] (FR-021).
 ///
 /// Returns `(pass1, pass2)` where each entry is a
@@ -3444,6 +3531,142 @@ fn partition_rules_by_phase(
         }
     }
     (pass1, pass2)
+}
+
+/// Pre-resolve all rule severity overrides into two indexed lookup
+/// tables consumed by the lint hot loop. Built once at
+/// [`Engine::with_clock`] time, after `canonicalize_rule_overrides`
+/// has reduced the override map to canonical-ID keys.
+///
+/// Returns `(fast_path_severities, emitted_id_overrides)`:
+///
+/// - `fast_path_severities`: outer-indexed by rule-set, inner-indexed
+///   by rule-index-within-set. Each entry is the resolved [`Severity`]
+///   for that rule's *registered* ID — `overrides.get(id).and_then
+///   (parse_config).unwrap_or(rule.default_severity())`. Indices match
+///   [`Engine::pass1_rule_indices`] / [`Engine::pass2_rule_indices`].
+///   Site A (the fast-path Off-skip in `lint_inner`) reads from this
+///   table by `[set_idx][rule_idx]`.
+///
+/// - `emitted_id_overrides`: keyed by `&'static str` rule ID (the slice
+///   carried by [`RuleId`]); value is the user-configured [`Severity`]
+///   only when one is set AND parses cleanly. Absence preserves the
+///   diagnostic's emitted severity (`None` arm in the lookup). Sites B
+///   (per-diagnostic `retain_mut`), C (bridge `ConstraintViolation`),
+///   and D (C001 post-pass) read from this map.
+///
+/// The pre-hoist code path performed both lookups + a
+/// `Severity::parse_config` parse on every candidate × rule (Site A)
+/// and on every emitted diagnostic (Site B), both inside the hot loop;
+/// this hoist replaces them with one indexed slice load and one
+/// `HashMap::get(&'static str)` lookup respectively. Lookup keys are
+/// `&'static str` — `RuleId::as_str()` returns `&'static str` — so
+/// `HashMap<&'static str, Severity>::get(rule_id.as_str())` works
+/// directly without an owned allocation.
+///
+/// **`bridge_rule_ids` parameter.** The caller MUST pass the same
+/// bridge IDs slice it handed to `canonicalize_rule_overrides`
+/// (e.g., `scheme.bridge_emitted_rule_ids()` where `scheme` is the
+/// stored `CapcoScheme` instance). Threading the slice through
+/// instead of constructing a second `CapcoScheme::new()` inside this
+/// helper closes a divergence channel both reviewers' HIGH flagged:
+/// if `bridge_emitted_rule_ids()` ever becomes non-deterministic or
+/// differs across `CapcoScheme` instances (a future configurable
+/// constraint catalog, a per-instance bridge override), the
+/// canonicalizer and the severity-table builder MUST see the same
+/// set of bridge IDs or the canonicalizer's "every surviving key has
+/// a registered intern" invariant breaks and the `.expect()` at
+/// Pass 2 panics. Explicit parameter = explicit coupling.
+fn build_severity_tables(
+    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+    overrides: &HashMap<String, String>,
+    bridge_rule_ids: &'static [(&'static str, &'static str)],
+) -> (FastPathSeverities, EmittedIdOverrides) {
+    // Pass 1: collect every canonical `&'static str` rule ID emitted
+    // by the rule set — both registered IDs (`rule.id().as_str()`) and
+    // per-row catalog IDs from dispatcher walkers
+    // (`rule.additional_emitted_ids()`). The override map's keys
+    // canonicalize against this superset; everything not in it would
+    // have been rejected by `canonicalize_rule_overrides`.
+    let mut known_ids: HashSet<&'static str> = HashSet::new();
+    for rule_set in rule_sets {
+        for rule in rule_set.rules() {
+            known_ids.insert(rule.id().as_str());
+            for (catalog_id, _catalog_name) in rule.additional_emitted_ids() {
+                known_ids.insert(catalog_id);
+            }
+        }
+    }
+    // Bridge-emitted IDs (E058 / E059) are valid override keys too,
+    // registered through `bridge_emitted_rule_ids` in the
+    // canonicalizer. They have no corresponding registered `Rule`
+    // impl, but `Engine::lint_inner` emits diagnostics under them
+    // from the constraint-bridge path; Sites C/D need their overrides
+    // in `emitted_id_overrides`. The caller passes the same bridge
+    // IDs slice it handed to `canonicalize_rule_overrides`, making
+    // the coupling explicit and ruling out future divergence if
+    // `CapcoScheme::bridge_emitted_rule_ids()` ever becomes
+    // non-deterministic or differs across `CapcoScheme` instances
+    // (both reviewers' HIGH).
+    for (bridge_id, _bridge_name) in bridge_rule_ids {
+        known_ids.insert(bridge_id);
+    }
+
+    // Pass 2: walk the canonicalized override map. The map's keys are
+    // owned `String` (canonical IDs the canonicalizer produced from
+    // either `id` or `name` forms), but we look them up against
+    // `known_ids: HashSet<&'static str>` and store the resolved
+    // intern. Malformed severities are silently skipped to preserve
+    // the pre-hoist `.and_then(parse_config)` semantics (which would
+    // have returned `None` and fallen through to the unwrap_or
+    // default).
+    let mut emitted_id_overrides: HashMap<&'static str, Severity> = HashMap::new();
+    for (canonical_id, severity_str) in overrides {
+        let Some(severity) = Severity::parse_config(severity_str.as_str()) else {
+            // Pre-hoist behavior: the `.and_then(parse_config)` arm
+            // would return `None` for an unparseable severity string,
+            // so the fast path fell through to `default_severity()`
+            // and the per-emitted-id path preserved the emitted
+            // severity. Match that by skipping the insert here.
+            continue;
+        };
+        // The canonicalizer guarantees every surviving key is a
+        // known `&'static str` intern (it walks the same superset
+        // and `unwrap_or(rule.default_severity())`'s the lookup);
+        // if we miss here it means the canonicalizer's invariant
+        // has been broken upstream.
+        let intern = *known_ids
+            .get(canonical_id.as_str())
+            .expect("canonicalized override key has a registered &'static intern");
+        emitted_id_overrides.insert(intern, severity);
+    }
+
+    // Pass 3: build the registered-ID severity table. For each
+    // rule-set in declared order, walk its rules in registered order
+    // and resolve each rule's registered-ID severity. Lookup against
+    // `emitted_id_overrides` (cheaper than the original
+    // `overrides.get(...).and_then(parse_config)` chain because the
+    // parse already happened in pass 2); fall back to
+    // `rule.default_severity()` when absent.
+    let fast_path_severities: Box<[Box<[Severity]>]> = rule_sets
+        .iter()
+        .map(|rule_set| {
+            rule_set
+                .rules()
+                .iter()
+                .map(|rule| {
+                    emitted_id_overrides
+                        .get(rule.id().as_str())
+                        .copied()
+                        .unwrap_or(rule.default_severity())
+                })
+                .collect::<Vec<Severity>>()
+                .into_boxed_slice()
+        })
+        .collect::<Vec<Box<[Severity]>>>()
+        .into_boxed_slice();
+
+    (fast_path_severities, emitted_id_overrides)
 }
 
 /// Resolve every key in `config.rules.overrides` against the registered
@@ -4565,6 +4788,222 @@ mod tests {
             !baseline_e002.is_empty(),
             "fixture sanity check: without Off override, E002 must \
              fire on `SECRET//REL TO GBR`; got: {baseline:?}",
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // `build_severity_tables` — construction-time severity hoist
+    // -----------------------------------------------------------------------
+    //
+    // These tests pin the population semantics of the two pre-resolved
+    // tables that drive the lint hot-loop's Sites A/B/C/D:
+    //
+    //   - `fast_path_severities` — indexed by (set_idx, rule_idx),
+    //     resolves to `default_severity` when no override exists.
+    //   - `emitted_id_overrides` — sparse, only populated when an
+    //     override is present AND parses to a valid severity.
+    //
+    // Walker rules (those with non-empty `additional_emitted_ids()`)
+    // get a `fast_path_severities` entry too (Site A's guard means
+    // it's read-but-unused for walkers), but catalog-ID overrides
+    // (e.g., `E035` on `BannerMatchesProjectedRule`) only ever land
+    // in `emitted_id_overrides` — they do NOT affect the walker
+    // rule's `fast_path_severities` entry.
+
+    #[test]
+    fn build_severity_tables_empty_overrides_returns_defaults() {
+        // No overrides — every rule's fast-path entry must equal its
+        // `default_severity()` and `emitted_id_overrides` must be
+        // empty. This pins the "absence preserves default" semantics
+        // that Site A's `unwrap_or(rule.default_severity())` arm
+        // relied on pre-hoist.
+        let engine = capco_engine_with_overrides(&[]);
+        assert!(
+            engine.emitted_id_overrides.is_empty(),
+            "no overrides means emitted_id_overrides empty; got: {:?}",
+            engine.emitted_id_overrides,
+        );
+        assert_eq!(
+            engine.fast_path_severities.len(),
+            engine.rule_sets.len(),
+            "fast_path_severities outer len must match rule_sets len",
+        );
+        for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
+            let set_table = &engine.fast_path_severities[set_idx];
+            assert_eq!(
+                set_table.len(),
+                rule_set.rules().len(),
+                "fast_path_severities[{set_idx}] inner len must match rule count",
+            );
+            for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
+                assert_eq!(
+                    set_table[rule_idx],
+                    rule.default_severity(),
+                    "fast_path_severities[{set_idx}][{rule_idx}] for rule {:?} \
+                     must equal default_severity with no override; got {:?} \
+                     vs default {:?}",
+                    rule.id().as_str(),
+                    set_table[rule_idx],
+                    rule.default_severity(),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn build_severity_tables_registered_id_override_applies() {
+        // Single registered-ID override: `E002 = "off"`. E002
+        // (`missing-usa-trigraph`) is a non-walker rule registered
+        // in `CapcoRuleSet::new()`. The fast-path table entry for
+        // E002 must become `Off`; every other rule's entry must
+        // stay at its default; `emitted_id_overrides` must contain
+        // exactly `{"E002": Off}`.
+        let engine = capco_engine_with_overrides(&[("E002", "off")]);
+
+        // Find the (set_idx, rule_idx) for E002.
+        let mut e002_loc: Option<(usize, usize)> = None;
+        for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
+            for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
+                if rule.id().as_str() == "E002" {
+                    e002_loc = Some((set_idx, rule_idx));
+                    break;
+                }
+            }
+        }
+        let (set_idx, rule_idx) = e002_loc.expect("E002 must be registered in CapcoRuleSet");
+
+        assert_eq!(
+            engine.fast_path_severities[set_idx][rule_idx],
+            Severity::Off,
+            "fast_path_severities for E002 must reflect the `off` override",
+        );
+
+        // Every other registered rule's entry must equal its default.
+        for (s, rule_set) in engine.rule_sets.iter().enumerate() {
+            for (r, rule) in rule_set.rules().iter().enumerate() {
+                if (s, r) == (set_idx, rule_idx) {
+                    continue;
+                }
+                assert_eq!(
+                    engine.fast_path_severities[s][r],
+                    rule.default_severity(),
+                    "fast_path_severities[{s}][{r}] for rule {:?} must \
+                     stay at default when only E002 is overridden",
+                    rule.id().as_str(),
+                );
+            }
+        }
+
+        // `emitted_id_overrides` populated with exactly one entry.
+        assert_eq!(
+            engine.emitted_id_overrides.len(),
+            1,
+            "exactly one emitted_id_overrides entry; got: {:?}",
+            engine.emitted_id_overrides,
+        );
+        assert_eq!(
+            engine.emitted_id_overrides.get("E002").copied(),
+            Some(Severity::Off),
+            "emitted_id_overrides[\"E002\"] must be Off",
+        );
+    }
+
+    #[test]
+    fn build_severity_tables_catalog_id_override_lands_in_emitted_only() {
+        // E035 (`sci-banner-rollup`) is a per-row catalog ID on
+        // `BannerMatchesProjectedRule` — emitted by the walker but
+        // NOT a registered rule ID (the walker registers under
+        // E031). A `[rules] E035 = "warn"` override must:
+        //
+        //   1. Land in `emitted_id_overrides` so Site B's
+        //      per-diagnostic `retain_mut` can rewrite the
+        //      diagnostic's severity from its emitted Error to Warn.
+        //   2. NOT change the walker's own `fast_path_severities`
+        //      entry — Site A only consults that entry when the
+        //      rule's `additional_emitted_ids().is_empty()`, which
+        //      is false for walker rules, so the entry is unread;
+        //      but pinning it here also catches an inverted
+        //      population (a future bug that conflated registered
+        //      and catalog ID lookups).
+        let engine = capco_engine_with_overrides(&[("E035", "warn")]);
+
+        // Find the walker rule (registered ID E031).
+        let mut walker_loc: Option<(usize, usize, Severity)> = None;
+        for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
+            for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
+                if rule.id().as_str() == "E031" {
+                    walker_loc = Some((set_idx, rule_idx, rule.default_severity()));
+                    break;
+                }
+            }
+        }
+        let (set_idx, rule_idx, walker_default) =
+            walker_loc.expect("BannerMatchesProjectedRule (E031) must be registered");
+
+        assert_eq!(
+            engine.fast_path_severities[set_idx][rule_idx], walker_default,
+            "fast_path_severities[E031] must stay at the walker's \
+             default_severity — an `E035 = warn` override is a \
+             catalog-ID override that affects the per-emitted-id \
+             path, not the registered-ID fast-path table",
+        );
+
+        // E035 (NOT E031) must be in `emitted_id_overrides`.
+        assert_eq!(
+            engine.emitted_id_overrides.get("E035").copied(),
+            Some(Severity::Warn),
+            "emitted_id_overrides[\"E035\"] must be Warn",
+        );
+        assert!(
+            !engine.emitted_id_overrides.contains_key("E031"),
+            "the override targets E035; E031 must NOT appear in \
+             emitted_id_overrides",
+        );
+        assert_eq!(
+            engine.emitted_id_overrides.len(),
+            1,
+            "exactly one emitted_id_overrides entry; got: {:?}",
+            engine.emitted_id_overrides,
+        );
+    }
+
+    #[test]
+    fn build_severity_tables_skips_unparsable_severity() {
+        // The canonicalizer accepts arbitrary severity strings (it
+        // only validates the rule-key side), so a malformed
+        // severity like `"borked"` survives to
+        // `build_severity_tables`. The pre-hoist code used
+        // `.and_then(parse_config)` which returned `None` on a
+        // malformed string and fell through to
+        // `unwrap_or(default_severity)`. Preserve that exactly: the
+        // E002 rule's fast-path entry stays at its default and
+        // `emitted_id_overrides` does NOT contain `"E002"`.
+        let engine = capco_engine_with_overrides(&[("E002", "borked")]);
+
+        // Find E002's location.
+        let mut e002_loc: Option<(usize, usize, Severity)> = None;
+        for (set_idx, rule_set) in engine.rule_sets.iter().enumerate() {
+            for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
+                if rule.id().as_str() == "E002" {
+                    e002_loc = Some((set_idx, rule_idx, rule.default_severity()));
+                    break;
+                }
+            }
+        }
+        let (set_idx, rule_idx, e002_default) =
+            e002_loc.expect("E002 must be registered in CapcoRuleSet");
+
+        assert_eq!(
+            engine.fast_path_severities[set_idx][rule_idx], e002_default,
+            "unparseable severity must fall through to default — \
+             fast_path_severities[E002] expected {:?}, got {:?}",
+            e002_default, engine.fast_path_severities[set_idx][rule_idx],
+        );
+        assert!(
+            !engine.emitted_id_overrides.contains_key("E002"),
+            "unparseable severity must NOT populate \
+             emitted_id_overrides; got: {:?}",
+            engine.emitted_id_overrides,
         );
     }
 
