@@ -318,6 +318,64 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
         self.forms(token).banner_abbreviation
     }
 
+    /// Returns `true` when `token` participates in this scheme's
+    /// foreign-disclosure-and-release (FD&R) dominator set.
+    ///
+    /// In CAPCO, the FD&R set per §B.3.a p19 (definitional enumeration;
+    /// §B.3 Table 2 pp 21-22 is the scenario-summary table, not the
+    /// canonical enumeration) + §H.8 is
+    /// `{NOFORN, RELIDO, DISPLAY ONLY, REL TO [any LIST], EYES}`
+    /// (EYES deprecated 2017-10-01 per §H.8 p157 but still recognized
+    /// for legacy-input compatibility). Membership in this set
+    /// determines:
+    ///
+    /// 1. Eligibility as a [`crate::builtins::SupersessionSet`]
+    ///    element on the dissem axis — the FD&R chain joins via
+    ///    supersession, not plain union.
+    /// 2. Suppressor membership for closure rules that propagate
+    ///    NOFORN by default (Trio 1 of `marque-applied.md` §4.7.1):
+    ///    an FD&R token already present in a portion suppresses the
+    ///    implicit-NOFORN inference.
+    /// 3. The canonical FD&R-set-membership accessor. In `marque-capco`
+    ///    the implementation iterates a private `FDR_DOMINATORS` slice
+    ///    (in `crates/capco/src/scheme.rs`); that same slice is the
+    ///    data backing `Constraint::ConflictsWithFamily` predicates
+    ///    such as `is_fdr_dominator`. **The two predicates answer
+    ///    different questions** and intentionally diverge on RELIDO:
+    ///    `is_fdr_dissem` answers "is `token` an FD&R *member*" and
+    ///    admits RELIDO; `is_fdr_dominator` answers "is `token` an
+    ///    FD&R *dominator over RELIDO*" for the RELIDO-conflict
+    ///    family role and excludes RELIDO (RELIDO-vs-RELIDO is a
+    ///    tautology). Do not delegate `is_fdr_dissem` through
+    ///    `is_fdr_dominator` — see the maintenance contract on
+    ///    `FDR_DOMINATORS` in `crates/capco/src/scheme.rs`.
+    ///
+    /// # Default impl returns `false`
+    ///
+    /// **A scheme that declares an FD&R dissemination family MUST
+    /// override this method.** The default `false` is correct only
+    /// for schemes with no FD&R concept (e.g., a hypothetical
+    /// CUI-only scheme where every disclosure decision is
+    /// unconditional). A scheme that *does* have FD&R but forgets to
+    /// override will silently return `false` for every dominator
+    /// token, which produces wrong banner roll-ups and incorrect
+    /// closure firings. This is the same opt-in discipline used by
+    /// [`crate::scheme::MarkingScheme::iter_present_tokens`] — see
+    /// its doc comment. An override MUST cover every token that
+    /// participates in the FD&R chain AND every category whose
+    /// tokens collectively participate (e.g., CAPCO's REL TO
+    /// country-list category).
+    ///
+    /// # Used by
+    ///
+    /// `marque-capco`'s `Lattice<DissemSet>` impl (PR 4b — to be
+    /// wired) and the closure operator's Trio-1 implicit-NOFORN
+    /// propagation (PR 3.7 catalog rows).
+    fn is_fdr_dissem(&self, token: &S::Token) -> bool {
+        let _ = token;
+        false
+    }
+
     /// Full metadata record for `token`.
     ///
     /// Preferred accessor — individual per-field methods exist so
