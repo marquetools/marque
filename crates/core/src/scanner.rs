@@ -5,7 +5,9 @@
 //! Phase 1: candidate detection — finds potential classification markings in a byte buffer.
 //!
 //! Uses `memchr` for SIMD-accelerated boundary detection. Zero heap allocation
-//! beyond the output `Vec<MarkingCandidate>`. Never invokes the parser.
+//! for inputs producing ≤16 candidates; the output
+//! `SmallVec<[MarkingCandidate; 16]>` keeps its buffer inline. Never invokes
+//! the parser.
 //!
 //! # Strategy
 //! - Portion candidates: scan for `(` with `memchr`, walk to `)`, apply
@@ -16,6 +18,7 @@
 
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use memchr::memchr_iter;
+use smallvec::SmallVec;
 
 /// Phase 1 scanner. Stateless; call [`Scanner::scan`] on any byte buffer.
 pub struct Scanner;
@@ -23,10 +26,12 @@ pub struct Scanner;
 impl Scanner {
     /// Scan `source` for classification marking candidates.
     ///
-    /// Returns candidates in source order. Allocation is proportional to
-    /// the number of candidates found, not source length.
-    pub fn scan(source: &[u8]) -> Vec<MarkingCandidate> {
-        let mut candidates = Vec::new();
+    /// Returns candidates in source order. Zero heap allocation for the
+    /// typical case (≤16 candidates); past 16, the `SmallVec` spills to a
+    /// heap-allocated buffer proportional to the candidate count, not
+    /// source length.
+    pub fn scan(source: &[u8]) -> SmallVec<[MarkingCandidate; 16]> {
+        let mut candidates: SmallVec<[MarkingCandidate; 16]> = SmallVec::new();
 
         Self::scan_portions(source, &mut candidates);
         Self::scan_banners(source, &mut candidates);
@@ -55,7 +60,7 @@ impl Scanner {
     /// PageBreak spans are zero-length and carry no parsable content; the
     /// parser will reject them, so the engine must filter them out *before*
     /// calling `parser.parse`.
-    fn scan_page_breaks(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_page_breaks(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         // Form-feed: every `\f` is a hard page break in pretty much every
         // ASCII document convention. `memchr` strides over the buffer via
         // SIMD; matches the rest of the scanner's idiom.
@@ -98,7 +103,7 @@ impl Scanner {
         }
     }
 
-    fn scan_portions(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_portions(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         // Find every `(` and walk forward to the matching `)`.
         for start in memchr_iter(b'(', source) {
             if let Some(end) = find_portion_end(source, start) {
@@ -114,7 +119,7 @@ impl Scanner {
         }
     }
 
-    fn scan_banners(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_banners(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         // Classification prefixes that can start a banner line.
         // Full-form US classifications are listed first. Abbreviated US forms
         // (`TS//`, `S//`, `C//`, `U//`) are included so rules like E001 (portion
@@ -158,7 +163,7 @@ impl Scanner {
         }
     }
 
-    fn scan_cab(source: &[u8], out: &mut Vec<MarkingCandidate>) {
+    fn scan_cab(source: &[u8], out: &mut SmallVec<[MarkingCandidate; 16]>) {
         const CAB_LABEL: &[u8] = b"Classified By:";
         let mut search_from = 0;
         while let Some(rel) = find_subsequence(&source[search_from..], CAB_LABEL) {
