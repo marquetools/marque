@@ -6,9 +6,9 @@
     "year": 2000,
     "source_pdf": "https://archive.org/download/CIA-RDP69B00369R000200200020-0/CIA-RDP69B00369R000200200020-0.pdf",
     "cab": {
-      "classified_by": "???",
-      "derived_from": "???",
-      "declassify_on": "???"
+      "classified_by": "R. Early, CMD-ANZ-TF23",
+      "derived_from": "MS",
+      "declassify_on": 20000530
     },
     "pages": [
       {
@@ -48,11 +48,6 @@
           {
             "mark": "TS//SI/TK-IDIT//RS/NF",
             "text": "25 YEAR RE-REVIEW",
-            "is_table": false
-          },
-          {
-            "mark": "S//NF",
-            "text": "Excluded from automatic downgrading and declassification",
             "is_table": false
           }
         ]

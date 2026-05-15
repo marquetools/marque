@@ -105,7 +105,7 @@ radicals.
 
 (S//REL TO USA, UKR, FVEY, NATO) (b)(3)
 
-Classified By: ???
+Classified By: 3842JAE
 Derived From: DOS DR-902-1
 Declassify On: NA to AEA portions, see source list for NSI portions
 

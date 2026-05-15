@@ -1,7 +1,9 @@
 #!/usr/bin/env -S uv run --script
-# ///script
-# requires-python: ">=3.10"
-# dependencies = ["PyYAML>=6.0.2"]
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#     "pyyaml>=6.0.3",
+# ]
 # ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
