@@ -737,9 +737,31 @@ impl<'t> Parser<'t> {
                 enum SubKind {
                     Sci,
                     Dissem,
+                    /// REL TO sub-token: dissem-category per CAPCO-2016
+                    /// §H.8 p150-151 but carries a multi-comma country
+                    /// list that the speculative sub-parsers don't
+                    /// recognize as a single token. Treated as
+                    /// dissem-family for the category-consistency check
+                    /// ([`category_family`]) and committed via
+                    /// [`parse_rel_to_with_spans`] in the per-result
+                    /// loop. Distinct from [`SubKind::Dissem`] only so
+                    /// the commit branch can route to the right parser.
+                    RelTo,
                     NonIc,
                     Aea,
                     Unknown,
+                }
+
+                /// Map a [`SubKind`] to its category family for the
+                /// same-category consistency check. REL TO is
+                /// dissem-category per CAPCO-2016 §H.8 p150-151, so
+                /// `OC/REL TO USA, NOR` is a valid within-category
+                /// block.
+                fn category_family(k: SubKind) -> SubKind {
+                    match k {
+                        SubKind::RelTo => SubKind::Dissem,
+                        other => other,
+                    }
                 }
 
                 struct SubResult<'a> {
@@ -765,7 +787,41 @@ impl<'t> Parser<'t> {
                 for (sub_off, sub_tok) in token_offsets {
                     let sub_abs_start = abs_start + sub_off;
                     let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
-                    if let Some(ctrl) = SciControl::parse(sub_tok) {
+                    // REL TO sub-token: structurally distinct from the
+                    // flat `DissemControl::parse` path because it carries
+                    // a comma-separated country list and optional
+                    // trailing dissem/non-IC controls. Detected here so
+                    // a same-category dissem block like
+                    // `OC/REL TO USA, NOR` doesn't drop the REL TO entry
+                    // into `SubKind::Unknown` (issue tracked at
+                    // `crates/core/tests/rel_to_mid_dissem.rs`). Actual
+                    // country parsing and span emission run in the
+                    // commit branch via `parse_rel_to_with_spans` so the
+                    // span emission only happens when this block ends
+                    // up committing (same-category check passed).
+                    //
+                    // Guard tightness: in the sub-token slot the input
+                    // is a `/`-split fragment, where a permissive prefix
+                    // like `starts_with("REL ")` would also match a
+                    // mangled non-REL-TO token (e.g. a typo `REL IDO`
+                    // for `RELIDO`) and route it to
+                    // `parse_rel_to_with_spans`, which would silently
+                    // succeed with zero countries — no Unknown span for
+                    // E008 to surface. Require the explicit `REL TO `
+                    // prefix (with trailing space ahead of the country
+                    // list) or the bare `REL TO` token, both of which
+                    // correspond to real CAPCO-2016 §H.8 forms.
+                    if sub_tok.starts_with("REL TO ") || sub_tok == "REL TO" {
+                        results.push(SubResult {
+                            kind: SubKind::RelTo,
+                            tok: sub_tok,
+                            span: sub_span,
+                            sci: None,
+                            dissem: None,
+                            nic: None,
+                            aea: None,
+                        });
+                    } else if let Some(ctrl) = SciControl::parse(sub_tok) {
                         results.push(SubResult {
                             kind: SubKind::Sci,
                             tok: sub_tok,
@@ -829,10 +885,11 @@ impl<'t> Parser<'t> {
                     .find(|r| r.kind != SubKind::Unknown)
                     .map(|r| r.kind);
                 let all_same_category = first_parsed_kind.is_some_and(|first| {
+                    let first_family = category_family(first);
                     results
                         .iter()
                         .filter(|r| r.kind != SubKind::Unknown)
-                        .all(|r| r.kind == first)
+                        .all(|r| category_family(r.kind) == first_family)
                 });
 
                 if first_parsed_kind.is_some() && !all_same_category {
@@ -937,12 +994,20 @@ impl<'t> Parser<'t> {
                                 // protects against future refactors.
                                 let left = results.get(li);
                                 let right = results.get(ri);
+                                // REL TO is dissem-family (see
+                                // [`category_family`]). The Separator
+                                // span between `OC` and
+                                // `REL TO USA, NOR` is valid because
+                                // both neighbors share the dissem
+                                // family, even though one is
+                                // `SubKind::Dissem` and the other is
+                                // `SubKind::RelTo`.
                                 matches!(
                                     (left, right),
                                     (Some(l), Some(r))
                                         if l.kind != SubKind::Unknown
                                             && r.kind != SubKind::Unknown
-                                            && l.kind == r.kind
+                                            && category_family(l.kind) == category_family(r.kind)
                                 )
                             }
                             // At least one neighbor empty → no
@@ -976,6 +1041,37 @@ impl<'t> Parser<'t> {
                                     span: r.span,
                                     text: r.tok.into(),
                                 });
+                            }
+                            SubKind::RelTo => {
+                                // Emit the block-level RelToBlock span
+                                // first (mirrors the early-path ordering
+                                // at the `trimmed.starts_with("REL TO")`
+                                // branch above), then delegate to
+                                // `parse_rel_to_with_spans` for country
+                                // and trailing-control parsing. The
+                                // final `token_spans.sort_unstable_by_key`
+                                // pass at the end of `parse_inner`
+                                // places everything in document order
+                                // regardless of emit order.
+                                //
+                                // Authority: CAPCO-2016 §H.8 p150-151
+                                // (REL TO is a dissem control; the
+                                // intra-dissem `/` separator follows
+                                // §A.6 p16 Figure 2).
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::RelToBlock,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                                let parsed = parse_rel_to_with_spans(
+                                    r.tok,
+                                    r.span.start,
+                                    self.tokens,
+                                    &mut token_spans,
+                                );
+                                rel_to.extend(parsed.countries);
+                                dissem.extend(parsed.trailing_dissem);
+                                non_ic.extend(parsed.trailing_non_ic);
                             }
                             SubKind::NonIc => {
                                 non_ic.push(ParsedNonIcDissem::new(r.nic.unwrap(), r.tok, r.span));
