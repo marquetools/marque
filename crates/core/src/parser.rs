@@ -27,7 +27,7 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
     FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    NatoClassification, NatoSap, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 use marque_ism::date::IsmDate;
@@ -352,8 +352,41 @@ impl<'t> Parser<'t> {
             // Block 1 when non-US: foreign classification
             // ---------------------------------------------------------------
             if idx == 1 && is_non_us {
-                let parsed_cls = if let Some(nato) = parse_nato_classification(trimmed) {
-                    Some(MarkingClassification::Nato(nato))
+                // PR 9c.1 T134: `parse_nato_classification` now returns
+                // a `NatoBlock` carrying the canonical bare NATO class
+                // plus an optional AEA/SCI companion. Legacy compound
+                // text (CTSA / CTS-B / CTS-BALK / ...) canonicalizes
+                // at parse time per CAPCO-2016 §H.7 p122 + §G.2 p40 +
+                // §H.7 p127.
+                let parsed_cls = if let Some(nato_block) = parse_nato_classification(trimmed) {
+                    let NatoBlock { class, companion } = nato_block;
+                    match companion {
+                        NatoCompanion::Bare => {}
+                        NatoCompanion::Aea(aea_marking) => {
+                            // Companion write into the AEA axis. Same
+                            // source span as the classification token —
+                            // the legacy text carries both meanings at
+                            // the same byte range; the autofix rule E066
+                            // surfaces this and proposes the canonical
+                            // multi-block form.
+                            aea.push(ParsedAea::new(aea_marking, trimmed, span));
+                        }
+                        NatoCompanion::Sci(nato_sap) => {
+                            // Companion write into the SCI axis as a
+                            // structural `SciMarking` anchored on
+                            // `SciControlSystem::NatoSap`. No
+                            // compartments / sub-compartments — NATO
+                            // SAPs render standalone per §G.2 p40 +
+                            // §H.7 p127.
+                            let sci_marking = SciMarking::new(
+                                SciControlSystem::NatoSap(nato_sap),
+                                Box::new([]),
+                                None,
+                            );
+                            sci_markings.push(ParsedSciMarking::new(sci_marking, trimmed, span));
+                        }
+                    }
+                    Some(MarkingClassification::Nato(class))
                 } else if let Some(joint) = parse_joint_classification(trimmed) {
                     Some(MarkingClassification::Joint(joint))
                 } else {
@@ -533,7 +566,22 @@ impl<'t> Parser<'t> {
                 || (is_valid_custom_control(trimmed)
                     && trimmed.bytes().any(|b| b.is_ascii_digit())
                     && !is_known_non_sci_token(trimmed)
-                    && !is_declass_date(trimmed)))
+                    && !is_declass_date(trimmed))
+                // Bare NATO SAP token (BOHEMIA / BALK) — registered NATO
+                // Special Access Programs that travel in the SCI block
+                // position per the §H.7 p127 worked example
+                // `(//CTS//BOHEMIA//REL TO USA, NATO)`. These tokens fail
+                // both the bare-CVE check (no ODNI CVE entry per §G.2 p40)
+                // and the custom-control shape check (BOHEMIA is 7 chars,
+                // exceeding the 5-char cap; BALK is pure alpha and would
+                // be rejected by the must-contain-digit guard above), so
+                // they need an explicit gate-level admission to reach
+                // `parse_sci_block`'s per-chunk NATO-SAP recognizer.
+                //
+                // Authority: CAPCO-2016 §G.2 p40 (registers BOHEMIA / BALK
+                // as standalone control markings); §H.7 p127 (worked
+                // example places BOHEMIA in the SCI block position).
+                || recognize_nato_sap(trimmed).is_some())
                 && let Some(markings) = parse_sci_block(trimmed, abs_start, &mut token_spans)
             {
                 // Structural SCI path (spec 003-sci-compartments §R2). Runs
@@ -1002,6 +1050,19 @@ impl<'t> Parser<'t> {
             origin,
         );
         marque_ism::attribute_dissems(&mut attrs, self.default_origin);
+        // PR 9c.1 R1 — Copilot review #3: collapse duplicate AEA / SCI
+        // companion writes that arise when both the legacy NATO compound
+        // canonicalization (parser.rs:~372 / :~386, idx == 1 non-US
+        // classification block) and the canonical-form AEA / SCI block
+        // recognition (parser.rs:~493 / :~615 / :~656) write the same
+        // axis value. Without this pass, inputs like `(//NSAT//ATOMAL)`
+        // or `(//CTS-B//BOHEMIA)` carry the value twice on
+        // `aea_markings` / `sci_markings`, and the canonical renderer
+        // emits `ATOMAL/ATOMAL` / `BOHEMIA/BOHEMIA` — breaking E066's
+        // byte-identical `Recanonicalize` fix-text contract.
+        // Authority: CAPCO-2016 §G.1 Table 4 p38 (legacy compounds);
+        // §G.2 p40 (ATOMAL / BOHEMIA / BALK Registered Markings).
+        marque_ism::dedup_companions(&mut attrs);
         Ok(attrs)
     }
 }
@@ -1178,6 +1239,50 @@ fn parse_sci_block(
             continue;
         }
 
+        // NATO SAP per-chunk recognition (PR 9c.1 R1 — canonical-form
+        // round-trip closure). BOHEMIA / BALK render standalone in the
+        // SCI block with no compartments per §G.2 p40 + §H.7 p127. The
+        // bare token IS the chunk (no `-` separator, no compartments),
+        // so we recognize it here BEFORE the `SciControlBare::parse` /
+        // `is_valid_custom_control` path — `BOHEMIA` would otherwise
+        // fail both branches (no CVE entry; 7 chars exceeds the 5-char
+        // custom-control cap), and `BALK` would land as
+        // `SciControlSystem::Custom("BALK")` (wrong axis).
+        //
+        // Combined forms like `BALK/BOHEMIA` flow through this branch
+        // per chunk — the outer `/`-split has already broken the block
+        // into single-token chunks before per-chunk dispatch.
+        //
+        // Authority: CAPCO-2016 §G.2 p40 (Table 5 registers BOHEMIA /
+        // BALK as standalone control markings — no compartments, no
+        // sub-compartments); §H.7 p127 (worked example
+        // `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` and the
+        // matching portion `(//CTS//BOHEMIA//REL TO USA, NATO)` —
+        // BOHEMIA travels alone in the SCI block).
+        if let Some(sap) = recognize_nato_sap(chunk) {
+            let chunk_abs = base + chunk_off;
+            let chunk_span = Span::new(chunk_abs, chunk_abs + chunk.len());
+            // Dual-emit SciControl + SciSystem spans matching the
+            // deprecated-long-form and CVE-bare paths so rules that
+            // anchor on `TokenKind::SciSystem` find a matching span.
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciControl,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciSystem,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            markings.push(SciMarking::new(
+                SciControlSystem::NatoSap(sap),
+                Box::new([]),
+                None,
+            ));
+            continue;
+        }
+
         // Split chunk on first `-` into (control, rest). If no `-`, the
         // whole chunk is the control with no compartments.
         let (ctrl_str, rest_opt) = match chunk.find('-') {
@@ -1344,6 +1449,37 @@ fn is_known_non_sci_token(s: &str) -> bool {
         || parse_non_ic_full_form(s).is_some()
         || AeaMarking::parse(s).is_some()
         || DeclassExemption::parse(s).is_some()
+}
+
+/// Recognize a bare NATO Special Access Program token (`BOHEMIA` or
+/// `BALK`). Returns the matching [`NatoSap`] variant when `s` is one of
+/// the two registered NATO SAPs; returns `None` otherwise.
+///
+/// NATO SAPs travel in the SCI block position (`//CTS//BOHEMIA`,
+/// `//CTS//BALK`) and render standalone with no compartments or
+/// sub-compartments — they are CAPCO-only tokens with no ODNI CVE
+/// registration, so the structural SCI block parser needs an explicit
+/// recognizer rather than going through the bare-CVE / custom-control
+/// fallbacks.
+///
+/// Matching is strict on case (uppercase only, matching every other
+/// CAPCO token recognizer in this file).
+///
+/// # Authority
+///
+/// - CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking —
+///   registers BOHEMIA / BALK as standalone control markings, not
+///   classification suffixes).
+/// - CAPCO-2016 §H.7 p127 (FGI worked example
+///   `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` and the
+///   matching portion `(//CTS//BOHEMIA//REL TO USA, NATO)` — places
+///   BOHEMIA in the SCI block position alongside the FGI block).
+fn recognize_nato_sap(s: &str) -> Option<NatoSap> {
+    match s {
+        "BOHEMIA" => Some(NatoSap::Bohemia),
+        "BALK" => Some(NatoSap::Balk),
+        _ => None,
+    }
 }
 
 // =============================================================================
@@ -1657,36 +1793,140 @@ fn recognize_eyes_only_block<'a>(
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
 /// `"COSMIC TOP SECRET"`, etc.) or portion form (`"NS"`, `"CTS"`, etc.).
 ///
-/// Includes SAP variants (ATOMAL, BOHEMIA, BALK). Longer patterns are checked
-/// first to avoid prefix ambiguity (e.g., `"COSMIC TOP SECRET ATOMAL"` before
-/// `"COSMIC TOP SECRET"`).
-fn parse_nato_classification(s: &str) -> Option<NatoClassification> {
+/// Parse a NATO classification block.
+///
+/// Returns a [`NatoBlock`] carrying the bare NATO classification level
+/// (the canonical structural form, never the legacy compound variants)
+/// plus optional companion writes for either the AEA axis (ATOMAL per
+/// CAPCO-2016 §H.7 p122) or the SCI axis (BALK / BOHEMIA per §G.2 p40
+/// + §H.7 p127).
+///
+/// # Legacy text canonicalization (PR 9c.1 T134)
+///
+/// Pre-PR-9c.1 the legacy text forms `CTSA` / `NSAT` / `NCA` /
+/// `CTS-A` / `NS-A` / `NC-A` / `CTS-B` / `CTS-BALK` parsed into
+/// fused `NatoClassification::*Atomal` / `*Bohemia` / `*Balk`
+/// variants. Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered
+/// Marking) those forms are **structurally wrong**: ATOMAL,
+/// BOHEMIA, and BALK each have their own ARH row at §G.2 p40,
+/// confirming they are registered control markings, not classification
+/// suffixes. The §H.7 p122 worked example
+/// (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL in the AEA
+/// axis alongside RD; the §H.7 p127 worked example
+/// (`TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN`) places
+/// BOHEMIA in the SCI category position.
+///
+/// The legacy compound variants were retired in PR 9c.1 Commit 5;
+/// this parser canonicalizes the legacy text at parse time so
+/// existing markings produce the correct structural canonical form.
+/// Marque's autofix channel (rule E066 in `marque-capco/src/rules.rs`)
+/// drives the source-text re-marking when the rule severity is
+/// configured to fire.
+///
+/// Longer patterns are checked first to avoid prefix ambiguity
+/// (e.g., `"COSMIC TOP SECRET ATOMAL"` before `"COSMIC TOP SECRET"`).
+fn parse_nato_classification(s: &str) -> Option<NatoBlock> {
+    use marque_ism::{AtomalBlock, NatoSap};
     // Check longer patterns first to avoid prefix matches.
-    match s {
-        // Banner forms (full words) — longer patterns first
-        "COSMIC TOP SECRET ATOMAL" => Some(NatoClassification::CosmicTopSecretAtomal),
-        "COSMIC TOP SECRET-BOHEMIA" => Some(NatoClassification::CosmicTopSecretBohemia),
-        "COSMIC TOP SECRET-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
-        "COSMIC TOP SECRET" => Some(NatoClassification::CosmicTopSecret),
-        "NATO SECRET ATOMAL" => Some(NatoClassification::NatoSecretAtomal),
-        "NATO SECRET" => Some(NatoClassification::NatoSecret),
-        "NATO CONFIDENTIAL ATOMAL" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NATO CONFIDENTIAL" => Some(NatoClassification::NatoConfidential),
-        "NATO RESTRICTED" => Some(NatoClassification::NatoRestricted),
-        "NATO UNCLASSIFIED" => Some(NatoClassification::NatoUnclassified),
-        // Portion forms — primary (CAPCO Register)
-        "CTSA" | "CTS-A" => Some(NatoClassification::CosmicTopSecretAtomal),
-        "CTS-B" => Some(NatoClassification::CosmicTopSecretBohemia),
-        "CTS-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
-        "CTS" => Some(NatoClassification::CosmicTopSecret),
-        "NSAT" | "NS-A" => Some(NatoClassification::NatoSecretAtomal),
-        "NS" => Some(NatoClassification::NatoSecret),
-        "NCA" | "NC-A" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NC" => Some(NatoClassification::NatoConfidential),
-        "NR" => Some(NatoClassification::NatoRestricted),
-        "NU" => Some(NatoClassification::NatoUnclassified),
-        _ => None,
-    }
+    let (class, companion) = match s {
+        // Banner forms (full words) — longer patterns first.
+        // Companion AEA = ATOMAL; companion SCI = BALK / BOHEMIA.
+        "COSMIC TOP SECRET ATOMAL" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "COSMIC TOP SECRET-BOHEMIA" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Bohemia),
+        ),
+        "COSMIC TOP SECRET-BALK" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Balk),
+        ),
+        "COSMIC TOP SECRET" => (NatoClassification::CosmicTopSecret, NatoCompanion::Bare),
+        "NATO SECRET ATOMAL" => (
+            NatoClassification::NatoSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NATO SECRET" => (NatoClassification::NatoSecret, NatoCompanion::Bare),
+        "NATO CONFIDENTIAL ATOMAL" => (
+            NatoClassification::NatoConfidential,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NATO CONFIDENTIAL" => (NatoClassification::NatoConfidential, NatoCompanion::Bare),
+        "NATO RESTRICTED" => (NatoClassification::NatoRestricted, NatoCompanion::Bare),
+        "NATO UNCLASSIFIED" => (NatoClassification::NatoUnclassified, NatoCompanion::Bare),
+        // Portion forms — primary (CAPCO Register) + legacy compounds.
+        // Legacy `CTSA` / `CTS-A` / `NSAT` / `NS-A` / `NCA` / `NC-A`
+        // canonicalize to bare class + AEA::Atomal companion.
+        // Legacy `CTS-B` / `CTS-BALK` canonicalize to bare class + SCI
+        // (BOHEMIA / BALK NatoSap) companion.
+        "CTSA" | "CTS-A" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "CTS-B" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Bohemia),
+        ),
+        "CTS-BALK" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Balk),
+        ),
+        "CTS" => (NatoClassification::CosmicTopSecret, NatoCompanion::Bare),
+        "NSAT" | "NS-A" => (
+            NatoClassification::NatoSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NS" => (NatoClassification::NatoSecret, NatoCompanion::Bare),
+        "NCA" | "NC-A" => (
+            NatoClassification::NatoConfidential,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NC" => (NatoClassification::NatoConfidential, NatoCompanion::Bare),
+        "NR" => (NatoClassification::NatoRestricted, NatoCompanion::Bare),
+        "NU" => (NatoClassification::NatoUnclassified, NatoCompanion::Bare),
+        _ => return None,
+    };
+    Some(NatoBlock { class, companion })
+}
+
+/// Result of parsing a NATO classification block.
+///
+/// The block carries the canonical bare NATO class plus an optional
+/// companion write to either the AEA axis (ATOMAL) or the SCI axis
+/// (BALK / BOHEMIA). PR 9c.1 T134 introduced this split so the
+/// classification axis no longer fuses sub-markings into wrong
+/// classification-variant identities; see [`parse_nato_classification`]
+/// doc for the rationale.
+struct NatoBlock {
+    class: NatoClassification,
+    companion: NatoCompanion,
+}
+
+/// Optional companion writes for [`NatoBlock`]. At most one — ATOMAL
+/// can in principle co-occur with BALK/BOHEMIA on the same portion
+/// (`(//CTS//BOHEMIA//ATOMAL)`), but that would arrive as a
+/// well-formed multi-block input (separate `//`-blocks for the
+/// classification and the SCI/AEA marker), not as a legacy compound
+/// text. The fused legacy text always carries exactly one companion.
+enum NatoCompanion {
+    /// Bare NATO classification with no AEA/SCI companion — `(//CTS)`,
+    /// `(//NS)`, `(//NC)`, `(//NR)`, `(//NU)`, plus their banner
+    /// equivalents. The "bare" framing matches the
+    /// `nato-dissem-reciprocity` invariant (pure-NATO portions carry
+    /// NATO classification + NATO dissem, no fused control marking).
+    /// Renamed from `None` in PR 9c.1 to avoid shadowing the language
+    /// keyword and to mirror the project's "bare" terminology.
+    Bare,
+    /// AEA companion — ATOMAL per CAPCO-2016 §H.7 p122. Written into
+    /// `attrs.aea_markings`.
+    Aea(AeaMarking),
+    /// SCI companion — BALK / BOHEMIA per CAPCO-2016 §G.2 p40 +
+    /// §H.7 p127. Written into `attrs.sci_markings` as a structural
+    /// [`SciMarking`] whose `system` is the corresponding
+    /// [`marque_ism::NatoSap`] variant.
+    Sci(marque_ism::NatoSap),
 }
 
 /// Parse a JOINT classification block: `"JOINT S USA GBR"` or `"JOINT SECRET USA GBR"`.
@@ -1810,7 +2050,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///
 /// # Three return cases (FR-015 / FR-016 closure, GH #280)
 ///
-/// Per CAPCO-2016 §H.7 p123 the FGI marker has exactly two lawful
+/// Per CAPCO-2016 §H.7 p122 the FGI marker has exactly two lawful
 /// banner forms: bare `FGI` (source-concealed) and `FGI [LIST]`
 /// (source-acknowledged). Anything else is a parse failure, not a
 /// degraded lawful form. This function enforces that as three
@@ -1844,7 +2084,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// FR-015 (admission via documented vocabulary surface) and CHK030
 /// (no inline `is_ascii_alphanumeric` byte-class checks).
 ///
-/// CAPCO-2016 §H.7 p123 spells out the shape: "Multiple FGI
+/// CAPCO-2016 §H.7 p122 spells out the shape: "Multiple FGI
 /// trigraph country codes or tetragraph codes must be separated by
 /// a single space ... example may appear as: `SECRET//FGI GBR JPN
 /// NATO//REL TO USA, GBR, JPN, NATO`." The order invariant
@@ -1877,7 +2117,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///   country-token shape gate; admission requires uniform ASCII upper).
 /// - `parse_fgi_marker("FGI USA NATO")` →
 ///   `Some(Acknowledged { countries: [USA, NATO] })`. NATO is a
-///   tetragraph; admitted at this site per §H.7 p123. Order
+///   tetragraph; admitted at this site per §H.7 p122. Order
 ///   normalization (trigraph-then-tetragraph) is a rule-layer
 ///   concern; the parser preserves source order.
 /// - `parse_fgi_marker("FGI USAGB")` → `None` (5-byte token rejected
@@ -1888,7 +2128,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///
 /// # Authority
 ///
-/// CAPCO-2016 §H.7 p123 (FGI banner forms — concealed vs.
+/// CAPCO-2016 §H.7 p122 (FGI banner forms — concealed vs.
 /// acknowledged; trigraph-OR-tetragraph list grammar) + §A.6 p16
 /// ("Multiple FGI trigraph country codes or tetragraph codes must
 /// be separated by a single space"). The country-token predicate's
@@ -1950,9 +2190,32 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
 /// Used as a fallback in the block loop to detect conflict scenarios
 /// (e.g., `SECRET//NATO SECRET//NOFORN`) where a foreign classification
 /// appears alongside a US classification.
+///
+/// # PR 9c.1 T134 — companion drop in conflict scenarios
+///
+/// Post-PR-9c.1, [`parse_nato_classification`] returns a `NatoBlock`
+/// carrying the bare NATO class plus an optional AEA/SCI companion.
+/// In the conflict-scenario fallback (this function), the companion
+/// is **dropped** — the conflict path stores only the foreign
+/// classification axis; there's no `ForeignClassification` carrier
+/// shape for companion AEA/SCI writes. A conflict input like
+/// `SECRET//CTSA//NOFORN` records the foreign class as `CosmicTopSecret`
+/// (the bare class) and loses the implicit ATOMAL companion.
+///
+/// This is acceptable for PR 9c.1 because:
+///   - The conflict shape itself is malformed input (US + foreign
+///     classifications shouldn't both appear), and dedicated rules
+///     surface that condition first.
+///   - The E066 legacy-text autofix reads raw source text via
+///     `attrs.token_spans`, so the legacy-text suggestion still
+///     fires even when the structural companion is dropped here.
+///   - If a future revision requires conflict-aware companion
+///     plumbing, the change is local to `ForeignClassification` +
+///     this function — no rule-surface impact.
 fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
-    if let Some(nato) = parse_nato_classification(s) {
-        Some(ForeignClassification::Nato(nato))
+    if let Some(nato_block) = parse_nato_classification(s) {
+        // Drop the companion in the conflict path; see fn doc above.
+        Some(ForeignClassification::Nato(nato_block.class))
     } else if let Some(joint) = parse_joint_classification(s) {
         Some(ForeignClassification::Joint(joint))
     } else {
@@ -2996,64 +3259,211 @@ mod tests {
     // Non-US classification parsing
     // -----------------------------------------------------------------------
 
+    /// What companion writes a NATO block should produce alongside
+    /// the bare classification. Mirrors the parser's `NatoCompanion`
+    /// enum without re-exporting it from the parser module.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ExpectedCompanion {
+        None,
+        Atomal,
+        Balk,
+        Bohemia,
+    }
+
+    fn assert_nato_companion(parsed: &CanonicalParsed, expected: ExpectedCompanion) {
+        use marque_ism::{AeaMarking, NatoSap, SciControlSystem};
+        let aea_atomal = parsed
+            .attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Atomal(_)));
+        let sci_balk = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Balk)));
+        let sci_bohemia = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Bohemia)));
+        match expected {
+            ExpectedCompanion::None => {
+                assert!(!aea_atomal, "did not expect AEA ATOMAL companion");
+                assert!(!sci_balk, "did not expect SCI BALK companion");
+                assert!(!sci_bohemia, "did not expect SCI BOHEMIA companion");
+            }
+            ExpectedCompanion::Atomal => {
+                assert!(aea_atomal, "expected AEA ATOMAL companion to be written");
+            }
+            ExpectedCompanion::Balk => {
+                assert!(sci_balk, "expected SCI BALK companion to be written");
+            }
+            ExpectedCompanion::Bohemia => {
+                assert!(sci_bohemia, "expected SCI BOHEMIA companion to be written");
+            }
+        }
+    }
+
+    /// PR 9c.1 T134: legacy compound NATO classification text (e.g.,
+    /// `COSMIC TOP SECRET ATOMAL`) is canonicalized at parse time to
+    /// bare class + companion AEA/SCI write per CAPCO-2016 §H.7 p122 +
+    /// §G.2 p40 + §H.7 p127. The class axis carries only the bare
+    /// `NatoClassification::CosmicTopSecret` / `NatoSecret` /
+    /// `NatoConfidential` form; the marking-specific concern (ATOMAL,
+    /// BALK, BOHEMIA) lives on its grammar-correct axis.
     #[test]
     fn nato_banner_parses_all_variants() {
-        for (input, expected) in [
-            ("//NATO UNCLASSIFIED", NatoClassification::NatoUnclassified),
-            ("//NATO RESTRICTED", NatoClassification::NatoRestricted),
-            ("//NATO CONFIDENTIAL", NatoClassification::NatoConfidential),
+        for (input, expected_class, expected_companion) in [
+            (
+                "//NATO UNCLASSIFIED",
+                NatoClassification::NatoUnclassified,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO RESTRICTED",
+                NatoClassification::NatoRestricted,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO CONFIDENTIAL",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::None,
+            ),
             (
                 "//NATO CONFIDENTIAL ATOMAL",
-                NatoClassification::NatoConfidentialAtomal,
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
             ),
-            ("//NATO SECRET", NatoClassification::NatoSecret),
-            ("//NATO SECRET ATOMAL", NatoClassification::NatoSecretAtomal),
-            ("//COSMIC TOP SECRET", NatoClassification::CosmicTopSecret),
+            (
+                "//NATO SECRET",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO SECRET ATOMAL",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "//COSMIC TOP SECRET",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::None,
+            ),
             (
                 "//COSMIC TOP SECRET ATOMAL",
-                NatoClassification::CosmicTopSecretAtomal,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
             ),
             (
                 "//COSMIC TOP SECRET-BOHEMIA",
-                NatoClassification::CosmicTopSecretBohemia,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Bohemia,
             ),
             (
                 "//COSMIC TOP SECRET-BALK",
-                NatoClassification::CosmicTopSecretBalk,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Balk,
             ),
         ] {
             let parsed = parse_banner(input);
             assert_eq!(
                 parsed.attrs.classification,
-                Some(MarkingClassification::Nato(expected)),
-                "failed for banner: {input}"
+                Some(MarkingClassification::Nato(expected_class)),
+                "failed bare-class for banner: {input}"
             );
+            assert_nato_companion(&parsed, expected_companion);
         }
     }
 
+    /// PR 9c.1 T134: portion-form legacy compounds (`CTSA`, `CTS-A`,
+    /// `CTS-B`, `CTS-BALK`, `NSAT`, `NS-A`, `NCA`, `NC-A`) canonicalize
+    /// to bare class + companion AEA/SCI per CAPCO-2016 §G.1 Table 4
+    /// p38 (portion-form column) + §G.2 p40 (Table 5: ARH by Registered
+    /// Marking — ATOMAL/BOHEMIA/BALK as registered control markings) +
+    /// §H.7 p122 (ATOMAL worked example) + §H.7 p127 (BOHEMIA worked
+    /// example in SCI block position).
+    ///
+    /// Marque's E066 autofix rule emits the canonical multi-block form
+    /// as a Recanonicalize fix; the parser canonicalizes the data shape
+    /// so rules consuming `attrs.{classification,aea_markings,sci_markings}`
+    /// see the structural truth.
     #[test]
     fn nato_portion_parses_all_variants() {
-        for (input, expected) in [
-            ("(//NU)", NatoClassification::NatoUnclassified),
-            ("(//NR)", NatoClassification::NatoRestricted),
-            ("(//NC)", NatoClassification::NatoConfidential),
-            ("(//NCA)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NC-A)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NS)", NatoClassification::NatoSecret),
-            ("(//NSAT)", NatoClassification::NatoSecretAtomal),
-            ("(//NS-A)", NatoClassification::NatoSecretAtomal),
-            ("(//CTS)", NatoClassification::CosmicTopSecret),
-            ("(//CTSA)", NatoClassification::CosmicTopSecretAtomal),
-            ("(//CTS-A)", NatoClassification::CosmicTopSecretAtomal),
-            ("(//CTS-B)", NatoClassification::CosmicTopSecretBohemia),
-            ("(//CTS-BALK)", NatoClassification::CosmicTopSecretBalk),
+        for (input, expected_class, expected_companion) in [
+            (
+                "(//NU)",
+                NatoClassification::NatoUnclassified,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NR)",
+                NatoClassification::NatoRestricted,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NC)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NCA)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NC-A)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NS)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NSAT)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NS-A)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//CTSA)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS-A)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS-B)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Bohemia,
+            ),
+            (
+                "(//CTS-BALK)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Balk,
+            ),
         ] {
             let parsed = parse_portion(input);
             assert_eq!(
                 parsed.attrs.classification,
-                Some(MarkingClassification::Nato(expected)),
-                "failed for portion: {input}"
+                Some(MarkingClassification::Nato(expected_class)),
+                "failed bare-class for portion: {input}"
             );
+            assert_nato_companion(&parsed, expected_companion);
         }
     }
 
@@ -3237,7 +3647,7 @@ mod tests {
             .fgi_marker
             .as_ref()
             .expect("should have FGI marker");
-        // CAPCO §H.7 p123: bare `FGI` is the lawful source-concealed
+        // CAPCO §H.7 p122: bare `FGI` is the lawful source-concealed
         // banner form, distinct from a parser failure.
         assert!(matches!(marker, FgiMarker::SourceConcealed));
     }
@@ -3246,7 +3656,7 @@ mod tests {
     //
     // GH #280 retired the transitional `unwrap_or(SourceConcealed)`
     // fallback. These tests pin the three lawful cases per CAPCO-2016
-    // §H.7 p123 (the only two banner forms — concealed `FGI` and
+    // §H.7 p122 (the only two banner forms — concealed `FGI` and
     // acknowledged `FGI [LIST]`) plus the negative cases that map to
     // `None`. The parser is invoked via `parse_banner` here to
     // exercise the same call site (`crates/core/src/parser.rs:345`)
@@ -3282,7 +3692,7 @@ mod tests {
         // transitional behavior would have silently dropped the
         // token, producing an empty country list and falling back to
         // `SourceConcealed`. Post-T088: the parser returns `None`,
-        // so `attrs.fgi_marker` is unset (CAPCO §H.7 p123 disallows
+        // so `attrs.fgi_marker` is unset (CAPCO §H.7 p122 disallows
         // a degraded lawful form on shape failure).
         let parsed = parse_banner("SECRET//FGI deu//NOFORN");
         assert!(
@@ -3294,7 +3704,7 @@ mod tests {
 
     #[test]
     fn fgi_marker_tetragraph_admits_per_capco_h7() {
-        // CAPCO-2016 §H.7 p123 spells out the canonical example:
+        // CAPCO-2016 §H.7 p122 spells out the canonical example:
         // `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`
         // — `NATO` is a 4-letter Annex A tetragraph admitted in the
         // same FGI list as the trigraphs. The PR #311 review caught
@@ -3307,7 +3717,7 @@ mod tests {
             .attrs
             .fgi_marker
             .as_ref()
-            .expect("FGI USA NATO admits per §H.7 p123");
+            .expect("FGI USA NATO admits per §H.7 p122");
         match marker {
             FgiMarker::Acknowledged { countries, .. } => {
                 assert_eq!(countries.len(), 2);
@@ -3386,7 +3796,7 @@ mod tests {
         // Case 3: lowercase token → None (FR-016 closure)
         assert!(parse_fgi_marker("FGI deu").is_none());
 
-        // Case 2 (mixed shapes per §H.7 p123): trigraph + tetragraph
+        // Case 2 (mixed shapes per §H.7 p122): trigraph + tetragraph
         // → Some(Acknowledged) with both countries. PR #311 review
         // caught the prior trigraph-only narrowing; post-fix
         // admission accepts the spec-canonical example.

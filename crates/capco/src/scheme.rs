@@ -189,6 +189,26 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
 // TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
 
+// PR 9c.1 (T134): canonical NATO control-marking sentinels for
+// ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
+// shapes added in `marque-ism` PR 9c.1 Commit 1:
+//   - ATOMAL lives in the AEA axis as `AeaMarking::Atomal(AtomalBlock)`
+//     per CAPCO-2016 §H.7 p122 worked example
+//     `SECRET//RD/ATOMAL//FGI NATO//NOFORN`.
+//   - BALK / BOHEMIA live in the SCI axis as
+//     `SciControlSystem::NatoSap(NatoSap::{Balk,Bohemia})` per
+//     CAPCO-2016 §G.2 p40 + §H.7 p127 worked example.
+//
+// All three render same-form across title / banner-abbrev / portion
+// columns per §G.1 Table 4 p38 (the row "ATOMAL/BALK/BOHEMIA" lists
+// the canonical name in all three columns).
+//
+// Resolved by `satisfies_attrs` against `attrs.aea_markings` and
+// `attrs.sci_markings` respectively.
+pub const TOK_ATOMAL: TokenId = TokenId(140);
+pub const TOK_BALK: TokenId = TokenId(141);
+pub const TOK_BOHEMIA: TokenId = TokenId(142);
+
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over CanonicalAttrs implementing Lattice
 // ---------------------------------------------------------------------------
@@ -562,10 +582,14 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // route through the same category so `apply_fact_remove`'s
         // CAT_REL_TO branch can discriminate.
         TOK_USA | TOK_REL_TO => Some(CAT_REL_TO),
-        // CAT_AEA — atomic-energy markings
-        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI => Some(CAT_AEA),
-        // CAT_SCI — sensitive compartmented information control systems
-        TOK_HCS => Some(CAT_SCI),
+        // CAT_AEA — atomic-energy markings. ATOMAL lives in the AEA
+        // axis per CAPCO-2016 §H.7 p122 worked example
+        // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
+        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI | TOK_ATOMAL => Some(CAT_AEA),
+        // CAT_SCI — sensitive compartmented information control systems.
+        // BALK / BOHEMIA are NATO SAPs in the SCI category position per
+        // §G.2 p40 + §H.7 p127 (rendered standalone, no SAR- prefix).
+        TOK_HCS | TOK_BALK | TOK_BOHEMIA => Some(CAT_SCI),
         // CAT_JOINT_CLASSIFICATION — JOINT classification marker
         TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
         // CAT_CLASSIFICATION — overall classification level surface
@@ -1252,15 +1276,15 @@ impl CapcoScheme {
     ///
     /// 1. `capco/frd-sigma-consolidates-into-rd-sigma` (§H.6 p113) —
     ///    AEA-only, independent.
-    /// 2. `capco/fgi-rollup-on-us-contact` (§H.7 p123) — bare-FGI
+    /// 2. `capco/fgi-rollup-on-us-contact` (§H.7 p122) — bare-FGI
     ///    rollup on US-class contact.
-    /// 3. `capco/fgi-restricted-rollup-on-us-contact` (§H.7 p123) —
+    /// 3. `capco/fgi-restricted-rollup-on-us-contact` (§H.7 p122) —
     ///    bare-FGI-R contact rolls FGI list (class lift is
     ///    parser-side per §3.4.1 Note (i)).
     /// 4. `capco/joint-cross-class-rollup` (§H.3 p57) — JOINT [list]
     ///    on non-US-class contact rolls FGI [non-US JOINT members].
     /// 5. `capco/us-presence-promotes-bare-fgi-attribution`
-    ///    (§H.7 p123) — idempotent FGI cleanup; runs after entries
+    ///    (§H.7 p122) — idempotent FGI cleanup; runs after entries
     ///    1–3 (consumes their FGI_MARKER output, the one structural
     ///    FGI_MARKER read in the table).
     /// 6. `capco/orcon-nato-to-us-orcon-on-us-contact` (§H.8 p136) —
@@ -1782,7 +1806,7 @@ impl CapcoScheme {
                 E4_WRITES,
             ),
             // Entry 1 — `capco/fgi-rollup-on-us-contact`.
-            // §H.7 p123 (Precedence Rules for Banner Line Guidance):
+            // §H.7 p122 (Precedence Rules for Banner Line Guidance):
             // "If any document contains portions of both source-
             // concealed FGI ... and source-acknowledged FGI ..., then
             // only the 'FGI' marking without the source
@@ -1817,14 +1841,14 @@ impl CapcoScheme {
             // Phase-3 stub: see Entry 4 doc-comment.
             PageRewrite::custom(
                 "capco/fgi-rollup-on-us-contact",
-                "CAPCO-2016 §H.7 p123",
+                "CAPCO-2016 §H.7 p122",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Custom(noop_action),
                 E1_READS,
                 E1_WRITES,
             ),
             // Entry 2 — `capco/fgi-restricted-rollup-on-us-contact`.
-            // §H.7 p123 (Relationship(s) to Other Markings): FGI
+            // §H.7 p122 (Relationship(s) to Other Markings): FGI
             // "may be used with TOP SECRET, SECRET, CONFIDENTIAL,
             // RESTRICTED, UNCLASSIFIED, and other designators ...
             // applied by the non-US originator". Combined with the
@@ -1850,7 +1874,7 @@ impl CapcoScheme {
             // Phase-3 stub: see Entry 4 doc-comment.
             PageRewrite::custom(
                 "capco/fgi-restricted-rollup-on-us-contact",
-                "CAPCO-2016 §H.7 p123",
+                "CAPCO-2016 §H.7 p122",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Custom(noop_action),
                 E2_READS,
@@ -1894,7 +1918,7 @@ impl CapcoScheme {
                 E3_WRITES,
             ),
             // Entry 7 — `capco/us-presence-promotes-bare-fgi-attribution`.
-            // §H.7 p123 (Precedence Rules for Banner Line Guidance,
+            // §H.7 p122 (Precedence Rules for Banner Line Guidance,
             // quoted under Entry 1) establishes both the trigger and
             // the post-rollup-cleanup contracts. This entry is the
             // idempotent generalization: after entries 1–3 consolidate
@@ -1922,7 +1946,7 @@ impl CapcoScheme {
             // Phase-3 stub: see Entry 4 doc-comment.
             PageRewrite::custom(
                 "capco/us-presence-promotes-bare-fgi-attribution",
-                "CAPCO-2016 §H.7 p123",
+                "CAPCO-2016 §H.7 p122",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Custom(noop_action),
                 E7_READS,
@@ -2654,13 +2678,23 @@ impl CapcoScheme {
                 name: "class-floor/TK-BLFH",
                 label: "CAPCO-2016 §H.4",
             },
+            // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+            // to "§G.2 p40". §G.2 p40 is the authoritative anchor —
+            // CAPCO-2016 Table 5 (ARH by Registered Marking) lists
+            // BALK / BOHEMIA at p40 as registered NATO control
+            // markings; the December 2010 history note at §H.7 line
+            // 4702 confirms they are control markings (not
+            // classifications). The §H.7 Appendix B reference was an
+            // imprecise pre-PR-9c.1 anchor; the manual's actual
+            // Appendix B is the NATO classification ladder
+            // appendix, not the BALK/BOHEMIA registration.
             Constraint::Custom {
                 name: "class-floor/BALK",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §G.2 p40",
             },
             Constraint::Custom {
                 name: "class-floor/BOHEMIA",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §G.2 p40",
             },
             // ---- §2.2 Floor S — TS-or-S allowed (8 rows) --------------
             Constraint::Custom {
@@ -2725,9 +2759,15 @@ impl CapcoScheme {
                 name: "class-floor/TFNI",
                 label: "CAPCO-2016 §H.6 p107",
             },
+            // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+            // to "§H.7 p122". §H.7 p122 is the worked example showing
+            // ATOMAL in the AEA axis: `SECRET//RD/ATOMAL//FGI NATO//
+            // NOFORN` — the direct, structurally-grounded citation for
+            // the canonical AEA-axis placement (paralleling §H.6's
+            // RD/CNWDI worked-example citations).
             Constraint::Custom {
                 name: "class-floor/ATOMAL",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §H.7 p122",
             },
             Constraint::Custom {
                 name: "class-floor/ORCON",
@@ -2921,6 +2961,26 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+            // PR 9c.1 (T134): ATOMAL lives in the AEA axis per
+            // CAPCO-2016 §H.7 p122 (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
+            TOK_ATOMAL => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Atomal(_))),
+            // PR 9c.1 (T134): BALK / BOHEMIA are NATO SAPs living in
+            // the SCI axis per CAPCO-2016 §G.2 p40 + §H.7 p127.
+            TOK_BALK => attrs.sci_markings.iter().any(|m| {
+                matches!(
+                    m.system,
+                    SciControlSystem::NatoSap(marque_ism::NatoSap::Balk)
+                )
+            }),
+            TOK_BOHEMIA => attrs.sci_markings.iter().any(|m| {
+                matches!(
+                    m.system,
+                    SciControlSystem::NatoSap(marque_ism::NatoSap::Bohemia)
+                )
+            }),
             // "HCS markings" is plural in CAPCO §H.3 p57 — it covers
             // the bare `HCS` token AND the compound forms `HCS-O` /
             // `HCS-P` / `HCS-O-P`. CVE-projection variants `Hcs`,
@@ -5569,43 +5629,46 @@ fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
         .any(|d| matches!(d, DissemControl::Eyes))
 }
 
-/// BALK / BOHEMIA / ATOMAL — NATO Appendix B markings.
+/// BALK / BOHEMIA / ATOMAL — NATO control markings (not NATO
+/// classifications) per CAPCO-2016 §G.2 p40 Table 5 (ARH by
+/// Registered Marking).
 ///
-/// These appear via the NATO classification system: the `BALK`,
-/// `BOHEMIA`, and `ATOMAL` floors fire when the *NATO sub-classification*
-/// indicates the corresponding atom AND the page's US-equivalent
-/// classification (per `NatoClassification::us_equivalent` and the
-/// reciprocal-raise rule) is below the floor.
+/// PR 9c.1 T134 corrected the structural model:
+///   - ATOMAL is an AEA-axis marking (CAPCO-2016 §H.7 p122 worked
+///     example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`), shared with
+///     NATO+UK under §123/§144 sharing agreements.
+///   - BALK / BOHEMIA are NATO SAPs in the SCI category position
+///     (§G.2 p40 + §H.7 p127), rendered standalone with no `SAR-`
+///     prefix.
+///
+/// The presence predicates read the corresponding canonical axes:
+/// `aea_markings` for ATOMAL, `sci_markings` (via
+/// `SciControlSystem::NatoSap`) for BALK / BOHEMIA. Legacy text
+/// (`CTSA`, `CTS-B`, `CTS-BALK`, …) canonicalizes through the parser
+/// (PR 9c.1 Commit 3), so this predicate fires on both well-formed
+/// canonical input and on parsed legacy text.
 fn presence_balk(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::CosmicTopSecretBalk
-        ))
-    )
+    use marque_ism::{NatoSap, SciControlSystem};
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Balk)))
 }
 
 fn presence_bohemia(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::CosmicTopSecretBohemia
-        ))
-    )
+    use marque_ism::{NatoSap, SciControlSystem};
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Bohemia)))
 }
 
 fn presence_atomal(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::NatoConfidentialAtomal
-                | NatoClassification::NatoSecretAtomal
-                | NatoClassification::CosmicTopSecretAtomal
-        ))
-    )
+    use marque_ism::AeaMarking;
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, AeaMarking::Atomal(_)))
 }
 
 // ---------------------------------------------------------------------------
@@ -5707,22 +5770,38 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
     },
-    // BALK and BOHEMIA: floor TS via CTS reciprocal-raise per
-    // marque-applied.md §3.4.1 Note (i). The presence predicate fires
-    // only when the document's NATO classification is exactly
-    // `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`. CTS = TS in the
-    // OrdMax chain, so an at-least-TS floor is satisfied by the
-    // presence itself; the row exists for the case where a portion
-    // labeled BALK/BOHEMIA is incorrectly carried with a sub-CTS
-    // classification (data-corruption / mangled input).
+    // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
+    // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
+    // model — BALK/BOHEMIA now live in `sci_markings` as
+    // `SciControlSystem::NatoSap` entries (not as fused
+    // `NatoClassification::*Balk/*Bohemia` variants which were retired
+    // as a wrong fusion of classification and control-marking
+    // semantics). The presence predicates fire on the SCI axis;
+    // the floor checks effective US-equivalent classification level
+    // (typically TS for NATO SAPs per §G.2 p40).
+    //
+    // Severity = Warn at the catalog row level per PR 9c.1 D5 (the
+    // architect's pre-flight decision): §G.2 p40's citation depth is
+    // too soft to drive Error — the manual identifies BOHEMIA/BALK as
+    // SAPs and lists them in the ARH table but does not enumerate a
+    // classification floor with the precision §H.6 has for RD/CNWDI.
+    // A Warn-with-suggest fires when the data is structurally
+    // inconsistent (BALK/BOHEMIA marked but classification < TS) and
+    // surfaces an actionable suggestion without blocking.
     ClassFloorRow {
         name: "class-floor/BALK",
         marking_label: "BALK (NATO)",
         presence: presence_balk,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
-        severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §G.2 p40",
         passthrough: false,
+        // `None` falls through to the Classification token span. PR
+        // 9c.1 Commit 3's parser writes the BALK SciMarking but does
+        // not push a `TokenKind::SciSystem` span for the legacy
+        // compound text (`CTS-BALK` is a single Classification token
+        // that carries both the bare-class and the companion semantic);
+        // anchoring at the Classification token is the right UX.
         primary_kind: None,
     },
     ClassFloorRow {
@@ -5730,8 +5809,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         marking_label: "BOHEMIA (NATO)",
         presence: presence_bohemia,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
-        severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §G.2 p40",
         passthrough: false,
         primary_kind: None,
     },
@@ -5870,13 +5949,29 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
     },
+    // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
+    // CAPCO-2016 §H.7 p122 worked example
+    // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`). The class floor is the
+    // same Confidential lower-bound as the rest of §H.6's AEA family
+    // (RD/FRD/TFNI). Severity stays `Error` because §H.7 p122 is a
+    // direct, worked-example-grounded citation (parallel depth to
+    // §H.6's class-floor citations for RD/FRD), distinguishing it from
+    // the softer §G.2 p40 BALK/BOHEMIA citation.
+    //
+    // `primary_kind: None` (falls back to Classification): same
+    // rationale as BALK/BOHEMIA — legacy compound text like `NCA` /
+    // `CTSA` is a single `TokenKind::Classification` carrying both
+    // the bare-class and the AEA companion semantic; the parser does
+    // not emit a separate `TokenKind::AeaMarking` span for the
+    // canonicalized companion write. Anchoring at the Classification
+    // token is the right UX for the legacy-compound case.
     ClassFloorRow {
         name: "class-floor/ATOMAL",
         marking_label: "ATOMAL (NATO)",
         presence: presence_atomal,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        citation: "CAPCO-2016 §H.7 p122",
         passthrough: false,
         primary_kind: None,
     },

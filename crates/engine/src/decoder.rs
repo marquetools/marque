@@ -3485,10 +3485,11 @@ fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
 ///   `banner_str()` equals the input and `None` is returned.
 ///
 /// Returns `None` when the segment is `NATO <level> <rest>` with non-empty
-/// `<rest>` — compound SAP forms (ATOMAL, BOHEMIA, BALK) defer to PR 9 T134;
-/// the strict parser at `parser.rs:1043-1052` already handles them directly
-/// (e.g., `NATO SECRET ATOMAL` → `NatoSecretAtomal`), and the fold must not
-/// truncate the suffix. The fold's job is the 5-base-level path only.
+/// `<rest>` — compound forms like `NATO SECRET ATOMAL` parse through the
+/// strict parser's `parse_nato_classification`, which now (PR 9c.1 T134)
+/// canonicalizes legacy compound text into bare class + AEA/SCI companion
+/// per CAPCO-2016 §H.7 p122 + §G.2 p40 + §H.7 p127. The fold must not
+/// truncate the suffix; its job is the 5-base-level path only.
 ///
 /// **Caller invariant.** The caller ([`try_nato_fold`]) restricts invocation
 /// to the first non-empty `//`-separated segment (the classification slot) so
@@ -3701,6 +3702,14 @@ fn classify_segment(seg: &str) -> SegmentClass {
         "CONFIDENTIAL",
         "SECRET",
         // NATO classification abbreviations (single-token forms).
+        // The five legacy compound forms (CTSA / NSAT / NCA / CTS-B /
+        // CTS-BALK) stay in the decoder recognition set because the
+        // strict parser, post-PR-9c.1 T134, canonicalizes them into
+        // bare class + AEA/SCI companion writes (CAPCO-2016 §H.7 p122
+        // for ATOMAL → AEA; §G.2 p40 + §H.7 p127 for BALK/BOHEMIA →
+        // SCI). The E066 autofix rule then surfaces the text-level
+        // re-marking suggestion per the §G.2 p40 Table 5 registration
+        // of the canonical control-marking forms.
         "NS",
         "NC",
         "NU",
@@ -7036,16 +7045,17 @@ mod tests {
 
     #[test]
     fn fold_nato_segment_returns_none_for_atomal_compound() {
-        // `NATO SECRET ATOMAL` is a legitimate NATO+SAP marking the strict
-        // parser handles (NatoSecretAtomal). The fold MUST NOT fire on it —
-        // otherwise the suffix gets truncated and recovery regresses.
-        // ATOMAL fold itself defers to PR 9 T134.
+        // `NATO SECRET ATOMAL` is a legitimate compound the strict parser
+        // canonicalizes (PR 9c.1 T134: bare `NatoSecret` class + AEA
+        // `Atomal` companion). The fold MUST NOT fire on it — otherwise
+        // the suffix gets truncated and recovery regresses.
         //
-        // Regression guard for the FIX-A correctness fix in the PR 8 round-2
-        // reviewer response. Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+        // Regression guard for the FIX-A correctness fix in the PR 8
+        // round-2 reviewer response. Citation: CAPCO-2016 §H.7 p122
+        // (ATOMAL as AEA-axis marking, worked example).
         assert!(
             fold_nato_segment("NATO SECRET ATOMAL", MarkingType::Portion).is_none(),
-            "fold must not fire on NATO SECRET ATOMAL (compound SAP — deferred to PR 9 T134)"
+            "fold must not fire on NATO SECRET ATOMAL (strict parser canonicalizes)"
         );
         assert!(
             fold_nato_segment("NATO CONFIDENTIAL ATOMAL", MarkingType::Portion).is_none(),
@@ -7059,18 +7069,21 @@ mod tests {
 
     #[test]
     fn fold_nato_segment_returns_none_for_bohemia_balk() {
-        // Hyphen-separated NATO SAP variants (BOHEMIA, BALK) are also out of
-        // scope; the strict parser handles them via `CTS-B` / `CTS-BALK`.
-        // PR 9 T134 will add the explicit fold for these compounds.
+        // Hyphen-separated NATO compounds (`NATO TOP SECRET-BOHEMIA`,
+        // `NATO TOP SECRET-BALK`) are also out of scope for the fold;
+        // the strict parser canonicalizes them via PR 9c.1 T134 into
+        // bare `CosmicTopSecret` class + SCI `NatoSap` companion
+        // (CAPCO-2016 §G.2 p40 + §H.7 p127).
         //
-        // Regression guard for FIX-A. Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
+        // Regression guard for FIX-A. Citation: CAPCO-2016 §G.2 p40 +
+        // §H.7 p127.
         assert!(
             fold_nato_segment("NATO TOP SECRET-BOHEMIA", MarkingType::Portion).is_none(),
-            "fold must not fire on NATO TOP SECRET-BOHEMIA (CTS-B deferred to PR 9 T134)"
+            "fold must not fire on NATO TOP SECRET-BOHEMIA (strict parser canonicalizes)"
         );
         assert!(
             fold_nato_segment("NATO TOP SECRET-BALK", MarkingType::Portion).is_none(),
-            "fold must not fire on NATO TOP SECRET-BALK (CTS-BALK deferred to PR 9 T134)"
+            "fold must not fire on NATO TOP SECRET-BALK (strict parser canonicalizes)"
         );
     }
 }

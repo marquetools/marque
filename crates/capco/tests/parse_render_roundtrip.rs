@@ -33,7 +33,7 @@
 //! # Authority
 //!
 //! - CAPCO-2016 §A.6 p15 — banner + portion grammar.
-//! - CAPCO-2016 §H.7 p123 — FGI banner/portion forms (lawful concealed +
+//! - CAPCO-2016 §H.7 p122 — FGI banner/portion forms (lawful concealed +
 //!   acknowledged variants).
 //! - Specs/006 FR-019 (codec round-trip preservation), SC-010
 //!   (parse-render-parse idempotence on the strict-path corpus).
@@ -293,7 +293,7 @@ fn classification_round_trips_across_strict_corpus() {
 
 #[test]
 fn fr016_bare_fgi_classification_round_trips() {
-    // CAPCO-2016 §H.7 p123 lawful concealed form. PR 2's FR-016 closure
+    // CAPCO-2016 §H.7 p122 lawful concealed form. PR 2's FR-016 closure
     // pins this to `Some(SourceConcealed)` rather than the pre-FR-016
     // degraded `Some(FgiMarker { countries: [] })`. The classification
     // axis ("SECRET") round-trips through the renderer.
@@ -316,7 +316,7 @@ fn fr016_bare_fgi_classification_round_trips() {
 
 #[test]
 fn fr017_acknowledged_fgi_single_country_classification_round_trips() {
-    // §H.7 p123 lawful acknowledged form. Single-country list.
+    // §H.7 p122 lawful acknowledged form. Single-country list.
     let attrs1 = parse_banner("SECRET//FGI DEU//NOFORN");
     let scheme = CapcoScheme::new();
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
@@ -336,7 +336,7 @@ fn fr017_acknowledged_fgi_single_country_classification_round_trips() {
 
 #[test]
 fn fr017_acknowledged_fgi_multi_country_classification_round_trips() {
-    // §H.7 p123 + §A.6 p16 multi-trigraph list (sorted).
+    // §H.7 p122 + §A.6 p16 multi-trigraph list (sorted).
     let attrs1 = parse_banner("SECRET//FGI USA GBR JPN//NOFORN");
     let scheme = CapcoScheme::new();
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));

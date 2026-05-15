@@ -304,6 +304,8 @@ banner". `<class>` placeholder = TS / S / C / U.
 | TK-IDIT [SUB-COMPARTMENT] | H.4 | 93 | IDITAROD [SUB] (≤6 alnum) | IDIT [SUB] | IDIT [SUB] | DNI / TK Policy | TS/S only; requires TK-IDIT + NOFORN | all unique SCI roll up | combinable; TK-IDIT [SUB] conveys in portion |
 | TK-KANDIK | H.4 | 95 | KANDIK | KAND | KAND | DNI / TK Policy | TS/S only; requires TK + NOFORN; KDK legacy → TK-KAND on new content | all unique SCI roll up | combinable; TK-KAND conveys in portion |
 | TK-KAND [SUB-COMPARTMENT] | H.4 | 97 | KANDIK [SUB] (≤6 alnum) | KAND [SUB] | KAND [SUB] | DNI / TK Policy | TS/S only; requires TK-KAND + NOFORN | all unique SCI roll up | combinable; TK-KAND [SUB] conveys in portion |
+| BOHEMIA (NATO SAP) | G.2 | 40 | BOHEMIA | BOHEMIA | BOHEMIA | NATO / CAPCO Register §G.2 | typically CTS; requires BOHEMIA read-in (§G.2 Table 5) | rendered standalone in SCI block position per §H.7 p127 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`; BALK before BOHEMIA in roll-up (alpha) | mutually-restricted NATO SAP; commingling guidance via §H.7 p127 + §G.2 Table 5 |
+| BALK (NATO SAP) | G.2 | 40 | BALK | BALK | BALK | NATO / CAPCO Register §G.2 | typically CTS; requires BALK read-in (§G.2 Table 5) | rendered standalone in SCI block position; BALK precedes BOHEMIA alphabetically | mutually-restricted NATO SAP; exercise replacement for BOHEMIA per legacy CCEB guidance referenced in §G.2 |
 
 **SCI grammar reminder.** Compartment is 2–3 alpha (SI), or 3 alnum
 (RSV); sub-compartment is 4–6 alnum depending on system (4 for SI-G,
@@ -311,6 +313,21 @@ banner". `<class>` placeholder = TS / S / C / U.
 + §H.4 syntax (p61): `/` between control systems, `-` between control
 and compartment, ` ` between sub-compartments. Numbered values sort
 before alphabetic.
+
+**NATO SAPs (BOHEMIA / BALK) — PR 9c.1 T134 routing.** BOHEMIA and
+BALK are NATO Special Access Programs registered in §G.2 p40
+(Table 5: ARH by Registered Marking). They render standalone in the
+SCI category position — NOT as portion-suffixes on the NATO
+classification axis. The §H.7 p127 worked example
+`(//CTS//BOHEMIA//REL TO USA, NATO)` shows BOHEMIA in its own
+`//`-separated category between the bare class and the dissem
+block. Legacy fused-classification forms (`CTS-B`, `CTS-BALK`,
+`COSMIC TOP SECRET-BOHEMIA`, `COSMIC TOP SECRET-BALK`) are retired
+per the §G.2 p40 Table 5 registration of BOHEMIA/BALK as
+standalone control markings; the strict parser canonicalizes them
+to bare CTS class + SCI NatoSap companion, and rule E066 emits a
+Recanonicalize fix that re-renders to the canonical multi-block
+form.
 
 ### 5.4 §H.5 Special Access Program (pp 99–102)
 
@@ -336,6 +353,21 @@ linker is `-`. Sub-compartment linker is space.
 | DOD UCNI | H.6 | 116 | DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOD UCNI | DCNI | DoD / AEA | **U only**; not on classified content; CUI re-evaluation candidate (14 Nov 2016) | rolls up only on U documents; on classified docs DOD UCNI does NOT appear in banner but NOFORN must be applied if FD&R less restrictive | with classified non-UCNI: DCNI portion mark NOT used (class adequately protects); apply NF if FD&R less restrictive |
 | DOE UCNI | H.6 | 118 | DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION | DOE UCNI | UCNI | DOE / AEA §148 | U only; CUI re-evaluation candidate | rolls up on U docs; on classified docs DOE UCNI does NOT appear in banner; NOFORN must be applied if FD&R less restrictive | same as DOD UCNI: UCNI portion mark NOT used in classified portions; NF if needed |
 | TFNI | H.6 | 120 | TRANSCLASSIFIED FOREIGN NUCLEAR INFORMATION | TFNI | TFNI | DOE + DNI / AEA §142e + 32CFR2001 §2001.24(i) | TS/S/C only | TFNI appears in banner if no RD/FRD portion present; **fully evicted from banner if any RD or FRD portion present** (§H.6 p104); special "Declassify On" annotation required regardless | RD or FRD takes precedence in portion; TFNI ideally not commingled |
+| ATOMAL (NATO AEA) | H.7 | 122 | ATOMAL | ATOMAL | ATOMAL | NATO / Atomic Energy Act §123 + §144 sharing agreements | TS/S/C NATO classes typically; rendered in AEA category position per §H.7 p122 worked example `SECRET//RD/ATOMAL//FGI NATO//NOFORN` | ATOMAL trails the US-domestic AEA family in the AEA block; same-form across title/banner/portion columns per §G.1 Table 4 p38 | NATO-shared AEA marking; segregation guidance via §H.7 p122 |
+
+**ATOMAL routing — PR 9c.1 T134.** ATOMAL is a NATO AEA marking
+(Atomic Energy Act information shared with NATO+UK under bilateral
+§123/§144 sharing agreements). The §H.7 p122 worked example places
+ATOMAL alongside RD in the AEA axis — NOT as a portion-suffix on
+the NATO classification axis. Legacy fused-classification forms
+(`CTSA`, `CTS-A`, `NSAT`, `NS-A`, `NCA`, `NC-A`, banner-form
+`COSMIC TOP SECRET ATOMAL` / `NATO SECRET ATOMAL` /
+`NATO CONFIDENTIAL ATOMAL`) are retired per the §G.2 p40 Table 5
+registration of ATOMAL as a standalone control marking; the strict
+parser canonicalizes them to bare NATO class + AEA Atomal companion,
+and rule E066 emits a Recanonicalize fix that re-renders to the
+canonical multi-block form (`(//CTS//ATOMAL)`, `(//NS//ATOMAL)`,
+etc.).
 
 ### 5.6 §H.7 Foreign Government Information (pp 122–130)
 

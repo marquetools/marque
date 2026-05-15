@@ -119,7 +119,7 @@ fn entry_1_fgi_rollup_on_us_contact_is_correctly_authored() {
     // §4. Class lift is parser-side per §3.4.1 Note (i), so CLASS is
     // not in `writes`.
     assert_eq!(rw.id, "capco/fgi-rollup-on-us-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p122");
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);
@@ -136,7 +136,7 @@ fn entry_2_fgi_restricted_rollup_is_correctly_authored() {
 
     // Assert — narrow-form reads (CLASS only); see Entry 1 note.
     assert_eq!(rw.id, "capco/fgi-restricted-rollup-on-us-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p122");
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);
@@ -176,7 +176,7 @@ fn entry_7_us_presence_promotes_bare_fgi_is_correctly_authored() {
     // state of entries 1, 2, 3), so FGI_MARKER stays in `reads`
     // and the scheduler orders entry 7 after 1, 2, 3.
     assert_eq!(rw.id, "capco/us-presence-promotes-bare-fgi-attribution");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p123");
+    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p122");
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION, CAT_FGI_MARKER]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);

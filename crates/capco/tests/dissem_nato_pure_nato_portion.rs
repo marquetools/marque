@@ -14,7 +14,7 @@
 //! plain `COSMIC TOP SECRET` classification with `OC/REL TO USA,
 //! NATO` dissems — no ATOMAL token required.
 //!
-//! Authority: CAPCO-2016 §H.7 p123 (FGI / NATO grammar) and §G.2
+//! Authority: CAPCO-2016 §H.7 p122 (FGI / NATO grammar) and §G.2
 //! Table 5 (pp 40-45), which enumerates the two NATO dissemination
 //! control markings (ORCON, REL TO / [LIST] ONLY) and directs their
 //! ARH to "See US X ARH requirements" — no NATO-specific dissem form

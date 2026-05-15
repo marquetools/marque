@@ -315,6 +315,19 @@ impl CapcoRuleSet {
                 // compound EYES block span; trigraphs carry forward to the
                 // new REL TO list.
                 Box::new(EyesOnlyConvertToRelToRule),
+                // PR 9c.1 T134 (rule E066): legacy NATO compound text
+                // re-marking per CAPCO-2016 §G.2 p40 (Table 5: ARH
+                // registers ATOMAL/BOHEMIA/BALK as standalone control
+                // markings) + §H.7 p122 (ATOMAL worked example in AEA
+                // axis) + §H.7 p127 (BOHEMIA worked example in SCI
+                // axis). Catches the eight legacy portion-form patterns
+                // (CTSA / CTS-A / CTS-B / CTS-BALK / NSAT / NS-A / NCA
+                // / NC-A) plus the five banner-form equivalents, and
+                // emits a Recanonicalize fix at confidence 1.0. The
+                // parser canonicalizes the input attrs structure at
+                // parse time; this rule surfaces the text-level
+                // re-marking.
+                Box::new(LegacyNatoCompoundRemarkRule),
             ],
         }
     }
@@ -3235,6 +3248,8 @@ fn sci_system_text(system: &SciControlSystem) -> &str {
     match system {
         SciControlSystem::Published(bare) => bare.as_str(),
         SciControlSystem::Custom(text) => text.as_ref(),
+        // NATO SAPs (BOHEMIA, BALK) per CAPCO-2016 §G.2 p40 + §H.7 p127.
+        SciControlSystem::NatoSap(sap) => sap.as_str(),
     }
 }
 
@@ -4208,6 +4223,246 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
         source: FixSource::BuiltinRule,
         migration_ref: None,
     }
+}
+
+// ===========================================================================
+// E066 — Legacy NATO compound text re-marking (PR 9c.1 T134)
+// ===========================================================================
+//
+// Authority chain:
+//   §G.2 p40 (Table 5: ARH by Registered Marking) lists ATOMAL,
+//     BOHEMIA, and BALK as registered NATO control markings — each
+//     has its own row with `Requires {marking} read-in`, confirming
+//     they are control markings registered alongside (not fused with)
+//     the NATO classification ladder.
+//   §H.7 p122 worked example places ATOMAL in the AEA category
+//     position: `SECRET//RD/ATOMAL//FGI NATO//NOFORN` ("ATOMAL is a
+//     NATO Atomic Energy Act marking that follows the registered US
+//     Atomic Energy Act marking RD").
+//   §H.7 p127 worked example places BOHEMIA in the SCI category
+//     position: `(//CTS//BOHEMIA//REL TO USA, NATO)`.
+//   §G.1 Table 4 p38 portion-form column lists `ATOMAL` / `BALK` /
+//     `BOHEMIA` as same-form across title / banner-abbrev / portion
+//     (standalone canonical names — no `SAR-` prefix, no fused
+//     class form).
+//
+// Per project memory `remark-on-derivative-use-is-marque-autofix`,
+// "Marque exists precisely to automate the re-marking the manual
+// permits doing by hand" — the §H.7 worked-example canonical forms
+// ARE the autofix targets.
+//
+// E066 fires when the strict parser canonicalizes legacy NATO compound
+// text (`CTSA`, `CTS-A`, `NSAT`, `NS-A`, `NCA`, `NC-A`, `CTS-B`,
+// `CTS-BALK`, or their banner-form equivalents) into the canonical
+// structural shape (bare class + AEA/SCI companion). The rule reads
+// `attrs.token_spans` looking for a `TokenKind::Classification` whose
+// text matches one of the legacy patterns; if found AND the parsed
+// `attrs.classification` is a bare `NatoClassification::*` variant with
+// the corresponding `AeaMarking::Atomal` / `SciControlSystem::NatoSap`
+// companion present, the rule emits a Recanonicalize fix.
+//
+// The emitted FixIntent uses `ReplacementIntent::Recanonicalize {
+// scope: Portion | Page }` — the engine re-renders the candidate via
+// `MarkingScheme::render_canonical`, which emits the canonical
+// multi-block form (`(//CTS//ATOMAL)`, `(//CTS//BOHEMIA)`, etc.) per
+// the §H.7 p122 + §G.2 p40 + §H.7 p127 worked examples.
+//
+// Severity: `Fix` (auto-applies when confidence ≥ engine threshold).
+// Confidence: `strict(1.0)` — the canonical form is unambiguous; the
+// renderer produces deterministic bytes from the canonical attrs.
+//
+// G13 audit-content-ignorance: the diagnostic message does NOT echo
+// input bytes. The message references canonical token names
+// (`TOK_ATOMAL`, `TOK_BALK`, `TOK_BOHEMIA`) via `MessageArgs.token`
+// and the message template's text. The fix payload is structural
+// (`Recanonicalize`); the engine snapshots the canonical replacement
+// at promotion time without any rule-side byte stringification.
+
+/// Rule E066 — legacy NATO compound text re-marking per §G.2 p40
+/// (Table 5 registration) + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 +
+/// §H.7 p127 (BALK/BOHEMIA → SCI).
+struct LegacyNatoCompoundRemarkRule;
+
+impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E066")
+    }
+    fn name(&self) -> &'static str {
+        "legacy-nato-compound-remark"
+    }
+    fn default_severity(&self) -> Severity {
+        // Severity::Fix — auto-apply when confidence ≥ threshold. The
+        // canonical form is unambiguous (single grammar; no
+        // classifier-judgment branch); the renderer produces
+        // deterministic bytes from the parsed canonical attrs.
+        Severity::Fix
+    }
+    /// Phase::WholeMarking: the canonical re-rendering spans the full
+    /// candidate (the classification block AND the appended AEA/SCI
+    /// companion block need to land together), so the fix scope is
+    /// whole-marking by construction.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::{
+            AeaMarking, MarkingClassification, MarkingType, NatoSap, SciControlSystem,
+        };
+
+        // Gate on bare NATO classification + presence of an AEA::Atomal
+        // OR a SciControlSystem::NatoSap companion. The parser only
+        // writes those companions for the canonicalized legacy text
+        // paths (`CTSA`, `CTS-B`, etc., per crate::parser::parse_nato_classification).
+        let is_nato = matches!(&attrs.classification, Some(MarkingClassification::Nato(_)));
+        if !is_nato {
+            return vec![];
+        }
+
+        let has_atomal = attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Atomal(_)));
+        let nato_sap = attrs.sci_markings.iter().find_map(|m| match m.system {
+            SciControlSystem::NatoSap(sap) => Some(sap),
+            _ => None,
+        });
+        if !has_atomal && nato_sap.is_none() {
+            return vec![];
+        }
+
+        // Locate the classification TokenSpan and verify its raw text
+        // matches one of the thirteen legacy compound patterns (eight
+        // portion forms + five banner forms). The parser writes a
+        // Classification token-span for the NATO block; the span's
+        // `.text` carries the original bytes. We match against the
+        // closed set of legacy forms — well-formed canonical multi-block
+        // inputs (`(//CTS//ATOMAL)`, `(//CTS//BOHEMIA)`) will NOT match
+        // here because the classification block in those inputs is just
+        // `CTS`.
+        let Some(classification_tok) = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::Classification)
+        else {
+            return vec![];
+        };
+
+        if !is_legacy_nato_compound_text(classification_tok.text.as_str()) {
+            return vec![];
+        }
+
+        // Determine the canonical companion token for `MessageArgs.token`.
+        // Per G13 audit-content-ignorance: this is a closed-vocab
+        // TokenId, not raw bytes.
+        let companion_token = if has_atomal {
+            crate::scheme::TOK_ATOMAL
+        } else {
+            match nato_sap {
+                Some(NatoSap::Balk) => crate::scheme::TOK_BALK,
+                Some(NatoSap::Bohemia) => crate::scheme::TOK_BOHEMIA,
+                // `None` is unreachable: the early-return above
+                // guarantees exactly one of (has_atomal,
+                // nato_sap.is_some()) is true at this point. The
+                // `Some(_)` wildcard covers a future `NatoSap`
+                // variant introduced after PR 9c.1 ([`NatoSap`] is
+                // `#[non_exhaustive]`); defensively skip-emit until
+                // the rule explicitly learns the new variant.
+                None | Some(_) => return vec![],
+            }
+        };
+
+        let scope = match ctx.marking_type {
+            MarkingType::Portion => RecanonScope::Portion,
+            _ => RecanonScope::Page,
+        };
+
+        // §G.2 p40 (Table 5: ARH by Registered Marking) registers
+        // ATOMAL/BOHEMIA/BALK as control markings. §H.7 p122 worked
+        // example shows ATOMAL in the AEA position; §H.7 p127 worked
+        // example shows BOHEMIA in the SCI position. Choose the
+        // structurally-most-precise anchor based on which companion
+        // was written.
+        let citation = if has_atomal {
+            "CAPCO-2016 §H.7 p122 + §G.2 p40"
+        } else {
+            "CAPCO-2016 §G.2 p40 + §H.7 p127"
+        };
+
+        // G13 audit-content-ignorance: the message text references only
+        // the canonical companion token name (via `MessageArgs.token`)
+        // and a static description of the legacy-text class. No echo
+        // of the input bytes.
+        let message_text = if has_atomal {
+            "legacy NATO compound classification text — ATOMAL is an AEA-axis \
+             marking per §H.7 p122; re-mark to the canonical multi-block form"
+                .to_owned()
+        } else {
+            "legacy NATO compound classification text — BALK/BOHEMIA are NATO \
+             SAPs in the SCI category per §G.2 p40 + §H.7 p127; re-mark to \
+             the canonical multi-block form"
+                .to_owned()
+        };
+
+        let fix_intent = FixIntent {
+            replacement: ReplacementIntent::Recanonicalize { scope },
+            confidence: Confidence::strict(1.0),
+            feature_ids: Default::default(),
+            message: Message::new(
+                MessageTemplate::WrongTokenForm,
+                MessageArgs {
+                    token: Some(companion_token),
+                    ..MessageArgs::default()
+                },
+            ),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
+        };
+
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            classification_tok.span,
+            ctx.candidate_span,
+            message_text,
+            citation,
+            fix_intent,
+        )]
+    }
+}
+
+/// Returns `true` when `text` matches one of the thirteen legacy NATO
+/// compound patterns (eight portion forms + five banner forms) retired
+/// by PR 9c.1 T134.
+///
+/// The closed set is exactly the patterns the parser's
+/// `parse_nato_classification` accepts in the legacy branch — anything
+/// else is either canonical (`CTS`, `NS`, `NC`) or unrelated. Keeping
+/// the predicate co-located with the rule (and citing the parser's
+/// match table) means a future expansion of the legacy set requires a
+/// coordinated edit in both places — the natural propagation point.
+///
+/// Citations: CAPCO-2016 §G.1 Table 4 p38 (portion-form column);
+/// §G.2 p40 (Table 5 — registers ATOMAL/BOHEMIA/BALK as standalone
+/// control markings, not classification suffixes).
+fn is_legacy_nato_compound_text(text: &str) -> bool {
+    matches!(
+        text,
+        // Portion forms.
+        "CTSA"
+            | "CTS-A"
+            | "CTS-B"
+            | "CTS-BALK"
+            | "NSAT"
+            | "NS-A"
+            | "NCA"
+            | "NC-A"
+            // Banner forms (full-word legacy compounds).
+            | "COSMIC TOP SECRET ATOMAL"
+            | "COSMIC TOP SECRET-BOHEMIA"
+            | "COSMIC TOP SECRET-BALK"
+            | "NATO SECRET ATOMAL"
+            | "NATO CONFIDENTIAL ATOMAL"
+    )
 }
 
 #[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.

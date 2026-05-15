@@ -132,9 +132,17 @@ The hybrid approach: the CVE vocabulary generated from `CVEnumISMSCIControls.xml
 
 Banner roll-up for SCI (E035) uses `PageContext::expected_sci_markings()`, which unions compartments and sub-compartments across all portions on the page and sorts per §A.6 p15 (numeric first, alpha after). Authority: CAPCO-2016 §A.6 (grammar, canonical example p16) + §H.4 (per-system banner precedence).
 
+**NATO SAPs (PR 9c.1 T134).** `SciControlSystem::NatoSap(NatoSap)` is the canonical home for `BOHEMIA` and `BALK` (CAPCO-2016 §G.2 p40 + §H.7 p127). They render standalone (no `SAR-` prefix) in the SCI block position — e.g. `(//CTS//BOHEMIA)` or `(//CTS//BALK/BOHEMIA)`. BALK sorts before BOHEMIA alphabetically per §H.7 p127 worked example. NATO SAPs are CAPCO-only (no ODNI ISM CVE entry) — the third `SciControlSystem` variant keeps `Published(SciControlBare)` ODNI-faithful and `Custom(SmolStr)` reserved for agency-allocated `[A-Z0-9]{2,5}` identifiers per §A.6 p15. Legacy `CTS-B` / `CTS-BALK` text and the banner-form equivalents canonicalize through the strict parser into bare CTS class + SCI NatoSap companion; rule E066 emits a Recanonicalize FixIntent so the source text is re-rendered to the canonical multi-block form.
+
 ### SAR (Special Access Required)
 
 SAR (Special Access Required) markings are modeled structurally, not as a CVE-derived enum. The ODNI public `CVEnumISMSAR.xml` is empty because SAR program identifiers are agency-assigned codewords not centrally registered. `marque-ism::SarMarking` captures the full hierarchy — programs, compartments, sub-compartments — parsed by a hand-written subparser in `marque-core` (see `parse_sar_category`). The six SAR rules (E026–E031) validate syntax, ordering, classification constraints, and banner roll-up per CAPCO-2016 §H.5.
+
+### ATOMAL (NATO AEA)
+
+ATOMAL is a NATO AEA marking — Atomic Energy Act information shared with NATO+UK under bilateral §123/§144 sharing agreements. Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking) ATOMAL is a registered standalone control marking; the §H.7 p122 worked example (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL in the AEA axis alongside RD/FRD/TFNI — **not** as a NATO classification portion-suffix.
+
+PR 9c.1 T134 introduced `AeaMarking::Atomal(AtomalBlock)` as the canonical home. The block is empty (no registered sub-markings) but mirrors `RdBlock`/`FrdBlock` so a future CAPCO grammar extension is a planned migration. The strict parser canonicalizes legacy compound text (`CTSA`, `CTS-A`, `NSAT`, `NS-A`, `NCA`, `NC-A`, banner-form `COSMIC TOP SECRET ATOMAL`, etc.) into bare NATO class + AEA ATOMAL companion at parse time; rule E066 emits a Recanonicalize FixIntent that re-renders to the canonical multi-block form (`(//CTS//ATOMAL)`, etc.) per the §G.2 p40 Table 5 registration. Per project memory `remark-on-derivative-use-is-marque-autofix`, Marque automates the canonical re-marking the manual permits doing by hand. The legacy fused `NatoClassification::*Atomal` variants (`NatoConfidentialAtomal`, `NatoSecretAtomal`, `CosmicTopSecretAtomal`) and the corresponding `*Bohemia` / `*Balk` variants were retired in PR 9c.1 Commit 5.
 
 ### Key Types
 

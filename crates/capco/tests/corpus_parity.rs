@@ -196,12 +196,20 @@ fn rule_count_reflects_registration_changes() {
     // p158. NSA-only and deprecated since the markings waiver expired
     // 1 Oct 2017. Net delta: +1. Final: 35 + 1 = 36.
     //
+    // PR 9c.1 T134: added `LegacyNatoCompoundRemarkRule` (E066) —
+    // legacy NATO compound text re-marking per CAPCO-2016 §H.7 line
+    // 4702 + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 + §H.7 p127
+    // (BALK/BOHEMIA → SCI). The rule fires when the parser
+    // canonicalizes legacy compound text into bare class + AEA/SCI
+    // companion and emits a Recanonicalize fix at confidence 1.0.
+    // Net delta: +1. Final: 36 + 1 = 37.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        36,
+        37,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -214,7 +222,10 @@ fn rule_count_reflects_registration_changes() {
          bare-RSV rules (E061 / E062 / E063); net delta +3. PR 9a \
          Commit 5 adds `EyesOnlyConvertToRelToRule` (E064) — EYES \
          / EYES ONLY → REL TO conversion per §H.8 p157 + p158; \
-         net delta +1. Final: 36. See \
+         net delta +1. Final: 36. PR 9c.1 T134 adds \
+         `LegacyNatoCompoundRemarkRule` (E066) — legacy NATO \
+         compound text re-marking per §G.2 p40 (Table 5) + §H.7 p122 + \
+         §H.7 p127; net delta +1. Final: 37. See \
          `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

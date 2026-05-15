@@ -14,7 +14,7 @@
 //!   alphabetic sort order, followed by tetragraph codes listed in
 //!   ascending alphabetic sort order. An example may appear as:
 //!   `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`."
-//! - CAPCO-2016 §H.7 p123 — FGI marker variants: source-acknowledged
+//! - CAPCO-2016 §H.7 p122 — FGI marker variants: source-acknowledged
 //!   (`FGI [LIST]`) vs source-concealed (`FGI` with no country list).
 //!   "If a document contains any source-concealed FGI portions
 //!   alongside source-acknowledged FGI portions, the banner must use

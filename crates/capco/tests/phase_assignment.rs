@@ -114,6 +114,12 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // deprecated long-form token); text-correction replacements are
     // byte-precise single-token splices.
     ("E065", Phase::Localized),
+    // PR 9c.1 T134: legacy NATO compound text re-marking. Whole-marking
+    // because the canonical re-rendering needs to span the full
+    // candidate — the classification block AND the appended AEA/SCI
+    // companion block need to land together (e.g.,
+    // `(//CTSA)` → `(//CTS//ATOMAL)`).
+    ("E066", Phase::WholeMarking),
     ("S003", Phase::WholeMarking),
     ("S005", Phase::WholeMarking),
     ("S006", Phase::WholeMarking),
