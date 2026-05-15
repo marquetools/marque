@@ -204,12 +204,20 @@ fn rule_count_reflects_registration_changes() {
     // companion and emits a Recanonicalize fix at confidence 1.0.
     // Net delta: +1. Final: 36 + 1 = 37.
     //
+    // PR 9c.2 (FR-048): added `BareNatoRequiresRelToRule` (S007) —
+    // bare NATO classification in a US-classified document should
+    // carry `REL TO USA, NATO` per CAPCO-2016 §H.7 p127 Notional
+    // Example 2. Suggest-channel severity; users can opt up via
+    // `[rules] S007 = "warn"`. The solely-NATO-document case is
+    // carved out via `PageContext::is_solely_nato_classified`.
+    // Net delta: +1. Final: 37 + 1 = 38.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        37,
+        38,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -225,8 +233,11 @@ fn rule_count_reflects_registration_changes() {
          net delta +1. Final: 36. PR 9c.1 T134 adds \
          `LegacyNatoCompoundRemarkRule` (E066) — legacy NATO \
          compound text re-marking per §G.2 p40 (Table 5) + §H.7 p122 + \
-         §H.7 p127; net delta +1. Final: 37. See \
-         `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
+         §H.7 p127; net delta +1. Final: 37. PR 9c.2 (FR-048) adds \
+         `BareNatoRequiresRelToRule` (S007) — bare NATO classification \
+         in a US-classified document should carry `REL TO USA, NATO` \
+         per §H.7 p127 Notional Example 2; net delta +1. Final: 38. \
+         See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
     );
