@@ -38,10 +38,13 @@
 //! [`ParsedAttrs::sci_markings`] once and retains only the first
 //! occurrence of each value in source order. The companion-source spans
 //! follow the surviving entry verbatim, so audit-record provenance
-//! reads the source span the user actually typed — the canonical-form
+//! reads the source span the user actually typed — the legacy-compound
 //! span typically wins because the legacy-compound canonicalization
 //! runs first in the block loop and the canonical-form recognition
-//! pass appends the second entry.
+//! pass appends the second entry. This preserves the user-typed bytes
+//! (e.g., `NSAT`, `CTS-B`) as the source span for E066's
+//! `Recanonicalize` re-marking — consistent with the function-level
+//! doc on [`dedup_companions`].
 //!
 //! # Why a post-pass, not a per-push gate
 //!
