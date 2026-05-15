@@ -5613,43 +5613,45 @@ fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
         .any(|d| matches!(d, DissemControl::Eyes))
 }
 
-/// BALK / BOHEMIA / ATOMAL — NATO Appendix B markings.
+/// BALK / BOHEMIA / ATOMAL — NATO control markings (not NATO
+/// classifications) per CAPCO-2016 §H.7 line 4702 history note.
 ///
-/// These appear via the NATO classification system: the `BALK`,
-/// `BOHEMIA`, and `ATOMAL` floors fire when the *NATO sub-classification*
-/// indicates the corresponding atom AND the page's US-equivalent
-/// classification (per `NatoClassification::us_equivalent` and the
-/// reciprocal-raise rule) is below the floor.
+/// PR 9c.1 T134 corrected the structural model:
+///   - ATOMAL is an AEA-axis marking (CAPCO-2016 §H.7 p123 worked
+///     example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`), shared with
+///     NATO+UK under §123/§144 sharing agreements.
+///   - BALK / BOHEMIA are NATO SAPs in the SCI category position
+///     (§G.2 p41 + §H.7 p127), rendered standalone with no `SAR-`
+///     prefix.
+///
+/// The presence predicates read the corresponding canonical axes:
+/// `aea_markings` for ATOMAL, `sci_markings` (via
+/// `SciControlSystem::NatoSap`) for BALK / BOHEMIA. Legacy text
+/// (`CTSA`, `CTS-B`, `CTS-BALK`, …) canonicalizes through the parser
+/// (PR 9c.1 Commit 3), so this predicate fires on both well-formed
+/// canonical input and on parsed legacy text.
 fn presence_balk(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::CosmicTopSecretBalk
-        ))
-    )
+    use marque_ism::{NatoSap, SciControlSystem};
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Balk)))
 }
 
 fn presence_bohemia(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::CosmicTopSecretBohemia
-        ))
-    )
+    use marque_ism::{NatoSap, SciControlSystem};
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Bohemia)))
 }
 
 fn presence_atomal(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::NatoConfidentialAtomal
-                | NatoClassification::NatoSecretAtomal
-                | NatoClassification::CosmicTopSecretAtomal
-        ))
-    )
+    use marque_ism::AeaMarking;
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, AeaMarking::Atomal(_)))
 }
 
 // ---------------------------------------------------------------------------
@@ -5751,33 +5753,43 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
     },
-    // BALK and BOHEMIA: floor TS via CTS reciprocal-raise per
-    // marque-applied.md §3.4.1 Note (i). The presence predicate fires
-    // only when the document's NATO classification is exactly
-    // `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`. CTS = TS in the
-    // OrdMax chain, so an at-least-TS floor is satisfied by the
-    // presence itself; the row exists for the case where a portion
-    // labeled BALK/BOHEMIA is incorrectly carried with a sub-CTS
-    // classification (data-corruption / mangled input).
+    // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
+    // §G.2 p41 + §H.7 p127. PR 9c.1 T134 corrected the structural
+    // model — BALK/BOHEMIA now live in `sci_markings` as
+    // `SciControlSystem::NatoSap` entries (not as fused
+    // `NatoClassification::*Balk/*Bohemia` variants which were retired
+    // as a wrong fusion of classification and control-marking
+    // semantics). The presence predicates fire on the SCI axis;
+    // the floor checks effective US-equivalent classification level
+    // (typically TS for NATO SAPs per §G.2 p41).
+    //
+    // Severity = Warn at the catalog row level per PR 9c.1 D5 (the
+    // architect's pre-flight decision): §G.2 p41's citation depth is
+    // too soft to drive Error — the manual identifies BOHEMIA/BALK as
+    // SAPs and lists them in the ARH table but does not enumerate a
+    // classification floor with the precision §H.6 has for RD/CNWDI.
+    // A Warn-with-suggest fires when the data is structurally
+    // inconsistent (BALK/BOHEMIA marked but classification < TS) and
+    // surfaces an actionable suggestion without blocking.
     ClassFloorRow {
         name: "class-floor/BALK",
         marking_label: "BALK (NATO)",
         presence: presence_balk,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
-        severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §G.2 p41",
         passthrough: false,
-        primary_kind: None,
+        primary_kind: Some(TokenKind::SciSystem),
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
         marking_label: "BOHEMIA (NATO)",
         presence: presence_bohemia,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
-        severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §G.2 p41",
         passthrough: false,
-        primary_kind: None,
+        primary_kind: Some(TokenKind::SciSystem),
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
@@ -5914,15 +5926,23 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
     },
+    // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
+    // CAPCO-2016 §H.7 p123 worked example
+    // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`). The class floor is the
+    // same Confidential lower-bound as the rest of §H.6's AEA family
+    // (RD/FRD/TFNI). Severity stays `Error` because §H.7 p123 is a
+    // direct, worked-example-grounded citation (parallel depth to
+    // §H.6's class-floor citations for RD/FRD), distinguishing it from
+    // the softer §G.2 p41 BALK/BOHEMIA citation.
     ClassFloorRow {
         name: "class-floor/ATOMAL",
         marking_label: "ATOMAL (NATO)",
         presence: presence_atomal,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        citation: "CAPCO-2016 §H.7 p123",
         passthrough: false,
-        primary_kind: None,
+        primary_kind: Some(TokenKind::AeaMarking),
     },
     ClassFloorRow {
         name: "class-floor/ORCON",
