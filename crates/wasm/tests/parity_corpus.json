@@ -29,7 +29,7 @@
       "name": "corrections_map_typo_2.txt",
       "category": "invalid",
       "input": "TOP SECRET//NOFORM\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.9999987,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
     },
     {
       "name": "corrections_map_typo_3.txt",
@@ -83,7 +83,7 @@
       "name": "nato_longhand_portion.txt",
       "category": "invalid",
       "input": "(//NATO S//NOFORN)\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.9959951,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.9999763,\"migration_ref\":null}}\n"
     },
     {
       "name": "nodis_exdis_conflict.txt",

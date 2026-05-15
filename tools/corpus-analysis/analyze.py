@@ -2099,7 +2099,8 @@ def main():
             "owner confirmation: effectively zero portion-marking hits) "
             "and go in the prose stratum. "
             "Default for --mode priors when no source given: "
-            "tests/corpus/valid/ (marking) + Enron (prose). "
+            "tests/corpus/valid/ + tests/corpus/documents/marked/ "
+            "(marking) + Enron (prose). "
             "crest: CIA CREST declassified documents from Internet Archive — "
             "recommended for --mode mangled (real classification marking artifacts)."
         ),
@@ -2233,8 +2234,14 @@ def main():
     #   3. --corpus-source (named auto-download — all prose stratum per
     #      issue #258 owner confirmation that all four sources are
     #      prose-dominant with effectively zero portion-marking hits)
-    #   4. Default for --mode priors: tests/corpus/valid/ (marking) +
-    #      Enron (prose) so a developer regen does not require flags.
+    #   4. Default for --mode priors: tests/corpus/valid/ +
+    #      tests/corpus/documents/marked/ (marking) + Enron (prose)
+    #      so a developer regen does not require flags. The documents
+    #      stratum supplies multi-page banner+CAB+portion-marked
+    #      content (~1700 lines across 40 synthetic-positive
+    #      documents) that `valid/` alone (~34 short fixtures)
+    #      cannot — closes the "single-digit token counts" gap
+    #      documented in crates/capco/corpus/README.md.
     marking_paths: list[Path] = list(args.marking_corpus)
     prose_paths: list[Path] = list(args.prose_corpus)
 
@@ -2303,18 +2310,24 @@ def main():
 
     # Per-mode defaults when no source flags are supplied:
     # - `--mode priors` needs both strata, so it pulls the marking
-    #   stratum from `tests/corpus/valid/` and the prose stratum
-    #   from Enron.
+    #   stratum from `tests/corpus/valid/` plus `tests/corpus/documents/marked/`
+    #   (the synthetic-positive multi-page document corpus — full
+    #   banner + CAB + portion-marked paragraph distributions, ~1700
+    #   lines across 40 documents). Prose stratum defaults to Enron.
     # - `--mode baseline` / `mangled` / `heuristic-frequency` keep
     #   their legacy single-path Enron default (the stratum tag is
     #   irrelevant for these modes — they iterate `corpus_paths`,
     #   the combined list, and don't separate marking from prose).
     repo_root = Path(__file__).resolve().parents[2]
-    default_marking = repo_root / "tests" / "corpus" / "valid"
+    default_marking_paths = [
+        repo_root / "tests" / "corpus" / "valid",
+        repo_root / "tests" / "corpus" / "documents" / "marked",
+    ]
     if not marking_paths and not prose_paths and not args.corpus_sources and not args.corpus:
         if args.mode == "priors":
-            if default_marking.exists():
-                marking_paths.append(default_marking)
+            for p in default_marking_paths:
+                if p.exists():
+                    marking_paths.append(p)
             prose_paths.append(download_enron())
         else:
             # baseline / mangled / heuristic-frequency
@@ -2346,7 +2359,8 @@ def main():
                 "  Provide --marking-corpus PATH and --prose-corpus PATH, or\n"
                 "  --corpus PATH (defaults to marking) plus a prose source\n"
                 "  via --corpus-source enron|congressional-record|gao|crest, or\n"
-                "  run with no source args to use tests/corpus/valid/ + Enron.",
+                "  run with no source args to use tests/corpus/valid/ +\n"
+                "  tests/corpus/documents/marked/ + Enron.",
                 file=sys.stderr,
             )
             sys.exit(1)

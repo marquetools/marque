@@ -147,7 +147,144 @@ pub struct ParseContext {
     /// the marker and a following marking (`1. (S)`, `* (S//NF)`,
     /// `(a) (S)` all have a space before the `(` of the marking).
     pub preceded_by_whitespace: bool,
+    /// Byte offset of the candidate's span from the start of its
+    /// containing line.
+    ///
+    /// `Some(0)` means the candidate begins at column 0; higher values
+    /// mean further into the line. `None` means the engine could not
+    /// determine — recognizers treat this as "no position-based
+    /// evidence available" and skip the position-feature delta.
+    ///
+    /// Used by the decoder's [`LinePositionPenalty`](crate)/
+    /// [`BulletAnchorBonus`](crate) features: a portion marking deep
+    /// into a line of running text is overwhelmingly prose, while a
+    /// portion following a bullet or enumeration anchor
+    /// (`1B.a.3.(c)`, `* (S//NF)`, `(a) (S)`) is legitimate IC content.
+    pub line_offset: Option<usize>,
+    /// Up to 32 bytes of the same line preceding the candidate's span.
+    ///
+    /// `None` when no caller populated the field — direct
+    /// `ParseContext::default()` callers (test code, direct WASM
+    /// embedders, future schemes without source-byte access) leave
+    /// this `None`; the engine's per-candidate loop in
+    /// `Engine::lint_inner` always populates it with `Some(prefix)`
+    /// (possibly empty). Carries the **trailing** bytes of the line
+    /// prefix (closest to the candidate) when the on-line prefix is
+    /// longer than 32 bytes — those bytes are what determines whether
+    /// the candidate sits behind a bullet or section anchor.
+    ///
+    /// **Convention, not enforced**: when both fields are `Some(_)`,
+    /// the engine guarantees `line_prefix.len() == min(line_offset,
+    /// 32)` (the prefix is sliced from `source[line_start..span_start]`
+    /// and then capped at 32 bytes). Hand-built `ParseContext` callers
+    /// can in principle desync the two fields (e.g., set `line_offset:
+    /// Some(0)` but stuff a non-empty `LinePrefix`); no decoder code
+    /// today fires on the desync case, but downstream consumers should
+    /// not rely on the invariant beyond "engine-populated values are
+    /// consistent."
+    ///
+    /// Used by the decoder's [`BulletAnchorBonus`](crate) feature to
+    /// cancel the line-position penalty when the prefix looks like a
+    /// legitimate enumeration anchor (`1.`, `(a)`, `1B.a.3.`, `* `,
+    /// `- `).
+    pub line_prefix: Option<LinePrefix>,
+    /// Whether the source bytes surrounding the candidate (within a
+    /// short window before and after) are predominantly lowercase
+    /// ASCII letters.
+    ///
+    /// Computed by the engine when constructing the per-candidate
+    /// `ParseContext`. Recognizers without source-window access leave
+    /// this `false`.
+    ///
+    /// Used by the decoder's
+    /// [`LowercaseSurroundingContext`](crate) feature: a lowercase
+    /// portion or banner candidate embedded in lowercase prose is
+    /// overwhelmingly a prose glyph (`(s)`, `(c)`, parenthetical
+    /// asides, copyright) rather than a real marking the decoder
+    /// should recover. Archival all-caps documents short-circuit this
+    /// feature naturally — the candidate itself would be uppercase, so
+    /// the candidate-has-lowercase predicate the decoder pairs with
+    /// this flag never trips.
+    pub surrounding_is_lowercase: bool,
 }
+
+/// Up to 32 bytes of same-line context preceding a candidate.
+///
+/// Stack-only (`33`-byte inline buffer) so cloning a [`ParseContext`]
+/// in the recognizer hot path (e.g. `StrictOrDecoderRecognizer`'s
+/// strict→decoder fallback) never allocates. The byte slice is
+/// addressed via [`LinePrefix::as_slice`]; the underlying
+/// `[u8; 32]` is implementation detail.
+///
+/// When the actual line prefix is longer than 32 bytes, the
+/// **trailing** 32 bytes are kept — the bytes closest to the
+/// candidate's `(` are the ones that determine whether a bullet or
+/// enumeration anchor precedes the marking. The leading bytes of a
+/// long prefix carry no useful signal for the bullet/anchor
+/// heuristic.
+#[derive(Debug, Clone, Copy)]
+pub struct LinePrefix {
+    bytes: [u8; 32],
+    len: u8,
+}
+
+impl LinePrefix {
+    /// Construct an empty prefix (zero bytes, column-0 candidate).
+    #[inline]
+    pub const fn empty() -> Self {
+        Self {
+            bytes: [0; 32],
+            len: 0,
+        }
+    }
+
+    /// Build a `LinePrefix` from a slice. When `slice.len() > 32`,
+    /// keeps the trailing 32 bytes — the bytes immediately preceding
+    /// the candidate carry the bullet/anchor signal; leading bytes do
+    /// not.
+    pub fn from_slice(slice: &[u8]) -> Self {
+        const CAP: usize = 32;
+        let mut bytes = [0u8; CAP];
+        let take = slice.len().min(CAP);
+        // `take as u8` is safe today because `take ≤ CAP = 32 ≤
+        // u8::MAX`. The `debug_assert!` keeps the invariant loud
+        // in dev builds if `CAP` is ever raised past `u8::MAX`
+        // without a coordinated `len` field-type widening.
+        debug_assert!(take <= u8::MAX as usize);
+        let src_start = slice.len() - take;
+        bytes[..take].copy_from_slice(&slice[src_start..]);
+        Self {
+            bytes,
+            len: take as u8,
+        }
+    }
+
+    /// View the prefix bytes.
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.bytes[..self.len as usize]
+    }
+
+    /// Number of bytes stored.
+    #[inline]
+    pub const fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    /// `true` if the prefix is empty (candidate is at column 0).
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl PartialEq for LinePrefix {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl Eq for LinePrefix {}
 
 impl Default for ParseContext {
     /// Default context: strict path, no zone / position evidence, no
@@ -184,6 +321,9 @@ impl Default for ParseContext {
             classification_floor: None,
             as_of: None,
             preceded_by_whitespace: true,
+            line_offset: None,
+            line_prefix: None,
+            surrounding_is_lowercase: false,
         }
     }
 }
