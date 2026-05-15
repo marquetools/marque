@@ -318,7 +318,7 @@ impl CapcoMarking {
 
         // Axis 1: classification — variant-preserving OrdMax with
         // JointSet override. §H.1 pp47-54 + §H.7 pp123-125 +
-        // §H.3 p57 line 1288.
+        // §H.3 p57.
         //
         // Decision tree:
         // - JointSet::UnanimousProducers → banner is Joint(_,_) and
@@ -329,7 +329,7 @@ impl CapcoMarking {
         //   ClassificationLattice wins, BUT any Joint(_) variants on
         //   per-portion classifications are flattened to their
         //   effective_level (Us) so the banner doesn't carry forward
-        //   JOINT shape per §H.3 p57 line 1288.
+        //   JOINT shape per §H.3 p57.
         let joint_set = JointSet::from_attrs_iter(portions);
         out.classification = match joint_set.to_marking_classification() {
             Some(mc) => Some(mc),
@@ -337,8 +337,7 @@ impl CapcoMarking {
                 // Filter Joint(_) variants out of the
                 // ClassificationLattice input so the lattice picks
                 // the highest US-level variant rather than carrying
-                // a Joint-shape into a mixed-US banner. §H.3 p57
-                // line 1288.
+                // a Joint-shape into a mixed-US banner. §H.3 p57.
                 let filtered: Vec<CanonicalAttrs> = portions
                     .iter()
                     .map(|p| {

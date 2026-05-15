@@ -900,7 +900,7 @@ mod nato_dissem_set {
 // PR 4b-B Commit 5 — JointSet
 // ===========================================================================
 // CAPCO-2016 §H.3 p56 (JOINT grammar) + §H.7 p123 (FGI source-acknowledged
-// form for disunity-collapse migration) + §H.3 p57 line 1288 (mixed-US case
+// form for disunity-collapse migration) + §H.3 p57 (mixed-US case
 // bottom). Verified 2026-05-15 against CAPCO-2016.md.
 
 mod joint_set {
@@ -979,7 +979,7 @@ mod joint_set {
 
     #[test]
     fn joint_mixed_with_us_portions_returns_bottom_no_w004() {
-        // §H.3 p57 line 1288: JOINT does not roll up in US documents.
+        // §H.3 p57: JOINT does not roll up in US documents.
         // No W004 fires; the JOINT non-US producers ride to FgiSet
         // via the existing PageContext path.
         let portions = [

@@ -7,7 +7,7 @@
 //! Authority (verified 2026-05-15 against CAPCO-2016.md):
 //! - §H.3 p56 (JOINT classification grammar).
 //! - §H.3 pp55-59 (JOINT worked examples).
-//! - §H.3 p57 line 1288 ("JOINT not carried forward to banner in US documents").
+//! - §H.3 p57 ("JOINT not carried forward to banner in US documents").
 //! - §H.7 p123 (FGI source-acknowledged form for disunity-collapse migration).
 //!
 //! PR 4b-B Commit 5 (006 T112).
@@ -99,7 +99,7 @@ fn joint_disunity_two_portions_different_producers_collapses_to_fgi() {
 
 #[test]
 fn joint_mixed_with_us_portions_no_w004_fires() {
-    // §H.3 p57 line 1288: mixed (JOINT + US) → JOINT does not roll
+    // §H.3 p57: mixed (JOINT + US) → JOINT does not roll
     // up. Lattice returns Bottom; the existing PageContext path
     // handles FGI migration.
     let mut us = CanonicalAttrs::default();

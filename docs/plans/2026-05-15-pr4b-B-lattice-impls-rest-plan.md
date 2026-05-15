@@ -443,7 +443,7 @@ Sequencing rationale at §5.
        if yes → `UnanimousProducers { level=OrdMax, producers=∩ }`;
        if no → `DisunityCollapse { highest_level, union_non_us_producers }`.
     3. If **some but not all** portions are `Joint(_)`: this is the
-       US-document case from §H.3 p57 line 1288 ("The JOINT marking
+       US-document case from §H.3 p57 ("The JOINT marking
        is not carried forward to the banner line in US documents") —
        JOINT does **not** roll up. Returns `Bottom`; the JOINT non-US
        producers ride to `FgiSet` via the existing `expected_fgi()`
@@ -517,9 +517,9 @@ Sequencing rationale at §5.
     the canonical CountryCode vocabulary) appears in the message.
   - `joint_mixed_with_us_portions_no_w004_fires` — `(//JOINT S USA GBR) (S)`
     → existing US-document behavior (JOINT non-US producers ride to
-    FgiSet via §H.3 p57 line 1288). No W004.
+    FgiSet via §H.3 p57). No W004.
 - **§-citations verified**: §H.3 p56, §H.3 pp55-59 worked examples
-  (esp. p1299), §H.3 p57 line 1288, §H.7 p123. Each re-verified at
+  (esp. p1299), §H.3 p57, §H.7 p123. Each re-verified at
   the moment of writing the doc-comments per Principle VIII.
 - **Constitution checks**: V (W004 message audit-record content
   ignorance), VIII.
@@ -1029,7 +1029,7 @@ memory).
 | 3 | **JOINT-disunity-to-FGI citation discipline**: §H.3 p56 + §H.7 p123 are the cited authorities. §H.3 p56 covers JOINT roll-up; §H.7 p123 covers FGI source-acknowledged form. The cross-axis migration the W004 fix performs is implied by combining the two passages, not stated in one place. | Med | Cite **both** in the W004 diagnostic and the design-doc §2 addendum. Pin the citation against the worked examples on §H.3 p1299 + §H.3 pp1303-1305 + §H.3 p1312 + §H.3 p1314 which jointly establish that disunity → FGI is the de-facto canonical form. The capco-classification-validator agent's review pass is the final check. |
 | 4 | **RELIDO unanimity Layer 1 vs Layer 2 split**: 4b-B implements observed-unanimity. 4b-D adds FD&R-inferred RELIDO from §B.3 Table 2. If the user expects 4b-B to ship the closure-style FD&R-inferred RELIDO ("classified uncaveated post-2010 → suggest RELIDO"), it will appear absent. | Low | Explicit §3 (a) addendum in the design-doc (Commit 1) names the boundary. The Commit 4 `dissem_relido_layer1_does_not_infer` test pins the boundary at code level. Project memory `project_relido_unanimity_banner_rollup.md` confirms this split. |
 | 5 | **Bench regression on lint_10kb**: the lattice rewrite is on the hot path. Bench baseline is near-noise-margin (828µs upper-CI, 911µs threshold; current measurements 880-930µs). | Med | Commit 10 carries the pre-flight bench-staleness note. The gate may fail on the first run; one `gh run rerun <id> --failed` is the standard mitigation per project memory `project_bench_baseline_staleness.md`. If it persistently fails after one re-run, the bench-baseline-refresh PR (separate, not 4b-B) lands first. |
-| 6 | **JOINT-disunity Warn fires on US-document JOINT portions** (current PageContext behavior absorbs JOINT into FGI silently for these cases per §H.3 p57 line 1288). If JointSet `from_attrs_iter` doesn't correctly distinguish "all-JOINT page" from "JOINT-among-US-portions page," W004 fires spuriously. | High | The `JointSet::from_attrs_iter` step 3 explicitly returns `Bottom` (no W004) for the mixed-with-US case. The Commit 5 test `joint_mixed_with_us_portions_no_w004_fires` is the regression gate. The capco-classification-validator agent's pass MUST exercise this case. |
+| 6 | **JOINT-disunity Warn fires on US-document JOINT portions** (current PageContext behavior absorbs JOINT into FGI silently for these cases per §H.3 p57). If JointSet `from_attrs_iter` doesn't correctly distinguish "all-JOINT page" from "JOINT-among-US-portions page," W004 fires spuriously. | High | The `JointSet::from_attrs_iter` step 3 explicitly returns `Bottom` (no W004) for the mixed-with-US case. The Commit 5 test `joint_mixed_with_us_portions_no_w004_fires` is the regression gate. The capco-classification-validator agent's pass MUST exercise this case. |
 | 7 | **DissemSet's "re-apply overlays" approach to join idempotency** is non-obvious. A future contributor reading `Lattice::join` may break it by removing the re-apply step. | Low | Commit 4's `dissem_set_lattice_laws_idempotent_associative` proptest catches the regression at compile-time-ish (proptest with arbitrary operands). Doc-comment names the re-apply step explicitly. |
 | 8 | **DeclassifyOn `MaxDate` semilattice but no BoundedLattice impl** — some downstream code may expect a top. Currently AeaSet, SciSet, SarSet, FgiSet have set a precedent for "no BoundedLattice when vocab is open"; DeclassifyOn extends to "no BoundedLattice when range is open." | Low | Doc-comment + design-doc §3 (h) name this explicitly. The pattern is established. |
 
@@ -1171,7 +1171,7 @@ of writing this plan):
 | `§H.1 pp47-54` | Commit 3 (ClassificationLattice) | US class chain |
 | `§H.2 p55` | Commit 3 (NatoClassLattice) | NATO class chain |
 | `§H.3 p56` | Commits 1, 5 (JointSet, W004) | JOINT roll-up |
-| `§H.3 p57 line 1288` | Commit 5 (mixed-with-US-portions) | "JOINT not carried forward in US documents" |
+| `§H.3 p57` | Commit 5 (mixed-with-US-portions) | "JOINT not carried forward in US documents" |
 | `§H.3 pp1299, 1303-1305, 1312, 1314` | Commit 5 (test fixtures) | JOINT worked examples |
 | `§H.6 p104` | Commits 3, 1 (DeclassifyOn) | RD primary + AEA precedence |
 | `§H.6 pp103-121` | Commit 3 (AEA — PR 4b-A precedent reuse) | AEA section |

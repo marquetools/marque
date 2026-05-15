@@ -2076,7 +2076,7 @@ Banner: SECRET//FGI CAN GBR  -- §H.7 p123 FGI source-acknowledged form
                              --  citation = "CAPCO-2016 §H.3 p56 + §H.7 p123")
 ```
 
-**Mixed-with-US case** (§H.3 p57 line 1288 — "the JOINT marking is
+**Mixed-with-US case** (§H.3 p57 — "the JOINT marking is
 not carried forward to the banner line in US documents"): when only
 *some* portions are JOINT and others are pure US, `from_attrs_iter`
 returns `Bottom`. **W004 does not fire** in this case; the existing

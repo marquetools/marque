@@ -1676,14 +1676,14 @@ impl Lattice for NatoDissemSet {
 ///
 /// - §H.3 p56 (JOINT classification grammar).
 /// - §H.3 pp55-59 (JOINT worked examples).
-/// - §H.3 p57 line 1288 ("JOINT marking not carried forward to
+/// - §H.3 p57 ("JOINT marking not carried forward to
 ///   the banner line in US documents").
 /// - §H.7 p123 (FGI source-acknowledged form for disunity-collapse
 ///   non-US producer migration).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum JointSet {
     /// No JOINT portions on the page, OR a mix of JOINT-with-US
-    /// portions (§H.3 p57 line 1288 — JOINT does not roll up in
+    /// portions (§H.3 p57 — JOINT does not roll up in
     /// US documents). The lattice bottom.
     #[default]
     Bottom,
@@ -1719,7 +1719,7 @@ impl JointSet {
 
     /// Construct from a slice of `CanonicalAttrs`.
     ///
-    /// Per §H.3 p57 line 1288, the all-JOINT-or-not distinction
+    /// Per §H.3 p57, the all-JOINT-or-not distinction
     /// drives the state-space branch:
     ///
     /// 1. **No JOINT portions** → `Bottom`.
@@ -1727,7 +1727,7 @@ impl JointSet {
     ///    `UnanimousProducers { OrdMax(level), countries }`.
     /// 3. **All portions JOINT** with disagreeing producer lists →
     ///    `DisunityCollapse { OrdMax(level), union_non_us }`.
-    /// 4. **Mixed JOINT + US** → `Bottom`. The §H.3 p57 line 1288
+    /// 4. **Mixed JOINT + US** → `Bottom`. The §H.3 p57
     ///    "JOINT does not roll up in US documents" rule. **No W004
     ///    fires** in this case — JOINT non-US producers ride to FGI
     ///    via the existing PageContext-resident `expected_fgi_marker`
@@ -1759,7 +1759,7 @@ impl JointSet {
             return Self::Bottom;
         }
 
-        // §H.3 p57 line 1288: in US documents (mixed JOINT + US),
+        // §H.3 p57: in US documents (mixed JOINT + US),
         // JOINT does not roll up. The FGI-migration path is the
         // existing PageContext::expected_fgi_marker; we return
         // Bottom and no W004 fires.

@@ -445,7 +445,7 @@ fn joint_unanimous_two_portions() {
         "lattice should produce Joint classification on unanimous JOINT"
     );
     // PageContext path's known behavior — Us classification at
-    // banner per §H.3 p57 line 1288 ("JOINT not carried forward in
+    // banner per §H.3 p57 ("JOINT not carried forward in
     // US documents") — applies here because PageContext doesn't
     // distinguish pure-JOINT-page from JOINT-with-US-page. The
     // §H.3 p56 "JOINT [class] [LIST]" banner form is a
@@ -460,7 +460,7 @@ fn joint_unanimous_two_portions() {
 
 #[test]
 fn joint_mixed_with_us_returns_bottom() {
-    // §H.3 p57 line 1288: mixed (JOINT + US) → JOINT does not roll
+    // §H.3 p57: mixed (JOINT + US) → JOINT does not roll
     // up. Both paths should produce a US-classification banner.
     let portions = [
         portion_joint(Classification::Secret, &["USA", "GBR"]),

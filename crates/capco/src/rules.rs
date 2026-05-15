@@ -4992,7 +4992,7 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// producers migrate to FGI [LIST], and JOINT is dropped from the
 /// banner.
 ///
-/// **Mixed JOINT + US portions** (§H.3 p57 line 1288 — "the JOINT
+/// **Mixed JOINT + US portions** (§H.3 p57 — "the JOINT
 /// marking is not carried forward to the banner line in US
 /// documents") do **NOT** fire W004. That case is handled by the
 /// existing PageContext-resident `expected_fgi_marker` path; the
