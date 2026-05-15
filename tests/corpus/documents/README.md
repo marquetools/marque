@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Document Corpus
 
-Multi-page synthetic-positive document fixtures: 42 declassified CIA CREST
+Multi-page synthetic-positive document fixtures: 41 declassified CIA CREST
 documents (1990–2010) with **synthetic** CAPCO portion marks and banners
-overlaid on the prose. These are end-to-end document fixtures — multiple
+overlaid on the prose. These are end-to-end document fixtures — most are multiple
 pages, full banner + CAB + portion-marked paragraphs — complementing the
 per-rule micro-fixtures in `../valid/`, `../invalid/`, and `../prose/`.
 
@@ -16,10 +16,10 @@ per-rule micro-fixtures in `../valid/`, `../invalid/`, and `../prose/`.
 ```
 documents/
   README.md                  this file
-  specs/                     hand-curated source-of-truth (42 files)
-  marked/                    rendered marked docs (42 files)
+  specs/                     hand-curated source-of-truth (41 files)
+  marked/                    rendered marked docs (41 files)
   ground_truth.json          aggregate ground truth (one record per doc)
-  <stem>.expected.json       per-doc fixture metadata (42 files)
+  <stem>.expected.json       per-doc fixture metadata (41 files)
 ```
 
 ## Specs (source of truth)
@@ -90,7 +90,7 @@ extension for structural ground truth:
 - `ground_truth` is the structural extraction target (banner per page,
   portion mark per paragraph, CAB on the document).
 
-`ground_truth.json` at the corpus root is the aggregate of all 42 per-doc
+`ground_truth.json` at the corpus root is the aggregate of all 41 per-doc
 ground truths in a single file for crawler-style iteration.
 
 ## Provenance

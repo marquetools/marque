@@ -1,3 +1,7 @@
+#!/usr/bin/env -S uv run --script
+# ///script
+# requires-python: ">=3.10"
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 """
@@ -7,6 +11,7 @@ Shared by extract_clean.py (flat one-file-per-doc) and make_specs.py
 (structured per-page scaffold). The regexes here strip declassification
 furniture so the prose can be re-marked by hand against known ground truth.
 """
+
 from __future__ import annotations
 
 import re
@@ -109,15 +114,16 @@ def clean_paragraph(text: str) -> str:
 
 # ---- page-aware extraction ----------------------------------------------
 
+
 @dataclass
 class Paragraph:
-    text: str       # cleaned prose (may include rendered tables as HTML)
-    kind: str       # "text" | "title" | "table"
+    text: str  # cleaned prose (may include rendered tables as HTML)
+    kind: str  # "text" | "title" | "table"
 
 
 @dataclass
 class Page:
-    page_idx: int   # 0-based MinerU page index
+    page_idx: int  # 0-based MinerU page index
     paragraphs: list[Paragraph]
 
 
@@ -146,13 +152,17 @@ def extract_pages(
         elif t == "title":
             txt = clean_paragraph(item.get("text", ""))
             if txt:
-                page_buckets.setdefault(page, []).append(Paragraph(f"## {txt}", "title"))
+                page_buckets.setdefault(page, []).append(
+                    Paragraph(f"## {txt}", "title")
+                )
         elif t == "table":
             html = (item.get("table_body") or item.get("html") or "").strip()
             if html:
                 cleaned_html = STAMP_LINES.sub("", html).strip()
                 if cleaned_html:
-                    page_buckets.setdefault(page, []).append(Paragraph(cleaned_html, "table"))
+                    page_buckets.setdefault(page, []).append(
+                        Paragraph(cleaned_html, "table")
+                    )
         # 'header', 'footer', 'image' are intentionally dropped — header/footer
         # are the OCR'd banner stamps; images aren't useful for this corpus.
 

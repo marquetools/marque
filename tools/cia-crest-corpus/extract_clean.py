@@ -1,3 +1,7 @@
+#!/usr/bin/env -S uv run --script
+# ///script
+# requires-python: ">=3.10"
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 """
@@ -14,6 +18,7 @@ For each entry in work/manifest.json:
 Run MinerU separately to produce work/md/<stem>/ocr/<stem>_content_list.json
 files; this script only consumes them.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,7 +28,6 @@ from pathlib import Path
 from cleaner import (
     BARE_RDP,
     HANDLING_BOILERPLATE,
-    LEADING_PORTION,
     STAMP_LINES,
     STANDALONE_BANNER,
     clean_line,
@@ -64,7 +68,7 @@ def items_to_markdown(items: list[dict], target_pages: int = 2) -> tuple[str, di
                         skipped["boilerplate"] += 1
                     continue
                 kept_lines.append(cl)
-            cleaned = "\n".join(l for l in kept_lines if l.strip() or not kept_lines)
+            cleaned = "\n".join(ln for ln in kept_lines if ln.strip() or not kept_lines)
             if cleaned.strip():
                 chunks.append(cleaned.strip())
         elif t == "table":
@@ -83,7 +87,10 @@ def items_to_markdown(items: list[dict], target_pages: int = 2) -> tuple[str, di
 
 def main() -> int:
     if not MANIFEST.exists():
-        print(f"manifest not found at {MANIFEST}; run fetch_crest.py first", file=sys.stderr)
+        print(
+            f"manifest not found at {MANIFEST}; run fetch_crest.py first",
+            file=sys.stderr,
+        )
         return 1
     manifest = json.loads(MANIFEST.read_text())
     CLEAN.mkdir(parents=True, exist_ok=True)
@@ -99,7 +106,11 @@ def main() -> int:
 
         # Page 0 sometimes has only a routing slip / cover. Walk pages until we
         # collect roughly a "page or two" worth of real prose.
-        page0_chars = sum(len(i.get("text", "")) for i in items if i.get("page_idx") == 0 and i.get("type") == "text")
+        page0_chars = sum(
+            len(i.get("text", ""))
+            for i in items
+            if i.get("page_idx") == 0 and i.get("type") == "text"
+        )
         target_pages = 1 if page0_chars >= 600 else 2
         md, skipped = items_to_markdown(items, target_pages=target_pages)
 

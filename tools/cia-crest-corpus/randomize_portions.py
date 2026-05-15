@@ -1,3 +1,7 @@
+#!/usr/bin/env -S uv run --script
+# ///script
+# requires-python: ">=3.10"
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 """
@@ -23,6 +27,7 @@ Replaces:
 Determinism: seeded by file stem so re-runs reproduce. Pass --seed to
 shift the whole run, or --no-deterministic for fresh randomness.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -93,7 +98,11 @@ def randomize_spec(
                 continue
 
         # Page marker / banner line / blank: untouched
-        if stripped.startswith("=== page ") or stripped.startswith("banner:") or stripped == "":
+        if (
+            stripped.startswith("=== page ")
+            or stripped.startswith("banner:")
+            or stripped == ""
+        ):
             out.append(line)
             continue
 

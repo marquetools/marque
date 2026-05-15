@@ -1,6 +1,6 @@
 {
   "diagnostics": [
-    {"rule": "C001", "span": {"start": 33, "end": 36}}
+    {"rule": "C001", "span": {"start": 32, "end": 36}}
   ],
   "_note": "Requires corrections config: {\"GBER\": \"GBR\"}. Tested by c001_corrections_map_accuracy."
 }

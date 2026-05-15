@@ -1,3 +1,7 @@
+#!/usr/bin/env -S uv run --script
+# ///script
+# requires-python: ">=3.10"
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 """
@@ -14,6 +18,7 @@ Output goes under ``work/`` next to this script:
   work/pdfs/<identifier>.pdf
   work/manifest.json
 """
+
 from __future__ import annotations
 
 import json
@@ -37,20 +42,56 @@ IA_DOWNLOAD = "https://archive.org/download/{ident}/{fname}"
 # Queries chosen to surface a varied mix of 1990–2010 era docs across topics and formats.
 # Each query is run separately so we can spread selection across themes.
 QUERIES: list[tuple[str, str]] = [
-    ("gulf_iraq",          'creator:"Central Intelligence Agency" AND year:[1990 TO 1995] AND (title:"iraq" OR title:"kuwait" OR title:"saddam" OR title:"gulf")'),
-    ("ussr_collapse",      'creator:"Central Intelligence Agency" AND year:[1990 TO 1995] AND (title:"soviet" OR title:"USSR" OR title:"yeltsin" OR title:"gorbachev" OR title:"russia")'),
-    ("balkans",            'creator:"Central Intelligence Agency" AND year:[1992 TO 2000] AND (title:"yugoslav" OR title:"bosnia" OR title:"kosovo" OR title:"milosevic" OR title:"macedonia" OR title:"gligorov" OR title:"sarajevo" OR title:"croatia" OR title:"serbia")'),
-    ("korea",              'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"korea" OR title:"pyongyang" OR title:"DPRK")'),
-    ("china",              'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"china" OR title:"PRC" OR title:"taiwan")'),
-    ("africa",             'creator:"Central Intelligence Agency" AND year:[1992 TO 2002] AND (title:"rwanda" OR title:"somalia" OR title:"sudan" OR title:"congo" OR title:"angola" OR title:"liberia")'),
-    ("terrorism",          'creator:"Central Intelligence Agency" AND year:[1993 TO 2002] AND (title:"terror" OR title:"qaeda" OR title:"qa\'ida" OR title:"bin laden" OR title:"hijack")'),
-    ("oversight_congress", 'creator:"Central Intelligence Agency" AND year:[1995 TO 2002] AND (title:"NRO" OR title:"oversight" OR title:"congress" OR title:"GAO" OR title:"legislative")'),
-    ("cia_internal",       'creator:"Central Intelligence Agency" AND year:[1990 TO 2000] AND (title:"directorate" OR title:"organization" OR title:"policy" OR title:"administration")'),
-    ("lat_am_caribbean",   'creator:"Central Intelligence Agency" AND year:[1990 TO 2002] AND (title:"haiti" OR title:"panama" OR title:"peru" OR title:"colombia" OR title:"noriega" OR title:"cuba" OR title:"nicaragua")'),
-    ("middle_east",        'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"iran" OR title:"syria" OR title:"lebanon" OR title:"israel" OR title:"palestine" OR title:"libya")'),
-    ("south_asia",         'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"afghanistan" OR title:"pakistan" OR title:"india" OR title:"kashmir")'),
+    (
+        "gulf_iraq",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 1995] AND (title:"iraq" OR title:"kuwait" OR title:"saddam" OR title:"gulf")',
+    ),
+    (
+        "ussr_collapse",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 1995] AND (title:"soviet" OR title:"USSR" OR title:"yeltsin" OR title:"gorbachev" OR title:"russia")',
+    ),
+    (
+        "balkans",
+        'creator:"Central Intelligence Agency" AND year:[1992 TO 2000] AND (title:"yugoslav" OR title:"bosnia" OR title:"kosovo" OR title:"milosevic" OR title:"macedonia" OR title:"gligorov" OR title:"sarajevo" OR title:"croatia" OR title:"serbia")',
+    ),
+    (
+        "korea",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"korea" OR title:"pyongyang" OR title:"DPRK")',
+    ),
+    (
+        "china",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"china" OR title:"PRC" OR title:"taiwan")',
+    ),
+    (
+        "africa",
+        'creator:"Central Intelligence Agency" AND year:[1992 TO 2002] AND (title:"rwanda" OR title:"somalia" OR title:"sudan" OR title:"congo" OR title:"angola" OR title:"liberia")',
+    ),
+    (
+        "terrorism",
+        'creator:"Central Intelligence Agency" AND year:[1993 TO 2002] AND (title:"terror" OR title:"qaeda" OR title:"qa\'ida" OR title:"bin laden" OR title:"hijack")',
+    ),
+    (
+        "oversight_congress",
+        'creator:"Central Intelligence Agency" AND year:[1995 TO 2002] AND (title:"NRO" OR title:"oversight" OR title:"congress" OR title:"GAO" OR title:"legislative")',
+    ),
+    (
+        "cia_internal",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 2000] AND (title:"directorate" OR title:"organization" OR title:"policy" OR title:"administration")',
+    ),
+    (
+        "lat_am_caribbean",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 2002] AND (title:"haiti" OR title:"panama" OR title:"peru" OR title:"colombia" OR title:"noriega" OR title:"cuba" OR title:"nicaragua")',
+    ),
+    (
+        "middle_east",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"iran" OR title:"syria" OR title:"lebanon" OR title:"israel" OR title:"palestine" OR title:"libya")',
+    ),
+    (
+        "south_asia",
+        'creator:"Central Intelligence Agency" AND year:[1990 TO 2005] AND (title:"afghanistan" OR title:"pakistan" OR title:"india" OR title:"kashmir")',
+    ),
     ("intelligence_studies", 'collection:"cia-reports" AND mediatype:"texts"'),
-    ("misc_1990_2010",     'creator:"Central Intelligence Agency" AND year:[1990 TO 2010]'),
+    ("misc_1990_2010", 'creator:"Central Intelligence Agency" AND year:[1990 TO 2010]'),
 ]
 
 # Target: 40+ documents, capped to keep disk usage and MinerU time reasonable.
@@ -64,8 +105,8 @@ PDF_MAX_SIZE = 25_000_000  # 25 MB
 
 DATE_IN_TITLE = re.compile(
     r"\b("
-    r"\d{1,2}[/-]\d{1,2}[/-](?:19|20)\d{2}"   # MM/DD/YYYY or MM-DD-YYYY
-    r"|(?:19|20)\d{2}"                         # bare YYYY
+    r"\d{1,2}[/-]\d{1,2}[/-](?:19|20)\d{2}"  # MM/DD/YYYY or MM-DD-YYYY
+    r"|(?:19|20)\d{2}"  # bare YYYY
     r")\b"
 )
 
@@ -189,7 +230,7 @@ def main() -> int:
             break
         ident = doc["identifier"]
 
-        print(f"\n[doc] {ident}  ({doc['_year']})  {doc.get('title','')[:70]}")
+        print(f"\n[doc] {ident}  ({doc['_year']})  {doc.get('title', '')[:70]}")
         meta = fetch_metadata(ident)
         if not meta:
             continue

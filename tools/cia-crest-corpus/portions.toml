@@ -1,4 +1,6 @@
 # Classification grammar
+# SPDX-FileCopyrightText: 2026 Knitli Inc.
+# SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 portions = [
   "(U//PR/NF//SBU-NF)",
@@ -14,7 +16,7 @@ portions = [
   "(C//NF)",
   "(//NR//REL TO USA, NATO)",
   "(//FSM S//NF)",
-  "(S//REL TO USA, UKR, FVEY, NATO//NF)",
+  "(S//REL TO USA, UKR, FVEY, NATO)",
   "(TS//SI-G ABCD//OC/REL TO USA, NOR)",
   "(//JOINT TS AUS CAN ITA USA//REL TO USA, AUS, CAN, ITA, EU)",
   "(//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO)",

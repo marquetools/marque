@@ -1,3 +1,8 @@
+#!/usr/bin/env -S uv run --script
+# ///script
+# requires-python: ">=3.10"
+# dependencies = ["PyYAML>=6.0.2"]
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 """
@@ -14,6 +19,7 @@ You then open each spec and replace the placeholders by hand (or run
 randomize_portions.py to fill portion marks from portions.toml).
 render_corpus.py reads the result.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,7 +93,9 @@ def write_spec(entry: dict, pages: list[Page], dest: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="overwrite existing specs")
-    ap.add_argument("--max-pages", type=int, default=2, help="pages per spec (default 2)")
+    ap.add_argument(
+        "--max-pages", type=int, default=2, help="pages per spec (default 2)"
+    )
     ap.add_argument(
         "--specs",
         type=Path,
@@ -97,7 +105,10 @@ def main() -> int:
     args = ap.parse_args()
 
     if not MANIFEST.exists():
-        print(f"manifest not found at {MANIFEST}; run fetch_crest.py first", file=sys.stderr)
+        print(
+            f"manifest not found at {MANIFEST}; run fetch_crest.py first",
+            file=sys.stderr,
+        )
         return 1
 
     args.specs.mkdir(parents=True, exist_ok=True)
@@ -128,7 +139,9 @@ def main() -> int:
         created += 1
         print(f"[ok] specs/{dest.name}  ({len(pages)} page(s))")
 
-    print(f"\ncreated {created} spec files; skipped {skipped} existing (use --force to overwrite)")
+    print(
+        f"\ncreated {created} spec files; skipped {skipped} existing (use --force to overwrite)"
+    )
     return 0
 
 

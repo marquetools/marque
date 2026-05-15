@@ -11,7 +11,7 @@ cab:
 ---
 
 === page 1 ===
-banner: TOP SECRET//SI-FUN RANDY EMU/BOHEMIA//RD-CWNDI/ATOMAL//FGI NATO//ORCON/NOFORN/FISA//EXDIS
+banner: TOP SECRET//SI-FUN RANDY EMU/BOHEMIA//RD-CNWDI/ATOMAL//FGI NATO//ORCON/NOFORN/FISA//EXDIS
 
 (TS//SI-FUN RANDY EMU//RD//OC-USGOV/NF/FISA) (b)(3)
 
@@ -46,7 +46,7 @@ banner: TOP SECRET//SI-FUN RANDY EMU/BOHEMIA//RD-CWNDI/ATOMAL//FGI NATO//ORCON/N
 (TS//SI-FUN RANDY EMU//RD//OC-USGOV/NF/FISA) (b)(3)
 
 === page 2 ===
-banner: TOP SECRET//SI-FUN RANDY EMU/BOHEMIA//RD-CWNDI/ATOMAL//FGI NATO//ORCON/NOFORN/FISA//EXDIS
+banner: TOP SECRET//SI-FUN RANDY EMU/BOHEMIA//RD-CNWDI/ATOMAL//FGI NATO//ORCON/NOFORN/FISA//EXDIS
 
 (U//NF//XD) Although less likely suspects, radical ethnic Albanians, radical Serbs in Macedonia, Islamic organizations, and even members of the Macedonian Government all have potential motive to target Gligorov.
 

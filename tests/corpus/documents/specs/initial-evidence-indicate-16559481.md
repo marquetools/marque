@@ -5,7 +5,7 @@ year: 1995
 source_pdf: https://archive.org/download/initial-evidence-indicate-16559481/INITIAL%20EVIDENCE%20INDICATE%5B16559481%5D.pdf
 # Fill these by hand. Anything left as ??? at render time becomes a warning, not an error.
 cab:
-  classified_by: ???
+  classified_by: 3842JAE
   derived_from: DOS DR-902-1
   declassify_on: NA to AEA portions, see source list for NSI portions
 ---

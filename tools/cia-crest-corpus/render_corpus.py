@@ -1,3 +1,8 @@
+#!/usr/bin/env -S uv run --script
+# ///script
+# requires-python: ">=3.10"
+# dependencies = ["PyYAML>=6.0.2"]
+# ///
 # SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 # SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 """
@@ -22,6 +27,7 @@ Validation is gentle: unfilled banners or portion marks become warnings, not
 errors. That lets you iterate — render early, see what's missing, fill in
 more, render again.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -73,6 +79,7 @@ class ParsedSpec:
 
 # ---- parsing ------------------------------------------------------------
 
+
 def _split_paragraphs(body: str) -> list[str]:
     """Split a page body into paragraph chunks (blank-line separated).
     Fenced ```table blocks are kept intact even if they contain blank lines.
@@ -113,13 +120,15 @@ def parse_spec(path: Path) -> ParsedSpec:
     if not fm:
         raise ValueError(f"{path.name}: missing YAML frontmatter")
     front = yaml.safe_load(fm.group(1)) or {}
-    body = text[fm.end():]
+    body = text[fm.end() :]
 
     parts = PAGE_HEADER_RE.split(body)
     warnings: list[str] = []
     pages: list[ParsedPage] = []
     if len(parts) < 3:
-        warnings.append("no `=== page N ===` markers found; treating whole body as page 1")
+        warnings.append(
+            "no `=== page N ===` markers found; treating whole body as page 1"
+        )
         page_iter = [(1, body)]
     else:
         page_iter = list(zip(parts[1::2], parts[2::2]))
@@ -134,7 +143,7 @@ def parse_spec(path: Path) -> ParsedSpec:
             banner = bm.group(1).strip()
             if banner == UNFILLED_BANNER:
                 warnings.append(f"page {page_num}: banner left as `???`")
-            raw_body = raw_body[:bm.start()] + raw_body[bm.end():]
+            raw_body = raw_body[: bm.start()] + raw_body[bm.end() :]
 
         page = ParsedPage(page_num=page_num, banner=banner)
         for raw_para in _split_paragraphs(raw_body):
@@ -143,7 +152,9 @@ def parse_spec(path: Path) -> ParsedSpec:
                 inner = rest.split("\n", 1)[1] if rest.startswith("```") else rest
                 if inner.rstrip().endswith("```"):
                     inner = inner.rsplit("```", 1)[0].rstrip()
-                page.paragraphs.append(ParsedParagraph(mark=mark, text=inner, is_table_block=True))
+                page.paragraphs.append(
+                    ParsedParagraph(mark=mark, text=inner, is_table_block=True)
+                )
                 continue
 
             mark, rest = _extract_mark(raw_para)
@@ -170,6 +181,7 @@ def parse_spec(path: Path) -> ParsedSpec:
 
 # ---- rendering ----------------------------------------------------------
 
+
 def render_cab(cab: dict | None) -> str:
     if not cab:
         return ""
@@ -191,7 +203,9 @@ def render_marked(spec: ParsedSpec) -> str:
         out.append(page.banner)
         out.append("")
         for para in page.paragraphs:
-            mark = f"({para.mark}) " if para.mark and para.mark != UNFILLED_PORTION else ""
+            mark = (
+                f"({para.mark}) " if para.mark and para.mark != UNFILLED_PORTION else ""
+            )
             if para.is_table_block:
                 out.append(mark.rstrip())
                 out.append(para.text)
@@ -245,6 +259,7 @@ def expected_record(truth: dict) -> dict:
 
 # ---- main ---------------------------------------------------------------
 
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -260,7 +275,10 @@ def main() -> int:
     truth_path = args.corpus_dir / "ground_truth.json"
 
     if not specs_dir.exists():
-        print(f"specs directory not found at {specs_dir} — run make_specs.py first", file=sys.stderr)
+        print(
+            f"specs directory not found at {specs_dir} — run make_specs.py first",
+            file=sys.stderr,
+        )
         return 1
     marked_dir.mkdir(parents=True, exist_ok=True)
 
@@ -298,7 +316,9 @@ def main() -> int:
     print(f"ground truth: {truth_path}")
     print(f"per-doc fixtures: {args.corpus_dir}/<stem>.expected.json")
     if total_warnings:
-        print(f"⚠  {total_warnings} warnings across the corpus (mostly unfilled ??? / (?))")
+        print(
+            f"⚠  {total_warnings} warnings across the corpus (mostly unfilled ??? / (?))"
+        )
     return 0
 
 
