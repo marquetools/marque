@@ -36,7 +36,7 @@ pub mod vocab;
 // trait-method resolution, never via the module path.
 mod vocabulary;
 
-pub use lattice::{FgiSet, SarSet, SciSet};
+pub use lattice::{AeaPrimary, AeaSet, FgiSet, SarSet, SciSet, UcniKind};
 pub use marque_ism::CapcoTokenSet;
 pub use provenance::DecoderProvenance;
 pub use rules::CapcoRuleSet;

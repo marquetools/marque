@@ -1778,22 +1778,57 @@ impl CapcoScheme {
                 NF_WRITES,
             ),
             // Entry 4 — `capco/frd-sigma-consolidates-into-rd-sigma`.
-            // §H.6 p113 (FRD-SIGMA Precedence Rules for Banner Line
-            // Guidance): "If both RD and FRD SIGMA [#] portions are
-            // in a document, the RD-SIGMA [#] marking takes
-            // precedence over the FRD-SIGMA [#] marking in the
-            // banner line and all SIGMA numbers are listed in the
-            // banner line RD-SIGMA [#] marking, regardless of whether
-            // the information was RD or FRD." Within-axis transform
-            // — drops FRD-SIGMA atoms from CAT_AEA and folds their
-            // numbers into the surviving RD-SIGMA atom.
+            //
+            // CAPCO-2016 §H.6 states this same precedence rule from
+            // two complementary vantages — the RD-SIGMA subsection
+            // (§H.6 p108-109) and the FRD-SIGMA subsection (§H.6
+            // p113). The two passages are mutual references with
+            // identical operational content:
+            //
+            //   §H.6 p109 (top-of-page continuation from the p108
+            //   RD-SIGMA Precedence Rules block): "If both RD and FRD
+            //   SIGMA [#] portions are in a document, the RD-SIGMA [#]
+            //   marking takes precedence over the FRD-SIGMA [#]
+            //   marking in the banner line and all SIGMA numbers are
+            //   listed in the RD-SIGMA [#] marking in the banner line,
+            //   regardless of whether the information was RD or FRD."
+            //
+            //   §H.6 p113 (FRD-SIGMA Precedence Rules for Banner Line
+            //   Guidance): "If both RD and FRD SIGMA [#] portions are
+            //   in a document, the RD-SIGMA [#] marking takes
+            //   precedence over the FRD-SIGMA [#] marking in the
+            //   banner line and all SIGMA numbers are listed in the
+            //   banner line RD-SIGMA [#] marking, regardless of
+            //   whether the information was RD or FRD."
+            //
+            // Within-axis transform — drops FRD-SIGMA atoms from
+            // CAT_AEA and folds their numbers into the surviving
+            // RD-SIGMA atom. The `lattice::AeaSet` `Product`
+            // composition implements this as the union of axis 3
+            // (SIGMA numbers) when axis 1's supersession join lands
+            // on `Rd`; see `docs/plans/2026-05-01-lattice-design.md`
+            // §7.5 Example 1 for the worked end-to-end case.
+            //
+            // PR 4b-A (this row's doc-comment update) cites BOTH
+            // §H.6 p108-109 and §H.6 p113 in this comment so future
+            // readers find the rule from whichever subsection they
+            // open first. The row's `citation` field stays
+            // `§H.6 p113` (the original landing's citation) — the
+            // double-citation lives in this doc-comment, not in the
+            // citation string, because Marque's audit emitter reads
+            // the citation field as a single token. The brief's
+            // working name (`capco/rd-coalesces-sigmas`, §H.6 p108)
+            // refers to the same rewrite as this row — same algebra,
+            // same axis, same body, mutually-cited subsections.
             //
             // Monotonicity: shrinking on CAT_AEA (FRD-SIGMA atoms
             // dropped). Sound under fixed topological order.
             //
             // Phase-3 stub: trigger is `never_fires` and action is
             // `noop_action` because runtime dispatch stays in
-            // `PageContext` until Phase D/E. Only the
+            // `PageContext` until Phase D/E (specifically, PR 4b-B
+            // wires the runtime `AeaSet`-driven mutation through
+            // `CapcoScheme::project(Scope::Page, ...)`). Only the
             // `reads` / `writes` annotations are consumed (by the
             // scheduler). Topologically independent of every other
             // entry: the AEA axis is otherwise un-written.
@@ -2400,6 +2435,41 @@ impl CapcoScheme {
                 name: "E021/aea-requires-noforn",
                 label: "CAPCO-2016 §H.6 p104",
             },
+            // ---- §H.6 p106 CNWDI subset-of-RD: enforced by data
+            //      model, NO Constraint row needed -----------------
+            //
+            // CNWDI is structurally a `bool` field on
+            // `AeaMarking::Rd(RdBlock { cnwdi })` in `marque-ism`'s
+            // type system. There is no `AeaMarking::Cnwdi` variant.
+            // A portion that bears CNWDI necessarily bears RD
+            // because CNWDI presence is gated by the surrounding
+            // `Rd(...)` variant.
+            //
+            // The `TOK_CNWDI` sentinel is satisfied only by
+            // `AeaMarking::Rd(rd) if rd.cnwdi` (see `satisfies_attrs`
+            // earlier in this file); `TOK_RD` is satisfied by any
+            // `AeaMarking::Rd(_)`. The two are not independently
+            // settable — `TOK_CNWDI` strictly implies `TOK_RD` at
+            // the predicate level. An earlier draft of PR 4b-A
+            // added a `Constraint::Requires { TOK_CNWDI, TOK_RD }`
+            // row to enforce the §H.6 p106 "subset of RD" rule, but
+            // Copilot review caught that the row is unreachable —
+            // it can never fire because the right-hand side is
+            // necessarily true whenever the left-hand side is true.
+            //
+            // The §H.6 p106 invariant therefore lives at the data-
+            // model level rather than the constraint-catalog level.
+            // See `docs/plans/2026-05-01-lattice-design.md` §7.5
+            // "Cross-axis constraints" for the §-cited record of
+            // this decision.
+            //
+            // If a future change to `AeaMarking` ever splits CNWDI
+            // into a sibling variant (decoupling it from `Rd`), the
+            // §H.6 p106 enforcement MUST be re-introduced as a
+            // Constraint::Requires or equivalent — and the
+            // satisfies_attrs predicate for `TOK_CNWDI` MUST be
+            // amended to no longer match through the `Rd(...)`
+            // variant.
             // ---- E022 retired in PR 3b.D (T026d) -----------------
             //
             // The CNWDI classification floor moved into the class-
