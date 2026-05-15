@@ -864,7 +864,19 @@ impl Engine {
             // positives like `letter(s)` / `loss(s)` /
             // `function(c)`. Start-of-buffer counts as whitespace by
             // the `ParseContext` convention.
-            let preceded_by_whitespace = match candidate.span.start.checked_sub(1) {
+            // Clamp the candidate span to `source.len()` BEFORE any
+            // source indexing in this block. The existing block below
+            // re-clamps for the recognizer call, but the new
+            // preceded_by_whitespace / line_offset / line_prefix /
+            // surrounding_lowercase computations also index into
+            // `source` and must use the same clamped bounds. A
+            // scanner regression that produced `span.start >
+            // source.len()` would otherwise panic in
+            // `source[..candidate.span.start]` before reaching the
+            // existing clamp at the recognizer call site below.
+            let span_start = candidate.span.start.min(source.len());
+            let span_end = candidate.span.end.min(source.len());
+            let preceded_by_whitespace = match span_start.checked_sub(1) {
                 None => true,
                 Some(prev_idx) => source
                     .get(prev_idx)
@@ -889,17 +901,16 @@ impl Engine {
             //   lowercase prose are overwhelmingly not markings.
             //   Archival all-caps documents short-circuit naturally
             //   (the candidate itself stays uppercase).
-            let line_start = source[..candidate.span.start]
+            let line_start = source[..span_start]
                 .iter()
                 .rposition(|&b| b == b'\n')
                 .map(|i| i + 1)
                 .unwrap_or(0);
-            let line_offset = candidate.span.start - line_start;
-            let line_prefix = marque_scheme::recognizer::LinePrefix::from_slice(
-                &source[line_start..candidate.span.start],
-            );
+            let line_offset = span_start - line_start;
+            let line_prefix =
+                marque_scheme::recognizer::LinePrefix::from_slice(&source[line_start..span_start]);
             let surrounding_is_lowercase =
-                surrounding_lowercase_majority(source, candidate.span.start, candidate.span.end);
+                surrounding_lowercase_majority(source, span_start, span_end);
             let parse_cx = ParseContext {
                 strict_evidence: false,
                 zone: None,
@@ -919,8 +930,8 @@ impl Engine {
             // a `CapcoMarking` whose `token_spans` are zero-origin relative
             // to the candidate bytes; shift them back to source-relative
             // offsets before rules see them.
-            let start = candidate.span.start.min(source.len());
-            let end = candidate.span.end.min(source.len());
+            let start = span_start;
+            let end = span_end;
             if start >= end {
                 continue;
             }

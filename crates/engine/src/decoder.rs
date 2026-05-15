@@ -493,7 +493,16 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         // 4-bis. Context features. The features computed here depend
         // on the candidate's POSITION in the source document, not on
         // its canonical token content, so they apply uniformly to
-        // every surviving scored candidate. Two signals:
+        // every surviving scored candidate. The audit-trace footprint
+        // is bounded: the pre-truncate pool is capped at
+        // `K_MAX_CANDIDATES * 2 = 16` candidates and the post-sort
+        // truncate keeps at most `K_MAX_CANDIDATES = 8` for
+        // emission, so worst-case context-feature audit-trace
+        // entries per call are `8 × CONTEXT_FEATURE_MAX = 16`. The
+        // features on losing candidates carry diagnostic value
+        // (why did the runner-up lose?) so the audit trace
+        // intentionally captures them for the full top-K rather
+        // than gating to the winner only. Two signals:
         //
         // - **Line position** (Task 9): a portion candidate deep
         //   into a non-anchor line is overwhelmingly prose. The
@@ -4412,12 +4421,21 @@ fn compute_context_features(
 /// empty candidates and by integration tests that need the same
 /// "real marking?" predicate to count engine-relevant candidates.
 ///
-/// **Public for test use.** Integration tests in `crates/engine/tests/`
-/// (notably `document_corpus.rs`) need this exact predicate to compute
-/// the candidate count the engine actually surfaces to the rule
-/// layer. Exporting it eliminates the divergence risk a hand-rolled
-/// copy-of-the-predicate would carry — silent edits here would
-/// otherwise invalidate every count assertion downstream.
+/// # Stability
+///
+/// **Not part of the public API.** Marked `#[doc(hidden)]` so it
+/// stays off rustdoc surfaces and `cargo doc` output — the
+/// `pub` modifier exists solely so `crates/engine/tests/` can
+/// reach it across the integration-test crate boundary
+/// (Rust integration tests live in a separate crate and so
+/// `pub(crate)` is not visible to them). Downstream consumers
+/// MUST NOT depend on this signature; it can change at any
+/// time alongside `CapcoMarking` evolution. The supported way
+/// to ask "is this marking non-trivial?" is to run
+/// [`Engine::lint`] and inspect its emitted diagnostics — the
+/// engine applies this filter internally and surfaces only
+/// non-trivial markings to the rule layer.
+#[doc(hidden)]
 pub fn is_nontrivial_marking(marking: &CapcoMarking) -> bool {
     let a = &marking.0;
     a.classification.is_some()
@@ -6323,6 +6341,58 @@ mod tests {
                  hypothesis, got Unambiguous({:?})",
                 m.0.classification,
             ),
+        }
+    }
+
+    #[test]
+    fn decoder_residual_gap_isolated_u_recovers_to_unclassified() {
+        // KNOWN RESIDUAL GAP — pinning current behavior.
+        //
+        // `(u)` has a `+2.86` marking-vs-prose delta on the `U`
+        // token (see the NULL_HYPOTHESIS_LOG_MARGIN constant doc on
+        // line ~152). That delta exceeds the `+2.5` null filter
+        // margin, so an isolated `(u)` recovers to UNCLASSIFIED
+        // when no context features fire (test-default
+        // `ParseContext` carries `line_offset: None`,
+        // `line_prefix: None`, `surrounding_is_lowercase: false`).
+        //
+        // The Task 10 `LowercaseSurroundingContext` feature
+        // (`-2.0`) suppresses the common mid-prose `(u)` case in
+        // lowercase-dominant context (decoder.rs::
+        // decoder_applies_lowercase_context_penalty_in_lowercase_prose
+        // pins that). The residual surface is `(u)` at column 0
+        // in mixed-case or uppercase context — vanishingly rare in
+        // real IC text, but not zero.
+        //
+        // This test pins the current behavior so a future
+        // regression (drift in token priors, threshold tuning, a
+        // new feature) is loud. Closing the gap further likely
+        // requires a third signal (document-level archival mode,
+        // page zone, etc.) and is deferred — see PR description
+        // "Deferred (separate work)".
+        let rx = DecoderRecognizer::new();
+        match rx.recognize(b"(u)", &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                assert_eq!(
+                    m.0.classification,
+                    Some(MarkingClassification::Us(Classification::Unclassified)),
+                    "isolated `(u)` at default ParseContext currently \
+                     resolves to UNCLASSIFIED (documented residual gap, \
+                     +2.86 marking-vs-prose delta exceeds +2.5 margin)",
+                );
+            }
+            Parsed::Ambiguous { candidates } => {
+                panic!(
+                    "isolated `(u)` was expected to recover to UNCLASSIFIED \
+                     under the pinned residual gap; got Ambiguous with {} \
+                     candidate(s). If the decoder behavior tightened, this \
+                     test should be inverted to assert zero candidates and \
+                     the residual-gap doc rationale on \
+                     NULL_HYPOTHESIS_LOG_MARGIN updated to reflect the new \
+                     behavior.",
+                    candidates.len(),
+                );
+            }
         }
     }
 

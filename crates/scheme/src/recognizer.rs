@@ -163,11 +163,25 @@ pub struct ParseContext {
     pub line_offset: Option<usize>,
     /// Up to 32 bytes of the same line preceding the candidate's span.
     ///
-    /// Empty when `line_offset == Some(0)`. `None` when the engine
-    /// could not determine. Carries the trailing bytes of the line
-    /// prefix (closest to the candidate) when the prefix is longer
-    /// than 32 bytes — those bytes are what determines whether the
-    /// candidate sits behind a bullet or section anchor.
+    /// `None` when no caller populated the field — direct
+    /// `ParseContext::default()` callers (test code, direct WASM
+    /// embedders, future schemes without source-byte access) leave
+    /// this `None`; the engine's per-candidate loop in
+    /// `Engine::lint_inner` always populates it with `Some(prefix)`
+    /// (possibly empty). Carries the **trailing** bytes of the line
+    /// prefix (closest to the candidate) when the on-line prefix is
+    /// longer than 32 bytes — those bytes are what determines whether
+    /// the candidate sits behind a bullet or section anchor.
+    ///
+    /// **Convention, not enforced**: when both fields are `Some(_)`,
+    /// the engine guarantees `line_prefix.len() == min(line_offset,
+    /// 32)` (the prefix is sliced from `source[line_start..span_start]`
+    /// and then capped at 32 bytes). Hand-built `ParseContext` callers
+    /// can in principle desync the two fields (e.g., set `line_offset:
+    /// Some(0)` but stuff a non-empty `LinePrefix`); no decoder code
+    /// today fires on the desync case, but downstream consumers should
+    /// not rely on the invariant beyond "engine-populated values are
+    /// consistent."
     ///
     /// Used by the decoder's [`BulletAnchorBonus`](crate) feature to
     /// cancel the line-position penalty when the prefix looks like a
