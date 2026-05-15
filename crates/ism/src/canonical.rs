@@ -34,8 +34,11 @@
 //! Mirrors `IsmAttributes` exactly at PR 3a — same field names, same
 //! types, same semantics. Subsequent PRs reshape:
 //!
-//! - **PR 9 (FR-046)** splits `dissem_controls` into `dissem_us` +
-//!   `dissem_nato` once the parser tracks separator spans (#106).
+//! - **PR 9b (FR-046, T132)** split the prior single `dissem_controls`
+//!   field into `dissem_us` and `dissem_nato`. The attribution is
+//!   performed by [`crate::dissem_attribution::attribute_dissems`] on
+//!   the `ParsedAttrs` side; [`from_parsed_unchecked`] is a pure
+//!   structural rename and does not re-run attribution.
 //! - **PR 3c** may migrate `sci_controls` (the CVE projection) to a
 //!   `SciSet`-only shape if no rule reads `sci_controls` post-collapse
 //!   (CLAUDE.md "compatibility view scheduled for removal").
@@ -93,9 +96,19 @@ pub struct CanonicalAttrs {
     /// discriminant (FR-017).
     pub fgi_marker: Option<FgiMarker>,
 
-    /// IC dissemination controls. Single field at PR 3a; PR 9
-    /// (FR-046) splits into `dissem_us` + `dissem_nato`.
-    pub dissem_controls: Box<[DissemControl]>,
+    /// US-attributed IC dissemination controls. See
+    /// [`crate::ParsedAttrs::dissem_us`] for the CAPCO-2016 p41
+    /// reciprocity rule that drives attribution (PR 9b / FR-046 /
+    /// T132). When both fields could apply, US wins;
+    /// [`Self::dissem_nato`] populates only when the marking has no
+    /// US classification axis.
+    pub dissem_us: Box<[DissemControl]>,
+
+    /// NATO-attributed IC dissemination controls. Populated only when
+    /// [`Self::classification`] is
+    /// [`MarkingClassification::Nato`](crate::MarkingClassification::Nato)
+    /// — see [`crate::ParsedAttrs::dissem_nato`].
+    pub dissem_nato: Box<[DissemControl]>,
 
     /// Non-IC dissemination controls (CAPCO §H.9).
     pub non_ic_dissem: Box<[NonIcDissem]>,
@@ -134,6 +147,23 @@ impl CanonicalAttrs {
             Some(MarkingClassification::Conflict { us, .. }) => Some(us),
             _ => None,
         }
+    }
+
+    /// Iterate every IC dissem control across both namespace fields
+    /// ([`Self::dissem_us`] then [`Self::dissem_nato`]).
+    ///
+    /// Use this when the consumer cares about "any IC dissem regardless
+    /// of namespace" (e.g., the renderer, the
+    /// `is_nontrivial_marking` decoder check, the
+    /// `expected_dissem_*` rollup feed). When the consumer cares
+    /// specifically about US-attributed or NATO-attributed dissems
+    /// (e.g., a future cross-system translator, an
+    /// audit-provenance trace), read the underlying fields directly.
+    ///
+    /// The returned iterator is `Clone` so multi-pass consumers do not
+    /// need to re-construct it.
+    pub fn dissem_iter(&self) -> impl Iterator<Item = &DissemControl> + Clone {
+        self.dissem_us.iter().chain(self.dissem_nato.iter())
     }
 }
 
@@ -182,7 +212,8 @@ pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
         sar_markings,
         aea_markings,
         fgi_marker,
-        dissem_controls,
+        dissem_us,
+        dissem_nato,
         non_ic_dissem,
         rel_to,
         declassify_on,
@@ -193,7 +224,7 @@ pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
         source_bytes_origin: _, // discarded; not on CanonicalAttrs
     } = parsed;
 
-    CanonicalAttrs {
+    let out = CanonicalAttrs {
         classification: classification.map(|c| c.value),
         sci_controls,
         sci_markings: Vec::from(sci_markings)
@@ -208,7 +239,15 @@ pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
             .collect::<Vec<_>>()
             .into_boxed_slice(),
         fgi_marker: fgi_marker.map(|p| p.value),
-        dissem_controls: Vec::from(dissem_controls)
+        // PR 9b (T132): preserve the parser-side attribution. The
+        // attribution function lives on the `ParsedAttrs` side; this
+        // adapter is a pure structural rename and must not re-run it.
+        dissem_us: Vec::from(dissem_us)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        dissem_nato: Vec::from(dissem_nato)
             .into_iter()
             .map(|p| p.value)
             .collect::<Vec<_>>()
@@ -228,5 +267,22 @@ pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
         derived_from: derived_from.map(Box::<str>::from),
         declass_exemption,
         token_spans,
+    };
+
+    // PR 9b (T132) invariant insurance. `attribute_dissems` is the
+    // single source of truth; this debug-only assertion catches a
+    // future bug where attribution is skipped or the canonical
+    // adapter is fed a hand-built `ParsedAttrs` with both fields
+    // populated.
+    #[cfg(debug_assertions)]
+    {
+        debug_assert!(
+            out.dissem_nato.is_empty() || out.us_classification().is_none(),
+            "dissem_nato populated alongside US classification — \
+             attribute_dissems was skipped or bypassed. CAPCO-2016 p41 \
+             reciprocity rule violated."
+        );
     }
+
+    out
 }

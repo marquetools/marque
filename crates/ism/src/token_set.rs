@@ -152,10 +152,69 @@ const SAR_STRUCTURAL_KEYWORDS: &[&str] = &["ACCESS", "SPECIAL"];
 /// excessive false-positive fuzzy corrections on unrelated text.
 const AEA_SCI_STRUCTURAL_KEYWORDS: &[&str] = &["FORMERLY", "KEYHOLE", "TALENT"];
 
+/// NATO portion-form abbreviations not present in `ALL_CVE_TOKENS`.
+///
+/// Covers the five base-level [`crate::NatoClassification`] variants
+/// (`NU`, `NR`, `NC`, `NS`, `CTS`) plus the five **legacy compound**
+/// portion forms (`NCA`, `NSAT`, `CTSA`, `CTS-B`, `CTS-BALK`).
+///
+/// # Legacy compound forms (post PR 9c.1 T134)
+///
+/// Pre-PR-9c.1 the strict parser produced fused
+/// `NatoClassification::CosmicTopSecretAtomal` /
+/// `CosmicTopSecretBohemia` / `CosmicTopSecretBalk` /
+/// `NatoSecretAtomal` / `NatoConfidentialAtomal` variants for these
+/// inputs. Per CAPCO-2016 §G.2 p40 + §H.7 p122 those forms are
+/// **structurally wrong** — ATOMAL is an AEA-axis marking and
+/// BOHEMIA/BALK are NATO SAPs in the SCI position. PR 9c.1 retired
+/// the fused variants; the parser now canonicalizes the legacy text
+/// into bare class + AEA/SCI companion at parse time. The legacy
+/// forms remain in this list because:
+///
+/// 1. The fuzzy-correction pass operates on raw tokens before strict
+///    parsing. `CTSA` is at edit-distance 1 from `CTS` — without it
+///    in the no-fuzz vocabulary, `(//CTSA//NF)` would be silently
+///    corrupted to `(//CTS//NF)` (losing the ATOMAL signal). Same
+///    risk for `NCA` (vs `NC`) and `NSAT` (vs `NS`).
+/// 2. The E066 autofix rule (in `marque-capco`) needs the strict
+///    parser to ACCEPT these forms so it can detect them via raw
+///    token spans and emit the canonical-text fix.
+///
+/// The five base-level forms are NOT emitted by ODNI CVE XML (which
+/// records only vocabulary enum values, not derived portion forms).
+/// Without them in the fuzzy-correction vocabulary,
+/// `fuzzy_correct_tokens` cannot distinguish `CTS` from `TS`
+/// (edit-distance 1) and silently rewrites — destroying the
+/// NATO-longhand fold's output.
+///
+/// Round-trip safety: the strict parser in `marque-core` accepts all
+/// 10 forms as valid non-US portion markings. The five base-level
+/// forms map to a corresponding [`crate::NatoClassification`]
+/// variant; the five legacy compound forms map to a `NatoClassification`
+/// bare class + AEA/SCI companion write per PR 9c.1 T134. Adding
+/// these tokens to the correction vocab makes `FuzzyVocabMatcher::correct`
+/// return `None` for exact-match inputs (binary-search fast path),
+/// causing `fuzzy_correct_tokens` to pass them through unchanged
+/// (Case 4 verbatim).
+///
+/// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (portion-form column);
+/// §G.2 p40 + §H.7 p122 (the normative anchors for the canonical
+/// AEA-axis / SCI-axis placement of ATOMAL / BOHEMIA / BALK).
+const NATO_PORTION_FORMS: &[&str] = &[
+    // Five base-level portion forms (CAPCO-2016 §G.1 Table 4)
+    "CTS", "NC", "NR", "NS", "NU",
+    // Five legacy compound forms — post-PR-9c.1, the strict parser
+    // canonicalizes these to bare class + AEA/SCI companion. They
+    // stay in the no-fuzz vocabulary so fuzzy correction can't
+    // silently rewrite them to the bare-class form before the strict
+    // parser sees them, and so E066 autofix can detect them.
+    "CTS-B", "CTS-BALK", "CTSA", "NCA", "NSAT",
+];
+
 /// Extended fuzzy-correction vocabulary: `ALL_CVE_TOKENS` ∪ banner long forms
 /// from [`MARKING_FORMS`] ∪ [`SAR_STRUCTURAL_KEYWORDS`] ∪
 /// [`CLASSIFICATION_STRUCTURAL_KEYWORDS`] ∪ [`NATO_CLASSIFICATION_KEYWORDS`] ∪
-/// [`AEA_SCI_STRUCTURAL_KEYWORDS`],
+/// [`AEA_SCI_STRUCTURAL_KEYWORDS`] ∪ [`NATO_PORTION_FORMS`],
 /// sorted and deduplicated.
 ///
 /// `ALL_CVE_TOKENS` carries only the **portion-form** abbreviations
@@ -200,6 +259,7 @@ static EXTENDED_CORRECTION_VOCAB: LazyLock<Vec<&'static str>> = LazyLock::new(||
     v.extend_from_slice(CLASSIFICATION_STRUCTURAL_KEYWORDS);
     v.extend_from_slice(NATO_CLASSIFICATION_KEYWORDS);
     v.extend_from_slice(AEA_SCI_STRUCTURAL_KEYWORDS);
+    v.extend_from_slice(NATO_PORTION_FORMS);
     v.sort();
     v.dedup();
     v

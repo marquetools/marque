@@ -102,7 +102,10 @@ fn lookup_constraint<'a>(scheme: &'a CapcoScheme, name: &str) -> &'a Constraint 
 fn attrs_with_dissem(controls: &[DissemControl]) -> CanonicalAttrs {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = controls.to_vec().into_boxed_slice();
+    // PR 9b T132 / FR-046: field renamed from `dissem_controls` to
+    // `dissem_us` (US-classified fixtures route here per CAPCO-2016
+    // §G.2 Table 5).
+    a.dissem_us = controls.to_vec().into_boxed_slice();
     a
 }
 
@@ -132,7 +135,10 @@ fn attrs_for_dissem_block(
 ) -> (CanonicalAttrs, String) {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = dissem
+    // PR 9b T132 / FR-046: field renamed from `dissem_controls` to
+    // `dissem_us` (US-classified fixtures route here per CAPCO-2016
+    // §G.2 Table 5).
+    a.dissem_us = dissem
         .iter()
         .map(|(d, _)| *d)
         .collect::<Vec<_>>()
@@ -215,6 +221,7 @@ fn ctx() -> RuleContext<'static> {
         // intent-synthesis path that depends on candidate_span.
         candidate_span: marque_ism::Span::new(0, 0),
         page_context: None,
+        page_marking: None,
         corrections: None,
         pre_pass_1_attrs: None,
     }
@@ -965,7 +972,7 @@ fn helper_banner_form_double_slash_neighbor() {
     // here to mirror what the real parser produces.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    a.dissem_controls = vec![DissemControl::Nf, DissemControl::Relido].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Nf, DissemControl::Relido].into_boxed_slice();
     // Real parser layout for `TOP SECRET//NOFORN//RELIDO` (verified by
     // running `marque check` against `/tmp/banner.txt` during PR review):
     //   Classification "TOP SECRET" @ [0, 10]
@@ -1032,7 +1039,7 @@ fn helper_returns_none_when_no_recognized_layout() {
     // (no prior, no following). All three cases fall through.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Relido].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
     a.token_spans = vec![TokenSpan {
         kind: TokenKind::DissemControl,
         text: "RELIDO".to_string().into_boxed_str(),
@@ -1453,13 +1460,14 @@ fn e055_intent_absent_when_fix_helper_returns_none() {
     // `Diagnostic::new(..., None)` fall-through.
     //
     // Constructing a triggering attrs whose `build_relido_removal_fix`
-    // returns None requires a `attrs.dissem_controls` containing both
-    // RELIDO and DISPLAY ONLY but with NO RELIDO token span (parser
-    // gap). The wrapper's `violations_for` predicate fires on the
-    // dissem-controls set; the fix helper needs the token span.
+    // returns None requires `attrs.dissem_us` containing both RELIDO
+    // and DISPLAY ONLY but with NO RELIDO token span (parser gap).
+    // The wrapper's `violations_for` predicate fires on the dissem-
+    // axis set (queried namespace-agnostically via `dissem_iter()`);
+    // the fix helper needs the token span.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Relido, DissemControl::Displayonly].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Relido, DissemControl::Displayonly].into_boxed_slice();
     // Deliberately omit RELIDO from token_spans to force the None arm.
     a.token_spans = vec![TokenSpan {
         kind: TokenKind::DissemControl,

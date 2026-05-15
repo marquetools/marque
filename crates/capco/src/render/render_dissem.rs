@@ -54,18 +54,38 @@ pub(crate) fn render_dissem(
     // axis emits `REL TO USA, ...` instead).
     let drop_bare_rel = !m.0.rel_to.is_empty();
 
-    // Sort by Register order (§H.8 Table 4 row 8 p36). The CVE
-    // `DissemControl` enum already declares variants in roughly this
-    // order; we re-sort defensively to honor the precedent.
+    // Sort by Register order (§H.8 Table 4 row 8 p36), then dedup. The
+    // CVE `DissemControl` enum already declares variants in roughly
+    // this order; we re-sort defensively to honor the precedent.
+    //
+    // PR 9b (T132): render walks the unified `dissem_iter` (US-then-
+    // NATO) and lets the Register-order sort below merge them. The
+    // canonical wire form is namespace-indistinguishable — CAPCO-2016
+    // §G.2 Table 5 pp 40-45 directs NATO ORCON / REL TO to "See US X
+    // ARH requirements," i.e. they render to the same canonical token
+    // regardless of attribution. A page rollup carrying the same
+    // control in both `dissem_us` and `dissem_nato` (e.g., a US
+    // portion with OC plus a pure-NATO portion with OC) MUST emit
+    // one `ORCON`, not `ORCON/ORCON`. Sort places identical controls
+    // adjacent; `dedup` collapses them.
+    //
+    // PR 9b R2 (Copilot inline review): the prior pass collected
+    // through `SmallVec` and sorted but did not dedup, which produced
+    // invalid repeated tokens on the cross-namespace rollup path.
+    //
+    // `Vec::dedup` collapses CONSECUTIVE equal elements, which is
+    // exactly what we get post-sort. `DissemControl: PartialEq` (from
+    // the generated `#[derive]` line in `marque-ism/build.rs`) covers
+    // the equality check.
     //
     // Inline-4 covers the typical dissem set (NF/PR/OC/REL, IMCON, RS);
     // longer compositions spill to heap cleanly.
     let mut sorted: SmallVec<[&DissemControl; 4]> =
-        m.0.dissem_controls
-            .iter()
+        m.0.dissem_iter()
             .filter(|d| !(drop_bare_rel && **d == DissemControl::Rel))
             .collect();
     sorted.sort_by_key(|d| register_rank(d));
+    sorted.dedup();
 
     let mut first = true;
     for d in sorted {

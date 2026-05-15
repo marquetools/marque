@@ -85,9 +85,22 @@ pub struct ProjectedMarking {
     /// foreign provenance (FR-008, #261).
     pub fgi_marker: Option<FgiMarker>,
 
-    /// IC dissemination controls. Single field at PR 3a/PR 6; PR 9
-    /// splits into `dissem_us` + `dissem_nato`.
-    pub dissem_controls: Box<[DissemControl]>,
+    /// US-attributed IC dissemination controls in the page rollup.
+    /// PR 9b (FR-046 / T132) split the prior single
+    /// `dissem_controls` field; see
+    /// [`crate::CanonicalAttrs::dissem_us`] for the CAPCO-2016 p41
+    /// reciprocity rule. Page roll-up unions each namespace
+    /// independently (see [`PageContext::expected_dissem_us`] /
+    /// [`PageContext::expected_dissem_nato`]).
+    ///
+    /// [`PageContext::expected_dissem_us`]: crate::PageContext::expected_dissem_us
+    /// [`PageContext::expected_dissem_nato`]: crate::PageContext::expected_dissem_nato
+    pub dissem_us: Box<[DissemControl]>,
+
+    /// NATO-attributed IC dissemination controls in the page rollup.
+    /// Populated only when at least one portion contributed dissem
+    /// tokens under [`crate::MarkingClassification::Nato`].
+    pub dissem_nato: Box<[DissemControl]>,
 
     /// Non-IC dissemination controls.
     pub non_ic_dissem: Box<[NonIcDissem]>,
@@ -104,6 +117,18 @@ pub struct ProjectedMarking {
     /// roll-up, etc.) to point a diagnostic at the offending
     /// per-portion span.
     pub provenance: ProjectionProvenance,
+}
+
+impl ProjectedMarking {
+    /// Iterate every IC dissem control across both namespace fields
+    /// ([`Self::dissem_us`] then [`Self::dissem_nato`]).
+    ///
+    /// Mirrors [`crate::CanonicalAttrs::dissem_iter`]. Use when the
+    /// consumer cares about "any dissem regardless of namespace"; read
+    /// the underlying fields directly for namespace-aware logic.
+    pub fn dissem_iter(&self) -> impl Iterator<Item = &DissemControl> + Clone {
+        self.dissem_us.iter().chain(self.dissem_nato.iter())
+    }
 }
 
 /// Lattice trace + per-portion contribution record for a

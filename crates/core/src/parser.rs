@@ -27,7 +27,7 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
     FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    NatoClassification, NatoSap, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 use marque_ism::date::IsmDate;
@@ -60,11 +60,32 @@ pub struct ParsedMarking<'src> {
 /// Phase 2+3 parser. Stateless; call [`Parser::parse`] per candidate.
 pub struct Parser<'t> {
     tokens: &'t dyn TokenSet,
+    /// IC dissem attribution fallback for portions with no
+    /// classification axis. PR 9b (T132) wired the post-parse
+    /// `attribute_dissems` pass; CAPCO callers leave this at the
+    /// default ([`DefaultOrigin::Us`]) so that no-context portions
+    /// attribute their dissems to `dissem_us`. A future
+    /// foreign-origin-dominant scheme can override via
+    /// [`Self::with_default_origin`].
+    default_origin: marque_ism::DefaultOrigin,
 }
 
 impl<'t> Parser<'t> {
     pub fn new(tokens: &'t dyn TokenSet) -> Self {
-        Self { tokens }
+        Self {
+            tokens,
+            default_origin: marque_ism::DefaultOrigin::Us,
+        }
+    }
+
+    /// Override the no-classification-context fallback for IC dissem
+    /// attribution. CAPCO's
+    /// [`marque_ism::DefaultOrigin::Us`] is the default; pass
+    /// [`marque_ism::DefaultOrigin::Nato`] for a foreign-origin
+    /// dominant context.
+    pub fn with_default_origin(mut self, origin: marque_ism::DefaultOrigin) -> Self {
+        self.default_origin = origin;
+        self
     }
 
     /// Parse a single scanner candidate into [`ParsedAttrs`].
@@ -204,7 +225,8 @@ impl<'t> Parser<'t> {
                 None,
                 Box::new([]),
                 None,
-                Box::new([]),
+                Box::new([]), // dissem_us
+                Box::new([]), // dissem_nato
                 Box::new([]),
                 Box::new([]),
                 declassify_on,
@@ -330,8 +352,41 @@ impl<'t> Parser<'t> {
             // Block 1 when non-US: foreign classification
             // ---------------------------------------------------------------
             if idx == 1 && is_non_us {
-                let parsed_cls = if let Some(nato) = parse_nato_classification(trimmed) {
-                    Some(MarkingClassification::Nato(nato))
+                // PR 9c.1 T134: `parse_nato_classification` now returns
+                // a `NatoBlock` carrying the canonical bare NATO class
+                // plus an optional AEA/SCI companion. Legacy compound
+                // text (CTSA / CTS-B / CTS-BALK / ...) canonicalizes
+                // at parse time per CAPCO-2016 §H.7 p122 + §G.2 p40 +
+                // §H.7 p127.
+                let parsed_cls = if let Some(nato_block) = parse_nato_classification(trimmed) {
+                    let NatoBlock { class, companion } = nato_block;
+                    match companion {
+                        NatoCompanion::Bare => {}
+                        NatoCompanion::Aea(aea_marking) => {
+                            // Companion write into the AEA axis. Same
+                            // source span as the classification token —
+                            // the legacy text carries both meanings at
+                            // the same byte range; the autofix rule E066
+                            // surfaces this and proposes the canonical
+                            // multi-block form.
+                            aea.push(ParsedAea::new(aea_marking, trimmed, span));
+                        }
+                        NatoCompanion::Sci(nato_sap) => {
+                            // Companion write into the SCI axis as a
+                            // structural `SciMarking` anchored on
+                            // `SciControlSystem::NatoSap`. No
+                            // compartments / sub-compartments — NATO
+                            // SAPs render standalone per §G.2 p40 +
+                            // §H.7 p127.
+                            let sci_marking = SciMarking::new(
+                                SciControlSystem::NatoSap(nato_sap),
+                                Box::new([]),
+                                None,
+                            );
+                            sci_markings.push(ParsedSciMarking::new(sci_marking, trimmed, span));
+                        }
+                    }
+                    Some(MarkingClassification::Nato(class))
                 } else if let Some(joint) = parse_joint_classification(trimmed) {
                     Some(MarkingClassification::Joint(joint))
                 } else {
@@ -404,6 +459,101 @@ impl<'t> Parser<'t> {
                 rel_to.extend(parsed.countries);
                 dissem.extend(parsed.trailing_dissem);
                 non_ic.extend(parsed.trailing_non_ic);
+            } else if let Some(long_form) = recognize_deprecated_sci_long_form(trimmed) {
+                // Deprecated SCI long-form (T135a / issue #307 Group D).
+                // Runs BEFORE the SCI structural path so compound forms like
+                // `KDK-BLUEFISH` (3-byte custom-control shape that would
+                // otherwise be claimed as `SciControlSystem::Custom("KDK")`)
+                // route through this recognizer instead. Source bytes are
+                // preserved verbatim in `TokenSpan.text`; the walker rule
+                // (E065 in `marque-capco::rules_declarative`) consumes the
+                // original text to emit canonicalization fixes.
+                //
+                // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+                let compartments: Box<[SciCompartment]> = match &long_form.compartment {
+                    Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                    None => Box::new([]),
+                };
+                let canonical_enum = if compartments.is_empty() {
+                    SciControl::parse(long_form.system.as_str())
+                } else {
+                    compartments.first().and_then(|c| {
+                        let composite = format!("{}-{}", long_form.system.as_str(), c.identifier);
+                        SciControl::parse(&composite)
+                    })
+                };
+                let marking = SciMarking::new(
+                    SciControlSystem::Published(long_form.system),
+                    compartments,
+                    canonical_enum,
+                );
+                if let Some(ctrl) = marking.canonical_enum {
+                    sci.push(ctrl);
+                }
+                sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
+                // Source bytes preserved verbatim — walker rule reads
+                // `TokenSpan.text` to identify the deprecated form.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciControl,
+                    span,
+                    text: trimmed.into(),
+                });
+                // Emit a SciSystem span coincident with the SciControl
+                // span so rule-layer span anchoring (E061 / E062 / E063
+                // + any future SCI rule that locates spans via
+                // `TokenKind::SciSystem` filter + index lookup) works
+                // uniformly for long-form-derived markings the same way
+                // it does for structural-parser markings. The
+                // structural path (see ~lines 998-1009 below) always
+                // emits both a block-level `SciControl` span AND a
+                // narrower `SciSystem` span for the control identifier
+                // itself; without the matching emission here, rules
+                // that index `sys_spans[idx]` would fall through to
+                // their defensive `Span::new(0, 0)` fallback and produce
+                // audit records pointing at byte 0..0 of the input.
+                //
+                // For long-form input the source bytes ARE the system
+                // identifier (e.g., `HUMINT` becomes HCS at the marking
+                // level, but the byte range we anchor on remains the
+                // input's `HUMINT` token). Both spans cover the same
+                // bytes — the rule layer reads spans for byte anchoring,
+                // not for token-string content. This invariant
+                // ("exactly one `TokenKind::SciSystem` span per
+                // `sci_markings` entry, regardless of recognizer path")
+                // is what makes the rule-layer span lookup pattern
+                // sound; see `crates/core/tests/sci_long_form_spans.rs`
+                // for the pinned coverage.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::SciSystem,
+                    span,
+                    text: trimmed.into(),
+                });
+            } else if recognize_eyes_only_block(trimmed, self.tokens).is_some() {
+                // EYES / EYES ONLY block with `/`-delimited trigraphs
+                // (T135a Commit 5, issue #307). CAPCO-2016 §H.8 p157:
+                // "When extracting EYES ONLY portions from SIGINT
+                // reporting, convert the EYES ONLY portion marks to
+                // REL TO" and "carry forward the trigraph/tetragraph
+                // codes listed in the source document banner line to
+                // the new portion mark."
+                //
+                // The block has the shape `<TRIGRAPH>(/<TRIGRAPH>)*
+                // EYES [ONLY]`. Without this recognizer the parser's
+                // multi-token block handler would split on `/` and
+                // emit each token as Unknown, so the walker rule
+                // (E064) cannot find the block. Source bytes are
+                // preserved verbatim in `TokenSpan.text`; the walker
+                // builds the canonical `REL TO USA, <list>` replacement
+                // and emits a `text_correction` covering the whole
+                // block span.
+                //
+                // Authority: CAPCO-2016 §H.8 p157 + §H.8 p158.
+                dissem.push(ParsedDissem::new(DissemControl::Eyes, trimmed, span));
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DissemControl,
+                    span,
+                    text: trimmed.into(),
+                });
             } else if (trimmed.contains('-')
                 || trimmed.contains('/')
                 || is_bare_cve_value(trimmed)
@@ -416,7 +566,22 @@ impl<'t> Parser<'t> {
                 || (is_valid_custom_control(trimmed)
                     && trimmed.bytes().any(|b| b.is_ascii_digit())
                     && !is_known_non_sci_token(trimmed)
-                    && !is_declass_date(trimmed)))
+                    && !is_declass_date(trimmed))
+                // Bare NATO SAP token (BOHEMIA / BALK) — registered NATO
+                // Special Access Programs that travel in the SCI block
+                // position per the §H.7 p127 worked example
+                // `(//CTS//BOHEMIA//REL TO USA, NATO)`. These tokens fail
+                // both the bare-CVE check (no ODNI CVE entry per §G.2 p40)
+                // and the custom-control shape check (BOHEMIA is 7 chars,
+                // exceeding the 5-char cap; BALK is pure alpha and would
+                // be rejected by the must-contain-digit guard above), so
+                // they need an explicit gate-level admission to reach
+                // `parse_sci_block`'s per-chunk NATO-SAP recognizer.
+                //
+                // Authority: CAPCO-2016 §G.2 p40 (registers BOHEMIA / BALK
+                // as standalone control markings); §H.7 p127 (worked
+                // example places BOHEMIA in the SCI block position).
+                || recognize_nato_sap(trimmed).is_some())
                 && let Some(markings) = parse_sci_block(trimmed, abs_start, &mut token_spans)
             {
                 // Structural SCI path (spec 003-sci-compartments §R2). Runs
@@ -590,10 +755,14 @@ impl<'t> Parser<'t> {
 
                 // Inline-4: a `/`-separated slash block typically carries
                 // 2-4 sub-tokens (e.g. `SI/TK`, `NF/LIMDIS`, `SI/TK/HCS`);
-                // see [`split_slash_with_offsets`] for the matching scratch
-                // budget on the index side.
+                // see [`split_slash_with_separator_offsets`] for the matching
+                // scratch budget on the index side. We pull the per-`/`
+                // byte offsets out alongside the token offsets so we can
+                // emit `TokenKind::Separator` spans for within-category
+                // single-slash separators (T131 / issue #106).
+                let (token_offsets, slash_offsets) = split_slash_with_separator_offsets(trimmed);
                 let mut results: SmallVec<[SubResult<'_>; 4]> = SmallVec::new();
-                for (sub_off, sub_tok) in split_slash_with_offsets(trimmed) {
+                for (sub_off, sub_tok) in token_offsets {
                     let sub_abs_start = abs_start + sub_off;
                     let sub_span = Span::new(sub_abs_start, sub_abs_start + sub_tok.len());
                     if let Some(ctrl) = SciControl::parse(sub_tok) {
@@ -674,8 +843,122 @@ impl<'t> Parser<'t> {
                         span,
                         text: trimmed.into(),
                     });
+                } else if first_parsed_kind.is_none() {
+                    // All-Unknown block (e.g. `FOO/BAR` with no recognized
+                    // category): emit the whole trimmed block as one
+                    // `TokenKind::Unknown` span — mirroring the mixed-
+                    // category branch above. The per-token Unknown +
+                    // per-slash Separator emission that would otherwise
+                    // run here is incoherent: there's no committed
+                    // category for the Separator to sit between, and a
+                    // downstream byte-precise splice rule (E041 auto-fix,
+                    // canonical-rendering) keyed on `TokenKind::Separator`
+                    // would silently consume bytes from a non-category
+                    // context. Closes Copilot R3 channel on PR #416.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
                 } else {
-                    // Same category (or all unknown): commit sub-token results.
+                    // Same-category block with at least one committed
+                    // sub-token: commit sub-token results. Emit
+                    // `TokenKind::Separator` spans for within-category
+                    // `/` bytes (T131 / issue #106). Disambiguated from
+                    // between-category `//` separators by `text`:
+                    // within-category is `"/"`, between-category is
+                    // `"//"`.
+                    //
+                    // **Emission contract for `TokenKind::Separator`**: a
+                    // Separator span MUST sit between two committed
+                    // non-Unknown same-category tokens. Empty-boundary
+                    // slashes (trailing `OC/`, leading `/OC`,
+                    // back-to-back `//`) and slashes adjacent to an
+                    // Unknown sub-token (e.g. `OC/FOO` where FOO is
+                    // unrecognized) violate the contract; downstream
+                    // byte-precise splice rules trust it. We map each
+                    // [`SlashSeparator`] to its `results`-array
+                    // neighbors via a running `committed_idx`: whenever
+                    // a slash has `left_nonempty = true`,
+                    // `results[committed_idx]` is its left neighbor;
+                    // `right_nonempty = true` →
+                    // `results[committed_idx + 1]` is its right
+                    // neighbor. Emit only when BOTH neighbors exist AND
+                    // both are non-Unknown AND share the same SubKind.
+                    // Closes Copilot R3 channel on PR #416.
+                    //
+                    // CAPCO-2016 §A.6 p16 forbids interjected whitespace
+                    // between within-category `/` separators for SAP
+                    // (line 328: "without interjected spaces"), AEA
+                    // (line 330: "with no interjected space"), dissem
+                    // (line 334: "A single forward slash with no
+                    // interjected space must be used to separate multiple
+                    // dissemination controls"), and non-IC dissem (line
+                    // 336: "with no interjected space") alike, with
+                    // substantively identical wording. The parser adopts
+                    // an engineering relaxation:
+                    // `split_slash_with_separator_offsets` consumes any
+                    // adjacent ASCII whitespace around `/` into the
+                    // Separator span when an author drifts and writes
+                    // `OC / NF` instead of `OC/NF`, so downstream rules
+                    // see one token spanning the inter-token byte range
+                    // rather than failing recognition. This is a Marque
+                    // tolerance, NOT a §A.6-permitted variant. SAR keeps
+                    // a strict 1-byte separator span (parser.rs ~2103-
+                    // 2107) — no relaxation needed because the corpus
+                    // never demands it.
+                    let mut committed_idx: usize = 0;
+                    for sep in &slash_offsets {
+                        // Walk results in lockstep with the slash list.
+                        // Because empty `s.split('/')` parts do NOT push
+                        // to `results`, the running `committed_idx` is
+                        // always the next un-claimed entry. If
+                        // `left_nonempty`, `results[committed_idx]` IS
+                        // this slash's left neighbor and we advance
+                        // past it; if `right_nonempty`, the next slash's
+                        // (or end's) neighbor view starts after
+                        // `committed_idx + 1`.
+                        let left_idx = if sep.left_nonempty {
+                            let idx = committed_idx;
+                            committed_idx += 1;
+                            Some(idx)
+                        } else {
+                            None
+                        };
+                        let right_idx = if sep.right_nonempty {
+                            Some(committed_idx)
+                        } else {
+                            None
+                        };
+                        let emit = match (left_idx, right_idx) {
+                            (Some(li), Some(ri)) => {
+                                // Defensive index check — should always
+                                // hold given the loop invariant, but
+                                // protects against future refactors.
+                                let left = results.get(li);
+                                let right = results.get(ri);
+                                matches!(
+                                    (left, right),
+                                    (Some(l), Some(r))
+                                        if l.kind != SubKind::Unknown
+                                            && r.kind != SubKind::Unknown
+                                            && l.kind == r.kind
+                                )
+                            }
+                            // At least one neighbor empty → no
+                            // Separator (empty-boundary slash).
+                            _ => false,
+                        };
+                        if emit {
+                            let abs_slash_start = abs_start + sep.start;
+                            let abs_slash_end = abs_start + sep.end;
+                            token_spans.push(TokenSpan {
+                                kind: TokenKind::Separator,
+                                span: Span::new(abs_slash_start, abs_slash_end),
+                                text: "/".into(),
+                            });
+                        }
+                    }
                     for r in results {
                         match r.kind {
                             SubKind::Sci => {
@@ -745,7 +1028,10 @@ impl<'t> Parser<'t> {
 
         let _ = context; // used for future context-aware validation
 
-        Ok(ParsedAttrs::new(
+        // PR 9b (T132): the parser writes every dissem token to
+        // `dissem_us` initially; the post-parse `attribute_dissems`
+        // pass below partitions per CAPCO-2016 p41 reciprocity.
+        let mut attrs = ParsedAttrs::new(
             classification,
             sci_markings.into_boxed_slice(),
             sci.into_boxed_slice(),
@@ -753,6 +1039,7 @@ impl<'t> Parser<'t> {
             aea.into_boxed_slice(),
             fgi_marker,
             dissem.into_boxed_slice(),
+            Box::new([]),
             non_ic.into_boxed_slice(),
             rel_to.into_boxed_slice(),
             declassify_on,
@@ -761,7 +1048,22 @@ impl<'t> Parser<'t> {
             declass_exemption,
             token_spans.into_boxed_slice(),
             origin,
-        ))
+        );
+        marque_ism::attribute_dissems(&mut attrs, self.default_origin);
+        // PR 9c.1 R1 — Copilot review #3: collapse duplicate AEA / SCI
+        // companion writes that arise when both the legacy NATO compound
+        // canonicalization (parser.rs:~372 / :~386, idx == 1 non-US
+        // classification block) and the canonical-form AEA / SCI block
+        // recognition (parser.rs:~493 / :~615 / :~656) write the same
+        // axis value. Without this pass, inputs like `(//NSAT//ATOMAL)`
+        // or `(//CTS-B//BOHEMIA)` carry the value twice on
+        // `aea_markings` / `sci_markings`, and the canonical renderer
+        // emits `ATOMAL/ATOMAL` / `BOHEMIA/BOHEMIA` — breaking E066's
+        // byte-identical `Recanonicalize` fix-text contract.
+        // Authority: CAPCO-2016 §G.1 Table 4 p38 (legacy compounds);
+        // §G.2 p40 (ATOMAL / BOHEMIA / BALK Registered Markings).
+        marque_ism::dedup_companions(&mut attrs);
+        Ok(attrs)
     }
 }
 
@@ -857,6 +1159,128 @@ fn parse_sci_block(
         // Leading hyphen rejects immediately (e.g., `-SI`).
         if chunk.starts_with('-') {
             return None;
+        }
+
+        // Deprecated SCI long-form per-chunk recognition (PR 9a Copilot R4,
+        // PR #416). When the chunk matches a deprecated long-form
+        // (`HUMINT`, `COMINT`, `KDK-BLUEFISH`, `ECI ABC`, ...), route it
+        // through the canonical-system enum path BEFORE the structural
+        // CVE-bare / custom-control checks below — otherwise:
+        //
+        // - `HUMINT` / `COMINT` / `KLONDIKE-IDIT` (>5 chars) would fall
+        //   through to `is_valid_custom_control`, fail (length cap), and
+        //   reject the whole block, so multi-system inputs like
+        //   `(TS//COMINT/TK//NF)` get tagged Unknown and the E065 walker
+        //   never sees them.
+        // - `KDK-BLUEFISH` (3-char prefix → fits `is_valid_custom_control`)
+        //   currently lands as `SciControlSystem::Custom("KDK")` with a
+        //   `BLUEFISH` compartment; the walker still fires via the
+        //   `TokenKind::SciControl` text-prefix match, but the resulting
+        //   `SciMarking` is structurally Custom (triggering W034
+        //   unpublished-control noise) instead of canonical `Published(Tk)`
+        //   with the canonical `BLFH` compartment.
+        // - `ECI ABC` / `EL ECRU` (space inside the chunk) parses neither
+        //   as CVE-bare nor custom-control and rejects the whole block.
+        //
+        // Routing through `recognize_deprecated_sci_long_form` here yields
+        // a canonical `SciMarking`, dual-emits `TokenKind::SciControl` +
+        // `TokenKind::SciSystem` spans with the chunk source bytes
+        // verbatim (so the E065 walker can identify the deprecated form
+        // via `TokenSpan.text`), and preserves the per-chunk
+        // all-or-nothing parse semantic — if the recognizer doesn't match,
+        // we fall through to the existing CVE-bare / custom-control
+        // path; if it does match, we `continue` to the next chunk.
+        //
+        // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85 — see
+        // per-row citations in `recognize_deprecated_sci_long_form`.
+        if let Some(long_form) = recognize_deprecated_sci_long_form(chunk) {
+            // Build compartments from the recognizer's optional compartment
+            // slot. The recognizer guarantees `is_alnum_upper(comp)` for
+            // every PrefixSpace/PrefixHyphen variant (see the
+            // `recognize_deprecated_sci_long_form` body), so this is safe.
+            let compartments: Box<[SciCompartment]> = match &long_form.compartment {
+                Some(comp) => Box::new([SciCompartment::new(comp.as_str(), Box::new([]))]),
+                None => Box::new([]),
+            };
+            // Canonical-enum lookup mirrors the whole-block long-form path
+            // at parser.rs ~line 422: bare control → `SciControl::parse`
+            // on the system name (`HCS` / `SI` / `TK`); compound form →
+            // `{ctrl}-{comp}` lookup (e.g., `TK-BLFH`).
+            let canonical_enum = if compartments.is_empty() {
+                SciControl::parse(long_form.system.as_str())
+            } else {
+                compartments.first().and_then(|c| {
+                    let composite = format!("{}-{}", long_form.system.as_str(), c.identifier);
+                    SciControl::parse(&composite)
+                })
+            };
+            // Source bytes preserved verbatim — the E065 walker reads
+            // `TokenSpan.text` to identify the deprecated form. Dual-emit
+            // SciControl + SciSystem spans matching the whole-block
+            // long-form path's invariant (parser.rs ~lines 441-475) and
+            // the structural path's pattern (lines 1107-1118 below).
+            let chunk_abs = base + chunk_off;
+            let chunk_span = Span::new(chunk_abs, chunk_abs + chunk.len());
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciControl,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciSystem,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            markings.push(SciMarking::new(
+                SciControlSystem::Published(long_form.system),
+                compartments,
+                canonical_enum,
+            ));
+            continue;
+        }
+
+        // NATO SAP per-chunk recognition (PR 9c.1 R1 — canonical-form
+        // round-trip closure). BOHEMIA / BALK render standalone in the
+        // SCI block with no compartments per §G.2 p40 + §H.7 p127. The
+        // bare token IS the chunk (no `-` separator, no compartments),
+        // so we recognize it here BEFORE the `SciControlBare::parse` /
+        // `is_valid_custom_control` path — `BOHEMIA` would otherwise
+        // fail both branches (no CVE entry; 7 chars exceeds the 5-char
+        // custom-control cap), and `BALK` would land as
+        // `SciControlSystem::Custom("BALK")` (wrong axis).
+        //
+        // Combined forms like `BALK/BOHEMIA` flow through this branch
+        // per chunk — the outer `/`-split has already broken the block
+        // into single-token chunks before per-chunk dispatch.
+        //
+        // Authority: CAPCO-2016 §G.2 p40 (Table 5 registers BOHEMIA /
+        // BALK as standalone control markings — no compartments, no
+        // sub-compartments); §H.7 p127 (worked example
+        // `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` and the
+        // matching portion `(//CTS//BOHEMIA//REL TO USA, NATO)` —
+        // BOHEMIA travels alone in the SCI block).
+        if let Some(sap) = recognize_nato_sap(chunk) {
+            let chunk_abs = base + chunk_off;
+            let chunk_span = Span::new(chunk_abs, chunk_abs + chunk.len());
+            // Dual-emit SciControl + SciSystem spans matching the
+            // deprecated-long-form and CVE-bare paths so rules that
+            // anchor on `TokenKind::SciSystem` find a matching span.
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciControl,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciSystem,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            markings.push(SciMarking::new(
+                SciControlSystem::NatoSap(sap),
+                Box::new([]),
+                None,
+            ));
+            continue;
         }
 
         // Split chunk on first `-` into (control, rest). If no `-`, the
@@ -1027,39 +1451,482 @@ fn is_known_non_sci_token(s: &str) -> bool {
         || DeclassExemption::parse(s).is_some()
 }
 
+/// Recognize a bare NATO Special Access Program token (`BOHEMIA` or
+/// `BALK`). Returns the matching [`NatoSap`] variant when `s` is one of
+/// the two registered NATO SAPs; returns `None` otherwise.
+///
+/// NATO SAPs travel in the SCI block position (`//CTS//BOHEMIA`,
+/// `//CTS//BALK`) and render standalone with no compartments or
+/// sub-compartments — they are CAPCO-only tokens with no ODNI CVE
+/// registration, so the structural SCI block parser needs an explicit
+/// recognizer rather than going through the bare-CVE / custom-control
+/// fallbacks.
+///
+/// Matching is strict on case (uppercase only, matching every other
+/// CAPCO token recognizer in this file).
+///
+/// # Authority
+///
+/// - CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking —
+///   registers BOHEMIA / BALK as standalone control markings, not
+///   classification suffixes).
+/// - CAPCO-2016 §H.7 p127 (FGI worked example
+///   `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` and the
+///   matching portion `(//CTS//BOHEMIA//REL TO USA, NATO)` — places
+///   BOHEMIA in the SCI block position alongside the FGI block).
+fn recognize_nato_sap(s: &str) -> Option<NatoSap> {
+    match s {
+        "BOHEMIA" => Some(NatoSap::Bohemia),
+        "BALK" => Some(NatoSap::Balk),
+        _ => None,
+    }
+}
+
+// =============================================================================
+// Deprecated SCI long-form recognition (T135a / issue #307 Group D)
+// =============================================================================
+
+/// Result of recognizing a deprecated SCI long-form block.
+///
+/// Holds the parser's internal classification (canonical SCI control system
+/// with optional compartment / sub-compartment context). Source bytes are
+/// preserved verbatim in the caller's `TokenSpan.text` — this struct does
+/// NOT rewrite the user's input. The walker rule in
+/// `marque-capco::rules_declarative` (E065) consumes the original
+/// `TokenSpan.text` plus this canonical projection to emit
+/// `Diagnostic::text_correction` fixes.
+///
+/// Authority (per-variant citations in [`recognize_deprecated_sci_long_form`]):
+/// CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+#[derive(Debug, Clone)]
+struct DeprecatedSciLongForm {
+    /// Canonical control system this long-form maps to.
+    /// `Hcs` for HUMINT-family, `Si` for COMINT / ECI / EL family,
+    /// `Tk` for KDK / KLONDIKE family.
+    system: SciControlBare,
+    /// Compartment identifier (e.g., `BLUEFISH` for `KDK-BLUEFISH`,
+    /// `ABC` for `ECI ABC`, `ECRU` for `EL ECRU`). `None` for bare
+    /// long-forms (`HUMINT`, `COMINT`, `ECI` alone, `KDK` alone).
+    /// Byte offset of compartment within `trimmed` recorded separately
+    /// in the second tuple element of `recognize_deprecated_sci_long_form`'s
+    /// return.
+    compartment: Option<SmolStr>,
+}
+
+/// Recognize a deprecated SCI long-form block.
+///
+/// Returns `Some((form, full_byte_len))` when `trimmed` is a recognized
+/// deprecated form. `full_byte_len` is the byte length of the longest
+/// matched prefix within `trimmed` — used by the caller to set up the
+/// `TokenSpan.span` and the `SciMarking` source span. For bare-form
+/// matches, `full_byte_len == trimmed.len()`; for compound forms with a
+/// compartment tail, the recognizer accepts the full block.
+///
+/// The recognition is intentionally **lenient on case** for the form
+/// keyword (the SCI long-forms are universally uppercase in practice
+/// per §H.4) and **strict on shape** for the compartment slot — the
+/// compartment must be `[A-Z0-9]+` per §H.4 p61 + p76.
+///
+/// # Authority (per row)
+///
+/// - `HUMINT` / `HUMINT CONTROL SYSTEM` → HCS — CAPCO-2016 §H.4 p62
+///   (Legacy section: "When incorporating legacy material marked 'HCS'
+///   into a new product, re-mark the new document and associated
+///   portion according to the instructions in the HCS-O and HCS-P
+///   marking templates.").
+/// - `COMINT` / `SPECIAL INTELLIGENCE` → SI — CAPCO-2016 §H.4 p74:
+///   "The COMINT title for the Special Intelligence (SI) control
+///   system is no longer valid".
+/// - `ECI <COMP>` / `EXCEPTIONALLY CONTROLLED INFORMATION <COMP>` →
+///   SI-`<COMP>` — CAPCO-2016 §H.4 p76: "information formerly marked
+///   TS//SI-ECI ABC must now be marked TS//SI-ABC". §H.4 p61: "ECI
+///   grouping markings are NOT used in banner/portion".
+/// - `EL <SUB>` / `ENDSEAL <SUB>` → SI-`<SUB>` (typically `ECRU` or
+///   `NONBOOK`) — CAPCO-2016 §H.4 p78: "the EL control system is
+///   being retired and all associated compartments moved to the SI
+///   control system". §H.4 p83 mirrors for `NONBOOK`.
+/// - `KDK-<COMP>` / `KLONDIKE-<COMP>` → TK-`<COMP>` — CAPCO-2016
+///   §H.4 p85 (NSG PM 3802 Closure of KLONDIKE Control System):
+///   "When incorporating legacy material marked 'KLONDIKE' into a new
+///   product, re-mark the new document and associated portions
+///   according to the instructions in the TK-BLFH, TK-IDIT, and
+///   TK-KAND marking templates."
+///
+/// Bare `ECI` / `ENDSEAL` / `KDK` (no compartment) are accepted — the
+/// walker rule emits a suggest-only diagnostic for them because the
+/// compartment context required to migrate is unknown at the parser
+/// level.
+fn recognize_deprecated_sci_long_form(trimmed: &str) -> Option<DeprecatedSciLongForm> {
+    // -----------------------------------------------------------------
+    // HCS family — §H.4 p62
+    // -----------------------------------------------------------------
+    // Multi-word phrase checks must come before the single-word ones
+    // (longest-prefix wins — same pattern as `parse_nato_classification`).
+    if trimmed == "HUMINT CONTROL SYSTEM" || trimmed == "HUMINT" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Hcs,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (COMINT / SPECIAL INTELLIGENCE) — §H.4 p74
+    // -----------------------------------------------------------------
+    if trimmed == "SPECIAL INTELLIGENCE" || trimmed == "COMINT" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (ECI / EXCEPTIONALLY CONTROLLED INFORMATION) — §H.4 p61 + p76
+    // -----------------------------------------------------------------
+    // Compound forms: `ECI <COMP>` and `EXCEPTIONALLY CONTROLLED
+    // INFORMATION <COMP>`. Bare `ECI` (no compartment) is also recognized;
+    // the walker emits a suggest-only diagnostic because the compartment
+    // is unknown.
+    if let Some(comp) = trimmed.strip_prefix("EXCEPTIONALLY CONTROLLED INFORMATION ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("ECI ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "EXCEPTIONALLY CONTROLLED INFORMATION" || trimmed == "ECI" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // SI family (EL / ENDSEAL) — §H.4 p78 + p83
+    // -----------------------------------------------------------------
+    // §H.4 p78: "the EL control system is being retired and all
+    // associated compartments moved to the SI control system". `EL
+    // ECRU` → `SI-ECRU`; `EL NONBOOK` → `SI-NONBOOK` (per §H.4 p83
+    // line 1938). Bare `ENDSEAL` / `EL` are recognized so the walker
+    // can emit a suggest-only diagnostic.
+    if let Some(comp) = trimmed.strip_prefix("ENDSEAL ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("EL ")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "ENDSEAL" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+    // `EL` alone: 2 letters; would also collide with the SciControl
+    // bare-CVE path if `SciControl::parse("EL")` were ever to match.
+    // Today `EL` is NOT a published SciControl bare value (the ODNI
+    // schema retired the EL control system per §H.4 p78), so accepting
+    // it here is unambiguous.
+    if trimmed == "EL" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Si,
+            compartment: None,
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // TK family (KDK / KLONDIKE) — §H.4 p85 (NSG PM 3802 closure)
+    // -----------------------------------------------------------------
+    // Compound forms: `KDK-<COMP>` and `KLONDIKE-<COMP>`. The closure
+    // note's per-compartment migration list is `TK-BLFH` / `TK-IDIT`
+    // / `TK-KAND`, but the recognizer accepts any alphanumeric
+    // compartment — unknown legacy compartments still need walker-level
+    // diagnostic surface.
+    if let Some(comp) = trimmed.strip_prefix("KLONDIKE-")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: Some(comp.into()),
+        });
+    }
+    if let Some(comp) = trimmed.strip_prefix("KDK-")
+        && is_alnum_upper(comp)
+    {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: Some(comp.into()),
+        });
+    }
+    if trimmed == "KLONDIKE" || trimmed == "KDK" {
+        return Some(DeprecatedSciLongForm {
+            system: SciControlBare::Tk,
+            compartment: None,
+        });
+    }
+
+    None
+}
+
+// =============================================================================
+// EYES / EYES ONLY compound block recognizer (T135a Commit 5, issue #307)
+// =============================================================================
+
+/// Result of recognizing an EYES ONLY compound block (CAPCO-2016 §H.8 p157).
+///
+/// The block carries `/`-delimited country trigraphs followed by the
+/// dissem-axis `EYES` (or `EYES ONLY`) marker. Without compound
+/// recognition the parser's multi-token block handler splits on `/`
+/// and tags each trigraph as Unknown — the walker rule (E064) needs
+/// the structural block to emit a canonicalization fix.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // walker rule re-parses TokenSpan.text; these fields are recognizer-internal
+struct EyesOnlyBlock<'a> {
+    /// The country trigraph tokens in source order.
+    trigraphs: SmallVec<[&'a str; 8]>,
+    /// `true` iff the block ended with `EYES ONLY` (the full form);
+    /// `false` for bare trailing `EYES`. Diagnostic / fix construction
+    /// is identical in both cases.
+    full_form: bool,
+}
+
+/// Recognize a `<TRIGRAPH>(/ <TRIGRAPH>)* (SPACE)? EYES [ONLY]` block.
+///
+/// Returns `Some(block)` when `trimmed` matches the §H.8 p157 EYES
+/// ONLY compound shape AND every trigraph in the prefix is a
+/// CAPCO-registered country code. Returns `None` for bare `EYES` /
+/// `EYES ONLY` without any preceding trigraphs (those fall through
+/// to `parse_dissem_full_form` which handles the bare dissem-token
+/// case correctly) AND for shape-matching blocks whose prefix
+/// contains any unregistered trigraph.
+///
+/// Grammar (per CAPCO-2016 §A.6 p16 + §H.8 p157):
+///   EYES_BLOCK := TRIGRAPH ('/' TRIGRAPH)* (' ' EYES_LIT)?
+///   EYES_LIT   := 'EYES' | 'EYES ONLY'
+///   TRIGRAPH   := registered CAPCO trigraph (3 alpha, in trigraph set)
+///
+/// Country-code registry gate (PR 9a Copilot R3, PR #416). The
+/// shape gate alone — `[A-Z]{3}` — accepts arbitrary uppercase
+/// triples like `AAA` or `XYZ`. Without registry validation, the
+/// E064 walker would build `REL TO USA, AAA, XYZ` canonical output
+/// — silent fabrication of trigraphs in the audit-stream. Per
+/// Constitution Principle VIII (Authoritative Source Fidelity),
+/// canonical output MUST reference real CAPCO registry entries.
+/// Validation mirrors `parse_rel_to_with_spans` (parser.rs ~1870-
+/// 1871): `tokens.is_trigraph` filters by the registered trigraph
+/// surface; `CountryCode::try_new` re-confirms the byte-set
+/// invariant. An unregistered trigraph rejects the whole block —
+/// the EYES recognizer is all-or-nothing; partial registry
+/// matches fall through to Unknown.
+///
+/// Note: the brief's §H.8 p157 example wording uses `/` as the
+/// trigraph separator within the EYES block — collision with the
+/// dissem-category `/` separator per §A.6 p16. This is a real-world
+/// CAPCO grammar wart, not a marque idiosyncrasy.
+fn recognize_eyes_only_block<'a>(
+    trimmed: &'a str,
+    tokens: &dyn TokenSet,
+) -> Option<EyesOnlyBlock<'a>> {
+    // The block must end with `EYES` or `EYES ONLY`. Strip the trailing
+    // marker first to identify the trigraph-list prefix.
+    let (prefix, full_form) = if let Some(p) = trimmed.strip_suffix(" EYES ONLY") {
+        (p, true)
+    } else if let Some(p) = trimmed.strip_suffix(" EYES") {
+        (p, false)
+    } else {
+        return None;
+    };
+
+    // Prefix is the trigraph list. Must be non-empty (otherwise it's
+    // a bare `EYES` / `EYES ONLY` block, handled by the dissem-full-form
+    // path).
+    if prefix.is_empty() {
+        return None;
+    }
+
+    // Split the prefix on `/` and require each segment to be a 3-letter
+    // ASCII uppercase trigraph. Per §A.6 p16 the separator inside the
+    // EYES block is `/` (not `, ` like REL TO).
+    let mut trigraphs: SmallVec<[&str; 8]> = SmallVec::new();
+    for seg in prefix.split('/') {
+        // Shape gate: exactly 3 ASCII uppercase letters.
+        if seg.len() != 3 || !seg.bytes().all(|b| b.is_ascii_uppercase()) {
+            return None;
+        }
+        // Registry gate (Copilot R3, PR #416). Constitution
+        // Principle VIII: fabricated trigraphs in canonical autofix
+        // output are a correctness defect. Mirrors the validation
+        // pattern in `parse_rel_to_with_spans` (~lines 1870-1871).
+        if !tokens.is_trigraph(seg) || CountryCode::try_new(seg.as_bytes()).is_none() {
+            return None;
+        }
+        trigraphs.push(seg);
+    }
+
+    if trigraphs.is_empty() {
+        return None;
+    }
+
+    Some(EyesOnlyBlock {
+        trigraphs,
+        full_form,
+    })
+}
+
 /// Parse a NATO classification string in either banner form (`"NATO SECRET"`,
 /// `"COSMIC TOP SECRET"`, etc.) or portion form (`"NS"`, `"CTS"`, etc.).
 ///
-/// Includes SAP variants (ATOMAL, BOHEMIA, BALK). Longer patterns are checked
-/// first to avoid prefix ambiguity (e.g., `"COSMIC TOP SECRET ATOMAL"` before
-/// `"COSMIC TOP SECRET"`).
-fn parse_nato_classification(s: &str) -> Option<NatoClassification> {
+/// Parse a NATO classification block.
+///
+/// Returns a [`NatoBlock`] carrying the bare NATO classification level
+/// (the canonical structural form, never the legacy compound variants)
+/// plus optional companion writes for either the AEA axis (ATOMAL per
+/// CAPCO-2016 §H.7 p122) or the SCI axis (BALK / BOHEMIA per §G.2 p40
+/// + §H.7 p127).
+///
+/// # Legacy text canonicalization (PR 9c.1 T134)
+///
+/// Pre-PR-9c.1 the legacy text forms `CTSA` / `NSAT` / `NCA` /
+/// `CTS-A` / `NS-A` / `NC-A` / `CTS-B` / `CTS-BALK` parsed into
+/// fused `NatoClassification::*Atomal` / `*Bohemia` / `*Balk`
+/// variants. Per CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered
+/// Marking) those forms are **structurally wrong**: ATOMAL,
+/// BOHEMIA, and BALK each have their own ARH row at §G.2 p40,
+/// confirming they are registered control markings, not classification
+/// suffixes. The §H.7 p122 worked example
+/// (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`) places ATOMAL in the AEA
+/// axis alongside RD; the §H.7 p127 worked example
+/// (`TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN`) places
+/// BOHEMIA in the SCI category position.
+///
+/// The legacy compound variants were retired in PR 9c.1 Commit 5;
+/// this parser canonicalizes the legacy text at parse time so
+/// existing markings produce the correct structural canonical form.
+/// Marque's autofix channel (rule E066 in `marque-capco/src/rules.rs`)
+/// drives the source-text re-marking when the rule severity is
+/// configured to fire.
+///
+/// Longer patterns are checked first to avoid prefix ambiguity
+/// (e.g., `"COSMIC TOP SECRET ATOMAL"` before `"COSMIC TOP SECRET"`).
+fn parse_nato_classification(s: &str) -> Option<NatoBlock> {
+    use marque_ism::{AtomalBlock, NatoSap};
     // Check longer patterns first to avoid prefix matches.
-    match s {
-        // Banner forms (full words) — longer patterns first
-        "COSMIC TOP SECRET ATOMAL" => Some(NatoClassification::CosmicTopSecretAtomal),
-        "COSMIC TOP SECRET-BOHEMIA" => Some(NatoClassification::CosmicTopSecretBohemia),
-        "COSMIC TOP SECRET-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
-        "COSMIC TOP SECRET" => Some(NatoClassification::CosmicTopSecret),
-        "NATO SECRET ATOMAL" => Some(NatoClassification::NatoSecretAtomal),
-        "NATO SECRET" => Some(NatoClassification::NatoSecret),
-        "NATO CONFIDENTIAL ATOMAL" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NATO CONFIDENTIAL" => Some(NatoClassification::NatoConfidential),
-        "NATO RESTRICTED" => Some(NatoClassification::NatoRestricted),
-        "NATO UNCLASSIFIED" => Some(NatoClassification::NatoUnclassified),
-        // Portion forms — primary (CAPCO Register)
-        "CTSA" | "CTS-A" => Some(NatoClassification::CosmicTopSecretAtomal),
-        "CTS-B" => Some(NatoClassification::CosmicTopSecretBohemia),
-        "CTS-BALK" => Some(NatoClassification::CosmicTopSecretBalk),
-        "CTS" => Some(NatoClassification::CosmicTopSecret),
-        "NSAT" | "NS-A" => Some(NatoClassification::NatoSecretAtomal),
-        "NS" => Some(NatoClassification::NatoSecret),
-        "NCA" | "NC-A" => Some(NatoClassification::NatoConfidentialAtomal),
-        "NC" => Some(NatoClassification::NatoConfidential),
-        "NR" => Some(NatoClassification::NatoRestricted),
-        "NU" => Some(NatoClassification::NatoUnclassified),
-        _ => None,
-    }
+    let (class, companion) = match s {
+        // Banner forms (full words) — longer patterns first.
+        // Companion AEA = ATOMAL; companion SCI = BALK / BOHEMIA.
+        "COSMIC TOP SECRET ATOMAL" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "COSMIC TOP SECRET-BOHEMIA" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Bohemia),
+        ),
+        "COSMIC TOP SECRET-BALK" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Balk),
+        ),
+        "COSMIC TOP SECRET" => (NatoClassification::CosmicTopSecret, NatoCompanion::Bare),
+        "NATO SECRET ATOMAL" => (
+            NatoClassification::NatoSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NATO SECRET" => (NatoClassification::NatoSecret, NatoCompanion::Bare),
+        "NATO CONFIDENTIAL ATOMAL" => (
+            NatoClassification::NatoConfidential,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NATO CONFIDENTIAL" => (NatoClassification::NatoConfidential, NatoCompanion::Bare),
+        "NATO RESTRICTED" => (NatoClassification::NatoRestricted, NatoCompanion::Bare),
+        "NATO UNCLASSIFIED" => (NatoClassification::NatoUnclassified, NatoCompanion::Bare),
+        // Portion forms — primary (CAPCO Register) + legacy compounds.
+        // Legacy `CTSA` / `CTS-A` / `NSAT` / `NS-A` / `NCA` / `NC-A`
+        // canonicalize to bare class + AEA::Atomal companion.
+        // Legacy `CTS-B` / `CTS-BALK` canonicalize to bare class + SCI
+        // (BOHEMIA / BALK NatoSap) companion.
+        "CTSA" | "CTS-A" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "CTS-B" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Bohemia),
+        ),
+        "CTS-BALK" => (
+            NatoClassification::CosmicTopSecret,
+            NatoCompanion::Sci(NatoSap::Balk),
+        ),
+        "CTS" => (NatoClassification::CosmicTopSecret, NatoCompanion::Bare),
+        "NSAT" | "NS-A" => (
+            NatoClassification::NatoSecret,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NS" => (NatoClassification::NatoSecret, NatoCompanion::Bare),
+        "NCA" | "NC-A" => (
+            NatoClassification::NatoConfidential,
+            NatoCompanion::Aea(AeaMarking::Atomal(AtomalBlock)),
+        ),
+        "NC" => (NatoClassification::NatoConfidential, NatoCompanion::Bare),
+        "NR" => (NatoClassification::NatoRestricted, NatoCompanion::Bare),
+        "NU" => (NatoClassification::NatoUnclassified, NatoCompanion::Bare),
+        _ => return None,
+    };
+    Some(NatoBlock { class, companion })
+}
+
+/// Result of parsing a NATO classification block.
+///
+/// The block carries the canonical bare NATO class plus an optional
+/// companion write to either the AEA axis (ATOMAL) or the SCI axis
+/// (BALK / BOHEMIA). PR 9c.1 T134 introduced this split so the
+/// classification axis no longer fuses sub-markings into wrong
+/// classification-variant identities; see [`parse_nato_classification`]
+/// doc for the rationale.
+struct NatoBlock {
+    class: NatoClassification,
+    companion: NatoCompanion,
+}
+
+/// Optional companion writes for [`NatoBlock`]. At most one — ATOMAL
+/// can in principle co-occur with BALK/BOHEMIA on the same portion
+/// (`(//CTS//BOHEMIA//ATOMAL)`), but that would arrive as a
+/// well-formed multi-block input (separate `//`-blocks for the
+/// classification and the SCI/AEA marker), not as a legacy compound
+/// text. The fused legacy text always carries exactly one companion.
+enum NatoCompanion {
+    /// Bare NATO classification with no AEA/SCI companion — `(//CTS)`,
+    /// `(//NS)`, `(//NC)`, `(//NR)`, `(//NU)`, plus their banner
+    /// equivalents. The "bare" framing matches the
+    /// `nato-dissem-reciprocity` invariant (pure-NATO portions carry
+    /// NATO classification + NATO dissem, no fused control marking).
+    /// Renamed from `None` in PR 9c.1 to avoid shadowing the language
+    /// keyword and to mirror the project's "bare" terminology.
+    Bare,
+    /// AEA companion — ATOMAL per CAPCO-2016 §H.7 p122. Written into
+    /// `attrs.aea_markings`.
+    Aea(AeaMarking),
+    /// SCI companion — BALK / BOHEMIA per CAPCO-2016 §G.2 p40 +
+    /// §H.7 p127. Written into `attrs.sci_markings` as a structural
+    /// [`SciMarking`] whose `system` is the corresponding
+    /// [`marque_ism::NatoSap`] variant.
+    Sci(marque_ism::NatoSap),
 }
 
 /// Parse a JOINT classification block: `"JOINT S USA GBR"` or `"JOINT SECRET USA GBR"`.
@@ -1183,7 +2050,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///
 /// # Three return cases (FR-015 / FR-016 closure, GH #280)
 ///
-/// Per CAPCO-2016 §H.7 p123 the FGI marker has exactly two lawful
+/// Per CAPCO-2016 §H.7 p122 the FGI marker has exactly two lawful
 /// banner forms: bare `FGI` (source-concealed) and `FGI [LIST]`
 /// (source-acknowledged). Anything else is a parse failure, not a
 /// degraded lawful form. This function enforces that as three
@@ -1217,7 +2084,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// FR-015 (admission via documented vocabulary surface) and CHK030
 /// (no inline `is_ascii_alphanumeric` byte-class checks).
 ///
-/// CAPCO-2016 §H.7 p123 spells out the shape: "Multiple FGI
+/// CAPCO-2016 §H.7 p122 spells out the shape: "Multiple FGI
 /// trigraph country codes or tetragraph codes must be separated by
 /// a single space ... example may appear as: `SECRET//FGI GBR JPN
 /// NATO//REL TO USA, GBR, JPN, NATO`." The order invariant
@@ -1250,7 +2117,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///   country-token shape gate; admission requires uniform ASCII upper).
 /// - `parse_fgi_marker("FGI USA NATO")` →
 ///   `Some(Acknowledged { countries: [USA, NATO] })`. NATO is a
-///   tetragraph; admitted at this site per §H.7 p123. Order
+///   tetragraph; admitted at this site per §H.7 p122. Order
 ///   normalization (trigraph-then-tetragraph) is a rule-layer
 ///   concern; the parser preserves source order.
 /// - `parse_fgi_marker("FGI USAGB")` → `None` (5-byte token rejected
@@ -1261,7 +2128,7 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 ///
 /// # Authority
 ///
-/// CAPCO-2016 §H.7 p123 (FGI banner forms — concealed vs.
+/// CAPCO-2016 §H.7 p122 (FGI banner forms — concealed vs.
 /// acknowledged; trigraph-OR-tetragraph list grammar) + §A.6 p16
 /// ("Multiple FGI trigraph country codes or tetragraph codes must
 /// be separated by a single space"). The country-token predicate's
@@ -1323,9 +2190,32 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
 /// Used as a fallback in the block loop to detect conflict scenarios
 /// (e.g., `SECRET//NATO SECRET//NOFORN`) where a foreign classification
 /// appears alongside a US classification.
+///
+/// # PR 9c.1 T134 — companion drop in conflict scenarios
+///
+/// Post-PR-9c.1, [`parse_nato_classification`] returns a `NatoBlock`
+/// carrying the bare NATO class plus an optional AEA/SCI companion.
+/// In the conflict-scenario fallback (this function), the companion
+/// is **dropped** — the conflict path stores only the foreign
+/// classification axis; there's no `ForeignClassification` carrier
+/// shape for companion AEA/SCI writes. A conflict input like
+/// `SECRET//CTSA//NOFORN` records the foreign class as `CosmicTopSecret`
+/// (the bare class) and loses the implicit ATOMAL companion.
+///
+/// This is acceptable for PR 9c.1 because:
+///   - The conflict shape itself is malformed input (US + foreign
+///     classifications shouldn't both appear), and dedicated rules
+///     surface that condition first.
+///   - The E066 legacy-text autofix reads raw source text via
+///     `attrs.token_spans`, so the legacy-text suggestion still
+///     fires even when the structural companion is dropped here.
+///   - If a future revision requires conflict-aware companion
+///     plumbing, the change is local to `ForeignClassification` +
+///     this function — no rule-surface impact.
 fn try_parse_foreign_classification(s: &str) -> Option<ForeignClassification> {
-    if let Some(nato) = parse_nato_classification(s) {
-        Some(ForeignClassification::Nato(nato))
+    if let Some(nato_block) = parse_nato_classification(s) {
+        // Drop the companion in the conflict path; see fn doc above.
+        Some(ForeignClassification::Nato(nato_block.class))
     } else if let Some(joint) = parse_joint_classification(s) {
         Some(ForeignClassification::Joint(joint))
     } else {
@@ -1590,27 +2480,126 @@ fn is_declass_date(s: &str) -> bool {
     IsmDate::from_str(s).is_ok()
 }
 
-/// Splits `s` on `/` and returns `(offset, trimmed_token)` pairs where
-/// `offset` is the byte offset of the trimmed token within `s`.
+/// `(offset, trimmed_token)` per non-empty slash-separated sub-token.
+type SlashTokens<'a> = SmallVec<[(usize, &'a str); 4]>;
+
+/// Per-`/` byte separator descriptor. Carries the byte span plus
+/// `left_nonempty` / `right_nonempty` flags indicating whether the
+/// trimmed `s.split('/')` part on each side of the slash was non-empty
+/// (i.e., produced an entry in `SlashTokens`). The flags let the
+/// emission site enforce the `TokenKind::Separator` contract: a
+/// Separator span lives between two *committed* same-category tokens.
+/// Empty-boundary slashes — trailing `/`, leading `/`, or a slash
+/// between empty parts — have `false` on at least one side and MUST
+/// NOT emit a Separator (downstream byte-precise splice rules rely on
+/// the invariant; see Copilot R3 fix on PR #416).
+#[derive(Clone, Copy, Debug)]
+struct SlashSeparator {
+    start: usize,
+    end: usize,
+    left_nonempty: bool,
+    right_nonempty: bool,
+}
+
+type SlashSeparators = SmallVec<[SlashSeparator; 4]>;
+
+/// Splits `s` on `/` and returns both the tokens and the separator
+/// positions.
 ///
-/// Used by the multi-token block fallback to handle CAPCO §D.1 blocks like
-/// `"SI/TK"` or `"NF/LIMDIS"` where multiple entries share one `//` block.
-fn split_slash_with_offsets(s: &str) -> SmallVec<[(usize, &str); 4]> {
-    // Inline-4: a multi-token slash block (e.g. `SI/TK`, `NF/LIMDIS`)
-    // typically carries 2-4 sub-tokens; the same scale as the
-    // `results: SmallVec<[SubResult<'_>; 4]>` accumulator at the sole
-    // caller in the multi-token block fallback.
-    let mut result: SmallVec<[(usize, &str); 4]> = SmallVec::new();
+/// Returns a pair of vectors:
+/// - `.0` — `(token_offset, trimmed_token)` per non-empty token.
+/// - `.1` — one [`SlashSeparator`] per `/` byte, carrying the span
+///   `(start, end)` and two `*_nonempty` flags identifying whether the
+///   adjacent trimmed `s.split('/')` parts on each side produced a
+///   committed token. `start` is `slash_offset` minus any ASCII
+///   whitespace immediately preceding the slash (bounded by the end of
+///   the previous emitted token, so the span never crosses into the
+///   previous token's bytes). `end` is `slash_offset + 1` plus any
+///   ASCII whitespace immediately following the slash. The span covers
+///   the `/` plus any whitespace an author drifted into the gap on
+///   either side of the slash.
+///
+/// CAPCO-2016 §A.6 p16 disallows interjected whitespace in SAP-`/` but is
+/// silent for dissem-`/` and SCI-`/`. Spanning adjacent ASCII whitespace
+/// on both sides is engineering tolerance for author drift, NOT a §A.6
+/// rule — it lets downstream rules see a single Separator token that
+/// owns the inter-token byte range whether the author wrote `OC/NF`,
+/// `OC /NF`, `OC/ NF`, or `OC / NF`. The bidirectional coverage is what
+/// makes audit-record byte ranges contiguous: every byte between adjacent
+/// non-empty tokens belongs to exactly one span (token or separator),
+/// with no gaps.
+///
+/// The `*_nonempty` flags on each [`SlashSeparator`] are emission-side
+/// gates: callers MUST drop separators whose either neighbor is empty
+/// (e.g., trailing `OC/`, leading `/OC`, all-empty `//`). Combined with
+/// a same-category check against the emitted token results, this is
+/// what enforces the Separator-between-two-committed-same-category-
+/// tokens contract.
+fn split_slash_with_separator_offsets(s: &str) -> (SlashTokens<'_>, SlashSeparators) {
+    let mut tokens: SlashTokens<'_> = SmallVec::new();
+    let mut separators: SlashSeparators = SmallVec::new();
+    let bytes = s.as_bytes();
     let mut pos = 0usize;
-    for part in s.split('/') {
+    // Tracks the end byte of the previously emitted non-empty trimmed
+    // token. Bounds the leading-whitespace walk-back of the next
+    // separator so the separator span cannot cross into the previous
+    // token's bytes. Initialized to 0 so the first separator's
+    // walk-back stops at the start of the slice (which is what we want:
+    // any leading whitespace at the very start belongs to neither a
+    // token nor a separator and stays uncovered by design).
+    let mut prev_token_end: usize = 0;
+    // Tracks whether the trimmed part immediately preceding the next
+    // slash was non-empty (i.e., produced a token push). For each
+    // slash, this becomes the `left_nonempty` flag; the right flag is
+    // determined by the next iteration's `trimmed.is_empty()` check
+    // via back-patching.
+    let mut prev_part_nonempty = false;
+    for (i, part) in s.split('/').enumerate() {
+        if i > 0 {
+            // The slash byte sits at index `pos - 1` (we advanced past the
+            // previous part and the `/` separator). Span the slash plus
+            // any ASCII whitespace on both sides, bounded by
+            // `prev_token_end` on the left so the separator never
+            // overlaps the previous emitted token.
+            let slash_pos = pos - 1;
+            let mut slash_start = slash_pos;
+            while slash_start > prev_token_end && bytes[slash_start - 1].is_ascii_whitespace() {
+                slash_start -= 1;
+            }
+            let mut slash_end = slash_pos + 1;
+            while slash_end < bytes.len() && bytes[slash_end].is_ascii_whitespace() {
+                slash_end += 1;
+            }
+            // `left_nonempty` is decided now (it's the prior part's
+            // status). `right_nonempty` is back-patched after we
+            // classify the current part below.
+            separators.push(SlashSeparator {
+                start: slash_start,
+                end: slash_end,
+                left_nonempty: prev_part_nonempty,
+                right_nonempty: false, // filled in below
+            });
+        }
         let trim_lead = part.len() - part.trim_start().len();
         let trimmed = part.trim();
-        if !trimmed.is_empty() {
-            result.push((pos + trim_lead, trimmed));
+        let part_nonempty = !trimmed.is_empty();
+        if part_nonempty {
+            let token_start = pos + trim_lead;
+            tokens.push((token_start, trimmed));
+            prev_token_end = token_start + trimmed.len();
         }
+        // Back-patch the just-pushed separator's `right_nonempty` with
+        // the current part's status. The first iteration (i == 0)
+        // pushes no separator, so there's nothing to patch.
+        if i > 0 {
+            if let Some(sep) = separators.last_mut() {
+                sep.right_nonempty = part_nonempty;
+            }
+        }
+        prev_part_nonempty = part_nonempty;
         pos += part.len() + 1; // +1 for the `/` separator
     }
-    result
+    (tokens, separators)
 }
 
 // ===========================================================================
@@ -1699,9 +2688,23 @@ fn parse_sar_category(
 
     // Split the remainder on `/` into program chunks. Each chunk is a
     // `PROGRAM` production: `PROG_ID` optionally followed by `-COMPARTMENT`.
+    //
+    // Emit a `TokenKind::Separator` span (text = `"/"`) for each within-
+    // category `/` byte (T131 / issue #106). The SAR variant is strict:
+    // CAPCO-2016 §A.6 p16 forbids interjected whitespace in SAP-`/`, so
+    // the separator span is always exactly the single `/` byte — no
+    // adjacent-whitespace tolerance like the dissem/SCI multi-token path.
     let mut chunk_offset = rest_offset; // offset within block_text
     for (i, prog_chunk) in rest.split('/').enumerate() {
         if i > 0 {
+            // The `/` byte we just consumed sits at `chunk_offset` (in
+            // `block_text` coordinates). Record it before bumping past.
+            let slash_abs = base + chunk_offset;
+            spans.push(TokenSpan {
+                kind: TokenKind::Separator,
+                span: Span::new(slash_abs, slash_abs + 1),
+                text: "/".into(),
+            });
             chunk_offset += 1; // account for the `/` just consumed
         }
         let program_base = base + chunk_offset;
@@ -1909,8 +2912,8 @@ mod tests {
 
     /// Test-helper output: a [`ParsedMarking`] post-`from_parsed_unchecked`,
     /// so existing assertions on the typed `attrs.classification` /
-    /// `attrs.dissem_controls` shape continue to work without per-test
-    /// edits during the PR 3a rename.
+    /// `attrs.dissem_us` / `attrs.dissem_nato` shape continue to work
+    /// without per-test edits during the PR 3a rename.
     ///
     /// Test-fixture carve-out per Constitution V Principle V — the
     /// adapter is invoked here only to construct test inputs whose
@@ -2256,64 +3259,211 @@ mod tests {
     // Non-US classification parsing
     // -----------------------------------------------------------------------
 
+    /// What companion writes a NATO block should produce alongside
+    /// the bare classification. Mirrors the parser's `NatoCompanion`
+    /// enum without re-exporting it from the parser module.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ExpectedCompanion {
+        None,
+        Atomal,
+        Balk,
+        Bohemia,
+    }
+
+    fn assert_nato_companion(parsed: &CanonicalParsed, expected: ExpectedCompanion) {
+        use marque_ism::{AeaMarking, NatoSap, SciControlSystem};
+        let aea_atomal = parsed
+            .attrs
+            .aea_markings
+            .iter()
+            .any(|a| matches!(a, AeaMarking::Atomal(_)));
+        let sci_balk = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Balk)));
+        let sci_bohemia = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Bohemia)));
+        match expected {
+            ExpectedCompanion::None => {
+                assert!(!aea_atomal, "did not expect AEA ATOMAL companion");
+                assert!(!sci_balk, "did not expect SCI BALK companion");
+                assert!(!sci_bohemia, "did not expect SCI BOHEMIA companion");
+            }
+            ExpectedCompanion::Atomal => {
+                assert!(aea_atomal, "expected AEA ATOMAL companion to be written");
+            }
+            ExpectedCompanion::Balk => {
+                assert!(sci_balk, "expected SCI BALK companion to be written");
+            }
+            ExpectedCompanion::Bohemia => {
+                assert!(sci_bohemia, "expected SCI BOHEMIA companion to be written");
+            }
+        }
+    }
+
+    /// PR 9c.1 T134: legacy compound NATO classification text (e.g.,
+    /// `COSMIC TOP SECRET ATOMAL`) is canonicalized at parse time to
+    /// bare class + companion AEA/SCI write per CAPCO-2016 §H.7 p122 +
+    /// §G.2 p40 + §H.7 p127. The class axis carries only the bare
+    /// `NatoClassification::CosmicTopSecret` / `NatoSecret` /
+    /// `NatoConfidential` form; the marking-specific concern (ATOMAL,
+    /// BALK, BOHEMIA) lives on its grammar-correct axis.
     #[test]
     fn nato_banner_parses_all_variants() {
-        for (input, expected) in [
-            ("//NATO UNCLASSIFIED", NatoClassification::NatoUnclassified),
-            ("//NATO RESTRICTED", NatoClassification::NatoRestricted),
-            ("//NATO CONFIDENTIAL", NatoClassification::NatoConfidential),
+        for (input, expected_class, expected_companion) in [
+            (
+                "//NATO UNCLASSIFIED",
+                NatoClassification::NatoUnclassified,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO RESTRICTED",
+                NatoClassification::NatoRestricted,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO CONFIDENTIAL",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::None,
+            ),
             (
                 "//NATO CONFIDENTIAL ATOMAL",
-                NatoClassification::NatoConfidentialAtomal,
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
             ),
-            ("//NATO SECRET", NatoClassification::NatoSecret),
-            ("//NATO SECRET ATOMAL", NatoClassification::NatoSecretAtomal),
-            ("//COSMIC TOP SECRET", NatoClassification::CosmicTopSecret),
+            (
+                "//NATO SECRET",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "//NATO SECRET ATOMAL",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "//COSMIC TOP SECRET",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::None,
+            ),
             (
                 "//COSMIC TOP SECRET ATOMAL",
-                NatoClassification::CosmicTopSecretAtomal,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
             ),
             (
                 "//COSMIC TOP SECRET-BOHEMIA",
-                NatoClassification::CosmicTopSecretBohemia,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Bohemia,
             ),
             (
                 "//COSMIC TOP SECRET-BALK",
-                NatoClassification::CosmicTopSecretBalk,
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Balk,
             ),
         ] {
             let parsed = parse_banner(input);
             assert_eq!(
                 parsed.attrs.classification,
-                Some(MarkingClassification::Nato(expected)),
-                "failed for banner: {input}"
+                Some(MarkingClassification::Nato(expected_class)),
+                "failed bare-class for banner: {input}"
             );
+            assert_nato_companion(&parsed, expected_companion);
         }
     }
 
+    /// PR 9c.1 T134: portion-form legacy compounds (`CTSA`, `CTS-A`,
+    /// `CTS-B`, `CTS-BALK`, `NSAT`, `NS-A`, `NCA`, `NC-A`) canonicalize
+    /// to bare class + companion AEA/SCI per CAPCO-2016 §G.1 Table 4
+    /// p38 (portion-form column) + §G.2 p40 (Table 5: ARH by Registered
+    /// Marking — ATOMAL/BOHEMIA/BALK as registered control markings) +
+    /// §H.7 p122 (ATOMAL worked example) + §H.7 p127 (BOHEMIA worked
+    /// example in SCI block position).
+    ///
+    /// Marque's E066 autofix rule emits the canonical multi-block form
+    /// as a Recanonicalize fix; the parser canonicalizes the data shape
+    /// so rules consuming `attrs.{classification,aea_markings,sci_markings}`
+    /// see the structural truth.
     #[test]
     fn nato_portion_parses_all_variants() {
-        for (input, expected) in [
-            ("(//NU)", NatoClassification::NatoUnclassified),
-            ("(//NR)", NatoClassification::NatoRestricted),
-            ("(//NC)", NatoClassification::NatoConfidential),
-            ("(//NCA)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NC-A)", NatoClassification::NatoConfidentialAtomal),
-            ("(//NS)", NatoClassification::NatoSecret),
-            ("(//NSAT)", NatoClassification::NatoSecretAtomal),
-            ("(//NS-A)", NatoClassification::NatoSecretAtomal),
-            ("(//CTS)", NatoClassification::CosmicTopSecret),
-            ("(//CTSA)", NatoClassification::CosmicTopSecretAtomal),
-            ("(//CTS-A)", NatoClassification::CosmicTopSecretAtomal),
-            ("(//CTS-B)", NatoClassification::CosmicTopSecretBohemia),
-            ("(//CTS-BALK)", NatoClassification::CosmicTopSecretBalk),
+        for (input, expected_class, expected_companion) in [
+            (
+                "(//NU)",
+                NatoClassification::NatoUnclassified,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NR)",
+                NatoClassification::NatoRestricted,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NC)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NCA)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NC-A)",
+                NatoClassification::NatoConfidential,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NS)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//NSAT)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//NS-A)",
+                NatoClassification::NatoSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::None,
+            ),
+            (
+                "(//CTSA)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS-A)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Atomal,
+            ),
+            (
+                "(//CTS-B)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Bohemia,
+            ),
+            (
+                "(//CTS-BALK)",
+                NatoClassification::CosmicTopSecret,
+                ExpectedCompanion::Balk,
+            ),
         ] {
             let parsed = parse_portion(input);
             assert_eq!(
                 parsed.attrs.classification,
-                Some(MarkingClassification::Nato(expected)),
-                "failed for portion: {input}"
+                Some(MarkingClassification::Nato(expected_class)),
+                "failed bare-class for portion: {input}"
             );
+            assert_nato_companion(&parsed, expected_companion);
         }
     }
 
@@ -2497,7 +3647,7 @@ mod tests {
             .fgi_marker
             .as_ref()
             .expect("should have FGI marker");
-        // CAPCO §H.7 p123: bare `FGI` is the lawful source-concealed
+        // CAPCO §H.7 p122: bare `FGI` is the lawful source-concealed
         // banner form, distinct from a parser failure.
         assert!(matches!(marker, FgiMarker::SourceConcealed));
     }
@@ -2506,7 +3656,7 @@ mod tests {
     //
     // GH #280 retired the transitional `unwrap_or(SourceConcealed)`
     // fallback. These tests pin the three lawful cases per CAPCO-2016
-    // §H.7 p123 (the only two banner forms — concealed `FGI` and
+    // §H.7 p122 (the only two banner forms — concealed `FGI` and
     // acknowledged `FGI [LIST]`) plus the negative cases that map to
     // `None`. The parser is invoked via `parse_banner` here to
     // exercise the same call site (`crates/core/src/parser.rs:345`)
@@ -2542,7 +3692,7 @@ mod tests {
         // transitional behavior would have silently dropped the
         // token, producing an empty country list and falling back to
         // `SourceConcealed`. Post-T088: the parser returns `None`,
-        // so `attrs.fgi_marker` is unset (CAPCO §H.7 p123 disallows
+        // so `attrs.fgi_marker` is unset (CAPCO §H.7 p122 disallows
         // a degraded lawful form on shape failure).
         let parsed = parse_banner("SECRET//FGI deu//NOFORN");
         assert!(
@@ -2554,7 +3704,7 @@ mod tests {
 
     #[test]
     fn fgi_marker_tetragraph_admits_per_capco_h7() {
-        // CAPCO-2016 §H.7 p123 spells out the canonical example:
+        // CAPCO-2016 §H.7 p122 spells out the canonical example:
         // `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`
         // — `NATO` is a 4-letter Annex A tetragraph admitted in the
         // same FGI list as the trigraphs. The PR #311 review caught
@@ -2567,7 +3717,7 @@ mod tests {
             .attrs
             .fgi_marker
             .as_ref()
-            .expect("FGI USA NATO admits per §H.7 p123");
+            .expect("FGI USA NATO admits per §H.7 p122");
         match marker {
             FgiMarker::Acknowledged { countries, .. } => {
                 assert_eq!(countries.len(), 2);
@@ -2646,7 +3796,7 @@ mod tests {
         // Case 3: lowercase token → None (FR-016 closure)
         assert!(parse_fgi_marker("FGI deu").is_none());
 
-        // Case 2 (mixed shapes per §H.7 p123): trigraph + tetragraph
+        // Case 2 (mixed shapes per §H.7 p122): trigraph + tetragraph
         // → Some(Acknowledged) with both countries. PR #311 review
         // caught the prior trigraph-only narrowing; post-fix
         // admission accepts the spec-canonical example.
@@ -2814,7 +3964,7 @@ mod tests {
     fn non_ic_dissem_not_confused_with_ic_dissem() {
         // SSI should be non-IC, not IC.
         let parsed = parse_portion("(U//SSI)");
-        assert!(parsed.attrs.dissem_controls.is_empty());
+        assert_eq!(parsed.attrs.dissem_iter().count(), 0);
         assert_eq!(parsed.attrs.non_ic_dissem.len(), 1);
         assert_eq!(parsed.attrs.non_ic_dissem[0], NonIcDissem::Ssi);
     }
@@ -2823,7 +3973,7 @@ mod tests {
     fn non_ic_dissem_alongside_ic_dissem() {
         // Classified portion with both IC and non-IC dissem.
         let parsed = parse_portion("(C//NF//DS)");
-        assert_eq!(parsed.attrs.dissem_controls.len(), 1); // NF
+        assert_eq!(parsed.attrs.dissem_iter().count(), 1); // NF
         assert_eq!(parsed.attrs.non_ic_dissem.len(), 1); // DS = LIMDIS
     }
 
@@ -2990,7 +4140,9 @@ mod tests {
         // Dissem controls can also share a block: "NF/RD" in one // block.
         use marque_ism::DissemControl;
         let parsed = parse_banner("SECRET//SI//NF/RELIDO");
-        let dissem: Vec<DissemControl> = parsed.attrs.dissem_controls.to_vec();
+        // US-classified marking → all dissems attributed to dissem_us
+        // per CAPCO-2016 p41 reciprocity (PR 9b / FR-046).
+        let dissem: Vec<DissemControl> = parsed.attrs.dissem_iter().copied().collect();
         assert!(dissem.contains(&DissemControl::Nf), "must contain NF");
         assert!(
             dissem.contains(&DissemControl::Relido),
@@ -3352,6 +4504,348 @@ mod tests {
     #[test]
     fn is_declass_date_rejects_day_zero() {
         assert!(!is_declass_date("20030100")); // day 0 is impossible
+    }
+
+    // -------------------------------------------------------------------
+    // T135a — deprecated SCI long-form recognition (issue #307 Group D).
+    //
+    // The recognizer accepts the deprecated long forms (HUMINT, COMINT,
+    // SPECIAL INTELLIGENCE, ECI <COMP>, EL <COMP>, KDK-<COMP>,
+    // KLONDIKE-<COMP>, etc.) as their canonical SCI category internally
+    // while preserving source bytes verbatim in `TokenSpan.text`. The
+    // Commit 3 walker rule (E065) consumes the preserved text to emit
+    // canonicalization fixes.
+    //
+    // Authority: CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn humint_bare_recognized_as_hcs_with_source_preserved() {
+        // §H.4 p62 — HUMINT is the legacy long form for HCS.
+        let parsed = parse_banner("TOP SECRET//HUMINT//NOFORN");
+        assert!(
+            parsed.attrs.sci_controls.contains(&SciControl::Hcs),
+            "HUMINT must map to SciControl::Hcs internally; sci_controls = {:?}",
+            parsed.attrs.sci_controls
+        );
+        let humint_span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "HUMINT")
+            .expect("source bytes must be preserved verbatim in a TokenSpan");
+        assert_eq!(humint_span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn humint_control_system_recognized_as_hcs() {
+        // §H.4 p62 — HUMINT CONTROL SYSTEM is the spelled-out form.
+        let parsed = parse_banner("TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Hcs));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "HUMINT CONTROL SYSTEM")
+            .expect("multi-word phrase preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn comint_recognized_as_si() {
+        // §H.4 p74 — "The COMINT title for the Special Intelligence (SI)
+        // control system is no longer valid".
+        let parsed = parse_banner("TOP SECRET//COMINT//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Si));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "COMINT")
+            .expect("COMINT preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn special_intelligence_recognized_as_si() {
+        let parsed = parse_banner("TOP SECRET//SPECIAL INTELLIGENCE//NOFORN");
+        assert!(parsed.attrs.sci_controls.contains(&SciControl::Si));
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "SPECIAL INTELLIGENCE")
+            .expect("SPECIAL INTELLIGENCE preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn eci_with_compartment_maps_to_si_compartment() {
+        // §H.4 p76 — "information formerly marked TS//SI-ECI ABC must
+        // now be marked TS//SI-ABC".
+        let parsed = parse_banner("TOP SECRET//ECI ABC//NOFORN");
+        // Compound form: canonical_enum may or may not resolve depending
+        // on whether `SI-ABC` is a published CVE entry. The structural
+        // SciMarking must carry the compartment regardless.
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for ECI ABC");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(marking.compartments.len(), 1);
+        assert_eq!(&*marking.compartments[0].identifier, "ABC");
+        // Source bytes preserved.
+        let span = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .find(|t| &*t.text == "ECI ABC")
+            .expect("ECI compound form preserved verbatim");
+        assert_eq!(span.kind, TokenKind::SciControl);
+    }
+
+    #[test]
+    fn bare_eci_recognized_as_si_no_compartment() {
+        // Bare ECI (no compartment) is recognized so the walker can
+        // emit a suggest-only diagnostic asking the author to contact
+        // the originator for the compartment context.
+        let parsed = parse_banner("TOP SECRET//ECI//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for bare ECI");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(marking.compartments.len(), 0);
+    }
+
+    #[test]
+    fn el_ecru_maps_to_si_with_ecru_compartment() {
+        // §H.4 p78 — "the EL control system is being retired and all
+        // associated compartments moved to the SI control system".
+        // The structural form is SI + compartment ECRU. The textual
+        // CAPCO canonical is `SI-ECRU` per §H.4 p78 prose, but the
+        // ODNI CVE catalog publishes only `SI-EU` (the 5-char abbreviated
+        // banner-abbreviation form per §H.4 p78), so `canonical_enum`
+        // resolves to None here — the walker emits the fix using the
+        // textual canonical (`SI-ECRU`), not the CVE abbreviation.
+        let parsed = parse_banner("TOP SECRET//EL ECRU//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for EL ECRU");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "ECRU");
+    }
+
+    #[test]
+    fn endseal_with_compartment_maps_to_si() {
+        let parsed = parse_banner("TOP SECRET//ENDSEAL ECRU//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for ENDSEAL ECRU");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Si)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "ECRU");
+    }
+
+    #[test]
+    fn kdk_bluefish_maps_to_tk_blfh() {
+        // §H.4 p85 (NSG PM 3802 closure) — "re-mark the new document
+        // and associated portions according to the instructions in the
+        // TK-BLFH, TK-IDIT, and TK-KAND marking templates".
+        //
+        // CRITICAL: pre-T135a, KDK-BLUEFISH would have routed through
+        // `parse_sci_block` as `SciControlSystem::Custom("KDK")` with
+        // compartment `BLUEFISH` because `KDK` is a 3-letter custom-
+        // control shape match. The new recognizer must fire FIRST to
+        // route it to SciControlBare::Tk + compartment "BLUEFISH".
+        let parsed = parse_banner("TOP SECRET//KDK-BLUEFISH//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for KDK-BLUEFISH");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk),
+            "KDK-BLUEFISH must map to TK, not Custom(\"KDK\")"
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "BLUEFISH");
+    }
+
+    #[test]
+    fn klondike_iditarod_maps_to_tk() {
+        let parsed = parse_banner("TOP SECRET//KLONDIKE-IDITAROD//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for KLONDIKE-IDITAROD");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk)
+        );
+        assert_eq!(&*marking.compartments[0].identifier, "IDITAROD");
+    }
+
+    #[test]
+    fn bare_kdk_recognized_as_tk_no_compartment() {
+        // Bare KDK (compartment context missing) is recognized so the
+        // walker can emit a suggest-only diagnostic.
+        let parsed = parse_banner("TOP SECRET//KDK//NOFORN");
+        let marking = parsed
+            .attrs
+            .sci_markings
+            .iter()
+            .next()
+            .expect("SciMarking emitted for bare KDK");
+        assert_eq!(
+            marking.system,
+            SciControlSystem::Published(SciControlBare::Tk)
+        );
+        assert_eq!(marking.compartments.len(), 0);
+    }
+
+    // -------------------------------------------------------------------
+    // T135a Commit 5 — EYES / EYES ONLY compound block recognition
+    // (issue #307). CAPCO-2016 §H.8 p157.
+    //
+    // The recognizer accepts `<TRIGRAPH>(/<TRIGRAPH>)* EYES [ONLY]` as
+    // a single block-token in the dissem axis, populating
+    // `DissemControl::Eyes` and preserving source bytes verbatim in
+    // `TokenSpan.text`. Without this recognizer the multi-token block
+    // handler splits on `/` and emits each trigraph as Unknown.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn eyes_only_compound_block_recognized() {
+        // §H.8 p157 — EYES ONLY block with Five Eyes trigraph list.
+        // Pre-T135a Commit 5 this would be a 3-token Unknown soup;
+        // now it lands as a single DissemControl::Eyes block with
+        // source bytes preserved verbatim.
+        let parsed = parse_portion("(S//USA/GBR/CAN EYES ONLY)");
+        let eyes_tokens: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl && &*t.text == "USA/GBR/CAN EYES ONLY")
+            .collect();
+        assert_eq!(
+            eyes_tokens.len(),
+            1,
+            "exactly one DissemControl token preserving the source-bytes block expected"
+        );
+
+        // Dissem axis carries EYES. US-classified portion attributes
+        // dissem to dissem_us per CAPCO-2016 p41 (PR 9b / FR-046).
+        assert!(
+            parsed
+                .attrs
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Eyes),
+            "DissemControl::Eyes must be populated"
+        );
+
+        // No Unknown tokens — the recognizer succeeded.
+        let unknowns: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            .collect();
+        assert!(
+            unknowns.is_empty(),
+            "no Unknown tokens expected; got {:?}",
+            unknowns.iter().map(|t| &*t.text).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn eyes_only_short_form_recognized() {
+        // `EYES` without `ONLY` is also accepted per §H.8 p157.
+        let parsed = parse_portion("(S//USA/GBR EYES)");
+        let eyes_tokens: Vec<&TokenSpan> = parsed
+            .attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::DissemControl && &*t.text == "USA/GBR EYES")
+            .collect();
+        assert_eq!(eyes_tokens.len(), 1);
+        assert!(
+            parsed
+                .attrs
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Eyes)
+        );
+    }
+
+    #[test]
+    fn eyes_only_bare_block_unaffected() {
+        // `EYES` alone (no trigraph list) is the bare CVE dissem-token
+        // case; it flows through `DissemControl::parse` unchanged.
+        // This regression guard catches a stray recognizer match.
+        let parsed = parse_portion("(S//EYES)");
+        assert!(
+            parsed
+                .attrs
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Eyes),
+            "bare EYES must parse as DissemControl::Eyes via the CVE path"
+        );
+    }
+
+    #[test]
+    fn source_bytes_preserved_for_all_long_forms() {
+        // Regression guard: the parser must NEVER rewrite the user's
+        // input. Every recognized deprecated long form must carry its
+        // original source bytes verbatim in `TokenSpan.text`. The
+        // walker rule (Commit 3) uses these bytes to emit the
+        // canonicalization fix.
+        for input in [
+            "TOP SECRET//HUMINT//NOFORN",
+            "TOP SECRET//HUMINT CONTROL SYSTEM//NOFORN",
+            "TOP SECRET//COMINT//NOFORN",
+            "TOP SECRET//SPECIAL INTELLIGENCE//NOFORN",
+            "TOP SECRET//ECI ABC//NOFORN",
+            "TOP SECRET//EXCEPTIONALLY CONTROLLED INFORMATION ABC//NOFORN",
+            "TOP SECRET//EL ECRU//NOFORN",
+            "TOP SECRET//ENDSEAL ECRU//NOFORN",
+            "TOP SECRET//KDK-BLUEFISH//NOFORN",
+            "TOP SECRET//KLONDIKE-IDITAROD//NOFORN",
+        ] {
+            let parsed = parse_banner(input);
+            // The first `//` after TOP SECRET, then the long-form block.
+            let want = input
+                .strip_prefix("TOP SECRET//")
+                .and_then(|s| s.strip_suffix("//NOFORN"))
+                .unwrap();
+            assert!(
+                parsed.attrs.token_spans.iter().any(|t| &*t.text == want),
+                "{input:?}: source bytes {want:?} must appear verbatim in token_spans"
+            );
+        }
     }
 }
 
@@ -3769,8 +5263,8 @@ mod sar_parse_tests {
         assert!(
             parsed
                 .attrs
-                .dissem_controls
-                .contains(&marque_ism::DissemControl::Nf),
+                .dissem_iter()
+                .any(|d| d == &marque_ism::DissemControl::Nf),
             "NOFORN must still be recognized after the SAR block"
         );
     }
