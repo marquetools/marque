@@ -191,9 +191,20 @@ fn w004_fires_on_joint_disunity_banner() {
     );
     let w004 = w004.unwrap();
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
+    // H-6 (PR 4b-B follow-up): the assertion message claims "must
+    // reference both §H.3 p56 and §H.7 p123" but the pre-fix
+    // condition used `||` — passing if either substring was present.
+    // The W004 rule's emitted citation is literally
+    // `"CAPCO-2016 §H.3 p56 + §H.7 p123"` (see rules.rs:5027) so
+    // both substrings must be present; switch to `&&` to enforce
+    // what the message already promises. §H.3 p56 (JOINT roll-up)
+    // and §H.7 p123 (FGI source-acknowledged transmutation) both
+    // ground the W004 transformation; dropping either would break
+    // the cross-axis story Constitution VIII expects to survive
+    // review.
     assert!(
-        w004.citation.contains("§H.3 p56") || w004.citation.contains("§H.7 p123"),
-        "W004 citation must reference §H.3 p56 + §H.7 p123: {:?}",
+        w004.citation.contains("§H.3 p56") && w004.citation.contains("§H.7 p123"),
+        "W004 citation must reference both §H.3 p56 AND §H.7 p123: {:?}",
         w004.citation
     );
 }

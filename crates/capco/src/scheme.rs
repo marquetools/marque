@@ -289,11 +289,15 @@ impl CapcoMarking {
     /// `Lattice::join` impl (which still delegates to `PageContext`).
     /// The parity-gate test
     /// `crates/capco/tests/page_context_lattice_parity.rs` (Commit 8)
-    /// proves byte-identity between the two paths on 23 synthetic
-    /// fixtures with three documented divergences (M-4 PR 4b-B
-    /// follow-up: corpus-fixture coverage deferred to PR 4b-D, when
-    /// `CapcoScheme::project(Scope::Page, ...)` flips to use this
-    /// path).
+    /// proves byte-identity between the two paths across 32 synthetic
+    /// fixtures with six+ documented divergences (M-8 PR 4b-B
+    /// follow-up: G-1 FOUO-classified, G-2 AEA-UCNI-classified, G-3
+    /// pure-NATO, G-3' mixed-US-plus-NATO, G-4 JOINT-unanimous-no-
+    /// double-FGI-mark, G-5 explicit-FGI-marker-merges-with-derived,
+    /// plus the relido-plus-noforn-dominates fixture from the
+    /// earlier round). Corpus-fixture coverage is deferred to PR
+    /// 4b-D when `CapcoScheme::project(Scope::Page, ...)` flips to
+    /// use this path.
     ///
     /// **Two residues** preserved from PageContext for one more PR:
     ///

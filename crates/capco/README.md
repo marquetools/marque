@@ -31,10 +31,10 @@ Per-category lattice types live in `marque_capco::lattice` and round-trip with t
 
 - `ClassificationLattice` — bounded OrdMax over the US chain with variant-preservation; §H.1 pp47-54 + §H.7 pp123-125.
 - `NatoClassLattice` — bounded OrdMax over NU<NR<NC<NS<CTS; §H.2 p55.
-- `JointSet` — three-variant state with producer-disunity collapse; §H.3 p56 + §H.7 p123.
+- `JointSet` — four-variant state (`Bottom` / `UnanimousProducers` / `DisunityCollapse` / `Mixed`) with producer-disunity collapse and a `Mixed` absorbing state for JOINT+non-JOINT pages per §H.3 p57; §H.3 p56 + §H.7 p123.
 - `DissemSet` — single-bag IC dissem with three overlays (OC-USGOV supersession, RELIDO observed-unanimity, NOFORN dominates); §H.8 p136/p140/p145/pp155-156 + §D.2 Table 3.
 - `NatoDissemSet` — trivial union over NATO-attributed dissem; CAPCO p41 reciprocity.
-- `RelToBlock` — three-variant IntersectSet with NOFORN supersession + tetragraph expansion; §H.8 pp150-151 + §D.2 Table 3 rows 9-13 + §H.9 p172/p174.
+- `RelToBlock` — four-variant IntersectSet (`Bottom` / `Lattice{countries}` / `Empty` / `NofornSuperseded`) with NOFORN supersession + tetragraph expansion. `Empty` absorbs non-Bottom operands on empty intersection (§D.2 Table 3 row 9 — the post-projection pipeline injects NOFORN via `capco/noforn-clears-rel-to`); §H.8 pp150-151 + §D.2 Table 3 rows 9-13 + §H.9 p172/p174.
 - `DeclassifyOnLattice` — MaxDate semilattice (no top); §H.6 p104.
 - `SciSet` / `SarSet` / `FgiSet` / `AeaSet` — PR 4b-A precedent (per-category Lattice impls over their structural storage types).
 

@@ -1041,12 +1041,19 @@ impl Lattice for AeaSet {
 /// tie-break on equal level.
 ///
 /// The classification axis is structurally a bounded total order:
-/// `Unclassified < Confidential < Secret < TopSecret` per
-/// CAPCO-2016 §H.1 pp47-54. Foreign classifications normalize to the
-/// US chain at portion-parse time via §H.7 pp123-125's reciprocal-
-/// classification rule (`MarkingClassification::effective_level()`),
-/// so cross-branch joins do not arise in the lattice — the lattice
-/// always sees a US-chain level.
+/// `Unclassified < Restricted < Confidential < Secret < TopSecret`
+/// per CAPCO-2016 §H.1 pp47-54 (US-domestic levels) and §H.2 p55 /
+/// `NatoClassification::us_equivalent()` (NATO `NR` maps to
+/// `Restricted` in the foreign-interop tier between U and C). M-7
+/// (PR 4b-B follow-up): the chain is five elements, not four —
+/// `Restricted` survives as a foreign-interop tier for portions
+/// that carry NATO `NR` or an FGI source whose foreign system has
+/// a RESTRICTED level (`FgiClassification.level = Restricted`).
+/// Foreign classifications normalize to the US chain at portion-
+/// parse time via §H.7 pp123-125's reciprocal-classification rule
+/// (`MarkingClassification::effective_level()`), so cross-branch
+/// joins do not arise in the lattice — the lattice always sees a
+/// US-chain level.
 ///
 /// **Variant preservation.** Naive `OrdMax` over `effective_level()`
 /// would lose `Nato` / `Fgi` / `Joint` / `Conflict` variant tags. The
@@ -1083,8 +1090,9 @@ impl Lattice for AeaSet {
 /// foreign-variant rank (Fgi < Nato < Joint).
 ///
 /// `BoundedLattice` is implemented: top = `Some(Us(TopSecret))`,
-/// bottom = `None`. The class chain is closed at four elements; no
-/// agency-extensibility concern.
+/// bottom = `None`. The class chain is closed at five elements
+/// (`Unclassified < Restricted < Confidential < Secret < TopSecret`,
+/// M-7 PR 4b-B follow-up); no agency-extensibility concern.
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - §H.1 pp47-54 (US class chain).
@@ -1566,9 +1574,15 @@ impl Lattice for DeclassifyOnLattice {
 /// Table 3 (p28) FD&R precedence rules + §H.8 NOFORN supersession,
 /// expressed structurally rather than as branches.
 ///
-/// `DissemSet::join`'s `debug_assert!` pointer-equality check (rust-
-/// reviewer Gotcha 2) confirms every constructor and join uses **this
-/// exact table** — no ad-hoc copies in test code.
+/// The single-static-table convention (M-14 PR 4b-B follow-up) is
+/// enforced by the crate-private `apply_overlays` API taking
+/// `DISSEM_SUPERSESSION_TABLE` directly — the only call site is
+/// inside `marque-capco`, code-review enforces no ad-hoc copies.
+/// An earlier `debug_assert!` pointer-equality check (rust-reviewer
+/// Gotcha 2) was removed in H-4 because it compared the table
+/// pointer to itself (always true, false protection); the `&'static`
+/// reference passed everywhere in this module is the actual
+/// invariant.
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - §D.2 Table 3 rows 1-2 (NOFORN dominates).
@@ -1727,9 +1741,14 @@ impl DissemSet {
         out
     }
 
-    /// Internal: apply the three supersession overlays in order. The
-    /// `table` parameter MUST be `DISSEM_SUPERSESSION_TABLE` in
-    /// production; the `debug_assert!` in `join` pins this.
+    /// Internal: apply the three supersession overlays in order.
+    /// The `table` parameter MUST be `DISSEM_SUPERSESSION_TABLE`
+    /// in production (M-14 PR 4b-B follow-up — the `debug_assert!`
+    /// pointer-equality "Gotcha 2" check from H-4 was removed
+    /// because it compared the table to itself; the single-static-
+    /// table convention is enforced by `apply_overlays` being
+    /// crate-private with `DISSEM_SUPERSESSION_TABLE` as the only
+    /// in-tree caller).
     fn apply_overlays(&mut self, table: &'static [(DissemControl, DissemControl)]) {
         // Overlay 1: OC-USGOV supersession (§H.8 p136 + p140).
         if self.set.contains(&DissemControl::Oc) && self.set.contains(&DissemControl::OcUsgov) {

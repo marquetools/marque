@@ -2002,11 +2002,14 @@ by combining the two passages — when JOINT producer lists disagree
 across portions, JOINT does not roll up to banner; the non-US
 producers ride to FGI [LIST] per §H.7 p123.
 
-**State space** (three-variant `JointSet`):
+**State space** (four-variant `JointSet`; C-3 PR 4b-B follow-up
+added the `Mixed` absorbing variant — distinguishing "no JOINT seen"
+(the identity `Bottom`) from "JOINT and non-JOINT both observed"
+(absorbing) so the `join` stays associative):
 
 ```text
 JointSet =
-  | Bottom                                           -- no JOINT portions
+  | Bottom                                           -- no JOINT portions; identity
   | UnanimousProducers { level, producers }          -- every JOINT
                                                      -- portion has the
                                                      -- same producer list
@@ -2014,13 +2017,21 @@ JointSet =
                        union_non_us_producers }      -- disunity observed;
                                                      -- non-US producers
                                                      -- migrate to FGI
+  | Mixed                                            -- at least one JOINT
+                                                     -- AND at least one non-
+                                                     -- JOINT portion; §H.3
+                                                     -- p57: JOINT does not
+                                                     -- roll up. Absorbing
+                                                     -- (non-Bottom operands
+                                                     -- cannot resurrect a
+                                                     -- JOINT roll-up state).
 ```
 
 **Lattice transitions on `join` are deterministic** over the
-three-variant state space:
+four-variant state space:
 
 ```text
-Bottom ⊔ x = x  (bottom-identity, all three rows)
+Bottom ⊔ x = x  (bottom-identity, all four rows)
 
 UnanimousProducers{l1, p1} ⊔ UnanimousProducers{l2, p2}
   = UnanimousProducers{max(l1,l2), p1}      if p1 == p2
@@ -2031,22 +2042,26 @@ UnanimousProducers{l1, p1} ⊔ DisunityCollapse{l2, np2}
 
 DisunityCollapse{l1, np1} ⊔ DisunityCollapse{l2, np2}
   = DisunityCollapse{max(l1,l2), np1 ∪ np2}
+
+Mixed ⊔ x = Mixed   for any non-Bottom x (absorbing per §H.3 p57)
 ```
 
 The transitions satisfy assoc/comm/idem on the state space:
 
 - **Idempotency**: `X ⊔ X = X` (any variant joined with itself; the
   `p1 == p2` branch fires for `UnanimousProducers`, the union is
-  trivial for `DisunityCollapse`, and `Bottom` is identity-preserving).
+  trivial for `DisunityCollapse`, `Bottom` is identity-preserving,
+  and `Mixed` is its own fixed point).
 - **Commutativity**: every transition rule is symmetric in its two
   operands (max is symmetric, set-equality is symmetric, set-union
-  is symmetric).
-- **Associativity**: pairwise enumeration of the 3×3×3 = 27 ordered
-  triples on the three-variant state space gives the same final
+  is symmetric, `Mixed` is absorbing on both sides).
+- **Associativity**: pairwise enumeration of the 4×4×4 = 64 ordered
+  triples on the four-variant state space gives the same final
   variant regardless of grouping, because (a) the `level` axis is
   OrdMax which is associative, (b) once a `DisunityCollapse` enters
-  the chain it absorbs every subsequent operand via the third/fourth
-  rules, and (c) `Bottom` is identity. The property test
+  the chain it absorbs every subsequent operand via the
+  third/fourth rules, (c) `Mixed` is absorbing for non-Bottom
+  operands and (d) `Bottom` is identity. The property test
   `joint_disunity_lattice_laws` in
   `crates/capco/tests/category_lattice_laws.rs` exhausts the state
   space at the cost of a few microseconds at test time.
@@ -2079,9 +2094,12 @@ Banner: SECRET//FGI CAN GBR  -- §H.7 p123 FGI source-acknowledged form
 **Mixed-with-US case** (§H.3 p57 — "the JOINT marking is
 not carried forward to the banner line in US documents"): when only
 *some* portions are JOINT and others are pure US, `from_attrs_iter`
-returns `Bottom`. **W004 does not fire** in this case; the existing
-US-document behavior (JOINT non-US producers ride to `FgiSet` via the
-PageContext-resident `expected_fgi_marker`) is preserved bit-for-bit.
+returns `Mixed` (C-3 PR 4b-B follow-up — pre-C-3 this returned
+`Bottom`, which conflated "no JOINT seen" with "JOINT and non-JOINT
+seen together" and broke associativity). **W004 does not fire** in
+`Mixed`; the existing US-document behavior (JOINT non-US producers
+ride to `FgiSet` via the PageContext-resident `expected_fgi_marker`)
+is preserved bit-for-bit.
 
 **Empty-producer-list defensive shape**: `UnanimousProducers { level,
 producers: ∅ }` is malformed per §H.3 (JOINT requires at least USA + 1
@@ -2097,9 +2115,14 @@ in Commit 5 pins the constructor's defensive normalization.
 **Authority**: §H.8 pp131-168 + §D.2 Table 3 p28 (FD&R precedence) +
 §H.8 p145 (NOFORN dominates).
 
-`DissemSet` storage = `BTreeSet<DissemControl>` + two derived flags
-(`relido_observed_unanimous`, retained for round-trip; `noforn_present`,
-derived). `from_attrs_iter` applies four overlays in deterministic
+`DissemSet` storage = `BTreeSet<DissemControl>` + one flag
+(`relido_observed_unanimous`, retained for round-trip across joins
+so the unanimity bit propagates without re-inspecting source
+portions). M-11 PR 4b-B follow-up: the prose's earlier
+"`noforn_present`, derived" mention was speculative — the
+implementation derives NOFORN presence from `set.contains(&Nf)`
+directly inside `apply_overlays`, never as a separate struct
+field. `from_attrs_iter` applies four overlays in deterministic
 order:
 
 1. Basic union over `attrs.dissem_us`.
@@ -2130,14 +2153,33 @@ in PR 5+ Stage 4.
 + §D.2 Table 3 rows 9-13 (REL TO supersession by NOFORN and disjoint
 LIST → NOFORN) + §H.8 p152 worked example.
 
+**State space** (four-variant; C-2 PR 4b-B follow-up added the
+`Empty` absorbing variant so `join` stays associative — pre-C-2 the
+empty-intersection result re-used `Bottom`, which conflated "no REL
+TO seen" (identity) with "intersected to empty" (absorbing)):
+
 ```text
 RelToBlock =
-  | Bottom                              -- no REL TO portions
-  | NofornSuperseded                    -- some portion has NOFORN /
-                                        -- NODIS / EXDIS
-  | Lattice { countries: BTreeSet<CountryCode> }  -- tetragraph-
-                                                  -- expanded intersection,
-                                                  -- USA-first sort
+  | Bottom                              -- no REL TO portions; identity
+  | Lattice { countries: BTreeSet<CountryCode> }
+                                        -- tetragraph-expanded intersection,
+                                        -- non-empty, USA-first sort
+  | Empty                               -- portions intersected to an
+                                        -- empty set, but no portion
+                                        -- carries NOFORN / NODIS / EXDIS.
+                                        -- §D.2 Table 3 row 9 says
+                                        -- "no-common-LIST → NOFORN" —
+                                        -- the lattice records `Empty`
+                                        -- and the post-projection
+                                        -- pipeline injects NOFORN
+                                        -- (via `capco/noforn-clears-rel-to`).
+                                        -- Absorbing for non-Bottom operands.
+  | NofornSuperseded                    -- some portion has NOFORN,
+                                        -- NODIS, or EXDIS. Sentinel
+                                        -- absorbs and is stronger
+                                        -- than `Empty` (the only state
+                                        -- that triggers NF injection
+                                        -- at the scheme layer).
 ```
 
 `from_attrs_iter`:
@@ -2148,20 +2190,28 @@ RelToBlock =
    {AUS, CAN, GBR, USA}) via the existing
    `marque_ism::lookup_tetragraph_members` table.
 3. Intersect the expanded sets across portions.
-4. Empty intersection → `Bottom`. (§D.2 Table 3 row 9: "no-common-LIST
-   → NOFORN" — the lattice produces `Bottom`; the post-projection
-   pipeline injects NOFORN into `DissemSet` via the existing
-   PageRewrite `capco/noforn-clears-rel-to`. **This is a deliberate
-   split between lattice algebra and post-projection rewrite — the
-   lattice cannot introduce NOFORN into a different axis.**)
+4. Empty intersection → `Empty` (C-2 PR 4b-B follow-up — pre-C-2
+   this returned `Bottom` which broke associativity). The
+   post-projection pipeline injects NOFORN into `DissemSet` via the
+   existing PageRewrite `capco/noforn-clears-rel-to`. **This is a
+   deliberate split between lattice algebra and post-projection
+   rewrite — the lattice cannot introduce NOFORN into a different
+   axis.**
 5. Non-empty intersection → `Lattice { countries }`, USA-first sort.
 
-**Lattice transitions**:
+**Lattice transitions** (post-C-2 four-variant; `Empty ⊔
+NofornSuperseded = NofornSuperseded` because the more conservative
+outcome wins, matching §D.2 Table 3 row 1's "NOFORN dominates"
+precedent):
 
 ```text
-Bottom ⊔ x = x
+Bottom ⊔ x = x                            (Bottom is identity)
 NofornSuperseded ⊔ x = NofornSuperseded   (sentinel absorbs)
-Lattice{a} ⊔ Lattice{b} = Lattice{a ∩ b}  if non-empty, else Bottom
+Empty ⊔ Empty = Empty
+Empty ⊔ Lattice{a} = Empty                (absorbing for non-Bottom)
+Empty ⊔ NofornSuperseded = NofornSuperseded
+Lattice{a} ⊔ Lattice{b} = Lattice{a ∩ b}  if non-empty
+                       = Empty            if empty (no longer Bottom — C-2)
 ```
 
 Tetragraph re-expansion happens at `from_attrs_iter` time, not inside
