@@ -1,12 +1,12 @@
 TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//ORCON/REL TO USA, NATO
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) SC-675822/95
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) SC-675822/95
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) (b)(3)
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) (b)(3)
 
 (//NR//REL TO USA, NATO) The semi-independent journal's detached treatment of the Sector East issue appears to be another indication that Serbian President Milosevic is preparing the Serbian people to lose control of the region to Zagreb through a negotiated settlement or perhaps Croatian military intervention.
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) (b)(3)
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) (b)(3)
 
 (//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO) Bosnian Officials Concerned About Future Serb Entity in Bosnia
 
@@ -28,7 +28,7 @@ TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//ORCON/REL TO USA, NATO
 
 (//NR//REL TO USA, NATO) (b)(1)
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) (b)(3)
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) (b)(3)
 
 (S//REL TO USA, UKR, FVEY, NATO) (b)(1)
 
@@ -38,7 +38,7 @@ TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//ORCON/REL TO USA, NATO
 
 (S//REL TO USA, UKR, FVEY, NATO) all members were concerned that a Russia troop contribution would presumably be deployed on territory controlled by the Bosnian Serbs, which would lead to even closer ties between Russia and the Bosnian Serbs and possibly hamper the eventual integration of Bosnia. They also believed that the Russians would be less likely to report or react appropriately to Serb intransigence toward the central government.
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) (b)(3)
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) (b)(3)
 
 (//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO) Initial Evidence Indicates VMRO-DPMNE Responsible for Gligorov Attack
 
@@ -56,7 +56,7 @@ TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//ORCON/REL TO USA, NATO
 
 TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//ORCON/REL TO USA, NATO
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) SC-675822/95
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) SC-675822/95
 
 (//NR//REL TO USA, NATO) believes that the nationalists planned to assassinate Gligorov in an attempt   
 to force the government to call new presidential elections and put negotiations with   
@@ -85,7 +85,7 @@ radicals.
 
 (S//REL TO USA, UKR, FVEY, NATO) Privately suggested a political umbrella could be created for Russian participation under the auspices of NATO plus one, the Partnership for Peace, or an ad hoc group,
 
-(C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO) (b)(1)
+(C//REL TO USA, JPN, KOR, SWE, FVEY, NATO) (b)(1)
 
 (S//REL TO USA, UKR, FVEY, NATO) (b)(3)
 
