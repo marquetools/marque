@@ -4166,11 +4166,17 @@ fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
     /// ending in a short word + period (`the.`, `for.`, `its.`).
     const ANCHOR_RUN_MAX: usize = 3;
     /// Maximum length of an alpha-only (no digit) run that is NOT
-    /// inside parens/brackets. `a.` and `b.` (1) and `ii.` (2,
-    /// short Roman numeral) pass; bare `the.` (3) does not. Inside
-    /// brackets the longer `(iii)` form is accepted by the alpha
-    /// path via the bracket-context check below.
-    const ANCHOR_ALPHA_BARE_RUN_MAX: usize = 2;
+    /// inside parens/brackets. `a.` / `b.` / `(a)` (1) pass; bare
+    /// `vs.` (2-letter prose abbrev), bare `the.` (3, English
+    /// word), and bare `ii.` / `iv.` (Roman numerals unparenthesized)
+    /// do not. Inside brackets the longer `(ii)` / `(iii)` / `(iv)`
+    /// forms are accepted via the bracket-context check below. The
+    /// trade-off: bare Roman numerals are rejected. IC and legal
+    /// docs overwhelmingly use the parenthesized form, so the
+    /// false-negative is rare and the false-positive class —
+    /// 2-letter prose abbreviations `vs.` / `cf.` / `eg.` —
+    /// is much more common in running text.
+    const ANCHOR_ALPHA_BARE_RUN_MAX: usize = 1;
 
     // Trim ASCII whitespace from both ends. Engine-emitted line
     // prefixes can carry leading indentation (`    * `, `\t- `) and
@@ -4212,10 +4218,15 @@ fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
     //   ANCHOR_ALPHA_BARE_RUN_MAX (2) characters UNLESS the run
     //   sits inside an open bracket — so `(iii)` works but `the.`
     //   does not.
+    // - A body containing separator characters (dot or bracket)
+    //   MUST contain either a digit OR an opening bracket. This
+    //   rejects `e.g.` and `e.g)` — prose abbreviations with
+    //   internal dots — while still accepting `1.2.`, `1B.a.3.`,
+    //   and `(iii)` enumeration patterns.
     //
     // This is what distinguishes `1B.a.3.` (runs of 2, 1, 1, with
     // a digit in the first), `(iii)`, and `(a)` from `prose.`,
-    // `the.`, `Notwithstanding.`.
+    // `the.`, `e.g.`, `Notwithstanding.`.
     if trimmed.len() < 2 {
         return false;
     }
@@ -4223,11 +4234,15 @@ fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
     let mut current_run = 0usize;
     let mut current_run_alpha_only = true;
     let mut bracket_depth: u32 = 0;
+    let mut body_had_opener = false;
+    let mut body_had_digit = false;
+    let mut body_had_separator = false;
     for &b in body {
         if b.is_ascii_alphanumeric() {
             current_run += 1;
             if b.is_ascii_digit() {
                 current_run_alpha_only = false;
+                body_had_digit = true;
             }
             if current_run > ANCHOR_RUN_MAX {
                 return false;
@@ -4239,19 +4254,32 @@ fn looks_like_bullet_anchor(prefix: &[u8]) -> bool {
                 return false;
             }
         } else if matches!(b, b'(' | b'[') {
+            body_had_opener = true;
+            body_had_separator = true;
             bracket_depth = bracket_depth.saturating_add(1);
             current_run = 0;
             current_run_alpha_only = true;
         } else if matches!(b, b')' | b']') {
+            body_had_separator = true;
             bracket_depth = bracket_depth.saturating_sub(1);
             current_run = 0;
             current_run_alpha_only = true;
         } else if b == b'.' {
+            body_had_separator = true;
             current_run = 0;
             current_run_alpha_only = true;
         } else {
             return false;
         }
+    }
+    // A body with internal separators must have either a digit
+    // (numeric enumeration: `1.2.`, `1B.a.3.`) or an opening
+    // bracket (parenthesized enumeration: `(a)`, `(iii)`). A
+    // body with separators but neither is prose with internal
+    // punctuation (`e.g.`, `e.g)`, `i.e.`) and must NOT be
+    // treated as a bullet anchor.
+    if body_had_separator && !body_had_digit && !body_had_opener {
+        return false;
     }
     // Reject empty alphanumeric body (e.g., `()`, `..`). Covered
     // partially by `trimmed.len() < 2` above; this final check
@@ -4288,12 +4316,27 @@ fn candidate_has_lowercase(bytes: &[u8]) -> bool {
 /// a portion (banners/CABs are not subject to these features), or
 /// when the engine did not populate `line_offset` / `line_prefix`
 /// (e.g., direct test-code callers using `ParseContext::default()`).
+/// Maximum number of context features [`compute_context_features`]
+/// can emit per call. Bounded by the function's contract:
+///
+/// - At most one of [`FeatureId::LinePositionPenalty`] /
+///   [`FeatureId::BulletAnchorBonus`] (mutually exclusive).
+/// - At most one of [`FeatureId::LowercaseSurroundingContext`].
+///
+/// Total ≤ 2. The `SmallVec` inline capacity below matches this so
+/// the common case (and every case, today) stays heap-free. A
+/// future third positional feature MUST bump this bound and the
+/// `SmallVec` capacity in lock-step — the const exists so the doc
+/// comment on `compute_context_features` and the storage shape
+/// can't drift independently.
+const CONTEXT_FEATURE_MAX: usize = 2;
+
 fn compute_context_features(
     kind: MarkingType,
     bytes: &[u8],
     cx: &ParseContext,
-) -> SmallVec<[(FeatureId, f32); 2]> {
-    let mut out: SmallVec<[(FeatureId, f32); 2]> = SmallVec::new();
+) -> SmallVec<[(FeatureId, f32); CONTEXT_FEATURE_MAX]> {
+    let mut out: SmallVec<[(FeatureId, f32); CONTEXT_FEATURE_MAX]> = SmallVec::new();
 
     // Position features only apply to portion shapes. Banners and
     // CABs have structural evidence the parser already uses.
@@ -6207,11 +6250,12 @@ mod tests {
         // `posterior >= null_posterior` filter.
         //
         // After PR1: `tests/corpus/documents/marked/` contributes 173
-        // hits for `S`, pushing the marking-side delta to `+1.83`. A
-        // zero-margin filter would let the marking hypothesis win
-        // and re-introduce the SC-003a Federalist `(s)` regression.
-        // The `NULL_HYPOTHESIS_LOG_MARGIN = 2.0` floor (see constant
-        // doc) was tuned to keep `(s)` suppressed at +1.83 while
+        // hits for `S`, pushing the marking-side delta to `+2.21`
+        // (`S`: marking `-3.28`, prose `-5.49`). A zero-margin
+        // filter would let the marking hypothesis win and
+        // re-introduce the SC-003a Federalist `(s)` regression. The
+        // `NULL_HYPOTHESIS_LOG_MARGIN = 2.5` floor (see constant
+        // doc) was tuned to keep `(s)` suppressed at +2.21 while
         // still admitting multi-token candidates whose delta is
         // many times larger.
         //
@@ -6337,6 +6381,35 @@ mod tests {
             "bare unwrapped Roman numeral is rejected (design \
              trade-off: parens-wrapped `(iii)` is supported instead)",
         );
+    }
+
+    #[test]
+    fn looks_like_bullet_anchor_rejects_prose_abbreviations() {
+        // Latin abbreviations like `e.g.` and `i.e.` and prose
+        // tails ending in stray closing punctuation like `e.g)`,
+        // `i.e]` have dotted internal structure but no digit and
+        // no opening bracket — pre-fix they passed the alpha-cap
+        // gate (`e`, `.`, `g` — each run is 1 alpha) and were
+        // treated as enumeration anchors, swinging a portion-shaped
+        // glyph after them by +3.5 log-odds. The fix requires a
+        // separator-bearing body to contain a digit OR an opening
+        // bracket.
+        for prefix in &[
+            b"e.g." as &[u8],
+            b"i.e.",
+            b"e.g) ",
+            b"i.e]",
+            b"i.e. ",
+            b"vs.", // 2-letter abbrev + dot, alpha-cap rejects
+            b"etc.",
+        ] {
+            assert!(
+                !looks_like_bullet_anchor(prefix),
+                "prose abbreviation must NOT be treated as a bullet \
+                 anchor: {:?}",
+                std::str::from_utf8(prefix).unwrap_or("<bytes>"),
+            );
+        }
     }
 
     #[test]

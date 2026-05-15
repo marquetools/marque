@@ -67,18 +67,23 @@ const LOWERCASE_MIN_COUNT: usize = 3;
 fn surrounding_lowercase_majority(source: &[u8], start: usize, end: usize) -> bool {
     // Bounds-safe even when caller hands us a malformed span with
     // `start > source.len()` (e.g., a scanner regression). Every
-    // index expression below is clamped to `source.len()` so the
-    // result on a degenerate span is an empty window → `false`
-    // rather than a panic. This is what allows the caller in
-    // `lint_inner` to invoke us BEFORE its own `candidate.span.start
+    // index expression below is clamped to `source.len()` BEFORE
+    // the slice operation so an inverted range (e.g., `lo_start =
+    // 936` from `start - LOWERCASE_WINDOW_RADIUS` paired with
+    // `source.len() = 100`) is impossible. The result on a
+    // degenerate span is an empty window → `false` rather than a
+    // panic. This is what allows the caller in `lint_inner` to
+    // invoke us BEFORE its own `candidate.span.start
     // .min(source.len())` clamp without re-introducing a possible
     // out-of-bounds index.
-    let lo_start = start.saturating_sub(LOWERCASE_WINDOW_RADIUS);
-    let hi_end = end
+    let start_clamped = start.min(source.len());
+    let end_clamped = end.min(source.len());
+    let lo_start = start_clamped.saturating_sub(LOWERCASE_WINDOW_RADIUS);
+    let hi_end = end_clamped
         .saturating_add(LOWERCASE_WINDOW_RADIUS)
         .min(source.len());
-    let lo_slice = &source[lo_start..start.min(source.len())];
-    let hi_slice = &source[end.min(source.len())..hi_end];
+    let lo_slice = &source[lo_start..start_clamped];
+    let hi_slice = &source[end_clamped..hi_end];
     let mut lowercase = 0usize;
     let mut uppercase = 0usize;
     for &b in lo_slice.iter().chain(hi_slice.iter()) {

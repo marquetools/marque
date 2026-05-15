@@ -229,8 +229,14 @@ impl LinePrefix {
     /// the candidate carry the bullet/anchor signal; leading bytes do
     /// not.
     pub fn from_slice(slice: &[u8]) -> Self {
-        let mut bytes = [0u8; 32];
-        let take = slice.len().min(32);
+        const CAP: usize = 32;
+        let mut bytes = [0u8; CAP];
+        let take = slice.len().min(CAP);
+        // `take as u8` is safe today because `take ≤ CAP = 32 ≤
+        // u8::MAX`. The `debug_assert!` keeps the invariant loud
+        // in dev builds if `CAP` is ever raised past `u8::MAX`
+        // without a coordinated `len` field-type widening.
+        debug_assert!(take <= u8::MAX as usize);
         let src_start = slice.len() - take;
         bytes[..take].copy_from_slice(&slice[src_start..]);
         Self {
