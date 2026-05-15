@@ -1444,6 +1444,17 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
 /// established pattern for "implement `Lattice` + `empty()`/`default()`
 /// for bottom, leave `top()` undefined."
 ///
+/// **Partial-lattice note (C-4 PR 4b-B follow-up).** The
+/// `relido_observed_unanimous` flag is a **join-side aggregation
+/// property** — it tracks whether every portion contributing to the
+/// page's dissem state has RELIDO. `meet` has no natural reading for
+/// this flag, so its result carries the vacuous-true value (the
+/// identity under subsequent AND-joins). This is what makes the
+/// load-bearing absorption law `a ⊔ (a ⊓ b) = a` hold algebraically.
+/// The dual law `a ⊓ (a ⊔ b) = a` does NOT hold over the full
+/// `(set, flag)` pair — `DissemSet` is a join-semilattice with a
+/// structural `meet` provided for completeness on the `set` axis.
+///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - §H.8 p136 (ORCON dominates ORCON-USGOV).
 /// - §H.8 p140 (ORCON-USGOV template same rule).
@@ -1483,7 +1494,18 @@ impl DissemSet {
 
     /// Construct from a slice of `CanonicalAttrs` — joins per-portion
     /// `dissem_us` and applies the supersession overlays.
+    ///
+    /// Empty input returns `Self::empty()` (the lattice bottom)
+    /// exactly — `from_attrs_iter(&[]) == DissemSet::empty()`.
+    /// The vacuous-truth treatment of "every portion carries
+    /// RELIDO over an empty portion list" matches the universal-
+    /// quantifier convention and the `empty()` constructor's
+    /// `relido_observed_unanimous = true`.
     pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        if portions.is_empty() {
+            return Self::empty();
+        }
+
         let mut set = BTreeSet::new();
         for p in portions {
             for t in p.dissem_us.iter() {
@@ -1492,11 +1514,13 @@ impl DissemSet {
         }
 
         // RELIDO observed-unanimity: track whether every portion
-        // carries Relido. Vacuously true over an empty portion list.
-        let relido_observed_unanimous = !portions.is_empty()
-            && portions
-                .iter()
-                .all(|a| a.dissem_us.contains(&DissemControl::Relido));
+        // carries Relido. Vacuously true over an empty portion list
+        // (universal quantifier convention); since we early-returned
+        // on `portions.is_empty()`, this expression is now strictly
+        // `every observed portion has RELIDO`.
+        let relido_observed_unanimous = portions
+            .iter()
+            .all(|a| a.dissem_us.contains(&DissemControl::Relido));
 
         let mut out = Self {
             set,
@@ -1598,12 +1622,21 @@ impl Lattice for DissemSet {
         // rules only ever REMOVE elements; removing more from a
         // smaller set is a no-op).
         let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
-        // Meet propagates unanimity as AND (both sides must agree).
-        let relido_observed_unanimous =
-            self.relido_observed_unanimous && other.relido_observed_unanimous;
+        // RELIDO observed-unanimity is a join-side property (the
+        // claim "every observed portion has RELIDO"). Meet has no
+        // natural reading for this flag, so we produce the vacuous
+        // (true) value — the identity under subsequent AND joins.
+        //
+        // C-4 (PR 4b-B follow-up): the prior `meet` propagated
+        // unanimity as AND, which broke the absorption law
+        // `a ⊔ (a ⊓ b) = a` (e.g., a unanimous RELIDO set met with
+        // an empty/non-unanimous set produced a `false` flag,
+        // joining that back into the original dropped RELIDO).
+        // Forcing `true` here keeps `meet` an algebraic operation
+        // that respects absorption.
         Self {
             set,
-            relido_observed_unanimous,
+            relido_observed_unanimous: true,
         }
     }
 }
@@ -2042,11 +2075,34 @@ impl Lattice for JointSet {
         }
     }
 
-    /// Meet: pairwise intersection on the producer set; min on the
-    /// level. `Bottom` is meet-absorbing.
+    /// Meet over the JOINT axis.
+    ///
+    /// Same-producer-set `UnanimousProducers` operands meet to the
+    /// `min(level)` element. Different producer sets meet to
+    /// `Bottom` rather than producing a `DisunityCollapse` — collapse
+    /// is a JOIN-side concept (a record of disagreement observed
+    /// across the page), not a meet result. This is what makes the
+    /// absorption law `a ⊔ (a ⊓ b) = a` hold for two same-set
+    /// `UnanimousProducers` operands.
+    ///
+    /// **Partial-lattice note (C-6 PR 4b-B follow-up).** Like
+    /// `DissemSet`, `JointSet` carries join-side aggregation
+    /// information (the `Mixed` / `DisunityCollapse` distinction
+    /// is a record of observed page composition, not an algebraic
+    /// element). `meet` has no natural reading for non-identical
+    /// producer sets, so we return `Bottom`. The dual absorption
+    /// law `a ⊓ (a ⊔ b) = a` does NOT hold over the full state
+    /// space; the structural `meet` is provided for completeness.
+    ///
+    /// Pre-fix, meet returned a same-level `UnanimousProducers`
+    /// with the intersection of the two producer sets — that
+    /// produced a different element from `a` when set were
+    /// non-equal, then `a.join(a.meet(b))` returned
+    /// `DisunityCollapse` instead of `a`, breaking absorption.
     fn meet(&self, other: &Self) -> Self {
         match (self, other) {
             (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
+            (Self::Mixed, Self::Mixed) => Self::Mixed,
             (
                 Self::UnanimousProducers {
                     level: l1,
@@ -2056,20 +2112,14 @@ impl Lattice for JointSet {
                     level: l2,
                     producers: p2,
                 },
-            ) => {
-                let common: BTreeSet<CountryCode> = p1.intersection(p2).copied().collect();
-                if common.is_empty() {
-                    Self::Bottom
-                } else {
-                    Self::UnanimousProducers {
-                        level: (*l1).min(*l2),
-                        producers: common,
-                    }
-                }
-            }
-            // Cross-variant or DisunityCollapse meet falls back to
-            // Bottom — meet across a mixed-shape pair has no well-
-            // defined producer set under the unanimity contract.
+            ) if p1 == p2 => Self::UnanimousProducers {
+                level: (*l1).min(*l2),
+                producers: p1.clone(),
+            },
+            // Cross-variant, mixed-shape, or non-identical-producer
+            // pairs fall back to `Bottom`. The unanimity contract has
+            // no well-defined meet over disagreeing producer sets —
+            // collapse is a join-side observation, not a meet result.
             _ => Self::Bottom,
         }
     }

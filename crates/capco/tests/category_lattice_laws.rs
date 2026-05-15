@@ -505,8 +505,14 @@ mod classification_lattice {
         ClassificationLattice::new(Some(MarkingClassification::Us(c)))
     }
 
-    const ALL: [Classification; 4] = [
+    // H-5 (PR 4b-B follow-up): include `Restricted` so the
+    // five-level chain (U < R < C < S < TS) is exercised end-to-end.
+    // `Restricted` is the US equivalent of NATO `NR` per
+    // `NatoClassification::us_equivalent()` and was previously
+    // omitted from the test sweep.
+    const ALL: [Classification; 5] = [
         Classification::Unclassified,
+        Classification::Restricted,
         Classification::Confidential,
         Classification::Secret,
         Classification::TopSecret,
@@ -595,15 +601,15 @@ mod classification_lattice {
         let usa = CountryCode::try_new(b"USA").expect("USA");
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
         // Pair a few representative variants at the same effective
-        // level. NATO uses `us_equivalent`; we pick the variant whose
-        // us_equivalent matches `level` when possible (UC for U, NR
-        // for U-ish, NC for C, NS for S, CTS for TS).
+        // level. NATO uses `us_equivalent`; pick the variant whose
+        // us_equivalent matches `level` for the five-level chain
+        // (U / R / C / S / TS — H-5 PR 4b-B follow-up adds R).
         let nato = match level {
             Classification::TopSecret => Some(NatoClassification::CosmicTopSecret),
             Classification::Secret => Some(NatoClassification::NatoSecret),
             Classification::Confidential => Some(NatoClassification::NatoConfidential),
+            Classification::Restricted => Some(NatoClassification::NatoRestricted),
             Classification::Unclassified => Some(NatoClassification::NatoUnclassified),
-            _ => None,
         };
         let mut out = vec![
             // Us
@@ -966,6 +972,72 @@ mod dissem_set {
             prop_assert_eq!(bottom.join(&s1), s1.clone());
             prop_assert_eq!(s1.join(&bottom), s1.clone());
         }
+
+        #[test]
+        fn dissem_set_join_side_absorption(
+            p1 in arb_portions(),
+            p2 in arb_portions(),
+        ) {
+            // C-4 (PR 4b-B follow-up): the join-side absorption law
+            // `a ⊔ (a ⊓ b) = a` MUST hold. This is the law users
+            // actually depend on when folding per-portion state
+            // through `Lattice::join`.
+            //
+            // Pre-fix, `meet` propagated `relido_observed_unanimous`
+            // as AND, so meeting a unanimous RELIDO set with an
+            // empty/non-unanimous set produced `unanimous=false`;
+            // joining that back into the unanimous set dropped RELIDO,
+            // breaking absorption.
+            //
+            // Post-fix, `meet` produces the vacuous-true flag value
+            // (the identity under subsequent AND joins). This makes
+            // `a ⊔ (a ⊓ b) = a` algebraically clean.
+            //
+            // Note: the dual absorption law `a ⊓ (a ⊔ b) = a` does
+            // NOT hold for `DissemSet` because the unanimity flag is
+            // a join-side aggregation property — meet has no natural
+            // reading for it, so we produce the vacuous-true value
+            // which can disagree with `a.relido_observed_unanimous`.
+            // `DissemSet` is a join-semilattice for the unanimity
+            // axis; the `Lattice` trait's `meet` is provided for
+            // structural completeness (it composes the underlying
+            // set via intersection) but does not satisfy the dual
+            // absorption law over the full `(set, flag)` pair.
+            let a = DissemSet::from_attrs_iter(&p1);
+            let b = DissemSet::from_attrs_iter(&p2);
+            prop_assert_eq!(a.join(&a.meet(&b)), a.clone(), "a ⊔ (a ⊓ b) = a");
+        }
+    }
+
+    #[test]
+    fn dissem_set_empty_constructors_agree() {
+        // C-5 (PR 4b-B follow-up): `from_attrs_iter(&[])` must
+        // return the same value as `DissemSet::empty()`. Pre-fix,
+        // `from_attrs_iter(&[])` set `relido_observed_unanimous =
+        // false` (universal-over-empty short-circuit failure) while
+        // `empty()` documented the vacuous `true` value. The two
+        // bottom states were not `PartialEq`, and joining with the
+        // wrong bottom dropped RELIDO under the overlay.
+        let from_empty = DissemSet::from_attrs_iter(&[]);
+        let empty = DissemSet::empty();
+        assert_eq!(from_empty, empty);
+        assert!(from_empty.relido_unanimous());
+        assert!(from_empty.as_set().is_empty());
+    }
+
+    #[test]
+    fn dissem_set_absorption_specific_relido_case() {
+        // Concrete C-4 case: unanimous RELIDO set met with empty.
+        // Pre-fix, `meet` returned `unanimous=false` (AND-propagation),
+        // which dropped RELIDO under the join's overlay.
+        let unanimous_relido = DissemSet::from_attrs_iter(&[portion(&[DissemControl::Relido])]);
+        let empty = DissemSet::empty();
+        // a ⊔ (a ⊓ b) = a, with b = empty.
+        let meet = unanimous_relido.meet(&empty);
+        let absorbed = unanimous_relido.join(&meet);
+        assert_eq!(absorbed, unanimous_relido);
+        assert!(absorbed.as_set().contains(&DissemControl::Relido));
+        assert!(absorbed.relido_unanimous());
     }
 }
 
@@ -1163,6 +1235,54 @@ mod joint_set {
         for s in &states {
             assert_eq!(bottom.join(s), s.clone());
             assert_eq!(s.join(&bottom), s.clone());
+        }
+    }
+
+    #[test]
+    fn joint_set_join_side_absorption() {
+        // C-6 (PR 4b-B follow-up): `a ⊔ (a ⊓ b) = a` for JOINT.
+        // Pre-fix, `meet` of two UnanimousProducers with different
+        // sets returned a same-level UnanimousProducers with the
+        // intersection; joining that back into `a` produced
+        // `DisunityCollapse` (because the producer sets differed),
+        // not `a`. Post-fix, `meet` of disagreeing sets returns
+        // `Bottom`, which is `join`-identity, so absorption holds.
+        let a = JointSet::from_attrs_iter(&[joint_portion(
+            Classification::Secret,
+            &["USA", "GBR", "CAN"],
+        )]);
+        let b = JointSet::from_attrs_iter(&[joint_portion(
+            Classification::Secret,
+            &["USA", "GBR"],
+        )]);
+        let meet = a.meet(&b);
+        // Different producer sets → meet is Bottom.
+        assert!(matches!(meet, JointSet::Bottom));
+        let absorbed = a.join(&meet);
+        assert_eq!(absorbed, a, "a ⊔ (a ⊓ b) = a");
+    }
+
+    #[test]
+    fn joint_set_meet_identical_producers_returns_min_level() {
+        // Identical producer sets meet to the min-level
+        // UnanimousProducers — this is the "shared truth" of two
+        // observations of the same JOINT page at different
+        // sensitivities.
+        let a = JointSet::from_attrs_iter(&[joint_portion(
+            Classification::TopSecret,
+            &["USA", "GBR"],
+        )]);
+        let b = JointSet::from_attrs_iter(&[joint_portion(
+            Classification::Secret,
+            &["USA", "GBR"],
+        )]);
+        let meet = a.meet(&b);
+        match meet {
+            JointSet::UnanimousProducers { level, producers } => {
+                assert_eq!(level, Classification::Secret); // min
+                assert_eq!(producers.len(), 2);
+            }
+            other => panic!("expected UnanimousProducers, got {other:?}"),
         }
     }
 
