@@ -57,8 +57,8 @@ impl Scanner {
     /// calling `parser.parse`.
     fn scan_page_breaks(source: &[u8], out: &mut Vec<MarkingCandidate>) {
         // Form-feed: every `\f` is a hard page break in pretty much every
-        // ASCII document convention. memchr is overkill at this scale but
-        // matches the rest of the scanner's idiom.
+        // ASCII document convention. `memchr` strides over the buffer via
+        // SIMD; matches the rest of the scanner's idiom.
         for pos in memchr_iter(b'\x0c', source) {
             out.push(MarkingCandidate {
                 span: Span::new(pos, pos),
@@ -66,22 +66,35 @@ impl Scanner {
             });
         }
         // Three-or-more consecutive `\n` is a soft page break under our
-        // heuristic. We emit one candidate at the third newline, then skip
-        // ahead until we leave the run, so a single blank gap between
-        // paragraphs (`\n\n`) does NOT trip the reset.
-        let mut run = 0usize;
-        for (i, &b) in source.iter().enumerate() {
-            if b == b'\n' {
+        // heuristic. `memchr_iter` strides over newlines via SIMD; we use
+        // the bytes between consecutive newlines to decide whether the run
+        // continues. A gap of only `\r` bytes (covers `\r\n\r\n` CRLF runs)
+        // counts as continuous; any other byte breaks the run, so a single
+        // blank gap between paragraphs (`\n\n`) does NOT trip the reset.
+        //
+        // Run-emission semantics intentionally match the prior byte-iter
+        // loop: we emit on the THIRD newline of a run (equality, not `>=`)
+        // and do not reset after emit, so a longer run (`\n\n\n\n\n+`)
+        // still emits exactly one PageBreak — at the third newline.
+        let mut run: usize = 0;
+        let mut prev_pos: Option<usize> = None;
+        for pos in memchr_iter(b'\n', source) {
+            let continuous = match prev_pos {
+                Some(p) => source[p + 1..pos].iter().all(|&b| b == b'\r'),
+                None => true,
+            };
+            if continuous {
                 run += 1;
-                if run == 3 {
-                    out.push(MarkingCandidate {
-                        span: Span::new(i, i),
-                        kind: MarkingType::PageBreak,
-                    });
-                }
-            } else if b != b'\r' {
-                run = 0;
+            } else {
+                run = 1;
             }
+            if run == 3 {
+                out.push(MarkingCandidate {
+                    span: Span::new(pos, pos),
+                    kind: MarkingType::PageBreak,
+                });
+            }
+            prev_pos = Some(pos);
         }
     }
 
@@ -303,6 +316,49 @@ mod tests {
             candidates.iter().all(|c| c.kind != MarkingType::PageBreak),
             "double newline should not produce a PageBreak candidate"
         );
+    }
+
+    #[test]
+    fn detects_page_break_crlf_blank_line_run() {
+        // CRLF-terminated paragraphs ("\r\n\r\n\r\n") are a three-newline run
+        // where the inter-newline gaps are pure `\r` bytes. The scanner must
+        // treat `\r`-only gaps as continuous so Windows-style line endings
+        // produce the same PageBreak as Unix-style `\n\n\n`.
+        //
+        // Byte positions: p(0) a(1) g(2) e(3) 1(4) \r(5) \n(6) \r(7) \n(8)
+        //                 \r(9) \n(10) p(11) ...
+        // Third newline at offset 10.
+        let src = b"page1\r\n\r\n\r\npage2";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 10);
+        assert_eq!(breaks[0].span.end, 10);
+    }
+
+    #[test]
+    fn single_emit_on_six_newline_run() {
+        // Regression guard: a longer run (six consecutive `\n`) must still
+        // emit exactly ONE PageBreak, at the third newline. The equality
+        // check on `run == 3` (not `>=`) is what preserves this property;
+        // a careless "reset run after emit" refactor would emit twice on
+        // a six-newline run. Pin the behavior so a future refactor that
+        // introduces post-emit reset fails here.
+        //
+        // Byte positions: a(0) \n(1) \n(2) \n(3) \n(4) \n(5) \n(6) b(7).
+        // Third newline at offset 3.
+        let src = b"a\n\n\n\n\n\nb";
+        let candidates = Scanner::scan(src);
+        let breaks: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == MarkingType::PageBreak)
+            .collect();
+        assert_eq!(breaks.len(), 1);
+        assert_eq!(breaks[0].span.start, 3);
+        assert_eq!(breaks[0].span.end, 3);
     }
 
     #[test]
