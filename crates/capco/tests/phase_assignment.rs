@@ -123,6 +123,12 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("S003", Phase::WholeMarking),
     ("S005", Phase::WholeMarking),
     ("S006", Phase::WholeMarking),
+    // PR 9c.2 / FR-048: S007 emits text_correction at the
+    // classification token's span; the augmentation branch can also
+    // emit at a RelToBlock token's span (a different token than the
+    // classification block — crosses a token boundary). Phase::Localized's
+    // single-token-span contract would fail the augmentation branch.
+    ("S007", Phase::WholeMarking),
     ("W002", Phase::WholeMarking),
     ("W003", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),

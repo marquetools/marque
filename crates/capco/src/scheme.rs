@@ -544,7 +544,7 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
 /// The mapping mirrors the existing per-token presence semantics in
 /// `satisfies_attrs` so a rule emitting `FactRemove(TOK_X)` lands on
 /// the same axis where `satisfies_attrs` would look for `X`.
-fn capco_token_category(id: TokenId) -> Option<CategoryId> {
+pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
     // Sentinel IDs are declared in the const block above (lines 60+).
     // Keep the matches in declaration order so a reviewer can trace
     // the catalog by line position.
@@ -1778,22 +1778,57 @@ impl CapcoScheme {
                 NF_WRITES,
             ),
             // Entry 4 — `capco/frd-sigma-consolidates-into-rd-sigma`.
-            // §H.6 p113 (FRD-SIGMA Precedence Rules for Banner Line
-            // Guidance): "If both RD and FRD SIGMA [#] portions are
-            // in a document, the RD-SIGMA [#] marking takes
-            // precedence over the FRD-SIGMA [#] marking in the
-            // banner line and all SIGMA numbers are listed in the
-            // banner line RD-SIGMA [#] marking, regardless of whether
-            // the information was RD or FRD." Within-axis transform
-            // — drops FRD-SIGMA atoms from CAT_AEA and folds their
-            // numbers into the surviving RD-SIGMA atom.
+            //
+            // CAPCO-2016 §H.6 states this same precedence rule from
+            // two complementary vantages — the RD-SIGMA subsection
+            // (§H.6 p108-109) and the FRD-SIGMA subsection (§H.6
+            // p113). The two passages are mutual references with
+            // identical operational content:
+            //
+            //   §H.6 p109 (top-of-page continuation from the p108
+            //   RD-SIGMA Precedence Rules block): "If both RD and FRD
+            //   SIGMA [#] portions are in a document, the RD-SIGMA [#]
+            //   marking takes precedence over the FRD-SIGMA [#]
+            //   marking in the banner line and all SIGMA numbers are
+            //   listed in the RD-SIGMA [#] marking in the banner line,
+            //   regardless of whether the information was RD or FRD."
+            //
+            //   §H.6 p113 (FRD-SIGMA Precedence Rules for Banner Line
+            //   Guidance): "If both RD and FRD SIGMA [#] portions are
+            //   in a document, the RD-SIGMA [#] marking takes
+            //   precedence over the FRD-SIGMA [#] marking in the
+            //   banner line and all SIGMA numbers are listed in the
+            //   banner line RD-SIGMA [#] marking, regardless of
+            //   whether the information was RD or FRD."
+            //
+            // Within-axis transform — drops FRD-SIGMA atoms from
+            // CAT_AEA and folds their numbers into the surviving
+            // RD-SIGMA atom. The `lattice::AeaSet` `Product`
+            // composition implements this as the union of axis 3
+            // (SIGMA numbers) when axis 1's supersession join lands
+            // on `Rd`; see `docs/plans/2026-05-01-lattice-design.md`
+            // §7.5 Example 1 for the worked end-to-end case.
+            //
+            // PR 4b-A (this row's doc-comment update) cites BOTH
+            // §H.6 p108-109 and §H.6 p113 in this comment so future
+            // readers find the rule from whichever subsection they
+            // open first. The row's `citation` field stays
+            // `§H.6 p113` (the original landing's citation) — the
+            // double-citation lives in this doc-comment, not in the
+            // citation string, because Marque's audit emitter reads
+            // the citation field as a single token. The brief's
+            // working name (`capco/rd-coalesces-sigmas`, §H.6 p108)
+            // refers to the same rewrite as this row — same algebra,
+            // same axis, same body, mutually-cited subsections.
             //
             // Monotonicity: shrinking on CAT_AEA (FRD-SIGMA atoms
             // dropped). Sound under fixed topological order.
             //
             // Phase-3 stub: trigger is `never_fires` and action is
             // `noop_action` because runtime dispatch stays in
-            // `PageContext` until Phase D/E. Only the
+            // `PageContext` until Phase D/E (specifically, PR 4b-B
+            // wires the runtime `AeaSet`-driven mutation through
+            // `CapcoScheme::project(Scope::Page, ...)`). Only the
             // `reads` / `writes` annotations are consumed (by the
             // scheduler). Topologically independent of every other
             // entry: the AEA axis is otherwise un-written.
@@ -2400,6 +2435,41 @@ impl CapcoScheme {
                 name: "E021/aea-requires-noforn",
                 label: "CAPCO-2016 §H.6 p104",
             },
+            // ---- §H.6 p106 CNWDI subset-of-RD: enforced by data
+            //      model, NO Constraint row needed -----------------
+            //
+            // CNWDI is structurally a `bool` field on
+            // `AeaMarking::Rd(RdBlock { cnwdi })` in `marque-ism`'s
+            // type system. There is no `AeaMarking::Cnwdi` variant.
+            // A portion that bears CNWDI necessarily bears RD
+            // because CNWDI presence is gated by the surrounding
+            // `Rd(...)` variant.
+            //
+            // The `TOK_CNWDI` sentinel is satisfied only by
+            // `AeaMarking::Rd(rd) if rd.cnwdi` (see `satisfies_attrs`
+            // earlier in this file); `TOK_RD` is satisfied by any
+            // `AeaMarking::Rd(_)`. The two are not independently
+            // settable — `TOK_CNWDI` strictly implies `TOK_RD` at
+            // the predicate level. An earlier draft of PR 4b-A
+            // added a `Constraint::Requires { TOK_CNWDI, TOK_RD }`
+            // row to enforce the §H.6 p106 "subset of RD" rule, but
+            // Copilot review caught that the row is unreachable —
+            // it can never fire because the right-hand side is
+            // necessarily true whenever the left-hand side is true.
+            //
+            // The §H.6 p106 invariant therefore lives at the data-
+            // model level rather than the constraint-catalog level.
+            // See `docs/plans/2026-05-01-lattice-design.md` §7.5
+            // "Cross-axis constraints" for the §-cited record of
+            // this decision.
+            //
+            // If a future change to `AeaMarking` ever splits CNWDI
+            // into a sibling variant (decoupling it from `Rd`), the
+            // §H.6 p106 enforcement MUST be re-introduced as a
+            // Constraint::Requires or equivalent — and the
+            // satisfies_attrs predicate for `TOK_CNWDI` MUST be
+            // amended to no longer match through the `Rd(...)`
+            // variant.
             // ---- E022 retired in PR 3b.D (T026d) -----------------
             //
             // The CNWDI classification floor moved into the class-
@@ -4199,8 +4269,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 //
 // FD&R-dominator family: any of these present on a marking/page means an
 // explicit FD&R decision exists; the implicit-default trio (Trio 1, 2, 3)
-// should NOT fire. Per CAPCO-2016 §B.3 Table 2 p21 (FD&R Markings Summary)
-// and `marque-applied.md` §4.7.1.
+// should NOT fire. Per CAPCO-2016 §B.3.a p19 (canonical enumeration —
+// "NOFORN, REL TO, RELIDO, or DISPLAY ONLY"), §B.3 Table 2 pp 21-22
+// (scenario-summary table, derivative), and `marque-applied.md` §4.7.1.
 //
 // Includes:
 //   - NOFORN (most restrictive FD&R, top of chain per §H.8 p145)
@@ -4212,7 +4283,9 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 //
 // Note: LES-NF and SBU-NF are NOT included. They are non-IC dissem controls
 // that carry NOFORN treatment via PageRewrite, not FD&R markers themselves.
-// The §B.3 Table 2 enumeration is the authoritative source for the FD&R set.
+// §B.3.a p19 is the authoritative enumeration of the FD&R set; §B.3 Table 2
+// pp 21-22 is the per-scenario marking-summary table (derivative, not the
+// definition).
 //
 // Algebraic note (re: `marque-applied.md` §4.7.3 has_fdr definition):
 // §4.7.3 defines `has_fdr(x)` to include LES-NF / SBU-NF for the
@@ -4227,7 +4300,44 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
 // downstream PageRewrite step rather than via FDR_DOMINATORS membership;
 // the Trio-1 row is permitted to over-fire on bare-LES-NF / bare-SBU-NF
 // because the PageRewrite supplies the suppressor fact downstream.
-static FDR_DOMINATORS: &[TokenRef] = &[
+// `pub(crate)` so the `Vocabulary::is_fdr_dissem` override in
+// `crates/capco/src/vocabulary.rs` and the bidirectional value-pin test
+// (`mod fdr_dissem_pin` in the same file) can read this slice as the
+// single source-of-truth.
+//
+// **Maintenance contract.** This slice and the neighboring
+// `is_fdr_dominator` function answer *different* questions about
+// the FD&R family, and the two enumerations are independent on
+// purpose:
+//   - `FDR_DOMINATORS` (this slice) enumerates **FD&R-set
+//     membership** per §B.3.a p19 — the four canonical FD&R
+//     markings (NOFORN / REL TO / RELIDO / DISPLAY ONLY) plus the
+//     §H.8 p157 EYES legacy. `Vocabulary::is_fdr_dissem` walks
+//     this slice and is the authoritative FD&R-membership API.
+//   - `is_fdr_dominator` (below) enumerates **FD&R dominators
+//     *over* RELIDO** for the `Constraint::ConflictsWithFamily`
+//     dispatch on the RELIDO conflict catalog (E054/E055). It
+//     deliberately **excludes RELIDO itself** because RELIDO-vs-
+//     RELIDO is a tautology in the conflict family — there is no
+//     such conflict to detect.
+// The intersection of the two sets is "FD&R members that conflict
+// with RELIDO" (NOFORN, DISPLAY ONLY, REL TO, EYES). The slice is
+// the strict superset. Do not collapse them: a future refactor
+// that delegates `is_fdr_dissem` through `is_fdr_dominator` will
+// silently under-fire on RELIDO and is pinned against in
+// `vocabulary.rs::fdr_dissem_pin::relido_admits_despite_is_fdr_dominator_excluding_it`.
+//
+// Adding a `Token` entry to this slice requires:
+//   1. Considering whether the new token should also dominate
+//      RELIDO. If yes, add a parallel arm to `is_fdr_dominator`'s
+//      `matches!`. If no, leave `is_fdr_dominator` alone.
+//   2. The `Vocabulary::is_fdr_dissem` override picks up the new
+//      entry automatically — it iterates this slice directly.
+// Adding an `AnyInCategory(CAT_X)` entry requires updating the
+// override's per-category routing in `vocabulary.rs` because the
+// override receives a single `TokenId` and dispatches through
+// `capco_token_category` rather than passing a `TokenRef`.
+pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_NOFORN),
     TokenRef::Token(TOK_RELIDO),
     TokenRef::Token(TOK_DISPLAY_ONLY),
