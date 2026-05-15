@@ -4992,19 +4992,39 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// producers migrate to FGI [LIST], and JOINT is dropped from the
 /// banner.
 ///
-/// **Mixed JOINT + US portions** (§H.3 p57 — "the JOINT
+/// **Mixed JOINT + non-JOINT portions** (§H.3 p57 — "the JOINT
 /// marking is not carried forward to the banner line in US
-/// documents") do **NOT** fire W004. That case is handled by the
-/// existing PageContext-resident `expected_fgi_marker` path; the
-/// JointSet lattice returns `Bottom` and no diagnostic emits.
+/// documents") do **NOT** fire W004. That case is `JointSet::Mixed`
+/// (C-3 PR 4b-B follow-up — was `Bottom` pre-split) and is handled
+/// by the existing PageContext-resident `expected_fgi_marker` path;
+/// no W004 diagnostic emits on `Mixed`.
 ///
 /// Severity: `Warn` (per `feedback_dissem_conflicts_emit_subtractive_fix.md`,
-/// JOINT disunity is a subtractive-fix case). No `FixProposal`
-/// attached at this PR — the cross-axis FGI migration is renderer-
-/// canonical territory (PR 5+ Stage 4). The diagnostic surfaces the
-/// transformation so users have an audit trail; the engine's
-/// `CapcoMarking::join` rewrite in Commit 7 produces the FGI-
-/// migrated banner facts that the renderer will emit.
+/// JOINT disunity is a subtractive-fix case).
+///
+/// **Fix payload deferred** (H-1 declined-in-scope in PR 4b-B
+/// follow-up triage). The cross-axis JOINT → FGI [LIST] migration
+/// is a renderer-canonical concern, not a single-span text
+/// replacement:
+///
+/// - W004 fires on the banner candidate, but a JOINT-disunity page
+///   has no banner JOINT block to rewrite — §H.3 p57 says JOINT
+///   does not roll up to the banner. The "fix" would have to edit
+///   each portion (remove the JOINT block) AND emit a new banner-
+///   shaped FGI [LIST] elsewhere. That is multi-span / cross-axis
+///   territory; `Diagnostic::text_correction` is single-axis-scoped
+///   and `ReplacementIntent::FactAdd` / `FactRemove` /
+///   `Recanonicalize` are also single-axis (cross-axis migrations
+///   are text_correction-route, but text_correction is single-span).
+/// - The `MarkingScheme::render_canonical` trait surface (PR 5+
+///   Stage 4) is the right home for this transformation: the
+///   renderer reads the post-projection `CanonicalAttrs` (which
+///   already carries the FGI-migrated banner facts produced by
+///   `CapcoMarking::join_via_lattice`) and emits the canonical
+///   `[class]//FGI [LIST]` form for the whole page.
+///
+/// The W004 diagnostic surfaces the transformation so users have
+/// an audit trail today, even without an auto-applied fix.
 struct JointDisunityCollapseRule;
 
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {

@@ -12,7 +12,10 @@
 //!
 //! PR 4b-B Commit 5 (006 T112).
 
-use marque_capco::JointSet;
+use marque_capco::{CapcoRuleSet, JointSet};
+use marque_capco::scheme::CapcoScheme;
+use marque_config::Config;
+use marque_engine::{Engine, FixedClock};
 use marque_ism::{
     CanonicalAttrs, Classification, CountryCode, JointClassification, MarkingClassification,
 };
@@ -139,6 +142,168 @@ fn joint_disunity_warn_diagnostic_carries_no_document_text() {
         assert_eq!(s.len(), 3, "non-trigraph CountryCode: {s:?}");
         assert!(s.bytes().all(|b| b.is_ascii_uppercase()));
     }
+}
+
+// ---------------------------------------------------------------------------
+// H-2 PR 4b-B follow-up — engine-level W004 tests
+// ---------------------------------------------------------------------------
+//
+// The JointSet unit tests above exercise the lattice type directly.
+// The tests below run W004 (`JointDisunityCollapseRule`) through the
+// rule/engine path — they verify the diagnostic actually fires,
+// carries the expected severity / rule ID, surfaces only canonical
+// CountryCode trigraph identifiers in its message (Constitution V
+// Principle V G13), and is correctly suppressed on negative cases
+// (mixed JOINT+US per §H.3 p57; pure-US pages; pure-JOINT-unanimous
+// pages).
+
+fn engine_with_fixed_clock() -> Engine {
+    Engine::with_clock(
+        Config::default(),
+        vec![Box::new(CapcoRuleSet::new())],
+        CapcoScheme::new(),
+        Box::new(FixedClock::new(std::time::UNIX_EPOCH)),
+    )
+    .expect("default CAPCO scheme must construct without rewrite cycles")
+}
+
+#[test]
+fn w004_fires_on_joint_disunity_banner() {
+    // Two JOINT-classified portions with disagreeing producer lists
+    // appear BEFORE the banner candidate so the engine's
+    // PageContext has accumulated them by the time the banner is
+    // evaluated. W004 must fire on the banner with rule = "W004",
+    // Warn severity, and reference the §H.3 p56 + §H.7 p123 citation.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) first portion.\n\
+                   (//JOINT S USA CAN) second portion.\n\
+                   SECRET//FGI CAN GBR//NOFORN\n";
+
+    let lint = engine.lint(source);
+    let w004 = lint
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.as_str() == "W004");
+    assert!(
+        w004.is_some(),
+        "W004 must fire on JOINT-disunity page; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+    let w004 = w004.unwrap();
+    assert_eq!(w004.severity, marque_rules::Severity::Warn);
+    assert!(
+        w004.citation.contains("§H.3 p56") || w004.citation.contains("§H.7 p123"),
+        "W004 citation must reference §H.3 p56 + §H.7 p123: {:?}",
+        w004.citation
+    );
+}
+
+#[test]
+fn w004_message_contains_only_canonical_trigraphs() {
+    // Constitution V Principle V G13: the W004 diagnostic message
+    // MUST NOT contain document bytes. The message interpolates only
+    // canonical CountryCode trigraphs (vocabulary atoms) and the
+    // §-citation literal. Verify by greppping for prose-shape
+    // artifacts that would only appear if input bytes leaked.
+    let engine = engine_with_fixed_clock();
+    // Use a distinctive surrounding prose sentinel that should NEVER
+    // appear in any diagnostic message regardless of rule.
+    let prose_sentinel = "PROSE_SENTINEL_LEAKED_INTO_DIAGNOSTIC";
+    let source = format!(
+        "{prose_sentinel} (//JOINT TS USA GBR) first portion.\n\
+         {prose_sentinel} (//JOINT TS USA CAN) second portion.\n\
+         TOP SECRET//FGI CAN GBR//NOFORN\n"
+    );
+
+    let lint = engine.lint(source.as_bytes());
+    let w004 = lint
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.as_str() == "W004")
+        .expect("W004 must fire on disunity page");
+    assert!(
+        !w004.message.contains(prose_sentinel),
+        "G13 violation: W004 message leaked prose sentinel: {:?}",
+        w004.message
+    );
+    // The message should mention the producer trigraphs (canonical
+    // vocabulary atoms — these are 3-letter uppercase codes the
+    // CountryCode type guarantees).
+    assert!(
+        w004.message.contains("CAN") || w004.message.contains("GBR"),
+        "W004 message should reference the non-US producer trigraphs: {:?}",
+        w004.message
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_pure_us_page() {
+    // No JOINT portions → JointSet::Bottom → W004 must NOT fire.
+    let engine = engine_with_fixed_clock();
+    let source = b"(S) plain portion one.\n\
+                   (S) plain portion two.\n\
+                   SECRET\n";
+    let lint = engine.lint(source);
+    assert!(
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.as_str() != "W004"),
+        "W004 must NOT fire on pure-US page; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_mixed_joint_plus_us() {
+    // §H.3 p57: JOINT does not roll up in US documents. The
+    // JointSet returns `Mixed` (post-C-3 PR 4b-B follow-up; was
+    // Bottom pre-split). W004 must NOT fire — the FGI migration
+    // for the JOINT non-US producers rides through the existing
+    // PageContext-resident `expected_fgi_marker` path, not through
+    // W004's lattice signal.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) joint-classified portion.\n\
+                   (S) plain-us-classified portion.\n\
+                   SECRET//FGI GBR//NOFORN\n";
+    let lint = engine.lint(source);
+    assert!(
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.as_str() != "W004"),
+        "W004 must NOT fire on mixed JOINT+US page per §H.3 p57; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_pure_joint_unanimous() {
+    // All portions JOINT with identical producer lists → JointSet::
+    // UnanimousProducers → W004 must NOT fire (no disunity to
+    // surface). The banner shows `//JOINT [class] [LIST]` per §H.3 p56.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) first portion.\n\
+                   (//JOINT S USA GBR) second portion.\n\
+                   //JOINT SECRET USA, GBR\n";
+    let lint = engine.lint(source);
+    assert!(
+        lint.diagnostics
+            .iter()
+            .all(|d| d.rule.as_str() != "W004"),
+        "W004 must NOT fire on unanimous-JOINT page; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
