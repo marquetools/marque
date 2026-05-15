@@ -343,3 +343,102 @@ fn e066_does_not_fire_on_bare_us_portion() {
             .collect::<Vec<_>>(),
     );
 }
+
+// ---------------------------------------------------------------------------
+// PR 9c.1 R1 Copilot #3 — companion-write dedup.
+//
+// When the parser's legacy NATO compound canonicalization
+// (`crates/core/src/parser.rs` idx == 1 non-US classification block)
+// and its canonical-form AEA / SCI block recognition both write the
+// same axis value, the parser used to push the value twice and the
+// canonical renderer emitted `ATOMAL/ATOMAL` / `BOHEMIA/BOHEMIA` —
+// breaking E066's byte-identical `Recanonicalize` fix-text contract.
+//
+// `marque_ism::dedup_companions` (called from `Parser::parse` after
+// `attribute_dissems`) collapses the duplicate axis entries. These
+// four tests pin the post-dedup behavior at the engine boundary:
+// the canonical render carries each NATO SAP / ATOMAL exactly once,
+// regardless of how many source-text paths claimed it.
+//
+// All four inputs were verified to produce duplicated output
+// (`ATOMAL/ATOMAL`, `BOHEMIA/BOHEMIA`, `BALK/BALK`,
+// `ATOMAL/ATOMAL`) when the dedup pass was temporarily disabled
+// during R1 — the tests would fail without `dedup_companions`.
+//
+// Authority:
+// - CAPCO-2016 §G.1 Table 4 p38 (legacy compound text — the source
+//   side of the duplicate write).
+// - CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking —
+//   ATOMAL / BOHEMIA / BALK are standalone control markings; one
+//   axis entry per marking).
+// - CAPCO-2016 §H.7 p122 (ATOMAL placement in the AEA block).
+// - CAPCO-2016 §H.7 p127 (BOHEMIA placement in the SCI block).
+// ---------------------------------------------------------------------------
+
+/// `(//NSAT//ATOMAL)` — legacy `NSAT` + explicit canonical `ATOMAL`
+/// block. Both paths write [`AeaMarking::Atomal`]; the dedup pass
+/// must collapse to one entry. The canonical render carries
+/// `ATOMAL` exactly once.
+///
+/// Without `dedup_companions` the engine emits `(//NS//ATOMAL/ATOMAL)`
+/// — duplicate token, broken `Recanonicalize` contract. With the
+/// pass the output is `(//NS//ATOMAL)` and `aea_markings.len() == 1`.
+///
+/// Authority: §G.1 Table 4 p38 + §G.2 p40 + §H.7 p122.
+#[test]
+fn dedup_nsat_atomal_collapses_duplicate_aea() {
+    assert_e066_fires_and_rewrites_to("(//NSAT//ATOMAL)", "(//NS//ATOMAL)", RecanonScope::Portion);
+}
+
+/// `(//CTS-B//BOHEMIA)` — legacy `CTS-B` + explicit canonical
+/// `BOHEMIA` block. Both paths write
+/// [`SciControlSystem::NatoSap`]`(NatoSap::Bohemia)`; dedup must
+/// collapse to one entry. Canonical render carries `BOHEMIA` once.
+///
+/// Without `dedup_companions` the engine emits
+/// `(//CTS//BOHEMIA/BOHEMIA)`. With the pass the output is
+/// `(//CTS//BOHEMIA)`.
+///
+/// Authority: §G.1 Table 4 p38 + §G.2 p40 + §H.7 p127.
+#[test]
+fn dedup_ctsb_bohemia_collapses_duplicate_sci() {
+    assert_e066_fires_and_rewrites_to(
+        "(//CTS-B//BOHEMIA)",
+        "(//CTS//BOHEMIA)",
+        RecanonScope::Portion,
+    );
+}
+
+/// `(//CTS-BALK//BALK)` — legacy `CTS-BALK` + explicit canonical
+/// `BALK` block. Both paths write `NatoSap::Balk`; dedup must
+/// collapse to one entry. Canonical render carries `BALK` once.
+///
+/// Without `dedup_companions` the engine emits
+/// `(//CTS//BALK/BALK)`. With the pass the output is
+/// `(//CTS//BALK)`.
+///
+/// Authority: §G.1 Table 4 p38 + §G.2 p40.
+#[test]
+fn dedup_ctsbalk_balk_collapses_duplicate_sci() {
+    assert_e066_fires_and_rewrites_to("(//CTS-BALK//BALK)", "(//CTS//BALK)", RecanonScope::Portion);
+}
+
+/// `//NATO SECRET ATOMAL//ATOMAL//` — banner-form legacy compound
+/// `NATO SECRET ATOMAL` + explicit canonical `ATOMAL` block.
+/// Confirms the dedup invariant holds for banner-form inputs as
+/// well as portion-form.
+///
+/// Without `dedup_companions` the engine emits
+/// `//NATO SECRET//ATOMAL/ATOMAL`. With the pass the output is
+/// `//NATO SECRET//ATOMAL`.
+///
+/// Authority: §G.1 Table 4 p38 (banner-title column) + §G.2 p40 +
+/// §H.7 p122.
+#[test]
+fn dedup_banner_nato_secret_atomal_collapses_duplicate_aea() {
+    assert_e066_fires_and_rewrites_to(
+        "//NATO SECRET ATOMAL//ATOMAL//",
+        "//NATO SECRET//ATOMAL",
+        RecanonScope::Page,
+    );
+}

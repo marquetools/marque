@@ -1050,6 +1050,19 @@ impl<'t> Parser<'t> {
             origin,
         );
         marque_ism::attribute_dissems(&mut attrs, self.default_origin);
+        // PR 9c.1 R1 — Copilot review #3: collapse duplicate AEA / SCI
+        // companion writes that arise when both the legacy NATO compound
+        // canonicalization (parser.rs:~372 / :~386, idx == 1 non-US
+        // classification block) and the canonical-form AEA / SCI block
+        // recognition (parser.rs:~493 / :~615 / :~656) write the same
+        // axis value. Without this pass, inputs like `(//NSAT//ATOMAL)`
+        // or `(//CTS-B//BOHEMIA)` carry the value twice on
+        // `aea_markings` / `sci_markings`, and the canonical renderer
+        // emits `ATOMAL/ATOMAL` / `BOHEMIA/BOHEMIA` — breaking E066's
+        // byte-identical `Recanonicalize` fix-text contract.
+        // Authority: CAPCO-2016 §G.1 Table 4 p38 (legacy compounds);
+        // §G.2 p40 (ATOMAL / BOHEMIA / BALK Registered Markings).
+        marque_ism::dedup_companions(&mut attrs);
         Ok(attrs)
     }
 }

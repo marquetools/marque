@@ -26,6 +26,7 @@
 
 pub mod attrs;
 pub mod canonical;
+pub mod companion_dedup;
 pub mod date;
 pub mod dissem_attribution;
 pub mod generated;
@@ -45,6 +46,7 @@ pub use attrs::{
     SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
+pub use companion_dedup::dedup_companions;
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
 pub use dissem_attribution::{DefaultOrigin, attribute_dissems};
 pub use generated::values::{
