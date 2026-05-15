@@ -1,0 +1,59 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP09T00207R001000100017-6",
+    "title": "Test letter from Bush re: Iraq",
+    "year": 1990,
+    "source_pdf": "https://archive.org/download/CIA-RDP09T00207R001000100017-6/CIA-RDP09T00207R001000100017-6.pdf",
+    "cab": {
+      "classified_by": "DCI William H. Webster",
+      "derived_from": "Multiple Sources",
+      "declassify_on": "2015-12-31"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//TFNI//NOFORN",
+        "paragraphs": [
+          {
+            "mark": "TS",
+            "text": "Executive Order No. 12723 and not revoked administratively shall remain in full force and effect under this order until amended.",
+            "is_table": false
+          },
+          {
+            "mark": "TS",
+            "text": "This order shall be transmitted to the Congress and published in the Federal Register.",
+            "is_table": false
+          },
+          {
+            "mark": "C//TFNI",
+            "text": "George Bush",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "TOP SECRET//TFNI//NOFORN//EXDIS",
+        "paragraphs": [
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "Today, I have taken additional steps to respond to these developments and to ensure that the economic measures we are taking with respect to Iraq and Kuwait conform to UNSCR 661.",
+            "is_table": false
+          },
+          {
+            "mark": "U//NF//XD",
+            "text": "The order I have issued with respect to Iraq prohibits exports and imports of goods and services between the United States and Iraq.",
+            "is_table": false
+          },
+          {
+            "mark": "TS//TFNI//REL TO USA, FVEY",
+            "text": "Sincerely, George Bush.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

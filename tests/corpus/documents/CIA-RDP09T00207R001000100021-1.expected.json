@@ -1,0 +1,274 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP09T00207R001000100021-1",
+    "title": "CALLS UPON ALL STATES TO COOPERATE...'",
+    "year": 1990,
+    "source_pdf": "https://archive.org/download/CIA-RDP09T00207R001000100021-1/CIA-RDP09T00207R001000100021-1.pdf",
+    "cab": {
+      "classified_by": "S.P. Combs, EXA-RD/NNTI",
+      "derived_from": "OG-SCG v2.3",
+      "declassify_on": 20150802
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//SI//FGI NATO//NOFORN/RAWFISA",
+        "paragraphs": [
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "'Calls Upon All States to Cooperate .",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "Associated Press",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "UNITED NATIONS, Aug. 7-Following is the text of the resolution on the Iraqi invasion of Kuwait passed by the U.N. Security Council on Monday",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "THE SECURITY COUNCIL,",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "REAFFIRMING its resolution 660 (1990).",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "DEEPLY CONCERNED that this resolution has not been implemented and that the invasion by Iraq of Kuwait continues with further loss of human life and material destruction,",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "DETERMINED to bring the invasion and occupation of Kuwait by Iraq to an end and to restore the sovereignty, independence and territorial integrity of Kuwait,",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "NOTING that the legitimate Government of Kuwait has expressed its readiness to comply with resolution 660 (1990),",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "MINDFUL of its responsibilities under the Charter for the maintenance of international peace and security,",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "AFFIRMING the inherent right of individual or collective self-defence, in response to the armed attack by Iraq against Kuwait, in accordance with Article 51 of the Charter,",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "ACTING under Chapter VII of the Charter of the United Nations,",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "1. DETERMINES that Iraq so far has failed to comply with operative paragraph 2 of resolution 660 (1990) and has usurped the authority of the legitimate Government of Kuwait;",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "2. DECIDES, as a consequence, to take the following measure to secure compliance of Iraq with operative paragraph 2 and to restore the authority of the legitimate Government of Kuwait:",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "3. DECIDES that all States shall prevent:",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "(a) The import into their territories of all commodities and products originating in Iraq or Kuwait exported therefrom after the date of this resolution.",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "(b) Any activities by their nationals or in their territories which would promote or are calculated to promote the export or transshipment of any commodities or products from Iraq or Kuwait; and any dealings by their nationals or their flag vessels or in their territories in any commodities or products originating in Iraq or Kuwait and exported therefrom after the date of this resolution, including in particular any transfer of funds to Iraq or Kuwait for the purposes of such activities or dealings;",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "(c) The sale or supply by their nationals or from their territories or using their flag vessels of any commodities or products, including weapons or any other military equipment, whether or not originating in their territories but not including supplies intended strictly for medical purposes, and, in humanitarian circumstances, foodstuffs, to any person or body in Iraq or Kuwait or to any person or body for the purposes of any business carried on in or operated from Iraq or Kuwait, and any activities by their nationals in their territories which promote or are calculated to promote such sale or supply of such commodities or products;",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "4. DECIDES that all States shall not make available to the Government of Iraq or to any commercial, industrial or public utility undertaking in Iraq or Kuwait, any funds or any other financial or economic resources and shall prevent their nationals and any persons within their territories from removing from their territories or otherwise making available to that Government or to any such undertaking any such funds or resources and from remitting any other funds to persons or bodies within Iraq or Kuwait, except payments exclusively for strictly medical or humanitarian purposes and, in humanitarian circumstances, foodstuffs;",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "5. CALLS UPON all States, including States nonmembers of the United Nations, to act strictly in accordance with the provisions of this resolution notwithstanding any contract entered into or licence granted before the date of this resolution;",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "6. DECIDES to establish, in accordance with rule 28 of the provisional rules of procedure of the Security Council, a Committee of the Security Council consisting of all the members of the Council, to undertake the following tasks and to report on its work to the Council with its observations and recommendations;",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "(a) To examine the reports on the progress of the implementation of this resolution which will be submitted by the Secretary-General;",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "(b) To seek from all States further information regarding the action taken by them concerning the effective implementation of the provisions laid down in this resolution;",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "7. CALLS UPON all States to cooperate fully with the Committee in the fulfilment of its task, including supplying such information as may be sought by the Committee in pursuance of this resolution;",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "8. REQUESTS the Secretary General to provide all necessary assistance to the Committee and to make the necessary arrangements in the Secretariat for the purpose:",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "9. DECIDES that, notwithstanding paragraphs 4 through 8, nothing in this resolution shall prohibit assistance to the legitimate Government of Kuwait, and CALLS UPON ALL STATES:",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "(a) To take appropriate measures to protect assets of the legitimate Government of Kuwait and its agencies; and",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "(b) Not to recognize any regime set up by the occupying power;",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "10. REQUESTS the Secretary-General to report to the Council on the progress of the implementation of this resolution, the first report to be submitted within thirty days;",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "11. DECIDES to keep this item on its agenda and to continue its efforts to put an early end to the in-CIA-RDP09T00207R001000100021-1",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "SECRET//SI//FGI NATO//NOFORN/RAWFISA",
+        "paragraphs": [
+          {
+            "mark": "U//FOUO",
+            "text": "Services of Mead Data Central",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "#660",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "2",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "134TH STORY of Level 1 printEd in FULL format.",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "Copyright (c) 1990 Reuters",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "August 2, 1990, Thursday, BC cycle",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "LENGTH: 168 WOrdS",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "HEADLINE: TEXT OF U.N. COUNCIL RESOLUTION CONDEMNING IRAQI INVASION",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "DATELINE: UNITED NATIONS",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "KEYWORD: GULF-TEXT",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "BODY:",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "Following is the text of a resolution adopted by the U.N. Security Council early Thursday condemning Iraq's invasion of Kuwait and calling for the immediate and unconditional withdrawal of Iraqi troops.",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "The Security Council,",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "Alarmed by the invasion of Kuwait on August 2, 1990 by the military forces of Iraq;",
+            "is_table": false
+          },
+          {
+            "mark": "S//RAWFISA//NF",
+            "text": "Determining that there exists a breach of international peace and security as regards the Iraqi invasion of Kuwait;",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "Acting under Articles 39 and 40 of the Charter of the United Nations;",
+            "is_table": false
+          },
+          {
+            "mark": "//NS//REL TO USA, NATO",
+            "text": "1. Condemns the Iraqi invasion of Kuwait,",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "2. Demands that Iraq withdraw immediately and unconditionally all its forces to the positions in which they were located on August 1, 1990,",
+            "is_table": false
+          },
+          {
+            "mark": "U//FOUO",
+            "text": "3. Calls upon Iraq and Kuwait to begin immediately intensive negotiations for the resolution of their differences and supports all efforts in this regard, and especially those of the Arab League,",
+            "is_table": false
+          },
+          {
+            "mark": "S//SI//REL TO USA, FVEY",
+            "text": "4. Decides to meet again as necessary to consider further steps to ensure compliance with this resolution. (end text).",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

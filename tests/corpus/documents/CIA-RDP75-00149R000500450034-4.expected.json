@@ -1,0 +1,83 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP75-00149R000500450034-4",
+    "title": "LATEST NIXON CUBA BLAST DRAWS ONLY SILENCE IN WHITE HOUSE",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP75-00149R000500450034-4/CIA-RDP75-00149R000500450034-4.pdf",
+    "cab": {
+      "classified_by": "321DAE",
+      "derived_from": "x502-33-A SCG",
+      "declassify_on": "N/A to AEA and NATO portions, see source list for NSI portions"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//BOHEMIA//RESTRICTED DATA/ATOMAL//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS/CAUTION-PROPRIETARY INFORMATION INVOLVED",
+        "paragraphs": [
+          {
+            "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
+            "text": "Page Denied",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "Latest Nixon Cuba Blast Draws Only Silence in White House",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "By David Wise",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "The White House had no comment yesterday on a new statement released by former Vice-President Nixon in his dispute with President Kennedy over the handling of the Cuban issue during the 1960 Presidential campaign.",
+            "is_table": false
+          },
+          {
+            "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
+            "text": "In his new statement, made public in California Wednesday night, Mr. Nixon said he had been authorized by former President Eisenhower to state that Gen. Eisenhower had ordered that Mr. Kennedy be \"fully briefed\" on intelligence activities during the campaign.",
+            "is_table": false
+          },
+          {
+            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "text": "Dulles Backs Kennedy",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "This did not shed any specific light, however, on Mr. Nixon's charge that Mr. Kennedy had been briefed during the campaign on the Central Intelligence Agency's plan to support an invasion of Cuba by rebel forces. In his new book, the former Vice-President said Mr. Kennedy knew of the plan but endangered it by issuing a statement supporting the Cuban exiles. On Tuesday, Mr. Kennedy denied that he had been briefed about the invasion plan, and was backed up by Allen Dulles, former director of the CIA, the man who briefed Kennedy during the campaign. At his news conference Wednesday, Mr. Kennedy declined to be drawn into further discussion of the matter. He declined to say whether he thought the CIA should have briefed him on the invasion plan. Yesterday, Pierre Salinger, Presidential press secretary, said he had \"no comment\" when asked about Mr. Nixon's statement.",
+            "is_table": false
+          },
+          {
+            "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
+            "text": "\"We have already spoken on this,\" Mr. Salinger said.",
+            "is_table": false
+          },
+          {
+            "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
+            "text": "Mr. Nixon said in his new statement:",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "\"Because the Cuban issue was such an important one in the campaign, I personally researched the facts relating to it.",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "The statements in my book were based not on the briefings Mr. Kennedy received during the campaign of 1960, but on personal conversations with responsible individuals who had knowledge of the facts. President Eisenhower has authorized me to state that, following the practice he had established in 1956, he had given instructions that in regard to United States intelligence activities abroad, Sen. Kennedy was to be fully briefed on our foreign problems as I was. Beyond this I have no further comment. My book speaks for itself.\"",
+            "is_table": false
+          },
+          {
+            "mark": "C//RD//NF/PR",
+            "text": "In Palm Desert, Calif., a secretary to Gen. Eisenhower confirmed that the former President had authorized the statement contained in Mr. Nixon's announcement. She said the former Chief Executive \"has nothing else to say.\" It was learned that Mr. Nixon and Gen. Eisenhower conferred by telephone Tuesday.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

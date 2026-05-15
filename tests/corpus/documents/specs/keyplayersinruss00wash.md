@@ -1,0 +1,34 @@
+---
+identifier: keyplayersinruss00wash
+title: "Key players in Russia and the other newly independent states"
+year: 1993
+source_pdf: https://archive.org/download/keyplayersinruss00wash/keyplayersinruss00wash.pdf
+# Fill these by hand. Anything left as ??? at render time becomes a warning, not an error.
+cab:
+  classified_by: M. Anderson, SAIC, FBI-Halloweentown
+  derived_from: FBI NS SCG AUG 23
+  declassify_on: 20430202
+---
+
+=== page 1 ===
+banner: UNCLASSIFIED//NOFORN//EXDIS/SSI
+
+(U//SSI) PREX3.10/7:LDA93-10011
+
+(U//NF//XD) Directorate of Intelligence
+
+(U//NF//XD) Key Players in Russia and the Other Newly Independent States
+
+(U)
+```table
+<table><tr><td>Armenia</td><td>Azerbaijan</td><td>Belarus</td><td>Estonia</td></tr><tr><td>Levon Ter-Petrosyan President</td><td>Ebulfez Elcibey President</td><td>Stanislav Shushkevich Chairman, Supreme Soviet</td><td>Lennart Meri President</td></tr><tr><td>Gagik Arutyunyan Vice President</td><td>Ali Misimov Acting Prime Minister</td><td>Vyacheslav Kebich Prime Minister</td><td>Mart Laar Prime Minister</td></tr><tr><td>Grant Bagratyan Acting Prime Minister</td><td>Isa Gambarov Chairman, Milli Majlis</td><td>Pavel Kozlovskiy Minister of Defense</td><td>Hain Rebas Minister of Defense</td></tr><tr><td>Vazgen Sarkisyan, Maj. Gen. Minister of Defense</td><td>(National Parliament) Rakhim Gaziyev Minister of Defense</td><td>Petr Kravchanka Minister of Foreign Affairs</td><td>Trivimi Velliste Minister of Foreign Affairs</td></tr><tr><td>Arman Kirakosyan Minister of Foreign Affairs</td><td colspan="3">Tofig Kasymov</td></tr></table>
+```
+
+=== page 2 ===
+banner: UNCLASSIFIED//DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION//NOFORN
+
+(U//UCNI//NF)
+```table
+<table><tr><td rowspan=1 colspan=1>Georgia</td><td rowspan=1 colspan=1></td><td></td><td></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Eduard Shevardnadze</td><td></td><td></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Chairman, Parliament</td><td rowspan=1 colspan=1>President</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Tengiz Sigua</td><td rowspan=1 colspan=1>Yerik Asanbayev</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Feliks Kulov</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=1>Vice President</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Vice President</td></tr><tr><td rowspan=1 colspan=2>Tengiz Kitovani</td><td rowspan=1 colspan=1>Serikbolsyn Abdildin</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Medetkan Sherimkulov</td></tr><tr><td rowspan=1 colspan=2>Minister of Defense</td><td rowspan=1 colspan=1>Chairman, Supreme Council</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Aleksandr Chikvaidze</td><td rowspan=1 colspan=1>Sergey Tereshchenko</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Tursunbek Chyngyshev</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Minister of Foreign Affairs</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Prime Minister</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Prime Minister</td><td></td></tr><tr><td rowspan=2 colspan=2></td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Tuleutai Suleymenov</td><td rowspan=1 colspan=1></td><td></td><td></td></tr><tr><td rowspan=1 colspan=2>Minister of Foreign Affairs</td><td></td><td></td></tr><tr><td rowspan=1 colspan=1>Lithuania</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Moldova</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Russia</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>(Presidential elections 14 February 1993)</td><td rowspan=1 colspan=2>Mircea Snegur</td><td rowspan=1 colspan=2>Boris Yel&#x27;tsin</td></tr><tr><td rowspan=1 colspan=2>Algirdas Brazauskas</td><td rowspan=1 colspan=2>President</td><td rowspan=1 colspan=1>President</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Acting President</td><td rowspan=1 colspan=1>Andrei Sangheli</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Aleksandr Rutskoy</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Bronislovas Lubys</td><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=1>Vice President</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Prime Minister</td><td rowspan=1 colspan=2>Pavel Creanga</td><td rowspan=1 colspan=1>Ruslan Khasbulatov</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Audrius Butkevicius</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=2>Minister of Defense</td><td rowspan=1 colspan=1>Chairman, Supreme Soviet</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Minister of National Defense</td><td rowspan=2 colspan=2>Nicolae TiuMinister of Foreign Affairs</td><td rowspan=1 colspan=1>Viktor Chernomyrdin</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=2>Povilas Gylys</td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td rowspan=1 colspan=1>Premier</td><td rowspan=1 colspan=1></td></tr><tr><td rowspan=1 colspan=1>Turkmenistan</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Ukraine</td><td rowspan=1 colspan=1></td><td rowspan=1 colspan=1>Uzbekistan</td><td></td></tr><tr><td rowspan=1 colspan=2>Saparmurad Niyazov</td><td></td><td></td><td></td><td></td></tr></table>
+```
+

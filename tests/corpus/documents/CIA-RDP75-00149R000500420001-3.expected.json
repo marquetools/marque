@@ -1,0 +1,58 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP75-00149R000500420001-3",
+    "title": "RALLY WILL HEAR TO END CUBA BLOCKADE",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP75-00149R000500420001-3/CIA-RDP75-00149R000500420001-3.pdf",
+    "cab": {
+      "classified_by": "SFC D. Hammond, USA",
+      "derived_from": "USA-SCG-92-D-21",
+      "declassify_on": 20400820
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//TFNI//NOFORN/PROPIN//SSI",
+        "paragraphs": [
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "Rally will Hear Bloa To End Cuba Blockad",
+            "is_table": false
+          },
+          {
+            "mark": "C//TFNI",
+            "text": "Lift the Blockade of Cuba! Aid to the Disaster Victims! These urgent appeals will be made at the Scott Nearing meeting marking the 80th anniversary of the veteran fighter for peace, civil rights and socialism. This announcement was released by Jessica Smith, chairman of the Birthday Committee. The meeting will be held Nov. 7 at Palm Gardens, 52nd St. and 8th Ave.",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "spokesman; ist and peace Uphaus, of World Richard B. Moore, dom fighter and A baum of the Progr Organizing Cominl Smith will preside. Malvina Reynold tain with folk sond",
+            "is_table": false
+          },
+          {
+            "mark": "C//REL TO USA, AUT, JPN, KOR, SWE, FVEY, NATO",
+            "text": "Scott Nearing will speak at the meeting on the significance of socialist Cuba and the CIA efforts against it.",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "In his recent pamphlet, \"Cuba and Latin America,\" Nearing declared that the time is ripe for a \"new orientation\" toward Cuba and the Latin American people.",
+            "is_table": false
+          },
+          {
+            "mark": "C//TFNI",
+            "text": "jpeakers will be James editor of National h: Leo Huberman, edi-Monthly Review; Elizairley Flynn, Communist",
+            "is_table": false
+          },
+          {
+            "mark": "U//SSI",
+            "text": "25 YEAR RE-REVIEW",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

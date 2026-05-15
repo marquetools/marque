@@ -1,6 +1,6 @@
 {
   "diagnostics": [
-    {"rule": "C001", "span": {"start": 8, "end": 14}}
+    {"rule": "C001", "span": {"start": 1, "end": 7}}
   ],
   "_note": "Requires corrections config: {\"SERCET\": \"SECRET\"}. Tested by c001_corrections_map_accuracy."
 }

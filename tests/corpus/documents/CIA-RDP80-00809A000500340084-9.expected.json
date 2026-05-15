@@ -1,0 +1,254 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP80-00809A000500340084-9",
+    "title": "DATA CONCERNING THE STRUCTURE AND TABLE OF ORGANIZATION OF THE MOTORIZED UNITS OF THE SOVIET ARMY IN THE POST WAR PERIOD",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP80-00809A000500340084-9/CIA-RDP80-00809A000500340084-9.pdf",
+    "cab": {
+      "classified_by": 2345567,
+      "derived_from": "MS",
+      "declassify_on": 20330502
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//NOFORN/PROPIN//NODIS/LES",
+        "paragraphs": [
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "2",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "Chief of Personnel",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "Chief of Communications and the Club (Nachsvyaz')",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "Inspector of Vehicles",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "b) The Political Section of the Regiment (Politotdel)",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "Deputy for Political Affairs; he is also chief of the Political Section; - an adjutant and chauffeur",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "Partorg [ Party Organizer ] of the regiment; two clerks",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Political Information Officer (Partinformator)",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "c) Regimental Special Section (MGB-Smersh) three officers.",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "The motorized transport regiment is composed of:",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "(1) three transport battalions, each comprising 510-550 persons and 215 motorized vehicles",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "(2) one training battalion, numbering 110 persons and 75 motorized vehicles",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "(3) one service platoon - 52 persons and 25 mechanized vehicles",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "(4) one regimental guard platoon - 60 persons",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "(5) three repair service platoons, each comprising 60 persons",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "Altogether the regiment has the following:",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "(1) Personnel - 1,950 to two thousand persons",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "(2) Mechanized vehicles - 730",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "2. The Motorized Transport Battalion (a unit of a motorized transport regiment):",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "a) The Staff (administration) of the battalion",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "SECRET//NOFORN/PROPIN//NODIS/LES",
+        "paragraphs": [
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "(3) Company political instructor",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "(4) Company sergeant-major",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "(5) Three platoon leaders",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "(6) Ten section commanders (one section - the \"Services section\" is attached to the company staff)",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "A platoon consists of 56 men; each platoon has 23-24 motor vehicles.",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "A squad consists of 14 men; each squad has five-six motor vehicles.",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "Note: The types of motor vehicles to be found in motorized transport regiments are the ZIS-5, produced not earlier than 1945, the GAZ-AA and GAZ-57. The ZIS motorized vehicles usually make up half the vehicles of the regimental motor pool.",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "3. The Motor Vehicle Repair Plant (ARZ)",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "a) The Plant Administration:",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Plant chief - an adjutant and two men",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Chief Engineer; - one adjutant and one man",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "Production chief",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "Deputy for Political Affairs",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Party Organizer;",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "Special \"Smersh\" agent",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "The Plant's Staff (office):",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "Chief of Staff; - three clerks Chief of the Military Organization.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "c) The Plant's Technical Department (Tekhchast'):",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "Chief of the technical department Technologist   \nDesigners and draftsmen - ten men Chief of Plans",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "d) The Technical Control Department (OTK):",
+            "is_table": false
+          },
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "OTK Chief",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "OTK Assistant chiefs - two men",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "Inspectors - 12 men",
+            "is_table": false
+          },
+          {
+            "mark": "C//NF//ND",
+            "text": "e) Administrative Department (Khozchast'):",
+            "is_table": false
+          },
+          {
+            "mark": "S//DISPLAY ONLY AFG",
+            "text": "Deputy for the administrative department (Pompokhoz of the plant) Chief of Food Supplies (Nachprod); are eight clerks and storekeepers",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

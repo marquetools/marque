@@ -1,0 +1,64 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP73B00148A000200150009-6",
+    "title": "REVIEW OF INTELLIGENCE ACTIVITIES AGAINST COMMUNIST CHINA",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP73B00148A000200150009-6/CIA-RDP73B00148A000200150009-6.pdf",
+    "cab": {
+      "classified_by": 987654,
+      "derived_from": "NGA SCG 23 AUG 22",
+      "declassify_on": "N/A to AEA and NATO portions, 20220909"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "TOP SECRET//BOHEMIA//RD-CNWDI//FGI NATO//ORCON/NOFORN/PROPIN",
+        "paragraphs": [
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "UNITED STATES INTELLIGENCE BOARD",
+            "is_table": false
+          },
+          {
+            "mark": "S//RD-CNWDI//NF",
+            "text": "25X1",
+            "is_table": false
+          },
+          {
+            "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
+            "text": "MEMORANDUM FOR HOLDERS OF USIB-D-64.6/23",
+            "is_table": false
+          },
+          {
+            "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
+            "text": "REFERENCE: USIB-1-64.6/23 (CCPC-D-12/65), 28 May 1965, Limited Distribution",
+            "is_table": false
+          },
+          {
+            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "text": "The attached revised page 1 of Annex A to reference paper is being circulated at the request of the Critical Collection Problems Committee, and should be substituted in all copies of this document previously circulated. The new page includes the following insertion at the end of line 9, paragraph b.: \"technicians who are accessible in the free world and on sending a number of\". . . . 25X1",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "SECRET//FRD//NOFORN/PROPIN",
+        "paragraphs": [
+          {
+            "mark": "S//PR/REL TO USA, EST",
+            "text": "Updated CCPC Recommendations",
+            "is_table": false
+          },
+          {
+            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "text": "a. USIB reaffirm the high priority for intelligence activity against Communist China accorded in DCID 1/3, and endorse the need for developing a strong intelligence data base and an intelligence competence against China commensurate with that against other highest",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}

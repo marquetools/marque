@@ -1,0 +1,89 @@
+{
+  "diagnostics": [],
+  "ground_truth": {
+    "identifier": "CIA-RDP63T00245R000100190001-9",
+    "title": "LEGISLATIVE HISTORY ON CIA BUILDING (84TH CONGRESS)",
+    "year": 2000,
+    "source_pdf": "https://archive.org/download/CIA-RDP63T00245R000100190001-9/CIA-RDP63T00245R000100190001-9.pdf",
+    "cab": {
+      "classified_by": "Randy Savage III, Esq.",
+      "derived_from": "NNSA SCG 805-2-9-11",
+      "declassify_on": "N/A"
+    },
+    "pages": [
+      {
+        "page_num": 1,
+        "banner": "SECRET//NOFORN//LIMDIS/LES/NNPI",
+        "paragraphs": [
+          {
+            "mark": "U//RELIDO//LD",
+            "text": "LEGISLATIVE HISTORY ON CIA BUILDING (84th Congress)",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "The President requested \\$59, 500, 000, of which \\$50, 000,000 was for construction of the building.",
+            "is_table": false
+          },
+          {
+            "mark": "S//NF",
+            "text": "A. AUTHORIZATION",
+            "is_table": false
+          },
+          {
+            "mark": "S//NF",
+            "text": "1. The House bill (H. R. 6829) authorized \\$6,000, 000 for land acquisition and \\$50, 000, 000 for construction, a total of \\$56,000,000.",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "2. The version of H. R. 6829 which passed the Senate authorized \\$1, 000, 000 for land acquisition, \\$45,000, 000 for construction and \\$8, 500, 000 for acquisition of land for, and construction of the extension of the George Washington Memorial Parkway.",
+            "is_table": false
+          },
+          {
+            "mark": "S//NF",
+            "text": "3. After a Senate and House conference, Public Law 161 (84th Congress - The Military Construction Act of 1955) was enacted on July 15, 1955. If authorized, \\$1, 000, 000 for land acquisition, \\$46, 000, 000 for construction, and \\$8,500,000 for the extension of the George Washington Memorial Parkway.",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "Section 401 of that Act provided further \"That at such time as the Central Intelligence Agency occupies the headquarters installation authorized by this Title, the Administrator of General Services is authorized and directed to accomplish the demolition and removal of temporary Government building space in the District of Columbia of equivalent occupancy to that relinquished by the Central Intelligence Agency. \"",
+            "is_table": false
+          },
+          {
+            "mark": "U//RELIDO//LD",
+            "text": "B. APPROPRIATIONS",
+            "is_table": false
+          },
+          {
+            "mark": "U//RELIDO//LD",
+            "text": "1. H.R. 7278, as reported by the House Appropriations Committee, recommended the appropriation of \\$3, 000, 000 for the preparation of plans and specifications, \" to be derived from unobligated balances of appropriations made available to the Central Intelligence Agency for the FY/53 and 54. \" Committee Report stated as follows: 'It is felt that inadequate planning",
+            "is_table": false
+          }
+        ]
+      },
+      {
+        "page_num": 2,
+        "banner": "UNCLASSIFIED//DOD UCNI//NOFORN//LIMDIS/LES/NNPI",
+        "paragraphs": [
+          {
+            "mark": "U//RELIDO//LD",
+            "text": "with respect to both the site and structure as evidenced in the hearing on this item, gives the committee no alternative but to defer action until a more firm program can be presented.\" When the House voted on this bill, it eliminated the entire section relating to the CIA building.",
+            "is_table": false
+          },
+          {
+            "mark": "U//DCNI//REL TO USA, GBR//NNPI",
+            "text": "2. As recommended by the Senate Appropriations Committee, the Senate passed its own version of H. R. 7278, which appropriated \\$7, 000, 000 for the preparation of detailed plans and specifications and for other authorized purposes, of which \\$4, 000, 000 was available for beginning the extension of the George Washington Memorial Parkway. The bill further provided that if it is determined that CIA will not build in Langley, Va., no funds shall be available for the George Washington Memorial Parkway, and not to exceed \\$350, 000 shall be available from the \\$4, 000, 000 for the acquisition of land at another site. The Senate Committee Report stated as follows: '\"The Committee believes that further careful study and investigation should be made before the site is finally determined. There is much opposition locally to the proposed Langley site. In addition, the traffic problem may be difficult. The Committee believes that the proposed construction of the building should be commenced. \"",
+            "is_table": false
+          },
+          {
+            "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
+            "text": "3. After the Senate - House conference, Public Law 219, 84th Cong. (The Supplemental Appropriations Act of 1956) was enacted on August 4, 1955, and appropriated \\$5, 500, 000 for the preparation of plans and specifications and other authorized purposes. Although the Act contains no breakdown within the \\$5, 500, 000 figure, the Conference Report stated as follows: \"The managers, by the action taken, are not designating any particular site nor do they preclude the selection of any particular site. Of the amount appropriated not to exceed \\$350, 000 may be used for the purchase of a site in the event the Langley, Va. site is not selected; and in the event the Langley, Virginia site (which is now Government-owned) is selected not to exceed \\$2, 500, 000 of the amount appropriated may be used in connection with the taking of steps with regard to roads and other facilities.",
+            "is_table": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  }
+}
