@@ -18,7 +18,7 @@
 //! per CAPCO-2016 §G.1 Table 4 p38).
 //!
 //! When the same marking ALSO carries an explicit canonical
-//! ATOMAL / BOHEMIA / BALK block (e.g., `(NSAT//ATOMAL)` — legacy class
+//! ATOMAL / BOHEMIA / BALK block (e.g., `(//NSAT//ATOMAL)` — legacy class
 //! `NSAT` plus an explicit AEA `ATOMAL`), the parser pushes the same
 //! value twice: once from the legacy-compound canonicalization, once
 //! from the canonical-form recognition pass over the AEA / SCI block
