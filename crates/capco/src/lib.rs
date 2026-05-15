@@ -37,8 +37,8 @@ pub mod vocab;
 mod vocabulary;
 
 pub use lattice::{
-    AeaPrimary, AeaSet, ClassificationLattice, DeclassifyOnLattice, FgiSet, NatoClassLattice,
-    SarSet, SciSet, UcniKind,
+    AeaPrimary, AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet,
+    NatoClassLattice, NatoDissemSet, SarSet, SciSet, UcniKind,
 };
 pub use marque_ism::CapcoTokenSet;
 pub use provenance::DecoderProvenance;

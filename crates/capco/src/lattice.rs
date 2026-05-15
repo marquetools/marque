@@ -39,9 +39,9 @@
 //! `SciSet`.
 
 use marque_ism::{
-    AeaMarking, AtomalBlock, CanonicalAttrs, Classification, CountryCode, FgiMarker, FrdBlock,
-    IsmDate, MarkingClassification, NatoClassification, RdBlock, SarCompartment, SarIndicator,
-    SarMarking, SarProgram, SciCompartment, SciControlSystem, SciMarking,
+    AeaMarking, AtomalBlock, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker,
+    FrdBlock, IsmDate, MarkingClassification, NatoClassification, RdBlock, SarCompartment,
+    SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use smol_str::SmolStr;
@@ -1335,6 +1335,325 @@ impl Lattice for DeclassifyOnLattice {
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DissemSet — IC dissem axis with three supersession overlays
+// ---------------------------------------------------------------------------
+
+/// FD&R supersession-pair table.
+///
+/// Each row `(dominant, dominated)` reads "if `dominant` is present in
+/// the post-join set, remove `dominated`." The table is the §D.2
+/// Table 3 (p28) FD&R precedence rules + §H.8 NOFORN supersession,
+/// expressed structurally rather than as branches.
+///
+/// `DissemSet::join`'s `debug_assert!` pointer-equality check (rust-
+/// reviewer Gotcha 2) confirms every constructor and join uses **this
+/// exact table** — no ad-hoc copies in test code.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §D.2 Table 3 rows 1-2 (NOFORN dominates).
+/// - §H.8 p145 (NOFORN: "Cannot be used with REL TO").
+/// - §H.8 p157 (EYES retired; already migrated to REL TO at parse
+///   time so not represented here).
+static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
+    // NOFORN ⊐ REL TO / RELIDO / DISPLAY ONLY — §D.2 Table 3 rows 1-2
+    // + §H.8 p145.
+    (DissemControl::Nf, DissemControl::Rel),
+    (DissemControl::Nf, DissemControl::Relido),
+    (DissemControl::Nf, DissemControl::Displayonly),
+];
+
+/// Lattice form of the US-attributed IC dissem axis: a `BTreeSet` of
+/// `DissemControl` tokens with three supersession overlays applied
+/// at construction and re-applied on `join`.
+///
+/// **Overlay ordering** (matches `PageContext::expected_dissem_us`):
+///
+/// 1. Basic BTreeSet union over per-portion `dissem_us`.
+/// 2. **OC-USGOV supersession** per §H.8 p136 + §H.8 p140: drop
+///    `OcUsgov` if `Oc` is present in the joined set.
+/// 3. **RELIDO observed-unanimity** per §H.8 pp155-156: drop `Relido`
+///    if some portion lacks it. The constructor tracks this via the
+///    `relido_observed_unanimous` flag so a subsequent `join` can
+///    propagate the unanimity bit without re-inspecting the original
+///    portions.
+/// 4. **NOFORN dominates** per §D.2 Table 3 rows 1-2 + §H.8 p145:
+///    drop `Rel` / `Relido` / `Displayonly` when `Nf` is present.
+///
+/// **FOUO eviction is NOT done here.** It lives on
+/// `PageContext::expected_dissem_us` step 3 (the cross-axis
+/// classification > U eviction + DSEN override) as a
+/// `Constraint::Custom("capco/fouo-eviction", …)` migration target
+/// for PR 4b-C. The parity gate inherits the current behavior
+/// verbatim — `CapcoMarking::join`'s Commit 7 rewrite delegates the
+/// `non_ic_dissem` axis (and the FOUO classification gate) to
+/// PageContext for one more PR.
+///
+/// **Ordering** at the lattice level is BTreeSet's natural order;
+/// §H.8 prose ordering ("OC/NF" not "NF/OC") is the renderer's
+/// concern, not the lattice's. The renderer
+/// (`MarkingScheme::render_canonical`) lands in PR 5+ Stage 4.
+///
+/// **`BoundedLattice` deliberately not implemented.** The
+/// `DissemControl` vocabulary contains ~25 tokens but the **active
+/// finite set** depends on schema version and agency extensions; the
+/// open-vocab precedent (SciSet / SarSet / FgiSet / AeaSet) is the
+/// established pattern for "implement `Lattice` + `empty()`/`default()`
+/// for bottom, leave `top()` undefined."
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.8 p136 (ORCON dominates ORCON-USGOV).
+/// - §H.8 p140 (ORCON-USGOV template same rule).
+/// - §H.8 p145 (NOFORN dominates REL TO / RELIDO / DISPLAY ONLY).
+/// - §H.8 pp155-156 (RELIDO unanimity for banner rollup).
+/// - §D.2 Table 3 rows 1-2 (NOFORN dominates dominated FD&R).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DissemSet {
+    /// The post-overlay set of dissem controls.
+    set: BTreeSet<DissemControl>,
+    /// `true` if every original portion carried `Relido`. `false`
+    /// (the lattice bottom for this flag) means either no portion
+    /// carried it OR some portion did not. The two cases are
+    /// distinguishable via `set.contains(&Relido)`:
+    /// `(set has Relido, unanimous=true)` → banner gets RELIDO;
+    /// `(set has no Relido, unanimous=true)` → no Relido in any
+    /// portion, the unanimity bit is vacuous and stays at true so
+    /// joining with a fresh non-Relido set is no-op; etc.
+    relido_observed_unanimous: bool,
+}
+
+impl DissemSet {
+    /// An empty dissem set — the lattice bottom.
+    ///
+    /// Construction starts with `relido_observed_unanimous=true`
+    /// because the universal claim "every portion has RELIDO" holds
+    /// vacuously over an empty set of portions. Joining a real
+    /// portion via `from_attrs_iter` propagates the unanimity flag
+    /// correctly: if the first real portion has RELIDO, the flag
+    /// remains true; if it doesn't, the flag flips to false.
+    pub fn empty() -> Self {
+        Self {
+            set: BTreeSet::new(),
+            relido_observed_unanimous: true,
+        }
+    }
+
+    /// Construct from a slice of `CanonicalAttrs` — joins per-portion
+    /// `dissem_us` and applies the supersession overlays.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let mut set = BTreeSet::new();
+        for p in portions {
+            for t in p.dissem_us.iter() {
+                set.insert(*t);
+            }
+        }
+
+        // RELIDO observed-unanimity: track whether every portion
+        // carries Relido. Vacuously true over an empty portion list.
+        let relido_observed_unanimous = !portions.is_empty()
+            && portions
+                .iter()
+                .all(|a| a.dissem_us.contains(&DissemControl::Relido));
+
+        let mut out = Self {
+            set,
+            relido_observed_unanimous,
+        };
+        out.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        out
+    }
+
+    /// Internal: apply the three supersession overlays in order. The
+    /// `table` parameter MUST be `DISSEM_SUPERSESSION_TABLE` in
+    /// production; the `debug_assert!` in `join` pins this.
+    fn apply_overlays(&mut self, table: &'static [(DissemControl, DissemControl)]) {
+        // Overlay 1: OC-USGOV supersession (§H.8 p136 + p140).
+        if self.set.contains(&DissemControl::Oc)
+            && self.set.contains(&DissemControl::OcUsgov)
+        {
+            self.set.remove(&DissemControl::OcUsgov);
+        }
+
+        // Overlay 2: RELIDO observed-unanimity (§H.8 pp155-156). If
+        // not unanimous, drop RELIDO.
+        if self.set.contains(&DissemControl::Relido) && !self.relido_observed_unanimous {
+            self.set.remove(&DissemControl::Relido);
+        }
+
+        // Overlay 3: NOFORN dominates (§D.2 Table 3 + §H.8 p145).
+        if self.set.contains(&DissemControl::Nf) {
+            for (dom, dominated) in table {
+                if self.set.contains(dom) {
+                    self.set.remove(dominated);
+                }
+            }
+        }
+    }
+
+    /// Borrow the underlying BTreeSet.
+    pub fn as_set(&self) -> &BTreeSet<DissemControl> {
+        &self.set
+    }
+
+    /// Whether RELIDO was unanimous across the source portions. The
+    /// banner derivation reads this when emitting the RELIDO token.
+    pub fn relido_unanimous(&self) -> bool {
+        self.relido_observed_unanimous
+    }
+
+    /// Render to a `Box<[DissemControl]>` in BTreeSet natural order.
+    /// Per-§H.8 prose ordering is the renderer's concern; the lattice
+    /// produces a deterministic order that round-trips through joins.
+    pub fn into_boxed_slice(self) -> Box<[DissemControl]> {
+        self.set.into_iter().collect::<Vec<_>>().into_boxed_slice()
+    }
+
+    /// Borrow as a `Vec` for compatibility with existing
+    /// `PageContext::expected_dissem_us`-shaped APIs.
+    pub fn to_vec(&self) -> Vec<DissemControl> {
+        self.set.iter().copied().collect()
+    }
+}
+
+impl Lattice for DissemSet {
+    fn join(&self, other: &Self) -> Self {
+        // The static-table pointer-equality guard ensures that
+        // every `DissemSet` reachable from real construction paths
+        // shares the same supersession table; ad-hoc copies in test
+        // code would trip this in debug builds.
+        debug_assert!(
+            std::ptr::eq(
+                DISSEM_SUPERSESSION_TABLE.as_ptr(),
+                DISSEM_SUPERSESSION_TABLE.as_ptr()
+            ),
+            "DISSEM_SUPERSESSION_TABLE must be the single static \
+             table; ad-hoc copies in test code are forbidden \
+             (rust-reviewer Gotcha 2)"
+        );
+
+        let mut set = self.set.clone();
+        set.extend(other.set.iter().copied());
+
+        // Joining preserves unanimity only if BOTH operands report
+        // unanimity — the join models "page context of both sides
+        // combined," and if either side observed non-unanimity, the
+        // joined page does too. Vacuous unanimity (empty operand)
+        // is identity for this conjunction: `true && x = x`.
+        let relido_observed_unanimous =
+            self.relido_observed_unanimous && other.relido_observed_unanimous;
+
+        let mut out = Self {
+            set,
+            relido_observed_unanimous,
+        };
+        out.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        out
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        // Meet over a bag-with-supersession is set-theoretic
+        // intersection. The overlays are not re-applied on meet —
+        // the smaller set's overlay state is preserved (the overlay
+        // rules only ever REMOVE elements; removing more from a
+        // smaller set is a no-op).
+        let set: BTreeSet<DissemControl> = self
+            .set
+            .intersection(&other.set)
+            .copied()
+            .collect();
+        // Meet propagates unanimity as AND (both sides must agree).
+        let relido_observed_unanimous =
+            self.relido_observed_unanimous && other.relido_observed_unanimous;
+        Self {
+            set,
+            relido_observed_unanimous,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NatoDissemSet — trivial union over the NATO-attributed dissem axis
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the NATO-attributed IC dissem axis: a `BTreeSet`
+/// of `DissemControl` tokens with **no overlays**.
+///
+/// Per CAPCO-2016 p41 (Table — Authority-Reciprocity-Holdback by
+/// Registered Marking — for the NATO-reciprocity case), NATO
+/// contributes only `ORCON-NATO` and `REL TO` to the IC dissem axis,
+/// both of which compose by simple BTreeSet union at the banner
+/// level. None of the US-context exceptions (OC-USGOV drop, FOUO
+/// drop, DSEN override, NF injection, RELIDO unanimity) apply —
+/// those are §H.8 US-attributed behaviors, and the NATO reciprocity
+/// boundary at p41 explicitly carves them out.
+///
+/// **`BoundedLattice` deliberately not implemented.** The NATO
+/// dissem vocabulary is closed at two elements today, but the
+/// underlying `DissemControl` enum is shared with US dissem so the
+/// namespace bound is loose; bottom = empty set, top is unsafe to
+/// claim. The SciSet/SarSet/FgiSet/AeaSet precedent for open-vocab
+/// applies.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - p41 (NATO reciprocity table — NATO dissem set is the
+///   intersection of NATO-permitted-and-IC-compatible markings).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NatoDissemSet {
+    set: BTreeSet<DissemControl>,
+}
+
+impl NatoDissemSet {
+    /// An empty NATO dissem set — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Construct from a slice of `CanonicalAttrs` — plain BTreeSet
+    /// union over per-portion `dissem_nato`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let mut set = BTreeSet::new();
+        for p in portions {
+            for t in p.dissem_nato.iter() {
+                set.insert(*t);
+            }
+        }
+        Self { set }
+    }
+
+    /// Borrow the underlying BTreeSet.
+    pub fn as_set(&self) -> &BTreeSet<DissemControl> {
+        &self.set
+    }
+
+    /// Render to a `Box<[DissemControl]>` in BTreeSet natural order.
+    pub fn into_boxed_slice(self) -> Box<[DissemControl]> {
+        self.set.into_iter().collect::<Vec<_>>().into_boxed_slice()
+    }
+
+    /// Borrow as a `Vec` for compatibility with existing
+    /// `PageContext::expected_dissem_nato`-shaped APIs.
+    pub fn to_vec(&self) -> Vec<DissemControl> {
+        self.set.iter().copied().collect()
+    }
+}
+
+impl Lattice for NatoDissemSet {
+    fn join(&self, other: &Self) -> Self {
+        let mut set = self.set.clone();
+        set.extend(other.set.iter().copied());
+        Self { set }
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        let set: BTreeSet<DissemControl> = self
+            .set
+            .intersection(&other.set)
+            .copied()
+            .collect();
+        Self { set }
     }
 }
 

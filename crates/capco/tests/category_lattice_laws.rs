@@ -692,3 +692,210 @@ mod declassify_on_lattice {
         assert_eq!(year_2025.join(&mid_2025), year_2025);
     }
 }
+
+// ===========================================================================
+// PR 4b-B Commit 4 — DissemSet
+// ===========================================================================
+// CAPCO-2016 §H.8 p136/p140 (OC-USGOV supersession), §H.8 pp155-156
+// (RELIDO unanimity), §D.2 Table 3 + §H.8 p145 (NOFORN dominates).
+// Verified 2026-05-15 against CAPCO-2016.md.
+
+mod dissem_set {
+    use marque_capco::DissemSet;
+    use marque_ism::{CanonicalAttrs, DissemControl};
+    use marque_scheme::Lattice;
+    use proptest::prelude::*;
+
+    fn portion(controls: &[DissemControl]) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.dissem_us = controls.to_vec().into_boxed_slice();
+        a
+    }
+
+    #[test]
+    fn dissem_basic_union() {
+        // Plain union for the non-supersession-managed tokens.
+        let portions = [
+            portion(&[DissemControl::Imc]),
+            portion(&[DissemControl::Pr]),
+        ];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(s.as_set().contains(&DissemControl::Imc));
+        assert!(s.as_set().contains(&DissemControl::Pr));
+    }
+
+    #[test]
+    fn dissem_oc_usgov_supersession_mirrors_pagecontext() {
+        // OC + OC-USGOV in joined set → drop OC-USGOV.
+        // §H.8 p136 + p140.
+        let portions = [
+            portion(&[DissemControl::Oc, DissemControl::OcUsgov]),
+            portion(&[DissemControl::Oc]),
+        ];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(s.as_set().contains(&DissemControl::Oc));
+        assert!(!s.as_set().contains(&DissemControl::OcUsgov));
+    }
+
+    #[test]
+    fn dissem_oc_usgov_kept_when_no_orcon() {
+        // Pure OC-USGOV across portions → kept (no supersession trigger).
+        let portions = [
+            portion(&[DissemControl::OcUsgov]),
+            portion(&[DissemControl::OcUsgov]),
+        ];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(s.as_set().contains(&DissemControl::OcUsgov));
+        assert!(!s.as_set().contains(&DissemControl::Oc));
+    }
+
+    #[test]
+    fn dissem_relido_observed_unanimity_pass() {
+        // Every portion has RELIDO → kept and unanimous=true.
+        let portions = [
+            portion(&[DissemControl::Relido]),
+            portion(&[DissemControl::Relido]),
+            portion(&[DissemControl::Relido]),
+        ];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(s.as_set().contains(&DissemControl::Relido));
+        assert!(s.relido_unanimous());
+    }
+
+    #[test]
+    fn dissem_relido_observed_unanimity_fail() {
+        // 2 of 3 portions have RELIDO → dropped and unanimous=false.
+        // §H.8 pp155-156.
+        let portions = [
+            portion(&[DissemControl::Relido]),
+            portion(&[DissemControl::Relido]),
+            portion(&[]),
+        ];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(!s.as_set().contains(&DissemControl::Relido));
+        assert!(!s.relido_unanimous());
+    }
+
+    #[test]
+    fn dissem_relido_layer1_does_not_infer() {
+        // 1-portion uncaveated classified, no RELIDO in portion → no
+        // RELIDO in DissemSet. Layer 2 FD&R inference defers to PR
+        // 4b-D.
+        let portions = [portion(&[])];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(!s.as_set().contains(&DissemControl::Relido));
+    }
+
+    #[test]
+    fn dissem_noforn_clears_rel_relido_displayonly() {
+        // NOFORN + REL TO + RELIDO + DISPLAY ONLY → only NOFORN
+        // survives. §D.2 Table 3 + §H.8 p145.
+        let portions = [
+            portion(&[DissemControl::Nf]),
+            portion(&[DissemControl::Rel]),
+            portion(&[DissemControl::Relido]),
+            portion(&[DissemControl::Displayonly]),
+        ];
+        let s = DissemSet::from_attrs_iter(&portions);
+        assert!(s.as_set().contains(&DissemControl::Nf));
+        assert!(!s.as_set().contains(&DissemControl::Rel));
+        assert!(!s.as_set().contains(&DissemControl::Relido));
+        assert!(!s.as_set().contains(&DissemControl::Displayonly));
+    }
+
+    // Proptest: assoc/comm/idem on DissemSet over arbitrary
+    // dissem-control bag operands. The state space is small enough
+    // (proptest collects up to 8 tokens per side) that the test runs
+    // in microseconds.
+    fn arb_controls() -> impl Strategy<Value = Vec<DissemControl>> {
+        // Restrict to a tractable subset of representative variants.
+        let single = prop_oneof![
+            Just(DissemControl::Oc),
+            Just(DissemControl::OcUsgov),
+            Just(DissemControl::Nf),
+            Just(DissemControl::Rel),
+            Just(DissemControl::Relido),
+            Just(DissemControl::Displayonly),
+            Just(DissemControl::Imc),
+            Just(DissemControl::Pr),
+            Just(DissemControl::Fouo),
+            Just(DissemControl::Dsen),
+        ];
+        prop::collection::vec(single, 0..=4)
+    }
+
+    fn arb_portions() -> impl Strategy<Value = Vec<CanonicalAttrs>> {
+        prop::collection::vec(arb_controls().prop_map(|v| portion(&v)), 0..=4)
+    }
+
+    proptest! {
+        #[test]
+        fn dissem_set_lattice_laws_idempotent_associative(
+            p1 in arb_portions(),
+            p2 in arb_portions(),
+            p3 in arb_portions(),
+        ) {
+            let s1 = DissemSet::from_attrs_iter(&p1);
+            let s2 = DissemSet::from_attrs_iter(&p2);
+            let s3 = DissemSet::from_attrs_iter(&p3);
+            // Commutativity.
+            prop_assert_eq!(s1.join(&s2), s2.join(&s1));
+            // Idempotency.
+            prop_assert_eq!(s1.join(&s1), s1.clone());
+            // Associativity.
+            prop_assert_eq!(
+                s1.join(&s2).join(&s3),
+                s1.join(&s2.join(&s3))
+            );
+            // Identity with bottom.
+            let bottom = DissemSet::empty();
+            prop_assert_eq!(bottom.join(&s1), s1.clone());
+            prop_assert_eq!(s1.join(&bottom), s1.clone());
+        }
+    }
+}
+
+// ===========================================================================
+// PR 4b-B Commit 4 — NatoDissemSet
+// ===========================================================================
+// CAPCO-2016 p41 (NATO reciprocity table). Verified 2026-05-15.
+
+mod nato_dissem_set {
+    use marque_capco::NatoDissemSet;
+    use marque_ism::{CanonicalAttrs, DissemControl};
+    use marque_scheme::Lattice;
+
+    fn portion(controls: &[DissemControl]) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.dissem_nato = controls.to_vec().into_boxed_slice();
+        a
+    }
+
+    #[test]
+    fn nato_dissem_set_plain_union() {
+        // NATO contributes only ORCON-NATO and REL TO (CAPCO-2016 p41);
+        // plain BTreeSet union, no supersession overlays.
+        let portions = [
+            portion(&[DissemControl::Oc]),  // ORCON in NATO namespace
+            portion(&[DissemControl::Rel]),
+        ];
+        let s = NatoDissemSet::from_attrs_iter(&portions);
+        assert!(s.as_set().contains(&DissemControl::Oc));
+        assert!(s.as_set().contains(&DissemControl::Rel));
+    }
+
+    #[test]
+    fn nato_dissem_set_lattice_laws() {
+        let p1 = portion(&[DissemControl::Oc]);
+        let p2 = portion(&[DissemControl::Rel]);
+        let p3 = portion(&[]);
+        let s1 = NatoDissemSet::from_attrs_iter(&[p1]);
+        let s2 = NatoDissemSet::from_attrs_iter(&[p2]);
+        let s3 = NatoDissemSet::from_attrs_iter(&[p3]);
+        assert_eq!(s1.join(&s2), s2.join(&s1), "comm");
+        assert_eq!(s1.join(&s1), s1, "idem");
+        assert_eq!(s1.join(&s2).join(&s3), s1.join(&s2.join(&s3)), "assoc");
+        let bottom = NatoDissemSet::empty();
+        assert_eq!(bottom.join(&s1), s1);
+    }
+}
