@@ -138,6 +138,7 @@ fn no_classification_default_origin_us_uses_dissem_us() {
         Box::new([]),
         Box::new([]),
         Box::new([]),
+        Box::new([]), // display_only_to
         None,
         None,
         None,
@@ -167,6 +168,7 @@ fn no_classification_overridden_origin_nato_routes_to_dissem_nato() {
         Box::new([]),
         Box::new([]),
         Box::new([]),
+        Box::new([]), // display_only_to
         None,
         None,
         None,

@@ -33,9 +33,9 @@ use marque_ism::attrs::{
 use marque_ism::date::IsmDate;
 use marque_ism::is_bare_cve_value;
 use marque_ism::parsed::{
-    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
-    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
-    SourceOrigin,
+    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDisplayOnlyEntry,
+    ParsedDissem, ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking,
+    ParsedSciMarking, SourceOrigin,
 };
 use marque_ism::span::{MarkingCandidate, MarkingType, Span};
 use marque_ism::token_set::TokenSet;
@@ -229,6 +229,7 @@ impl<'t> Parser<'t> {
                 Box::new([]), // dissem_nato
                 Box::new([]),
                 Box::new([]),
+                Box::new([]), // display_only_to (CAB has no DISPLAY ONLY axis)
                 declassify_on,
                 classified_by,
                 derived_from,
@@ -312,6 +313,12 @@ impl<'t> Parser<'t> {
         let mut dissem: SmallVec<[ParsedDissem<'src>; 4]> = SmallVec::new();
         let mut non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]> = SmallVec::new();
         let mut rel_to: SmallVec<[ParsedRelToEntry<'src>; 8]> = SmallVec::new();
+        // Inline-4: DISPLAY ONLY lists tend to be shorter than REL TO
+        // (the empirical CAPCO §H.8 p165 examples show 1–2 entries
+        // per portion; §D.2 Table 3 rows 25-26 roll up to small
+        // intersections at banner). Slightly tighter inline budget
+        // than `rel_to`.
+        let mut display_only_to: SmallVec<[ParsedDisplayOnlyEntry<'src>; 4]> = SmallVec::new();
 
         // When the marking starts with `//`, block 0 is empty and the
         // classification is non-US (FGI, NATO, or JOINT). Block 1 carries
@@ -457,6 +464,38 @@ impl<'t> Parser<'t> {
                 let parsed =
                     parse_rel_to_with_spans(trimmed, abs_start, self.tokens, &mut token_spans);
                 rel_to.extend(parsed.countries);
+                dissem.extend(parsed.trailing_dissem);
+                non_ic.extend(parsed.trailing_non_ic);
+                // CAPCO-2016 §H.8 p165 Notional Example Page 5
+                // portion-form commingling: a trailing `/DISPLAY ONLY
+                // [LIST]` after the REL TO list lands on the DISPLAY
+                // ONLY axis, not the REL TO axis. See the slash-tail
+                // handler in `parse_rel_to_with_spans` for the
+                // recognition path.
+                display_only_to.extend(parsed.trailing_display_only);
+            } else if trimmed.starts_with("DISPLAY ONLY ") || trimmed == "DISPLAY ONLY" {
+                // DISPLAY ONLY [LIST] block per CAPCO-2016 §H.8 p163.
+                // Grammar mirrors REL TO (comma-separated trigraphs +
+                // tetragraphs); the only structural difference is the
+                // prefix ("DISPLAY ONLY " with trailing space, or
+                // exact-match "DISPLAY ONLY" for the no-list defensive
+                // case). The semantics differ (disclosure vs release)
+                // and the country list lives on its own axis
+                // (`attrs.display_only_to`) so future rules can
+                // operate on a single axis without cross-axis
+                // contamination — see CanonicalAttrs::display_only_to.
+                token_spans.push(TokenSpan {
+                    kind: TokenKind::DisplayOnlyBlock,
+                    span,
+                    text: trimmed.into(),
+                });
+                let parsed = parse_display_only_with_spans(
+                    trimmed,
+                    abs_start,
+                    self.tokens,
+                    &mut token_spans,
+                );
+                display_only_to.extend(parsed.countries);
                 dissem.extend(parsed.trailing_dissem);
                 non_ic.extend(parsed.trailing_non_ic);
             } else if let Some(long_form) = recognize_deprecated_sci_long_form(trimmed) {
@@ -1167,6 +1206,7 @@ impl<'t> Parser<'t> {
             Box::new([]),
             non_ic.into_boxed_slice(),
             rel_to.into_boxed_slice(),
+            display_only_to.into_boxed_slice(),
             declassify_on,
             None,
             None,
@@ -2401,6 +2441,18 @@ struct RelToParseResult<'src> {
     countries: SmallVec<[ParsedRelToEntry<'src>; 8]>,
     trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]>,
     trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]>,
+    /// DISPLAY ONLY country entries from a trailing
+    /// `/DISPLAY ONLY [LIST]` segment commingled in the same
+    /// `//`-block as the REL TO list per CAPCO-2016 §H.8 p165
+    /// Notional Example Page 5 (e.g.,
+    /// `(S//REL TO USA, IRQ/DISPLAY ONLY AFG)`). §H.8 p164 admits
+    /// DISPLAY ONLY commingling with REL TO "when all information
+    /// within the portion has been reviewed through the
+    /// originator's foreign disclosure channels and approved for
+    /// disclosure and release to separate Register, Annex B
+    /// trigraph country code(s) or Register, Annex A tetragraph
+    /// code(s)."
+    trailing_display_only: SmallVec<[ParsedDisplayOnlyEntry<'src>; 4]>,
 }
 
 /// Span-aware parse of a `REL TO ...` block. Records one
@@ -2437,6 +2489,7 @@ fn parse_rel_to_with_spans<'src>(
     let mut countries: SmallVec<[ParsedRelToEntry<'src>; 8]> = SmallVec::new();
     let mut trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]> = SmallVec::new();
     let mut trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]> = SmallVec::new();
+    let mut trailing_display_only: SmallVec<[ParsedDisplayOnlyEntry<'src>; 4]> = SmallVec::new();
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
@@ -2496,6 +2549,44 @@ fn parse_rel_to_with_spans<'src>(
                 let part_abs = tail_base + tail_cursor + part_trim_lead;
                 tail_cursor += part.len() + part_trim_lead + 1; // +1 for `/`
                 if part.is_empty() {
+                    continue;
+                }
+                // CAPCO-2016 §H.8 p165 Notional Example Page 5 portion
+                // form: `(S//REL TO USA, IRQ/DISPLAY ONLY AFG)` — a
+                // DISPLAY ONLY block can follow REL TO inside the same
+                // `//`-delimited block, separated by a single `/`.
+                // §H.8 p164 admits this commingling "when all
+                // information within the portion has been reviewed
+                // through the originator's foreign disclosure channels
+                // and approved for disclosure and release to separate
+                // Register, Annex B trigraph country code(s) or
+                // Register, Annex A tetragraph code(s)." Detect the
+                // DISPLAY ONLY prefix BEFORE the flat DissemControl /
+                // non-IC parsers (which would all return None for the
+                // space-separated `DISPLAY ONLY [LIST]` form) and
+                // route through `parse_display_only_with_spans` to
+                // populate the dedicated axis. The returned countries
+                // accumulate into `trailing_display_only`, which the
+                // outer caller drains into its own `display_only_to`
+                // axis.
+                if part.starts_with("DISPLAY ONLY ") || part == "DISPLAY ONLY" {
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::DisplayOnlyBlock,
+                        span,
+                        text: part.into(),
+                    });
+                    let parsed_do =
+                        parse_display_only_with_spans(part, part_abs, tokens, token_spans);
+                    trailing_display_only.extend(parsed_do.countries);
+                    // Cross-axis commingling beyond REL TO+DISPLAY ONLY
+                    // (e.g., a trailing dissem AFTER the DISPLAY ONLY
+                    // block in the same /-tail) is not modeled by
+                    // §H.8 p165's worked examples; admit any DISPLAY
+                    // ONLY-internal trailing controls back into the
+                    // outer trailing fields rather than dropping them.
+                    trailing_dissem.extend(parsed_do.trailing_dissem);
+                    trailing_non_ic.extend(parsed_do.trailing_non_ic);
                     continue;
                 }
                 if let Some(ctrl) =
@@ -2574,6 +2665,172 @@ fn parse_rel_to_with_spans<'src>(
         });
     }
     RelToParseResult {
+        countries,
+        trailing_dissem,
+        trailing_non_ic,
+        trailing_display_only,
+    }
+}
+
+/// Return type for [`parse_display_only_with_spans`].
+///
+/// Parallel to [`RelToParseResult`]: DISPLAY ONLY shares the
+/// comma-separated country-list grammar with REL TO per CAPCO-2016
+/// §H.8 p163, so the parse shape is identical. Trailing
+/// `/<control>` controls are preserved for parity with the REL TO
+/// path even though §H.8 p164 forbids commingling DISPLAY ONLY with
+/// other dissem controls "unless consistent with IC directives" —
+/// the violation case is a rule concern (E054 / E055), not a parser
+/// concern. The caller drains each field via
+/// `Vec::extend(IntoIterator)`.
+struct DisplayOnlyParseResult<'src> {
+    countries: SmallVec<[ParsedDisplayOnlyEntry<'src>; 4]>,
+    trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]>,
+    trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]>,
+}
+
+/// Span-aware parse of a `DISPLAY ONLY ...` block. Records one
+/// [`TokenKind::DisplayOnlyTrigraph`] span per recognized country
+/// code plus a single [`TokenKind::DisplayOnlyBlock`] span over the
+/// whole input (the caller emits the block span; this function only
+/// emits the per-entry spans).
+///
+/// Grammar mirrors [`parse_rel_to_with_spans`] per CAPCO-2016 §H.8
+/// p163 (DISPLAY ONLY: comma-separated trigraphs + tetragraphs) and
+/// §H.8 p150-151 (REL TO: same comma-separated list shape). The
+/// only structural difference is the prefix: `DISPLAY ONLY ` vs
+/// `REL TO ` / `REL `.
+///
+/// `block_offset` is the absolute byte offset of `block` within the
+/// original source buffer.
+fn parse_display_only_with_spans<'src>(
+    block: &'src str,
+    block_offset: usize,
+    tokens: &dyn TokenSet,
+    token_spans: &mut SmallVec<[TokenSpan; 16]>,
+) -> DisplayOnlyParseResult<'src> {
+    // Skip the "DISPLAY ONLY" prefix. The trailing-space variant
+    // (`DISPLAY ONLY ` with a following country list) is the common
+    // case; the exact-match variant (`DISPLAY ONLY` with no list)
+    // is admitted defensively even though §H.8 p163 always shows
+    // the marking with a `[LIST]` parameter.
+    let prefix_skip = if let Some(rest) = block.strip_prefix("DISPLAY ONLY ") {
+        block.len() - rest.len()
+    } else if block == "DISPLAY ONLY" {
+        block.len()
+    } else {
+        0
+    };
+    let after_prefix = &block[prefix_skip..];
+
+    let mut countries: SmallVec<[ParsedDisplayOnlyEntry<'src>; 4]> = SmallVec::new();
+    let mut trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]> = SmallVec::new();
+    let mut trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]> = SmallVec::new();
+
+    let mut cursor = 0usize;
+    for entry in after_prefix.split(',') {
+        let entry_start_in_after = cursor;
+        cursor += entry.len() + 1;
+
+        let trim_lead = entry.len() - entry.trim_start().len();
+        let trimmed = entry.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let abs_start = block_offset + prefix_skip + entry_start_in_after + trim_lead;
+
+        // Slash-tail handling parallels `parse_rel_to_with_spans`. §H.8
+        // p164 forbids commingling DISPLAY ONLY with other dissem
+        // controls outside specific IC directives, so this branch is
+        // structurally accommodating but the violation case is for the
+        // rule layer (E054 / E055) to surface.
+        if let Some(slash_pos) = trimmed.find('/') {
+            let country_part = trimmed[..slash_pos].trim();
+            let tail = trimmed[slash_pos + 1..].trim();
+
+            if !country_part.is_empty() {
+                if tokens.is_trigraph(country_part) {
+                    if let Some(t) = CountryCode::try_new(country_part.as_bytes()) {
+                        let span = Span::new(abs_start, abs_start + country_part.len());
+                        countries.push(ParsedDisplayOnlyEntry::new(t, country_part, span));
+                        token_spans.push(TokenSpan {
+                            kind: TokenKind::DisplayOnlyTrigraph,
+                            span,
+                            text: country_part.into(),
+                        });
+                    }
+                } else {
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span: Span::new(abs_start, abs_start + country_part.len()),
+                        text: country_part.into(),
+                    });
+                }
+            }
+
+            let tail_base = abs_start + slash_pos + 1;
+            let mut tail_cursor = 0usize;
+            for part in tail.split('/') {
+                let part_trim_lead = part.len() - part.trim_start().len();
+                let part = part.trim();
+                let part_abs = tail_base + tail_cursor + part_trim_lead;
+                tail_cursor += part.len() + part_trim_lead + 1; // +1 for `/`
+                if part.is_empty() {
+                    continue;
+                }
+                if let Some(ctrl) =
+                    DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
+                {
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    trailing_dissem.push(ParsedDissem::new(ctrl, part, span));
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::DissemControl,
+                        span,
+                        text: part.into(),
+                    });
+                } else if let Some(nic) = parse_non_ic_full_form(part) {
+                    let span = Span::new(part_abs, part_abs + part.len());
+                    trailing_non_ic.push(ParsedNonIcDissem::new(nic, part, span));
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::NonIcDissem,
+                        span,
+                        text: part.into(),
+                    });
+                } else {
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span: Span::new(part_abs, part_abs + part.len()),
+                        text: part.into(),
+                    });
+                }
+            }
+            continue;
+        }
+
+        if !tokens.is_trigraph(trimmed) {
+            // Emit Unknown for unrecognized country entries — parallel
+            // to the REL TO behavior; lets E008 / the decoder
+            // dispatcher surface a fuzzy-correction candidate instead
+            // of silently dropping the entry.
+            token_spans.push(TokenSpan {
+                kind: TokenKind::Unknown,
+                span: Span::new(abs_start, abs_start + trimmed.len()),
+                text: trimmed.into(),
+            });
+            continue;
+        }
+        let Some(t) = CountryCode::try_new(trimmed.as_bytes()) else {
+            continue;
+        };
+        let span = Span::new(abs_start, abs_start + trimmed.len());
+        countries.push(ParsedDisplayOnlyEntry::new(t, trimmed, span));
+        token_spans.push(TokenSpan {
+            kind: TokenKind::DisplayOnlyTrigraph,
+            span,
+            text: trimmed.into(),
+        });
+    }
+    DisplayOnlyParseResult {
         countries,
         trailing_dissem,
         trailing_non_ic,

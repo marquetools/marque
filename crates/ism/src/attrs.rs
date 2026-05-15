@@ -105,6 +105,17 @@ pub enum TokenKind {
     /// The full `REL TO ...` block text. Recorded so E013 can inspect the
     /// raw source for delimiter errors (spaces instead of commas).
     RelToBlock,
+    /// DISPLAY ONLY country trigraph (AFG, IRQ, NATO, ...) — one per
+    /// token, not the whole DISPLAY ONLY list. Parallel to
+    /// [`Self::RelToTrigraph`]; the per-trigraph span is distinct
+    /// from REL TO so future rules that operate on a single axis
+    /// (e.g., per-§D.2 Table 3 row 25/26 banner roll-up) can locate
+    /// only the relevant entries.
+    DisplayOnlyTrigraph,
+    /// The full `DISPLAY ONLY ...` block text, including the
+    /// `DISPLAY ONLY` keyword and the comma-separated country list.
+    /// Parallel to [`Self::RelToBlock`].
+    DisplayOnlyBlock,
     /// Declassification exemption code in CAB or banner (25X1, 50X1-HUM).
     DeclassExemption,
     /// Declassification date in CAB or banner (YYYYMMDD or YYYY).
