@@ -58,24 +58,29 @@ use std::collections::BTreeSet;
 const EXPECTED_RULE_IDS: &[&str] = &[
     "C001", "E002", "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016", "E021",
     "E024", "E031", "E036", "E037", "E038", "E039", "E041", "E053", "E054", "E055", "E056", "E057",
-    "E061", "E062", "E063", "E064", "E065", "S003", "S004", "S005", "S006", "W002", "W003", "W034",
+    "E061", "E062", "E063", "E064", "E065",
+    // PR 9c.1 T134: legacy NATO compound text re-marking per
+    // CAPCO-2016 §H.7 line 4702 + §H.7 p123 + §G.2 p41 + §H.7 p127.
+    "E066", "S003", "S004", "S005", "S006", "W002", "W003", "W034",
 ];
 
 #[test]
-fn post_pr_9a_registers_exact_36_rule_ids() {
+fn post_pr_9a_registers_exact_37_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "36 unique IDs from 36
-    // registrations" from "36 unique IDs from 37 registrations
+    // assertion below cannot distinguish "37 unique IDs from 37
+    // registrations" from "37 unique IDs from 38 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
+    //
+    // PR 9c.1 T134 (this PR) added E066 — bumped from 36 to 37.
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 36,
-        "post-PR-9a raw rule slice length drifted from 36 \
+        raw_len, 37,
+        "post-PR-9c.1 raw rule slice length drifted from 37 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -92,16 +97,16 @@ fn post_pr_9a_registers_exact_36_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        36,
-        "EXPECTED_RULE_IDS does not contain 36 unique entries: {expected:?}",
+        37,
+        "EXPECTED_RULE_IDS does not contain 37 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        36,
-        "post-PR-9a registered rule count drifted from 36: actual={actual:?}",
+        37,
+        "post-PR-9c.1 registered rule count drifted from 37: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
