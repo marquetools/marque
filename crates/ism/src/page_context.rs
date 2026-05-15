@@ -150,8 +150,18 @@ impl Clone for PageContext {
         // `engine.rs:1025` to wrap in `Arc<PageContext>` for the
         // banner/CAB rule hand-off; without this impl, that path would
         // silently undo the pre-size for any page with fewer than
-        // `DEFAULT_PORTIONS_CAPACITY` portions accumulated so far. Issue #430.
-        let cap = self.portions.capacity().max(DEFAULT_PORTIONS_CAPACITY);
+        // `DEFAULT_PORTIONS_CAPACITY` portions accumulated so far.
+        //
+        // Sizing uses `len().max(DEFAULT_PORTIONS_CAPACITY)` rather than
+        // `self.portions.capacity()` so a portion-heavy source ctx
+        // doesn't amplify into a clone with up to 2× wasted slack from
+        // the source Vec's last growth step (a 33-portion page would
+        // sit at capacity 64; cloning at that capacity wastes ~31 slots
+        // × ~300B of `CanonicalAttrs` per slot in the Arc'd snapshot).
+        // The cloned ctx is treated as read-only by the banner/CAB
+        // hand-off; future pushes are not the cloned ctx's concern.
+        // Issue #430.
+        let cap = self.portions.len().max(DEFAULT_PORTIONS_CAPACITY);
         let mut portions = Vec::with_capacity(cap);
         portions.extend(self.portions.iter().cloned());
         Self { portions }
