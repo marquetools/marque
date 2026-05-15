@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-3c.B-Commit-7.4 registration pin (PR 9c.2 updates: 31 → 38).
+//! Post-PR-3c.B-Commit-7.4 registration pin (PR 4b-B updates: 38 → 39).
 //!
-//! Asserts the **exact set** of 38 registered `Rule::id()` values in
-//! `CapcoRuleSet::new()` after PR 9c.2 (FR-048 / S007) lands. The
+//! Asserts the **exact set** of 39 registered `Rule::id()` values in
+//! `CapcoRuleSet::new()` after PR 4b-B (006 T112) lands W004. The
 //! umbrella's structural commitment: the per-commit tests pin per-rule
 //! behavior; this pins the closed set the workspace delivers.
 //!
@@ -34,7 +34,7 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 38 registered `Rule::id()` strings post-PR-9c.2.
+/// The closed set of 39 registered `Rule::id()` strings post-PR-4b-B.
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
@@ -53,7 +53,9 @@ use std::collections::BTreeSet;
 /// §H.7 p127 (36 → 37). PR 9c.2 (this PR) adds
 /// `BareNatoRequiresRelToRule` (S007) — bare NATO classification in a
 /// US-classified document should carry `REL TO USA, NATO` per §H.7
-/// p127 Notional Example 2 (37 → 38). The 27 class-floor + 5 SCI
+/// p127 Notional Example 2 (37 → 38). PR 4b-B (006 T112) adds W004 —
+/// joint-disunity-collapse-to-FGI per §H.3 p56 + §H.7 p123 (38 → 39).
+/// The 27 class-floor + 5 SCI
 /// per-system catalog rows still fire; they emit through the bridge as
 /// `Diagnostic.rule = "E058"` and `Diagnostic.rule = "E059"`
 /// respectively (audit-stream + `[rules] E058 = "off"` /
@@ -72,26 +74,31 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // PR 9c.2 / FR-048: bare NATO classification in a US-classified
     // document should carry `REL TO USA, NATO` per §H.7 p127 Notional
     // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
-    "S007", "W002", "W003", "W034",
+    "S007", "W002", "W003",
+    // PR 4b-B Commit 9 (006 T112): joint-disunity-collapse-to-FGI per
+    // CAPCO-2016 §H.3 p56 + §H.7 p123. Surfaces the cross-axis
+    // transformation when all-JOINT portions disagree on producer
+    // lists and JointSet::DisunityCollapse fires.
+    "W004", "W034",
 ];
 
 #[test]
-fn post_pr_9c2_registers_exact_38_rule_ids() {
+fn post_pr_4b_b_registers_exact_39_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "38 unique IDs from 38
-    // registrations" from "38 unique IDs from 39 registrations
+    // assertion below cannot distinguish "39 unique IDs from 39
+    // registrations" from "39 unique IDs from 40 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
-    // PR 9c.2 (this PR) added S007 — bumped from 37 to 38.
+    // PR 4b-B Commit 9 (006 T112): added W004 — bumped from 38 to 39.
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 38,
-        "post-PR-9c.2 raw rule slice length drifted from 38 \
+        raw_len, 39,
+        "post-PR-4b-B raw rule slice length drifted from 39 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -108,16 +115,16 @@ fn post_pr_9c2_registers_exact_38_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        38,
-        "EXPECTED_RULE_IDS does not contain 38 unique entries: {expected:?}",
+        39,
+        "EXPECTED_RULE_IDS does not contain 39 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        38,
-        "post-PR-9c.2 registered rule count drifted from 38: actual={actual:?}",
+        39,
+        "post-PR-4b-B registered rule count drifted from 39: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -133,7 +140,7 @@ fn post_pr_9c2_registers_exact_38_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-PR-9c.2 registered rule-ID set drifted. \
+        "post-PR-4b-B registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \

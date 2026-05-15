@@ -341,6 +341,14 @@ impl CapcoRuleSet {
                 // surfacing. The solely-NATO-document case is carved
                 // out via `PageContext::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
+                // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
+                // collapse-to-FGI per CAPCO-2016 §H.3 p56 + §H.7 p123.
+                // Fires only on banner candidates whose page_context
+                // contains all-JOINT portions with disagreeing
+                // producer lists. The diagnostic message uses canonical
+                // CountryCode trigraphs only (Constitution V Principle
+                // V G13). Severity: Warn (configurable per .marque.toml).
+                Box::new(JointDisunityCollapseRule),
             ],
         }
     }
@@ -4997,8 +5005,7 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// transformation so users have an audit trail; the engine's
 /// `CapcoMarking::join` rewrite in Commit 7 produces the FGI-
 /// migrated banner facts that the renderer will emit.
-#[allow(dead_code)] // registered in CapcoRuleSet::new() at Commit 9.
-pub(crate) struct JointDisunityCollapseRule;
+struct JointDisunityCollapseRule;
 
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn id(&self) -> RuleId {

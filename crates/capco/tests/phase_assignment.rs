@@ -131,6 +131,10 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("S007", Phase::WholeMarking),
     ("W002", Phase::WholeMarking),
     ("W003", Phase::WholeMarking),
+    // PR 4b-B Commit 9 (006 T112): joint-disunity-collapse-to-FGI per
+    // CAPCO-2016 §H.3 p56 + §H.7 p123. Banner-only decision reading
+    // the classification axis across all portions on the page.
+    ("W004", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),
 ];
 
