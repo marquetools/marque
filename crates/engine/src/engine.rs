@@ -694,6 +694,17 @@ impl Engine {
         // would self-justify by raising the floor it then clears).
         let mut classification_floor: Option<u8> = None;
 
+        // Per-`lint()` hoist for the `E059` bridge-emitted override.
+        // The construction-time `emitted_id_overrides` table eliminates
+        // the per-call `Severity::parse_config` cost, but the
+        // per-candidate HashMap probe remains if the lookup is inlined
+        // at the bridge call site. The SCI per-system bridge runs on
+        // every SCI-bearing candidate, so hoisting the `Option<Severity>`
+        // out of the loop matches the precedent established by the
+        // pre-PR-427 `e059_override` hoist (rust-reviewer MEDIUM on
+        // commit a2fbf12b) and keeps the per-candidate path probe-free.
+        let e059_override: Option<Severity> = self.emitted_id_overrides.get("E059").copied();
+
         // PR 3c.B Commit 4 — per-page scratch buffer for
         // `MarkingScheme::render_canonical`. The writer-passing
         // contract on `render_canonical` (caller pre-allocates and
@@ -1282,10 +1293,11 @@ impl Engine {
                 // suppresses the entire catalog (FR-008); a non-`Off`
                 // override replaces each emitted diagnostic's severity.
                 // The override value is pre-resolved at engine
-                // construction time in `emitted_id_overrides` — the
-                // per-`lint()` `e059_override` hoist that lived
-                // above the candidate loop was subsumed by the
-                // construction-time table and retired.
+                // construction time in `emitted_id_overrides` (no parse
+                // cost per call) and additionally hoisted to
+                // `e059_override` once per `lint()` call (no per-candidate
+                // HashMap probe). Both layers are loop-invariant by
+                // construction.
                 // SCI per-system FactAdd scope tracks the candidate's
                 // marking type: a portion candidate emits at portion
                 // scope; a banner candidate emits at page scope (the
@@ -1300,7 +1312,7 @@ impl Engine {
                     &attrs,
                     candidate.span,
                     fix_scope,
-                    self.emitted_id_overrides.get("E059").copied(),
+                    e059_override,
                 ));
             }
         }
