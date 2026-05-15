@@ -178,18 +178,54 @@ fn rule_count_reflects_registration_changes() {
     // path so fixes (`FixProposal`) survive the deletion. Net delta:
     // -2 (7.3 -1; 7.4 -1). Final: 33 - 2 = 31.
     //
+    // PR 9a T135a (issue #307 Group D): added
+    // `DeprecatedSciLongFormRule` (E065) — canonicalization walker for
+    // deprecated SCI long-form tokens per CAPCO-2016 §H.4 pp 61, 62, 74,
+    // 76, 78, 85. Net delta: +1. Final: 31 + 1 = 32.
+    //
+    // PR 9a (issue #307): added three class-specific bare-HCS /
+    // bare-RSV rules per CAPCO-2016 §H.4 pp 62, 70:
+    //   E061  hcs-bare-at-confidential-legacy-remark  (§H.4 p62)
+    //   E062  hcs-bare-suggest-subcompartment         (§H.4 p62)
+    //   E063  rsv-bare-requires-compartment           (§H.4 p70)
+    // E061 / E062 complement E010 with class-specific guidance; E063
+    // is net new (no prior coverage). Net delta: +3. Final: 32 + 3 = 35.
+    //
+    // PR 9a Commit 5 (issue #307): added `EyesOnlyConvertToRelToRule`
+    // (E064) — EYES / EYES ONLY → REL TO conversion per §H.8 p157 +
+    // p158. NSA-only and deprecated since the markings waiver expired
+    // 1 Oct 2017. Net delta: +1. Final: 35 + 1 = 36.
+    //
+    // PR 9c.1 T134: added `LegacyNatoCompoundRemarkRule` (E066) —
+    // legacy NATO compound text re-marking per CAPCO-2016 §H.7 line
+    // 4702 + §H.7 p122 (ATOMAL → AEA) + §G.2 p40 + §H.7 p127
+    // (BALK/BOHEMIA → SCI). The rule fires when the parser
+    // canonicalizes legacy compound text into bare class + AEA/SCI
+    // companion and emits a Recanonicalize fix at confidence 1.0.
+    // Net delta: +1. Final: 36 + 1 = 37.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        31,
+        37,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
          `DeclarativeSciPerSystemRule` (E059); their 27 + 5 catalog \
          rows fire via the engine's bridge — net delta -2. Final: \
-         31. See \
+         31. PR 9a T135a adds `DeprecatedSciLongFormRule` (E065) — \
+         canonicalization walker for deprecated SCI long-form tokens \
+         per CAPCO-2016 §H.4 pp 61, 62, 74, 76, 78, 85; net delta +1. \
+         PR 9a (issue #307) adds three class-specific bare-HCS / \
+         bare-RSV rules (E061 / E062 / E063); net delta +3. PR 9a \
+         Commit 5 adds `EyesOnlyConvertToRelToRule` (E064) — EYES \
+         / EYES ONLY → REL TO conversion per §H.8 p157 + p158; \
+         net delta +1. Final: 36. PR 9c.1 T134 adds \
+         `LegacyNatoCompoundRemarkRule` (E066) — legacy NATO \
+         compound text re-marking per §G.2 p40 (Table 5) + §H.7 p122 + \
+         §H.7 p127; net delta +1. Final: 37. See \
          `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

@@ -95,6 +95,31 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("E055", Phase::WholeMarking),
     ("E056", Phase::WholeMarking),
     ("E057", Phase::WholeMarking),
+    // PR 9a (issue #307): class-specific bare-HCS / bare-RSV rules per
+    // CAPCO-2016 §H.4. Phase::WholeMarking because each rule's trigger
+    // is a cross-token condition (classification level + SCI marking
+    // shape) — the diagnostic spans a single token but the predicate
+    // needs the whole marking's attrs.
+    ("E061", Phase::WholeMarking),
+    ("E062", Phase::WholeMarking),
+    ("E063", Phase::WholeMarking),
+    // PR 9a Commit 5 (issue #307): EYES / EYES ONLY → REL TO
+    // conversion per §H.8 p157 + p158. Phase::Localized — the
+    // text_correction span covers a single TokenKind::DissemControl
+    // block (the EYES compound token).
+    ("E064", Phase::Localized),
+    // PR 9a T135a (issue #307 Group D): deprecated SCI long-form
+    // canonicalization walker. Phase::Localized because every emitted
+    // diagnostic carries a span that covers a single TokenSpan (the
+    // deprecated long-form token); text-correction replacements are
+    // byte-precise single-token splices.
+    ("E065", Phase::Localized),
+    // PR 9c.1 T134: legacy NATO compound text re-marking. Whole-marking
+    // because the canonical re-rendering needs to span the full
+    // candidate — the classification block AND the appended AEA/SCI
+    // companion block need to land together (e.g.,
+    // `(//CTSA)` → `(//CTS//ATOMAL)`).
+    ("E066", Phase::WholeMarking),
     ("S003", Phase::WholeMarking),
     ("S005", Phase::WholeMarking),
     ("S006", Phase::WholeMarking),

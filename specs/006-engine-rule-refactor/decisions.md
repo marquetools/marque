@@ -936,13 +936,16 @@ recommendations.
 | D17 | PR 3b.C scope correction: RELIDO Conflicts roster pruned from ~15–20 to 4 rows under Constitution VIII; broader §3.4.2 family roster deferred to PR 3.7 T108b | `crates/capco/tests/relido_conflicts.rs` count pin; verdict line 82 amended |
 | D18 | T108c catalog shape: public `ClosureRule` (Option C), not private `ImplTable<S>` | `tasks.md` T108c amended; `2026-05-07-pr3b-consultation-verdict.md` §5 item 5 superseded; `decisions.md` Q-4.7-timing wording updated |
 | D19 | Topic 1 design pass: `AuditNote` audit-stream record + per-row severity for `ClosureRule` + `Constraint::Implies` retirement (narrowly supersedes D18 rationale bullet 3) | `tasks.md` T108e/T108f/T108g added; D18 bullet 3 annotated |
+| D9b-1 | Two parallel slice fields for `dissem_us` / `dissem_nato` | PR 9b T132 shipped two `Box<[DissemControl]>` fields per FR-046. Future cross-system translation (memory `project_cross_system_translation.md`) and a hypothetical third namespace (FVEY-only, partner-national) would be cleaner with `Box<[NamespacedDissem]>`. Owner reviewed and chose to defer; revisit in PR 10+ if cross-system translation work surfaces the smell as concrete blocking pain. Reference: PR 9b preflight, 2026-05-14. |
 
-D1–D16 lock at PR 0. D17 / D18 / D19 are post-PR-0 implementation
-decisions: D17 is a PR 3b.C scope correction amending a consultation
-verdict projection; D18 is a PR 3.7 T108c catalog-shape pivot from
-the 2026-05-07 trait-shape pin to a public `ClosureRule` catalog
-(Option C); D19 is the Topic 1 design pass that lands `AuditNote`,
-per-row severity for `ClosureRule`, and the `Constraint::Implies`
-retirement as sibling T108e/f/g tasks under PR 3.7. Subsequent PRs
-execute against this register; amendments require a follow-up PR
-editing this file.
+D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 are post-PR-0
+implementation decisions: D17 is a PR 3b.C scope correction
+amending a consultation verdict projection; D18 is a PR 3.7 T108c
+catalog-shape pivot from the 2026-05-07 trait-shape pin to a public
+`ClosureRule` catalog (Option C); D19 is the Topic 1 design pass
+that lands `AuditNote`, per-row severity for `ClosureRule`, and the
+`Constraint::Implies` retirement as sibling T108e/f/g tasks under
+PR 3.7; D9b-1 is the PR 9b T132 dissem-split shape choice
+(two-parallel-fields over namespaced-tuple). Subsequent PRs execute
+against this register; amendments require a follow-up PR editing
+this file.

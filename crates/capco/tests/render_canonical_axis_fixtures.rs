@@ -65,7 +65,7 @@ fn cc(s: &str) -> CountryCode {
 }
 
 // ===========================================================================
-// CLASSIFICATION axis (CAPCO-2016 §A.6 p15-16, §H.1 p49, §H.3 p55-58, §H.7 p123)
+// CLASSIFICATION axis (CAPCO-2016 §A.6 p15-16, §H.1 p49, §H.3 p55-58, §H.7 p122)
 // ===========================================================================
 
 #[test]
@@ -86,7 +86,7 @@ fn classification_us_topsecret_portion() {
 
 #[test]
 fn classification_fgi_acknowledged_single_country_banner() {
-    // Authority: CAPCO-2016 §H.7 p123 — FGI as classification system,
+    // Authority: CAPCO-2016 §H.7 p122 — FGI as classification system,
     // source-acknowledged single country: `//GBR S`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Fgi(FgiClassification {
@@ -98,7 +98,7 @@ fn classification_fgi_acknowledged_single_country_banner() {
 
 #[test]
 fn classification_fgi_concealed_banner() {
-    // Authority: CAPCO-2016 §H.7 p123 — source-concealed FGI:
+    // Authority: CAPCO-2016 §H.7 p122 — source-concealed FGI:
     // `//FGI S` (FGI prefix replaces country list).
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Fgi(FgiClassification {
@@ -110,11 +110,32 @@ fn classification_fgi_concealed_banner() {
 
 #[test]
 fn classification_nato_banner() {
-    // Authority: CAPCO-2016 §H.3 + Table 4 §3 p36 — NATO Secret
-    // banner = `NATO SECRET`.
+    // Authority: CAPCO-2016 §A.6 p15 + §H.3 p55 + Table 4 §3 p36.
+    // Non-US markings must start with `//` (the absent US-classification
+    // slot per §A.6 p15). NATO Secret banner = `//NATO SECRET`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
-    assert_eq!(render_banner(a), "NATO SECRET");
+    assert_eq!(render_banner(a), "//NATO SECRET");
+}
+
+#[test]
+fn classification_nato_portion() {
+    // Authority: CAPCO-2016 §A.6 p15 + §G.1 Table 4 pp 36-38.
+    // Non-US markings start with `//`; NATO Secret portion = `//NS`.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+    assert_eq!(render_portion(a), "//NS");
+}
+
+#[test]
+fn classification_nato_cosmic_top_secret_portion() {
+    // Authority: CAPCO-2016 §A.6 p15 + §G.1 Table 4 pp 36-38.
+    // COSMIC TOP SECRET portion abbreviation = `CTS`; with `//` prefix: `//CTS`.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Nato(
+        NatoClassification::CosmicTopSecret,
+    ));
+    assert_eq!(render_portion(a), "//CTS");
 }
 
 #[test]
@@ -402,12 +423,12 @@ fn aea_tfni_banner() {
 }
 
 // ===========================================================================
-// FGI marker axis (CAPCO-2016 §A.6 p16, §H.7 p123)
+// FGI marker axis (CAPCO-2016 §A.6 p16, §H.7 p122)
 // ===========================================================================
 
 #[test]
 fn fgi_marker_concealed() {
-    // Authority: CAPCO-2016 §H.7 p123 — source-concealed FGI marker
+    // Authority: CAPCO-2016 §H.7 p122 — source-concealed FGI marker
     // = bare `FGI`.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
@@ -417,7 +438,7 @@ fn fgi_marker_concealed() {
 
 #[test]
 fn fgi_marker_acknowledged_single_trigraph() {
-    // Authority: CAPCO-2016 §H.7 p123 — source-acknowledged FGI
+    // Authority: CAPCO-2016 §H.7 p122 — source-acknowledged FGI
     // marker with one country trigraph.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
@@ -468,7 +489,7 @@ fn dissem_noforn_banner() {
     // form maps to `NOFORN` banner form.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     assert_eq!(render_banner(a), "SECRET//NOFORN");
 }
 
@@ -477,7 +498,7 @@ fn dissem_noforn_portion() {
     // Authority: CAPCO-2016 §H.8 Table 4 §8 p36 — `NF` portion form.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     assert_eq!(render_portion(a), "S//NF");
 }
 
@@ -487,7 +508,7 @@ fn dissem_orcon_banner_form() {
     // `ORCON` banner.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    a.dissem_controls = vec![DissemControl::Oc].into();
+    a.dissem_us = vec![DissemControl::Oc].into();
     assert_eq!(render_banner(a), "TOP SECRET//ORCON");
 }
 
@@ -497,7 +518,7 @@ fn dissem_register_order_orcon_before_noforn() {
     // order ORCON < NOFORN < RELIDO.
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
-    a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf, DissemControl::Oc].into();
+    a.dissem_us = vec![DissemControl::Relido, DissemControl::Nf, DissemControl::Oc].into();
     assert_eq!(render_banner(a), "TOP SECRET//ORCON/NOFORN/RELIDO");
 }
 
@@ -509,7 +530,7 @@ fn dissem_bare_rel_dropped_when_rel_to_present() {
     // `REL TO USA, ...` once).
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
-    a.dissem_controls = vec![DissemControl::Rel].into();
+    a.dissem_us = vec![DissemControl::Rel].into();
     a.rel_to = vec![cc("USA"), cc("GBR")].into();
     assert_eq!(render_banner(a), "SECRET//REL TO USA, GBR");
 }
@@ -705,7 +726,7 @@ fn full_composition_class_sci_aea_dissem_relto() {
         None,
     )]
     .into();
-    a.dissem_controls = vec![DissemControl::Oc, DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
     a.rel_to = vec![cc("USA"), cc("GBR")].into();
     assert_eq!(
         render_banner(a),
@@ -720,7 +741,7 @@ fn full_composition_class_aea_dissem() {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
     a.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
-    a.dissem_controls = vec![DissemControl::Nf].into();
+    a.dissem_us = vec![DissemControl::Nf].into();
     assert_eq!(render_banner(a), "SECRET//RD//NOFORN");
 }
 

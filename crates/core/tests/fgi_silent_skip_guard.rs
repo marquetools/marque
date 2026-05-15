@@ -9,7 +9,7 @@
 //!
 //! 1. `parse_fgi_marker` → `CountryCode::admits_country_token`
 //!    (3-letter Annex B trigraph OR 4-letter Annex A tetragraph OR
-//!    2-letter registered exception code per §H.7 p123 + ISMCAT
+//!    2-letter registered exception code per §H.7 p122 + ISMCAT
 //!    CVEnumISMCATRelTo)
 //! 2. SAR program identifier (abbrev) → `SarProgram::admits_program_id_abbrev`
 //! 3. SAR compartment identifier → `SarCompartment::admits_identifier`
@@ -33,7 +33,7 @@
 //!
 //! # Authority
 //!
-//! - CAPCO-2016 §H.7 p123 — FGI banner forms (concealed `FGI`, acknowledged
+//! - CAPCO-2016 §H.7 p122 — FGI banner forms (concealed `FGI`, acknowledged
 //!   `FGI [LIST]`); per-country list separator and tetragraph rules at §A.6
 //!   p16 ("Multiple FGI trigraph country codes or tetragraph codes must be
 //!   separated by a single space").
@@ -111,7 +111,7 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
 
 #[test]
 fn parse_fgi_marker_bare_fgi_yields_source_concealed() {
-    // CAPCO-2016 §H.7 p123: bare `FGI` is the lawful source-concealed banner
+    // CAPCO-2016 §H.7 p122: bare `FGI` is the lawful source-concealed banner
     // form ("FOREIGN GOVERNMENT INFORMATION (when country[ies] or
     // organization[s] of origin must be concealed)"). The parser must
     // produce `Some(SourceConcealed)`, not the pre-FR-017 collision shape
@@ -123,7 +123,7 @@ fn parse_fgi_marker_bare_fgi_yields_source_concealed() {
         .expect("bare FGI must yield Some(SourceConcealed)");
     assert!(
         matches!(marker, FgiMarker::SourceConcealed),
-        "bare FGI must be SourceConcealed (CAPCO §H.7 p123), got {marker:?}",
+        "bare FGI must be SourceConcealed (CAPCO §H.7 p122), got {marker:?}",
     );
     // FR-017 invariant: the lawful concealed form has no countries.
     assert!(
@@ -134,7 +134,7 @@ fn parse_fgi_marker_bare_fgi_yields_source_concealed() {
 
 #[test]
 fn parse_fgi_marker_acknowledged_yields_countries() {
-    // CAPCO-2016 §H.7 p123: `FGI [LIST]` is the acknowledged form. The
+    // CAPCO-2016 §H.7 p122: `FGI [LIST]` is the acknowledged form. The
     // country list is non-empty by construction
     // (`FgiMarker::acknowledged(...)` returns `None` on empty input).
     let attrs = parse_banner_attrs("SECRET//FGI DEU//NOFORN");
@@ -161,7 +161,7 @@ fn parse_fgi_marker_lowercase_trigraph_yields_no_marker() {
     // not silently drop the lowercase token and fall back to a degraded
     // `SourceConcealed` (which was the pre-FR-016 surface).
     //
-    // CAPCO §H.7 p123 + §A.6 p16 require trigraph or tetragraph country
+    // CAPCO §H.7 p122 + §A.6 p16 require trigraph or tetragraph country
     // codes; both registries are uppercase-canonical. Lowercase fails
     // `CountryCode::admits_country_token` at the parser admission gate.
     let attrs = parse_banner_attrs("SECRET//FGI deu//NOFORN");
@@ -175,7 +175,7 @@ fn parse_fgi_marker_lowercase_trigraph_yields_no_marker() {
 
 #[test]
 fn parse_fgi_marker_mixed_trigraph_tetragraph_yields_acknowledged() {
-    // CAPCO-2016 §H.7 p123 spells out the canonical example:
+    // CAPCO-2016 §H.7 p122 spells out the canonical example:
     // `SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`
     // — `NATO` is a 4-letter Annex A tetragraph admitted in the same
     // FGI list as the 3-letter trigraphs. The PR #311 review caught
@@ -187,7 +187,7 @@ fn parse_fgi_marker_mixed_trigraph_tetragraph_yields_acknowledged() {
     let attrs = parse_banner_attrs("SECRET//FGI USA NATO//NOFORN");
     let marker = attrs
         .fgi_marker
-        .expect("mixed trigraph + tetragraph FGI list must admit per §H.7 p123");
+        .expect("mixed trigraph + tetragraph FGI list must admit per §H.7 p122");
     let countries = marker.countries();
     assert_eq!(
         countries.len(),
@@ -234,7 +234,7 @@ fn parse_fgi_marker_two_letter_eu_exception_yields_acknowledged() {
 fn parse_fgi_marker_5_letter_token_yields_no_marker() {
     // The shape gate accepts 2-4 ASCII upper bytes only; 5+-byte
     // codes (the `AUSTRALIA_GROUP`-class "exception is granted"
-    // surface per CAPCO §H.7 p123) are out of scope at this gate.
+    // surface per CAPCO §H.7 p122) are out of scope at this gate.
     // `USAGB` fails because it's 5 bytes; the whole FGI marker
     // rejects per the FR-016 closure ("one bad token taints the
     // list"), not silent partial acceptance.
@@ -430,7 +430,7 @@ fn sar_sub_compartment_with_punctuation_yields_no_sar_marking() {
 
 #[test]
 fn fgi_acknowledged_canonical_form_round_trips() {
-    // §H.7 p123 lawful acknowledged form. If this fails, the negative
+    // §H.7 p122 lawful acknowledged form. If this fails, the negative
     // tests above are uninformative — they could be passing because
     // FGI parsing is broken end-to-end rather than because the admission
     // gate is doing its job.

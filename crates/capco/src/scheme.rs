@@ -118,9 +118,10 @@ pub const TOK_NODIS: TokenId = TokenId(122);
 pub const TOK_EXDIS: TokenId = TokenId(123);
 
 // PR 3b.C (T026c): RELIDO incompatibility roster sentinels.
-// Resolved via `satisfies_attrs` against `attrs.dissem_controls` —
-// all four tokens are IC dissem controls living in
-// `marque_ism::DissemControl`.
+// Resolved via `satisfies_attrs` against `attrs.dissem_iter()`
+// (the namespace-agnostic walk over `dissem_us ++ dissem_nato`,
+// post PR 9b / FR-046 split) — all four tokens are IC dissem
+// controls living in `marque_ism::DissemControl`.
 //
 // DissemControl variant → CVE string form (from generated values.rs):
 //   Relido     → "RELIDO"
@@ -187,6 +188,26 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // for legacy-input recognition).
 // NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
 // TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
+
+// PR 9c.1 (T134): canonical NATO control-marking sentinels for
+// ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
+// shapes added in `marque-ism` PR 9c.1 Commit 1:
+//   - ATOMAL lives in the AEA axis as `AeaMarking::Atomal(AtomalBlock)`
+//     per CAPCO-2016 §H.7 p122 worked example
+//     `SECRET//RD/ATOMAL//FGI NATO//NOFORN`.
+//   - BALK / BOHEMIA live in the SCI axis as
+//     `SciControlSystem::NatoSap(NatoSap::{Balk,Bohemia})` per
+//     CAPCO-2016 §G.2 p40 + §H.7 p127 worked example.
+//
+// All three render same-form across title / banner-abbrev / portion
+// columns per §G.1 Table 4 p38 (the row "ATOMAL/BALK/BOHEMIA" lists
+// the canonical name in all three columns).
+//
+// Resolved by `satisfies_attrs` against `attrs.aea_markings` and
+// `attrs.sci_markings` respectively.
+pub const TOK_ATOMAL: TokenId = TokenId(140);
+pub const TOK_BALK: TokenId = TokenId(141);
+pub const TOK_BOHEMIA: TokenId = TokenId(142);
 
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over CanonicalAttrs implementing Lattice
@@ -334,17 +355,29 @@ impl Lattice for CapcoMarking {
             .filter(|t| b.sci_controls.contains(t))
             .copied()
             .collect();
-        let dissem: Vec<_> = a
-            .dissem_controls
+        // PR 9b (T132): meet operates component-wise on each dissem
+        // namespace independently. The two fields share the
+        // `DissemControl` type but live on opposite sides of the
+        // CAPCO-2016 p41 reciprocity boundary; mixing them would
+        // collapse the namespace distinction.
+        let dissem_us: Vec<_> = a
+            .dissem_us
             .iter()
-            .filter(|t| b.dissem_controls.contains(t))
+            .filter(|t| b.dissem_us.contains(t))
+            .copied()
+            .collect();
+        let dissem_nato: Vec<_> = a
+            .dissem_nato
+            .iter()
+            .filter(|t| b.dissem_nato.contains(t))
             .copied()
             .collect();
 
         let mut out = CanonicalAttrs::default();
         out.classification = classification;
         out.sci_controls = sci.into_boxed_slice();
-        out.dissem_controls = dissem.into_boxed_slice();
+        out.dissem_us = dissem_us.into_boxed_slice();
+        out.dissem_nato = dissem_nato.into_boxed_slice();
         CapcoMarking::new(out)
     }
 }
@@ -395,9 +428,11 @@ impl Lattice for CapcoMarking {
 fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenId) -> bool {
     let attrs = &m.0;
     if category == CAT_DISSEM && token == TOK_NOFORN {
+        // PR 9b (T132): "Contains NOFORN" is namespace-agnostic — the
+        // dissem token is what matters, not its attribution. Scan
+        // across both fields via `dissem_iter`.
         return attrs
-            .dissem_controls
-            .iter()
+            .dissem_iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     }
     // PR 3c.B Sub-PR 8.F — CAT_NON_IC_DISSEM arms for NODIS and EXDIS.
@@ -452,7 +487,7 @@ fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) -> bool {
     let attrs = &m.0;
     match category {
         CAT_REL_TO => !attrs.rel_to.is_empty(),
-        CAT_DISSEM => !attrs.dissem_controls.is_empty(),
+        CAT_DISSEM => !attrs.dissem_us.is_empty() || !attrs.dissem_nato.is_empty(),
         CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
         CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
         _ => true,
@@ -465,7 +500,11 @@ fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
     if category == CAT_REL_TO {
         attrs.rel_to = Box::new([]);
     } else if category == CAT_DISSEM {
-        attrs.dissem_controls = Box::new([]);
+        // PR 9b (T132): clearing the dissem category zeroes both
+        // namespaces. The CAT_DISSEM axis is namespace-agnostic from
+        // the category-id perspective.
+        attrs.dissem_us = Box::new([]);
+        attrs.dissem_nato = Box::new([]);
     } else if category == CAT_NON_IC_DISSEM {
         attrs.non_ic_dissem = Box::new([]);
     }
@@ -480,7 +519,12 @@ fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &Cap
     if category == CAT_REL_TO {
         attrs.rel_to = with.0.rel_to.clone();
     } else if category == CAT_DISSEM {
-        attrs.dissem_controls = with.0.dissem_controls.clone();
+        // PR 9b (T132): replacing the dissem category copies both
+        // namespaces from `with`. The two fields are independent
+        // post-attribution per CAPCO-2016 p41 — replacing only one
+        // would silently drop the other.
+        attrs.dissem_us = with.0.dissem_us.clone();
+        attrs.dissem_nato = with.0.dissem_nato.clone();
     } else if category == CAT_NON_IC_DISSEM {
         attrs.non_ic_dissem = with.0.non_ic_dissem.clone();
     }
@@ -538,10 +582,14 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // route through the same category so `apply_fact_remove`'s
         // CAT_REL_TO branch can discriminate.
         TOK_USA | TOK_REL_TO => Some(CAT_REL_TO),
-        // CAT_AEA — atomic-energy markings
-        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI => Some(CAT_AEA),
-        // CAT_SCI — sensitive compartmented information control systems
-        TOK_HCS => Some(CAT_SCI),
+        // CAT_AEA — atomic-energy markings. ATOMAL lives in the AEA
+        // axis per CAPCO-2016 §H.7 p122 worked example
+        // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
+        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI | TOK_ATOMAL => Some(CAT_AEA),
+        // CAT_SCI — sensitive compartmented information control systems.
+        // BALK / BOHEMIA are NATO SAPs in the SCI category position per
+        // §G.2 p40 + §H.7 p127 (rendered standalone, no SAR- prefix).
+        TOK_HCS | TOK_BALK | TOK_BOHEMIA => Some(CAT_SCI),
         // CAT_JOINT_CLASSIFICATION — JOINT classification marker
         TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
         // CAT_CLASSIFICATION — overall classification level surface
@@ -763,7 +811,16 @@ fn apply_fact_add(
             TOK_ORCON_USGOV => DissemControl::OcUsgov,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
-        if attrs.dissem_controls.contains(&target) {
+        // PR 9b (T132): FactAdd on the CAT_DISSEM axis writes to
+        // `dissem_us` by default. The CAPCO-2016 p41 reciprocity rule
+        // says these tokens are US-attributed in any US-classified
+        // marking (the overwhelming majority of FactAdd consumers);
+        // for the rare pure-NATO portion, the engine's caller would
+        // need a namespace-aware intent (out of scope for PR 9b — see
+        // `specs/006-engine-rule-refactor/decisions.md` D9b-1).
+        // Presence check spans both namespaces to avoid duplicating a
+        // token already attributed to the NATO side.
+        if attrs.dissem_iter().any(|d| d == &target) {
             // Per-intent no-op: token already present, no mutation
             // applied. Return `IntentInapplicable` so the batch-level
             // `apply_intent` dispatcher does NOT flip `any_applied =
@@ -779,9 +836,13 @@ fn apply_fact_add(
             // audit log (Copilot review of PR #372).
             return Err(ApplyIntentError::IntentInapplicable);
         }
-        let mut next: Vec<DissemControl> = attrs.dissem_controls.to_vec();
+        let mut next: Vec<DissemControl> = attrs.dissem_us.to_vec();
         next.push(target);
-        attrs.dissem_controls = next.into_boxed_slice();
+        // D9b-1 (decisions.md): FactAdd writes to dissem_us unconditionally;
+        // pure-NATO portions needing FactAdd on dissem_nato require namespace-
+        // aware intent. Deferred to PR 10+ if cross-system translation surfaces
+        // the need.
+        attrs.dissem_us = next.into_boxed_slice();
         return Ok(());
     }
 
@@ -853,17 +914,31 @@ fn apply_fact_remove(
             TOK_ORCON_USGOV => DissemControl::OcUsgov,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
-        let before = attrs.dissem_controls.len();
-        let kept: Vec<DissemControl> = attrs
-            .dissem_controls
+        // PR 9b (T132): FactRemove on the CAT_DISSEM axis filters the
+        // target token from BOTH namespaces — a removal request is
+        // namespace-agnostic at the rule level (the rule says "drop
+        // RELIDO", not "drop RELIDO from US"; consumers that need
+        // namespace-aware removal would have to plumb a new
+        // ReplacementIntent variant — out of scope per PR 9b
+        // decision D9b-1).
+        let before = attrs.dissem_us.len() + attrs.dissem_nato.len();
+        let kept_us: Vec<DissemControl> = attrs
+            .dissem_us
             .iter()
             .copied()
             .filter(|d| *d != target)
             .collect();
-        if kept.len() == before {
+        let kept_nato: Vec<DissemControl> = attrs
+            .dissem_nato
+            .iter()
+            .copied()
+            .filter(|d| *d != target)
+            .collect();
+        if kept_us.len() + kept_nato.len() == before {
             return Err(ApplyIntentError::IntentInapplicable);
         }
-        attrs.dissem_controls = kept.into_boxed_slice();
+        attrs.dissem_us = kept_us.into_boxed_slice();
+        attrs.dissem_nato = kept_nato.into_boxed_slice();
         return Ok(());
     }
 
@@ -1035,13 +1110,18 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     out.sar_markings = ctx.expected_sar_marking();
     out.aea_markings = ctx.expected_aea_markings().into_boxed_slice();
     out.fgi_marker = ctx.expected_fgi_marker();
-    out.dissem_controls = ctx.expected_dissem_controls().into_boxed_slice();
+    // PR 9b (T132): page-rollup composes each dissem namespace
+    // independently. CAPCO-2016 p41 reciprocity is intrinsic to each
+    // portion's attribution; the page-level union preserves it.
+    out.dissem_us = ctx.expected_dissem_us().into_boxed_slice();
+    out.dissem_nato = ctx.expected_dissem_nato().into_boxed_slice();
     out.rel_to = ctx.expected_rel_to().into_boxed_slice();
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
     // `_needs_nf` (second tuple element) is intentionally discarded here.
-    // NOFORN injection into `out.dissem_controls` for the non-IC dissem
-    // trigger family (SBU-NF/LES-NF classified-context split, and
+    // NOFORN injection into `out.dissem_us` (post PR 9b / FR-046 split;
+    // the field was `out.dissem_controls` pre-split) for the non-IC
+    // dissem trigger family (SBU-NF/LES-NF classified-context split, and
     // NODIS/EXDIS imply-NF per CAPCO-2016 §H.9 p172 / p174) is handled at
     // the final-projection layer by the PageRewrites
     // `capco/{sbu-nf,les-nf,nodis,exdis}-implies-noforn`
@@ -1196,15 +1276,15 @@ impl CapcoScheme {
     ///
     /// 1. `capco/frd-sigma-consolidates-into-rd-sigma` (§H.6 p113) —
     ///    AEA-only, independent.
-    /// 2. `capco/fgi-rollup-on-us-contact` (§H.7 p123) — bare-FGI
+    /// 2. `capco/fgi-rollup-on-us-contact` (§H.7 p122) — bare-FGI
     ///    rollup on US-class contact.
-    /// 3. `capco/fgi-restricted-rollup-on-us-contact` (§H.7 p123) —
+    /// 3. `capco/fgi-restricted-rollup-on-us-contact` (§H.7 p122) —
     ///    bare-FGI-R contact rolls FGI list (class lift is
     ///    parser-side per §3.4.1 Note (i)).
     /// 4. `capco/joint-cross-class-rollup` (§H.3 p57) — JOINT [list]
     ///    on non-US-class contact rolls FGI [non-US JOINT members].
     /// 5. `capco/us-presence-promotes-bare-fgi-attribution`
-    ///    (§H.7 p123) — idempotent FGI cleanup; runs after entries
+    ///    (§H.7 p122) — idempotent FGI cleanup; runs after entries
     ///    1–3 (consumes their FGI_MARKER output, the one structural
     ///    FGI_MARKER read in the table).
     /// 6. `capco/orcon-nato-to-us-orcon-on-us-contact` (§H.8 p136) —
@@ -1547,7 +1627,7 @@ impl CapcoScheme {
             // per-intent no-op (IntentInapplicable, silent) per the
             // idempotence policy in `apply_fact_add`'s `CAT_DISSEM` arm
             // (the `if category == CAT_DISSEM` block; the
-            // `attrs.dissem_controls.contains(&target)` check returns
+            // `attrs.dissem_iter().any(|d| d == &target)` check returns
             // `IntentInapplicable`). NOT the unmatched-arm fallthrough at
             // the bottom of `apply_fact_add`, which is forward-
             // compatibility only — see the TODO at the CAT_NON_IC_DISSEM
@@ -1726,7 +1806,7 @@ impl CapcoScheme {
                 E4_WRITES,
             ),
             // Entry 1 — `capco/fgi-rollup-on-us-contact`.
-            // §H.7 p123 (Precedence Rules for Banner Line Guidance):
+            // §H.7 p122 (Precedence Rules for Banner Line Guidance):
             // "If any document contains portions of both source-
             // concealed FGI ... and source-acknowledged FGI ..., then
             // only the 'FGI' marking without the source
@@ -1761,14 +1841,14 @@ impl CapcoScheme {
             // Phase-3 stub: see Entry 4 doc-comment.
             PageRewrite::custom(
                 "capco/fgi-rollup-on-us-contact",
-                "CAPCO-2016 §H.7 p123",
+                "CAPCO-2016 §H.7 p122",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Custom(noop_action),
                 E1_READS,
                 E1_WRITES,
             ),
             // Entry 2 — `capco/fgi-restricted-rollup-on-us-contact`.
-            // §H.7 p123 (Relationship(s) to Other Markings): FGI
+            // §H.7 p122 (Relationship(s) to Other Markings): FGI
             // "may be used with TOP SECRET, SECRET, CONFIDENTIAL,
             // RESTRICTED, UNCLASSIFIED, and other designators ...
             // applied by the non-US originator". Combined with the
@@ -1794,7 +1874,7 @@ impl CapcoScheme {
             // Phase-3 stub: see Entry 4 doc-comment.
             PageRewrite::custom(
                 "capco/fgi-restricted-rollup-on-us-contact",
-                "CAPCO-2016 §H.7 p123",
+                "CAPCO-2016 §H.7 p122",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Custom(noop_action),
                 E2_READS,
@@ -1838,7 +1918,7 @@ impl CapcoScheme {
                 E3_WRITES,
             ),
             // Entry 7 — `capco/us-presence-promotes-bare-fgi-attribution`.
-            // §H.7 p123 (Precedence Rules for Banner Line Guidance,
+            // §H.7 p122 (Precedence Rules for Banner Line Guidance,
             // quoted under Entry 1) establishes both the trigger and
             // the post-rollup-cleanup contracts. This entry is the
             // idempotent generalization: after entries 1–3 consolidate
@@ -1866,7 +1946,7 @@ impl CapcoScheme {
             // Phase-3 stub: see Entry 4 doc-comment.
             PageRewrite::custom(
                 "capco/us-presence-promotes-bare-fgi-attribution",
-                "CAPCO-2016 §H.7 p123",
+                "CAPCO-2016 §H.7 p122",
                 CategoryPredicate::Custom(never_fires),
                 CategoryAction::Custom(noop_action),
                 E7_READS,
@@ -2598,13 +2678,23 @@ impl CapcoScheme {
                 name: "class-floor/TK-BLFH",
                 label: "CAPCO-2016 §H.4",
             },
+            // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+            // to "§G.2 p40". §G.2 p40 is the authoritative anchor —
+            // CAPCO-2016 Table 5 (ARH by Registered Marking) lists
+            // BALK / BOHEMIA at p40 as registered NATO control
+            // markings; the December 2010 history note at §H.7 line
+            // 4702 confirms they are control markings (not
+            // classifications). The §H.7 Appendix B reference was an
+            // imprecise pre-PR-9c.1 anchor; the manual's actual
+            // Appendix B is the NATO classification ladder
+            // appendix, not the BALK/BOHEMIA registration.
             Constraint::Custom {
                 name: "class-floor/BALK",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §G.2 p40",
             },
             Constraint::Custom {
                 name: "class-floor/BOHEMIA",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §G.2 p40",
             },
             // ---- §2.2 Floor S — TS-or-S allowed (8 rows) --------------
             Constraint::Custom {
@@ -2669,9 +2759,15 @@ impl CapcoScheme {
                 name: "class-floor/TFNI",
                 label: "CAPCO-2016 §H.6 p107",
             },
+            // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
+            // to "§H.7 p122". §H.7 p122 is the worked example showing
+            // ATOMAL in the AEA axis: `SECRET//RD/ATOMAL//FGI NATO//
+            // NOFORN` — the direct, structurally-grounded citation for
+            // the canonical AEA-axis placement (paralleling §H.6's
+            // RD/CNWDI worked-example citations).
             Constraint::Custom {
                 name: "class-floor/ATOMAL",
-                label: "CAPCO-2016 §H.7 Appendix B",
+                label: "CAPCO-2016 §H.7 p122",
             },
             Constraint::Custom {
                 name: "class-floor/ORCON",
@@ -2817,8 +2913,10 @@ pub enum CapcoParseError {
 ///   `aea_markings`", etc.
 /// - [`TokenRef::AnyInCategory(cat)`] returns true when the category
 ///   has at least one populated value. `CAT_DISSEM` intentionally
-///   counts both `dissem_controls` AND `rel_to` as dissem-flavored
-///   presence, matching the historical E015 predicate.
+///   counts both the dissem axis (`dissem_us` and `dissem_nato`
+///   together, walked via `attrs.dissem_iter()` post PR 9b / FR-046
+///   split) AND `rel_to` as dissem-flavored presence, matching the
+///   historical E015 predicate.
 ///
 /// `MarkingClassification::Conflict` is deliberately excluded from
 /// `TOK_NON_US_CLASSIFICATION` / `CAT_NON_US_CLASSIFICATION` — that
@@ -2834,10 +2932,7 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
     };
     match token_ref {
         TokenRef::Token(id) => match *id {
-            TOK_NOFORN => attrs
-                .dissem_controls
-                .iter()
-                .any(|d| matches!(d, DissemControl::Nf)),
+            TOK_NOFORN => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Nf)),
             TOK_USA => attrs.rel_to.contains(&CountryCode::USA),
             TOK_JOINT => {
                 matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
@@ -2866,6 +2961,26 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+            // PR 9c.1 (T134): ATOMAL lives in the AEA axis per
+            // CAPCO-2016 §H.7 p122 (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
+            TOK_ATOMAL => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Atomal(_))),
+            // PR 9c.1 (T134): BALK / BOHEMIA are NATO SAPs living in
+            // the SCI axis per CAPCO-2016 §G.2 p40 + §H.7 p127.
+            TOK_BALK => attrs.sci_markings.iter().any(|m| {
+                matches!(
+                    m.system,
+                    SciControlSystem::NatoSap(marque_ism::NatoSap::Balk)
+                )
+            }),
+            TOK_BOHEMIA => attrs.sci_markings.iter().any(|m| {
+                matches!(
+                    m.system,
+                    SciControlSystem::NatoSap(marque_ism::NatoSap::Bohemia)
+                )
+            }),
             // "HCS markings" is plural in CAPCO §H.3 p57 — it covers
             // the bare `HCS` token AND the compound forms `HCS-O` /
             // `HCS-P` / `HCS-O-P`. CVE-projection variants `Hcs`,
@@ -2930,42 +3045,30 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Exdis)),
             // PR 3b.C (T026c): RELIDO incompatibility sentinels.
-            // Pattern mirrors TOK_NOFORN above — scan `dissem_controls`
-            // for the matching DissemControl variant. All four variants
+            // Pattern mirrors TOK_NOFORN above — scan via
+            // `attrs.dissem_iter()` (namespace-agnostic walk over
+            // `dissem_us ++ dissem_nato` post PR 9b / FR-046 split) for
+            // the matching DissemControl variant. All four variants
             // exist in the generated values.rs; no new marque-ism edits
             // needed (Constitution VII compliance verified).
             TOK_RELIDO => attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Relido)),
             TOK_DISPLAY_ONLY => attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Displayonly)),
-            TOK_ORCON => attrs
-                .dissem_controls
-                .iter()
-                .any(|d| matches!(d, DissemControl::Oc)),
+            TOK_ORCON => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Oc)),
             TOK_ORCON_USGOV => attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::OcUsgov)),
             // Stage D (T108c) — new IC dissem sentinels for closure-rule triggers:
-            TOK_IMCON => attrs
-                .dissem_controls
-                .iter()
-                .any(|d| matches!(d, DissemControl::Imc)),
+            TOK_IMCON => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Imc)),
             TOK_DSEN => attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Dsen)),
-            TOK_RSEN => attrs
-                .dissem_controls
-                .iter()
-                .any(|d| matches!(d, DissemControl::Rs)),
+            TOK_RSEN => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Rs)),
             TOK_FOUO => attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Fouo)),
             // Stage D (T108c) — non-IC dissem sentinels for closure-rule triggers:
             TOK_LIMDIS => attrs
@@ -2994,8 +3097,7 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
             // satisfies_attrs path that `FDR_DOMINATORS` membership
             // and `is_fdr_dominator` rely on.
             TOK_EYES => attrs
-                .dissem_controls
-                .iter()
+                .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Eyes)),
             _ => false,
         },
@@ -3023,7 +3125,7 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 attrs.fgi_marker.is_some()
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
-            CAT_DISSEM => !attrs.dissem_controls.is_empty() || !attrs.rel_to.is_empty(),
+            CAT_DISSEM => attrs.dissem_iter().next().is_some() || !attrs.rel_to.is_empty(),
             CAT_REL_TO => !attrs.rel_to.is_empty(),
             CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
             _ => false,
@@ -3454,8 +3556,10 @@ impl MarkingScheme for CapcoScheme {
     ///   documented inline below.
     /// - [`TokenRef::AnyInCategory(cat)`] returns true when the
     ///   category has at least one populated value. `CAT_DISSEM`
-    ///   intentionally counts both `dissem_controls` AND `rel_to` as
-    ///   dissem-flavored presence, matching the historical E015
+    ///   intentionally counts both the dissem axis (`dissem_us` and
+    ///   `dissem_nato` together, walked via `attrs.dissem_iter()`
+    ///   post PR 9b / FR-046 split) AND `rel_to` as dissem-flavored
+    ///   presence, matching the historical E015
     ///   predicate ("non-US classification needs SOME dissem").
     ///
     /// Sentinel `TokenId`s not used by the current catalog
@@ -3986,8 +4090,10 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
         }
     }
 
-    // IC dissemination controls
-    for d in attrs.dissem_controls.iter() {
+    // IC dissemination controls. PR 9b (T132): iterate across both
+    // namespaces — the predicate emitter is namespace-agnostic; the
+    // `TOK_*` sentinel reflects token identity, not attribution.
+    for d in attrs.dissem_iter() {
         let tok = match d {
             DissemControl::Nf => Some(TOK_NOFORN),
             DissemControl::Relido => Some(TOK_RELIDO),
@@ -4640,8 +4746,7 @@ fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Constrain
         return Vec::new();
     }
     let has_noforn = attrs
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     if has_noforn {
         return Vec::new();
@@ -4672,8 +4777,7 @@ fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<Co
         return Vec::new();
     }
     let has_noforn = attrs
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     if has_noforn {
         return Vec::new();
@@ -4799,8 +4903,8 @@ fn hcs_system_constraints(
     let mut out = Vec::new();
 
     let classification = attrs.us_classification();
-    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc);
-    let has_orcon_usgov = attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let has_orcon = attrs.dissem_iter().any(|d| d == &DissemControl::Oc);
+    let has_orcon_usgov = attrs.dissem_iter().any(|d| d == &DissemControl::OcUsgov);
     let high_enough = matches!(
         classification,
         Some(Classification::Secret) | Some(Classification::TopSecret)
@@ -4885,7 +4989,7 @@ fn hcs_system_constraints(
                     // above; NOFORN is the second mandatory side. Same
                     // shape as the HCS-P NOFORN-required predicate
                     // below; tracked-and-resolved per #304.
-                    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+                    let has_noforn = attrs.dissem_iter().any(|d| d == &DissemControl::Nf);
                     if !has_noforn {
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-O-requires-NOFORN",
@@ -4916,7 +5020,7 @@ fn hcs_system_constraints(
                     // previously fired here was over-strict; it is
                     // dropped in favor of the actually-required
                     // NOFORN predicate.
-                    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+                    let has_noforn = attrs.dissem_iter().any(|d| d == &DissemControl::Nf);
                     if !has_noforn {
                         out.push(marque_scheme::ConstraintViolation {
                             constraint_label: "HCS-P-requires-NOFORN",
@@ -5318,8 +5422,9 @@ fn class_floor_satisfied(attrs: &marque_ism::CanonicalAttrs, policy: ClassFloorP
 // ---------------------------------------------------------------------------
 //
 // Each predicate iterates the relevant axis (`attrs.sci_markings`,
-// `attrs.aea_markings`, `attrs.dissem_controls`, etc.) looking for any
-// token matching the family pattern. Family granularity is the §3.4.6
+// `attrs.aea_markings`, `attrs.dissem_iter()` over the namespace
+// split, etc.) looking for any token matching the family pattern.
+// Family granularity is the §3.4.6
 // author's choice — the predicates pattern-match across all marking-
 // template-level leaves that belong to the family.
 
@@ -5496,19 +5601,13 @@ fn presence_sar(attrs: &marque_ism::CanonicalAttrs) -> bool {
 /// (the portion-mark abbreviation; banner form is `RSEN`).
 fn presence_rsen(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
-    attrs
-        .dissem_controls
-        .iter()
-        .any(|d| matches!(d, DissemControl::Rs))
+    attrs.dissem_iter().any(|d| matches!(d, DissemControl::Rs))
 }
 
 /// IMCON dissem control present.
 fn presence_imcon(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
-    attrs
-        .dissem_controls
-        .iter()
-        .any(|d| matches!(d, DissemControl::Imc))
+    attrs.dissem_iter().any(|d| matches!(d, DissemControl::Imc))
 }
 
 /// ORCON family — ORCON or ORCON-USGOV. The §3.4.6 single family entry
@@ -5517,8 +5616,7 @@ fn presence_imcon(attrs: &marque_ism::CanonicalAttrs) -> bool {
 fn presence_orcon_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
     attrs
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .any(|d| matches!(d, DissemControl::Oc | DissemControl::OcUsgov))
 }
 
@@ -5527,48 +5625,50 @@ fn presence_orcon_family(attrs: &marque_ism::CanonicalAttrs) -> bool {
 fn presence_eyes_only(attrs: &marque_ism::CanonicalAttrs) -> bool {
     use marque_ism::DissemControl;
     attrs
-        .dissem_controls
-        .iter()
+        .dissem_iter()
         .any(|d| matches!(d, DissemControl::Eyes))
 }
 
-/// BALK / BOHEMIA / ATOMAL — NATO Appendix B markings.
+/// BALK / BOHEMIA / ATOMAL — NATO control markings (not NATO
+/// classifications) per CAPCO-2016 §G.2 p40 Table 5 (ARH by
+/// Registered Marking).
 ///
-/// These appear via the NATO classification system: the `BALK`,
-/// `BOHEMIA`, and `ATOMAL` floors fire when the *NATO sub-classification*
-/// indicates the corresponding atom AND the page's US-equivalent
-/// classification (per `NatoClassification::us_equivalent` and the
-/// reciprocal-raise rule) is below the floor.
+/// PR 9c.1 T134 corrected the structural model:
+///   - ATOMAL is an AEA-axis marking (CAPCO-2016 §H.7 p122 worked
+///     example `SECRET//RD/ATOMAL//FGI NATO//NOFORN`), shared with
+///     NATO+UK under §123/§144 sharing agreements.
+///   - BALK / BOHEMIA are NATO SAPs in the SCI category position
+///     (§G.2 p40 + §H.7 p127), rendered standalone with no `SAR-`
+///     prefix.
+///
+/// The presence predicates read the corresponding canonical axes:
+/// `aea_markings` for ATOMAL, `sci_markings` (via
+/// `SciControlSystem::NatoSap`) for BALK / BOHEMIA. Legacy text
+/// (`CTSA`, `CTS-B`, `CTS-BALK`, …) canonicalizes through the parser
+/// (PR 9c.1 Commit 3), so this predicate fires on both well-formed
+/// canonical input and on parsed legacy text.
 fn presence_balk(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::CosmicTopSecretBalk
-        ))
-    )
+    use marque_ism::{NatoSap, SciControlSystem};
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Balk)))
 }
 
 fn presence_bohemia(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::CosmicTopSecretBohemia
-        ))
-    )
+    use marque_ism::{NatoSap, SciControlSystem};
+    attrs
+        .sci_markings
+        .iter()
+        .any(|m| matches!(m.system, SciControlSystem::NatoSap(NatoSap::Bohemia)))
 }
 
 fn presence_atomal(attrs: &marque_ism::CanonicalAttrs) -> bool {
-    use marque_ism::{MarkingClassification, NatoClassification};
-    matches!(
-        &attrs.classification,
-        Some(MarkingClassification::Nato(
-            NatoClassification::NatoConfidentialAtomal
-                | NatoClassification::NatoSecretAtomal
-                | NatoClassification::CosmicTopSecretAtomal
-        ))
-    )
+    use marque_ism::AeaMarking;
+    attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, AeaMarking::Atomal(_)))
 }
 
 // ---------------------------------------------------------------------------
@@ -5670,22 +5770,38 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
     },
-    // BALK and BOHEMIA: floor TS via CTS reciprocal-raise per
-    // marque-applied.md §3.4.1 Note (i). The presence predicate fires
-    // only when the document's NATO classification is exactly
-    // `CosmicTopSecretBalk` / `CosmicTopSecretBohemia`. CTS = TS in the
-    // OrdMax chain, so an at-least-TS floor is satisfied by the
-    // presence itself; the row exists for the case where a portion
-    // labeled BALK/BOHEMIA is incorrectly carried with a sub-CTS
-    // classification (data-corruption / mangled input).
+    // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
+    // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
+    // model — BALK/BOHEMIA now live in `sci_markings` as
+    // `SciControlSystem::NatoSap` entries (not as fused
+    // `NatoClassification::*Balk/*Bohemia` variants which were retired
+    // as a wrong fusion of classification and control-marking
+    // semantics). The presence predicates fire on the SCI axis;
+    // the floor checks effective US-equivalent classification level
+    // (typically TS for NATO SAPs per §G.2 p40).
+    //
+    // Severity = Warn at the catalog row level per PR 9c.1 D5 (the
+    // architect's pre-flight decision): §G.2 p40's citation depth is
+    // too soft to drive Error — the manual identifies BOHEMIA/BALK as
+    // SAPs and lists them in the ARH table but does not enumerate a
+    // classification floor with the precision §H.6 has for RD/CNWDI.
+    // A Warn-with-suggest fires when the data is structurally
+    // inconsistent (BALK/BOHEMIA marked but classification < TS) and
+    // surfaces an actionable suggestion without blocking.
     ClassFloorRow {
         name: "class-floor/BALK",
         marking_label: "BALK (NATO)",
         presence: presence_balk,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
-        severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §G.2 p40",
         passthrough: false,
+        // `None` falls through to the Classification token span. PR
+        // 9c.1 Commit 3's parser writes the BALK SciMarking but does
+        // not push a `TokenKind::SciSystem` span for the legacy
+        // compound text (`CTS-BALK` is a single Classification token
+        // that carries both the bare-class and the companion semantic);
+        // anchoring at the Classification token is the right UX.
         primary_kind: None,
     },
     ClassFloorRow {
@@ -5693,8 +5809,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         marking_label: "BOHEMIA (NATO)",
         presence: presence_bohemia,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
-        severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        severity: marque_rules::Severity::Warn,
+        citation: "CAPCO-2016 §G.2 p40",
         passthrough: false,
         primary_kind: None,
     },
@@ -5833,13 +5949,29 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
     },
+    // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
+    // CAPCO-2016 §H.7 p122 worked example
+    // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`). The class floor is the
+    // same Confidential lower-bound as the rest of §H.6's AEA family
+    // (RD/FRD/TFNI). Severity stays `Error` because §H.7 p122 is a
+    // direct, worked-example-grounded citation (parallel depth to
+    // §H.6's class-floor citations for RD/FRD), distinguishing it from
+    // the softer §G.2 p40 BALK/BOHEMIA citation.
+    //
+    // `primary_kind: None` (falls back to Classification): same
+    // rationale as BALK/BOHEMIA — legacy compound text like `NCA` /
+    // `CTSA` is a single `TokenKind::Classification` carrying both
+    // the bare-class and the AEA companion semantic; the parser does
+    // not emit a separate `TokenKind::AeaMarking` span for the
+    // canonicalized companion write. Anchoring at the Classification
+    // token is the right UX for the legacy-compound case.
     ClassFloorRow {
         name: "class-floor/ATOMAL",
         marking_label: "ATOMAL (NATO)",
         presence: presence_atomal,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 Appendix B",
+        citation: "CAPCO-2016 §H.7 p122",
         passthrough: false,
         primary_kind: None,
     },
@@ -6178,11 +6310,24 @@ pub(crate) fn last_dissem_span(attrs: &marque_ism::CanonicalAttrs) -> Option<mar
 
 /// Find the span (and current text) of a specific `DissemControl` token —
 /// used when a rule needs to replace e.g. `OC-USGOV` with `OC`.
+///
+/// PR 9b (T132): walks the unified [`dissem_iter`](marque_ism::CanonicalAttrs::dissem_iter)
+/// — which visits `dissem_us` first, then `dissem_nato` — and
+/// correlates against the `token_spans` `DissemControl`-kind sequence
+/// in document order. The parser emits dissem tokens to
+/// `token_spans` once per source occurrence, irrespective of
+/// post-parse attribution, so the iteration order through
+/// `dissem_iter()` MUST match `token_spans` document order. This
+/// holds because `attribute_dissems` partitions but does not
+/// re-order: all `dissem_us` tokens come first by construction
+/// (every non-NATO classification routes here), and `dissem_nato`
+/// is non-empty only on pure-NATO portions where `dissem_us` is
+/// empty by spec.
 pub(crate) fn dissem_token_span(
     attrs: &marque_ism::CanonicalAttrs,
     target: marque_ism::DissemControl,
 ) -> Option<(marque_ism::Span, &str)> {
-    for (dissem_idx, d) in attrs.dissem_controls.iter().enumerate() {
+    for (dissem_idx, d) in attrs.dissem_iter().enumerate() {
         if *d == target {
             // Walk token_spans to find the Nth DissemControl.
             let tok = attrs
@@ -6406,9 +6551,9 @@ fn emit_hcs_o_companions(
     if us_level(attrs).is_none() {
         return Vec::new();
     }
-    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
-        || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
-    let has_noforn = attrs.dissem_controls.contains(&DissemControl::Nf);
+    let has_orcon = attrs.dissem_iter().any(|d| d == &DissemControl::Oc)
+        || attrs.dissem_iter().any(|d| d == &DissemControl::OcUsgov);
+    let has_noforn = attrs.dissem_iter().any(|d| d == &DissemControl::Nf);
     let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
 
     let mut out = Vec::new();
@@ -6476,8 +6621,8 @@ fn emit_hcs_p_sub_companions(
     if us_level(attrs).is_none() {
         return Vec::new();
     }
-    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
-        || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let has_orcon = attrs.dissem_iter().any(|d| d == &DissemControl::Oc)
+        || attrs.dissem_iter().any(|d| d == &DissemControl::OcUsgov);
     let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
 
     let mut out = Vec::new();
@@ -6531,8 +6676,8 @@ fn emit_si_g_companions(
     if us_level(attrs).is_none() {
         return Vec::new();
     }
-    let has_orcon = attrs.dissem_controls.contains(&DissemControl::Oc)
-        || attrs.dissem_controls.contains(&DissemControl::OcUsgov);
+    let has_orcon = attrs.dissem_iter().any(|d| d == &DissemControl::Oc)
+        || attrs.dissem_iter().any(|d| d == &DissemControl::OcUsgov);
     let usgov_entry = dissem_token_span(attrs, DissemControl::OcUsgov);
 
     let mut out = Vec::new();
@@ -6605,7 +6750,7 @@ fn emit_companion_required(
     if us_level(attrs).is_none() {
         return Vec::new();
     }
-    if attrs.dissem_controls.contains(&dissem) {
+    if attrs.dissem_iter().any(|d| d == &dissem) {
         return Vec::new();
     }
     // ORCON-USGOV satisfies ORCON-presence checks (the OC-USGOV → OC
@@ -6616,8 +6761,8 @@ fn emit_companion_required(
     // makes the guard apply only when relevant.
     if dissem == marque_ism::DissemControl::Oc
         && attrs
-            .dissem_controls
-            .contains(&marque_ism::DissemControl::OcUsgov)
+            .dissem_iter()
+            .any(|d| d == &marque_ism::DissemControl::OcUsgov)
     {
         return Vec::new();
     }
@@ -6893,7 +7038,7 @@ mod tests {
     #[test]
     fn category_contains_detects_noforn_in_dissem() {
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
         assert!(capco_category_contains(&m, CAT_DISSEM, TOK_NOFORN));
     }
@@ -6954,7 +7099,7 @@ mod tests {
     #[test]
     fn category_has_values_dissem_populated() {
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
         assert!(capco_category_has_values(&m, CAT_DISSEM));
     }
@@ -7003,10 +7148,10 @@ mod tests {
     #[test]
     fn category_clear_empties_dissem() {
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Nf].into();
         let mut m = CapcoMarking::new(a);
         capco_category_clear(&mut m, CAT_DISSEM);
-        assert!(m.0.dissem_controls.is_empty());
+        assert!(m.0.dissem_us.is_empty() && m.0.dissem_nato.is_empty());
     }
 
     #[test]
@@ -7035,12 +7180,12 @@ mod tests {
     #[test]
     fn category_replace_dissem_copies_from_source() {
         let mut src_attrs = CanonicalAttrs::default();
-        src_attrs.dissem_controls = vec![DissemControl::Nf].into();
+        src_attrs.dissem_us = vec![DissemControl::Nf].into();
         let src = CapcoMarking::new(src_attrs);
 
         let mut dst = CapcoMarking::new(mk_attrs());
         capco_category_replace(&mut dst, CAT_DISSEM, &src);
-        assert_eq!(dst.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+        assert_eq!(dst.0.dissem_us.as_ref(), &[DissemControl::Nf]);
     }
 
     #[test]
@@ -7209,7 +7354,7 @@ mod tests {
         use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Relido, DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
 
         let intents = [ReplacementIntent::fact_remove(
@@ -7219,7 +7364,7 @@ mod tests {
         let out = scheme
             .apply_intent(&m, &intents)
             .expect("RELIDO removal must succeed");
-        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+        assert_eq!(out.0.dissem_us.as_ref(), &[DissemControl::Nf]);
     }
 
     #[test]
@@ -7256,7 +7401,7 @@ mod tests {
         use marque_scheme::RecanonScope;
         let scheme = CapcoScheme::new();
         let mut a = mk_attrs();
-        a.dissem_controls = vec![marque_ism::DissemControl::Nf].into();
+        a.dissem_us = vec![marque_ism::DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
 
         let intents = [ReplacementIntent::Recanonicalize {
@@ -7267,7 +7412,10 @@ mod tests {
             .expect("Recanonicalize must succeed");
         // Fact set unchanged — the engine renders the marking via
         // render_canonical to produce canonical form.
-        assert_eq!(out.0.dissem_controls, m.0.dissem_controls);
+        assert_eq!(
+            (out.0.dissem_us.as_ref(), out.0.dissem_nato.as_ref()),
+            (m.0.dissem_us.as_ref(), m.0.dissem_nato.as_ref())
+        );
     }
 
     /// PR 3c.B Sub-PR 8.D.1 — first consumer of FactAdd lands NOFORN
@@ -7279,9 +7427,11 @@ mod tests {
     /// over-reach into axes whose migration is still queued.
     ///
     /// Case (a): bare classification marking → FactAdd(NOFORN, Portion)
-    /// places NOFORN into `attrs.dissem_controls`. The lone Secret
-    /// classification on `mk_attrs()` has an empty dissem axis
-    /// pre-call; post-call the axis contains exactly `[Nf]`.
+    /// places NOFORN into `attrs.dissem_us` (post PR 9b / FR-046 split;
+    /// see D9b-1 in decisions.md re the dissem_us-only write target).
+    /// The lone Secret classification on `mk_attrs()` has an empty
+    /// dissem axis pre-call; post-call `dissem_us` contains exactly
+    /// `[Nf]`.
     ///
     /// Case (b): marking already containing NOFORN — FactAdd(NOFORN)
     /// is a per-intent no-op and `apply_fact_add` returns
@@ -7303,7 +7453,7 @@ mod tests {
     /// other axes return `IntentInapplicable` until their own
     /// migration sub-PRs land.
     #[test]
-    fn apply_fact_add_noforn_adds_to_dissem_controls_idempotent() {
+    fn apply_fact_add_noforn_adds_to_dissem_us_idempotent() {
         use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
 
@@ -7317,7 +7467,7 @@ mod tests {
             .apply_intent(&m_bare, &intents)
             .expect("FactAdd(NOFORN, Portion) must succeed on bare marking");
         assert_eq!(
-            out_a.0.dissem_controls.as_ref(),
+            out_a.0.dissem_us.as_ref(),
             &[DissemControl::Nf],
             "after FactAdd(NOFORN) the dissem axis must contain exactly [Nf]"
         );
@@ -7365,7 +7515,7 @@ mod tests {
         use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
         let mut a = mk_attrs();
-        a.dissem_controls = vec![
+        a.dissem_us = vec![
             DissemControl::Relido,
             DissemControl::Displayonly,
             DissemControl::Nf,
@@ -7382,7 +7532,7 @@ mod tests {
             .apply_intent(&m, &intents)
             .expect("multi-intent batch must succeed");
         // Both tokens removed; NF retained.
-        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+        assert_eq!(out.0.dissem_us.as_ref(), &[DissemControl::Nf]);
     }
 
     /// Idempotence/commutativity invariant pin — Copilot review on PR #369.
@@ -7399,7 +7549,7 @@ mod tests {
         use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Relido, DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
 
         // First intent removes RELIDO (succeeds). Second intent is a
@@ -7415,7 +7565,7 @@ mod tests {
             .apply_intent(&m, &intents)
             .expect("redundant intent within batch must not abort");
         // RELIDO removed exactly once; NF retained.
-        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+        assert_eq!(out.0.dissem_us.as_ref(), &[DissemControl::Nf]);
     }
 
     /// Mixed-applicability batch: some intents apply, others are
@@ -7426,7 +7576,7 @@ mod tests {
         use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Relido, DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Relido, DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
 
         // First intent removes DISPLAY ONLY (already absent — no-op
@@ -7439,7 +7589,7 @@ mod tests {
         let out = scheme
             .apply_intent(&m, &intents)
             .expect("mixed-applicability batch must apply the applicable subset");
-        assert_eq!(out.0.dissem_controls.as_ref(), &[DissemControl::Nf]);
+        assert_eq!(out.0.dissem_us.as_ref(), &[DissemControl::Nf]);
     }
 
     /// Whole-batch no-op: every intent is inapplicable. The batch
@@ -7451,7 +7601,7 @@ mod tests {
         use marque_ism::DissemControl;
         let scheme = CapcoScheme::new();
         let mut a = mk_attrs();
-        a.dissem_controls = vec![DissemControl::Nf].into();
+        a.dissem_us = vec![DissemControl::Nf].into();
         let m = CapcoMarking::new(a);
 
         // Both intents target tokens not present on this marking.
@@ -7568,7 +7718,7 @@ mod tests {
 
         // Two portions: one with NOFORN, one with REL TO.
         let mut p1 = mk_attrs();
-        p1.dissem_controls = vec![DissemControl::Nf].into();
+        p1.dissem_us = vec![DissemControl::Nf].into();
         let mut p2 = mk_attrs();
         p2.rel_to = vec![CountryCode::USA, CountryCode::try_new(b"GBR").unwrap()].into();
 
@@ -7587,7 +7737,7 @@ mod tests {
         // rewrite does NOT fire). Verify a Replace action is reachable
         // via a trigger that DOES fire.
         let mut replacement = CanonicalAttrs::default();
-        replacement.dissem_controls = vec![DissemControl::Nf].into();
+        replacement.dissem_us = vec![DissemControl::Nf].into();
 
         let rewrites = vec![PageRewrite {
             id: "test/empty-rel-to-triggers-replace-dissem",
@@ -7611,6 +7761,6 @@ mod tests {
             marque_scheme::Scope::Page,
             &[CapcoMarking::new(p)],
         );
-        assert!(out.0.dissem_controls.contains(&DissemControl::Nf));
+        assert!(out.0.dissem_us.contains(&DissemControl::Nf));
     }
 }
