@@ -489,3 +489,206 @@ fn aea_set_meet_join_absorption() {
     let a_meet_b = a.meet(&b);
     assert_eq!(a.join(&a_meet_b), a);
 }
+
+// ===========================================================================
+// PR 4b-B Commit 3 — ClassificationLattice
+// ===========================================================================
+// CAPCO-2016 §H.1 pp47-54 (US class chain) + §H.7 pp123-125 (reciprocal-
+// classification rule). Verified 2026-05-15 against CAPCO-2016.md.
+
+mod classification_lattice {
+    use marque_capco::ClassificationLattice;
+    use marque_ism::{Classification, MarkingClassification};
+    use marque_scheme::{BoundedLattice, Lattice};
+
+    fn lvl(c: Classification) -> ClassificationLattice {
+        ClassificationLattice::new(Some(MarkingClassification::Us(c)))
+    }
+
+    const ALL: [Classification; 4] = [
+        Classification::Unclassified,
+        Classification::Confidential,
+        Classification::Secret,
+        Classification::TopSecret,
+    ];
+
+    #[test]
+    fn classification_chain_assoc_comm_idem() {
+        let bottom = ClassificationLattice::empty();
+        for a in ALL {
+            for b in ALL {
+                let la = lvl(a);
+                let lb = lvl(b);
+                // Commutativity.
+                assert_eq!(la.join(&lb), lb.join(&la), "comm: {a:?} vs {b:?}");
+                // Idempotency.
+                assert_eq!(la.join(&la), la, "idem");
+                for c in ALL {
+                    let lc = lvl(c);
+                    // Associativity.
+                    assert_eq!(
+                        la.join(&lb).join(&lc),
+                        la.join(&lb.join(&lc)),
+                        "assoc: ({a:?},{b:?},{c:?})"
+                    );
+                }
+            }
+            // Identity with bottom.
+            let la = lvl(a);
+            assert_eq!(bottom.join(&la), la);
+            assert_eq!(la.join(&bottom), la);
+        }
+    }
+
+    #[test]
+    fn classification_top_absorbs() {
+        let top = ClassificationLattice::top();
+        for a in ALL {
+            let la = lvl(a);
+            assert_eq!(top.join(&la), top, "top absorbs join");
+            assert_eq!(la.meet(&top), la, "top is meet-identity");
+        }
+    }
+
+    #[test]
+    fn classification_join_picks_higher_us_chain() {
+        assert_eq!(
+            lvl(Classification::Confidential).join(&lvl(Classification::TopSecret)),
+            lvl(Classification::TopSecret)
+        );
+        assert_eq!(
+            lvl(Classification::Secret).join(&lvl(Classification::Unclassified)),
+            lvl(Classification::Secret)
+        );
+    }
+
+    #[test]
+    fn classification_preserves_nato_variant_when_higher() {
+        // NATO CTS ≥ US TS in the §H.7 reciprocal lattice; join
+        // should keep the NATO variant if it's at the higher level.
+        // (Reality: NATO classifications get reciprocal-normalized at
+        // portion-parse time, so this is a defense-in-depth check on
+        // the lattice itself when fed un-normalized inputs.)
+        let us_secret = lvl(Classification::Secret);
+        let nato_cts = ClassificationLattice::new(Some(MarkingClassification::Nato(
+            marque_ism::NatoClassification::CosmicTopSecret,
+        )));
+        let joined = us_secret.join(&nato_cts);
+        // CTS effective_level == TopSecret > Secret, so NATO variant
+        // wins. Variant preservation is the key property here.
+        assert_eq!(joined, nato_cts);
+    }
+}
+
+// ===========================================================================
+// PR 4b-B Commit 3 — NatoClassLattice
+// ===========================================================================
+// CAPCO-2016 §H.2 p55. Verified 2026-05-15.
+
+mod nato_class_lattice {
+    use marque_capco::NatoClassLattice;
+    use marque_ism::NatoClassification;
+    use marque_scheme::{BoundedLattice, Lattice};
+
+    const ALL: [NatoClassification; 5] = [
+        NatoClassification::NatoUnclassified,
+        NatoClassification::NatoRestricted,
+        NatoClassification::NatoConfidential,
+        NatoClassification::NatoSecret,
+        NatoClassification::CosmicTopSecret,
+    ];
+
+    fn n(c: NatoClassification) -> NatoClassLattice {
+        NatoClassLattice::new(Some(c))
+    }
+
+    #[test]
+    fn nato_chain_assoc_comm_idem() {
+        let bottom = NatoClassLattice::empty();
+        for a in ALL {
+            for b in ALL {
+                let la = n(a);
+                let lb = n(b);
+                assert_eq!(la.join(&lb), lb.join(&la), "comm");
+                assert_eq!(la.join(&la), la, "idem");
+                for c in ALL {
+                    let lc = n(c);
+                    assert_eq!(
+                        la.join(&lb).join(&lc),
+                        la.join(&lb.join(&lc)),
+                        "assoc"
+                    );
+                }
+            }
+            assert_eq!(bottom.join(&n(a)), n(a));
+            assert_eq!(n(a).join(&bottom), n(a));
+        }
+    }
+
+    #[test]
+    fn nato_top_absorbs() {
+        let top = NatoClassLattice::top();
+        for a in ALL {
+            assert_eq!(top.join(&n(a)), top);
+            assert_eq!(n(a).meet(&top), n(a));
+        }
+    }
+
+    #[test]
+    fn nato_absorption() {
+        for a in ALL {
+            for b in ALL {
+                let la = n(a);
+                let lb = n(b);
+                assert_eq!(la.meet(&la.join(&lb)), la, "a ⊓ (a ⊔ b) = a");
+                assert_eq!(la.join(&la.meet(&lb)), la, "a ⊔ (a ⊓ b) = a");
+            }
+        }
+    }
+}
+
+// ===========================================================================
+// PR 4b-B Commit 3 — DeclassifyOnLattice
+// ===========================================================================
+// CAPCO-2016 §H.6 p104 (most-restrictive date wins). Verified 2026-05-15.
+
+mod declassify_on_lattice {
+    use marque_capco::DeclassifyOnLattice;
+    use marque_ism::IsmDate;
+    use marque_scheme::Lattice;
+
+    fn d(y: i32, m: u8, day: u8) -> DeclassifyOnLattice {
+        DeclassifyOnLattice::new(Some(IsmDate::Date(y, m, day)))
+    }
+    fn y(year: i32) -> DeclassifyOnLattice {
+        DeclassifyOnLattice::new(Some(IsmDate::Year(year)))
+    }
+    fn bottom() -> DeclassifyOnLattice {
+        DeclassifyOnLattice::empty()
+    }
+
+    #[test]
+    fn declassify_on_max_assoc_comm_idem() {
+        let a = d(2030, 6, 15);
+        let b = d(2030, 12, 1);
+        let c = y(2031);
+        assert_eq!(a.join(&b), b.join(&a), "comm");
+        assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)), "assoc");
+        assert_eq!(a.join(&a), a, "idem");
+        assert_eq!(bottom().join(&a), a, "bottom-identity");
+        assert_eq!(a.join(&bottom()), a, "bottom-identity (right)");
+    }
+
+    #[test]
+    fn declassify_on_join_picks_furthest_out() {
+        let earlier = d(2025, 1, 1);
+        let later = d(2030, 1, 1);
+        assert_eq!(earlier.join(&later), later);
+        // Year (2025) spans through Dec 31; that's later than
+        // Date(2025-06-15)'s end-of-span.
+        let year_2025 = y(2025);
+        let mid_2025 = d(2025, 6, 15);
+        // Year 2025 ends Dec 31; mid-2025 date ends June 15; year wins.
+        assert_eq!(year_2025.join(&mid_2025), year_2025);
+    }
+}

@@ -39,8 +39,9 @@
 //! `SciSet`.
 
 use marque_ism::{
-    AeaMarking, AtomalBlock, CountryCode, FgiMarker, FrdBlock, RdBlock, SarCompartment,
-    SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlSystem, SciMarking,
+    AeaMarking, AtomalBlock, CanonicalAttrs, Classification, CountryCode, FgiMarker, FrdBlock,
+    IsmDate, MarkingClassification, NatoClassification, RdBlock, SarCompartment, SarIndicator,
+    SarMarking, SarProgram, SciCompartment, SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use smol_str::SmolStr;
@@ -1029,6 +1030,313 @@ impl Lattice for AeaSet {
 // any input carrying a SIGMA number outside the assumed top's set.
 // Use [`AeaSet::empty`] / [`AeaSet::default`] when you need the
 // bottom, and [`Lattice::join`] / [`Lattice::meet`] for composition.
+
+// ---------------------------------------------------------------------------
+// ClassificationLattice — bounded OrdMax over US chain + variant-preserving
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the classification axis: `Option<MarkingClassification>`
+/// with `OrdMax` over `effective_level()` and variant-preserving
+/// tie-break on equal level.
+///
+/// The classification axis is structurally a bounded total order:
+/// `Unclassified < Confidential < Secret < TopSecret` per
+/// CAPCO-2016 §H.1 pp47-54. Foreign classifications normalize to the
+/// US chain at portion-parse time via §H.7 pp123-125's reciprocal-
+/// classification rule (`MarkingClassification::effective_level()`),
+/// so cross-branch joins do not arise in the lattice — the lattice
+/// always sees a US-chain level.
+///
+/// **Variant preservation.** Naive `OrdMax` over `effective_level()`
+/// would lose `Nato` / `Fgi` / `Joint` / `Conflict` variant tags. The
+/// join compares two `MarkingClassification`s by `effective_level()`
+/// and returns the variant with the higher level **as-is**. On
+/// equal level, the implementation prefers `Us` when both operands
+/// are `Us`-shaped (the common case → no-op); otherwise it preserves
+/// the left operand's variant. Downstream attribution (`JointSet`,
+/// `FgiSet`, `NatoClassLattice`) reads from these tags, so losing
+/// them on join would silently corrupt banner output.
+///
+/// `BoundedLattice` is implemented: top = `Some(Us(TopSecret))`,
+/// bottom = `None`. The class chain is closed at four elements; no
+/// agency-extensibility concern.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.1 pp47-54 (US class chain).
+/// - §H.7 pp123-125 (reciprocal-classification rule).
+/// - §A.4 p13 (IC Markings System Structure — classification
+///   hierarchy).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClassificationLattice(Option<MarkingClassification>);
+
+impl ClassificationLattice {
+    /// An empty classification — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct a `ClassificationLattice` from an `Option<MarkingClassification>`.
+    pub fn new(c: Option<MarkingClassification>) -> Self {
+        Self(c)
+    }
+
+    /// Construct from a `CanonicalAttrs` slice — joins per-portion
+    /// classifications by `OrdMax` over `effective_level()`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        portions
+            .iter()
+            .map(|p| Self(p.classification.clone()))
+            .fold(Self::empty(), |acc, p| acc.join(&p))
+    }
+
+    /// Consume into the inner `Option<MarkingClassification>`.
+    pub fn into_inner(self) -> Option<MarkingClassification> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<MarkingClassification>`.
+    pub fn as_inner(&self) -> Option<&MarkingClassification> {
+        self.0.as_ref()
+    }
+}
+
+impl Lattice for ClassificationLattice {
+    fn join(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, x) | (x, None) => Self(x.clone()),
+            (Some(a), Some(b)) => {
+                let la = a.effective_level();
+                let lb = b.effective_level();
+                if la > lb {
+                    Self(Some(a.clone()))
+                } else if lb > la {
+                    Self(Some(b.clone()))
+                } else {
+                    // Equal level: prefer Us if both are Us-shaped (common
+                    // case → no-op); otherwise preserve the left operand
+                    // variant. This preserves variant tags downstream
+                    // attribution (JointSet, FgiSet, NatoClassLattice)
+                    // depends on.
+                    match (a, b) {
+                        (MarkingClassification::Us(_), MarkingClassification::Us(_)) => {
+                            Self(Some(a.clone()))
+                        }
+                        _ => Self(Some(a.clone())),
+                    }
+                }
+            }
+        }
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, _) | (_, None) => Self(None),
+            (Some(a), Some(b)) => {
+                let la = a.effective_level();
+                let lb = b.effective_level();
+                if la <= lb {
+                    Self(Some(a.clone()))
+                } else {
+                    Self(Some(b.clone()))
+                }
+            }
+        }
+    }
+}
+
+impl BoundedLattice for ClassificationLattice {
+    fn top() -> Self {
+        Self(Some(MarkingClassification::Us(Classification::TopSecret)))
+    }
+    fn bottom() -> Self {
+        Self(None)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NatoClassLattice — bounded OrdMax over the NATO chain
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the NATO classification axis:
+/// `Option<NatoClassification>` with `OrdMax` over
+/// `NU < NR < NC < NS < CTS` per CAPCO-2016 §H.2 p55.
+///
+/// **Pure-NATO documents only.** This lattice shadows
+/// `ClassificationLattice` for documents with no US portions.
+/// Mixed US+NATO documents reciprocally-raise at portion-parse time
+/// via the existing §H.7 pp123-125 rule; `non_us_classification` is
+/// `None` at banner for such pages.
+///
+/// `BoundedLattice` is implemented: top = `Some(CosmicTopSecret)`,
+/// bottom = `None`. The NATO chain is a closed five-element ladder
+/// (no agency-extensibility, unlike US classifications which can
+/// theoretically receive new tiers).
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NatoClassLattice(Option<NatoClassification>);
+
+impl NatoClassLattice {
+    /// An empty NATO classification — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct a `NatoClassLattice` from an `Option<NatoClassification>`.
+    pub fn new(c: Option<NatoClassification>) -> Self {
+        Self(c)
+    }
+
+    /// Construct from a `CanonicalAttrs` slice — picks `Nato(_)`
+    /// portions and joins by `OrdMax` over the NATO chain. Returns
+    /// `empty()` if no portion carries a NATO classification.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let max = portions
+            .iter()
+            .filter_map(|p| match &p.classification {
+                Some(MarkingClassification::Nato(n)) => Some(*n),
+                _ => None,
+            })
+            .max_by_key(|n| n.us_equivalent());
+        Self(max)
+    }
+
+    /// Consume into the inner `Option<NatoClassification>`.
+    pub fn into_inner(self) -> Option<NatoClassification> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<NatoClassification>`.
+    pub fn as_inner(&self) -> Option<NatoClassification> {
+        self.0
+    }
+}
+
+impl Lattice for NatoClassLattice {
+    fn join(&self, other: &Self) -> Self {
+        match (self.0, other.0) {
+            (None, x) | (x, None) => Self(x),
+            (Some(a), Some(b)) => {
+                if a.us_equivalent() >= b.us_equivalent() {
+                    Self(Some(a))
+                } else {
+                    Self(Some(b))
+                }
+            }
+        }
+    }
+    fn meet(&self, other: &Self) -> Self {
+        match (self.0, other.0) {
+            (None, _) | (_, None) => Self(None),
+            (Some(a), Some(b)) => {
+                if a.us_equivalent() <= b.us_equivalent() {
+                    Self(Some(a))
+                } else {
+                    Self(Some(b))
+                }
+            }
+        }
+    }
+}
+
+impl BoundedLattice for NatoClassLattice {
+    fn top() -> Self {
+        Self(Some(NatoClassification::CosmicTopSecret))
+    }
+    fn bottom() -> Self {
+        Self(None)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeclassifyOnLattice — MaxDate semilattice (no top)
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the declassification-date axis:
+/// `Option<IsmDate>` with `max_by(end_cmp)` join (the most-restrictive
+/// / furthest-out date wins).
+///
+/// Per CAPCO-2016 §H.6 p104 (RD precedence rule applies to declass
+/// dates by extension — the longest retention wins) + ISOO §3.3
+/// (date-only axis). `IsmDate::end_cmp` compares the end-of-span of
+/// each precision tier, so `Year(2003)` extends through December 31
+/// and is "later" than `Date(2003, 6, 15)` for the MaxDate lattice's
+/// most-conservative-interpretation contract.
+///
+/// **`BoundedLattice` deliberately not implemented.** Dates are
+/// open-vocab — no finite "top" date is realizable. Per the
+/// `AeaSet` / `SciSet` / `SarSet` / `FgiSet` precedent in this
+/// module, the established pattern for "no BoundedLattice when
+/// range is open" is "implement `Lattice`, provide `empty()` /
+/// `default()` for the bottom, leave `top()` undefined."
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.6 p104 (RD Precedence Rules — most-restrictive declass date
+///   wins).
+/// - ISOO §3.3 (out-of-tree primary; included for cross-reference,
+///   not as primary source per Constitution VIII).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeclassifyOnLattice(Option<IsmDate>);
+
+impl DeclassifyOnLattice {
+    /// An empty declassify-on — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct a `DeclassifyOnLattice` from an `Option<IsmDate>`.
+    pub fn new(d: Option<IsmDate>) -> Self {
+        Self(d)
+    }
+
+    /// Construct from a `CanonicalAttrs` slice — picks the maximum
+    /// declassify-on date across portions per `IsmDate::end_cmp`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let max = portions
+            .iter()
+            .filter_map(|p| p.declassify_on.clone())
+            .max_by(|a, b| a.end_cmp(b));
+        Self(max)
+    }
+
+    /// Consume into the inner `Option<IsmDate>`.
+    pub fn into_inner(self) -> Option<IsmDate> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<IsmDate>`.
+    pub fn as_inner(&self) -> Option<&IsmDate> {
+        self.0.as_ref()
+    }
+}
+
+impl Lattice for DeclassifyOnLattice {
+    fn join(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, x) | (x, None) => Self(x.clone()),
+            (Some(a), Some(b)) => {
+                if a.end_cmp(b).is_ge() {
+                    Self(Some(a.clone()))
+                } else {
+                    Self(Some(b.clone()))
+                }
+            }
+        }
+    }
+    fn meet(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, _) | (_, None) => Self(None),
+            (Some(a), Some(b)) => {
+                if a.end_cmp(b).is_le() {
+                    Self(Some(a.clone()))
+                } else {
+                    Self(Some(b.clone()))
+                }
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tests
