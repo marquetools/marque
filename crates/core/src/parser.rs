@@ -27,7 +27,7 @@ use crate::error::CoreError;
 use marque_ism::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiClassification,
     FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
+    NatoClassification, NatoSap, NonIcDissem, SarCompartment, SarIndicator, SarMarking, SarProgram,
     SciCompartment, SciControl, SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
 use marque_ism::date::IsmDate;
@@ -566,7 +566,22 @@ impl<'t> Parser<'t> {
                 || (is_valid_custom_control(trimmed)
                     && trimmed.bytes().any(|b| b.is_ascii_digit())
                     && !is_known_non_sci_token(trimmed)
-                    && !is_declass_date(trimmed)))
+                    && !is_declass_date(trimmed))
+                // Bare NATO SAP token (BOHEMIA / BALK) — registered NATO
+                // Special Access Programs that travel in the SCI block
+                // position per the §H.7 p127 worked example
+                // `(//CTS//BOHEMIA//REL TO USA, NATO)`. These tokens fail
+                // both the bare-CVE check (no ODNI CVE entry per §G.2 p40)
+                // and the custom-control shape check (BOHEMIA is 7 chars,
+                // exceeding the 5-char cap; BALK is pure alpha and would
+                // be rejected by the must-contain-digit guard above), so
+                // they need an explicit gate-level admission to reach
+                // `parse_sci_block`'s per-chunk NATO-SAP recognizer.
+                //
+                // Authority: CAPCO-2016 §G.2 p40 (registers BOHEMIA / BALK
+                // as standalone control markings); §H.7 p127 (worked
+                // example places BOHEMIA in the SCI block position).
+                || recognize_nato_sap(trimmed).is_some())
                 && let Some(markings) = parse_sci_block(trimmed, abs_start, &mut token_spans)
             {
                 // Structural SCI path (spec 003-sci-compartments §R2). Runs
@@ -1211,6 +1226,50 @@ fn parse_sci_block(
             continue;
         }
 
+        // NATO SAP per-chunk recognition (PR 9c.1 R1 — canonical-form
+        // round-trip closure). BOHEMIA / BALK render standalone in the
+        // SCI block with no compartments per §G.2 p40 + §H.7 p127. The
+        // bare token IS the chunk (no `-` separator, no compartments),
+        // so we recognize it here BEFORE the `SciControlBare::parse` /
+        // `is_valid_custom_control` path — `BOHEMIA` would otherwise
+        // fail both branches (no CVE entry; 7 chars exceeds the 5-char
+        // custom-control cap), and `BALK` would land as
+        // `SciControlSystem::Custom("BALK")` (wrong axis).
+        //
+        // Combined forms like `BALK/BOHEMIA` flow through this branch
+        // per chunk — the outer `/`-split has already broken the block
+        // into single-token chunks before per-chunk dispatch.
+        //
+        // Authority: CAPCO-2016 §G.2 p40 (Table 5 registers BOHEMIA /
+        // BALK as standalone control markings — no compartments, no
+        // sub-compartments); §H.7 p127 (worked example
+        // `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` and the
+        // matching portion `(//CTS//BOHEMIA//REL TO USA, NATO)` —
+        // BOHEMIA travels alone in the SCI block).
+        if let Some(sap) = recognize_nato_sap(chunk) {
+            let chunk_abs = base + chunk_off;
+            let chunk_span = Span::new(chunk_abs, chunk_abs + chunk.len());
+            // Dual-emit SciControl + SciSystem spans matching the
+            // deprecated-long-form and CVE-bare paths so rules that
+            // anchor on `TokenKind::SciSystem` find a matching span.
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciControl,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            local_tokens.push(TokenSpan {
+                kind: TokenKind::SciSystem,
+                span: chunk_span,
+                text: chunk.into(),
+            });
+            markings.push(SciMarking::new(
+                SciControlSystem::NatoSap(sap),
+                Box::new([]),
+                None,
+            ));
+            continue;
+        }
+
         // Split chunk on first `-` into (control, rest). If no `-`, the
         // whole chunk is the control with no compartments.
         let (ctrl_str, rest_opt) = match chunk.find('-') {
@@ -1377,6 +1436,37 @@ fn is_known_non_sci_token(s: &str) -> bool {
         || parse_non_ic_full_form(s).is_some()
         || AeaMarking::parse(s).is_some()
         || DeclassExemption::parse(s).is_some()
+}
+
+/// Recognize a bare NATO Special Access Program token (`BOHEMIA` or
+/// `BALK`). Returns the matching [`NatoSap`] variant when `s` is one of
+/// the two registered NATO SAPs; returns `None` otherwise.
+///
+/// NATO SAPs travel in the SCI block position (`//CTS//BOHEMIA`,
+/// `//CTS//BALK`) and render standalone with no compartments or
+/// sub-compartments — they are CAPCO-only tokens with no ODNI CVE
+/// registration, so the structural SCI block parser needs an explicit
+/// recognizer rather than going through the bare-CVE / custom-control
+/// fallbacks.
+///
+/// Matching is strict on case (uppercase only, matching every other
+/// CAPCO token recognizer in this file).
+///
+/// # Authority
+///
+/// - CAPCO-2016 §G.2 p40 (Table 5: ARH by Registered Marking —
+///   registers BOHEMIA / BALK as standalone control markings, not
+///   classification suffixes).
+/// - CAPCO-2016 §H.7 p127 (FGI worked example
+///   `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` and the
+///   matching portion `(//CTS//BOHEMIA//REL TO USA, NATO)` — places
+///   BOHEMIA in the SCI block position alongside the FGI block).
+fn recognize_nato_sap(s: &str) -> Option<NatoSap> {
+    match s {
+        "BOHEMIA" => Some(NatoSap::Bohemia),
+        "BALK" => Some(NatoSap::Balk),
+        _ => None,
+    }
 }
 
 // =============================================================================

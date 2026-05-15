@@ -22,37 +22,32 @@
 //! within an SCI category) and confirmed by the §H.7 p127 worked
 //! example.
 //!
-//! # Coverage scope (R0 fix-up — what these tests pin)
+//! # Coverage scope
 //!
 //! The post-PR-9c.1 invariants this file pins are:
 //!
 //! - The legacy compound text forms (`CTS-B`, `CTS-BALK`) canonicalize
 //!   to bare CTS on the classification axis with `NatoSap::Bohemia` /
 //!   `NatoSap::Balk` written onto `sci_markings`.
+//! - The canonical multi-block forms (`(//CTS//BOHEMIA)`,
+//!   `(//CTS//BALK)`) route BOHEMIA / BALK onto `sci_markings` as
+//!   `SciControlSystem::NatoSap` — closing the round-trip so the
+//!   renderer's canonical output re-parses to the same structural
+//!   state (PR 9c.1 R1, extending `parse_sci_block` with a per-chunk
+//!   NATO-SAP recognizer that runs BEFORE the bare-CVE /
+//!   custom-control path).
+//! - The §H.7 p127 worked example
+//!   `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` round-trips
+//!   end-to-end (parses with BOHEMIA on `sci_markings`; engine does
+//!   not fire E066 on the canonical form).
+//! - The combined form `(//CTS//BALK/BOHEMIA)` populates both NATO SAPs
+//!   on `sci_markings`.
 //! - The retired `NatoClassification::CosmicTopSecretBohemia` and
 //!   `NatoClassification::CosmicTopSecretBalk` variants do not
 //!   reappear (a future regression that re-fuses them would fail
 //!   the legacy-form assertions immediately).
 //! - `NatoSap` derives `Ord` such that `Balk < Bohemia` — the
 //!   §H.7 p127 worked-example sort key the renderer drives off.
-//!
-//! # Out of scope (tracked-gap note for the PM)
-//!
-//! The canonical multi-block forms `(//CTS//BOHEMIA)` and
-//! `(//CTS//BALK)` do NOT yet route BOHEMIA / BALK onto `sci_markings`
-//! as `SciControlSystem::NatoSap`. The parser's structural SCI block
-//! parser (`parse_sci_block`) recognizes only CVE-bare controls and
-//! 2–5-char custom controls — BOHEMIA (7 chars) and BALK (4 chars)
-//! fall outside the CVE registry (NATO SAPs have no ODNI CVE entry per
-//! §G.2 p40), and BOHEMIA exceeds the 5-char custom-control length cap
-//! in `is_valid_custom_control` (`crates/core/src/parser.rs`).
-//!
-//! Extending the SCI block parser to recognize BOHEMIA / BALK as
-//! `NatoSap` is the natural follow-up: it closes the asymmetry where
-//! legacy fused forms canonicalize correctly but the canonical form
-//! parses to an empty SCI block. Tracking lives in the PR 9c.1
-//! reviewer-fix-up commit message; the open-gap tests below carry
-//! `#[ignore]` annotations so the gap stays visible without blocking CI.
 //!
 //! # Authority
 //!
@@ -68,8 +63,10 @@
 //!
 //! # Spec linkage
 //!
-//! Reviewer fix-up under PR 9c.1 R0 (Commit 10) — replaces the empty
-//! file fabricated in Commit 9 with substantive assertions.
+//! Reviewer fix-up under PR 9c.1 R1 (Commit 11) — closes the canonical-
+//! form round-trip parse gap flagged in the R0 fix-up. Activates the
+//! three previously-`#[ignore]`d tests and adds round-trip + combined-
+//! form coverage.
 
 use marque_capco::CapcoRuleSet;
 use marque_capco::scheme::CapcoScheme;
@@ -355,25 +352,24 @@ fn e066_does_not_fire_on_bare_cts_portion() {
 }
 
 // ---------------------------------------------------------------------------
-// Tracked-gap tests — canonical multi-block forms `(//CTS//BOHEMIA)`,
-// `(//CTS//BALK)`, and the §H.7 p127 worked example do NOT yet route
-// the bare BOHEMIA / BALK token onto `sci_markings` as
-// `SciControlSystem::NatoSap`. See file-level docstring for the gap
-// analysis. These are `#[ignore]`d so the gap remains visible without
-// blocking CI; flipping them to live tests is the natural follow-up.
+// Canonical multi-block forms — `(//CTS//BOHEMIA)`, `(//CTS//BALK)`,
+// and the §H.7 p127 worked example route BOHEMIA / BALK onto
+// `sci_markings` as `SciControlSystem::NatoSap`. PR 9c.1 R1 extended
+// `parse_sci_block` with a per-chunk NATO-SAP recognizer that runs
+// BEFORE the bare-CVE / custom-control path so canonical-form
+// renderer output re-parses to the same structural state.
 // ---------------------------------------------------------------------------
 
-/// IGNORED — tracks the parser gap. `(//CTS//BOHEMIA)` should route
-/// BOHEMIA onto `sci_markings` as `SciControlSystem::NatoSap(Bohemia)`,
-/// but `parse_sci_block` currently rejects BOHEMIA (7 chars exceeds
-/// the 5-char custom-control length cap and BOHEMIA has no CVE
-/// registration per §G.2 p40).
+/// `(//CTS//BOHEMIA)` routes BOHEMIA onto `sci_markings` as
+/// `SciControlSystem::NatoSap(Bohemia)`. Closes the round-trip
+/// asymmetry from the R0 fix-up where the legacy form `(//CTS-B)`
+/// canonicalized correctly but the canonical form parsed to an empty
+/// SCI block.
 ///
 /// Authority: CAPCO-2016 §H.7 p127 — `(//CTS//BOHEMIA//REL TO USA, NATO)`
 /// is the worked-example shape this canonical input mirrors.
 #[test]
-#[ignore = "PR 9c.1 R0: parser does not yet route canonical BOHEMIA to NatoSap; tracked follow-up"]
-fn canonical_form_bohemia_on_sci_axis_not_yet_routed() {
+fn canonical_form_bohemia_on_sci_axis() {
     let attrs = parse_portion("(//CTS//BOHEMIA)");
     assert_eq!(
         attrs.classification,
@@ -388,12 +384,13 @@ fn canonical_form_bohemia_on_sci_axis_not_yet_routed() {
     );
 }
 
-/// IGNORED — companion gap test for canonical BALK.
+/// `(//CTS//BALK)` routes BALK onto `sci_markings` as
+/// `SciControlSystem::NatoSap(Balk)`. Companion to the BOHEMIA
+/// canonical-form test.
 ///
 /// Authority: CAPCO-2016 §G.2 p40 (BALK as standalone control marking).
 #[test]
-#[ignore = "PR 9c.1 R0: parser does not yet route canonical BALK to NatoSap; tracked follow-up"]
-fn canonical_form_balk_on_sci_axis_not_yet_routed() {
+fn canonical_form_balk_on_sci_axis() {
     let attrs = parse_portion("(//CTS//BALK)");
     assert_eq!(
         attrs.classification,
@@ -408,7 +405,7 @@ fn canonical_form_balk_on_sci_axis_not_yet_routed() {
     );
 }
 
-/// IGNORED — §H.7 p127 worked-example end-to-end.
+/// §H.7 p127 worked-example end-to-end.
 ///
 /// `TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN` is the
 /// authoritative worked example from the CAPCO manual. End-to-end
@@ -418,8 +415,7 @@ fn canonical_form_balk_on_sci_axis_not_yet_routed() {
 /// Authority: CAPCO-2016 §H.7 p127 — verbatim banner from the FGI
 /// section's BOHEMIA worked example.
 #[test]
-#[ignore = "PR 9c.1 R0: parser does not yet route canonical BOHEMIA to NatoSap; tracked follow-up"]
-fn h7_p127_worked_example_round_trip_not_yet_supported() {
+fn h7_p127_worked_example_round_trip() {
     let source = b"TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN";
 
     let attrs = parse_banner(std::str::from_utf8(source).unwrap());
@@ -449,5 +445,69 @@ fn h7_p127_worked_example_round_trip_not_yet_supported() {
             .iter()
             .map(|af| af.rule.as_str())
             .collect::<Vec<_>>(),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Round-trip + combined-form coverage — these pin the deeper
+// invariants the R1 parser extension unlocks: canonical-form output
+// re-parses to the same `sci_markings` state, and combined BALK /
+// BOHEMIA chunks populate both NATO SAPs on a single marking.
+// ---------------------------------------------------------------------------
+
+/// `(//CTS//BOHEMIA//REL TO USA, NATO)` — the §H.7 p127 portion-mark
+/// worked example. Parser must route BOHEMIA onto `sci_markings` AND
+/// carry the REL TO trigraphs on `rel_to`.
+///
+/// Authority: CAPCO-2016 §H.7 p127.
+#[test]
+fn h7_p127_portion_mark_round_trip() {
+    let attrs = parse_portion("(//CTS//BOHEMIA//REL TO USA, NATO)");
+
+    assert_eq!(
+        attrs.classification,
+        Some(MarkingClassification::Nato(
+            NatoClassification::CosmicTopSecret
+        )),
+        "§H.7 p127 portion must canonicalize to bare CTS on the \
+         classification axis"
+    );
+    assert!(
+        has_nato_sap(&attrs, NatoSap::Bohemia),
+        "§H.7 p127 portion must carry BOHEMIA on sci_markings; got: {:?}",
+        attrs.sci_markings,
+    );
+    assert!(
+        !attrs.rel_to.is_empty(),
+        "§H.7 p127 portion must carry REL TO entries; got empty"
+    );
+}
+
+/// `(//CTS//BALK/BOHEMIA)` — combined BALK + BOHEMIA in a single SCI
+/// block populates both NATO SAPs on `sci_markings`. Validates the
+/// per-chunk NATO-SAP recognizer threads through the `/`-split path
+/// inside `parse_sci_block`.
+///
+/// Authority: CAPCO-2016 §G.2 p40 (both registered); §A.6 p15-16
+/// (numeric-then-alpha ordering within an SCI category).
+#[test]
+fn combined_balk_bohemia_populates_both_nato_saps() {
+    let attrs = parse_portion("(//CTS//BALK/BOHEMIA)");
+
+    assert_eq!(
+        attrs.classification,
+        Some(MarkingClassification::Nato(
+            NatoClassification::CosmicTopSecret
+        )),
+    );
+    assert!(
+        has_nato_sap(&attrs, NatoSap::Balk),
+        "combined form must carry BALK on sci_markings; got: {:?}",
+        attrs.sci_markings,
+    );
+    assert!(
+        has_nato_sap(&attrs, NatoSap::Bohemia),
+        "combined form must carry BOHEMIA on sci_markings; got: {:?}",
+        attrs.sci_markings,
     );
 }
