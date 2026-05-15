@@ -1912,3 +1912,316 @@ and the new-primitive fold-in. `.claude/skills/marque-lattice-consultant/referen
 `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md` is the
 operative staging plan for the monolithic PR 3.7 that lands this
 document plus the supporting trait-surface primitives.
+
+---
+
+## 11. PR 4b-B addenda (2026-05-15) — rest-of-the-seven lattice impls
+
+PR 4b-B lands the six per-category lattice impls that PR 4b-A
+deferred (Classification, NATO classification, JOINT, DissemSet,
+RelToBlock, DeclassifyOn) plus the `NatoDissemSet` trivial-union and
+two PageContext bugfixes. The five PM-resolved policy decisions in
+§§2-3 are restated as worked-example addenda below; the operative
+plan-of-record is `docs/plans/2026-05-15-pr4b-B-lattice-impls-rest-plan.md`.
+
+Every citation in this addendum was re-verified 2026-05-15 against
+`crates/capco/docs/CAPCO-2016.md` and
+`crates/capco/docs/CAPCO-2016_citation_index.yml` page-range
+cross-check, per Constitution Principle VIII propagation-discipline.
+
+### 11.1 OC-USGOV supersession (replaces the §3 (a) "unanimity-drop" implication)
+
+**Authority**: §H.8 p136 (ORCON template — "If ORCON and ORCON-USGOV
+portions are in a document, ORCON takes precedence and is conveyed in
+the banner line"); §H.8 p140 (ORCON-USGOV template — same rule from
+the USGOV vantage).
+
+**Algebra**:
+
+```text
+∀ page :
+  let oc_present       = ORCON ∈ page.dissem
+  let oc_usgov_present = ORCON-USGOV ∈ page.dissem
+  if oc_present ∧ oc_usgov_present:
+     banner.dissem.remove(ORCON-USGOV)   -- supersession
+  -- else: both pass through untouched
+```
+
+This is a `SupersessionSet`-shape rule over the two-element axis
+{ORCON, ORCON-USGOV}: ORCON ⊐ ORCON-USGOV. The pre-fix PageContext
+implementation modeled it as unanimity (drop USGOV only when not on
+every ORCON-carrying portion), which is wrong per the §H.8 p136
+worked example: *one* ORCON portion is enough to win the banner over
+any number of ORCON-USGOV portions.
+
+**Worked example** (PR 4b-B Commit 2 + Commit 4 regression):
+
+```text
+Inputs:  (S//OC-USGOV) (S//OC) (S//OC-USGOV)
+Pre-fix PageContext: banner = SECRET//OC/OC-USGOV (kept both — wrong)
+Post-fix PageContext (= DissemSet): banner = SECRET//OC (ORCON wins)
+```
+
+### 11.2 RELIDO observed-unanimity at banner roll-up (new §3 (a) sub-row)
+
+**Authority**: §H.8 pp155-156 (RELIDO Precedence Rules for Banner Line
+Guidance — "RELIDO appears on the banner line *only* if every portion
+on the page carries RELIDO").
+
+**Algebra**:
+
+```text
+∀ page :
+  let relido_present   = RELIDO ∈ page.dissem  -- union over portions
+  let relido_unanimous = ∀ p ∈ page.portions . RELIDO ∈ p.dissem_us
+  banner.has_relido = relido_present ∧ relido_unanimous
+```
+
+**Layer 1 vs Layer 2 boundary**: PR 4b-B implements only the
+**observed-unanimity** half. The Layer 2 case — Marque infers RELIDO
+from §B.3 Table 2 "classified, uncaveated, on/after 28 Jun 2010" —
+defers to PR 4b-D. Layer 1 sees the portions as-parsed; if a portion
+should have RELIDO per Table 2 but doesn't, Layer 2 (a future closure
+operator pass) is responsible, not the lattice join.
+
+**Worked examples**:
+
+```text
+Inputs:  (S//RELIDO) (S//RELIDO) (S//RELIDO)
+Banner: SECRET//RELIDO  -- unanimous
+
+Inputs:  (S//RELIDO) (S//RELIDO) (S)
+Banner: SECRET         -- RELIDO drops; no NOFORN inference at Layer 1
+```
+
+### 11.3 JOINT producer-disunity collapse (new §2.1 sub-section)
+
+**Authority**: §H.3 p56 (JOINT classification grammar) + §H.7 p123
+(FGI source-acknowledged form). The cross-axis collapse is implied
+by combining the two passages — when JOINT producer lists disagree
+across portions, JOINT does not roll up to banner; the non-US
+producers ride to FGI [LIST] per §H.7 p123.
+
+**State space** (three-variant `JointSet`):
+
+```text
+JointSet =
+  | Bottom                                           -- no JOINT portions
+  | UnanimousProducers { level, producers }          -- every JOINT
+                                                     -- portion has the
+                                                     -- same producer list
+  | DisunityCollapse { highest_level,
+                       union_non_us_producers }      -- disunity observed;
+                                                     -- non-US producers
+                                                     -- migrate to FGI
+```
+
+**Lattice transitions on `join` are deterministic** over the
+three-variant state space:
+
+```text
+Bottom ⊔ x = x  (bottom-identity, all three rows)
+
+UnanimousProducers{l1, p1} ⊔ UnanimousProducers{l2, p2}
+  = UnanimousProducers{max(l1,l2), p1}      if p1 == p2
+  = DisunityCollapse{max(l1,l2), (p1 ∪ p2) \ {USA}}   otherwise
+
+UnanimousProducers{l1, p1} ⊔ DisunityCollapse{l2, np2}
+  = DisunityCollapse{max(l1,l2), (p1 \ {USA}) ∪ np2}
+
+DisunityCollapse{l1, np1} ⊔ DisunityCollapse{l2, np2}
+  = DisunityCollapse{max(l1,l2), np1 ∪ np2}
+```
+
+The transitions satisfy assoc/comm/idem on the state space:
+
+- **Idempotency**: `X ⊔ X = X` (any variant joined with itself; the
+  `p1 == p2` branch fires for `UnanimousProducers`, the union is
+  trivial for `DisunityCollapse`, and `Bottom` is identity-preserving).
+- **Commutativity**: every transition rule is symmetric in its two
+  operands (max is symmetric, set-equality is symmetric, set-union
+  is symmetric).
+- **Associativity**: pairwise enumeration of the 3×3×3 = 27 ordered
+  triples on the three-variant state space gives the same final
+  variant regardless of grouping, because (a) the `level` axis is
+  OrdMax which is associative, (b) once a `DisunityCollapse` enters
+  the chain it absorbs every subsequent operand via the third/fourth
+  rules, and (c) `Bottom` is identity. The property test
+  `joint_disunity_lattice_laws` in
+  `crates/capco/tests/category_lattice_laws.rs` exhausts the state
+  space at the cost of a few microseconds at test time.
+
+**The transitions are structural lattice operations on a deterministic
+state space — NOT "normalization."** The `Lattice for JointSet` impl
+does not need to retain inputs and re-derive output; the post-join
+variant carries every fact the post-join state needs for `to_*`
+round-trips and for the W004 diagnostic.
+
+**Worked examples** (Commit 5 fixtures):
+
+```text
+Inputs:  (//JOINT S USA GBR) (//JOINT S USA GBR)
+JointSet: UnanimousProducers{S, {USA, GBR}}
+Banner: //JOINT SECRET USA, GBR    -- per §H.3 worked example p1299
+
+Inputs:  (//JOINT C USA GBR) (//JOINT TS USA GBR) (//JOINT S USA GBR)
+JointSet: UnanimousProducers{TS, {USA, GBR}}   -- OrdMax on level
+Banner: //JOINT TOP SECRET USA, GBR
+
+Inputs:  (//JOINT S USA GBR) (//JOINT S USA CAN)
+JointSet: DisunityCollapse{S, {CAN, GBR}}
+Banner: SECRET//FGI CAN GBR  -- §H.7 p123 FGI source-acknowledged form
+                             -- W004 Warn diagnostic fires
+                             -- (rule = "W004",
+                             --  citation = "CAPCO-2016 §H.3 p56 + §H.7 p123")
+```
+
+**Mixed-with-US case** (§H.3 p57 line 1288 — "the JOINT marking is
+not carried forward to the banner line in US documents"): when only
+*some* portions are JOINT and others are pure US, `from_attrs_iter`
+returns `Bottom`. **W004 does not fire** in this case; the existing
+US-document behavior (JOINT non-US producers ride to `FgiSet` via the
+PageContext-resident `expected_fgi_marker`) is preserved bit-for-bit.
+
+**Empty-producer-list defensive shape**: `UnanimousProducers { level,
+producers: ∅ }` is malformed per §H.3 (JOINT requires at least USA + 1
+co-owner). The constructor `JointSet::from_attrs_iter` returns
+`Bottom` when given an empty producer set; the `Lattice::join`
+arithmetic above never produces an `UnanimousProducers` with an empty
+set from non-empty operands. The lattice consultant flagged this as a
+hazard; the test `joint_unanimous_empty_producers_normalizes_to_bottom`
+in Commit 5 pins the constructor's defensive normalization.
+
+### 11.4 DissemSet — single bag, three overlays (new §3 (f))
+
+**Authority**: §H.8 pp131-168 + §D.2 Table 3 p28 (FD&R precedence) +
+§H.8 p145 (NOFORN dominates).
+
+`DissemSet` storage = `BTreeSet<DissemControl>` + two derived flags
+(`relido_observed_unanimous`, retained for round-trip; `noforn_present`,
+derived). `from_attrs_iter` applies four overlays in deterministic
+order:
+
+1. Basic union over `attrs.dissem_us`.
+2. **OC-USGOV supersession** (§11.1 above): drop ORCON-USGOV if ORCON
+   is present in the joined set.
+3. **RELIDO observed-unanimity** (§11.2 above): drop RELIDO if some
+   portion lacks it.
+4. **NOFORN dominates** (§D.2 Table 3 rows 1-2 + §H.8 p145): drop
+   REL TO / RELIDO / DISPLAY ONLY tokens when NOFORN is present in
+   the joined set. The post-join `Lattice::join` re-applies steps 2-4
+   on the BTreeSet union so the supersession overlays remain
+   idempotent.
+
+**FOUO eviction is NOT done in `DissemSet`.** It lives on
+`PageContext::expected_dissem_us` step 3 (the cross-axis classification
+> U eviction + DSEN override) as a `Constraint::Custom(
+"capco/fouo-eviction", …)` migration target for PR 4b-C. The parity
+gate inherits the current behavior verbatim.
+
+**Ordering at the lattice level is BTreeSet's natural order**; §H.8
+prose ordering ("OC/NF" not "NF/OC") is the renderer's concern, not
+the lattice's. The renderer (`MarkingScheme::render_canonical`) lands
+in PR 5+ Stage 4.
+
+### 11.5 RelToBlock — IntersectSet with NOFORN supersession (new §3 (g))
+
+**Authority**: §H.8 pp150-151 (REL TO grammar + intersection-on-roll-up)
++ §D.2 Table 3 rows 9-13 (REL TO supersession by NOFORN and disjoint
+LIST → NOFORN) + §H.8 p152 worked example.
+
+```text
+RelToBlock =
+  | Bottom                              -- no REL TO portions
+  | NofornSuperseded                    -- some portion has NOFORN /
+                                        -- NODIS / EXDIS
+  | Lattice { countries: BTreeSet<CountryCode> }  -- tetragraph-
+                                                  -- expanded intersection,
+                                                  -- USA-first sort
+```
+
+`from_attrs_iter`:
+
+1. If any portion carries `Nf` in `dissem_us` (or NODIS/EXDIS in
+   `non_ic_dissem`) → `NofornSuperseded`.
+2. Else expand tetragraphs (FVEY → {AUS, CAN, GBR, NZL, USA}, ACGU →
+   {AUS, CAN, GBR, USA}) via the existing
+   `marque_ism::lookup_tetragraph_members` table.
+3. Intersect the expanded sets across portions.
+4. Empty intersection → `Bottom`. (§D.2 Table 3 row 9: "no-common-LIST
+   → NOFORN" — the lattice produces `Bottom`; the post-projection
+   pipeline injects NOFORN into `DissemSet` via the existing
+   PageRewrite `capco/noforn-clears-rel-to`. **This is a deliberate
+   split between lattice algebra and post-projection rewrite — the
+   lattice cannot introduce NOFORN into a different axis.**)
+5. Non-empty intersection → `Lattice { countries }`, USA-first sort.
+
+**Lattice transitions**:
+
+```text
+Bottom ⊔ x = x
+NofornSuperseded ⊔ x = NofornSuperseded   (sentinel absorbs)
+Lattice{a} ⊔ Lattice{b} = Lattice{a ∩ b}  if non-empty, else Bottom
+```
+
+Tetragraph re-expansion happens at `from_attrs_iter` time, not inside
+`join`; once `RelToBlock` is in `Lattice{countries}` form, the
+intersection operates on already-canonical `CountryCode`s.
+
+### 11.6 DeclassifyOnLattice — `MaxDate` semilattice (new §3 (h))
+
+**Authority**: §H.6 p104 (RD declass authority — most restrictive
+date wins) + ISOO §3.3 (date-only axis).
+
+```text
+DeclassifyOnLattice(Option<IsmDate>) :
+  join(a, b) = a.max_by(end_cmp, b)        -- furthest-out date wins
+  meet(a, b) = a.min_by(end_cmp, b)        -- nearest date wins
+```
+
+**Bottom** = `None`. **No top is implemented** — dates are open-vocab,
+no finite top is realizable. Per `AeaSet`/`SciSet`/`SarSet`/`FgiSet`
+precedent in the same module, this is the established pattern for
+"no `BoundedLattice` impl when range is open."
+
+### 11.7 NatoClassLattice — bounded OrdMax (extends §7)
+
+**Authority**: §H.2 p55 (NATO classification ladder).
+
+`NatoClassLattice(Option<NatoClassification>)` joins by `OrdMax` over
+`NU < NR < NC < NS < CTS`. **BoundedLattice** is implemented: top =
+`Some(CosmicTopSecret)`, bottom = `None`. NATO is a closed-vocabulary
+five-element chain (no agency-extensibility), so the top exists.
+
+**Pure-NATO documents only**: this lattice shadows
+`ClassificationLattice` for documents with no US portions. Mixed
+US+NATO documents reciprocally-raise at portion-parse time per the
+existing §H.7 pp123-125 reciprocal rule (`MarkingClassification::
+effective_level()`); `non_us_classification` is `None` at banner. The
+property test `mixed_us_nato_non_us_classification_is_none` in
+Commit 3 pins this.
+
+### 11.8 ClassificationLattice — bounded OrdMax (extends §2)
+
+**Authority**: §H.1 pp47-54 (US class chain) + §H.7 pp123-125
+(reciprocal-normalize).
+
+`ClassificationLattice(Option<MarkingClassification>)` joins by
+`OrdMax` over `effective_level()`. Top = `Some(Us(TopSecret))`,
+bottom = `None`. **The lattice does NOT naive-delegate to
+`effective_level().max(other.effective_level())` — that loses
+`Nato`/`Fgi`/`Joint`/`Conflict` variant discriminators.** The
+implementation:
+
+- Compares two `MarkingClassification`s by `effective_level()`.
+- Returns the variant with the higher level **as-is**.
+- On equal level, preserves the variant from the left operand (the
+  `Lattice` contract requires the result to round-trip with at least
+  one of the operands; `Us` is preferred when both are `Us`-shaped so
+  the most-common case is the no-op).
+
+This preserves the variant-tag information that `JointSet`/`FgiSet`
+need for accurate banner attribution downstream.
+
+---
+
