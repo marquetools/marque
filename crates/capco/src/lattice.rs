@@ -1775,6 +1775,31 @@ impl DissemSet {
     pub fn to_vec(&self) -> Vec<DissemControl> {
         self.set.iter().copied().collect()
     }
+
+    /// Inject `Nf` into the set and re-apply the supersession
+    /// overlay. G-8 (PR 4b-B follow-up) — callers that need to
+    /// inject NOFORN from a cross-axis source (non-IC SBU-NF /
+    /// LES-NF on a classified page, NODIS / EXDIS supersession,
+    /// or the `capco/noforn-clears-rel-to` PageRewrite) MUST route
+    /// through here so the §H.8 p145 NOFORN-dominates rule strips
+    /// `Rel` / `Relido` / `Displayonly` from the set.
+    ///
+    /// Pre-G-8 the cross-axis injection at
+    /// `crates/capco/src/scheme.rs:513` added `Nf` directly into
+    /// `out.dissem_us` after `DissemSet::into_boxed_slice` ran,
+    /// which left dominated controls in place — invalid per
+    /// §H.8 p145.
+    ///
+    /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO /
+    /// RELIDO / EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
+    pub fn with_noforn_injected(mut self) -> Self {
+        self.set.insert(DissemControl::Nf);
+        // Re-run the supersession overlay so the NOFORN-dominates
+        // step strips any `Rel` / `Relido` / `Displayonly` left in
+        // the bag.
+        self.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        self
+    }
 }
 
 impl Lattice for DissemSet {

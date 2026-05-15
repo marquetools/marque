@@ -792,6 +792,72 @@ fn classified_sbu_nf_injects_noforn_and_clears_rel_to() {
 }
 
 #[test]
+fn lattice_classified_sbu_nf_with_displayonly_supersedes_displayonly() {
+    // G-8 (PR 4b-B follow-up): a classified page with SBU-NF on one
+    // portion AND DISPLAY ONLY on another must end up with NOFORN in
+    // dissem_us, NOT DISPLAY ONLY. NOFORN dominates DISPLAY ONLY per
+    // §H.8 p145 (NOFORN: "Cannot be used with REL TO / RELIDO /
+    // EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
+    //
+    // Pre-fix, G-6 injected `Nf` directly into `out.dissem_us` after
+    // the supersession overlay had already run, so the `Nf` addition
+    // never triggered `DissemSet`'s NOFORN-dominates step. The
+    // classified page's lattice output wound up with `Nf + Displayonly`
+    // together — invalid per §H.8 p145.
+    //
+    // This test asserts only the lattice path's correctness (the
+    // PageContext path lacks a NOFORN-dominates step in
+    // `expected_dissem_us` at all — that's a separate pre-existing
+    // bug tracked outside this PR-4b-B follow-up scope).
+    //
+    // Citation: §H.8 p145 (NOFORN: "Cannot be used with REL TO /
+    // RELIDO / EYES ONLY / DISPLAY ONLY") + §H.8 p163 (DISPLAY ONLY:
+    // "Not with NOFORN") + §D.2 Table 3 rows 1-2 (NOFORN dominates).
+    let mut sbunf = portion_us(Classification::Secret);
+    sbunf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
+    let mut display_portion = portion_us(Classification::Secret);
+    display_portion.dissem_us = vec![DissemControl::Displayonly].into_boxed_slice();
+    let portions = [display_portion, sbunf];
+    let lat = project_via_lattice(&portions);
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Nf),
+        "Lattice injects NF (G-8)"
+    );
+    assert!(
+        !lat.dissem_us.contains(&DissemControl::Displayonly),
+        "Lattice supersedes DISPLAY ONLY via NOFORN overlay (G-8): dissem_us = {:?}",
+        lat.dissem_us
+    );
+}
+
+#[test]
+fn lattice_noforn_clears_rel_to_supersedes_displayonly() {
+    // G-8 (PR 4b-B follow-up): when `rel_to_was_noforn_superseded`
+    // fires (a portion carries NODIS or EXDIS) AND another portion
+    // carries DISPLAY ONLY, the injected NOFORN must dominate
+    // DISPLAY ONLY too. Pre-fix this same code path (line 510-521)
+    // injected `Nf` without re-running the supersession overlay.
+    //
+    // Citation: §H.9 p172 (NODIS) + §H.9 p174 (EXDIS) inject NOFORN;
+    // §H.8 p145 + §H.8 p163 (NOFORN dominates DISPLAY ONLY).
+    let mut nodis_portion = portion_us(Classification::Secret);
+    nodis_portion.non_ic_dissem = vec![NonIcDissem::Nodis].into_boxed_slice();
+    let mut display_portion = portion_us(Classification::Secret);
+    display_portion.dissem_us = vec![DissemControl::Displayonly].into_boxed_slice();
+    let portions = [display_portion, nodis_portion];
+    let lat = project_via_lattice(&portions);
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Nf),
+        "Lattice injects NF on NODIS (G-8)"
+    );
+    assert!(
+        !lat.dissem_us.contains(&DissemControl::Displayonly),
+        "Lattice supersedes DISPLAY ONLY via NOFORN overlay on NODIS (G-8): dissem_us = {:?}",
+        lat.dissem_us
+    );
+}
+
+#[test]
 fn joint_unanimous_does_not_double_mark_with_fgi() {
     // G-4 (PR 4b-B follow-up): JointSet::UnanimousProducers carries
     // the producer list in the JOINT classification itself. The

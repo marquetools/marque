@@ -317,7 +317,6 @@ impl CapcoMarking {
             AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet, JointSet,
             NatoDissemSet, RelToBlock, SarSet, SciSet,
         };
-        use std::collections::BTreeSet;
 
         let mut out = CanonicalAttrs::default();
 
@@ -468,7 +467,12 @@ impl CapcoMarking {
         out.fgi_marker = merge_fgi_markers(fgi_acc.to_marker(), ctx_fgi_marker);
 
         // Axis 6-7: dissem_us / dissem_nato.
-        out.dissem_us = DissemSet::from_attrs_iter(portions).into_boxed_slice();
+        // Build `dissem_us` as a `DissemSet` (rather than its
+        // boxed-slice form) so cross-axis NOFORN injection below can
+        // route through `DissemSet::with_noforn_injected` and have
+        // the supersession overlay strip dominated controls per
+        // §H.8 p145 (G-8 PR 4b-B follow-up).
+        let dissem_set = DissemSet::from_attrs_iter(portions);
         out.dissem_nato = NatoDissemSet::from_attrs_iter(portions).into_boxed_slice();
 
         // Axis 8: rel_to.
@@ -497,28 +501,36 @@ impl CapcoMarking {
         let (non_ic, needs_nf) = tmp_ctx.expected_non_ic_dissem();
         out.non_ic_dissem = non_ic.into_boxed_slice();
 
-        // NOFORN-clears-REL-TO interaction:
-        // The `capco/noforn-clears-rel-to` PageRewrite handles this
-        // at the project() layer. RelToBlock::NofornSuperseded
-        // already produces an empty rel_to slice for the lattice
-        // output; we additionally inject `Nf` into dissem_us when
-        // the lattice signals NOFORN supersession (via NODIS / EXDIS)
-        // AND no portion explicitly carries NOFORN, matching the
-        // PageRewrite's post-projection effect. This keeps the
-        // lattice path self-consistent with the PageContext path's
-        // final shape.
-        if rel_to_was_noforn_superseded || needs_nf {
-            use marque_ism::DissemControl;
-            let mut dissem = out.dissem_us.iter().copied().collect::<BTreeSet<_>>();
-            dissem.insert(DissemControl::Nf);
-            out.dissem_us = dissem.into_iter().collect::<Vec<_>>().into_boxed_slice();
+        // NOFORN-clears-REL-TO interaction + cross-axis NOFORN
+        // injection.
+        //
+        // G-8 (PR 4b-B follow-up): when NOFORN must be injected from
+        // a cross-axis source (non-IC SBU-NF/LES-NF on a classified
+        // page, or NODIS/EXDIS supersession via RelToBlock), the
+        // injection MUST route through `DissemSet::with_noforn_injected`
+        // so the §H.8 p145 NOFORN-dominates overlay strips any
+        // `Rel` / `Relido` / `Displayonly` that survived from the
+        // per-portion union. Pre-G-8 the injection inserted `Nf`
+        // into `out.dissem_us` directly, after `DissemSet::
+        // into_boxed_slice` had already run — invalid output per
+        // §H.8 p145.
+        //
+        // Authority: §H.8 p145 (NOFORN dominates REL TO / RELIDO /
+        // EYES ONLY / DISPLAY ONLY) + §D.2 Table 3 rows 1-2 +
+        // §H.9 p172 (NODIS) / §H.9 p174 (EXDIS) inject NOFORN at
+        // banner.
+        let dissem_final = if rel_to_was_noforn_superseded || needs_nf {
             // G-6: SBU-NF / LES-NF on a classified page also clears
             // REL TO — match PageContext::expected_rel_to which
             // short-circuits to an empty slice when needs_nf fires.
             if needs_nf {
                 out.rel_to = Box::new([]);
             }
-        }
+            dissem_set.with_noforn_injected()
+        } else {
+            dissem_set
+        };
+        out.dissem_us = dissem_final.into_boxed_slice();
 
         out
     }
