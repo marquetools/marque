@@ -189,6 +189,26 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
 // TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
 
+// PR 9c.1 (T134): canonical NATO control-marking sentinels for
+// ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
+// shapes added in `marque-ism` PR 9c.1 Commit 1:
+//   - ATOMAL lives in the AEA axis as `AeaMarking::Atomal(AtomalBlock)`
+//     per CAPCO-2016 §H.7 p123 worked example
+//     `SECRET//RD/ATOMAL//FGI NATO//NOFORN`.
+//   - BALK / BOHEMIA live in the SCI axis as
+//     `SciControlSystem::NatoSap(NatoSap::{Balk,Bohemia})` per
+//     CAPCO-2016 §G.2 p41 + §H.7 p127 worked example.
+//
+// All three render same-form across title / banner-abbrev / portion
+// columns per §G.1 Table 4 p38 (the row "ATOMAL/BALK/BOHEMIA" lists
+// the canonical name in all three columns).
+//
+// Resolved by `satisfies_attrs` against `attrs.aea_markings` and
+// `attrs.sci_markings` respectively.
+pub const TOK_ATOMAL: TokenId = TokenId(140);
+pub const TOK_BALK: TokenId = TokenId(141);
+pub const TOK_BOHEMIA: TokenId = TokenId(142);
+
 // ---------------------------------------------------------------------------
 // CapcoMarking — newtype over CanonicalAttrs implementing Lattice
 // ---------------------------------------------------------------------------
@@ -562,10 +582,14 @@ fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // route through the same category so `apply_fact_remove`'s
         // CAT_REL_TO branch can discriminate.
         TOK_USA | TOK_REL_TO => Some(CAT_REL_TO),
-        // CAT_AEA — atomic-energy markings
-        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI => Some(CAT_AEA),
-        // CAT_SCI — sensitive compartmented information control systems
-        TOK_HCS => Some(CAT_SCI),
+        // CAT_AEA — atomic-energy markings. ATOMAL lives in the AEA
+        // axis per CAPCO-2016 §H.7 p123 worked example
+        // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
+        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI | TOK_ATOMAL => Some(CAT_AEA),
+        // CAT_SCI — sensitive compartmented information control systems.
+        // BALK / BOHEMIA are NATO SAPs in the SCI category position per
+        // §G.2 p41 + §H.7 p127 (rendered standalone, no SAR- prefix).
+        TOK_HCS | TOK_BALK | TOK_BOHEMIA => Some(CAT_SCI),
         // CAT_JOINT_CLASSIFICATION — JOINT classification marker
         TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
         // CAT_CLASSIFICATION — overall classification level surface
@@ -2921,6 +2945,26 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+            // PR 9c.1 (T134): ATOMAL lives in the AEA axis per
+            // CAPCO-2016 §H.7 p123 (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
+            TOK_ATOMAL => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::Atomal(_))),
+            // PR 9c.1 (T134): BALK / BOHEMIA are NATO SAPs living in
+            // the SCI axis per CAPCO-2016 §G.2 p41 + §H.7 p127.
+            TOK_BALK => attrs.sci_markings.iter().any(|m| {
+                matches!(
+                    m.system,
+                    SciControlSystem::NatoSap(marque_ism::NatoSap::Balk)
+                )
+            }),
+            TOK_BOHEMIA => attrs.sci_markings.iter().any(|m| {
+                matches!(
+                    m.system,
+                    SciControlSystem::NatoSap(marque_ism::NatoSap::Bohemia)
+                )
+            }),
             // "HCS markings" is plural in CAPCO §H.3 p57 — it covers
             // the bare `HCS` token AND the compound forms `HCS-O` /
             // `HCS-P` / `HCS-O-P`. CVE-projection variants `Hcs`,
