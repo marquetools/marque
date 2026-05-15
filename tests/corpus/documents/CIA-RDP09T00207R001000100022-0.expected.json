@@ -13,7 +13,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BUTTERED POPCORN 52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
+        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BP-52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "//NR//REL TO USA, NATO",
@@ -41,7 +41,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "DEMANDING, once again, that Iraq withdraw immediately and unconditionally all its forces to the positions in which they were located on 1 August 1990:",
             "is_table": false
           },
@@ -84,7 +84,7 @@
       },
       {
         "page_num": 2,
-        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BP 52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
+        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BP-52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "U//DCNI//REL TO USA, GBR//NNPI",
@@ -102,7 +102,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "LENGTH: 263 wOrdS",
             "is_table": false
           },
@@ -117,17 +117,17 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "KEYWORD: GULF-UN-TEXT",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "BODY:",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "Following is the text of a resolution that the Security Council adopted unanimously late on Saturday demanding that Iraq allow foreigners to leave Kuwait and Iraq and do nothing to jeopardise their safety or health: (approx 240 words)",
             "is_table": false
           },
@@ -142,7 +142,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "Deeply concerned for the safety and well-being of third state nationals in Iraq and Kuwait,",
             "is_table": false
           },
@@ -177,7 +177,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "4. Requests the Secretary General to report to the Council on compliance with this resolution at the earliest possible time.",
             "is_table": false
           }

@@ -13,10 +13,10 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "SECRET//NOFORN//LIMDIS/LES/NNPI",
+        "banner": "SECRET//NOFORN//LES/NNPI",
         "paragraphs": [
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "LEGISLATIVE HISTORY ON CIA BUILDING (84th Congress)",
             "is_table": false
           },
@@ -51,12 +51,12 @@
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "B. APPROPRIATIONS",
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "1. H.R. 7278, as reported by the House Appropriations Committee, recommended the appropriation of \\$3, 000, 000 for the preparation of plans and specifications, \" to be derived from unobligated balances of appropriations made available to the Central Intelligence Agency for the FY/53 and 54. \" Committee Report stated as follows: 'It is felt that inadequate planning",
             "is_table": false
           }
@@ -67,7 +67,7 @@
         "banner": "UNCLASSIFIED//DOD UCNI//NOFORN//LIMDIS/LES/NNPI",
         "paragraphs": [
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "with respect to both the site and structure as evidenced in the hearing on this item, gives the committee no alternative but to defer action until a more firm program can be presented.\" When the House voted on this bill, it eliminated the entire section relating to the CIA building.",
             "is_table": false
           },

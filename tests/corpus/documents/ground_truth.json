@@ -712,7 +712,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BUTTERED POPCORN 52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
+        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BP-52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "//NR//REL TO USA, NATO",
@@ -740,7 +740,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "DEMANDING, once again, that Iraq withdraw immediately and unconditionally all its forces to the positions in which they were located on 1 August 1990:",
             "is_table": false
           },
@@ -783,7 +783,7 @@
       },
       {
         "page_num": 2,
-        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BP 52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
+        "banner": "TOP SECRET//SI-G ABCD/TK-BLFH//SAR-BP-52X3//FGI NATO//RSEN/ORCON/NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "U//DCNI//REL TO USA, GBR//NNPI",
@@ -801,7 +801,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "LENGTH: 263 wOrdS",
             "is_table": false
           },
@@ -816,17 +816,17 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "KEYWORD: GULF-UN-TEXT",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "BODY:",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "Following is the text of a resolution that the Security Council adopted unanimously late on Saturday demanding that Iraq allow foreigners to leave Kuwait and Iraq and do nothing to jeopardise their safety or health: (approx 240 words)",
             "is_table": false
           },
@@ -841,7 +841,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "Deeply concerned for the safety and well-being of third state nationals in Iraq and Kuwait,",
             "is_table": false
           },
@@ -876,7 +876,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "4. Requests the Secretary General to report to the Council on compliance with this resolution at the earliest possible time.",
             "is_table": false
           }
@@ -898,10 +898,10 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "SECRET//NOFORN//LIMDIS/LES/NNPI",
+        "banner": "SECRET//NOFORN//LES/NNPI",
         "paragraphs": [
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "LEGISLATIVE HISTORY ON CIA BUILDING (84th Congress)",
             "is_table": false
           },
@@ -936,12 +936,12 @@
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "B. APPROPRIATIONS",
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "1. H.R. 7278, as reported by the House Appropriations Committee, recommended the appropriation of \\$3, 000, 000 for the preparation of plans and specifications, \" to be derived from unobligated balances of appropriations made available to the Central Intelligence Agency for the FY/53 and 54. \" Committee Report stated as follows: 'It is felt that inadequate planning",
             "is_table": false
           }
@@ -952,7 +952,7 @@
         "banner": "UNCLASSIFIED//DOD UCNI//NOFORN//LIMDIS/LES/NNPI",
         "paragraphs": [
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "with respect to both the site and structure as evidenced in the hearing on this item, gives the committee no alternative but to defer action until a more firm program can be presented.\" When the House voted on this bill, it eliminated the entire section relating to the CIA building.",
             "is_table": false
           },
@@ -984,7 +984,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "SECRET//FRD//REL TO USA, GBR//NNPI",
+        "banner": "SECRET//FRD//NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "U//DCNI//REL TO USA, GBR//NNPI",
@@ -992,7 +992,7 @@
             "is_table": false
           },
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "LETTkk PRm PRRaDDRrt TRANSITTTINe BIBABlAMaPT AORIGY aILL TO COm",
             "is_table": false
           },
@@ -1007,7 +1007,7 @@
             "is_table": false
           },
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "Today, the ability of man to mster his eaviroument outpaees ais ability to gombrol himelf, wmile the world growe ever more interdepunadent and maile the peoples of earth: oan new leok beyond this planet to a new age of Disoovery; they have not yet been able to banish the primmitive threat of war. Moanmtaile, maman inventivemess has made the weapons of war vastly more destruetive, In the segond half of the 2oth Gentury nations yossess the expiosive power to destroy most of the earth's population and oivilization as we now knon it.",
             "is_table": false
           },
@@ -1020,10 +1020,10 @@
       },
       {
         "page_num": 2,
-        "banner": "SECRET//FRD//REL TO USA, GBR//NAVAL NUCLEAR PROPULSION INFORMATION",
+        "banner": "SECRET//FRD//NOFORN//NNPI",
         "paragraphs": [
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "All matiems, large or smmll, free or totaliteriam) hiave in comon the will to preserve tmeir mistempe and to proteet thmir ditismms, mie is We comem intereat, whick ofrers Bame premims ox pregrees in ourming' time threat of war and of the armm reve,",
             "is_table": false
           },
@@ -1033,7 +1033,7 @@
             "is_table": false
           },
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "But the altaramtive te efreetive agreegube limting mrma and armmd rurees is gril, Ws are in an arms rece, and an arme rese bee ofiem iomds imaerebiy to wr, Rvury few years a revoinsiom in weapems beelmeiogy taimee plaes, Piret Game the splittimg or the atok and then the U, a, amd the J.s.s.R. began wo ammss rmaloer woapons or all sises and Weighnte. Wow a single bomde can damge an aree or hSo square miles.",
             "is_table": false
           },
@@ -1401,7 +1401,7 @@
             "is_table": false
           },
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "The attached revised page 1 of Annex A to reference paper is being circulated at the request of the Critical Collection Problems Committee, and should be substituted in all copies of this document previously circulated. The new page includes the following insertion at the end of line 9, paragraph b.: \"technicians who are accessible in the free world and on sending a number of\". . . . 25X1",
             "is_table": false
           }
@@ -1417,7 +1417,7 @@
             "is_table": false
           },
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "a. USIB reaffirm the high priority for intelligence activity against Communist China accorded in DCID 1/3, and endorse the need for developing a strong intelligence data base and an intelligence competence against China commensurate with that against other highest",
             "is_table": false
           }
@@ -1508,12 +1508,12 @@
         "banner": "TOP SECRET//NTN/SI-FUN RANDY EMU//RD//ORCON-USGOV/NOFORN/FISA",
         "paragraphs": [
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "Journal - Office of Legislative Counsel",
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "Monday - 28 February 1972",
             "is_table": false
           },
@@ -1533,7 +1533,7 @@
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "8. I talked to several different members of the staff of the House Foreign Affairs Committee about the Jack Anderson column on Sunday of a report being prepared by Representative Lester Wolff (D., N.Y.) concerning dope in Thailand. The staff has no knowledge of such a report but will advise us should they learn differently. No further action is contemplated at this time.",
             "is_table": false
           }
@@ -1559,7 +1559,7 @@
             "is_table": false
           },
           {
-            "mark": "U//RELIDO//LD",
+            "mark": "U//RELIDO//DS",
             "text": "10. In response to Ambassador Winthrop G. Brown's, Deputy Assistant Secretary of State for East Asian Affairs, request for guidance in responding before the Senate Foreign Relations Committee forwarded to DC/FE, a copy of the Department of State's 16 November 1971 letter. In accordance with the letter which forwarded to the Foreign Relations Committee the numbers of personnel in place by country and by agency, it was recommended that Ambassador Brown, if questioned about CIA personnel, respond to the effect that he will arrange for the Department to provide this information to the Chairman.",
             "is_table": false
           },
@@ -1784,7 +1784,7 @@
             "is_table": false
           },
           {
-            "mark": "S//FRD//REL TO USA, AUS, GBR",
+            "mark": "S//FRD//NF",
             "text": "Dulles Backs Kennedy",
             "is_table": false
           },
@@ -2742,7 +2742,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//SI/TK-BLFH//SAR-BP 52X3//RSEN/NOFORN//NNPI",
+        "banner": "TOP SECRET//SI/TK-BLFH//SAR-BP-52X3//RSEN/NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "C",
@@ -2755,17 +2755,17 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "a. Overseeing the coordination and operation of the MG Board and all MG personnel evaluation panels.",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "b. Providing career development counseling to MG officers, either at the request of the employee or as recommended by personnel evaluation panels and the Board, to the extent deemed necessary or appropriate at the discretion of the Director of General Administration or designee.",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "c. Initiating and coordinating new training courses for MG officers at headquarters and overseas, using internal and external resources.",
             "is_table": false
           },
@@ -2775,12 +2775,12 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "e.  Ensuring adequate staffing including recommending experienced MG officers for nontraditional rotational tours of duty.",
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "f. Maintaining contacts with other offices in order to provide rotational opportunities into MG positions for appropriate officers of other Career Services.",
             "is_table": false
           },
@@ -2798,7 +2798,7 @@
       },
       {
         "page_num": 2,
-        "banner": "TOP SECRET//SI/TK-BLFH//SAR-BP 52X3//RSEN/NOFORN//NNPI",
+        "banner": "TOP SECRET//SI/TK-BLFH//SAR-BP-52X3//RSEN/NOFORN//NNPI",
         "paragraphs": [
           {
             "mark": "C",
@@ -2831,7 +2831,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "b. The Senior Training Officer (STO) is the principal adviser to the DDA in all training matters within the directorate. The STO/DA serves as the focal point for consultation among DA offices and staffs on training requirements, objectives, courses, and enrollment procedures and office support to training and office-conducted training. Basic responsibilities include:",
             "is_table": false
           },
@@ -2841,7 +2841,7 @@
             "is_table": false
           },
           {
-            "mark": "TS//SI/TK-BLFH//SAR-BP 52X3//RS/NF",
+            "mark": "TS//SI/TK-BLFH//SAR-BP-52X3//RS/NF",
             "text": "(2)  Serving as the formal channel of communications between DA offices, OTE, and the senior training officers of the other directorates.",
             "is_table": false
           },
@@ -2868,7 +2868,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//NOFORN/LES",
+        "banner": "TOP SECRET//BOHEMIA//ATOMAL//FGI NATO//NOFORN//LES",
         "paragraphs": [
           {
             "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
