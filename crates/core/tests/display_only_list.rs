@@ -314,6 +314,210 @@ fn display_only_multi_token_commingling_after_orcon_and_rel_to() {
 }
 
 #[test]
+fn display_only_accepts_full_country_code_width_surface() {
+    // ODNI ISMCAT's CVEnumISMCATRelTo.xsd admits country codes at
+    // four widths (340 entries total, generated into
+    // `values::TRIGRAPHS` by build.rs):
+    //   - 2-char registered exception (`EU`)
+    //   - 3-char trigraphs (`AFG`, `USA`, ...)
+    //   - 4-char tetragraphs (`NATO`, `FVEY`, `ACGU`, `KFOR`, ...)
+    //   - 15-char (`AUSTRALIA_GROUP`)
+    //
+    // CAPCO-2016 §H.8 p164 admits all of these in the
+    // DISPLAY ONLY list. The same `TokenSet::is_trigraph` predicate
+    // used by REL TO drives DISPLAY ONLY recognition (issue #444
+    // tracks the misnomer rename), so the surface should be
+    // identical. This test pins each width on its own line.
+    for src in [
+        "(U//DISPLAY ONLY EU)",
+        "(U//DISPLAY ONLY AFG)",
+        "(U//DISPLAY ONLY NATO)",
+        "(U//DISPLAY ONLY FVEY)",
+        "(U//DISPLAY ONLY ACGU)",
+        "(U//DISPLAY ONLY AUSTRALIA_GROUP)",
+        // Mixed-width list — explicit alphabetical ordering per
+        // §H.8 p164 (trigraphs alphabetically then tetragraphs).
+        "(U//DISPLAY ONLY AFG, EU, ACGU, FVEY, NATO, AUSTRALIA_GROUP)",
+    ] {
+        let attrs = parse_portion(src);
+        let unknown: Vec<_> = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Unknown)
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "{src:?}: no Unknown spans expected; got {:?}",
+            unknown
+                .iter()
+                .map(|t| (&*t.text, t.span.start, t.span.end))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !attrs.display_only_to.is_empty(),
+            "{src:?}: display_only_to must be populated"
+        );
+    }
+}
+
+#[test]
+fn display_only_invalid_country_in_list_emits_unknown_only_for_that_entry() {
+    // `XYZQ` is not in `values::TRIGRAPHS`. The DISPLAY ONLY list
+    // parser should emit `TokenKind::Unknown` for that single
+    // entry while still recognizing the valid `AFG` and `IRQ`
+    // entries on either side. Mirrors REL TO's behavior on
+    // unknown trigraphs (parser.rs comments cite issue #233 for
+    // the rationale: decoder dispatcher consults Unknown spans
+    // to surface fuzzy-trigraph alternates).
+    let attrs = parse_portion("(U//DISPLAY ONLY AFG, XYZQ, IRQ)");
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "exactly one Unknown span expected (for XYZQ); got {:?}",
+        unknown
+            .iter()
+            .map(|t| (&*t.text, t.span.start, t.span.end))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(&*unknown[0].text, "XYZQ");
+
+    // The known entries still populate the axis.
+    let codes: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(codes, vec!["AFG", "IRQ"]);
+}
+
+#[test]
+fn display_only_byte_precise_per_trigraph_spans() {
+    // Lock the per-trigraph span offsets. Downstream rules (E054
+    // / E055 + future DISPLAY ONLY constraint rules) anchor
+    // diagnostics on these spans. Drift would silently
+    // mis-position diagnostics by even one byte.
+    let src = "(C//DISPLAY ONLY AFG, IRQ)";
+    let attrs = parse_portion(src);
+
+    let trigraphs: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::DisplayOnlyTrigraph)
+        .collect();
+    assert_eq!(trigraphs.len(), 2);
+
+    let afg = src.find("AFG").unwrap();
+    let irq = src.find("IRQ").unwrap();
+    // Trigraphs may be emitted out of document order before the
+    // final `sort_unstable_by_key` pass; check span starts as a
+    // set, not as a sequence.
+    let starts: Vec<usize> = trigraphs.iter().map(|t| t.span.start).collect();
+    assert!(
+        starts.contains(&afg) && starts.contains(&irq),
+        "trigraph spans must land on `A` of AFG and `I` of IRQ; got starts={starts:?}"
+    );
+    // Width assertions: AFG is 3 bytes, IRQ is 3 bytes.
+    for t in &trigraphs {
+        assert_eq!(
+            t.span.end - t.span.start,
+            3,
+            "trigraph span should cover exactly 3 bytes; got {:?}",
+            t
+        );
+    }
+}
+
+#[test]
+fn display_only_block_span_precedes_trigraph_spans_in_document_order() {
+    // The block-level span starts at `D` of `DISPLAY ONLY`; the
+    // per-trigraph spans start strictly later (after the
+    // `DISPLAY ONLY ` prefix). The parser's final
+    // `token_spans.sort_unstable_by_key(|ts| ts.span.start)` pass
+    // (parser.rs `parse_inner`) sorts spans by start offset, so
+    // the block span MUST precede the trigraph spans in the
+    // emitted slice. This invariant is what lets downstream rules
+    // anchor a diagnostic on the whole block before walking the
+    // constituent trigraphs.
+    let attrs = parse_portion("(S//DISPLAY ONLY AFG, IRQ)");
+    let positions: Vec<(TokenKind, usize)> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| {
+            matches!(
+                t.kind,
+                TokenKind::DisplayOnlyBlock | TokenKind::DisplayOnlyTrigraph
+            )
+        })
+        .map(|t| (t.kind, t.span.start))
+        .collect();
+    assert!(
+        positions.len() >= 3,
+        "expected 1 block + 2 trigraph spans; got {positions:?}"
+    );
+    // First entry must be the block; subsequent entries are the
+    // trigraphs in document order.
+    assert_eq!(positions[0].0, TokenKind::DisplayOnlyBlock);
+    for window in positions.windows(2) {
+        assert!(
+            window[0].1 <= window[1].1,
+            "token_spans must be sorted by span.start; got {positions:?}"
+        );
+    }
+}
+
+#[test]
+fn display_only_does_not_false_positive_on_truncated_keyword() {
+    // The recognition gate `starts_with("DISPLAY ONLY ") ||
+    // == "DISPLAY ONLY"` is tight: it requires the literal
+    // keyword `DISPLAY ONLY` followed by either a trailing space
+    // (with a list) or end-of-token (bare). Sibling shapes that
+    // would have matched a looser guard MUST fall through to the
+    // existing parsers:
+    //
+    //   - `DISPLAY FOO` (no `ONLY` keyword) — author typo /
+    //     truncation; falls to `SubKind::Unknown` so E008 surfaces
+    //   - `DISPLAYFOO`  (no space, no ONLY) — falls similarly
+    //
+    // CAPCO-2016 §H.8 p163 admits NO abbreviated form for
+    // DISPLAY ONLY (the Authorized Banner Line Abbreviation is
+    // explicitly `None` in the manual), so the guard intentionally
+    // does NOT admit a `DISPLAY ` prefix.
+    let attrs = parse_portion("(U//DISPLAY FOO)");
+    assert!(
+        attrs.display_only_to.is_empty(),
+        "`DISPLAY FOO` must not populate display_only_to"
+    );
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(
+        !unknown.is_empty(),
+        "`DISPLAY FOO` must surface as Unknown so E008 can flag it"
+    );
+}
+
+#[test]
+fn display_only_round_trips_through_canonical_attrs() {
+    // The `display_only_to` field on `ParsedAttrs` (parser output)
+    // must thread through `from_parsed_unchecked` into the
+    // matching field on `CanonicalAttrs` (the CVE-validated form
+    // consumed by rules). Without this round-trip the new axis
+    // is invisible to the rule layer.
+    let src = "(S//DISPLAY ONLY AFG, IRQ)";
+    let attrs = parse_portion(src);
+    let canonical = marque_ism::from_parsed_unchecked(attrs);
+    let codes: Vec<String> = canonical
+        .display_only_to
+        .iter()
+        .map(|c| c.as_str().to_string())
+        .collect();
+    assert_eq!(codes, vec!["AFG", "IRQ"]);
+}
+
+#[test]
 fn cve_form_displayonly_unchanged() {
     // The pre-fix path `(U//DISPLAYONLY)` (ODNI CVE value, no space)
     // continues to route through the existing `DissemControl::parse`
