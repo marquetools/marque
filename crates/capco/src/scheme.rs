@@ -618,6 +618,22 @@ impl CapcoMarking {
         // Axis 8: rel_to.
         let rel_to_block = RelToBlock::from_attrs_iter(portions);
         let rel_to_was_noforn_superseded = rel_to_block.is_noforn_superseded();
+        // P-2 (8th-pass): also capture the `Empty` variant (disjoint REL TO
+        // country lists with no common [LIST] — §D.2 Table 3 row 9) BEFORE
+        // `into_boxed_slice()` consumes the discriminant. An `Empty`
+        // intersection means no common release audience exists, so the banner
+        // MUST carry NOFORN per §D.2 Table 3 row 9.
+        //
+        // Pre-fix the NOFORN injection at line ~662 only checked
+        // `rel_to_was_noforn_superseded` (the `NofornSuperseded` absorbing
+        // state) and missed `Empty`. A page with two REL TO portions listing
+        // disjoint countries produced an empty `rel_to` slice with no `Nf`
+        // injected — wrong per §D.2 Table 3 row 9.
+        //
+        // §-authority: §D.2 p28-30 Table 3 row 9 (REL TO [USA, LIST] + REL
+        // TO [USA, LIST] with no common [LIST] → NOFORN banner).
+        // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+        let rel_to_was_empty_intersection = rel_to_block.is_empty_intersection();
         out.rel_to = rel_to_block.into_boxed_slice();
 
         // Axis 9: declassify_on (and declass_exemption rides as
@@ -659,7 +675,10 @@ impl CapcoMarking {
         // EYES ONLY / DISPLAY ONLY) + §D.2 Table 3 rows 1-2 +
         // §H.9 p172 (NODIS) / §H.9 p174 (EXDIS) inject NOFORN at
         // banner.
-        let dissem_final = if rel_to_was_noforn_superseded || needs_nf {
+        // P-2 (8th-pass): include the `Empty` intersection case alongside
+        // `NofornSuperseded` — both require NOFORN injection per §D.2
+        // Table 3 row 9 (Empty) and rows 1-2 / §H.9 p172/p174 (NofornSuperseded).
+        let dissem_final = if rel_to_was_noforn_superseded || rel_to_was_empty_intersection || needs_nf {
             // G-6: SBU-NF / LES-NF on a classified page also clears
             // REL TO — match PageContext::expected_rel_to which
             // short-circuits to an empty slice when needs_nf fires.
