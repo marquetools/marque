@@ -5063,6 +5063,15 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    /// Trusted: implementation is a pure read-only check over
+    /// `JointSet::from_attrs_iter`'s deterministic state machine plus
+    /// a `format!` message synthesis using only `CountryCode` canonical
+    /// trigraphs and a fixed §-citation. No mutable global state, no
+    /// I/O, no allocation that could fail unexpectedly; the rule is
+    /// safe to skip `catch_unwind` per PR #448.
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Fire on Banner candidates AND on Portion candidates that
