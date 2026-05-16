@@ -298,7 +298,7 @@ impl CitationVisitor {
                     }
                 }
             }
-            let (line, column) = compute_line_col(span, find.offset(), text);
+            let (line, column) = compute_line_col(span, find.offset(), text, kind);
             self.occurrences.push(Occurrence {
                 file: self.file.clone(),
                 line,
@@ -320,7 +320,7 @@ impl CitationVisitor {
             // start of the matched substring, not the start of the
             // enclosing literal — the catalog is more useful when the
             // column lands on the actual `pNN-MM pMM` text.
-            let (line, column) = compute_line_col(span, match_offset, text);
+            let (line, column) = compute_line_col(span, match_offset, text, kind);
             self.occurrences.push(Occurrence {
                 file: self.file.clone(),
                 line,
@@ -417,34 +417,57 @@ impl<'ast> Visit<'ast> for CitationVisitor {
 ///
 /// `span` is the AST span of the enclosing string literal. `offset`
 /// is the byte offset of the citation's `§` character within the
-/// literal's content. We add the offset to the span start to get the
-/// citation's source coordinates.
+/// literal's content. `kind` identifies the source surface and
+/// controls the column prefix adjustment (see below).
+///
+/// **Column prefix adjustment**: `proc_macro2::Span::start().column`
+/// is 0-indexed and points to the *beginning of the enclosing token*
+/// — not to the first byte of the literal's content.  The gap between
+/// the token start and the content start varies by surface:
+///
+/// - **String literals** (`citation:`, `message:`, `constraint_label:`,
+///   general `StringLiteral`): the token starts at the opening `"`,
+///   so the content begins 1 character later.  `prefix_len = 1`.
+/// - **Doc-comment attributes** (`///` / `//!` desugared to
+///   `#[doc = "..."]`): proc_macro2 sets `span.start()` to the `//`
+///   position of the original comment token (3 characters `//!` or
+///   `///`), so the content begins 3 characters later.  `prefix_len = 3`.
+///
+/// The 1-indexed column is then:
+/// `span.start().column + prefix_len + content_offset + 1`.
 ///
 /// **Caveat**: the returned column reflects byte positions inside
-/// the string-literal content, not the literal's source position
-/// after escape decoding. For the diagnostics we produce that's
-/// acceptable — a reviewer opening the file and looking at the line
-/// will see the citation, even if the column is approximate. We use
-/// `proc_macro2::Span::start()` directly which is line-accurate; the
-/// column is the literal-content column with the literal's start-of-
-/// content column added on.
-fn compute_line_col(span: Span, offset: usize, text: &str) -> (u32, u32) {
+/// the literal's content, not Unicode scalar values, and does not
+/// account for escape sequences. For the diagnostics we produce
+/// that's acceptable — a reviewer opening the file at `line:column`
+/// will see the `§` immediately.
+fn compute_line_col(span: Span, offset: usize, text: &str, kind: SourceKind) -> (u32, u32) {
     // Count newlines in `text[..offset]` to project the citation onto
-    // the correct file line. The first byte of the literal is at
-    // `span.start()`. A multi-line string literal places the citation
-    // some lines below `span.start()`.
+    // the correct file line. The first byte of the literal content is
+    // at `span.start()` + prefix. A multi-line string literal places
+    // the citation some lines below `span.start()`.
     let prefix = &text[..offset.min(text.len())];
     let nl_count = prefix.matches('\n').count() as u32;
     let line = u32::try_from(span.start().line)
         .unwrap_or(0)
         .saturating_add(nl_count);
+    // Prefix length: number of characters between span.start() and the
+    // first byte of the literal's content.
+    //
+    // Doc-comment attributes come from `//!` or `///` (3 chars).
+    // All other surfaces come from a `"..."` string literal (1 char).
+    let prefix_len: u32 = if matches!(kind, SourceKind::DocComment) {
+        3
+    } else {
+        1
+    };
     let column = if nl_count == 0 {
         // Same line as the literal's start. proc-macro2 columns are
         // 0-indexed; we present 1-indexed.
         u32::try_from(span.start().column)
             .unwrap_or(0)
             .saturating_add(u32::try_from(offset).unwrap_or(0))
-            .saturating_add(2) // +2 to account for the leading `"` of the string literal
+            .saturating_add(prefix_len) // skip the token-start → content-start gap
             .saturating_add(1) // 0-indexed → 1-indexed
     } else {
         // Citation begins on a continuation line; column is the byte
