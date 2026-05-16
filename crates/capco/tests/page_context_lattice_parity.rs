@@ -457,24 +457,30 @@ fn joint_unanimous_two_portions() {
 }
 
 #[test]
-fn joint_mixed_with_us_returns_us_class_no_w004() {
+fn joint_mixed_with_us_returns_mixed() {
     // §H.3 p57: mixed (JOINT + US) → JOINT does not roll up. Both
     // paths should produce a US-classification banner. The JointSet
     // lattice returns the `Mixed` variant per C-3 (PR 4b-B follow-up
     // — split out of `Bottom` so the absorbing JOINT+non-JOINT state
-    // keeps `join` associative). The historical name
-    // `joint_mixed_with_us_returns_bottom` predated C-3 and described
-    // the pre-split state where Mixed and Bottom were conflated;
-    // post-C-3 the rename clarifies that the assertion is "Us(Secret)
-    // banner classification AND no W004 emits" — Mixed silences W004
-    // by design (FGI migration rides through `expected_fgi_marker`,
-    // not through W004's lattice signal).
+    // keeps `join` associative).
+    //
+    // Rename history: `joint_mixed_with_us_returns_bottom` (pre-C-3,
+    // when Mixed and Bottom were conflated) → M-17 PR 4b-B 6th-pass
+    // renamed to `joint_mixed_with_us_returns_us_class_no_w004` to
+    // spell out the banner-side assertion → M-21 PR 4b-B 7th-pass
+    // shortens to `returns_mixed` to name the lattice variant
+    // directly. The banner-side guarantee still rides on
+    // `assert_byte_identity` and the W004-side guarantee on the
+    // separate W004 rule tests in `joint_disunity_collapse.rs`.
+    //
+    // Mixed silences W004 by design (FGI migration rides through
+    // `expected_fgi_marker`, not through W004's lattice signal).
     let portions = [
         portion_joint(Classification::Secret, &["USA", "GBR"]),
         portion_us(Classification::Secret),
     ];
     assert_byte_identity(
-        "joint_mixed_with_us_returns_us_class_no_w004",
+        "joint_mixed_with_us_returns_mixed",
         &project_via_page_context(&portions),
         &project_via_lattice(&portions),
         &[],

@@ -2243,17 +2243,18 @@ DeclassifyOnLattice(Option<IsmDate>) :
 ```
 
 **Bottom** = `None`. **No top is implemented** — dates are open-vocab,
-no finite top is realizable. Per `AeaSet`/`SciSet`/`SarSet` precedent
-in the same module, this is the established pattern for "no
-`BoundedLattice` impl when range is open." (M-25 PR 4b-B 7th-pass —
-`FgiSet` was previously listed in this precedent group but in fact
-DOES implement `BoundedLattice` at `crates/capco/src/lattice.rs:606`
-with `Present { concealed: true, countries: ∅ }` as the top per
-§H.7 p123 source-concealed dominates source-acknowledged. Removed
-from the precedent list to avoid misattribution. The `SciSet` /
-`SarSet` / `AeaSet` precedent remains accurate — all three are
-open-vocab and deliberately do not implement `BoundedLattice` per
-their respective inline notes at lattice.rs:271 / 405 / 1026.)
+no finite top is realizable. Per `AeaSet`/`SciSet`/`SarSet`/`FgiSet`
+precedent in the same module, this is the established pattern for
+"no `BoundedLattice` impl when range is open." (M-25 PR 4b-B
+7th-pass — historically the precedent listed only `AeaSet` /
+`SciSet` / `SarSet` because `FgiSet` carried a `BoundedLattice`
+impl returning `SourceConcealed` as the top. The B-1 cleanup
+[commit 4628b765, PR 4b-B 8th-pass] retired the `FgiSet`
+`BoundedLattice` impl as drift against the §6 doc-comment "no
+BoundedLattice when range is open" stance, matching the open-vocab
+`CountryCode` axis. The precedent list now includes `FgiSet` as a
+peer of `SciSet`/`SarSet`/`AeaSet`. See lattice.rs line 606 for the
+inline B-1 retirement note.)
 
 ### 11.7 NatoClassLattice — bounded OrdMax (extends §7)
 
