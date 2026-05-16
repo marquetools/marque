@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+// Whole file gated on `toml-loader`: every test invokes `marque_config::load()`
+// which is itself gated on the same feature (issue #454, WASM size).
+#![cfg(feature = "toml-loader")]
+
 //! Stage F — `[closure_rules]` config section tests (PR 3.7 T108f).
 //!
 //! Verifies per-closure-rule severity overrides, section isolation from

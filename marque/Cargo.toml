@@ -27,7 +27,9 @@ clap = { workspace = true }
 humantime = { workspace = true }
 is-terminal = { workspace = true }
 marque-capco = { workspace = true }
-marque-config = { workspace = true }
+# CLI loads `.marque.toml` / `.marque.local.toml`; opt in to the toml chain
+# the workspace pin keeps off by default (so the WASM build can exclude it).
+marque-config = { workspace = true, features = ["toml-loader"] }
 marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
 marque-ism = { workspace = true }
