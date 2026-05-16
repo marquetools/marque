@@ -1870,6 +1870,7 @@ impl CapcoScheme {
                     facts: smallvec::smallvec![
                         FactRef::Cve(TOK_RELIDO),
                         FactRef::Cve(TOK_DISPLAY_ONLY),
+                        FactRef::Cve(TOK_EYES),
                     ],
                     scope: Scope::Page,
                 }),
