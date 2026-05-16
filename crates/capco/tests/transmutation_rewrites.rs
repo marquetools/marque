@@ -273,16 +273,22 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
          or `UnannotatedCustomAxes` (a `Custom` rewrite declared with empty \
          reads/writes). Both are scheme-authoring bugs.",
     );
-    // Smoke-check the scheduler exposed the same fourteen ids it was
-    // handed; this prevents a regression where construction silently
-    // drops a rewrite.
+    // Smoke-check the scheduler exposed the same twenty-three ids it
+    // was handed; this prevents a regression where construction
+    // silently drops a rewrite.
     // PR 3c.B Sub-PR 8.F added capco/nodis-implies-noforn and
     // capco/exdis-implies-noforn (9 → 11).
     // PR 3c.B Sub-PR 8.F.2 added capco/sbu-nf-implies-noforn and
     // capco/les-nf-implies-noforn (11 → 13).
     // DISPLAY ONLY Phase 2 added capco/noforn-clears-fdr-family
     // (§H.8 p154 + §D.2 Table 3 row 2; 13 → 14).
-    assert_eq!(engine.scheduled_rewrites().len(), 14);
+    // PR 4b-C Commit 3 added 7 Pattern-C rows (limdis/sbu/dod-ucni-
+    // strip+promote/doe-ucni-strip+promote/fouo-evicted-by-classified;
+    // §H.6 p116-119 + §H.8 p134 + §H.9 p170 + §H.9 p176; 14 → 21).
+    // PR 4b-C Commit 4 added 2 Pattern-B structural FOUO-eviction
+    // rows (classification-evicts-fouo + non-fdr-control-evicts-fouo;
+    // §H.8 p134; 21 → 23).
+    assert_eq!(engine.scheduled_rewrites().len(), 23);
 }
 
 #[test]
