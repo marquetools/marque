@@ -2227,8 +2227,8 @@ impl CapcoScheme {
     /// declarative rows that own the §H.6 / §H.8 / §H.9 strip-plus-
     /// promote semantics):
     ///
-    /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 / §3c.B-8.F
-    ///    family — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
+    /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
+    ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
     ///    §H.9 p172) and `capco/{sbu-nf,les-nf}-implies-noforn`
     ///    (§H.9 p178 / §H.9 p185). All four are wired predicates that
     ///    fire today via `scheme.project(Scope::Page, ...)`.
