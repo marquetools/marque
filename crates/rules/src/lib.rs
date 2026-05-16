@@ -315,11 +315,13 @@ pub enum Phase {
 /// construction. See the constructor doc below for the correct
 /// cross-crate pattern.
 ///
-/// Same-crate construction (this crate's own unit tests and the
-/// engine's internal test modules) is unaffected — `#[non_exhaustive]`
-/// only restricts external (cross-crate) construction. Test code in
-/// `crates/capco/tests/*` uses the constructor helpers for this reason;
-/// the FR-040 cargo-rules check enforces the pattern.
+/// Same-crate construction (this crate's own unit tests within
+/// `marque-rules` itself) is unaffected — `#[non_exhaustive]` only
+/// restricts construction in EXTERNAL crates. ALL other crates —
+/// including `marque-engine` (which is a separate crate from
+/// `marque-rules`), `marque-capco`, and `crates/capco/tests/*` — are
+/// external and must use the constructor helpers. The FR-040
+/// cargo-rules check enforces the pattern.
 ///
 /// P-5 (8th-pass): corrected prior doc that claimed `..base`
 /// functional-update "works" for downstream rule crates — it does not.
