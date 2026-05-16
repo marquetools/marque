@@ -180,7 +180,7 @@ portions have Y, the banner FD&R becomes Z".
 | 26 | DISPLAY ONLY | REL TO (with common LIST) | DISPLAY ONLY [common LIST] (release implies disclosure) |
 | 27 | REL TO/DISPLAY ONLY | REL TO/DISPLAY ONLY (with common LISTs in each) | REL TO [common]/DISPLAY ONLY [common] |
 
-**Marque gap (current, 2026-05-15 after PR 4b-B).** PR 4b-B (006 T112)
+**Marque gap (current, 2026-05-16 after PR 4b-C).** PR 4b-B (006 T112)
 installed per-category Lattice impls in `marque-capco::lattice`
 (ClassificationLattice, NatoClassLattice, JointSet, DissemSet,
 NatoDissemSet, RelToBlock, DeclassifyOnLattice) and fixed two
@@ -195,38 +195,62 @@ their producer lists; surfaces the cross-axis FGI migration (CV-4
 PR 4b-B 8th-pass updated from §H.3 p56 to §H.3 p57 — the migration
 trigger lives on p57's "Derivative Use" bullets).
 
+**PR 4b-C (006 T112, 2026-05-16)** lands 9 declarative PageRewrite
+rows on `CapcoScheme` (7 Pattern-C strip rows + 2 Pattern-B
+structural FOUO-eviction rows) and retires the imperative FOUO + UCNI
+eviction branches in `PageContext`. The §H.6 NOFORN-promotion bug
+that the pre-PR-4b-C UCNI strip branch silently dropped is fixed at
+the declarative layer (`capco/{dod,doe}-ucni-promotes-noforn-when-classified`
+rows; load-bearing post-fix test
+`pattern_c_dod_ucni_classified_strip_promotes_noforn` at
+`crates/capco/tests/page_context_lattice_parity.rs`).
+
+PR 4b-C closed two G-divergences from PR 4b-B:
+
+- **G-1 FOUO classified strip** (closed): Pattern-B
+  `capco/classification-evicts-fouo` + Pattern-C
+  `capco/fouo-evicted-by-classified` rows fire on the lattice
+  path via `scheme.project(Scope::Page, ...)`. PageContext loses
+  the Step 3 strip (transitional pending PR 4b-D's hot-path flip);
+  both per-axis projections now keep FOUO observed via the
+  parity-gate helpers — the rename
+  `fouo_classified_pagecontext_and_lattice_both_keep_fouo_pending_pr_4b_d`
+  documents the convergence.
+- **G-2 UCNI classified strip** (closed): Pattern-C
+  `capco/{dod,doe}-ucni-evicted-by-classified` +
+  `capco/{dod,doe}-ucni-promotes-noforn-when-classified` rows.
+  The strip-plus-NOFORN-promotion semantic that the pre-fix
+  branch dropped is now correct. The rename
+  `aea_ucni_classified_pagecontext_and_lattice_both_keep_ucni_pending_pr_4b_d`
+  documents the convergence (the divergence collapsed because
+  PageContext lost the buggy strip; the lattice path always
+  kept UCNI through `AeaSet::from_markings`).
+
 The `CapcoMarking::join_via_lattice` sibling method composes the new
 lattice types; the production `Lattice::join` still delegates to
 PageContext, and the parity gate at
-`crates/capco/tests/page_context_lattice_parity.rs` (currently 51
-`#[test]` fixtures — 45 byte-identity + 6 documented divergences)
-proves byte-identity between the two paths, with
-**six documented divergences** (each gated by a fixture that asserts
-the lattice's correct behavior even when PageContext disagrees):
+`crates/capco/tests/page_context_lattice_parity.rs` (currently 69
+`#[test]` fixtures — 51 PageContext-vs-lattice byte-identity + 4
+documented divergences + 16 PR 4b-C Pattern-B/C declarative-row
+fixtures via the new `project_via_scheme` helper) proves byte-
+identity between the two paths, with **four documented divergences**
+(down from 6 after PR 4b-C closed G-1 + G-2):
 
-1. **`fouo_classified_lattice_vs_pagecontext_diverges`** (G-1): classified
-   page with FOUO. PageContext drops FOUO per §H.8 p134 (FOUO is U-only);
-   the lattice path keeps it until PR 4b-C ships the cross-axis FOUO-
-   eviction rewrite (Pattern B in `project_noforn_supremacy_composition.md`).
-2. **`aea_ucni_classified_lattice_vs_pagecontext_diverges`** (G-2): classified
-   page with DOD UCNI. PageContext strips UCNI per §H.6 p116/p118 (UCNI is
-   U-only); the lattice path keeps it until PR 4b-C ships the cross-axis
-   classification-gate rewrite (Pattern C).
-3. **`pure_nato_lattice_vs_pagecontext_diverges`** (G-3): SOLELY-NATO page
+1. **`pure_nato_lattice_vs_pagecontext_diverges`** (G-3): SOLELY-NATO page
    (no US portion). PageContext flattens to `Us(_)`; the lattice path
    preserves `Nato(_)` per §H.7 pp123-125. Mixed US+NATO pages reciprocal-
    raise to `Us(level)` on both paths.
-4. **`relido_plus_nf_noforn_dominates_documented_divergence`**: classified
+2. **`relido_plus_nf_noforn_dominates_documented_divergence`**: classified
    page with RELIDO + NOFORN on the same portion. PageContext keeps both
    (its `expected_dissem_us` skips the §H.8 p145 supersession overlay);
    the lattice path correctly drops RELIDO per §D.2 Table 3 + §H.8 p145.
    This divergence is a LATTICE-CORRECTING-PAGE-CONTEXT case — the
    lattice is right, PageContext is bug-shaped.
-5. **`joint_unanimous_two_portions`**: pure-JOINT page (no US portion).
+3. **`joint_unanimous_two_portions`**: pure-JOINT page (no US portion).
    PageContext returns `Us(_)`; the lattice path returns `Joint(_)` per
    §H.3 p56 banner-fidelity. Converges when the renderer lands at PR 5+.
-6. **`joint_single_portion_no_us`**: solo JOINT portion. Same shape as
-   #5 — pure-JOINT page; PageContext returns `Us(_)`, lattice returns
+4. **`joint_single_portion_no_us`**: solo JOINT portion. Same shape as
+   #3 — pure-JOINT page; PageContext returns `Us(_)`, lattice returns
    `Joint(_)` per §H.3 p56.
 
 G-4..G-9 are parity-RESTORING fixes (each cited inline against its §):
