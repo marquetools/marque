@@ -342,12 +342,20 @@ impl CapcoRuleSet {
                 // out via `PageContext::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
                 // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
-                // collapse-to-FGI per CAPCO-2016 §H.3 p56 + §H.7 p123.
-                // Fires only on banner candidates whose page_context
-                // contains all-JOINT portions with disagreeing
-                // producer lists. The diagnostic message uses canonical
-                // CountryCode trigraphs only (Constitution V Principle
-                // V G13). Severity: Warn (configurable per .marque.toml).
+                // collapse-to-FGI per CAPCO-2016 §H.3 p57 + §H.7 p123
+                // (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the
+                // migration trigger lives on p57's "Derivative Use"
+                // bullets, not the p56 grammar block). Fires on Banner
+                // OR Portion candidates whose `cross_portion_context`
+                // contains `JointSet::DisunityCollapse` (CV-5 updated
+                // from the pre-banner-first-fix wording that said
+                // "banner candidates only" — see the multi-fire
+                // section of the rule doc-comment on
+                // `JointDisunityCollapseRule` for the layout-gap
+                // rationale; fix landed in commit e2592f1d). The
+                // diagnostic message uses canonical CountryCode
+                // trigraphs only (Constitution V Principle V G13).
+                // Severity: Warn (configurable per .marque.toml).
                 Box::new(JointDisunityCollapseRule),
             ],
         }

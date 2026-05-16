@@ -173,7 +173,8 @@ fn w004_fires_on_joint_disunity_banner() {
     // appear BEFORE the banner candidate so the engine's
     // PageContext has accumulated them by the time the banner is
     // evaluated. W004 must fire on the banner with rule = "W004",
-    // Warn severity, and reference the §H.3 p56 + §H.7 p123 citation.
+    // Warn severity, and reference the §H.3 p57 + §H.7 p123 citation
+    // (CV-4 PR 4b-B 8th-pass — updated from `§H.3 p56`).
     let engine = engine_with_fixed_clock();
     let source = b"(//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion.\n\
@@ -191,20 +192,17 @@ fn w004_fires_on_joint_disunity_banner() {
     );
     let w004 = w004.unwrap();
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
-    // H-6 (PR 4b-B follow-up): the assertion message claims "must
-    // reference both §H.3 p56 and §H.7 p123" but the pre-fix
-    // condition used `||` — passing if either substring was present.
-    // The W004 rule's emitted citation is literally
-    // `"CAPCO-2016 §H.3 p56 + §H.7 p123"` (see rules.rs:5027) so
-    // both substrings must be present; switch to `&&` to enforce
-    // what the message already promises. §H.3 p56 (JOINT roll-up)
-    // and §H.7 p123 (FGI source-acknowledged transmutation) both
-    // ground the W004 transformation; dropping either would break
-    // the cross-axis story Constitution VIII expects to survive
-    // review.
+    // CV-4 (PR 4b-B 8th-pass): citation amended from
+    // `§H.3 p56 + §H.7 p123` to `§H.3 p57 + §H.7 p123` — §H.3 p57
+    // ("The FGI marking including all trigraph/tetragraph codes
+    // identified in the JOINT portion(s)" in the Derivative Use
+    // bullets) is the precise migration-trigger authority. §H.7 p123
+    // grounds the FGI grammar the migrated producers render under.
+    // H-6 (PR 4b-B follow-up) still applies: enforce BOTH substrings
+    // with `&&`, not `||`.
     assert!(
-        w004.citation.contains("§H.3 p56") && w004.citation.contains("§H.7 p123"),
-        "W004 citation must reference both §H.3 p56 AND §H.7 p123: {:?}",
+        w004.citation.contains("§H.3 p57") && w004.citation.contains("§H.7 p123"),
+        "W004 citation must reference both §H.3 p57 AND §H.7 p123: {:?}",
         w004.citation
     );
 }
@@ -385,9 +383,12 @@ fn w004_fires_on_banner_first_document_with_no_closing_banner() {
         .find(|d| d.rule.as_str() == "W004")
         .unwrap();
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
+    // CV-4 (PR 4b-B 8th-pass): citation amended from
+    // `§H.3 p56 + §H.7 p123` to `§H.3 p57 + §H.7 p123`. See the
+    // `w004_fires_on_joint_disunity_banner` test above for rationale.
     assert!(
-        w004.citation.contains("§H.3 p56") && w004.citation.contains("§H.7 p123"),
-        "W004 banner-first path must carry the same §H.3 p56 + §H.7 \
+        w004.citation.contains("§H.3 p57") && w004.citation.contains("§H.7 p123"),
+        "W004 banner-first path must carry the same §H.3 p57 + §H.7 \
          p123 citation: {:?}",
         w004.citation
     );
