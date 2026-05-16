@@ -675,19 +675,31 @@ fn nodis_clears_rel_to() {
 // ===========================================================================
 
 #[test]
-fn fouo_classified_lattice_vs_pagecontext_diverges() {
-    // G-1 (PR 4b-B follow-up) documented divergence: a classified
-    // page with a FOUO portion. PageContext::expected_dissem_us
-    // drops FOUO (§H.8 p134 — FOUO is U-only); the lattice path's
-    // DissemSet does NOT apply the cross-axis FOUO eviction (that
-    // logic stays on PageContext under the "Constraint::Custom
-    // capco/fouo-eviction" migration target — see the §3.3 plan
-    // text and project memory `project_noforn_supremacy_composition.md`
-    // Pattern B). This divergence is RESOLVED in PR 4b-C, not here.
+fn fouo_classified_pagecontext_and_lattice_both_keep_fouo_pending_pr_4b_d() {
+    // G-1 (PR 4b-B follow-up) was a divergence test: PageContext
+    // dropped FOUO on classified pages while the lattice path did
+    // not. PR 4b-C Commit 5 (006 T112) retired the imperative
+    // `expected_dissem_us` Step 3 (the FOUO classification gate)
+    // and migrated the §H.8 p134 strip to declarative PageRewrite
+    // rows on `CapcoScheme` (`capco/fouo-evicted-by-classified` +
+    // `capco/classification-evicts-fouo` +
+    // `capco/non-fdr-control-evicts-fouo`).
     //
-    // Citation: §H.8 p134 (FOUO classification gate) +
-    // project memory `project_noforn_supremacy_composition.md`
-    // Pattern B (PR 4b-C scope).
+    // Post-PR-4b-C state: BOTH paths now keep FOUO on the dissem
+    // axis observed via the per-axis projections this parity gate
+    // exercises. The lattice path's DissemSet never applied the
+    // gate; PageContext lost it in Commit 5. The §H.8 p134 strip
+    // lives in `scheme.project(Scope::Page, ...)`'s page-rewrite
+    // loop, which neither `project_via_page_context` (here) nor
+    // `project_via_lattice` invoke — both helpers compose the
+    // per-axis projections directly. PR 4b-D wires
+    // `scheme.project` as the production banner validator at which
+    // point both observable paths produce the correct §H.8 p134
+    // strip.
+    //
+    // Citation: §H.8 p134 FOUO Precedence Rules for Banner Line
+    // Guidance. verified 2026-05-16 against
+    // `crates/capco/docs/CAPCO-2016.md`.
     let portions = [portion_with_dissem_us(
         Classification::Secret,
         &[DissemControl::Fouo],
@@ -695,43 +707,66 @@ fn fouo_classified_lattice_vs_pagecontext_diverges() {
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     assert!(
-        !pc.dissem_us.contains(&DissemControl::Fouo),
-        "PageContext drops FOUO on classified page per §H.8 p134"
+        pc.dissem_us.contains(&DissemControl::Fouo),
+        "PR 4b-C post-deletion: PageContext keeps FOUO on classified \
+         pages — the §H.8 p134 strip is now in the declarative \
+         PageRewrite catalog. pc.dissem_us = {:?}",
+        pc.dissem_us,
     );
     assert!(
         lat.dissem_us.contains(&DissemControl::Fouo),
-        "Lattice path keeps FOUO until PR 4b-C ships the cross-axis \
-         FOUO-eviction rewrite per §H.8 p134"
+        "Lattice path keeps FOUO unchanged from PR 4b-B; the §H.8 p134 \
+         strip lives only in `scheme.project`'s page-rewrite loop. \
+         lat.dissem_us = {:?}",
+        lat.dissem_us,
     );
 }
 
 #[test]
-fn aea_ucni_classified_lattice_vs_pagecontext_diverges() {
-    // G-2 (PR 4b-B follow-up) documented divergence: a classified
-    // page with DOD UCNI. PageContext::expected_aea_markings strips
-    // UCNI (§H.6 p116 + p118 — UCNI is U-only); the lattice path's
-    // `AeaSet::to_markings` does NOT apply the classification gate
-    // (Pattern C in `project_noforn_supremacy_composition.md`; PR
-    // 4b-C migration target).
+fn aea_ucni_classified_pagecontext_and_lattice_both_keep_ucni_pending_pr_4b_d() {
+    // G-2 (PR 4b-B follow-up) was a divergence test: PageContext
+    // stripped DOD UCNI on classified pages while the lattice path
+    // did not. PR 4b-C Commit 5 (006 T112) retired the imperative
+    // `expected_aea_markings` UCNI strip and migrated the §H.6
+    // p116 / p118 strip-plus-NOFORN-promotion to four declarative
+    // rows on `CapcoScheme`
+    // (`capco/{dod,doe}-ucni-{evicted-by-classified, promotes-noforn-when-classified}`).
+    // The pre-deletion PageContext branch dropped UCNI silently
+    // without the §H.6 NOFORN-promotion clause (a real bug; Commit
+    // 2's RED regression test pinned it).
     //
-    // Citation: §H.6 p116 (DOD UCNI) + §H.6 p118 (DOE UCNI).
+    // Post-PR-4b-C state: BOTH paths now keep UCNI on the AEA axis
+    // observed via the per-axis projections this parity gate
+    // exercises. The §H.6 strip-plus-promote lives in
+    // `scheme.project(Scope::Page, ...)`. PR 4b-D wires that as
+    // the production banner validator at which point UCNI is
+    // stripped AND NOFORN is promoted correctly.
+    //
+    // Citation: §H.6 p116 (DOD UCNI / DCNI Precedence Rules) +
+    // §H.6 p118 (DOE UCNI Precedence Rules). verified 2026-05-16
+    // against `crates/capco/docs/CAPCO-2016.md`.
     let mut p = portion_us(Classification::Secret);
     p.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
     let portions = [p];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     assert!(
-        !pc.aea_markings
+        pc.aea_markings
             .iter()
             .any(|m| matches!(m, AeaMarking::DodUcni)),
-        "PageContext strips DOD UCNI on classified page per §H.6 p116"
+        "PR 4b-C post-deletion: PageContext keeps DOD UCNI on \
+         classified pages — the §H.6 p116 strip-plus-NOFORN-promotion \
+         is now in the declarative PageRewrite catalog. pc.aea_markings = {:?}",
+        pc.aea_markings,
     );
     assert!(
         lat.aea_markings
             .iter()
             .any(|m| matches!(m, AeaMarking::DodUcni)),
-        "Lattice path keeps DOD UCNI until PR 4b-C ships the cross-axis \
-         classification-gate rewrite per §H.6 p116"
+        "Lattice path keeps DOD UCNI unchanged from PR 4b-B; the §H.6 \
+         strip-plus-promote lives only in `scheme.project`'s page-rewrite \
+         loop. lat.aea_markings = {:?}",
+        lat.aea_markings,
     );
 }
 

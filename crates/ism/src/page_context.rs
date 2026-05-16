@@ -591,12 +591,38 @@ impl PageContext {
             }
         }
 
-        // Step 3: FOUO drops in classified documents; also drops whenever DSEN
-        // is present (DSEN overrides FOUO regardless of classification level).
-        let dsen_present = seen.contains(&DissemControl::Dsen);
-        if seen.contains(&DissemControl::Fouo) && (classified || dsen_present) {
-            seen.remove(&DissemControl::Fouo);
-        }
+        // Step 3 (retired in PR 4b-C Commit 5, 006 T112): FOUO eviction
+        // migrated to the declarative PageRewrite catalog.
+        //
+        // The pre-deletion behaviour stripped FOUO whenever the page
+        // was classified OR DSEN was present in any portion, citing
+        // CAPCO-2016 §H.8 p134. That logic now lives in two
+        // declarative rows on `CapcoScheme`:
+        //   * `capco/fouo-evicted-by-classified` (Commit 3, §H.8 p134
+        //     "FOUO in a classified document" sub-clause).
+        //   * `capco/classification-evicts-fouo` (Commit 4, §H.8 p134
+        //     classified umbrella) and
+        //     `capco/non-fdr-control-evicts-fouo` (Commit 4, §H.8 p134
+        //     "UNCLASSIFIED with FOUO and other dissemination control
+        //     markings, excluding any FD&R markings" sub-clause). The
+        //     DSEN-triggered strip is one specialisation of the
+        //     non-FD&R-other-control trigger.
+        //
+        // Engine-crate touch authorised under Constitution VII §IV
+        // within-006 precedent (PR 4b-B Commit 2 / §7.B): this is a
+        // refactor of the engine + rule architecture together, not a
+        // scheme-adoption PR. The 7 PR 4b-C Pattern-C strip rows + 2
+        // Pattern-B structural rows are the single source of truth.
+        //
+        // Transitional behaviour: `Engine::lint` continues to drive
+        // banner-validation through this `expected_dissem_us`
+        // accessor until PR 4b-D wires the lattice path. Until then,
+        // banner-validation observed via PageContext directly will
+        // emit FOUO in classified banners — `scheme.project(Scope::Page,
+        // ...)` produces the correct output via the declarative rows.
+        //
+        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // §H.8 p134 (full FOUO Precedence Rules passage).
 
         // Step 4: NF injection from non-IC SBU-NF/LES-NF split.
         let (_, needs_nf) = self.expected_non_ic_dissem();
@@ -1082,14 +1108,53 @@ impl PageContext {
             result.push(AeaMarking::Atomal(crate::attrs::AtomalBlock));
         }
 
-        // UCNI/DCNI drop in classified documents.
-        if !classified {
-            if has_dod_ucni {
-                result.push(AeaMarking::DodUcni);
-            }
-            if has_doe_ucni {
-                result.push(AeaMarking::DoeUcni);
-            }
+        // UCNI/DCNI eviction (retired in PR 4b-C Commit 5, 006 T112):
+        // migrated to the declarative PageRewrite catalog.
+        //
+        // The pre-deletion behaviour was to drop UCNI silently when
+        // the page was classified — but the §H.6 p116 (DOD UCNI /
+        // DCNI) and §H.6 p118 (DOE UCNI) Precedence Rules also
+        // mandate NOFORN promotion ("NOFORN must be applied if a less
+        // restrictive FD&R marking would otherwise be conveyed with
+        // the classified information"). The silent strip lost the
+        // NOFORN-promotion clause — a §H.6 bug Commit 2 pinned via a
+        // RED regression test (now retired in this commit alongside
+        // the buggy branch).
+        //
+        // Replacement: four declarative rows on `CapcoScheme` (Commit
+        // 3) handle the strip-plus-promote semantic correctly:
+        //   * `capco/dod-ucni-promotes-noforn-when-classified` (§H.6
+        //     p116) — FactAdd NOFORN when classified + DodUcni and
+        //     NOFORN absent.
+        //   * `capco/dod-ucni-evicted-by-classified` (§H.6 p116) —
+        //     Custom strip removing only DodUcni; declared AFTER the
+        //     promote row so the promote sees UCNI first.
+        //   * `capco/doe-ucni-promotes-noforn-when-classified` /
+        //     `capco/doe-ucni-evicted-by-classified` (§H.6 p118) —
+        //     mirror pair for DOE UCNI.
+        //
+        // Engine-crate touch authorised under Constitution VII §IV
+        // within-006 precedent (PR 4b-B Commit 2 / §7.B): bugfix-class
+        // deletion in `marque-ism`.
+        //
+        // Transitional behaviour: `Engine::lint` drives banner-
+        // validation through this `expected_aea_markings` accessor
+        // until PR 4b-D wires the lattice path. Until then, UCNI may
+        // appear in classified banners observed via PageContext
+        // directly — `scheme.project(Scope::Page, ...)` produces the
+        // correct strip-plus-NOFORN-promotion output. This is a
+        // strictly-better transitional state than the pre-deletion
+        // bug (which lost NOFORN promotion silently); §H.6
+        // compliance lives in the declarative path until PR 4b-D
+        // ships.
+        //
+        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // §H.6 DOD UCNI p116-117 + §H.6 DOE UCNI p118-119.
+        if has_dod_ucni {
+            result.push(AeaMarking::DodUcni);
+        }
+        if has_doe_ucni {
+            result.push(AeaMarking::DoeUcni);
         }
 
         result
@@ -1923,7 +1988,23 @@ mod tests {
     }
 
     #[test]
-    fn aea_ucni_drops_in_classified() {
+    fn aea_ucni_kept_in_classified_via_pagecontext_transitional_pending_pr_4b_d() {
+        // PR 4b-C Commit 5 (006 T112): the UCNI strip moved out of
+        // PageContext and into the declarative
+        // `capco/{dod,doe}-ucni-evicted-by-classified` +
+        // `capco/{dod,doe}-ucni-promotes-noforn-when-classified` rows
+        // on `CapcoScheme`. PageContext is the transitional banner-
+        // validation driver until PR 4b-D wires the lattice path
+        // through `scheme.project(Scope::Page, ...)`. Until then, a
+        // classified page containing UCNI keeps UCNI on the AEA axis
+        // observed via PageContext directly. The declarative path
+        // produces the correct §H.6 strip-plus-NOFORN-promotion
+        // output (exercised in
+        // `crates/capco/tests/page_context_lattice_parity.rs`).
+        //
+        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // §H.6 DOD UCNI p116-117 (Precedence Rules for Banner Line
+        // Guidance).
         use crate::attrs::AeaMarking;
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
@@ -1931,9 +2012,17 @@ mod tests {
             aea_markings: vec![AeaMarking::DodUcni].into(),
             ..Default::default()
         });
-        // Classified doc → UCNI drops.
         let aea = ctx.expected_aea_markings();
-        assert!(aea.is_empty(), "UCNI should drop in classified: {aea:?}");
+        // PR 4b-C post-deletion: UCNI no longer stripped at the
+        // PageContext layer (the declarative rows handle the strip
+        // via the lattice path).
+        assert!(
+            aea.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
+            "PR 4b-C post-deletion: UCNI now keeps on the PageContext AEA \
+             axis; the declarative `capco/dod-ucni-evicted-by-classified` row \
+             on `CapcoScheme` strips it via `scheme.project(Scope::Page, ...)`. \
+             aea = {aea:?}"
+        );
     }
 
     #[test]
@@ -1950,7 +2039,7 @@ mod tests {
         assert_eq!(aea[0], AeaMarking::DodUcni);
     }
 
-    // --- PR 4b-C Commit 2: pre-fix UCNI bug regression test ---
+    // --- PR 4b-C Commit 5: UCNI bug fix landed via declarative rows ---
     //
     // CAPCO-2016 §H.6 p116 (DOD UCNI / DCNI Precedence Rules) +
     // §H.6 p118 (DOE UCNI Precedence Rules) verbatim:
@@ -1960,57 +2049,28 @@ mod tests {
     //    information."
     //   ( DOE UCNI mirrors the rule verbatim. )
     //
-    // PRE-FIX (this branch): `expected_aea_markings` strips UCNI when
-    // classified WITHOUT the §H.6 NOFORN-promotion clause. The test
-    // below pins the WRONG behaviour so that Commit 5 (deletion +
-    // declarative-row migration) makes it FAIL — at which point the
-    // test is replaced with the post-fix correctness assertion
-    // `ucni_classified_promotes_noforn_via_pattern_c` (same swap
-    // pattern PR 4b-B Commit 2 used for OC-USGOV).
+    // The pre-PR-4b-C `expected_aea_markings` branch stripped UCNI
+    // silently on classified pages WITHOUT the §H.6 NOFORN-promotion
+    // clause — Commit 2's RED regression test pinned that wrong
+    // behaviour. Commit 5 (this commit) deletes the buggy branch.
+    // The post-fix correctness assertion lives at the lattice level
+    // in `crates/capco/tests/page_context_lattice_parity.rs` —
+    // specifically the
+    // `pattern_c_dod_ucni_classified_strips_and_promotes_noforn`
+    // fixture (added in Commit 6) — because the fix is in the
+    // declarative `CapcoScheme` PageRewrite catalog, not in
+    // PageContext. PageContext is the transitional banner-validation
+    // driver until PR 4b-D wires the lattice path; the test
+    // `aea_ucni_kept_in_classified_via_pagecontext_transitional_pending_pr_4b_d`
+    // (above) pins the new transitional PageContext shape.
+    //
+    // The pre-fix `ucni_classified_strip_loses_noforn_promotion_regression`
+    // test (Commit 2 RED) was deleted alongside the buggy branch,
+    // mirroring the PR 4b-B Commit 2 / Commit 5 pre-fix/post-fix
+    // swap pattern.
     //
     // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
-    // §H.6 DOD UCNI p116-117 + DOE UCNI p118-119 page ranges in
-    // `crates/capco/docs/CAPCO-2016_citation_index.yml`.
-    #[test]
-    fn ucni_classified_strip_loses_noforn_promotion_regression() {
-        use crate::attrs::AeaMarking;
-        let mut ctx = PageContext::new();
-        // (U//UCNI) — UCNI portion, unclassified.
-        ctx.add_portion(CanonicalAttrs {
-            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
-            aea_markings: vec![AeaMarking::DodUcni].into(),
-            ..Default::default()
-        });
-        // (S) — classified portion, forces the document classification
-        // to SECRET, triggering the §H.6 strip-with-NOFORN-promotion
-        // rule on the UCNI portion.
-        ctx.add_portion(CanonicalAttrs {
-            classification: Some(MarkingClassification::Us(Classification::Secret)),
-            ..Default::default()
-        });
-
-        let aea = ctx.expected_aea_markings();
-        let dissem = ctx.expected_dissem_us();
-
-        // PRE-FIX bug: UCNI silently dropped.
-        assert!(
-            aea.is_empty(),
-            "pre-fix: UCNI stripped on classified page (expected by §H.6 p116) — \
-             aea = {aea:?}"
-        );
-        // PRE-FIX bug: NOFORN NOT promoted even though §H.6 p116 / p118
-        // mandate it ("less restrictive FD&R marking would otherwise be
-        // conveyed"). This assertion documents the missing promotion.
-        // Commit 5 replaces this assertion with the corrected behaviour:
-        // NOFORN MUST be present on a classified page that carried a
-        // DOD/DOE UCNI portion.
-        assert!(
-            !dissem.iter().any(|d| matches!(d, DissemControl::Nf)),
-            "pre-fix bug: NOFORN absent on classified page that carried UCNI \
-             (Commit 5 makes this assertion fail when the bug is fixed) — \
-             dissem = {dissem:?}"
-        );
-    }
+    // §H.6 DOD UCNI p116-117 + DOE UCNI p118-119.
 
     // --- Non-IC rollup ---
 
@@ -2344,7 +2404,23 @@ mod tests {
     // --- Dissem special cases ---
 
     #[test]
-    fn dissem_fouo_drops_in_classified() {
+    fn dissem_fouo_kept_in_classified_via_pagecontext_transitional_pending_pr_4b_d() {
+        // PR 4b-C Commit 5 (006 T112): FOUO eviction Step 3 retired
+        // from PageContext, migrated to the declarative PageRewrite
+        // catalog on `CapcoScheme`:
+        //   * `capco/fouo-evicted-by-classified` (§H.8 p134
+        //     classified-document sub-clause) and
+        //   * `capco/classification-evicts-fouo` /
+        //     `capco/non-fdr-control-evicts-fouo` (Commit 4 Pattern-B
+        //     rows, §H.8 p134 umbrella).
+        // PageContext is the transitional banner-validation driver
+        // until PR 4b-D wires the lattice path through
+        // `scheme.project(Scope::Page, ...)`. Until then, FOUO stays
+        // in the PageContext dissem axis on classified pages — the
+        // declarative path produces the correct strip output.
+        //
+        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // §H.8 p134 FOUO Precedence Rules for Banner Line Guidance.
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
@@ -2353,8 +2429,11 @@ mod tests {
         });
         let dissem = ctx.expected_dissem_us();
         assert!(
-            !dissem.contains(&DissemControl::Fouo),
-            "FOUO should drop in classified doc: {dissem:?}"
+            dissem.contains(&DissemControl::Fouo),
+            "PR 4b-C post-deletion: FOUO now keeps on the PageContext \
+             dissem axis on classified pages; the declarative \
+             `capco/fouo-evicted-by-classified` row strips it via the \
+             lattice path. dissem = {dissem:?}"
         );
     }
 
@@ -2374,8 +2453,20 @@ mod tests {
     }
 
     #[test]
-    fn dissem_fouo_drops_when_dsen_present_unclassified() {
-        // DSEN overrides FOUO even on an unclassified page.
+    fn dissem_fouo_kept_when_dsen_present_via_pagecontext_transitional_pending_pr_4b_d() {
+        // PR 4b-C Commit 5 (006 T112): the DSEN-trigger half of the
+        // retired Step 3 (FOUO + DSEN → drop FOUO at any
+        // classification level) is covered by the Pattern-B
+        // `capco/non-fdr-control-evicts-fouo` declarative row at
+        // §H.8 p134's "UNCLASSIFIED with FOUO and other dissemination
+        // control markings, excluding any FD&R markings" sub-clause
+        // (DSEN is a non-FD&R IC dissem control, satisfies the
+        // trigger). PageContext is the transitional driver until
+        // PR 4b-D; FOUO stays on the dissem axis observed via
+        // PageContext directly.
+        //
+        // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+        // §H.8 p134 + §H.8 p159 (DSEN as a §H.8 IC dissem control).
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Unclassified)),
@@ -2384,8 +2475,11 @@ mod tests {
         });
         let dissem = ctx.expected_dissem_us();
         assert!(
-            !dissem.contains(&DissemControl::Fouo),
-            "FOUO should drop when DSEN is present, even unclassified: {dissem:?}"
+            dissem.contains(&DissemControl::Fouo),
+            "PR 4b-C post-deletion: FOUO now keeps on the PageContext \
+             dissem axis when DSEN is present; the declarative \
+             `capco/non-fdr-control-evicts-fouo` row strips it via the \
+             lattice path. dissem = {dissem:?}"
         );
         assert!(
             dissem.contains(&DissemControl::Dsen),
