@@ -253,6 +253,67 @@ fn display_only_commingling_with_whitespace_around_slash() {
 }
 
 #[test]
+fn display_only_multi_token_commingling_after_orcon_and_rel_to() {
+    // CAPCO-2016 §H.8 p164 commingling rule: DISPLAY ONLY may be
+    // commingled with another same-category dissem control under
+    // defined disclosure-review conditions. The multi-token shape
+    // `(S//OC/REL TO USA, IRQ/DISPLAY ONLY AFG)` puts three
+    // dissem-family sub-tokens in the same `//`-block:
+    //   - `OC` (ORCON)
+    //   - `REL TO USA, IRQ`
+    //   - `DISPLAY ONLY AFG`
+    //
+    // `split_slash_with_separator_offsets` yields three sub-tokens.
+    // The multi-token speculative loop must recognize the DISPLAY
+    // ONLY sub-token (parallel to the REL TO sub-token recognizer
+    // added in PR #440) and route it through
+    // `parse_display_only_with_spans` at commit. Without this
+    // arm the `DISPLAY ONLY AFG` token would fall to
+    // `SubKind::Unknown` and emit E008 (Copilot review on PR #445
+    // caught this).
+    let attrs = parse_portion("(S//OC/REL TO USA, IRQ/DISPLAY ONLY AFG)");
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "no Unknown spans expected for three-way same-category commingling; got {:?}",
+        unknown
+            .iter()
+            .map(|t| (&*t.text, t.span.start, t.span.end))
+            .collect::<Vec<_>>()
+    );
+
+    // All three sub-tokens land on their respective axes.
+    let dissem: Vec<&str> = attrs.dissem_us.iter().map(|d| d.bytes).collect();
+    assert!(
+        dissem.contains(&"OC"),
+        "ORCON should be on the dissem axis; got {dissem:?}"
+    );
+    let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(rel, vec!["USA", "IRQ"]);
+    let dox: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(dox, vec!["AFG"]);
+
+    // Block-level spans confirm each axis was recognized at its
+    // canonical token boundary.
+    let do_blocks = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::DisplayOnlyBlock)
+        .count();
+    let rel_blocks = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::RelToBlock)
+        .count();
+    assert_eq!(do_blocks, 1);
+    assert_eq!(rel_blocks, 1);
+}
+
+#[test]
 fn cve_form_displayonly_unchanged() {
     // The pre-fix path `(U//DISPLAYONLY)` (ODNI CVE value, no space)
     // continues to route through the existing `DissemControl::parse`

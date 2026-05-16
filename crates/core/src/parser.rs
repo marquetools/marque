@@ -786,19 +786,35 @@ impl<'t> Parser<'t> {
                     /// loop. Distinct from [`SubKind::Dissem`] only so
                     /// the commit branch can route to the right parser.
                     RelTo,
+                    /// DISPLAY ONLY sub-token: dissem-category per
+                    /// CAPCO-2016 §H.8 p163 (parallel to REL TO).
+                    /// Same structural reason as [`SubKind::RelTo`] —
+                    /// the `DISPLAY ONLY [LIST]` form carries a
+                    /// comma-separated country list that
+                    /// `DissemControl::parse` rejects (the ODNI CVE
+                    /// token is `DISPLAYONLY`, no space), so the
+                    /// speculative loop needs a distinct kind to
+                    /// route to [`parse_display_only_with_spans`]
+                    /// at commit time. Resolves the multi-token shape
+                    /// `(S//OC/REL TO USA, IRQ/DISPLAY ONLY AFG)`
+                    /// per CAPCO-2016 §H.8 p164 commingling rule.
+                    DisplayOnly,
                     NonIc,
                     Aea,
                     Unknown,
                 }
 
                 /// Map a [`SubKind`] to its category family for the
-                /// same-category consistency check. REL TO is
-                /// dissem-category per CAPCO-2016 §H.8 p150-151, so
-                /// `OC/REL TO USA, NOR` is a valid within-category
-                /// block.
+                /// same-category consistency check. REL TO and
+                /// DISPLAY ONLY are both dissem-category per
+                /// CAPCO-2016 §H.8 (REL TO p150-151, DISPLAY ONLY
+                /// p163), so a block like
+                /// `OC/REL TO USA, NOR/DISPLAY ONLY AFG` is a valid
+                /// within-category block under §H.8 p164's
+                /// commingling rule.
                 fn category_family(k: SubKind) -> SubKind {
                     match k {
-                        SubKind::RelTo => SubKind::Dissem,
+                        SubKind::RelTo | SubKind::DisplayOnly => SubKind::Dissem,
                         other => other,
                     }
                 }
@@ -853,6 +869,27 @@ impl<'t> Parser<'t> {
                     if sub_tok.starts_with("REL TO ") || sub_tok == "REL TO" {
                         results.push(SubResult {
                             kind: SubKind::RelTo,
+                            tok: sub_tok,
+                            span: sub_span,
+                            sci: None,
+                            dissem: None,
+                            nic: None,
+                            aea: None,
+                        });
+                    } else if sub_tok.starts_with("DISPLAY ONLY ") || sub_tok == "DISPLAY ONLY" {
+                        // Same shape as the REL TO sub-token recognizer
+                        // above. Per CAPCO-2016 §H.8 p164, DISPLAY ONLY
+                        // can be commingled with another dissem control
+                        // (most commonly REL TO) in the same `//`-block,
+                        // separated by `/`. Without this branch a shape
+                        // like `(S//OC/REL TO USA, IRQ/DISPLAY ONLY AFG)`
+                        // emits E008 on the `DISPLAY ONLY AFG` sub-
+                        // token. Routed to [`parse_display_only_with_spans`]
+                        // at commit time so the country list lands on
+                        // the `display_only_to` axis instead of being
+                        // dropped into `SubKind::Unknown`.
+                        results.push(SubResult {
+                            kind: SubKind::DisplayOnly,
                             tok: sub_tok,
                             span: sub_span,
                             sci: None,
@@ -1136,8 +1173,56 @@ impl<'t> Parser<'t> {
                                 rel_to.extend(parsed.countries);
                                 debug_assert!(
                                     parsed.trailing_dissem.is_empty()
-                                        && parsed.trailing_non_ic.is_empty(),
+                                        && parsed.trailing_non_ic.is_empty()
+                                        && parsed.trailing_display_only.is_empty(),
                                     "multi-token RelTo path should never observe trailing \
+                                     controls (sub-token splitting peels them first)"
+                                );
+                            }
+                            SubKind::DisplayOnly => {
+                                // DISPLAY ONLY commingled as a `/`-split
+                                // sub-token after another dissem control —
+                                // e.g., `OC/REL TO USA, IRQ/DISPLAY ONLY AFG`
+                                // where `split_slash_with_separator_offsets`
+                                // yields ["OC", "REL TO USA, IRQ",
+                                // "DISPLAY ONLY AFG"] and this arm handles
+                                // the third sub-token.
+                                //
+                                // Mirror of the [`SubKind::RelTo`] arm:
+                                // emit the block-level DisplayOnlyBlock
+                                // span first (matches early-path ordering
+                                // at the `trimmed.starts_with("DISPLAY ONLY ")`
+                                // branch above), then delegate to
+                                // [`parse_display_only_with_spans`] for
+                                // country parsing. `r.tok` cannot contain
+                                // an internal `/` for the same reason as
+                                // RelTo — sub-token splitting peels any
+                                // `/`-separated trailing controls into
+                                // their own results entries — so the
+                                // returned trailing fields are
+                                // necessarily empty on this path; the
+                                // `debug_assert!` makes the invariant
+                                // explicit.
+                                //
+                                // Authority: CAPCO-2016 §H.8 p163
+                                // (DISPLAY ONLY is a dissem control);
+                                // §H.8 p164 (commingling rule).
+                                token_spans.push(TokenSpan {
+                                    kind: TokenKind::DisplayOnlyBlock,
+                                    span: r.span,
+                                    text: r.tok.into(),
+                                });
+                                let parsed = parse_display_only_with_spans(
+                                    r.tok,
+                                    r.span.start,
+                                    self.tokens,
+                                    &mut token_spans,
+                                );
+                                display_only_to.extend(parsed.countries);
+                                debug_assert!(
+                                    parsed.trailing_dissem.is_empty()
+                                        && parsed.trailing_non_ic.is_empty(),
+                                    "multi-token DisplayOnly path should never observe trailing \
                                      controls (sub-token splitting peels them first)"
                                 );
                             }
