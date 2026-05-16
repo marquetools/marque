@@ -221,6 +221,7 @@ fn ctx() -> RuleContext<'static> {
         // intent-synthesis path that depends on candidate_span.
         candidate_span: marque_ism::Span::new(0, 0),
         page_context: None,
+        cross_portion_context: None,
         page_marking: None,
         corrections: None,
         pre_pass_1_attrs: None,

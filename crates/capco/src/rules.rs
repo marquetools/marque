@@ -4992,6 +4992,19 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// producers migrate to FGI [LIST], and JOINT is dropped from the
 /// banner.
 ///
+/// **Firing surface (PR 4b-B sixth-pass follow-up).** W004 fires on
+/// both Banner candidates AND on Portion candidates that contribute
+/// to disunity. The banner-fire path catches the classic header +
+/// portions + footer-banner layout; the portion-fire path catches
+/// the real-world layout where a header banner appears BEFORE any
+/// portion (page_context empty when the banner runs) and there is
+/// no closing footer banner. Both paths emit the same message,
+/// severity, and citation; downstream consumers correlate by rule
+/// id + page-break boundary. Multi-fire on the same page (banner +
+/// each disunity-contributing portion) is acceptable for a Warn
+/// rule and matches the prior NOFORN-style "loud per occurrence"
+/// pattern.
+///
 /// **Mixed JOINT + non-JOINT portions** (§H.3 p57 — "the JOINT
 /// marking is not carried forward to the banner line in US
 /// documents") do **NOT** fire W004. That case is `JointSet::Mixed`
@@ -5044,13 +5057,39 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     }
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
-        // Fire only on banner candidates — the page context must have
-        // accumulated all portions before we can decide unanimity.
-        if ctx.marking_type != MarkingType::Banner {
+        // Fire on Banner candidates AND on Portion candidates that
+        // contribute to disunity. Pre-PR-4b-B-sixth-pass, W004 only
+        // fired on Banner candidates; that silently bypassed the rule
+        // on real-world doc layouts where a top banner ran before any
+        // portion accumulated (page_context empty) and no closing
+        // banner re-fired the rule. The Portion-fire path closes that
+        // gap by reading the post-portion-add cross_portion_context
+        // (the engine adds the current portion BEFORE invoking rules)
+        // and surfacing the disunity at the portion span as soon as
+        // the second disagreeing JOINT portion lands.
+        //
+        // Multi-fire on the same page is acceptable for a Warn rule
+        // (matches the prior NOFORN-style "loud per occurrence"
+        // pattern). When both a Banner and disunity-contributing
+        // Portion(s) exist on the same page, the Banner emits at the
+        // banner span and each disunity-contributing Portion emits at
+        // its own span. Audit consumers correlate by rule-id +
+        // page-break boundary.
+        if !matches!(
+            ctx.marking_type,
+            MarkingType::Banner | MarkingType::Portion
+        ) {
             return vec![];
         }
-        // Need page_context to inspect per-portion JOINT classifications.
-        let Some(page_ctx) = ctx.page_context.as_ref() else {
+        // Read cross_portion_context (the portion-aware sibling of
+        // page_context) so the rule fires on Portion candidates too.
+        // For Portion candidates this is `Some(...)` once at least one
+        // portion has accumulated on the page (the engine adds the
+        // current portion before invoking the rule loop, so a single
+        // JOINT portion has portions().len() == 1 — the JointSet then
+        // returns UnanimousProducers, not DisunityCollapse, and W004
+        // stays quiet until a second disagreeing JOINT portion arrives).
+        let Some(page_ctx) = ctx.cross_portion_context.as_ref() else {
             return vec![];
         };
 
@@ -5072,10 +5111,10 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // The diagnostic span points at the banner candidate itself.
-        // The W004 message identifies the transformation by name and
-        // category ID; producer trigraphs and the JOINT category
-        // label are canonical vocabulary, not document bytes.
+        // The diagnostic span points at the candidate itself (banner
+        // OR portion). The W004 message identifies the transformation
+        // by name and category ID; producer trigraphs and the JOINT
+        // category label are canonical vocabulary, not document bytes.
         let message = format!(
             "joint-disunity-collapse: portions on this page carry distinct \
              JOINT producer lists; banner cannot roll up JOINT. Non-US \
@@ -6072,6 +6111,7 @@ mod tests {
             // directly and do not exercise intent-only synthesis.
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
+            cross_portion_context: None,
             page_marking: None,
             corrections: None,
             // No two-pass fix path is in play for this defensive
@@ -7546,6 +7586,7 @@ mod tests {
             // directly and do not exercise intent-only synthesis.
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
+            cross_portion_context: None,
             page_marking: None,
             corrections: None,
             // Unit test for the declarative-rule layer; no engine
@@ -7618,6 +7659,7 @@ mod tests {
             // directly and do not exercise intent-only synthesis.
             candidate_span: marque_ism::Span::new(0, 0),
             page_context: None,
+            cross_portion_context: None,
             page_marking: None,
             corrections: None,
             // Unit test for the declarative-rule layer; no engine
@@ -9010,7 +9052,8 @@ pub(crate) mod marque_capco_test_support {
                 zone: None,
                 position: None,
                 candidate_span: candidate.span,
-                page_context: ctx_page,
+                page_context: ctx_page.clone(),
+                cross_portion_context: ctx_page,
                 page_marking: ctx_page_marking,
                 corrections: None,
                 // Test-driver synthetic context; no two-pass fix

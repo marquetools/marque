@@ -329,6 +329,42 @@ pub struct RuleContext<'a> {
     /// are populated for the same set of `RuleContext`s during the
     /// migration; rule code chooses which to read.
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
+    /// Cross-portion accumulator for portion-level aggregation rules.
+    ///
+    /// Mirrors [`Self::page_context`] but is populated for **every**
+    /// candidate kind including `MarkingType::Portion`, once at least
+    /// one portion has accumulated on the page. The same per-page
+    /// `Arc` is shared between the two fields when both are populated;
+    /// no extra clone cost.
+    ///
+    /// **Why two fields, not one.** [`Self::page_context`] is gated on
+    /// non-portion candidates so existing rules that documented their
+    /// behavior around "page_context is None on portions" (notably
+    /// S007 / FR-048's solely-NATO carve-out, which fires
+    /// conservatively only on `page_context = None`) keep their
+    /// pre-existing semantics. Cross-portion aggregation rules
+    /// (currently W004 `joint-disunity-collapse` per CAPCO-2016 §H.3
+    /// p56 + §H.7 p123) read `cross_portion_context` instead, so they
+    /// can detect disunity at the second disagreeing portion without
+    /// waiting for a footer banner that may never come.
+    ///
+    /// The engine's accumulation point is BEFORE the rule loop runs
+    /// for a Portion candidate (`engine.rs::lint`: `add_portion(...)`
+    /// before `RuleContext` construction), so rules read the
+    /// **snapshot-after-add** state — the current portion is in the
+    /// accumulator. A portion-aggregation rule that needs
+    /// snapshot-before-add has to filter the current portion out of
+    /// the accumulator using `ctx.candidate_span`.
+    ///
+    /// Rule shape:
+    ///
+    /// ```ignore
+    /// if let Some(page) = ctx.cross_portion_context.as_ref() {
+    ///     // page.portions() includes the current portion if
+    ///     // marking_type == Portion.
+    /// }
+    /// ```
+    pub cross_portion_context: Option<std::sync::Arc<marque_ism::PageContext>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
     /// [`marque_ism::MarkingType::PageBreak`]. PR 9b (T133 / FR-006)

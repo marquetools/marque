@@ -326,3 +326,90 @@ fn joint_disunity_union_excludes_usa() {
     assert!(non_us.contains(&cc("DEU")));
     assert_eq!(non_us.len(), 3);
 }
+
+// ---------------------------------------------------------------------------
+// PR 4b-B sixth-pass follow-up: W004 banner-first layout coverage.
+// ---------------------------------------------------------------------------
+//
+// Triage code W004-banner-first. The pre-fix W004 implementation
+// returned early on every non-Banner candidate and additionally
+// returned early on `ctx.page_context.is_none()`. Banner candidates
+// see `page_context` only AFTER preceding portions accumulate, and
+// the engine populates `ctx.page_context` only when the candidate is
+// non-Portion. As a result, a real-world classified-doc layout with
+// a TOP banner (no portion accumulation yet) followed by JOINT-
+// disunified portions and NO closing footer banner silently bypassed
+// W004 entirely — the rule never fired even though the disunity
+// existed.
+//
+// The fix expands the firing condition to include Portion candidates
+// that contribute to disunity. The §H.3 p56 + §H.7 p123 cross-axis
+// JOINT → FGI [LIST] migration is the same; W004 now surfaces it as
+// soon as the second disagreeing JOINT portion lands, regardless of
+// whether a closing banner exists. This may produce one W004 per
+// disunity-contributing portion on the same page; that is acceptable
+// for a Warn rule and matches the prior NOFORN-style "loud diagnostic
+// per occurrence" pattern.
+
+#[test]
+fn w004_fires_on_banner_first_document_with_no_closing_banner() {
+    // The bug: a top banner appears BEFORE any portion accumulates,
+    // so when the banner candidate runs `ctx.page_context` is empty
+    // and W004 returns early. Subsequent JOINT-disunity portions land
+    // but no closing banner ever fires the rule. Pre-fix: W004 never
+    // emits despite the disunity. Post-fix: W004 fires on the
+    // disunity-contributing portion(s).
+    let engine = engine_with_fixed_clock();
+    let source = b"//JOINT SECRET USA, GBR, CAN\n\
+                   (//JOINT S USA GBR) first portion.\n\
+                   (//JOINT S USA CAN) second portion creates disunity.\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert!(
+        w004_count >= 1,
+        "W004 must fire on banner-first JOINT-disunity page even with \
+         no closing banner; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+    // Verify severity and citation as on the banner-fired path.
+    let w004 = lint
+        .diagnostics
+        .iter()
+        .find(|d| d.rule.as_str() == "W004")
+        .unwrap();
+    assert_eq!(w004.severity, marque_rules::Severity::Warn);
+    assert!(
+        w004.citation.contains("§H.3 p56") && w004.citation.contains("§H.7 p123"),
+        "W004 banner-first path must carry the same §H.3 p56 + §H.7 \
+         p123 citation: {:?}",
+        w004.citation
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_first_disunity_portion_alone() {
+    // Defensive: a single JOINT portion can never produce disunity —
+    // disunity needs at least two JOINT portions with disagreeing
+    // producer lists. The portion-fire path must NOT emit on the
+    // first JOINT portion (only one portion → JointSet::
+    // UnanimousProducers, not DisunityCollapse).
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) only portion on the page.\n";
+    let lint = engine.lint(source);
+    assert!(
+        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        "W004 must NOT fire on a single JOINT portion (no disunity \
+         possible); diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
