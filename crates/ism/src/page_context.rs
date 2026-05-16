@@ -47,7 +47,7 @@
 //! country, REL TO is the stricter axis and DO does not repeat it) and minus
 //! USA (the originator — the §H.8 p163 worked examples never list USA in the
 //! DO axis). If any portion lacks both REL TO and DO, banner DO is empty and
-//! the page falls into NOFORN per rows 19/20.
+//! the page falls into NOFORN per row 19.
 //!
 //! ## Declassification date note
 //! Per EO 13526, the declassification date defaults to:
