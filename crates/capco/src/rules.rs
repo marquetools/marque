@@ -5075,10 +5075,7 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // banner span and each disunity-contributing Portion emits at
         // its own span. Audit consumers correlate by rule-id +
         // page-break boundary.
-        if !matches!(
-            ctx.marking_type,
-            MarkingType::Banner | MarkingType::Portion
-        ) {
+        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Portion) {
             return vec![];
         }
         // Read cross_portion_context (the portion-aware sibling of
