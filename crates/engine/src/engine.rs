@@ -1001,19 +1001,6 @@ impl Engine {
                 }
             }
 
-            // Accumulate portions before running banner/CAB rules so that
-            // when we reach a banner candidate the context already reflects
-            // all preceding portion data.
-            if candidate.kind == MarkingType::Portion {
-                page_context.add_portion(attrs.clone());
-                // Invalidate the cached Arc so the next banner/CAB gets a
-                // fresh snapshot. We rebuild it lazily below.
-                page_context_arc = None;
-                // PR 9b (T133): the projected page marking also goes
-                // stale when a new portion arrives.
-                page_marking_arc = None;
-            }
-
             // Phase 3: zone and position are Option-typed and stay None
             // until a structural scanner pass can prove them. The previous
             // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
@@ -1450,6 +1437,36 @@ impl Engine {
                     fix_scope,
                     e059_override,
                 ));
+            }
+
+            // Issue #434 (Option C): consume `attrs` into the page
+            // context at the end of the iteration instead of cloning
+            // it earlier. Two properties make the move safe:
+            //
+            // 1. All in-iteration reads of `attrs` precede this block
+            //    by construction — this is the last statement of the
+            //    loop body before the closing brace. The borrow
+            //    checker enforces the invariant: any future read added
+            //    above this point continues to compile; any read added
+            //    below this point fails to compile.
+            // 2. Cross-iteration ordering is preserved: a subsequent
+            //    banner / CAB candidate's `ctx_page` is built from the
+            //    `page_context` mutated below, and `page_context_arc /
+            //    page_marking_arc` invalidation also happens below so
+            //    the next non-Portion iteration's lazy `get_or_insert_with`
+            //    rebuilds from the updated page context. Portion-kind
+            //    candidates never read `ctx_page` / `ctx_page_marking`
+            //    (both gated on `candidate.kind != MarkingType::Portion`),
+            //    so the move-vs-clone does not change what any rule sees.
+            if candidate.kind == MarkingType::Portion {
+                page_context.add_portion(attrs);
+                // Invalidate the cached Arc so the next banner/CAB gets a
+                // fresh snapshot. We rebuild it lazily above on the next
+                // iteration when a non-Portion candidate arrives.
+                page_context_arc = None;
+                // PR 9b (T133): the projected page marking also goes
+                // stale when a new portion arrives.
+                page_marking_arc = None;
             }
         }
 
