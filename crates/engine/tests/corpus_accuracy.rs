@@ -420,6 +420,545 @@ fn valid_fixtures_zero_diagnostics() {
     }
 }
 
+/// Per-rule diagnostic count expectation for a single document fixture
+/// in `tests/corpus/documents/marked/`.
+///
+/// Each entry pins the exact number of diagnostics of a given rule that
+/// the default engine emits on a corpus document, with a citation to the
+/// open issue that tracks fixing the firing. When the issue closes, the
+/// engine fix lands, and the count moves toward zero — the test fails
+/// loudly until this allowlist is updated, surfacing both regressions
+/// (new firings) and improvements (fewer firings than pinned).
+///
+/// `issue = 0` marks a *correct* firing (legitimate noise in the source
+/// material, e.g., embedded cable headers, historical CIA codewords not
+/// in the published ODNI CVE registry) — the `reason` field documents
+/// why the firing is expected to persist.
+///
+/// Every entry MUST cite either an open GitHub issue or a documented
+/// reason for permanent expected-firing. The test enforces that pinned
+/// stems correspond to real fixtures (file-deletion guard) and that the
+/// observed per-rule count matches the pin exactly.
+#[derive(Debug, Clone, Copy)]
+struct ExpectedRuleCount {
+    rule: &'static str,
+    count: usize,
+    /// GitHub issue tracking the fix. `0` = no issue; reason documents
+    /// why this is a correct, expected firing.
+    issue: u32,
+    reason: &'static str,
+}
+
+/// Per-doc per-rule diagnostic expectations. Sorted by stem.
+///
+/// **Unwind plan**: as each issue below closes, the corresponding
+/// `ExpectedRuleCount` entries shrink toward zero. The shape of this
+/// allowlist makes the unwind mechanical:
+///
+/// - **#461** (Phase::PageFinalization): retires E031, E035, E040 entries.
+/// - **#439** (S004 suppress under REL TO): retires S004 entries.
+/// - **#470** (W002 over-fires on canonical FGI): retires W002 entries.
+/// - **#471** (E015 zero-width false-positive): retires E015 entries.
+/// - **#472** (R001 prose parenthetical false-positives): retires R001 entries.
+/// - **#407** (Vocabulary sentinel set: CNWDI/UCNI long-forms): retires
+///   the E008 entries on `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION`
+///   and `DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION`.
+/// - **issue 0** entries (W034 NTN, E008 embedded cable) stay forever —
+///   they document correct firings on legitimate noise.
+const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
+    (
+        "CIA-RDP01M00147R000100350002-7",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP09T00207R001000100002-2",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 4,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "W002",
+                count: 5,
+                issue: 470,
+                reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP09T00207R001000100012-1",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP09T00207R001000100017-6",
+        &[ExpectedRuleCount {
+            rule: "E040",
+            count: 1,
+            issue: 461,
+            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP09T00207R001000100021-1",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP09T00207R001000100022-0",
+        &[
+            ExpectedRuleCount {
+                rule: "E031",
+                count: 1,
+                issue: 461,
+                reason: "sar-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP64B00346R000300190014-8",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 3,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP69B00369R000100130011-9",
+        &[ExpectedRuleCount {
+            rule: "E040",
+            count: 1,
+            issue: 461,
+            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP69B00369R000200200020-0",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 3,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP69B00369R000200200028-2",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 3,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP73B00148A000200150009-6",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "S004",
+                count: 2,
+                issue: 439,
+                reason: "S004 trigraph-suggest under REL TO block",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP74B00415R000300070018-9",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "W002",
+                count: 3,
+                issue: 470,
+                reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP74B00415R000500120103-5",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "S004",
+                count: 4,
+                issue: 439,
+                reason: "S004 trigraph-suggest under REL TO block",
+            },
+            ExpectedRuleCount {
+                rule: "W034",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: historical CIA codeword `NTN` not in ODNI CVE registry; W034 audit-visibility surface is intended",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP75-00149R000500050001-4",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP75-00149R000500420001-3",
+        &[ExpectedRuleCount {
+            rule: "S004",
+            count: 1,
+            issue: 439,
+            reason: "S004 trigraph-suggest under REL TO block",
+        }],
+    ),
+    (
+        "CIA-RDP75-00149R000500450034-4",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP75-00149R000500450044-3",
+        &[ExpectedRuleCount {
+            rule: "E008",
+            count: 2,
+            issue: 407,
+            reason: "RD-CNWDI long-form `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION` not in vocabulary",
+        }],
+    ),
+    (
+        "CIA-RDP75-00149R000500450066-9",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP79B00972A000100570011-7",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 4,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP80-00809A000500340084-9",
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "S004",
+                count: 9,
+                issue: 439,
+                reason: "S004 trigraph-suggest under REL TO block",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP80-00809A000500720009-0",
+        &[ExpectedRuleCount {
+            rule: "E040",
+            count: 1,
+            issue: 461,
+            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP80B01139A000400200013-4",
+        &[ExpectedRuleCount {
+            rule: "E040",
+            count: 1,
+            issue: 461,
+            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP80B01676R000200140013-3",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP90B01370R000801120005-5",
+        &[
+            ExpectedRuleCount {
+                rule: "E008",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: embedded cable header `00 RUEAIIB` trailing tokens are genuine non-marking noise (paired with EXPECTED_MISMATCHES banner-count drift in document_corpus.rs)",
+            },
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 2,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "S004",
+                count: 1,
+                issue: 439,
+                reason: "S004 trigraph-suggest under REL TO block",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP96-00289R000200030004-1",
+        &[
+            ExpectedRuleCount {
+                rule: "E015",
+                count: 2,
+                issue: 471,
+                reason: "E015 zero-width span / wrong-classification false-positive on US TOP SECRET",
+            },
+            ExpectedRuleCount {
+                rule: "E031",
+                count: 1,
+                issue: 461,
+                reason: "sar-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "R001",
+                count: 2,
+                issue: 472,
+                reason: "decoder R001 over-fires on prose parentheticals (CMS)/(C)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP96-00289R000200030006-9",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIA-RDP96-00289R000200030017-7",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 3,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "CIAPolicyOnGAOOversight",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 2,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "cia-reports_prex-318se-2",
+        &[ExpectedRuleCount {
+            rule: "E040",
+            count: 1,
+            issue: 461,
+            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "implications-of-gligorov-16559483",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+        ],
+    ),
+    (
+        "initial-evidence-indicate-16559481",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "S004",
+                count: 13,
+                issue: 439,
+                reason: "S004 trigraph-suggest under REL TO block",
+            },
+        ],
+    ),
+    (
+        "keyplayersinruss00wash",
+        &[
+            ExpectedRuleCount {
+                rule: "E008",
+                count: 2,
+                issue: 407,
+                reason: "DOE UCNI long-form `DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION` not in vocabulary",
+            },
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 3,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+        ],
+    ),
+    (
+        "keyplayersofsout00wash",
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
+    ),
+    (
+        "kiro-gligorov-macedonia-16555480",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 4,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+        ],
+    ),
+    (
+        "topofficialsinru00wash",
+        &[
+            ExpectedRuleCount {
+                rule: "S004",
+                count: 7,
+                issue: 439,
+                reason: "S004 trigraph-suggest under REL TO block",
+            },
+            ExpectedRuleCount {
+                rule: "W002",
+                count: 3,
+                issue: 470,
+                reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
+            },
+        ],
+    ),
+];
+
+fn lookup_expected_diagnostics(stem: &str) -> &'static [ExpectedRuleCount] {
+    EXPECTED_DOCUMENT_DIAGNOSTICS
+        .iter()
+        .find_map(|(s, e)| (*s == stem).then_some(*e))
+        .unwrap_or(&[])
+}
+
+/// Strict per-doc per-rule diagnostic count check against the
+/// `EXPECTED_DOCUMENT_DIAGNOSTICS` allowlist.
+///
+/// The previous incarnation of this test (`document_fixtures_lint_against_expected`)
+/// iterated over `.expected.json` `diagnostics` arrays — every one of
+/// which was empty — and asserted nothing. This replacement (PR2 follow-up)
+/// pins the exact count per rule per document the engine emits today, with
+/// each count cross-referenced to the GitHub issue that tracks closing the
+/// firing (or a documented reason for permanent expected-firing on
+/// legitimate source noise).
+///
+/// Failure modes the test catches:
+/// 1. **New diagnostic appearing** — engine starts firing a rule we didn't
+///    pin → fail (regression OR new rule needing pin).
+/// 2. **Count increase** — engine fires N+ where we pinned N → fail (rule
+///    got more aggressive).
+/// 3. **Count decrease** — engine fires < N where we pinned N → fail
+///    (improvement! shrink the pin).
+/// 4. **Diagnostic disappears entirely** — engine emits 0 where we pinned
+///    N → fail (improvement! remove the entry).
+/// 5. **Pinned stem missing fixture** — allowlist entry has no corresponding
+///    file → fail (stale pin after rename/delete).
+///
+/// Every failure is batched and reported together so a single regression
+/// doesn't mask other drift.
 #[test]
 fn document_fixtures_lint_against_expected() {
     let engine = make_engine();
@@ -444,43 +983,89 @@ fn document_fixtures_lint_against_expected() {
         marked_dir.display()
     );
 
+    let mut violations: Vec<String> = Vec::new();
+    let mut fixture_stems: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for marked in &marked_files {
+        let stem = marked
+            .file_stem()
+            .expect("marked file stem")
+            .to_string_lossy()
+            .into_owned();
+        fixture_stems.insert(stem.clone());
+
         let source = std::fs::read(marked)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", marked.display()));
-        let expected_path = docs_root.join(format!(
-            "{}.expected.json",
-            marked
-                .file_stem()
-                .expect("marked file stem")
-                .to_string_lossy()
-        ));
-        assert!(
-            expected_path.exists(),
-            "missing expected fixture for {} at {}",
-            marked.display(),
-            expected_path.display()
-        );
-
-        let expected_content = std::fs::read_to_string(&expected_path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {e}", expected_path.display()));
-        let expected: marque_test_utils::ExpectedFixture = serde_json::from_str(&expected_content)
-            .unwrap_or_else(|e| panic!("failed to parse {}: {e:?}", expected_path.display()));
         let result = engine.lint(&source);
 
-        for exp in &expected.diagnostics {
-            let found = result.diagnostics.iter().any(|d| {
-                d.rule.as_str() == exp.rule
-                    && d.span.start == exp.span.start
-                    && d.span.end == exp.span.end
-            });
-            assert!(
-                found,
-                "document fixture {} missing expected diagnostic {} at {}..{}",
-                marked.file_name().unwrap().to_string_lossy(),
-                exp.rule,
-                exp.span.start,
-                exp.span.end
-            );
+        let mut observed: HashMap<&str, usize> = HashMap::new();
+        for d in &result.diagnostics {
+            *observed.entry(d.rule.as_str()).or_insert(0) += 1;
+        }
+
+        let expected = lookup_expected_diagnostics(&stem);
+        let mut expected_by_rule: HashMap<&str, &ExpectedRuleCount> = HashMap::new();
+        for e in expected {
+            expected_by_rule.insert(e.rule, e);
+        }
+
+        // Check observed against pinned.
+        for (rule, observed_count) in &observed {
+            match expected_by_rule.get(rule) {
+                Some(pin) if pin.count == *observed_count => { /* match — clean */ }
+                Some(pin) => {
+                    let direction = if *observed_count < pin.count {
+                        "decreased (likely IMPROVEMENT — shrink pin)"
+                    } else {
+                        "increased (REGRESSION — investigate)"
+                    };
+                    let issue_ref = if pin.issue == 0 {
+                        "no issue (correct firing)".to_string()
+                    } else {
+                        format!("#{}", pin.issue)
+                    };
+                    violations.push(format!(
+                        "{stem}: rule {rule}: pinned {} ({}), observed {} — count {direction}\n    pin reason: {}",
+                        pin.count, issue_ref, observed_count, pin.reason
+                    ));
+                }
+                None => {
+                    violations.push(format!(
+                        "{stem}: rule {rule}: unexpected firing (observed {observed_count}, not in allowlist) — add a pin or fix the regression"
+                    ));
+                }
+            }
+        }
+
+        // Catch entries that pin a count but observe zero (full retirement).
+        for (rule, pin) in &expected_by_rule {
+            if !observed.contains_key(rule) {
+                let issue_ref = if pin.issue == 0 {
+                    "no issue (correct firing)".to_string()
+                } else {
+                    format!("#{}", pin.issue)
+                };
+                violations.push(format!(
+                    "{stem}: rule {rule}: pinned {} ({}) but engine emits 0 — IMPROVEMENT, remove pin\n    pin reason: {}",
+                    pin.count, issue_ref, pin.reason
+                ));
+            }
         }
     }
+
+    // Stale-pin guard: every pinned stem must correspond to a real fixture.
+    for (stem, _) in EXPECTED_DOCUMENT_DIAGNOSTICS {
+        if !fixture_stems.contains(*stem) {
+            violations.push(format!(
+                "EXPECTED_DOCUMENT_DIAGNOSTICS entry {stem:?} has no corresponding fixture in documents/marked/; remove the stale pin"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "{} violation(s) against EXPECTED_DOCUMENT_DIAGNOSTICS:\n  {}",
+        violations.len(),
+        violations.join("\n  ")
+    );
 }
