@@ -2265,11 +2265,40 @@ impl JointSet {
         }
 
         // Separate JOINT portions from non-JOINT portions.
+        //
+        // **Empty-producer JOINT portions are dropped at this point.**
+        // Per §H.3 p56, a JOINT portion REQUIRES `[LIST]` to be
+        // non-empty (USA + at least one co-owner). A portion with an
+        // empty producer list is malformed input — it MUST NOT
+        // contribute to the unanimity / disunity decision. Pre-fix,
+        // the unanimity check happened AFTER this point and only
+        // returned `Bottom` when ALL portions shared an empty list;
+        // a single malformed portion mixed with a well-formed one
+        // would fall into the disunity branch and emit a fake
+        // `DisunityCollapse` whose "non-US producer union" was just
+        // the well-formed portion's set.
+        //
+        // Dropping malformed portions at scan time keeps the
+        // remaining (well-formed) portions in the correct shape to
+        // drive the lattice state per the standard rules: zero
+        // remaining → `Bottom`; well-formed unanimous → `UnanimousProducers`;
+        // well-formed disagreement → `DisunityCollapse`.
+        //
+        // Authority: §H.3 p56 (JOINT grammar requires non-empty
+        // `[LIST]`). Verified 2026-05-15 against CAPCO-2016.md.
         let mut joint_portions: Vec<&JointClassification> = Vec::new();
         let mut has_non_joint = false;
         for p in portions {
             match &p.classification {
-                Some(MarkingClassification::Joint(j)) => joint_portions.push(j),
+                Some(MarkingClassification::Joint(j)) if !j.countries.is_empty() => {
+                    joint_portions.push(j)
+                }
+                // Malformed empty-producer JOINT: drop, treat as
+                // invisible to the JOINT axis. The portion is still
+                // a CanonicalAttrs entry on the page, so it doesn't
+                // count as "non-JOINT" either — the malformed shape
+                // contributes nothing.
+                Some(MarkingClassification::Joint(_)) => {}
                 Some(_) => has_non_joint = true,
                 None => has_non_joint = true,
             }
@@ -2287,7 +2316,8 @@ impl JointSet {
             return Self::Mixed;
         }
 
-        // All portions JOINT: check unanimity on producer lists.
+        // All (well-formed) portions JOINT: check unanimity on
+        // producer lists.
         let first_producers: BTreeSet<CountryCode> =
             joint_portions[0].countries.iter().copied().collect();
         let highest_level = joint_portions
@@ -2302,10 +2332,15 @@ impl JointSet {
         });
 
         if unanimous {
+            // Note: `first_producers` is guaranteed non-empty here
+            // because empty-producer portions were dropped above.
+            // The defensive `is_empty()` check at this site is
+            // therefore redundant post-fix; we keep an assertion-
+            // shaped early return for belt-and-braces (any future
+            // refactor that re-introduces empty-producer portions
+            // before this point will fail loud rather than producing
+            // a malformed `UnanimousProducers { producers: ∅ }`).
             if first_producers.is_empty() {
-                // Defensive: malformed JOINT (no producers). Return
-                // Bottom rather than an unrepresentable
-                // UnanimousProducers{}.
                 return Self::Bottom;
             }
             Self::UnanimousProducers {

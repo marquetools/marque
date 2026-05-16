@@ -1195,3 +1195,112 @@ fn solely_fgi_does_not_double_mark_fgi() {
         lat.fgi_marker
     );
 }
+// ===========================================================================
+// JointSet empty-producer defensive normalization (PR 4b-B 7th-pass)
+// ===========================================================================
+//
+// `JointSet::from_attrs_iter` had a defensive shape that returned
+// `Bottom` only when ALL JOINT portions shared an empty producer set.
+// If portion 1 had an empty producer list (malformed per §H.3 p56,
+// which requires `[LIST]` non-empty) and portion 2 had a non-empty
+// list, the unanimity check failed (sets differ), the code fell into
+// the disunity branch, and emitted a fake `DisunityCollapse` whose
+// "union of non-US producers" was just portion 2's set.
+//
+// Fix: drop empty-producer JOINT portions from the calculation
+// entirely. Per §H.3 p56 they're malformed and shouldn't contribute.
+// If all portions are dropped → `Bottom`. If only some are dropped →
+// the remaining portions drive the lattice state per the standard
+// rules.
+// ===========================================================================
+
+#[test]
+fn joint_with_empty_producer_portion_does_not_emit_fake_disunity() {
+    // Portion 1: malformed JOINT with empty producer list.
+    // Portion 2: well-formed JOINT with USA+GBR.
+    // Pre-fix: unanimity check failed (∅ != {USA,GBR}) → fell into
+    // disunity branch → emitted fake DisunityCollapse{non_us={GBR}}.
+    // Post-fix: portion 1 is dropped, portion 2 is the only JOINT
+    // portion, and the result is UnanimousProducers{level=S,
+    // producers={USA,GBR}}.
+    use marque_capco::JointSet;
+    let mut malformed = CanonicalAttrs::default();
+    malformed.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: Box::new([]), // empty producer list — malformed per §H.3 p56
+    }));
+    let well_formed = portion_joint(Classification::Secret, &["USA", "GBR"]);
+    let portions = [malformed, well_formed];
+    let s = JointSet::from_attrs_iter(&portions);
+    // Must not be DisunityCollapse — the empty-producer portion was
+    // malformed, not a real disagreement signal.
+    assert!(
+        !s.is_disunity_collapse(),
+        "JointSet must not emit fake DisunityCollapse from malformed empty-producer portion: {s:?}"
+    );
+    // Should be UnanimousProducers with USA+GBR (the remaining
+    // well-formed portion's producer list).
+    match s {
+        JointSet::UnanimousProducers { level, producers } => {
+            assert_eq!(level, Classification::Secret);
+            assert!(producers.contains(&cc("USA")));
+            assert!(producers.contains(&cc("GBR")));
+        }
+        other => {
+            panic!("expected UnanimousProducers after dropping malformed portion, got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn joint_with_only_empty_producer_portions_returns_bottom() {
+    // All JOINT portions have empty producer lists → all are dropped
+    // → result is Bottom (no JOINT portions to consider).
+    use marque_capco::JointSet;
+    let mut malformed1 = CanonicalAttrs::default();
+    malformed1.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: Box::new([]),
+    }));
+    let mut malformed2 = CanonicalAttrs::default();
+    malformed2.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Confidential,
+        countries: Box::new([]),
+    }));
+    let portions = [malformed1, malformed2];
+    let s = JointSet::from_attrs_iter(&portions);
+    assert!(
+        matches!(s, JointSet::Bottom),
+        "All-malformed-empty-producer JOINT portions must collapse to Bottom: {s:?}"
+    );
+}
+
+#[test]
+fn joint_two_well_formed_with_one_empty_disunity_drops_empty() {
+    // Three portions:
+    //   - JOINT S USA GBR (well-formed)
+    //   - JOINT S [] (malformed empty)
+    //   - JOINT S USA CAN (well-formed, disagrees with first)
+    // After dropping the malformed portion, the remaining two are
+    // genuine disunity → DisunityCollapse{non_us={GBR, CAN}}.
+    use marque_capco::JointSet;
+    let mut malformed = CanonicalAttrs::default();
+    malformed.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: Box::new([]),
+    }));
+    let portions = [
+        portion_joint(Classification::Secret, &["USA", "GBR"]),
+        malformed,
+        portion_joint(Classification::Secret, &["USA", "CAN"]),
+    ];
+    let s = JointSet::from_attrs_iter(&portions);
+    assert!(
+        s.is_disunity_collapse(),
+        "Two well-formed JOINT portions with disagreeing producers must yield DisunityCollapse: {s:?}"
+    );
+    let non_us = s.disunity_collapse_non_us_producers().expect("disunity");
+    assert!(non_us.contains(&cc("GBR")));
+    assert!(non_us.contains(&cc("CAN")));
+    assert!(!non_us.contains(&cc("USA")));
+}
