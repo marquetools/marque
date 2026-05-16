@@ -50,6 +50,7 @@
 pub(crate) mod render_aea;
 pub(crate) mod render_classification;
 pub(crate) mod render_declassify;
+pub(crate) mod render_display_only;
 pub(crate) mod render_dissem;
 pub(crate) mod render_fgi;
 pub(crate) mod render_non_ic_dissem;

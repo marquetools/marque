@@ -162,6 +162,16 @@ pub struct ParsedAttrs<'src> {
     /// Each entry retains its source byte slice.
     pub rel_to: Box<[ParsedRelToEntry<'src>]>,
 
+    /// DISPLAY ONLY country / country-group codes per CAPCO-2016 §H.8
+    /// p163. Grammar parallels REL TO (comma-separated trigraphs +
+    /// tetragraphs); semantics differ — DISPLAY ONLY is a foreign
+    /// **disclosure** decision (recipient may view, may not retain a
+    /// copy) while REL TO is a **release** decision (recipient may
+    /// retain). USA is NOT required in the DISPLAY ONLY list (release
+    /// to US recipients is implicit; the list names the foreign
+    /// audience that may view).
+    pub display_only_to: Box<[ParsedDisplayOnlyEntry<'src>]>,
+
     /// Declassification date (YYYY, YYYYMMDD, or ISO 8601). Holds an
     /// `IsmDate` (typed precision tier) plus the source-bytes slice.
     pub declassify_on: Option<ParsedDeclassifyOn<'src>>,
@@ -215,6 +225,7 @@ impl<'src> ParsedAttrs<'src> {
         dissem_nato: Box<[ParsedDissem<'src>]>,
         non_ic_dissem: Box<[ParsedNonIcDissem<'src>]>,
         rel_to: Box<[ParsedRelToEntry<'src>]>,
+        display_only_to: Box<[ParsedDisplayOnlyEntry<'src>]>,
         declassify_on: Option<ParsedDeclassifyOn<'src>>,
         classified_by: Option<&'src str>,
         derived_from: Option<&'src str>,
@@ -233,6 +244,7 @@ impl<'src> ParsedAttrs<'src> {
             dissem_nato,
             non_ic_dissem,
             rel_to,
+            display_only_to,
             declassify_on,
             classified_by,
             derived_from,
@@ -397,6 +409,31 @@ pub struct ParsedRelToEntry<'src> {
 }
 
 impl<'src> ParsedRelToEntry<'src> {
+    pub fn new(value: CountryCode, bytes: &'src str, span: Span) -> Self {
+        Self { value, bytes, span }
+    }
+}
+
+/// One DISPLAY ONLY country / country-group entry + source bytes.
+///
+/// Mirrors [`ParsedRelToEntry`] structurally because the comma-separated
+/// country-list grammar is identical for REL TO and DISPLAY ONLY per
+/// CAPCO-2016 §H.8 p150-151 (REL TO) and §H.8 p163 (DISPLAY ONLY). The
+/// semantics differ — DISPLAY ONLY is a *disclosure* decision (foreign
+/// recipient may view without retaining a copy) while REL TO is a
+/// *release* decision (recipient may retain) per §H.8 p163 Definition —
+/// but the per-entry shape (CountryCode + source bytes + span) is the
+/// same.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDisplayOnlyEntry<'src> {
+    pub value: CountryCode,
+    /// E.g., `"AFG"`, `"IRQ"`, `"NATO"`.
+    pub bytes: &'src str,
+    pub span: Span,
+}
+
+impl<'src> ParsedDisplayOnlyEntry<'src> {
     pub fn new(value: CountryCode, bytes: &'src str, span: Span) -> Self {
         Self { value, bytes, span }
     }

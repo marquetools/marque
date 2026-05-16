@@ -108,6 +108,13 @@ pub struct ProjectedMarking {
     /// REL TO list (intersection across portions, NOFORN-superseded).
     pub rel_to: Box<[CountryCode]>,
 
+    /// DISPLAY ONLY list (intersection-with-common-element across
+    /// portions per CAPCO-2016 §D.2 Table 3 row 25; also row 26
+    /// when a portion carries REL TO with overlap). Empty when no
+    /// portion contributes DISPLAY ONLY. NOFORN-superseded (DISPLAY
+    /// ONLY is mutually exclusive with NOFORN per §H.8 p163).
+    pub display_only_to: Box<[CountryCode]>,
+
     /// Most-conservative declassification date (max-end across
     /// portions).
     pub declassify_on: Option<IsmDate>,

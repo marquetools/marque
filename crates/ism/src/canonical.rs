@@ -116,6 +116,15 @@ pub struct CanonicalAttrs {
     /// REL TO country / country-group codes.
     pub rel_to: Box<[CountryCode]>,
 
+    /// DISPLAY ONLY country / country-group codes per CAPCO-2016
+    /// §H.8 p163. Parallel to [`Self::rel_to`] but a *disclosure*
+    /// decision (foreign recipient may view without retaining a
+    /// copy) rather than a *release* decision (recipient may retain).
+    /// USA is NOT required in this list — release to US recipients
+    /// is implicit; the list names only the foreign audience that
+    /// may view.
+    pub display_only_to: Box<[CountryCode]>,
+
     /// Declassification date from CAB (typed precision tier).
     pub declassify_on: Option<IsmDate>,
 
@@ -216,6 +225,7 @@ pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
         dissem_nato,
         non_ic_dissem,
         rel_to,
+        display_only_to,
         declassify_on,
         classified_by,
         derived_from,
@@ -258,6 +268,11 @@ pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
             .collect::<Vec<_>>()
             .into_boxed_slice(),
         rel_to: Vec::from(rel_to)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        display_only_to: Vec::from(display_only_to)
             .into_iter()
             .map(|p| p.value)
             .collect::<Vec<_>>()

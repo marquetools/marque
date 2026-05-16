@@ -630,6 +630,215 @@ fn rel_to_dedup_duplicates() {
 }
 
 // ===========================================================================
+// DISPLAY ONLY axis (CAPCO-2016 §A.6 p16, §H.8 p163-164, Table 4 §8 p36)
+// ===========================================================================
+
+#[test]
+fn display_only_single_country_banner() {
+    // Authority: CAPCO-2016 §H.8 p163 Example Banner Line:
+    // `SECRET//DISPLAY ONLY IRQ`.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.display_only_to = vec![cc("IRQ")].into();
+    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY IRQ");
+}
+
+#[test]
+fn display_only_multi_country_banner() {
+    // Authority: CAPCO-2016 §H.8 p163 Example Banner Line with
+    // Multiple Countries: `CONFIDENTIAL//DISPLAY ONLY AFG, IRQ`.
+    // §H.8 p164: "Country codes are listed alphabetically followed
+    // by tetragraph codes in alphabetical order."
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Confidential));
+    a.display_only_to = vec![cc("AFG"), cc("IRQ")].into();
+    assert_eq!(render_banner(a), "CONFIDENTIAL//DISPLAY ONLY AFG, IRQ");
+}
+
+#[test]
+fn display_only_input_order_normalized_to_alpha() {
+    // Authority: §H.8 p164 alphabetical sort. Input order in
+    // `display_only_to` must NOT leak into the rendered output;
+    // the renderer sorts every render.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.display_only_to = vec![cc("IRQ"), cc("AFG")].into();
+    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY AFG, IRQ");
+}
+
+#[test]
+fn display_only_no_usa_required() {
+    // Authority: §H.8 p163 — DISPLAY ONLY identifies the foreign
+    // audience permitted to view; USA is NOT prepended (compare
+    // REL TO §H.8 p150-151 which mandates USA-first because REL TO
+    // is a release decision that includes US release).
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.display_only_to = vec![cc("AFG")].into();
+    let rendered = render_banner(a);
+    assert!(
+        !rendered.contains("USA"),
+        "USA must not appear in DISPLAY ONLY banner; got {rendered:?}"
+    );
+}
+
+#[test]
+fn display_only_trigraphs_before_tetragraphs() {
+    // Authority: §H.8 p164 "Country codes [trigraphs] are listed
+    // alphabetically followed by tetragraph codes in alphabetical
+    // order." Mirrors REL TO bucket-sort.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.display_only_to = vec![cc("NATO"), cc("AFG"), cc("ACGU"), cc("IRQ")].into();
+    assert_eq!(
+        render_banner(a),
+        "SECRET//DISPLAY ONLY AFG, IRQ, ACGU, NATO"
+    );
+}
+
+#[test]
+fn display_only_dedupes_defensively() {
+    // Authority: §H.8 p163-164 implicitly admits set semantics
+    // (each country listed once); the lattice ensures this
+    // upstream, but the renderer dedupes defensively against
+    // partial / corrupted projections — same pattern as REL TO.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.display_only_to = vec![cc("AFG"), cc("IRQ"), cc("AFG")].into();
+    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY AFG, IRQ");
+}
+
+#[test]
+fn display_only_rel_to_commingling_uses_single_slash() {
+    // Authority: CAPCO-2016 §A.6 p16 dissem-category single-slash
+    // rule + §H.8 p165 Notional Example Page 5 portion form
+    // `(S//REL TO USA, IRQ/DISPLAY ONLY AFG)`. REL TO and DISPLAY
+    // ONLY are both in the §G.1 Table 4 row 8 dissem category;
+    // when commingled in the same dissem slot they MUST be
+    // `/`-separated, not `//`-separated. Copilot review on PR #445
+    // caught that the previous dispatch loop unconditionally
+    // inserted `//`, so this combination rendered as
+    // `//REL TO USA, IRQ//DISPLAY ONLY AFG` (wrong).
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.rel_to = vec![cc("USA"), cc("IRQ")].into();
+    a.display_only_to = vec![cc("AFG")].into();
+    assert_eq!(render_banner(a), "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG");
+}
+
+#[test]
+fn display_only_dissem_rel_to_three_way_commingling() {
+    // Three-way same-category commingling: ORCON + REL TO +
+    // DISPLAY ONLY. All three must be `/`-separated per §A.6 p16.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc].into();
+    a.rel_to = vec![cc("USA"), cc("IRQ")].into();
+    a.display_only_to = vec![cc("AFG")].into();
+    assert_eq!(
+        render_banner(a),
+        "SECRET//ORCON/REL TO USA, IRQ/DISPLAY ONLY AFG"
+    );
+}
+
+#[test]
+fn display_only_followed_by_non_ic_uses_double_slash() {
+    // Authority: CAPCO-2016 §A.6 p16 — non-IC dissem (§H.9) is
+    // its own major category, separated from §H.8 dissem (REL TO
+    // + DISPLAY ONLY + single-token dissems) by `//`. After this
+    // PR the render dispatch routes non-IC through CAT_NON_IC_DISSEM
+    // so the family check correctly emits `//` here, not `/`.
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.display_only_to = vec![cc("AFG")].into();
+    a.non_ic_dissem = vec![NonIcDissem::Les].into();
+    assert_eq!(render_banner(a), "SECRET//DISPLAY ONLY AFG//LES");
+}
+
+#[test]
+fn display_only_parse_canonical_render_round_trip() {
+    // Locks the full pipeline: parse (marque-core) → CanonicalAttrs
+    // → render (marque-capco). Copilot review on PR #445 caught
+    // that the new `display_only_to` axis on `CanonicalAttrs`
+    // initially had no renderer hook — parse → canonical → render
+    // would silently drop the DISPLAY ONLY block. This test pins
+    // the byte-identity of the canonical form across the pipeline.
+    use marque_core::Parser;
+    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::token_set::CapcoTokenSet;
+    let src = "SECRET//DISPLAY ONLY AFG, IRQ";
+    let tokens = CapcoTokenSet;
+    let parser = Parser::new(&tokens);
+    let candidate = MarkingCandidate {
+        span: Span::new(0, src.len()),
+        kind: MarkingType::Banner,
+    };
+    let parsed = parser
+        .parse(&candidate, src.as_bytes())
+        .expect("parse should succeed");
+    let canonical = marque_ism::from_parsed_unchecked(parsed.attrs);
+    let scheme = CapcoScheme::new();
+    let marking = CapcoMarking::from(canonical);
+    let mut out = String::new();
+    scheme
+        .render_canonical(&marking, Scope::Page, &mut out)
+        .expect("render must succeed");
+    assert_eq!(
+        out, src,
+        "parse → canonical → render must round-trip byte-identical"
+    );
+}
+
+#[test]
+fn display_only_h8_p165_commingled_portion_round_trip() {
+    // §H.8 p165 Notional Example Page 5 portion form
+    // `(S//REL TO USA, IRQ/DISPLAY ONLY AFG)`. Phase 1's full
+    // pipeline — parser (marque-core) + canonical (from_parsed)
+    // + render (this crate) — must round-trip the commingled
+    // form byte-identical now that the dispatch loop respects
+    // the single-slash dissem-family separator.
+    use marque_core::Parser;
+    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::token_set::CapcoTokenSet;
+    let src = "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG";
+    let tokens = CapcoTokenSet;
+    let parser = Parser::new(&tokens);
+    let candidate = MarkingCandidate {
+        span: Span::new(0, src.len()),
+        kind: MarkingType::Banner,
+    };
+    let parsed = parser
+        .parse(&candidate, src.as_bytes())
+        .expect("parse should succeed");
+    let canonical = marque_ism::from_parsed_unchecked(parsed.attrs);
+    let scheme = CapcoScheme::new();
+    let marking = CapcoMarking::from(canonical);
+    let mut out = String::new();
+    scheme
+        .render_canonical(&marking, Scope::Page, &mut out)
+        .expect("render must succeed");
+    assert_eq!(
+        out, src,
+        "§H.8 p165 commingled portion must round-trip byte-identical"
+    );
+}
+
+#[test]
+fn display_only_empty_emits_nothing() {
+    // Authority: render contract — empty axis must emit zero
+    // bytes (no trailing `//DISPLAY ONLY ` keyword without a
+    // list, no extra `//` separator).
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    // display_only_to defaults to empty
+    let rendered = render_banner(a);
+    assert!(
+        !rendered.contains("DISPLAY ONLY"),
+        "empty display_only_to must emit nothing; got {rendered:?}"
+    );
+}
+
+// ===========================================================================
 // Non-IC dissem axis (CAPCO-2016 §A.6 p16, §H.9, Table 4 §9 p36)
 // ===========================================================================
 
@@ -728,9 +937,17 @@ fn full_composition_class_sci_aea_dissem_relto() {
     .into();
     a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
     a.rel_to = vec![cc("USA"), cc("GBR")].into();
+    // Authority: CAPCO-2016 §A.6 p16 "Dissemination Control
+    // Markings ... A single forward slash with no interjected
+    // space must be used to separate multiple dissemination
+    // controls." ORCON, NOFORN, and REL TO are ALL in the §G.1
+    // Table 4 row 8 dissem category, so they MUST be `/`-separated.
+    // The pre-fix `//REL TO` separator was an implementation bug
+    // in the render dispatch loop (Copilot review on PR #445);
+    // the canonical form per §A.6 is `/REL TO` here.
     assert_eq!(
         render_banner(a),
-        "TOP SECRET//SI//ORCON/NOFORN//REL TO USA, GBR"
+        "TOP SECRET//SI//ORCON/NOFORN/REL TO USA, GBR"
     );
 }
 
