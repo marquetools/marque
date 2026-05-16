@@ -23,15 +23,16 @@ jobs:
       token: ${{ steps.get-token.outputs.token }}
       app-slug: ${{ steps.get-token.outputs.app-slug }}
       user-id: ${{ steps.get-token.outputs.app-user-id }}
+      oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
         with:
-          token: ${{ inputs.github_token }}
+          token: ${{ secrets.GITHUB_TOKEN || github.token }}
           fetch-depth: 1
       - name: Get token
         id: get-token
-        uses: marquetools/.github/.github/actions/mint-token
+        uses: marquetools/.github/.github/actions/mint-token@36624ef13b4142fbe046c9cc518446293dd6e74e
         with:
           permission-issues: write
           permission-pull-requests: write
@@ -52,15 +53,14 @@ jobs:
           contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.issue.author_association)
       )
     needs: token
-    uses: marquetools/.github/.github/workflows/claude-code-review.yml
+    uses: marquetools/.github/.github/workflows/claude-code-review.yml@36624ef13b4142fbe046c9cc518446293dd6e74e
     permissions:
       contents: read
       pull-requests: write
-      issues: read
-      id-token: write
+      issues: write
       actions: read # Required for Claude to read CI results on PRs
     with:
-      claude_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      claude_token: ${{ needs.token.outputs.oauth-token }}
       github_token: ${{ needs.token.outputs.token }}
       app_slug: ${{ needs.token.outputs.app-slug }}
       user_id: ${{ needs.token.outputs.user-id }}
