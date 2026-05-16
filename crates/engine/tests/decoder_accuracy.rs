@@ -366,7 +366,7 @@ fn deep_cx() -> ParseContext {
 /// "expected attrs" and must be flagged separately (see
 /// `expected_form_parses_strictly`).
 fn parse_expected(strict: &StrictRecognizer, expected: &str) -> Option<CapcoMarking> {
-    match strict.recognize(expected.as_bytes(), &deep_cx()) {
+    match strict.recognize(expected.as_bytes(), 0, &deep_cx()) {
         Parsed::Unambiguous(m) => Some(m),
         // The strict recognizer collapses to `Ambiguous { vec![] }`
         // on parse failure; `Unambiguous` is the only form that can
@@ -473,9 +473,11 @@ fn run_sweep() -> AccuracyReport {
             }
         };
 
-        let (verdict, recognition, is_resolved) = match decoder
-            .recognize(case.fixture.observed.as_bytes(), &deep_cx())
-        {
+        let (verdict, recognition, is_resolved) = match decoder.recognize(
+            case.fixture.observed.as_bytes(),
+            0,
+            &deep_cx(),
+        ) {
             Parsed::Unambiguous(m) => {
                 let r = unambiguous_recognition_score(&m);
                 let attrs_match = same_meaning(&m.0, &expected_marking.0);
