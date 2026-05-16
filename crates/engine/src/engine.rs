@@ -702,13 +702,31 @@ impl Engine {
         // non-truncated completion.
         let candidates_total = candidates.len();
         let mut candidates_processed: usize = 0;
+        // Counts every `Parsed::Unambiguous` recognition this lint
+        // pass produces (distinct from `parsed_markings.len()`, which
+        // tracks only FixIntent-bearing candidates under issue
+        // #433's deferred cache). Returned in `LintResult` so the
+        // R002 sentinel in `TwoPassFixer` can detect "pass-1 splice
+        // destroyed marking shape" against the broader "had any
+        // recognized marking" signal instead of the narrower
+        // "had a FixIntent-bearing marking."
+        let mut recognized_marking_count: usize = 0;
 
-        // Cache of successfully-recognized markings, keyed by the
-        // scanner candidate's source-relative `Span`. Populated below
-        // immediately after each `Parsed::Unambiguous` recognition and
-        // consumed by `synthesize_intent_only_fixes` so the synthesis
-        // path looks up the same marking the lint phase saw — avoiding
-        // the `ParseContext` divergence Copilot finding #2 flagged.
+        // Cache of recognized markings, keyed by the scanner
+        // candidate's source-relative `Span`. Consumed by
+        // `synthesize_intent_only_fixes` so the synthesis path looks
+        // up the same marking the lint phase saw — avoiding the
+        // `ParseContext` divergence Copilot PR #369 finding #2
+        // flagged.
+        //
+        // Population policy (issue #433): the cache populates lazily
+        // at the END of each candidate's iteration, gated on
+        // `d.fix.is_some()` for any diagnostic that iteration
+        // produced. Candidates that emit only `text_correction`,
+        // no-fix, or no diagnostics leave the cache untouched —
+        // `synthesize_intent_only_fixes` reads the cache only for
+        // FixIntent-bearing diagnostics, so the gate matches the
+        // consumer exactly.
         let mut parsed_markings: HashMap<Span, marque_capco::CapcoMarking> = HashMap::new();
 
         // corrections_arc was built once at Engine construction; each clone here
@@ -807,6 +825,7 @@ impl Engine {
                         truncated: true,
                         candidates_processed,
                         candidates_total,
+                        recognized_marking_count,
                         ..Default::default()
                     },
                     parsed_markings,
@@ -938,35 +957,53 @@ impl Engine {
                 continue;
             }
             let bytes = &source[start..end];
-            let Parsed::Unambiguous(mut marking) =
-                self.recognizer.recognize(bytes, start, &parse_cx)
+            let Parsed::Unambiguous(marking) = self.recognizer.recognize(bytes, start, &parse_cx)
             else {
                 continue;
             };
-            // Cache the recognized marking before destructuring so
-            // `synthesize_intent_only_fixes` can recover it by
-            // candidate span without re-parsing under a divergent
-            // `ParseContext` (Copilot PR #369 finding #2). The clone
-            // path here is bounded by the candidate count — same cost
-            // shape as the existing `CapcoMarking::from(attrs.clone())`
-            // construction the constraint bridge does below at the
-            // `has_diagnostic_constraints()` arm.
-            parsed_markings.insert(candidate.span, marking.clone());
-            // Capture the decoder-provenance side channel before
-            // collapsing the marking onto its `CanonicalAttrs` payload.
-            // Strict-path recognizers leave this `None`; the decoder
-            // populates it with the canonical bytes / posterior /
-            // features the engine needs to mint a
-            // `FixSource::DecoderPosterior` diagnostic below.
-            let provenance = marking.1.take();
+            recognized_marking_count += 1;
+            // Issue #433: defer the `parsed_markings` cache insert
+            // until the end of this iteration, so we know whether any
+            // diagnostic for this candidate carries a `FixIntent`.
+            // `synthesize_intent_only_fixes` reads the cache ONLY for
+            // diagnostics with `fix.is_some()`; candidates that
+            // produce no FixIntent (the common case — most
+            // diagnostics are text corrections or non-fix violations)
+            // leave the cache untouched.
+            //
+            // The ParseContext-divergence rationale from the original
+            // eager-cache site (Copilot PR #369 finding #2) is
+            // preserved: the same `attrs` + `marking.1` values the
+            // recognizer produced from this candidate's `parse_cx`
+            // flow into the cache. The synthesis path never re-parses;
+            // the deferral changes *when* the cache populates, not
+            // *what* it holds.
+            //
+            // Snapshot `diagnostics.len()` here so the end-of-iteration
+            // check can scan only the entries this candidate added.
+            let diagnostics_pre_candidate = diagnostics.len();
+            // Partial-move on `marking`: `attrs` consumes `marking.0`
+            // by value (#434's shape — `page_context.add_portion`
+            // consumes attrs at end-of-iteration, no clone). The
+            // remaining `marking.1: Option<DecoderProvenance>` stays
+            // accessible for both the decoder-path emit below (via
+            // `as_ref()` to keep it intact) and the end-of-iteration
+            // cache reconstruction.
             let attrs = marking.0;
+            // Strict-path recognizers leave `marking.1` as `None`; the
+            // decoder populates it with the canonical bytes /
+            // posterior / features the engine needs to mint a
+            // `FixSource::DecoderPosterior` diagnostic below.
+            // `as_ref()` (rather than `.take()`) preserves the
+            // provenance value so it can be moved into the cache at
+            // end-of-iteration alongside `attrs`.
 
             // FR-011 strict-floor accumulator: only strict-path
             // recognitions raise the floor. A decoder-path
-            // recognition (provenance.is_some()) does not — we cannot
+            // recognition (`marking.1.is_some()`) does not — we cannot
             // let a probabilistic recovery self-justify by raising
             // the threshold it then clears.
-            if provenance.is_none() {
+            if marking.1.is_none() {
                 if let Some(level) = attrs
                     .classification
                     .as_ref()
@@ -988,12 +1025,12 @@ impl Engine {
             // `runner_up_ratio = Some(r)`, non-empty `features`). The
             // fix participates in the regular confidence-threshold
             // gate inside `Engine::fix_inner`.
-            if let Some(prov) = provenance {
+            if let Some(prov) = marking.1.as_ref() {
                 let span = Span::new(start, end);
                 if let Some(diagnostic) = build_decoder_diagnostic(
                     span,
                     bytes,
-                    &prov,
+                    prov,
                     candidate.kind,
                     self.corpus_override_active(),
                 ) {
@@ -1439,27 +1476,49 @@ impl Engine {
                 ));
             }
 
-            // Issue #434 (Option C): consume `attrs` into the page
-            // context at the end of the iteration instead of cloning
-            // it earlier. Two properties make the move safe:
+            // Issue #433 + #434 end-of-iteration synthesis: decide
+            // cache-insert (#433) AND page-context accumulation (#434)
+            // by candidate.kind × intent_emitted. The four arms
+            // combine both wins:
             //
-            // 1. All in-iteration reads of `attrs` precede this block
-            //    by construction — this is the last statement of the
-            //    loop body before the closing brace. The borrow
-            //    checker enforces the invariant: any future read added
-            //    above this point continues to compile; any read added
-            //    below this point fails to compile.
-            // 2. Cross-iteration ordering is preserved: a subsequent
-            //    banner / CAB candidate's `ctx_page` is built from the
-            //    `page_context` mutated below, and `page_context_arc /
-            //    page_marking_arc` invalidation also happens below so
-            //    the next non-Portion iteration's lazy `get_or_insert_with`
-            //    rebuilds from the updated page context. Portion-kind
-            //    candidates never read `ctx_page` / `ctx_page_marking`
-            //    (both gated on `candidate.kind != MarkingType::Portion`),
-            //    so the move-vs-clone does not change what any rule sees.
+            //   - `marking.1` (the provenance Option) is moved into the
+            //     cache by value alongside the attrs, preserving the
+            //     decoder's `Some(...)` payload (Copilot PR #369
+            //     finding #2 — the same recognition the lint phase
+            //     saw flows into `synthesize_intent_only_fixes`).
+            //   - For non-Portion candidates we never call
+            //     `add_portion`, so attrs simply moves into the cache
+            //     (when an intent fires) or drops (otherwise) — no
+            //     clones.
+            //   - For Portion candidates WITHOUT an intent, attrs
+            //     moves into `add_portion` — #434's by-value win
+            //     stays intact for the common path.
+            //   - For Portion candidates WITH an intent (rare:
+            //     E014 JOINT-RELTO, E021 AEA-NOFORN, and similar
+            //     FactAdd rules), we must satisfy both consumers,
+            //     so we clone attrs once. The clone cost is bounded
+            //     by the (already-rare) Portion+intent intersection.
+            //
+            // `diagnostics_pre_candidate` is captured at the top of
+            // this iteration before any diagnostic-emitting site
+            // fires. The slice bound scopes the predicate to
+            // diagnostics this candidate added — any new
+            // diagnostic-emitting site added between the snapshot and
+            // this block MUST stay above this block for the predicate
+            // to remain accurate.
+            let intent_emitted = diagnostics[diagnostics_pre_candidate..]
+                .iter()
+                .any(|d| d.fix.is_some());
             if candidate.kind == MarkingType::Portion {
-                page_context.add_portion(attrs);
+                if intent_emitted {
+                    parsed_markings.insert(
+                        candidate.span,
+                        marque_capco::CapcoMarking(attrs.clone(), marking.1),
+                    );
+                    page_context.add_portion(attrs);
+                } else {
+                    page_context.add_portion(attrs);
+                }
                 // Invalidate the cached Arc so the next banner/CAB gets a
                 // fresh snapshot. We rebuild it lazily above on the next
                 // iteration when a non-Portion candidate arrives.
@@ -1467,6 +1526,9 @@ impl Engine {
                 // PR 9b (T133): the projected page marking also goes
                 // stale when a new portion arrives.
                 page_marking_arc = None;
+            } else if intent_emitted {
+                parsed_markings
+                    .insert(candidate.span, marque_capco::CapcoMarking(attrs, marking.1));
             }
         }
 
@@ -1583,6 +1645,7 @@ impl Engine {
                 truncated: false,
                 candidates_processed,
                 candidates_total,
+                recognized_marking_count,
                 ..Default::default()
             },
             parsed_markings,
@@ -2159,8 +2222,26 @@ impl<'engine> TwoPassFixer<'engine> {
                 // partial cleanups): if the pre-pass-1 buffer had ≥1
                 // marking AND the post-pass-1 buffer has zero, the
                 // pass-1 splice destroyed marking shape.
-                let post_pass1_had_no_markings = new_markings.is_empty();
-                let pre_pass1_had_markings = !parsed_markings.is_empty();
+                // Issue #433 note on the sentinel signals: the
+                // R002 trigger is "pre had recognized markings AND
+                // post has zero." Under #433's deferred cache,
+                // `parsed_markings.is_empty()` no longer answers
+                // "had any recognized marking" — only "had any
+                // FixIntent-bearing marking." So both sides of the
+                // conjunction now read `LintResult
+                // .recognized_marking_count`, which is incremented
+                // on every `Parsed::Unambiguous` recognition and
+                // is independent of the cache-population gate.
+                // Using the cache-emptiness signal here would
+                // produce both false negatives (pre had only
+                // text-correction-emitting markings and pass-1
+                // destroyed them — sentinel never fires) and
+                // false positives (pass-1 fixed the only
+                // FixIntent issue and the re-lint cleanly parses
+                // — sentinel fires spuriously). The recognized-
+                // count signal avoids both.
+                let post_pass1_had_no_markings = relint.recognized_marking_count == 0;
+                let pre_pass1_had_markings = lint.recognized_marking_count > 0;
                 if post_pass1_had_no_markings && pre_pass1_had_markings {
                     let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
                     let failure_span = Span::new(0, pass1.post_buffer.len());
@@ -6182,27 +6263,36 @@ mod tests {
 
     #[test]
     fn find_containing_marking_returns_some_when_span_inside() {
-        // Build a parsed_markings map with one entry and look up a
-        // sub-span. We use `lint_with_options_internal` indirectly via
-        // a real engine to get a real `CapcoMarking` value — the
-        // function under test just keys on `Span`.
-        let engine = engine_with(vec![]);
-        let (_lint, markings) =
-            engine.lint_with_options_internal(TEST_SRC, &LintOptions::default());
-        assert!(!markings.is_empty(), "test source should parse");
-        let any_span = *markings.keys().next().unwrap();
-        // A sub-span inside any_span resolves to any_span.
-        let sub = Span::new(any_span.start, any_span.start + 1);
+        // Construct a synthetic `parsed_markings` directly. Issue #433
+        // made the engine's cache populate lazily (only when a
+        // diagnostic with `fix.is_some()` is emitted for the
+        // candidate), so a fixture that exercises the cache via
+        // `lint_with_options_internal` would need a FixIntent-emitting
+        // input. The function under test (`find_containing_marking`)
+        // keys on `Span` only — building the map directly tests the
+        // lookup semantics without coupling to engine cache policy.
+        let mut markings: std::collections::HashMap<Span, marque_capco::CapcoMarking> =
+            std::collections::HashMap::new();
+        let marking_span = Span::new(0, 13);
+        markings.insert(
+            marking_span,
+            marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+        );
+        // A sub-span inside marking_span resolves to marking_span.
+        let sub = Span::new(marking_span.start, marking_span.start + 1);
         let found = super::find_containing_marking(&markings, sub);
-        assert_eq!(found, Some(any_span));
+        assert_eq!(found, Some(marking_span));
     }
 
     #[test]
     fn find_containing_marking_returns_none_when_no_marking_contains() {
-        let engine = engine_with(vec![]);
-        let (_lint, markings) =
-            engine.lint_with_options_internal(TEST_SRC, &LintOptions::default());
-        // Way past the end of the source — no marking spans this far.
+        let mut markings: std::collections::HashMap<Span, marque_capco::CapcoMarking> =
+            std::collections::HashMap::new();
+        markings.insert(
+            Span::new(0, 13),
+            marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+        );
+        // Way past the inserted marking span — no marking contains it.
         let far = Span::new(10_000, 10_001);
         let found = super::find_containing_marking(&markings, far);
         assert!(found.is_none());
@@ -6345,6 +6435,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(
             smallvec::smallvec![RuleId::new("E006")],
@@ -6392,6 +6483,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);
@@ -6432,6 +6524,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), dropped, pass1, lint, r002);
@@ -6489,6 +6582,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);

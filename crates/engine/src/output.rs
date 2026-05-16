@@ -69,6 +69,17 @@ pub struct LintResult {
     /// post-scanner, pre-rule-loop count). Populated from the
     /// scanner output regardless of whether the pass completed.
     pub candidates_total: usize,
+    /// Number of candidates that produced a `Parsed::Unambiguous`
+    /// recognition (i.e., the recognizer returned a marking, not
+    /// `Ambiguous`). Distinct from `candidates_processed`, which
+    /// counts every iteration the engine started — including
+    /// ambiguous-recognition skips and page-break resets. Used by
+    /// `TwoPassFixer`'s R002 trigger to detect "pass-1 splice
+    /// destroyed marking shape" without depending on the issue
+    /// #433 deferred `parsed_markings` cache, whose population is
+    /// gated on `d.fix.is_some()` and so does not reflect every
+    /// recognized marking.
+    pub recognized_marking_count: usize,
 }
 
 impl LintResult {
