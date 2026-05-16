@@ -1122,23 +1122,31 @@ impl Lattice for AeaSet {
 ///
 /// §-authority (verified 2026-05-16 against CAPCO-2016.md):
 /// - §H.1 pp47-54 (US class chain).
-/// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain).
+/// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain
+///   and to Manual Appendix A for FVEY equivalence).
 /// - §H.7 pp123-125 (FGI grammar — supports the reciprocal-
 ///   classification convention applied at portion-parse time).
-/// - Appendix A "Non-US Protective Markings (includes the Five
-///   Eyes Marking Comparisons)" (per §C.1 p303 / §G.1 p765 cross-
-///   reference) — the equivalence table grounding the
-///   `us_equivalent()` mapping from NATO levels to US levels.
+///
+/// Manual Appendix A "Non-US Protective Markings (includes the
+/// Five Eyes Marking Comparisons)" is referenced from §A.4 Table 1
+/// p14 and §H.2 p55. It is the equivalence table that grounds the
+/// `us_equivalent()` mapping from NATO levels to US levels, but
+/// Appendix A is not vendored in `crates/capco/docs/CAPCO-2016.md`
+/// (the markdown extract covers the lettered sections of the
+/// Manual body — A through K — only, not the Appendices); the
+/// appendix is an out-of-tree cross-reference, parallel to ISOO
+/// section 3.3 in the `DeclassifyOnLattice` doc-comment.
 ///
 /// **CV-3 (PR 4b-B 8th-pass follow-up).** Pre-CV-3 wording listed
 /// `§A.4 p13 (IC Markings System Structure — classification hierarchy)`.
 /// Verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`:
 /// §A.4 p13 is a one-paragraph framing of "IC Markings System
-/// Structure" + Table 1 IC Markings System Artifacts; it does NOT
-/// enumerate the classification hierarchy. The §H.1 + §H.2 + Appendix A
-/// citations above carry the hierarchy + reciprocal-mapping
-/// authority that the lattice actually relies on; §A.4 p13 was
-/// decorative.
+/// Structure"; the §A.4 Table 1 IC Markings System Artifacts (which
+/// names Appendix A as the FVEY equivalence reference) lands on
+/// p14, not p13. Neither sub-page enumerates the classification
+/// hierarchy itself. The §H.1 + §H.2 + Manual Appendix A citations
+/// above carry the hierarchy + reciprocal-mapping authority that
+/// the lattice actually relies on; §A.4 p13 was decorative.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClassificationLattice(Option<MarkingClassification>);
 
