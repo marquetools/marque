@@ -32,7 +32,10 @@ marque-capco = { workspace = true }
 marque-config = { workspace = true, features = ["toml-loader"] }
 marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
-marque-ism = { workspace = true }
+# CLI opts into jiff-backed date validation; the workspace pin keeps
+# `default-features = false` so the WASM build inherits the hand-rolled
+# Gregorian path (issue #455).
+marque-ism = { workspace = true, features = ["dates"] }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 serde = { workspace = true }

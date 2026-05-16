@@ -37,6 +37,12 @@ marque-capco = { workspace = true }
 marque-config = { workspace = true, features = ["toml-loader"] }
 marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
+# Server opts into jiff-backed date validation; the workspace pin keeps
+# `default-features = false` so the WASM build inherits the hand-rolled
+# Gregorian path (issue #455). The server doesn't import `IsmDate`
+# directly, but feature unification means this turns `dates` on for the
+# whole native build graph (marque-engine, marque-capco, marque-core).
+marque-ism = { workspace = true, features = ["dates"] }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 serde = { workspace = true }
