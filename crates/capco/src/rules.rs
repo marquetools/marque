@@ -5112,10 +5112,21 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // OR portion). The W004 message identifies the transformation
         // by name and category ID; producer trigraphs and the JOINT
         // category label are canonical vocabulary, not document bytes.
+        //
+        // CV-4 (PR 4b-B 8th-pass follow-up): cite §H.3 p57 + §H.7 p123
+        // in both the message text AND the Diagnostic.citation field
+        // (pre-CV-4 the citation said `§H.3 p56` which is the JOINT
+        // grammar page; the load-bearing migration trigger is on p57
+        // in the "Derivative Use" bullets — "The banner line contains
+        // the following: ... The FGI marking including all
+        // trigraph/tetragraph codes identified in the JOINT
+        // portion(s)"). §H.7 p123 grounds the FGI grammar the
+        // migrated producers render under. Verified 2026-05-16
+        // against `crates/capco/docs/CAPCO-2016.md`.
         let message = format!(
             "joint-disunity-collapse: portions on this page carry distinct \
              JOINT producer lists; banner cannot roll up JOINT. Non-US \
-             producers migrate to FGI [{producers_str}] per §H.7 p123."
+             producers migrate to FGI [{producers_str}] per §H.3 p57 + §H.7 p123."
         );
 
         vec![Diagnostic::new(
@@ -5123,7 +5134,7 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
             self.default_severity(),
             ctx.candidate_span,
             message,
-            "CAPCO-2016 §H.3 p56 + §H.7 p123",
+            "CAPCO-2016 §H.3 p57 + §H.7 p123",
             None,
         )]
     }
