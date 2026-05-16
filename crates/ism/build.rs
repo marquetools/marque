@@ -1556,7 +1556,11 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
         // size — avg ~100-300 bytes per token across 347 rows). Read
         // only by audit-record narration paths that have no production
         // call sites today (issue #453).
-        let desc_lit: &str = if is_wasm { "" } else { entry.description.as_str() };
+        let desc_lit: &str = if is_wasm {
+            ""
+        } else {
+            entry.description.as_str()
+        };
         writeln!(
             content,
             "    TokenMetadataEntry {{ value: {value:?}, description: {desc:?}, cve_file: &{cve_file} }},",
