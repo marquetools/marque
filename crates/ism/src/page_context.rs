@@ -606,7 +606,7 @@ impl PageContext {
         // Step 3 (retired in PR 4b-C Commit 5, 006 T112): FOUO eviction
         // migrated to the declarative PageRewrite catalog.
         //
-        // The pre-deletion behaviour stripped FOUO whenever the page
+        // The pre-deletion behavior stripped FOUO whenever the page
         // was classified OR DSEN was present in any portion, citing
         // CAPCO-2016 §H.8 p134. That logic now lives in two
         // declarative rows on `CapcoScheme`:
@@ -617,16 +617,16 @@ impl PageContext {
         //     `capco/non-fdr-control-evicts-fouo` (Commit 4, §H.8 p134
         //     "UNCLASSIFIED with FOUO and other dissemination control
         //     markings, excluding any FD&R markings" sub-clause). The
-        //     DSEN-triggered strip is one specialisation of the
+        //     DSEN-triggered strip is one specialization of the
         //     non-FD&R-other-control trigger.
         //
-        // Engine-crate touch authorised under Constitution VII §IV
+        // Engine-crate touch authorized under Constitution VII §IV
         // within-006 precedent (PR 4b-B Commit 2 / §7.B): this is a
         // refactor of the engine + rule architecture together, not a
         // scheme-adoption PR. The 7 PR 4b-C Pattern-C strip rows + 2
         // Pattern-B structural rows are the single source of truth.
         //
-        // Transitional behaviour: `Engine::lint` continues to drive
+        // Transitional behavior: `Engine::lint` continues to drive
         // banner-validation through this `expected_dissem_us`
         // accessor until PR 4b-D wires the lattice path. Until then,
         // banner-validation observed via PageContext directly will
@@ -1130,7 +1130,7 @@ impl PageContext {
         // UCNI/DCNI eviction (retired in PR 4b-C Commit 5, 006 T112):
         // migrated to the declarative PageRewrite catalog.
         //
-        // The pre-deletion behaviour was to drop UCNI silently when
+        // The pre-deletion behavior was to drop UCNI silently when
         // the page was classified — but the §H.6 p116 (DOD UCNI /
         // DCNI) and §H.6 p118 (DOE UCNI) Precedence Rules also
         // mandate NOFORN promotion ("NOFORN must be applied if a less
@@ -1152,11 +1152,11 @@ impl PageContext {
         //     `capco/doe-ucni-evicted-by-classified` (§H.6 p118) —
         //     mirror pair for DOE UCNI.
         //
-        // Engine-crate touch authorised under Constitution VII §IV
+        // Engine-crate touch authorized under Constitution VII §IV
         // within-006 precedent (PR 4b-B Commit 2 / §7.B): bugfix-class
         // deletion in `marque-ism`.
         //
-        // Transitional behaviour: `Engine::lint` drives banner-
+        // Transitional behavior: `Engine::lint` drives banner-
         // validation through this `expected_aea_markings` accessor
         // until PR 4b-D wires the lattice path. Until then, UCNI may
         // appear in classified banners observed via PageContext
@@ -2071,7 +2071,7 @@ mod tests {
     // The pre-PR-4b-C `expected_aea_markings` branch stripped UCNI
     // silently on classified pages WITHOUT the §H.6 NOFORN-promotion
     // clause — Commit 2's RED regression test pinned that wrong
-    // behaviour. Commit 5 (this commit) deletes the buggy branch.
+    // behavior. Commit 5 (this commit) deletes the buggy branch.
     // The post-fix correctness assertion lives at the lattice level
     // in `crates/capco/tests/page_context_lattice_parity.rs` —
     // specifically the

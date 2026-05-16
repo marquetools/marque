@@ -1915,7 +1915,7 @@ fn strip_doe_ucni_action(m: &mut CapcoMarking) {
 // `Vocabulary::is_fdr_dissem` is the authoritative FD&R-membership
 // API (`crates/scheme/src/vocabulary.rs:382`; CapcoScheme override at
 // `crates/capco/src/vocabulary.rs:1093`). It iterates `FDR_DOMINATORS`
-// — which INCLUDES RELIDO. The neighbouring `is_fdr_dominator`
+// — which INCLUDES RELIDO. The neighboring `is_fdr_dominator`
 // function deliberately EXCLUDES RELIDO; it answers a different
 // question (RELIDO-conflict dominators) and is the wrong helper here.
 // See the `scheme.rs:5018-5039` doc-comment on `FDR_DOMINATORS` for
@@ -2013,7 +2013,7 @@ fn fouo_with_non_fdr_other_control_trigger(m: &CapcoMarking) -> bool {
 /// `Vocabulary::is_fdr_dissem` membership lookup.
 ///
 /// Mirrors the `dissem_to_tok` arms scattered through `scheme.rs`
-/// (no centralised helper exists at PR 4b-C time). Variants without
+/// (no centralized helper exists at PR 4b-C time). Variants without
 /// a TOK_* sentinel return `None`; the caller treats those as
 /// non-FD&R (correct by inspection — FD&R members all have
 /// TOK_* sentinels).
