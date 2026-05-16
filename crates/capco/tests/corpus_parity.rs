@@ -250,25 +250,28 @@ fn rule_count_reflects_registration_changes() {
 }
 
 #[test]
-fn phase_3_declares_twenty_one_page_rewrites_with_citations() {
+fn phase_3_declares_twenty_three_page_rewrites_with_citations() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
-        21,
-        "PR 4b-C Commit 3 adds 7 Pattern-C strip rows to the 14-row \
-         post-PR-4b-B catalog: \
-         `capco/limdis-evicted-by-classified` (CAPCO-2016 §H.9 p170), \
-         `capco/sbu-evicted-by-classified` (CAPCO-2016 §H.9 p176), \
-         `capco/dod-ucni-evicted-by-classified` (CAPCO-2016 §H.6 p116), \
-         `capco/dod-ucni-promotes-noforn-when-classified` (CAPCO-2016 \
-         §H.6 p116), `capco/doe-ucni-evicted-by-classified` (CAPCO-2016 \
-         §H.6 p118), `capco/doe-ucni-promotes-noforn-when-classified` \
+        23,
+        "PR 4b-C Commit 3 added 7 Pattern-C strip rows + Commit 4 added \
+         2 Pattern-B structural FOUO-eviction rows to the 14-row \
+         post-PR-4b-B catalog. \
+         Pattern-C: `capco/limdis-evicted-by-classified` (CAPCO-2016 \
+         §H.9 p170), `capco/sbu-evicted-by-classified` (CAPCO-2016 \
+         §H.9 p176), `capco/dod-ucni-evicted-by-classified` (CAPCO-2016 \
+         §H.6 p116), `capco/dod-ucni-promotes-noforn-when-classified` \
+         (CAPCO-2016 §H.6 p116), `capco/doe-ucni-evicted-by-classified` \
+         (CAPCO-2016 §H.6 p118), `capco/doe-ucni-promotes-noforn-when-classified` \
          (CAPCO-2016 §H.6 p118), `capco/fouo-evicted-by-classified` \
-         (CAPCO-2016 §H.8 p134). The pre-PR-4b-C count was 14 — see \
-         the PR 4b-B `nine page rewrites` historical note for the \
-         pre-existing catalog composition. PR 4b-C Commit 4 adds two \
-         more Pattern-B structural rows (target: 23)."
+         (CAPCO-2016 §H.8 p134). Pattern-B: \
+         `capco/classification-evicts-fouo` (CAPCO-2016 §H.8 p134) and \
+         `capco/non-fdr-control-evicts-fouo` (CAPCO-2016 §H.8 p134) — \
+         both quote the §H.8 p134 FOUO Precedence Rules passage but \
+         cite distinct sub-clauses (classified-document vs UNCLASSIFIED \
+         with other dissemination controls)."
     );
     for rw in rewrites {
         assert!(
@@ -292,27 +295,24 @@ fn phase_3_engine_lint_produces_wellformed_result_on_empty_input() {
 }
 
 #[test]
-fn phase_3_scheduler_exposes_twenty_one_scheduled_rewrites() {
+fn phase_3_scheduler_exposes_twenty_three_scheduled_rewrites() {
     // The scheduler produced a topological order at construction
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
     // property, not a declaration-order one.
     //
-    // Post-PR-4b-C Commit 3 set: the existing 14 rows (the retained
-    // `noforn-clears-rel-to` + 8 PR 3b.B transmutations + 2 PR 3c.B
-    // 8.F Pattern A NOFORN-implications + 2 PR 3c.B 8.F.2 Pattern A
-    // NOFORN-implications + `capco/noforn-clears-fdr-family`) plus
-    // 7 PR 4b-C Pattern-C strip rows (5 strip + 2 NOFORN-promote
-    // for UCNI). PR 4b-C Commit 4 adds two more Pattern-B structural
-    // rows; this test will then bump to 23.
+    // Post-PR-4b-C set: the existing 14 rows + 7 PR 4b-C Commit 3
+    // Pattern-C strip rows (5 strip + 2 NOFORN-promote for UCNI) +
+    // 2 PR 4b-C Commit 4 Pattern-B structural FOUO-eviction rows.
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    assert_eq!(scheduled.len(), 21);
+    assert_eq!(scheduled.len(), 23);
     let mut names: Vec<&str> = scheduled.to_vec();
     names.sort();
     assert_eq!(
         names,
         [
+            "capco/classification-evicts-fouo",
             "capco/dod-ucni-evicted-by-classified",
             "capco/dod-ucni-promotes-noforn-when-classified",
             "capco/doe-ucni-evicted-by-classified",
@@ -329,6 +329,7 @@ fn phase_3_scheduler_exposes_twenty_one_scheduled_rewrites() {
             "capco/nodis-implies-noforn",
             "capco/noforn-clears-fdr-family",
             "capco/noforn-clears-rel-to",
+            "capco/non-fdr-control-evicts-fouo",
             "capco/orcon-nato-to-us-orcon-on-us-contact",
             "capco/sbu-evicted-by-classified",
             "capco/sbu-nf-implies-noforn",
