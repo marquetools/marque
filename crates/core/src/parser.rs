@@ -2849,15 +2849,28 @@ fn find_display_only_slash_boundary(s: &str) -> Option<usize> {
     while search_from < bytes.len() {
         let slash_rel = s[search_from..].find('/')?;
         let slash_pos = search_from + slash_rel;
-        // Skip whitespace after the slash to tolerate `/ DISPLAY ONLY`.
+        // Skip ASCII whitespace after the slash to tolerate
+        // drift like `/ DISPLAY ONLY` or `/\tDISPLAY ONLY`.
+        // Uses `is_ascii_whitespace` to match the parser's
+        // existing within-category-separator tolerance in
+        // [`split_slash_with_separator_offsets`] — Copilot
+        // review on PR #445 flagged that the prior
+        // literal-space-only check was inconsistent with the
+        // rest of the parser's whitespace handling.
         let mut after_slash = slash_pos + 1;
-        while after_slash < bytes.len() && bytes[after_slash] == b' ' {
+        while after_slash < bytes.len() && bytes[after_slash].is_ascii_whitespace() {
             after_slash += 1;
         }
         if s[after_slash..].starts_with(KEYWORD) {
             let after_kw = after_slash + KEYWORD.len();
-            // Word boundary: end-of-string, whitespace, or another `/`.
-            if after_kw >= bytes.len() || bytes[after_kw] == b' ' || bytes[after_kw] == b'/' {
+            // Word boundary: end-of-string, ASCII whitespace, or
+            // another `/`. Matches the same predicate as the
+            // post-slash skip above so `DISPLAY ONLY\tAFG` and
+            // `DISPLAY ONLY AFG` both word-boundary correctly.
+            if after_kw >= bytes.len()
+                || bytes[after_kw].is_ascii_whitespace()
+                || bytes[after_kw] == b'/'
+            {
                 return Some(slash_pos);
             }
         }

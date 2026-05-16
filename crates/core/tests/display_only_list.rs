@@ -608,15 +608,43 @@ fn display_only_after_rel_to_with_trailing_dissem_before_commingling() {
 fn display_only_boundary_tolerates_whitespace_after_slash() {
     // Whitespace tolerance: `/ DISPLAY ONLY AFG, NATO` (space
     // after the slash before the keyword). The boundary detector
-    // skips ASCII spaces after the slash to match the parser's
-    // existing within-category-separator relaxation (CAPCO §A.6
-    // p16 forbids interjected whitespace but the corpus
-    // occasionally drifts).
+    // skips ASCII whitespace after the slash to match the
+    // parser's existing within-category-separator relaxation in
+    // `split_slash_with_separator_offsets` (CAPCO §A.6 p16
+    // forbids interjected whitespace but the corpus occasionally
+    // drifts).
     let attrs = parse_portion("(S//REL TO USA, IRQ/ DISPLAY ONLY AFG, NATO)");
     let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
     assert_eq!(rel, vec!["USA", "IRQ"]);
     let dox: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
     assert_eq!(dox, vec!["AFG", "NATO"]);
+}
+
+#[test]
+fn display_only_boundary_tolerates_tab_after_slash() {
+    // Copilot review on PR #445 caught that the boundary
+    // detector originally checked only literal `b' '` spaces,
+    // inconsistent with the rest of the parser's
+    // `is_ascii_whitespace`-based tolerance. After the fix, a
+    // tab between `/` and `DISPLAY ONLY` must also be tolerated.
+    let attrs = parse_portion("(S//REL TO USA, IRQ/\tDISPLAY ONLY AFG)");
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "tab after `/` should not block boundary detection; got Unknown spans: {:?}",
+        unknown
+            .iter()
+            .map(|t| (&*t.text, t.span.start, t.span.end))
+            .collect::<Vec<_>>()
+    );
+    let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(rel, vec!["USA", "IRQ"]);
+    let dox: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(dox, vec!["AFG"]);
 }
 
 #[test]

@@ -55,9 +55,9 @@ pub use generated::values::{
 };
 pub use page_context::{PageContext, sar_sort_key};
 pub use parsed::{
-    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDissem,
-    ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking, ParsedSciMarking,
-    SourceOrigin,
+    ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDisplayOnlyEntry,
+    ParsedDissem, ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking,
+    ParsedSciMarking, SourceOrigin,
 };
 pub use projected::{ProjectedMarking, ProjectionProvenance};
 pub use span::{DocumentPosition, MarkingCandidate, MarkingType, Span, Zone};
