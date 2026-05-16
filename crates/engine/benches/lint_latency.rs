@@ -56,7 +56,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, StrictRecognizer};
+use marque_engine::{Engine, FixMode, StrictRecognizer};
 use std::hint::black_box;
 use std::sync::Arc;
 
@@ -667,24 +667,41 @@ fn lint_intent_heavy_benchmark(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
-// Parsed-markings cache stress advisory bench (perf/parsed-markings-vec, issue #432)
+// Parsed-markings cache stress advisory benches (perf/parsed-markings-vec, issue #432)
 // ---------------------------------------------------------------------------
 //
-// `lint_parsed_markings_cache_stress` packs ~1000 FixIntent-emitting JOINT
-// portions into a single document so the `parsed_markings` cache populates
-// on every candidate (each E014 FactAdd diagnostic carries `fix.is_some()`).
-// This is the cache-pressure worst case the existing 200-candidate
-// `lint_high_candidate_count` bench can't reach — at 1000 keyed inserts
-// + 1000 keyed lookups the HashMap's SipHash + bucket-traversal constant
-// factor becomes visible against the alternative sorted-Vec /
-// binary_search shape.
+// Two paired benches measure the cache cost on opposite paths so the
+// decomposition is transparent. Both share the
+// `build_parsed_markings_cache_stress_input(1000)` fixture — 1000
+// E014-FactAdd-emitting JOINT portions packed without prose so the
+// cache populates on every candidate (each E014 diagnostic carries
+// `fix.is_some()`, triggering issue #433's deferred-cache insert
+// gate).
 //
-// Pair with `lint_10kb` (typical, intent-light) and `lint_intent_heavy_10kb`
-// (10KB intent-heavy) — together the three benches span the cache's
-// realistic load curve, with this fixture pinning the degenerate tail
-// case the issue calls out. Advisory bench — no entry in
-// `benches/baseline.json`. Report numbers in PRs that touch the cache
-// data structure; don't gate on it.
+//   - `lint_parsed_markings_cache_population_stress` — `Engine::lint`
+//     path. The public lint surface discards the parsed-markings
+//     cache via `.0`, so this measures cache POPULATION cost in
+//     isolation: per-candidate `push((span, marking))` plus the
+//     final drop. The Vec-vs-HashMap delta here is the pure
+//     SipHash + bucket-allocation savings.
+//
+//   - `fix_parsed_markings_cache_stress` — `Engine::fix` path. The
+//     full TwoPassFixer pipeline runs, including `synthesize_fixes`
+//     (point lookups via `lookup_marking`) and `find_containing_marking`
+//     (linear containment scans) against the same cache the lint
+//     phase populated. Cache population + lookup + splice + audit
+//     render are all in the measurement, so the cache-data-structure
+//     delta is amortized into the larger fix-pipeline cost. Worth
+//     measuring to verify the swap does not regress the user-facing
+//     fix path.
+//
+// Pair with `lint_10kb` (typical, intent-light) and
+// `lint_intent_heavy_10kb` (10KB intent-heavy) — together the four
+// benches span the cache's realistic load curve, with these two
+// fixtures pinning the degenerate tail case the issue calls out.
+// Advisory benches — no entries in `benches/baseline.json`. Report
+// numbers in PRs that touch the cache data structure; don't gate on
+// them.
 
 fn build_parsed_markings_cache_stress_input(candidate_count: usize) -> Vec<u8> {
     // Same E014 FactAdd shape as `build_intent_heavy_input` so each
@@ -708,7 +725,7 @@ fn build_parsed_markings_cache_stress_input(candidate_count: usize) -> Vec<u8> {
     input
 }
 
-fn lint_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
+fn lint_parsed_markings_cache_population_stress_benchmark(c: &mut Criterion) {
     let input = build_parsed_markings_cache_stress_input(1000);
     let engine = Engine::new(
         Config::default(),
@@ -717,12 +734,30 @@ fn lint_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
     )
     .expect("default CAPCO scheme has no rewrite cycles")
     // INTENTIONAL-STRICT: pin strict recognizer so the cache stress
-    // measurement isolates the (insert + lookup) cost from the
+    // measurement isolates the (insert + drop) cost from the
     // dispatcher's decoder fallback. Issue #432.
     .with_recognizer(Arc::new(StrictRecognizer::new()));
 
-    c.bench_function("lint_parsed_markings_cache_stress", |b| {
+    c.bench_function("lint_parsed_markings_cache_population_stress", |b| {
         b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+fn fix_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
+    let input = build_parsed_markings_cache_stress_input(1000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: same recognizer pin as the lint-side variant
+    // so the only measured delta between the two benches is the path
+    // (lint vs fix), not the recognizer choice. Issue #432.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("fix_parsed_markings_cache_stress", |b| {
+        b.iter(|| engine.fix(black_box(&input), FixMode::Apply));
     });
 }
 
@@ -736,7 +771,8 @@ criterion_group!(
     lint_portion_dense_benchmark,
     lint_high_candidate_count_benchmark,
     lint_intent_heavy_benchmark,
-    lint_parsed_markings_cache_stress_benchmark,
+    lint_parsed_markings_cache_population_stress_benchmark,
+    fix_parsed_markings_cache_stress_benchmark,
     decoder_deep_scan_mangled_benchmark,
     decoder_clean_input_through_fallback_benchmark,
 );

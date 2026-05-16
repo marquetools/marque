@@ -729,15 +729,23 @@ impl Engine {
         // consumer exactly.
         //
         // Storage shape (issue #432): a sorted `Vec<(Span, _)>` rather
-        // than a `HashMap`. Candidates traverse in source order, so
-        // pushes naturally keep the vector sorted by `Span.start` (the
-        // scanner emits disjoint non-overlapping spans with strictly
-        // increasing starts). Point lookups go through binary search
-        // on `Span.start`; containment scans stay linear (defect path,
-        // <100 markings typical per `find_containing_marking` doc).
-        // Cache-locality + no SipHash + no bucket traversal — measured
-        // worth it on the high-candidate stress bench
-        // (`lint_parsed_markings_cache_stress`).
+        // than a `HashMap`. Cache-insertion order tracks scanner-emitted
+        // candidate order, which `Scanner::scan` sorts by
+        // `(span.start, kind_sort_priority)`. At the scanner boundary
+        // co-located candidates exist (PageBreak gets priority 0 so it
+        // sorts before a same-start content candidate, ensuring the
+        // engine's PageContext reset runs first). PageBreak candidates
+        // hit the engine's early-`continue` BEFORE reaching the cache
+        // push site below, so the strictly-increasing-start invariant
+        // holds at the cache slice (cf. the `debug_assert!` on push
+        // below). Point lookups go through binary search on `Span.start`;
+        // containment scans stay linear (defect path, <100 markings
+        // typical per `find_containing_marking` doc). Cache-locality + no
+        // SipHash + no bucket traversal — see the paired stress benches
+        // `lint_parsed_markings_cache_population_stress` (lint path,
+        // isolates push/drop cost) and `fix_parsed_markings_cache_stress`
+        // (fix path, amortizes the cache delta into the full
+        // TwoPassFixer pipeline) for the measurement decomposition.
         let mut parsed_markings: Vec<(Span, marque_capco::CapcoMarking)> = Vec::new();
 
         // corrections_arc was built once at Engine construction; each clone here
@@ -1520,6 +1528,23 @@ impl Engine {
             let intent_emitted = diagnostics[diagnostics_pre_candidate..]
                 .iter()
                 .any(|d| d.fix.is_some());
+            // Issue #432 invariant: `parsed_markings` stays sorted by
+            // `Span.start` because PageBreak candidates are filtered
+            // above (early `continue`) and the remaining content
+            // candidates have distinct starts at the cache-insertion
+            // boundary. `lookup_marking`'s `binary_search_by_key` on
+            // `Span.start` is sound iff this holds. The assertion runs
+            // only in debug builds; the release path stays unconditional
+            // push.
+            debug_assert!(
+                parsed_markings
+                    .last()
+                    .is_none_or(|(prev, _)| prev.start < candidate.span.start),
+                "parsed_markings push violated strictly-increasing-start invariant: \
+                 prev.start={:?} candidate.span.start={}",
+                parsed_markings.last().map(|(s, _)| s.start),
+                candidate.span.start
+            );
             if candidate.kind == MarkingType::Portion {
                 if intent_emitted {
                     parsed_markings.push((
@@ -2700,12 +2725,14 @@ impl<'engine> TwoPassFixer<'engine> {
     /// dedupe to one cache entry. Inline-4 storage matches the
     /// existing Localized rule cap (C001 / E006 / E007 / S004).
     ///
-    /// The `parsed_markings` map is the pre-pass-1 cache from
-    /// `lint_with_options_internal`: its `CapcoMarking.0` is the
-    /// `CanonicalAttrs` snapshot the rule originally fired against.
-    /// Cloning the attrs is unavoidable here because the cache
-    /// outlives the `parsed_markings` map (the engine moves
-    /// `parsed_markings` into the re-parse arm).
+    /// The `parsed_markings` slice is the pre-pass-1 cache from
+    /// `lint_with_options_internal` (issue #432 swapped the storage
+    /// from `HashMap<Span, _>` to a sorted `Vec<(Span, _)>` for
+    /// cache-locality wins on high-candidate inputs): its
+    /// `CapcoMarking.0` is the `CanonicalAttrs` snapshot the rule
+    /// originally fired against. Cloning the attrs is unavoidable
+    /// here because the cache outlives the `parsed_markings` slice
+    /// (the engine moves the underlying `Vec` into the re-parse arm).
     fn populate_pre_pass_1_cache(
         &self,
         pass1_applied: &[AppliedFix<CapcoScheme>],
@@ -3026,13 +3053,22 @@ fn find_containing_marking(
 
 /// Point lookup for the recognized marking at exactly `span`.
 ///
-/// `parsed_markings` is sorted by `Span.start` because the scanner
-/// emits disjoint non-overlapping candidates in source order, so
-/// binary searching on `Span.start` is sound and finds the unique
-/// entry (if any). The post-search equality check protects the
-/// (currently impossible by construction) case where two cache
-/// entries share a start — preserving the prior `HashMap`'s
-/// full-`Span`-equality lookup semantics exactly.
+/// `parsed_markings` is sorted by `Span.start` because cache insertion
+/// happens AFTER the engine's early-`continue` filters PageBreak
+/// candidates out of the candidate stream. `Scanner::scan` sorts the
+/// raw stream by `(span.start, kind_sort_priority)` and can emit
+/// co-located candidates at the scanner boundary (PageBreak +
+/// content), but the engine's PageBreak `continue` happens above the
+/// cache push site, so the post-filter slice held by `parsed_markings`
+/// has strictly increasing starts. The push site enforces this via
+/// `debug_assert!`.
+///
+/// `binary_search_by_key` on `Span.start` therefore finds the unique
+/// entry (if any). The post-search equality check additionally
+/// validates `Span.end` — preserving the prior `HashMap`'s
+/// full-`Span`-equality lookup semantics exactly, and degrading
+/// gracefully to `None` in the (currently impossible by construction)
+/// degenerate case where two cache entries share a start.
 fn lookup_marking(
     parsed_markings: &[(Span, marque_capco::CapcoMarking)],
     span: Span,
@@ -3040,8 +3076,29 @@ fn lookup_marking(
     let idx = parsed_markings
         .binary_search_by_key(&span.start, |(s, _)| s.start)
         .ok()?;
-    let (s, m) = &parsed_markings[idx];
-    if *s == span { Some(m) } else { None }
+    // `binary_search_by_key` may land on ANY entry in a
+    // matching-start run, so the equality check on the landed entry
+    // alone could miss the target if a future scanner regression
+    // introduces duplicate starts. Walk the matching-start run
+    // (backward to the first matching-start entry, then forward to
+    // the last) and full-`Span`-equality-check each entry. By
+    // construction the cache slice has strictly-increasing starts
+    // (PageBreak filtered, debug_assert on push), so the walk
+    // collapses to a single iteration on the fast path — zero
+    // measurable cost relative to the prior `HashMap`'s single
+    // bucket probe.
+    let target_start = span.start;
+    let mut i = idx;
+    while i > 0 && parsed_markings[i - 1].0.start == target_start {
+        i -= 1;
+    }
+    while i < parsed_markings.len() && parsed_markings[i].0.start == target_start {
+        if parsed_markings[i].0 == span {
+            return Some(&parsed_markings[i].1);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// FR-016 sort + C-1 dedup walk extracted into a helper so pass-1
@@ -6365,6 +6422,45 @@ mod tests {
         // would silently regress if the search key changed from
         // `s.start` to something else.
         assert!(super::lookup_marking(&markings, Span::new(14, 19)).is_none());
+    }
+
+    #[test]
+    fn lookup_marking_walks_duplicate_start_run() {
+        // The cache's strictly-increasing-start invariant is enforced
+        // at the push site by a `debug_assert!`, but `lookup_marking`
+        // is defensive against future regressions: if duplicate-start
+        // entries ever sneak in, the binary search may land on the
+        // wrong same-start entry. The forward+backward walk over the
+        // matching-start run finds the target if it exists. This test
+        // builds a deliberately-degenerate slice (bypassing the engine
+        // push site) to pin the walk's correctness in isolation.
+        // Issue #432 + suppressed-comment follow-up on PR #481.
+        let target = Span::new(50, 65);
+        let markings: Vec<(Span, marque_capco::CapcoMarking)> = vec![
+            (
+                Span::new(50, 55),
+                marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+            ),
+            (
+                Span::new(50, 60),
+                marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+            ),
+            (
+                target,
+                marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+            ),
+            (
+                Span::new(50, 70),
+                marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+            ),
+        ];
+        // The walk finds the exact target regardless of which entry
+        // the binary search initially landed on (criterion would
+        // otherwise be non-deterministic across implementations).
+        assert!(super::lookup_marking(&markings, target).is_some());
+        // A start-matching but end-mismatching probe across the same
+        // run still returns None.
+        assert!(super::lookup_marking(&markings, Span::new(50, 80)).is_none());
     }
 
     // -------------------------------------------------------------------
