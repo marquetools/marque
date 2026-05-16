@@ -82,6 +82,7 @@ pub(crate) mod rewrites;
 pub(crate) mod shared;
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
 
 // Public-within-crate re-exports for items that other crate modules
