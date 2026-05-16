@@ -32,7 +32,9 @@ axum = { workspace = true }
 # via axum; declared directly so the dependency is visible.
 form_urlencoded = "1.2"
 marque-capco = { workspace = true }
-marque-config = { workspace = true }
+# Server loads `.marque.toml` / `.marque.local.toml`; opt in to the toml chain
+# the workspace pin keeps off by default (so the WASM build can exclude it).
+marque-config = { workspace = true, features = ["toml-loader"] }
 marque-engine = { workspace = true, features = ["batch"] }
 marque-extract = { workspace = true }
 marque-rules = { workspace = true }
