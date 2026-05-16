@@ -269,7 +269,7 @@ impl CitationVisitor {
     ///   letter is the CAPCO signal — letters A–K are the CAPCO
     ///   range, and a fully-qualified `§A.5` shape doesn't appear in
     ///   internal plan docs).
-    fn record(&mut self, text: &str, span: Span, kind: SourceKind) {
+    fn record(&mut self, text: &str, span: Span, kind: SourceKind, prefix_len: u32) {
         let finds = find_in_fragment(text);
         let is_implicit_capco = matches!(
             kind,
@@ -298,7 +298,7 @@ impl CitationVisitor {
                     }
                 }
             }
-            let (line, column) = compute_line_col(span, find.offset(), text);
+            let (line, column) = compute_line_col(span, find.offset(), text, prefix_len);
             self.occurrences.push(Occurrence {
                 file: self.file.clone(),
                 line,
@@ -320,7 +320,7 @@ impl CitationVisitor {
             // start of the matched substring, not the start of the
             // enclosing literal — the catalog is more useful when the
             // column lands on the actual `pNN-MM pMM` text.
-            let (line, column) = compute_line_col(span, match_offset, text);
+            let (line, column) = compute_line_col(span, match_offset, text, prefix_len);
             self.occurrences.push(Occurrence {
                 file: self.file.clone(),
                 line,
@@ -347,7 +347,19 @@ impl CitationVisitor {
             }) = &name_value.value
             {
                 let value = s.value();
-                self.record(&value, s.span(), SourceKind::DocComment);
+                // Detect whether this is a desugared `///`/`//!` doc-comment
+                // or an explicit `#[doc = "..."]` attribute. For desugared
+                // doc-comments, proc_macro2 synthesizes the entire attribute
+                // at the original comment position, so both the `#` token
+                // and the `LitStr` share the same `start()`. For explicit
+                // `#[doc = "..."]`, the `#` is before the `"` — they differ.
+                // This determines the correct prefix length for column
+                // computation: `///`/`//!` tokens are 3 chars before their
+                // synthesized literal content, while `"` literals are 1 char.
+                let is_desugared_doc_comment =
+                    attr.pound_token.spans[0].start() == s.span().start();
+                let prefix_len = if is_desugared_doc_comment { 3 } else { 1 };
+                self.record(&value, s.span(), SourceKind::DocComment, prefix_len);
             }
         }
     }
@@ -373,8 +385,7 @@ impl<'ast> Visit<'ast> for CitationVisitor {
             }) = &node.expr
             {
                 let value = s.value();
-                self.record(&value, s.span(), kind);
-                // Returning here would skip nested field values; keep walking.
+                self.record(&value, s.span(), kind, 1);
             }
         }
         syn::visit::visit_field_value(self, node);
@@ -402,7 +413,7 @@ impl<'ast> Visit<'ast> for CitationVisitor {
             // The dedup check happens at the file-level emission
             // stage (see `lib.rs::lint_workspace`), keyed on
             // (file, line, column, raw).
-            self.record(&value, node.span(), SourceKind::StringLiteral);
+            self.record(&value, node.span(), SourceKind::StringLiteral, 1);
         }
         syn::visit::visit_lit_str(self, node);
     }
@@ -415,24 +426,46 @@ impl<'ast> Visit<'ast> for CitationVisitor {
 
 /// Compute (file_line, file_column) for a citation find.
 ///
-/// `span` is the AST span of the enclosing string literal. `offset`
-/// is the byte offset of the citation's `§` character within the
-/// literal's content. We add the offset to the span start to get the
-/// citation's source coordinates.
+/// `span` is the AST span of the enclosing string literal or doc-comment
+/// token. `offset` is the byte offset of the citation's `§` character
+/// within the literal's **decoded** content (as returned by
+/// `syn::LitStr::value()`). `prefix_len` is the number of source characters
+/// between `span.start()` and the first byte of the literal's decoded
+/// content (see below).
 ///
-/// **Caveat**: the returned column reflects byte positions inside
-/// the string-literal content, not the literal's source position
-/// after escape decoding. For the diagnostics we produce that's
-/// acceptable — a reviewer opening the file and looking at the line
-/// will see the citation, even if the column is approximate. We use
-/// `proc_macro2::Span::start()` directly which is line-accurate; the
-/// column is the literal-content column with the literal's start-of-
-/// content column added on.
-fn compute_line_col(span: Span, offset: usize, text: &str) -> (u32, u32) {
+/// **Column prefix adjustment**: `proc_macro2::Span::start().column` is
+/// 0-indexed and points to the *beginning of the enclosing token* — not to
+/// the first byte of the literal's content. The gap varies by surface and
+/// must be supplied by the caller:
+///
+/// - **String literals** (`citation:`, `message:`, `constraint_label:`,
+///   general `StringLiteral`): `span.start()` is at the opening `"`,
+///   so content begins 1 character later → `prefix_len = 1`.
+/// - **Desugared doc-comment attributes** (`///` / `//!`): proc_macro2 sets
+///   `span.start()` to the `//` position of the original comment token
+///   (3 characters `//!` or `///`), so content begins 3 characters later
+///   → `prefix_len = 3`.
+/// - **Explicit `#[doc = "..."]` attributes**: `span.start()` is at the `"`
+///   (same as a regular string literal) → `prefix_len = 1`.
+///
+/// The 1-indexed column is then:
+/// `span.start().column + prefix_len + content_byte_offset + 1`.
+///
+/// **Escape-sequence caveat**: `offset` is a byte index into the
+/// *escape-decoded* value (`LitStr::value()` output), not the raw source
+/// text. A `\n` escape sequence in the source is a single byte in the
+/// decoded value, so `prefix.matches('\n').count()` may count it as a
+/// real line break and project the citation onto the wrong source line.
+/// In practice CAPCO citations do not span escape-encoded newlines, so
+/// the inaccuracy is acceptable for this catalog. A reviewer who sees
+/// an off-by-one source column on a string containing escape sequences
+/// should look at the full source line rather than navigating to the
+/// precise column.
+fn compute_line_col(span: Span, offset: usize, text: &str, prefix_len: u32) -> (u32, u32) {
     // Count newlines in `text[..offset]` to project the citation onto
-    // the correct file line. The first byte of the literal is at
-    // `span.start()`. A multi-line string literal places the citation
-    // some lines below `span.start()`.
+    // the correct file line. The first byte of the literal content is
+    // at `span.start()` + prefix. A multi-line string literal places
+    // the citation some lines below `span.start()`.
     let prefix = &text[..offset.min(text.len())];
     let nl_count = prefix.matches('\n').count() as u32;
     let line = u32::try_from(span.start().line)
@@ -444,7 +477,7 @@ fn compute_line_col(span: Span, offset: usize, text: &str) -> (u32, u32) {
         u32::try_from(span.start().column)
             .unwrap_or(0)
             .saturating_add(u32::try_from(offset).unwrap_or(0))
-            .saturating_add(2) // +2 to account for the leading `"` of the string literal
+            .saturating_add(prefix_len) // skip the token-start → content-start gap
             .saturating_add(1) // 0-indexed → 1-indexed
     } else {
         // Citation begins on a continuation line; column is the byte

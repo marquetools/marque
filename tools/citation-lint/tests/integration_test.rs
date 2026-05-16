@@ -353,6 +353,107 @@ fn fr020_known_defect_classes_all_detected() {
 }
 
 #[test]
+fn column_accuracy_doc_comment() {
+    // Guard: verify that doc-comment (`//!`) citations report the
+    // correct 1-indexed column for the `§` character.
+    //
+    // Source line: `//! CAPCO-2016 §A.99 p5`
+    // Breakdown:
+    //   `//!`          = 3 chars (columns 1–3)
+    //   ` CAPCO-2016 ` = 12 chars (columns 4–15)
+    //   `§`            at column 16 (1-indexed)
+    //
+    // Before the fix `compute_line_col` used `+2+1` for all surfaces,
+    // which under-counted by 1 for doc-comments (reporting 15 instead
+    // of 16). After the fix it uses `prefix_len=3` for DocComment.
+    let body = "//! CAPCO-2016 §A.99 p5\npub fn x() {}\n";
+    let dir = make_workspace_with(body);
+    let defects = lint(dir.path());
+    let doc_defects: Vec<_> = defects
+        .iter()
+        .filter(|d| matches!(d.source_kind, citation_lint::SourceKind::DocComment))
+        .collect();
+    assert!(
+        !doc_defects.is_empty(),
+        "expected a defect from the doc-comment citation, got none; all defects: {defects:#?}"
+    );
+    let col = doc_defects[0].column;
+    assert_eq!(
+        col, 16,
+        "doc-comment §A.99: expected column 16 (1-indexed), got {col}; \
+         pre-fix value would have been 15"
+    );
+}
+
+#[test]
+fn column_accuracy_string_literal() {
+    // Guard: verify that string-literal citations report the correct
+    // 1-indexed column for the `§` character.
+    //
+    // Source line: `pub fn x() { let _ = "CAPCO-2016 §A.99 p5"; }`
+    // Breakdown:
+    //   `pub fn x() { let _ = ` = 21 chars (columns 1–21)
+    //   `"`                     at column 22 → span.start().column = 21 (0-indexed)
+    //   `CAPCO-2016 `           = 11 chars (columns 23–33)
+    //   `§`                     at column 34 (1-indexed)
+    //
+    // Before the fix `compute_line_col` used `+2+1` for all surfaces,
+    // which over-counted by 1 for string literals (reporting 35 instead
+    // of 34). After the fix it uses `prefix_len=1` for StringLiteral.
+    let body = "pub fn x() { let _ = \"CAPCO-2016 §A.99 p5\"; }\n";
+    let dir = make_workspace_with(body);
+    let defects = lint(dir.path());
+    let str_defects: Vec<_> = defects
+        .iter()
+        .filter(|d| matches!(d.source_kind, citation_lint::SourceKind::StringLiteral))
+        .collect();
+    assert!(
+        !str_defects.is_empty(),
+        "expected a defect from the string-literal citation, got none; all defects: {defects:#?}"
+    );
+    let col = str_defects[0].column;
+    assert_eq!(
+        col, 34,
+        "string-literal §A.99: expected column 34 (1-indexed), got {col}; \
+         pre-fix value would have been 35"
+    );
+}
+
+#[test]
+fn column_accuracy_explicit_doc_attr() {
+    // Guard: verify that explicit `#[doc = "..."]` attributes report the
+    // correct 1-indexed column for the `§` character.
+    //
+    // Source line: `#[doc = "CAPCO-2016 §A.99 p5"]`
+    // Breakdown:
+    //   `#[doc = "`  = 9 chars (columns 1–9)
+    //   `CAPCO-2016 ` = 11 chars (columns 10–20)
+    //   `§`           at column 21 (1-indexed)
+    //
+    // An explicit `#[doc = "..."]` attribute has its LitStr span at the
+    // opening `"` (column 8, 0-indexed), so prefix_len must be 1 — the
+    // same as a regular string literal. Without the desugared-vs-explicit
+    // detection, `prefix_len = 3` would report column 23 (over by 2).
+    let body = "#[doc = \"CAPCO-2016 §A.99 p5\"]\npub fn x() {}\n";
+    let dir = make_workspace_with(body);
+    let defects = lint(dir.path());
+    let doc_defects: Vec<_> = defects
+        .iter()
+        .filter(|d| matches!(d.source_kind, citation_lint::SourceKind::DocComment))
+        .collect();
+    assert!(
+        !doc_defects.is_empty(),
+        "expected a defect from the explicit doc attr citation; all defects: {defects:#?}"
+    );
+    let col = doc_defects[0].column;
+    assert_eq!(
+        col, 21,
+        "explicit #[doc = ...] §A.99: expected column 21 (1-indexed), got {col}; \
+         without desugared detection, prefix_len=3 would give 23"
+    );
+}
+
+#[test]
 fn scan_workspace_includes_top_level_marque_crate() {
     // Regression guard for Copilot PR-0.5 round-3 finding: previously
     // `scan_workspace` only walked `crates/*/src/**`, which silently
