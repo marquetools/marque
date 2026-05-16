@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+// Whole file gated on `toml-loader`: every test invokes `marque_config::load()`
+// which is itself gated on the same feature (issue #454, WASM size).
+#![cfg(feature = "toml-loader")]
+
 //! Phase 5 — Config precedence chain and hard-fail validator tests (T052, T053).
 //!
 //! Tests the four-layer precedence chain (FR-007):
