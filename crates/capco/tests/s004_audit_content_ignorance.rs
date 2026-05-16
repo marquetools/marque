@@ -62,9 +62,7 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         // PR 4b-B 9th-pass follow-up: `RuleContext` is
         // `#[non_exhaustive]`; cross-crate construction goes through
         // `RuleContext::new` + `with_*` setters.
-        let ctx = RuleContext::new(candidate.kind, candidate.span)
-            .with_page_context(ctx_page.clone())
-            .with_cross_portion_context(ctx_page);
+        let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_context(ctx_page);
         for rule in rule_set.rules() {
             out.extend(rule.check(&attrs, &ctx));
         }

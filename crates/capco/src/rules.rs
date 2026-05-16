@@ -4998,18 +4998,19 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// producers migrate to FGI [LIST], and JOINT is dropped from the
 /// banner.
 ///
-/// **Firing surface (PR 4b-B sixth-pass follow-up).** W004 fires on
-/// both Banner candidates AND on Portion candidates that contribute
-/// to disunity. The banner-fire path catches the classic header +
-/// portions + footer-banner layout; the portion-fire path catches
-/// the real-world layout where a header banner appears BEFORE any
-/// portion (page_context empty when the banner runs) and there is
-/// no closing footer banner. Both paths emit the same message,
-/// severity, and citation; downstream consumers correlate by rule
-/// id + page-break boundary. Multi-fire on the same page (banner +
-/// each disunity-contributing portion) is acceptable for a Warn
-/// rule and matches the prior NOFORN-style "loud per occurrence"
-/// pattern.
+/// **Firing surface (PR 4b-B 8th-pass P-3 trade-off).** W004 fires on
+/// **Banner candidates only**. The 6th-pass added Portion-firing to
+/// cover real-world layouts where a header banner runs before any
+/// portions accumulate (page_context empty → W004 never fires at the
+/// top banner); however, portion-time firing introduced a correctness
+/// regression on Mixed pages — a page with
+/// `[P1=JOINT(USA,CAN), P2=JOINT(USA,GBR), P3=(S//NF)]` fires W004
+/// at P2 time (snapshot = [P1,P2] → DisunityCollapse) but the final
+/// page state is `Mixed` (P3 is non-JOINT) — W004 MUST NOT fire on
+/// Mixed per §H.3 p57. The 8th-pass reverted to Banner-only.
+/// Trade-off documented: a pure-JOINT page with a top banner and no
+/// closing footer banner will NOT fire W004 (page_context is None when
+/// the top banner runs). See the inline comment at the `check` impl.
 ///
 /// **Mixed JOINT + non-JOINT portions** (§H.3 p57 — "the JOINT
 /// marking is not carried forward to the banner line in US
@@ -5072,25 +5073,7 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     }
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
-        // Fire on Banner candidates AND on Portion candidates that
-        // contribute to disunity. Pre-PR-4b-B-sixth-pass, W004 only
-        // fired on Banner candidates; that silently bypassed the rule
-        // on real-world doc layouts where a top banner ran before any
-        // portion accumulated (page_context empty) and no closing
-        // banner re-fired the rule. The Portion-fire path closes that
-        // gap by reading the post-portion-add cross_portion_context
-        // (the engine adds the current portion BEFORE invoking rules)
-        // and surfacing the disunity at the portion span as soon as
-        // the second disagreeing JOINT portion lands.
-        //
-        // Multi-fire on the same page is acceptable for a Warn rule
-        // (matches the prior NOFORN-style "loud per occurrence"
-        // pattern). When both a Banner and disunity-contributing
-        // Portion(s) exist on the same page, the Banner emits at the
-        // banner span and each disunity-contributing Portion emits at
-        // its own span. Audit consumers correlate by rule-id +
-        // page-break boundary.
-        // P-3 (8th-pass trade-off): restrict W004 firing to Banner candidates
+        // P-3 (8th-pass trade-off): W004 fires on Banner candidates
         // only. The 6th-pass added Portion-firing to cover banner-first
         // layouts where the top banner fires before any portions accumulate
         // (the "W004-banner-first" bug: banner sees empty page_context, rule
@@ -5117,9 +5100,11 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // directly (via `CapcoScheme::project` or `JointSet::from_attrs_iter`
         // over the page's portions).
         //
-        // `cross_portion_context` is NOT removed here — it remains the
-        // correct channel for future cross-portion aggregation rules that
-        // don't have this banner-first vs. Mixed ambiguity.
+        // N-9-2 (PR 437 10th-pass): `cross_portion_context` was removed
+        // from `RuleContext` — O(N²) per-portion PageContext cloning with
+        // zero active consumers. Future cross-portion aggregation rules
+        // that need the post-add accumulator state should add a lazy/gated
+        // field when a real consumer lands.
         //
         // §-authority: §H.3 p57 (JOINT not carried to banner line in US
         // documents — this is the Mixed case that portion-time snapshot
@@ -9079,8 +9064,7 @@ pub(crate) mod marque_capco_test_support {
             // `#[non_exhaustive]`; cross-crate construction goes
             // through the `new` + `with_*` builder.
             let ctx = RuleContext::new(candidate.kind, candidate.span)
-                .with_page_context(ctx_page.clone())
-                .with_cross_portion_context(ctx_page)
+                .with_page_context(ctx_page)
                 .with_page_marking(ctx_page_marking);
             for rule in rule_set.rules() {
                 out.extend(rule.check(&attrs, &ctx));

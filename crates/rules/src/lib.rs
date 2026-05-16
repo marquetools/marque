@@ -297,19 +297,26 @@ pub enum Phase {
 ///
 /// **`#[non_exhaustive]`** (PR 4b-B 9th-pass follow-up): the engine
 /// has added several public fields during the 006 refactor
-/// (`cross_portion_context`, `page_marking`, `corrections`,
-/// `pre_pass_1_attrs`) and is likely to add more before the API
-/// stability freeze at PR 10. Marking the struct `#[non_exhaustive]`
-/// means a future field addition is a non-breaking change for
-/// downstream consumers.
+/// (`page_marking`, `corrections`, `pre_pass_1_attrs`) and is likely
+/// to add more before the API stability freeze at PR 10. Marking the
+/// struct `#[non_exhaustive]` means a future field addition is a
+/// non-breaking change for downstream consumers.
+///
+/// **Note on future cross-portion aggregation rules** (N-9-2, PR 437
+/// 10th-pass): the `cross_portion_context` field was removed because
+/// eager per-portion `PageContext` cloning is O(N²) over portions
+/// per page and had zero active rule consumers. Future cross-portion
+/// rules that need the post-add accumulator state should add a
+/// lazy/gated field with explicit capability declaration rather than
+/// restoring the eager-clone shape. Per Constitution Principle I,
+/// any O(N²) hot-path cost MUST be benchmarked before shipping.
 ///
 /// **Cross-crate consumers MUST construct via the engine-provided
-/// constructor path** (`RuleContext::new` or
-/// `RuleContext::for_portion`). `#[non_exhaustive]` blocks BOTH bare
-/// literal construction (`RuleContext { marking_type, zone, ... }`)
-/// AND functional-update syntax (`RuleContext { marking_type, ..base }`)
-/// across crate boundaries — the Rust reference specifies that
-/// functional update with `..base` requires the struct to be
+/// constructor path** (`RuleContext::new`). `#[non_exhaustive]` blocks
+/// BOTH bare literal construction (`RuleContext { marking_type, zone,
+/// ... }`) AND functional-update syntax (`RuleContext { marking_type,
+/// ..base }`) across crate boundaries — the Rust reference specifies
+/// that functional update with `..base` requires the struct to be
 /// fully-exhaustively constructible at the call site, so
 /// `#[non_exhaustive]` blocks it just as it blocks literal
 /// construction. See the constructor doc below for the correct
@@ -362,52 +369,6 @@ pub struct RuleContext<'a> {
     /// are populated for the same set of `RuleContext`s during the
     /// migration; rule code chooses which to read.
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
-    /// Cross-portion accumulator for portion-level aggregation rules.
-    ///
-    /// Mirrors [`Self::page_context`] but is populated for **every**
-    /// candidate kind including `MarkingType::Portion`, once at least
-    /// one portion has accumulated on the page. The same per-page
-    /// `Arc` is shared between the two fields when both are populated;
-    /// no extra clone cost.
-    ///
-    /// **Why two fields, not one.** [`Self::page_context`] is gated on
-    /// non-portion candidates so existing rules that documented their
-    /// behavior around "page_context is None on portions" (notably
-    /// S007 / FR-048's solely-NATO carve-out, which fires
-    /// conservatively only on `page_context = None`) keep their
-    /// pre-existing semantics. Cross-portion aggregation rules that
-    /// need to reason about the per-portion accumulation state read
-    /// `cross_portion_context` instead of `page_context`.
-    ///
-    /// **P-3 (8th-pass trade-off note).** W004 `joint-disunity-collapse`
-    /// previously read `cross_portion_context` to detect disunity at
-    /// the second disagreeing portion without waiting for a footer
-    /// banner. This was reverted to Banner-only in 8th-pass: portion-time
-    /// snapshots can't distinguish `DisunityCollapse` (fire W004) from
-    /// a future `Mixed` state (don't fire W004 per §H.3 p57), producing
-    /// false positives on pages where a non-JOINT portion lands after
-    /// two disagreeing JOINT portions. The reversion documents the
-    /// banner-first false-negative trade-off explicitly. Reserved for
-    /// future cross-portion aggregation rules that do not have this
-    /// Mixed-state ambiguity.
-    ///
-    /// The engine's accumulation point is BEFORE the rule loop runs
-    /// for a Portion candidate (`engine.rs::lint`: `add_portion(...)`
-    /// before `RuleContext` construction), so rules read the
-    /// **snapshot-after-add** state — the current portion is in the
-    /// accumulator. A portion-aggregation rule that needs
-    /// snapshot-before-add has to filter the current portion out of
-    /// the accumulator using `ctx.candidate_span`.
-    ///
-    /// Rule shape:
-    ///
-    /// ```ignore
-    /// if let Some(page) = ctx.cross_portion_context.as_ref() {
-    ///     // page.portions() includes the current portion if
-    ///     // marking_type == Portion.
-    /// }
-    /// ```
-    pub cross_portion_context: Option<std::sync::Arc<marque_ism::PageContext>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
     /// [`marque_ism::MarkingType::PageBreak`]. PR 9b (T133 / FR-006)
@@ -502,7 +463,6 @@ impl<'a> RuleContext<'a> {
             position: None,
             candidate_span,
             page_context: None,
-            cross_portion_context: None,
             page_marking: None,
             corrections: None,
             pre_pass_1_attrs: None,
@@ -524,16 +484,6 @@ impl<'a> RuleContext<'a> {
     /// Set [`Self::page_context`] (banner-validation accumulator).
     pub fn with_page_context(mut self, page_context: Option<Arc<marque_ism::PageContext>>) -> Self {
         self.page_context = page_context;
-        self
-    }
-
-    /// Set [`Self::cross_portion_context`] (cross-portion accumulator
-    /// for portion-level aggregation rules).
-    pub fn with_cross_portion_context(
-        mut self,
-        cross_portion_context: Option<Arc<marque_ism::PageContext>>,
-    ) -> Self {
-        self.cross_portion_context = cross_portion_context;
         self
     }
 

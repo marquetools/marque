@@ -1030,46 +1030,22 @@ impl Engine {
             } else {
                 None
             };
-            // PR 4b-B sixth-pass follow-up (W004 banner-first layout
-            // gap): a portion-only sibling channel for cross-portion
-            // aggregation rules. Pre-fix W004 only fired on Banner
-            // candidates, silently bypassing the rule on docs with a
-            // top banner + no closing banner (the banner runs while
-            // page_context is empty). The "obvious" fix — drop the
-            // `!Portion` gate on `ctx_page` — silently changes the
-            // semantic for any rule that reads `ctx.page_context` and
-            // relied on its absence on portions (S007 / FR-048 was the
-            // load-bearing example: its solely-NATO carve-out was
-            // documented to fire conservatively only on
-            // `page_context = None`; exposing page_context on the
-            // first bare-NATO portion silences S007 incorrectly when
-            // the doc later resolves to mixed US+NATO). Two distinct
-            // fields keep both invariants:
+            // N-9-2 (PR 437 10th-pass): `cross_portion_context` removed.
+            // The field cloned the full `PageContext` value once per
+            // Portion candidate (O(N²) over N portions per page —
+            // clone at portion K copies K `CanonicalAttrs` values, so
+            // total cost is 0+1+...+(N-1)). W004 `joint-disunity-
+            // collapse` was the only planned consumer but was reverted
+            // to Banner-only in the 8th-pass (P-3 trade-off: portion-
+            // time snapshots can't distinguish DisunityCollapse from a
+            // future Mixed state per §H.3 p57). Per Constitution
+            // Principle I, O(N²) hot-path cost MUST be benchmarked;
+            // zero-consumer O(N²) work fails that gate. Future cross-
+            // portion aggregation rules must use a lazy/gated approach
+            // with explicit capability declaration — see `RuleContext`
+            // doc note added in this PR.
             //
-            //   - `page_context`: still gated on `!Portion` (preserves
-            //     the conservative-fire semantics for rules that
-            //     read it).
-            //   - `cross_portion_context`: populated for ALL
-            //     candidates including Portion (gives W004 a clean
-            //     read of the post-portion-add accumulator).
-            //
-            // Both fields wrap the same `PageContext` through the
-            // shared `page_context_arc` cache; the per-portion clone
-            // cost is bounded (O(N²) across N portions, typical N
-            // 5-30 → a few hundred small ops vs. ~600µs lint_10kb
-            // total). Future portion-level aggregation rules read
-            // `cross_portion_context`; banner-only rules continue to
-            // read `page_context`.
-            let ctx_cross_portion = if !page_context.is_empty() {
-                Some(
-                    page_context_arc
-                        .get_or_insert_with(|| Arc::new(page_context.clone()))
-                        .clone(),
-                )
-            } else {
-                None
-            };
-            // PR 9b (T133): same lazy/cached construction for the
+            // PR 9b (T133): lazy/cached construction for the
             // page-marking projection. Built from `PageContext::project`
             // so banner-validation rules see the rolled-up shape
             // (classification / SCI / SAR / AEA / dissem_us /
@@ -1114,7 +1090,6 @@ impl Engine {
             // chains the setters here once per candidate dispatch.
             let ctx = RuleContext::new(candidate.kind, candidate.span)
                 .with_page_context(ctx_page)
-                .with_cross_portion_context(ctx_cross_portion)
                 .with_page_marking(ctx_page_marking)
                 .with_corrections(corrections_arc.clone())
                 .with_pre_pass_1_attrs(pre_pass_1_attrs);
