@@ -129,6 +129,61 @@ fn project_banner_rel_to_intersection_matches_pagecontext() {
 }
 
 #[test]
+fn project_banner_display_only_intersection_matches_pagecontext() {
+    // Regression-guards the DISPLAY ONLY Phase 2 wiring in
+    // `page_context_to_attrs`: the existing project_banner per-axis
+    // checks cover classification, SCI, REL TO. Without this test, a
+    // regression of `out.display_only_to = ctx.expected_display_only()`
+    // back to `Box::new([])` would still pass every existing
+    // `expected_display_only` PageContext test and every
+    // banner-render test (those don't exercise the
+    // `scheme.project_banner` / `scheme.project(Scope::Page, …)`
+    // path; this one does).
+    //
+    // §D.2 Table 3 row 25 (DO + DO with common country → DO common).
+    // p1: DISPLAY ONLY AFG, IRQ
+    // p2: DISPLAY ONLY AFG, GBR
+    // Intersection = {AFG}.
+    let mut p1 = portion(Classification::Secret);
+    p1.display_only_to = vec![
+        CountryCode::try_new(b"AFG").unwrap(),
+        CountryCode::try_new(b"IRQ").unwrap(),
+    ]
+    .into();
+    let mut p2 = portion(Classification::Secret);
+    p2.display_only_to = vec![
+        CountryCode::try_new(b"AFG").unwrap(),
+        CountryCode::try_new(b"GBR").unwrap(),
+    ]
+    .into();
+
+    let portions = vec![wrap(p1), wrap(p2)];
+
+    let mut ctx = PageContext::new();
+    for p in &portions {
+        ctx.add_portion(p.0.clone());
+    }
+    let expected = ctx.expected_display_only();
+    assert_eq!(expected, vec![CountryCode::try_new(b"AFG").unwrap()]);
+
+    let scheme = CapcoScheme::new();
+    let banner = scheme.project_banner(&portions);
+    assert_eq!(
+        banner.0.display_only_to.as_ref(),
+        expected.as_slice(),
+        "scheme.project_banner must wire display_only_to from \
+         PageContext::expected_display_only (regression guard against \
+         page_context_to_attrs dropping the axis)"
+    );
+    assert!(
+        !banner.0.display_only_to.is_empty(),
+        "scheme.project_banner display_only_to must be non-empty when \
+         portions agree on a common country — empty would indicate the \
+         axis was silently dropped"
+    );
+}
+
+#[test]
 fn project_banner_noforn_supersedes_rel_to() {
     // p1: REL TO USA, GBR
     // p2: NOFORN
@@ -956,25 +1011,32 @@ fn scheme_declares_phase3_rewrites() {
     //
     // PR 3c.B Sub-PR 8.F.2 adds two more Pattern A rewrites:
     // `capco/sbu-nf-implies-noforn` (§H.9 p178) and
-    // `capco/les-nf-implies-noforn` (§H.9 p185). Inserted after the
-    // 8.F entries at positions [2] and [3] (append within the
-    // `*-implies-noforn` group) per design-spec §10 Q2 resolution.
-    // Total: thirteen.
+    // `capco/les-nf-implies-noforn` (§H.9 p185), appended within the
+    // `*-implies-noforn` group per design-spec §10 Q2 resolution.
+    //
+    // DISPLAY ONLY Phase 2 adds `capco/noforn-clears-fdr-family`
+    // (§D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157) immediately after
+    // the existing `capco/noforn-clears-rel-to` row. The two
+    // NOFORN-clears entries are DISSEM-readers that run after the
+    // `*-implies-noforn` writers and operate on disjoint targets:
+    // `noforn-clears-rel-to` clears the country-list CAT_REL_TO axis,
+    // and `noforn-clears-fdr-family` evicts every other FD&R-class
+    // dissem token (RELIDO, EYES, DISPLAY ONLY marker) from
+    // CAT_DISSEM. Total: fourteen.
     //
     // Dual-page-citation pattern (INTENTIONAL, do NOT deduplicate):
-    // positions [2] and [11] both cite `"CAPCO-2016 §H.9 p178"`
-    // (`sbu-nf-implies-noforn` at [2] — Pattern A page-rewrite;
-    // `sbu-nf-transmutes-on-classified-contact` at [11] —
-    // transmutation rewrite). Positions [3] and [12] both cite
-    // `"CAPCO-2016 §H.9 p185"` (`les-nf-implies-noforn` at [3];
-    // `les-nf-transmutes-on-classified-contact` at [12]). The §H.9
-    // p178 entry covers both the NF implication and the
-    // transmutation in the same source page; the same is true for
-    // §H.9 p185. A future reviewer should NOT flag this as a
-    // copy-paste error.
+    // `sbu-nf-implies-noforn` (Pattern A page-rewrite) and
+    // `sbu-nf-transmutes-on-classified-contact` (transmutation
+    // rewrite) both cite `"CAPCO-2016 §H.9 p178"`; the same dual
+    // pattern holds for `les-nf-implies-noforn` and
+    // `les-nf-transmutes-on-classified-contact` at `"CAPCO-2016
+    // §H.9 p185"`. The §H.9 p178 entry covers both the NF implication
+    // and the transmutation rewrite in the same source page; the same
+    // is true for §H.9 p185. A future reviewer should NOT flag this
+    // as a copy-paste error.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
-    assert_eq!(rewrites.len(), 13);
+    assert_eq!(rewrites.len(), 14);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
@@ -985,6 +1047,7 @@ fn scheme_declares_phase3_rewrites() {
             "capco/sbu-nf-implies-noforn",
             "capco/les-nf-implies-noforn",
             "capco/noforn-clears-rel-to",
+            "capco/noforn-clears-fdr-family",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/fgi-rollup-on-us-contact",
             "capco/fgi-restricted-rollup-on-us-contact",
@@ -1006,27 +1069,33 @@ fn scheme_declares_phase3_rewrites() {
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
     // sections; T089 retired the line-number form per project memory
-    // `feedback_citations_use_page_numbers.md`). Each of the thirteen
+    // `feedback_citations_use_page_numbers.md`). Each of the fourteen
     // citations is verifiable in the vendored CAPCO-2016 markdown.
-    // PR 3c.B Sub-PR 8.F.2 added two entries at positions [2] and [3],
-    // shifting the original nine 8.F + transmutation entries to
-    // positions [4..12]. The dual-page-citation pattern noted above
-    // ([2] / [11] both §H.9 p178; [3] / [12] both §H.9 p185) is
-    // intentional — the page in CAPCO-2016 covers both the Pattern A
-    // implication and the transmutation rewrite.
+    // The per-entry index assertions below follow the declaration
+    // order in `CapcoScheme::build_page_rewrites` — if the order
+    // shifts (new rewrite, retired stub, refactor), update both the
+    // ids list above and the citation list below in tandem. The
+    // dual-page-citation pattern (`sbu-nf-implies-noforn` +
+    // `sbu-nf-transmutes-on-classified-contact` at §H.9 p178, and
+    // `les-nf-implies-noforn` + `les-nf-transmutes-on-classified-
+    // contact` at §H.9 p185) is intentional.
     assert_eq!(rewrites[0].citation, "CAPCO-2016 §H.9 p174");
     assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.9 p172");
     assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.9 p178");
     assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.9 p185");
     assert_eq!(rewrites[4].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
-    assert_eq!(rewrites[5].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(
+        rewrites[5].citation,
+        "CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157"
+    );
+    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.6 p113");
     assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.8 p136");
-    assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.9 p178");
-    assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[13].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]
@@ -1049,6 +1118,48 @@ fn page_rewrite_noforn_clears_rel_to_produces_same_banner() {
     // appear in dissem.
     assert!(banner.0.rel_to.is_empty());
     assert!(banner.0.dissem_iter().any(|d| d == &DissemControl::Nf));
+}
+
+#[test]
+fn page_rewrite_noforn_clears_fdr_family() {
+    // DISPLAY ONLY Phase 2 follow-up: `capco/noforn-clears-fdr-family`
+    // mirrors `noforn-clears-rel-to` for the §D.2 Table 3 row 2
+    // supersession — NF evicts every other FD&R-class dissem token
+    // at banner scope. Portion-mix: one portion carries NF (which a
+    // downstream consumer or a `*-implies-noforn` rewrite produces),
+    // other portions carry RELIDO, EYES, and the bare DISPLAY ONLY
+    // marker; banner must not emit any of them alongside NF.
+    use marque_scheme::Scope;
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_us = vec![DissemControl::Nf].into();
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_us = vec![
+        DissemControl::Relido,
+        DissemControl::Eyes,
+        DissemControl::Displayonly,
+    ]
+    .into();
+
+    let portions = vec![wrap(p1), wrap(p2)];
+    let scheme = CapcoScheme::new();
+    let banner = scheme.project(Scope::Page, &portions);
+
+    // After the page rewrite, FD&R family tokens are evicted; NF remains.
+    assert!(
+        banner.0.dissem_iter().any(|d| d == &DissemControl::Nf),
+        "NOFORN must remain in the dissem axis"
+    );
+    for evicted in [
+        DissemControl::Relido,
+        DissemControl::Eyes,
+        DissemControl::Displayonly,
+    ] {
+        assert!(
+            !banner.0.dissem_iter().any(|d| d == &evicted),
+            "{evicted:?} must be evicted when NOFORN is in the banner (§D.2 row 2 + §H.8 p154/p157)"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

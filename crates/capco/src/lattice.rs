@@ -39,8 +39,10 @@
 //! `SciSet`.
 
 use marque_ism::{
-    AeaMarking, AtomalBlock, CountryCode, FgiMarker, FrdBlock, RdBlock, SarCompartment,
-    SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlSystem, SciMarking,
+    AeaMarking, AtomalBlock, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker,
+    FrdBlock, IsmDate, JointClassification, MarkingClassification, NatoClassification, NonIcDissem,
+    RdBlock, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
+    SciControlSystem, SciMarking,
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use smol_str::SmolStr;
@@ -416,9 +418,13 @@ impl Lattice for SarSet {
 /// CAPCO's FGI marker has two independent axes: a set of source countries
 /// and a source-concealed flag. Source-concealed supersedes source-
 /// acknowledged on join — if any portion carries FGI with no countries
-/// (concealed), the banner must also be concealed. Meet (§3.3a policy b)
-/// intersects countries and clears concealment unless both sides were
-/// concealed.
+/// (concealed), the banner must also be concealed. Meet is dual: the
+/// source-concealed form acts as the lattice top for the FGI
+/// source-disclosure dimension, so meet with a concealed operand returns
+/// the OTHER operand (the acknowledged side), and meet of two concealed
+/// operands returns concealed. Meet of two acknowledged operands
+/// intersects their country sets; an empty intersection collapses to
+/// `None` (no shared FGI).
 ///
 /// `FgiSet::None` is the bottom (no FGI anywhere).
 ///
@@ -466,7 +472,17 @@ impl Lattice for SarSet {
 /// deferred to Stage 4 of the engine refactor (per
 /// `docs/plans/2026-05-01-lattice-design.md` §4.7, open question "FGI vs
 /// JOINT attribution").
+///
+/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// state space is closed today (`None` and `Present { concealed, countries }`
+/// over an open `CountryCode` axis), but future CAPCO grammar
+/// extensions or decoder-confidence partial states may add a
+/// `Partial` / `Concealed { partial_countries: ... }` variant
+/// without breaking the closed-set contract for the existing two
+/// — declaring `#[non_exhaustive]` keeps downstream matchers honest
+/// (they MUST handle the unknown case with a wildcard arm).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FgiSet {
     /// No FGI present.
     #[default]
@@ -573,26 +589,60 @@ impl Lattice for FgiSet {
                     countries: b_cs,
                 },
             ) => {
-                let concealed = *a_c && *b_c;
-                if concealed {
-                    Self::Present {
-                        concealed: true,
-                        countries: BTreeSet::new(),
+                // P-9-1 (9th-pass): source-concealed acts as lattice TOP
+                // in the FGI source-disclosure dimension.  The join already
+                // makes concealed dominate (P-1, 8th-pass), so the dual
+                // absorption law `a ⊓ (a ⊔ b) = a` requires meet to treat
+                // the concealed form as top — meet(x, top) = x.
+                //
+                // Three cases:
+                //   (a) both concealed  → concealed (idempotent top)
+                //   (b) one concealed, one acknowledged → acknowledged side
+                //       (meet with top returns the other operand)
+                //   (c) both acknowledged → intersect country sets
+                //
+                // Authority: §H.7 p128 ("A document containing portions of
+                // both source-concealed FGI and source-acknowledged FGI must
+                // have only the 'FGI' marking without source
+                // trigraph(s)/tetragraph(s) in the banner line, as it is the
+                // most restrictive form of the marking") — concealed is the
+                // strictest / highest element. Verified 2026-05-16 against
+                // crates/capco/docs/CAPCO-2016.md.
+                match (*a_c, *b_c) {
+                    (true, true) => {
+                        // (a) both concealed — top ⊓ top = top.
+                        Self::Present {
+                            concealed: true,
+                            countries: BTreeSet::new(),
+                        }
                     }
-                } else {
-                    let countries: BTreeSet<CountryCode> =
-                        a_cs.intersection(b_cs).copied().collect();
-                    if countries.is_empty() && !concealed {
-                        // Both present but no common countries — the
-                        // meet collapses to the empty FGI marker, but
-                        // that's not representable as `Present` with no
-                        // countries without claiming concealment. Fall
-                        // back to None as the "no shared FGI" answer.
-                        Self::None
-                    } else {
+                    (true, false) => {
+                        // (b) self is concealed (top) → return other.
                         Self::Present {
                             concealed: false,
-                            countries,
+                            countries: b_cs.clone(),
+                        }
+                    }
+                    (false, true) => {
+                        // (b) other is concealed (top) → return self.
+                        Self::Present {
+                            concealed: false,
+                            countries: a_cs.clone(),
+                        }
+                    }
+                    (false, false) => {
+                        // (c) both acknowledged — intersect country sets.
+                        let countries: BTreeSet<CountryCode> =
+                            a_cs.intersection(b_cs).copied().collect();
+                        if countries.is_empty() {
+                            // No common countries — collapse to bottom
+                            // (no shared FGI on this page).
+                            Self::None
+                        } else {
+                            Self::Present {
+                                concealed: false,
+                                countries,
+                            }
                         }
                     }
                 }
@@ -601,19 +651,19 @@ impl Lattice for FgiSet {
     }
 }
 
-impl BoundedLattice for FgiSet {
-    fn bottom() -> Self {
-        Self::None
-    }
-    /// Top: source-concealed with no countries — dominates every other
-    /// non-concealed state under the supersession rule.
-    fn top() -> Self {
-        Self::Present {
-            concealed: true,
-            countries: BTreeSet::new(),
-        }
-    }
-}
+// `FgiSet` deliberately does NOT implement `BoundedLattice` (B-1, PR 4b-B
+// 8th-pass follow-up). Although `SourceConcealed` is a valid syntactic
+// supersession-top for the `Lattice::join` operation (it dominates every
+// non-concealed state), the `CountryCode` axis underneath
+// `Present { concealed: false, countries: BTreeSet<CountryCode> }` is
+// **open-vocabulary** — new trigraphs and tetragraphs land per ISMCAT
+// schema updates without an FgiSet code change. There is no lawful
+// finite "top" over the full `(concealed, countries)` Cartesian
+// product, so the `SciSet` / `SarSet` / `AeaSet` open-vocab precedent
+// applies. Use `FgiSet::empty()` / `FgiSet::default()` (== `Self::None`)
+// for the bottom; callers that need the source-concealed supersession
+// sentinel construct it explicitly via
+// `FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))`.
 
 // ---------------------------------------------------------------------------
 // AeaSet — lattice over the AEA category (RD/FRD/TFNI + CNWDI + SIGMA +
@@ -685,14 +735,30 @@ pub enum UcniKind {
 /// 4. **UCNI** (`BTreeSet<UcniKind>`): flat set union of DOD / DOE
 ///    UCNI presence per §H.6 p116-117 + p118-119.
 /// 5. **ATOMAL** (`Option<AtomalBlock>`): optional-singleton presence
-///    per §G.2 Table 5 p40 (ATOMAL registered as a standalone
-///    control marking; ARH = AEA) + §H.7 p122 FGI-section worked
-///    example (`SECRET//RD/ATOMAL//FGI NATO//NOFORN` places ATOMAL
-///    in the AEA `//` axis position — note §H.7 is the FGI section,
-///    not an ATOMAL subsection; ATOMAL has no dedicated subsection
-///    in §H.1 through §H.9, its registration lives in §G.2 Table 5).
-///    The PR 9c.1 T134 routing decision tracked this through the
-///    parser layer.
+///    per §G.2 Table 5 p40 (ATOMAL registered as a standalone control
+///    marking) + §H.7 p122 worked example (`SECRET//RD/ATOMAL//FGI
+///    NATO//NOFORN` places ATOMAL in the AEA category position
+///    alongside RD — confirming AEA-axis routing). Note §H.7 is the
+///    FGI section, not an ATOMAL subsection; ATOMAL has no dedicated
+///    subsection in §H.1 through §H.9, its registration lives in
+///    §G.2 Table 5 and its AEA-axis routing is established by the
+///    §H.7 p122 worked example, not by Table 5 itself. The PR 9c.1
+///    T134 routing decision tracked this through the parser layer.
+///
+///    **CV-2 (PR 4b-B 8th-pass follow-up).** Pre-CV-2 wording said
+///    `§G.2 Table 5 p40 (ATOMAL registered as a standalone control
+///    marking; ARH = AEA)`. Verified 2026-05-16 against
+///    `crates/capco/docs/CAPCO-2016.md`: Table 5 places ATOMAL under
+///    its own row (no group header in the markdown rendering between
+///    the NATO classification rows and the BOHEMIA/BALK rows), with
+///    the ARH column reading "Requires ATOMAL read-in" — it does NOT
+///    say "ARH = AEA". The "AEA category position" routing claim
+///    derives from the §H.7 p122 worked example placement, not from
+///    Table 5. The "ARH = AEA" parenthetical was a Constitution VIII
+///    misattribution; the corrected citation pair (§G.2 Table 5 p40
+///    for registration + §H.7 p122 worked example for AEA-axis
+///    placement) preserves the routing-decision rationale without
+///    over-claiming what Table 5 says.
 ///
 /// `AeaSet` round-trips with `&[AeaMarking]` via
 /// [`AeaSet::from_markings`] / [`AeaSet::to_markings`], mirroring
@@ -1031,6 +1097,2103 @@ impl Lattice for AeaSet {
 // bottom, and [`Lattice::join`] / [`Lattice::meet`] for composition.
 
 // ---------------------------------------------------------------------------
+// ClassificationLattice — bounded OrdMax over US chain + variant-preserving
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the classification axis: `Option<MarkingClassification>`
+/// with `OrdMax` over `effective_level()` and variant-preserving
+/// tie-break on equal level.
+///
+/// The classification axis is structurally a bounded total order:
+/// `Unclassified < Restricted < Confidential < Secret < TopSecret`
+/// per CAPCO-2016 §H.1 pp47-54 (US-domestic levels) and §H.2 p55 /
+/// `NatoClassification::us_equivalent()` (NATO `NR` maps to
+/// `Restricted` in the foreign-interop tier between U and C). M-7
+/// (PR 4b-B follow-up): the chain is five elements, not four —
+/// `Restricted` survives as a foreign-interop tier for portions
+/// that carry NATO `NR` or an FGI source whose foreign system has
+/// a RESTRICTED level (`FgiClassification.level = Restricted`).
+/// Foreign classifications normalize to the US chain at portion-
+/// parse time via §H.7 pp123-125's reciprocal-classification rule
+/// (`MarkingClassification::effective_level()`), so cross-branch
+/// joins do not arise in the lattice — the lattice always sees a
+/// US-chain level.
+///
+/// **Variant preservation.** Naive `OrdMax` over `effective_level()`
+/// would lose `Nato` / `Fgi` / `Joint` / `Conflict` variant tags. The
+/// join compares two `MarkingClassification`s by `effective_level()`
+/// and returns the variant with the higher level **as-is**. On
+/// equal level the implementation applies a deterministic, order-
+/// independent variant precedence (lower number wins, so the
+/// "canonical" variant of a level survives):
+///
+/// 1. `Us` (canonical per §H.7 reciprocal normalization)
+/// 2. `Fgi`
+/// 3. `Nato`
+/// 4. `Joint`
+/// 5. `Conflict`
+///
+/// Concretely, `Us(Secret).join(Fgi(Secret)) ==
+/// Fgi(Secret).join(Us(Secret)) == Us(Secret)`, so commutativity
+/// holds. Downstream attribution (`JointSet`, `FgiSet`,
+/// `NatoClassLattice`) reads from these tags; the chosen precedence
+/// matches the post-§H.7-reciprocal-normalization order rules
+/// downstream expect.
+///
+/// **Same-variant payload tiebreak** (C-7 PR 4b-B follow-up). At
+/// same level + same variant, country-bearing payloads (`Fgi`,
+/// `Joint`) are **unioned** rather than picking one operand by
+/// pointer order — `Fgi(S, [GBR]).join(Fgi(S, [CAN])) =
+/// Fgi(S, [CAN, GBR])`. Union is commutative and idempotent, which
+/// is what makes the lattice law hold. The union semantic also
+/// matches the §H.7 p123 / §D.2 p28 banner-rollup rule that the
+/// banner FGI list is the union of every observed foreign source.
+/// `Conflict` payloads (`foreign: Box<ForeignClassification>`)
+/// recurse into the same union rule when both sides carry the same
+/// foreign variant; cross-variant payloads fall back to a
+/// foreign-variant rank (Fgi < Nato < Joint).
+///
+/// `BoundedLattice` is implemented: top = `Some(Us(TopSecret))`,
+/// bottom = `None`. The class chain is closed at five elements
+/// (`Unclassified < Restricted < Confidential < Secret < TopSecret`,
+/// M-7 PR 4b-B follow-up); no agency-extensibility concern.
+///
+/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// - §H.1 pp47-54 (US class chain).
+/// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain
+///   and to Manual Appendix A for FVEY equivalence).
+/// - §H.7 pp123-125 (FGI grammar — supports the reciprocal-
+///   classification convention applied at portion-parse time).
+///
+/// Manual Appendix A "Non-US Protective Markings (includes the
+/// Five Eyes Marking Comparisons)" is referenced from §A.4 Table 1
+/// p14 and §H.2 p55. It is the equivalence table that grounds the
+/// `us_equivalent()` mapping from NATO levels to US levels, but
+/// Appendix A is not vendored in `crates/capco/docs/CAPCO-2016.md`
+/// (the markdown extract covers the lettered sections of the
+/// Manual body — A through K — only, not the Appendices); the
+/// appendix is an out-of-tree cross-reference, parallel to ISOO
+/// section 3.3 in the `DeclassifyOnLattice` doc-comment.
+///
+/// **CV-3 (PR 4b-B 8th-pass follow-up).** Pre-CV-3 wording listed
+/// `§A.4 p13 (IC Markings System Structure — classification hierarchy)`.
+/// Verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`:
+/// §A.4 p13 is a one-paragraph framing of "IC Markings System
+/// Structure"; the §A.4 Table 1 IC Markings System Artifacts (which
+/// names Appendix A as the FVEY equivalence reference) lands on
+/// p14, not p13. Neither sub-page enumerates the classification
+/// hierarchy itself. The §H.1 + §H.2 + Manual Appendix A citations
+/// above carry the hierarchy + reciprocal-mapping authority that
+/// the lattice actually relies on; §A.4 p13 was decorative.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClassificationLattice(Option<MarkingClassification>);
+
+impl ClassificationLattice {
+    /// An empty classification — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct a `ClassificationLattice` from an `Option<MarkingClassification>`.
+    pub fn new(c: Option<MarkingClassification>) -> Self {
+        Self(c)
+    }
+
+    /// Construct from a `CanonicalAttrs` slice — joins per-portion
+    /// classifications by `OrdMax` over `effective_level()`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        portions
+            .iter()
+            .map(|p| Self(p.classification.clone()))
+            .fold(Self::empty(), |acc, p| acc.join(&p))
+    }
+
+    /// Consume into the inner `Option<MarkingClassification>`.
+    pub fn into_inner(self) -> Option<MarkingClassification> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<MarkingClassification>`.
+    pub fn as_inner(&self) -> Option<&MarkingClassification> {
+        self.0.as_ref()
+    }
+}
+
+/// Deterministic variant-precedence rank for equal-effective-level
+/// tiebreaks in `ClassificationLattice::join` / `meet`. Lower rank
+/// wins. Order rationale: per CAPCO-2016 §H.7 pp123-125 reciprocal
+/// normalization, `Us` is the canonical form at portion-parse time
+/// for any portion that carries a US classification; the remaining
+/// variants are foreign-source (`Fgi`), foreign-system (`Nato`),
+/// or co-owned (`Joint`), with `Conflict` as the absorbing top
+/// (it already carries the US-upgraded level in `us`).
+fn classification_variant_rank(c: &MarkingClassification) -> u8 {
+    match c {
+        MarkingClassification::Us(_) => 0,
+        MarkingClassification::Fgi(_) => 1,
+        MarkingClassification::Nato(_) => 2,
+        MarkingClassification::Joint(_) => 3,
+        MarkingClassification::Conflict { .. } => 4,
+    }
+}
+
+/// Same-variant / same-level payload tiebreaker for
+/// `ClassificationLattice::join` (UNION semantic).
+///
+/// C-7 (PR 4b-B follow-up): the variant-rank tiebreaker alone is not
+/// sufficient — two `Fgi` (or two `Joint`) values at the same level
+/// with different country payloads previously fell through `ra <= rb`
+/// returning the left operand, which broke commutativity. This helper
+/// produces a join-result whose country payload is the **union** of
+/// both operands' country lists, matching the §H.7 p123 banner-rollup
+/// rule that the banner FGI list unions every observed foreign source
+/// ("the one or more unique country trigraph(s) and/or tetragraph(s)
+/// used in the portions"). Union is commutative and idempotent, so
+/// commutativity + idempotence + associativity all hold without
+/// further branching.
+///
+/// `Us`, `Nato`, and `Conflict` have no list payload at this level
+/// (Nato carries only a tag; Us carries only the level; Conflict's
+/// `foreign` is `Box<ForeignClassification>` which would need a
+/// dedicated tiebreaker — for now we union the `foreign` payload
+/// via the same rule when both sides are the same `ForeignClassification`
+/// shape, else fall back to picking the canonically-smaller operand
+/// by `effective_level()` + variant-rank tiebreak applied to
+/// `foreign`'s inner variant).
+///
+/// **Companion**: see [`classification_meet_same_variant`] for the
+/// dual-side semantic (INTERSECTION; bottom on disjoint payloads).
+/// C-9 (PR 4b-B follow-up) split the two operations because using
+/// union for both broke the absorption laws — `a ⊔ (a ⊓ b) = a` and
+/// `a ⊓ (a ⊔ b) = a` cannot hold if `meet` and `join` are the same
+/// op.
+fn classification_join_same_variant(
+    a: &MarkingClassification,
+    b: &MarkingClassification,
+) -> MarkingClassification {
+    use std::collections::BTreeSet;
+    // Idempotency short-circuit: if a == b, return a unchanged so
+    // input order is preserved through the round-trip (avoids the
+    // BTreeSet canonical-ordering side effect when a caller is
+    // joining a payload with itself).
+    if a == b {
+        return a.clone();
+    }
+    match (a, b) {
+        (MarkingClassification::Us(_), MarkingClassification::Us(_)) => a.clone(),
+        (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
+            // P-1 (8th-pass): source-concealed-dominates — if either side
+            // has an empty countries list (the `//FGI [level]` form per
+            // CAPCO-2016 §H.7 p124), the joined result MUST also be
+            // source-concealed (empty countries). Chaining two lists when
+            // one is empty returns the non-empty side and silently loses
+            // the concealed signal — the banner incorrectly becomes
+            // acknowledged `FGI [LIST]` instead of bare `FGI`.
+            //
+            // §-authority: §H.7 p124 (precedence rules for banner line
+            // guidance: "if any of the portions have concealed FGI source
+            // information... only the 'FGI' marking without the source
+            // trigraph(s)/tetragraph(s) must appear in the banner line").
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let countries = if fa.countries.is_empty() || fb.countries.is_empty() {
+                // Concealed dominates: produce the source-concealed form.
+                Box::new([]) as Box<[marque_ism::CountryCode]>
+            } else {
+                let merged: BTreeSet<marque_ism::CountryCode> = fa
+                    .countries
+                    .iter()
+                    .copied()
+                    .chain(fb.countries.iter().copied())
+                    .collect();
+                merged.into_iter().collect::<Vec<_>>().into_boxed_slice()
+            };
+            MarkingClassification::Fgi(marque_ism::FgiClassification {
+                level: fa.level, // same level — invariant of the tiebreaker
+                countries,
+            })
+        }
+        (MarkingClassification::Nato(_), MarkingClassification::Nato(_)) => a.clone(),
+        (MarkingClassification::Joint(ja), MarkingClassification::Joint(jb)) => {
+            let merged: BTreeSet<marque_ism::CountryCode> = ja
+                .countries
+                .iter()
+                .copied()
+                .chain(jb.countries.iter().copied())
+                .collect();
+            MarkingClassification::Joint(marque_ism::JointClassification {
+                level: ja.level,
+                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            })
+        }
+        (
+            MarkingClassification::Conflict {
+                us: ua,
+                foreign: fa,
+            },
+            MarkingClassification::Conflict {
+                us: ub,
+                foreign: fb,
+            },
+        ) => {
+            // us level matches by invariant (effective_level equality).
+            // foreign payloads may differ; union the country-bearing
+            // shapes when both sides carry the same ForeignClassification
+            // variant; otherwise the variant-rank precedence on the
+            // foreign payload picks the canonically-smaller side.
+            let _ = (ua, ub);
+            let foreign = merge_foreign_classification(fa, fb);
+            MarkingClassification::Conflict {
+                us: *ua,
+                foreign: Box::new(foreign),
+            }
+        }
+        // Different variants reach here only through a programming
+        // error in `join`; defensively return `a`.
+        _ => a.clone(),
+    }
+}
+
+/// Merge two `ForeignClassification` payloads from same-level
+/// `Conflict` variants. Same-variant union; cross-variant falls
+/// back to the variant-rank precedence (lower rank wins).
+fn merge_foreign_classification(
+    a: &marque_ism::ForeignClassification,
+    b: &marque_ism::ForeignClassification,
+) -> marque_ism::ForeignClassification {
+    use marque_ism::ForeignClassification;
+    use std::collections::BTreeSet;
+    match (a, b) {
+        (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
+            // P-1 (8th-pass): source-concealed-dominates — same fix as
+            // `classification_join_same_variant`. Empty countries = the
+            // source-concealed `//FGI [level]` form (§H.7 p124). If either
+            // side is concealed, the joined result must be concealed.
+            //
+            // §-authority: §H.7 p124 (precedence rules for banner line
+            // guidance: concealed dominates acknowledged in any mixed page).
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let countries = if fa.countries.is_empty() || fb.countries.is_empty() {
+                Box::new([]) as Box<[marque_ism::CountryCode]>
+            } else {
+                let merged: BTreeSet<marque_ism::CountryCode> = fa
+                    .countries
+                    .iter()
+                    .copied()
+                    .chain(fb.countries.iter().copied())
+                    .collect();
+                merged.into_iter().collect::<Vec<_>>().into_boxed_slice()
+            };
+            ForeignClassification::Fgi(marque_ism::FgiClassification {
+                level: fa.level,
+                countries,
+            })
+        }
+        (ForeignClassification::Nato(_), ForeignClassification::Nato(_)) => a.clone(),
+        (ForeignClassification::Joint(ja), ForeignClassification::Joint(jb)) => {
+            let merged: BTreeSet<marque_ism::CountryCode> = ja
+                .countries
+                .iter()
+                .copied()
+                .chain(jb.countries.iter().copied())
+                .collect();
+            ForeignClassification::Joint(marque_ism::JointClassification {
+                level: ja.level,
+                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            })
+        }
+        _ => {
+            // Cross-variant: pick the canonically-smaller variant
+            // (Fgi < Nato < Joint, mirroring `classification_variant_rank`
+            // for the top-level shapes).
+            let rank = |fc: &ForeignClassification| -> u8 {
+                match fc {
+                    ForeignClassification::Fgi(_) => 1,
+                    ForeignClassification::Nato(_) => 2,
+                    ForeignClassification::Joint(_) => 3,
+                }
+            };
+            if rank(a) <= rank(b) {
+                a.clone()
+            } else {
+                b.clone()
+            }
+        }
+    }
+}
+
+/// Same-variant / same-level payload tiebreaker for
+/// `ClassificationLattice::meet` (INTERSECTION semantic).
+///
+/// C-9 (PR 4b-B follow-up): the dual of [`classification_join_same_variant`].
+/// `meet` is GLB on the country-list partial order:
+///
+/// - Equal payloads → that value (idempotence).
+/// - One payload ⊆ the other → the smaller payload (it IS the GLB).
+/// - Disjoint payloads → `None` (no common lower bound; meet falls
+///   to the lattice bottom).
+///
+/// Returning `None` on disjoint payloads is what keeps the absorption
+/// laws `a ⊔ (a ⊓ b) = a` and `a ⊓ (a ⊔ b) = a` holding: joining
+/// `a` with `None` gives `a`, and meeting `a` with anything `≥ a`
+/// gives `a`. Using `union` (the join semantic) on the meet side
+/// broke both absorption laws.
+///
+/// `Us` and `Nato` carry no country payload at same level → meet
+/// returns the value directly. `Conflict` is the absorbing top: at
+/// same level + same shape (both Conflict, same foreign), meet is
+/// that value; otherwise meet is `None`.
+fn classification_meet_same_variant(
+    a: &MarkingClassification,
+    b: &MarkingClassification,
+) -> Option<MarkingClassification> {
+    use std::collections::BTreeSet;
+    // Idempotency short-circuit: if a == b, return a unchanged so
+    // input order is preserved through the round-trip.
+    if a == b {
+        return Some(a.clone());
+    }
+    match (a, b) {
+        (MarkingClassification::Us(_), MarkingClassification::Us(_)) => Some(a.clone()),
+        (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
+            // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in the
+            // FGI source-disclosure dimension.  Meet with top returns the other
+            // operand; dual of the join's concealed-dominates rule (P-1, 8th-pass).
+            // Authority: §H.7 p128 (concealed is most restrictive form).
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let a_concealed = fa.countries.is_empty();
+            let b_concealed = fb.countries.is_empty();
+            match (a_concealed, b_concealed) {
+                (true, true) => {
+                    // Both concealed → top ⊓ top = top.
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        level: fa.level,
+                        countries: Box::new([]),
+                    }))
+                }
+                (true, false) => {
+                    // self is concealed (top) → return other.
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        level: fb.level,
+                        countries: fb.countries.clone(),
+                    }))
+                }
+                (false, true) => {
+                    // other is concealed (top) → return self.
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        level: fa.level,
+                        countries: fa.countries.clone(),
+                    }))
+                }
+                (false, false) => {
+                    let sa: BTreeSet<marque_ism::CountryCode> =
+                        fa.countries.iter().copied().collect();
+                    let sb: BTreeSet<marque_ism::CountryCode> =
+                        fb.countries.iter().copied().collect();
+                    let inter: BTreeSet<marque_ism::CountryCode> =
+                        sa.intersection(&sb).copied().collect();
+                    if inter.is_empty() {
+                        None
+                    } else {
+                        Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                            level: fa.level,
+                            countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                        }))
+                    }
+                }
+            }
+        }
+        (MarkingClassification::Nato(_), MarkingClassification::Nato(_)) => Some(a.clone()),
+        (MarkingClassification::Joint(ja), MarkingClassification::Joint(jb)) => {
+            let sa: BTreeSet<marque_ism::CountryCode> = ja.countries.iter().copied().collect();
+            let sb: BTreeSet<marque_ism::CountryCode> = jb.countries.iter().copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
+            if inter.is_empty() {
+                None
+            } else {
+                Some(MarkingClassification::Joint(
+                    marque_ism::JointClassification {
+                        level: ja.level,
+                        countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                    },
+                ))
+            }
+        }
+        (
+            MarkingClassification::Conflict {
+                us: ua,
+                foreign: fa,
+            },
+            MarkingClassification::Conflict {
+                us: ub,
+                foreign: fb,
+            },
+        ) => {
+            // us level matches by invariant. Conflict carries an
+            // implicit US + a single foreign payload; meet is the
+            // foreign-intersection lifted back into Conflict, or
+            // None if the foreign payloads are incomparable.
+            let _ = (ua, ub);
+            meet_foreign_classification(fa, fb).map(|foreign| MarkingClassification::Conflict {
+                us: *ua,
+                foreign: Box::new(foreign),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Companion to [`merge_foreign_classification`] for the meet side.
+/// Same-variant payloads intersect; cross-variant returns the
+/// HIGHER-rank operand (the dominated, lower-≤ side; the GLB dual of
+/// the join's "lower variant rank wins" tiebreak).
+///
+/// **C-9b (PR 4b-B 7th-pass follow-up).** Pre-fix, this function
+/// returned `None` on cross-variant inputs while
+/// `merge_foreign_classification` returned the lower-rank operand.
+/// That asymmetry broke the dual absorption law `a ⊓ (a ⊔ b) = a` for
+/// `Conflict` values whose inner foreign payloads had different
+/// variants — the join would settle on the lower-rank inner, but the
+/// meet would collapse the entire outer Conflict to bottom. C-9b
+/// aligns the cross-variant meet with the join's tiebreak (return the
+/// higher-rank operand, the GLB dual), mirroring how C-9 fixed the
+/// same asymmetry at the outer `ClassificationLattice::meet` level.
+///
+/// §-authority: §H.7 pp123-125 reciprocal-normalization grounds the
+/// variant-rank ordering (Fgi=1 < Nato=2 < Joint=3). Verified
+/// 2026-05-15 against CAPCO-2016.md.
+fn meet_foreign_classification(
+    a: &marque_ism::ForeignClassification,
+    b: &marque_ism::ForeignClassification,
+) -> Option<marque_ism::ForeignClassification> {
+    use marque_ism::ForeignClassification;
+    use std::collections::BTreeSet;
+    match (a, b) {
+        (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
+            // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in
+            // the FGI source-disclosure dimension — dual of the join's
+            // concealed-dominates rule (P-1, 8th-pass). Meet(top, x) = x.
+            // Authority: §H.7 p128 (concealed is most restrictive form).
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let a_concealed = fa.countries.is_empty();
+            let b_concealed = fb.countries.is_empty();
+            match (a_concealed, b_concealed) {
+                (true, true) => Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                    level: fa.level,
+                    countries: Box::new([]),
+                })),
+                (true, false) => Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                    level: fb.level,
+                    countries: fb.countries.clone(),
+                })),
+                (false, true) => Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                    level: fa.level,
+                    countries: fa.countries.clone(),
+                })),
+                (false, false) => {
+                    let sa: BTreeSet<marque_ism::CountryCode> =
+                        fa.countries.iter().copied().collect();
+                    let sb: BTreeSet<marque_ism::CountryCode> =
+                        fb.countries.iter().copied().collect();
+                    let inter: BTreeSet<marque_ism::CountryCode> =
+                        sa.intersection(&sb).copied().collect();
+                    if inter.is_empty() {
+                        None
+                    } else {
+                        Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                            level: fa.level,
+                            countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                        }))
+                    }
+                }
+            }
+        }
+        (ForeignClassification::Nato(_), ForeignClassification::Nato(_)) => Some(a.clone()),
+        (ForeignClassification::Joint(ja), ForeignClassification::Joint(jb)) => {
+            let sa: BTreeSet<marque_ism::CountryCode> = ja.countries.iter().copied().collect();
+            let sb: BTreeSet<marque_ism::CountryCode> = jb.countries.iter().copied().collect();
+            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
+            if inter.is_empty() {
+                None
+            } else {
+                Some(ForeignClassification::Joint(
+                    marque_ism::JointClassification {
+                        level: ja.level,
+                        countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                    },
+                ))
+            }
+        }
+        // C-9b: cross-variant → return the HIGHER-rank operand (the
+        // dominated, lower-≤ side; GLB dual of `merge_foreign_classification`'s
+        // tiebreak). The rank function below MUST agree with the one
+        // in `merge_foreign_classification` (Fgi=1 < Nato=2 < Joint=3).
+        _ => {
+            let rank = |fc: &ForeignClassification| -> u8 {
+                match fc {
+                    ForeignClassification::Fgi(_) => 1,
+                    ForeignClassification::Nato(_) => 2,
+                    ForeignClassification::Joint(_) => 3,
+                }
+            };
+            // Dual of merge: merge returns the LOWER-rank operand
+            // (the GREATER element under ≤); meet returns the
+            // HIGHER-rank operand (the LESSER element under ≤).
+            if rank(a) >= rank(b) {
+                Some(a.clone())
+            } else {
+                Some(b.clone())
+            }
+        }
+    }
+}
+
+impl Lattice for ClassificationLattice {
+    fn join(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, x) | (x, None) => Self(x.clone()),
+            (Some(a), Some(b)) => {
+                let la = a.effective_level();
+                let lb = b.effective_level();
+                if la > lb {
+                    Self(Some(a.clone()))
+                } else if lb > la {
+                    Self(Some(b.clone()))
+                } else {
+                    // Equal effective level: deterministic variant
+                    // tiebreak. Lower rank wins, so the join is
+                    // commutative (a.join(b) == b.join(a)).
+                    //
+                    // C-7 (PR 4b-B follow-up): when both operands
+                    // share the same variant AND the same level, the
+                    // payloads may still differ — e.g.
+                    // `Fgi(S, [GBR]).join(Fgi(S, [CAN]))`. The
+                    // variant-rank tiebreak alone fell through
+                    // `ra <= rb` returning the left operand, which
+                    // broke commutativity on same-variant payload
+                    // diffs. We union the country payloads per the
+                    // §H.7 p123 / §D.2 p28 banner-rollup rule that
+                    // the banner FGI list is the union of every
+                    // observed foreign source.
+                    let ra = classification_variant_rank(a);
+                    let rb = classification_variant_rank(b);
+                    if ra == rb {
+                        Self(Some(classification_join_same_variant(a, b)))
+                    } else if ra < rb {
+                        Self(Some(a.clone()))
+                    } else {
+                        Self(Some(b.clone()))
+                    }
+                }
+            }
+        }
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, _) | (_, None) => Self(None),
+            (Some(a), Some(b)) => {
+                let la = a.effective_level();
+                let lb = b.effective_level();
+                if la < lb {
+                    Self(Some(a.clone()))
+                } else if lb < la {
+                    Self(Some(b.clone()))
+                } else {
+                    // Equal effective level: meet must be the GLB
+                    // dual of `join`. The join policy is:
+                    //   - lower variant-rank wins at same level
+                    //     (Us < Fgi < Nato < Joint < Conflict),
+                    //     so the lower-rank variant is the GREATER
+                    //     element in the lattice ≤ order;
+                    //   - same variant + same level, payloads union.
+                    //
+                    // GLB (meet) is therefore the dual:
+                    //   - cross-variant: return the HIGHER variant-
+                    //     rank operand (the dominated, lower-≤ side).
+                    //     §H.7 pp123-125 reciprocal-normalization.
+                    //   - same variant + same level, payloads
+                    //     INTERSECT (country-list GLB). Empty
+                    //     intersection drops to the lattice bottom.
+                    //
+                    // C-9 (PR 4b-B follow-up): pre-fix, meet mirrored
+                    // join's tiebreaker (lower rank wins) AND used
+                    // the UNION helper for same-variant payloads.
+                    // Both branches broke the absorption laws
+                    // `a ⊔ (a ⊓ b) = a` / `a ⊓ (a ⊔ b) = a`.
+                    let ra = classification_variant_rank(a);
+                    let rb = classification_variant_rank(b);
+                    if ra == rb {
+                        match classification_meet_same_variant(a, b) {
+                            Some(m) => Self(Some(m)),
+                            None => Self(None),
+                        }
+                    } else if ra < rb {
+                        // a has lower rank → a is GREATER in ≤ →
+                        // b is the meet (the dominated, lower-≤).
+                        Self(Some(b.clone()))
+                    } else {
+                        // a has higher rank → a is LESSER in ≤ →
+                        // a is the meet.
+                        Self(Some(a.clone()))
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl BoundedLattice for ClassificationLattice {
+    fn top() -> Self {
+        Self(Some(MarkingClassification::Us(Classification::TopSecret)))
+    }
+    fn bottom() -> Self {
+        Self(None)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NatoClassLattice — bounded OrdMax over the NATO chain
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the NATO classification axis:
+/// `Option<NatoClassification>` with `OrdMax` over
+/// `NU < NR < NC < NS < CTS` per CAPCO-2016 §H.2 p55.
+///
+/// **Pure-NATO documents only.** This lattice shadows
+/// `ClassificationLattice` for documents with no US portions.
+/// Mixed US+NATO documents reciprocally-raise at portion-parse time
+/// via the existing §H.7 pp123-125 rule; `non_us_classification` is
+/// `None` at banner for such pages.
+///
+/// `BoundedLattice` is implemented: top = `Some(CosmicTopSecret)`,
+/// bottom = `None`. The NATO chain is a closed five-element ladder
+/// (no agency-extensibility, unlike US classifications which can
+/// theoretically receive new tiers).
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NatoClassLattice(Option<NatoClassification>);
+
+impl NatoClassLattice {
+    /// An empty NATO classification — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct a `NatoClassLattice` from an `Option<NatoClassification>`.
+    pub fn new(c: Option<NatoClassification>) -> Self {
+        Self(c)
+    }
+
+    /// Construct from a `CanonicalAttrs` slice — picks `Nato(_)`
+    /// portions and joins by `OrdMax` over the NATO chain. Returns
+    /// `empty()` if no portion carries a NATO classification.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let max = portions
+            .iter()
+            .filter_map(|p| match &p.classification {
+                Some(MarkingClassification::Nato(n)) => Some(*n),
+                _ => None,
+            })
+            .max_by_key(|n| n.us_equivalent());
+        Self(max)
+    }
+
+    /// Consume into the inner `Option<NatoClassification>`.
+    pub fn into_inner(self) -> Option<NatoClassification> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<NatoClassification>`.
+    pub fn as_inner(&self) -> Option<NatoClassification> {
+        self.0
+    }
+}
+
+impl Lattice for NatoClassLattice {
+    fn join(&self, other: &Self) -> Self {
+        match (self.0, other.0) {
+            (None, x) | (x, None) => Self(x),
+            (Some(a), Some(b)) => {
+                if a.us_equivalent() >= b.us_equivalent() {
+                    Self(Some(a))
+                } else {
+                    Self(Some(b))
+                }
+            }
+        }
+    }
+    fn meet(&self, other: &Self) -> Self {
+        match (self.0, other.0) {
+            (None, _) | (_, None) => Self(None),
+            (Some(a), Some(b)) => {
+                if a.us_equivalent() <= b.us_equivalent() {
+                    Self(Some(a))
+                } else {
+                    Self(Some(b))
+                }
+            }
+        }
+    }
+}
+
+impl BoundedLattice for NatoClassLattice {
+    fn top() -> Self {
+        Self(Some(NatoClassification::CosmicTopSecret))
+    }
+    fn bottom() -> Self {
+        Self(None)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeclassifyOnLattice — MaxDate semilattice (no top)
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the declassification-date axis:
+/// `Option<IsmDate>` with `max_by(end_cmp)` join (the most-restrictive
+/// / furthest-out date wins).
+///
+/// Per CAPCO-2016 §E.3 p32 "Multiple Sources and the Declassify On
+/// Line Hierarchy" — the load-bearing rule is verbatim: *"The
+/// 'Declassify On' line must reflect the single declassification
+/// value that provides the longest classification duration of any
+/// of the sources."* This is the explicit max-date aggregation rule
+/// that grounds the lattice's `max_by(end_cmp)` semantic. ISOO §3.3
+/// is the out-of-tree primary source CAPCO §E.3 derives from;
+/// included as a cross-reference, not as primary authority per
+/// Constitution VIII.
+///
+/// `IsmDate::end_cmp` compares the end-of-span of each precision tier,
+/// so `Year(2003)` extends through December 31 and is "later" than
+/// `Date(2003, 6, 15)` for the MaxDate lattice's most-conservative-
+/// interpretation contract.
+///
+/// **Note** (CV-1, PR 4b-B 8th-pass follow-up): pre-CV-1 this doc
+/// comment cited §H.6 p104 ("RD precedence rule applies to declass
+/// dates by extension"). §H.6 p104 is about RD/FRD/TFNI banner
+/// roll-up — its actual relevant rule for declass dates is the
+/// opposite ("Automatic declassification of documents containing RD
+/// information is prohibited") which forbids a declass-date on RD
+/// documents entirely. The pre-CV-1 citation was a Constitution VIII
+/// stretch; §E.3 p32 is the proper authority for date aggregation.
+///
+/// **`BoundedLattice` deliberately not implemented.** Dates are
+/// open-vocab — no finite "top" date is realizable. Per the
+/// `AeaSet` / `SciSet` / `SarSet` precedent in this module, the
+/// established pattern for "no BoundedLattice when range is open"
+/// is "implement `Lattice`, provide `empty()` / `default()` for
+/// the bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
+/// `FgiSet` was previously listed in this precedent; B-1 PR 4b-B
+/// 8th-pass retired `FgiSet`'s `BoundedLattice` impl — `FgiSet`
+/// does NOT implement `BoundedLattice`. Removed from precedent list
+/// to avoid misattribution.)
+///
+/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// - §E.3 p32 (Multiple Sources and the Declassify On Line Hierarchy
+///   — "single declassification value that provides the longest
+///   classification duration of any of the sources").
+/// - ISOO §3.3 (out-of-tree primary; included for cross-reference,
+///   not as primary source per Constitution VIII).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeclassifyOnLattice(Option<IsmDate>);
+
+impl DeclassifyOnLattice {
+    /// An empty declassify-on — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct a `DeclassifyOnLattice` from an `Option<IsmDate>`.
+    pub fn new(d: Option<IsmDate>) -> Self {
+        Self(d)
+    }
+
+    /// Construct from a `CanonicalAttrs` slice — picks the maximum
+    /// declassify-on date across portions per `IsmDate::end_cmp`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let max = portions
+            .iter()
+            .filter_map(|p| p.declassify_on.clone())
+            .max_by(|a, b| a.end_cmp(b));
+        Self(max)
+    }
+
+    /// Consume into the inner `Option<IsmDate>`.
+    pub fn into_inner(self) -> Option<IsmDate> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<IsmDate>`.
+    pub fn as_inner(&self) -> Option<&IsmDate> {
+        self.0.as_ref()
+    }
+}
+
+impl Lattice for DeclassifyOnLattice {
+    fn join(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, x) | (x, None) => Self(x.clone()),
+            (Some(a), Some(b)) => {
+                if a.end_cmp(b).is_ge() {
+                    Self(Some(a.clone()))
+                } else {
+                    Self(Some(b.clone()))
+                }
+            }
+        }
+    }
+    fn meet(&self, other: &Self) -> Self {
+        match (&self.0, &other.0) {
+            (None, _) | (_, None) => Self(None),
+            (Some(a), Some(b)) => {
+                if a.end_cmp(b).is_le() {
+                    Self(Some(a.clone()))
+                } else {
+                    Self(Some(b.clone()))
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DissemSet — IC dissem axis with three supersession overlays
+// ---------------------------------------------------------------------------
+
+/// FD&R supersession-pair table.
+///
+/// Each row `(dominant, dominated)` reads "if `dominant` is present in
+/// the post-join set, remove `dominated`." The table is the §D.2
+/// Table 3 (p28) FD&R precedence rules + §H.8 NOFORN supersession,
+/// expressed structurally rather than as branches.
+///
+/// The single-static-table convention (M-14 PR 4b-B follow-up) is
+/// enforced by the crate-private `apply_overlays` API taking
+/// `DISSEM_SUPERSESSION_TABLE` directly — the only call site is
+/// inside `marque-capco`, code-review enforces no ad-hoc copies.
+/// An earlier `debug_assert!` pointer-equality check (rust-reviewer
+/// Gotcha 2) was removed in H-4 because it compared the table
+/// pointer to itself (always true, false protection); the `&'static`
+/// reference passed everywhere in this module is the actual
+/// invariant.
+///
+/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// - §D.2 Table 3 rows 1-2 (NOFORN dominates FD&R controls).
+/// - §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO, EYES ONLY,
+///   or DISPLAY ONLY").
+/// - §H.8 p157 (EYES ONLY: NSA-only marking — E064 emits a fix to migrate
+///   EYES ONLY → REL TO at engine fix-time, but the parser preserves
+///   `DissemControl::Eyes` during lint runs. P-4 (8th-pass): corrected
+///   prior docstring that falsely claimed "EYES retired... already migrated
+///   to REL TO at parse time so not represented here" — the parser does NOT
+///   migrate at parse time; `scheme.rs:190` and `scheme.rs:3677` confirm
+///   `DissemControl::Eyes` survives parse and appears in `dissem_us` during
+///   intermediate lattice composition. NOFORN must dominate EYES ONLY in
+///   the supersession table for the lattice path to be correct per §H.8 p145.
+///   E064 handles the EYES → REL TO migration as a separate rule at fix time.)
+static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
+    // NOFORN ⊐ REL TO / RELIDO / DISPLAY ONLY / EYES ONLY — §D.2 Table 3
+    // rows 1-2 + §H.8 p145 ("Cannot be used with REL TO, RELIDO, EYES ONLY,
+    // or DISPLAY ONLY").
+    //
+    // P-4 (8th-pass): added EYES ONLY. Pre-fix the table omitted it based on
+    // a false assumption that the parser migrated EYES → REL TO at parse time.
+    // The parser preserves DissemControl::Eyes (see scheme.rs:190); E064 is
+    // the engine-time migration rule. During lint runs and intermediate lattice
+    // composition, EYES can appear and must be stripped when NOFORN is present.
+    (DissemControl::Nf, DissemControl::Rel),
+    (DissemControl::Nf, DissemControl::Relido),
+    (DissemControl::Nf, DissemControl::Displayonly),
+    (DissemControl::Nf, DissemControl::Eyes),
+];
+
+/// Lattice form of the US-attributed IC dissem axis: a `BTreeSet` of
+/// `DissemControl` tokens with three supersession overlays applied
+/// at construction and re-applied on `join`.
+///
+/// **Overlay set** (PARTIAL parity with `PageContext::expected_dissem_us`
+/// — see divergence list below; PR 4b-B 7th-pass docstring correction):
+///
+/// 1. Basic BTreeSet union over per-portion `dissem_us` (matches
+///    PageContext step 1).
+/// 2. **OC-USGOV supersession** per §H.8 p136 + §H.8 p140: drop
+///    `OcUsgov` if `Oc` is present in the joined set (matches
+///    PageContext step 2).
+/// 3. **RELIDO observed-unanimity** per §H.8 pp155-156: drop `Relido`
+///    if some portion lacks it. The constructor tracks this via the
+///    `relido_observed_unanimous` flag so a subsequent `join` can
+///    propagate the unanimity bit without re-inspecting the original
+///    portions (matches PageContext step 2b).
+/// 4. **NOFORN dominates** per §D.2 Table 3 rows 1-2 + §H.8 p145:
+///    drop `Rel` / `Relido` / `Displayonly` when `Nf` is present.
+///    **This overlay is NOT applied by
+///    `PageContext::expected_dissem_us`** — see the divergence note
+///    below. The lattice path is correct here per §H.8 p145; the
+///    PageContext path is bug-shaped.
+///
+/// **Documented parity divergences with `PageContext::expected_dissem_us`**
+/// (PR 4b-B 7th-pass docstring correction; matching parity-gate
+/// fixtures in `tests/page_context_lattice_parity.rs`):
+///
+/// - **Overlay 4 (NOFORN dominates) is LATTICE-ONLY.** PageContext's
+///   `expected_dissem_us` (page_context.rs:511) does NOT apply this
+///   overlay; it surfaces both `Nf` and the dominated `Rel` /
+///   `Relido` / `Displayonly` in the same banner. Per §H.8 p145 +
+///   §D.2 Table 3 rows 1-2 the lattice path is correct and
+///   PageContext is bug-shaped here. Pinned by
+///   `relido_plus_nf_noforn_dominates_documented_divergence` as a
+///   LATTICE-CORRECTING-PAGE-CONTEXT case.
+/// - **FOUO classification-gate eviction is PAGECONTEXT-ONLY.**
+///   PageContext step 3 (page_context.rs:573-578) drops `Fouo` from
+///   classified pages and on DSEN override per §H.8 p134; the
+///   lattice path's `DissemSet` does NOT apply this — the cross-axis
+///   classification gate stays on PageContext under the
+///   `Constraint::Custom("capco/fouo-eviction", …)` migration target
+///   (PR 4b-C, Pattern B in
+///   `project_noforn_supremacy_composition.md`). Pinned by
+///   `fouo_classified_lattice_vs_pagecontext_diverges` (G-1).
+/// - **UCNI classification-gate strip is PAGECONTEXT-ONLY.** Same
+///   Pattern C migration target (PR 4b-C). Pinned by
+///   `aea_ucni_classified_lattice_vs_pagecontext_diverges` (G-2).
+/// - **Cross-axis NOFORN injection from `non_ic_dissem`** (PageContext
+///   step 4) is mirrored on the lattice path via
+///   `DissemSet::with_noforn_injected` (G-8 PR 4b-B), but the source
+///   data path differs: PageContext reads `expected_non_ic_dissem`'s
+///   `needs_nf` second-tuple element directly; the lattice path
+///   routes through `RelToBlock::is_noforn_superseded` and a
+///   `tmp_ctx.expected_non_ic_dissem()` call at scheme.rs (the G-6
+///   path). Both ultimately surface NOFORN on classified SBU-NF /
+///   LES-NF pages, but the lattice path additionally re-runs overlay
+///   4 to strip dominated controls (which PageContext does not).
+///
+/// **Ordering** at the lattice level is BTreeSet's natural order;
+/// §H.8 prose ordering ("OC/NF" not "NF/OC") is the renderer's
+/// concern, not the lattice's. The renderer
+/// (`MarkingScheme::render_canonical`) lands in PR 5+ Stage 4.
+///
+/// **`BoundedLattice` deliberately not implemented.** The
+/// `DissemControl` vocabulary contains ~25 tokens but the **active
+/// finite set** depends on schema version and agency extensions; the
+/// open-vocab precedent (SciSet / SarSet / AeaSet) is the
+/// established pattern for "implement `Lattice` + `empty()`/`default()`
+/// for bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
+/// `FgiSet` was previously listed in this precedent; B-1 PR 4b-B
+/// 8th-pass retired `FgiSet`'s `BoundedLattice` impl — `FgiSet`
+/// does NOT implement `BoundedLattice`. Removed from precedent list
+/// to avoid misattribution.)
+///
+/// **Partial-lattice note (C-4 PR 4b-B follow-up).** The
+/// `relido_observed_unanimous` flag is a **join-side aggregation
+/// property** — it tracks whether every portion contributing to the
+/// page's dissem state has RELIDO. `meet` has no natural reading for
+/// this flag, so its result carries the vacuous-true value (the
+/// identity under subsequent AND-joins). This is what makes the
+/// load-bearing absorption law `a ⊔ (a ⊓ b) = a` hold algebraically.
+/// The dual law `a ⊓ (a ⊔ b) = a` does NOT hold over the full
+/// `(set, flag)` pair — `DissemSet` is a join-semilattice with a
+/// structural `meet` provided for completeness on the `set` axis.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.8 p136 (ORCON dominates ORCON-USGOV).
+/// - §H.8 p140 (ORCON-USGOV template same rule).
+/// - §H.8 p145 (NOFORN dominates REL TO / RELIDO / DISPLAY ONLY).
+/// - §H.8 pp155-156 (RELIDO unanimity for banner rollup).
+/// - §D.2 Table 3 rows 1-2 (NOFORN dominates dominated FD&R).
+///
+/// **`Default`** (C-8 PR 4b-B follow-up). `Default` MUST agree with
+/// `empty()` — both are the lattice bottom with the vacuous-truth
+/// `relido_observed_unanimous = true` flag. A derived `Default` would
+/// produce `relido_observed_unanimous = false` (bool's Default), which
+/// would break `Default == empty()` and silently drop RELIDO when a
+/// `Default::default()` value was joined into a unanimous-RELIDO set.
+/// The manual `Default` impl delegates to `empty()` so the two
+/// constructors agree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DissemSet {
+    /// The post-overlay set of dissem controls.
+    set: BTreeSet<DissemControl>,
+    /// `true` if every original portion carried `Relido`. `false`
+    /// (the lattice bottom for this flag) means either no portion
+    /// carried it OR some portion did not. The two cases are
+    /// distinguishable via `set.contains(&Relido)`:
+    /// `(set has Relido, unanimous=true)` → banner gets RELIDO;
+    /// `(set has no Relido, unanimous=true)` → no Relido in any
+    /// portion, the unanimity bit is vacuous and stays at true so
+    /// joining with a fresh non-Relido set is no-op; etc.
+    relido_observed_unanimous: bool,
+}
+
+impl Default for DissemSet {
+    /// `Default` MUST agree with `DissemSet::empty()` (C-8 PR 4b-B
+    /// follow-up). See the struct doc comment for the rationale —
+    /// the derived `Default` set `relido_observed_unanimous = false`
+    /// (bool's Default) and broke C-5's `from_attrs_iter(&[]) ==
+    /// empty()` agreement on a third constructor.
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl DissemSet {
+    /// An empty dissem set — the lattice bottom.
+    ///
+    /// Construction starts with `relido_observed_unanimous=true`
+    /// because the universal claim "every portion has RELIDO" holds
+    /// vacuously over an empty set of portions. Joining a real
+    /// portion via `from_attrs_iter` propagates the unanimity flag
+    /// correctly: if the first real portion has RELIDO, the flag
+    /// remains true; if it doesn't, the flag flips to false.
+    pub fn empty() -> Self {
+        Self {
+            set: BTreeSet::new(),
+            relido_observed_unanimous: true,
+        }
+    }
+
+    /// Construct from a slice of `CanonicalAttrs` — joins per-portion
+    /// `dissem_us` and applies the supersession overlays.
+    ///
+    /// Empty input returns `Self::empty()` (the lattice bottom)
+    /// exactly — `from_attrs_iter(&[]) == DissemSet::empty()`.
+    /// The vacuous-truth treatment of "every portion carries
+    /// RELIDO over an empty portion list" matches the universal-
+    /// quantifier convention and the `empty()` constructor's
+    /// `relido_observed_unanimous = true`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        if portions.is_empty() {
+            return Self::empty();
+        }
+
+        let mut set = BTreeSet::new();
+        for p in portions {
+            for t in p.dissem_us.iter() {
+                set.insert(*t);
+            }
+        }
+
+        // RELIDO observed-unanimity: track whether every portion
+        // carries Relido. Vacuously true over an empty portion list
+        // (universal quantifier convention); since we early-returned
+        // on `portions.is_empty()`, this expression is now strictly
+        // `every observed portion has RELIDO`.
+        let relido_observed_unanimous = portions
+            .iter()
+            .all(|a| a.dissem_us.contains(&DissemControl::Relido));
+
+        let mut out = Self {
+            set,
+            relido_observed_unanimous,
+        };
+        out.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        out
+    }
+
+    /// Internal: apply the three supersession overlays in order.
+    /// The `table` parameter MUST be `DISSEM_SUPERSESSION_TABLE`
+    /// in production (M-14 PR 4b-B follow-up — the `debug_assert!`
+    /// pointer-equality "Gotcha 2" check from H-4 was removed
+    /// because it compared the table to itself; the single-static-
+    /// table convention is enforced by `apply_overlays` being
+    /// crate-private with `DISSEM_SUPERSESSION_TABLE` as the only
+    /// in-tree caller).
+    fn apply_overlays(&mut self, table: &'static [(DissemControl, DissemControl)]) {
+        // Overlay 1: OC-USGOV supersession (§H.8 p136 + p140).
+        if self.set.contains(&DissemControl::Oc) && self.set.contains(&DissemControl::OcUsgov) {
+            self.set.remove(&DissemControl::OcUsgov);
+        }
+
+        // Overlay 2: RELIDO observed-unanimity (§H.8 pp155-156). If
+        // not unanimous, drop RELIDO.
+        if self.set.contains(&DissemControl::Relido) && !self.relido_observed_unanimous {
+            self.set.remove(&DissemControl::Relido);
+        }
+
+        // Overlay 3: NOFORN dominates (§D.2 Table 3 + §H.8 p145).
+        if self.set.contains(&DissemControl::Nf) {
+            for (dom, dominated) in table {
+                if self.set.contains(dom) {
+                    self.set.remove(dominated);
+                }
+            }
+        }
+    }
+
+    /// Borrow the underlying BTreeSet.
+    pub fn as_set(&self) -> &BTreeSet<DissemControl> {
+        &self.set
+    }
+
+    /// Whether RELIDO was unanimous across the source portions. The
+    /// banner derivation reads this when emitting the RELIDO token.
+    pub fn relido_unanimous(&self) -> bool {
+        self.relido_observed_unanimous
+    }
+
+    /// Render to a `Box<[DissemControl]>` in BTreeSet natural order.
+    /// Per-§H.8 prose ordering is the renderer's concern; the lattice
+    /// produces a deterministic order that round-trips through joins.
+    pub fn into_boxed_slice(self) -> Box<[DissemControl]> {
+        self.set.into_iter().collect::<Vec<_>>().into_boxed_slice()
+    }
+
+    /// Borrow as a `Vec` for compatibility with existing
+    /// `PageContext::expected_dissem_us`-shaped APIs.
+    pub fn to_vec(&self) -> Vec<DissemControl> {
+        self.set.iter().copied().collect()
+    }
+
+    /// Inject `Nf` into the set and re-apply the supersession
+    /// overlay. G-8 (PR 4b-B follow-up) — callers that need to
+    /// inject NOFORN from a cross-axis source (non-IC SBU-NF /
+    /// LES-NF on a classified page, NODIS / EXDIS supersession,
+    /// or the `capco/noforn-clears-rel-to` PageRewrite) MUST route
+    /// through here so the §H.8 p145 NOFORN-dominates rule strips
+    /// `Rel` / `Relido` / `Displayonly` from the set.
+    ///
+    /// Pre-G-8 the cross-axis injection at
+    /// `crates/capco/src/scheme.rs:513` added `Nf` directly into
+    /// `out.dissem_us` after `DissemSet::into_boxed_slice` ran,
+    /// which left dominated controls in place — invalid per
+    /// §H.8 p145.
+    ///
+    /// Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO /
+    /// RELIDO / EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
+    pub fn with_noforn_injected(mut self) -> Self {
+        self.set.insert(DissemControl::Nf);
+        // Re-run the supersession overlay so the NOFORN-dominates
+        // step strips any `Rel` / `Relido` / `Displayonly` left in
+        // the bag.
+        self.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        self
+    }
+}
+
+// P-9-3 (9th-pass) — Partial-lattice divergence note for `DissemSet`.
+//
+// `DissemSet` implements `Lattice` (join + meet) but does NOT satisfy
+// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full
+// `(set, relido_observed_unanimous)` pair. The `relido_observed_unanimous`
+// flag is a join-side aggregation property (a record of observed page
+// composition); `meet` has no natural reading for this flag and returns
+// the vacuous-true value, which is the identity under subsequent AND-joins.
+// This keeps the load-bearing `a ⊔ (a ⊓ b) = a` law intact but means
+// generic `Lattice` consumers that call `meet` and rely on dual absorption
+// are NOT safe for `DissemSet`. The trait shape will be refined in a
+// follow-up PR once `marque-scheme` gains a `JoinSemilattice` /
+// `MeetSemilattice` split (tracked as GitHub issue #456).
+//
+// See the `DissemSet` doc comment above (§ "Partial-lattice note C-4")
+// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
+// IS guaranteed; only the meet-over-join direction diverges.
+impl Lattice for DissemSet {
+    fn join(&self, other: &Self) -> Self {
+        // The single-static-table convention is enforced by the
+        // crate-private `apply_overlays` API taking
+        // `DISSEM_SUPERSESSION_TABLE` directly (it has no other call
+        // sites). H-4 PR 4b-B follow-up removed a tautological
+        // `debug_assert!` that compared the table pointer to itself
+        // — always true, false protection.
+        let mut set = self.set.clone();
+        set.extend(other.set.iter().copied());
+
+        // Joining preserves unanimity only if BOTH operands report
+        // unanimity — the join models "page context of both sides
+        // combined," and if either side observed non-unanimity, the
+        // joined page does too. Vacuous unanimity (empty operand)
+        // is identity for this conjunction: `true && x = x`.
+        let relido_observed_unanimous =
+            self.relido_observed_unanimous && other.relido_observed_unanimous;
+
+        let mut out = Self {
+            set,
+            relido_observed_unanimous,
+        };
+        out.apply_overlays(DISSEM_SUPERSESSION_TABLE);
+        out
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        // Meet over a bag-with-supersession is set-theoretic
+        // intersection. The overlays are not re-applied on meet —
+        // the smaller set's overlay state is preserved (the overlay
+        // rules only ever REMOVE elements; removing more from a
+        // smaller set is a no-op).
+        let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
+        // RELIDO observed-unanimity is a join-side property (the
+        // claim "every observed portion has RELIDO"). Meet has no
+        // natural reading for this flag, so we produce the vacuous
+        // (true) value — the identity under subsequent AND joins.
+        //
+        // C-4 (PR 4b-B follow-up): the prior `meet` propagated
+        // unanimity as AND, which broke the absorption law
+        // `a ⊔ (a ⊓ b) = a` (e.g., a unanimous RELIDO set met with
+        // an empty/non-unanimous set produced a `false` flag,
+        // joining that back into the original dropped RELIDO).
+        // Forcing `true` here keeps `meet` an algebraic operation
+        // that respects absorption.
+        Self {
+            set,
+            relido_observed_unanimous: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NatoDissemSet — trivial union over the NATO-attributed dissem axis
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the NATO-attributed IC dissem axis: a `BTreeSet`
+/// of `DissemControl` tokens with **no overlays**.
+///
+/// Per CAPCO-2016 p41 (Table — Authority-Reciprocity-Holdback by
+/// Registered Marking — for the NATO-reciprocity case), NATO
+/// contributes only `ORCON-NATO` and `REL TO` to the IC dissem axis,
+/// both of which compose by simple BTreeSet union at the banner
+/// level. None of the US-context exceptions (OC-USGOV drop, FOUO
+/// drop, DSEN override, NF injection, RELIDO unanimity) apply —
+/// those are §H.8 US-attributed behaviors, and the NATO reciprocity
+/// boundary at p41 explicitly carves them out.
+///
+/// **`BoundedLattice` deliberately not implemented.** The NATO
+/// dissem vocabulary is closed at two elements today, but the
+/// underlying `DissemControl` enum is shared with US dissem so the
+/// namespace bound is loose; bottom = empty set, top is unsafe to
+/// claim. The SciSet/SarSet/AeaSet precedent for open-vocab applies
+/// (M-25 PR 4b-B 7th-pass — `FgiSet` was previously listed in this
+/// precedent; B-1 PR 4b-B 8th-pass retired `FgiSet`'s
+/// `BoundedLattice` impl — `FgiSet` does NOT implement
+/// `BoundedLattice`. See DissemSet doc above for rationale.)
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - p41 (NATO reciprocity table — NATO dissem set is the
+///   intersection of NATO-permitted-and-IC-compatible markings).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NatoDissemSet {
+    set: BTreeSet<DissemControl>,
+}
+
+impl NatoDissemSet {
+    /// An empty NATO dissem set — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Construct from a slice of `CanonicalAttrs` — plain BTreeSet
+    /// union over per-portion `dissem_nato`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let mut set = BTreeSet::new();
+        for p in portions {
+            for t in p.dissem_nato.iter() {
+                set.insert(*t);
+            }
+        }
+        Self { set }
+    }
+
+    /// Borrow the underlying BTreeSet.
+    pub fn as_set(&self) -> &BTreeSet<DissemControl> {
+        &self.set
+    }
+
+    /// Render to a `Box<[DissemControl]>` in BTreeSet natural order.
+    pub fn into_boxed_slice(self) -> Box<[DissemControl]> {
+        self.set.into_iter().collect::<Vec<_>>().into_boxed_slice()
+    }
+
+    /// Borrow as a `Vec` for compatibility with existing
+    /// `PageContext::expected_dissem_nato`-shaped APIs.
+    pub fn to_vec(&self) -> Vec<DissemControl> {
+        self.set.iter().copied().collect()
+    }
+}
+
+impl Lattice for NatoDissemSet {
+    fn join(&self, other: &Self) -> Self {
+        let mut set = self.set.clone();
+        set.extend(other.set.iter().copied());
+        Self { set }
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
+        Self { set }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JointSet — 4-variant state with producer-disunity collapse
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the JOINT classification axis.
+///
+/// The state space is a closed four-variant enum that captures the
+/// decision tree from CAPCO-2016 §H.3 + §H.7. The `Mixed` variant
+/// (added in PR 4b-B follow-up C-3) distinguishes "no JOINT seen"
+/// (the lattice identity `Bottom`) from "JOINT and non-JOINT both
+/// observed" (an absorbing state) so `join` stays **associative**.
+///
+/// - `Bottom`: no JOINT-bearing portion observed. Lattice identity.
+/// - `UnanimousProducers`: every observed portion is JOINT with the
+///   same producer set. The banner is `//JOINT [class] [LIST]` per
+///   §H.3 p56.
+/// - `DisunityCollapse`: every observed portion is JOINT but the
+///   producer lists differ. Non-US producers migrate to FGI per
+///   §H.7 p123.
+/// - `Mixed`: at least one JOINT portion AND at least one
+///   non-JOINT portion observed. Absorbing for the JOINT axis —
+///   §H.3 p57 "JOINT marking is not carried forward to the banner
+///   line in US documents." Once `Mixed`, the JOINT axis cannot
+///   resurrect to `UnanimousProducers` regardless of subsequent
+///   joins.
+///
+/// The transitions on `Lattice::join` are structural operations on
+/// the deterministic state space — NOT "normalization" in the
+/// `Lattice` module-docs Gotcha-1 sense — and the property test
+/// `joint_disunity_lattice_laws` exhausts the state-space cube to
+/// verify assoc/comm/idem.
+///
+/// **The W004 Warn rule** (in `crates/capco/src/rules.rs`) reads
+/// the post-projection JointSet state from the engine's
+/// `PageContext` flow. W004 fires only on `DisunityCollapse`;
+/// `Mixed` is the §H.3 p57 case where FGI migration rides through
+/// `expected_fgi_marker` and no W004 fires. The lattice does not
+/// itself emit the diagnostic; the rule does.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+///
+/// - §H.3 p56 (JOINT classification grammar).
+/// - §H.3 pp55-59 (JOINT worked examples).
+/// - §H.3 p57 ("JOINT marking not carried forward to
+///   the banner line in US documents").
+/// - §H.7 p123 (FGI source-acknowledged form for disunity-collapse
+///   non-US producer migration).
+///
+/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// four-variant decision tree is the lawful closed set per §H.3 p57
+/// today, but future CAPCO revisions or partial-decoder states may
+/// add a `PartialDisunity` / `Inferred` variant — declaring
+/// `#[non_exhaustive]` requires downstream matchers to handle the
+/// unknown case with a wildcard arm so a future variant addition
+/// is a non-breaking change.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum JointSet {
+    /// No JOINT-bearing portion observed. Lattice identity for `join`.
+    #[default]
+    Bottom,
+
+    /// Every portion is JOINT-classified and every portion carries
+    /// the same producer list. The banner is `//JOINT [class]
+    /// [LIST]` per §H.3 p56.
+    UnanimousProducers {
+        /// Highest level observed via OrdMax across portions.
+        level: Classification,
+        /// The unanimous producer list (USA always in).
+        producers: BTreeSet<CountryCode>,
+    },
+
+    /// Disunity observed: every portion is JOINT-classified but the
+    /// producer lists differ across portions. The lattice records the
+    /// union of non-US producers; the engine's banner rendering migrates
+    /// them to FGI [LIST] per §H.7 p123 and the W004 Warn rule
+    /// surfaces the cross-axis transformation to the user.
+    DisunityCollapse {
+        /// Highest level observed via OrdMax across portions.
+        highest_level: Classification,
+        /// Union of non-US producers across JOINT portions.
+        union_non_us_producers: BTreeSet<CountryCode>,
+    },
+
+    /// At least one JOINT portion AND at least one non-JOINT
+    /// portion observed. §H.3 p57: JOINT does not roll up to the
+    /// banner in US documents. Absorbing for the JOINT axis — once
+    /// `Mixed`, subsequent joins cannot resurrect a JOINT roll-up
+    /// state. Non-US producers ride to `FgiSet` via
+    /// `expected_fgi_marker`; no W004 fires on `Mixed`.
+    Mixed,
+}
+
+impl JointSet {
+    /// An empty JointSet — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::Bottom
+    }
+
+    /// Construct from a slice of `CanonicalAttrs`.
+    ///
+    /// Per §H.3 p57, the all-JOINT-or-not distinction
+    /// drives the state-space branch:
+    ///
+    /// 1. **No portions / no JOINT portion** → `Bottom` (identity).
+    /// 2. **All portions JOINT** with identical producer lists →
+    ///    `UnanimousProducers { OrdMax(level), countries }`.
+    /// 3. **All portions JOINT** with disagreeing producer lists →
+    ///    `DisunityCollapse { OrdMax(level), union_non_us }`.
+    /// 4. **Mixed JOINT + non-JOINT** → `Mixed`. The §H.3 p57
+    ///    "JOINT does not roll up in US documents" rule. **No W004
+    ///    fires** in this case — JOINT non-US producers ride to FGI
+    ///    via the existing PageContext-resident `expected_fgi_marker`
+    ///    path. Pre-existing behavior preserved bit-for-bit.
+    ///
+    /// **Empty-producer-list defensive shape**: an `UnanimousProducers`
+    /// variant with an empty producer set is malformed per §H.3
+    /// (JOINT requires USA + at least one co-owner). This
+    /// constructor returns `Bottom` rather than the malformed
+    /// `UnanimousProducers { producers: ∅ }` to keep the lattice
+    /// state space well-formed.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        if portions.is_empty() {
+            return Self::Bottom;
+        }
+
+        // Separate JOINT portions from non-JOINT portions.
+        //
+        // **Malformed JOINT portions are dropped at this point.** A
+        // JOINT portion is malformed when it fails either of the two
+        // §H.3 p56 grammar invariants:
+        //
+        // 1. Producer list must be non-empty (`!j.countries.is_empty()`).
+        // 2. **USA must appear in the producer list** ("USA always
+        //    appears as the OWNER/PRODUCER" per §H.3 p56). Pre-fix
+        //    (PR 4b-B 9th-pass), only invariant #1 was enforced; a
+        //    `JointClassification { countries: [GBR] }` (one country,
+        //    no USA) was pushed to `joint_portions`, treated as
+        //    well-formed unanimous, and emitted a JOINT banner
+        //    without USA — unrepresentable in the §H.3 grammar.
+        //
+        // Per the existing empty-producer rationale: dropping
+        // malformed portions at scan time keeps the remaining
+        // (well-formed) portions in the correct shape to drive the
+        // lattice state per the standard rules: zero remaining →
+        // `Bottom`; well-formed unanimous → `UnanimousProducers`;
+        // well-formed disagreement → `DisunityCollapse`.
+        //
+        // The malformed portion is **invisible to the JOINT axis**
+        // (does not count as "non-JOINT" either). PageContext's
+        // `expected_classification` still consumes its
+        // `effective_level()` for the level chain max; this
+        // normalization is JOINT-axis-only.
+        //
+        // Authority: §H.3 p56 (JOINT grammar requires non-empty
+        // `[LIST]` AND USA in the producer list). Verified
+        // 2026-05-16 against CAPCO-2016.md.
+        let has_usa = |j: &JointClassification| j.countries.iter().any(|c| c.as_str() == "USA");
+        let mut joint_portions: Vec<&JointClassification> = Vec::new();
+        let mut has_non_joint = false;
+        for p in portions {
+            match &p.classification {
+                // Well-formed: non-empty AND contains USA.
+                Some(MarkingClassification::Joint(j)) if !j.countries.is_empty() && has_usa(j) => {
+                    joint_portions.push(j)
+                }
+                // Malformed JOINT (empty producer list OR no USA):
+                // drop, treat as invisible to the JOINT axis. The
+                // portion is still a CanonicalAttrs entry on the
+                // page, so it doesn't count as "non-JOINT" either —
+                // the malformed shape contributes nothing.
+                Some(MarkingClassification::Joint(_)) => {}
+                Some(_) => has_non_joint = true,
+                None => has_non_joint = true,
+            }
+        }
+
+        if joint_portions.is_empty() {
+            return Self::Bottom;
+        }
+
+        // §H.3 p57: in US documents (mixed JOINT + US),
+        // JOINT does not roll up. The FGI-migration path is the
+        // existing PageContext::expected_fgi_marker; we return
+        // `Mixed` (absorbing) and no W004 fires.
+        if has_non_joint {
+            return Self::Mixed;
+        }
+
+        // All (well-formed) portions JOINT: check unanimity on
+        // producer lists.
+        let first_producers: BTreeSet<CountryCode> =
+            joint_portions[0].countries.iter().copied().collect();
+        let highest_level = joint_portions
+            .iter()
+            .map(|j| j.level)
+            .max()
+            .unwrap_or(Classification::Unclassified);
+
+        let unanimous = joint_portions.iter().all(|j| {
+            let set: BTreeSet<CountryCode> = j.countries.iter().copied().collect();
+            set == first_producers
+        });
+
+        if unanimous {
+            // Note: `first_producers` is guaranteed non-empty here
+            // because empty-producer portions were dropped above.
+            // The defensive `is_empty()` check at this site is
+            // therefore redundant post-fix; we keep an assertion-
+            // shaped early return for belt-and-braces (any future
+            // refactor that re-introduces empty-producer portions
+            // before this point will fail loud rather than producing
+            // a malformed `UnanimousProducers { producers: ∅ }`).
+            if first_producers.is_empty() {
+                return Self::Bottom;
+            }
+            Self::UnanimousProducers {
+                level: highest_level,
+                producers: first_producers,
+            }
+        } else {
+            // Disunity: union of non-US producers across all JOINT
+            // portions.
+            let mut union_non_us: BTreeSet<CountryCode> = BTreeSet::new();
+            for j in &joint_portions {
+                for c in j.countries.iter() {
+                    if c.as_str() != "USA" {
+                        union_non_us.insert(*c);
+                    }
+                }
+            }
+            Self::DisunityCollapse {
+                highest_level,
+                union_non_us_producers: union_non_us,
+            }
+        }
+    }
+
+    /// Whether this JointSet represents a disunity-collapse state
+    /// (the W004 rule reads this).
+    pub fn is_disunity_collapse(&self) -> bool {
+        matches!(self, Self::DisunityCollapse { .. })
+    }
+
+    /// Read access to the non-US producer set on a `DisunityCollapse`
+    /// state, or `None` otherwise.
+    pub fn disunity_collapse_non_us_producers(&self) -> Option<&BTreeSet<CountryCode>> {
+        match self {
+            Self::DisunityCollapse {
+                union_non_us_producers,
+                ..
+            } => Some(union_non_us_producers),
+            _ => None,
+        }
+    }
+
+    /// Read access to the highest level observed across JOINT
+    /// portions; `None` for `Bottom` and `Mixed` (the latter does
+    /// not carry a per-axis level since JOINT doesn't roll up).
+    pub fn highest_level(&self) -> Option<Classification> {
+        match self {
+            Self::Bottom | Self::Mixed => None,
+            Self::UnanimousProducers { level, .. } => Some(*level),
+            Self::DisunityCollapse { highest_level, .. } => Some(*highest_level),
+        }
+    }
+
+    /// Whether the page is in the `Mixed` state — JOINT and non-JOINT
+    /// portions both observed. JOINT does not roll up to the banner
+    /// in this case (§H.3 p57).
+    pub fn is_mixed(&self) -> bool {
+        matches!(self, Self::Mixed)
+    }
+
+    /// Convert back to a `MarkingClassification` for the banner.
+    ///
+    /// - `Bottom` → `None` (no JOINT portion observed; the banner
+    ///   reads the class from `ClassificationLattice` and FGI from
+    ///   `FgiSet` per the existing PageContext flow).
+    /// - `Mixed` → `None` (§H.3 p57: JOINT does not roll up in US
+    ///   documents; the banner reads the class from `Us(_)` and FGI
+    ///   from the cross-axis fold).
+    /// - `UnanimousProducers { level, producers }` → `Some(Joint(...))`.
+    /// - `DisunityCollapse { highest_level, .. }` → `Some(Us(highest_level))`
+    ///   (the non-US producers ride to FgiSet via a separate flow —
+    ///   see `Commit 7 CapcoMarking::join` rewrite).
+    pub fn to_marking_classification(&self) -> Option<MarkingClassification> {
+        match self {
+            Self::Bottom | Self::Mixed => None,
+            Self::UnanimousProducers { level, producers } => {
+                let countries: Box<[CountryCode]> = producers
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                Some(MarkingClassification::Joint(JointClassification {
+                    level: *level,
+                    countries,
+                }))
+            }
+            Self::DisunityCollapse { highest_level, .. } => {
+                Some(MarkingClassification::Us(*highest_level))
+            }
+        }
+    }
+}
+
+// P-9-3 (9th-pass) — Partial-lattice divergence note for `JointSet`.
+//
+// `JointSet` implements `Lattice` (join + meet) but does NOT satisfy
+// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full state space.
+// The `Mixed` / `DisunityCollapse` distinction is a record of observed
+// page composition (join-side aggregation), not an algebraic element;
+// `meet` has no natural reading for non-identical producer sets and
+// returns `Bottom`. Generic `Lattice` consumers that call `meet` and
+// rely on dual absorption are NOT safe for `JointSet`. The trait shape
+// will be refined in a follow-up PR once `marque-scheme` gains a
+// `JoinSemilattice` / `MeetSemilattice` split (tracked as GitHub issue
+// #456).
+//
+// See the `JointSet::meet` doc comment below (§ "Partial-lattice note C-6")
+// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
+// IS guaranteed over the `Bottom` / `UnanimousProducers` sub-lattice;
+// only the meet-over-join direction diverges outside that sub-lattice.
+impl Lattice for JointSet {
+    /// Compose two JointSets per the §H.3 + §H.7 transition table:
+    ///
+    /// - `Bottom ⊔ x = x` (bottom-identity).
+    /// - `Mixed ⊔ x = Mixed` for `x ∈ {Mixed, Unanimous, Disunity}`
+    ///   (absorbing — §H.3 p57: once JOINT and non-JOINT both
+    ///   observed, JOINT cannot resurrect a roll-up state regardless
+    ///   of subsequent joins).
+    /// - `UnanimousProducers ⊔ UnanimousProducers` with same
+    ///   producer set → `UnanimousProducers { max(l1,l2), p }`.
+    /// - `UnanimousProducers ⊔ UnanimousProducers` with different
+    ///   producer sets → `DisunityCollapse { max(l1,l2), (p1 ∪ p2) \
+    ///   USA }`.
+    /// - `UnanimousProducers ⊔ DisunityCollapse` → `DisunityCollapse`
+    ///   (absorbs).
+    /// - `DisunityCollapse ⊔ DisunityCollapse` → `DisunityCollapse`
+    ///   with union of non-US producers and max level.
+    fn join(&self, other: &Self) -> Self {
+        match (self, other) {
+            // Mixed is absorbing for non-Bottom operands. §H.3 p57.
+            // We deliberately let Bottom ⊔ Mixed = Mixed propagate
+            // (Bottom is the identity, Mixed is the new state).
+            (Self::Mixed, _) | (_, Self::Mixed) => Self::Mixed,
+            (Self::Bottom, x) | (x, Self::Bottom) => x.clone(),
+            (
+                Self::UnanimousProducers {
+                    level: l1,
+                    producers: p1,
+                },
+                Self::UnanimousProducers {
+                    level: l2,
+                    producers: p2,
+                },
+            ) => {
+                if p1 == p2 {
+                    Self::UnanimousProducers {
+                        level: (*l1).max(*l2),
+                        producers: p1.clone(),
+                    }
+                } else {
+                    let mut non_us: BTreeSet<CountryCode> = BTreeSet::new();
+                    for c in p1.iter().chain(p2.iter()) {
+                        if c.as_str() != "USA" {
+                            non_us.insert(*c);
+                        }
+                    }
+                    Self::DisunityCollapse {
+                        highest_level: (*l1).max(*l2),
+                        union_non_us_producers: non_us,
+                    }
+                }
+            }
+            (
+                Self::UnanimousProducers {
+                    level: lu,
+                    producers: pu,
+                },
+                Self::DisunityCollapse {
+                    highest_level: ld,
+                    union_non_us_producers: nd,
+                },
+            )
+            | (
+                Self::DisunityCollapse {
+                    highest_level: ld,
+                    union_non_us_producers: nd,
+                },
+                Self::UnanimousProducers {
+                    level: lu,
+                    producers: pu,
+                },
+            ) => {
+                let mut non_us = nd.clone();
+                for c in pu.iter() {
+                    if c.as_str() != "USA" {
+                        non_us.insert(*c);
+                    }
+                }
+                Self::DisunityCollapse {
+                    highest_level: (*lu).max(*ld),
+                    union_non_us_producers: non_us,
+                }
+            }
+            (
+                Self::DisunityCollapse {
+                    highest_level: l1,
+                    union_non_us_producers: n1,
+                },
+                Self::DisunityCollapse {
+                    highest_level: l2,
+                    union_non_us_producers: n2,
+                },
+            ) => {
+                let mut non_us = n1.clone();
+                non_us.extend(n2.iter().copied());
+                Self::DisunityCollapse {
+                    highest_level: (*l1).max(*l2),
+                    union_non_us_producers: non_us,
+                }
+            }
+        }
+    }
+
+    /// Meet over the JOINT axis.
+    ///
+    /// Same-producer-set `UnanimousProducers` operands meet to the
+    /// `min(level)` element. Different producer sets meet to
+    /// `Bottom` rather than producing a `DisunityCollapse` — collapse
+    /// is a JOIN-side concept (a record of disagreement observed
+    /// across the page), not a meet result. This is what makes the
+    /// absorption law `a ⊔ (a ⊓ b) = a` hold for two same-set
+    /// `UnanimousProducers` operands.
+    ///
+    /// **Partial-lattice note (C-6 PR 4b-B follow-up).** Like
+    /// `DissemSet`, `JointSet` carries join-side aggregation
+    /// information (the `Mixed` / `DisunityCollapse` distinction
+    /// is a record of observed page composition, not an algebraic
+    /// element). `meet` has no natural reading for non-identical
+    /// producer sets, so we return `Bottom`. The dual absorption
+    /// law `a ⊓ (a ⊔ b) = a` does NOT hold over the full state
+    /// space; the structural `meet` is provided for completeness.
+    ///
+    /// Pre-fix, meet returned a same-level `UnanimousProducers`
+    /// with the intersection of the two producer sets — that
+    /// produced a different element from `a` when set were
+    /// non-equal, then `a.join(a.meet(b))` returned
+    /// `DisunityCollapse` instead of `a`, breaking absorption.
+    fn meet(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
+            (Self::Mixed, Self::Mixed) => Self::Mixed,
+            (
+                Self::UnanimousProducers {
+                    level: l1,
+                    producers: p1,
+                },
+                Self::UnanimousProducers {
+                    level: l2,
+                    producers: p2,
+                },
+            ) if p1 == p2 => Self::UnanimousProducers {
+                level: (*l1).min(*l2),
+                producers: p1.clone(),
+            },
+            // Cross-variant, mixed-shape, or non-identical-producer
+            // pairs fall back to `Bottom`. The unanimity contract has
+            // no well-defined meet over disagreeing producer sets —
+            // collapse is a join-side observation, not a meet result.
+            _ => Self::Bottom,
+        }
+    }
+}
+
+// `JointSet` does NOT implement `BoundedLattice`: producer lists are
+// open-vocabulary over `CountryCode`, and there is no lawful finite
+// top variant under the §H.3 grammar. Use `JointSet::empty()` /
+// `JointSet::default()` for the bottom.
+
+// ---------------------------------------------------------------------------
+// RelToBlock — IntersectSet with NOFORN supersession
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the REL TO axis.
+///
+/// The state space is a closed four-variant enum that captures the
+/// CAPCO-2016 §H.8 pp150-151 REL TO grammar + §D.2 Table 3 rows
+/// 9-13 supersession behavior. The four variants distinguish the
+/// "no portions seen" identity from the "intersected to empty"
+/// absorbing state so the join lattice stays **associative** — see
+/// C-2 in the PR 4b-B follow-up triage.
+///
+/// - `Bottom`: no REL TO portions observed. Lattice **identity**:
+///   `Bottom ⊔ x = x` for every `x`. This is the only state that
+///   produced by the empty-portion fold; once any REL TO portion
+///   has contributed to the state, it is never `Bottom` again.
+/// - `Lattice { countries }`: post-tetragraph-expansion intersection,
+///   non-empty.
+/// - `Empty`: portions intersected to an empty set, but no portion
+///   carries NOFORN/NODIS/EXDIS. §D.2 Table 3 row 9 says
+///   "no-common-LIST → NOFORN" — the lattice records the empty
+///   intersection; the post-projection pipeline injects NOFORN into
+///   `DissemSet` via the existing `capco/noforn-clears-rel-to`
+///   PageRewrite. Absorbing for non-`Bottom` operands.
+/// - `NofornSuperseded`: some portion carries NOFORN, NODIS, or
+///   EXDIS. NOFORN clears REL TO; NODIS/EXDIS clear REL TO per
+///   §H.9 p172 + p174. The sentinel absorbs subsequent joins and is
+///   stronger than `Empty`. Note: both `NofornSuperseded` AND `Empty`
+///   trigger NF injection at the scheme layer
+///   (`CapcoMarking::join_via_lattice`) — `NofornSuperseded` via
+///   NODIS/EXDIS supersession (§H.9 p172/p174) and `Empty` via
+///   §D.2 Table 3 row 9 (no-common-LIST → NOFORN). See
+///   [`RelToBlock::is_noforn_superseded`] and
+///   [`RelToBlock::is_empty_intersection`].
+///
+/// `Empty` and `NofornSuperseded` are both absorbing for non-Bottom
+/// operands; their join composes as
+/// `Empty ⊔ NofornSuperseded = NofornSuperseded` (the more
+/// conservative outcome wins, matching §D.2 Table 3 row 1's "NOFORN
+/// dominates" precedent).
+///
+/// **Tetragraph expansion** (FVEY → {AUS, CAN, GBR, NZL, USA}; ACGU
+/// → {AUS, CAN, GBR, USA}) happens at `from_attrs_iter` time via
+/// the existing `marque_ism::lookup_tetragraph_members` table. Once
+/// the state is `Lattice { countries }`, joining is intersection
+/// over already-canonical trigraphs.
+///
+/// `BoundedLattice` is NOT implemented — CountryCode vocabulary is
+/// open-extensible. The SciSet/SarSet/FgiSet/AeaSet precedent applies
+/// (`FgiSet` retired its `BoundedLattice` impl in B-1, PR 4b-B 8th-pass —
+/// see the §6 "Note on `BoundedLattice`" block in `FgiSet` for the
+/// open-vocab rationale; both FgiSet and RelToBlock share the same
+/// `CountryCode` open-vocab axis).
+///
+/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// four-variant state space is closed today, but future CAPCO
+/// extensions (e.g., a `PartialIntersection` variant for partial-
+/// decoder REL TO recovery) may add states without breaking the
+/// closed-set contract for the existing four — declaring
+/// `#[non_exhaustive]` requires downstream matchers to handle the
+/// unknown case with a wildcard arm.
+///
+/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// - §H.8 pp150-151 (REL TO grammar — banner form `AUTHORIZED FOR
+///   RELEASE TO [USA, LIST]`).
+/// - §D.2 Table 3 rows 9-13 (REL TO supersession by NOFORN and the
+///   disjoint-LIST → NOFORN rule).
+/// - §H.8 p152 worked example (intersection on roll-up).
+/// - §H.9 p172 + p174 (NODIS / EXDIS clear REL TO).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RelToBlock {
+    /// No REL TO portions observed. Identity for `join`.
+    #[default]
+    Bottom,
+
+    /// Post-tetragraph-expansion intersection, non-empty.
+    Lattice {
+        /// Sorted USA-first then alphabetical per §H.8 p151.
+        countries: BTreeSet<CountryCode>,
+    },
+
+    /// REL TO portions intersected to an empty set; no portion
+    /// carries NOFORN. Absorbing for non-`Bottom` joins.
+    Empty,
+
+    /// Some portion carries NOFORN (or the NODIS/EXDIS REL-TO-clear
+    /// equivalents). The sentinel absorbs further joins; strictly
+    /// stronger than `Empty`.
+    NofornSuperseded,
+}
+
+impl RelToBlock {
+    /// An empty REL TO block — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::Bottom
+    }
+
+    /// Construct a `RelToBlock` from a slice of `CanonicalAttrs`.
+    ///
+    /// 1. If any portion carries `Nf` in `dissem_us` OR NODIS/EXDIS
+    ///    in `non_ic_dissem` → `NofornSuperseded`. (§D.2 Table 3
+    ///    rows 1-2 + §H.9 p172/p174.)
+    /// 2. Else expand each portion's REL TO list via
+    ///    `lookup_tetragraph_members` (FVEY/ACGU/... → constituent
+    ///    trigraphs; opaque tetragraphs pass through).
+    /// 3. Intersect the expanded sets across portions.
+    /// 4. No REL TO portions → `Bottom` (identity).
+    /// 5. Empty intersection → `Empty` (absorbing, §D.2 Table 3 row 9).
+    /// 6. Non-empty intersection → `Lattice { countries }`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        // NOFORN / NODIS / EXDIS supersession.
+        for p in portions {
+            if p.dissem_us.iter().any(|d| matches!(d, DissemControl::Nf))
+                || p.non_ic_dissem
+                    .iter()
+                    .any(|d| matches!(d, NonIcDissem::Nodis | NonIcDissem::Exdis))
+            {
+                return Self::NofornSuperseded;
+            }
+        }
+
+        // Gather only portions with a non-empty REL TO list.
+        let rel_to_portions: Vec<&CanonicalAttrs> =
+            portions.iter().filter(|a| !a.rel_to.is_empty()).collect();
+
+        if rel_to_portions.is_empty() {
+            return Self::Bottom;
+        }
+
+        // Expand each portion's REL TO into a set of trigraph
+        // strings, resolving tetragraphs to constituents.
+        let expanded: Vec<BTreeSet<&str>> = rel_to_portions
+            .iter()
+            .map(|a| {
+                let mut set = BTreeSet::new();
+                for t in a.rel_to.iter() {
+                    let s = t.as_str();
+                    if let Some(members) = marque_ism::lookup_tetragraph_members(s) {
+                        for &m in members {
+                            set.insert(m);
+                        }
+                    } else {
+                        set.insert(s);
+                    }
+                }
+                set
+            })
+            .collect();
+
+        // Intersect across all expanded sets.
+        let mut result: BTreeSet<&str> = expanded[0].clone();
+        for set in &expanded[1..] {
+            result = result.intersection(set).copied().collect();
+        }
+
+        if result.is_empty() {
+            return Self::Empty;
+        }
+
+        // Convert back to CountryCode; defensive filter_map
+        // discards anything that fails to round-trip.
+        let countries: BTreeSet<CountryCode> = result
+            .iter()
+            .filter_map(|s| CountryCode::try_new(s.as_bytes()))
+            .collect();
+
+        if countries.is_empty() {
+            Self::Empty
+        } else {
+            Self::Lattice { countries }
+        }
+    }
+
+    /// Render to a `Box<[CountryCode]>` with USA first then
+    /// alphabetical, per §H.8 p151.
+    pub fn into_boxed_slice(self) -> Box<[CountryCode]> {
+        match self {
+            Self::Bottom | Self::Empty | Self::NofornSuperseded => Box::new([]),
+            Self::Lattice { countries } => {
+                let mut codes: Vec<CountryCode> = countries.into_iter().collect();
+                if let Some(pos) = codes.iter().position(|c| *c == CountryCode::USA)
+                    && pos != 0
+                {
+                    let usa = codes.remove(pos);
+                    codes.insert(0, usa);
+                }
+                codes.into_boxed_slice()
+            }
+        }
+    }
+
+    /// Render to a `Vec<CountryCode>` mirroring
+    /// `PageContext::expected_rel_to`'s shape.
+    pub fn to_vec(&self) -> Vec<CountryCode> {
+        match self {
+            Self::Bottom | Self::Empty | Self::NofornSuperseded => Vec::new(),
+            Self::Lattice { countries } => {
+                let mut codes: Vec<CountryCode> = countries.iter().copied().collect();
+                if let Some(pos) = codes.iter().position(|c| *c == CountryCode::USA)
+                    && pos != 0
+                {
+                    let usa = codes.remove(pos);
+                    codes.insert(0, usa);
+                }
+                codes
+            }
+        }
+    }
+
+    /// Whether the block is the `NofornSuperseded` sentinel.
+    ///
+    /// NF injection at the scheme layer (`CapcoMarking::join_via_lattice`)
+    /// is triggered by EITHER `NofornSuperseded` (NODIS/EXDIS supersession
+    /// per §H.9 p172/p174) OR `Empty` (REL TO intersection has no common
+    /// LIST per §D.2 Table 3 row 9). See `CapcoMarking::join_via_lattice`
+    /// for the injection rendezvous. This accessor is a convenience check
+    /// for the `NofornSuperseded` arm only; callers that need both arms
+    /// should also call [`Self::is_empty_intersection`].
+    pub fn is_noforn_superseded(&self) -> bool {
+        matches!(self, Self::NofornSuperseded)
+    }
+
+    /// Whether the block is the `Empty` absorbing state (REL TO
+    /// portions intersected to an empty set, no NOFORN observed).
+    /// Distinguishable from `Bottom` so `join` stays associative.
+    pub fn is_empty_intersection(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
+}
+
+impl Lattice for RelToBlock {
+    fn join(&self, other: &Self) -> Self {
+        // NofornSuperseded > Empty > Lattice{·} > Bottom.
+        // NofornSuperseded and Empty are absorbing for non-Bottom
+        // operands; Bottom is the join identity.
+        match (self, other) {
+            (Self::NofornSuperseded, _) | (_, Self::NofornSuperseded) => Self::NofornSuperseded,
+            (Self::Empty, _) | (_, Self::Empty) => {
+                // Empty absorbs everything except NofornSuperseded
+                // (handled above) and Bottom (which we want to fall
+                // through to Empty since Bottom is the identity).
+                Self::Empty
+            }
+            (Self::Bottom, x) | (x, Self::Bottom) => x.clone(),
+            (Self::Lattice { countries: a }, Self::Lattice { countries: b }) => {
+                let common: BTreeSet<CountryCode> = a.intersection(b).copied().collect();
+                if common.is_empty() {
+                    Self::Empty
+                } else {
+                    Self::Lattice { countries: common }
+                }
+            }
+        }
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        // Meet over REL TO — union of country lists, semantically
+        // "the broader release that BOTH sides could have authored."
+        //
+        // `NofornSuperseded` is the **join-top** of `RelToBlock`:
+        // every state joins to `NofornSuperseded` (the absorbing element
+        // on the join side, modeling "any NOFORN-injecting supersession
+        // on the page forces banner NOFORN per §H.8 p145 + §D.2 Table 3
+        // row 9"). Symmetrically, `meet(NofornSuperseded, x) = x` —
+        // `NofornSuperseded` as join-top means the GLB with any state x
+        // is x itself. The prior arm `(N, _) | (_, N) => N` treated N
+        // as meet-bottom, which violated dual absorption: for any
+        // `a ≠ N`, `a ⊓ (a ⊔ N) = a ⊓ N` should equal `a` but
+        // returned `N` instead (11th-pass lattice-consultant HIGH defect,
+        // fixed here; isomorphic to C-9 on `ClassificationLattice`).
+        //
+        // `Bottom` is the meet-absorbing element (bottom of the meet
+        // semilattice). `Empty` (intersected-to-empty REL TO) meets
+        // like a normal element — joining to a real LIST under union
+        // there is nothing to forbid.
+        match (self, other) {
+            (Self::NofornSuperseded, x) | (x, Self::NofornSuperseded) => x.clone(),
+            (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
+            (Self::Empty, x) | (x, Self::Empty) => x.clone(),
+            (Self::Lattice { countries: a }, Self::Lattice { countries: b }) => {
+                let union: BTreeSet<CountryCode> = a.union(b).copied().collect();
+                Self::Lattice { countries: union }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1294,8 +3457,11 @@ mod tests {
     }
 
     #[test]
-    fn fgi_set_none_is_bottom() {
-        assert_eq!(FgiSet::bottom(), FgiSet::None);
+    fn fgi_set_none_is_empty() {
+        // B-1 (PR 4b-B 8th-pass): `FgiSet::bottom()` retired alongside
+        // the `BoundedLattice` impl. `FgiSet::empty()` is the public
+        // bottom constructor; `FgiSet::None` is the variant it maps to.
+        assert_eq!(FgiSet::empty(), FgiSet::None);
     }
 
     // -----------------------------------------------------------------
@@ -1612,17 +3778,11 @@ mod tests {
         assert_eq!(d, FgiSet::None);
     }
 
-    #[test]
-    fn fgi_set_top_is_concealed_empty() {
-        let t = FgiSet::top();
-        assert!(matches!(
-            t,
-            FgiSet::Present {
-                concealed: true,
-                ..
-            }
-        ));
-    }
+    // `fgi_set_top_is_concealed_empty` retired in B-1 (PR 4b-B 8th-pass
+    // follow-up). `FgiSet` no longer implements `BoundedLattice`; the
+    // `SourceConcealed` supersession sentinel is still reachable via
+    // `FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))`, exercised
+    // by `fgi_set_meet_both_concealed_preserved` below.
 
     #[test]
     fn fgi_set_join_none_right_preserves_left() {

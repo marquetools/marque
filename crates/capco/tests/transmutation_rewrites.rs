@@ -273,14 +273,16 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
          or `UnannotatedCustomAxes` (a `Custom` rewrite declared with empty \
          reads/writes). Both are scheme-authoring bugs.",
     );
-    // Smoke-check the scheduler exposed the same thirteen ids it was
+    // Smoke-check the scheduler exposed the same fourteen ids it was
     // handed; this prevents a regression where construction silently
     // drops a rewrite.
     // PR 3c.B Sub-PR 8.F added capco/nodis-implies-noforn and
     // capco/exdis-implies-noforn (9 → 11).
     // PR 3c.B Sub-PR 8.F.2 added capco/sbu-nf-implies-noforn and
     // capco/les-nf-implies-noforn (11 → 13).
-    assert_eq!(engine.scheduled_rewrites().len(), 13);
+    // DISPLAY ONLY Phase 2 added capco/noforn-clears-fdr-family
+    // (§H.8 p154 + §D.2 Table 3 row 2; 13 → 14).
+    assert_eq!(engine.scheduled_rewrites().len(), 14);
 }
 
 #[test]

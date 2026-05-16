@@ -217,7 +217,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        38,
+        39,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -237,6 +237,12 @@ fn rule_count_reflects_registration_changes() {
          `BareNatoRequiresRelToRule` (S007) — bare NATO classification \
          in a US-classified document should carry `REL TO USA, NATO` \
          per §H.7 p127 Notional Example 2; net delta +1. Final: 38. \
+         PR 4b-B (006 T112) adds `JointDisunityCollapseRule` (W004) — \
+         JOINT producer-disunity-collapse-to-FGI per §H.3 p57 + \
+         §H.7 p123 (CV-4 PR 4b-B 8th-pass updated from §H.3 p56; \
+         Warn-only; cross-axis fix deferred to renderer in \
+         PR 5+ per H-1 PR 4b-B follow-up triage); net delta +1. \
+         Final: 39. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
@@ -244,12 +250,12 @@ fn rule_count_reflects_registration_changes() {
 }
 
 #[test]
-fn phase_3_declares_thirteen_page_rewrites_with_citations() {
+fn phase_3_declares_fourteen_page_rewrites_with_citations() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
     assert_eq!(
         rewrites.len(),
-        13,
+        14,
         "PR 3b.B (T026b) declared nine page rewrites — the retained \
          `capco/noforn-clears-rel-to` plus the eight §3.4.1 / §3.4.3 \
          transmutation entries from `marque-applied.md` (consultant \
@@ -260,8 +266,12 @@ fn phase_3_declares_thirteen_page_rewrites_with_citations() {
          and `capco/exdis-implies-noforn` (CAPCO-2016 §H.9 p172). PR 3c.B \
          Sub-PR 8.F.2 adds two more Pattern A entries: \
          `capco/sbu-nf-implies-noforn` (CAPCO-2016 §H.9 p178) and \
-         `capco/les-nf-implies-noforn` (CAPCO-2016 §H.9 p185), bringing \
-         the total to thirteen."
+         `capco/les-nf-implies-noforn` (CAPCO-2016 §H.9 p185). \
+         DISPLAY ONLY Phase 2 adds `capco/noforn-clears-fdr-family` \
+         (CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157), \
+         the sibling DISSEM-reader to `noforn-clears-rel-to` that \
+         evicts the RELIDO/EYES/DISPLAY ONLY tokens from CAT_DISSEM \
+         when NOFORN is in the banner, bringing the total to fourteen."
     );
     for rw in rewrites {
         assert!(
@@ -285,7 +295,7 @@ fn phase_3_engine_lint_produces_wellformed_result_on_empty_input() {
 }
 
 #[test]
-fn phase_3_scheduler_exposes_thirteen_scheduled_rewrites() {
+fn phase_3_scheduler_exposes_fourteen_scheduled_rewrites() {
     // The scheduler produced a topological order at construction
     // time (Phase 3 T031). Expose it and verify the scheduled set
     // equals the declared set — the ordering is a data-flow
@@ -294,10 +304,12 @@ fn phase_3_scheduler_exposes_thirteen_scheduled_rewrites() {
     // plus the two PR 3c.B Sub-PR 8.F Pattern A rewrites
     // (`capco/nodis-implies-noforn`, `capco/exdis-implies-noforn`)
     // plus the two PR 3c.B Sub-PR 8.F.2 Pattern A rewrites
-    // (`capco/sbu-nf-implies-noforn`, `capco/les-nf-implies-noforn`).
+    // (`capco/sbu-nf-implies-noforn`, `capco/les-nf-implies-noforn`)
+    // plus the DISPLAY ONLY Phase 2 sibling DISSEM-reader
+    // `capco/noforn-clears-fdr-family` (§D.2 row 2 + §H.8 p154/p157).
     let engine = engine();
     let scheduled = engine.scheduled_rewrites();
-    assert_eq!(scheduled.len(), 13);
+    assert_eq!(scheduled.len(), 14);
     let mut names: Vec<&str> = scheduled.to_vec();
     names.sort();
     assert_eq!(
@@ -311,6 +323,7 @@ fn phase_3_scheduler_exposes_thirteen_scheduled_rewrites() {
             "capco/les-nf-implies-noforn",
             "capco/les-nf-transmutes-on-classified-contact",
             "capco/nodis-implies-noforn",
+            "capco/noforn-clears-fdr-family",
             "capco/noforn-clears-rel-to",
             "capco/orcon-nato-to-us-orcon-on-us-contact",
             "capco/sbu-nf-implies-noforn",

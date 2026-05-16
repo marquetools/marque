@@ -157,9 +157,13 @@ fn dissem_oc_usgov_drops_partial() {
     assert!(!dissem.contains(&DissemControl::OcUsgov));
 }
 
-/// OC-USGOV kept when on all OC portions
+/// OC-USGOV drops under §H.8 p136 supersession when ORCON is present
+/// anywhere — including when both ORCON and ORCON-USGOV are on every
+/// portion. PR 4b-B (006 T112) Commit 2 retired the pre-fix unanimity
+/// semantic (which would have kept OC-USGOV here) in favor of the
+/// authoritative supersession rule.
 #[test]
-fn dissem_oc_usgov_kept_when_all() {
+fn dissem_oc_usgov_drops_under_supersession_even_when_unanimous() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Secret);
@@ -171,7 +175,37 @@ fn dissem_oc_usgov_kept_when_all() {
     ctx.add_portion(p2);
 
     let dissem = ctx.expected_dissem_us();
-    assert!(dissem.contains(&DissemControl::OcUsgov));
+    assert!(
+        dissem.contains(&DissemControl::Oc),
+        "ORCON should be in the banner (it dominates): {dissem:?}"
+    );
+    assert!(
+        !dissem.contains(&DissemControl::OcUsgov),
+        "ORCON-USGOV should drop under §H.8 p136 supersession when \
+         ORCON is anywhere on the page (PR 4b-B Commit 2): {dissem:?}"
+    );
+}
+
+/// OC-USGOV rolls up when no ORCON portion exists — supersession
+/// triggers only when ORCON is present. §H.8 p140.
+#[test]
+fn dissem_oc_usgov_rolls_up_when_no_orcon() {
+    let mut ctx = PageContext::new();
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_us = vec![DissemControl::OcUsgov].into();
+    ctx.add_portion(p1);
+
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_us = vec![DissemControl::OcUsgov].into();
+    ctx.add_portion(p2);
+
+    let dissem = ctx.expected_dissem_us();
+    assert!(
+        dissem.contains(&DissemControl::OcUsgov),
+        "ORCON-USGOV should roll up when no ORCON portion exists: {dissem:?}"
+    );
+    assert!(!dissem.contains(&DissemControl::Oc));
 }
 
 /// FOUO drops in classified

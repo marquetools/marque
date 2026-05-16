@@ -59,16 +59,10 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         } else {
             None
         };
-        let ctx = RuleContext {
-            marking_type: candidate.kind,
-            zone: None,
-            position: None,
-            candidate_span: candidate.span,
-            page_context: ctx_page,
-            page_marking: None,
-            corrections: None,
-            pre_pass_1_attrs: None,
-        };
+        // PR 4b-B 9th-pass follow-up: `RuleContext` is
+        // `#[non_exhaustive]`; cross-crate construction goes through
+        // `RuleContext::new` + `with_*` setters.
+        let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_context(ctx_page);
         for rule in rule_set.rules() {
             out.extend(rule.check(&attrs, &ctx));
         }

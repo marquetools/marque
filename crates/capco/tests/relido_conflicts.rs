@@ -211,20 +211,15 @@ fn apply_fix(source: &str, span: Span, replacement: &str) -> String {
 
 /// Minimal `RuleContext` for wrapper `check()` calls.
 /// Mirrors the construction pattern from `crates/capco/tests/rules_us1.rs`.
+///
+/// Synthetic empty span — these tests construct the `CanonicalAttrs`
+/// directly and do not exercise the engine's intent-synthesis path
+/// that depends on `candidate_span`. PR 4b-B 9th-pass follow-up:
+/// `RuleContext` is `#[non_exhaustive]`; cross-crate construction
+/// goes through `RuleContext::new` (every optional context field
+/// defaults to `None`).
 fn ctx() -> RuleContext<'static> {
-    RuleContext {
-        marking_type: MarkingType::Portion,
-        zone: None,
-        position: None,
-        // Synthetic empty span — these tests construct the
-        // CanonicalAttrs directly and do not exercise the engine's
-        // intent-synthesis path that depends on candidate_span.
-        candidate_span: marque_ism::Span::new(0, 0),
-        page_context: None,
-        page_marking: None,
-        corrections: None,
-        pre_pass_1_attrs: None,
-    }
+    RuleContext::new(MarkingType::Portion, marque_ism::Span::new(0, 0))
 }
 
 // ---------------------------------------------------------------------------

@@ -1030,7 +1030,22 @@ impl Engine {
             } else {
                 None
             };
-            // PR 9b (T133): same lazy/cached construction for the
+            // N-9-2 (PR 437 10th-pass): `cross_portion_context` removed.
+            // The field cloned the full `PageContext` value once per
+            // Portion candidate (O(N²) over N portions per page —
+            // clone at portion K copies K `CanonicalAttrs` values, so
+            // total cost is 0+1+...+(N-1)). W004 `joint-disunity-
+            // collapse` was the only planned consumer but was reverted
+            // to Banner-only in the 8th-pass (P-3 trade-off: portion-
+            // time snapshots can't distinguish DisunityCollapse from a
+            // future Mixed state per §H.3 p57). Per Constitution
+            // Principle I, O(N²) hot-path cost MUST be benchmarked;
+            // zero-consumer O(N²) work fails that gate. Future cross-
+            // portion aggregation rules must use a lazy/gated approach
+            // with explicit capability declaration — see `RuleContext`
+            // doc note added in this PR.
+            //
+            // PR 9b (T133): lazy/cached construction for the
             // page-marking projection. Built from `PageContext::project`
             // so banner-validation rules see the rolled-up shape
             // (classification / SCI / SAR / AEA / dissem_us /
@@ -1057,23 +1072,27 @@ impl Engine {
             // pass-1 fix has yet been promoted.
             let pre_pass_1_attrs =
                 pre_pass_1_cache.and_then(|cache| pre_pass_1_attrs_for_span(cache, candidate.span));
-            let ctx = RuleContext {
-                marking_type: candidate.kind,
-                zone: None,
-                position: None,
-                // PR 3c.B engine-prereq: the scanner's candidate span
-                // is the marking-scope anchor for intent-only fix
-                // synthesis. Rules emitting `FixIntent` copy this into
-                // `Diagnostic.candidate_span` so the engine can clone
-                // the marking, apply intents via
-                // `MarkingScheme::apply_intent`, and render the
-                // result via `MarkingScheme::render_canonical`.
-                candidate_span: candidate.span,
-                page_context: ctx_page,
-                page_marking: ctx_page_marking,
-                corrections: corrections_arc.clone(),
-                pre_pass_1_attrs,
-            };
+            // PR 3c.B engine-prereq: the scanner's candidate span is
+            // the marking-scope anchor for intent-only fix synthesis.
+            // Rules emitting `FixIntent` copy this into
+            // `Diagnostic.candidate_span` so the engine can clone the
+            // marking, apply intents via `MarkingScheme::apply_intent`,
+            // and render the result via `MarkingScheme::render_canonical`.
+            //
+            // PR 4b-B 9th-pass follow-up: `RuleContext` is now
+            // `#[non_exhaustive]`; cross-crate construction must go
+            // through `RuleContext::new` + `with_*` setters because
+            // both bare-literal and `..base` functional-update
+            // construction are blocked across crate boundaries on
+            // a non-exhaustive struct. New optional fields land in
+            // `RuleContext::new` as `None` defaults and gain a
+            // `with_*` setter; the engine's hot-path call site
+            // chains the setters here once per candidate dispatch.
+            let ctx = RuleContext::new(candidate.kind, candidate.span)
+                .with_page_context(ctx_page)
+                .with_page_marking(ctx_page_marking)
+                .with_corrections(corrections_arc.clone())
+                .with_pre_pass_1_attrs(pre_pass_1_attrs);
             for (set_idx, rule_set) in self.rule_sets.iter().enumerate() {
                 for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
                     // Hybrid Off handling:
