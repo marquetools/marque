@@ -1096,24 +1096,28 @@ impl Engine {
             // pass-1 fix has yet been promoted.
             let pre_pass_1_attrs =
                 pre_pass_1_cache.and_then(|cache| pre_pass_1_attrs_for_span(cache, candidate.span));
-            let ctx = RuleContext {
-                marking_type: candidate.kind,
-                zone: None,
-                position: None,
-                // PR 3c.B engine-prereq: the scanner's candidate span
-                // is the marking-scope anchor for intent-only fix
-                // synthesis. Rules emitting `FixIntent` copy this into
-                // `Diagnostic.candidate_span` so the engine can clone
-                // the marking, apply intents via
-                // `MarkingScheme::apply_intent`, and render the
-                // result via `MarkingScheme::render_canonical`.
-                candidate_span: candidate.span,
-                page_context: ctx_page,
-                cross_portion_context: ctx_cross_portion,
-                page_marking: ctx_page_marking,
-                corrections: corrections_arc.clone(),
-                pre_pass_1_attrs,
-            };
+            // PR 3c.B engine-prereq: the scanner's candidate span is
+            // the marking-scope anchor for intent-only fix synthesis.
+            // Rules emitting `FixIntent` copy this into
+            // `Diagnostic.candidate_span` so the engine can clone the
+            // marking, apply intents via `MarkingScheme::apply_intent`,
+            // and render the result via `MarkingScheme::render_canonical`.
+            //
+            // PR 4b-B 9th-pass follow-up: `RuleContext` is now
+            // `#[non_exhaustive]`; cross-crate construction must go
+            // through `RuleContext::new` + `with_*` setters because
+            // both bare-literal and `..base` functional-update
+            // construction are blocked across crate boundaries on
+            // a non-exhaustive struct. New optional fields land in
+            // `RuleContext::new` as `None` defaults and gain a
+            // `with_*` setter; the engine's hot-path call site
+            // chains the setters here once per candidate dispatch.
+            let ctx = RuleContext::new(candidate.kind, candidate.span)
+                .with_page_context(ctx_page)
+                .with_cross_portion_context(ctx_cross_portion)
+                .with_page_marking(ctx_page_marking)
+                .with_corrections(corrections_arc.clone())
+                .with_pre_pass_1_attrs(pre_pass_1_attrs);
             for (set_idx, rule_set) in self.rule_sets.iter().enumerate() {
                 for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
                     // Hybrid Off handling:

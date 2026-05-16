@@ -6118,22 +6118,14 @@ mod tests {
         ]);
         // Leave attrs.token_spans empty.
 
-        let ctx = RuleContext {
-            marking_type: MarkingType::Banner,
-            zone: None,
-            position: None,
-            // Test-fixture carve-out per Constitution V Principle V:
-            // synthetic empty span — these tests construct attrs
-            // directly and do not exercise intent-only synthesis.
-            candidate_span: marque_ism::Span::new(0, 0),
-            page_context: None,
-            cross_portion_context: None,
-            page_marking: None,
-            corrections: None,
-            // No two-pass fix path is in play for this defensive
-            // unit test — leave the cache slot empty.
-            pre_pass_1_attrs: None,
-        };
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic empty span — these tests construct attrs
+        // directly and do not exercise intent-only synthesis. No
+        // two-pass fix path is in play, so the pre-pass-1 cache
+        // slot stays empty. PR 4b-B 9th-pass follow-up: `RuleContext`
+        // is `#[non_exhaustive]`; the `new` constructor returns a
+        // minimal context with all `Option`-typed fields as `None`.
+        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
         let rule = super::RelToTrigraphSuggestRule;
         let diags =
             <super::RelToTrigraphSuggestRule as Rule<CapcoScheme>>::check(&rule, &attrs, &ctx);
@@ -7593,22 +7585,14 @@ mod tests {
         )]
         .into();
 
-        let ctx = RuleContext {
-            marking_type: MarkingType::Banner,
-            zone: None,
-            position: None,
-            // Test-fixture carve-out per Constitution V Principle V:
-            // synthetic empty span — these tests construct attrs
-            // directly and do not exercise intent-only synthesis.
-            candidate_span: marque_ism::Span::new(0, 0),
-            page_context: None,
-            cross_portion_context: None,
-            page_marking: None,
-            corrections: None,
-            // Unit test for the declarative-rule layer; no engine
-            // two-pass pipeline.
-            pre_pass_1_attrs: None,
-        };
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic empty span — these tests construct attrs
+        // directly and do not exercise intent-only synthesis.
+        // Unit test for the declarative-rule layer; no engine
+        // two-pass pipeline. PR 4b-B 9th-pass follow-up:
+        // `RuleContext` is `#[non_exhaustive]`; use the `new`
+        // minimal-context constructor.
+        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
 
         let rule = DeclarativeJointHcsRule;
         let diags = rule.check(&attrs, &ctx);
@@ -7666,22 +7650,14 @@ mod tests {
         // permitted with JOINT). The rule must NOT fire.
         attrs.sci_controls = vec![SciControl::Si].into();
 
-        let ctx = RuleContext {
-            marking_type: MarkingType::Banner,
-            zone: None,
-            position: None,
-            // Test-fixture carve-out per Constitution V Principle V:
-            // synthetic empty span — these tests construct attrs
-            // directly and do not exercise intent-only synthesis.
-            candidate_span: marque_ism::Span::new(0, 0),
-            page_context: None,
-            cross_portion_context: None,
-            page_marking: None,
-            corrections: None,
-            // Unit test for the declarative-rule layer; no engine
-            // two-pass pipeline.
-            pre_pass_1_attrs: None,
-        };
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic empty span — these tests construct attrs
+        // directly and do not exercise intent-only synthesis.
+        // Unit test for the declarative-rule layer; no engine
+        // two-pass pipeline. PR 4b-B 9th-pass follow-up:
+        // `RuleContext` is `#[non_exhaustive]`; use the `new`
+        // minimal-context constructor.
+        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
 
         let rule = DeclarativeJointHcsRule;
         let diags = rule.check(&attrs, &ctx);
@@ -9063,20 +9039,15 @@ pub(crate) mod marque_capco_test_support {
                 } else {
                     None
                 };
-            let ctx = RuleContext {
-                marking_type: candidate.kind,
-                zone: None,
-                position: None,
-                candidate_span: candidate.span,
-                page_context: ctx_page.clone(),
-                cross_portion_context: ctx_page,
-                page_marking: ctx_page_marking,
-                corrections: None,
-                // Test-driver synthetic context; no two-pass fix
-                // pipeline is in play, so the pre-pass-1 cache slot
-                // is unconditionally `None`.
-                pre_pass_1_attrs: None,
-            };
+            // Test-driver synthetic context; no two-pass fix pipeline
+            // is in play, so the pre-pass-1 cache slot stays `None`.
+            // PR 4b-B 9th-pass follow-up: `RuleContext` is
+            // `#[non_exhaustive]`; cross-crate construction goes
+            // through the `new` + `with_*` builder.
+            let ctx = RuleContext::new(candidate.kind, candidate.span)
+                .with_page_context(ctx_page.clone())
+                .with_cross_portion_context(ctx_page)
+                .with_page_marking(ctx_page_marking);
             for rule in rule_set.rules() {
                 out.extend(rule.check(&attrs, &ctx));
             }

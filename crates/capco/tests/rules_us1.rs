@@ -67,17 +67,12 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         } else {
             None
         };
-        let ctx = RuleContext {
-            marking_type: candidate.kind,
-            zone: None,
-            position: None,
-            candidate_span: candidate.span,
-            page_context: ctx_page.clone(),
-            cross_portion_context: ctx_page,
-            page_marking: None,
-            corrections: None,
-            pre_pass_1_attrs: None,
-        };
+        // PR 4b-B 9th-pass follow-up: `RuleContext` is
+        // `#[non_exhaustive]`; cross-crate construction goes through
+        // `RuleContext::new` + `with_*` setters.
+        let ctx = RuleContext::new(candidate.kind, candidate.span)
+            .with_page_context(ctx_page.clone())
+            .with_cross_portion_context(ctx_page);
         for rule in rule_set.rules() {
             for d in rule.check(&attrs, &ctx) {
                 out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));
