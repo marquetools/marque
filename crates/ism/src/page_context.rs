@@ -244,7 +244,7 @@ impl PageContext {
             non_ic_dissem: self.expected_non_ic_dissem().0.into_boxed_slice(),
             rel_to: self.expected_rel_to().into_boxed_slice(),
             // Phase 1 of the DISPLAY ONLY axis lands in this PR with
-            // the parser-side recognition; the §G.1 Table 3 row-25/26
+            // the parser-side recognition; the §D.2 Table 3 row-25/26
             // intersection-with-common-element roll-up lands in
             // Phase 2. For now the projection is empty — banner
             // rules that consume the axis (none yet wired) will see

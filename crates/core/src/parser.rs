@@ -2517,7 +2517,30 @@ fn parse_rel_to_with_spans<'src>(
         // control separator within a `//`-delimited slot (§A.4 / §D.1).
         if let Some(slash_pos) = trimmed.find('/') {
             let country_part = trimmed[..slash_pos].trim();
-            let tail = trimmed[slash_pos + 1..].trim();
+            // Span arithmetic: the tail loop iterates over
+            // `tail.split('/')` parts and emits per-part spans at
+            // `tail_base + tail_cursor + part_trim_lead`. Two bytes
+            // can be silently dropped if we don't track them:
+            //
+            // (1) Leading whitespace of the raw tail (`/ DISPLAY ONLY`
+            //     would put the first span on the space, not `D`).
+            //     `tail_lead` captures the count.
+            //
+            // (2) Trailing whitespace of an inner part before its
+            //     following `/` (`NF / OC` — `tail.split('/')` yields
+            //     `["NF ", " OC"]`; cursor advancement on iter-1 must
+            //     use the UNTRIMMED `"NF "` length to land iter-2's
+            //     `part_abs` on the `O`, not one byte early).
+            //
+            // The trailing whitespace of the WHOLE raw_tail is
+            // stripped by the outer `.trim()`; it's never observable
+            // inside `tail.split('/')` and so doesn't affect cursor
+            // math. Copilot review on PR #445 caught both (1) and
+            // (2) in both `parse_rel_to_with_spans` and
+            // `parse_display_only_with_spans`.
+            let raw_tail = &trimmed[slash_pos + 1..];
+            let tail_lead = raw_tail.len() - raw_tail.trim_start().len();
+            let tail = raw_tail.trim();
 
             // Parse the country part (may be empty if the slash is leading).
             if !country_part.is_empty() {
@@ -2541,13 +2564,18 @@ fn parse_rel_to_with_spans<'src>(
             }
 
             // Parse each `/`-separated tail token as a dissem or non-IC control.
-            let tail_base = abs_start + slash_pos + 1;
+            let tail_base = abs_start + slash_pos + 1 + tail_lead;
             let mut tail_cursor = 0usize;
             for part in tail.split('/') {
                 let part_trim_lead = part.len() - part.trim_start().len();
+                let untrimmed_len = part.len();
                 let part = part.trim();
                 let part_abs = tail_base + tail_cursor + part_trim_lead;
-                tail_cursor += part.len() + part_trim_lead + 1; // +1 for `/`
+                // Cursor advances by the UNTRIMMED segment length plus
+                // the `/` delimiter — using `part.len()` (trimmed)
+                // would drop trailing whitespace of one part before
+                // the next slash and mis-anchor subsequent spans.
+                tail_cursor += untrimmed_len + 1; // +1 for `/`
                 if part.is_empty() {
                     continue;
                 }
@@ -2746,7 +2774,14 @@ fn parse_display_only_with_spans<'src>(
         // rule layer (E054 / E055) to surface.
         if let Some(slash_pos) = trimmed.find('/') {
             let country_part = trimmed[..slash_pos].trim();
-            let tail = trimmed[slash_pos + 1..].trim();
+            // Track raw_tail's leading whitespace separately so the
+            // `tail_base` offset for the per-part spans lands on the
+            // first non-whitespace byte of the tail rather than on
+            // the space after `/`. See `parse_rel_to_with_spans` for
+            // the matching pattern + the rationale.
+            let raw_tail = &trimmed[slash_pos + 1..];
+            let tail_lead = raw_tail.len() - raw_tail.trim_start().len();
+            let tail = raw_tail.trim();
 
             if !country_part.is_empty() {
                 if tokens.is_trigraph(country_part) {
@@ -2768,13 +2803,18 @@ fn parse_display_only_with_spans<'src>(
                 }
             }
 
-            let tail_base = abs_start + slash_pos + 1;
+            let tail_base = abs_start + slash_pos + 1 + tail_lead;
             let mut tail_cursor = 0usize;
             for part in tail.split('/') {
                 let part_trim_lead = part.len() - part.trim_start().len();
+                let untrimmed_len = part.len();
                 let part = part.trim();
                 let part_abs = tail_base + tail_cursor + part_trim_lead;
-                tail_cursor += part.len() + part_trim_lead + 1; // +1 for `/`
+                // Use UNTRIMMED segment length so trailing whitespace
+                // before a `/` doesn't mis-anchor subsequent spans;
+                // mirrors the matching pattern in
+                // `parse_rel_to_with_spans`.
+                tail_cursor += untrimmed_len + 1; // +1 for `/`
                 if part.is_empty() {
                     continue;
                 }

@@ -192,6 +192,67 @@ fn display_only_commingling_in_rel_to_portion() {
 }
 
 #[test]
+fn display_only_commingling_with_whitespace_around_slash() {
+    // Regression: Copilot review on PR #445 flagged that the
+    // slash-tail handler in `parse_rel_to_with_spans` (and the
+    // mirroring loop in `parse_display_only_with_spans`) dropped
+    // bytes when whitespace appeared around the `/` separator:
+    //   (1) `IRQ/ DISPLAY ONLY AFG` — the `D` span started on the
+    //       space (`tail_base` didn't account for leading whitespace
+    //       of the raw tail).
+    //   (2) `NF / OC` — the `O` span started one byte early
+    //       (`tail_cursor` advanced by trimmed length instead of
+    //       untrimmed length, dropping the trailing space before
+    //       the next `/`).
+    //
+    // CAPCO §A.6 p16 forbids interjected whitespace within `/`
+    // separators, but the existing parser tolerance for whitespace
+    // around within-category separators (per
+    // `crates/core/tests/separator_spans.rs`) means the spans must
+    // still anchor on the canonical token bytes when authors drift.
+    //
+    // This test pins both (1) and (2): the DisplayOnlyBlock span
+    // must start exactly on the `D` of `DISPLAY ONLY` even with
+    // intervening whitespace, and the trigraph span must land on
+    // `A` of `AFG` regardless of the slash-adjacent whitespace.
+    let src = "(S//REL TO USA, IRQ/ DISPLAY ONLY AFG)";
+    let attrs = parse_portion(src);
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(unknown.is_empty(), "no Unknown spans expected");
+
+    let do_block = attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::DisplayOnlyBlock)
+        .expect("DisplayOnlyBlock span present");
+    // `(S//REL TO USA, IRQ/ DISPLAY ONLY AFG)` — byte positions:
+    //   ( = 0, S = 1, / = 2,3 = '//', R = 4, ... I = 16, R = 17,
+    //   Q = 18, / = 19, ' ' = 20, D = 21, ...
+    let expected_d_start = src.find("DISPLAY ONLY AFG").unwrap();
+    assert_eq!(
+        do_block.span.start, expected_d_start,
+        "DisplayOnlyBlock span must start on `D`, not the leading space"
+    );
+    assert_eq!(&*do_block.text, "DISPLAY ONLY AFG");
+
+    let trigraph = attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::DisplayOnlyTrigraph)
+        .expect("DisplayOnlyTrigraph span present");
+    let expected_a_start = src.find("AFG").unwrap();
+    assert_eq!(
+        trigraph.span.start, expected_a_start,
+        "DisplayOnlyTrigraph span must start on `A`"
+    );
+    assert_eq!(trigraph.span.end, expected_a_start + 3);
+}
+
+#[test]
 fn cve_form_displayonly_unchanged() {
     // The pre-fix path `(U//DISPLAYONLY)` (ODNI CVE value, no space)
     // continues to route through the existing `DissemControl::parse`
