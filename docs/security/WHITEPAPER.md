@@ -1248,6 +1248,47 @@ source).
 closed in v0.13); `[PARTIAL]` for the broader surface (auth
 middleware still un-wired).
 
+- **Process-level sandbox (Landlock): landed.**  After `TcpListener::bind`
+  succeeds and before the first request is accepted, `main.rs` calls
+  `marque_server::sandbox::apply(&cwd)`, which installs two independent
+  Landlock rulesets:
+
+  1. **Filesystem** (Landlock V1+, kernel ≥ 5.13): `AccessFs::from_all(ABI::V4)`
+     handled; only `ReadFile | ReadDir` granted on `/`.  Result: writes,
+     creates, and `execve` are blocked everywhere.  The restriction is
+     applied even if config files are already loaded — it prevents any
+     future write or exec by a compromised dependency or a memory-safety
+     bug in an FFI boundary.
+  2. **Network** (Landlock V4+, kernel ≥ 6.7): `AccessNet::from_all(ABI::V4)`
+     handled; no `NetPort` rules added.  Result: `bind(2)` and `connect(2)`
+     are blocked on all ports.  The already-bound listening socket is not
+     affected — Landlock restricts future syscalls, not existing fds.
+
+  Both rulesets use `CompatLevel::BestEffort` (the crate default): if the
+  kernel supports V1 but not V4, the filesystem restrictions are applied
+  and the network step returns `RulesetStatus::NotEnforced` / logs an
+  `INFO`-level message.  If Landlock is not available at all (< 5.13 or
+  `CONFIG_SECURITY_LANDLOCK` disabled), a `WARN`-level message is logged
+  and the server continues without restriction.
+
+  The sandbox status is logged at startup as `sandbox = FullyEnforced |
+  FilesystemOnly | NotEnforced` on the `INFO` span that follows the bind.
+
+  **seccomp-BPF** (syscall allowlist): deferred.  `seccompiler::apply_filter`
+  is marked `unsafe fn`; `marque-server` enforces `#![forbid(unsafe_code)]`.
+  A future PR will introduce a `marque-sandbox` helper crate (without the
+  `forbid` attribute) that applies a minimal Tokio/axum syscall allowlist
+  (`read`, `write`, `accept4`, `epoll_*`, `futex`, `mmap`/`munmap`, `brk`,
+  `clock_gettime`) and blocks `execve`, `fork`, and `ptrace`.
+
+  **Non-Linux**: the sandbox is a compile-time no-op (`#[cfg(not(target_os = "linux"))]`
+  stub that returns `SandboxStatus::NotEnforced`).  macOS / Windows
+  equivalents (Seatbelt, AppContainer) are out of scope; the server is a
+  Linux deployment target.
+
+  Implementation: `crates/server/src/sandbox.rs`.  Smoke test:
+  `crates/server/tests/sandbox_smoke.rs` (asserts `!= NotEnforced` on Linux).
+
 ### 10.3 `marque-wasm`
 
 - `default-features = false` on the `marque-engine` dependency in
