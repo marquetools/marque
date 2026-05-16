@@ -16,6 +16,7 @@ The year **is 2026**.
 **Vulnerability:** The basic path traversal check `!absPath.startsWith(DEMO_ROOT)` in the static dev server `demo/bin/serve.js` was flawed. Using `startsWith` allows bypassing the check if a sibling directory exists that starts with the same prefix as `DEMO_ROOT` (e.g., `DEMO_ROOT`="demo", `absPath`="demo-secrets/foo.txt").
 **Learning:** `String.prototype.startsWith()` is never a sufficient mechanism for ensuring a directory constraint or path containment, because file paths are structured with directories separated by slashes, whereas strings are plain character arrays without hierarchy.
 **Prevention:** For custom static servers, properly validate path boundaries by converting user paths to relative paths relative to the intended web root, and verifying they do not start with `..` (ensuring boundary containment) and are not absolute paths. Using `path.relative()` combined with proper boundaries ensures containment without prefix overlap vulnerabilities.
+
 ## 2026-04-26 - [MEDIUM] Missing Security Headers
 **Vulnerability:** The custom dev server in `demo/bin/serve.js` did not set the `X-Content-Type-Options: nosniff` header.
 **Learning:** Without this header, browsers might perform MIME-sniffing and interpret files with incorrect MIME types as executable scripts, which could lead to XSS if a user uploads a malicious file.
@@ -25,6 +26,7 @@ The year **is 2026**.
 **Vulnerability:** The `marque-server` axum REST API lacked the `X-Content-Type-Options: nosniff` header.
 **Learning:** Axum does not add security headers by default. If `nosniff` is missing, API clients or browsers directly interacting with the endpoints might perform MIME sniffing and misinterpret the response, which could pose XSS risks.
 **Prevention:** Use `tower_http::set_header::SetResponseHeaderLayer` to globally enforce `X-Content-Type-Options: nosniff` across all axum routes. Ensure `tower-http` has the `set-header` feature enabled.
+
 ## 2026-04-28 - [MEDIUM] Missing X-Frame-Options Header
 **Vulnerability:** The `marque-server` axum REST API lacked the `X-Frame-Options: DENY` header.
 **Learning:** Without this header, the API responses could potentially be embedded in an iframe on a malicious site, enabling clickjacking attacks.
@@ -34,3 +36,8 @@ The year **is 2026**.
 **Vulnerability:** The static dev server in `demo/bin/serve.js` was missing the `X-Frame-Options` HTTP response header.
 **Learning:** Without this header, the application could be embedded in an iframe on a malicious site, potentially leading to clickjacking attacks.
 **Prevention:** Always enforce `X-Frame-Options: DENY` (or `SAMEORIGIN`) on custom Node.js HTTP servers to mitigate clickjacking.
+
+## 2026-05-16 - [HIGH] Command Injection in Demo Recorder
+**Vulnerability:** `demo/record-demo.js` invoked `execSync` with a shell-interpolated template string containing the unsanitized `outFile` variable. An attacker controlling the output path could inject shell metacharacters to execute arbitrary commands.
+**Learning:** Passing user-controlled or externally-derived values into a shell command string via template literals is a classic injection vector. The shell tokenizes the entire string, so any metacharacter (`;`, `|`, `$()`, etc.) embedded in a variable value executes as a new command or subshell.
+**Prevention:** Use `execFileSync` (or `spawn`) with the command name as the first argument and an explicit `string[]` of arguments as the second. This bypasses the shell entirely — arguments are passed directly to the OS `execve` syscall with no tokenization or interpolation.
