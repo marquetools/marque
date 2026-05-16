@@ -938,28 +938,47 @@ impl Engine {
                 continue;
             }
             let bytes = &source[start..end];
-            let Parsed::Unambiguous(mut marking) =
-                self.recognizer.recognize(bytes, start, &parse_cx)
+            let Parsed::Unambiguous(marking) = self.recognizer.recognize(bytes, start, &parse_cx)
             else {
                 continue;
             };
-            // Cache the recognized marking before destructuring so
-            // `synthesize_intent_only_fixes` can recover it by
-            // candidate span without re-parsing under a divergent
-            // `ParseContext` (Copilot PR #369 finding #2). The clone
-            // path here is bounded by the candidate count — same cost
-            // shape as the existing `CapcoMarking::from(attrs.clone())`
-            // construction the constraint bridge does below at the
-            // `has_diagnostic_constraints()` arm.
-            parsed_markings.insert(candidate.span, marking.clone());
-            // Capture the decoder-provenance side channel before
-            // collapsing the marking onto its `CanonicalAttrs` payload.
+            // Issue #433: defer the `parsed_markings` cache insert
+            // until after the rule loop + constraint bridge have run,
+            // so we know whether any diagnostic for this candidate
+            // carries a `FixIntent`. `synthesize_intent_only_fixes`
+            // reads the cache ONLY for diagnostics with
+            // `fix.is_some()`; candidates that produce no FixIntent
+            // (the common case — most diagnostics are text corrections
+            // or non-fix violations) leave the cache untouched. When a
+            // FixIntent IS emitted, we move `marking` into the cache
+            // instead of cloning — no eager clone, no late clone.
+            //
+            // The ParseContext-divergence rationale from the original
+            // eager-cache site (Copilot PR #369 finding #2) is
+            // preserved: the same `marking` value the recognizer
+            // produced from this candidate's `parse_cx` flows into the
+            // cache. The synthesis path never re-parses; the deferral
+            // changes *when* the cache populates, not *what* it holds.
+            //
+            // Snapshot `diagnostics.len()` here so the end-of-iteration
+            // check can scan only the entries this candidate added.
+            let diagnostics_pre_candidate = diagnostics.len();
+            // The decoder-provenance side channel borrows through
+            // `marking.1.as_ref()` (vs the previous `.take()`) so
+            // `marking` stays whole — the end-of-iteration conditional
+            // can move the marking into the cache without a clone.
             // Strict-path recognizers leave this `None`; the decoder
             // populates it with the canonical bytes / posterior /
             // features the engine needs to mint a
             // `FixSource::DecoderPosterior` diagnostic below.
-            let provenance = marking.1.take();
-            let attrs = marking.0;
+            let provenance = marking.1.as_ref();
+            // `attrs` is a borrow into `marking.0` for the same
+            // reason — keeping `marking` whole so the conditional
+            // cache insert at end-of-iteration moves rather than
+            // clones. Call sites pass `attrs` directly to functions
+            // that take `&CanonicalAttrs`; method calls
+            // (`attrs.classification`, `attrs.clone()`) auto-deref.
+            let attrs = &marking.0;
 
             // FR-011 strict-floor accumulator: only strict-path
             // recognitions raise the floor. A decoder-path
@@ -993,7 +1012,7 @@ impl Engine {
                 if let Some(diagnostic) = build_decoder_diagnostic(
                     span,
                     bytes,
-                    &prov,
+                    prov,
                     candidate.kind,
                     self.corpus_override_active(),
                 ) {
@@ -1187,11 +1206,10 @@ impl Engine {
                     // `Rule::trusted()`.
                     let rule_id = rule.id();
                     let mut diags = if rule.trusted() {
-                        rule.check(&attrs, &ctx)
+                        rule.check(attrs, &ctx)
                     } else {
-                        match std::panic::catch_unwind(AssertUnwindSafe(|| {
-                            rule.check(&attrs, &ctx)
-                        })) {
+                        match std::panic::catch_unwind(AssertUnwindSafe(|| rule.check(attrs, &ctx)))
+                        {
                             Ok(d) => d,
                             Err(payload) => {
                                 let msg = panic_payload_to_string(&payload);
@@ -1395,7 +1413,7 @@ impl Engine {
                     // payload, multiple violations per row with
                     // distinct fixes) cannot be expressed through this
                     // single-FixIntent-per-violation interface.
-                    let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, &attrs);
+                    let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, attrs);
                     let diag = Diagnostic::with_fix(
                         rule_id,
                         final_severity,
@@ -1445,11 +1463,36 @@ impl Engine {
                     _ => marque_scheme::Scope::Page,
                 };
                 diagnostics.extend(self.scheme.bridge_sci_per_system_diagnostics(
-                    &attrs,
+                    attrs,
                     candidate.span,
                     fix_scope,
                     e059_override,
                 ));
+            }
+
+            // Issue #433: end-of-iteration cache decision. `marking`
+            // is moved into the cache (no clone) when at least one
+            // diagnostic this candidate produced carries a FixIntent
+            // — that is the only path `synthesize_intent_only_fixes`
+            // needs the marking for. Diagnostics with `text_correction`
+            // only, or with `fix == None`, do not require the cache.
+            // The decoder-path R001 diagnostic emitted earlier in this
+            // iteration also bears a FixIntent (Recanonicalize), so
+            // mangled candidates that the decoder recovered are
+            // correctly cached by this predicate too.
+            //
+            // The `diagnostics_pre_candidate` baseline is captured at
+            // the top of this iteration (search "Issue #433:" upward)
+            // before any diagnostic-emitting site fires. The slice
+            // bound is what scopes this predicate to "diagnostics this
+            // candidate added" — any code added between the snapshot
+            // and this check that emits diagnostics MUST stay below
+            // the snapshot site for the predicate to remain accurate.
+            if diagnostics[diagnostics_pre_candidate..]
+                .iter()
+                .any(|d| d.fix.is_some())
+            {
+                parsed_markings.insert(candidate.span, marking);
             }
         }
 
@@ -2143,6 +2186,20 @@ impl<'engine> TwoPassFixer<'engine> {
                 // marking AND the post-pass-1 buffer has zero, the
                 // pass-1 splice destroyed marking shape.
                 let post_pass1_had_no_markings = new_markings.is_empty();
+                // Issue #433 note: `parsed_markings` now populates
+                // lazily — entries land only for candidates that
+                // produced at least one `FixIntent` diagnostic. The
+                // sentinel therefore reads as "pre-pass-1 had at
+                // least one FixIntent-bearing marking" rather than
+                // the looser "pre-pass-1 had at least one recognized
+                // marking." For the current Localized/WholeMarking
+                // phase split (Localized rules emit `text_correction`
+                // only; WholeMarking rules are the FixIntent emitters)
+                // the sentinel still correctly guards "pass-1 splice
+                // destroyed the markings pass-2 needs." If a future
+                // Localized rule ever emits a FixIntent, the sentinel
+                // will continue to behave correctly — the cache will
+                // populate for that candidate.
                 let pre_pass1_had_markings = !parsed_markings.is_empty();
                 if post_pass1_had_no_markings && pre_pass1_had_markings {
                     let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
@@ -6165,27 +6222,36 @@ mod tests {
 
     #[test]
     fn find_containing_marking_returns_some_when_span_inside() {
-        // Build a parsed_markings map with one entry and look up a
-        // sub-span. We use `lint_with_options_internal` indirectly via
-        // a real engine to get a real `CapcoMarking` value — the
-        // function under test just keys on `Span`.
-        let engine = engine_with(vec![]);
-        let (_lint, markings) =
-            engine.lint_with_options_internal(TEST_SRC, &LintOptions::default());
-        assert!(!markings.is_empty(), "test source should parse");
-        let any_span = *markings.keys().next().unwrap();
-        // A sub-span inside any_span resolves to any_span.
-        let sub = Span::new(any_span.start, any_span.start + 1);
+        // Construct a synthetic `parsed_markings` directly. Issue #433
+        // made the engine's cache populate lazily (only when a
+        // diagnostic with `fix.is_some()` is emitted for the
+        // candidate), so a fixture that exercises the cache via
+        // `lint_with_options_internal` would need a FixIntent-emitting
+        // input. The function under test (`find_containing_marking`)
+        // keys on `Span` only — building the map directly tests the
+        // lookup semantics without coupling to engine cache policy.
+        let mut markings: std::collections::HashMap<Span, marque_capco::CapcoMarking> =
+            std::collections::HashMap::new();
+        let marking_span = Span::new(0, 13);
+        markings.insert(
+            marking_span,
+            marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+        );
+        // A sub-span inside marking_span resolves to marking_span.
+        let sub = Span::new(marking_span.start, marking_span.start + 1);
         let found = super::find_containing_marking(&markings, sub);
-        assert_eq!(found, Some(any_span));
+        assert_eq!(found, Some(marking_span));
     }
 
     #[test]
     fn find_containing_marking_returns_none_when_no_marking_contains() {
-        let engine = engine_with(vec![]);
-        let (_lint, markings) =
-            engine.lint_with_options_internal(TEST_SRC, &LintOptions::default());
-        // Way past the end of the source — no marking spans this far.
+        let mut markings: std::collections::HashMap<Span, marque_capco::CapcoMarking> =
+            std::collections::HashMap::new();
+        markings.insert(
+            Span::new(0, 13),
+            marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+        );
+        // Way past the inserted marking span — no marking contains it.
         let far = Span::new(10_000, 10_001);
         let found = super::find_containing_marking(&markings, far);
         assert!(found.is_none());
