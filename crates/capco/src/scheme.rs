@@ -546,7 +546,61 @@ impl CapcoMarking {
             // portion; for non-US classifications the source IS the
             // classification axis). Verified 2026-05-15 against
             // CAPCO-2016.md.
-            None
+            //
+            // G-4c (PR 4b-B 9th-pass follow-up): blanket suppression
+            // is unsafe when the winner classification's foreign
+            // payload is a STRICT SUBSET of all foreign sources
+            // contributed by all non-US classification portions. The
+            // failure mode:
+            //
+            //   Inputs:  Fgi(Confidential, [GBR]), Fgi(Secret, [CAN])
+            //   ClassificationLattice winner: Fgi(Secret, [CAN])
+            //     (OrdMax: Secret > Confidential)
+            //   Pre-G-4c: GBR is silently lost from the FGI axis.
+            //   PageContext path preserves both via its
+            //   `expected_fgi_marker` union.
+            //
+            // The fix gathers the union of foreign sources from all
+            // non-US classification portions, compares against the
+            // winner's foreign sources, and:
+            //   - if equal: safe to suppress (current G-4b behavior)
+            //   - if winner is strict subset: build a synthetic FGI
+            //     marker carrying the missing sources so they merge
+            //     into `out.fgi_marker` via `merge_fgi_markers`.
+            //
+            // The C-7 `classification_join_same_variant` UNION
+            // tiebreaker covers the same-level case (both producers
+            // ride on the winner's payload, suppression remains
+            // safe). G-4c only fires when level disagreement made
+            // OrdMax discard a foreign source.
+            //
+            // §-authority: §H.7 p124 (source-concealed-dominance
+            // precedence rules at the banner-line guidance block) +
+            // §H.7 pp123-125 (FGI source must be preserved across
+            // the projection). Verified 2026-05-16 against
+            // `crates/capco/docs/CAPCO-2016.md`.
+            let classification_sources: std::collections::BTreeSet<marque_ism::CountryCode> =
+                portions
+                    .iter()
+                    .flat_map(|p| extract_foreign_sources(p.classification.as_ref()))
+                    .collect();
+            let winner_sources: std::collections::BTreeSet<marque_ism::CountryCode> =
+                extract_foreign_sources(out.classification.as_ref())
+                    .into_iter()
+                    .collect();
+            if winner_sources == classification_sources {
+                // G-4b safe-suppression branch: every foreign source
+                // observed across all portions is preserved on the
+                // winning classification's payload. No source loss.
+                None
+            } else {
+                // G-4c source-loss branch: at least one source is
+                // missing from the winner's payload. Build a
+                // synthetic acknowledged FGI marker carrying every
+                // foreign source so `merge_fgi_markers` unions them
+                // into the final output.
+                marque_ism::FgiMarker::acknowledged(classification_sources)
+            }
         } else {
             tmp_ctx.expected_fgi_marker()
         };
@@ -619,6 +673,62 @@ impl CapcoMarking {
         out.dissem_us = dissem_final.into_boxed_slice();
 
         out
+    }
+}
+
+/// Extract the set of foreign country codes contributing to FGI
+/// semantics from a `MarkingClassification`.
+///
+/// G-4c (PR 4b-B 9th-pass follow-up): used by the lattice path's
+/// solely-non-US FGI suppression branch to detect source loss when
+/// `ClassificationLattice`'s OrdMax winner discards a foreign source
+/// observed on a lower-level portion. Mirrors PageContext's
+/// `expected_fgi_marker` country-extraction step (`page_context.rs`
+/// lines 894–921) so the two projection paths agree on which
+/// portions contribute which producers to the FGI axis.
+///
+/// Per-variant semantic:
+/// - `Us(_)`: contributes nothing (US is the home authority).
+/// - `Fgi(f)`: contributes every country in `f.countries`.
+///   Source-concealed FGI portions (`f.countries.is_empty()`) are
+///   handled by the existing PageContext source-concealed path; this
+///   helper returns an empty set for them so the suppression branch
+///   does not attempt to construct an FGI marker from no sources.
+/// - `Nato(_)`: contributes the literal `"NATO"` trigraph (matches
+///   `page_context.rs:911-912`).
+/// - `Joint(j)`: contributes every non-USA country in `j.countries`
+///   (matches `page_context.rs:914-921`).
+/// - `Conflict { foreign, .. }`: recurses into the foreign payload
+///   so the implicit US classification at `us` is excluded but the
+///   foreign side's producers still contribute. Returns the same
+///   set as the `foreign` payload would have produced as a stand-
+///   alone classification.
+///
+/// Returns a `Vec<CountryCode>` (small inline set; the caller
+/// collects into a `BTreeSet` for deduplication when needed).
+fn extract_foreign_sources(c: Option<&MarkingClassification>) -> Vec<marque_ism::CountryCode> {
+    use marque_ism::{CountryCode, ForeignClassification};
+    let nato_code = || CountryCode::try_new(b"NATO").expect("NATO trigraph is valid");
+    match c {
+        None | Some(MarkingClassification::Us(_)) => Vec::new(),
+        Some(MarkingClassification::Fgi(f)) => f.countries.to_vec(),
+        Some(MarkingClassification::Nato(_)) => vec![nato_code()],
+        Some(MarkingClassification::Joint(j)) => j
+            .countries
+            .iter()
+            .filter(|c| c.as_str() != "USA")
+            .copied()
+            .collect(),
+        Some(MarkingClassification::Conflict { foreign, .. }) => match foreign.as_ref() {
+            ForeignClassification::Fgi(f) => f.countries.to_vec(),
+            ForeignClassification::Nato(_) => vec![nato_code()],
+            ForeignClassification::Joint(j) => j
+                .countries
+                .iter()
+                .filter(|c| c.as_str() != "USA")
+                .copied()
+                .collect(),
+        },
     }
 }
 

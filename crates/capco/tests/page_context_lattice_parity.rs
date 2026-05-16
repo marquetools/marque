@@ -1201,6 +1201,157 @@ fn solely_fgi_does_not_double_mark_fgi() {
         lat.fgi_marker
     );
 }
+
+// ===========================================================================
+// G-4c (PR 4b-B 9th-pass follow-up) — FGI suppression source-loss guard
+// ===========================================================================
+//
+// G-4b suppressed `expected_fgi_marker()` on solely-non-US pages on the
+// theory that the foreign source is already recorded on the
+// classification axis. That assumption holds when the winning
+// classification's payload is a SUPERSET of all foreign sources
+// contributed by all non-US classification portions.
+//
+// **It does NOT hold when classification-axis OrdMax picks a winner
+// whose foreign payload is a strict subset of all observed sources**:
+//
+//   Inputs:  Fgi(Confidential, [GBR]), Fgi(Secret, [CAN])
+//   Winner:  Fgi(Secret, [CAN])      -- OrdMax: Secret > Confidential
+//   Source loss: GBR is dropped from the FGI axis silently.
+//
+// PageContext does not have this problem because its
+// `expected_classification` always wraps in `Us(level)` and its
+// `expected_fgi_marker` unions every foreign source from every
+// non-US classification portion (NATO-emitted "NATO" + Fgi-emitted
+// countries + Joint-emitted non-USA countries) regardless of which
+// portion's classification level "won."
+//
+// **Fix shape**: when the lattice's solely-non-US suppression path
+// fires, gather the union of foreign sources from all non-US
+// classification portions; compare to the winner's foreign sources
+// (extracted via `extract_foreign_sources`). If the winner is a
+// strict subset, the missing sources MUST be merged into the
+// FGI marker so they are preserved on the dissem axis. If the sets
+// are equal, suppression is safe (no source loss).
+//
+// Citation: §H.7 p124 (source-concealed-dominance precedence rules
+// at the banner-line guidance block) + §H.7 pp123-125 reciprocal-
+// normalization (FGI source must be preserved across the projection).
+// Verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+// ===========================================================================
+
+#[test]
+fn fgi_mixed_level_different_countries_preserves_all_sources() {
+    // G-4c: solely-FGI page with two portions at different
+    // classification levels and disjoint country sets. The
+    // ClassificationLattice winner is the higher level (Secret) which
+    // carries only CAN; without the source-loss guard, GBR is silently
+    // dropped from the FGI axis. The fix merges GBR into the FGI
+    // marker so both producers are preserved.
+    let mut p_low = CanonicalAttrs::default();
+    p_low.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Confidential,
+        countries: Box::new([cc("GBR")]),
+    }));
+    let mut p_high = CanonicalAttrs::default();
+    p_high.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("CAN")]),
+    }));
+    let portions = [p_low, p_high];
+    let lat = project_via_lattice(&portions);
+
+    // Winner: Fgi(Secret, [CAN]) per OrdMax.
+    match &lat.classification {
+        Some(MarkingClassification::Fgi(f)) => {
+            assert_eq!(f.level, Classification::Secret, "winner is Secret level");
+            let winner_set: std::collections::BTreeSet<CountryCode> =
+                f.countries.iter().copied().collect();
+            assert!(
+                winner_set.contains(&cc("CAN")),
+                "winner classification carries CAN: {:?}",
+                f.countries
+            );
+            // GBR is NOT on the winning classification axis (would
+            // require classification-payload merging across levels,
+            // which OrdMax does not do).
+            assert!(
+                !winner_set.contains(&cc("GBR")),
+                "winning classification does not carry GBR (it was on the \
+                 lower-level Confidential portion that OrdMax discarded): {:?}",
+                f.countries
+            );
+        }
+        other => panic!("expected Fgi classification winner, got {other:?}"),
+    }
+
+    // G-4c invariant: GBR MUST appear on the FGI axis (either via
+    // marker merge from classification-derived sources, or via some
+    // other preservation channel). Source loss is the bug.
+    let fgi_set: std::collections::BTreeSet<CountryCode> = match &lat.fgi_marker {
+        Some(FgiMarker::Acknowledged { countries, .. }) => countries.iter().copied().collect(),
+        Some(FgiMarker::SourceConcealed) => std::collections::BTreeSet::new(),
+        None => std::collections::BTreeSet::new(),
+    };
+    assert!(
+        fgi_set.contains(&cc("GBR")),
+        "G-4c: GBR was on the lower-level FGI portion's classification \
+         and must be preserved on the FGI axis when OrdMax picks a \
+         winner that does not carry it. fgi_marker = {:?}",
+        lat.fgi_marker
+    );
+}
+
+#[test]
+fn fgi_same_level_different_countries_merges_via_union() {
+    // G-4c sibling case: same-level FGI portions with disjoint country
+    // sets. ClassificationLattice's `classification_join_same_variant`
+    // already unions the country payloads (per C-7 PR 4b-B follow-up),
+    // so the winner carries BOTH GBR and CAN. The FGI axis is
+    // suppression-safe in this case because no source is lost.
+    //
+    // This pins the safe-suppression branch of the G-4c fix: when the
+    // winner's foreign payload IS the union of all observed sources,
+    // suppression is correct.
+    let mut p1 = CanonicalAttrs::default();
+    p1.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("GBR")]),
+    }));
+    let mut p2 = CanonicalAttrs::default();
+    p2.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("CAN")]),
+    }));
+    let portions = [p1, p2];
+    let lat = project_via_lattice(&portions);
+
+    // Winner classification: Fgi(Secret, [CAN, GBR]) per C-7 union
+    // tiebreaker. Both producers ride on the classification axis.
+    match &lat.classification {
+        Some(MarkingClassification::Fgi(f)) => {
+            let winner_set: std::collections::BTreeSet<CountryCode> =
+                f.countries.iter().copied().collect();
+            assert!(
+                winner_set.contains(&cc("GBR")) && winner_set.contains(&cc("CAN")),
+                "C-7 same-level union: winner should carry both GBR and CAN: {:?}",
+                f.countries
+            );
+        }
+        other => panic!("expected Fgi classification winner, got {other:?}"),
+    }
+
+    // Suppression is safe — the winning classification carries every
+    // observed foreign source, so the FGI axis can stay empty.
+    assert!(
+        lat.fgi_marker.is_none(),
+        "G-4c safe-branch: when the winning classification's payload \
+         already contains all foreign sources, the FGI axis stays \
+         suppressed (no double-marking). fgi_marker = {:?}",
+        lat.fgi_marker
+    );
+}
+
 // ===========================================================================
 // JointSet empty-producer defensive normalization (PR 4b-B 7th-pass)
 // ===========================================================================
