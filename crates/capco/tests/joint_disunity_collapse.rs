@@ -235,12 +235,13 @@ fn w004_message_contains_only_canonical_trigraphs() {
         "G13 violation: W004 message leaked prose sentinel: {:?}",
         w004.message
     );
-    // The message should mention the producer trigraphs (canonical
-    // vocabulary atoms — these are 3-letter uppercase codes the
-    // CountryCode type guarantees).
+    // P-9-7 (9th-pass): tightened to AND — the message MUST reference
+    // BOTH non-US producer trigraphs (GBR from portion 1, CAN from
+    // portion 2). An OR assertion would pass even if one side of the
+    // disunity union were silently dropped, masking a regression.
     assert!(
-        w004.message.contains("CAN") || w004.message.contains("GBR"),
-        "W004 message should reference the non-US producer trigraphs: {:?}",
+        w004.message.contains("CAN") && w004.message.contains("GBR"),
+        "W004 message must reference BOTH non-US producer trigraphs (CAN and GBR): {:?}",
         w004.message
     );
 }
