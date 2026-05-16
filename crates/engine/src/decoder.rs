@@ -1354,13 +1354,22 @@ pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
 fn normalize_delimiters_and_case(text: &str) -> (Cow<'_, str>, SmallVec<[FeatureEntry; 4]>) {
     // Order matters: multi-char sequences first so the longer patterns
     // win their byte ranges before the 2-char fallbacks consume them.
+    // Sorted by `from.len()` descending so each pattern only fires on
+    // residue its longer cousins didn't already match. Without this,
+    // `"S / / NF"` would have the 4-byte `"/ / "` consume the spaces
+    // before the 5-byte `" / / "` could see them, leaving a stray
+    // `" //NF"` that the single forward pass below would not revisit.
     const REPLACEMENTS: &[(&str, &str)] = &[
+        // fullwidth: 6 bytes
         ("∕∕", "//"),
+        // 5 bytes
+        (" / / ", "//"),
+        // 4 bytes (∗ tied length, mutually disjoint)
         (" // ", "//"),
+        ("/ / ", "//"),
+        // 3 bytes (∗ tied length, mutually disjoint)
         ("// ", "//"),
         (" //", "//"),
-        ("/ / ", "//"),
-        (" / / ", "//"),
         ("/ /", "//"),
     ];
 
@@ -1387,9 +1396,26 @@ fn normalize_delimiters_and_case(text: &str) -> (Cow<'_, str>, SmallVec<[Feature
 
     let mut normalized = text.to_owned();
     if need_delim {
-        for (from, to) in REPLACEMENTS {
-            if normalized.contains(from) {
-                normalized = normalized.replace(from, to);
+        // Fixpoint loop: a single forward pass over `REPLACEMENTS`
+        // isn't enough for inputs where rule A's substitution creates
+        // a shape rule B (earlier in the table) would now match. For
+        // example, `"S / /NF"` (3-byte `"/ /"` at positions 2-4) first
+        // collapses to `"S //NF"`, which only the 3-byte `" //"` rule
+        // can finish — but `" //"` already ran above it. Iterate
+        // until no rule fires; each iteration strictly shortens
+        // `normalized` so this terminates in O(text.len()) iterations
+        // worst case, and in practice ≤2 iterations for any input
+        // that would have failed the single-pass shape.
+        loop {
+            let mut changed = false;
+            for (from, to) in REPLACEMENTS {
+                if normalized.contains(from) {
+                    normalized = normalized.replace(from, to);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
             }
         }
     }
@@ -7070,6 +7096,28 @@ mod tests {
     fn normalize_delimiters_collapses_garbled_slash() {
         let (out, _) = normalize_delimiters_and_case("S ∕∕ NOFORN");
         assert_eq!(out, "S//NOFORN");
+    }
+
+    #[test]
+    fn normalize_delimiters_handles_double_spaced_slashes() {
+        // PR #463 Copilot regression: pre-fix table-ordering left `"/ / "`
+        // (4 byte) ahead of `" / / "` (5 byte), so the 4-byte rule consumed
+        // the inner spaces before the 5-byte rule could match. Output was
+        // `"S //NF"`. With longest-first ordering the 5-byte rule fires
+        // first and collapses to canonical form.
+        let (out, _) = normalize_delimiters_and_case("S / / NF");
+        assert_eq!(out, "S//NF");
+    }
+
+    #[test]
+    fn normalize_delimiters_converges_in_two_passes() {
+        // PR #463 Copilot regression follow-up: even with longest-first
+        // ordering, some inputs require a second pass. `"S / /NF"` first
+        // matches the 3-byte `"/ /"` (positions 2-4) and yields
+        // `"S //NF"`; the leading-space variant `" //"` only matches on
+        // the next iteration. The fixpoint loop catches this.
+        let (out, _) = normalize_delimiters_and_case("S / /NF");
+        assert_eq!(out, "S//NF");
     }
 
     #[test]
