@@ -729,26 +729,38 @@ mod classification_lattice {
     //
     // Absorption pair: `a ⊔ (a ⊓ b) = a` and `a ⊓ (a ⊔ b) = a`.
     //
-    // The C-7 fix introduced a same-variant-payload union tiebreaker on
-    // both `join` and `meet`. That broke absorption: at equal level,
-    // `meet` should return the lattice **bottom** for incomparable
-    // elements (different variants, or same variant with disjoint
-    // payloads), not the union — otherwise
-    // `a.join(a.meet(b)) = union(a, b) ≠ a`.
+    // **Background (pre-C-9 history; M-24 PR 4b-B 7th-pass — wording
+    // amended to remove the misleading "different variants are
+    // incomparable" framing).** The C-7 fix introduced a same-
+    // variant-payload union tiebreaker on both `join` and `meet`.
+    // That broke absorption at equal level on same-variant payload
+    // diffs: `meet` should NOT return the UNION — otherwise
+    // `a.join(a.meet(b)) = union(a, b) ≠ a` for the operand whose
+    // payload was a strict subset.
     //
-    // The post-C-9 fix (verified against `lattice.rs::ClassificationLattice::meet`):
-    // - Different variants at same level → variants are linearly
-    //   ordered by `classification_variant_rank`
+    // The C-9 fix (verified against `lattice.rs::ClassificationLattice::meet`):
+    // - Different variants at same level are NOT incomparable — they
+    //   are linearly ordered by `classification_variant_rank`
     //   (`Us < Fgi < Nato < Joint < Conflict`); `meet` returns the
     //   HIGHER-rank operand (the dominated, lower-≤ side; the GLB
     //   dual of `join`'s "lower variant rank wins" tiebreaker).
     //   §H.7 pp123-125 reciprocal-normalization grounds the rank
-    //   ordering.
+    //   ordering. Returning `bottom` here would break the dual
+    //   absorption law for the higher-rank operand — see
+    //   `classification_meet_different_variants_returns_dominated`
+    //   below for the spot-check.
     // - Same variant, payload subset (one operand's countries ⊆ the
     //   other's) → `meet` returns the smaller payload (the GLB on the
     //   country-list partial order).
     // - Same variant, disjoint payloads → `meet` returns the lattice
-    //   bottom (`Self(None)`; no common subset).
+    //   bottom (`Self(None)`; no common subset). This is the ONLY
+    //   path that returns `empty()` from `meet` at same-level inputs.
+    //
+    // **C-9b extension (PR 4b-B 7th-pass).** The same asymmetry
+    // existed inside `meet_foreign_classification` for `Conflict`-
+    // `Conflict` cross-variant inner foreign payloads — fixed to
+    // return the higher-rank inner. See the
+    // `classification_conflict_cross_variant_inner_*` tests below.
     //
     // §-authority (verified 2026-05-15 against CAPCO-2016.md):
     // §H.7 pp123-125 (reciprocal normalization, variant-rank order) +
@@ -1568,7 +1580,10 @@ mod nato_dissem_set {
 // ===========================================================================
 // CAPCO-2016 §H.3 p56 (JOINT grammar) + §H.7 p123 (FGI source-acknowledged
 // form for disunity-collapse migration) + §H.3 p57 (mixed-US case
-// bottom). Verified 2026-05-15 against CAPCO-2016.md.
+// `Mixed`; M-23 PR 4b-B 7th-pass — pre-C-3 wording said `bottom` but
+// PR 4b-B follow-up C-3 split `Mixed` out of `Bottom` so the
+// absorbing JOINT+non-JOINT state keeps `join` associative). Verified
+// 2026-05-15 against CAPCO-2016.md.
 
 mod joint_set {
     use marque_capco::JointSet;

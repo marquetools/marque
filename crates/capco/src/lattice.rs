@@ -1685,10 +1685,14 @@ impl BoundedLattice for NatoClassLattice {
 ///
 /// **`BoundedLattice` deliberately not implemented.** Dates are
 /// open-vocab — no finite "top" date is realizable. Per the
-/// `AeaSet` / `SciSet` / `SarSet` / `FgiSet` precedent in this
-/// module, the established pattern for "no BoundedLattice when
-/// range is open" is "implement `Lattice`, provide `empty()` /
-/// `default()` for the bottom, leave `top()` undefined."
+/// `AeaSet` / `SciSet` / `SarSet` precedent in this module, the
+/// established pattern for "no BoundedLattice when range is open"
+/// is "implement `Lattice`, provide `empty()` / `default()` for
+/// the bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
+/// `FgiSet` was previously listed in this precedent but `FgiSet`
+/// in fact implements `BoundedLattice` with the source-concealed
+/// supersession sentinel as the top; removed to avoid
+/// misattribution.)
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - §H.6 p104 (RD Precedence Rules — most-restrictive declass date
@@ -1795,27 +1799,60 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
 /// `DissemControl` tokens with three supersession overlays applied
 /// at construction and re-applied on `join`.
 ///
-/// **Overlay ordering** (matches `PageContext::expected_dissem_us`):
+/// **Overlay set** (PARTIAL parity with `PageContext::expected_dissem_us`
+/// — see divergence list below; PR 4b-B 7th-pass docstring correction):
 ///
-/// 1. Basic BTreeSet union over per-portion `dissem_us`.
+/// 1. Basic BTreeSet union over per-portion `dissem_us` (matches
+///    PageContext step 1).
 /// 2. **OC-USGOV supersession** per §H.8 p136 + §H.8 p140: drop
-///    `OcUsgov` if `Oc` is present in the joined set.
+///    `OcUsgov` if `Oc` is present in the joined set (matches
+///    PageContext step 2).
 /// 3. **RELIDO observed-unanimity** per §H.8 pp155-156: drop `Relido`
 ///    if some portion lacks it. The constructor tracks this via the
 ///    `relido_observed_unanimous` flag so a subsequent `join` can
 ///    propagate the unanimity bit without re-inspecting the original
-///    portions.
+///    portions (matches PageContext step 2b).
 /// 4. **NOFORN dominates** per §D.2 Table 3 rows 1-2 + §H.8 p145:
 ///    drop `Rel` / `Relido` / `Displayonly` when `Nf` is present.
+///    **This overlay is NOT applied by
+///    `PageContext::expected_dissem_us`** — see the divergence note
+///    below. The lattice path is correct here per §H.8 p145; the
+///    PageContext path is bug-shaped.
 ///
-/// **FOUO eviction is NOT done here.** It lives on
-/// `PageContext::expected_dissem_us` step 3 (the cross-axis
-/// classification > U eviction + DSEN override) as a
-/// `Constraint::Custom("capco/fouo-eviction", …)` migration target
-/// for PR 4b-C. The parity gate inherits the current behavior
-/// verbatim — `CapcoMarking::join`'s Commit 7 rewrite delegates the
-/// `non_ic_dissem` axis (and the FOUO classification gate) to
-/// PageContext for one more PR.
+/// **Documented parity divergences with `PageContext::expected_dissem_us`**
+/// (PR 4b-B 7th-pass docstring correction; matching parity-gate
+/// fixtures in `tests/page_context_lattice_parity.rs`):
+///
+/// - **Overlay 4 (NOFORN dominates) is LATTICE-ONLY.** PageContext's
+///   `expected_dissem_us` (page_context.rs:511) does NOT apply this
+///   overlay; it surfaces both `Nf` and the dominated `Rel` /
+///   `Relido` / `Displayonly` in the same banner. Per §H.8 p145 +
+///   §D.2 Table 3 rows 1-2 the lattice path is correct and
+///   PageContext is bug-shaped here. Pinned by
+///   `relido_plus_nf_noforn_dominates_documented_divergence` as a
+///   LATTICE-CORRECTING-PAGE-CONTEXT case.
+/// - **FOUO classification-gate eviction is PAGECONTEXT-ONLY.**
+///   PageContext step 3 (page_context.rs:573-578) drops `Fouo` from
+///   classified pages and on DSEN override per §H.8 p134; the
+///   lattice path's `DissemSet` does NOT apply this — the cross-axis
+///   classification gate stays on PageContext under the
+///   `Constraint::Custom("capco/fouo-eviction", …)` migration target
+///   (PR 4b-C, Pattern B in
+///   `project_noforn_supremacy_composition.md`). Pinned by
+///   `fouo_classified_lattice_vs_pagecontext_diverges` (G-1).
+/// - **UCNI classification-gate strip is PAGECONTEXT-ONLY.** Same
+///   Pattern C migration target (PR 4b-C). Pinned by
+///   `aea_ucni_classified_lattice_vs_pagecontext_diverges` (G-2).
+/// - **Cross-axis NOFORN injection from `non_ic_dissem`** (PageContext
+///   step 4) is mirrored on the lattice path via
+///   `DissemSet::with_noforn_injected` (G-8 PR 4b-B), but the source
+///   data path differs: PageContext reads `expected_non_ic_dissem`'s
+///   `needs_nf` second-tuple element directly; the lattice path
+///   routes through `RelToBlock::is_noforn_superseded` and a
+///   `tmp_ctx.expected_non_ic_dissem()` call at scheme.rs (the G-6
+///   path). Both ultimately surface NOFORN on classified SBU-NF /
+///   LES-NF pages, but the lattice path additionally re-runs overlay
+///   4 to strip dominated controls (which PageContext does not).
 ///
 /// **Ordering** at the lattice level is BTreeSet's natural order;
 /// §H.8 prose ordering ("OC/NF" not "NF/OC") is the renderer's
@@ -1825,9 +1862,12 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
 /// **`BoundedLattice` deliberately not implemented.** The
 /// `DissemControl` vocabulary contains ~25 tokens but the **active
 /// finite set** depends on schema version and agency extensions; the
-/// open-vocab precedent (SciSet / SarSet / FgiSet / AeaSet) is the
+/// open-vocab precedent (SciSet / SarSet / AeaSet) is the
 /// established pattern for "implement `Lattice` + `empty()`/`default()`
-/// for bottom, leave `top()` undefined."
+/// for bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
+/// `FgiSet` was previously listed in this precedent but in fact
+/// implements `BoundedLattice` with the source-concealed sentinel
+/// as the top; removed to avoid misattribution.)
 ///
 /// **Partial-lattice note (C-4 PR 4b-B follow-up).** The
 /// `relido_observed_unanimous` flag is a **join-side aggregation
@@ -2088,8 +2128,9 @@ impl Lattice for DissemSet {
 /// dissem vocabulary is closed at two elements today, but the
 /// underlying `DissemControl` enum is shared with US dissem so the
 /// namespace bound is loose; bottom = empty set, top is unsafe to
-/// claim. The SciSet/SarSet/FgiSet/AeaSet precedent for open-vocab
-/// applies.
+/// claim. The SciSet/SarSet/AeaSet precedent for open-vocab applies
+/// (M-25 PR 4b-B 7th-pass — `FgiSet` removed from precedent list;
+/// see DissemSet doc above for rationale).
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - p41 (NATO reciprocity table — NATO dissem set is the
@@ -2148,7 +2189,7 @@ impl Lattice for NatoDissemSet {
 }
 
 // ---------------------------------------------------------------------------
-// JointSet — 3-variant state with producer-disunity collapse
+// JointSet — 4-variant state with producer-disunity collapse
 // ---------------------------------------------------------------------------
 
 /// Lattice form of the JOINT classification axis.
@@ -2636,7 +2677,10 @@ impl Lattice for JointSet {
 /// over already-canonical trigraphs.
 ///
 /// `BoundedLattice` is NOT implemented — CountryCode vocabulary is
-/// open-extensible. The SciSet/SarSet/FgiSet precedent applies.
+/// open-extensible. The SciSet/SarSet precedent applies (M-25
+/// PR 4b-B 7th-pass — `FgiSet` removed from precedent list;
+/// `FgiSet` in fact DOES implement `BoundedLattice` with the
+/// source-concealed sentinel as the top).
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - §H.8 pp150-151 (REL TO grammar — banner form `AUTHORIZED FOR
