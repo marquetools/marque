@@ -1950,6 +1950,68 @@ mod tests {
         assert_eq!(aea[0], AeaMarking::DodUcni);
     }
 
+    // --- PR 4b-C Commit 2: pre-fix UCNI bug regression test ---
+    //
+    // CAPCO-2016 §H.6 p116 (DOD UCNI / DCNI Precedence Rules) +
+    // §H.6 p118 (DOE UCNI Precedence Rules) verbatim:
+    //   "Classified documents: DOD UCNI does not appear in the banner
+    //    line; however, NOFORN must be applied if a less restrictive
+    //    FD&R marking would otherwise be conveyed with the classified
+    //    information."
+    //   ( DOE UCNI mirrors the rule verbatim. )
+    //
+    // PRE-FIX (this branch): `expected_aea_markings` strips UCNI when
+    // classified WITHOUT the §H.6 NOFORN-promotion clause. The test
+    // below pins the WRONG behaviour so that Commit 5 (deletion +
+    // declarative-row migration) makes it FAIL — at which point the
+    // test is replaced with the post-fix correctness assertion
+    // `ucni_classified_promotes_noforn_via_pattern_c` (same swap
+    // pattern PR 4b-B Commit 2 used for OC-USGOV).
+    //
+    // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+    // §H.6 DOD UCNI p116-117 + DOE UCNI p118-119 page ranges in
+    // `crates/capco/docs/CAPCO-2016_citation_index.yml`.
+    #[test]
+    fn ucni_classified_strip_loses_noforn_promotion_regression() {
+        use crate::attrs::AeaMarking;
+        let mut ctx = PageContext::new();
+        // (U//UCNI) — UCNI portion, unclassified.
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            aea_markings: vec![AeaMarking::DodUcni].into(),
+            ..Default::default()
+        });
+        // (S) — classified portion, forces the document classification
+        // to SECRET, triggering the §H.6 strip-with-NOFORN-promotion
+        // rule on the UCNI portion.
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            ..Default::default()
+        });
+
+        let aea = ctx.expected_aea_markings();
+        let dissem = ctx.expected_dissem_us();
+
+        // PRE-FIX bug: UCNI silently dropped.
+        assert!(
+            aea.is_empty(),
+            "pre-fix: UCNI stripped on classified page (expected by §H.6 p116) — \
+             aea = {aea:?}"
+        );
+        // PRE-FIX bug: NOFORN NOT promoted even though §H.6 p116 / p118
+        // mandate it ("less restrictive FD&R marking would otherwise be
+        // conveyed"). This assertion documents the missing promotion.
+        // Commit 5 replaces this assertion with the corrected behaviour:
+        // NOFORN MUST be present on a classified page that carried a
+        // DOD/DOE UCNI portion.
+        assert!(
+            !dissem.iter().any(|d| matches!(d, DissemControl::Nf)),
+            "pre-fix bug: NOFORN absent on classified page that carried UCNI \
+             (Commit 5 makes this assertion fail when the bug is fixed) — \
+             dissem = {dissem:?}"
+        );
+    }
+
     // --- Non-IC rollup ---
 
     #[test]
