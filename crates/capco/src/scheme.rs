@@ -1116,6 +1116,10 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     out.dissem_us = ctx.expected_dissem_us().into_boxed_slice();
     out.dissem_nato = ctx.expected_dissem_nato().into_boxed_slice();
     out.rel_to = ctx.expected_rel_to().into_boxed_slice();
+    // DISPLAY ONLY axis (Phase 2 / §D.2 Table 3 rows 18-20, 25-27).
+    // Cross-axis intersection over (REL TO ∪ DO) with banner-REL-TO
+    // and USA subtraction — see `PageContext::expected_display_only`.
+    out.display_only_to = ctx.expected_display_only().into_boxed_slice();
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
     // `_needs_nf` (second tuple element) is intentionally discarded here.

@@ -560,6 +560,30 @@ impl PageContext {
             seen.insert(DissemControl::Nf);
         }
 
+        // Step 5: NF injection when FD&R intent is present but both
+        // foreign-audience axes clear at the banner level. This catches
+        // §D.2 Table 3 rows 9 (REL TO + REL TO no common), 10 (REL TO +
+        // RELIDO), 11 (REL TO + DO no common), 16 (REL TO + portion w/o
+        // FD&R), 18 (RELIDO + DO), 19 (DO + portion w/o FD&R), and 20
+        // (DO + DO no common) — each yields "banner NOFORN" per the
+        // Table 3 third column, but the existing NF/needs_nf paths
+        // don't fire for these row classes. Per row 1/2: NF appears
+        // whenever foreign-audience axes are unable to converge.
+        //
+        // No mutual-recursion risk: `expected_rel_to` and
+        // `expected_display_only` both call `expected_non_ic_dissem`,
+        // which does not call back into `expected_dissem_us`.
+        let has_fdr_intent = self
+            .portions
+            .iter()
+            .any(|a| !a.rel_to.is_empty() || !a.display_only_to.is_empty());
+        if has_fdr_intent
+            && self.expected_rel_to().is_empty()
+            && self.expected_display_only().is_empty()
+        {
+            seen.insert(DissemControl::Nf);
+        }
+
         seen.into_iter().collect()
     }
 
@@ -3065,6 +3089,69 @@ mod tests {
             ctx.expected_rel_to().is_empty(),
             "row 16: portion w/o FD&R clears banner REL TO"
         );
+    }
+
+    #[test]
+    fn render_banner_injects_noforn_for_row_16_rel_to_plus_bare() {
+        // §D.2 Table 3 row 16: REL TO + portion w/o FD&R → NOFORN at
+        // banner. The row-16 strict gate in `expected_rel_to` clears
+        // the REL TO axis; the new Step 5 in `expected_dissem_us`
+        // detects "FD&R intent on some portion + neither rolled-up
+        // axis carries" and injects NF.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            // Bare portion — no FD&R axis.
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
+    }
+
+    #[test]
+    fn render_banner_injects_noforn_for_row_10_rel_to_plus_relido() {
+        // §D.2 Table 3 row 10: REL TO + RELIDO → NOFORN. RELIDO is a
+        // DissemControl, not a country-list axis, so the RELIDO portion
+        // has empty REL TO — row-16 gate clears banner REL TO, Step 5
+        // injects NF.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Relido].into_boxed_slice(),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        // RELIDO survives (it's in dissem_us already); NOFORN injected
+        // via Step 5. Within-category sort puts NOFORN before RELIDO
+        // alphabetically on the dissem block.
+        assert_eq!(banner, "SECRET//NOFORN/RELIDO");
+    }
+
+    #[test]
+    fn render_banner_injects_noforn_for_row_19_do_plus_bare() {
+        // §D.2 Table 3 row 19: DO + portion w/o FD&R → NOFORN.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
     }
 
     #[test]
