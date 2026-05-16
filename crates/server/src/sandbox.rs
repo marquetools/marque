@@ -210,8 +210,8 @@ pub fn apply(_config_dir: &Path) -> SandboxStatus {
 /// fail with a `PathFdError` that is distinct from `landlock::RulesetError`;
 /// boxing avoids a custom error type for this private helper.
 #[cfg(target_os = "linux")]
-fn apply_filesystem_sandbox(
-) -> Result<landlock::RestrictionStatus, Box<dyn std::error::Error + Send + Sync>> {
+fn apply_filesystem_sandbox()
+-> Result<landlock::RestrictionStatus, Box<dyn std::error::Error + Send + Sync>> {
     use landlock::{
         ABI, Access, AccessFs, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
         make_bitflags,
@@ -251,8 +251,8 @@ fn apply_filesystem_sandbox(
 /// Returns `RulesetStatus::NotEnforced` if the kernel does not support
 /// Landlock V4 (< 6.7).
 #[cfg(target_os = "linux")]
-fn apply_network_sandbox(
-) -> Result<landlock::RestrictionStatus, Box<dyn std::error::Error + Send + Sync>> {
+fn apply_network_sandbox()
+-> Result<landlock::RestrictionStatus, Box<dyn std::error::Error + Send + Sync>> {
     use landlock::{ABI, Access, AccessNet, Ruleset, RulesetAttr};
 
     let status = Ruleset::default()
