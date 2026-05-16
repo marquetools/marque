@@ -1463,6 +1463,128 @@ fn joint_two_well_formed_with_one_empty_disunity_drops_empty() {
 }
 
 // ===========================================================================
+// JointSet USA invariant (PR 4b-B 9th-pass follow-up)
+// ===========================================================================
+//
+// Per CAPCO-2016 §H.3 p56: "JOINT marking ... USA always appears as
+// the OWNER/PRODUCER." A `JointClassification` constructed without
+// USA in the producer list is malformed input — pre-fix, the lattice
+// treated `JointClassification { countries: [GBR] }` (no USA) as a
+// well-formed JOINT portion and emitted a JOINT banner without USA,
+// which is unrepresentable in the §H.3 grammar.
+//
+// Pre-fix, `JointSet::from_attrs_iter` only filtered empty-producer
+// JOINT portions (the previous defensive shape from
+// `joint_with_empty_producer_portion_does_not_emit_fake_disunity`).
+// A JOINT portion with one or more non-USA countries but no USA was
+// pushed to `joint_portions` and contributed to the unanimity /
+// disunity decision, producing a malformed JOINT banner.
+//
+// **Fix**: extend the empty-producer drop predicate to also drop
+// JOINT portions whose producer list does not contain USA. The
+// portion is treated as invisible to the JOINT axis (matching the
+// existing empty-producer treatment); other well-formed JOINT
+// portions on the page still drive the unanimity / disunity branch.
+//
+// Authority: §H.3 p56 ("USA always appears as the OWNER/PRODUCER").
+// Verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+// ===========================================================================
+
+#[test]
+fn joint_missing_usa_dropped_from_joint_calculation() {
+    // Single JOINT portion with no USA in producer list → treated
+    // as malformed, dropped → JointSet::Bottom (no JOINT seen).
+    use marque_capco::JointSet;
+    let portions = [portion_joint(Classification::Secret, &["GBR"])];
+    let s = JointSet::from_attrs_iter(&portions);
+    assert!(
+        matches!(s, JointSet::Bottom),
+        "JOINT portion missing USA must be dropped (treated as malformed) \
+         per §H.3 p56; got {s:?}"
+    );
+}
+
+#[test]
+fn joint_two_portions_one_missing_usa_other_valid() {
+    // Two JOINT portions:
+    //   - JOINT S GBR CAN (malformed: no USA)
+    //   - JOINT S USA GBR (well-formed)
+    // Pre-fix: malformed portion contributes producer set {GBR, CAN};
+    // valid portion contributes {USA, GBR}; unanimity check fails →
+    // fake DisunityCollapse{non_us={CAN, GBR}} (CAN is from the
+    // malformed portion).
+    // Post-fix: malformed portion dropped → only valid portion
+    // remains → UnanimousProducers{S, {USA, GBR}}.
+    use marque_capco::JointSet;
+    let portions = [
+        portion_joint(Classification::Secret, &["GBR", "CAN"]),
+        portion_joint(Classification::Secret, &["USA", "GBR"]),
+    ];
+    let s = JointSet::from_attrs_iter(&portions);
+    match &s {
+        JointSet::UnanimousProducers { level, producers } => {
+            assert_eq!(*level, Classification::Secret);
+            assert!(producers.contains(&cc("USA")));
+            assert!(producers.contains(&cc("GBR")));
+            assert!(
+                !producers.contains(&cc("CAN")),
+                "CAN was on the malformed portion; must NOT appear in the \
+                 unanimous-producers set after the malformed drop: {producers:?}"
+            );
+        }
+        other => {
+            panic!("Expected UnanimousProducers after dropping no-USA JOINT portion, got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn joint_all_portions_missing_usa_returns_bottom() {
+    // All JOINT portions missing USA → all dropped → Bottom.
+    use marque_capco::JointSet;
+    let portions = [
+        portion_joint(Classification::Secret, &["GBR"]),
+        portion_joint(Classification::Confidential, &["CAN", "AUS"]),
+    ];
+    let s = JointSet::from_attrs_iter(&portions);
+    assert!(
+        matches!(s, JointSet::Bottom),
+        "All-malformed (no-USA) JOINT portions must collapse to Bottom \
+         per §H.3 p56; got {s:?}"
+    );
+}
+
+#[test]
+fn joint_missing_usa_parity_with_pagecontext() {
+    // End-to-end parity: a malformed JOINT portion (no USA) must
+    // produce the same `CanonicalAttrs` shape on both projection
+    // paths. PageContext's `expected_classification` returns the
+    // max `effective_level()` (Secret) and `expected_fgi_marker`
+    // skips USA when iterating JOINT countries — so PageContext
+    // surfaces GBR via the FGI axis, not via a JOINT banner.
+    //
+    // Post-fix lattice path: the JOINT portion is dropped from
+    // `JointSet`, the classification falls through to the
+    // ClassificationLattice non-JOINT branch (where Joint flattens
+    // to Us(level)), and `expected_fgi_marker` (called when
+    // `solely_non_us = false` since Joint counts as US-bearing per
+    // G-9b) surfaces GBR identically.
+    //
+    // Both paths must agree on the banner shape: `Us(Secret)` +
+    // `FGI [GBR]`. This pins the fix-both-paths stance: PageContext
+    // does not have the JOINT-no-USA bug because it never
+    // reconstructs the JOINT banner from per-portion data; the
+    // lattice-only fix achieves parity.
+    let portions = [portion_joint(Classification::Secret, &["GBR"])];
+    assert_byte_identity(
+        "joint_missing_usa_parity_with_pagecontext",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+// ===========================================================================
 // CV-6 (PR 4b-B 8th-pass follow-up) — edge-case parity fixtures
 //
 // Three deterministic fixtures locking in design assumptions surfaced

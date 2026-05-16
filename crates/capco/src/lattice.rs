@@ -2382,38 +2382,49 @@ impl JointSet {
 
         // Separate JOINT portions from non-JOINT portions.
         //
-        // **Empty-producer JOINT portions are dropped at this point.**
-        // Per §H.3 p56, a JOINT portion REQUIRES `[LIST]` to be
-        // non-empty (USA + at least one co-owner). A portion with an
-        // empty producer list is malformed input — it MUST NOT
-        // contribute to the unanimity / disunity decision. Pre-fix,
-        // the unanimity check happened AFTER this point and only
-        // returned `Bottom` when ALL portions shared an empty list;
-        // a single malformed portion mixed with a well-formed one
-        // would fall into the disunity branch and emit a fake
-        // `DisunityCollapse` whose "non-US producer union" was just
-        // the well-formed portion's set.
+        // **Malformed JOINT portions are dropped at this point.** A
+        // JOINT portion is malformed when it fails either of the two
+        // §H.3 p56 grammar invariants:
         //
-        // Dropping malformed portions at scan time keeps the
-        // remaining (well-formed) portions in the correct shape to
-        // drive the lattice state per the standard rules: zero
-        // remaining → `Bottom`; well-formed unanimous → `UnanimousProducers`;
+        // 1. Producer list must be non-empty (`!j.countries.is_empty()`).
+        // 2. **USA must appear in the producer list** ("USA always
+        //    appears as the OWNER/PRODUCER" per §H.3 p56). Pre-fix
+        //    (PR 4b-B 9th-pass), only invariant #1 was enforced; a
+        //    `JointClassification { countries: [GBR] }` (one country,
+        //    no USA) was pushed to `joint_portions`, treated as
+        //    well-formed unanimous, and emitted a JOINT banner
+        //    without USA — unrepresentable in the §H.3 grammar.
+        //
+        // Per the existing empty-producer rationale: dropping
+        // malformed portions at scan time keeps the remaining
+        // (well-formed) portions in the correct shape to drive the
+        // lattice state per the standard rules: zero remaining →
+        // `Bottom`; well-formed unanimous → `UnanimousProducers`;
         // well-formed disagreement → `DisunityCollapse`.
         //
+        // The malformed portion is **invisible to the JOINT axis**
+        // (does not count as "non-JOINT" either). PageContext's
+        // `expected_classification` still consumes its
+        // `effective_level()` for the level chain max; this
+        // normalization is JOINT-axis-only.
+        //
         // Authority: §H.3 p56 (JOINT grammar requires non-empty
-        // `[LIST]`). Verified 2026-05-15 against CAPCO-2016.md.
+        // `[LIST]` AND USA in the producer list). Verified
+        // 2026-05-16 against CAPCO-2016.md.
+        let has_usa = |j: &JointClassification| j.countries.iter().any(|c| c.as_str() == "USA");
         let mut joint_portions: Vec<&JointClassification> = Vec::new();
         let mut has_non_joint = false;
         for p in portions {
             match &p.classification {
-                Some(MarkingClassification::Joint(j)) if !j.countries.is_empty() => {
+                // Well-formed: non-empty AND contains USA.
+                Some(MarkingClassification::Joint(j)) if !j.countries.is_empty() && has_usa(j) => {
                     joint_portions.push(j)
                 }
-                // Malformed empty-producer JOINT: drop, treat as
-                // invisible to the JOINT axis. The portion is still
-                // a CanonicalAttrs entry on the page, so it doesn't
-                // count as "non-JOINT" either — the malformed shape
-                // contributes nothing.
+                // Malformed JOINT (empty producer list OR no USA):
+                // drop, treat as invisible to the JOINT axis. The
+                // portion is still a CanonicalAttrs entry on the
+                // page, so it doesn't count as "non-JOINT" either —
+                // the malformed shape contributes nothing.
                 Some(MarkingClassification::Joint(_)) => {}
                 Some(_) => has_non_joint = true,
                 None => has_non_joint = true,
