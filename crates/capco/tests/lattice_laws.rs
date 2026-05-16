@@ -25,7 +25,7 @@ use marque_ism::{
     CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
     SciControlBare, SciControlSystem, SciMarking,
 };
-use marque_scheme::{BoundedLattice, Lattice};
+use marque_scheme::Lattice;
 use smol_str::SmolStr;
 use std::collections::BTreeSet;
 
