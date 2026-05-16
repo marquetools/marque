@@ -770,7 +770,10 @@ mod classification_lattice {
         // in the canonical order. Production code (parser, page-
         // context roll-up) emits sorted lists by §H.8 p150-151 / §H.3
         // p56 (REL TO / JOINT alphabetical-with-USA-first).
-        use marque_ism::{CountryCode, FgiClassification, JointClassification, NatoClassification};
+        use marque_ism::{
+            CountryCode, FgiClassification, ForeignClassification, JointClassification,
+            NatoClassification,
+        };
         let usa = CountryCode::try_new(b"USA").expect("USA");
         let gbr = CountryCode::try_new(b"GBR").expect("GBR");
         let can = CountryCode::try_new(b"CAN").expect("CAN");
@@ -809,6 +812,27 @@ mod classification_lattice {
                 level: Classification::Secret,
                 countries: Box::new([can, usa]),
             }))),
+            // C-9b: Conflict variants with cross-variant inner foreign
+            // payloads exercise the C-9b dual-absorption fix on
+            // `meet_foreign_classification`.
+            ClassificationLattice::new(Some(MarkingClassification::Conflict {
+                us: Classification::Secret,
+                foreign: Box::new(ForeignClassification::Fgi(FgiClassification {
+                    level: Classification::Secret,
+                    countries: Box::new([gbr]),
+                })),
+            })),
+            ClassificationLattice::new(Some(MarkingClassification::Conflict {
+                us: Classification::Secret,
+                foreign: Box::new(ForeignClassification::Nato(NatoClassification::NatoSecret)),
+            })),
+            ClassificationLattice::new(Some(MarkingClassification::Conflict {
+                us: Classification::Secret,
+                foreign: Box::new(ForeignClassification::Joint(JointClassification {
+                    level: Classification::Secret,
+                    countries: Box::new([can, usa]),
+                })),
+            })),
         ];
         for a in &inputs {
             for b in &inputs {
@@ -917,6 +941,197 @@ mod classification_lattice {
         // Absorption.
         assert_eq!(fgi_both.join(&meet), fgi_both);
         assert_eq!(fgi_gbr.join(&meet), fgi_gbr);
+    }
+
+    // -----------------------------------------------------------------------
+    // C-9b (PR 4b-B 7th-pass follow-up) — Conflict cross-variant inner
+    // foreign-classification absorption.
+    //
+    // Continuation of C-9. Two `Conflict` values at the same outer level
+    // with different `foreign` inner variants (e.g. one with
+    // `Nato(NS)` inner, another with `Fgi(S, [GBR])` inner) trigger the
+    // `Conflict-Conflict` arm of `classification_join_same_variant` /
+    // `classification_meet_same_variant`. Those arms delegate to
+    // `merge_foreign_classification` / `meet_foreign_classification`,
+    // which were ASYMMETRIC pre-C-9b:
+    //
+    //   - `merge_foreign_classification` cross-variant: returns the
+    //     lower-rank variant (Fgi=1 < Nato=2 < Joint=3).
+    //   - `meet_foreign_classification` cross-variant: returned `None`,
+    //     which the outer `classification_meet_same_variant` translated
+    //     to the lattice bottom.
+    //
+    // That asymmetry broke the dual absorption law `a ⊓ (a ⊔ b) = a` for
+    // the operand whose inner `foreign` was the LOWER-rank one (Fgi
+    // wins join → Fgi = `a ⊔ b`; then `a.meet(b) = bottom`; so the join
+    // direction gives `b`, but the meet direction gives bottom, which
+    // joined back with `a` gives `a` ✓ — but `a.meet(a.join(b))` =
+    // `a.meet(b)` (since `a ⊔ b = b` for the higher-rank operand),
+    // which = bottom, NOT `a`).
+    //
+    // Fix: align `meet_foreign_classification` cross-variant with
+    // `merge_foreign_classification`'s tiebreak — return the HIGHER-rank
+    // operand (the dominated, lower-≤ side; the GLB dual). This makes
+    // the inner foreign axis its own linear-ordered tiebreak that
+    // satisfies absorption, mirroring the C-9 fix at the outer
+    // classification level.
+    //
+    // §-authority: §H.7 pp123-125 reciprocal-normalization (variant-rank
+    // order). Verified 2026-05-15 against CAPCO-2016.md.
+    // -----------------------------------------------------------------------
+
+    fn conflict(
+        level: Classification,
+        foreign: marque_ism::ForeignClassification,
+    ) -> ClassificationLattice {
+        ClassificationLattice::new(Some(MarkingClassification::Conflict {
+            us: level,
+            foreign: Box::new(foreign),
+        }))
+    }
+
+    #[test]
+    fn classification_conflict_cross_variant_inner_absorption() {
+        // a = Conflict{us=S, foreign: Nato(NS)}
+        // b = Conflict{us=S, foreign: Fgi(S, [GBR])}
+        // Same outer level. Inner variant ranks: Fgi=1, Nato=2.
+        //
+        // - merge_foreign_classification(Nato, Fgi): rank(Nato)=2,
+        //   rank(Fgi)=1; rank(a)<=rank(b) is `2<=1` = false → returns
+        //   Fgi. So `a.join(b) = Conflict{foreign: Fgi}` = b.
+        // - meet_foreign_classification(Nato, Fgi) post-C-9b: returns
+        //   the higher-rank inner (the lower-≤ side; GLB dual) = Nato.
+        //   So `a.meet(b) = Conflict{foreign: Nato}` = a.
+        //
+        // Absorption checks:
+        //   - a ⊔ (a ⊓ b) = a ⊔ a = a ✓
+        //   - a ⊓ (a ⊔ b) = a ⊓ b = a ✓ (this is the C-9b fix)
+        //   - b ⊔ (b ⊓ a) = b ⊔ a = b ✓
+        //   - b ⊓ (b ⊔ a) = b ⊓ b = b ✓
+        use marque_ism::{
+            CountryCode, FgiClassification, ForeignClassification, NatoClassification,
+        };
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let a = conflict(
+            Classification::Secret,
+            ForeignClassification::Nato(NatoClassification::NatoSecret),
+        );
+        let b = conflict(
+            Classification::Secret,
+            ForeignClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            }),
+        );
+
+        // Sanity: a and b are at the same outer level so the
+        // same-level tiebreak path activates.
+        let a_join_b = a.join(&b);
+        let b_join_a = b.join(&a);
+        assert_eq!(a_join_b, b_join_a, "C-9b: join must be commutative");
+
+        let a_meet_b = a.meet(&b);
+        let b_meet_a = b.meet(&a);
+        assert_eq!(a_meet_b, b_meet_a, "C-9b: meet must be commutative");
+
+        // Absorption — both directions.
+        assert_eq!(a.join(&a_meet_b), a, "C-9b: a ⊔ (a ⊓ b) = a");
+        assert_eq!(a.meet(&a_join_b), a, "C-9b: a ⊓ (a ⊔ b) = a");
+        assert_eq!(b.join(&b_meet_a), b, "C-9b: b ⊔ (b ⊓ a) = b");
+        assert_eq!(b.meet(&b_join_a), b, "C-9b: b ⊓ (b ⊔ a) = b");
+    }
+
+    #[test]
+    fn classification_conflict_cross_variant_inner_with_joint() {
+        // a = Conflict{us=S, foreign: Joint(S, [USA, CAN])}
+        // b = Conflict{us=S, foreign: Fgi(S, [GBR])}
+        // Inner ranks: Fgi=1, Joint=3. Same shape as Nato/Fgi case.
+        use marque_ism::{
+            CountryCode, FgiClassification, ForeignClassification, JointClassification,
+        };
+        let usa = CountryCode::try_new(b"USA").expect("USA");
+        let can = CountryCode::try_new(b"CAN").expect("CAN");
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let a = conflict(
+            Classification::Secret,
+            ForeignClassification::Joint(JointClassification {
+                level: Classification::Secret,
+                countries: Box::new([can, usa]),
+            }),
+        );
+        let b = conflict(
+            Classification::Secret,
+            ForeignClassification::Fgi(FgiClassification {
+                level: Classification::Secret,
+                countries: Box::new([gbr]),
+            }),
+        );
+
+        let a_join_b = a.join(&b);
+        let a_meet_b = a.meet(&b);
+        assert_eq!(b.join(&a), a_join_b, "comm join");
+        assert_eq!(b.meet(&a), a_meet_b, "comm meet");
+        // Absorption.
+        assert_eq!(a.join(&a_meet_b), a, "C-9b: a ⊔ (a ⊓ b) = a");
+        assert_eq!(a.meet(&a_join_b), a, "C-9b: a ⊓ (a ⊔ b) = a");
+        assert_eq!(b.join(&b.meet(&a)), b, "C-9b: b ⊔ (b ⊓ a) = b");
+        assert_eq!(b.meet(&b.join(&a)), b, "C-9b: b ⊓ (b ⊔ a) = b");
+    }
+
+    #[test]
+    fn classification_conflict_cross_variant_inner_full_cube() {
+        // Exhaustive cross-product over the three inner-foreign variants.
+        // Every pair must satisfy commutativity + dual absorption.
+        use marque_ism::{
+            CountryCode, FgiClassification, ForeignClassification, JointClassification,
+            NatoClassification,
+        };
+        let usa = CountryCode::try_new(b"USA").expect("USA");
+        let can = CountryCode::try_new(b"CAN").expect("CAN");
+        let gbr = CountryCode::try_new(b"GBR").expect("GBR");
+        let inputs: Vec<ClassificationLattice> = vec![
+            conflict(
+                Classification::Secret,
+                ForeignClassification::Fgi(FgiClassification {
+                    level: Classification::Secret,
+                    countries: Box::new([gbr]),
+                }),
+            ),
+            conflict(
+                Classification::Secret,
+                ForeignClassification::Fgi(FgiClassification {
+                    level: Classification::Secret,
+                    countries: Box::new([can]),
+                }),
+            ),
+            conflict(
+                Classification::Secret,
+                ForeignClassification::Nato(NatoClassification::NatoSecret),
+            ),
+            conflict(
+                Classification::Secret,
+                ForeignClassification::Joint(JointClassification {
+                    level: Classification::Secret,
+                    countries: Box::new([can, usa]),
+                }),
+            ),
+        ];
+        for a in &inputs {
+            for b in &inputs {
+                assert_eq!(a.join(b), b.join(a), "C-9b: join commutativity");
+                assert_eq!(a.meet(b), b.meet(a), "C-9b: meet commutativity");
+                assert_eq!(
+                    a.join(&a.meet(b)),
+                    *a,
+                    "C-9b: a ⊔ (a ⊓ b) ≠ a for a={a:?}, b={b:?}"
+                );
+                assert_eq!(
+                    a.meet(&a.join(b)),
+                    *a,
+                    "C-9b: a ⊓ (a ⊔ b) ≠ a for a={a:?}, b={b:?}"
+                );
+            }
+        }
     }
 }
 

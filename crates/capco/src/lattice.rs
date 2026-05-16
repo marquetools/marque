@@ -1390,7 +1390,24 @@ fn classification_meet_same_variant(
 }
 
 /// Companion to [`merge_foreign_classification`] for the meet side.
-/// Same shape, country intersection; cross-variant → `None`.
+/// Same-variant payloads intersect; cross-variant returns the
+/// HIGHER-rank operand (the dominated, lower-≤ side; the GLB dual of
+/// the join's "lower variant rank wins" tiebreak).
+///
+/// **C-9b (PR 4b-B 7th-pass follow-up).** Pre-fix, this function
+/// returned `None` on cross-variant inputs while
+/// `merge_foreign_classification` returned the lower-rank operand.
+/// That asymmetry broke the dual absorption law `a ⊓ (a ⊔ b) = a` for
+/// `Conflict` values whose inner foreign payloads had different
+/// variants — the join would settle on the lower-rank inner, but the
+/// meet would collapse the entire outer Conflict to bottom. C-9b
+/// aligns the cross-variant meet with the join's tiebreak (return the
+/// higher-rank operand, the GLB dual), mirroring how C-9 fixed the
+/// same asymmetry at the outer `ClassificationLattice::meet` level.
+///
+/// §-authority: §H.7 pp123-125 reciprocal-normalization grounds the
+/// variant-rank ordering (Fgi=1 < Nato=2 < Joint=3). Verified
+/// 2026-05-15 against CAPCO-2016.md.
 fn meet_foreign_classification(
     a: &marque_ism::ForeignClassification,
     b: &marque_ism::ForeignClassification,
@@ -1427,7 +1444,27 @@ fn meet_foreign_classification(
                 ))
             }
         }
-        _ => None,
+        // C-9b: cross-variant → return the HIGHER-rank operand (the
+        // dominated, lower-≤ side; GLB dual of `merge_foreign_classification`'s
+        // tiebreak). The rank function below MUST agree with the one
+        // in `merge_foreign_classification` (Fgi=1 < Nato=2 < Joint=3).
+        _ => {
+            let rank = |fc: &ForeignClassification| -> u8 {
+                match fc {
+                    ForeignClassification::Fgi(_) => 1,
+                    ForeignClassification::Nato(_) => 2,
+                    ForeignClassification::Joint(_) => 3,
+                }
+            };
+            // Dual of merge: merge returns the LOWER-rank operand
+            // (the GREATER element under ≤); meet returns the
+            // HIGHER-rank operand (the LESSER element under ≤).
+            if rank(a) >= rank(b) {
+                Some(a.clone())
+            } else {
+                Some(b.clone())
+            }
+        }
     }
 }
 
