@@ -36,14 +36,24 @@
 //!
 //! # WASM safety
 //!
-//! All types are WASM-safe. The underlying `jiff` calendar arithmetic uses
-//! `features = ["std"]` (no tzdb I/O) and `jiff::civil` types that work on
-//! `wasm32-unknown-unknown`.
+//! All types are WASM-safe. Calendar arithmetic flows through one of two
+//! interchangeable backends selected at compile time by the `dates`
+//! feature on `marque-ism`:
+//!
+//! - **`dates` on** (native CLI / server / extract): `jiff::civil::Date`
+//!   for validity + `days_in_month`. Built with `features = ["std"]`
+//!   (no tzdb I/O), works on `wasm32-unknown-unknown` but excluded from
+//!   the WASM artifact for bundle-size reasons (issue #455).
+//! - **`dates` off** (WASM artifact): a hand-rolled proleptic Gregorian
+//!   implementation lives in this file. Same `validate_date` +
+//!   `days_in_month` surface; SC-008 native↔WASM parity tests enforce
+//!   output agreement.
 
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
+#[cfg(feature = "dates")]
 use jiff::civil;
 
 // ---------------------------------------------------------------------------
@@ -777,14 +787,42 @@ fn parse_frac_as_nanoseconds(frac: &str) -> Result<u32, ParseIsmDateError> {
 }
 
 // ---------------------------------------------------------------------------
-// Validation helpers (use jiff for date validity)
+// Validation helpers
 // ---------------------------------------------------------------------------
+//
+// Two interchangeable backends — the `dates` feature flips between them
+// at compile time. CLI / server / extract pull `dates` on (jiff path);
+// WASM excludes jiff and uses the hand-rolled Gregorian path. SC-008
+// native↔WASM parity tests enforce identical observable behaviour.
 
-/// Validate a complete year/month/day triple using jiff's civil::Date.
+/// Validate a complete year/month/day triple.
+#[cfg(feature = "dates")]
 fn validate_date(year: i32, month: u8, day: u8) -> Result<(), ParseIsmDateError> {
     let y = i16::try_from(year).map_err(|_| ParseIsmDateError::new("year out of i16 range"))?;
     civil::Date::new(y, month as i8, day as i8)
         .map_err(|_| ParseIsmDateError::new("invalid calendar date"))?;
+    Ok(())
+}
+
+/// Validate a complete year/month/day triple (hand-rolled proleptic Gregorian).
+///
+/// Mirrors `jiff::civil::Date::new`'s validity check. Accepts the full
+/// `i16` year range (`i16::MIN..=i16::MAX`, i.e. `-32768..=32767`) since
+/// `jiff::civil::Date::new` takes `i16` for the year; rejects months
+/// outside `1..=12` and days outside `1..=days_in_month(year, month)`.
+/// In practice the upstream parser (`parse_4digit_year`) constrains
+/// inputs to the `0..=9999` ASCII-digit range, so the wider i16 window
+/// only matters for programmatic `IsmDate` construction.
+#[cfg(not(feature = "dates"))]
+fn validate_date(year: i32, month: u8, day: u8) -> Result<(), ParseIsmDateError> {
+    i16::try_from(year).map_err(|_| ParseIsmDateError::new("year out of i16 range"))?;
+    if !(1..=12).contains(&month) {
+        return Err(ParseIsmDateError::new("invalid calendar date"));
+    }
+    let max_day = days_in_month(year, month);
+    if day < 1 || day > max_day {
+        return Err(ParseIsmDateError::new("invalid calendar date"));
+    }
     Ok(())
 }
 
@@ -797,12 +835,45 @@ fn validate_year_month(year: i32, month: u8) -> Result<(), ParseIsmDateError> {
     Ok(())
 }
 
-/// Number of days in the given month, using jiff for leap-year correctness.
+/// Number of days in the given month (jiff path).
+#[cfg(feature = "dates")]
 fn days_in_month(year: i32, month: u8) -> u8 {
     let y = i16::try_from(year).unwrap_or(2000); // fallback for hypothetical overflow
     civil::Date::new(y, month as i8, 1)
         .map(|d| d.days_in_month() as u8)
         .unwrap_or(30) // fallback — should not happen for valid inputs
+}
+
+/// Number of days in the given month (hand-rolled proleptic Gregorian).
+///
+/// Mirrors `jiff::civil::Date::days_in_month` for the in-range year set.
+/// Returns 30 for invalid month inputs (parity with the `unwrap_or(30)`
+/// branch above; valid inputs never hit it). Leap-year rule (proleptic
+/// Gregorian): divisible by 4 AND (not divisible by 100 OR divisible by
+/// 400). Note: Rust `%` follows the dividend's sign, but `n % m == 0` is
+/// sign-independent for exact multiples, so the rule is correct for all
+/// integer years (positive, zero, and negative).
+#[cfg(not(feature = "dates"))]
+fn days_in_month(year: i32, month: u8) -> u8 {
+    // Year-overflow fallback matches the jiff path below: jiff returns
+    // `unwrap_or(2000)` for the year on `i16::try_from` overflow and then
+    // computes `days_in_month` against year=2000 (a leap year), so
+    // February returns 29. We mirror that by falling through to the
+    // normal computation with year=2000 instead of returning a constant.
+    let y = if i16::try_from(year).is_err() {
+        2000
+    } else {
+        year
+    };
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+            if leap { 29 } else { 28 }
+        }
+        _ => 30, // matches jiff path's fallback for invalid month
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2285,5 +2356,73 @@ mod tests {
         let o: UtcOffset = "-12:00".parse().unwrap();
         assert_eq!(o.minutes, -720);
         assert_eq!(o.to_string(), "-12:00");
+    }
+
+    // -----------------------------------------------------------------------
+    // Calendar validity — runs under both backends (jiff + hand-rolled).
+    // Issue #455: confirms the proleptic Gregorian leap-year rule is correct
+    // for century years and the proleptic year 0. These pass through the
+    // public `IsmDate::from_str` API so they exercise whichever backend is
+    // compiled in. The direct `days_in_month` calls cover negative years
+    // which are unreachable via the parser but documented as correct by
+    // the doc comment.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn leap_year_century_rule_via_from_str() {
+        // 1900: divisible by 100 but not 400 → NOT leap.
+        assert!(IsmDate::from_str("19000229").is_err());
+        assert!(IsmDate::from_str("19000228").is_ok());
+
+        // 2000: divisible by 400 → leap.
+        assert!(IsmDate::from_str("20000229").is_ok());
+
+        // 2100: divisible by 100 but not 400 → NOT leap.
+        assert!(IsmDate::from_str("21000229").is_err());
+        assert!(IsmDate::from_str("21000228").is_ok());
+
+        // 2400: divisible by 400 → leap.
+        assert!(IsmDate::from_str("24000229").is_ok());
+    }
+
+    #[test]
+    fn leap_year_proleptic_zero_via_from_str() {
+        // Year 0000: 0 % 400 == 0 → leap in the proleptic Gregorian system.
+        assert!(IsmDate::from_str("00000229").is_ok());
+        assert!(IsmDate::from_str("00000228").is_ok());
+    }
+
+    #[test]
+    fn days_in_month_negative_year_unreachable_but_consistent() {
+        // `IsmDate::from_str` rejects negative years (4-digit ASCII parser),
+        // so `days_in_month(-400, 2)` is unreachable via the parser. We
+        // assert it anyway to document that the Rust `%` sign semantics
+        // don't break the leap rule at exact multiples — `(-400) % 400`
+        // is 0, so `-400` is correctly classified as leap.
+        assert_eq!(days_in_month(-400, 2), 29);
+        // `-100`: divisible by 100 but `(-100) % 400 != 0` → not leap.
+        assert_eq!(days_in_month(-100, 2), 28);
+        // `-4`: divisible by 4, `(-4) % 100 != 0` → leap.
+        assert_eq!(days_in_month(-4, 2), 29);
+    }
+
+    #[test]
+    fn days_in_month_all_months_non_leap() {
+        // Exhaustive non-leap February + every other month at year 2003.
+        assert_eq!(days_in_month(2003, 1), 31);
+        assert_eq!(days_in_month(2003, 2), 28);
+        assert_eq!(days_in_month(2003, 3), 31);
+        assert_eq!(days_in_month(2003, 4), 30);
+        assert_eq!(days_in_month(2003, 5), 31);
+        assert_eq!(days_in_month(2003, 6), 30);
+        assert_eq!(days_in_month(2003, 7), 31);
+        assert_eq!(days_in_month(2003, 8), 31);
+        assert_eq!(days_in_month(2003, 9), 30);
+        assert_eq!(days_in_month(2003, 10), 31);
+        assert_eq!(days_in_month(2003, 11), 30);
+        assert_eq!(days_in_month(2003, 12), 31);
+        // Invalid month → fallback (30 — matches both backends).
+        assert_eq!(days_in_month(2003, 0), 30);
+        assert_eq!(days_in_month(2003, 13), 30);
     }
 }

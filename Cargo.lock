@@ -1121,6 +1121,7 @@ dependencies = [
  "marque-config",
  "marque-engine",
  "marque-extract",
+ "marque-ism",
  "marque-rules",
  "marque-scheme",
  "serde",
