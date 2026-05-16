@@ -371,6 +371,11 @@ fn lint_prose_heavy_benchmark(c: &mut Criterion) {
 // floors. Advisory bench — no entry in `benches/baseline.json`, same pattern
 // as `lint_prose_heavy`. Report the number in PRs that touch the scanner or
 // PageContext; don't gate on it.
+//
+// Also serves as the per-portion measurement vehicle for issue #434, which
+// eliminated the `attrs.clone()` on `PageContext.add_portion(...)` by moving
+// the call to end-of-iteration and consuming `attrs` by value. The portion-
+// dense shape is the hot path that change targets.
 
 fn build_portion_dense_input(target_bytes: usize) -> Vec<u8> {
     let block = concat!(

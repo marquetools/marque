@@ -952,49 +952,47 @@ impl Engine {
                 continue;
             };
             // Issue #433: defer the `parsed_markings` cache insert
-            // until after the rule loop + constraint bridge have run,
-            // so we know whether any diagnostic for this candidate
-            // carries a `FixIntent`. `synthesize_intent_only_fixes`
-            // reads the cache ONLY for diagnostics with
-            // `fix.is_some()`; candidates that produce no FixIntent
-            // (the common case — most diagnostics are text corrections
-            // or non-fix violations) leave the cache untouched. When a
-            // FixIntent IS emitted, we move `marking` into the cache
-            // instead of cloning — no eager clone, no late clone.
+            // until the end of this iteration, so we know whether any
+            // diagnostic for this candidate carries a `FixIntent`.
+            // `synthesize_intent_only_fixes` reads the cache ONLY for
+            // diagnostics with `fix.is_some()`; candidates that
+            // produce no FixIntent (the common case — most
+            // diagnostics are text corrections or non-fix violations)
+            // leave the cache untouched.
             //
             // The ParseContext-divergence rationale from the original
             // eager-cache site (Copilot PR #369 finding #2) is
-            // preserved: the same `marking` value the recognizer
-            // produced from this candidate's `parse_cx` flows into the
-            // cache. The synthesis path never re-parses; the deferral
-            // changes *when* the cache populates, not *what* it holds.
+            // preserved: the same `attrs` + `marking.1` values the
+            // recognizer produced from this candidate's `parse_cx`
+            // flow into the cache. The synthesis path never re-parses;
+            // the deferral changes *when* the cache populates, not
+            // *what* it holds.
             //
             // Snapshot `diagnostics.len()` here so the end-of-iteration
             // check can scan only the entries this candidate added.
             let diagnostics_pre_candidate = diagnostics.len();
-            // The decoder-provenance side channel borrows through
-            // `marking.1.as_ref()` (vs the previous `.take()`) so
-            // `marking` stays whole — the end-of-iteration conditional
-            // can move the marking into the cache without a clone.
-            // Strict-path recognizers leave this `None`; the decoder
-            // populates it with the canonical bytes / posterior /
-            // features the engine needs to mint a
+            // Partial-move on `marking`: `attrs` consumes `marking.0`
+            // by value (#434's shape — `page_context.add_portion`
+            // consumes attrs at end-of-iteration, no clone). The
+            // remaining `marking.1: Option<DecoderProvenance>` stays
+            // accessible for both the decoder-path emit below (via
+            // `as_ref()` to keep it intact) and the end-of-iteration
+            // cache reconstruction.
+            let attrs = marking.0;
+            // Strict-path recognizers leave `marking.1` as `None`; the
+            // decoder populates it with the canonical bytes /
+            // posterior / features the engine needs to mint a
             // `FixSource::DecoderPosterior` diagnostic below.
-            let provenance = marking.1.as_ref();
-            // `attrs` is a borrow into `marking.0` for the same
-            // reason — keeping `marking` whole so the conditional
-            // cache insert at end-of-iteration moves rather than
-            // clones. Call sites pass `attrs` directly to functions
-            // that take `&CanonicalAttrs`; method calls
-            // (`attrs.classification`, `attrs.clone()`) auto-deref.
-            let attrs = &marking.0;
+            // `as_ref()` (rather than `.take()`) preserves the
+            // provenance value so it can be moved into the cache at
+            // end-of-iteration alongside `attrs`.
 
             // FR-011 strict-floor accumulator: only strict-path
             // recognitions raise the floor. A decoder-path
-            // recognition (provenance.is_some()) does not — we cannot
+            // recognition (`marking.1.is_some()`) does not — we cannot
             // let a probabilistic recovery self-justify by raising
             // the threshold it then clears.
-            if provenance.is_none() {
+            if marking.1.is_none() {
                 if let Some(level) = attrs
                     .classification
                     .as_ref()
@@ -1016,7 +1014,7 @@ impl Engine {
             // `runner_up_ratio = Some(r)`, non-empty `features`). The
             // fix participates in the regular confidence-threshold
             // gate inside `Engine::fix_inner`.
-            if let Some(prov) = provenance {
+            if let Some(prov) = marking.1.as_ref() {
                 let span = Span::new(start, end);
                 if let Some(diagnostic) = build_decoder_diagnostic(
                     span,
@@ -1027,19 +1025,6 @@ impl Engine {
                 ) {
                     diagnostics.push(diagnostic);
                 }
-            }
-
-            // Accumulate portions before running banner/CAB rules so that
-            // when we reach a banner candidate the context already reflects
-            // all preceding portion data.
-            if candidate.kind == MarkingType::Portion {
-                page_context.add_portion(attrs.clone());
-                // Invalidate the cached Arc so the next banner/CAB gets a
-                // fresh snapshot. We rebuild it lazily below.
-                page_context_arc = None;
-                // PR 9b (T133): the projected page marking also goes
-                // stale when a new portion arrives.
-                page_marking_arc = None;
             }
 
             // Phase 3: zone and position are Option-typed and stay None
@@ -1215,10 +1200,11 @@ impl Engine {
                     // `Rule::trusted()`.
                     let rule_id = rule.id();
                     let mut diags = if rule.trusted() {
-                        rule.check(attrs, &ctx)
+                        rule.check(&attrs, &ctx)
                     } else {
-                        match std::panic::catch_unwind(AssertUnwindSafe(|| rule.check(attrs, &ctx)))
-                        {
+                        match std::panic::catch_unwind(AssertUnwindSafe(|| {
+                            rule.check(&attrs, &ctx)
+                        })) {
                             Ok(d) => d,
                             Err(payload) => {
                                 let msg = panic_payload_to_string(&payload);
@@ -1422,7 +1408,7 @@ impl Engine {
                     // payload, multiple violations per row with
                     // distinct fixes) cannot be expressed through this
                     // single-FixIntent-per-violation interface.
-                    let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, attrs);
+                    let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, &attrs);
                     let diag = Diagnostic::with_fix(
                         rule_id,
                         final_severity,
@@ -1472,36 +1458,66 @@ impl Engine {
                     _ => marque_scheme::Scope::Page,
                 };
                 diagnostics.extend(self.scheme.bridge_sci_per_system_diagnostics(
-                    attrs,
+                    &attrs,
                     candidate.span,
                     fix_scope,
                     e059_override,
                 ));
             }
 
-            // Issue #433: end-of-iteration cache decision. `marking`
-            // is moved into the cache (no clone) when at least one
-            // diagnostic this candidate produced carries a FixIntent
-            // — that is the only path `synthesize_intent_only_fixes`
-            // needs the marking for. Diagnostics with `text_correction`
-            // only, or with `fix == None`, do not require the cache.
-            // The decoder-path R001 diagnostic emitted earlier in this
-            // iteration also bears a FixIntent (Recanonicalize), so
-            // mangled candidates that the decoder recovered are
-            // correctly cached by this predicate too.
+            // Issue #433 + #434 end-of-iteration synthesis: decide
+            // cache-insert (#433) AND page-context accumulation (#434)
+            // by candidate.kind × intent_emitted. The four arms
+            // combine both wins:
             //
-            // The `diagnostics_pre_candidate` baseline is captured at
-            // the top of this iteration (search "Issue #433:" upward)
-            // before any diagnostic-emitting site fires. The slice
-            // bound is what scopes this predicate to "diagnostics this
-            // candidate added" — any code added between the snapshot
-            // and this check that emits diagnostics MUST stay below
-            // the snapshot site for the predicate to remain accurate.
-            if diagnostics[diagnostics_pre_candidate..]
+            //   - `marking.1` (the provenance Option) is moved into the
+            //     cache by value alongside the attrs, preserving the
+            //     decoder's `Some(...)` payload (Copilot PR #369
+            //     finding #2 — the same recognition the lint phase
+            //     saw flows into `synthesize_intent_only_fixes`).
+            //   - For non-Portion candidates we never call
+            //     `add_portion`, so attrs simply moves into the cache
+            //     (when an intent fires) or drops (otherwise) — no
+            //     clones.
+            //   - For Portion candidates WITHOUT an intent, attrs
+            //     moves into `add_portion` — #434's by-value win
+            //     stays intact for the common path.
+            //   - For Portion candidates WITH an intent (rare:
+            //     E014 JOINT-RELTO, E021 AEA-NOFORN, and similar
+            //     FactAdd rules), we must satisfy both consumers,
+            //     so we clone attrs once. The clone cost is bounded
+            //     by the (already-rare) Portion+intent intersection.
+            //
+            // `diagnostics_pre_candidate` is captured at the top of
+            // this iteration before any diagnostic-emitting site
+            // fires. The slice bound scopes the predicate to
+            // diagnostics this candidate added — any new
+            // diagnostic-emitting site added between the snapshot and
+            // this block MUST stay above this block for the predicate
+            // to remain accurate.
+            let intent_emitted = diagnostics[diagnostics_pre_candidate..]
                 .iter()
-                .any(|d| d.fix.is_some())
-            {
-                parsed_markings.insert(candidate.span, marking);
+                .any(|d| d.fix.is_some());
+            if candidate.kind == MarkingType::Portion {
+                if intent_emitted {
+                    parsed_markings.insert(
+                        candidate.span,
+                        marque_capco::CapcoMarking(attrs.clone(), marking.1),
+                    );
+                    page_context.add_portion(attrs);
+                } else {
+                    page_context.add_portion(attrs);
+                }
+                // Invalidate the cached Arc so the next banner/CAB gets a
+                // fresh snapshot. We rebuild it lazily above on the next
+                // iteration when a non-Portion candidate arrives.
+                page_context_arc = None;
+                // PR 9b (T133): the projected page marking also goes
+                // stale when a new portion arrives.
+                page_marking_arc = None;
+            } else if intent_emitted {
+                parsed_markings
+                    .insert(candidate.span, marque_capco::CapcoMarking(attrs, marking.1));
             }
         }
 
