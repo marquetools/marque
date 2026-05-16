@@ -1434,6 +1434,16 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          /// metadata entry references one of these so the same authority,\n\
          /// point of contact, and schema-version provenance is shared\n\
          /// across all tokens published in that file.\n\
+         ///\n\
+         /// **wasm32 elision (issue #453)**: when this build runs with\n\
+         /// `CARGO_CFG_TARGET_ARCH == \"wasm32\"`, the informational\n\
+         /// `source`, `poc_name`, and `poc_email` fields are emitted\n\
+         /// as `\"\"` to drop their prose strings out of the generated\n\
+         /// source. Identifying fields (`const_name`, `urn`,\n\
+         /// `owner_producer`, `spec_version`, `des_version`,\n\
+         /// `schema_version`) and the `title` are always populated.\n\
+         /// This is the documented carve-out described on the\n\
+         /// `Vocabulary` trait invariant in `marque-scheme`.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct CveFileMetadata {{\n\
          \x20   /// Symbolic constant name (e.g., \"CVE_DISSEM\").\n\
@@ -1443,11 +1453,20 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          \x20   pub urn: &'static str,\n\
          \x20   /// CVE title text.\n\
          \x20   pub title: &'static str,\n\
-         \x20   /// Free-form `Source` text from the CVE IRM.\n\
+         \x20   /// Free-form `Source` text from the CVE IRM. **Empty\n\
+         \x20   /// on `wasm32`** per the struct-level wasm32 elision\n\
+         \x20   /// note above (issue #453); populated with the ODNI\n\
+         \x20   /// publishing register name on every other target.\n\
          \x20   pub source: &'static str,\n\
-         \x20   /// Point-of-contact name.\n\
+         \x20   /// Point-of-contact name. **Empty on `wasm32`** per\n\
+         \x20   /// the struct-level wasm32 elision note above (issue\n\
+         \x20   /// #453); populated with the ODNI POC name on every\n\
+         \x20   /// other target.\n\
          \x20   pub poc_name: &'static str,\n\
-         \x20   /// Point-of-contact email.\n\
+         \x20   /// Point-of-contact email. **Empty on `wasm32`** per\n\
+         \x20   /// the struct-level wasm32 elision note above (issue\n\
+         \x20   /// #453); populated with the ODNI POC email on every\n\
+         \x20   /// other target.\n\
          \x20   pub poc_email: &'static str,\n\
          \x20   /// Owner/producer code, e.g., `\"USA\"`.\n\
          \x20   pub owner_producer: &'static str,\n\
@@ -1464,13 +1483,22 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     writeln!(
         content,
         "/// Per-token metadata published by exactly one [`CveFileMetadata`].\n\
+         ///\n\
+         /// **wasm32 elision (issue #453)**: when this build runs with\n\
+         /// `CARGO_CFG_TARGET_ARCH == \"wasm32\"`, the `description`\n\
+         /// field is emitted as `\"\"` regardless of whether the source\n\
+         /// CVE file provided one. `value` and `cve_file` are always\n\
+         /// populated. See the `Vocabulary` trait invariant in\n\
+         /// `marque-scheme` for the documented carve-out.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct TokenMetadataEntry {{\n\
          \x20   /// Canonical CVE value, e.g., `\"NOFORN\"` or `\"S\"`.\n\
          \x20   pub value: &'static str,\n\
          \x20   /// Long-form description, e.g., `\"NOT RELEASABLE TO\n\
-         \x20   /// FOREIGN NATIONALS\"`. Empty when the source CVE file\n\
-         \x20   /// did not provide a description.\n\
+         \x20   /// FOREIGN NATIONALS\"`. **Empty on `wasm32` builds**\n\
+         \x20   /// (issue #453) per the struct-level wasm32 elision\n\
+         \x20   /// note above. On every other target, empty only when\n\
+         \x20   /// the source CVE file did not provide a description.\n\
          \x20   pub description: &'static str,\n\
          \x20   /// CVE file that published this token.\n\
          \x20   pub cve_file: &'static CveFileMetadata,\n\

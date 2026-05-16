@@ -17,7 +17,15 @@
 //! ## Invariants (enforced by impl + tests in Phase 5)
 //!
 //! - Every return is `&'static` data — no runtime allocation (SC-008).
-//! - Active tokens populate every non-`Option` field.
+//! - Active tokens populate every non-`Option` field, with one
+//!   documented carve-out: a scheme adapter MAY elide informational
+//!   `&'static str` fields (free-form names, descriptions, contact
+//!   details — not URNs, codes, or schema versions) to an empty
+//!   string on size-constrained build targets (today: `wasm32`),
+//!   provided the elision is documented on the field doc-comment.
+//!   See `crates/ism/build.rs::generate_vocabulary` (issue #453) for
+//!   the CAPCO adapter's `wasm32` elision of `Authority::source_name`,
+//!   `PointOfContact::name`/`email`, and `TokenMetadataEntry::description`.
 //! - Deprecated tokens additionally populate `deprecation`.
 //! - The FOUO → CUI migration is absent from the migration table
 //!   (FR-020): FOUO remains an active valid dissemination control.
