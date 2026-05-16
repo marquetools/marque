@@ -289,7 +289,7 @@ impl CapcoMarking {
     /// `Lattice::join` impl (which still delegates to `PageContext`).
     /// The parity-gate test
     /// `crates/capco/tests/page_context_lattice_parity.rs` (Commit 8)
-    /// proves byte-identity between the two paths across 35 `#[test]`
+    /// proves byte-identity between the two paths across 51 `#[test]`
     /// fixtures with **six documented divergences** (enumerated in
     /// `crates/capco/CAPCO-CONTEXT.md` §3): G-1 FOUO-classified, G-2
     /// AEA-UCNI-classified, G-3 pure-NATO, the

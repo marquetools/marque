@@ -198,8 +198,9 @@ trigger lives on p57's "Derivative Use" bullets).
 The `CapcoMarking::join_via_lattice` sibling method composes the new
 lattice types; the production `Lattice::join` still delegates to
 PageContext, and the parity gate at
-`crates/capco/tests/page_context_lattice_parity.rs` (currently 35
-`#[test]` fixtures) proves byte-identity between the two paths, with
+`crates/capco/tests/page_context_lattice_parity.rs` (currently 51
+`#[test]` fixtures — 45 byte-identity + 6 documented divergences)
+proves byte-identity between the two paths, with
 **six documented divergences** (each gated by a fixture that asserts
 the lattice's correct behavior even when PageContext disagrees):
 
