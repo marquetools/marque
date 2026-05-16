@@ -882,14 +882,22 @@ impl PageContext {
         let result: std::collections::BTreeSet<&str> =
             result.difference(&rel_set).copied().collect();
 
-        // Convert back to typed codes, alphabetical (§H.8 p163 — codes
-        // listed alphabetically, no USA-first or other privileged
-        // ordering).
+        // Convert back to typed codes. DISPLAY ONLY rendering buckets
+        // 3-byte country codes before tetragraph/other-width opaque
+        // codes (§H.8 p164), with alphabetical ordering within each
+        // bucket.
         let mut codes: Vec<CountryCode> = result
             .iter()
             .filter_map(|s| CountryCode::try_new(s.as_bytes()))
             .collect();
-        codes.sort();
+        codes.sort_by(|a, b| {
+            let a_is_trigraph = a.as_str().len() == 3;
+            let b_is_trigraph = b.as_str().len() == 3;
+            a_is_trigraph
+                .cmp(&b_is_trigraph)
+                .reverse()
+                .then_with(|| a.as_str().cmp(b.as_str()))
+        });
         codes
     }
 

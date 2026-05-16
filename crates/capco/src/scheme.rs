@@ -1119,10 +1119,20 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     // DISPLAY ONLY axis (Phase 2 / §D.2 Table 3 rows 18-20, 25-27).
     // Cross-axis intersection over (REL TO ∪ DO) with banner-REL-TO
     // and USA subtraction — see `PageContext::expected_display_only`.
-    out.display_only_to = ctx.expected_display_only().into_boxed_slice();
+    //
+    // This must also respect deferred NOFORN injection handled by the
+    // page-rewrite layer below: NOFORN and DISPLAY ONLY cannot coexist
+    // in the projected banner, so when `_needs_nf` indicates a later
+    // `*-implies-noforn` rewrite will fire we clear DISPLAY ONLY here.
+    let mut display_only_to = ctx.expected_display_only();
+    if _needs_nf {
+        display_only_to.clear();
+    }
+    out.display_only_to = display_only_to.into_boxed_slice();
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
-    // `_needs_nf` (second tuple element) is intentionally discarded here.
+    // `_needs_nf` is consumed above to suppress DISPLAY ONLY when a
+    // later rewrite will inject NOFORN.
     // NOFORN injection into `out.dissem_us` (post PR 9b / FR-046 split;
     // the field was `out.dissem_controls` pre-split) for the non-IC
     // dissem trigger family (SBU-NF/LES-NF classified-context split, and

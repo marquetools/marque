@@ -280,7 +280,7 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
     // capco/exdis-implies-noforn (9 → 11).
     // PR 3c.B Sub-PR 8.F.2 added capco/sbu-nf-implies-noforn and
     // capco/les-nf-implies-noforn (11 → 13).
-    // DISPLAY ONLY Phase 2 added capco/noforn-clears-relido
+    // DISPLAY ONLY Phase 2 added capco/noforn-clears-fdr-family
     // (§H.8 p154 + §D.2 Table 3 row 2; 13 → 14).
     assert_eq!(engine.scheduled_rewrites().len(), 14);
 }
