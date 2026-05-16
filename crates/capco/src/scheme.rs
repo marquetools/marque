@@ -189,8 +189,33 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // (deprecated 2017-10-01 per §H.8 p157;
 // parser preserves DissemControl::Eyes
 // for legacy-input recognition).
-// NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
-// TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
+
+// PR 4b-C Commit 1 (T112 OQ-1 Path A): vocab sentinels for Pattern B
+// + future-decoder coverage. Each token is resolved by `satisfies_attrs`
+// against the appropriate ISM attribute field; the
+// `capco_token_category` table below routes them to the correct
+// CategoryId. Routed AS-IF the §H.8 / §H.9 trigger family they
+// belong to.
+//
+// PROPIN, FISA, RAWFISA live in `attrs.dissem_us` as the DissemControl
+// variants `Pr`, `Fisa`, `Rawfisa` (per `crates/ism/src/attrs.rs`).
+// Their CAPCO §-citations are §H.8 p148 (PROPIN) and §H.8 p161
+// (FISA / RAWFISA); §H.8 p134 names them as "other dissemination
+// control markings" that trigger FOUO eviction in UNCLASSIFIED
+// docs (Pattern B). verified 2026-05-16 against CAPCO-2016.md.
+pub const TOK_PROPIN: TokenId = TokenId(143); // PROPIN — §H.8 p148
+pub const TOK_FISA: TokenId = TokenId(144); // FISA — §H.8 p161
+pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares the FISA section)
+
+// NNPI lives in `attrs.non_ic_dissem` as the NonIcDissem::Nnpi variant
+// (per `crates/ism/src/attrs.rs:1326` doc-comment on NNPI). NNPI has
+// no confirmed CAPCO-2016 §-citation in ISM-v2022-DEC; the ODNI ISM
+// `attrs.rs:1326` banner-roll-up doc-comment is the in-tree authority
+// for NNPI's "propagates regardless of classification" behavior, which
+// makes NNPI a §H.8 p134 "other dissemination control markings"
+// trigger by the same reasoning as SSI (§H.9 p189).
+// Closes issue #407. verified 2026-05-16.
+pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 
 // PR 9c.1 (T134): canonical NATO control-marking sentinels for
 // ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
@@ -1142,6 +1167,12 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         | TOK_DSEN
         | TOK_RSEN
         | TOK_FOUO
+        // PR 4b-C Commit 1: PROPIN / FISA / RAWFISA live in
+        // `attrs.dissem_us` (DissemControl::Pr / Fisa / Rawfisa).
+        // §H.8 p148 + §H.8 p161. verified 2026-05-16.
+        | TOK_PROPIN
+        | TOK_FISA
+        | TOK_RAWFISA
         // EYES (USA/[LIST] EYES ONLY) routes through the IC dissem axis.
         // The sentinel landed in PR 3.7 rev 3; the category routing
         // here is PR 3.7 rev 4 per Copilot review pass 4 (token_category
@@ -1155,8 +1186,10 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // PageRewrites can route through this category.
         // Stage D (T108c) adds LIMDIS, LES, SBU, SSI as closure-rule trigger
         // sentinels (§4.7.1 implicit-NOFORN list).
+        // PR 4b-C Commit 1: TOK_NNPI lives in `attrs.non_ic_dissem`
+        // (NonIcDissem::Nnpi). Closes issue #407. verified 2026-05-16.
         TOK_NODIS | TOK_EXDIS | TOK_SBU_NF | TOK_LES_NF | TOK_LIMDIS | TOK_LES | TOK_SBU
-        | TOK_SSI => Some(CAT_NON_IC_DISSEM),
+        | TOK_SSI | TOK_NNPI => Some(CAT_NON_IC_DISSEM),
         // CAT_REL_TO — country codes in the dissemination context.
         // `TOK_USA` removes USA from the axis; the `TOK_REL_TO`
         // sentinel (PR 3c.B Sub-PR 8.D.2) clears the whole axis. Both
@@ -3821,6 +3854,17 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
             TOK_FOUO => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Fouo)),
+            // PR 4b-C Commit 1 — PROPIN / FISA / RAWFISA scan attrs.dissem_us
+            // (the DissemControl variants `Pr`, `Fisa`, `Rawfisa`).
+            // §H.8 p148 (PROPIN) + §H.8 p161 (FISA / RAWFISA).
+            // verified 2026-05-16 against CAPCO-2016.md.
+            TOK_PROPIN => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Pr)),
+            TOK_FISA => attrs
+                .dissem_iter()
+                .any(|d| matches!(d, DissemControl::Fisa)),
+            TOK_RAWFISA => attrs
+                .dissem_iter()
+                .any(|d| matches!(d, DissemControl::Rawfisa)),
             // Stage D (T108c) — non-IC dissem sentinels for closure-rule triggers:
             TOK_LIMDIS => attrs
                 .non_ic_dissem
@@ -3838,6 +3882,16 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Ssi)),
+            // PR 4b-C Commit 1 — NNPI scans attrs.non_ic_dissem for the
+            // Nnpi variant. Closes issue #407. The CAPCO-2016 manual
+            // does not explicitly enumerate NNPI; the in-tree authority
+            // is `crates/ism/src/attrs.rs:1326` (NNPI banner-roll-up
+            // doc-comment, propagates regardless of classification).
+            // verified 2026-05-16 against the marque-ism attrs.rs entry.
+            TOK_NNPI => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Nnpi)),
             // EYES sentinel for FD&R-set coverage (§H.8 p157). Per
             // Copilot PR 3.7 review pass 3: earlier comments claimed
             // EYES was covered via `CAT_REL_TO` fallthrough, which is
