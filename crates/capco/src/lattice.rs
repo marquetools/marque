@@ -468,7 +468,17 @@ impl Lattice for SarSet {
 /// deferred to Stage 4 of the engine refactor (per
 /// `docs/plans/2026-05-01-lattice-design.md` §4.7, open question "FGI vs
 /// JOINT attribution").
+///
+/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// state space is closed today (`None` and `Present { concealed, countries }`
+/// over an open `CountryCode` axis), but future CAPCO grammar
+/// extensions or decoder-confidence partial states may add a
+/// `Partial` / `Concealed { partial_countries: ... }` variant
+/// without breaking the closed-set contract for the existing two
+/// — declaring `#[non_exhaustive]` keeps downstream matchers honest
+/// (they MUST handle the unknown case with a wildcard arm).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FgiSet {
     /// No FGI present.
     #[default]
@@ -2235,7 +2245,16 @@ impl Lattice for NatoDissemSet {
 ///   the banner line in US documents").
 /// - §H.7 p123 (FGI source-acknowledged form for disunity-collapse
 ///   non-US producer migration).
+///
+/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// four-variant decision tree is the lawful closed set per §H.3 p57
+/// today, but future CAPCO revisions or partial-decoder states may
+/// add a `PartialDisunity` / `Inferred` variant — declaring
+/// `#[non_exhaustive]` requires downstream matchers to handle the
+/// unknown case with a wildcard arm so a future variant addition
+/// is a non-breaking change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum JointSet {
     /// No JOINT-bearing portion observed. Lattice identity for `join`.
     #[default]
@@ -2677,10 +2696,19 @@ impl Lattice for JointSet {
 /// over already-canonical trigraphs.
 ///
 /// `BoundedLattice` is NOT implemented — CountryCode vocabulary is
-/// open-extensible. The SciSet/SarSet precedent applies (M-25
-/// PR 4b-B 7th-pass — `FgiSet` removed from precedent list;
-/// `FgiSet` in fact DOES implement `BoundedLattice` with the
-/// source-concealed sentinel as the top).
+/// open-extensible. The SciSet/SarSet/FgiSet/AeaSet precedent applies
+/// (`FgiSet` retired its `BoundedLattice` impl in B-1, PR 4b-B 8th-pass —
+/// see the §6 "Note on `BoundedLattice`" block in `FgiSet` for the
+/// open-vocab rationale; both FgiSet and RelToBlock share the same
+/// `CountryCode` open-vocab axis).
+///
+/// **`#[non_exhaustive]`** (B-4, PR 4b-B 8th-pass follow-up): the
+/// four-variant state space is closed today, but future CAPCO
+/// extensions (e.g., a `PartialIntersection` variant for partial-
+/// decoder REL TO recovery) may add states without breaking the
+/// closed-set contract for the existing four — declaring
+/// `#[non_exhaustive]` requires downstream matchers to handle the
+/// unknown case with a wildcard arm.
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - §H.8 pp150-151 (REL TO grammar — banner form `AUTHORIZED FOR
@@ -2690,6 +2718,7 @@ impl Lattice for JointSet {
 /// - §H.8 p152 worked example (intersection on roll-up).
 /// - §H.9 p172 + p174 (NODIS / EXDIS clear REL TO).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RelToBlock {
     /// No REL TO portions observed. Identity for `join`.
     #[default]
