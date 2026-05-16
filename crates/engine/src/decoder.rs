@@ -1370,6 +1370,15 @@ fn normalize_delimiters_and_case(text: &str) -> (Cow<'_, str>, SmallVec<[Feature
     // feature list — zero allocation on the hot path through the
     // decoder fallback.
     let need_delim = REPLACEMENTS.iter().any(|(from, _)| text.contains(from));
+    // Pre-replacement scan vs. the prior post-replacement scan: equivalent
+    // because every entry in `REPLACEMENTS` maps to `"//"` (no lowercase
+    // ASCII byte introduced or removed by the delimiter substitution).
+    // `bytes().any(is_ascii_lowercase)` is byte-level — equivalent to
+    // `chars().any(is_ascii_lowercase)` for any byte sequence (the trait
+    // method returns false for any non-ASCII byte, so multi-byte UTF-8
+    // codepoints can't false-positive). If a future REPLACEMENTS entry
+    // introduces or strips lowercase, move this scan after the
+    // delimiter pass.
     let had_lowercase = text.bytes().any(|b| b.is_ascii_lowercase());
 
     if !need_delim && !had_lowercase {
@@ -1476,6 +1485,13 @@ fn fuzzy_correct_tokens<'a>(
         if token_len == 0 {
             // Should not happen given the non-token prefix branch,
             // but guard against infinite loops on pathological input.
+            // If we already switched to owned (a prior segment changed),
+            // flush the unscanned suffix so the lazy-alloc shape doesn't
+            // silently drop the tail relative to the previous unconditional-
+            // String walker.
+            if let Some(buf) = out.as_mut() {
+                buf.push_str(rest);
+            }
             break;
         }
         let (token, tail) = rest.split_at(token_len);
