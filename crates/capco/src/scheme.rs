@@ -4707,6 +4707,18 @@ pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
         category: CAT_REL_TO,
         render: crate::render::render_rel_to::render_rel_to,
     },
+    // DISPLAY ONLY between REL TO and non-IC dissem per CAPCO-2016
+    // §G.1 Table 4 row 8 ordering (the IC dissem-category sequence
+    // ends with `DISPLAY ONLY [LIST]`). Like REL TO, DISPLAY ONLY
+    // carries a country list rather than a single token, so it
+    // gets its own renderer (the flat-token `render_dissem` can't
+    // emit a list). The category id is reused from `CAT_DISSEM`
+    // (DISPLAY ONLY is §H.8 dissem, not §H.9 non-IC) — `category`
+    // is informational; dispatch is by declaration order.
+    AxisRenderRow {
+        category: CAT_DISSEM,
+        render: crate::render::render_display_only::render_display_only,
+    },
     // Non-IC dissem comes after REL TO in §A.6 sequence (§A.6 p16:
     // "Non-IC Dissemination Control Markings — must follow,
     // Dissemination Controls"). REL TO is part of the dissem axis;
