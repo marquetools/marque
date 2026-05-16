@@ -134,9 +134,10 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // PR 4b-B Commit 9 (006 T112): joint-disunity-collapse-to-FGI per
     // CAPCO-2016 §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass updated
     // from §H.3 p56). Reads the classification axis across all
-    // portions on the page; fires on Banner OR Portion candidates
-    // whose `cross_portion_context` carries `DisunityCollapse`
-    // (banner-first-layout fix in commit e2592f1d).
+    // portions on the page; fires on Banner candidates ONLY (P-3
+    // 8th-pass — reverted Portion-firing to avoid Mixed-page false
+    // positives; see JointDisunityCollapseRule doc-comment for the
+    // layout-gap trade-off).
     ("W004", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),
 ];
