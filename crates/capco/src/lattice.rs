@@ -3164,12 +3164,25 @@ impl Lattice for RelToBlock {
     fn meet(&self, other: &Self) -> Self {
         // Meet over REL TO — union of country lists, semantically
         // "the broader release that BOTH sides could have authored."
-        // The NofornSuperseded sentinel is meet-bottom: a side that
-        // forbids all release dominates a side that permits some.
-        // `Empty` (intersected-to-empty REL TO) joins to a real LIST
-        // under union — there is nothing to forbid.
+        //
+        // `NofornSuperseded` is the **join-top** of `RelToBlock`:
+        // every state joins to `NofornSuperseded` (the absorbing element
+        // on the join side, modeling "any NOFORN-injecting supersession
+        // on the page forces banner NOFORN per §H.8 p145 + §D.2 Table 3
+        // row 9"). Symmetrically, `meet(NofornSuperseded, x) = x` —
+        // `NofornSuperseded` as join-top means the GLB with any state x
+        // is x itself. The prior arm `(N, _) | (_, N) => N` treated N
+        // as meet-bottom, which violated dual absorption: for any
+        // `a ≠ N`, `a ⊓ (a ⊔ N) = a ⊓ N` should equal `a` but
+        // returned `N` instead (11th-pass lattice-consultant HIGH defect,
+        // fixed here; isomorphic to C-9 on `ClassificationLattice`).
+        //
+        // `Bottom` is the meet-absorbing element (bottom of the meet
+        // semilattice). `Empty` (intersected-to-empty REL TO) meets
+        // like a normal element — joining to a real LIST under union
+        // there is nothing to forbid.
         match (self, other) {
-            (Self::NofornSuperseded, _) | (_, Self::NofornSuperseded) => Self::NofornSuperseded,
+            (Self::NofornSuperseded, x) | (x, Self::NofornSuperseded) => x.clone(),
             (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
             (Self::Empty, x) | (x, Self::Empty) => x.clone(),
             (Self::Lattice { countries: a }, Self::Lattice { countries: b }) => {
