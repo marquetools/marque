@@ -1,0 +1,66 @@
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  token:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    outputs:
+      token: ${{ steps.get-token.outputs.token }}
+      app-slug: ${{ steps.get-token.outputs.app-slug }}
+      user-id: ${{ steps.get-token.outputs.app-user-id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
+        with:
+          token: ${{ inputs.github_token }}
+          fetch-depth: 1
+      - name: Get token
+        id: get-token
+        uses: marquetools/.github/.github/actions/mint-token
+        with:
+          permission-issues: write
+          permission-pull-requests: write
+          client-id: ${{ vars.APP_CLIENT_ID || vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+  claude:
+    if: |
+      (
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      ) &&
+      (
+          github.event.sender.type == 'User' &&
+          startsWith(github.event.comment.body || github.event.review.body || github.event.issue.body, '@claude') &&
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.issue.author_association)
+      )
+    needs: token
+    uses: marquetools/.github/.github/workflows/claude-code-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
+    with:
+      claude_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      github_token: ${{ needs.token.outputs.token }}
+      app_slug: ${{ needs.token.outputs.app-slug }}
+      user_id: ${{ needs.token.outputs.user-id }}
