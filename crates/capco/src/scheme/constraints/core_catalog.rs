@@ -24,9 +24,9 @@ use super::super::*;
 ///
 /// The CAPCO declarative constraint catalog. Every entry's
 /// `label` cites a verified passage in
-/// `crates/capco/docs/CAPCO-2016.md`; non-normative sections
-/// (§I-K — history, examples, acronym list) are NOT valid
-/// citation targets. See Constitution VIII and the project
+/// `crates/capco/docs/CAPCO-2016.md`; the non-normative tail
+/// (sections I-K — history, examples, acronym list) are NOT
+/// valid citation targets. See Constitution VIII and the project
 /// memory entry "CAPCO doc structure".
 ///
 /// T035 (2026-04-21) wired runtime evaluation through this
