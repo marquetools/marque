@@ -1244,15 +1244,34 @@ fn classification_join_same_variant(
     match (a, b) {
         (MarkingClassification::Us(_), MarkingClassification::Us(_)) => a.clone(),
         (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
-            let merged: BTreeSet<marque_ism::CountryCode> = fa
-                .countries
-                .iter()
-                .copied()
-                .chain(fb.countries.iter().copied())
-                .collect();
+            // P-1 (8th-pass): source-concealed-dominates — if either side
+            // has an empty countries list (the `//FGI [level]` form per
+            // CAPCO-2016 §H.7 p124), the joined result MUST also be
+            // source-concealed (empty countries). Chaining two lists when
+            // one is empty returns the non-empty side and silently loses
+            // the concealed signal — the banner incorrectly becomes
+            // acknowledged `FGI [LIST]` instead of bare `FGI`.
+            //
+            // §-authority: §H.7 p124 (precedence rules for banner line
+            // guidance: "if any of the portions have concealed FGI source
+            // information... only the 'FGI' marking without the source
+            // trigraph(s)/tetragraph(s) must appear in the banner line").
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let countries = if fa.countries.is_empty() || fb.countries.is_empty() {
+                // Concealed dominates: produce the source-concealed form.
+                Box::new([]) as Box<[marque_ism::CountryCode]>
+            } else {
+                let merged: BTreeSet<marque_ism::CountryCode> = fa
+                    .countries
+                    .iter()
+                    .copied()
+                    .chain(fb.countries.iter().copied())
+                    .collect();
+                merged.into_iter().collect::<Vec<_>>().into_boxed_slice()
+            };
             MarkingClassification::Fgi(marque_ism::FgiClassification {
                 level: fa.level, // same level — invariant of the tiebreaker
-                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                countries,
             })
         }
         (MarkingClassification::Nato(_), MarkingClassification::Nato(_)) => a.clone(),
@@ -1307,15 +1326,28 @@ fn merge_foreign_classification(
     use std::collections::BTreeSet;
     match (a, b) {
         (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
-            let merged: BTreeSet<marque_ism::CountryCode> = fa
-                .countries
-                .iter()
-                .copied()
-                .chain(fb.countries.iter().copied())
-                .collect();
+            // P-1 (8th-pass): source-concealed-dominates — same fix as
+            // `classification_join_same_variant`. Empty countries = the
+            // source-concealed `//FGI [level]` form (§H.7 p124). If either
+            // side is concealed, the joined result must be concealed.
+            //
+            // §-authority: §H.7 p124 (precedence rules for banner line
+            // guidance: concealed dominates acknowledged in any mixed page).
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let countries = if fa.countries.is_empty() || fb.countries.is_empty() {
+                Box::new([]) as Box<[marque_ism::CountryCode]>
+            } else {
+                let merged: BTreeSet<marque_ism::CountryCode> = fa
+                    .countries
+                    .iter()
+                    .copied()
+                    .chain(fb.countries.iter().copied())
+                    .collect();
+                merged.into_iter().collect::<Vec<_>>().into_boxed_slice()
+            };
             ForeignClassification::Fgi(marque_ism::FgiClassification {
                 level: fa.level,
-                countries: merged.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                countries,
             })
         }
         (ForeignClassification::Nato(_), ForeignClassification::Nato(_)) => a.clone(),
@@ -1848,17 +1880,34 @@ impl Lattice for DeclassifyOnLattice {
 /// reference passed everywhere in this module is the actual
 /// invariant.
 ///
-/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
-/// - §D.2 Table 3 rows 1-2 (NOFORN dominates).
-/// - §H.8 p145 (NOFORN: "Cannot be used with REL TO").
-/// - §H.8 p157 (EYES retired; already migrated to REL TO at parse
-///   time so not represented here).
+/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// - §D.2 Table 3 rows 1-2 (NOFORN dominates FD&R controls).
+/// - §H.8 p145 (NOFORN: "Cannot be used with REL TO, RELIDO, EYES ONLY,
+///   or DISPLAY ONLY").
+/// - §H.8 p157 (EYES ONLY: NSA-only marking — E064 emits a fix to migrate
+///   EYES ONLY → REL TO at engine fix-time, but the parser preserves
+///   `DissemControl::Eyes` during lint runs. P-4 (8th-pass): corrected
+///   prior docstring that falsely claimed "EYES retired... already migrated
+///   to REL TO at parse time so not represented here" — the parser does NOT
+///   migrate at parse time; `scheme.rs:190` and `scheme.rs:3677` confirm
+///   `DissemControl::Eyes` survives parse and appears in `dissem_us` during
+///   intermediate lattice composition. NOFORN must dominate EYES ONLY in
+///   the supersession table for the lattice path to be correct per §H.8 p145.
+///   E064 handles the EYES → REL TO migration as a separate rule at fix time.)
 static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
-    // NOFORN ⊐ REL TO / RELIDO / DISPLAY ONLY — §D.2 Table 3 rows 1-2
-    // + §H.8 p145.
+    // NOFORN ⊐ REL TO / RELIDO / DISPLAY ONLY / EYES ONLY — §D.2 Table 3
+    // rows 1-2 + §H.8 p145 ("Cannot be used with REL TO, RELIDO, EYES ONLY,
+    // or DISPLAY ONLY").
+    //
+    // P-4 (8th-pass): added EYES ONLY. Pre-fix the table omitted it based on
+    // a false assumption that the parser migrated EYES → REL TO at parse time.
+    // The parser preserves DissemControl::Eyes (see scheme.rs:190); E064 is
+    // the engine-time migration rule. During lint runs and intermediate lattice
+    // composition, EYES can appear and must be stripped when NOFORN is present.
     (DissemControl::Nf, DissemControl::Rel),
     (DissemControl::Nf, DissemControl::Relido),
     (DissemControl::Nf, DissemControl::Displayonly),
+    (DissemControl::Nf, DissemControl::Eyes),
 ];
 
 /// Lattice form of the US-attributed IC dissem axis: a `BTreeSet` of
