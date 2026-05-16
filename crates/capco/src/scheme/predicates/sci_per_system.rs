@@ -8,8 +8,8 @@
 //! Stage 2 PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
-use super::super::*;
 use super::super::constraints::sci_per_system_emit;
+use super::super::*;
 use super::presence::{anchors_on, compartment_has_sub, has_compartment, is_tk_noforn_compartment};
 
 // ---------------------------------------------------------------------------

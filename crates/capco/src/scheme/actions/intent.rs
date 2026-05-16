@@ -9,9 +9,7 @@
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::CountryCode;
-use marque_scheme::{
-    ApplyIntentError, CategoryId, FactRef, MarkingScheme, ReplacementIntent,
-};
+use marque_scheme::{ApplyIntentError, CategoryId, FactRef, MarkingScheme, ReplacementIntent};
 
 use super::super::*;
 

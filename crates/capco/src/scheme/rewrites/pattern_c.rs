@@ -11,14 +11,16 @@
 //! UCNI pair so the promote predicate sees UCNI before the strip
 //! removes it.
 
-use marque_scheme::{CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope};
+use marque_scheme::{
+    CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+};
 
+use super::super::actions::{strip_dod_ucni_action, strip_doe_ucni_action};
 use super::super::predicates::{
     dod_ucni_classified_trigger, dod_ucni_promotes_noforn_trigger, doe_ucni_classified_trigger,
     doe_ucni_promotes_noforn_trigger, fouo_classified_trigger, limdis_classified_trigger,
     sbu_classified_trigger,
 };
-use super::super::actions::{strip_dod_ucni_action, strip_doe_ucni_action};
 use super::super::*;
 
 /// The seven Pattern-C strip + UCNI-NOFORN-promote rows in

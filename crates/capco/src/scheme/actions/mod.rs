@@ -32,8 +32,7 @@ pub(crate) use self::category_ops::{
     capco_category_replace,
 };
 pub(crate) use self::companions::{
-    emit_companion_required, emit_hcs_o_companions, emit_hcs_p_sub_companions,
-    emit_si_g_companions,
+    emit_companion_required, emit_hcs_o_companions, emit_hcs_p_sub_companions, emit_si_g_companions,
 };
 pub(crate) use self::fgi::{extract_foreign_sources, merge_fgi_markers};
 pub(crate) use self::intent::apply_intent_to_marking;

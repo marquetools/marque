@@ -38,7 +38,9 @@ pub use self::families::{is_fdr_dominator, is_orcon_family};
 // `scheme/mod.rs`, `scheme/tests.rs`, and the other leaves continue
 // to compile unchanged.
 pub(crate) use self::class_floor::{class_floor_anchor_span, class_floor_satisfied};
-pub(crate) use self::dissem::{dissem_family_of, fouo_with_non_fdr_other_control_trigger, rel_to_covers};
+pub(crate) use self::dissem::{
+    dissem_family_of, fouo_with_non_fdr_other_control_trigger, rel_to_covers,
+};
 pub(crate) use self::presence::{
     presence_atomal, presence_balk, presence_bohemia, presence_dod_ucni, presence_doe_ucni,
     presence_eyes_only, presence_frd_bare, presence_frd_sigma, presence_hcs_comp_only,

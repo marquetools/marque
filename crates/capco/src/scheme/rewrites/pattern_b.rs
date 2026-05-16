@@ -7,7 +7,9 @@
 //! Stage 2 PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
-use marque_scheme::{CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope};
+use marque_scheme::{
+    CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+};
 
 use super::super::predicates::{fouo_classified_trigger, fouo_with_non_fdr_other_control_trigger};
 use super::super::*;

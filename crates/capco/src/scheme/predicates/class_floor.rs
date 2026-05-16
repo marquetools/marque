@@ -10,8 +10,8 @@
 
 use marque_ism::{CanonicalAttrs, Classification, Span, TokenKind};
 
-use super::super::*;
 use super::super::constraints::class_floor_emit;
+use super::super::*;
 
 /// Returns true if `name` is a catalog row name dispatched by
 /// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`

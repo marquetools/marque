@@ -13,14 +13,14 @@
 use marque_ism::{Classification, CountryCode};
 use marque_scheme::TokenRef;
 
-use super::super::*;
-use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
-use super::joint_hcs::{hcs_system_constraints, joint_requires_usa};
-use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catalog_eval};
 use super::super::constraints::{
     e012_dual_classification, e014_joint_rel_to_coverage, e021_aea_requires_noforn,
     e024_rd_precedence, e038_dos_dissem_requires_noforn, w002_us_commingled_with_fgi,
 };
+use super::super::*;
+use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
+use super::joint_hcs::{hcs_system_constraints, joint_requires_usa};
+use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catalog_eval};
 
 // ---------------------------------------------------------------------------
 // Predicate implementations (free functions — trait impls delegate here)

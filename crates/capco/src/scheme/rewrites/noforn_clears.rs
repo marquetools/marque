@@ -8,7 +8,9 @@
 //! per the issue #466 Stage 2 PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
-use marque_scheme::{CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope};
+use marque_scheme::{
+    CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+};
 
 use super::super::*;
 

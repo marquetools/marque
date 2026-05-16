@@ -12,7 +12,9 @@
 //! catalog — DAG-sibling rows whose declaration order seeds Kahn's
 //! algorithm with the right cohort ordering.
 
-use marque_scheme::{CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope};
+use marque_scheme::{
+    CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+};
 
 use super::super::*;
 
