@@ -577,29 +577,52 @@ impl CapcoMarking {
             // §-authority: §H.7 p124 (source-concealed-dominance
             // precedence rules at the banner-line guidance block) +
             // §H.7 pp123-125 (FGI source must be preserved across
-            // the projection). Verified 2026-05-16 against
+            // the projection) + §H.7 p128 (concealed-dominates
+            // when mixed concealed + acknowledged portions exist).
+            // Verified 2026-05-16 against
             // `crates/capco/docs/CAPCO-2016.md`.
-            let classification_sources: std::collections::BTreeSet<marque_ism::CountryCode> =
-                portions
-                    .iter()
-                    .flat_map(|p| extract_foreign_sources(p.classification.as_ref()))
-                    .collect();
-            let winner_sources: std::collections::BTreeSet<marque_ism::CountryCode> =
-                extract_foreign_sources(out.classification.as_ref())
-                    .into_iter()
-                    .collect();
-            if winner_sources == classification_sources {
-                // G-4b safe-suppression branch: every foreign source
-                // observed across all portions is preserved on the
-                // winning classification's payload. No source loss.
-                None
+            //
+            // P-9-2 (9th-pass): `extract_foreign_sources` now returns
+            // `Option<Vec<CountryCode>>` where `None` = source-concealed
+            // FGI on that portion. If any portion is concealed, the page
+            // must carry `FgiMarker::SourceConcealed` (§H.7 p128). Pre-
+            // fix, source-concealed portions returned an empty Vec,
+            // indistinguishable from "no FGI" — the equality check below
+            // then silently dropped the concealed signal and could produce
+            // a synthetic acknowledged marker.
+            let any_concealed = portions
+                .iter()
+                .any(|p| extract_foreign_sources(p.classification.as_ref()).is_none());
+            if any_concealed {
+                // At least one portion is source-concealed → banner must
+                // use bare `FGI` (no countries) per §H.7 p128.
+                Some(marque_ism::FgiMarker::SourceConcealed)
             } else {
-                // G-4c source-loss branch: at least one source is
-                // missing from the winner's payload. Build a
-                // synthetic acknowledged FGI marker carrying every
-                // foreign source so `merge_fgi_markers` unions them
-                // into the final output.
-                marque_ism::FgiMarker::acknowledged(classification_sources)
+                let classification_sources: std::collections::BTreeSet<marque_ism::CountryCode> =
+                    portions
+                        .iter()
+                        .flat_map(|p| {
+                            extract_foreign_sources(p.classification.as_ref()).unwrap_or_default()
+                        })
+                        .collect();
+                let winner_sources: std::collections::BTreeSet<marque_ism::CountryCode> =
+                    extract_foreign_sources(out.classification.as_ref())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect();
+                if winner_sources == classification_sources {
+                    // G-4b safe-suppression branch: every foreign source
+                    // observed across all portions is preserved on the
+                    // winning classification's payload. No source loss.
+                    None
+                } else {
+                    // G-4c source-loss branch: at least one source is
+                    // missing from the winner's payload. Build a
+                    // synthetic acknowledged FGI marker carrying every
+                    // foreign source so `merge_fgi_markers` unions them
+                    // into the final output.
+                    marque_ism::FgiMarker::acknowledged(classification_sources)
+                }
             }
         } else {
             tmp_ctx.expected_fgi_marker()
@@ -710,10 +733,13 @@ impl CapcoMarking {
 /// Per-variant semantic:
 /// - `Us(_)`: contributes nothing (US is the home authority).
 /// - `Fgi(f)`: contributes every country in `f.countries`.
-///   Source-concealed FGI portions (`f.countries.is_empty()`) are
-///   handled by the existing PageContext source-concealed path; this
-///   helper returns an empty set for them so the suppression branch
-///   does not attempt to construct an FGI marker from no sources.
+///   Source-concealed FGI portions (`f.countries.is_empty()`) return
+///   `None` — distinct from `Some(empty)` which would mean "no FGI".
+///   The `None` sentinel propagates up to the G-4c branch, which
+///   then forces `FgiMarker::SourceConcealed` on the output
+///   (§H.7 p128: "a document containing portions of both
+///   source-concealed FGI and source-acknowledged FGI must have only
+///   the 'FGI' marking"). Verified 2026-05-16.
 /// - `Nato(_)`: contributes the literal `"NATO"` trigraph (matches
 ///   `page_context.rs:911-912`).
 /// - `Joint(j)`: contributes every non-USA country in `j.countries`
@@ -724,30 +750,59 @@ impl CapcoMarking {
 ///   set as the `foreign` payload would have produced as a stand-
 ///   alone classification.
 ///
-/// Returns a `Vec<CountryCode>` (small inline set; the caller
-/// collects into a `BTreeSet` for deduplication when needed).
-fn extract_foreign_sources(c: Option<&MarkingClassification>) -> Vec<marque_ism::CountryCode> {
+/// Returns `Option<Vec<CountryCode>>` where:
+/// - `None` = "this portion is source-concealed FGI" (distinct signal)
+/// - `Some(vec)` = the contributing country codes (possibly empty if
+///   the classification is not a foreign system)
+///
+/// The caller collects into a `BTreeSet` for deduplication.
+///
+/// P-9-2 (9th-pass): changed return type from `Vec<CountryCode>` to
+/// `Option<Vec<CountryCode>>` to propagate the concealed signal.
+/// Pre-fix, source-concealed FGI portions returned an empty `Vec`,
+/// indistinguishable from "no FGI at all" — the G-4c equality check
+/// then silently dropped the concealed signal and could build a
+/// synthetic acknowledged marker, contradicting §H.7 p128.
+fn extract_foreign_sources(
+    c: Option<&MarkingClassification>,
+) -> Option<Vec<marque_ism::CountryCode>> {
     use marque_ism::{CountryCode, ForeignClassification};
     let nato_code = || CountryCode::try_new(b"NATO").expect("NATO trigraph is valid");
     match c {
-        None | Some(MarkingClassification::Us(_)) => Vec::new(),
-        Some(MarkingClassification::Fgi(f)) => f.countries.to_vec(),
-        Some(MarkingClassification::Nato(_)) => vec![nato_code()],
-        Some(MarkingClassification::Joint(j)) => j
-            .countries
-            .iter()
-            .filter(|c| c.as_str() != "USA")
-            .copied()
-            .collect(),
-        Some(MarkingClassification::Conflict { foreign, .. }) => match foreign.as_ref() {
-            ForeignClassification::Fgi(f) => f.countries.to_vec(),
-            ForeignClassification::Nato(_) => vec![nato_code()],
-            ForeignClassification::Joint(j) => j
-                .countries
+        None | Some(MarkingClassification::Us(_)) => Some(Vec::new()),
+        Some(MarkingClassification::Fgi(f)) => {
+            if f.countries.is_empty() {
+                // Source-concealed FGI: return the sentinel None so callers
+                // can detect concealment vs "no foreign source".
+                None
+            } else {
+                Some(f.countries.to_vec())
+            }
+        }
+        Some(MarkingClassification::Nato(_)) => Some(vec![nato_code()]),
+        Some(MarkingClassification::Joint(j)) => Some(
+            j.countries
                 .iter()
                 .filter(|c| c.as_str() != "USA")
                 .copied()
                 .collect(),
+        ),
+        Some(MarkingClassification::Conflict { foreign, .. }) => match foreign.as_ref() {
+            ForeignClassification::Fgi(f) => {
+                if f.countries.is_empty() {
+                    None
+                } else {
+                    Some(f.countries.to_vec())
+                }
+            }
+            ForeignClassification::Nato(_) => Some(vec![nato_code()]),
+            ForeignClassification::Joint(j) => Some(
+                j.countries
+                    .iter()
+                    .filter(|c| c.as_str() != "USA")
+                    .copied()
+                    .collect(),
+            ),
         },
     }
 }
