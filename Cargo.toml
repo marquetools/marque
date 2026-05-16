@@ -34,7 +34,14 @@ marque-core = { path = "crates/core", version = "0.2.0" }
 marque-engine = { path = "crates/engine", version = "0.2.0", default-features = false }
 marque-extract = { path = "crates/extract", version = "0.2.0" }
 # Internal crates
-marque-ism = { path = "crates/ism", version = "0.2.0" }
+# `default-features = false` excludes the `dates` feature (and the `jiff`
+# dep it pulls) by default so WASM consumers inherit the hand-rolled
+# Gregorian path. The CLI (`marque`) and server (`marque-server`) opt
+# back in via `features = ["dates"]`; Cargo feature unification then
+# propagates `dates = on` across the whole native build graph (including
+# `marque-extract`, which pulls `marque-ism` only transitively through
+# `marque-core` and so has no opt-in line of its own). See issue #455.
+marque-ism = { path = "crates/ism", version = "0.2.0", default-features = false }
 marque-rules = { path = "crates/rules", version = "0.2.0" }
 marque-scheme = { path = "crates/scheme", version = "0.2.0" }
 marque-test-utils = { path = "crates/test-utils" }
