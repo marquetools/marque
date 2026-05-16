@@ -806,9 +806,13 @@ fn validate_date(year: i32, month: u8, day: u8) -> Result<(), ParseIsmDateError>
 
 /// Validate a complete year/month/day triple (hand-rolled proleptic Gregorian).
 ///
-/// Mirrors `jiff::civil::Date::new`'s validity check for the `i16` year range
-/// `-9999..=9999`. Rejects out-of-range year, month outside 1–12, or day
-/// outside `1..=days_in_month(year, month)`.
+/// Mirrors `jiff::civil::Date::new`'s validity check. Accepts the full
+/// `i16` year range (`i16::MIN..=i16::MAX`, i.e. `-32768..=32767`) since
+/// `jiff::civil::Date::new` takes `i16` for the year; rejects months
+/// outside `1..=12` and days outside `1..=days_in_month(year, month)`.
+/// In practice the upstream parser (`parse_4digit_year`) constrains
+/// inputs to the `0..=9999` ASCII-digit range, so the wider i16 window
+/// only matters for programmatic `IsmDate` construction.
 #[cfg(not(feature = "dates"))]
 fn validate_date(year: i32, month: u8, day: u8) -> Result<(), ParseIsmDateError> {
     i16::try_from(year).map_err(|_| ParseIsmDateError::new("year out of i16 range"))?;

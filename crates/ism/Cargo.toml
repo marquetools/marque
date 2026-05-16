@@ -44,10 +44,10 @@ aho-corasick = { workspace = true }
 # `jiff` is used only inside `src/date.rs` for two calls — `civil::Date::new`
 # (calendar validity) and `civil::Date::days_in_month` (leap-year-aware
 # month length). Both have a hand-rolled Gregorian fallback in the same
-# file. Gated behind the `dates` feature (default-on for CLI / server /
-# extract via explicit `features = ["dates"]`; the workspace pin keeps
-# `default-features = false` so the WASM artifact excludes jiff entirely).
-# See issue #455.
+# file. Gated behind the `dates` feature: CLI (`marque`) and server
+# (`marque-server`) opt in explicitly via `features = ["dates"]`; the
+# workspace pin keeps `default-features = false` so the WASM artifact
+# excludes jiff entirely. See issue #455.
 jiff = { workspace = true, optional = true }
 # `marque-scheme` provides `Scope`, which `ProjectedMarking::scope`
 # carries. The consolidated plan (`docs/plans/2026-05-02-engine-refactor-consolidated.md`
@@ -85,8 +85,11 @@ toml = { workspace = true }
 # off, the same two functions fall back to a hand-rolled Gregorian
 # implementation (leap-year + month-length math). Public API of
 # `IsmDate` is identical either way; SC-008 native-parity tests catch
-# divergence. CLI / server / extract opt back in via
-# `marque-ism = { workspace = true, features = ["dates"] }`. See issue #455.
+# divergence. CLI (`marque`) and server (`marque-server`) opt back in
+# via `marque-ism = { workspace = true, features = ["dates"] }`;
+# `marque-extract` and other native crates without a direct `marque-ism`
+# line inherit `dates = on` through Cargo feature unification in the
+# CLI / server build graph. See issue #455.
 default = ["dates"]
 dates = ["dep:jiff"]
 serde = ["dep:serde"]
