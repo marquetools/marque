@@ -17,7 +17,9 @@
 //! - `confidence_threshold` outside `[0.0, 1.0]` → exit 65
 
 use marque_ism::UtcOffset;
+#[cfg(feature = "toml-loader")]
 use marque_rules::Severity;
+#[cfg(feature = "toml-loader")]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -37,6 +39,11 @@ pub enum ConfigError {
         source: std::io::Error,
     },
 
+    /// `.marque.toml` / `.marque.local.toml` failed to parse. Only present
+    /// when the `toml-loader` feature is on; the WASM artifact ships with
+    /// the feature off and receives config from JS callers as a JSON-set
+    /// `Config`, so a TOML parse error variant is unreachable there.
+    #[cfg(feature = "toml-loader")]
     #[error("failed to parse config: {0}")]
     ParseError(#[from] toml::de::Error),
 
@@ -145,6 +152,7 @@ impl ConfigError {
     pub fn exit_code(&self) -> i32 {
         match self {
             Self::ReadError { .. } => 74, // EX_IOERR
+            #[cfg(feature = "toml-loader")]
             Self::ParseError(_) => EX_DATAERR,
             Self::UserSectionInCommitted { .. } => EX_DATAERR,
             Self::SchemaVersionMismatch { .. } => EX_DATAERR,
@@ -274,8 +282,14 @@ impl Default for CapcoConfig {
 
 // ---------------------------------------------------------------------------
 // TOML-deserialisable file format
+//
+// `ConfigFile` + nested file structs only deserialize from TOML today, so
+// they are gated alongside the `toml-loader` feature. If a future codepath
+// needs to deserialize the same shape from JSON, the gate can be widened
+// without re-deriving the structure.
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "toml-loader")]
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct ConfigFile {
     #[serde(default)]
@@ -301,6 +315,7 @@ struct ConfigFile {
     confidence_threshold: Option<f32>,
 }
 
+#[cfg(feature = "toml-loader")]
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct UserConfigFile {
     classifier_id: Option<String>,
@@ -309,6 +324,7 @@ struct UserConfigFile {
     derived_from_default: Option<String>,
 }
 
+#[cfg(feature = "toml-loader")]
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct CapcoConfigFile {
     version: Option<String>,
@@ -344,6 +360,7 @@ struct CapcoConfigFile {
 ///    naming convention documented at [`env_var_to_closure_rule_name`]).
 ///
 /// Hard-fail validators run after merging all layers.
+#[cfg(feature = "toml-loader")]
 pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
@@ -393,6 +410,7 @@ pub fn load(start: &std::path::Path) -> Result<Config, ConfigError> {
 /// "short-circuits the walk and uses the specified path as the project
 /// config; the local-config search still applies, only in the directory
 /// containing the supplied path."
+#[cfg(feature = "toml-loader")]
 pub fn load_with_explicit_config(project_config: &std::path::Path) -> Result<Config, ConfigError> {
     let mut config = Config::default();
 
@@ -440,6 +458,7 @@ pub fn load_with_explicit_config(project_config: &std::path::Path) -> Result<Con
 /// The walk treats `.git` as a hard stop *only when* the directory does not
 /// also contain `.marque.toml`. A repo with `.marque.toml` at its root is
 /// the common case and must succeed.
+#[cfg(feature = "toml-loader")]
 fn discover_project_dir(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = start.to_path_buf();
     loop {
@@ -459,6 +478,7 @@ fn discover_project_dir(start: &std::path::Path) -> Option<std::path::PathBuf> {
     }
 }
 
+#[cfg(feature = "toml-loader")]
 fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), ConfigError> {
     // H-6: validate every severity override at load time. A typo like
     // `E001 = "err"` must fail loudly, not silently fall back to the rule
@@ -512,6 +532,7 @@ fn merge_project_into(config: &mut Config, file: ConfigFile) -> Result<(), Confi
     Ok(())
 }
 
+#[cfg(feature = "toml-loader")]
 fn merge_user_into(config: &mut Config, file: ConfigFile) {
     // L-2: an empty string is semantically equivalent to "not set". Without
     // this guard, a .marque.local.toml entry of `classifier_id = ""` would
@@ -538,6 +559,7 @@ fn merge_user_into(config: &mut Config, file: ConfigFile) {
     }
 }
 
+#[cfg(feature = "toml-loader")]
 fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
     // L-2 parity: apply the same non-empty guard as merge_user_into so that
     // `MARQUE_CLASSIFIER_ID=""` does not silently overwrite a populated
@@ -620,6 +642,7 @@ fn apply_env(config: &mut Config) -> Result<(), ConfigError> {
 /// - `MARQUE_CLOSURE_RULES_CAPCO__RELIDO_IF_NO_FDR` → `"capco/relido-if-no-fdr"`
 ///
 /// Returns `None` if the key does not have the expected prefix.
+#[cfg(feature = "toml-loader")]
 fn env_var_to_closure_rule_name(env_key: &str) -> Option<String> {
     const PREFIX: &str = "MARQUE_CLOSURE_RULES_";
     let suffix = env_key.strip_prefix(PREFIX)?;
@@ -633,6 +656,7 @@ fn env_var_to_closure_rule_name(env_key: &str) -> Option<String> {
 /// T023: validate schema version matches compiled marque-ism (FR-011).
 ///
 /// Exact match required — the config must use the canonical form (e.g., "ISM-v2022-DEC").
+#[cfg(feature = "toml-loader")]
 fn validate_schema_version(config: &Config) -> Result<(), ConfigError> {
     let compiled = marque_ism::generated::values::SCHEMA_VERSION;
     let config_ver = &config.capco.version;
@@ -655,6 +679,7 @@ fn validate_schema_version(config: &Config) -> Result<(), ConfigError> {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "toml-loader")]
     fn config_file_with_rules(rules: &[(&str, &str)]) -> ConfigFile {
         let mut file = ConfigFile::default();
         for (k, v) in rules {
@@ -693,6 +718,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_accepts_valid_severity_strings() {
         let mut c = Config::default();
@@ -708,6 +734,7 @@ mod tests {
         assert_eq!(c.rules.overrides.len(), 6);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_accepts_suggest_severity() {
         // Issue #235 / #186 PR-3: the suggest-don't-fix channel must be
@@ -722,6 +749,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_rejects_unknown_severity() {
         let mut c = Config::default();
@@ -736,6 +764,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_rejects_severity_is_case_sensitive() {
         // Severity::parse_config is case-sensitive by design — uppercase must fail.
@@ -747,6 +776,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_rejects_empty_severity() {
         let mut c = Config::default();
@@ -784,11 +814,18 @@ mod tests {
 
     // ---------------------------------------------------------------------
     // D.1: discover_project_dir upward-walk semantics
+    //
+    // All discover_* / load_* tests below exercise the `toml-loader` codepath
+    // (file IO + TOML parsing). They are gated as a block; the WASM build
+    // (default-features = false on the workspace pin) excludes them.
     // ---------------------------------------------------------------------
 
+    #[cfg(feature = "toml-loader")]
     use std::fs;
+    #[cfg(feature = "toml-loader")]
     use std::path::PathBuf;
 
+    #[cfg(feature = "toml-loader")]
     fn make_tmpdir(name: &str) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("marque-config-test-{name}-{}", std::process::id()));
@@ -797,6 +834,7 @@ mod tests {
         dir
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn discover_finds_marque_toml_in_start_dir() {
         let dir = make_tmpdir("discover-here");
@@ -805,6 +843,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn discover_walks_upward_for_marque_toml() {
         // tmp/root/.marque.toml; start from tmp/root/sub/deeper.
@@ -816,6 +855,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn discover_stops_at_git_root_without_marque_toml() {
         // tmp/root/.git/ + tmp/root/sub/ — start from sub, walk should hit
@@ -828,6 +868,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn discover_returns_marque_toml_at_git_root_when_both_present() {
         // The common case: a repo whose root has both .git and .marque.toml.
@@ -841,6 +882,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn load_walks_upward_to_find_project_config() {
         // tmp/root/.marque.toml + tmp/root/sub/, load from sub.
@@ -860,6 +902,7 @@ E001 = "warn"
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn load_returns_defaults_when_walk_finds_no_marque_toml() {
         // tmp/root/.git but no .marque.toml — load returns defaults.
@@ -872,6 +915,7 @@ E001 = "warn"
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn load_local_config_only_in_same_dir_as_marque_toml() {
         // tmp/root/.marque.toml + tmp/root/.marque.local.toml
@@ -913,6 +957,7 @@ classifier_id = "from-sub"
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     #[cfg(unix)]
     fn load_returns_read_error_for_unreadable_project_config() {
@@ -931,6 +976,7 @@ classifier_id = "from-sub"
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     #[cfg(unix)]
     fn load_returns_read_error_for_unreadable_local_config() {
@@ -961,6 +1007,7 @@ classifier_id = "from-sub"
         assert_eq!(c.capco.default_timezone, UtcOffset::UTC);
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_accepts_valid_timezone_offsets() {
         for tz in ["Z", "+05:30", "-05:00", "+00:00", "+23:59"] {
@@ -974,6 +1021,7 @@ classifier_id = "from-sub"
         }
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_timezone_sets_correct_offset() {
         let mut c = Config::default();
@@ -986,6 +1034,7 @@ classifier_id = "from-sub"
         );
     }
 
+    #[cfg(feature = "toml-loader")]
     #[test]
     fn merge_project_rejects_invalid_timezone() {
         for bad in ["EST", "UTC", "utc", "+0530", "+05-30", "05:30"] {
