@@ -1254,6 +1254,32 @@ mod declassify_on_lattice {
         // Year 2025 ends Dec 31; mid-2025 date ends June 15; year wins.
         assert_eq!(year_2025.join(&mid_2025), year_2025);
     }
+
+    #[test]
+    fn declassify_on_absorption() {
+        // Absorption pin: 3-state cube over a total-order semilattice.
+        // For a total order, both laws hold by algebra: a⊔(a⊓b)=a and
+        // a⊓(a⊔b)=a. No current defect here; pin guards future regressions.
+        // §H.6 p104 (most-restrictive declassification date wins = max).
+        // Verified 2026-05-16 against CAPCO-2016.md.
+        let all_states = [bottom(), d(2025, 6, 15), y(2030)];
+        for x in &all_states {
+            for yy in &all_states {
+                let x_join_yy = x.join(yy);
+                let x_meet_yy = x.meet(yy);
+                assert_eq!(
+                    x.join(&x_meet_yy),
+                    x.clone(),
+                    "absorption x ⊔ (x ⊓ y) = x failed for x={x:?}, y={yy:?}"
+                );
+                assert_eq!(
+                    x.meet(&x_join_yy),
+                    x.clone(),
+                    "absorption x ⊓ (x ⊔ y) = x failed for x={x:?}, y={yy:?}"
+                );
+            }
+        }
+    }
 }
 
 // ===========================================================================
@@ -1572,6 +1598,39 @@ mod nato_dissem_set {
         assert_eq!(s1.join(&s2).join(&s3), s1.join(&s2.join(&s3)), "assoc");
         let bottom = NatoDissemSet::empty();
         assert_eq!(bottom.join(&s1), s1);
+    }
+
+    #[test]
+    fn nato_dissem_set_absorption() {
+        // Absorption pin: 4-state cube over a powerset lattice.
+        // For a powerset lattice, A∪(A∩B)=A and A∩(A∪B)=A hold by
+        // set algebra. No current defect; pin guards future regressions.
+        // CAPCO-2016 p41 (NATO reciprocity; trivial union).
+        // Verified 2026-05-16 against CAPCO-2016.md.
+        let bottom = NatoDissemSet::empty();
+        let p_oc = portion(&[DissemControl::Oc]);
+        let p_rel = portion(&[DissemControl::Rel]);
+        let p_both = portion(&[DissemControl::Oc, DissemControl::Rel]);
+        let s_oc = NatoDissemSet::from_attrs_iter(&[p_oc]);
+        let s_rel = NatoDissemSet::from_attrs_iter(&[p_rel]);
+        let s_both = NatoDissemSet::from_attrs_iter(&[p_both]);
+        let all_states = [bottom, s_oc, s_rel, s_both];
+        for x in &all_states {
+            for yy in &all_states {
+                let x_join_yy = x.join(yy);
+                let x_meet_yy = x.meet(yy);
+                assert_eq!(
+                    x.join(&x_meet_yy),
+                    x.clone(),
+                    "absorption x ⊔ (x ⊓ y) = x failed for x={x:?}, y={yy:?}"
+                );
+                assert_eq!(
+                    x.meet(&x_join_yy),
+                    x.clone(),
+                    "absorption x ⊓ (x ⊔ y) = x failed for x={x:?}, y={yy:?}"
+                );
+            }
+        }
     }
 }
 
@@ -2001,6 +2060,45 @@ mod rel_to_block {
         let nf = RelToBlock::NofornSuperseded;
         assert_eq!(empty.join(&nf), RelToBlock::NofornSuperseded);
         assert_eq!(nf.join(&empty), RelToBlock::NofornSuperseded);
+    }
+
+    #[test]
+    fn rel_to_block_absorption_laws() {
+        // 11th-pass consultant HIGH defect pin: absorption laws over the
+        // full 6-state cube (same states as `rel_to_block_lattice_laws`).
+        //
+        // Pre-fix, `meet(NofornSuperseded, x) = NofornSuperseded` violated
+        // dual absorption — `a ⊓ (a ⊔ N) = a ⊓ N = N ≠ a` for a ≠ N.
+        // Fixed by treating NofornSuperseded as join-top: `meet(N, x) = x`.
+        //
+        // Authority: §H.8 p145 (NOFORN cannot be used with REL TO —
+        // semantically NofornSuperseded is the join-absorbing outcome);
+        // §D.2 Table 3 row 9 (disjoint-LIST → NOFORN).
+        // Verified 2026-05-16 against CAPCO-2016.md.
+        let bottom = RelToBlock::Bottom;
+        let nf = RelToBlock::NofornSuperseded;
+        let empty = RelToBlock::Empty;
+        let a = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "GBR", "CAN"])]);
+        let b = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "GBR"])]);
+        let c = RelToBlock::from_attrs_iter(&[rel_portion(&["USA", "CAN"])]);
+        let all_states = [bottom, nf, empty, a, b, c];
+
+        for x in &all_states {
+            for y in &all_states {
+                let x_join_y = x.join(y);
+                let x_meet_y = x.meet(y);
+                assert_eq!(
+                    x.join(&x_meet_y),
+                    x.clone(),
+                    "absorption x ⊔ (x ⊓ y) = x failed for x={x:?}, y={y:?}, x⊓y={x_meet_y:?}"
+                );
+                assert_eq!(
+                    x.meet(&x_join_y),
+                    x.clone(),
+                    "absorption x ⊓ (x ⊔ y) = x failed for x={x:?}, y={y:?}, x⊔y={x_join_y:?}"
+                );
+            }
+        }
     }
 }
 
