@@ -1036,7 +1036,12 @@ fn scheme_declares_phase3_rewrites() {
     // as a copy-paste error.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
-    assert_eq!(rewrites.len(), 14);
+    // PR 4b-C Commit 3 added 7 Pattern-C rows between the four
+    // Pattern-A `*-implies-noforn` rewrites and `capco/noforn-clears-rel-to`.
+    // PR 4b-C Commit 4 added 2 Pattern-B structural rows immediately
+    // after the Pattern-C cohort. Total: 23. Each row carries its own
+    // §-citation.
+    assert_eq!(rewrites.len(), 23);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
@@ -1046,6 +1051,22 @@ fn scheme_declares_phase3_rewrites() {
             "capco/exdis-implies-noforn",
             "capco/sbu-nf-implies-noforn",
             "capco/les-nf-implies-noforn",
+            // PR 4b-C Commit 3 — Pattern-C strip + UCNI promote rows.
+            // UCNI promote rows are declared BEFORE the strip rows so
+            // the promote's trigger (which reads `aea_markings`) sees
+            // UCNI before the strip removes it (declaration order
+            // governs runtime in `CapcoScheme::project`'s row loop).
+            "capco/limdis-evicted-by-classified",
+            "capco/sbu-evicted-by-classified",
+            "capco/dod-ucni-promotes-noforn-when-classified",
+            "capco/dod-ucni-evicted-by-classified",
+            "capco/doe-ucni-promotes-noforn-when-classified",
+            "capco/doe-ucni-evicted-by-classified",
+            "capco/fouo-evicted-by-classified",
+            // PR 4b-C Commit 4 — Pattern-B structural FOUO eviction.
+            "capco/classification-evicts-fouo",
+            "capco/non-fdr-control-evicts-fouo",
+            // — end Pattern-B
             "capco/noforn-clears-rel-to",
             "capco/noforn-clears-fdr-family",
             "capco/frd-sigma-consolidates-into-rd-sigma",
@@ -1059,17 +1080,18 @@ fn scheme_declares_phase3_rewrites() {
         ],
         "rewrite declaration order is observable; the scheduler (Phase 3 T031) \
          reorders them by read/write edges. The four Pattern A NOFORN-supremacy \
-         rewrites (nodis/exdis/sbu-nf/les-nf-implies-noforn) are declared first \
-         in the vec so `scheme.project`'s sequential scan executes them \
-         before `noforn-clears-rel-to` — matching the topological order. \
-         The scheduler's topological order is also computed at `Engine::new` \
-         and confirms the same partial order."
+         rewrites (nodis/exdis/sbu-nf/les-nf-implies-noforn) plus the seven \
+         PR 4b-C Pattern-C rows plus the two PR 4b-C Pattern-B rows are \
+         declared before `noforn-clears-rel-to` so `scheme.project`'s \
+         sequential scan executes them in the order Kahn's algorithm \
+         validates. The scheduler's topological order is also computed at \
+         `Engine::new` and confirms the same partial order."
     );
 
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
     // sections; T089 retired the line-number form per project memory
-    // `feedback_citations_use_page_numbers.md`). Each of the fourteen
+    // `feedback_citations_use_page_numbers.md`). Each of the twenty-three
     // citations is verifiable in the vendored CAPCO-2016 markdown.
     // The per-entry index assertions below follow the declaration
     // order in `CapcoScheme::build_page_rewrites` — if the order
@@ -1078,24 +1100,41 @@ fn scheme_declares_phase3_rewrites() {
     // dual-page-citation pattern (`sbu-nf-implies-noforn` +
     // `sbu-nf-transmutes-on-classified-contact` at §H.9 p178, and
     // `les-nf-implies-noforn` + `les-nf-transmutes-on-classified-
-    // contact` at §H.9 p185) is intentional.
+    // contact` at §H.9 p185) is intentional; the PR 4b-C UCNI strip
+    // + promote pairs at §H.6 p116 / §H.6 p118 follow the same
+    // dual-page-citation pattern. The three §H.8 p134 citations
+    // (Pattern-C row 7 + Pattern-B rows 1 + 2) all quote the same
+    // §H.8 p134 FOUO Precedence Rules passage but cite distinct
+    // sub-clauses — see the per-row doc-comments on each row.
     assert_eq!(rewrites[0].citation, "CAPCO-2016 §H.9 p174");
     assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.9 p172");
     assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.9 p178");
     assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.9 p185");
-    assert_eq!(rewrites[4].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
+    // Pattern-C rows (Commit 3).
+    assert_eq!(rewrites[4].citation, "CAPCO-2016 §H.9 p170");
+    assert_eq!(rewrites[5].citation, "CAPCO-2016 §H.9 p176");
+    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.6 p116");
+    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.6 p116");
+    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.6 p118");
+    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.6 p118");
+    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.8 p134");
+    // Pattern-B rows (Commit 4).
+    assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.8 p134");
+    assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.8 p134");
+    // Pre-existing rows shift +9.
+    assert_eq!(rewrites[13].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
     assert_eq!(
-        rewrites[5].citation,
+        rewrites[14].citation,
         "CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157"
     );
-    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.8 p136");
-    assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.9 p178");
-    assert_eq!(rewrites[13].citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rewrites[15].citation, "CAPCO-2016 §H.6 p113");
+    assert_eq!(rewrites[16].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[17].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[18].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[19].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[20].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[21].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[22].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]
