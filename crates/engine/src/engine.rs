@@ -8,7 +8,6 @@ use crate::clock::{Clock, SystemClock};
 use crate::errors::{EngineConstructionError, EngineError};
 use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
-use crate::recognizer::shift_token_spans;
 use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
 use aho_corasick::AhoCorasick;
@@ -630,7 +629,7 @@ impl Engine {
     ///
     /// The cache maps each scanner-emitted candidate's `Span` (the
     /// source-relative byte range of the candidate, not the
-    /// post-`shift_token_spans` attribute spans) to the
+    /// recognizer's per-token attribute spans) to the
     /// `Parsed::Unambiguous` `CapcoMarking` produced by the
     /// recognizer. `synthesize_intent_only_fixes` reads this so the
     /// intent-only synthesis path NEVER re-parses with a different
@@ -927,20 +926,23 @@ impl Engine {
             // candidate `Ambiguous` means "no plausible interpretation" —
             // skip, same as a strict-path parser error would in the old
             // flow (foundational-plan line 609-612). `Unambiguous` returns
-            // a `CapcoMarking` whose `token_spans` are zero-origin relative
-            // to the candidate bytes; shift them back to source-relative
-            // offsets before rules see them.
+            // a `CapcoMarking` whose `token_spans` are already absolute
+            // source coordinates: per the issue #431 span-offset contract
+            // the engine passes `start` as `offset` and the recognizer
+            // composes the source-shift into its own internal shift
+            // (e.g. strict-path leading-whitespace stripping). No
+            // post-pass needed.
             let start = span_start;
             let end = span_end;
             if start >= end {
                 continue;
             }
             let bytes = &source[start..end];
-            let Parsed::Unambiguous(mut marking) = self.recognizer.recognize(bytes, &parse_cx)
+            let Parsed::Unambiguous(mut marking) =
+                self.recognizer.recognize(bytes, start, &parse_cx)
             else {
                 continue;
             };
-            shift_token_spans(&mut marking.0, start);
             // Cache the recognized marking before destructuring so
             // `synthesize_intent_only_fixes` can recover it by
             // candidate span without re-parsing under a divergent

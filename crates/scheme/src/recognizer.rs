@@ -351,8 +351,17 @@ impl Default for ParseContext {
 pub trait Recognizer<S: MarkingScheme + ?Sized>: Send + Sync {
     /// Recognize a marking from raw bytes.
     ///
-    /// `bytes` is the raw input slice (zero-copy; spans are by offset
-    /// into this buffer — see [`crate::template`] for how templates
-    /// position sub-spans).
-    fn recognize(&self, bytes: &[u8], cx: &ParseContext) -> Parsed<S::Marking>;
+    /// `bytes` is the raw input slice (zero-copy). `offset` is the byte
+    /// position of `bytes[0]` in the original source buffer; recognizers
+    /// MUST emit spans in absolute source coordinates (i.e., add `offset`
+    /// to any zero-relative span the inner parser produces). This lets
+    /// the engine deliver source-coordinate spans to rules without an
+    /// O(token_spans) post-pass per recognized candidate.
+    ///
+    /// `offset` is a per-call argument (the candidate's source position)
+    /// rather than a `ParseContext` field because `ParseContext` is the
+    /// scheme-neutral *environment* shared across calls inside dispatch
+    /// wrappers like the engine's strict-then-decoder recognizer; folding
+    /// offset into the environment would corrupt that split.
+    fn recognize(&self, bytes: &[u8], offset: usize, cx: &ParseContext) -> Parsed<S::Marking>;
 }
