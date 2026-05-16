@@ -5092,18 +5092,45 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // banner span and each disunity-contributing Portion emits at
         // its own span. Audit consumers correlate by rule-id +
         // page-break boundary.
-        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Portion) {
+        // P-3 (8th-pass trade-off): restrict W004 firing to Banner candidates
+        // only. The 6th-pass added Portion-firing to cover banner-first
+        // layouts where the top banner fires before any portions accumulate
+        // (the "W004-banner-first" bug: banner sees empty page_context, rule
+        // returns early, no closing banner → W004 never fires). However,
+        // portion-time firing introduces a correctness regression: a page
+        // with [P1=JOINT(USA,CAN), P2=JOINT(USA,GBR), P3=(S//NF)] fires
+        // W004 at P2 time (snapshot = [P1, P2] → DisunityCollapse) but the
+        // final page state is `Mixed` (P3 is non-JOINT) — W004 must NOT fire
+        // on Mixed per §H.3 p57 ("JOINT marking not carried forward to the
+        // banner line in US documents"; the Mixed case is already
+        // well-handled).
+        //
+        // PM guidance (8th-pass): prefer correctness over coverage for a
+        // Warn-severity rule. The banner-first false-negative is documented
+        // below; the Mixed-page false-positive is a defect. Revert to
+        // Banner-only.
+        //
+        // Trade-off documented: a pure-JOINT page with a top banner (no
+        // footer banner) and disunified portions will NOT fire W004 under
+        // this restriction. The rule reads `page_context` (populated for
+        // Banner candidates) which is `None` when the top banner runs with
+        // no preceding portions. Callers that need to detect disunity in
+        // banner-first layouts should use the JointSet lattice projection
+        // directly (via `CapcoScheme::project` or `JointSet::from_attrs_iter`
+        // over the page's portions).
+        //
+        // `cross_portion_context` is NOT removed here — it remains the
+        // correct channel for future cross-portion aggregation rules that
+        // don't have this banner-first vs. Mixed ambiguity.
+        //
+        // §-authority: §H.3 p57 (JOINT not carried to banner line in US
+        // documents — this is the Mixed case that portion-time snapshot
+        // cannot distinguish from DisunityCollapse until all portions land).
+        // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+        if !matches!(ctx.marking_type, MarkingType::Banner) {
             return vec![];
         }
-        // Read cross_portion_context (the portion-aware sibling of
-        // page_context) so the rule fires on Portion candidates too.
-        // For Portion candidates this is `Some(...)` once at least one
-        // portion has accumulated on the page (the engine adds the
-        // current portion before invoking the rule loop, so a single
-        // JOINT portion has portions().len() == 1 — the JointSet then
-        // returns UnanimousProducers, not DisunityCollapse, and W004
-        // stays quiet until a second disagreeing JOINT portion arrives).
-        let Some(page_ctx) = ctx.cross_portion_context.as_ref() else {
+        let Some(page_ctx) = ctx.page_context.as_ref() else {
             return vec![];
         };
 

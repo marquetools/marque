@@ -326,73 +326,66 @@ fn joint_disunity_union_excludes_usa() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-B sixth-pass follow-up: W004 banner-first layout coverage.
+// PR 4b-B eighth-pass P-3 trade-off: W004 reverted to Banner-only.
 // ---------------------------------------------------------------------------
 //
-// Triage code W004-banner-first. The pre-fix W004 implementation
-// returned early on every non-Banner candidate and additionally
-// returned early on `ctx.page_context.is_none()`. Banner candidates
-// see `page_context` only AFTER preceding portions accumulate, and
-// the engine populates `ctx.page_context` only when the candidate is
-// non-Portion. As a result, a real-world classified-doc layout with
-// a TOP banner (no portion accumulation yet) followed by JOINT-
-// disunified portions and NO closing footer banner silently bypassed
-// W004 entirely — the rule never fired even though the disunity
-// existed.
+// Triage code W004-banner-first (DOCUMENTED FALSE-NEGATIVE as of 8th-pass).
 //
-// The fix expands the firing condition to include Portion candidates
-// that contribute to disunity. The §H.3 p57 + §H.7 p123 cross-axis
-// JOINT → FGI [LIST] migration is the same (CV-4 PR 4b-B 8th-pass
-// updated from §H.3 p56 — the migration trigger lives on p57's
-// "Derivative Use" bullets); W004 now surfaces it as soon as the
-// second disagreeing JOINT portion lands, regardless of whether a
-// closing banner exists. This may produce one W004 per
-// disunity-contributing portion on the same page; that is acceptable
-// for a Warn rule and matches the prior NOFORN-style "loud diagnostic
-// per occurrence" pattern.
+// History:
+// - 6th-pass: W004 expanded to fire on Portion candidates to cover
+//   banner-first layouts (top banner → JOINT portions → no footer).
+//   The engine sees `ctx.page_context = None` on the top banner (no
+//   portions accumulated yet), so the old Banner-only rule missed
+//   disunity on these pages.
+// - 8th-pass P-3: reverted to Banner-only. The Portion-time firing
+//   produces false positives on pages where the final state is `Mixed`
+//   (JOINT portions followed by a non-JOINT portion): the snapshot at
+//   portion-2 time shows `DisunityCollapse` → W004 fires; but the
+//   final page state after portion-3 is `Mixed` → W004 should NOT fire
+//   per §H.3 p57. Portion-time snapshots cannot see future portions and
+//   therefore cannot distinguish DisunityCollapse from pre-Mixed.
+//   PM guidance: correctness over coverage for a Warn-severity rule.
+//
+// Documented false-negative: a pure-JOINT page with a top banner (no
+// footer banner) and disunified JOINT portions will NOT fire W004. The
+// rule only fires when a Banner candidate runs with a non-empty
+// `page_context` (which requires at least one preceding portion). In
+// banner-first pure-JOINT documents without a footer banner, no such
+// Banner candidate ever runs — W004 stays silent even though the
+// disunity is real. Callers that need to detect this case should use
+// `JointSet::from_attrs_iter(page.portions())` directly.
+//
+// §-authority: §H.3 p57 ("JOINT marking not carried forward to the
+// banner line in US documents"). Verified 2026-05-16 against
+// crates/capco/docs/CAPCO-2016.md.
 
 #[test]
-fn w004_fires_on_banner_first_document_with_no_closing_banner() {
-    // The bug: a top banner appears BEFORE any portion accumulates,
-    // so when the banner candidate runs `ctx.page_context` is empty
-    // and W004 returns early. Subsequent JOINT-disunity portions land
-    // but no closing banner ever fires the rule. Pre-fix: W004 never
-    // emits despite the disunity. Post-fix: W004 fires on the
-    // disunity-contributing portion(s).
+fn w004_does_not_fire_on_banner_first_document_with_no_closing_banner() {
+    // P-3 (8th-pass): this is the DOCUMENTED FALSE-NEGATIVE case. A
+    // top banner fires before any portions accumulate, so page_context
+    // is None on the banner candidate → W004 returns early. Subsequent
+    // JOINT-disunity portions fire on Portion candidates but W004 is
+    // now Banner-only → no W004. No closing footer banner → rule never
+    // sees a non-empty page_context for a Banner candidate.
+    //
+    // This test asserts the current (intentional) behavior: W004 does
+    // NOT fire on this layout. It replaces the 6th-pass positive
+    // assertion that W004 MUST fire on this layout, which was
+    // predicated on the now-reverted Portion-firing path.
     let engine = engine_with_fixed_clock();
     let source = b"//JOINT SECRET USA, GBR, CAN\n\
                    (//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion creates disunity.\n";
     let lint = engine.lint(source);
-    let w004_count = lint
-        .diagnostics
-        .iter()
-        .filter(|d| d.rule.as_str() == "W004")
-        .count();
     assert!(
-        w004_count >= 1,
-        "W004 must fire on banner-first JOINT-disunity page even with \
-         no closing banner; diagnostics: {:?}",
+        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        "P-3 documented false-negative: W004 must NOT fire on banner-\
+         first JOINT-disunity page with no closing banner under the \
+         8th-pass Banner-only restriction; diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.as_str())
             .collect::<Vec<_>>()
-    );
-    // Verify severity and citation as on the banner-fired path.
-    let w004 = lint
-        .diagnostics
-        .iter()
-        .find(|d| d.rule.as_str() == "W004")
-        .unwrap();
-    assert_eq!(w004.severity, marque_rules::Severity::Warn);
-    // CV-4 (PR 4b-B 8th-pass): citation amended from
-    // `§H.3 p56 + §H.7 p123` to `§H.3 p57 + §H.7 p123`. See the
-    // `w004_fires_on_joint_disunity_banner` test above for rationale.
-    assert!(
-        w004.citation.contains("§H.3 p57") && w004.citation.contains("§H.7 p123"),
-        "W004 banner-first path must carry the same §H.3 p57 + §H.7 \
-         p123 citation: {:?}",
-        w004.citation
     );
 }
 

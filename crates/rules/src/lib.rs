@@ -300,16 +300,30 @@ pub enum Phase {
 /// (`cross_portion_context`, `page_marking`, `corrections`,
 /// `pre_pass_1_attrs`) and is likely to add more before the API
 /// stability freeze at PR 10. Marking the struct `#[non_exhaustive]`
-/// requires external (cross-crate) construction sites to use
-/// functional-update syntax (`RuleContext { marking_type, ..base }`)
-/// or a constructor helper, so a future field addition is a
-/// non-breaking change for downstream rule crates and tests.
-/// Same-crate construction (this crate's own unit tests) is
-/// unaffected — `#[non_exhaustive]` only restricts external
-/// literal construction. Test code in `crates/capco/tests/*` and
-/// `crates/capco/src/rules.rs` literal-constructs via the
-/// non-exhaustive escape hatch (`..base` or per-field naming);
+/// means a future field addition is a non-breaking change for
+/// downstream consumers.
+///
+/// **Cross-crate consumers MUST construct via the engine-provided
+/// constructor path** (`RuleContext::new` or
+/// `RuleContext::for_portion`). `#[non_exhaustive]` blocks BOTH bare
+/// literal construction (`RuleContext { marking_type, zone, ... }`)
+/// AND functional-update syntax (`RuleContext { marking_type, ..base }`)
+/// across crate boundaries — the Rust reference specifies that
+/// functional update with `..base` requires the struct to be
+/// fully-exhaustively constructible at the call site, so
+/// `#[non_exhaustive]` blocks it just as it blocks literal
+/// construction. See the constructor doc below for the correct
+/// cross-crate pattern.
+///
+/// Same-crate construction (this crate's own unit tests and the
+/// engine's internal test modules) is unaffected — `#[non_exhaustive]`
+/// only restricts external (cross-crate) construction. Test code in
+/// `crates/capco/tests/*` uses the constructor helpers for this reason;
 /// the FR-040 cargo-rules check enforces the pattern.
+///
+/// P-5 (8th-pass): corrected prior doc that claimed `..base`
+/// functional-update "works" for downstream rule crates — it does not.
+/// The constructor doc at `RuleContext::new` is authoritative.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct RuleContext<'a> {
@@ -359,11 +373,21 @@ pub struct RuleContext<'a> {
     /// behavior around "page_context is None on portions" (notably
     /// S007 / FR-048's solely-NATO carve-out, which fires
     /// conservatively only on `page_context = None`) keep their
-    /// pre-existing semantics. Cross-portion aggregation rules
-    /// (currently W004 `joint-disunity-collapse` per CAPCO-2016 §H.3
-    /// p56 + §H.7 p123) read `cross_portion_context` instead, so they
-    /// can detect disunity at the second disagreeing portion without
-    /// waiting for a footer banner that may never come.
+    /// pre-existing semantics. Cross-portion aggregation rules that
+    /// need to reason about the per-portion accumulation state read
+    /// `cross_portion_context` instead of `page_context`.
+    ///
+    /// **P-3 (8th-pass trade-off note).** W004 `joint-disunity-collapse`
+    /// previously read `cross_portion_context` to detect disunity at
+    /// the second disagreeing portion without waiting for a footer
+    /// banner. This was reverted to Banner-only in 8th-pass: portion-time
+    /// snapshots can't distinguish `DisunityCollapse` (fire W004) from
+    /// a future `Mixed` state (don't fire W004 per §H.3 p57), producing
+    /// false positives on pages where a non-JOINT portion lands after
+    /// two disagreeing JOINT portions. The reversion documents the
+    /// banner-first false-negative trade-off explicitly. Reserved for
+    /// future cross-portion aggregation rules that do not have this
+    /// Mixed-state ambiguity.
     ///
     /// The engine's accumulation point is BEFORE the rule loop runs
     /// for a Portion candidate (`engine.rs::lint`: `add_portion(...)`
