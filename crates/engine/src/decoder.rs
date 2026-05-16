@@ -1329,7 +1329,7 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
 pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
     generate_candidate_bytes(bytes)
         .into_iter()
-        .map(|a| a.bytes)
+        .map(|a| a.bytes.into_vec())
         .collect()
 }
 
