@@ -433,7 +433,7 @@ mod tests {
     /// FactRemove's "absent token is inapplicable" policy: both axes
     /// report per-intent inapplicability when the requested mutation
     /// is a no-op, per the `MarkingScheme::apply_intent` trait
-    /// contract (scheme.rs:185-194).
+    /// contract (crates/scheme/src/scheme.rs:185-194).
     ///
     /// Case (c): FactAdd against an unwired axis (CAT_SCI via
     /// `TOK_HCS`) returns `Err(IntentInapplicable)`. The routing
