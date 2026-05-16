@@ -28,11 +28,13 @@
 //! path.
 
 use marque_capco::CapcoMarking;
+use marque_capco::scheme::CapcoScheme;
 use marque_ism::{
     AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiClassification,
     FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
     NatoClassification, NonIcDissem, PageContext,
 };
+use marque_scheme::{MarkingScheme as _, Scope};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,6 +69,28 @@ fn project_via_page_context(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
 
 fn project_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
     CapcoMarking::join_via_lattice(portions)
+}
+
+/// Drive the projection through `CapcoScheme::project(Scope::Page, ...)` —
+/// the post-PR-4b-D production path. The scheme's page-rewrite loop
+/// runs the declarative PageRewrite catalog over the input portions,
+/// so Pattern-B + Pattern-C strip rows fire here even though they are
+/// inert in the per-axis `project_via_page_context` and
+/// `project_via_lattice` helpers above.
+///
+/// PR 4b-C Commit 6 introduces this helper so the Pattern-B + Pattern-C
+/// fixtures can assert the strip-plus-promote semantic that lives in
+/// the declarative rows. The pre-existing fixtures continue to use
+/// the per-axis helpers; the new fixtures use `project_via_scheme` to
+/// exercise the declarative path.
+fn project_via_scheme(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+    let scheme = CapcoScheme::new();
+    let markings: Vec<CapcoMarking> = portions
+        .iter()
+        .cloned()
+        .map(CapcoMarking::new)
+        .collect();
+    scheme.project(Scope::Page, &markings).0
 }
 
 /// Assert byte-identity on every axis present on both sides except
@@ -1866,5 +1890,404 @@ fn display_only_two_portions_disjoint_lists_parity() {
         // Lattice path lags PageContext for DISPLAY ONLY §D.2 row 20
         // NF injection — see fixture doc above.
         &["dissem_us"],
+    );
+}
+
+// ===========================================================================
+// PR 4b-C Commit 6 — Pattern-B + Pattern-C declarative row fixtures
+// ===========================================================================
+//
+// These fixtures exercise the declarative `CapcoScheme` PageRewrite
+// catalog via `project_via_scheme`. They DO NOT compare PageContext
+// against the lattice path — the parity gate above stays focused on
+// per-axis projection equivalence. The fixtures here pin the §H.6 /
+// §H.8 / §H.9 strip semantics that PR 4b-C delivered as declarative
+// rows.
+//
+// verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md` per
+// Constitution VIII propagation discipline.
+
+#[test]
+fn pattern_c_fouo_classified_strip() {
+    // CAPCO-2016 §H.8 p134 (FOUO Precedence Rules for Banner Line
+    // Guidance, classified-document sub-clause): "FOUO in a classified
+    // document: When a classified document contains portions of FOUO
+    // information, the FOUO marking is not used in the banner line."
+    //
+    // Pattern-C row `capco/fouo-evicted-by-classified` + Pattern-B row
+    // `capco/classification-evicts-fouo` both fire on this input;
+    // their FactRemove[TOK_FOUO] payloads are idempotent.
+    let portions = [
+        portion_with_dissem_us(Classification::Unclassified, &[DissemControl::Fouo]),
+        portion_us(Classification::Secret),
+    ];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-C row `capco/fouo-evicted-by-classified` (§H.8 p134) \
+         must strip FOUO from the banner dissem axis. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_c_fouo_unclassified_keeps_when_alone() {
+    // §H.8 p134: "FOUO must convey in the banner line if the document
+    // is UNCLASSIFIED with FOUO marked information and no other
+    // dissemination control markings." FOUO alone keeps; the
+    // Pattern-B trigger requires another non-FD&R control.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Fouo),
+        "§H.8 p134 unclassified-alone: FOUO must stay in the banner. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_c_limdis_classified_strip() {
+    // CAPCO-2016 §H.9 p170 (LIMITED DISTRIBUTION, Precedence Rules for
+    // Banner Line Guidance): "When a document contains LIMDIS and
+    // classified portions, LIMDIS is not used in the banner line."
+    let mut p_limdis = portion_us(Classification::Unclassified);
+    p_limdis.non_ic_dissem = vec![NonIcDissem::Limdis].into_boxed_slice();
+    let portions = [p_limdis, portion_us(Classification::Secret)];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.non_ic_dissem.contains(&NonIcDissem::Limdis),
+        "Pattern-C row `capco/limdis-evicted-by-classified` (§H.9 p170) \
+         must strip LIMDIS from the banner non_ic axis. \
+         banner.non_ic_dissem = {:?}",
+        banner.non_ic_dissem,
+    );
+}
+
+#[test]
+fn pattern_c_sbu_classified_strip() {
+    // CAPCO-2016 §H.9 p176 (SENSITIVE BUT UNCLASSIFIED, Precedence
+    // Rules for Banner Line Guidance): "When a document contains SBU
+    // and classified portions, SBU is not used in the banner line."
+    let mut p_sbu = portion_us(Classification::Unclassified);
+    p_sbu.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
+    let portions = [p_sbu, portion_us(Classification::Secret)];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.non_ic_dissem.contains(&NonIcDissem::Sbu),
+        "Pattern-C row `capco/sbu-evicted-by-classified` (§H.9 p176) \
+         must strip SBU from the banner non_ic axis. \
+         banner.non_ic_dissem = {:?}",
+        banner.non_ic_dissem,
+    );
+}
+
+#[test]
+fn pattern_c_dod_ucni_classified_strip_promotes_noforn() {
+    // CAPCO-2016 §H.6 p116 (DOD UCNI / DCNI, Precedence Rules for
+    // Banner Line Guidance): "Classified documents: DOD UCNI does not
+    // appear in the banner line; however, NOFORN must be applied if a
+    // less restrictive FD&R marking would otherwise be conveyed with
+    // the classified information."
+    //
+    // This is the load-bearing post-fix test for Commit 2's pre-fix
+    // bug — the §H.6 NOFORN-promotion clause was missing from the
+    // pre-PR-4b-C PageContext UCNI strip. The declarative
+    // `capco/dod-ucni-evicted-by-classified` + `capco/dod-ucni-promotes-noforn-when-classified`
+    // pair fixes it.
+    let mut p_ucni = portion_us(Classification::Unclassified);
+    p_ucni.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+    let portions = [p_ucni, portion_us(Classification::Secret)];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner
+            .aea_markings
+            .iter()
+            .any(|m| matches!(m, AeaMarking::DodUcni)),
+        "Pattern-C row `capco/dod-ucni-evicted-by-classified` (§H.6 p116) \
+         must strip DOD UCNI from the banner AEA axis. \
+         banner.aea_markings = {:?}",
+        banner.aea_markings,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Nf),
+        "Pattern-C row `capco/dod-ucni-promotes-noforn-when-classified` \
+         (§H.6 p116) must promote NOFORN onto the banner dissem axis \
+         (fixes the pre-PR-4b-C silent strip bug pinned by Commit 2). \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_c_doe_ucni_classified_strip_promotes_noforn() {
+    // CAPCO-2016 §H.6 p118 (DOE UCNI, Precedence Rules for Banner
+    // Line Guidance): mirrors §H.6 p116 (DOD UCNI) verbatim.
+    let mut p_ucni = portion_us(Classification::Unclassified);
+    p_ucni.aea_markings = vec![AeaMarking::DoeUcni].into_boxed_slice();
+    let portions = [p_ucni, portion_us(Classification::Secret)];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner
+            .aea_markings
+            .iter()
+            .any(|m| matches!(m, AeaMarking::DoeUcni)),
+        "Pattern-C row `capco/doe-ucni-evicted-by-classified` (§H.6 p118) \
+         must strip DOE UCNI from the banner AEA axis. \
+         banner.aea_markings = {:?}",
+        banner.aea_markings,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Nf),
+        "Pattern-C row `capco/doe-ucni-promotes-noforn-when-classified` \
+         (§H.6 p118) must promote NOFORN onto the banner dissem axis. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_c_dod_ucni_classified_with_explicit_noforn_no_double_inject() {
+    // §H.6 p116: NOFORN promotion fires "if a less restrictive FD&R
+    // marking would otherwise be conveyed". When NOFORN is already
+    // present on the dissem axis, the promote-row's predicate
+    // (`dod_ucni_promotes_noforn_trigger`'s `!dissem_has_noforn`
+    // check) suppresses the FactAdd. The strip-row still fires.
+    let mut p_ucni = portion_us(Classification::Unclassified);
+    p_ucni.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+    let mut p_class = portion_us(Classification::Secret);
+    p_class.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+    let portions = [p_ucni, p_class];
+    let banner = project_via_scheme(&portions);
+    let nf_count = banner
+        .dissem_us
+        .iter()
+        .filter(|d| matches!(d, DissemControl::Nf))
+        .count();
+    assert!(
+        !banner
+            .aea_markings
+            .iter()
+            .any(|m| matches!(m, AeaMarking::DodUcni)),
+        "DOD UCNI must still be stripped on a classified page even when \
+         NOFORN is already present. banner.aea_markings = {:?}",
+        banner.aea_markings,
+    );
+    assert_eq!(
+        nf_count, 1,
+        "NOFORN must appear exactly once on the banner dissem axis — \
+         the existing portion-NOFORN dedupes via the lattice union and \
+         the promote-row's predicate suppresses double-inject. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_c_sbu_nf_in_classified_preserves_noforn_compound_guard() {
+    // §3.5 compound-NF invariant: `NonIcDissem::SbuNf` is a distinct
+    // variant from `NonIcDissem::Sbu`. Pattern-C row
+    // `capco/sbu-evicted-by-classified` triggers on the bare `Sbu`
+    // variant only (TOK_SBU); SBU-NF goes through the existing
+    // `capco/sbu-nf-implies-noforn` row at §H.9 p178 which adds
+    // NOFORN without stripping SBU-NF. This fixture pins the
+    // invariant: SBU-NF + classified page → NOFORN appears on the
+    // banner dissem axis (via either the implies-noforn rewrite or
+    // the SbuNf→Sbu+NF split in `expected_non_ic_dissem` — both
+    // surface NOFORN).
+    let mut p_sbu_nf = portion_us(Classification::Unclassified);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
+    let portions = [p_sbu_nf, portion_us(Classification::Secret)];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Nf),
+        "§3.5 invariant + §H.9 p178: SBU-NF must surface NOFORN on \
+         the banner dissem axis. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_c_les_in_classified_propagates_to_banner() {
+    // CAPCO-2016 §H.9 p181 (LAW ENFORCEMENT SENSITIVE, Precedence
+    // Rules for Banner Line Guidance): "The LES marking always appears
+    // in the banner line if LES information ... is contained in the
+    // document, regardless of the document's classification level."
+    //
+    // Pattern-C explicitly EXCLUDES LES (the PM-confirmed §H.9 p181
+    // exception). This fixture is the regression-gate against a
+    // future "LES classified strip" accidentally being added.
+    let mut p_les = portion_us(Classification::Unclassified);
+    p_les.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
+    let portions = [p_les, portion_us(Classification::Secret)];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        banner.non_ic_dissem.contains(&NonIcDissem::Les),
+        "§H.9 p181: LES propagates to the banner regardless of \
+         classification level — Pattern-C must NOT strip LES. \
+         banner.non_ic_dissem = {:?}",
+        banner.non_ic_dissem,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_dsen_unclassified_strip() {
+    // §H.8 p134: "FOUO is not conveyed in the banner line if the
+    // document is UNCLASSIFIED with FOUO and other dissemination
+    // control markings, excluding any FD&R markings."
+    //
+    // DSEN is a non-FD&R IC dissem control (§H.8 p159), so the
+    // Pattern-B `capco/non-fdr-control-evicts-fouo` row fires.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Dsen],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134) \
+         must strip FOUO when DSEN is present on an UNCLASSIFIED page. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Dsen),
+        "DSEN must be retained — Pattern-B strips FOUO, not the trigger. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_orcon_unclassified_strip() {
+    // §H.8 p134 + §H.8 p136 (ORCON): ORCON is a non-FD&R IC dissem
+    // control, so the Pattern-B trigger fires on a UNCLASSIFIED page
+    // carrying FOUO + ORCON.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Oc],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134 + \
+         §H.8 p136) must strip FOUO when ORCON is present on an \
+         UNCLASSIFIED page. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Oc),
+        "ORCON must be retained — Pattern-B strips FOUO, not the trigger. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_relido_unclassified_keeps_fouo() {
+    // §H.8 p134: "excluding any FD&R markings". RELIDO is FD&R-set
+    // membership (§B.3.a p19; `FDR_DOMINATORS` includes RELIDO), so
+    // the Pattern-B `capco/non-fdr-control-evicts-fouo` predicate
+    // does NOT fire on RELIDO+FOUO. FOUO stays.
+    //
+    // This is the load-bearing test for the
+    // `is_fdr_dissem_token` helper's broad-membership semantic
+    // (matches `Vocabulary::is_fdr_dissem`, INCLUDES RELIDO; NOT
+    // `is_fdr_dominator` which EXCLUDES RELIDO).
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Relido],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Fouo),
+        "§H.8 p134: FOUO must STAY in the banner when only FD&R \
+         markings accompany it (RELIDO is FD&R per §B.3.a p19; \
+         `FDR_DOMINATORS` includes RELIDO). banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_noforn_unclassified_keeps_fouo() {
+    // §H.8 p134: "excluding any FD&R markings". NOFORN is the
+    // canonical FD&R member; the Pattern-B trigger excludes it. FOUO
+    // stays.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Nf],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Fouo),
+        "§H.8 p134: FOUO must STAY in the banner when only NOFORN \
+         accompanies it (FD&R-only context). banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_aea_unclassified_strip() {
+    // §H.8 p134 + the Pattern-B four-axis "other control" reading:
+    // AEA markings (RD / FRD / TFNI / UCNI / ATOMAL) are atomic-
+    // energy controls, not FD&R markings. The Pattern-B trigger's
+    // `!attrs.aea_markings.is_empty()` clause fires.
+    let mut p = portion_us(Classification::Unclassified);
+    p.dissem_us = vec![DissemControl::Fouo].into_boxed_slice();
+    p.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+    let portions = [p];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134) \
+         must strip FOUO when an AEA marking (UCNI here) is present. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_non_ic_unclassified_strip() {
+    // §H.8 p134 + the Pattern-B four-axis reading: non-IC dissem
+    // tokens (SSI / LIMDIS / LES / SBU / NODIS / EXDIS / NNPI /
+    // SbuNf / LesNf) are non-FD&R by construction; the Pattern-B
+    // trigger's `!attrs.non_ic_dissem.is_empty()` clause fires.
+    let mut p = portion_us(Classification::Unclassified);
+    p.dissem_us = vec![DissemControl::Fouo].into_boxed_slice();
+    p.non_ic_dissem = vec![NonIcDissem::Ssi].into_boxed_slice();
+    let portions = [p];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134 + \
+         §H.9 p189 SSI) must strip FOUO when a non-IC dissem control \
+         (SSI here) is present. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_classified_alone_strips_via_classification_row() {
+    // §H.8 p134 classified-document sub-clause: FOUO alone on a
+    // classified page is stripped via the Pattern-B
+    // `capco/classification-evicts-fouo` row (and equivalently via
+    // Pattern-C `capco/fouo-evicted-by-classified` — both rows are
+    // scheduler-siblings producing the same FactRemove[TOK_FOUO]
+    // payload, idempotently).
+    let portions = [portion_with_dissem_us(
+        Classification::Secret,
+        &[DissemControl::Fouo],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/classification-evicts-fouo` (§H.8 p134) + \
+         Pattern-C row `capco/fouo-evicted-by-classified` (§H.8 p134) \
+         must both strip FOUO on a classified single-portion page. \
+         banner.dissem_us = {:?}",
+        banner.dissem_us,
     );
 }
