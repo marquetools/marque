@@ -1157,20 +1157,33 @@ impl Engine {
                     // profile (`Cargo.toml`). With `panic = "abort"`
                     // the panic terminates the process before this
                     // catch can fire.
+                    //
+                    // `Rule::trusted()` (defaulted to `false`) lets the
+                    // engine bypass `catch_unwind` for rules audited as
+                    // panic-safe. In-tree CAPCO rules override to `true`
+                    // (the catalog is audited as a set); out-of-tree
+                    // rules inherit safe-by-default and keep the
+                    // containment. The bypass is the deliberate
+                    // `unsafe`-block-shaped opt-out documented on
+                    // `Rule::trusted()`.
                     let rule_id = rule.id();
-                    let catch_result =
-                        std::panic::catch_unwind(AssertUnwindSafe(|| rule.check(&attrs, &ctx)));
-                    let mut diags = match catch_result {
-                        Ok(d) => d,
-                        Err(payload) => {
-                            let msg = panic_payload_to_string(&payload);
-                            tracing::warn!(
-                                target: "marque_engine::rule_panic",
-                                rule = rule_id.as_str(),
-                                error = %msg,
-                                "rule check panicked; skipping this rule for the current candidate"
-                            );
-                            Vec::new()
+                    let mut diags = if rule.trusted() {
+                        rule.check(&attrs, &ctx)
+                    } else {
+                        match std::panic::catch_unwind(AssertUnwindSafe(|| {
+                            rule.check(&attrs, &ctx)
+                        })) {
+                            Ok(d) => d,
+                            Err(payload) => {
+                                let msg = panic_payload_to_string(&payload);
+                                tracing::warn!(
+                                    target: "marque_engine::rule_panic",
+                                    rule = rule_id.as_str(),
+                                    error = %msg,
+                                    "rule check panicked; skipping this rule for the current candidate"
+                                );
+                                Vec::new()
+                            }
                         }
                     };
                     // Apply configured severity override per emitted

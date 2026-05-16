@@ -1148,6 +1148,28 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     fn additional_emitted_ids(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
+
+    /// Whether the engine trusts this rule's `check()` to be panic-free.
+    ///
+    /// Default: `false`. Untrusted rules run inside `std::panic::catch_unwind`
+    /// so a panicking rule degrades one document gracefully instead of
+    /// aborting the run. Overriding to `true` is the deliberate opt-out from
+    /// that containment — think of it like an `unsafe` block: a load-bearing
+    /// statement that this rule has been audited for panic-safety and that
+    /// any future change to `check()` carries the same obligation.
+    ///
+    /// The trust shortcut leans on the engine's stateless-rule contract
+    /// (Constitution VI): `check()` must not mutate state visible across
+    /// invocations. A trusted rule that violates that contract via interior
+    /// mutability could observe torn invariants on a future panic — there
+    /// is no `catch_unwind` to contain it. Auditing a rule for `trusted()`
+    /// means auditing it for both panic-safety AND statelessness.
+    ///
+    /// In-tree rules override to `true` (audited as part of the catalog).
+    /// Out-of-tree rules inherit safe-by-default.
+    fn trusted(&self) -> bool {
+        false
+    }
 }
 
 /// A collection of rules provided by a rule crate.

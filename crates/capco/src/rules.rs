@@ -435,6 +435,9 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.rel_to.is_empty() {
             return vec![];
@@ -714,6 +717,9 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Fire on banner AND portion. CAB candidates are the correct
@@ -785,6 +791,9 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
     /// `TokenSpan` the rule walked.
     fn phase(&self) -> Phase {
         Phase::Localized
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
@@ -907,6 +916,9 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
     /// walked.
     fn phase(&self) -> Phase {
         Phase::Localized
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
@@ -1138,6 +1150,9 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Precompute whether a first SAR block parsed successfully. The
         // repeated-SAR suppression path below must only fire when E030's
@@ -1269,6 +1284,9 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
     /// dispatch entirely.
     fn phase(&self) -> Phase {
         Phase::Localized
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Engine guarantees corrections is Some only when the map is non-empty
@@ -1405,6 +1423,9 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
     /// classification across the candidate scope.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{CountryCode, MarkingType};
@@ -1685,6 +1706,9 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn phase(&self) -> Phase {
         Phase::Localized
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
         use crate::vocab::country_name;
@@ -1869,6 +1893,9 @@ impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     /// (the SBU/LIMDIS removal is intentionally manual).
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -2594,6 +2621,9 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
             .into_iter()
@@ -2631,6 +2661,9 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
     /// fix.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
@@ -2749,6 +2782,9 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let sys_spans: Vec<&TokenSpan> = attrs
@@ -2825,6 +2861,9 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     /// originator.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
@@ -2916,6 +2955,9 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
     /// auto-applies; the classifier picks via UI.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
@@ -3030,6 +3072,9 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{SciControlBare, SciControlSystem};
 
@@ -3130,6 +3175,9 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     /// sees the canonical REL TO output.
     fn phase(&self) -> Phase {
         Phase::Localized
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
@@ -3501,6 +3549,9 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
@@ -3843,6 +3894,9 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
@@ -3955,6 +4009,9 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     /// span the banner candidate.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -4552,6 +4609,9 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
 
@@ -4733,6 +4793,9 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
     /// whole-marking by construction.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{

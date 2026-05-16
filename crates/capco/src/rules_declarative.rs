@@ -299,6 +299,9 @@ impl Rule<CapcoScheme> for DeclarativeBareHcsRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::SciControl;
 
@@ -460,6 +463,9 @@ impl Rule<CapcoScheme> for DeclarativeDualClassificationRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{ForeignClassification, MarkingClassification};
 
@@ -612,6 +618,9 @@ impl Rule<CapcoScheme> for DeclarativeJointRelToRule {
     /// Span covers the marking.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingClassification;
@@ -774,6 +783,9 @@ impl Rule<CapcoScheme> for DeclarativeNonUsMissingDissemRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E015/non-us-requires-dissem").is_empty() {
             return vec![];
@@ -855,6 +867,9 @@ impl Rule<CapcoScheme> for DeclarativeJointRestrictedRule {
     /// level is a classifier decision (Stage-4 `Reject { suggest }`).
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E016/joint-conflicts-restricted").is_empty() {
@@ -941,6 +956,9 @@ impl Rule<CapcoScheme> for DeclarativeJointHcsRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E036/joint-conflicts-hcs").is_empty() {
             return vec![];
@@ -1011,6 +1029,9 @@ impl Rule<CapcoScheme> for DeclarativeAeaNofornRule {
     /// construction.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E021/aea-requires-noforn").is_empty() {
@@ -1130,6 +1151,9 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
     /// the full marking. Whole-marking span by construction.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{TOK_FRD, TOK_TFNI};
@@ -1253,6 +1277,9 @@ impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
         // Portion-only filter: the catalog predicate fires on any
@@ -1321,6 +1348,9 @@ impl Rule<CapcoScheme> for DeclarativeNodisConflictsExdisRule {
     /// EXDIS). No fix — the user must choose which control survives.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E037/nodis-conflicts-exdis").is_empty() {
@@ -1400,6 +1430,9 @@ impl Rule<CapcoScheme> for DeclarativeDosDissemNofornRule {
     /// `candidate_span`. Whole-marking span by construction.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
@@ -1582,6 +1615,9 @@ impl Rule<CapcoScheme> for DeclarativeNofornRelToConflictRule {
     /// whole-marking by shape.
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -1970,6 +2006,9 @@ impl Rule<CapcoScheme> for DeclarativeRelidoNofornConflictRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E054/relido-conflicts-noforn").is_empty() {
             return vec![];
@@ -2074,6 +2113,9 @@ impl Rule<CapcoScheme> for DeclarativeRelidoDisplayOnlyConflictRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E055/relido-conflicts-display-only").is_empty() {
             return vec![];
@@ -2166,6 +2208,9 @@ impl Rule<CapcoScheme> for DeclarativeOrconRelidoConflictRule {
     fn phase(&self) -> Phase {
         Phase::WholeMarking
     }
+    fn trusted(&self) -> bool {
+        true
+    }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E056/orcon-conflicts-relido").is_empty() {
             return vec![];
@@ -2246,6 +2291,9 @@ impl Rule<CapcoScheme> for DeclarativeOrconUsgovRelidoConflictRule {
     /// (ORCON-USGOV binds over RELIDO per §H.8 p140).
     fn phase(&self) -> Phase {
         Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if violations_for(attrs, "E057/orcon-usgov-conflicts-relido").is_empty() {
@@ -2738,6 +2786,9 @@ impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
     /// Text-correction replacements are byte-precise single-token splices.
     fn phase(&self) -> Phase {
         Phase::Localized
+    }
+    fn trusted(&self) -> bool {
+        true
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {

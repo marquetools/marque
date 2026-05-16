@@ -379,6 +379,54 @@ fn lint_portion_dense_benchmark(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// High-candidate-count advisory bench (perf/rule-trusted, issue #436)
+// ---------------------------------------------------------------------------
+//
+// `lint_high_candidate_count` measures the per-rule dispatch loop on an
+// input shape that maximizes the (candidate × rule) cross-product: ~200
+// minimal portion candidates `(S//NF)` packed into one document with no
+// prose interleaving. This is the input shape where the engine's
+// `catch_unwind` wrapper costs the most per `Engine::lint` call, and
+// therefore the input shape where `Rule::trusted()`'s short-circuit
+// matters most. Advisory bench — no entry in `benches/baseline.json`,
+// same pattern as `lint_prose_heavy` / `lint_portion_dense`. Report the
+// number in PRs that touch the rule-dispatch hot loop; don't gate on it.
+
+fn build_high_candidate_input(target_candidates: usize) -> Vec<u8> {
+    // One portion per line. `(S//NF)` is the minimal valid portion
+    // candidate: a classification + an abbreviated dissem that parses
+    // strictly. Newline separators keep each candidate on its own
+    // scanner-emitted span without forcing the page-break heuristic
+    // (`\n\n\n+` would reset PageContext mid-document, which is not
+    // what we're measuring).
+    let portion = "(S//NF)\n";
+    let portion_bytes = portion.as_bytes();
+    let mut input = Vec::with_capacity(portion_bytes.len() * target_candidates);
+    for _ in 0..target_candidates {
+        input.extend_from_slice(portion_bytes);
+    }
+    input
+}
+
+fn lint_high_candidate_count_benchmark(c: &mut Criterion) {
+    let input = build_high_candidate_input(200);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: matches `lint_10kb`'s pin so the per-rule
+    // dispatch-loop delta is measured against a pure strict-path
+    // baseline. Issue #436.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_high_candidate_count", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
 criterion_group!(
     benches,
     lint_latency_benchmark,
@@ -387,5 +435,6 @@ criterion_group!(
     lint_off_heavy_config_benchmark,
     lint_prose_heavy_benchmark,
     lint_portion_dense_benchmark,
+    lint_high_candidate_count_benchmark,
 );
 criterion_main!(benches);
