@@ -5039,10 +5039,14 @@ fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'stat
 ///   `CanonicalAttrs` when nothing in the input is a recognized CVE
 ///   token. Treating such a result as a successful parse would leave
 ///   the decoder dormant on exactly the mangled inputs it exists to
-///   recover (`SERCET//NOFORN`, `NOFORN//SECRET`, …). Strict is
-///   always called with `strict_evidence = true` internally; the
-///   decoder is always called with `strict_evidence = false`
-///   internally.
+///   recover (`SERCET//NOFORN`, `NOFORN//SECRET`, …). The dispatcher
+///   passes the caller's [`ParseContext`] through to both inner
+///   recognizers unmodified — [`StrictRecognizer::recognize`] ignores
+///   every field of `ParseContext` (its parameter is `_cx`), and by
+///   the time the dispatcher reaches the decoder leg the
+///   `cx.strict_evidence` early return above has already established
+///   that the flag is `false`, so the previous
+///   clone-with-`strict_evidence`-override was redundant.
 ///
 /// Other [`ParseContext`] fields (`zone`, `position`,
 /// `classification_floor`) pass through unchanged.
@@ -5063,13 +5067,15 @@ impl StrictOrDecoderRecognizer {
 
 impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
     fn recognize(&self, bytes: &[u8], offset: usize, cx: &ParseContext) -> Parsed<CapcoMarking> {
-        let strict_inner_cx = ParseContext {
-            strict_evidence: true,
-            ..cx.clone()
-        };
-        // Forward `offset` verbatim — inner recognizers do the shift,
-        // the dispatcher never double-shifts (issue #431).
-        let strict_result = self.strict.recognize(bytes, offset, &strict_inner_cx);
+        // Pass `cx` through to the strict recognizer unmodified.
+        // `StrictRecognizer::recognize` ignores every field of
+        // `ParseContext` (its parameter is `_cx`), so cloning to
+        // override `strict_evidence = true` would be pure overhead on
+        // the strict-complete fast path — which is every candidate in
+        // a well-formed document. Forward `offset` verbatim — inner
+        // recognizers do the shift, the dispatcher never double-shifts
+        // (issue #431).
+        let strict_result = self.strict.recognize(bytes, offset, cx);
 
         // When the outer caller asked for strict-only via
         // `strict_evidence = true`, collapse to the strict result —
@@ -5110,11 +5116,11 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         //   (b) Partial attrs (`(SERCET//NOFORN)` — NOFORN parsed, SERCET
         //       left in a Classification-kind span with
         //       `attrs.classification = None`) — incomplete Unambiguous.
-        let decoder_cx = ParseContext {
-            strict_evidence: false,
-            ..cx.clone()
-        };
-        let decoder_result = self.decoder.recognize(bytes, offset, &decoder_cx);
+        //
+        // Pass `cx` directly: the `cx.strict_evidence` early return
+        // above guarantees the flag is already `false`, so the
+        // previous clone-with-override was redundant.
+        let decoder_result = self.decoder.recognize(bytes, offset, cx);
 
         // Only adopt the decoder result when it produced an Unambiguous
         // marking. If the decoder is also uncertain, preserve the strict
