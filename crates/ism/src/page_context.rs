@@ -20,8 +20,10 @@
 //! | `sar_identifiers`      | union                    | Any SAR on any portion applies to page      |
 //! | `dissem_us`            | union (per namespace)    | Any US-attributed restriction on any portion applies |
 //! | `dissem_nato`          | union (per namespace)    | Any NATO-attributed restriction on any portion applies |
-//! | `rel_to`               | intersection             | Page is releasable only to countries that   |
-//! |                        |                          | appear in *every* REL TO portion            |
+//! | `rel_to`               | intersection (all-or-none) | Page is releasable only to countries that |
+//! |                        |                          | appear in *every* portion's REL TO list     |
+//! | `display_only_to`      | cross-axis intersection  | Banner DO = intersection of (REL TO ∪ DO)  |
+//! |                        |                          | across all portions, minus banner REL TO   |
 //! | `declassify_on`        | max date (furthest out)  | Most conservative declassification applies  |
 //! | `declass_exemption`    | most specific            | Exemption with longest default duration     |
 //!
@@ -29,9 +31,23 @@
 //! A portion marked `REL TO USA, GBR` is accessible to GBR. A different portion
 //! marked `REL TO USA, DEU` is accessible to DEU. The page as a whole is only
 //! accessible to countries that can see **all** portions — the intersection
-//! (typically USA only when mixed REL TO lists are present). Portions without any
-//! REL TO marking contribute no restriction; if one portion has `NOFORN`, that
-//! dissem control supersedes REL TO on the banner.
+//! (typically USA only when mixed REL TO lists are present). A portion that
+//! carries no REL TO axis at all clears banner REL TO entirely per CAPCO-2016
+//! §D.2 Table 3 row 16 (REL TO plus portion w/o FD&R → NOFORN) and row 26
+//! (REL TO plus DO-only portion → DO banner, no REL TO banner). If one
+//! portion has `NOFORN`, that dissem control supersedes REL TO on the banner.
+//!
+//! ## DISPLAY ONLY cross-axis note
+//! Per §D.2 Table 3 row 26 (Note): "if information is approved for release to
+//! a given audience it has automatically been approved for disclosure to that
+//! audience." So each portion's *display-permission* set is
+//! `REL TO ∪ DISPLAY ONLY` (release subsumes disclosure). Banner DO is the
+//! intersection of display-permission across all portions, minus countries
+//! already covered by banner REL TO (row 27: when both axes carry the same
+//! country, REL TO is the stricter axis and DO does not repeat it) and minus
+//! USA (the originator — the §H.8 p163 worked examples never list USA in the
+//! DO axis). If any portion lacks both REL TO and DO, banner DO is empty and
+//! the page falls into NOFORN per row 19.
 //!
 //! ## Declassification date note
 //! Per EO 13526, the declassification date defaults to:
@@ -243,13 +259,11 @@ impl PageContext {
             dissem_nato: self.expected_dissem_nato().into_boxed_slice(),
             non_ic_dissem: self.expected_non_ic_dissem().0.into_boxed_slice(),
             rel_to: self.expected_rel_to().into_boxed_slice(),
-            // Phase 1 of the DISPLAY ONLY axis lands in this PR with
-            // the parser-side recognition; the §D.2 Table 3 row-25/26
-            // intersection-with-common-element roll-up lands in
-            // Phase 2. For now the projection is empty — banner
-            // rules that consume the axis (none yet wired) will see
-            // Box<[]> until Phase 2 fills in the aggregation.
-            display_only_to: Box::new([]),
+            // DISPLAY ONLY axis roll-up per §D.2 Table 3 rows 18-20 +
+            // 25-27 — cross-axis intersection over (REL TO ∪ DO) with
+            // banner-REL-TO and USA subtraction. See
+            // [`Self::expected_display_only`].
+            display_only_to: self.expected_display_only().into_boxed_slice(),
             declassify_on: self.expected_declassify_on().cloned(),
             provenance: ProjectionProvenance::default(),
         }
@@ -546,6 +560,72 @@ impl PageContext {
             seen.insert(DissemControl::Nf);
         }
 
+        // Step 5: NF injection when FD&R intent is present but both
+        // foreign-audience axes clear at the banner level. This catches
+        // §D.2 Table 3 rows 9 (REL TO + REL TO no common), 10 (REL TO +
+        // RELIDO), 11 (REL TO + DO no common), 16 (REL TO + portion w/o
+        // FD&R), 18 (RELIDO + DO), 19 (DO + portion w/o FD&R), and 20
+        // (DO + DO no common) — each yields "banner NOFORN" per the
+        // Table 3 third column, but the existing NF/needs_nf paths
+        // don't fire for these row classes. Per row 1/2: NF appears
+        // whenever foreign-audience axes are unable to converge.
+        //
+        // RELIDO is intentionally NOT included in the FD&R-intent
+        // predicate. Per §D.2 Table 3 row 17 (RELIDO + portions w/o
+        // FD&R → "NOFORN or RELIDO (depends on origination date and
+        // non-FD&R caveats)"), the modern-default resolution is RELIDO
+        // — see project memory `marque-defaults-modern-fdr` (post-
+        // 28-Jun-2010 content defaults to RELIDO at banner). Adding
+        // RELIDO here would force the traditional NOFORN reading and
+        // contradict that default; the row-17 ambiguity stays as-is
+        // until a future config flag chooses between modes.
+        //
+        // No mutual-recursion risk: `expected_rel_to` and
+        // `expected_display_only` both call `expected_non_ic_dissem`,
+        // which does not call back into `expected_dissem_us`.
+        let has_fdr_intent = self
+            .portions
+            .iter()
+            .any(|a| !a.rel_to.is_empty() || !a.display_only_to.is_empty());
+        if has_fdr_intent
+            && self.expected_rel_to().is_empty()
+            && self.expected_display_only().is_empty()
+        {
+            seen.insert(DissemControl::Nf);
+        }
+
+        // Step 6: FD&R-family supersession when NF is in the banner.
+        // Per §D.2 Table 3 row 1+2 (NF + no other FD&R → NOFORN; NF +
+        // any other FD&R → NOFORN), NOFORN evicts every other FD&R-
+        // class dissem token from the banner. The CAPCO FD&R family
+        // (§H.8 + the §D.2 Table 3 enumeration in row 2) covers:
+        //
+        // - `Rel` — the bare REL marker (the REL TO country list axis
+        //   is independently cleared by `expected_rel_to`'s NF
+        //   short-circuit; this evicts the dissem-control token if a
+        //   portion carried it bare).
+        // - `Relido` — RELIDO (§H.8 p154 explicit: "Cannot be used
+        //   with NOFORN or DISPLAY ONLY").
+        // - `Eyes` — EYES ONLY (§H.8 p157-158; per §D.2 Table 3 row 2
+        //   "USA/[LIST] EYES ONLY" is one of the enumerated other-FD&R
+        //   markings that NF supersedes).
+        // - `Displayonly` — the bare DISPLAY ONLY marker (the
+        //   `display_only_to` country axis is independently cleared
+        //   by `expected_display_only`'s NF short-circuit).
+        //
+        // Step 6 fires regardless of how NF reached `seen` (Step 1
+        // union, Step 4 SBU-NF/LES-NF split or NODIS/EXDIS needs_nf,
+        // Step 5 FD&R-intent injection) and regardless of how the
+        // other FD&R tokens reached `seen`. The
+        // `noforn-clears-fdr-family` PageRewrite mirrors this for the
+        // `scheme.project` path.
+        if seen.contains(&DissemControl::Nf) {
+            seen.remove(&DissemControl::Rel);
+            seen.remove(&DissemControl::Relido);
+            seen.remove(&DissemControl::Eyes);
+            seen.remove(&DissemControl::Displayonly);
+        }
+
         seen.into_iter().collect()
     }
 
@@ -583,6 +663,9 @@ impl PageContext {
     ///
     /// Returns an empty slice when:
     /// - No portions have a REL TO list, OR
+    /// - **Any** portion has an empty REL TO list (per CAPCO-2016 §D.2
+    ///   Table 3 row 16: REL TO + portion w/o FD&R → NOFORN; row 26:
+    ///   REL TO + DO-only portion → DO banner only, no REL TO), OR
     /// - Any portion carries NOFORN (which supersedes REL TO on the banner)
     ///
     /// When the intersection is empty (no common countries), this
@@ -609,14 +692,14 @@ impl PageContext {
             return vec![];
         }
 
-        // Gather only portions that actually have a REL TO list.
-        let rel_to_portions: Vec<_> = self
-            .portions
-            .iter()
-            .filter(|a| !a.rel_to.is_empty())
-            .collect();
-
-        if rel_to_portions.is_empty() {
+        // Row-16 / row-26 strict enforcement: every portion must carry a
+        // non-empty REL TO list for the banner to carry REL TO. A
+        // portion with no REL TO either has no FD&R (row 16 → NOFORN),
+        // carries only DISPLAY ONLY (row 26 → DO banner, no REL TO), or
+        // carries only RELIDO (row 10 → NOFORN); all three clear banner
+        // REL TO. The empty-accumulator case (no portions at all) also
+        // returns empty.
+        if self.portions.is_empty() || self.portions.iter().any(|a| a.rel_to.is_empty()) {
             return vec![];
         }
 
@@ -625,7 +708,8 @@ impl PageContext {
         // trigraphs. Opaque codes (NATO, RSMA, …) pass through as
         // single atoms, so they survive intersection only when every
         // portion lists them.
-        let expanded: Vec<std::collections::BTreeSet<&str>> = rel_to_portions
+        let expanded: Vec<std::collections::BTreeSet<&str>> = self
+            .portions
             .iter()
             .map(|a| {
                 let mut set = std::collections::BTreeSet::new();
@@ -668,6 +752,152 @@ impl PageContext {
             }
         }
 
+        codes
+    }
+
+    /// The DISPLAY ONLY country-code list the banner must carry.
+    ///
+    /// Implements CAPCO-2016 §D.2 Table 3 rows 18-20 and 25-27 (the
+    /// DISPLAY ONLY axis roll-up rules).
+    ///
+    /// Each portion's *display-permission* set is
+    /// `REL TO ∪ DISPLAY ONLY` — per the row 26 Note, "if information
+    /// is approved for release to a given audience it has automatically
+    /// been approved for disclosure to that audience." The banner DO
+    /// list is the intersection of display-permission across all
+    /// portions, with three adjustments:
+    ///
+    /// - **All-or-nothing gate**: if any portion has empty
+    ///   display-permission (no REL TO and no DO), banner DO is empty
+    ///   per rows 19/20 (the page falls into NOFORN via the dissem
+    ///   layer's existing NF injection).
+    /// - **REL TO subtraction**: per row 27 (REL TO/DO commingled →
+    ///   REL TO/DO worked example), a country covered by banner REL TO
+    ///   does not repeat in banner DO. The DO list reports only the
+    ///   foreign audience that has display permission *without* release
+    ///   permission.
+    /// - **USA stripping**: USA is the originator; inferred from the
+    ///   §H.8 p163 worked examples, which never list USA in the DO
+    ///   axis (`SECRET//DISPLAY ONLY AFG`, `SECRET//DISPLAY ONLY AFG,
+    ///   IRQ`). No explicit prohibition exists in the source, but the
+    ///   §H.8 definition ("information that can be disclosed... to the
+    ///   foreign country(ies)") implicitly excludes the US originator.
+    ///
+    /// Returns an empty slice when:
+    /// - No portions have been accumulated.
+    /// - Any portion carries NOFORN (which supersedes DO on the banner,
+    ///   parallel to the REL TO supersession in
+    ///   [`Self::expected_rel_to`]).
+    /// - Any portion has neither REL TO nor DO (rows 19/20).
+    /// - The intersection contains only countries already in banner
+    ///   REL TO (row 27 — banner DO is non-empty only when DO covers
+    ///   *additional* countries beyond REL TO).
+    ///
+    /// Tetragraph expansion (FVEY → {AUS, CAN, GBR, NZL, USA})
+    /// applies on the way in, mirroring [`Self::expected_rel_to`];
+    /// opaque codes (NATO, RSMA, …) pass through as atoms.
+    pub fn expected_display_only(&self) -> Vec<CountryCode> {
+        if self.portions.is_empty() {
+            return vec![];
+        }
+
+        // NOFORN supersedes DO (parallel to expected_rel_to). NOFORN is
+        // a US-context dissem (§H.8 p145); the NATO-attributed channel
+        // carries only ORCON and REL TO per CAPCO-2016 p41, so checking
+        // dissem_us alone is correct by spec.
+        let any_noforn = self
+            .portions
+            .iter()
+            .any(|a| a.dissem_us.iter().any(|d| matches!(d, DissemControl::Nf)));
+        if any_noforn {
+            return vec![];
+        }
+
+        // NODIS/EXDIS short-circuit. §H.9 p172 (EXDIS) and p174 (NODIS)
+        // say "REL TO is not authorized in the banner line. In this
+        // case, NOFORN would convey in the banner line." The "NOFORN
+        // would convey" half is what reaches DO: once NF is in the
+        // banner dissem block, §D.2 Table 3 row 2 (NF + any other FD&R
+        // → NOFORN) supersedes both REL TO and DISPLAY ONLY axes. The
+        // existing `expected_non_ic_dissem` already returns `needs_nf`
+        // for this case; we surface it here as an early-return so the
+        // result is byte-identical to `any_noforn` above.
+        let (_, needs_nf) = self.expected_non_ic_dissem();
+        if needs_nf {
+            return vec![];
+        }
+
+        // Row-19 all-or-nothing gate: every portion must have a
+        // non-empty display-permission set (REL TO ∪ DO). Row 20 (DO +
+        // DO with no common country) is handled by the empty-
+        // intersection check at the end of this function — both
+        // portions have display-permission, so this gate doesn't fire;
+        // the intersection just comes out empty. Row 11 (REL TO + DO
+        // with no common) also lands in that path. Row 18 (RELIDO + DO)
+        // lands here because the RELIDO portion has no display-
+        // permission (RELIDO is a dissem-control, not a country axis).
+        let any_empty = self
+            .portions
+            .iter()
+            .any(|a| a.rel_to.is_empty() && a.display_only_to.is_empty());
+        if any_empty {
+            return vec![];
+        }
+
+        // Per-portion display-permission = expand(REL TO) ∪ expand(DO),
+        // intersected across all portions. Tetragraph expansion mirrors
+        // expected_rel_to for cross-axis consistency (a portion's
+        // FVEY REL TO and another portion's explicit AUS DO must
+        // intersect to {AUS}).
+        let expanded: Vec<std::collections::BTreeSet<&str>> = self
+            .portions
+            .iter()
+            .map(|a| {
+                let mut set = std::collections::BTreeSet::new();
+                for t in a.rel_to.iter().chain(a.display_only_to.iter()) {
+                    let s = t.as_str();
+                    if let Some(members) = expand_tetragraph(s) {
+                        for &m in members {
+                            set.insert(m);
+                        }
+                    } else {
+                        set.insert(s);
+                    }
+                }
+                set
+            })
+            .collect();
+
+        let mut result: std::collections::BTreeSet<&str> = expanded[0].clone();
+        for set in &expanded[1..] {
+            result = result.intersection(set).copied().collect();
+        }
+
+        // Subtract banner REL TO countries (row 27 — REL TO is the
+        // stricter axis and DO does not repeat its countries) and USA
+        // (originator, inferred from §H.8 p163 worked examples).
+        let rel_to = self.expected_rel_to();
+        let rel_set: std::collections::BTreeSet<&str> = rel_to.iter().map(|c| c.as_str()).collect();
+        result.remove("USA");
+        let result: std::collections::BTreeSet<&str> =
+            result.difference(&rel_set).copied().collect();
+
+        // Convert back to typed codes. DISPLAY ONLY rendering buckets
+        // 3-byte country codes before tetragraph/other-width opaque
+        // codes (§H.8 p164), with alphabetical ordering within each
+        // bucket.
+        let mut codes: Vec<CountryCode> = result
+            .iter()
+            .filter_map(|s| CountryCode::try_new(s.as_bytes()))
+            .collect();
+        codes.sort_by(|a, b| {
+            let a_is_trigraph = a.as_str().len() == 3;
+            let b_is_trigraph = b.as_str().len() == 3;
+            a_is_trigraph
+                .cmp(&b_is_trigraph)
+                .reverse()
+                .then_with(|| a.as_str().cmp(b.as_str()))
+        });
         codes
     }
 
@@ -1099,6 +1329,21 @@ impl PageContext {
                 .collect::<Vec<_>>()
                 .join(", ");
             dissem_parts.push(format!("REL TO {trigraphs}"));
+        }
+        // DISPLAY ONLY list (comma-delimited countries with
+        // "DISPLAY ONLY " prefix). Joined into the same dissem block as
+        // REL TO with `/` per §A.6 p16 within-category separator (the
+        // dissem family includes both REL TO and DISPLAY ONLY per
+        // Register Table 4 row 8). Banner-form prefix per §H.8 p163:
+        // both portion and banner forms write "DISPLAY ONLY" verbatim.
+        let display_only = self.expected_display_only();
+        if !display_only.is_empty() {
+            let codes = display_only
+                .iter()
+                .map(|t| t.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            dissem_parts.push(format!("DISPLAY ONLY {codes}"));
         }
         if !dissem_parts.is_empty() {
             blocks.push(dissem_parts.join("/"));
@@ -2569,5 +2814,463 @@ mod tests {
             ctx_cloned_nonempty.portions.capacity() >= DEFAULT_PORTIONS_CAPACITY,
             "PageContext::clone of a non-empty ctx must preserve the pre-size — the engine clones at this state (issue #430)"
         );
+    }
+
+    // ===========================================================================
+    // DISPLAY ONLY axis roll-up (CAPCO-2016 §D.2 Table 3 rows 18-20, 25-27)
+    // ===========================================================================
+
+    fn cc(s: &str) -> CountryCode {
+        CountryCode::try_new(s.as_bytes()).expect("valid country code")
+    }
+
+    #[test]
+    fn expected_display_only_row_25_intersection_with_common() {
+        // §D.2 Table 3 row 25: both portions carry DO with at least
+        // one common country → banner DO = common.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_display_only(),
+            vec![cc("AFG")],
+            "row 25: DO+DO intersection → common"
+        );
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "row 25: no REL TO axis present → banner REL TO empty"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_row_26_cross_axis_with_rel_to() {
+        // §D.2 Table 3 row 26: portion A DO [AFG, IRQ], portion B
+        // REL TO [USA, AFG, GBR] → banner DO [AFG], NO banner REL TO
+        // (release implies disclosure; the page can't release to anyone
+        // because portion A doesn't release at all).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("AFG"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_display_only(),
+            vec![cc("AFG")],
+            "row 26: DO ∩ REL TO → common (AFG)"
+        );
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "row 26 Note: REL TO is NOT in banner when any portion is DO-only — portion A doesn't release"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_row_27_commingled_both_axes() {
+        // §D.2 Table 3 row 27: both portions carry both REL TO and DO,
+        // at least one common in each → banner carries both axes.
+        // REL TO covers AFG (common); DO additionally covers IRQ
+        // (common across REL TO ∪ DO of each portion).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("AFG")].into_boxed_slice(),
+            display_only_to: vec![cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            display_only_to: vec![cc("NATO")].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_rel_to(),
+            vec![cc("USA"), cc("AFG")],
+            "row 27: REL TO intersection = USA + AFG"
+        );
+        assert_eq!(
+            ctx.expected_display_only(),
+            vec![cc("IRQ")],
+            "row 27: display-permission ∩ minus banner REL TO = IRQ (AFG dropped because it's in REL TO; NATO not in portion A)"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_row_19_portion_without_fdr_clears() {
+        // §D.2 Table 3 row 19: one portion has DO, another has neither
+        // REL TO nor DO → banner DO empty (page falls into NOFORN via
+        // the dissem layer).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            // No REL TO, no DO, no NF — just a bare portion.
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "row 19: portion w/o display-permission clears banner DO"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_row_20_no_common_country_clears() {
+        // §D.2 Table 3 row 20: both portions have DO but no common
+        // country → banner DO empty (banner becomes NOFORN).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "row 20: DO ∩ DO with no common country → empty"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_noforn_supersedes() {
+        // NOFORN clears DO parallel to REL TO supersession.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "NF supersedes DO (§H.8 p145 — NF wins over any foreign-audience axis)"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_nodis_supersedes() {
+        // §H.9 p174: NODIS in any portion forces banner NOFORN, which
+        // supersedes both REL TO and DO. Unclassified context (§H.9
+        // gates on dissem axis, not classification).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            non_ic_dissem: vec![NonIcDissem::Nodis].into(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "NODIS forces NF in banner → DO axis cleared"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_strips_usa() {
+        // USA is the originator — never appears in DO axis per
+        // §H.8 p163 worked examples. If a portion's DO list includes
+        // USA (mis-authored), it must be dropped from the banner.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("USA"), cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("USA"), cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_display_only(),
+            vec![cc("AFG")],
+            "USA stripped from DO banner — originator is implicit"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_subtracts_banner_rel_to() {
+        // §D.2 Table 3 row 21/27: a country covered by banner REL TO
+        // does NOT repeat in banner DO. Banner REL TO = AFG (both
+        // portions); DO list per portion includes AFG too, but banner
+        // DO excludes AFG because REL TO already covers it.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("AFG")].into_boxed_slice(),
+            display_only_to: vec![cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            display_only_to: Box::new([]),
+            ..Default::default()
+        });
+        assert_eq!(
+            ctx.expected_rel_to(),
+            vec![cc("USA"), cc("AFG")],
+            "REL TO intersection = USA + AFG"
+        );
+        assert_eq!(
+            ctx.expected_display_only(),
+            vec![cc("IRQ")],
+            "DO axis carries only what REL TO doesn't (IRQ, not AFG)"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_exdis_supersedes() {
+        // §H.9 p172: EXDIS in any portion forces banner NOFORN
+        // ("REL TO is not authorized... NOFORN would convey").
+        // NF at banner supersedes DO per §D.2 Table 3 row 2.
+        // Symmetric with the NODIS test above.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Unclassified)),
+            non_ic_dissem: vec![NonIcDissem::Exdis].into(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "EXDIS forces NF in banner → DO axis cleared (§H.9 p172 → §D.2 row 2)"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_row_18_relido_plus_do_clears() {
+        // §D.2 Table 3 row 18: RELIDO + DISPLAY ONLY → NOFORN.
+        // A RELIDO portion carries no REL TO list and no DO list (RELIDO
+        // is a `DissemControl`, not a country-list axis), so the
+        // all-or-nothing gate fires and banner DO empties.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            dissem_us: vec![DissemControl::Relido].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "row 18: RELIDO portion clears DO (portion has no display-permission)"
+        );
+    }
+
+    #[test]
+    fn expected_display_only_row_11_rel_to_plus_do_no_common_clears() {
+        // §D.2 Table 3 row 11: REL TO + DO with no common country →
+        // NOFORN. Each portion has display-permission, so the
+        // all-or-nothing gate doesn't fire — the empty intersection
+        // does.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_display_only().is_empty(),
+            "row 11: REL TO ∩ DO with no common country → empty"
+        );
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "row 11: REL TO banner empty because portion 2 has no REL TO"
+        );
+    }
+
+    #[test]
+    fn expected_rel_to_row_10_relido_only_portion_clears() {
+        // §D.2 Table 3 row 10: REL TO + RELIDO → NOFORN. Behavioral-
+        // regression guard for the row-16 strict enforcement: a RELIDO
+        // portion has no REL TO list, so banner REL TO is cleared
+        // (under the pre-PR code path the RELIDO portion was filtered
+        // out and the REL TO portion's intersection won — wrong per
+        // row 10).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            dissem_us: vec![DissemControl::Relido].into_boxed_slice(),
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "row 10: RELIDO + REL TO → banner REL TO empty"
+        );
+    }
+
+    #[test]
+    fn rel_to_row_16_portion_without_fdr_clears_rel_to() {
+        // §D.2 Table 3 row 16: REL TO + portion w/o FD&R → NOFORN.
+        // Regression guard for the row-16 strict enforcement added
+        // alongside the DISPLAY ONLY axis: a portion that has no
+        // REL TO axis (even without NF/NODIS/EXDIS to trip the existing
+        // short-circuits) clears banner REL TO entirely.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            // Bare portion — no REL TO, no DO, no NF/NODIS/EXDIS.
+            ..Default::default()
+        });
+        assert!(
+            ctx.expected_rel_to().is_empty(),
+            "row 16: portion w/o FD&R clears banner REL TO"
+        );
+    }
+
+    #[test]
+    fn render_banner_injects_noforn_for_row_16_rel_to_plus_bare() {
+        // §D.2 Table 3 row 16: REL TO + portion w/o FD&R → NOFORN at
+        // banner. The row-16 strict gate in `expected_rel_to` clears
+        // the REL TO axis; the new Step 5 in `expected_dissem_us`
+        // detects "FD&R intent on some portion + neither rolled-up
+        // axis carries" and injects NF.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            // Bare portion — no FD&R axis.
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
+    }
+
+    #[test]
+    fn render_banner_injects_noforn_for_row_10_rel_to_plus_relido() {
+        // §D.2 Table 3 row 10: REL TO + RELIDO → NOFORN. RELIDO is a
+        // DissemControl, not a country-list axis, so the RELIDO portion
+        // has empty REL TO — row-16 gate clears banner REL TO, Step 5
+        // injects NF. Per §D.2 row 2 + §H.8 p154 (RELIDO "Cannot be
+        // used with NOFORN"), Step 5 also evicts RELIDO from the
+        // dissem block so the banner doesn't render the invalid
+        // NOFORN/RELIDO pair.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Relido].into_boxed_slice(),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
+    }
+
+    #[test]
+    fn render_banner_evicts_relido_when_cross_portion_noforn() {
+        // §H.8 p154 + §D.2 row 2: RELIDO and NOFORN cannot coexist in
+        // the banner. When NF arrives from one portion and RELIDO
+        // from another, the page-context union (Step 1) puts both in
+        // `seen`; Step 6 unconditionally evicts RELIDO whenever NF
+        // ends up in `seen`. (Portion-level NF + RELIDO is an E054
+        // conflict caught at the rule layer; this test exercises the
+        // cross-portion case that the rule layer doesn't reach.)
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Relido].into_boxed_slice(),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
+    }
+
+    #[test]
+    fn render_banner_injects_noforn_for_row_19_do_plus_bare() {
+        // §D.2 Table 3 row 19: DO + portion w/o FD&R → NOFORN.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            display_only_to: vec![cc("AFG")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
+    }
+
+    #[test]
+    fn render_expected_banner_with_display_only_axis() {
+        // End-to-end: a two-portion page with row-25 DO intersection
+        // produces a banner with DO inside the dissem block, single-
+        // slash separated per §A.6 p16 within-category separator.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            display_only_to: vec![cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            display_only_to: vec![cc("AFG"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//DISPLAY ONLY AFG");
+    }
+
+    #[test]
+    fn render_expected_banner_with_rel_to_and_display_only() {
+        // Row 27: REL TO + DO commingled. Banner block is the dissem
+        // family with REL TO and DO joined by `/` (within-category).
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![cc("USA"), cc("AFG")].into_boxed_slice(),
+            display_only_to: vec![cc("IRQ")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            rel_to: vec![cc("USA"), cc("AFG"), cc("IRQ")].into_boxed_slice(),
+            display_only_to: Box::new([]),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//REL TO USA, AFG/DISPLAY ONLY IRQ");
     }
 }

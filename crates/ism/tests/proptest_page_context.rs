@@ -138,6 +138,19 @@ proptest! {
     // union direction post PR 9b / FR-046 split — the prior
     // `dissem_controls_union_superset` name referred to the retired
     // unified field.
+    //
+    // Exception: the FD&R-family tokens (REL, RELIDO, EYES, DISPLAY
+    // ONLY marker) are evicted by `expected_dissem_us` Step 6
+    // whenever NF reaches the rolled-up banner. Per §D.2 Table 3
+    // rows 1+2 (NF + no other FD&R → NOFORN; NF + any other FD&R
+    // → NOFORN) and §H.8 p154 / p157, NOFORN supersedes every other
+    // FD&R-class marking at banner scope. NF may arrive at the
+    // banner via any of the union, SBU-NF/LES-NF split, NODIS/EXDIS
+    // needs_nf, or Step 5 FD&R-intent injection paths; the eviction
+    // is unconditional on NF presence, so a portion-contributed FD&R
+    // token and a separately-contributed NF (cross-portion, not
+    // portion-level) is correctly resolved to banner NOFORN with the
+    // other FD&R tokens dropped.
     #[test]
     fn dissem_us_union_superset(portions in arb_portions()) {
         let mut ctx = PageContext::new();
@@ -146,9 +159,22 @@ proptest! {
         }
         let rolled: std::collections::BTreeSet<DissemControl> =
             ctx.expected_dissem_us().into_iter().collect();
+        let banner_has_noforn = rolled.contains(&DissemControl::Nf);
+
+        let fdr_family = [
+            DissemControl::Rel,
+            DissemControl::Relido,
+            DissemControl::Eyes,
+            DissemControl::Displayonly,
+        ];
 
         for portion in &portions {
             for ctrl in portion.dissem_us.iter() {
+                if banner_has_noforn && fdr_family.contains(ctrl) {
+                    // Eviction is the intended behavior (Step 6);
+                    // skip the superset check for this token.
+                    continue;
+                }
                 prop_assert!(
                     rolled.contains(ctrl),
                     "dissem_us control {ctrl:?} in portion but missing from US roll-up",
