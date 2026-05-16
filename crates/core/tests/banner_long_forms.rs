@@ -248,3 +248,59 @@ fn talent_keyhole_does_not_match_partial_prefix() {
         "partial 'TALENT' must remain Unknown (not silently match TK); got {unknown:?}"
     );
 }
+
+#[test]
+fn fgi_short_form_with_lowercase_country_emits_unknown() {
+    // `starts_with_fgi_prefix("FGI deu")` passes the gate, but the
+    // parser rejects lowercase per `admits_country_token` (ASCII
+    // upper). The block must not silently drop — emit Unknown so
+    // E008 can flag the malformed list.
+    let attrs = parse_banner("SECRET//FGI deu//NOFORN");
+    let unknown = unknown_spans(&attrs);
+    assert!(
+        unknown.iter().any(|(t, _, _)| t == "FGI deu"),
+        "malformed `FGI deu` must surface as Unknown; got {unknown:?}"
+    );
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "malformed input must not produce an FgiMarker"
+    );
+}
+
+#[test]
+fn fgi_long_form_with_invalid_country_token_emits_unknown() {
+    // The long-form gate widened the prefix set; a numeric-only
+    // country token like `99` passes the gate (long-form prefix
+    // matches) but fails the parser. Must surface as Unknown.
+    let attrs = parse_banner("SECRET//FOREIGN GOVERNMENT INFORMATION 99//NOFORN");
+    let unknown = unknown_spans(&attrs);
+    assert!(
+        unknown
+            .iter()
+            .any(|(t, _, _)| t == "FOREIGN GOVERNMENT INFORMATION 99"),
+        "malformed long-form FGI with invalid country token must surface as Unknown; got {unknown:?}"
+    );
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "malformed long-form input must not produce an FgiMarker"
+    );
+}
+
+#[test]
+fn fgi_long_form_with_lowercase_country_emits_unknown() {
+    // Lowercase country in the long-form path — same silent-drop
+    // class as `FGI deu` but via the 30-byte prefix. Must surface
+    // as Unknown.
+    let attrs = parse_banner("SECRET//FOREIGN GOVERNMENT INFORMATION deu//NOFORN");
+    let unknown = unknown_spans(&attrs);
+    assert!(
+        unknown
+            .iter()
+            .any(|(t, _, _)| t == "FOREIGN GOVERNMENT INFORMATION deu"),
+        "malformed long-form FGI with lowercase country must surface as Unknown; got {unknown:?}"
+    );
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "malformed long-form input must not produce an FgiMarker"
+    );
+}

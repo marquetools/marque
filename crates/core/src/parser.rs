@@ -679,6 +679,19 @@ impl<'t> Parser<'t> {
                         span,
                         text: trimmed.into(),
                     });
+                } else {
+                    // Gate passed but country-list parse failed
+                    // (e.g., `FGI deu` lowercase, `FOREIGN GOVERNMENT
+                    // INFORMATION 99` invalid token). Emit Unknown so
+                    // E008 can flag the malformed block — Rust's
+                    // if/else chain has already consumed this arm, so
+                    // without this branch the block would silently
+                    // drop from the token stream.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
+                        span,
+                        text: trimmed.into(),
+                    });
                 }
             } else if let Some(ctrl) =
                 DissemControl::parse(trimmed).or_else(|| parse_dissem_full_form(trimmed))
