@@ -1394,6 +1394,19 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
         cve_dir.display()
     );
 
+    // Issue #453: when building for wasm32, drop the heavy English prose
+    // strings — long-form term descriptions, free-form CVE Source text,
+    // and POC name/email — to keep them out of the WASM rodata. The
+    // accessor surface in `crates/capco/src/vocabulary.rs` keeps reading
+    // these fields; on WASM they return empty `&'static str`. Production
+    // call sites for `scheme.authority()` / `scheme.point_of_contact()`
+    // / `scheme.metadata().description` are test-only as of 2026-05-16,
+    // so empty strings here are a no-op for runtime semantics. Native
+    // CLI / server / test builds keep the full strings.
+    let is_wasm = env::var("CARGO_CFG_TARGET_ARCH")
+        .map(|s| s == "wasm32")
+        .unwrap_or(false);
+
     // Deduplicate tokens by value. The CVE_ISM/ JSON set has overlap
     // (e.g., FOUO appears in CVEnumISMDissem.json AND CVEnumISMNotice
     // does not, but classification levels appear in both
@@ -1421,6 +1434,16 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          /// metadata entry references one of these so the same authority,\n\
          /// point of contact, and schema-version provenance is shared\n\
          /// across all tokens published in that file.\n\
+         ///\n\
+         /// **wasm32 elision (issue #453)**: when this build runs with\n\
+         /// `CARGO_CFG_TARGET_ARCH == \"wasm32\"`, the informational\n\
+         /// `source`, `poc_name`, and `poc_email` fields are emitted\n\
+         /// as `\"\"` to drop their prose strings out of the generated\n\
+         /// source. Identifying fields (`const_name`, `urn`,\n\
+         /// `owner_producer`, `spec_version`, `des_version`,\n\
+         /// `schema_version`) and the `title` are always populated.\n\
+         /// This is the documented carve-out described on the\n\
+         /// `Vocabulary` trait invariant in `marque-scheme`.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct CveFileMetadata {{\n\
          \x20   /// Symbolic constant name (e.g., \"CVE_DISSEM\").\n\
@@ -1430,11 +1453,20 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
          \x20   pub urn: &'static str,\n\
          \x20   /// CVE title text.\n\
          \x20   pub title: &'static str,\n\
-         \x20   /// Free-form `Source` text from the CVE IRM.\n\
+         \x20   /// Free-form `Source` text from the CVE IRM. **Empty\n\
+         \x20   /// on `wasm32`** per the struct-level wasm32 elision\n\
+         \x20   /// note above (issue #453); populated with the ODNI\n\
+         \x20   /// publishing register name on every other target.\n\
          \x20   pub source: &'static str,\n\
-         \x20   /// Point-of-contact name.\n\
+         \x20   /// Point-of-contact name. **Empty on `wasm32`** per\n\
+         \x20   /// the struct-level wasm32 elision note above (issue\n\
+         \x20   /// #453); populated with the ODNI POC name on every\n\
+         \x20   /// other target.\n\
          \x20   pub poc_name: &'static str,\n\
-         \x20   /// Point-of-contact email.\n\
+         \x20   /// Point-of-contact email. **Empty on `wasm32`** per\n\
+         \x20   /// the struct-level wasm32 elision note above (issue\n\
+         \x20   /// #453); populated with the ODNI POC email on every\n\
+         \x20   /// other target.\n\
          \x20   pub poc_email: &'static str,\n\
          \x20   /// Owner/producer code, e.g., `\"USA\"`.\n\
          \x20   pub owner_producer: &'static str,\n\
@@ -1451,13 +1483,22 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     writeln!(
         content,
         "/// Per-token metadata published by exactly one [`CveFileMetadata`].\n\
+         ///\n\
+         /// **wasm32 elision (issue #453)**: when this build runs with\n\
+         /// `CARGO_CFG_TARGET_ARCH == \"wasm32\"`, the `description`\n\
+         /// field is emitted as `\"\"` regardless of whether the source\n\
+         /// CVE file provided one. `value` and `cve_file` are always\n\
+         /// populated. See the `Vocabulary` trait invariant in\n\
+         /// `marque-scheme` for the documented carve-out.\n\
          #[derive(Debug, Clone, Copy)]\n\
          pub struct TokenMetadataEntry {{\n\
          \x20   /// Canonical CVE value, e.g., `\"NOFORN\"` or `\"S\"`.\n\
          \x20   pub value: &'static str,\n\
          \x20   /// Long-form description, e.g., `\"NOT RELEASABLE TO\n\
-         \x20   /// FOREIGN NATIONALS\"`. Empty when the source CVE file\n\
-         \x20   /// did not provide a description.\n\
+         \x20   /// FOREIGN NATIONALS\"`. **Empty on `wasm32` builds**\n\
+         \x20   /// (issue #453) per the struct-level wasm32 elision\n\
+         \x20   /// note above. On every other target, empty only when\n\
+         \x20   /// the source CVE file did not provide a description.\n\
          \x20   pub description: &'static str,\n\
          \x20   /// CVE file that published this token.\n\
          \x20   pub cve_file: &'static CveFileMetadata,\n\
@@ -1476,6 +1517,15 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     // `crates/ism/tests/vocabulary_tables.rs` enforces it.
     for f in &files {
         writeln!(content, "/// CVE-file metadata for `{}`.", f.const_ident).unwrap();
+        // On wasm32, drop the free-form `Source` / POC name+email strings
+        // (issue #453). They are read only by `scheme.authority()` /
+        // `scheme.point_of_contact()` accessors that have no production
+        // call sites today.
+        let (source_lit, poc_name_lit, poc_email_lit) = if is_wasm {
+            ("", "", "")
+        } else {
+            (f.source.as_str(), f.poc_name.as_str(), f.poc_email.as_str())
+        };
         writeln!(
             content,
             "pub static {ident}: CveFileMetadata = CveFileMetadata {{\n\
@@ -1494,9 +1544,9 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
             name = f.const_ident,
             urn = f.urn,
             title = f.title,
-            source = f.source,
-            poc_name = f.poc_name,
-            poc_email = f.poc_email,
+            source = source_lit,
+            poc_name = poc_name_lit,
+            poc_email = poc_email_lit,
             owner_producer = f.owner_producer,
             spec_version = f.spec_version,
             des_version = f.des_version,
@@ -1529,11 +1579,21 @@ fn generate_vocabulary(out: &Path, ism_root: &Path) {
     )
     .unwrap();
     for (value, entry) in &by_value {
+        // On wasm32, drop the long-form English description text (the
+        // single largest contributor to the generated vocabulary table's
+        // size — avg ~100-300 bytes per token across 347 rows). Read
+        // only by audit-record narration paths that have no production
+        // call sites today (issue #453).
+        let desc_lit: &str = if is_wasm {
+            ""
+        } else {
+            entry.description.as_str()
+        };
         writeln!(
             content,
             "    TokenMetadataEntry {{ value: {value:?}, description: {desc:?}, cve_file: &{cve_file} }},",
             value = value,
-            desc = entry.description,
+            desc = desc_lit,
             cve_file = entry.cve_file_const_ident,
         )
         .unwrap();
