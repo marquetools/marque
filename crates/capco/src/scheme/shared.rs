@@ -14,7 +14,6 @@
 
 use super::CompanionForm;
 
-
 impl CompanionForm {
     pub(crate) fn orcon(self) -> &'static str {
         match self {

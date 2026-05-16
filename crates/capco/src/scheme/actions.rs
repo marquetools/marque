@@ -10,20 +10,16 @@
 //! page-context-to-attrs projection, foreign-source extraction, and the
 //! Pattern-C strip helpers + companion emitters.
 
-use marque_ism::{
-    CanonicalAttrs, CountryCode, MarkingClassification, PageContext,
-};
+use marque_ism::{CanonicalAttrs, CountryCode, MarkingClassification, PageContext};
 use marque_scheme::{
-    ApplyIntentError, CategoryId, FactRef, MarkingScheme,
-    ReplacementIntent, TokenId,
+    ApplyIntentError, CategoryId, FactRef, MarkingScheme, ReplacementIntent, TokenId,
 };
 
-use super::*;
 use super::predicates::{
     dissem_token_id_for_form, dissem_token_span, first_sci_span, infer_companion_form,
     last_dissem_span, us_level,
 };
-
+use super::*;
 
 /// Extract the set of foreign country codes contributing to FGI
 /// semantics from a `MarkingClassification`.
@@ -202,7 +198,11 @@ pub(crate) fn merge_fgi_markers(
 /// the same two-form separation used by the existing `(CAT_DISSEM,
 /// TOK_NOFORN)` arm (dispatches on `TOK_NOFORN`, scans
 /// `DissemControl::Nf`).
-pub(crate) fn capco_category_contains(m: &CapcoMarking, category: CategoryId, token: TokenId) -> bool {
+pub(crate) fn capco_category_contains(
+    m: &CapcoMarking,
+    category: CategoryId,
+    token: TokenId,
+) -> bool {
     let attrs = &m.0;
     if category == CAT_DISSEM && token == TOK_NOFORN {
         // PR 9b (T132): "Contains NOFORN" is namespace-agnostic — the
@@ -291,7 +291,11 @@ pub(crate) fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
 /// `CategoryAction::Replace { category, with }` evaluator. The `with`
 /// argument supplies a full marking; Phase B copies only the named
 /// category's storage out.
-pub(crate) fn capco_category_replace(m: &mut CapcoMarking, category: CategoryId, with: &CapcoMarking) {
+pub(crate) fn capco_category_replace(
+    m: &mut CapcoMarking,
+    category: CategoryId,
+    with: &CapcoMarking,
+) {
     let attrs = &mut m.0;
     if category == CAT_REL_TO {
         attrs.rel_to = with.0.rel_to.clone();

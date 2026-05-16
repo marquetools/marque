@@ -22,8 +22,7 @@
 //! numbers are opaque — the engine only compares them for equality.
 //! They're kept as constants so tests can reference them.
 
-use marque_ism::{
-    CanonicalAttrs, Classification, MarkingClassification, PageContext, TokenKind};
+use marque_ism::{CanonicalAttrs, Classification, MarkingClassification, PageContext, TokenKind};
 use marque_scheme::{
     ApplyIntentError,
     Category,
@@ -49,7 +48,8 @@ use marque_scheme::{
     Severity,
     Template,
     TokenId,
-    TokenRef};
+    TokenRef,
+};
 
 // ---------------------------------------------------------------------------
 // Sibling-module declarations (issue #466 Stage-1 structural lift)
@@ -406,7 +406,8 @@ impl CapcoMarking {
     pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
         use crate::lattice::{
             AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet, JointSet,
-            NatoDissemSet, RelToBlock, SarSet, SciSet};
+            NatoDissemSet, RelToBlock, SarSet, SciSet,
+        };
 
         let mut out = CanonicalAttrs::default();
 
@@ -875,7 +876,8 @@ impl Lattice for CapcoMarking {
                 let min = x.effective_level().min(y.effective_level());
                 Some(marque_ism::MarkingClassification::Us(min))
             }
-            _ => None};
+            _ => None,
+        };
 
         let sci: Vec<_> = a
             .sci_controls
@@ -952,7 +954,8 @@ pub enum CapcoOpenVocabRef {
     /// CAT_REL_TO axis: E014 (JOINT participants require REL TO
     /// coverage, §H.3 p57) emits one `FactAdd { CountryCode(...),
     /// Scope::Portion }` per missing JOINT co-owner.
-    CountryCode(marque_ism::CountryCode)}
+    CountryCode(marque_ism::CountryCode),
+}
 
 /// CAPCO's implementation of `MarkingScheme`.
 ///
@@ -971,7 +974,8 @@ pub struct CapcoScheme {
     categories: Vec<Category>,
     constraints: Vec<Constraint>,
     templates: Vec<Template>,
-    page_rewrites: Vec<PageRewrite<CapcoScheme>>}
+    page_rewrites: Vec<PageRewrite<CapcoScheme>>,
+}
 
 impl std::fmt::Debug for CapcoScheme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1059,7 +1063,8 @@ pub enum CapcoParseError {
     /// `CapcoScheme::parse` is intentionally unimplemented in Phase A.
     /// Use `marque_core::Parser` for actual parsing until Phase B/E
     /// routes it through the scheme trait.
-    NotImplemented}
+    NotImplemented,
+}
 
 impl CapcoScheme {
     /// Evaluate a single constraint by `name` against raw
@@ -1104,7 +1109,8 @@ impl CapcoScheme {
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
                         citation: label,
                         span: None,
-                        severity: None}]
+                        severity: None,
+                    }]
                 } else {
                     Vec::new()
                 }
@@ -1116,7 +1122,8 @@ impl CapcoScheme {
                         message: format!("token {left:?} requires {right:?} but it is missing"),
                         citation: label,
                         span: None,
-                        severity: None}]
+                        severity: None,
+                    }]
                 } else {
                     Vec::new()
                 }
@@ -1157,7 +1164,8 @@ impl CapcoScheme {
                             ),
                             citation: label,
                             span: None,
-                            severity: None})
+                            severity: None,
+                        })
                         .collect()
                 }
             }
@@ -1168,7 +1176,8 @@ impl CapcoScheme {
                     v.citation = label;
                     v
                 })
-                .collect()}
+                .collect(),
+        }
     }
 
     /// Look up the [`FixIntent`] a catalog row produces against
@@ -1484,7 +1493,9 @@ impl MarkingScheme for CapcoScheme {
                 // Portion }` intents land on the same axis as the
                 // closed-CVE `TOK_USA` / `TOK_REL_TO` sentinels used by
                 // FactRemove paths in PR 3c.B Sub-PR 8.D.2.
-                CapcoOpenVocabRef::CountryCode(_) => CAT_REL_TO})}
+                CapcoOpenVocabRef::CountryCode(_) => CAT_REL_TO,
+            }),
+        }
     }
 
     /// Apply a batch of [`ReplacementIntent`]s to a [`CapcoMarking`].
@@ -1531,7 +1542,8 @@ impl MarkingScheme for CapcoScheme {
                     // invariant requires the batch to continue.
                     continue;
                 }
-                Err(e) => return Err(e)}
+                Err(e) => return Err(e),
+            }
         }
         if any_applied {
             Ok(out)
@@ -1593,7 +1605,8 @@ impl MarkingScheme for CapcoScheme {
                         CategoryPredicate::Empty { category } => {
                             !capco_category_has_values(&out, *category)
                         }
-                        CategoryPredicate::Custom(f) => f(&out)};
+                        CategoryPredicate::Custom(f) => f(&out),
+                    };
                     if fires {
                         match &rw.action {
                             CategoryAction::Clear { category } => {
@@ -2078,7 +2091,8 @@ const CLOSURE_NOFORN_SAR: ClosureRule = ClosureRule {
     triggers: &[TokenRef::AnyInCategory(CAT_SAR)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// Trio 1, row 2: RD / FRD / TFNI imply NOFORN unless FD&R-marked.
 ///
@@ -2096,7 +2110,8 @@ const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// Trio 1, row 3: DOD/DOE UCNI implies NOFORN unless FD&R-marked.
 ///
@@ -2111,7 +2126,8 @@ const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
     triggers: &[TokenRef::Token(TOK_UCNI)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// Trio 1, row 4: Any FGI atom implies NOFORN unless FD&R-marked.
 ///
@@ -2140,7 +2156,8 @@ const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// Trio 1, row 5: ORCON / ORCON-USGOV implies NOFORN unless FD&R-marked.
 ///
@@ -2154,7 +2171,8 @@ const CLOSURE_NOFORN_ORCON: ClosureRule = ClosureRule {
     triggers: &[TokenRef::Token(TOK_ORCON), TokenRef::Token(TOK_ORCON_USGOV)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// Trio 1, row 6: IMCON / DEA SENSITIVE imply NOFORN unless FD&R-marked.
 ///
@@ -2168,7 +2186,8 @@ const CLOSURE_NOFORN_IMCON_DSEN: ClosureRule = ClosureRule {
     triggers: &[TokenRef::Token(TOK_IMCON), TokenRef::Token(TOK_DSEN)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// Trio 1, row 7: Non-IC controls LIMDIS / LES / SBU / SSI imply NOFORN
 /// unless FD&R-marked.
@@ -2188,7 +2207,8 @@ const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
-    default_severity: Severity::Info};
+    default_severity: Severity::Info,
+};
 
 /// The full static CAPCO closure-rule catalog.
 ///
@@ -2283,7 +2303,8 @@ pub(crate) enum DissemFamilyMembership {
     /// Row renders something else (classification, SCI, SAR, AEA,
     /// FGI, non-IC dissem, declassify). Always `//` between this
     /// row and any neighbor that emits.
-    Other}
+    Other,
+}
 
 /// Per-axis renderer dispatch row.
 ///
@@ -2299,7 +2320,8 @@ pub(crate) struct AxisRenderRow {
     pub category: CategoryId,
     /// Render the axis's contribution to the canonical form for the
     /// given `scope`, appending bytes to `out`.
-    pub render: fn(&CapcoMarking, Scope, &mut dyn core::fmt::Write) -> core::fmt::Result}
+    pub render: fn(&CapcoMarking, Scope, &mut dyn core::fmt::Write) -> core::fmt::Result,
+}
 
 /// Per-axis renderer dispatch table.
 ///
@@ -2314,25 +2336,32 @@ pub(crate) struct AxisRenderRow {
 pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
     AxisRenderRow {
         category: CAT_CLASSIFICATION,
-        render: crate::render::render_classification::render_classification},
+        render: crate::render::render_classification::render_classification,
+    },
     AxisRenderRow {
         category: CAT_SCI,
-        render: crate::render::render_sci::render_sci},
+        render: crate::render::render_sci::render_sci,
+    },
     AxisRenderRow {
         category: CAT_SAR,
-        render: crate::render::render_sar::render_sar},
+        render: crate::render::render_sar::render_sar,
+    },
     AxisRenderRow {
         category: CAT_AEA,
-        render: crate::render::render_aea::render_aea},
+        render: crate::render::render_aea::render_aea,
+    },
     AxisRenderRow {
         category: CAT_FGI_MARKER,
-        render: crate::render::render_fgi::render_fgi},
+        render: crate::render::render_fgi::render_fgi,
+    },
     AxisRenderRow {
         category: CAT_DISSEM,
-        render: crate::render::render_dissem::render_dissem},
+        render: crate::render::render_dissem::render_dissem,
+    },
     AxisRenderRow {
         category: CAT_REL_TO,
-        render: crate::render::render_rel_to::render_rel_to},
+        render: crate::render::render_rel_to::render_rel_to,
+    },
     // DISPLAY ONLY between REL TO and non-IC dissem per CAPCO-2016
     // §G.1 Table 4 row 8 ordering (the IC dissem-category sequence
     // ends with `DISPLAY ONLY [LIST]`). Like REL TO, DISPLAY ONLY
@@ -2343,7 +2372,8 @@ pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
     // is informational; dispatch is by declaration order.
     AxisRenderRow {
         category: CAT_DISSEM,
-        render: crate::render::render_display_only::render_display_only},
+        render: crate::render::render_display_only::render_display_only,
+    },
     // Non-IC dissem comes after REL TO in §A.6 sequence (§A.6 p16:
     // "Non-IC Dissemination Control Markings — must follow,
     // Dissemination Controls"). REL TO and DISPLAY ONLY are part
@@ -2354,14 +2384,16 @@ pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
     // ONLY dissem-family rows (not `/`).
     AxisRenderRow {
         category: CAT_NON_IC_DISSEM,
-        render: crate::render::render_non_ic_dissem::render_non_ic_dissem},
+        render: crate::render::render_non_ic_dissem::render_non_ic_dissem,
+    },
     // Declassify-on is a no-op in the banner-line dispatch (the CAB
     // is a separate block; see render::render_declassify module doc).
     // Kept in the table so the declassify axis is visible to future
     // CAB-rendering work.
     AxisRenderRow {
         category: CAT_DECLASSIFY_ON,
-        render: crate::render::render_declassify::render_declassify},
+        render: crate::render::render_declassify::render_declassify,
+    },
 ];
 
 // ===========================================================================
@@ -2406,7 +2438,8 @@ pub(crate) enum ClassFloorPolicy {
     AtLeast(Classification),
     /// Classification must be exactly UNCLASSIFIED. Used by the UCNI
     /// ceiling rows (§2.4 of the planning doc).
-    EqualsU}
+    EqualsU,
+}
 
 /// One catalog row. The walker dispatches over the `&[ClassFloorRow]`
 /// table; each row owns its presence predicate, floor policy, severity,
@@ -2461,7 +2494,8 @@ pub(crate) struct ClassFloorRow {
     /// `ConstraintViolation::span` in [`class_floor_emit`]. `None`
     /// means "fall back to the classification span" (NATO rows where
     /// the classification token IS the marking surface).
-    pub(crate) primary_kind: Option<marque_ism::TokenKind>}
+    pub(crate) primary_kind: Option<marque_ism::TokenKind>,
+}
 
 // ---------------------------------------------------------------------------
 // The catalog — 27 rows at §3.4.6 family granularity
@@ -2477,7 +2511,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/SI-comp",
         marking_label: "SI compartments",
@@ -2486,7 +2521,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/TK-BLFH",
         marking_label: "TK-BLFH (BLUEFISH)",
@@ -2495,7 +2531,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
     // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
     // model — BALK/BOHEMIA now live in `sci_markings` as
@@ -2528,7 +2565,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         // compound text (`CTS-BALK` is a single Classification token
         // that carries both the bare-class and the companion semantic);
         // anchoring at the Classification token is the right UX.
-        primary_kind: None},
+        primary_kind: None,
+    },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
         marking_label: "BOHEMIA (NATO)",
@@ -2537,7 +2575,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §G.2 p40",
         passthrough: false,
-        primary_kind: None},
+        primary_kind: None,
+    },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
         name: "class-floor/HCS-comp",
@@ -2547,7 +2586,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/RSV-comp",
         marking_label: "RSV compartment",
@@ -2556,7 +2596,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/TK",
         marking_label: "TK / TK-IDIT / TK-KAND",
@@ -2565,7 +2606,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/RD-SG",
         marking_label: "RD-SIGMA",
@@ -2574,7 +2616,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p113",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     ClassFloorRow {
         name: "class-floor/FRD-SG",
         marking_label: "FRD-SIGMA",
@@ -2583,7 +2626,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p113",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     // CNWDI — replaces retired E022. Walker-prefixed name per PM
     // directive #5.
     ClassFloorRow {
@@ -2594,7 +2638,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     ClassFloorRow {
         name: "class-floor/RSEN",
         marking_label: "RSEN",
@@ -2603,7 +2648,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p149",
         passthrough: false,
-        primary_kind: Some(TokenKind::DissemControl)},
+        primary_kind: Some(TokenKind::DissemControl),
+    },
     ClassFloorRow {
         name: "class-floor/IMCON",
         marking_label: "IMCON",
@@ -2612,7 +2658,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p144",
         passthrough: false,
-        primary_kind: Some(TokenKind::DissemControl)},
+        primary_kind: Some(TokenKind::DissemControl),
+    },
     // ---- §2.3 Floor C (8 rows) -------------------------------------
     ClassFloorRow {
         name: "class-floor/SI",
@@ -2622,7 +2669,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.4",
         passthrough: false,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     // SAR — replaces retired E027.
     ClassFloorRow {
         name: "E058/SAR-classification-floor",
@@ -2632,7 +2680,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.5",
         passthrough: false,
-        primary_kind: Some(TokenKind::SarIndicator)},
+        primary_kind: Some(TokenKind::SarIndicator),
+    },
     ClassFloorRow {
         name: "class-floor/RD",
         marking_label: "RD",
@@ -2641,7 +2690,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     ClassFloorRow {
         name: "class-floor/FRD",
         marking_label: "FRD",
@@ -2650,7 +2700,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p104",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     ClassFloorRow {
         name: "class-floor/TFNI",
         marking_label: "TFNI",
@@ -2659,7 +2710,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p107",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
     // CAPCO-2016 §H.7 p122 worked example
     // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`). The class floor is the
@@ -2684,7 +2736,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.7 p122",
         passthrough: false,
-        primary_kind: None},
+        primary_kind: None,
+    },
     ClassFloorRow {
         name: "class-floor/ORCON",
         marking_label: "ORCON / ORCON-USGOV",
@@ -2693,7 +2746,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p136",
         passthrough: false,
-        primary_kind: Some(TokenKind::DissemControl)},
+        primary_kind: Some(TokenKind::DissemControl),
+    },
     ClassFloorRow {
         name: "class-floor/EYES-ONLY",
         marking_label: "EYES ONLY",
@@ -2702,7 +2756,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.8 p152",
         passthrough: false,
-        primary_kind: Some(TokenKind::DissemControl)},
+        primary_kind: Some(TokenKind::DissemControl),
+    },
     // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
     ClassFloorRow {
         name: "E058/DOD-UCNI-classification-ceiling",
@@ -2712,7 +2767,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p116",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     ClassFloorRow {
         name: "E058/DOE-UCNI-classification-ceiling",
         marking_label: "DOE UCNI",
@@ -2721,7 +2777,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Error,
         citation: "CAPCO-2016 §H.6 p118",
         passthrough: false,
-        primary_kind: Some(TokenKind::AeaMarking)},
+        primary_kind: Some(TokenKind::AeaMarking),
+    },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
     //
     // `row.citation` uses the `Section 3.7` form (not `§3.7`) because
@@ -2755,7 +2812,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/passthrough-HCS-X",
         marking_label: "HCS-X",
@@ -2764,7 +2822,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/passthrough-KLM",
         marking_label: "KLM family",
@@ -2773,7 +2832,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
     ClassFloorRow {
         name: "class-floor/passthrough-MVL",
         marking_label: "MVL",
@@ -2782,7 +2842,8 @@ const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
         passthrough: true,
-        primary_kind: Some(TokenKind::SciSystem)},
+        primary_kind: Some(TokenKind::SciSystem),
+    },
 ];
 
 // ===========================================================================
@@ -2841,7 +2902,8 @@ pub(crate) enum CompanionForm {
     Abbreviated,
     /// Full form: `ORCON`, `NOFORN`. Used otherwise (banner long-form or
     /// no dissem block yet).
-    Full}
+    Full,
+}
 
 /// Walker rule ID shared by every SCI per-system catalog emit body.
 /// `RuleId::new` is `const fn`, so this is a zero-cost replacement for
@@ -2864,7 +2926,8 @@ pub(crate) enum SciPerSystemKind {
         /// The dissem control whose presence is required.
         dissem: marque_ism::DissemControl,
         /// Component for the diagnostic message (e.g., "NOFORN").
-        token_name: &'static str},
+        token_name: &'static str,
+    },
     /// Custom multi-branch emit. The row encodes a closure that produces
     /// the full emit list, used by rows whose emit logic spans 2-3 distinct
     /// branches with row-specific text and span logic (rows #1, #3, #4).
@@ -2882,7 +2945,8 @@ pub(crate) enum SciPerSystemKind {
             marque_scheme::Scope,
             &SciPerSystemRow,
         ) -> Vec<marque_rules::Diagnostic<CapcoScheme>>,
-    )}
+    ),
+}
 
 /// One catalog row. The walker dispatches over `&[SciPerSystemRow]`;
 /// each row owns its presence predicate, dispatch kind, severity,
@@ -2913,7 +2977,8 @@ pub(crate) struct SciPerSystemRow {
     /// per-branch to `Error` no-fix when no IC dissem block exists.
     pub(crate) severity: marque_rules::Severity,
     /// Per-row §-citation, matching `Constraint::Custom { label }`.
-    pub(crate) citation: &'static str}
+    pub(crate) citation: &'static str,
+}
 
 // ---------------------------------------------------------------------------
 // The catalog — 5 rows at §H.4 family granularity
@@ -2928,7 +2993,8 @@ const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_hcs_o,
         kind: SciPerSystemKind::Custom(emit_hcs_o_companions),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p64"},
+        citation: "CAPCO-2016 §H.4 p64",
+    },
     // Row #2 — HCS-P NOFORN (NOFORN required). §H.4 p66.
     SciPerSystemRow {
         name: "sci-per-system/HCS-P-NOFORN",
@@ -2936,9 +3002,11 @@ const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_hcs_p_any,
         kind: SciPerSystemKind::CompanionRequired {
             dissem: marque_ism::DissemControl::Nf,
-            token_name: "NOFORN"},
+            token_name: "NOFORN",
+        },
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p66"},
+        citation: "CAPCO-2016 §H.4 p66",
+    },
     // Row #3 — HCS-P sub-compartment companions (ORCON required,
     // ORCON-USGOV forbidden). §H.4 p68. NOFORN is covered by row #2.
     SciPerSystemRow {
@@ -2947,7 +3015,8 @@ const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_hcs_p_sub,
         kind: SciPerSystemKind::Custom(emit_hcs_p_sub_companions),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p68"},
+        citation: "CAPCO-2016 §H.4 p68",
+    },
     // Row #4 — SI-G companions (ORCON required, ORCON-USGOV forbidden).
     // §H.4 p80.
     SciPerSystemRow {
@@ -2956,7 +3025,8 @@ const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_si_g,
         kind: SciPerSystemKind::Custom(emit_si_g_companions),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p80"},
+        citation: "CAPCO-2016 §H.4 p80",
+    },
     // Row #5 — TK compartment NOFORN (BLFH/IDIT/KAND require NOFORN).
     // §H.4 p87 (TK-BLFH) + p91 (TK-IDIT) + p95 (TK-KAND).
     SciPerSystemRow {
@@ -2965,9 +3035,11 @@ const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_tk_compartment_noforn,
         kind: SciPerSystemKind::CompanionRequired {
             dissem: marque_ism::DissemControl::Nf,
-            token_name: "NOFORN"},
+            token_name: "NOFORN",
+        },
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p87 + p91 + p95"},
+        citation: "CAPCO-2016 §H.4 p87 + p91 + p95",
+    },
 ];
 
 // ---------------------------------------------------------------------------

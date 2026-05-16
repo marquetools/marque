@@ -12,7 +12,6 @@ use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
 };
 
-use super::*;
 use super::actions::{noop_action, strip_dod_ucni_action, strip_doe_ucni_action};
 use super::predicates::{
     dod_ucni_classified_trigger, dod_ucni_promotes_noforn_trigger, doe_ucni_classified_trigger,
@@ -20,6 +19,7 @@ use super::predicates::{
     fouo_with_non_fdr_other_control_trigger, limdis_classified_trigger, never_fires,
     sbu_classified_trigger,
 };
+use super::*;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
@@ -193,8 +193,7 @@ pub(crate) fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
     // banner line in US documents, so this rewrite consumes
     // JOINT state without writing it back; class lift is
     // parser-side per §3.4.1 Note (i).
-    const E3_READS: &[marque_scheme::CategoryId] =
-        &[CAT_CLASSIFICATION, CAT_JOINT_CLASSIFICATION];
+    const E3_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION, CAT_JOINT_CLASSIFICATION];
     const E3_WRITES: &[marque_scheme::CategoryId] = &[CAT_FGI_MARKER];
 
     // Entry 7 (consultant §3.4.1 #7): US-presence promotes bare

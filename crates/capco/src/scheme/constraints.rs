@@ -9,15 +9,11 @@
 //!
 //! See [`build_constraints`] for the catalog and per-row authority.
 
-use marque_scheme::{
-    AggregationOp, Cardinality, Category, Constraint, IntraOrdering, TokenRef,
-};
+use marque_scheme::{AggregationOp, Cardinality, Category, Constraint, IntraOrdering, TokenRef};
 
-use super::*;
 use super::actions::emit_companion_required;
-use super::predicates::{
-    class_floor_anchor_span, rel_to_covers,
-};
+use super::predicates::{class_floor_anchor_span, rel_to_covers};
+use super::*;
 
 /// Build the scheme's category table.
 ///
@@ -886,7 +882,9 @@ pub(crate) fn build_constraints() -> Vec<Constraint> {
 /// classification AND a foreign classification in the same marking. CAPCO
 /// §H.3 p55 forbids this ("The US, non-US, and JOINT classification
 /// markings are mutually exclusive").
-pub(crate) fn e012_dual_classification(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e012_dual_classification(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
     if let Some(marque_ism::MarkingClassification::Conflict { us, foreign }) = &attrs.classification
     {
         let foreign_desc = match foreign.as_ref() {
@@ -928,7 +926,9 @@ pub(crate) fn e012_dual_classification(attrs: &marque_ism::CanonicalAttrs) -> Ve
 /// CAPCO §H.3 p57 ("Requires REL TO USA, LIST" relationship statement).
 /// Tetragraphs in REL TO expand to their constituent trigraphs: a participant
 /// covered by a tetragraph (e.g., GBR via FVEY) is considered present.
-pub(crate) fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e014_joint_rel_to_coverage(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
     let joint = match &attrs.classification {
         Some(marque_ism::MarkingClassification::Joint(j)) => j,
         _ => return Vec::new(),
@@ -970,7 +970,9 @@ pub(crate) fn e014_joint_rel_to_coverage(attrs: &marque_ism::CanonicalAttrs) -> 
 ///   TFNI markings — a Constitution VIII fidelity defect.
 /// - **UCNI variants are excluded.** Neither DOE UCNI (§H.6 p116) nor
 ///   DoD UCNI (§H.6 p118) carries the NOFORN requirement.
-pub(crate) fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e021_aea_requires_noforn(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
     let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
         matches!(
             a,
@@ -1001,7 +1003,9 @@ pub(crate) fn e021_aea_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Ve
 /// (EXDIS: "Requires NOFORN") and p174 (NODIS: "Requires NOFORN").
 /// Emits a single ConstraintViolation when the marking carries NODIS
 /// or EXDIS without NOFORN present.
-pub(crate) fn e038_dos_dissem_requires_noforn(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e038_dos_dissem_requires_noforn(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
     let has_nodis_or_exdis = attrs.non_ic_dissem.iter().any(|d| {
         matches!(
             d,
@@ -1061,7 +1065,9 @@ pub(crate) fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
 /// W002 — US classification + FGI marker is commingling. Always fires when
 /// both are present; the wrapper filters by `RuleContext::marking_type ==
 /// Portion`. CAPCO §H.7 lines 8254-8268.
-pub(crate) fn w002_us_commingled_with_fgi(attrs: &marque_ism::CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn w002_us_commingled_with_fgi(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
     if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
         return Vec::new();
     }

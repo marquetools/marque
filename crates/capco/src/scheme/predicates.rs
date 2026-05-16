@@ -9,21 +9,15 @@
 //! Covers presence predicates, satisfaction evaluators, class-floor and
 //! SCI-per-system catalog dispatchers, and FD&R-family membership helpers.
 
-use marque_ism::{
-    CanonicalAttrs, Classification, CountryCode, Span,
-};
-use marque_scheme::{
-    CategoryId, TokenId,
-    TokenRef,
-};
+use marque_ism::{CanonicalAttrs, Classification, CountryCode, Span};
+use marque_scheme::{CategoryId, TokenId, TokenRef};
 
-use super::*;
 use super::constraints::{
     class_floor_emit, e012_dual_classification, e014_joint_rel_to_coverage,
     e021_aea_requires_noforn, e024_rd_precedence, e038_dos_dissem_requires_noforn,
     sci_per_system_emit, w002_us_commingled_with_fgi,
 };
-
+use super::*;
 
 /// Map a sentinel CVE `TokenId` to its [`CategoryId`].
 ///
@@ -1322,7 +1316,10 @@ pub(crate) fn class_floor_catalog_eval(
 ///   US-classification system, not reciprocal-raised. A NATO-class
 ///   portion carrying UCNI is malformed input (UCNI is US AEA,
 ///   parallel to NATO ATOMAL); other rules catch the malformed shape.
-pub(crate) fn class_floor_satisfied(attrs: &marque_ism::CanonicalAttrs, policy: ClassFloorPolicy) -> bool {
+pub(crate) fn class_floor_satisfied(
+    attrs: &marque_ism::CanonicalAttrs,
+    policy: ClassFloorPolicy,
+) -> bool {
     match policy {
         ClassFloorPolicy::AtLeast(floor) => match attrs.classification.as_ref() {
             // Reciprocal-raise via `effective_level()`. NATO / FGI /
