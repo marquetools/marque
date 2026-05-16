@@ -1994,6 +1994,16 @@ fn fouo_with_non_fdr_other_control_trigger(m: &CapcoMarking) -> bool {
     if !has_fouo {
         return false;
     }
+    // AEA-non-empty triggers Pattern-B row 2 for any AEA marking
+    // including ATOMAL; practical overlap with U-document is null
+    // (ATOMAL requires classified per §H.7 p122). The §H.8 p134
+    // sub-clause is U-document scoped, so the only AEA markings that
+    // can co-occur with FOUO in practice are UCNI variants (which
+    // ARE U-document valid per §H.6 p116 / p118) — RD / FRD / TFNI /
+    // ATOMAL all carry per-marking class floors that exceed U.
+    // Keeping the unconditional `!aea_markings.is_empty()` clause is
+    // correct under §H.8 p134's wording and stays defensive against
+    // future grammar extensions.
     dissem_has_non_fdr_other_than_fouo(m)
         || !m.0.non_ic_dissem.is_empty()
         || !m.0.aea_markings.is_empty()
@@ -2025,9 +2035,26 @@ fn dissem_to_tok(d: marque_ism::DissemControl) -> Option<TokenId> {
         DC::Fisa => Some(TOK_FISA),
         DC::Rawfisa => Some(TOK_RAWFISA),
         DC::Eyes => Some(TOK_EYES),
-        // Variants without a TOK_* sentinel (Rel, ExemptFromIcd501Discovery,
-        // any future additions); see `scheme.rs:4885` for the inventory.
-        _ => None,
+        // Variants without a TOK_* sentinel: only `DC::Rel` (REL TO
+        // canonical, routed via CAT_REL_TO instead of CAT_DISSEM) and
+        // `DC::ExemptFromIcd501Discovery` (parser-internal marker, never
+        // emitted onto the dissem axis). Adding a new DissemControl
+        // variant without extending this match arm + the catalog is a
+        // silent-drift class — the debug_assert below catches it under
+        // `cargo test` before it can mask a Pattern-B trigger that
+        // would otherwise have fired. See `scheme.rs:4885` for the full
+        // sentinel inventory.
+        other => {
+            debug_assert!(
+                matches!(other, DC::Rel | DC::ExemptFromIcd501Discovery),
+                "dissem_to_tok hit an unexpected None arm for {other:?} — \
+                 a DissemControl variant was added without a paired TOK_* \
+                 sentinel. Extend `scheme.rs::dissem_to_tok` (and the broad-\
+                 set `is_fdr_dissem_token` helper if the new control is \
+                 FD&R-class) so Pattern-B / Pattern-C predicates can see it.",
+            );
+            None
+        }
     }
 }
 
@@ -2195,23 +2222,54 @@ impl CapcoScheme {
 
     /// Construct CAPCO's `PageRewrite` table.
     ///
-    /// Nine rewrites, in two groups:
+    /// **23 rewrites, in five groups** (post-PR-4b-C, 006 T112; PR
+    /// 4b-A landed group 4; PR 3c.B Sub-PR 8.F / 8.F.2 landed group
+    /// 3; PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
+    /// declarative rows that own the §H.6 / §H.8 / §H.9 strip-plus-
+    /// promote semantics):
     ///
-    /// - **Active (1):** `capco/noforn-clears-rel-to` — the only row
-    ///   wired to a real `Contains` predicate + `Clear` action; cited
-    ///   at §D.2 Table 3 + §H.8 p145.
-    /// - **Phase-3 stubs (8):** the §3.4.1 / §3.4.3 transmutation
-    ///   roster from `marque-applied.md` (consultant Entry 6 split
-    ///   into 6a + 6b for D13 single-citation discipline). Each
-    ///   declares a `Custom(never_fires)` trigger and a
-    ///   `Custom(noop_action)` body — Phase 3 does not drive page
-    ///   roll-up through `scheme.project()`, so the trigger pins to
-    ///   `false` and the action body is empty. The `reads` / `writes`
-    ///   annotations are what the Kahn scheduler consumes (T031–T032)
-    ///   to validate dataflow ordering; the runtime semantics still
-    ///   live in the hand-coded [`PageContext`] aggregator. Phase D /
-    ///   Phase E replaces the `Custom` bodies with real predicates
-    ///   and transforms.
+    /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 / §3c.B-8.F
+    ///    family — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
+    ///    §H.9 p172) and `capco/{sbu-nf,les-nf}-implies-noforn`
+    ///    (§H.9 p178 / §H.9 p185). All four are wired predicates that
+    ///    fire today via `scheme.project(Scope::Page, ...)`.
+    /// 2. **PR 4b-C Pattern-C strip rows (7):** §H.6 / §H.8 / §H.9
+    ///    classification-driven strips of UNCLASSIFIED-only controls
+    ///    plus the §H.6 NOFORN-promotion siblings —
+    ///    `capco/limdis-evicted-by-classified` (§H.9 p170),
+    ///    `capco/sbu-evicted-by-classified` (§H.9 p176), four UCNI
+    ///    rows declared **promote-before-strip** so the NOFORN-
+    ///    promotion predicate observes UCNI before the strip
+    ///    removes it (`capco/{dod,doe}-ucni-{promotes-noforn-when-
+    ///    classified, evicted-by-classified}` at §H.6 p116 / p118),
+    ///    and `capco/fouo-evicted-by-classified` (§H.8 p134
+    ///    classified sub-clause).
+    /// 3. **PR 4b-C Pattern-B structural FOUO-eviction (2):**
+    ///    `capco/classification-evicts-fouo` +
+    ///    `capco/non-fdr-control-evicts-fouo`, both at §H.8 p134.
+    ///    The two rows quote the same §H.8 p134 umbrella passage
+    ///    but cite distinct sub-clauses (classified-document vs
+    ///    UNCLASSIFIED with other dissemination controls).
+    /// 4. **Active wired rows (1):** `capco/noforn-clears-rel-to`
+    ///    (`Contains` predicate + `Clear` action). Cited at §D.2
+    ///    Table 3 + §H.8 p145. First PageRewrite to land in the
+    ///    catalog; canonical worked example in
+    ///    `crates/capco/README.md`.
+    /// 5. **DISPLAY-ONLY / FD&R-family (1):**
+    ///    `capco/noforn-clears-fdr-family` per DISPLAY ONLY Phase 2
+    ///    landing at §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157.
+    /// 6. **Phase-3 transmutation stubs (8):** the §3.4.1 / §3.4.3
+    ///    transmutation roster from `marque-applied.md` (consultant
+    ///    Entry 6 split into 6a + 6b for D13 single-citation
+    ///    discipline). Each declares a `Custom(never_fires)` trigger
+    ///    and a `Custom(noop_action)` body — Phase 3 does not drive
+    ///    page roll-up through `scheme.project()` for these, so the
+    ///    trigger pins to `false` and the action body is empty. The
+    ///    `reads` / `writes` annotations are what the Kahn scheduler
+    ///    consumes (T031–T032) to validate dataflow ordering; the
+    ///    runtime semantics still live in the hand-coded
+    ///    [`PageContext`] aggregator. Phase D / Phase E replaces the
+    ///    `Custom` bodies with real predicates and transforms.
     ///
     /// # `reads` semantics — narrow form
     ///
@@ -2917,7 +2975,18 @@ impl CapcoScheme {
             // the promote row writes CAT_DISSEM while the strip row
             // writes CAT_AEA, so both are independent of the other's
             // axis writes and their relative declaration order
-            // governs runtime.
+            // governs runtime. The topological scheduler makes no
+            // ordering guarantee between sibling rows sharing
+            // identical `reads` / `writes` axes (see
+            // `crates/engine/src/scheduler.rs` `schedule_rewrites` —
+            // edges form only between distinct read/write axis pairs,
+            // and Kahn seeds the frontier with in-degree-0 nodes in
+            // declaration order); this pair is intentionally
+            // sibling-position-ordered in the declaration `Vec`
+            // because the runtime evaluator walks the scheduler-
+            // produced slice in index order. Pins:
+            // `pin_ucni_promote_before_strip_declaration_order` in
+            // `crates/capco/tests/page_context_lattice_parity.rs`.
             //
             // Predicate body `dod_ucni_promotes_noforn_trigger` checks
             // `!dissem_has_noforn(m)` so the promotion suppresses when

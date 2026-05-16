@@ -2291,3 +2291,192 @@ fn pattern_b_fouo_classified_alone_strips_via_classification_row() {
         banner.dissem_us,
     );
 }
+
+#[test]
+fn pattern_b_fouo_with_propin_unclassified_strip() {
+    // §H.8 p134 + PROPIN as a non-FD&R IC dissem control. The
+    // Pattern-B `capco/non-fdr-control-evicts-fouo` row's
+    // `dissem_has_non_fdr_other_than_fouo` predicate scan finds
+    // DissemControl::Pr → TOK_PROPIN (TOK_PROPIN=143 sentinel added
+    // in PR 4b-C Commit 1) and the broad-membership
+    // `is_fdr_dissem_token` helper correctly returns false for
+    // PROPIN (it's a control marking, not FD&R-set).
+    //
+    // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+    // §H.8 p134 + §H.8 PROPIN entry.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Pr],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134) \
+         must strip FOUO when PROPIN is present on an UNCLASSIFIED \
+         page. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Pr),
+        "PROPIN must be retained — Pattern-B strips FOUO, not the \
+         trigger. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_fisa_unclassified_strip() {
+    // §H.8 p134 + FISA as a non-FD&R IC dissem control. The
+    // Pattern-B predicate scan finds DissemControl::Fisa →
+    // TOK_FISA (TOK_FISA=144 sentinel added in PR 4b-C Commit 1).
+    // FISA is not FD&R-set; `is_fdr_dissem_token` returns false.
+    //
+    // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+    // §H.8 p134 + §H.8 FISA entry.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Fisa],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134) \
+         must strip FOUO when FISA is present on an UNCLASSIFIED \
+         page. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Fisa),
+        "FISA must be retained — Pattern-B strips FOUO, not the \
+         trigger. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+#[test]
+fn pattern_b_fouo_with_rawfisa_unclassified_strip() {
+    // §H.8 p134 + RAW FISA as a non-FD&R IC dissem control. The
+    // Pattern-B predicate scan finds DissemControl::Rawfisa →
+    // TOK_RAWFISA (TOK_RAWFISA=145 sentinel added in PR 4b-C
+    // Commit 1). RAW FISA is not FD&R-set; `is_fdr_dissem_token`
+    // returns false.
+    //
+    // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+    // §H.8 p134 + §H.8 RAW FISA entry.
+    let portions = [portion_with_dissem_us(
+        Classification::Unclassified,
+        &[DissemControl::Fouo, DissemControl::Rawfisa],
+    )];
+    let banner = project_via_scheme(&portions);
+    assert!(
+        !banner.dissem_us.contains(&DissemControl::Fouo),
+        "Pattern-B row `capco/non-fdr-control-evicts-fouo` (§H.8 p134) \
+         must strip FOUO when RAW FISA is present on an UNCLASSIFIED \
+         page. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+    assert!(
+        banner.dissem_us.contains(&DissemControl::Rawfisa),
+        "RAW FISA must be retained — Pattern-B strips FOUO, not the \
+         trigger. banner.dissem_us = {:?}",
+        banner.dissem_us,
+    );
+}
+
+// ===========================================================================
+// PR 4b-C consolidation — declaration-order pin tests
+// ===========================================================================
+//
+// These tests pin two declaration-order invariants the runtime
+// evaluator relies on, both documented inline at the relevant row
+// doc-comments in `crates/capco/src/scheme.rs`. They are deliberately
+// position-pin tests, not lattice-output tests — the runtime semantics
+// are exercised by the Pattern-C fixtures above; these guard against
+// a future refactor that quietly reorders the catalog into a
+// scheduler-legal but runtime-broken state.
+
+#[test]
+fn pin_ucni_promote_before_strip_declaration_order() {
+    // Order-dependency: the promote rows' predicates read
+    // `attrs.aea_markings` (via `has_dod_ucni` / `has_doe_ucni`) and
+    // would observe an empty axis if the strip rows had already
+    // fired. The Kahn scheduler accepts either order (promote writes
+    // CAT_DISSEM, strip writes CAT_AEA — both independent of the
+    // other's writes), so the runtime correctness comes from the
+    // position of the rows in the declaration `Vec`, not from the
+    // scheduler's topological resolution.
+    //
+    // See `scheme.rs` doc-comment on
+    // `capco/dod-ucni-promotes-noforn-when-classified` for the full
+    // rationale.
+    let scheme = CapcoScheme::new();
+    let rewrites = scheme.page_rewrites();
+
+    let pos = |id: &str| {
+        rewrites
+            .iter()
+            .position(|r| r.id == id)
+            .unwrap_or_else(|| panic!("rewrite {id} not declared"))
+    };
+
+    let dod_promote = pos("capco/dod-ucni-promotes-noforn-when-classified");
+    let dod_strip = pos("capco/dod-ucni-evicted-by-classified");
+    assert!(
+        dod_promote < dod_strip,
+        "DOD UCNI promote must be declared before DOD UCNI strip — \
+         promote predicate reads aea_markings which strip would clear \
+         (§H.6 p116). promote_pos={dod_promote}, strip_pos={dod_strip}"
+    );
+
+    let doe_promote = pos("capco/doe-ucni-promotes-noforn-when-classified");
+    let doe_strip = pos("capco/doe-ucni-evicted-by-classified");
+    assert!(
+        doe_promote < doe_strip,
+        "DOE UCNI promote must be declared before DOE UCNI strip — \
+         promote predicate reads aea_markings which strip would clear \
+         (§H.6 p118). promote_pos={doe_promote}, strip_pos={doe_strip}"
+    );
+}
+
+#[test]
+fn pin_pattern_b_row_2_before_noforn_clears_fdr_family() {
+    // Cycle-workaround invariant: Pattern-B row 2
+    // `capco/non-fdr-control-evicts-fouo` omits CAT_DISSEM from its
+    // `reads` annotation (the predicate scans it but declaring it
+    // would create a 2-row cycle with `capco/noforn-clears-fdr-family`,
+    // which reads + writes CAT_DISSEM as a 1-row self-edge the
+    // scheduler accepts). Correctness then requires Pattern-B row 2
+    // to fire BEFORE NOFORN-injecting rewrites; the scheduler cannot
+    // enforce this through the omitted edge, so we pin the
+    // declaration position instead.
+    //
+    // Additionally, `FDR_DOMINATORS` membership (consumed by the
+    // broad-set `is_fdr_dissem_token` helper) must stay complete —
+    // a missing FD&R variant would let Pattern-B row 2 fire on a
+    // pure FD&R+FOUO page and incorrectly strip FOUO. The
+    // `pattern_b_fouo_with_{relido,noforn}_unclassified_keeps_fouo`
+    // fixtures above pin that side.
+    //
+    // See `scheme.rs::PATTERN_B_NON_FDR_READS` doc-comment + plan
+    // §3.4 risk #4 for the full rationale.
+    let scheme = CapcoScheme::new();
+    let rewrites = scheme.page_rewrites();
+
+    let pos = |id: &str| {
+        rewrites
+            .iter()
+            .position(|r| r.id == id)
+            .unwrap_or_else(|| panic!("rewrite {id} not declared"))
+    };
+
+    let pattern_b_row_2 = pos("capco/non-fdr-control-evicts-fouo");
+    let noforn_clears_fdr = pos("capco/noforn-clears-fdr-family");
+    assert!(
+        pattern_b_row_2 < noforn_clears_fdr,
+        "Pattern-B row 2 must be declared before `noforn-clears-fdr-family` \
+         — cycle-workaround invariant (CAT_DISSEM omitted from reads, \
+         predicate-scan only, runtime order pinned via declaration \
+         position). pattern_b_row_2_pos={pattern_b_row_2}, \
+         noforn_clears_fdr_pos={noforn_clears_fdr}"
+    );
+}

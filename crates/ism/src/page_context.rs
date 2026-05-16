@@ -530,7 +530,19 @@ impl PageContext {
     /// `expected_dissem_controls()` accessor. NATO-attributed dissems
     /// flow through the sibling [`Self::expected_dissem_nato`].
     pub fn expected_dissem_us(&self) -> Vec<DissemControl> {
-        let classified = self.is_classified();
+        // PR 4b-C Commit 5 (006 T112): the prior `let classified =
+        // self.is_classified();` binding became dead code when Step 3
+        // (FOUO eviction at classification > U) migrated to the
+        // declarative `capco/fouo-evicted-by-classified` /
+        // `capco/classification-evicts-fouo` /
+        // `capco/non-fdr-control-evicts-fouo` PageRewrite rows on
+        // `CapcoScheme`. `is_classified()` is a pure projection over
+        // `expected_classification()` — no side effect to preserve —
+        // so the binding is deleted rather than renamed `_classified`.
+        // PR 4b-D will reintroduce a classified gate here if (and only
+        // if) the production banner-validation path needs it; today
+        // `scheme.project(Scope::Page, ...)` carries the gate via the
+        // PageRewrite catalog.
 
         // Step 1: Basic union of all US-attributed dissem controls.
         let mut seen = std::collections::BTreeSet::new();
@@ -1038,7 +1050,14 @@ impl PageContext {
     /// - RD blocks are merged: if multiple portions have RD with different
     ///   SIGMA numbers, the result is a single RD block with all SIGMAs
     pub fn expected_aea_markings(&self) -> Vec<AeaMarking> {
-        let classified = self.is_classified();
+        // PR 4b-C Commit 5 (006 T112): the prior `let classified =
+        // self.is_classified();` binding became dead code when the
+        // UCNI strip branch migrated to the declarative
+        // `capco/{dod,doe}-ucni-{evicted-by-classified, promotes-noforn-when-classified}`
+        // PageRewrite rows on `CapcoScheme`. `is_classified()` is a
+        // pure projection — no side effect to preserve — so the
+        // binding is deleted. See the long-form retirement comment on
+        // the UCNI block below for the §H.6 p116 / p118 rationale.
         let mut has_rd = false;
         let mut rd_cnwdi = false;
         let mut rd_sigma: std::collections::BTreeSet<u8> = std::collections::BTreeSet::new();
