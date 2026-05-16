@@ -3926,35 +3926,60 @@ impl MarkingScheme for CapcoScheme {
             return Err(core::fmt::Error);
         }
 
-        // Track whether any axis has emitted bytes yet. The §A.6
-        // category separator `//` is inserted BEFORE each subsequent
-        // non-empty axis's contribution. Classification is special:
-        // for non-US / JOINT classifications it carries its OWN
-        // leading `//` (per §A.6 p15-16 — the `//` occludes the
-        // absent US position), so this loop does not prepend `//` to
-        // the very first axis that emits.
+        // Track whether any axis has emitted bytes yet AND the family
+        // of the last-emitting row so the major-category separator
+        // `//` can be downgraded to within-category `/` when two
+        // consecutive emitting rows belong to the same dissem family.
+        //
+        // Authority: CAPCO-2016 §A.6 p16 "Dissemination Control
+        // Markings ... A single forward slash with no interjected
+        // space must be used to separate multiple dissemination
+        // controls." Per §G.1 Table 4 row 8 the dissem category
+        // includes single-token dissems (ORCON, NOFORN, ...),
+        // REL TO, and DISPLAY ONLY — all of which must be `/`
+        // separated when commingled in the same `//`-delimited
+        // dissem slot. Previously this loop unconditionally inserted
+        // `//` between every emitting row, producing canonical
+        // strings like `//ORCON//REL TO USA, GBR` (wrong) instead
+        // of `//ORCON/REL TO USA, GBR` (canonical).
         //
         // Implementation: render each axis to a per-axis scratch
-        // buffer; if non-empty, prepend `//` (when any prior axis has
-        // emitted) and copy to `out`. The per-axis buffer reuses one
-        // allocation across the whole loop.
+        // buffer; if non-empty, prepend `//` (different family) or
+        // `/` (same dissem family) and copy to `out`. Classification
+        // is special: for non-US / JOINT classifications it carries
+        // its OWN leading `//` (per §A.6 p15-16 — the `//` occludes
+        // the absent US position), so this loop does not prepend
+        // ANY separator to the very first axis that emits.
         let mut scratch = String::new();
-        let mut emitted_any = false;
+        let mut prev_family: Option<DissemFamilyMembership> = None;
         for row in RENDER_TABLE {
             scratch.clear();
             (row.render)(m, scope, &mut scratch)?;
             if scratch.is_empty() {
                 continue;
             }
-            // Per-axis bytes are emitted as-is. The classification
-            // axis owns its leading `//` (for non-US / JOINT); every
-            // other axis writes only its own content, and the loop
-            // prepends `//` here.
-            if emitted_any {
-                out.write_str("//")?;
+            let curr_family = dissem_family_of(row.category);
+            match prev_family {
+                None => {
+                    // First emitting row: classification owns its
+                    // leading `//`; every other first-emit just
+                    // writes its own bytes.
+                }
+                Some(prev) => {
+                    if prev == DissemFamilyMembership::Member
+                        && curr_family == DissemFamilyMembership::Member
+                    {
+                        // Two consecutive dissem-family rows:
+                        // within-category `/` separator.
+                        out.write_str("/")?;
+                    } else {
+                        // Cross-category: §A.6 p16 `//`.
+                        out.write_str("//")?;
+                    }
+                }
             }
             out.write_str(&scratch)?;
-            emitted_any = true;
+            prev_family = Some(curr_family);
         }
         Ok(())
     }
@@ -4649,6 +4674,37 @@ pub fn is_orcon_family(t: &TokenRef) -> bool {
 // [`marque_ism::CanonicalAttrs`]) or `&'static` vocabulary tables in
 // `crates/capco/src/vocab.rs`.
 
+/// Whether a render row's category is in the §A.6 / §G.1 Table 4
+/// row-8 dissem family. Two consecutive emitting rows from the
+/// dissem family get a within-category `/` separator instead of
+/// the major-category `//` separator (§A.6 p16: "A single forward
+/// slash with no interjected space must be used to separate
+/// multiple dissemination controls").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DissemFamilyMembership {
+    /// Row renders a §H.8 dissem-category axis (single-token
+    /// dissems, REL TO, DISPLAY ONLY). Consecutive Members get
+    /// `/` between them.
+    Member,
+    /// Row renders something else (classification, SCI, SAR, AEA,
+    /// FGI, non-IC dissem, declassify). Always `//` between this
+    /// row and any neighbor that emits.
+    Other,
+}
+
+/// Classify a [`CategoryId`] for dispatch-loop separator selection.
+/// CAT_DISSEM and CAT_REL_TO are both §H.8 dissem-family per §G.1
+/// Table 4 row 8; non-IC dissem (§H.9, CAT_NON_IC_DISSEM) is its
+/// own major category per §A.6 p16 and is NOT a dissem-family
+/// member here.
+pub(crate) fn dissem_family_of(cat: CategoryId) -> DissemFamilyMembership {
+    if cat == CAT_DISSEM || cat == CAT_REL_TO {
+        DissemFamilyMembership::Member
+    } else {
+        DissemFamilyMembership::Other
+    }
+}
+
 /// Per-axis renderer dispatch row.
 ///
 /// `render` writes the axis's canonical bytes for the given `scope`
@@ -4657,11 +4713,9 @@ pub fn is_orcon_family(t: &TokenRef) -> bool {
 /// `Ok(())` on success.
 pub(crate) struct AxisRenderRow {
     /// The category this row renders (e.g., [`CAT_CLASSIFICATION`],
-    /// [`CAT_DISSEM`]). Informational — dispatch is by declaration
-    /// order, not by category lookup. Future debug/tracing tooling
-    /// may surface this; it is `#[allow(dead_code)]` because no
-    /// runtime call site reads it today.
-    #[allow(dead_code)]
+    /// [`CAT_DISSEM`]). Read by the dispatch loop's
+    /// [`dissem_family_of`] helper to choose `/` vs `//` between
+    /// consecutive emitting rows.
     pub category: CategoryId,
     /// Render the axis's contribution to the canonical form for the
     /// given `scope`, appending bytes to `out`.
@@ -4707,16 +4761,28 @@ pub(crate) const RENDER_TABLE: &[AxisRenderRow] = &[
         category: CAT_REL_TO,
         render: crate::render::render_rel_to::render_rel_to,
     },
-    // Non-IC dissem comes after REL TO in §A.6 sequence (§A.6 p16:
-    // "Non-IC Dissemination Control Markings — must follow,
-    // Dissemination Controls"). REL TO is part of the dissem axis;
-    // non-IC is its own §H.9 block. The category id is reused from
-    // CAT_DISSEM because no `CAT_NON_IC_DISSEM` constant is exposed
-    // yet (see the equivalent comment in `build_constraints`); the
-    // `category` field is informational here — dispatch is by
-    // declaration order.
+    // DISPLAY ONLY between REL TO and non-IC dissem per CAPCO-2016
+    // §G.1 Table 4 row 8 ordering (the IC dissem-category sequence
+    // ends with `DISPLAY ONLY [LIST]`). Like REL TO, DISPLAY ONLY
+    // carries a country list rather than a single token, so it
+    // gets its own renderer (the flat-token `render_dissem` can't
+    // emit a list). The category id is reused from `CAT_DISSEM`
+    // (DISPLAY ONLY is §H.8 dissem, not §H.9 non-IC) — `category`
+    // is informational; dispatch is by declaration order.
     AxisRenderRow {
         category: CAT_DISSEM,
+        render: crate::render::render_display_only::render_display_only,
+    },
+    // Non-IC dissem comes after REL TO in §A.6 sequence (§A.6 p16:
+    // "Non-IC Dissemination Control Markings — must follow,
+    // Dissemination Controls"). REL TO and DISPLAY ONLY are part
+    // of the §H.8 dissem axis; non-IC is its own §H.9 major
+    // category. Use the dedicated `CAT_NON_IC_DISSEM` id so the
+    // dispatch loop's [`dissem_family_of`] helper correctly emits
+    // `//` between this row and the preceding REL TO / DISPLAY
+    // ONLY dissem-family rows (not `/`).
+    AxisRenderRow {
+        category: CAT_NON_IC_DISSEM,
         render: crate::render::render_non_ic_dissem::render_non_ic_dissem,
     },
     // Declassify-on is a no-op in the banner-line dispatch (the CAB
