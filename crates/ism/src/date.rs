@@ -860,7 +860,11 @@ fn days_in_month(year: i32, month: u8) -> u8 {
     // computes `days_in_month` against year=2000 (a leap year), so
     // February returns 29. We mirror that by falling through to the
     // normal computation with year=2000 instead of returning a constant.
-    let y = if i16::try_from(year).is_err() { 2000 } else { year };
+    let y = if i16::try_from(year).is_err() {
+        2000
+    } else {
+        year
+    };
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
