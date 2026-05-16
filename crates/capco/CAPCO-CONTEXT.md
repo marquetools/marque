@@ -180,22 +180,86 @@ portions have Y, the banner FD&R becomes Z".
 | 26 | DISPLAY ONLY | REL TO (with common LIST) | DISPLAY ONLY [common LIST] (release implies disclosure) |
 | 27 | REL TO/DISPLAY ONLY | REL TO/DISPLAY ONLY (with common LISTs in each) | REL TO [common]/DISPLAY ONLY [common] |
 
-**Marque gap (current, 2026-05-02).** Our `PageRewrite` layer covers
-the symmetric meet for SCI / SAP / AEA categories and the supersession
-for `NOFORN clears REL TO` (rule 1+2). The FD&R rows that are NOT yet
-fully implemented:
+**Marque gap (current, 2026-05-15 after PR 4b-B).** PR 4b-B (006 T112)
+installed per-category Lattice impls in `marque-capco::lattice`
+(ClassificationLattice, NatoClassLattice, JointSet, DissemSet,
+NatoDissemSet, RelToBlock, DeclassifyOnLattice) and fixed two
+PageContext bugs in lock-step:
+
+- OC-USGOV supersession (replaces unanimity-drop) per §H.8 p136 + p140.
+- RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
+
+PR 4b-B also adds `W004 joint-disunity-collapse-to-FGI` (Warn) per
+§H.3 p57 + §H.7 p123 — fires when all-JOINT portions disagree on
+their producer lists; surfaces the cross-axis FGI migration (CV-4
+PR 4b-B 8th-pass updated from §H.3 p56 to §H.3 p57 — the migration
+trigger lives on p57's "Derivative Use" bullets).
+
+The `CapcoMarking::join_via_lattice` sibling method composes the new
+lattice types; the production `Lattice::join` still delegates to
+PageContext, and the parity gate at
+`crates/capco/tests/page_context_lattice_parity.rs` (currently 51
+`#[test]` fixtures — 45 byte-identity + 6 documented divergences)
+proves byte-identity between the two paths, with
+**six documented divergences** (each gated by a fixture that asserts
+the lattice's correct behavior even when PageContext disagrees):
+
+1. **`fouo_classified_lattice_vs_pagecontext_diverges`** (G-1): classified
+   page with FOUO. PageContext drops FOUO per §H.8 p134 (FOUO is U-only);
+   the lattice path keeps it until PR 4b-C ships the cross-axis FOUO-
+   eviction rewrite (Pattern B in `project_noforn_supremacy_composition.md`).
+2. **`aea_ucni_classified_lattice_vs_pagecontext_diverges`** (G-2): classified
+   page with DOD UCNI. PageContext strips UCNI per §H.6 p116/p118 (UCNI is
+   U-only); the lattice path keeps it until PR 4b-C ships the cross-axis
+   classification-gate rewrite (Pattern C).
+3. **`pure_nato_lattice_vs_pagecontext_diverges`** (G-3): SOLELY-NATO page
+   (no US portion). PageContext flattens to `Us(_)`; the lattice path
+   preserves `Nato(_)` per §H.7 pp123-125. Mixed US+NATO pages reciprocal-
+   raise to `Us(level)` on both paths.
+4. **`relido_plus_nf_noforn_dominates_documented_divergence`**: classified
+   page with RELIDO + NOFORN on the same portion. PageContext keeps both
+   (its `expected_dissem_us` skips the §H.8 p145 supersession overlay);
+   the lattice path correctly drops RELIDO per §D.2 Table 3 + §H.8 p145.
+   This divergence is a LATTICE-CORRECTING-PAGE-CONTEXT case — the
+   lattice is right, PageContext is bug-shaped.
+5. **`joint_unanimous_two_portions`**: pure-JOINT page (no US portion).
+   PageContext returns `Us(_)`; the lattice path returns `Joint(_)` per
+   §H.3 p56 banner-fidelity. Converges when the renderer lands at PR 5+.
+6. **`joint_single_portion_no_us`**: solo JOINT portion. Same shape as
+   #5 — pure-JOINT page; PageContext returns `Us(_)`, lattice returns
+   `Joint(_)` per §H.3 p56.
+
+G-4..G-9 are parity-RESTORING fixes (each cited inline against its §):
+JOINT-unanimous double-mark suppression (G-4, §H.3 p56 + §H.7 p123),
+explicit-FGI-marker merge with classification-derived producers (G-5,
+§H.7 p123), classified SBU-NF/LES-NF NOFORN injection + REL-TO clear
+(G-6, §H.9 p178 + p185), full byte-identity tightening (G-7), cross-
+axis NOFORN injection through the supersession overlay (G-8, §H.8 p145),
+and `Conflict` participates in the solely-non-US gate (G-9, §H.7
+pp123-125). Each lands as an `assert_byte_identity` parity fixture.
+
+PR 4b-D will flip `CapcoScheme::project(Scope::Page, ...)` to use the
+lattice path.
+
+Remaining FD&R rows the lattice path does NOT yet fully model
+(deferred to PR 4b-D's closure-operator landing per `docs/plans/
+2026-05-01-lattice-design.md` §3 (e)):
 
 - Rule 17: RELIDO date-pivot + non-FD&R-caveat ambiguity (depends on
-  Table 2 lookup).
-- Rule 23: `TEYE / ACGU / FVEY` tetragraph **expansion** during
-  common-LIST roll-up.
+  Table 2 lookup — Layer 2 FD&R inference is PR 4b-D territory).
 - Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
   release-implies-disclosure".
 - Rule 27: dual-channel REL TO/DISPLAY ONLY composition where each
   channel has its own common-LIST.
 
+PR 4b-B closed:
+
+- Rule 23 tetragraph expansion (FVEY → constituent trigraphs) lives
+  in `RelToBlock::from_attrs_iter` via the existing
+  `marque_ism::lookup_tetragraph_members` table.
+
 These are tracked against the lattice / engine refactor at
-`docs/plans/2026-05-01-lattice-design.md`.
+`docs/plans/2026-05-01-lattice-design.md` §11.
 
 > Authority: CAPCO-2016 §D.2 + Table 3, pp 28–30.
 

@@ -139,18 +139,41 @@ proptest! {
     // `dissem_controls_union_superset` name referred to the retired
     // unified field.
     //
-    // Exception: the FD&R-family tokens (REL, RELIDO, EYES, DISPLAY
-    // ONLY marker) are evicted by `expected_dissem_us` Step 6
-    // whenever NF reaches the rolled-up banner. Per §D.2 Table 3
-    // rows 1+2 (NF + no other FD&R → NOFORN; NF + any other FD&R
-    // → NOFORN) and §H.8 p154 / p157, NOFORN supersedes every other
-    // FD&R-class marking at banner scope. NF may arrive at the
-    // banner via any of the union, SBU-NF/LES-NF split, NODIS/EXDIS
-    // needs_nf, or Step 5 FD&R-intent injection paths; the eviction
-    // is unconditional on NF presence, so a portion-contributed FD&R
-    // token and a separately-contributed NF (cross-portion, not
-    // portion-level) is correctly resolved to banner NOFORN with the
-    // other FD&R tokens dropped.
+    // Two exception classes are NOT covered by this pure-union claim:
+    //
+    // 1. **Supersession-overlay-managed tokens** (PR 4b-B Commit 2)
+    //    — `OcUsgov`, `Relido`, and `Fouo` are excluded because their
+    //    banner presence is governed by §H.8 supersession rules, not
+    //    by union:
+    //    - `OcUsgov` per §H.8 p136 / p140: ORCON ⊐ ORCON-USGOV;
+    //      USGOV drops when ORCON is present anywhere on the page.
+    //    - `Relido` per §H.8 pp155-156: RELIDO appears on the banner
+    //      only when every portion carries RELIDO (Layer 1
+    //      observed-unanimity).
+    //    - `Fouo` per §H.8 p134: drops in classified documents and
+    //      when DSEN is present.
+    //    Behavior pinned by dedicated tests in `page_context.rs`
+    //    `#[cfg(test)]`: `dissem_oc_usgov_supersession_*`,
+    //    `dissem_relido_observed_unanimity_*`, `dissem_*_fouo_*`.
+    //
+    // 2. **FD&R-family eviction under NOFORN dominance** — the
+    //    FD&R-family tokens (REL, RELIDO, EYES, DISPLAY ONLY marker)
+    //    are evicted by `expected_dissem_us` Step 6 whenever NF
+    //    reaches the rolled-up banner. Per §D.2 Table 3 rows 1+2
+    //    (NF + no other FD&R → NOFORN; NF + any other FD&R →
+    //    NOFORN) and §H.8 p154 / p157, NOFORN supersedes every other
+    //    FD&R-class marking at banner scope. NF may arrive at the
+    //    banner via any of the union, SBU-NF/LES-NF split,
+    //    NODIS/EXDIS needs_nf, or Step 5 FD&R-intent injection
+    //    paths; the eviction is unconditional on NF presence, so a
+    //    portion-contributed FD&R token and a separately-contributed
+    //    NF (cross-portion, not portion-level) is correctly resolved
+    //    to banner NOFORN with the other FD&R tokens dropped.
+    //
+    // The remaining ~25 DissemControl values pass through by plain
+    // union. `expected_rel_to` short-circuits to empty when any
+    // portion carries NOFORN, so REL TO axis parity is maintained
+    // by its sibling accessor.
     #[test]
     fn dissem_us_union_superset(portions in arb_portions()) {
         let mut ctx = PageContext::new();
@@ -170,9 +193,20 @@ proptest! {
 
         for portion in &portions {
             for ctrl in portion.dissem_us.iter() {
+                // Exception class 1 — supersession-overlay-managed
+                // tokens (§H.8 p136/p140, pp155-156, p134).
+                if matches!(
+                    ctrl,
+                    DissemControl::OcUsgov
+                        | DissemControl::Relido
+                        | DissemControl::Fouo
+                ) {
+                    continue;
+                }
+                // Exception class 2 — FD&R-family eviction when
+                // NOFORN dominates at banner scope (§D.2 Table 3
+                // rows 1+2, §H.8 p145 + p154 + p157).
                 if banner_has_noforn && fdr_family.contains(ctrl) {
-                    // Eviction is the intended behavior (Step 6);
-                    // skip the superset check for this token.
                     continue;
                 }
                 prop_assert!(

@@ -341,6 +341,20 @@ impl CapcoRuleSet {
                 // surfacing. The solely-NATO-document case is carved
                 // out via `PageContext::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
+                // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
+                // collapse-to-FGI per CAPCO-2016 §H.3 p57 + §H.7 p123
+                // (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the
+                // migration trigger lives on p57's "Derivative Use"
+                // bullets, not the p56 grammar block). P-3 (8th-pass):
+                // reverted to Banner-only firing to avoid Mixed-page
+                // false positives — see the `JointDisunityCollapseRule`
+                // doc-comment for the layout-gap trade-off. Fires on
+                // Banner candidates only; reads `ctx.page_context` for
+                // the `JointSet::DisunityCollapse` state. The diagnostic
+                // message uses canonical CountryCode trigraphs only
+                // (Constitution V Principle V G13).
+                // Severity: Warn (configurable per .marque.toml).
+                Box::new(JointDisunityCollapseRule),
             ],
         }
     }
@@ -4958,6 +4972,201 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
     )
 }
 
+// ===========================================================================
+// W004 — JOINT producer-disunity collapse (PR 4b-B Commit 5)
+// ===========================================================================
+//
+// Authority (verified 2026-05-15 against CAPCO-2016.md):
+// - §H.3 p56 (JOINT classification grammar — banner form
+//   `//JOINT [class] [LIST]`).
+// - §H.3 pp55-59 (JOINT worked examples).
+// - §H.7 p123 (FGI source-acknowledged form — disunity-collapse
+//   non-US producers migrate to FGI [LIST]).
+//
+// Constitution V Principle V G13: the W004 diagnostic message MUST
+// NOT contain document text. Permitted identifiers: `CountryCode`
+// canonical trigraphs (vocabulary atoms), `Span` byte offsets,
+// category IDs. The message template below uses placeholders only
+// — no input bytes are interpolated.
+
+/// JOINT producer-disunity collapse rule.
+///
+/// Fires when every portion on a page is JOINT-classified but the
+/// portions disagree on their producer (country) list. The banner
+/// cannot roll up the JOINT marking because the per-portion producer
+/// lists don't share a unanimous set; per §H.7 p123 the non-US
+/// producers migrate to FGI [LIST], and JOINT is dropped from the
+/// banner.
+///
+/// **Firing surface (PR 4b-B 8th-pass P-3 trade-off).** W004 fires on
+/// **Banner candidates only**. The 6th-pass added Portion-firing to
+/// cover real-world layouts where a header banner runs before any
+/// portions accumulate (page_context empty → W004 never fires at the
+/// top banner); however, portion-time firing introduced a correctness
+/// regression on Mixed pages — a page with
+/// `[P1=JOINT(USA,CAN), P2=JOINT(USA,GBR), P3=(S//NF)]` fires W004
+/// at P2 time (snapshot = [P1,P2] → DisunityCollapse) but the final
+/// page state is `Mixed` (P3 is non-JOINT) — W004 MUST NOT fire on
+/// Mixed per §H.3 p57. The 8th-pass reverted to Banner-only.
+/// Trade-off documented: a pure-JOINT page with a top banner and no
+/// closing footer banner will NOT fire W004 (page_context is None when
+/// the top banner runs). See the inline comment at the `check` impl.
+///
+/// **Mixed JOINT + non-JOINT portions** (§H.3 p57 — "the JOINT
+/// marking is not carried forward to the banner line in US
+/// documents") do **NOT** fire W004. That case is `JointSet::Mixed`
+/// (C-3 PR 4b-B follow-up — was `Bottom` pre-split) and is handled
+/// by the existing PageContext-resident `expected_fgi_marker` path;
+/// no W004 diagnostic emits on `Mixed`.
+///
+/// Severity: `Warn` (per `feedback_dissem_conflicts_emit_subtractive_fix.md`,
+/// JOINT disunity is a subtractive-fix case).
+///
+/// **Fix payload deferred** (H-1 declined-in-scope in PR 4b-B
+/// follow-up triage). The cross-axis JOINT → FGI [LIST] migration
+/// is a renderer-canonical concern, not a single-span text
+/// replacement:
+///
+/// - W004 fires on the banner candidate, but a JOINT-disunity page
+///   has no banner JOINT block to rewrite — §H.3 p57 says JOINT
+///   does not roll up to the banner. The "fix" would have to edit
+///   each portion (remove the JOINT block) AND emit a new banner-
+///   shaped FGI [LIST] elsewhere. That is multi-span / cross-axis
+///   territory; `Diagnostic::text_correction` is single-axis-scoped
+///   and `ReplacementIntent::FactAdd` / `FactRemove` /
+///   `Recanonicalize` are also single-axis (cross-axis migrations
+///   are text_correction-route, but text_correction is single-span).
+/// - The `MarkingScheme::render_canonical` trait surface (PR 5+
+///   Stage 4) is the right home for this transformation: the
+///   renderer reads the post-projection `CanonicalAttrs` (which
+///   already carries the FGI-migrated banner facts produced by
+///   `CapcoMarking::join_via_lattice`) and emits the canonical
+///   `[class]//FGI [LIST]` form for the whole page.
+///
+/// The W004 diagnostic surfaces the transformation so users have
+/// an audit trail today, even without an auto-applied fix.
+struct JointDisunityCollapseRule;
+
+impl Rule<CapcoScheme> for JointDisunityCollapseRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("W004")
+    }
+    fn name(&self) -> &'static str {
+        "joint-disunity-collapse"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    /// Phase::WholeMarking: page-level banner decision reading the
+    /// classification axis across all portions on the page.
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    /// Trusted: implementation is a pure read-only check over
+    /// `JointSet::from_attrs_iter`'s deterministic state machine plus
+    /// a `format!` message synthesis using only `CountryCode` canonical
+    /// trigraphs and a fixed §-citation. No mutable global state, no
+    /// I/O, no allocation that could fail unexpectedly; the rule is
+    /// safe to skip `catch_unwind` per PR #448.
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        use marque_ism::MarkingType;
+        // P-3 (8th-pass trade-off): W004 fires on Banner candidates
+        // only. The 6th-pass added Portion-firing to cover banner-first
+        // layouts where the top banner fires before any portions accumulate
+        // (the "W004-banner-first" bug: banner sees empty page_context, rule
+        // returns early, no closing banner → W004 never fires). However,
+        // portion-time firing introduces a correctness regression: a page
+        // with [P1=JOINT(USA,CAN), P2=JOINT(USA,GBR), P3=(S//NF)] fires
+        // W004 at P2 time (snapshot = [P1, P2] → DisunityCollapse) but the
+        // final page state is `Mixed` (P3 is non-JOINT) — W004 must NOT fire
+        // on Mixed per §H.3 p57 ("JOINT marking not carried forward to the
+        // banner line in US documents"; the Mixed case is already
+        // well-handled).
+        //
+        // PM guidance (8th-pass): prefer correctness over coverage for a
+        // Warn-severity rule. The banner-first false-negative is documented
+        // below; the Mixed-page false-positive is a defect. Revert to
+        // Banner-only.
+        //
+        // Trade-off documented: a pure-JOINT page with a top banner (no
+        // footer banner) and disunified portions will NOT fire W004 under
+        // this restriction. The rule reads `page_context` (populated for
+        // Banner candidates) which is `None` when the top banner runs with
+        // no preceding portions. Callers that need to detect disunity in
+        // banner-first layouts should use the JointSet lattice projection
+        // directly (via `CapcoScheme::project` or `JointSet::from_attrs_iter`
+        // over the page's portions).
+        //
+        // N-9-2 (PR 437 10th-pass): `cross_portion_context` was removed
+        // from `RuleContext` — O(N²) per-portion PageContext cloning with
+        // zero active consumers. Future cross-portion aggregation rules
+        // that need the post-add accumulator state should add a lazy/gated
+        // field when a real consumer lands.
+        //
+        // §-authority: §H.3 p57 (JOINT not carried to banner line in US
+        // documents — this is the Mixed case that portion-time snapshot
+        // cannot distinguish from DisunityCollapse until all portions land).
+        // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+        if !matches!(ctx.marking_type, MarkingType::Banner) {
+            return vec![];
+        }
+        let Some(page_ctx) = ctx.page_context.as_ref() else {
+            return vec![];
+        };
+
+        let joint_set = crate::lattice::JointSet::from_attrs_iter(page_ctx.portions());
+        if !joint_set.is_disunity_collapse() {
+            return vec![];
+        }
+
+        let Some(non_us) = joint_set.disunity_collapse_non_us_producers() else {
+            return vec![];
+        };
+
+        // Render the producer set as canonical trigraphs, sorted
+        // alphabetically. These are CountryCode vocabulary atoms;
+        // no document text leaks per Constitution V G13.
+        let producers_str: String = non_us
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // The diagnostic span points at the candidate itself (banner
+        // OR portion). The W004 message identifies the transformation
+        // by name and category ID; producer trigraphs and the JOINT
+        // category label are canonical vocabulary, not document bytes.
+        //
+        // CV-4 (PR 4b-B 8th-pass follow-up): cite §H.3 p57 + §H.7 p123
+        // in both the message text AND the Diagnostic.citation field
+        // (pre-CV-4 the citation said `§H.3 p56` which is the JOINT
+        // grammar page; the load-bearing migration trigger is on p57
+        // in the "Derivative Use" bullets — "The banner line contains
+        // the following: ... The FGI marking including all
+        // trigraph/tetragraph codes identified in the JOINT
+        // portion(s)"). §H.7 p123 grounds the FGI grammar the
+        // migrated producers render under. Verified 2026-05-16
+        // against `crates/capco/docs/CAPCO-2016.md`.
+        let message = format!(
+            "joint-disunity-collapse: portions on this page carry distinct \
+             JOINT producer lists; banner cannot roll up JOINT. Non-US \
+             producers migrate to FGI [{producers_str}] per §H.3 p57 + §H.7 p123."
+        );
+
+        vec![Diagnostic::new(
+            self.id(),
+            self.default_severity(),
+            ctx.candidate_span,
+            message,
+            "CAPCO-2016 §H.3 p57 + §H.7 p123",
+            None,
+        )]
+    }
+}
+
 #[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -5928,21 +6137,14 @@ mod tests {
         ]);
         // Leave attrs.token_spans empty.
 
-        let ctx = RuleContext {
-            marking_type: MarkingType::Banner,
-            zone: None,
-            position: None,
-            // Test-fixture carve-out per Constitution V Principle V:
-            // synthetic empty span — these tests construct attrs
-            // directly and do not exercise intent-only synthesis.
-            candidate_span: marque_ism::Span::new(0, 0),
-            page_context: None,
-            page_marking: None,
-            corrections: None,
-            // No two-pass fix path is in play for this defensive
-            // unit test — leave the cache slot empty.
-            pre_pass_1_attrs: None,
-        };
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic empty span — these tests construct attrs
+        // directly and do not exercise intent-only synthesis. No
+        // two-pass fix path is in play, so the pre-pass-1 cache
+        // slot stays empty. PR 4b-B 9th-pass follow-up: `RuleContext`
+        // is `#[non_exhaustive]`; the `new` constructor returns a
+        // minimal context with all `Option`-typed fields as `None`.
+        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
         let rule = super::RelToTrigraphSuggestRule;
         let diags =
             <super::RelToTrigraphSuggestRule as Rule<CapcoScheme>>::check(&rule, &attrs, &ctx);
@@ -7402,21 +7604,14 @@ mod tests {
         )]
         .into();
 
-        let ctx = RuleContext {
-            marking_type: MarkingType::Banner,
-            zone: None,
-            position: None,
-            // Test-fixture carve-out per Constitution V Principle V:
-            // synthetic empty span — these tests construct attrs
-            // directly and do not exercise intent-only synthesis.
-            candidate_span: marque_ism::Span::new(0, 0),
-            page_context: None,
-            page_marking: None,
-            corrections: None,
-            // Unit test for the declarative-rule layer; no engine
-            // two-pass pipeline.
-            pre_pass_1_attrs: None,
-        };
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic empty span — these tests construct attrs
+        // directly and do not exercise intent-only synthesis.
+        // Unit test for the declarative-rule layer; no engine
+        // two-pass pipeline. PR 4b-B 9th-pass follow-up:
+        // `RuleContext` is `#[non_exhaustive]`; use the `new`
+        // minimal-context constructor.
+        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
 
         let rule = DeclarativeJointHcsRule;
         let diags = rule.check(&attrs, &ctx);
@@ -7474,21 +7669,14 @@ mod tests {
         // permitted with JOINT). The rule must NOT fire.
         attrs.sci_controls = vec![SciControl::Si].into();
 
-        let ctx = RuleContext {
-            marking_type: MarkingType::Banner,
-            zone: None,
-            position: None,
-            // Test-fixture carve-out per Constitution V Principle V:
-            // synthetic empty span — these tests construct attrs
-            // directly and do not exercise intent-only synthesis.
-            candidate_span: marque_ism::Span::new(0, 0),
-            page_context: None,
-            page_marking: None,
-            corrections: None,
-            // Unit test for the declarative-rule layer; no engine
-            // two-pass pipeline.
-            pre_pass_1_attrs: None,
-        };
+        // Test-fixture carve-out per Constitution V Principle V:
+        // synthetic empty span — these tests construct attrs
+        // directly and do not exercise intent-only synthesis.
+        // Unit test for the declarative-rule layer; no engine
+        // two-pass pipeline. PR 4b-B 9th-pass follow-up:
+        // `RuleContext` is `#[non_exhaustive]`; use the `new`
+        // minimal-context constructor.
+        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
 
         let rule = DeclarativeJointHcsRule;
         let diags = rule.check(&attrs, &ctx);
@@ -8870,19 +9058,14 @@ pub(crate) mod marque_capco_test_support {
                 } else {
                     None
                 };
-            let ctx = RuleContext {
-                marking_type: candidate.kind,
-                zone: None,
-                position: None,
-                candidate_span: candidate.span,
-                page_context: ctx_page,
-                page_marking: ctx_page_marking,
-                corrections: None,
-                // Test-driver synthetic context; no two-pass fix
-                // pipeline is in play, so the pre-pass-1 cache slot
-                // is unconditionally `None`.
-                pre_pass_1_attrs: None,
-            };
+            // Test-driver synthetic context; no two-pass fix pipeline
+            // is in play, so the pre-pass-1 cache slot stays `None`.
+            // PR 4b-B 9th-pass follow-up: `RuleContext` is
+            // `#[non_exhaustive]`; cross-crate construction goes
+            // through the `new` + `with_*` builder.
+            let ctx = RuleContext::new(candidate.kind, candidate.span)
+                .with_page_context(ctx_page)
+                .with_page_marking(ctx_page_marking);
             for rule in rule_set.rules() {
                 out.extend(rule.check(&attrs, &ctx));
             }

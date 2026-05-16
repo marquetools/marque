@@ -506,8 +506,18 @@ impl PageContext {
     /// per ISM-Rollup XSLT — all of which are US-context behaviors
     /// (none apply to the NATO-attributed channel):
     ///
-    /// - **OC-USGOV** (§H.8 p139): Drops if not present on ALL
-    ///   OC-carrying portions.
+    /// - **OC-USGOV supersession** (§H.8 p136 + p140): Drops when
+    ///   any portion carries `Oc`. The constituency relationship
+    ///   `ORCON ⊐ ORCON-USGOV` makes ORCON the broader marker; one
+    ///   ORCON portion wins the banner over any number of
+    ///   ORCON-USGOV portions. (PR 4b-B Commit 2 — was a
+    ///   unanimity-drop pre-fix; the supersession reading matches
+    ///   the worked example on §H.8 p136.)
+    /// - **RELIDO observed-unanimity** (§H.8 pp155-156): Drops when
+    ///   any portion lacks `Relido`. Layer 1 only — the Layer 2
+    ///   case where Marque infers RELIDO from §B.3 Table 2
+    ///   ("classified, uncaveated, on/after 28 Jun 2010") defers to
+    ///   PR 4b-D.
     /// - **FOUO** (§H.8 p134): Drops in classified documents (stays
     ///   in unclassified).
     /// - **DSEN** (§H.8 p159): Overrides FOUO regardless of
@@ -530,20 +540,54 @@ impl PageContext {
                 .flat_map(|attrs| attrs.dissem_us.iter().copied()),
         );
 
-        // Step 2: OC-USGOV drops if not on ALL OC-carrying portions.
-        if seen.contains(&DissemControl::OcUsgov) {
-            let oc_portions: Vec<_> = self
-                .portions
-                .iter()
-                .filter(|a| a.dissem_us.contains(&DissemControl::Oc))
-                .collect();
-            if !oc_portions.is_empty() {
-                let all_have_usgov = oc_portions
+        // Step 2: OC-USGOV supersession.
+        //
+        // CAPCO-2016 §H.8 p136 (ORCON Precedence Rules for Banner Line
+        // Guidance — "If ORCON and ORCON-USGOV portions are in a document,
+        // ORCON takes precedence and is conveyed in the banner line") +
+        // §H.8 p140 (ORCON-USGOV template — same rule from the USGOV
+        // vantage). ORCON ⊐ ORCON-USGOV: USGOV is the narrower
+        // constituency, ORCON is the broader one. One ORCON portion is
+        // enough to win the banner over any number of ORCON-USGOV
+        // portions.
+        //
+        // verified 2026-05-15 against CAPCO-2016.md (§H.8 ORCON p136-138
+        // / §H.8 ORCON-USGOV p139-141 page ranges in
+        // CAPCO-2016_citation_index.yml).
+        //
+        // The pre-fix implementation modeled this as unanimity: drop
+        // USGOV only when not on every ORCON-carrying portion. That is
+        // wrong per the worked example on §H.8 p136. PR 4b-B (006 T112)
+        // Commit 2 fixes it; project memory
+        // `project_oc_usgov_is_supersession_not_unanimity.md` carries
+        // the longer rationale.
+        if seen.contains(&DissemControl::Oc) && seen.contains(&DissemControl::OcUsgov) {
+            seen.remove(&DissemControl::OcUsgov);
+        }
+
+        // Step 2b: RELIDO observed-unanimity.
+        //
+        // CAPCO-2016 §H.8 pp155-156 (RELIDO Precedence Rules for Banner
+        // Line Guidance — "RELIDO appears on the banner line only if
+        // every portion on the page carries RELIDO"). PR 4b-B Layer 1
+        // covers observed-unanimity only; the Layer 2 case where Marque
+        // infers RELIDO from §B.3 Table 2 p21 ("classified, uncaveated,
+        // on/after 28 Jun 2010") defers to PR 4b-D.
+        //
+        // verified 2026-05-15 against CAPCO-2016.md (§H.8 RELIDO
+        // p154-156 page range in CAPCO-2016_citation_index.yml).
+        //
+        // Project memory `project_relido_unanimity_banner_rollup.md`
+        // confirms the unanimity policy and the Layer 1 / Layer 2
+        // split.
+        if seen.contains(&DissemControl::Relido) {
+            let relido_unanimous = !self.portions.is_empty()
+                && self
+                    .portions
                     .iter()
-                    .all(|a| a.dissem_us.contains(&DissemControl::OcUsgov));
-                if !all_have_usgov {
-                    seen.remove(&DissemControl::OcUsgov);
-                }
+                    .all(|a| a.dissem_us.contains(&DissemControl::Relido));
+            if !relido_unanimous {
+                seen.remove(&DissemControl::Relido);
             }
         }
 
@@ -2288,7 +2332,12 @@ mod tests {
     }
 
     #[test]
-    fn dissem_oc_usgov_drops_when_not_on_all_oc_portions() {
+    fn dissem_oc_usgov_supersession_when_orcon_present_anywhere() {
+        // PR 4b-B Commit 2: OC-USGOV supersession (not unanimity) per
+        // CAPCO-2016 §H.8 p136 + §H.8 p140. One ORCON portion is
+        // enough to win the banner over any number of ORCON-USGOV
+        // portions. The pre-fix behavior dropped USGOV only when not
+        // on every ORCON-carrying portion; that was wrong.
         let mut ctx = PageContext::new();
         // Two OC portions, only one has OC-USGOV.
         ctx.add_portion(CanonicalAttrs {
@@ -2305,7 +2354,123 @@ mod tests {
         assert!(dissem.contains(&DissemControl::Oc));
         assert!(
             !dissem.contains(&DissemControl::OcUsgov),
-            "OC-USGOV should drop when not on all OC portions: {dissem:?}"
+            "OC-USGOV should drop under §H.8 p136 supersession when ORCON \
+             is present anywhere on the page: {dissem:?}"
+        );
+    }
+
+    #[test]
+    fn dissem_oc_usgov_supersession_single_orcon_drops_many_usgov() {
+        // PR 4b-B Commit 2 regression: one bare-ORCON portion + three
+        // OC+OC-USGOV portions → banner gets ORCON only (USGOV drops).
+        // Per §H.8 p136 + p140 — supersession is unambiguous: any
+        // ORCON portion anywhere on the page wins over any number of
+        // ORCON-USGOV portions, regardless of co-occurrence on the
+        // same portion.
+        //
+        // M-2 PR 4b-B follow-up: this fixture does NOT distinguish
+        // pre-fix unanimity-drop from post-fix supersession (both
+        // would drop USGOV here, because the bare-ORCON portion
+        // breaks the "all OC-carrying portions have USGOV" condition
+        // anyway). The clean distinguishing case lives in the
+        // pure-OC-USGOV-with-one-ORCON-elsewhere shape: the
+        // `dissem_oc_usgov_rolls_up_when_no_orcon_in_any_portion`
+        // sibling test plus the pure-OC-USGOV parity-gate fixture
+        // (`page_context_lattice_parity::oc_usgov_pure_usgov`)
+        // together cover the unanimity-vs-supersession split.
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Oc].into(),
+            ..Default::default()
+        });
+        for _ in 0..3 {
+            ctx.add_portion(CanonicalAttrs {
+                classification: Some(MarkingClassification::Us(Classification::Secret)),
+                dissem_us: vec![DissemControl::Oc, DissemControl::OcUsgov].into(),
+                ..Default::default()
+            });
+        }
+        let dissem = ctx.expected_dissem_us();
+        assert!(dissem.contains(&DissemControl::Oc));
+        assert!(
+            !dissem.contains(&DissemControl::OcUsgov),
+            "ORCON-USGOV should drop when ORCON is present anywhere \
+             (§H.8 p136 supersession): {dissem:?}"
+        );
+    }
+
+    #[test]
+    fn dissem_oc_usgov_rolls_up_when_no_orcon_in_any_portion() {
+        // PR 4b-B Commit 2 regression: pure OC-USGOV across all
+        // portions → banner gets OC-USGOV (no supersession, no drop).
+        // Per §H.8 p140 — OC-USGOV stands on its own when no ORCON
+        // portion is present.
+        let mut ctx = PageContext::new();
+        for _ in 0..3 {
+            ctx.add_portion(CanonicalAttrs {
+                classification: Some(MarkingClassification::Us(Classification::Secret)),
+                dissem_us: vec![DissemControl::OcUsgov].into(),
+                ..Default::default()
+            });
+        }
+        let dissem = ctx.expected_dissem_us();
+        assert!(
+            dissem.contains(&DissemControl::OcUsgov),
+            "ORCON-USGOV should roll up when no ORCON portion exists \
+             (§H.8 p140 stand-alone): {dissem:?}"
+        );
+        assert!(!dissem.contains(&DissemControl::Oc));
+    }
+
+    #[test]
+    fn dissem_relido_observed_unanimity_pass() {
+        // PR 4b-B Commit 2 regression: every portion carries RELIDO
+        // → banner gets RELIDO. §H.8 pp155-156.
+        let mut ctx = PageContext::new();
+        for _ in 0..3 {
+            ctx.add_portion(CanonicalAttrs {
+                classification: Some(MarkingClassification::Us(Classification::Secret)),
+                dissem_us: vec![DissemControl::Relido].into(),
+                ..Default::default()
+            });
+        }
+        let dissem = ctx.expected_dissem_us();
+        assert!(
+            dissem.contains(&DissemControl::Relido),
+            "RELIDO should roll up when unanimous across portions \
+             (§H.8 pp155-156): {dissem:?}"
+        );
+    }
+
+    #[test]
+    fn dissem_relido_observed_unanimity_fail() {
+        // PR 4b-B Commit 2 regression: 2 of 3 portions carry RELIDO,
+        // one does not → banner drops RELIDO. §H.8 pp155-156.
+        // (The §B.3 Table 2 / Layer 2 FD&R inference defers to PR
+        // 4b-D — this test pins the Layer 1 observed-unanimity boundary.)
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Relido].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Relido].into(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![].into(),
+            ..Default::default()
+        });
+        let dissem = ctx.expected_dissem_us();
+        assert!(
+            !dissem.contains(&DissemControl::Relido),
+            "RELIDO should drop on non-unanimity (§H.8 pp155-156 — \
+             RELIDO appears only when every portion carries it): \
+             {dissem:?}"
         );
     }
 

@@ -294,7 +294,47 @@ pub enum Phase {
 /// portions. The engine resets it at scanner-emitted `MarkingType::PageBreak`
 /// candidates (form-feed `\f` and `\n\n\n+` heuristics) so the context
 /// reflects only the current page.
+///
+/// **`#[non_exhaustive]`** (PR 4b-B 9th-pass follow-up): the engine
+/// has added several public fields during the 006 refactor
+/// (`page_marking`, `corrections`, `pre_pass_1_attrs`) and is likely
+/// to add more before the API stability freeze at PR 10. Marking the
+/// struct `#[non_exhaustive]` means a future field addition is a
+/// non-breaking change for downstream consumers.
+///
+/// **Note on future cross-portion aggregation rules** (N-9-2, PR 437
+/// 10th-pass): the `cross_portion_context` field was removed because
+/// eager per-portion `PageContext` cloning is O(N²) over portions
+/// per page and had zero active rule consumers. Future cross-portion
+/// rules that need the post-add accumulator state should add a
+/// lazy/gated field with explicit capability declaration rather than
+/// restoring the eager-clone shape. Per Constitution Principle I,
+/// any O(N²) hot-path cost MUST be benchmarked before shipping.
+///
+/// **Cross-crate consumers MUST construct via the engine-provided
+/// constructor path** (`RuleContext::new`). `#[non_exhaustive]` blocks
+/// BOTH bare literal construction (`RuleContext { marking_type, zone,
+/// ... }`) AND functional-update syntax (`RuleContext { marking_type,
+/// ..base }`) across crate boundaries — the Rust reference specifies
+/// that functional update with `..base` requires the struct to be
+/// fully-exhaustively constructible at the call site, so
+/// `#[non_exhaustive]` blocks it just as it blocks literal
+/// construction. See the constructor doc below for the correct
+/// cross-crate pattern.
+///
+/// Same-crate construction (this crate's own unit tests within
+/// `marque-rules` itself) is unaffected — `#[non_exhaustive]` only
+/// restricts construction in EXTERNAL crates. ALL other crates —
+/// including `marque-engine` (which is a separate crate from
+/// `marque-rules`), `marque-capco`, and `crates/capco/tests/*` — are
+/// external and must use the constructor helpers. The FR-040
+/// cargo-rules check enforces the pattern.
+///
+/// P-5 (8th-pass): corrected prior doc that claimed `..base`
+/// functional-update "works" for downstream rule crates — it does not.
+/// The constructor doc at `RuleContext::new` is authoritative.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RuleContext<'a> {
     pub marking_type: MarkingType,
     /// Document zone (header/footer/body/CAB) when known. `None` in Phase 3
@@ -381,6 +421,92 @@ pub struct RuleContext<'a> {
     /// the parse cache adopts refcount-shared attrs alongside the
     /// v0.2 LMDB incremental cache.
     pub pre_pass_1_attrs: Option<&'a CanonicalAttrs>,
+}
+
+impl<'a> RuleContext<'a> {
+    /// Construct a minimal `RuleContext` with all `Option`-typed
+    /// context fields set to `None`. Required-field arguments
+    /// (`marking_type`, `candidate_span`) come from the engine's
+    /// per-candidate dispatch loop or the test fixture's synthetic
+    /// inputs.
+    ///
+    /// External (cross-crate) construction of `RuleContext` MUST go
+    /// through this constructor because `#[non_exhaustive]` blocks
+    /// both bare literal construction AND `..base` functional-update
+    /// syntax across crate boundaries. Callers that need to populate
+    /// optional fields chain `with_*` setters or assign on the
+    /// returned mutable binding:
+    ///
+    /// ```ignore
+    /// let ctx = RuleContext::new(MarkingType::Banner, span)
+    ///     .with_page_context(Some(page))
+    ///     .with_corrections(corrections);
+    /// ```
+    ///
+    /// or
+    ///
+    /// ```ignore
+    /// let mut ctx = RuleContext::new(MarkingType::Banner, span);
+    /// ctx.page_context = Some(page);
+    /// ```
+    ///
+    /// PR 4b-B 9th-pass follow-up: added alongside the
+    /// `#[non_exhaustive]` attribute on `RuleContext` so external
+    /// consumers (downstream rule crates, integration tests in
+    /// `marque-capco`, the `marque-engine` rule loop) have a stable
+    /// construction entrypoint regardless of which optional fields
+    /// the engine adds in future PRs.
+    pub fn new(marking_type: MarkingType, candidate_span: marque_ism::Span) -> Self {
+        Self {
+            marking_type,
+            zone: None,
+            position: None,
+            candidate_span,
+            page_context: None,
+            page_marking: None,
+            corrections: None,
+            pre_pass_1_attrs: None,
+        }
+    }
+
+    /// Set [`Self::zone`] (header / footer / body / CAB).
+    pub fn with_zone(mut self, zone: Option<Zone>) -> Self {
+        self.zone = zone;
+        self
+    }
+
+    /// Set [`Self::position`] (coarse document position).
+    pub fn with_position(mut self, position: Option<DocumentPosition>) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Set [`Self::page_context`] (banner-validation accumulator).
+    pub fn with_page_context(mut self, page_context: Option<Arc<marque_ism::PageContext>>) -> Self {
+        self.page_context = page_context;
+        self
+    }
+
+    /// Set [`Self::page_marking`] (page-level rolled-up marking).
+    pub fn with_page_marking(
+        mut self,
+        page_marking: Option<Arc<marque_ism::ProjectedMarking>>,
+    ) -> Self {
+        self.page_marking = page_marking;
+        self
+    }
+
+    /// Set [`Self::corrections`] (org-specific corrections map).
+    pub fn with_corrections(mut self, corrections: Option<Arc<HashMap<String, String>>>) -> Self {
+        self.corrections = corrections;
+        self
+    }
+
+    /// Set [`Self::pre_pass_1_attrs`] (pass-1 reshape signal).
+    pub fn with_pre_pass_1_attrs(mut self, pre_pass_1_attrs: Option<&'a CanonicalAttrs>) -> Self {
+        self.pre_pass_1_attrs = pre_pass_1_attrs;
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------

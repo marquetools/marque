@@ -23,6 +23,36 @@
 //!
 //! Reference baseline: x86_64 >= 3.0 GHz single-thread (e.g. modern laptop-class CPU),
 //! warm cache, `--release` build, no tracing subscriber.
+//!
+//! ## PR 4b-B (006 T112) bench-impact note
+//!
+//! PR 4b-B installs the per-category Lattice impls
+//! (ClassificationLattice, NatoClassLattice, JointSet, DissemSet,
+//! NatoDissemSet, RelToBlock, DeclassifyOnLattice) and exposes them
+//! via `CapcoMarking::join_via_lattice`. **The production
+//! `Lattice::join` impl still delegates to PageContext** — the
+//! hot-path flip is deferred to PR 4b-D per the plan-of-record
+//! `docs/plans/2026-05-15-pr4b-B-lattice-impls-rest-plan.md` §3.2.
+//! Quick `cargo bench --quick lint_10kb` after Commit 7 measured
+//! 594-613µs (well under the 900µs gate and the historical 828µs
+//! baseline), confirming the lattice work is NOT on the hot path yet.
+//!
+//! When PR 4b-D flips `CapcoScheme::project(Scope::Page, ...)` to use
+//! the lattice path, expect the bench to move — the per-axis lattice
+//! types' overhead is bounded (BTreeSet/BTreeMap over closed-vocab
+//! axes; same asymptotic shape as `PageContext::expected_*`). PR 4b-B
+//! Commit 2 already collapsed the OC-USGOV branch to O(1) set-
+//! containment (`seen.contains(&DissemControl::Oc) && seen.contains(
+//! &DissemControl::OcUsgov)`); the historical `oc_portions.iter()`
+//! O(n) walk it replaced no longer exists, so 4b-D won't reshape that
+//! particular path. Net delta on 4b-D landing should be neutral or
+//! marginally improved overall.
+//!
+//! Bench-baseline staleness pre-flight per project memory
+//! `project_bench_baseline_staleness.md`: the gate is 900µs / baseline
+//! 828µs / current measurements 594-880µs depending on tree state.
+//! One `gh run rerun <id> --failed` after PR 4b-D's open is the
+//! standard mitigation for noise-band flakes.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
