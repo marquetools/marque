@@ -1869,7 +1869,6 @@ impl CapcoScheme {
                 CategoryAction::Intent(ReplacementIntent::FactRemove {
                     facts: smallvec::smallvec![
                         FactRef::Cve(TOK_RELIDO),
-                        FactRef::Cve(TOK_EYES),
                         FactRef::Cve(TOK_DISPLAY_ONLY),
                     ],
                     scope: Scope::Page,
