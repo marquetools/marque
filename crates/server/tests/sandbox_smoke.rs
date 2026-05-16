@@ -17,8 +17,10 @@ use marque_server::sandbox::{SandboxStatus, apply};
 /// `FilesystemOnly`.  On kernels ≥ 6.7 (Landlock V4, the Ubuntu-24.04 CI
 /// baseline) the expected status is `FullyEnforced`.
 ///
-/// The test uses a temporary directory as `config_dir` so the path argument
-/// is valid without any assumptions about the working directory.
+/// The test uses a temporary directory as `config_dir`.  The value of
+/// `config_dir` does not affect which filesystem paths are accessible (the
+/// sandbox grants read-only access to all of `/`); it is used only for the
+/// startup `INFO` log entry.
 #[test]
 fn sandbox_applies_without_error() {
     let tmp = std::env::temp_dir();

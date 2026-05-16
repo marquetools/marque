@@ -105,7 +105,7 @@ pub enum SandboxStatus {
 /// 1. **Filesystem** — `AccessFs::from_all(ABI::V4)` handled; only
 ///    `ReadFile | ReadDir` granted on `/`.
 /// 2. **Network** — `AccessNet::BindTcp | AccessNet::ConnectTcp` handled;
-///    no `NetPort` rules → no new TCP connections allowed.
+///    no `NetPort` rules → no new TCP binds or connects allowed.
 ///
 /// Landlock accumulates rulesets (most-restrictive intersection), so applying
 /// them in two calls is semantically equivalent to one combined call.
@@ -135,6 +135,7 @@ pub fn apply(config_dir: &Path) -> SandboxStatus {
                 }
                 RulesetStatus::PartiallyEnforced => {
                     tracing::warn!(
+                        config_dir = %config_dir.display(),
                         "Landlock filesystem restrictions partially applied \
                          (some access rights not supported by this kernel). \
                          Write and execute access may not be fully blocked."
@@ -248,6 +249,13 @@ fn apply_filesystem_sandbox(
 /// listening socket is not affected — Landlock restricts future `bind(2)`
 /// and `connect(2)` calls, not existing file descriptors.
 ///
+/// **Zero rules is intentional.**  In Landlock, when an access type is
+/// *handled* (registered via `handle_access`) but no rule *allows* it, all
+/// instances of that access are denied.  Adding no `NetPort` rules means
+/// "deny `BindTcp` and `ConnectTcp` on every port", which is exactly the
+/// policy we want: the server should accept connections only on the socket
+/// that was already bound before this function is called.
+///
 /// Returns `RulesetStatus::NotEnforced` if the kernel does not support
 /// Landlock V4 (< 6.7).
 #[cfg(target_os = "linux")]
@@ -258,7 +266,9 @@ fn apply_network_sandbox(
     let status = Ruleset::default()
         .handle_access(AccessNet::from_all(ABI::V4))?
         .create()?
-        // No NetPort rules → BindTcp and ConnectTcp are denied on all ports.
+        // Zero NetPort rules is intentional: Landlock denies any access type
+        // that is handled but not explicitly allowed by a rule.  Handling
+        // BindTcp + ConnectTcp with no allow rules = all ports blocked.
         .restrict_self()?;
 
     Ok(status)
