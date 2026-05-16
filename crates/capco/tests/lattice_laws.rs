@@ -290,7 +290,10 @@ fn fgi_set_join_associative() {
 
 #[test]
 fn fgi_set_bottom_is_join_identity() {
-    let bottom = FgiSet::bottom();
+    // B-1 (PR 4b-B 8th-pass): `FgiSet::bottom()` retired alongside the
+    // `BoundedLattice` impl. `FgiSet::empty()` is the public bottom
+    // constructor with semantically-identical behavior — `Self::None`.
+    let bottom = FgiSet::empty();
     for a in fgi_samples() {
         assert_eq!(a.join(&bottom), a);
         assert_eq!(bottom.join(&a), a);

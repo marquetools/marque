@@ -603,19 +603,19 @@ impl Lattice for FgiSet {
     }
 }
 
-impl BoundedLattice for FgiSet {
-    fn bottom() -> Self {
-        Self::None
-    }
-    /// Top: source-concealed with no countries — dominates every other
-    /// non-concealed state under the supersession rule.
-    fn top() -> Self {
-        Self::Present {
-            concealed: true,
-            countries: BTreeSet::new(),
-        }
-    }
-}
+// `FgiSet` deliberately does NOT implement `BoundedLattice` (B-1, PR 4b-B
+// 8th-pass follow-up). Although `SourceConcealed` is a valid syntactic
+// supersession-top for the `Lattice::join` operation (it dominates every
+// non-concealed state), the `CountryCode` axis underneath
+// `Present { concealed: false, countries: BTreeSet<CountryCode> }` is
+// **open-vocabulary** — new trigraphs and tetragraphs land per ISMCAT
+// schema updates without an FgiSet code change. There is no lawful
+// finite "top" over the full `(concealed, countries)` Cartesian
+// product, so the `SciSet` / `SarSet` / `AeaSet` open-vocab precedent
+// applies. Use `FgiSet::empty()` / `FgiSet::default()` (== `Self::None`)
+// for the bottom; callers that need the source-concealed supersession
+// sentinel construct it explicitly via
+// `FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))`.
 
 // ---------------------------------------------------------------------------
 // AeaSet — lattice over the AEA category (RD/FRD/TFNI + CNWDI + SIGMA +
@@ -3109,8 +3109,11 @@ mod tests {
     }
 
     #[test]
-    fn fgi_set_none_is_bottom() {
-        assert_eq!(FgiSet::bottom(), FgiSet::None);
+    fn fgi_set_none_is_empty() {
+        // B-1 (PR 4b-B 8th-pass): `FgiSet::bottom()` retired alongside
+        // the `BoundedLattice` impl. `FgiSet::empty()` is the public
+        // bottom constructor; `FgiSet::None` is the variant it maps to.
+        assert_eq!(FgiSet::empty(), FgiSet::None);
     }
 
     // -----------------------------------------------------------------
@@ -3427,17 +3430,11 @@ mod tests {
         assert_eq!(d, FgiSet::None);
     }
 
-    #[test]
-    fn fgi_set_top_is_concealed_empty() {
-        let t = FgiSet::top();
-        assert!(matches!(
-            t,
-            FgiSet::Present {
-                concealed: true,
-                ..
-            }
-        ));
-    }
+    // `fgi_set_top_is_concealed_empty` retired in B-1 (PR 4b-B 8th-pass
+    // follow-up). `FgiSet` no longer implements `BoundedLattice`; the
+    // `SourceConcealed` supersession sentinel is still reachable via
+    // `FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))`, exercised
+    // by `fgi_set_meet_both_concealed_preserved` below.
 
     #[test]
     fn fgi_set_join_none_right_preserves_left() {

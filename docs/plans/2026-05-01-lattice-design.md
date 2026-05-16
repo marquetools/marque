@@ -863,16 +863,22 @@ the NOFORN-required diagnostic.
 
 ### Formal join semantics
 
-`FgiSet` is a **bounded join-semilattice** modeling the consensus-or-fallback
-pattern of §4.8.2. The lattice has:
+`FgiSet` is a **join-semilattice** (open-vocab over `CountryCode` —
+`BoundedLattice` deliberately not implemented; see the §6 "Note on
+`BoundedLattice`" below + the B-1 retirement note on `FgiSet` in
+`crates/capco/src/lattice.rs`). The lattice models the
+consensus-or-fallback pattern of §4.8.2. It has:
 
 - **Bottom**: `FgiSet::empty()` (no FGI markings on the page).
 - **Two named non-bottom shapes**:
   - `FgiSet::Present { concealed: true, countries: ∅ }` —
     **source-concealed FGI** per §H.7 p123, when at least one
-    portion is concealed-form. This is the absorbing top: once any
-    portion is concealed, the banner falls back to bare `FGI` regardless
-    of what other countries appear on other portions.
+    portion is concealed-form. This is a syntactic supersession-top
+    for the `join` operation (once any portion is concealed, the
+    banner falls back to bare `FGI` regardless of what other countries
+    appear on other portions), but the overall `(concealed, countries)`
+    state space is open-vocab so `FgiSet` does not name it as
+    `BoundedLattice::top()`.
   - `FgiSet::Present { concealed: false, countries: {C1, C2, ...} }` —
     **source-acknowledged FGI** with union of country trigraphs.
 
@@ -891,14 +897,21 @@ FgiSet::join(s1, s2):
   Pre:  s1, s2 ∈ FgiSet (well-formed per §4.8.2).
   Post: result is the consensus-or-fallback join.
         Identity (bottom): FgiSet::empty().
-        Top (within the bounded interpretation): Present{concealed: true, countries: ∅}.
+        Supersession-top (NOT exposed via BoundedLattice — see note below):
+          Present{concealed: true, countries: ∅}.
 ```
 
 **Note on `BoundedLattice`**: the implementation deliberately does
-NOT implement `BoundedLattice` — `top()` returning the concealed
-form would be a misleading default (the "everything is concealed"
-state is a lattice-theoretic top but rarely a useful operational
-default). Callers needing `concealed=true` express it directly.
+NOT implement `BoundedLattice` (retired in B-1, PR 4b-B 8th-pass
+follow-up). `top()` returning the concealed form would be a misleading
+default for two reasons: (1) the `(concealed, countries)` state space
+is open-vocab over `CountryCode` (new trigraphs land per ISMCAT schema
+updates), matching the `SciSet`/`SarSet`/`AeaSet` open-vocab
+precedent — there is no lawful finite top over the full state space;
+and (2) the "everything is concealed" state is a syntactic
+supersession-top for `join` but rarely a useful operational default.
+Callers needing `concealed=true` express it directly via
+`FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))`.
 
 This matches the existing `FgiSet::Present { concealed, countries }`
 implementation in `crates/capco/src/lattice.rs:420-552` (verified by
@@ -2230,9 +2243,17 @@ DeclassifyOnLattice(Option<IsmDate>) :
 ```
 
 **Bottom** = `None`. **No top is implemented** — dates are open-vocab,
-no finite top is realizable. Per `AeaSet`/`SciSet`/`SarSet`/`FgiSet`
-precedent in the same module, this is the established pattern for
-"no `BoundedLattice` impl when range is open."
+no finite top is realizable. Per `AeaSet`/`SciSet`/`SarSet` precedent
+in the same module, this is the established pattern for "no
+`BoundedLattice` impl when range is open." (M-25 PR 4b-B 7th-pass —
+`FgiSet` was previously listed in this precedent group but in fact
+DOES implement `BoundedLattice` at `crates/capco/src/lattice.rs:606`
+with `Present { concealed: true, countries: ∅ }` as the top per
+§H.7 p123 source-concealed dominates source-acknowledged. Removed
+from the precedent list to avoid misattribution. The `SciSet` /
+`SarSet` / `AeaSet` precedent remains accurate — all three are
+open-vocab and deliberately do not implement `BoundedLattice` per
+their respective inline notes at lattice.rs:271 / 405 / 1026.)
 
 ### 11.7 NatoClassLattice — bounded OrdMax (extends §7)
 

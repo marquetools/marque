@@ -132,7 +132,7 @@ fn arb_country_code() -> impl Strategy<Value = CountryCode> {
 fn arb_fgi_set() -> impl Strategy<Value = FgiSet> {
     prop_oneof![
         Just(FgiSet::None),
-        Just(FgiSet::bottom()),
+        Just(FgiSet::empty()),
         proptest::collection::vec(arb_country_code(), 0..=4).prop_map(|countries| {
             // Deduplicate — FgiMarker doesn't require uniqueness but the lattice
             // operates on sets; duplicate codes don't change the semantic.
@@ -289,7 +289,11 @@ proptest! {
 
     #[test]
     fn fgi_bottom_is_join_identity(a in arb_fgi_set()) {
-        let bot = FgiSet::bottom();
+        // B-1 (PR 4b-B 8th-pass): FgiSet no longer implements
+        // `BoundedLattice` (open-vocab CountryCode axis). Use the
+        // `empty()` constructor for the lattice bottom; semantically
+        // identical to the retired `BoundedLattice::bottom()` call.
+        let bot = FgiSet::empty();
         prop_assert_eq!(a.join(&bot), a.clone());
         prop_assert_eq!(bot.join(&a), a);
     }
@@ -306,14 +310,16 @@ proptest! {
 
     #[test]
     fn fgi_bottom_absorbs_meet(a in arb_fgi_set()) {
-        prop_assert_eq!(a.meet(&FgiSet::bottom()), FgiSet::bottom());
+        // B-1: use `empty()` after `BoundedLattice` retirement.
+        prop_assert_eq!(a.meet(&FgiSet::empty()), FgiSet::empty());
     }
 
-    #[test]
-    fn fgi_top_propagates_join(a in arb_fgi_set()) {
-        let top = FgiSet::top();
-        prop_assert_eq!(a.join(&top), top);
-    }
+    // `fgi_top_propagates_join` retired in B-1 (PR 4b-B 8th-pass).
+    // `SourceConcealed` IS a syntactic supersession-top for the join
+    // operation, but `FgiSet` no longer implements `BoundedLattice` per
+    // the open-vocab `CountryCode` precedent — see the doc comment on
+    // `FgiSet` in `crates/capco/src/lattice.rs`. The supersession
+    // semantic is still exercised by `fgi_concealment_monotone` below.
 
     // If the join of two sets has concealed=true, meet must not un-conceal.
     #[test]
