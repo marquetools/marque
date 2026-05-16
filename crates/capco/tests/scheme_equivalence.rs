@@ -129,6 +129,61 @@ fn project_banner_rel_to_intersection_matches_pagecontext() {
 }
 
 #[test]
+fn project_banner_display_only_intersection_matches_pagecontext() {
+    // Regression-guards the DISPLAY ONLY Phase 2 wiring in
+    // `page_context_to_attrs`: the existing project_banner per-axis
+    // checks cover classification, SCI, REL TO. Without this test, a
+    // regression of `out.display_only_to = ctx.expected_display_only()`
+    // back to `Box::new([])` would still pass every existing
+    // `expected_display_only` PageContext test and every
+    // banner-render test (those don't exercise the
+    // `scheme.project_banner` / `scheme.project(Scope::Page, …)`
+    // path; this one does).
+    //
+    // §D.2 Table 3 row 25 (DO + DO with common country → DO common).
+    // p1: DISPLAY ONLY AFG, IRQ
+    // p2: DISPLAY ONLY AFG, GBR
+    // Intersection = {AFG}.
+    let mut p1 = portion(Classification::Secret);
+    p1.display_only_to = vec![
+        CountryCode::try_new(b"AFG").unwrap(),
+        CountryCode::try_new(b"IRQ").unwrap(),
+    ]
+    .into();
+    let mut p2 = portion(Classification::Secret);
+    p2.display_only_to = vec![
+        CountryCode::try_new(b"AFG").unwrap(),
+        CountryCode::try_new(b"GBR").unwrap(),
+    ]
+    .into();
+
+    let portions = vec![wrap(p1), wrap(p2)];
+
+    let mut ctx = PageContext::new();
+    for p in &portions {
+        ctx.add_portion(p.0.clone());
+    }
+    let expected = ctx.expected_display_only();
+    assert_eq!(expected, vec![CountryCode::try_new(b"AFG").unwrap()]);
+
+    let scheme = CapcoScheme::new();
+    let banner = scheme.project_banner(&portions);
+    assert_eq!(
+        banner.0.display_only_to.as_ref(),
+        expected.as_slice(),
+        "scheme.project_banner must wire display_only_to from \
+         PageContext::expected_display_only (regression guard against \
+         page_context_to_attrs dropping the axis)"
+    );
+    assert!(
+        !banner.0.display_only_to.is_empty(),
+        "scheme.project_banner display_only_to must be non-empty when \
+         portions agree on a common country — empty would indicate the \
+         axis was silently dropped"
+    );
+}
+
+#[test]
 fn project_banner_noforn_supersedes_rel_to() {
     // p1: REL TO USA, GBR
     // p2: NOFORN
