@@ -1987,10 +1987,9 @@ fn is_fdr_dissem_token(tok: TokenId) -> bool {
 ///
 /// Drives `capco/non-fdr-control-evicts-fouo` (§H.8 p134, Correction A).
 fn fouo_with_non_fdr_other_control_trigger(m: &CapcoMarking) -> bool {
-    let has_fouo = m
-        .0
-        .dissem_iter()
-        .any(|d| matches!(d, marque_ism::DissemControl::Fouo));
+    let has_fouo =
+        m.0.dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Fouo));
     if !has_fouo {
         return false;
     }
@@ -2931,7 +2930,6 @@ impl CapcoScheme {
                 PATTERN_C_LIMDIS_READS,
                 PATTERN_C_LIMDIS_WRITES,
             ),
-
             // Pattern-C row 2: `capco/sbu-evicted-by-classified`.
             //
             // §H.9 p176 (SENSITIVE BUT UNCLASSIFIED, Precedence Rules
@@ -2951,7 +2949,6 @@ impl CapcoScheme {
                 PATTERN_C_SBU_READS,
                 PATTERN_C_SBU_WRITES,
             ),
-
             // Pattern-C row 3: `capco/dod-ucni-promotes-noforn-when-classified`.
             //
             // §H.6 p116 (DOD UCNI / DCNI, Precedence Rules for Banner
@@ -3013,7 +3010,6 @@ impl CapcoScheme {
                 PATTERN_C_UCNI_PROMOTE_READS,
                 PATTERN_C_UCNI_PROMOTE_WRITES,
             ),
-
             // Pattern-C row 4: `capco/dod-ucni-evicted-by-classified`.
             //
             // §H.6 p116 (DOD UCNI / DCNI, same passage as row 3): the
@@ -3039,7 +3035,6 @@ impl CapcoScheme {
                 PATTERN_C_UCNI_STRIP_READS,
                 PATTERN_C_UCNI_STRIP_WRITES,
             ),
-
             // Pattern-C row 5: `capco/doe-ucni-promotes-noforn-when-classified`.
             //
             // §H.6 p118 (DOE UCNI, Precedence Rules for Banner Line
@@ -3065,7 +3060,6 @@ impl CapcoScheme {
                 PATTERN_C_UCNI_PROMOTE_READS,
                 PATTERN_C_UCNI_PROMOTE_WRITES,
             ),
-
             // Pattern-C row 6: `capco/doe-ucni-evicted-by-classified`.
             //
             // §H.6 p118 (DOE UCNI, same passage as row 5). Strip half
@@ -3082,7 +3076,6 @@ impl CapcoScheme {
                 PATTERN_C_UCNI_STRIP_READS,
                 PATTERN_C_UCNI_STRIP_WRITES,
             ),
-
             // Pattern-C row 7: `capco/fouo-evicted-by-classified`.
             //
             // §H.8 p134 (FOUO Precedence Rules for Banner Line Guidance):
@@ -3111,7 +3104,6 @@ impl CapcoScheme {
                 PATTERN_C_FOUO_READS,
                 PATTERN_C_FOUO_WRITES,
             ),
-
             // ===============================================================
             // PR 4b-C Commit 4 — Pattern-B structural FOUO eviction (2 rows)
             // ===============================================================
@@ -3193,7 +3185,6 @@ impl CapcoScheme {
                 PATTERN_B_CLASS_FOUO_READS,
                 PATTERN_B_CLASS_FOUO_WRITES,
             ),
-
             // Pattern-B row 2: `capco/non-fdr-control-evicts-fouo`.
             //
             // §H.8 p134 (FOUO Precedence Rules for Banner Line

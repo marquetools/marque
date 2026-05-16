@@ -85,11 +85,7 @@ fn project_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
 /// exercise the declarative path.
 fn project_via_scheme(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
     let scheme = CapcoScheme::new();
-    let markings: Vec<CapcoMarking> = portions
-        .iter()
-        .cloned()
-        .map(CapcoMarking::new)
-        .collect();
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     scheme.project(Scope::Page, &markings).0
 }
 
