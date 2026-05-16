@@ -12,8 +12,12 @@
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 31`. That count pin catches "a rule was
-//! added or removed." It does **not** catch:
+//! `rule_set.rules().len() == 39` (post-PR-4b-B; the count rolls
+//! forward in lock-step with this test as W004 / S007 / E066 / etc.
+//! land — see the running-count derivation comment in
+//! `corpus_parity.rs::rule_count_reflects_registration_changes`).
+//! That count pin catches "a rule was added or removed." It does
+//! **not** catch:
 //!
 //!  * a rule renamed at the same count (e.g., E007 → E061)
 //!  * a rule deleted and an unrelated rule added at the same count

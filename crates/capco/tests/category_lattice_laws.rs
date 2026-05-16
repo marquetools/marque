@@ -736,14 +736,19 @@ mod classification_lattice {
     // payloads), not the union — otherwise
     // `a.join(a.meet(b)) = union(a, b) ≠ a`.
     //
-    // The post-C-9 fix:
-    // - Different variants at same level → `meet` returns the lattice
-    //   bottom (`empty()`). They are incomparable.
+    // The post-C-9 fix (verified against `lattice.rs::ClassificationLattice::meet`):
+    // - Different variants at same level → variants are linearly
+    //   ordered by `classification_variant_rank`
+    //   (`Us < Fgi < Nato < Joint < Conflict`); `meet` returns the
+    //   HIGHER-rank operand (the dominated, lower-≤ side; the GLB
+    //   dual of `join`'s "lower variant rank wins" tiebreaker).
+    //   §H.7 pp123-125 reciprocal-normalization grounds the rank
+    //   ordering.
     // - Same variant, payload subset (one operand's countries ⊆ the
     //   other's) → `meet` returns the smaller payload (the GLB on the
     //   country-list partial order).
     // - Same variant, disjoint payloads → `meet` returns the lattice
-    //   bottom (no common subset).
+    //   bottom (`Self(None)`; no common subset).
     //
     // §-authority (verified 2026-05-15 against CAPCO-2016.md):
     // §H.7 pp123-125 (reciprocal normalization, variant-rank order) +

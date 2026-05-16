@@ -40,10 +40,13 @@
 //! When PR 4b-D flips `CapcoScheme::project(Scope::Page, ...)` to use
 //! the lattice path, expect the bench to move — the per-axis lattice
 //! types' overhead is bounded (BTreeSet/BTreeMap over closed-vocab
-//! axes; same asymptotic shape as `PageContext::expected_*`), and the
-//! OC-USGOV branch simplifies from O(n) `oc_portions.iter()` to O(1)
-//! set-containment. Net delta on 4b-D landing should be neutral or
-//! marginally improved.
+//! axes; same asymptotic shape as `PageContext::expected_*`). PR 4b-B
+//! Commit 2 already collapsed the OC-USGOV branch to O(1) set-
+//! containment (`seen.contains(&DissemControl::Oc) && seen.contains(
+//! &DissemControl::OcUsgov)`); the historical `oc_portions.iter()`
+//! O(n) walk it replaced no longer exists, so 4b-D won't reshape that
+//! particular path. Net delta on 4b-D landing should be neutral or
+//! marginally improved overall.
 //!
 //! Bench-baseline staleness pre-flight per project memory
 //! `project_bench_baseline_staleness.md`: the gate is 900µs / baseline
