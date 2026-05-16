@@ -321,18 +321,34 @@ proptest! {
     // `FgiSet` in `crates/capco/src/lattice.rs`. The supersession
     // semantic is still exercised by `fgi_concealment_monotone` below.
 
-    // If the join of two sets has concealed=true, meet must not un-conceal.
+    // If join of two sets is concealed, meet of those same two sets must NOT
+    // produce Present{concealed:false}. With P-9-1's fix, meet(concealed, x)
+    // returns x (the acknowledged side), so if a is concealed and b is
+    // acknowledged, meet(a,b) = b (acknowledged) — that is correct because we
+    // are meeting the inputs (a,b), not the join result. The concealment-
+    // monotone property we check here is: if join(a,b) is concealed, then
+    // neither a nor b can produce a false-un-conceal via meet.
     #[test]
     fn fgi_concealment_monotone(a in arb_fgi_set(), b in arb_fgi_set()) {
         let joined = a.join(&b);
         let is_concealed = matches!(&joined, FgiSet::Present { concealed: true, .. });
         if is_concealed {
-            let met = a.meet(&b);
-            // meet of a concealed-join result must not be Present{concealed:false}
-            prop_assert!(
-                !matches!(met, FgiSet::Present { concealed: false, .. }),
-                "meet un-concealed after concealed join: a={a:?}, b={b:?}",
-            );
+            // At least one of a or b carries the concealed flag. The meet of
+            // the two inputs must not produce Present{concealed:false} when
+            // BOTH inputs are concealed (top ⊓ top = top). When exactly one
+            // is concealed (a = top), meet(a,b) = b — which is acknowledged,
+            // not false-un-concealing. So the property we assert: meet of two
+            // inputs whose join is concealed should not claim concealed=false
+            // when both inputs themselves were concealed.
+            let a_concealed = matches!(&a, FgiSet::Present { concealed: true, .. });
+            let b_concealed = matches!(&b, FgiSet::Present { concealed: true, .. });
+            if a_concealed && b_concealed {
+                let met = a.meet(&b);
+                prop_assert!(
+                    matches!(met, FgiSet::Present { concealed: true, .. }),
+                    "meet of two concealed FgiSets must remain concealed: a={a:?}, b={b:?}, met={met:?}",
+                );
+            }
         }
     }
 
@@ -341,19 +357,25 @@ proptest! {
         prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
     }
 
-    // Join-over-meet absorption: a ⊔ (a ⊓ b) = a (holds unconditionally).
+    // P-9-1 (9th-pass): BOTH absorption laws now hold for `FgiSet`.
     //
-    // Note: the symmetric meet-over-join direction (`a ⊓ (a ⊔ b) = a`) does NOT
-    // hold when `b` carries CAPCO's source-concealment flag, because join with a
-    // concealed element produces a concealed result, and the subsequent meet
-    // intersects country sets with the empty set, collapsing to `None`. This is
-    // an intentional deviation from standard lattice absorption, documented in
-    // the `FgiSet` impl and driven by CAPCO §3.3a concealment-supersession
-    // policy. The `fgi_concealment_monotone` test above verifies the policy
-    // holds; do not add `meet_over_join_absorption` or `top_is_meet_identity`
-    // tests for `FgiSet` — they will fail by design.
+    // Join-over-meet: a ⊔ (a ⊓ b) = a (holds unconditionally, same as before).
+    //
+    // Meet-over-join: a ⊓ (a ⊔ b) = a — this also holds after P-9-1 fixed
+    // `FgiSet::meet` to treat the source-concealed form as lattice TOP. The
+    // prior comment said meet-over-join was "an intentional deviation"; that was
+    // written before P-1 (8th-pass) made concealed dominate on join. Once
+    // concealed is join-top, the dual absorption law requires meet(x, top) = x,
+    // which P-9-1 implements. Both absorption laws now hold over the full state
+    // space. Authority: §H.7 p128. Verified 2026-05-16.
     #[test]
     fn fgi_join_over_meet_absorption(a in arb_fgi_set(), b in arb_fgi_set()) {
         prop_assert_eq!(a.join(&a.meet(&b)), a);
+    }
+
+    // Meet-over-join absorption: a ⊓ (a ⊔ b) = a (holds after P-9-1 fix).
+    #[test]
+    fn fgi_meet_over_join_absorption(a in arb_fgi_set(), b in arb_fgi_set()) {
+        prop_assert_eq!(a.meet(&a.join(&b)), a);
     }
 }

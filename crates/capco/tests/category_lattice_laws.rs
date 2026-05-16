@@ -2003,3 +2003,129 @@ mod rel_to_block {
         assert_eq!(nf.join(&empty), RelToBlock::NofornSuperseded);
     }
 }
+
+// ===========================================================================
+// P-9-1 (PR 4b-B 9th-pass) — FgiSet concealed-top meet absorption
+// ===========================================================================
+//
+// CAPCO-2016 §H.7 p128: "A document containing portions of both
+// source-concealed FGI and source-acknowledged FGI must have only the
+// 'FGI' marking without source trigraph(s)/tetragraph(s) in the banner
+// line, as it is the most restrictive form of the marking." The
+// source-concealed form is therefore the lattice TOP in the FGI
+// source-disclosure dimension.
+//
+// Pre-P-9-1, `FgiSet::meet` performed country-set intersection even when
+// one operand was concealed (empty countries). After P-1 (8th-pass) made
+// the join treat concealed as top, the dual absorption law
+// `a ⊓ (a ⊔ b) = a` broke: `acknowledged.meet(acknowledged.join(concealed))`
+// = `acknowledged.meet(concealed)` = intersect({GBR,CAN}, {}) = {} → None.
+//
+// P-9-1 fixes meet to treat concealed as top (meet with top = other operand).
+// These tests exercise the four cases in the fix.
+//
+// Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+
+mod fgi_set_concealed_top {
+    use marque_capco::lattice::FgiSet;
+    use marque_ism::{CountryCode, FgiMarker};
+    use marque_scheme::Lattice;
+
+    fn gbr() -> CountryCode {
+        CountryCode::try_new(b"GBR").expect("GBR")
+    }
+    fn can() -> CountryCode {
+        CountryCode::try_new(b"CAN").expect("CAN")
+    }
+    fn acknowledged(codes: impl IntoIterator<Item = CountryCode>) -> FgiSet {
+        let marker = FgiMarker::acknowledged(codes).expect("non-empty acknowledged");
+        FgiSet::from_marker(Some(&marker))
+    }
+    fn concealed() -> FgiSet {
+        FgiSet::from_marker(Some(&FgiMarker::SourceConcealed))
+    }
+
+    // Case (a): both concealed — top ⊓ top = top.
+    #[test]
+    fn meet_concealed_concealed_is_concealed() {
+        let c = concealed();
+        assert_eq!(c.meet(&c), concealed());
+    }
+
+    // Case (b): concealed ⊓ acknowledged = acknowledged (meet with top).
+    #[test]
+    fn meet_concealed_acknowledged_is_acknowledged() {
+        let c = concealed();
+        let a = acknowledged([gbr(), can()]);
+        // Both orderings must give the same result (commutativity).
+        assert_eq!(
+            c.meet(&a),
+            a,
+            "concealed ⊓ acknowledged should be acknowledged"
+        );
+        assert_eq!(
+            a.meet(&c),
+            a,
+            "acknowledged ⊓ concealed should be acknowledged"
+        );
+    }
+
+    // Core absorption: `acknowledged.meet(acknowledged.join(concealed)) = acknowledged`.
+    // Pre-P-9-1, join produced concealed (top), then meet intersected with empty
+    // countries → None. Post-P-9-1, meet(acknowledged, concealed-top) = acknowledged.
+    #[test]
+    fn absorption_acknowledged_meet_join_concealed() {
+        let a = acknowledged([gbr(), can()]);
+        let b = concealed();
+        // a ⊔ b = concealed (P-1 join)
+        let joined = a.join(&b);
+        assert_eq!(
+            joined,
+            concealed(),
+            "join with concealed must produce concealed"
+        );
+        // a ⊓ (a ⊔ b) = a  (P-9-1 meet-over-join absorption)
+        assert_eq!(
+            a.meet(&joined),
+            a,
+            "P-9-1: a ⊓ (a ⊔ b) must equal a when b is concealed"
+        );
+    }
+
+    // Dual absorption: `a ⊔ (a ⊓ b) = a` (was always correct; guard regression).
+    #[test]
+    fn absorption_acknowledged_join_meet_concealed() {
+        let a = acknowledged([gbr()]);
+        let b = concealed();
+        // a ⊓ b = a (P-9-1: meet with top = other operand)
+        let met = a.meet(&b);
+        assert_eq!(met, a, "acknowledged ⊓ concealed should equal acknowledged");
+        // a ⊔ (a ⊓ b) = a ⊔ a = a
+        assert_eq!(a.join(&met), a, "P-9-1: a ⊔ (a ⊓ b) must equal a");
+    }
+
+    // Both acknowledged, disjoint countries → None (existing behavior, regression guard).
+    #[test]
+    fn meet_disjoint_acknowledged_is_none() {
+        let a = acknowledged([gbr()]);
+        let b = acknowledged([can()]);
+        assert_eq!(
+            a.meet(&b),
+            FgiSet::None,
+            "disjoint country sets must collapse to None"
+        );
+    }
+
+    // Both acknowledged, overlapping countries → intersection.
+    #[test]
+    fn meet_overlapping_acknowledged_is_intersection() {
+        let a = acknowledged([gbr(), can()]);
+        let b = acknowledged([gbr()]);
+        let expected = acknowledged([gbr()]);
+        assert_eq!(
+            a.meet(&b),
+            expected,
+            "overlapping acknowledged sets must produce the intersection"
+        );
+    }
+}

@@ -418,9 +418,13 @@ impl Lattice for SarSet {
 /// CAPCO's FGI marker has two independent axes: a set of source countries
 /// and a source-concealed flag. Source-concealed supersedes source-
 /// acknowledged on join — if any portion carries FGI with no countries
-/// (concealed), the banner must also be concealed. Meet (§3.3a policy b)
-/// intersects countries and clears concealment unless both sides were
-/// concealed.
+/// (concealed), the banner must also be concealed. Meet is dual: the
+/// source-concealed form acts as the lattice top for the FGI
+/// source-disclosure dimension, so meet with a concealed operand returns
+/// the OTHER operand (the acknowledged side), and meet of two concealed
+/// operands returns concealed. Meet of two acknowledged operands
+/// intersects their country sets; an empty intersection collapses to
+/// `None` (no shared FGI).
 ///
 /// `FgiSet::None` is the bottom (no FGI anywhere).
 ///
@@ -585,26 +589,60 @@ impl Lattice for FgiSet {
                     countries: b_cs,
                 },
             ) => {
-                let concealed = *a_c && *b_c;
-                if concealed {
-                    Self::Present {
-                        concealed: true,
-                        countries: BTreeSet::new(),
+                // P-9-1 (9th-pass): source-concealed acts as lattice TOP
+                // in the FGI source-disclosure dimension.  The join already
+                // makes concealed dominate (P-1, 8th-pass), so the dual
+                // absorption law `a ⊓ (a ⊔ b) = a` requires meet to treat
+                // the concealed form as top — meet(x, top) = x.
+                //
+                // Three cases:
+                //   (a) both concealed  → concealed (idempotent top)
+                //   (b) one concealed, one acknowledged → acknowledged side
+                //       (meet with top returns the other operand)
+                //   (c) both acknowledged → intersect country sets
+                //
+                // Authority: §H.7 p128 ("A document containing portions of
+                // both source-concealed FGI and source-acknowledged FGI must
+                // have only the 'FGI' marking without source
+                // trigraph(s)/tetragraph(s) in the banner line, as it is the
+                // most restrictive form of the marking") — concealed is the
+                // strictest / highest element. Verified 2026-05-16 against
+                // crates/capco/docs/CAPCO-2016.md.
+                match (*a_c, *b_c) {
+                    (true, true) => {
+                        // (a) both concealed — top ⊓ top = top.
+                        Self::Present {
+                            concealed: true,
+                            countries: BTreeSet::new(),
+                        }
                     }
-                } else {
-                    let countries: BTreeSet<CountryCode> =
-                        a_cs.intersection(b_cs).copied().collect();
-                    if countries.is_empty() && !concealed {
-                        // Both present but no common countries — the
-                        // meet collapses to the empty FGI marker, but
-                        // that's not representable as `Present` with no
-                        // countries without claiming concealment. Fall
-                        // back to None as the "no shared FGI" answer.
-                        Self::None
-                    } else {
+                    (true, false) => {
+                        // (b) self is concealed (top) → return other.
                         Self::Present {
                             concealed: false,
-                            countries,
+                            countries: b_cs.clone(),
+                        }
+                    }
+                    (false, true) => {
+                        // (b) other is concealed (top) → return self.
+                        Self::Present {
+                            concealed: false,
+                            countries: a_cs.clone(),
+                        }
+                    }
+                    (false, false) => {
+                        // (c) both acknowledged — intersect country sets.
+                        let countries: BTreeSet<CountryCode> =
+                            a_cs.intersection(b_cs).copied().collect();
+                        if countries.is_empty() {
+                            // No common countries — collapse to bottom
+                            // (no shared FGI on this page).
+                            Self::None
+                        } else {
+                            Self::Present {
+                                concealed: false,
+                                countries,
+                            }
                         }
                     }
                 }
@@ -1417,16 +1455,51 @@ fn classification_meet_same_variant(
     match (a, b) {
         (MarkingClassification::Us(_), MarkingClassification::Us(_)) => Some(a.clone()),
         (MarkingClassification::Fgi(fa), MarkingClassification::Fgi(fb)) => {
-            let sa: BTreeSet<marque_ism::CountryCode> = fa.countries.iter().copied().collect();
-            let sb: BTreeSet<marque_ism::CountryCode> = fb.countries.iter().copied().collect();
-            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
-            if inter.is_empty() {
-                None
-            } else {
-                Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
-                    level: fa.level,
-                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
-                }))
+            // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in the
+            // FGI source-disclosure dimension.  Meet with top returns the other
+            // operand; dual of the join's concealed-dominates rule (P-1, 8th-pass).
+            // Authority: §H.7 p128 (concealed is most restrictive form).
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let a_concealed = fa.countries.is_empty();
+            let b_concealed = fb.countries.is_empty();
+            match (a_concealed, b_concealed) {
+                (true, true) => {
+                    // Both concealed → top ⊓ top = top.
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        level: fa.level,
+                        countries: Box::new([]),
+                    }))
+                }
+                (true, false) => {
+                    // self is concealed (top) → return other.
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        level: fb.level,
+                        countries: fb.countries.clone(),
+                    }))
+                }
+                (false, true) => {
+                    // other is concealed (top) → return self.
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        level: fa.level,
+                        countries: fa.countries.clone(),
+                    }))
+                }
+                (false, false) => {
+                    let sa: BTreeSet<marque_ism::CountryCode> =
+                        fa.countries.iter().copied().collect();
+                    let sb: BTreeSet<marque_ism::CountryCode> =
+                        fb.countries.iter().copied().collect();
+                    let inter: BTreeSet<marque_ism::CountryCode> =
+                        sa.intersection(&sb).copied().collect();
+                    if inter.is_empty() {
+                        None
+                    } else {
+                        Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                            level: fa.level,
+                            countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                        }))
+                    }
+                }
             }
         }
         (MarkingClassification::Nato(_), MarkingClassification::Nato(_)) => Some(a.clone()),
@@ -1496,16 +1569,42 @@ fn meet_foreign_classification(
     use std::collections::BTreeSet;
     match (a, b) {
         (ForeignClassification::Fgi(fa), ForeignClassification::Fgi(fb)) => {
-            let sa: BTreeSet<marque_ism::CountryCode> = fa.countries.iter().copied().collect();
-            let sb: BTreeSet<marque_ism::CountryCode> = fb.countries.iter().copied().collect();
-            let inter: BTreeSet<marque_ism::CountryCode> = sa.intersection(&sb).copied().collect();
-            if inter.is_empty() {
-                None
-            } else {
-                Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+            // P-9-1 (9th-pass): source-concealed (empty countries) is TOP in
+            // the FGI source-disclosure dimension — dual of the join's
+            // concealed-dominates rule (P-1, 8th-pass). Meet(top, x) = x.
+            // Authority: §H.7 p128 (concealed is most restrictive form).
+            // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
+            let a_concealed = fa.countries.is_empty();
+            let b_concealed = fb.countries.is_empty();
+            match (a_concealed, b_concealed) {
+                (true, true) => Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
                     level: fa.level,
-                    countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
-                }))
+                    countries: Box::new([]),
+                })),
+                (true, false) => Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                    level: fb.level,
+                    countries: fb.countries.clone(),
+                })),
+                (false, true) => Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                    level: fa.level,
+                    countries: fa.countries.clone(),
+                })),
+                (false, false) => {
+                    let sa: BTreeSet<marque_ism::CountryCode> =
+                        fa.countries.iter().copied().collect();
+                    let sb: BTreeSet<marque_ism::CountryCode> =
+                        fb.countries.iter().copied().collect();
+                    let inter: BTreeSet<marque_ism::CountryCode> =
+                        sa.intersection(&sb).copied().collect();
+                    if inter.is_empty() {
+                        None
+                    } else {
+                        Some(ForeignClassification::Fgi(marque_ism::FgiClassification {
+                            level: fa.level,
+                            countries: inter.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                        }))
+                    }
+                }
             }
         }
         (ForeignClassification::Nato(_), ForeignClassification::Nato(_)) => Some(a.clone()),
@@ -1786,10 +1885,10 @@ impl BoundedLattice for NatoClassLattice {
 /// established pattern for "no BoundedLattice when range is open"
 /// is "implement `Lattice`, provide `empty()` / `default()` for
 /// the bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
-/// `FgiSet` was previously listed in this precedent but `FgiSet`
-/// in fact implements `BoundedLattice` with the source-concealed
-/// supersession sentinel as the top; removed to avoid
-/// misattribution.)
+/// `FgiSet` was previously listed in this precedent; B-1 PR 4b-B
+/// 8th-pass retired `FgiSet`'s `BoundedLattice` impl — `FgiSet`
+/// does NOT implement `BoundedLattice`. Removed from precedent list
+/// to avoid misattribution.)
 ///
 /// §-authority (verified 2026-05-16 against CAPCO-2016.md):
 /// - §E.3 p32 (Multiple Sources and the Declassify On Line Hierarchy
@@ -1980,9 +2079,10 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
 /// open-vocab precedent (SciSet / SarSet / AeaSet) is the
 /// established pattern for "implement `Lattice` + `empty()`/`default()`
 /// for bottom, leave `top()` undefined." (M-25 PR 4b-B 7th-pass —
-/// `FgiSet` was previously listed in this precedent but in fact
-/// implements `BoundedLattice` with the source-concealed sentinel
-/// as the top; removed to avoid misattribution.)
+/// `FgiSet` was previously listed in this precedent; B-1 PR 4b-B
+/// 8th-pass retired `FgiSet`'s `BoundedLattice` impl — `FgiSet`
+/// does NOT implement `BoundedLattice`. Removed from precedent list
+/// to avoid misattribution.)
 ///
 /// **Partial-lattice note (C-4 PR 4b-B follow-up).** The
 /// `relido_observed_unanimous` flag is a **join-side aggregation
@@ -2170,6 +2270,23 @@ impl DissemSet {
     }
 }
 
+// P-9-3 (9th-pass) — Partial-lattice divergence note for `DissemSet`.
+//
+// `DissemSet` implements `Lattice` (join + meet) but does NOT satisfy
+// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full
+// `(set, relido_observed_unanimous)` pair. The `relido_observed_unanimous`
+// flag is a join-side aggregation property (a record of observed page
+// composition); `meet` has no natural reading for this flag and returns
+// the vacuous-true value, which is the identity under subsequent AND-joins.
+// This keeps the load-bearing `a ⊔ (a ⊓ b) = a` law intact but means
+// generic `Lattice` consumers that call `meet` and rely on dual absorption
+// are NOT safe for `DissemSet`. The trait shape will be refined in a
+// follow-up PR once `marque-scheme` gains a `JoinSemilattice` /
+// `MeetSemilattice` split (tracked as GitHub issue #456).
+//
+// See the `DissemSet` doc comment above (§ "Partial-lattice note C-4")
+// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
+// IS guaranteed; only the meet-over-join direction diverges.
 impl Lattice for DissemSet {
     fn join(&self, other: &Self) -> Self {
         // The single-static-table convention is enforced by the
@@ -2244,8 +2361,10 @@ impl Lattice for DissemSet {
 /// underlying `DissemControl` enum is shared with US dissem so the
 /// namespace bound is loose; bottom = empty set, top is unsafe to
 /// claim. The SciSet/SarSet/AeaSet precedent for open-vocab applies
-/// (M-25 PR 4b-B 7th-pass — `FgiSet` removed from precedent list;
-/// see DissemSet doc above for rationale).
+/// (M-25 PR 4b-B 7th-pass — `FgiSet` was previously listed in this
+/// precedent; B-1 PR 4b-B 8th-pass retired `FgiSet`'s
+/// `BoundedLattice` impl — `FgiSet` does NOT implement
+/// `BoundedLattice`. See DissemSet doc above for rationale.)
 ///
 /// §-authority (verified 2026-05-15 against CAPCO-2016.md):
 /// - p41 (NATO reciprocity table — NATO dissem set is the
@@ -2610,6 +2729,23 @@ impl JointSet {
     }
 }
 
+// P-9-3 (9th-pass) — Partial-lattice divergence note for `JointSet`.
+//
+// `JointSet` implements `Lattice` (join + meet) but does NOT satisfy
+// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full state space.
+// The `Mixed` / `DisunityCollapse` distinction is a record of observed
+// page composition (join-side aggregation), not an algebraic element;
+// `meet` has no natural reading for non-identical producer sets and
+// returns `Bottom`. Generic `Lattice` consumers that call `meet` and
+// rely on dual absorption are NOT safe for `JointSet`. The trait shape
+// will be refined in a follow-up PR once `marque-scheme` gains a
+// `JoinSemilattice` / `MeetSemilattice` split (tracked as GitHub issue
+// #456).
+//
+// See the `JointSet::meet` doc comment below (§ "Partial-lattice note C-6")
+// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
+// IS guaranteed over the `Bottom` / `UnanimousProducers` sub-lattice;
+// only the meet-over-join direction diverges outside that sub-lattice.
 impl Lattice for JointSet {
     /// Compose two JointSets per the §H.3 + §H.7 transition table:
     ///
