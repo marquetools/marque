@@ -2009,11 +2009,17 @@ Banner: SECRET         -- RELIDO drops; no NOFORN inference at Layer 1
 
 ### 11.3 JOINT producer-disunity collapse (new §2.1 sub-section)
 
-**Authority**: §H.3 p56 (JOINT classification grammar) + §H.7 p123
-(FGI source-acknowledged form). The cross-axis collapse is implied
-by combining the two passages — when JOINT producer lists disagree
-across portions, JOINT does not roll up to banner; the non-US
-producers ride to FGI [LIST] per §H.7 p123.
+**Authority**: §H.3 p57 (JOINT "Derivative Use" — banner-line
+construction when JOINT material is derivatively used; the
+load-bearing migration trigger) + §H.7 p123 (FGI source-
+acknowledged form — the grammar the migrated producers render
+under). §H.3 p56 still grounds the JOINT classification grammar
+separately. CV-4 PR 4b-B 8th-pass updated the W004 citation from
+§H.3 p56 to §H.3 p57 — the migration trigger lives on p57's
+"Derivative Use" bullets, not p56's grammar block. When JOINT
+producer lists disagree across portions, JOINT does not roll up
+to banner; the non-US producers ride to FGI [LIST] per
+§H.7 p123.
 
 **State space** (four-variant `JointSet`; C-3 PR 4b-B follow-up
 added the `Mixed` absorbing variant — distinguishing "no JOINT seen"
@@ -2101,7 +2107,8 @@ JointSet: DisunityCollapse{S, {CAN, GBR}}
 Banner: SECRET//FGI CAN GBR  -- §H.7 p123 FGI source-acknowledged form
                              -- W004 Warn diagnostic fires
                              -- (rule = "W004",
-                             --  citation = "CAPCO-2016 §H.3 p56 + §H.7 p123")
+                             --  citation = "CAPCO-2016 §H.3 p57 + §H.7 p123")
+                             --  (CV-4 PR 4b-B 8th-pass updated from §H.3 p56)
 ```
 
 **Mixed-with-US case** (§H.3 p57 — "the JOINT marking is

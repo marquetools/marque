@@ -190,8 +190,10 @@ PageContext bugs in lock-step:
 - RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
 
 PR 4b-B also adds `W004 joint-disunity-collapse-to-FGI` (Warn) per
-§H.3 p56 + §H.7 p123 — fires when all-JOINT portions disagree on
-their producer lists; surfaces the cross-axis FGI migration.
+§H.3 p57 + §H.7 p123 — fires when all-JOINT portions disagree on
+their producer lists; surfaces the cross-axis FGI migration (CV-4
+PR 4b-B 8th-pass updated from §H.3 p56 to §H.3 p57 — the migration
+trigger lives on p57's "Derivative Use" bullets).
 
 The `CapcoMarking::join_via_lattice` sibling method composes the new
 lattice types; the production `Lattice::join` still delegates to

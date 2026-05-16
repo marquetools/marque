@@ -238,8 +238,9 @@ fn rule_count_reflects_registration_changes() {
          in a US-classified document should carry `REL TO USA, NATO` \
          per §H.7 p127 Notional Example 2; net delta +1. Final: 38. \
          PR 4b-B (006 T112) adds `JointDisunityCollapseRule` (W004) — \
-         JOINT producer-disunity-collapse-to-FGI per §H.3 p56 + \
-         §H.7 p123 (Warn-only; cross-axis fix deferred to renderer in \
+         JOINT producer-disunity-collapse-to-FGI per §H.3 p57 + \
+         §H.7 p123 (CV-4 PR 4b-B 8th-pass updated from §H.3 p56; \
+         Warn-only; cross-axis fix deferred to renderer in \
          PR 5+ per H-1 PR 4b-B follow-up triage); net delta +1. \
          Final: 39. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \

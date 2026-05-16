@@ -341,10 +341,12 @@ fn joint_disunity_union_excludes_usa() {
 // existed.
 //
 // The fix expands the firing condition to include Portion candidates
-// that contribute to disunity. The §H.3 p56 + §H.7 p123 cross-axis
-// JOINT → FGI [LIST] migration is the same; W004 now surfaces it as
-// soon as the second disagreeing JOINT portion lands, regardless of
-// whether a closing banner exists. This may produce one W004 per
+// that contribute to disunity. The §H.3 p57 + §H.7 p123 cross-axis
+// JOINT → FGI [LIST] migration is the same (CV-4 PR 4b-B 8th-pass
+// updated from §H.3 p56 — the migration trigger lives on p57's
+// "Derivative Use" bullets); W004 now surfaces it as soon as the
+// second disagreeing JOINT portion lands, regardless of whether a
+// closing banner exists. This may produce one W004 per
 // disunity-contributing portion on the same page; that is acceptable
 // for a Warn rule and matches the prior NOFORN-style "loud diagnostic
 // per occurrence" pattern.

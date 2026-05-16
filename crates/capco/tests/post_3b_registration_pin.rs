@@ -58,7 +58,9 @@ use std::collections::BTreeSet;
 /// `BareNatoRequiresRelToRule` (S007) — bare NATO classification in a
 /// US-classified document should carry `REL TO USA, NATO` per §H.7
 /// p127 Notional Example 2 (37 → 38). PR 4b-B (006 T112) adds W004 —
-/// joint-disunity-collapse-to-FGI per §H.3 p56 + §H.7 p123 (38 → 39).
+/// joint-disunity-collapse-to-FGI per §H.3 p57 + §H.7 p123 (38 → 39)
+/// (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the migration
+/// trigger lives on p57's "Derivative Use" bullets).
 /// The 27 class-floor + 5 SCI
 /// per-system catalog rows still fire; they emit through the bridge as
 /// `Diagnostic.rule = "E058"` and `Diagnostic.rule = "E059"`
@@ -80,9 +82,10 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
     "S007", "W002", "W003",
     // PR 4b-B Commit 9 (006 T112): joint-disunity-collapse-to-FGI per
-    // CAPCO-2016 §H.3 p56 + §H.7 p123. Surfaces the cross-axis
-    // transformation when all-JOINT portions disagree on producer
-    // lists and JointSet::DisunityCollapse fires.
+    // CAPCO-2016 §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass updated
+    // from §H.3 p56). Surfaces the cross-axis transformation when
+    // all-JOINT portions disagree on producer lists and
+    // JointSet::DisunityCollapse fires.
     "W004", "W034",
 ];
 

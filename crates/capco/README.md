@@ -23,7 +23,7 @@ Rule structs are zero-size and stateless. All config-dependent behavior (severit
 
 ## Rule Inventory
 
-39 rules currently implemented (post-PR-4b-B, 006 T112): errors `E002`/`E005`–`E008`/`E010`/`E012`/`E014`–`E016`/`E021`/`E024`/`E031`/`E036`–`E039`/`E041`/`E053`–`E057`/`E061`–`E066`, style `S003`–`S007` (`S004` is the first suggest-don't-fix-channel rule per issue #235 / #186 PR-3; `S005`/`S006` cover REL TO membership-uncertain reduction per issue #206; `S007` covers bare NATO classification per PR 9c.2 / FR-048), warnings `W002`/`W003`/`W004`/`W034` (`W001` retired in T035c-14; `W004` added in PR 4b-B for joint-disunity-collapse per §H.3 p56 + §H.7 p123), corrections `C001`.
+39 rules currently implemented (post-PR-4b-B, 006 T112): errors `E002`/`E005`–`E008`/`E010`/`E012`/`E014`–`E016`/`E021`/`E024`/`E031`/`E036`–`E039`/`E041`/`E053`–`E057`/`E061`–`E066`, style `S003`–`S007` (`S004` is the first suggest-don't-fix-channel rule per issue #235 / #186 PR-3; `S005`/`S006` cover REL TO membership-uncertain reduction per issue #206; `S007` covers bare NATO classification per PR 9c.2 / FR-048), warnings `W002`/`W003`/`W004`/`W034` (`W001` retired in T035c-14; `W004` added in PR 4b-B for joint-disunity-collapse per §H.3 p57 + §H.7 p123 — CV-4 PR 4b-B 8th-pass updated from §H.3 p56; the migration trigger lives on p57's "Derivative Use" bullets, not p56's grammar block), corrections `C001`.
 
 ## Lattice Types (PR 4b-B)
 
@@ -31,7 +31,7 @@ Per-category lattice types live in `marque_capco::lattice` and round-trip with t
 
 - `ClassificationLattice` — bounded OrdMax over the US chain with variant-preservation; §H.1 pp47-54 + §H.7 pp123-125.
 - `NatoClassLattice` — bounded OrdMax over NU<NR<NC<NS<CTS; §H.2 p55.
-- `JointSet` — four-variant state (`Bottom` / `UnanimousProducers` / `DisunityCollapse` / `Mixed`) with producer-disunity collapse and a `Mixed` absorbing state for JOINT+non-JOINT pages per §H.3 p57; §H.3 p56 + §H.7 p123.
+- `JointSet` — four-variant state (`Bottom` / `UnanimousProducers` / `DisunityCollapse` / `Mixed`) with producer-disunity collapse and a `Mixed` absorbing state for JOINT+non-JOINT pages per §H.3 p57; §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the disunity-collapse migration trigger lives on p57's "Derivative Use" bullets; §H.3 p56 still grounds the JOINT grammar separately).
 - `DissemSet` — single-bag IC dissem with three overlays (OC-USGOV supersession, RELIDO observed-unanimity, NOFORN dominates); §H.8 p136/p140/p145/pp155-156 + §D.2 Table 3.
 - `NatoDissemSet` — trivial union over NATO-attributed dissem; CAPCO p41 reciprocity.
 - `RelToBlock` — four-variant IntersectSet (`Bottom` / `Lattice{countries}` / `Empty` / `NofornSuperseded`) with NOFORN supersession + tetragraph expansion. `Empty` absorbs non-Bottom operands on empty intersection (§D.2 Table 3 row 9 — the post-projection pipeline injects NOFORN via `capco/noforn-clears-rel-to`); §H.8 pp150-151 + §D.2 Table 3 rows 9-13 + §H.9 p172/p174.
