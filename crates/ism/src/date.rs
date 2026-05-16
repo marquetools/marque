@@ -793,7 +793,7 @@ fn parse_frac_as_nanoseconds(frac: &str) -> Result<u32, ParseIsmDateError> {
 // Two interchangeable backends — the `dates` feature flips between them
 // at compile time. CLI / server / extract pull `dates` on (jiff path);
 // WASM excludes jiff and uses the hand-rolled Gregorian path. SC-008
-// native↔WASM parity tests enforce identical observable behaviour.
+// native↔WASM parity tests enforce identical observable behavior.
 
 /// Validate a complete year/month/day triple.
 #[cfg(feature = "dates")]
