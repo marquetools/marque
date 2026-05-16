@@ -678,17 +678,18 @@ impl CapcoMarking {
         // P-2 (8th-pass): include the `Empty` intersection case alongside
         // `NofornSuperseded` — both require NOFORN injection per §D.2
         // Table 3 row 9 (Empty) and rows 1-2 / §H.9 p172/p174 (NofornSuperseded).
-        let dissem_final = if rel_to_was_noforn_superseded || rel_to_was_empty_intersection || needs_nf {
-            // G-6: SBU-NF / LES-NF on a classified page also clears
-            // REL TO — match PageContext::expected_rel_to which
-            // short-circuits to an empty slice when needs_nf fires.
-            if needs_nf {
-                out.rel_to = Box::new([]);
-            }
-            dissem_set.with_noforn_injected()
-        } else {
-            dissem_set
-        };
+        let dissem_final =
+            if rel_to_was_noforn_superseded || rel_to_was_empty_intersection || needs_nf {
+                // G-6: SBU-NF / LES-NF on a classified page also clears
+                // REL TO — match PageContext::expected_rel_to which
+                // short-circuits to an empty slice when needs_nf fires.
+                if needs_nf {
+                    out.rel_to = Box::new([]);
+                }
+                dissem_set.with_noforn_injected()
+            } else {
+                dissem_set
+            };
         out.dissem_us = dissem_final.into_boxed_slice();
 
         out

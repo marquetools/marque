@@ -364,15 +364,23 @@ fn rel_to_intersect_common() {
 
 #[test]
 fn rel_to_intersect_empty() {
-    // §D.2 Table 3 row 9: no-common-LIST → NOFORN (post-projection
-    // PageRewrite). Both paths produce empty rel_to. The §D.2 Table
-    // 3 row 9 NOFORN injection is a project() concern, not a
-    // per-axis lattice concern — both paths leave dissem alone here.
+    // DIVERGENCE (P-2 8th-pass fix): §D.2 Table 3 row 9 states
+    // "REL TO [USA, LIST] | REL TO [USA, LIST] (with no common [LIST]
+    // value(s)) | NOFORN". When two REL TO portions share no common
+    // country list, the result is NOFORN on the dissem_us axis.
     //
-    // G-7 (PR 4b-B follow-up): strengthen to full byte-identity
-    // rather than only checking the `rel_to` axis; a regression
-    // touching `dissem_us` / classification / FGI would have slipped
-    // through the prior partial assertion.
+    // The lattice path (via RelToBlock::Empty → is_empty_intersection()
+    // check in scheme.rs project()) now correctly injects NOFORN into
+    // dissem_us per §D.2 p28-30 Table 3 row 9. The PageContext path
+    // does NOT inject NOFORN here — it is bug-shaped; the fix migrates
+    // to the lattice path when PR 4b-D flips CapcoScheme::project(
+    // Scope::Page, ...).
+    //
+    // Both paths produce empty rel_to (correct — no common members).
+    // The divergence is: lattice dissem_us=[Nf], PageContext dissem_us=[].
+    //
+    // Citation: §D.2 p28-30 Table 3 row 9 (verified 2026-05-16 against
+    // CAPCO-2016.md).
     let portions = [
         portion_with_rel_to(Classification::Secret, &["GBR", "CAN"]),
         portion_with_rel_to(Classification::Secret, &["FRA", "DEU"]),
@@ -381,7 +389,7 @@ fn rel_to_intersect_empty() {
         "rel_to_intersect_empty",
         &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &["dissem_us"],
     );
 }
 
