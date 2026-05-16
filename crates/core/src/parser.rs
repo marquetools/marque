@@ -653,24 +653,42 @@ impl<'t> Parser<'t> {
                 for marking in markings {
                     sci_markings.push(ParsedSciMarking::new(marking, trimmed, span));
                 }
-            } else if let Some(ctrl) = SciControl::parse(trimmed) {
+            } else if let Some(ctrl) =
+                SciControl::parse(trimmed).or_else(|| parse_sci_control_full_form(trimmed))
+            {
                 sci.push(ctrl);
                 token_spans.push(TokenSpan {
                     kind: TokenKind::SciControl,
                     span,
                     text: trimmed.into(),
                 });
-            } else if trimmed.starts_with("FGI")
+            } else if starts_with_fgi_prefix(trimmed)
                 && matches!(
                     classification.as_ref().map(|c| &c.value),
                     Some(MarkingClassification::Us(_))
                 )
             {
-                // FGI marker in a US-classified marking (e.g., SECRET//FGI DEU//NF).
+                // FGI marker in a US-classified marking (e.g.,
+                // SECRET//FGI DEU//NF or SECRET//FOREIGN GOVERNMENT
+                // INFORMATION DEU//NF per CAPCO-2016 §H.7 p123 +
+                // §D.1 p27).
                 if let Some(marker) = parse_fgi_marker(trimmed) {
                     fgi_marker = Some(ParsedFgiMarker::new(marker, trimmed, span));
                     token_spans.push(TokenSpan {
                         kind: TokenKind::FgiMarker,
+                        span,
+                        text: trimmed.into(),
+                    });
+                } else {
+                    // Gate passed but country-list parse failed
+                    // (e.g., `FGI deu` lowercase, `FOREIGN GOVERNMENT
+                    // INFORMATION 99` invalid token). Emit Unknown so
+                    // E008 can flag the malformed block — Rust's
+                    // if/else chain has already consumed this arm, so
+                    // without this branch the block would silently
+                    // drop from the token stream.
+                    token_spans.push(TokenSpan {
+                        kind: TokenKind::Unknown,
                         span,
                         text: trimmed.into(),
                     });
@@ -897,7 +915,9 @@ impl<'t> Parser<'t> {
                             nic: None,
                             aea: None,
                         });
-                    } else if let Some(ctrl) = SciControl::parse(sub_tok) {
+                    } else if let Some(ctrl) =
+                        SciControl::parse(sub_tok).or_else(|| parse_sci_control_full_form(sub_tok))
+                    {
                         results.push(SubResult {
                             kind: SubKind::Sci,
                             tok: sub_tok,
@@ -2384,18 +2404,46 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// be separated by a single space"). The country-token predicate's
 /// authority chain is documented at
 /// [`marque_ism::CountryCode::admits_country_token`].
+/// Quick gate for "does this block start with an FGI marker, in either
+/// the abbreviation or long-form?".
+///
+/// Mirrors the prefix-check that gates [`parse_fgi_marker`] dispatch in
+/// the block-walking parser. Centralizing it here keeps the
+/// abbreviation/long-form set in lock-step between the gate and the
+/// parser. Long-form authority: CAPCO-2016 §H.7 p123 (Authorized
+/// Banner Line Marking Title: `FOREIGN GOVERNMENT INFORMATION [LIST]`
+/// for the acknowledged form / `FOREIGN GOVERNMENT INFORMATION` for
+/// the concealed form). Pair with the
+/// `fgi_gate_lock_steps_with_parser` integration test in
+/// `crates/core/tests/banner_long_forms.rs`, which exercises the
+/// end-to-end contract every input that should reach `parse_fgi_marker`
+/// must first pass this gate.
+fn starts_with_fgi_prefix(s: &str) -> bool {
+    s == "FGI"
+        || s.starts_with("FGI ")
+        || s == "FOREIGN GOVERNMENT INFORMATION"
+        || s.starts_with("FOREIGN GOVERNMENT INFORMATION ")
+}
+
 fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
-    // Case 1: bare `FGI` is the lawful source-concealed banner form.
-    if s == "FGI" {
+    // Case 1: bare `FGI` (banner abbreviation) or `FOREIGN GOVERNMENT
+    // INFORMATION` (long-form title) is the lawful source-concealed
+    // banner form per CAPCO-2016 §H.7 p123.
+    if s == "FGI" || s == "FOREIGN GOVERNMENT INFORMATION" {
         return Some(FgiMarker::SourceConcealed);
     }
 
-    // Case 2 / Case 3 dispatch: input must start with `FGI ` (with a
-    // single space). `strip_prefix` returning `None` on missing
-    // prefix is the Case 3 short-circuit for inputs like `"FGIDEU"`,
-    // `"foo FGI USA"`, or anything else that doesn't lead with the
-    // canonical separator.
-    let rest = s.strip_prefix("FGI ")?;
+    // Case 2 / Case 3 dispatch: input must start with `FGI ` or
+    // `FOREIGN GOVERNMENT INFORMATION ` (with a single trailing
+    // space) per CAPCO-2016 §H.7 p123. `strip_prefix` returning
+    // `None` on missing prefix is the Case 3 short-circuit for
+    // inputs like `"FGIDEU"`, `"foo FGI USA"`, or anything else
+    // that doesn't lead with the canonical separator. The long-form
+    // path strips `FOREIGN GOVERNMENT INFORMATION ` so the country-
+    // list parser sees an identical tail to the abbreviation path.
+    let rest = s
+        .strip_prefix("FGI ")
+        .or_else(|| s.strip_prefix("FOREIGN GOVERNMENT INFORMATION "))?;
 
     // Build the country list directly into the inline-4
     // `SmallVec` shape `FgiMarker::Acknowledged` carries — typical
@@ -2508,6 +2556,27 @@ fn parse_non_ic_full_form(s: &str) -> Option<NonIcDissem> {
         let portion = marque_ism::marking_forms::title_to_portion(s)?;
         NonIcDissem::parse(portion)
     })
+}
+
+/// SCI control system parser covering the long "Marking Title" form
+/// (e.g., `"TALENT KEYHOLE"` → `TK`, `"MARVEL"` → `MVL`,
+/// `"KLAMATH"` → `KLM`).
+///
+/// Per CAPCO-2016 §D.1 p27 any control marking in the banner line may
+/// be spelled out per the Marking Title; per §H.4 p85 `TALENT KEYHOLE`
+/// is the registered Authorized Banner Line Marking Title for the TK
+/// control system. MARVEL and KLAMATH are published in ODNI ISM
+/// `CVEnumISMSCIControls.xml` as `<Description>` long-form titles
+/// (post-CAPCO-2016, but already in the ISM token set).
+///
+/// Mirror of [`parse_dissem_full_form`] for the §H.4 SCI control set.
+/// Without this fallback the parser tags `TALENT KEYHOLE` (and the
+/// other long-form bare control systems) as Unknown and E008 fires
+/// on legitimate banner-line content.
+fn parse_sci_control_full_form(s: &str) -> Option<SciControl> {
+    let portion = marque_ism::marking_forms::banner_to_portion(s)
+        .or_else(|| marque_ism::marking_forms::title_to_portion(s))?;
+    SciControl::parse(portion)
 }
 
 /// Return type for [`parse_rel_to_with_spans`].
