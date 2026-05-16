@@ -697,14 +697,30 @@ pub enum UcniKind {
 /// 4. **UCNI** (`BTreeSet<UcniKind>`): flat set union of DOD / DOE
 ///    UCNI presence per §H.6 p116-117 + p118-119.
 /// 5. **ATOMAL** (`Option<AtomalBlock>`): optional-singleton presence
-///    per §G.2 Table 5 p40 (ATOMAL registered as a standalone
-///    control marking; ARH = AEA) + §H.7 p122 FGI-section worked
-///    example (`SECRET//RD/ATOMAL//FGI NATO//NOFORN` places ATOMAL
-///    in the AEA `//` axis position — note §H.7 is the FGI section,
-///    not an ATOMAL subsection; ATOMAL has no dedicated subsection
-///    in §H.1 through §H.9, its registration lives in §G.2 Table 5).
-///    The PR 9c.1 T134 routing decision tracked this through the
-///    parser layer.
+///    per §G.2 Table 5 p40 (ATOMAL registered as a standalone control
+///    marking) + §H.7 p122 worked example (`SECRET//RD/ATOMAL//FGI
+///    NATO//NOFORN` places ATOMAL in the AEA category position
+///    alongside RD — confirming AEA-axis routing). Note §H.7 is the
+///    FGI section, not an ATOMAL subsection; ATOMAL has no dedicated
+///    subsection in §H.1 through §H.9, its registration lives in
+///    §G.2 Table 5 and its AEA-axis routing is established by the
+///    §H.7 p122 worked example, not by Table 5 itself. The PR 9c.1
+///    T134 routing decision tracked this through the parser layer.
+///
+///    **CV-2 (PR 4b-B 8th-pass follow-up).** Pre-CV-2 wording said
+///    `§G.2 Table 5 p40 (ATOMAL registered as a standalone control
+///    marking; ARH = AEA)`. Verified 2026-05-16 against
+///    `crates/capco/docs/CAPCO-2016.md`: Table 5 places ATOMAL under
+///    its own row (no group header in the markdown rendering between
+///    the NATO classification rows and the BOHEMIA/BALK rows), with
+///    the ARH column reading "Requires ATOMAL read-in" — it does NOT
+///    say "ARH = AEA". The "AEA category position" routing claim
+///    derives from the §H.7 p122 worked example placement, not from
+///    Table 5. The "ARH = AEA" parenthetical was a Constitution VIII
+///    misattribution; the corrected citation pair (§G.2 Table 5 p40
+///    for registration + §H.7 p122 worked example for AEA-axis
+///    placement) preserves the routing-decision rationale without
+///    over-claiming what Table 5 says.
 ///
 /// `AeaSet` round-trips with `&[AeaMarking]` via
 /// [`AeaSet::from_markings`] / [`AeaSet::to_markings`], mirroring
@@ -1104,11 +1120,25 @@ impl Lattice for AeaSet {
 /// (`Unclassified < Restricted < Confidential < Secret < TopSecret`,
 /// M-7 PR 4b-B follow-up); no agency-extensibility concern.
 ///
-/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
+/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
 /// - §H.1 pp47-54 (US class chain).
-/// - §H.7 pp123-125 (reciprocal-classification rule).
-/// - §A.4 p13 (IC Markings System Structure — classification
-///   hierarchy).
+/// - §H.2 p55 (Non-US Protective Markings — refers to NATO chain).
+/// - §H.7 pp123-125 (FGI grammar — supports the reciprocal-
+///   classification convention applied at portion-parse time).
+/// - Appendix A "Non-US Protective Markings (includes the Five
+///   Eyes Marking Comparisons)" (per §C.1 p303 / §G.1 p765 cross-
+///   reference) — the equivalence table grounding the
+///   `us_equivalent()` mapping from NATO levels to US levels.
+///
+/// **CV-3 (PR 4b-B 8th-pass follow-up).** Pre-CV-3 wording listed
+/// `§A.4 p13 (IC Markings System Structure — classification hierarchy)`.
+/// Verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`:
+/// §A.4 p13 is a one-paragraph framing of "IC Markings System
+/// Structure" + Table 1 IC Markings System Artifacts; it does NOT
+/// enumerate the classification hierarchy. The §H.1 + §H.2 + Appendix A
+/// citations above carry the hierarchy + reciprocal-mapping
+/// authority that the lattice actually relies on; §A.4 p13 was
+/// decorative.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClassificationLattice(Option<MarkingClassification>);
 
@@ -1686,12 +1716,29 @@ impl BoundedLattice for NatoClassLattice {
 /// `Option<IsmDate>` with `max_by(end_cmp)` join (the most-restrictive
 /// / furthest-out date wins).
 ///
-/// Per CAPCO-2016 §H.6 p104 (RD precedence rule applies to declass
-/// dates by extension — the longest retention wins) + ISOO §3.3
-/// (date-only axis). `IsmDate::end_cmp` compares the end-of-span of
-/// each precision tier, so `Year(2003)` extends through December 31
-/// and is "later" than `Date(2003, 6, 15)` for the MaxDate lattice's
-/// most-conservative-interpretation contract.
+/// Per CAPCO-2016 §E.3 p32 "Multiple Sources and the Declassify On
+/// Line Hierarchy" — the load-bearing rule is verbatim: *"The
+/// 'Declassify On' line must reflect the single declassification
+/// value that provides the longest classification duration of any
+/// of the sources."* This is the explicit max-date aggregation rule
+/// that grounds the lattice's `max_by(end_cmp)` semantic. ISOO §3.3
+/// is the out-of-tree primary source CAPCO §E.3 derives from;
+/// included as a cross-reference, not as primary authority per
+/// Constitution VIII.
+///
+/// `IsmDate::end_cmp` compares the end-of-span of each precision tier,
+/// so `Year(2003)` extends through December 31 and is "later" than
+/// `Date(2003, 6, 15)` for the MaxDate lattice's most-conservative-
+/// interpretation contract.
+///
+/// **Note** (CV-1, PR 4b-B 8th-pass follow-up): pre-CV-1 this doc
+/// comment cited §H.6 p104 ("RD precedence rule applies to declass
+/// dates by extension"). §H.6 p104 is about RD/FRD/TFNI banner
+/// roll-up — its actual relevant rule for declass dates is the
+/// opposite ("Automatic declassification of documents containing RD
+/// information is prohibited") which forbids a declass-date on RD
+/// documents entirely. The pre-CV-1 citation was a Constitution VIII
+/// stretch; §E.3 p32 is the proper authority for date aggregation.
 ///
 /// **`BoundedLattice` deliberately not implemented.** Dates are
 /// open-vocab — no finite "top" date is realizable. Per the
@@ -1704,9 +1751,10 @@ impl BoundedLattice for NatoClassLattice {
 /// supersession sentinel as the top; removed to avoid
 /// misattribution.)
 ///
-/// §-authority (verified 2026-05-15 against CAPCO-2016.md):
-/// - §H.6 p104 (RD Precedence Rules — most-restrictive declass date
-///   wins).
+/// §-authority (verified 2026-05-16 against CAPCO-2016.md):
+/// - §E.3 p32 (Multiple Sources and the Declassify On Line Hierarchy
+///   — "single declassification value that provides the longest
+///   classification duration of any of the sources").
 /// - ISOO §3.3 (out-of-tree primary; included for cross-reference,
 ///   not as primary source per Constitution VIII).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
