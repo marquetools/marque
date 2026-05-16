@@ -97,6 +97,15 @@ fn assert_byte_identity(
     check_eq!(dissem_nato, "dissem_nato");
     check_eq!(non_ic_dissem, "non_ic_dissem");
     check_eq!(rel_to, "rel_to");
+    // DISPLAY ONLY axis: both projection paths produce Box<[]> today
+    // because PageContext deliberately defers the §D.2 Table 3 row 25-27
+    // intersection roll-up to Phase 2 (see `page_context.rs:246-252`).
+    // This check gates against future drift — if either path starts
+    // emitting non-empty `display_only_to` the gate catches the
+    // divergence. §H.8 p163 (DISPLAY ONLY template) + §D.2 p28-30
+    // Table 3 rows 25-27 (roll-up rules). Verified 2026-05-16 against
+    // `crates/capco/docs/CAPCO-2016.md`.
+    check_eq!(display_only_to, "display_only_to");
     check_eq!(declassify_on, "declassify_on");
     check_eq!(declass_exemption, "declass_exemption");
 
@@ -1747,6 +1756,68 @@ fn cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page() {
         "cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page",
         &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+// ===========================================================================
+// DISPLAY ONLY axis — 2 parity fixtures (N-9-1 PR 437 10th-pass)
+// ===========================================================================
+//
+// Both paths produce `display_only_to = Box<[]>` today because
+// PageContext explicitly defers the §D.2 Table 3 row 25-27
+// intersection roll-up to Phase 2 (see `page_context.rs:246-252`).
+// These fixtures gate against future divergence: if either projection
+// path starts emitting non-empty `display_only_to`, the parity helper's
+// `check_eq!(display_only_to, ...)` invocation will catch it.
+//
+// Authority: §H.8 p163 (DISPLAY ONLY template, authorized banner
+// marking and portion form) + §D.2 p28-30 Table 3 rows 25-27 (roll-up
+// rules: row 25 = DO[LIST] ∩ DO[LIST] common-element, row 26 =
+// DO[LIST] ∩ REL TO common-element, row 27 = combined REL TO/DO).
+// Both citations verified 2026-05-16 against
+// `crates/capco/docs/CAPCO-2016.md`.
+
+#[test]
+fn display_only_single_portion_parity() {
+    // §H.8 p163: single DISPLAY ONLY [IRQ] portion.
+    // Both projection paths should produce `display_only_to = Box<[]>`
+    // (Phase-2 deferred). This fixture gates that both paths agree —
+    // if Phase 2 wires the axis in one path before the other, this
+    // fixture will catch the divergence first.
+    let mut p = portion_us(Classification::Secret);
+    p.display_only_to = vec![cc("IRQ")].into_boxed_slice();
+    let portions = [p];
+    assert_byte_identity(
+        "display_only_single_portion_parity",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        // Phase-2 deferred: both produce Box<[]>; no divergence today.
+        // When Phase 2 lands, remove the empty divergence list and add
+        // a row checking the non-empty result.
+        &[],
+    );
+}
+
+#[test]
+fn display_only_two_portions_disjoint_lists_parity() {
+    // §D.2 p28-30 Table 3 row 20: two DISPLAY ONLY portions with
+    // disjoint [LIST]s → NOFORN at the banner. Both paths produce
+    // `display_only_to = Box<[]>` today (Phase-2 deferred). This
+    // fixture gates that both paths agree on the degenerate (no
+    // common-element) shape. When Phase 2 lands, both paths should
+    // produce NOFORN in `dissem_us` and the `display_only_to` axis
+    // should carry no entries (NOFORN supersedes the axis per row 20).
+    let mut p1 = portion_us(Classification::Secret);
+    p1.display_only_to = vec![cc("IRQ")].into_boxed_slice();
+    let mut p2 = portion_us(Classification::Secret);
+    p2.display_only_to = vec![cc("AFG")].into_boxed_slice();
+    let portions = [p1, p2];
+    assert_byte_identity(
+        "display_only_two_portions_disjoint_lists_parity",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        // Phase-2 deferred: both produce Box<[]>; no divergence today.
         &[],
     );
 }
