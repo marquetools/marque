@@ -927,11 +927,42 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
 ];
 
+/// Look up the pinned diagnostics for a fixture stem.
+///
+/// `EXPECTED_DOCUMENT_DIAGNOSTICS` is a `&[(stem, &[entries])]` slice
+/// (not a map) so we can keep the literal sorted-by-stem layout that
+/// makes review-diffs readable. A `find_map` would silently honor only
+/// the first match if a duplicate stem entry were ever introduced,
+/// leaving the second entry's pins unchecked. The
+/// `assert_expected_diagnostics_stems_unique` callee runs at the top of
+/// the test BEFORE any lookup, so a duplicate stem fails the suite
+/// outright instead of producing a silent miscount.
 fn lookup_expected_diagnostics(stem: &str) -> &'static [ExpectedRuleCount] {
     EXPECTED_DOCUMENT_DIAGNOSTICS
         .iter()
         .find_map(|(s, e)| (*s == stem).then_some(*e))
         .unwrap_or(&[])
+}
+
+/// Assert no stem appears twice in `EXPECTED_DOCUMENT_DIAGNOSTICS`.
+///
+/// The allowlist is maintained by hand. A duplicated stem would mean
+/// only the first match is honored (because `lookup_expected_diagnostics`
+/// uses `find_map`) AND the stale-pin guard at the bottom of the test
+/// would consider every duplicate satisfied by the same fixture. Catch
+/// it early instead.
+fn assert_expected_diagnostics_stems_unique() {
+    let mut seen: std::collections::HashSet<&'static str> = std::collections::HashSet::new();
+    let mut duplicates: Vec<&'static str> = Vec::new();
+    for (stem, _) in EXPECTED_DOCUMENT_DIAGNOSTICS {
+        if !seen.insert(stem) {
+            duplicates.push(stem);
+        }
+    }
+    assert!(
+        duplicates.is_empty(),
+        "EXPECTED_DOCUMENT_DIAGNOSTICS has duplicate stem(s): {duplicates:?}. Each fixture stem must appear at most once; merge duplicate pin entries by hand."
+    );
 }
 
 /// Strict per-doc per-rule diagnostic count check against the
@@ -969,6 +1000,9 @@ fn document_fixtures_lint_against_expected() {
         "documents/marked directory missing at {}",
         marked_dir.display()
     );
+
+    // Fail fast on duplicate stem pins before any lookup runs.
+    assert_expected_diagnostics_stems_unique();
 
     let mut marked_files: Vec<_> = std::fs::read_dir(&marked_dir)
         .expect("read documents/marked")
@@ -1068,4 +1102,13 @@ fn document_fixtures_lint_against_expected() {
         violations.len(),
         violations.join("\n  ")
     );
+}
+
+/// Sanity check: the live allowlist must satisfy the uniqueness invariant
+/// the harness depends on. Standalone test so a duplicated stem is caught
+/// even if a future refactor of the main test bypasses
+/// `assert_expected_diagnostics_stems_unique`.
+#[test]
+fn expected_document_diagnostics_has_unique_stems() {
+    assert_expected_diagnostics_stems_unique();
 }
