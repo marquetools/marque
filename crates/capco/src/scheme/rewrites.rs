@@ -23,7 +23,7 @@ use super::*;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
-/// **23 rewrites, in five groups** (post-PR-4b-C, 006 T112; PR
+/// **23 rewrites, in six groups** (post-PR-4b-C, 006 T112; PR
 /// 4b-A landed group 4; PR 3c.B Sub-PR 8.F / 8.F.2 landed group
 /// 3; PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
 /// declarative rows that own the §H.6 / §H.8 / §H.9 strip-plus-
