@@ -189,8 +189,33 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // (deprecated 2017-10-01 per §H.8 p157;
 // parser preserves DissemControl::Eyes
 // for legacy-input recognition).
-// NNPI has no confirmed in-tree CVE entry in ISM-v2022-DEC — see issue #407.
-// TODO(#407): Add TOK_NNPI when the sentinel and satisfies_attrs arm land.
+
+// PR 4b-C Commit 1 (T112 OQ-1 Path A): vocab sentinels for Pattern B
+// + future-decoder coverage. Each token is resolved by `satisfies_attrs`
+// against the appropriate ISM attribute field; the
+// `capco_token_category` table below routes them to the correct
+// CategoryId. Routed AS-IF the §H.8 / §H.9 trigger family they
+// belong to.
+//
+// PROPIN, FISA, RAWFISA live in `attrs.dissem_us` as the DissemControl
+// variants `Pr`, `Fisa`, `Rawfisa` (per `crates/ism/src/attrs.rs`).
+// Their CAPCO §-citations are §H.8 p148 (PROPIN) and §H.8 p161
+// (FISA / RAWFISA); §H.8 p134 names them as "other dissemination
+// control markings" that trigger FOUO eviction in UNCLASSIFIED
+// docs (Pattern B). verified 2026-05-16 against CAPCO-2016.md.
+pub const TOK_PROPIN: TokenId = TokenId(143); // PROPIN — §H.8 p148
+pub const TOK_FISA: TokenId = TokenId(144); // FISA — §H.8 p161
+pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares the FISA section)
+
+// NNPI lives in `attrs.non_ic_dissem` as the NonIcDissem::Nnpi variant
+// (per `crates/ism/src/attrs.rs:1326` doc-comment on NNPI). NNPI has
+// no confirmed CAPCO-2016 §-citation in ISM-v2022-DEC; the ODNI ISM
+// `attrs.rs:1326` banner-roll-up doc-comment is the in-tree authority
+// for NNPI's "propagates regardless of classification" behavior, which
+// makes NNPI a §H.8 p134 "other dissemination control markings"
+// trigger by the same reasoning as SSI (§H.9 p189).
+// Closes issue #407. verified 2026-05-16.
+pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 
 // PR 9c.1 (T134): canonical NATO control-marking sentinels for
 // ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
@@ -1142,6 +1167,12 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         | TOK_DSEN
         | TOK_RSEN
         | TOK_FOUO
+        // PR 4b-C Commit 1: PROPIN / FISA / RAWFISA live in
+        // `attrs.dissem_us` (DissemControl::Pr / Fisa / Rawfisa).
+        // §H.8 p148 + §H.8 p161. verified 2026-05-16.
+        | TOK_PROPIN
+        | TOK_FISA
+        | TOK_RAWFISA
         // EYES (USA/[LIST] EYES ONLY) routes through the IC dissem axis.
         // The sentinel landed in PR 3.7 rev 3; the category routing
         // here is PR 3.7 rev 4 per Copilot review pass 4 (token_category
@@ -1155,8 +1186,10 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // PageRewrites can route through this category.
         // Stage D (T108c) adds LIMDIS, LES, SBU, SSI as closure-rule trigger
         // sentinels (§4.7.1 implicit-NOFORN list).
+        // PR 4b-C Commit 1: TOK_NNPI lives in `attrs.non_ic_dissem`
+        // (NonIcDissem::Nnpi). Closes issue #407. verified 2026-05-16.
         TOK_NODIS | TOK_EXDIS | TOK_SBU_NF | TOK_LES_NF | TOK_LIMDIS | TOK_LES | TOK_SBU
-        | TOK_SSI => Some(CAT_NON_IC_DISSEM),
+        | TOK_SSI | TOK_NNPI => Some(CAT_NON_IC_DISSEM),
         // CAT_REL_TO — country codes in the dissemination context.
         // `TOK_USA` removes USA from the axis; the `TOK_REL_TO`
         // sentinel (PR 3c.B Sub-PR 8.D.2) clears the whole axis. Both
@@ -1493,6 +1526,18 @@ fn apply_fact_remove(
             TOK_DISPLAY_ONLY => DissemControl::Displayonly,
             TOK_ORCON => DissemControl::Oc,
             TOK_ORCON_USGOV => DissemControl::OcUsgov,
+            // PR 4b-C Commit 3 — TOK_FOUO removal for the
+            // `capco/classification-evicts-fouo` and
+            // `capco/non-fdr-control-evicts-fouo` Pattern-B + C rows.
+            // §H.8 p134 (FOUO Precedence Rules for Banner Line Guidance):
+            //   "FOUO is not conveyed in the banner line if the document
+            //    is UNCLASSIFIED with FOUO and other dissemination
+            //    control markings, excluding any FD&R markings."
+            //   "FOUO does not appear in the banner line of classified
+            //    documents."
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+            // §H.8 p134 (FOUO subsection p131-134 in citation index).
+            TOK_FOUO => DissemControl::Fouo,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
         // PR 9b (T132): FactRemove on the CAT_DISSEM axis filters the
@@ -1524,24 +1569,34 @@ fn apply_fact_remove(
     }
 
     if category == CAT_NON_IC_DISSEM {
-        // TODO(8.F.2): TOK_SBU_NF / TOK_LES_NF are routed here by
-        // capco_token_category but the match arm currently only handles
-        // TOK_NODIS / TOK_EXDIS. A FactRemove with `FactRef::Cve(TOK_SBU_NF)`
-        // or `FactRef::Cve(TOK_LES_NF)` today falls through to the
-        // `_ => return Err(ApplyIntentError::UnknownToken)` branch below.
+        // PR 4b-C Commit 3 — extended LIMDIS / SBU removal for the
+        // Pattern-C `capco/limdis-evicted-by-classified` /
+        // `capco/sbu-evicted-by-classified` rows. SbuNf / LesNf
+        // remain UnknownToken — they are the §H.9 p178 / p185
+        // compound-NF variants and Pattern-C strip rows MUST NOT
+        // touch them (Pattern §3.5 compound-NF guard); the existing
+        // `capco/sbu-nf-implies-noforn` + `capco/les-nf-implies-noforn`
+        // rewrites carry NF identity separately.
+        //
         // Per the `ApplyIntentError::UnknownToken` doc-comment
-        // (`crates/scheme/src/scheme.rs:454-458`), this is treated as a
-        // programmer-emission defect: the engine logs the error and drops
-        // the fix — it does NOT crash, panic, or apply a partial mutation,
-        // but the failure IS surfaced through the engine's error-logging
-        // pipeline, not silently swallowed. 8.F.2 emits FactAdd only
-        // (writes CAT_DISSEM, routes through `apply_fact_add`), so no rule
-        // in this PR can hit this gap. Add SbuNf / LesNf variants when
-        // Pattern C classified-strips-{sbu,les} rewrites land — those will
-        // be the first emitters of FactRemove on these tokens.
+        // (`crates/scheme/src/scheme.rs:454-458`), an emitter that
+        // targets an unsupported token is treated as a programmer-
+        // emission defect: the engine logs the error and drops the
+        // fix without panicking.
         let target = match id {
             TOK_NODIS => NonIcDissem::Nodis,
             TOK_EXDIS => NonIcDissem::Exdis,
+            // PR 4b-C Commit 3 — §H.9 p170 (LIMITED DISTRIBUTION
+            // Precedence Rules for Banner Line Guidance): "Classified
+            // documents: LIMDIS does not appear in the banner line."
+            // verified 2026-05-16 against CAPCO-2016.md §H.9 p170.
+            TOK_LIMDIS => NonIcDissem::Limdis,
+            // PR 4b-C Commit 3 — §H.9 p176 (SENSITIVE BUT
+            // UNCLASSIFIED Precedence Rules for Banner Line Guidance):
+            // "Classified documents: SBU does not appear in the
+            // banner line."
+            // verified 2026-05-16 against CAPCO-2016.md §H.9 p176.
+            TOK_SBU => NonIcDissem::Sbu,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
         let before = attrs.non_ic_dissem.len();
@@ -1673,6 +1728,334 @@ fn never_fires(_: &CapcoMarking) -> bool {
 /// axis annotations are consumed (by the engine's topological
 /// scheduler, T031–T032). Pairs with [`never_fires`] for triggers.
 fn noop_action(_marking: &mut CapcoMarking) {}
+
+// ---------------------------------------------------------------------------
+// PR 4b-C Commit 3 — Pattern-C strip-row helpers
+// ---------------------------------------------------------------------------
+//
+// Pattern C (classification-driven strip) and the UCNI NOFORN-promotion
+// pair both need predicates that gate on "the page is classified". The
+// existing `CategoryPredicate::Contains` shape can't express that gate,
+// so the seven rows in this PR use `CategoryPredicate::Custom`. The
+// helpers below are top-level `fn` items so the rows can store them as
+// `fn` pointers (`CategoryPredicate::Custom(fn(&CapcoMarking) -> bool)`)
+// and the `Send + Sync` invariant from Constitution VI holds trivially.
+//
+// Authority (each verified 2026-05-16 against
+// `crates/capco/docs/CAPCO-2016.md`):
+// - §H.8 p134 (FOUO Precedence Rules for Banner Line Guidance)
+// - §H.6 p116-117 (DOD UCNI / DCNI Precedence Rules)
+// - §H.6 p118-119 (DOE UCNI Precedence Rules)
+// - §H.9 p170 (LIMDIS Precedence Rules)
+// - §H.9 p176 (SBU Precedence Rules)
+
+/// `true` when the marking carries a classification level strictly
+/// greater than UNCLASSIFIED.
+///
+/// Classifications without an effective US-level (`None`) are
+/// treated as UNCLASSIFIED — Pattern-C rules fire only when there is
+/// affirmative classified state on the page. Matches the §H.8 / §H.6
+/// / §H.9 wording "classified document" (which presupposes a positive
+/// classification, not a no-classification state).
+#[inline]
+fn is_classified(m: &CapcoMarking) -> bool {
+    m.0.classification
+        .as_ref()
+        .map(|c| c.effective_level() > marque_ism::Classification::Unclassified)
+        .unwrap_or(false)
+}
+
+/// `true` when the projected page carries DOD UCNI (DCNI) anywhere
+/// on the AEA axis. Used by the Pattern-C
+/// `capco/dod-ucni-evicted-by-classified` and
+/// `capco/dod-ucni-promotes-noforn-when-classified` predicates.
+#[inline]
+fn has_dod_ucni(m: &CapcoMarking) -> bool {
+    m.0.aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::DodUcni))
+}
+
+/// `true` when the projected page carries DOE UCNI anywhere on the
+/// AEA axis. Mirrors [`has_dod_ucni`] for the DOE side.
+#[inline]
+fn has_doe_ucni(m: &CapcoMarking) -> bool {
+    m.0.aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::DoeUcni))
+}
+
+/// `true` when an FD&R dissem marker is already present on the page.
+///
+/// §H.6 p116 / p118 verbatim: "NOFORN must be applied if a less
+/// restrictive FD&R marking would otherwise be conveyed with the
+/// classified information." The promotion is suppressed when an
+/// equally- or more-restrictive FD&R marker is already present;
+/// NOFORN is the most-restrictive member of the FD&R family
+/// (§H.8 p145), so a present NOFORN is its own suppressor (no
+/// double-add). The other FD&R-family tokens (REL TO / RELIDO /
+/// DISPLAY ONLY / EYES) are "less restrictive" and DO NOT suppress
+/// the promotion — they would be cleared by `noforn-clears-rel-to`
+/// / `noforn-clears-fdr-family` downstream once the promotion fires.
+///
+/// Set membership matches the §H.8 p145 NOFORN-dominates family
+/// scoped to "would otherwise be conveyed in the banner". We check
+/// only `Nf` here so the promotion fires whenever NOFORN is absent
+/// from the dissem axis. This is consistent with how the existing
+/// `*-implies-noforn` rewrites add NOFORN with no FD&R-suppressor
+/// gate (FactAdd of an already-present token is a per-intent no-op
+/// per the idempotence policy in `apply_fact_add`).
+#[inline]
+fn dissem_has_noforn(m: &CapcoMarking) -> bool {
+    m.0.dissem_iter()
+        .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+}
+
+/// Pattern-C trigger: `classification > U ∧ contains FOUO in dissem`.
+/// Drives `capco/fouo-evicted-by-classified` (§H.8 p134).
+fn fouo_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m)
+        && m.0
+            .dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Fouo))
+}
+
+/// Pattern-C trigger: `classification > U ∧ contains LIMDIS in non_ic`.
+/// Drives `capco/limdis-evicted-by-classified` (§H.9 p170).
+fn limdis_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m)
+        && m.0
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, marque_ism::NonIcDissem::Limdis))
+}
+
+/// Pattern-C trigger: `classification > U ∧ contains SBU in non_ic`.
+/// Drives `capco/sbu-evicted-by-classified` (§H.9 p176).
+///
+/// NOTE: This trigger matches the bare `Sbu` variant ONLY; the compound
+/// `SbuNf` variant is a distinct token (TOK_SBU_NF) and is handled by
+/// the existing `capco/sbu-nf-implies-noforn` rewrite at PR 3c.B
+/// Sub-PR 8.F.2. §3.5 compound-NF invariant.
+fn sbu_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m)
+        && m.0
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, marque_ism::NonIcDissem::Sbu))
+}
+
+/// Pattern-C trigger: `classification > U ∧ DOD UCNI on AEA axis`.
+/// Drives `capco/dod-ucni-evicted-by-classified` (§H.6 p116).
+fn dod_ucni_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m) && has_dod_ucni(m)
+}
+
+/// Pattern-C trigger: `classification > U ∧ DOE UCNI on AEA axis`.
+/// Drives `capco/doe-ucni-evicted-by-classified` (§H.6 p118).
+fn doe_ucni_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m) && has_doe_ucni(m)
+}
+
+/// Pattern-C trigger: `dod-ucni-classified ∧ NOFORN absent from dissem`.
+/// Drives `capco/dod-ucni-promotes-noforn-when-classified` (§H.6 p116).
+fn dod_ucni_promotes_noforn_trigger(m: &CapcoMarking) -> bool {
+    dod_ucni_classified_trigger(m) && !dissem_has_noforn(m)
+}
+
+/// Pattern-C trigger: `doe-ucni-classified ∧ NOFORN absent from dissem`.
+/// Drives `capco/doe-ucni-promotes-noforn-when-classified` (§H.6 p118).
+fn doe_ucni_promotes_noforn_trigger(m: &CapcoMarking) -> bool {
+    doe_ucni_classified_trigger(m) && !dissem_has_noforn(m)
+}
+
+/// Pattern-C action body: strip every `AeaMarking::DodUcni` from the
+/// AEA axis. Pairs with [`dod_ucni_classified_trigger`].
+fn strip_dod_ucni_action(m: &mut CapcoMarking) {
+    let attrs = &mut m.0;
+    let kept: Vec<marque_ism::AeaMarking> = attrs
+        .aea_markings
+        .iter()
+        .filter(|a| !matches!(a, marque_ism::AeaMarking::DodUcni))
+        .cloned()
+        .collect();
+    attrs.aea_markings = kept.into_boxed_slice();
+}
+
+/// Pattern-C action body: strip every `AeaMarking::DoeUcni` from the
+/// AEA axis. Pairs with [`doe_ucni_classified_trigger`].
+fn strip_doe_ucni_action(m: &mut CapcoMarking) {
+    let attrs = &mut m.0;
+    let kept: Vec<marque_ism::AeaMarking> = attrs
+        .aea_markings
+        .iter()
+        .filter(|a| !matches!(a, marque_ism::AeaMarking::DoeUcni))
+        .cloned()
+        .collect();
+    attrs.aea_markings = kept.into_boxed_slice();
+}
+
+// ---------------------------------------------------------------------------
+// PR 4b-C Commit 4 — Pattern-B helpers
+// ---------------------------------------------------------------------------
+//
+// Pattern B is two structural rows per the §H.8 p134 verbatim:
+//   "FOUO is not conveyed in the banner line if the document is
+//    UNCLASSIFIED with FOUO and other dissemination control markings,
+//    excluding any FD&R markings."
+//
+// The "non-FD&R" set comes from `Vocabulary::is_fdr_dissem` (broad
+// membership including RELIDO). The Pattern-B trigger fires whenever
+// FOUO is present AND there is at least one other non-FD&R control on
+// the page (other IC dissem, non-IC dissem, AEA, or SAR). The
+// `classification > U` companion gate is split into the dedicated
+// Pattern-C `fouo-evicted-by-classified` row so each row has a single
+// §-citation thread.
+//
+// `Vocabulary::is_fdr_dissem` is the authoritative FD&R-membership
+// API (`crates/scheme/src/vocabulary.rs:382`; CapcoScheme override at
+// `crates/capco/src/vocabulary.rs:1093`). It iterates `FDR_DOMINATORS`
+// — which INCLUDES RELIDO. The neighboring `is_fdr_dominator`
+// function deliberately EXCLUDES RELIDO; it answers a different
+// question (RELIDO-conflict dominators) and is the wrong helper here.
+// See the `scheme.rs:5018-5039` doc-comment on `FDR_DOMINATORS` for
+// the full distinction.
+
+/// `true` when the dissem axis carries at least one IC dissem token
+/// that is NOT in the FD&R-membership set (everything except
+/// {Nf, Relido, Displayonly, Rel, Eyes}). Uses [`is_fdr_dissem_token`]
+/// which walks `FDR_DOMINATORS` directly — the same broad-membership
+/// semantic as `Vocabulary::is_fdr_dissem` but without constructing a
+/// `CapcoScheme` instance inside a hot-path predicate.
+///
+/// The `FDR_DOMINATORS` slice includes `AnyInCategory(CAT_REL_TO)` to
+/// cover bare REL marker membership, but `DissemControl::Rel` has no
+/// `TOK_*` sentinel (verified `scheme.rs:4885` inventory comment), so
+/// the per-variant token lookup naturally skips REL — `dissem_to_tok`
+/// returns `None` and the caller treats `None` as non-FD&R. That is
+/// CORRECT for the §H.8 p134 reading: bare `Rel` IS an FD&R marker by
+/// §B.3.a p19 (REL TO without the country list still belongs to the
+/// FD&R family), so a future PR that lands `TOK_REL` and adds it to
+/// `FDR_DOMINATORS` would automatically pick up here. Today, no
+/// portion can carry a bare `Rel` without an accompanying `rel_to`
+/// entry (the parser produces them together), so the gap is
+/// non-load-bearing on real input.
+#[inline]
+fn dissem_has_non_fdr_other_than_fouo(m: &CapcoMarking) -> bool {
+    m.0.dissem_iter().any(|d| {
+        if matches!(d, marque_ism::DissemControl::Fouo) {
+            return false; // not "other"; the trigger token itself
+        }
+        match dissem_to_tok(*d) {
+            Some(tok) => !is_fdr_dissem_token(tok),
+            None => true,
+        }
+    })
+}
+
+/// `true` when `tok` appears in the in-tree `FDR_DOMINATORS` slice as
+/// a direct `Token(...)` entry. Mirrors the `Vocabulary::is_fdr_dissem`
+/// override at `crates/capco/src/vocabulary.rs:1093` for the
+/// `Token` arms — the `AnyInCategory` arms in `FDR_DOMINATORS`
+/// (CAT_REL_TO) cover country codes on the REL TO axis, not
+/// `DissemControl` tokens, so they are excluded from this lookup
+/// path. PR 4b-C local helper for Pattern-B's per-token
+/// membership check; once `Vocabulary::is_fdr_dissem` is reachable
+/// from a no-scheme-instance context (e.g., a `&'static` helper),
+/// this helper can delegate.
+#[inline]
+fn is_fdr_dissem_token(tok: TokenId) -> bool {
+    FDR_DOMINATORS.iter().any(|entry| match entry {
+        TokenRef::Token(id) => *id == tok,
+        TokenRef::AnyInCategory(_) => false,
+    })
+}
+
+/// Pattern-B trigger: `contains FOUO in dissem ∧ ∃ other non-FD&R
+/// control on the page`.
+///
+/// "Other non-FD&R control" covers four axes per §H.8 p134's "other
+/// dissemination control markings, excluding any FD&R markings":
+/// - CAT_DISSEM: any IC dissem token that is not FOUO and not in
+///   the FD&R set.
+/// - CAT_NON_IC_DISSEM: ANY non-IC dissem token (§H.9 controls are
+///   all non-FD&R by construction — none of {LIMDIS, LES, SBU, SSI,
+///   NODIS, EXDIS, NNPI, SbuNf, LesNf} appears in `FDR_DOMINATORS`).
+/// - CAT_AEA: ANY AEA marking. AEA markings (RD / FRD / TFNI / UCNI /
+///   ATOMAL) are atomic-energy controls, not FD&R markings.
+/// - CAT_SAR: ANY SAR program identifier.
+///
+/// Drives `capco/non-fdr-control-evicts-fouo` (§H.8 p134, Correction A).
+fn fouo_with_non_fdr_other_control_trigger(m: &CapcoMarking) -> bool {
+    let has_fouo =
+        m.0.dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Fouo));
+    if !has_fouo {
+        return false;
+    }
+    // AEA-non-empty triggers Pattern-B row 2 for any AEA marking
+    // including ATOMAL; practical overlap with U-document is null
+    // (ATOMAL requires classified per §H.7 p122). The §H.8 p134
+    // sub-clause is U-document scoped, so the only AEA markings that
+    // can co-occur with FOUO in practice are UCNI variants (which
+    // ARE U-document valid per §H.6 p116 / p118) — RD / FRD / TFNI /
+    // ATOMAL all carry per-marking class floors that exceed U.
+    // Keeping the unconditional `!aea_markings.is_empty()` clause is
+    // correct under §H.8 p134's wording and stays defensive against
+    // future grammar extensions.
+    dissem_has_non_fdr_other_than_fouo(m)
+        || !m.0.non_ic_dissem.is_empty()
+        || !m.0.aea_markings.is_empty()
+        || m.0.sar_markings.is_some()
+}
+
+/// Helper: DissemControl variant → TOK_* sentinel for the
+/// `Vocabulary::is_fdr_dissem` membership lookup.
+///
+/// Mirrors the `dissem_to_tok` arms scattered through `scheme.rs`
+/// (no centralized helper exists at PR 4b-C time). Variants without
+/// a TOK_* sentinel return `None`; the caller treats those as
+/// non-FD&R (correct by inspection — FD&R members all have
+/// TOK_* sentinels).
+#[inline]
+fn dissem_to_tok(d: marque_ism::DissemControl) -> Option<TokenId> {
+    use marque_ism::DissemControl as DC;
+    match d {
+        DC::Nf => Some(TOK_NOFORN),
+        DC::Relido => Some(TOK_RELIDO),
+        DC::Displayonly => Some(TOK_DISPLAY_ONLY),
+        DC::Oc => Some(TOK_ORCON),
+        DC::OcUsgov => Some(TOK_ORCON_USGOV),
+        DC::Imc => Some(TOK_IMCON),
+        DC::Dsen => Some(TOK_DSEN),
+        DC::Rs => Some(TOK_RSEN),
+        DC::Fouo => Some(TOK_FOUO),
+        DC::Pr => Some(TOK_PROPIN),
+        DC::Fisa => Some(TOK_FISA),
+        DC::Rawfisa => Some(TOK_RAWFISA),
+        DC::Eyes => Some(TOK_EYES),
+        // Variants without a TOK_* sentinel: only `DC::Rel` (REL TO
+        // canonical, routed via CAT_REL_TO instead of CAT_DISSEM) and
+        // `DC::ExemptFromIcd501Discovery` (parser-internal marker, never
+        // emitted onto the dissem axis). Adding a new DissemControl
+        // variant without extending this match arm + the catalog is a
+        // silent-drift class — the debug_assert below catches it under
+        // `cargo test` before it can mask a Pattern-B trigger that
+        // would otherwise have fired. See `scheme.rs:4885` for the full
+        // sentinel inventory.
+        other => {
+            debug_assert!(
+                matches!(other, DC::Rel | DC::ExemptFromIcd501Discovery),
+                "dissem_to_tok hit an unexpected None arm for {other:?} — \
+                 a DissemControl variant was added without a paired TOK_* \
+                 sentinel. Extend `scheme.rs::dissem_to_tok` (and the broad-\
+                 set `is_fdr_dissem_token` helper if the new control is \
+                 FD&R-class) so Pattern-B / Pattern-C predicates can see it.",
+            );
+            None
+        }
+    }
+}
 
 /// Build a `CanonicalAttrs` banner projection from the `expected_*`
 /// accessors on `PageContext`. Intentionally narrow: only fills the
@@ -1838,23 +2221,54 @@ impl CapcoScheme {
 
     /// Construct CAPCO's `PageRewrite` table.
     ///
-    /// Nine rewrites, in two groups:
+    /// **23 rewrites, in five groups** (post-PR-4b-C, 006 T112; PR
+    /// 4b-A landed group 4; PR 3c.B Sub-PR 8.F / 8.F.2 landed group
+    /// 3; PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
+    /// declarative rows that own the §H.6 / §H.8 / §H.9 strip-plus-
+    /// promote semantics):
     ///
-    /// - **Active (1):** `capco/noforn-clears-rel-to` — the only row
-    ///   wired to a real `Contains` predicate + `Clear` action; cited
-    ///   at §D.2 Table 3 + §H.8 p145.
-    /// - **Phase-3 stubs (8):** the §3.4.1 / §3.4.3 transmutation
-    ///   roster from `marque-applied.md` (consultant Entry 6 split
-    ///   into 6a + 6b for D13 single-citation discipline). Each
-    ///   declares a `Custom(never_fires)` trigger and a
-    ///   `Custom(noop_action)` body — Phase 3 does not drive page
-    ///   roll-up through `scheme.project()`, so the trigger pins to
-    ///   `false` and the action body is empty. The `reads` / `writes`
-    ///   annotations are what the Kahn scheduler consumes (T031–T032)
-    ///   to validate dataflow ordering; the runtime semantics still
-    ///   live in the hand-coded [`PageContext`] aggregator. Phase D /
-    ///   Phase E replaces the `Custom` bodies with real predicates
-    ///   and transforms.
+    /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
+    ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
+    ///    §H.9 p172) and `capco/{sbu-nf,les-nf}-implies-noforn`
+    ///    (§H.9 p178 / §H.9 p185). All four are wired predicates that
+    ///    fire today via `scheme.project(Scope::Page, ...)`.
+    /// 2. **PR 4b-C Pattern-C strip rows (7):** §H.6 / §H.8 / §H.9
+    ///    classification-driven strips of UNCLASSIFIED-only controls
+    ///    plus the §H.6 NOFORN-promotion siblings —
+    ///    `capco/limdis-evicted-by-classified` (§H.9 p170),
+    ///    `capco/sbu-evicted-by-classified` (§H.9 p176), four UCNI
+    ///    rows declared **promote-before-strip** so the NOFORN-
+    ///    promotion predicate observes UCNI before the strip
+    ///    removes it (`capco/{dod,doe}-ucni-{promotes-noforn-when-
+    ///    classified, evicted-by-classified}` at §H.6 p116 / p118),
+    ///    and `capco/fouo-evicted-by-classified` (§H.8 p134
+    ///    classified sub-clause).
+    /// 3. **PR 4b-C Pattern-B structural FOUO-eviction (2):**
+    ///    `capco/classification-evicts-fouo` +
+    ///    `capco/non-fdr-control-evicts-fouo`, both at §H.8 p134.
+    ///    The two rows quote the same §H.8 p134 umbrella passage
+    ///    but cite distinct sub-clauses (classified-document vs
+    ///    UNCLASSIFIED with other dissemination controls).
+    /// 4. **Active wired rows (1):** `capco/noforn-clears-rel-to`
+    ///    (`Contains` predicate + `Clear` action). Cited at §D.2
+    ///    Table 3 + §H.8 p145. First PageRewrite to land in the
+    ///    catalog; canonical worked example in
+    ///    `crates/capco/README.md`.
+    /// 5. **DISPLAY-ONLY / FD&R-family (1):**
+    ///    `capco/noforn-clears-fdr-family` per DISPLAY ONLY Phase 2
+    ///    landing at §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157.
+    /// 6. **Phase-3 transmutation stubs (8):** the §3.4.1 / §3.4.3
+    ///    transmutation roster from `marque-applied.md` (consultant
+    ///    Entry 6 split into 6a + 6b for D13 single-citation
+    ///    discipline). Each declares a `Custom(never_fires)` trigger
+    ///    and a `Custom(noop_action)` body — Phase 3 does not drive
+    ///    page roll-up through `scheme.project()` for these, so the
+    ///    trigger pins to `false` and the action body is empty. The
+    ///    `reads` / `writes` annotations are what the Kahn scheduler
+    ///    consumes (T031–T032) to validate dataflow ordering; the
+    ///    runtime semantics still live in the hand-coded
+    ///    [`PageContext`] aggregator. Phase D / Phase E replaces the
+    ///    `Custom` bodies with real predicates and transforms.
     ///
     /// # `reads` semantics — narrow form
     ///
@@ -2070,6 +2484,86 @@ impl CapcoScheme {
         const SBU_NF_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
         const LES_NF_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
         const LES_NF_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
+        // PR 4b-C Commit 3 — Pattern-C strip rows.
+        //
+        // FOUO classified-strip: reads classification (gate) only;
+        // writes DISSEM (FactRemove FOUO). The FOUO-presence scan
+        // lives in the `fouo_classified_trigger` Custom predicate body
+        // — declaring CAT_DISSEM as a read here would manufacture a
+        // same-axis self-reference cycle in Kahn's algorithm (the row
+        // is a DISSEM-writer). §H.8 p134.
+        //
+        // Plan §3.4 risk #4 resolution: predicate-scan-vs-dataflow
+        // convention (same approach taken by PR 3b.B entries 5 / 6a / 6b).
+        const PATTERN_C_FOUO_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
+        const PATTERN_C_FOUO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
+        // LIMDIS / SBU classified-strip: reads classification only;
+        // writes NON_IC (FactRemove). The NON_IC-presence scan lives
+        // in each Custom predicate body — same-axis self-reference
+        // avoidance (plan §3.4 risk #4). §H.9 p170 / p176.
+        const PATTERN_C_LIMDIS_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
+        const PATTERN_C_LIMDIS_WRITES: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+        const PATTERN_C_SBU_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
+        const PATTERN_C_SBU_WRITES: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+
+        // UCNI strip: reads classification only; writes AEA (Custom
+        // action removing DodUcni / DoeUcni variant only). AEA-presence
+        // scan lives in the Custom predicate body. §H.6 p116-117 (DOD
+        // UCNI) + §H.6 p118-119 (DOE UCNI).
+        const PATTERN_C_UCNI_STRIP_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
+        const PATTERN_C_UCNI_STRIP_WRITES: &[marque_scheme::CategoryId] = &[CAT_AEA];
+
+        // UCNI NOFORN promotion: reads classification + AEA (UCNI
+        // presence), writes DISSEM (FactAdd NOFORN). The "no stricter
+        // FD&R marker" suppression lives in the Custom predicate body
+        // (`dod_ucni_promotes_noforn_trigger` checks `dissem_has_noforn`)
+        // so we DO NOT declare CAT_DISSEM as a read; otherwise Kahn's
+        // algorithm would see this row as both reading and writing
+        // CAT_DISSEM, manufacturing a same-axis self-reference that the
+        // engine rejects. §H.6 p116 / p118.
+        const PATTERN_C_UCNI_PROMOTE_READS: &[marque_scheme::CategoryId] =
+            &[CAT_CLASSIFICATION, CAT_AEA];
+        const PATTERN_C_UCNI_PROMOTE_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
+        // PR 4b-C Commit 4 — Pattern-B structural FOUO eviction.
+        //
+        // classification-evicts-fouo: same axes as PATTERN_C_FOUO —
+        // reads `[CAT_CLASSIFICATION]` only; writes `[CAT_DISSEM]`.
+        // CAT_DISSEM is intentionally NOT in `reads` even though the
+        // predicate scans it for FOUO, because the existing
+        // `capco/noforn-clears-fdr-family` row already reads + writes
+        // CAT_DISSEM (the scheduler accepts that as a 1-row self-
+        // edge); declaring another reads-DISSEM/writes-DISSEM row
+        // creates a 2-row cycle (Kahn rejects). The FOUO-presence
+        // scan lives in the `fouo_classified_trigger` Custom
+        // predicate body. §H.8 p134 (FOUO-in-classified clause).
+        //
+        // Plan §3.4 risk #4 resolution: predicate-scan-vs-dataflow
+        // convention, identical to the Pattern-C rows in Commit 3.
+        const PATTERN_B_CLASS_FOUO_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
+        const PATTERN_B_CLASS_FOUO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
+        // non-fdr-control-evicts-fouo: reads NON_IC, AEA, SAR
+        // (the three "other control" surfaces whose presence is the
+        // load-bearing trigger); writes DISSEM (FactRemove FOUO).
+        // §H.8 p134 (FOUO-with-other-non-FD&R clause).
+        //
+        // CAT_DISSEM is intentionally NOT in `reads` even though the
+        // predicate scans it for non-FD&R-other-than-FOUO tokens.
+        // Declaring it would create a 2-row cycle with the existing
+        // `capco/noforn-clears-fdr-family` row (which reads + writes
+        // CAT_DISSEM; the scheduler accepts that as a 1-row self-edge
+        // but rejects a 2-row reads-DISSEM/writes-DISSEM cycle).
+        // The DISSEM-presence scan lives in the
+        // `fouo_with_non_fdr_other_control_trigger` Custom predicate
+        // body. Plan §3.4 risk #4 (same-axis self-reference)
+        // resolution: predicate-scan-vs-dataflow convention,
+        // identical to the Pattern-C rows in Commit 3.
+        const PATTERN_B_NON_FDR_READS: &[marque_scheme::CategoryId] =
+            &[CAT_NON_IC_DISSEM, CAT_AEA, CAT_SAR];
+        const PATTERN_B_NON_FDR_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
         vec![
             // PR 3c.B Sub-PR 8.F — `capco/nodis-implies-noforn`.
@@ -2363,6 +2857,392 @@ impl CapcoScheme {
                 }),
                 LES_NF_IMPLIES_NF_READS,
                 LES_NF_IMPLIES_NF_WRITES,
+            ),
+            // ===============================================================
+            // PR 4b-C Commit 3 — Pattern-C strip rows (5 rows + 2 promotes)
+            // ===============================================================
+            //
+            // Pattern C: classification-driven strip of UNCLASSIFIED-only
+            // controls. The CAPCO authority lives across §H.6 (DOD/DOE
+            // UCNI), §H.8 (FOUO), and §H.9 (LIMDIS, SBU). Each row carries
+            // its own §-citation thread per D13 single-§-citation
+            // discipline. The five strip rows fire when a classified
+            // portion appears on the page alongside the U-only control;
+            // the two UCNI rows additionally promote NOFORN per §H.6's
+            // explicit "less restrictive FD&R marking would otherwise be
+            // conveyed" clause (the load-bearing pre-fix bug in
+            // `PageContext::expected_aea_markings` — see Commit 2's
+            // regression test).
+            //
+            // Trigger shape: all seven rows use `CategoryPredicate::Custom`
+            // because `Contains` cannot express the
+            // `classification > Unclassified` gate. Each `Custom` predicate
+            // carries explicit `reads` / `writes` axis annotations per
+            // Constitution VII §IV (the engine rejects unannotated
+            // `Custom` axes with `EngineConstructionError::UnannotatedCustomAxes`).
+            //
+            // Scheduler ordering: every strip + promote row writes either
+            // CAT_AEA, CAT_NON_IC_DISSEM, or CAT_DISSEM. All seven rows
+            // are ordered BEFORE `capco/noforn-clears-rel-to` (DISSEM-
+            // reader) by the Kahn scheduler. The two UCNI promote rows
+            // would self-reference DISSEM if `reads` included
+            // CAT_DISSEM, so the FD&R-suppressor scan lives in the
+            // predicate body (`dod_ucni_promotes_noforn_trigger`) instead
+            // — declaring DISSEM only in `writes` avoids the
+            // manufactured-cycle case the plan §3.4 risk #4 names.
+            //
+            // Runtime execution gap: the seven rows are scheduler-
+            // validated (Engine::new validates the intent payloads +
+            // topological ordering) but execution-deferred. `Engine::lint`
+            // continues to drive banner validation through `PageContext`
+            // until PR 4b-D wires the lattice path. The post-Commit-5
+            // single source of truth is `scheme.project(Scope::Page, ...)`,
+            // which fires these rows.
+            //
+            // §3.5 compound-NF guard: `TOK_SBU` triggers match ONLY
+            // `NonIcDissem::Sbu` (the bare variant). `NonIcDissem::SbuNf`
+            // is a distinct variant carrying NOFORN identity via the
+            // existing `capco/sbu-nf-implies-noforn` rewrite; Pattern C
+            // MUST NOT strip the compound variants. The
+            // `sbu_classified_trigger` predicate explicitly matches
+            // `NonIcDissem::Sbu` (not `SbuNf`).
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+            // (each §-citation re-verified at authorship per
+            // Constitution VIII).
+
+            // Pattern-C row 1: `capco/limdis-evicted-by-classified`.
+            //
+            // §H.9 p170 (LIMITED DISTRIBUTION, Precedence Rules for
+            // Banner Line Guidance): "When a document contains LIMDIS
+            // and classified portions, LIMDIS is not used in the
+            // banner line."
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/limdis-evicted-by-classified",
+                "CAPCO-2016 §H.9 p170",
+                CategoryPredicate::Custom(limdis_classified_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactRemove {
+                    facts: smallvec::smallvec![FactRef::Cve(TOK_LIMDIS)],
+                    scope: Scope::Page,
+                }),
+                PATTERN_C_LIMDIS_READS,
+                PATTERN_C_LIMDIS_WRITES,
+            ),
+            // Pattern-C row 2: `capco/sbu-evicted-by-classified`.
+            //
+            // §H.9 p176 (SENSITIVE BUT UNCLASSIFIED, Precedence Rules
+            // for Banner Line Guidance): "When a document contains SBU
+            // and classified portions, SBU is not used in the banner
+            // line."
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/sbu-evicted-by-classified",
+                "CAPCO-2016 §H.9 p176",
+                CategoryPredicate::Custom(sbu_classified_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactRemove {
+                    facts: smallvec::smallvec![FactRef::Cve(TOK_SBU)],
+                    scope: Scope::Page,
+                }),
+                PATTERN_C_SBU_READS,
+                PATTERN_C_SBU_WRITES,
+            ),
+            // Pattern-C row 3: `capco/dod-ucni-promotes-noforn-when-classified`.
+            //
+            // §H.6 p116 (DOD UCNI / DCNI, Precedence Rules for Banner
+            // Line Guidance): "Classified documents: DOD UCNI does not
+            // appear in the banner line; however, NOFORN must be
+            // applied if a less restrictive FD&R marking would
+            // otherwise be conveyed with the classified information."
+            //
+            // The strip-vs-promote split (this row plus
+            // `capco/dod-ucni-evicted-by-classified` below) reflects
+            // the `CategoryAction::Intent` single-intent carrier —
+            // one FactAdd on DISSEM + one custom-action strip on AEA
+            // cannot be combined in a single row. **Declaration
+            // order matters at runtime** (the project loop applies
+            // rewrites in declaration order against the mutating
+            // state): the promote row MUST appear BEFORE the strip
+            // row, because the promote's trigger reads
+            // `attrs.aea_markings` (via `has_dod_ucni`) and would
+            // observe an empty axis if the strip had already fired.
+            // The scheduler's Kahn ordering is consistent with this:
+            // the promote row writes CAT_DISSEM while the strip row
+            // writes CAT_AEA, so both are independent of the other's
+            // axis writes and their relative declaration order
+            // governs runtime. The topological scheduler makes no
+            // ordering guarantee between sibling rows sharing
+            // identical `reads` / `writes` axes (see
+            // `crates/engine/src/scheduler.rs` `schedule_rewrites` —
+            // edges form only between distinct read/write axis pairs,
+            // and Kahn seeds the frontier with in-degree-0 nodes in
+            // declaration order); this pair is intentionally
+            // sibling-position-ordered in the declaration `Vec`
+            // because the runtime evaluator walks the scheduler-
+            // produced slice in index order. Pins:
+            // `pin_ucni_promote_before_strip_declaration_order` in
+            // `crates/capco/tests/page_context_lattice_parity.rs`.
+            //
+            // Predicate body `dod_ucni_promotes_noforn_trigger` checks
+            // `!dissem_has_noforn(m)` so the promotion suppresses when
+            // NOFORN is already present (§H.6 p116's "less restrictive
+            // FD&R marking would otherwise be conveyed" condition).
+            // The check lives in the predicate body so we DO NOT
+            // declare CAT_DISSEM as a read, preventing a same-axis
+            // self-reference (Plan §3.4 risk #4 resolution).
+            //
+            // Action: FactAdd TOK_NOFORN, Scope::Page. Idempotent via
+            // `apply_fact_add`'s CAT_DISSEM arm — if NOFORN is somehow
+            // already present (e.g., via a parallel FactAdd intent),
+            // the add is a per-intent no-op.
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/dod-ucni-promotes-noforn-when-classified",
+                "CAPCO-2016 §H.6 p116",
+                CategoryPredicate::Custom(dod_ucni_promotes_noforn_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactAdd {
+                    token: FactRef::Cve(TOK_NOFORN),
+                    scope: Scope::Page,
+                }),
+                PATTERN_C_UCNI_PROMOTE_READS,
+                PATTERN_C_UCNI_PROMOTE_WRITES,
+            ),
+            // Pattern-C row 4: `capco/dod-ucni-evicted-by-classified`.
+            //
+            // §H.6 p116 (DOD UCNI / DCNI, same passage as row 3): the
+            // strip half of the strip-vs-promote split. Declared AFTER
+            // the promote row so the promote sees UCNI before this row
+            // strips it.
+            //
+            // Custom action `strip_dod_ucni_action` removes only the
+            // DodUcni variant; `apply_fact_remove`'s CAT_AEA arm does
+            // not yet handle UCNI variant discrimination (TOK_UCNI is
+            // a single sentinel covering both DodUcni and DoeUcni;
+            // separating them would require a sentinel-payload extension
+            // out of scope for PR 4b-C). The Custom-action route works
+            // around this cleanly and the same path lands the DOE row
+            // (row 6).
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/dod-ucni-evicted-by-classified",
+                "CAPCO-2016 §H.6 p116",
+                CategoryPredicate::Custom(dod_ucni_classified_trigger),
+                CategoryAction::Custom(strip_dod_ucni_action),
+                PATTERN_C_UCNI_STRIP_READS,
+                PATTERN_C_UCNI_STRIP_WRITES,
+            ),
+            // Pattern-C row 5: `capco/doe-ucni-promotes-noforn-when-classified`.
+            //
+            // §H.6 p118 (DOE UCNI, Precedence Rules for Banner Line
+            // Guidance): "Classified documents: DOE UCNI does not
+            // appear in the banner line; however, use NOFORN if a less
+            // restrictive FD&R marking would otherwise be conveyed
+            // with the classified information." Mirrors §H.6 p116
+            // (DOD UCNI) verbatim with `use NOFORN` / `NOFORN must be
+            // applied` as the only wording variation.
+            //
+            // Same promote-before-strip declaration order as the DOD
+            // UCNI pair (rows 3 + 4).
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/doe-ucni-promotes-noforn-when-classified",
+                "CAPCO-2016 §H.6 p118",
+                CategoryPredicate::Custom(doe_ucni_promotes_noforn_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactAdd {
+                    token: FactRef::Cve(TOK_NOFORN),
+                    scope: Scope::Page,
+                }),
+                PATTERN_C_UCNI_PROMOTE_READS,
+                PATTERN_C_UCNI_PROMOTE_WRITES,
+            ),
+            // Pattern-C row 6: `capco/doe-ucni-evicted-by-classified`.
+            //
+            // §H.6 p118 (DOE UCNI, same passage as row 5). Strip half
+            // of the strip-vs-promote split; declared after the
+            // promote row so the promote sees DoeUcni before this row
+            // strips it.
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/doe-ucni-evicted-by-classified",
+                "CAPCO-2016 §H.6 p118",
+                CategoryPredicate::Custom(doe_ucni_classified_trigger),
+                CategoryAction::Custom(strip_doe_ucni_action),
+                PATTERN_C_UCNI_STRIP_READS,
+                PATTERN_C_UCNI_STRIP_WRITES,
+            ),
+            // Pattern-C row 7: `capco/fouo-evicted-by-classified`.
+            //
+            // §H.8 p134 (FOUO Precedence Rules for Banner Line Guidance):
+            // "FOUO in a classified document:
+            //  - When a classified document contains portions of FOUO
+            //    information, the FOUO marking is not used in the
+            //    banner line."
+            //
+            // Pattern-B's `capco/non-fdr-control-evicts-fouo` row (PR 4b-C
+            // Commit 4) covers the complementary "U + other non-FD&R
+            // control" case from the same §H.8 p134 passage; the two
+            // rows are scheduler-siblings (both write CAT_DISSEM
+            // FactRemove FOUO) and their FactRemove intents are
+            // idempotent — running both on a `(S//FOUO + other-non-FDR)`
+            // page is a per-intent no-op on the second invocation.
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/fouo-evicted-by-classified",
+                "CAPCO-2016 §H.8 p134",
+                CategoryPredicate::Custom(fouo_classified_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactRemove {
+                    facts: smallvec::smallvec![FactRef::Cve(TOK_FOUO)],
+                    scope: Scope::Page,
+                }),
+                PATTERN_C_FOUO_READS,
+                PATTERN_C_FOUO_WRITES,
+            ),
+            // ===============================================================
+            // PR 4b-C Commit 4 — Pattern-B structural FOUO eviction (2 rows)
+            // ===============================================================
+            //
+            // Pattern B is the second half of the §H.8 p134 FOUO
+            // Precedence Rules for Banner Line Guidance. §H.8 p134
+            // verbatim, "FOUO in an unclassified document" sub-clause:
+            //   "FOUO is not conveyed in the banner line if the document
+            //    is UNCLASSIFIED with FOUO and other dissemination
+            //    control markings, excluding any FD&R markings."
+            //
+            // PM Correction A (2026-05-16) replaced the original
+            // ~10-row per-trigger FOUO-eviction matrix with two
+            // structural rows. The "other dissemination control
+            // markings" set is the union of CAT_DISSEM (non-FD&R IC
+            // dissem tokens), CAT_NON_IC_DISSEM (LIMDIS / SBU / SSI /
+            // LES / NODIS / EXDIS / NNPI / SbuNf / LesNf — every
+            // non-IC dissem token), CAT_AEA (RD / FRD / TFNI / UCNI /
+            // ATOMAL), and CAT_SAR (any program identifier). The
+            // "non-FD&R" qualifier reduces to "not in the broad
+            // `FDR_DOMINATORS` membership set" — see
+            // `is_fdr_dissem_token` helper. Critically the helper
+            // uses `Vocabulary::is_fdr_dissem` semantics (which
+            // INCLUDES RELIDO) — NOT `is_fdr_dominator` (which
+            // EXCLUDES RELIDO; that helper answers the conflict-
+            // dominator question, not the FD&R-membership question).
+            // See `scheme.rs:5018-5039` doc-comment on `FDR_DOMINATORS`
+            // for the distinction.
+            //
+            // Row 1 `capco/classification-evicts-fouo` overlaps with
+            // Commit 3 row 7 (`capco/fouo-evicted-by-classified`) on
+            // their FactRemove target. The overlap is intentional:
+            // both rows produce the same FactRemove[TOK_FOUO] payload
+            // on a classified page carrying FOUO; the second
+            // invocation hits `apply_fact_remove`'s
+            // `IntentInapplicable` arm (token already absent) and is
+            // a per-intent no-op. Per Plan §3 the two rows have
+            // distinct citation threads: Commit 3 row 7 cites only
+            // §H.8 p134's "FOUO in a classified document" sub-clause;
+            // this row cites §H.8 p134's overall umbrella rule that
+            // combines both the classified-strip AND the
+            // unclassified-with-other-controls strip. Keeping the two
+            // rows separate preserves D13 single-§-citation
+            // discipline at the per-row level even though both rows
+            // ultimately quote the same §H.8 p134 passage.
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+            // §H.8 p134 (full FOUO Precedence Rules passage).
+
+            // Pattern-B row 1: `capco/classification-evicts-fouo`.
+            //
+            // §H.8 p134 (FOUO Precedence Rules for Banner Line
+            // Guidance, classified-document sub-clause): "FOUO in a
+            // classified document: When a classified document
+            // contains portions of FOUO information, the FOUO marking
+            // is not used in the banner line."
+            //
+            // Structurally identical to Commit 3 row 7
+            // (`capco/fouo-evicted-by-classified`); both rows produce
+            // the same FactRemove[TOK_FOUO] payload. Carried as a
+            // separate Pattern-B row so the §H.8 p134 umbrella rule
+            // — which contains BOTH the classified-strip clause AND
+            // the unclassified-with-other-controls strip clause — has
+            // a single Pattern-B citation thread distinct from the
+            // Pattern-C dedicated row's narrower citation. FactRemove
+            // is idempotent; the second invocation on a page where
+            // Commit 3 row 7 already fired is a per-intent no-op via
+            // `apply_fact_remove`'s `IntentInapplicable` arm.
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/classification-evicts-fouo",
+                "CAPCO-2016 §H.8 p134",
+                CategoryPredicate::Custom(fouo_classified_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactRemove {
+                    facts: smallvec::smallvec![FactRef::Cve(TOK_FOUO)],
+                    scope: Scope::Page,
+                }),
+                PATTERN_B_CLASS_FOUO_READS,
+                PATTERN_B_CLASS_FOUO_WRITES,
+            ),
+            // Pattern-B row 2: `capco/non-fdr-control-evicts-fouo`.
+            //
+            // §H.8 p134 (FOUO Precedence Rules for Banner Line
+            // Guidance, unclassified-document sub-clause): "FOUO is
+            // not conveyed in the banner line if the document is
+            // UNCLASSIFIED with FOUO and other dissemination control
+            // markings, excluding any FD&R markings."
+            //
+            // The §H.8 p134 wording lists "other dissemination
+            // control markings" without a classification gate — the
+            // sub-clause heads its own bullet under "FOUO in an
+            // unclassified document". On unclassified pages where
+            // FOUO appears alongside any non-FD&R control on any
+            // axis (CAT_DISSEM, CAT_NON_IC_DISSEM, CAT_AEA, CAT_SAR),
+            // FOUO is stripped from the banner.
+            //
+            // The trigger predicate
+            // `fouo_with_non_fdr_other_control_trigger` checks the
+            // four axes: dissem non-FD&R-other-than-FOUO, non-IC
+            // dissem non-empty, AEA non-empty, SAR set. AEA markings
+            // (RD / FRD / TFNI / UCNI / ATOMAL) are atomic-energy
+            // controls, not FD&R markings; SAR identifiers are
+            // program markings, not FD&R markings; non-IC dissem
+            // tokens (LIMDIS / LES / SBU / SSI / NODIS / EXDIS /
+            // NNPI / SbuNf / LesNf) are non-FD&R by construction —
+            // none appears in `FDR_DOMINATORS`.
+            //
+            // No classification gate: the §H.8 p134 sub-clause
+            // applies at any classification level — at classified
+            // levels, Pattern-B row 1 / Commit 3 row 7 also fires
+            // and the two are idempotent siblings.
+            //
+            // Axis annotations: reads `[CAT_NON_IC_DISSEM, CAT_AEA,
+            // CAT_SAR]` (three "other control" surfaces); writes
+            // `[CAT_DISSEM]` (FactRemove FOUO). CAT_DISSEM is
+            // intentionally NOT in `reads` even though the predicate
+            // also scans it — the existing
+            // `capco/noforn-clears-fdr-family` row reads + writes
+            // CAT_DISSEM (the scheduler accepts that as a 1-row
+            // self-edge); adding another reads-DISSEM/writes-DISSEM
+            // row creates a 2-row cycle that Kahn's algorithm
+            // rejects. The DISSEM-presence scan lives in
+            // `fouo_with_non_fdr_other_control_trigger` (the Custom
+            // predicate body). Plan §3.4 risk #4 resolution:
+            // predicate-scan-vs-dataflow convention, identical to
+            // the Pattern-C rows in Commit 3.
+            //
+            // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
+            PageRewrite::custom(
+                "capco/non-fdr-control-evicts-fouo",
+                "CAPCO-2016 §H.8 p134",
+                CategoryPredicate::Custom(fouo_with_non_fdr_other_control_trigger),
+                CategoryAction::Intent(ReplacementIntent::FactRemove {
+                    facts: smallvec::smallvec![FactRef::Cve(TOK_FOUO)],
+                    scope: Scope::Page,
+                }),
+                PATTERN_B_NON_FDR_READS,
+                PATTERN_B_NON_FDR_WRITES,
             ),
             // §D.2 Table 3 (FD&R Markings Precedence Rules for Banner
             // Line Roll-Up) Rule #2 specifies that NOFORN supersedes
@@ -3821,6 +4701,17 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
             TOK_FOUO => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Fouo)),
+            // PR 4b-C Commit 1 — PROPIN / FISA / RAWFISA scan attrs.dissem_us
+            // (the DissemControl variants `Pr`, `Fisa`, `Rawfisa`).
+            // §H.8 p148 (PROPIN) + §H.8 p161 (FISA / RAWFISA).
+            // verified 2026-05-16 against CAPCO-2016.md.
+            TOK_PROPIN => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Pr)),
+            TOK_FISA => attrs
+                .dissem_iter()
+                .any(|d| matches!(d, DissemControl::Fisa)),
+            TOK_RAWFISA => attrs
+                .dissem_iter()
+                .any(|d| matches!(d, DissemControl::Rawfisa)),
             // Stage D (T108c) — non-IC dissem sentinels for closure-rule triggers:
             TOK_LIMDIS => attrs
                 .non_ic_dissem
@@ -3838,6 +4729,16 @@ fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> 
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Ssi)),
+            // PR 4b-C Commit 1 — NNPI scans attrs.non_ic_dissem for the
+            // Nnpi variant. Closes issue #407. The CAPCO-2016 manual
+            // does not explicitly enumerate NNPI; the in-tree authority
+            // is `crates/ism/src/attrs.rs:1326` (NNPI banner-roll-up
+            // doc-comment, propagates regardless of classification).
+            // verified 2026-05-16 against the marque-ism attrs.rs entry.
+            TOK_NNPI => attrs
+                .non_ic_dissem
+                .iter()
+                .any(|d| matches!(d, marque_ism::NonIcDissem::Nnpi)),
             // EYES sentinel for FD&R-set coverage (§H.8 p157). Per
             // Copilot PR 3.7 review pass 3: earlier comments claimed
             // EYES was covered via `CAT_REL_TO` fallthrough, which is

@@ -59,8 +59,20 @@ fn aea_multiple_sigma_aggregated() {
 }
 
 /// XSpec: "AEARollup Ensure AEA U marks drop in classified doc."
+///
+/// PR 4b-C Commit 5 (006 T112): the §H.6 p116 / p118 UCNI strip moved
+/// out of `expected_aea_markings` into the declarative PageRewrite
+/// catalog on `CapcoScheme` (`capco/dod-ucni-evicted-by-classified` +
+/// `capco/doe-ucni-evicted-by-classified` + the two NOFORN-promotion
+/// siblings). PageContext is the transitional driver until PR 4b-D
+/// wires the lattice path. Until then, UCNI keeps on the PageContext
+/// AEA axis on classified pages; `scheme.project(Scope::Page, ...)`
+/// produces the correct strip-plus-NOFORN-promotion output.
+///
+/// verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+/// §H.6 DOD UCNI p116-117 + DOE UCNI p118-119.
 #[test]
-fn aea_ucni_drops_in_classified() {
+fn aea_ucni_kept_in_classified_via_pagecontext_transitional_pending_pr_4b_d() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Unclassified);
@@ -74,7 +86,18 @@ fn aea_ucni_drops_in_classified() {
     ctx.add_portion(portion(Classification::Secret));
 
     assert_eq!(ctx.expected_classification(), Some(Classification::Secret));
-    assert!(ctx.expected_aea_markings().is_empty());
+    let aea = ctx.expected_aea_markings();
+    assert!(
+        aea.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
+        "PR 4b-C post-deletion: DOD UCNI keeps via PageContext on \
+         classified pages (declarative strip in `scheme.project`). \
+         aea = {aea:?}"
+    );
+    assert!(
+        aea.iter().any(|m| matches!(m, AeaMarking::DoeUcni)),
+        "PR 4b-C post-deletion: DOE UCNI keeps via PageContext on \
+         classified pages. aea = {aea:?}"
+    );
 }
 
 /// XSpec: "AEARollup Ensure AEA U marks don't drop in a U doc."
@@ -208,9 +231,22 @@ fn dissem_oc_usgov_rolls_up_when_no_orcon() {
     assert!(!dissem.contains(&DissemControl::Oc));
 }
 
-/// FOUO drops in classified
+/// FOUO drops in classified (transitional post-PR-4b-C).
+///
+/// PR 4b-C Commit 5 (006 T112): the §H.8 p134 FOUO classified-strip
+/// moved out of `expected_dissem_us` Step 3 into the declarative
+/// PageRewrite catalog on `CapcoScheme`
+/// (`capco/fouo-evicted-by-classified` +
+/// `capco/classification-evicts-fouo`). PageContext is the
+/// transitional driver until PR 4b-D wires the lattice path.
+/// Until then, FOUO keeps on the PageContext dissem axis on
+/// classified pages; `scheme.project(Scope::Page, ...)` produces
+/// the correct strip output.
+///
+/// verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
+/// §H.8 p134 FOUO Precedence Rules for Banner Line Guidance.
 #[test]
-fn dissem_fouo_drops_classified() {
+fn dissem_fouo_kept_classified_via_pagecontext_transitional_pending_pr_4b_d() {
     let mut ctx = PageContext::new();
 
     let mut p1 = portion(Classification::Unclassified);
@@ -220,7 +256,11 @@ fn dissem_fouo_drops_classified() {
     ctx.add_portion(portion(Classification::Secret));
 
     let dissem = ctx.expected_dissem_us();
-    assert!(!dissem.contains(&DissemControl::Fouo));
+    assert!(
+        dissem.contains(&DissemControl::Fouo),
+        "PR 4b-C post-deletion: FOUO keeps via PageContext on classified \
+         pages (declarative strip in `scheme.project`). dissem = {dissem:?}"
+    );
 }
 
 /// FOUO kept in unclassified
