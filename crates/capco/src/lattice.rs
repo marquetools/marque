@@ -2932,8 +2932,13 @@ impl Lattice for JointSet {
 /// - `NofornSuperseded`: some portion carries NOFORN, NODIS, or
 ///   EXDIS. NOFORN clears REL TO; NODIS/EXDIS clear REL TO per
 ///   §H.9 p172 + p174. The sentinel absorbs subsequent joins and is
-///   stronger than `Empty` (it is the only signal that triggers NF
-///   injection at the scheme layer).
+///   stronger than `Empty`. Note: both `NofornSuperseded` AND `Empty`
+///   trigger NF injection at the scheme layer
+///   (`CapcoMarking::join_via_lattice`) — `NofornSuperseded` via
+///   NODIS/EXDIS supersession (§H.9 p172/p174) and `Empty` via
+///   §D.2 Table 3 row 9 (no-common-LIST → NOFORN). See
+///   [`RelToBlock::is_noforn_superseded`] and
+///   [`RelToBlock::is_empty_intersection`].
 ///
 /// `Empty` and `NofornSuperseded` are both absorbing for non-Bottom
 /// operands; their join composes as
@@ -3110,10 +3115,15 @@ impl RelToBlock {
         }
     }
 
-    /// Whether the block is the `NofornSuperseded` sentinel. Only
-    /// this state triggers NF injection at the scheme layer; the
-    /// `Empty` state's "no-common-LIST → NOFORN" rule (§D.2 Table 3
-    /// row 9) is the PageRewrite's concern, not the lattice's.
+    /// Whether the block is the `NofornSuperseded` sentinel.
+    ///
+    /// NF injection at the scheme layer (`CapcoMarking::join_via_lattice`)
+    /// is triggered by EITHER `NofornSuperseded` (NODIS/EXDIS supersession
+    /// per §H.9 p172/p174) OR `Empty` (REL TO intersection has no common
+    /// LIST per §D.2 Table 3 row 9). See `CapcoMarking::join_via_lattice`
+    /// for the injection rendezvous. This accessor is a convenience check
+    /// for the `NofornSuperseded` arm only; callers that need both arms
+    /// should also call [`Self::is_empty_intersection`].
     pub fn is_noforn_superseded(&self) -> bool {
         matches!(self, Self::NofornSuperseded)
     }
