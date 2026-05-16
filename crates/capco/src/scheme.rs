@@ -4674,12 +4674,6 @@ pub fn is_orcon_family(t: &TokenRef) -> bool {
 // [`marque_ism::CanonicalAttrs`]) or `&'static` vocabulary tables in
 // `crates/capco/src/vocab.rs`.
 
-/// Per-axis renderer dispatch row.
-///
-/// `render` writes the axis's canonical bytes for the given `scope`
-/// into `out`. Same writer-passing contract as
-/// [`MarkingScheme::render_canonical`]: append; do not clear; return
-/// `Ok(())` on success.
 /// Whether a render row's category is in the §A.6 / §G.1 Table 4
 /// row-8 dissem family. Two consecutive emitting rows from the
 /// dissem family get a within-category `/` separator instead of
@@ -4711,6 +4705,12 @@ pub(crate) fn dissem_family_of(cat: CategoryId) -> DissemFamilyMembership {
     }
 }
 
+/// Per-axis renderer dispatch row.
+///
+/// `render` writes the axis's canonical bytes for the given `scope`
+/// into `out`. Same writer-passing contract as
+/// [`MarkingScheme::render_canonical`]: append; do not clear; return
+/// `Ok(())` on success.
 pub(crate) struct AxisRenderRow {
     /// The category this row renders (e.g., [`CAT_CLASSIFICATION`],
     /// [`CAT_DISSEM`]). Read by the dispatch loop's
