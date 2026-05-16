@@ -139,14 +139,18 @@ proptest! {
     // `dissem_controls_union_superset` name referred to the retired
     // unified field.
     //
-    // Exception: RELIDO is evicted by `expected_dissem_us` Step 5
-    // when the page has FD&R intent (some portion has REL TO or
-    // DISPLAY ONLY) but both rolled-up foreign-audience axes come
-    // back empty — Step 5 injects NF and removes RELIDO so the
-    // banner doesn't render the §H.8 p154 / §D.2 row 2 conflict.
-    // The proptest reproduces that condition exactly so it doesn't
-    // misclassify a pre-existing portion-level NF+RELIDO conflict
-    // (which E054 catches at the rule layer) as a Step-5 eviction.
+    // Exception: the FD&R-family tokens (REL, RELIDO, EYES, DISPLAY
+    // ONLY marker) are evicted by `expected_dissem_us` Step 6
+    // whenever NF reaches the rolled-up banner. Per §D.2 Table 3
+    // rows 1+2 (NF + no other FD&R → NOFORN; NF + any other FD&R
+    // → NOFORN) and §H.8 p154 / p157, NOFORN supersedes every other
+    // FD&R-class marking at banner scope. NF may arrive at the
+    // banner via any of the union, SBU-NF/LES-NF split, NODIS/EXDIS
+    // needs_nf, or Step 5 FD&R-intent injection paths; the eviction
+    // is unconditional on NF presence, so a portion-contributed FD&R
+    // token and a separately-contributed NF (cross-portion, not
+    // portion-level) is correctly resolved to banner NOFORN with the
+    // other FD&R tokens dropped.
     #[test]
     fn dissem_us_union_superset(portions in arb_portions()) {
         let mut ctx = PageContext::new();
@@ -155,21 +159,20 @@ proptest! {
         }
         let rolled: std::collections::BTreeSet<DissemControl> =
             ctx.expected_dissem_us().into_iter().collect();
+        let banner_has_noforn = rolled.contains(&DissemControl::Nf);
 
-        // Replicate Step 5's eviction predicate so we know when the
-        // union-superset invariant is intentionally relaxed.
-        let has_fdr_intent = portions
-            .iter()
-            .any(|a| !a.rel_to.is_empty() || !a.display_only_to.is_empty());
-        let step5_fires = has_fdr_intent
-            && ctx.expected_rel_to().is_empty()
-            && ctx.expected_display_only().is_empty();
+        let fdr_family = [
+            DissemControl::Rel,
+            DissemControl::Relido,
+            DissemControl::Eyes,
+            DissemControl::Displayonly,
+        ];
 
         for portion in &portions {
             for ctrl in portion.dissem_us.iter() {
-                if *ctrl == DissemControl::Relido && step5_fires {
-                    // Eviction is the intended behavior; skip the
-                    // superset check for this token.
+                if banner_has_noforn && fdr_family.contains(ctrl) {
+                    // Eviction is the intended behavior (Step 6);
+                    // skip the superset check for this token.
                     continue;
                 }
                 prop_assert!(

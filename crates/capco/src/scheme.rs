@@ -1332,15 +1332,16 @@ impl CapcoScheme {
         const NF_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM, CAT_REL_TO];
         const NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
 
-        // `capco/noforn-clears-relido` reads CAT_DISSEM (to find both
-        // the NOFORN trigger and the RELIDO target) and writes
-        // CAT_DISSEM (the FactRemove removes RELIDO from the same
-        // category). Self-edge skipped per the scheduler. Same DAG
-        // sibling position as `capco/noforn-clears-rel-to`: both read
+        // `capco/noforn-clears-fdr-family` reads CAT_DISSEM (to find
+        // both the NOFORN trigger and the RELIDO / EYES / DISPLAY ONLY
+        // targets) and writes CAT_DISSEM (the multi-fact FactRemove
+        // removes the FD&R-family tokens from the same category).
+        // Self-edge skipped per the scheduler. Same DAG sibling
+        // position as `capco/noforn-clears-rel-to`: both read
         // CAT_DISSEM (post `*-implies-noforn` writes) and operate on
         // axes the *-implies-noforn entries don't touch.
-        const NF_CLEARS_RELIDO_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
-        const NF_CLEARS_RELIDO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        const NF_CLEARS_FDR_FAMILY_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        const NF_CLEARS_FDR_FAMILY_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
         // Entry 4 (consultant §3.4.1 #4): FRD-SIGMA consolidates into
         // RD-SIGMA. Within-axis transform on CAT_AEA — reads and
@@ -1791,51 +1792,71 @@ impl CapcoScheme {
                 NF_READS,
                 NF_WRITES,
             ),
-            // `capco/noforn-clears-relido` — NOFORN supersedes RELIDO.
+            // `capco/noforn-clears-fdr-family` — NOFORN supersedes
+            // every other FD&R-class dissem token at banner scope.
             //
-            // §H.8 RELIDO entry p154 (Relationship(s) to Other Markings):
-            //   "Cannot be used with NOFORN or DISPLAY ONLY."
+            // §D.2 Table 3 rows 1 + 2: "NF + no other FD&R markings →
+            // NOFORN" / "NF + any other FD&R marking ... → NOFORN".
+            // Row 2's enumeration covers REL TO, RELIDO, USA/[LIST]
+            // EYES ONLY, and DISPLAY ONLY explicitly. §H.8 p154 (RELIDO
+            // entry) and §H.8 p157-158 (EYES ONLY entry) make the same
+            // exclusion at the marking-relationship level.
             //
-            // §D.2 Table 3 row 2: "NF | With any other FD&R marking,
-            // including: ... RELIDO ... | NOFORN". So when both NF and
-            // RELIDO end up in the projected CAT_DISSEM (e.g., a portion
-            // carries RELIDO and another carries NF, or a *-implies-noforn
-            // rewrite adds NF after page_context_to_attrs unions a
-            // RELIDO portion in), the banner roll-up must keep NF and
-            // drop RELIDO. The PageContext-direct path (`expected_dissem_us`
-            // Step 5) handles this for callers that read PageContext
-            // accessors directly; this PageRewrite mirrors the same
-            // policy for `scheme.project(Scope::Page, …)` callers.
+            // When NF and any of these other FD&R tokens end up
+            // together in the projected CAT_DISSEM (e.g., one portion
+            // carries the other-FD&R token and another carries NF, or
+            // a `*-implies-noforn` rewrite adds NF after
+            // `page_context_to_attrs` unions an FD&R portion in), the
+            // banner roll-up must keep NF and drop the other tokens.
+            // The PageContext-direct path (`expected_dissem_us` Step 6)
+            // handles this for callers that read PageContext accessors
+            // directly; this PageRewrite mirrors the same policy for
+            // `scheme.project(Scope::Page, …)` callers.
+            //
+            // The companion `capco/noforn-clears-rel-to` rewrite covers
+            // the REL TO country-list axis (CAT_REL_TO); this rewrite
+            // covers the CAT_DISSEM tokens. There is no `TOK_REL`
+            // constant for the bare `REL` dissem marker (CAPCO uses
+            // the country list in CAT_REL_TO as the canonical form),
+            // so the bare-`Rel` case is handled only at the
+            // PageContext layer where the DissemControl enum is
+            // visible.
             //
             // Trigger: `Contains(CAT_DISSEM, TOK_NOFORN)` — fires when
             // NOFORN is in the projected page dissem axis (either via
-            // direct portion union or via a *-implies-noforn rewrite
+            // direct portion union or via a `*-implies-noforn` rewrite
             // upstream in declaration order).
             //
-            // Action: `Intent(FactRemove { Cve(TOK_RELIDO), Scope::Page })`
-            // — surgically removes RELIDO from CAT_DISSEM. Idempotent:
+            // Action: `Intent(FactRemove { [TOK_RELIDO, TOK_EYES,
+            // TOK_DISPLAY_ONLY], Scope::Page })` — surgically removes
+            // each FD&R-family token from CAT_DISSEM. Idempotent:
             // FactRemove of an absent token is a per-intent no-op
-            // (IntentInapplicable, silent) — most pages never carry
-            // RELIDO and the trigger doesn't fire on them either.
+            // (IntentInapplicable, silent), so most pages experience
+            // no effect.
             //
-            // Axis annotations: reads `[CAT_DISSEM]`, writes `[CAT_DISSEM]`
-            // (self-edge skipped per the scheduler). DAG sibling of
-            // `capco/noforn-clears-rel-to`: both read CAT_DISSEM after
-            // the *-implies-noforn writers and operate on disjoint
-            // targets (REL TO vs RELIDO).
+            // Axis annotations: reads `[CAT_DISSEM]`, writes
+            // `[CAT_DISSEM]` (self-edge skipped per the scheduler).
+            // DAG sibling of `capco/noforn-clears-rel-to`: both read
+            // CAT_DISSEM after the `*-implies-noforn` writers and
+            // operate on disjoint targets (REL TO country axis vs
+            // CAT_DISSEM FD&R tokens).
             PageRewrite::declarative(
-                "capco/noforn-clears-relido",
-                "CAPCO-2016 §H.8 p154 + §D.2 Table 3 row 2",
+                "capco/noforn-clears-fdr-family",
+                "CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157",
                 CategoryPredicate::Contains {
                     category: CAT_DISSEM,
                     token: TOK_NOFORN,
                 },
                 CategoryAction::Intent(ReplacementIntent::FactRemove {
-                    facts: smallvec::smallvec![FactRef::Cve(TOK_RELIDO)],
+                    facts: smallvec::smallvec![
+                        FactRef::Cve(TOK_RELIDO),
+                        FactRef::Cve(TOK_EYES),
+                        FactRef::Cve(TOK_DISPLAY_ONLY),
+                    ],
                     scope: Scope::Page,
                 }),
-                NF_CLEARS_RELIDO_READS,
-                NF_CLEARS_RELIDO_WRITES,
+                NF_CLEARS_FDR_FAMILY_READS,
+                NF_CLEARS_FDR_FAMILY_WRITES,
             ),
             // Entry 4 — `capco/frd-sigma-consolidates-into-rd-sigma`.
             //

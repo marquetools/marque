@@ -570,17 +570,15 @@ impl PageContext {
         // don't fire for these row classes. Per row 1/2: NF appears
         // whenever foreign-audience axes are unable to converge.
         //
-        // Step 5 also REMOVES Relido from `seen` when injecting NF.
-        // Per §D.2 Table 3 row 2 (NF + any other FD&R → NOFORN) and
-        // §H.8 RELIDO p154 ("Cannot be used with NOFORN or DISPLAY
-        // ONLY"), NF supersedes RELIDO at the banner — the pair must
-        // not appear together. Rows 10 + 18 specifically produce this
-        // collision: a portion has RELIDO, the all-or-nothing gate
-        // clears the foreign-audience axes, NF is injected, and RELIDO
-        // — which entered `seen` via Step 1's union — must be evicted
-        // so the rendered banner doesn't produce invalid
-        // `NOFORN/RELIDO`. (The `noforn-clears-relido` PageRewrite
-        // mirrors this for the `scheme.project` path.)
+        // RELIDO is intentionally NOT included in the FD&R-intent
+        // predicate. Per §D.2 Table 3 row 17 (RELIDO + portions w/o
+        // FD&R → "NOFORN or RELIDO (depends on origination date and
+        // non-FD&R caveats)"), the modern-default resolution is RELIDO
+        // — see project memory `marque-defaults-modern-fdr` (post-
+        // 28-Jun-2010 content defaults to RELIDO at banner). Adding
+        // RELIDO here would force the traditional NOFORN reading and
+        // contradict that default; the row-17 ambiguity stays as-is
+        // until a future config flag chooses between modes.
         //
         // No mutual-recursion risk: `expected_rel_to` and
         // `expected_display_only` both call `expected_non_ic_dissem`,
@@ -594,7 +592,38 @@ impl PageContext {
             && self.expected_display_only().is_empty()
         {
             seen.insert(DissemControl::Nf);
+        }
+
+        // Step 6: FD&R-family supersession when NF is in the banner.
+        // Per §D.2 Table 3 row 1+2 (NF + no other FD&R → NOFORN; NF +
+        // any other FD&R → NOFORN), NOFORN evicts every other FD&R-
+        // class dissem token from the banner. The CAPCO FD&R family
+        // (§H.8 + the §D.2 Table 3 enumeration in row 2) covers:
+        //
+        // - `Rel` — the bare REL marker (the REL TO country list axis
+        //   is independently cleared by `expected_rel_to`'s NF
+        //   short-circuit; this evicts the dissem-control token if a
+        //   portion carried it bare).
+        // - `Relido` — RELIDO (§H.8 p154 explicit: "Cannot be used
+        //   with NOFORN or DISPLAY ONLY").
+        // - `Eyes` — EYES ONLY (§H.8 p157-158; per §D.2 Table 3 row 2
+        //   "USA/[LIST] EYES ONLY" is one of the enumerated other-FD&R
+        //   markings that NF supersedes).
+        // - `Displayonly` — the bare DISPLAY ONLY marker (the
+        //   `display_only_to` country axis is independently cleared
+        //   by `expected_display_only`'s NF short-circuit).
+        //
+        // Step 6 fires regardless of how NF reached `seen` (Step 1
+        // union, Step 4 SBU-NF/LES-NF split or NODIS/EXDIS needs_nf,
+        // Step 5 FD&R-intent injection) and regardless of how the
+        // other FD&R tokens reached `seen`. The
+        // `noforn-clears-fdr-family` PageRewrite mirrors this for the
+        // `scheme.project` path.
+        if seen.contains(&DissemControl::Nf) {
+            seen.remove(&DissemControl::Rel);
             seen.remove(&DissemControl::Relido);
+            seen.remove(&DissemControl::Eyes);
+            seen.remove(&DissemControl::Displayonly);
         }
 
         seen.into_iter().collect()
@@ -3144,6 +3173,30 @@ mod tests {
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
             rel_to: vec![cc("USA"), cc("GBR")].into_boxed_slice(),
+            ..Default::default()
+        });
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Relido].into_boxed_slice(),
+            ..Default::default()
+        });
+        let banner = ctx.render_expected_banner().expect("non-empty page");
+        assert_eq!(banner, "SECRET//NOFORN");
+    }
+
+    #[test]
+    fn render_banner_evicts_relido_when_cross_portion_noforn() {
+        // §H.8 p154 + §D.2 row 2: RELIDO and NOFORN cannot coexist in
+        // the banner. When NF arrives from one portion and RELIDO
+        // from another, the page-context union (Step 1) puts both in
+        // `seen`; Step 6 unconditionally evicts RELIDO whenever NF
+        // ends up in `seen`. (Portion-level NF + RELIDO is an E054
+        // conflict caught at the rule layer; this test exercises the
+        // cross-portion case that the rule layer doesn't reach.)
+        let mut ctx = PageContext::new();
+        ctx.add_portion(CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            dissem_us: vec![DissemControl::Nf].into_boxed_slice(),
             ..Default::default()
         });
         ctx.add_portion(CanonicalAttrs {
