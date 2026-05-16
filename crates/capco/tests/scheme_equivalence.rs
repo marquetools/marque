@@ -959,13 +959,18 @@ fn scheme_declares_phase3_rewrites() {
     // `capco/les-nf-implies-noforn` (§H.9 p185). Inserted after the
     // 8.F entries at positions [2] and [3] (append within the
     // `*-implies-noforn` group) per design-spec §10 Q2 resolution.
-    // Total: thirteen.
+    //
+    // DISPLAY ONLY Phase 2 adds `capco/noforn-clears-relido` (§H.8
+    // p154 + §D.2 Table 3 row 2) immediately after the existing
+    // `capco/noforn-clears-rel-to` row — both are DISSEM-readers that
+    // run after the `*-implies-noforn` writers and operate on disjoint
+    // targets (REL TO axis vs the RELIDO token). Total: fourteen.
     //
     // Dual-page-citation pattern (INTENTIONAL, do NOT deduplicate):
-    // positions [2] and [11] both cite `"CAPCO-2016 §H.9 p178"`
+    // positions [2] and [12] both cite `"CAPCO-2016 §H.9 p178"`
     // (`sbu-nf-implies-noforn` at [2] — Pattern A page-rewrite;
-    // `sbu-nf-transmutes-on-classified-contact` at [11] —
-    // transmutation rewrite). Positions [3] and [12] both cite
+    // `sbu-nf-transmutes-on-classified-contact` at [12] —
+    // transmutation rewrite). Positions [3] and [13] both cite
     // `"CAPCO-2016 §H.9 p185"` (`les-nf-implies-noforn` at [3];
     // `les-nf-transmutes-on-classified-contact` at [12]). The §H.9
     // p178 entry covers both the NF implication and the
@@ -974,7 +979,7 @@ fn scheme_declares_phase3_rewrites() {
     // copy-paste error.
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
-    assert_eq!(rewrites.len(), 13);
+    assert_eq!(rewrites.len(), 14);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
@@ -985,6 +990,7 @@ fn scheme_declares_phase3_rewrites() {
             "capco/sbu-nf-implies-noforn",
             "capco/les-nf-implies-noforn",
             "capco/noforn-clears-rel-to",
+            "capco/noforn-clears-relido",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/fgi-rollup-on-us-contact",
             "capco/fgi-restricted-rollup-on-us-contact",
@@ -1006,27 +1012,34 @@ fn scheme_declares_phase3_rewrites() {
     // Citations point at verified normative passages (Constitution
     // VIII; T035 cleanup of T034's drift into §I-K non-normative
     // sections; T089 retired the line-number form per project memory
-    // `feedback_citations_use_page_numbers.md`). Each of the thirteen
+    // `feedback_citations_use_page_numbers.md`). Each of the fourteen
     // citations is verifiable in the vendored CAPCO-2016 markdown.
     // PR 3c.B Sub-PR 8.F.2 added two entries at positions [2] and [3],
     // shifting the original nine 8.F + transmutation entries to
-    // positions [4..12]. The dual-page-citation pattern noted above
-    // ([2] / [11] both §H.9 p178; [3] / [12] both §H.9 p185) is
-    // intentional — the page in CAPCO-2016 covers both the Pattern A
-    // implication and the transmutation rewrite.
+    // positions [4..12]. DISPLAY ONLY Phase 2 added
+    // `capco/noforn-clears-relido` at position [5], shifting the
+    // transmutation entries to positions [6..13]. The dual-page-
+    // citation pattern noted above ([2] / [12] both §H.9 p178; [3] /
+    // [13] both §H.9 p185) is intentional — the page in CAPCO-2016
+    // covers both the Pattern A implication and the transmutation
+    // rewrite.
     assert_eq!(rewrites[0].citation, "CAPCO-2016 §H.9 p174");
     assert_eq!(rewrites[1].citation, "CAPCO-2016 §H.9 p172");
     assert_eq!(rewrites[2].citation, "CAPCO-2016 §H.9 p178");
     assert_eq!(rewrites[3].citation, "CAPCO-2016 §H.9 p185");
     assert_eq!(rewrites[4].citation, "CAPCO-2016 §D.2 Table 3 + §H.8 p145");
-    assert_eq!(rewrites[5].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(
+        rewrites[5].citation,
+        "CAPCO-2016 §H.8 p154 + §D.2 Table 3 row 2"
+    );
+    assert_eq!(rewrites[6].citation, "CAPCO-2016 §H.6 p113");
     assert_eq!(rewrites[7].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.8 p136");
-    assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.9 p178");
-    assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rewrites[8].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[9].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[10].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[11].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[12].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[13].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]
@@ -1049,6 +1062,36 @@ fn page_rewrite_noforn_clears_rel_to_produces_same_banner() {
     // appear in dissem.
     assert!(banner.0.rel_to.is_empty());
     assert!(banner.0.dissem_iter().any(|d| d == &DissemControl::Nf));
+}
+
+#[test]
+fn page_rewrite_noforn_clears_relido() {
+    // DISPLAY ONLY Phase 2 follow-up: `capco/noforn-clears-relido`
+    // mirrors `noforn-clears-rel-to` for the §H.8 p154 RELIDO ⊥
+    // NOFORN supersession. Portion-mix: one portion carries NF
+    // (which a downstream consumer or a *-implies-noforn rewrite
+    // produces), another portion carries RELIDO; banner must not
+    // emit both.
+    use marque_scheme::Scope;
+
+    let mut p1 = portion(Classification::Secret);
+    p1.dissem_us = vec![DissemControl::Nf].into();
+    let mut p2 = portion(Classification::Secret);
+    p2.dissem_us = vec![DissemControl::Relido].into();
+
+    let portions = vec![wrap(p1), wrap(p2)];
+    let scheme = CapcoScheme::new();
+    let banner = scheme.project(Scope::Page, &portions);
+
+    // After the page rewrite, RELIDO is evicted; NF remains.
+    assert!(
+        banner.0.dissem_iter().any(|d| d == &DissemControl::Nf),
+        "NOFORN must remain in the dissem axis"
+    );
+    assert!(
+        !banner.0.dissem_iter().any(|d| d == &DissemControl::Relido),
+        "RELIDO must be evicted when NOFORN is in the banner (§H.8 p154 + §D.2 row 2)"
+    );
 }
 
 // ---------------------------------------------------------------------------

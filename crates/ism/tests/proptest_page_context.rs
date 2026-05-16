@@ -138,6 +138,15 @@ proptest! {
     // union direction post PR 9b / FR-046 split — the prior
     // `dissem_controls_union_superset` name referred to the retired
     // unified field.
+    //
+    // Exception: RELIDO is evicted by `expected_dissem_us` Step 5
+    // when the page has FD&R intent (some portion has REL TO or
+    // DISPLAY ONLY) but both rolled-up foreign-audience axes come
+    // back empty — Step 5 injects NF and removes RELIDO so the
+    // banner doesn't render the §H.8 p154 / §D.2 row 2 conflict.
+    // The proptest reproduces that condition exactly so it doesn't
+    // misclassify a pre-existing portion-level NF+RELIDO conflict
+    // (which E054 catches at the rule layer) as a Step-5 eviction.
     #[test]
     fn dissem_us_union_superset(portions in arb_portions()) {
         let mut ctx = PageContext::new();
@@ -147,8 +156,22 @@ proptest! {
         let rolled: std::collections::BTreeSet<DissemControl> =
             ctx.expected_dissem_us().into_iter().collect();
 
+        // Replicate Step 5's eviction predicate so we know when the
+        // union-superset invariant is intentionally relaxed.
+        let has_fdr_intent = portions
+            .iter()
+            .any(|a| !a.rel_to.is_empty() || !a.display_only_to.is_empty());
+        let step5_fires = has_fdr_intent
+            && ctx.expected_rel_to().is_empty()
+            && ctx.expected_display_only().is_empty();
+
         for portion in &portions {
             for ctrl in portion.dissem_us.iter() {
+                if *ctrl == DissemControl::Relido && step5_fires {
+                    // Eviction is the intended behavior; skip the
+                    // superset check for this token.
+                    continue;
+                }
                 prop_assert!(
                     rolled.contains(ctrl),
                     "dissem_us control {ctrl:?} in portion but missing from US roll-up",

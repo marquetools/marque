@@ -570,6 +570,18 @@ impl PageContext {
         // don't fire for these row classes. Per row 1/2: NF appears
         // whenever foreign-audience axes are unable to converge.
         //
+        // Step 5 also REMOVES Relido from `seen` when injecting NF.
+        // Per §D.2 Table 3 row 2 (NF + any other FD&R → NOFORN) and
+        // §H.8 RELIDO p154 ("Cannot be used with NOFORN or DISPLAY
+        // ONLY"), NF supersedes RELIDO at the banner — the pair must
+        // not appear together. Rows 10 + 18 specifically produce this
+        // collision: a portion has RELIDO, the all-or-nothing gate
+        // clears the foreign-audience axes, NF is injected, and RELIDO
+        // — which entered `seen` via Step 1's union — must be evicted
+        // so the rendered banner doesn't produce invalid
+        // `NOFORN/RELIDO`. (The `noforn-clears-relido` PageRewrite
+        // mirrors this for the `scheme.project` path.)
+        //
         // No mutual-recursion risk: `expected_rel_to` and
         // `expected_display_only` both call `expected_non_ic_dissem`,
         // which does not call back into `expected_dissem_us`.
@@ -582,6 +594,7 @@ impl PageContext {
             && self.expected_display_only().is_empty()
         {
             seen.insert(DissemControl::Nf);
+            seen.remove(&DissemControl::Relido);
         }
 
         seen.into_iter().collect()
@@ -785,10 +798,15 @@ impl PageContext {
             return vec![];
         }
 
-        // Row-19/20 all-or-nothing gate (row 11 also caught — REL TO +
-        // DO with no common country lands in the empty-intersection
-        // branch below). Every portion must have a non-empty
-        // display-permission set (REL TO ∪ DO).
+        // Row-19 all-or-nothing gate: every portion must have a
+        // non-empty display-permission set (REL TO ∪ DO). Row 20 (DO +
+        // DO with no common country) is handled by the empty-
+        // intersection check at the end of this function — both
+        // portions have display-permission, so this gate doesn't fire;
+        // the intersection just comes out empty. Row 11 (REL TO + DO
+        // with no common) also lands in that path. Row 18 (RELIDO + DO)
+        // lands here because the RELIDO portion has no display-
+        // permission (RELIDO is a dissem-control, not a country axis).
         let any_empty = self
             .portions
             .iter()
@@ -3118,7 +3136,10 @@ mod tests {
         // §D.2 Table 3 row 10: REL TO + RELIDO → NOFORN. RELIDO is a
         // DissemControl, not a country-list axis, so the RELIDO portion
         // has empty REL TO — row-16 gate clears banner REL TO, Step 5
-        // injects NF.
+        // injects NF. Per §D.2 row 2 + §H.8 p154 (RELIDO "Cannot be
+        // used with NOFORN"), Step 5 also evicts RELIDO from the
+        // dissem block so the banner doesn't render the invalid
+        // NOFORN/RELIDO pair.
         let mut ctx = PageContext::new();
         ctx.add_portion(CanonicalAttrs {
             classification: Some(MarkingClassification::Us(Classification::Secret)),
@@ -3131,10 +3152,7 @@ mod tests {
             ..Default::default()
         });
         let banner = ctx.render_expected_banner().expect("non-empty page");
-        // RELIDO survives (it's in dissem_us already); NOFORN injected
-        // via Step 5. Within-category sort puts NOFORN before RELIDO
-        // alphabetically on the dissem block.
-        assert_eq!(banner, "SECRET//NOFORN/RELIDO");
+        assert_eq!(banner, "SECRET//NOFORN");
     }
 
     #[test]

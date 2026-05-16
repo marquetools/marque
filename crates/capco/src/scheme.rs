@@ -1332,6 +1332,16 @@ impl CapcoScheme {
         const NF_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM, CAT_REL_TO];
         const NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_REL_TO];
 
+        // `capco/noforn-clears-relido` reads CAT_DISSEM (to find both
+        // the NOFORN trigger and the RELIDO target) and writes
+        // CAT_DISSEM (the FactRemove removes RELIDO from the same
+        // category). Self-edge skipped per the scheduler. Same DAG
+        // sibling position as `capco/noforn-clears-rel-to`: both read
+        // CAT_DISSEM (post `*-implies-noforn` writes) and operate on
+        // axes the *-implies-noforn entries don't touch.
+        const NF_CLEARS_RELIDO_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+        const NF_CLEARS_RELIDO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
         // Entry 4 (consultant §3.4.1 #4): FRD-SIGMA consolidates into
         // RD-SIGMA. Within-axis transform on CAT_AEA — reads and
         // writes the same axis (self-edge skipped per
@@ -1780,6 +1790,52 @@ impl CapcoScheme {
                 },
                 NF_READS,
                 NF_WRITES,
+            ),
+            // `capco/noforn-clears-relido` — NOFORN supersedes RELIDO.
+            //
+            // §H.8 RELIDO entry p154 (Relationship(s) to Other Markings):
+            //   "Cannot be used with NOFORN or DISPLAY ONLY."
+            //
+            // §D.2 Table 3 row 2: "NF | With any other FD&R marking,
+            // including: ... RELIDO ... | NOFORN". So when both NF and
+            // RELIDO end up in the projected CAT_DISSEM (e.g., a portion
+            // carries RELIDO and another carries NF, or a *-implies-noforn
+            // rewrite adds NF after page_context_to_attrs unions a
+            // RELIDO portion in), the banner roll-up must keep NF and
+            // drop RELIDO. The PageContext-direct path (`expected_dissem_us`
+            // Step 5) handles this for callers that read PageContext
+            // accessors directly; this PageRewrite mirrors the same
+            // policy for `scheme.project(Scope::Page, …)` callers.
+            //
+            // Trigger: `Contains(CAT_DISSEM, TOK_NOFORN)` — fires when
+            // NOFORN is in the projected page dissem axis (either via
+            // direct portion union or via a *-implies-noforn rewrite
+            // upstream in declaration order).
+            //
+            // Action: `Intent(FactRemove { Cve(TOK_RELIDO), Scope::Page })`
+            // — surgically removes RELIDO from CAT_DISSEM. Idempotent:
+            // FactRemove of an absent token is a per-intent no-op
+            // (IntentInapplicable, silent) — most pages never carry
+            // RELIDO and the trigger doesn't fire on them either.
+            //
+            // Axis annotations: reads `[CAT_DISSEM]`, writes `[CAT_DISSEM]`
+            // (self-edge skipped per the scheduler). DAG sibling of
+            // `capco/noforn-clears-rel-to`: both read CAT_DISSEM after
+            // the *-implies-noforn writers and operate on disjoint
+            // targets (REL TO vs RELIDO).
+            PageRewrite::declarative(
+                "capco/noforn-clears-relido",
+                "CAPCO-2016 §H.8 p154 + §D.2 Table 3 row 2",
+                CategoryPredicate::Contains {
+                    category: CAT_DISSEM,
+                    token: TOK_NOFORN,
+                },
+                CategoryAction::Intent(ReplacementIntent::FactRemove {
+                    facts: smallvec::smallvec![FactRef::Cve(TOK_RELIDO)],
+                    scope: Scope::Page,
+                }),
+                NF_CLEARS_RELIDO_READS,
+                NF_CLEARS_RELIDO_WRITES,
             ),
             // Entry 4 — `capco/frd-sigma-consolidates-into-rd-sigma`.
             //
