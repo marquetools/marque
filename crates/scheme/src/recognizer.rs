@@ -115,10 +115,11 @@ pub struct ParseContext {
     /// evaluation anchor instead of the current wall-clock time.
     ///
     /// Stored as an ISO 8601 date string wrapped in `Arc<str>` so that
-    /// `ParseContext::clone()` in the recognizer hot path (e.g.
-    /// `StrictOrDecoderRecognizer` uses `..cx.clone()`) never allocates
-    /// even when `as_of` is `Some` — the `Arc` clone is a single atomic
-    /// increment. `marque-scheme` stays free of a runtime dependency on
+    /// `ParseContext::clone()` never allocates even when `as_of` is
+    /// `Some` — the `Arc` clone is a single atomic increment. (The
+    /// default dispatcher `StrictOrDecoderRecognizer` no longer clones
+    /// per candidate, but consumers that do still benefit.)
+    /// `marque-scheme` stays free of a runtime dependency on
     /// `marque-ism`; callers in `marque-capco`/`marque-engine` can parse
     /// it with `marque_ism::IsmDate::from_str`.
     ///
