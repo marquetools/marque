@@ -43,6 +43,10 @@ name = "fix_latency"
 harness = false
 name = "fix_10kb"
 
+[[bench]]
+harness = false
+name = "recognition_token_heavy"
+
 [dependencies]
 aho-corasick = { workspace = true }
 futures = { workspace = true, optional = true }

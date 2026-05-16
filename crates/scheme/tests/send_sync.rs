@@ -96,7 +96,7 @@ impl MarkingScheme for StubScheme {
 struct NoopRecognizer;
 
 impl Recognizer<StubScheme> for NoopRecognizer {
-    fn recognize(&self, _bytes: &[u8], _cx: &ParseContext) -> Parsed<StubMarking> {
+    fn recognize(&self, _bytes: &[u8], _offset: usize, _cx: &ParseContext) -> Parsed<StubMarking> {
         // Zero-candidate Ambiguous is the engine-safe "nothing
         // recognized" signal (foundational-plan line 609-612).
         Parsed::Ambiguous {
@@ -128,7 +128,7 @@ const _: fn() = || {
 fn recognizer_trait_object_is_usable_as_dyn() {
     let r: Box<dyn Recognizer<StubScheme>> = Box::new(NoopRecognizer);
     let cx = ParseContext::default();
-    match r.recognize(b"anything", &cx) {
+    match r.recognize(b"anything", 0, &cx) {
         Parsed::Ambiguous { candidates } => {
             assert!(candidates.is_empty(), "stub returns zero candidates");
             // Touch the feature type so the assertion keeps importing

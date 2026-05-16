@@ -23,14 +23,15 @@
 //!
 //! ## Span-offset contract
 //!
-//! The [`Recognizer`] trait contract is "given bytes, return a
-//! [`Parsed<M>`] whose internal spans are relative to the input
-//! bytes" (foundational-plan "spans are by offset into this buffer").
-//! Rules in `marque-capco` expect source-relative spans, so the engine
-//! shifts token spans after `recognize()` returns via
-//! [`shift_token_spans`]. That post-processing is the natural seam —
-//! the engine is the only code that sees both the full source buffer
-//! and the candidate's source offset.
+//! The [`Recognizer`] trait contract is "given bytes plus the byte
+//! position of `bytes[0]` in the full source buffer (`offset`), return
+//! a [`Parsed<M>`] whose internal spans are absolute coordinates into
+//! the original source." Rules in `marque-capco` consume source-
+//! relative spans directly; recognizers translate any zero-origin
+//! spans their inner parser produces by calling [`shift_token_spans`]
+//! before returning. The strict path additionally shifts past any
+//! leading whitespace it stripped from `bytes`; the engine no longer
+//! runs a post-`recognize()` shift over `token_spans` (issue #431).
 //!
 //! ## Zero-candidate = no fabricated marking
 //!
@@ -66,7 +67,7 @@ impl StrictRecognizer {
 }
 
 impl Recognizer<CapcoScheme> for StrictRecognizer {
-    fn recognize(&self, bytes: &[u8], _cx: &ParseContext) -> Parsed<CapcoMarking> {
+    fn recognize(&self, bytes: &[u8], offset: usize, _cx: &ParseContext) -> Parsed<CapcoMarking> {
         // `_cx.strict_evidence` is always satisfied here — this
         // recognizer only emits candidates that hit the strict grammar.
         // `zone` / `position` are rule-side concerns, not parser input.
@@ -95,8 +96,20 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
                 // consume. Post-PR-3c this becomes
                 // `MarkingScheme::canonicalize(parsed.attrs)`.
                 let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
-                if leading_ws != 0 {
-                    shift_token_spans(&mut attrs, leading_ws);
+                // Two shifts collapsed into one (issue #431):
+                //   * `leading_ws` — the parser saw `parse_bytes`, which
+                //     begins `leading_ws` bytes after `bytes[0]`, so its
+                //     emitted spans are off by that amount relative to
+                //     the caller's `bytes` slice.
+                //   * `offset` — `bytes[0]` is `offset` bytes into the
+                //     full source buffer; rules consume absolute source
+                //     spans, so the engine used to apply this shift in a
+                //     post-pass.
+                // Composing both deltas here keeps `token_spans`
+                // absolute on return and removes the engine post-pass.
+                let total_shift = offset + leading_ws;
+                if total_shift != 0 {
+                    shift_token_spans(&mut attrs, total_shift);
                 }
                 let marking = CapcoMarking::new(attrs);
                 // Reject `Us(Restricted)` markings. RESTRICTED is by
@@ -289,7 +302,7 @@ mod tests {
     fn strict_recognizer_resolves_portion_unambiguously() {
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(S//NF)", &cx) {
+        match rx.recognize(b"(S//NF)", 0, &cx) {
             Parsed::Unambiguous(_) => {}
             other => panic!("expected Unambiguous, got {other:?}"),
         }
@@ -305,7 +318,7 @@ mod tests {
         // zero-candidate Ambiguous.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(R)", &cx) {
+        match rx.recognize(b"(R)", 0, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "bare (R) must be zero-candidate, got {} candidates",
@@ -329,7 +342,7 @@ mod tests {
         // which they are not) is caught here.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(R//NF)", &cx) {
+        match rx.recognize(b"(R//NF)", 0, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "(R//NF) must be zero-candidate, got {} candidates",
@@ -350,7 +363,7 @@ mod tests {
         // origin evidence; `R` first is the bug-case `Us(Restricted)`.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"R//USA, GBR", &cx) {
+        match rx.recognize(b"R//USA, GBR", 0, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "R//USA, GBR must be zero-candidate, got {} candidates",
@@ -380,7 +393,7 @@ mod tests {
         // that would silently let `Us(Restricted)` slip through.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", &cx) {
+        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", 0, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "RESTRICTED//FGI DEU//NOFORN must be zero-candidate, \
@@ -407,7 +420,7 @@ mod tests {
         // never reach the bug path the predicate gates against.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(//FGI R//NF)", &cx) {
+        match rx.recognize(b"(//FGI R//NF)", 0, &cx) {
             Parsed::Unambiguous(m) => {
                 assert!(
                     !is_us_restricted(&m),
@@ -428,7 +441,7 @@ mod tests {
         // that don't require foreign-origin context.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", &cx) else {
+        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", 0, &cx) else {
             panic!("(S) must parse to a SECRET portion");
         };
         assert!(
@@ -443,48 +456,115 @@ mod tests {
         let cx = ParseContext::default();
         // Missing closing paren — parser rejects; recognizer surfaces
         // zero-candidate Ambiguous per the trait contract.
-        match rx.recognize(b"(S//NF", &cx) {
+        match rx.recognize(b"(S//NF", 0, &cx) {
             Parsed::Ambiguous { candidates } => assert!(candidates.is_empty()),
             other => panic!("expected zero-candidate Ambiguous, got {other:?}"),
         }
     }
 
     #[test]
-    fn shift_token_spans_is_identity_for_zero_delta() {
+    fn recognize_emits_zero_relative_spans_at_offset_zero() {
+        // Issue #431: at `offset = 0` the recognizer's emitted
+        // `token_spans` should land inside `bytes.len()` — i.e. the
+        // spans are zero-relative because no source shift applied.
+        // Pins the absolute-span contract's base case so a future
+        // refactor that accidentally shifts by some non-zero default
+        // breaks this test instead of silently misplacing diagnostics
+        // for the most common engine-pin case (`StrictRecognizer`
+        // called with `offset = 0`).
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(mut marking) = rx.recognize(b"(S//NF)", &cx) else {
+        let input: &[u8] = b"(S//NF)";
+        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &cx) else {
             panic!("strict parse should succeed");
         };
-        let before: Vec<Span> = marking.0.token_spans.iter().map(|t| t.span).collect();
-        shift_token_spans(&mut marking.0, 0);
-        let after: Vec<Span> = marking.0.token_spans.iter().map(|t| t.span).collect();
-        assert_eq!(before, after);
+        assert!(
+            !marking.0.token_spans.is_empty(),
+            "expected at least one token span from `(S//NF)` — empty token_spans \
+             would silently pass the loop below and prove nothing about the contract"
+        );
+        for ts in marking.0.token_spans.iter() {
+            assert!(
+                ts.span.start < input.len(),
+                "span start {} must be inside bytes (len={}) at offset=0",
+                ts.span.start,
+                input.len(),
+            );
+            assert!(
+                ts.span.end <= input.len(),
+                "span end {} must be inside bytes (len={}) at offset=0",
+                ts.span.end,
+                input.len(),
+            );
+        }
     }
 
     #[test]
-    fn shift_token_spans_shifts_by_delta() {
+    fn recognize_emits_absolute_spans_at_nonzero_offset() {
+        // Issue #431: when called with `offset = N`, every emitted
+        // span must equal the corresponding `offset = 0` span shifted
+        // by `N`. This is the absolute-source-coordinate contract the
+        // engine relies on for its zero-post-pass behavior.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(mut marking) = rx.recognize(b"(S//NF)", &cx) else {
-            panic!("strict parse should succeed");
+        let Parsed::Unambiguous(at_zero) = rx.recognize(b"(S//NF)", 0, &cx) else {
+            panic!("strict parse should succeed at offset=0");
         };
-        let before: Vec<(usize, usize)> = marking
+        let Parsed::Unambiguous(at_100) = rx.recognize(b"(S//NF)", 100, &cx) else {
+            panic!("strict parse should succeed at offset=100");
+        };
+        assert_eq!(at_zero.0.token_spans.len(), at_100.0.token_spans.len());
+        for (z, h) in at_zero
             .0
             .token_spans
             .iter()
-            .map(|t| (t.span.start, t.span.end))
-            .collect();
-        shift_token_spans(&mut marking.0, 100);
-        let after: Vec<(usize, usize)> = marking
+            .zip(at_100.0.token_spans.iter())
+        {
+            assert_eq!(h.span.start, z.span.start + 100);
+            assert_eq!(h.span.end, z.span.end + 100);
+        }
+    }
+
+    #[test]
+    fn recognize_handles_offset_plus_leading_whitespace() {
+        // Issue #431 compound-shift gotcha: portion candidates strip
+        // any leading ASCII whitespace before parsing, so the parser
+        // emits spans relative to the post-strip slice. The recognizer
+        // must compose BOTH the source-position `offset` AND the
+        // leading-whitespace delta into a single shift on return —
+        // skipping either produces an off-by-leading-whitespace bug
+        // that this test catches. With `offset = 50` and 2 leading
+        // spaces, every emitted span should land at
+        // `50 + 2 + <inner offset>`.
+        let rx = StrictRecognizer::new();
+        let cx = ParseContext::default();
+        // Reference: zero-offset, zero-leading-whitespace baseline
+        // tells us where the parser puts each token without any shift.
+        let Parsed::Unambiguous(baseline) = rx.recognize(b"(S//NF)", 0, &cx) else {
+            panic!("baseline strict parse should succeed");
+        };
+        // Now run with leading whitespace AND a non-zero offset; both
+        // deltas must be applied.
+        let Parsed::Unambiguous(shifted) = rx.recognize(b"  (S//NF)", 50, &cx) else {
+            panic!("leading-ws strict parse should succeed");
+        };
+        assert_eq!(baseline.0.token_spans.len(), shifted.0.token_spans.len());
+        for (base, moved) in baseline
             .0
             .token_spans
             .iter()
-            .map(|t| (t.span.start, t.span.end))
-            .collect();
-        for (b, a) in before.iter().zip(after.iter()) {
-            assert_eq!(a.0, b.0 + 100);
-            assert_eq!(a.1, b.1 + 100);
+            .zip(shifted.0.token_spans.iter())
+        {
+            assert_eq!(
+                moved.span.start,
+                base.span.start + 52,
+                "expected shift = offset (50) + leading_ws (2) = 52"
+            );
+            assert_eq!(
+                moved.span.end,
+                base.span.end + 52,
+                "expected shift = offset (50) + leading_ws (2) = 52"
+            );
         }
     }
 
