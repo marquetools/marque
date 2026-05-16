@@ -1109,3 +1109,89 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
         &[],
     );
 }
+
+// ===========================================================================
+// G-4b (PR 4b-B 7th-pass follow-up) — FGI suppression for solely-non-US
+// classifications carrying their own foreign-source info
+// ===========================================================================
+//
+// Continuation of G-4. G-4 suppressed `expected_fgi_marker()` only when
+// `joint_set == UnanimousProducers`. But solely-non-US pages classified
+// with `Nato(_)` or `Fgi(_)` ALSO carry foreign-source info on the
+// classification axis itself, and the lattice path's
+// `expected_fgi_marker()` fallback derives the SAME producers from the
+// classification — producing a doubled FGI marker that doesn't match
+// PageContext's behavior on solely-NATO / solely-FGI pages.
+//
+// The fix: when the lattice is preserving the non-US variant intact
+// (i.e., `solely_non_us=true` AND the classification is Nato or Fgi),
+// suppress the `expected_fgi_marker()` fallback so the FGI axis is
+// purely sourced from per-portion `fgi_marker` fields (via FgiSet) and
+// is NOT duplicated from the classification.
+//
+// PageContext path on a solely-NATO page: `expected_classification`
+// returns `Us(level)` (always wraps in Us regardless of source), and
+// `expected_fgi_marker` returns `Some(Acknowledged{[NATO]})`. The
+// lattice path on a solely-NATO page returns `Nato(_)` AND
+// `Some(Acknowledged{[NATO]})` — the latter is double-marking.
+//
+// This is a documented divergence in the existing parity gate
+// (`pure_nato_lattice_vs_pagecontext_diverges`). The new test below
+// asserts the lattice does NOT double-mark — the solo-non-US case
+// keeps the foreign source on the classification axis and leaves
+// `fgi_marker` empty on solely-non-US pages where FGI semantics
+// already ride on the classification.
+//
+// Citation: §H.7 p123 (FGI source-acknowledged form — the foreign
+// source is recorded ONCE per portion; for non-US classifications
+// the source is the classification itself).
+// ===========================================================================
+
+#[test]
+fn solely_nato_does_not_double_mark_fgi() {
+    // G-4b: pure-NATO page. Lattice path correctly preserves the
+    // Nato(_) classification per §H.7 pp123-125 (documented divergence
+    // — see `pure_nato_lattice_vs_pagecontext_diverges`). The FGI
+    // axis must NOT additionally receive an Acknowledged marker for
+    // the NATO source — that information is already on the
+    // classification axis.
+    let mut nato_portion = CanonicalAttrs::default();
+    nato_portion.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+    let portions = [nato_portion];
+    let lat = project_via_lattice(&portions);
+    assert!(
+        matches!(lat.classification, Some(MarkingClassification::Nato(_))),
+        "lattice preserves Nato classification on solely-NATO page (G-3 divergence)"
+    );
+    assert!(
+        lat.fgi_marker.is_none(),
+        "G-4b: lattice must NOT double-mark NATO as FGI on a solely-non-US page; \
+         the foreign source is already on the classification axis. \
+         fgi_marker = {:?}",
+        lat.fgi_marker
+    );
+}
+
+#[test]
+fn solely_fgi_does_not_double_mark_fgi() {
+    // G-4b: pure-FGI page. Same shape as the NATO case but for the
+    // Fgi(_) variant. The FGI countries are on the classification
+    // axis; the dissem-axis fgi_marker should not duplicate them.
+    let mut fgi_portion = CanonicalAttrs::default();
+    fgi_portion.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("GBR")]),
+    }));
+    let portions = [fgi_portion];
+    let lat = project_via_lattice(&portions);
+    assert!(
+        matches!(lat.classification, Some(MarkingClassification::Fgi(_))),
+        "lattice preserves Fgi classification on solely-FGI page"
+    );
+    assert!(
+        lat.fgi_marker.is_none(),
+        "G-4b: lattice must NOT double-mark FGI classification as fgi_marker. \
+         fgi_marker = {:?}",
+        lat.fgi_marker
+    );
+}

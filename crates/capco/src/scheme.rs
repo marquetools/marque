@@ -510,9 +510,42 @@ impl CapcoMarking {
             fgi_acc = fgi_acc.join(&part);
         }
         let ctx_fgi_marker = if matches!(joint_set, JointSet::UnanimousProducers { .. }) {
-            // JOINT-unanimous page: producers ride on the Joint(_)
-            // classification, not on the FGI axis. Suppress the
-            // PageContext FGI fallback.
+            // G-4: JOINT-unanimous page — producers ride on the
+            // `Joint(_)` classification, not on the FGI axis. Suppress
+            // the PageContext FGI fallback so we don't double-mark
+            // (§H.3 p56 + §H.7 p123).
+            None
+        } else if solely_non_us {
+            // G-4b (PR 4b-B 7th-pass follow-up): solely-non-US page
+            // where the lattice preserves a `Nato(_)` or `Fgi(_)`
+            // classification intact (the §H.7 reciprocal-raise was
+            // suppressed at scheme.rs:354 because there was no US
+            // portion to raise toward). The foreign source is already
+            // recorded on the classification axis itself; calling
+            // `expected_fgi_marker()` here would derive the SAME
+            // producers from the classification a second time and
+            // surface them on the dissem-axis `fgi_marker`, producing
+            // a doubled marker.
+            //
+            // PageContext doesn't have this problem because its
+            // `expected_classification` ALWAYS wraps in `Us(_)`
+            // regardless of source — the foreign-source info has to
+            // ride on `expected_fgi_marker` since it can't ride on the
+            // classification axis. The lattice path preserves the
+            // foreign variant on the classification axis (per the
+            // documented `pure_nato_lattice_vs_pagecontext_diverges`
+            // divergence, §H.7 pp123-125), which makes the FGI-axis
+            // duplication redundant.
+            //
+            // Per-portion `fgi_marker` fields (FgiSet) are still
+            // honored — `fgi_acc.to_marker()` is what we ultimately
+            // merge with this `None`. The suppression only drops the
+            // classification-derived secondary fold.
+            //
+            // §-authority: §H.7 p123 (FGI source is recorded ONCE per
+            // portion; for non-US classifications the source IS the
+            // classification axis). Verified 2026-05-15 against
+            // CAPCO-2016.md.
             None
         } else {
             tmp_ctx.expected_fgi_marker()
