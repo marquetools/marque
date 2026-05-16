@@ -600,9 +600,20 @@ fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
 // — see scheme.rs), so a class-floor-only fixture would measure an
 // intent-light path even though it triggers lots of diagnostics.
 // E014 is the right driver for the intent-heavy worst case because
-// `e014_add_country_intent` produces a `FactAdd` `FixIntent` per
-// missing JOINT participant (verified against
-// `crates/capco/tests/e014_fact_add_engine.rs`).
+// `e014_add_country_intent` (in `marque-capco`
+// `rules_declarative.rs`) produces a `FactAdd` `FixIntent` per
+// missing JOINT participant. The rule itself
+// (`DeclarativeJointRelToRule`) is registered in the live
+// `CapcoRuleSet` at `crates/capco/src/rules.rs`, so the fixture
+// exercises a production code path. `joint_disunity_collapse_to_FGI`
+// and other JOINT-block tests in `crates/capco/tests/` are the
+// active CI guards covering this rule's predicate; the
+// `e014_fact_add_engine.rs` file is disabled
+// (`#![cfg(any())]`) pending the PR 3c.B Commit 10 FixProposal-
+// shape rewrite, so it is NOT a current CI guard for this bench.
+// The `Inserted FactAdd` audit-stream invariant pinned in
+// `crates/engine/tests/intent_only_byte_identity.rs` exercises the
+// FixIntent emission path this bench measures.
 //
 // Advisory bench — no entry in `benches/baseline.json`, same pattern
 // as `lint_portion_dense` / `lint_high_candidate_count`. Report the

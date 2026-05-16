@@ -702,6 +702,15 @@ impl Engine {
         // non-truncated completion.
         let candidates_total = candidates.len();
         let mut candidates_processed: usize = 0;
+        // Counts every `Parsed::Unambiguous` recognition this lint
+        // pass produces (distinct from `parsed_markings.len()`, which
+        // tracks only FixIntent-bearing candidates under issue
+        // #433's deferred cache). Returned in `LintResult` so the
+        // R002 sentinel in `TwoPassFixer` can detect "pass-1 splice
+        // destroyed marking shape" against the broader "had any
+        // recognized marking" signal instead of the narrower
+        // "had a FixIntent-bearing marking."
+        let mut recognized_marking_count: usize = 0;
 
         // Cache of recognized markings, keyed by the scanner
         // candidate's source-relative `Span`. Consumed by
@@ -816,6 +825,7 @@ impl Engine {
                         truncated: true,
                         candidates_processed,
                         candidates_total,
+                        recognized_marking_count,
                         ..Default::default()
                     },
                     parsed_markings,
@@ -951,6 +961,7 @@ impl Engine {
             else {
                 continue;
             };
+            recognized_marking_count += 1;
             // Issue #433: defer the `parsed_markings` cache insert
             // until the end of this iteration, so we know whether any
             // diagnostic for this candidate carries a `FixIntent`.
@@ -1634,6 +1645,7 @@ impl Engine {
                 truncated: false,
                 candidates_processed,
                 candidates_total,
+                recognized_marking_count,
                 ..Default::default()
             },
             parsed_markings,
@@ -2210,23 +2222,27 @@ impl<'engine> TwoPassFixer<'engine> {
                 // partial cleanups): if the pre-pass-1 buffer had ≥1
                 // marking AND the post-pass-1 buffer has zero, the
                 // pass-1 splice destroyed marking shape.
-                let post_pass1_had_no_markings = new_markings.is_empty();
-                // Issue #433 note: `parsed_markings` now populates
-                // lazily — entries land only for candidates that
-                // produced at least one `FixIntent` diagnostic. The
-                // sentinel therefore reads as "pre-pass-1 had at
-                // least one FixIntent-bearing marking" rather than
-                // the looser "pre-pass-1 had at least one recognized
-                // marking." For the current Localized/WholeMarking
-                // phase split (Localized rules emit `text_correction`
-                // only; WholeMarking rules are the FixIntent emitters)
-                // the sentinel still correctly guards "pass-1 splice
-                // destroyed the markings pass-2 needs." If a future
-                // Localized rule ever emits a FixIntent, the sentinel
-                // will continue to behave correctly — the cache will
-                // populate for that candidate.
-                let pre_pass1_had_fix_intent_markings = !parsed_markings.is_empty();
-                if post_pass1_had_no_markings && pre_pass1_had_fix_intent_markings {
+                // Issue #433 note on the sentinel signals: the
+                // R002 trigger is "pre had recognized markings AND
+                // post has zero." Under #433's deferred cache,
+                // `parsed_markings.is_empty()` no longer answers
+                // "had any recognized marking" — only "had any
+                // FixIntent-bearing marking." So both sides of the
+                // conjunction now read `LintResult
+                // .recognized_marking_count`, which is incremented
+                // on every `Parsed::Unambiguous` recognition and
+                // is independent of the cache-population gate.
+                // Using the cache-emptiness signal here would
+                // produce both false negatives (pre had only
+                // text-correction-emitting markings and pass-1
+                // destroyed them — sentinel never fires) and
+                // false positives (pass-1 fixed the only
+                // FixIntent issue and the re-lint cleanly parses
+                // — sentinel fires spuriously). The recognized-
+                // count signal avoids both.
+                let post_pass1_had_no_markings = relint.recognized_marking_count == 0;
+                let pre_pass1_had_markings = lint.recognized_marking_count > 0;
+                if post_pass1_had_no_markings && pre_pass1_had_markings {
                     let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
                     let failure_span = Span::new(0, pass1.post_buffer.len());
                     let r002 = build_r002_diagnostic(contributing, failure_span);
@@ -6419,6 +6435,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(
             smallvec::smallvec![RuleId::new("E006")],
@@ -6466,6 +6483,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);
@@ -6506,6 +6524,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), dropped, pass1, lint, r002);
@@ -6563,6 +6582,7 @@ mod tests {
             truncated: false,
             candidates_processed: 0,
             candidates_total: 0,
+            recognized_marking_count: 0,
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);
