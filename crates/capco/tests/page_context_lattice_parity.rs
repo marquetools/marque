@@ -1029,3 +1029,83 @@ fn conflict_plus_us_flattens_to_us() {
         &[],
     );
 }
+
+// ===========================================================================
+// G-9b (PR 4b-B 7th-pass follow-up) — Joint participates in solely-non-US gate
+// ===========================================================================
+//
+// Continuation of G-9. The original G-9 fix added `Conflict` to the
+// `has_us_class` branch but missed `Joint`. JOINT classifications are
+// US co-owned by definition: §H.3 p56 requires USA to be in the producer
+// list. A JOINT portion is therefore US-bearing for the purposes of the
+// `solely_non_us` gate. Without this, a mixed page like
+// `JOINT S USA GBR + NATO C` keeps `solely_non_us=true` and the NATO
+// classification survives into the lattice output as `Nato(_)` rather
+// than reciprocal-raising to `Us(_)` per §H.7 pp123-125.
+//
+// This case reaches the gate because `JointSet::Mixed` returns `None`
+// from `to_marking_classification`, which falls through to the gate
+// branch at scheme.rs.
+//
+// Citation: §H.3 p56 (JOINT requires USA in producer list) +
+// §H.7 pp123-125 (reciprocal-classification rule for mixed US +
+// non-US pages).
+// ===========================================================================
+
+#[test]
+fn joint_plus_nato_same_level_flattens_to_us() {
+    // G-9b: JOINT S USA GBR + NATO S (NatoSecret).
+    // Both portions at the same effective level (Secret), so the
+    // ClassificationLattice's OrdMax does NOT pick a winner via level —
+    // it falls into the same-level variant-rank tiebreak. Without the
+    // gate fix, `solely_non_us=true` (Joint not counted as US-bearing),
+    // so the NATO portion is NOT flattened to Us(Secret) and survives
+    // as Nato(NatoSecret). The variant-rank tiebreak then prefers the
+    // lower-rank variant — Us is rank 0, Joint flattens to Us(Secret)
+    // → Us wins, but the OUTPUT classification is Us(Secret) only if
+    // the variant-rank picks Us. Without the gate fix, the lattice
+    // variant-rank tiebreak would pick Us anyway because we DID
+    // flatten Joint → Us in the per-portion loop. So this case still
+    // passes... unless we make the JOINT portion's level lower than
+    // NATO. Let's invert: JOINT C + NATO S — JOINT is at lower level
+    // so its flattened Us(C) loses to Nato(NS) on level (NatoSecret's
+    // us_equivalent is Secret). With gate fix, Nato is reciprocal-
+    // raised to Us(Secret); lattice picks Us(Secret). Without gate
+    // fix, Nato stays as Nato(NS); lattice picks Nato(NS). PageContext
+    // returns Us(Secret) regardless. Divergence.
+    let mut nato_portion = CanonicalAttrs::default();
+    nato_portion.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+    let portions = [
+        portion_joint(Classification::Confidential, &["USA", "GBR"]),
+        nato_portion,
+    ];
+    assert_byte_identity(
+        "joint_plus_nato_same_level_flattens_to_us",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn joint_plus_fgi_same_level_flattens_to_us() {
+    // G-9b: JOINT C USA GBR + FGI S [FRA]. JOINT flattens to Us(C);
+    // FGI at higher level. Without gate fix, FGI stays as
+    // Fgi(S, [FRA]); lattice picks Fgi(S, [FRA]) via OrdMax (FGI
+    // higher level wins). PageContext returns Us(Secret). Divergence.
+    let mut fgi_portion = CanonicalAttrs::default();
+    fgi_portion.classification = Some(MarkingClassification::Fgi(FgiClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("FRA")]),
+    }));
+    let portions = [
+        portion_joint(Classification::Confidential, &["USA", "GBR"]),
+        fgi_portion,
+    ];
+    assert_byte_identity(
+        "joint_plus_fgi_same_level_flattens_to_us",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}

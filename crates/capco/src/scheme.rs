@@ -336,29 +336,45 @@ impl CapcoMarking {
         // at banner time; the non-US variant survives only when the
         // page has no US contribution at all. G-3 (PR 4b-B follow-up).
         //
-        // G-9 (PR 4b-B follow-up): `MarkingClassification::Conflict`
-        // carries an implicit US classification (`us: Classification`,
-        // see `MarkingClassification::Conflict` doc comment at
-        // `crates/ism/src/attrs.rs:521`). Conflict portions are
-        // therefore US-bearing for the purposes of the solely-non-US
-        // gate; treating them otherwise breaks parity with
-        // `PageContext::expected_classification`, which uses
-        // `effective_level()` over Conflict (returning the implicit
-        // `us` level) and wraps the result in `Us(_)`. Pre-G-9 the
-        // lattice path returned `Conflict(...)` on a Conflict-only
-        // page (or `Nato(_)` on a Conflict+NATO page) while
-        // PageContext returned `Us(level)` — same authority, same
-        // §H.7 reciprocal-normalization rule.
+        // G-9 + G-9b (PR 4b-B follow-up): three classification variants
+        // are US-bearing for the purposes of the solely-non-US gate:
+        //
+        // - `Us(_)`: explicit US classification.
+        // - `Conflict { us, .. }`: carries an implicit US classification
+        //   in the `us` field (see `MarkingClassification::Conflict`
+        //   doc comment at `crates/ism/src/attrs.rs:521`). The parser
+        //   records "I saw two systems; US wins" — so Conflict is US
+        //   from the gate's perspective. Pre-G-9 the lattice path
+        //   returned `Conflict(...)` on a Conflict-only page (or
+        //   `Nato(_)` on a Conflict+NATO page) while PageContext
+        //   returned `Us(level)` — same authority, same §H.7
+        //   reciprocal-normalization rule.
+        // - `Joint(_)`: by §H.3 p56, USA is required to be in the
+        //   producer list (JOINT is US co-owned by definition); JOINT
+        //   classifications are therefore US-bearing for the gate.
+        //   Pre-G-9b a mixed page like `JOINT C USA GBR + NATO S`
+        //   kept `solely_non_us=true` (Joint not counted), so the
+        //   NATO portion was preserved as `Nato(_)` rather than
+        //   reciprocal-raising to `Us(_)` per §H.7 pp123-125. The
+        //   same-level case is the load-bearing one: when the level
+        //   chain doesn't already pick a winner via OrdMax, the
+        //   variant survival in the per-portion filter loop produces
+        //   the wrong banner shape.
+        //
+        // §-authority: §H.7 pp123-125 (reciprocal-classification rule)
+        // + §H.3 p56 (JOINT requires USA in producer list). Verified
+        // 2026-05-15 against CAPCO-2016.md.
         let mut has_us_class = false;
         let mut has_non_us_class = false;
         for p in portions {
             match &p.classification {
                 Some(MarkingClassification::Us(_))
-                | Some(MarkingClassification::Conflict { .. }) => has_us_class = true,
+                | Some(MarkingClassification::Conflict { .. })
+                | Some(MarkingClassification::Joint(_)) => has_us_class = true,
                 Some(MarkingClassification::Fgi(_)) | Some(MarkingClassification::Nato(_)) => {
                     has_non_us_class = true
                 }
-                Some(MarkingClassification::Joint(_)) | None => {}
+                None => {}
             }
         }
         let solely_non_us = has_non_us_class && !has_us_class;
