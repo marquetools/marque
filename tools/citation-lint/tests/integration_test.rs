@@ -420,6 +420,40 @@ fn column_accuracy_string_literal() {
 }
 
 #[test]
+fn column_accuracy_explicit_doc_attr() {
+    // Guard: verify that explicit `#[doc = "..."]` attributes report the
+    // correct 1-indexed column for the `§` character.
+    //
+    // Source line: `#[doc = "CAPCO-2016 §A.99 p5"]`
+    // Breakdown:
+    //   `#[doc = "`  = 9 chars (columns 1–9)
+    //   `CAPCO-2016 ` = 11 chars (columns 10–20)
+    //   `§`           at column 21 (1-indexed)
+    //
+    // An explicit `#[doc = "..."]` attribute has its LitStr span at the
+    // opening `"` (column 8, 0-indexed), so prefix_len must be 1 — the
+    // same as a regular string literal. Without the desugared-vs-explicit
+    // detection, `prefix_len = 3` would report column 23 (over by 2).
+    let body = "#[doc = \"CAPCO-2016 §A.99 p5\"]\npub fn x() {}\n";
+    let dir = make_workspace_with(body);
+    let defects = lint(dir.path());
+    let doc_defects: Vec<_> = defects
+        .iter()
+        .filter(|d| matches!(d.source_kind, citation_lint::SourceKind::DocComment))
+        .collect();
+    assert!(
+        !doc_defects.is_empty(),
+        "expected a defect from the explicit doc attr citation; all defects: {defects:#?}"
+    );
+    let col = doc_defects[0].column;
+    assert_eq!(
+        col, 21,
+        "explicit #[doc = ...] §A.99: expected column 21 (1-indexed), got {col}; \
+         without desugared detection, prefix_len=3 would give 23"
+    );
+}
+
+#[test]
 fn scan_workspace_includes_top_level_marque_crate() {
     // Regression guard for Copilot PR-0.5 round-3 finding: previously
     // `scan_workspace` only walked `crates/*/src/**`, which silently
