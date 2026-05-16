@@ -518,6 +518,133 @@ fn display_only_round_trips_through_canonical_attrs() {
 }
 
 #[test]
+fn display_only_multi_country_after_rel_to_commingling() {
+    // Regression: Copilot review on PR #445 caught that the
+    // entry-by-entry slash-tail handler in
+    // `parse_rel_to_with_spans` misclassified the second-and-later
+    // countries of a multi-country DISPLAY ONLY list commingled
+    // with REL TO.
+    //
+    // For `(S//REL TO USA, IRQ/DISPLAY ONLY AFG, NATO)` the outer
+    // `after_rel.split(',')` had already chopped `NATO` into a
+    // separate REL TO entry by the time the inner handler saw the
+    // `/DISPLAY ONLY AFG` slash-tail — so `NATO` landed on `rel_to`
+    // instead of `display_only_to`. The fix introduces a
+    // `find_display_only_slash_boundary` pre-scan that detects the
+    // `/DISPLAY ONLY` boundary before the comma split, restricts
+    // the REL TO scope to bytes before it, and parses the entire
+    // remainder (including all its commas) via
+    // `parse_display_only_with_spans` after the loop.
+    let attrs = parse_portion("(S//REL TO USA, IRQ/DISPLAY ONLY AFG, NATO)");
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "no Unknown spans expected; got {:?}",
+        unknown
+            .iter()
+            .map(|t| (&*t.text, t.span.start, t.span.end))
+            .collect::<Vec<_>>()
+    );
+
+    let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(
+        rel,
+        vec!["USA", "IRQ"],
+        "rel_to must NOT include NATO — NATO belongs to the DISPLAY ONLY list"
+    );
+    let dox: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(
+        dox,
+        vec!["AFG", "NATO"],
+        "display_only_to must include BOTH AFG and NATO"
+    );
+
+    // Block-level spans must still emit exactly once each.
+    let do_blocks = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::DisplayOnlyBlock)
+        .count();
+    let rel_blocks = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::RelToBlock)
+        .count();
+    assert_eq!(do_blocks, 1);
+    assert_eq!(rel_blocks, 1);
+}
+
+#[test]
+fn display_only_after_rel_to_with_trailing_dissem_before_commingling() {
+    // §H.8 p164 admits commingling REL TO + simple dissem +
+    // DISPLAY ONLY in one block. The `/NF/DISPLAY ONLY` shape
+    // exercises the pre-scan's tolerance for multi-slash tails:
+    // `find_display_only_slash_boundary` must find the SECOND
+    // slash (the one before `DISPLAY ONLY`), not the first.
+    let attrs = parse_portion("(S//REL TO USA, GBR/NF/DISPLAY ONLY AFG, IRQ)");
+    let unknown: Vec<_> = attrs
+        .token_spans
+        .iter()
+        .filter(|t| t.kind == TokenKind::Unknown)
+        .collect();
+    assert!(unknown.is_empty(), "no Unknown spans expected");
+
+    let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(rel, vec!["USA", "GBR"]);
+    let dissem: Vec<&str> = attrs.dissem_us.iter().map(|d| d.bytes).collect();
+    assert!(
+        dissem.contains(&"NF"),
+        "trailing NF must land on dissem axis; got {dissem:?}"
+    );
+    let dox: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(dox, vec!["AFG", "IRQ"]);
+}
+
+#[test]
+fn display_only_boundary_tolerates_whitespace_after_slash() {
+    // Whitespace tolerance: `/ DISPLAY ONLY AFG, NATO` (space
+    // after the slash before the keyword). The boundary detector
+    // skips ASCII spaces after the slash to match the parser's
+    // existing within-category-separator relaxation (CAPCO §A.6
+    // p16 forbids interjected whitespace but the corpus
+    // occasionally drifts).
+    let attrs = parse_portion("(S//REL TO USA, IRQ/ DISPLAY ONLY AFG, NATO)");
+    let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(rel, vec!["USA", "IRQ"]);
+    let dox: Vec<&str> = attrs.display_only_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(dox, vec!["AFG", "NATO"]);
+}
+
+#[test]
+fn display_only_boundary_word_boundary_check_rejects_prefix_match() {
+    // The boundary detector requires a word boundary AFTER the
+    // `DISPLAY ONLY` keyword (whitespace, `/`, or end-of-string).
+    // A hypothetical token like `DISPLAYONLYNESS` must NOT trip
+    // the boundary detection — it would have routed through this
+    // path in a naive substring search.
+    //
+    // CAPCO has no such token; this test guards against future
+    // false-positive expansions of the detector. We use a
+    // non-CAPCO token that exercises the word-boundary gate.
+    let src = "(S//REL TO USA, IRQ/DISPLAY ONLYNESS)";
+    let attrs = parse_portion(src);
+    // The fake token `DISPLAY ONLYNESS` should NOT be admitted
+    // as a DISPLAY ONLY block. The parser falls through to
+    // existing tail handling (Unknown for the unrecognized
+    // token); the REL TO list remains `[USA, IRQ]`.
+    let rel: Vec<&str> = attrs.rel_to.iter().map(|e| e.bytes).collect();
+    assert_eq!(rel, vec!["USA", "IRQ"]);
+    assert!(
+        attrs.display_only_to.is_empty(),
+        "DISPLAY ONLYNESS must NOT trip the DISPLAY ONLY boundary detector"
+    );
+}
+
+#[test]
 fn cve_form_displayonly_unchanged() {
     // The pre-fix path `(U//DISPLAYONLY)` (ODNI CVE value, no space)
     // continues to route through the existing `DissemControl::parse`

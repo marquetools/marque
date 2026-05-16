@@ -2575,11 +2575,45 @@ fn parse_rel_to_with_spans<'src>(
     let mut trailing_dissem: SmallVec<[ParsedDissem<'src>; 2]> = SmallVec::new();
     let mut trailing_non_ic: SmallVec<[ParsedNonIcDissem<'src>; 2]> = SmallVec::new();
     let mut trailing_display_only: SmallVec<[ParsedDisplayOnlyEntry<'src>; 4]> = SmallVec::new();
+
+    // Pre-scan for a `/DISPLAY ONLY` boundary so that any commas
+    // appearing AFTER the DISPLAY ONLY keyword belong to the
+    // DISPLAY ONLY country list, not to the REL TO list.
+    //
+    // Without this pre-scan, an input like
+    // `REL TO USA, IRQ/DISPLAY ONLY AFG, NATO` would comma-split
+    // `after_rel` first, producing entries
+    // `["USA", " IRQ/DISPLAY ONLY AFG", " NATO"]` — the third
+    // entry `NATO` would be processed as a REL TO trigraph
+    // rather than as the second country of the DISPLAY ONLY list.
+    // Copilot review on PR #445 caught this misclassification.
+    //
+    // The boundary detection tolerates whitespace between the `/`
+    // and the `DISPLAY ONLY` keyword to match the parser's
+    // existing within-category-separator relaxation
+    // (`crates/core/tests/separator_spans.rs`). The substring
+    // match is gated on a word-boundary check (the byte after
+    // `DISPLAY ONLY` must be whitespace, `/`, or end-of-string)
+    // so `DISPLAY ONLYISH` cannot false-positive.
+    //
+    // Authority: CAPCO-2016 §H.8 p163 (DISPLAY ONLY entry); §H.8
+    // p164 + §H.8 p165 Notional Example Page 5 (commingling with
+    // REL TO under defined disclosure-review conditions).
+    let display_only_boundary = find_display_only_slash_boundary(after_rel);
+
+    // The comma-split scope is restricted to bytes before the
+    // DISPLAY ONLY slash (if any). The DISPLAY ONLY suffix is
+    // parsed separately after the loop.
+    let rel_scope = match display_only_boundary {
+        Some(b) => &after_rel[..b],
+        None => after_rel,
+    };
+
     // Walk comma-separated entries, tracking each entry's offset within
     // `after_rel` so we can land an absolute span on the trigraph itself
     // (not on any leading whitespace).
     let mut cursor = 0usize;
-    for entry in after_rel.split(',') {
+    for entry in rel_scope.split(',') {
         let entry_start_in_after = cursor;
         // Advance past the entry and its trailing comma. On the final
         // iteration this steps one past the end of `after_rel`, but the
@@ -2664,44 +2698,20 @@ fn parse_rel_to_with_spans<'src>(
                 if part.is_empty() {
                     continue;
                 }
-                // CAPCO-2016 §H.8 p165 Notional Example Page 5 portion
-                // form: `(S//REL TO USA, IRQ/DISPLAY ONLY AFG)` — a
-                // DISPLAY ONLY block can follow REL TO inside the same
-                // `//`-delimited block, separated by a single `/`.
-                // §H.8 p164 admits this commingling "when all
-                // information within the portion has been reviewed
-                // through the originator's foreign disclosure channels
-                // and approved for disclosure and release to separate
-                // Register, Annex B trigraph country code(s) or
-                // Register, Annex A tetragraph code(s)." Detect the
-                // DISPLAY ONLY prefix BEFORE the flat DissemControl /
-                // non-IC parsers (which would all return None for the
-                // space-separated `DISPLAY ONLY [LIST]` form) and
-                // route through `parse_display_only_with_spans` to
-                // populate the dedicated axis. The returned countries
-                // accumulate into `trailing_display_only`, which the
-                // outer caller drains into its own `display_only_to`
-                // axis.
-                if part.starts_with("DISPLAY ONLY ") || part == "DISPLAY ONLY" {
-                    let span = Span::new(part_abs, part_abs + part.len());
-                    token_spans.push(TokenSpan {
-                        kind: TokenKind::DisplayOnlyBlock,
-                        span,
-                        text: part.into(),
-                    });
-                    let parsed_do =
-                        parse_display_only_with_spans(part, part_abs, tokens, token_spans);
-                    trailing_display_only.extend(parsed_do.countries);
-                    // Cross-axis commingling beyond REL TO+DISPLAY ONLY
-                    // (e.g., a trailing dissem AFTER the DISPLAY ONLY
-                    // block in the same /-tail) is not modeled by
-                    // §H.8 p165's worked examples; admit any DISPLAY
-                    // ONLY-internal trailing controls back into the
-                    // outer trailing fields rather than dropping them.
-                    trailing_dissem.extend(parsed_do.trailing_dissem);
-                    trailing_non_ic.extend(parsed_do.trailing_non_ic);
-                    continue;
-                }
+                // DISPLAY ONLY commingling is now handled at the
+                // OUTER level by the `find_display_only_slash_boundary`
+                // pre-scan + suffix parse (see end of this function).
+                // The boundary detection guarantees that no
+                // `/DISPLAY ONLY [LIST]` sequence ever reaches this
+                // inner slash-tail loop — the boundary `/` is excluded
+                // from the comma-split scope and the DISPLAY ONLY
+                // suffix is parsed in one piece (with its own commas)
+                // after the REL TO loop completes. Copilot review on
+                // PR #445 caught that the previous in-entry handler
+                // misclassified the multi-country case
+                // `REL TO USA, IRQ/DISPLAY ONLY AFG, NATO` because the
+                // outer comma-split had already chopped NATO into a
+                // separate entry.
                 if let Some(ctrl) =
                     DissemControl::parse(part).or_else(|| parse_dissem_full_form(part))
                 {
@@ -2777,12 +2787,83 @@ fn parse_rel_to_with_spans<'src>(
             text: trimmed.into(),
         });
     }
+
+    // Parse the DISPLAY ONLY suffix (everything after the
+    // boundary slash) as a complete DISPLAY ONLY block. The
+    // boundary `b` points at the `/`; the DISPLAY ONLY keyword
+    // begins at `b + 1` modulo any tolerated whitespace, which
+    // `parse_display_only_with_spans` resolves via its own
+    // prefix-strip logic.
+    if let Some(b) = display_only_boundary {
+        // Skip the boundary `/` AND any tolerated whitespace
+        // between `/` and `DISPLAY ONLY`. The absolute offset of
+        // `DISPLAY ONLY` within the source is computed so the
+        // emitted `DisplayOnlyBlock` span lands on the `D`, not
+        // on the slash or its trailing whitespace.
+        let raw_suffix = &after_rel[b + 1..];
+        let ws_skip = raw_suffix.len() - raw_suffix.trim_start().len();
+        let suffix = raw_suffix.trim_end();
+        let suffix_offset_in_block = prefix_skip + b + 1 + ws_skip;
+        let suffix_text = &suffix[ws_skip..];
+        let suffix_abs = block_offset + suffix_offset_in_block;
+        token_spans.push(TokenSpan {
+            kind: TokenKind::DisplayOnlyBlock,
+            span: Span::new(suffix_abs, suffix_abs + suffix_text.len()),
+            text: suffix_text.into(),
+        });
+        let parsed_do = parse_display_only_with_spans(suffix_text, suffix_abs, tokens, token_spans);
+        trailing_display_only.extend(parsed_do.countries);
+        // Trailing controls inside the DISPLAY ONLY block surface
+        // into the outer caller's dissem / non-IC axes — these are
+        // the §H.8 p164 "may be commingled" cases that include both
+        // REL TO and DISPLAY ONLY plus a tail dissem control.
+        trailing_dissem.extend(parsed_do.trailing_dissem);
+        trailing_non_ic.extend(parsed_do.trailing_non_ic);
+    }
+
     RelToParseResult {
         countries,
         trailing_dissem,
         trailing_non_ic,
         trailing_display_only,
     }
+}
+
+/// Locate the byte position of the first `/` that introduces a
+/// `DISPLAY ONLY [LIST]` commingling tail inside a REL TO block.
+/// Returns `None` if no such commingling exists (i.e., the input is
+/// a plain REL TO list, possibly with trailing simple dissem
+/// controls like `/NF` which do NOT trigger this).
+///
+/// The match is gated on a word-boundary check after
+/// `DISPLAY ONLY` so suffixes like `DISPLAY ONLYISH` cannot
+/// false-positive. Whitespace between the `/` and the
+/// `DISPLAY ONLY` keyword is tolerated to match the parser's
+/// existing within-category-separator relaxation
+/// (`crates/core/tests/separator_spans.rs`); CAPCO-2016 §A.6 p16
+/// forbids interjected whitespace but real-world authors drift.
+fn find_display_only_slash_boundary(s: &str) -> Option<usize> {
+    const KEYWORD: &str = "DISPLAY ONLY";
+    let bytes = s.as_bytes();
+    let mut search_from = 0usize;
+    while search_from < bytes.len() {
+        let slash_rel = s[search_from..].find('/')?;
+        let slash_pos = search_from + slash_rel;
+        // Skip whitespace after the slash to tolerate `/ DISPLAY ONLY`.
+        let mut after_slash = slash_pos + 1;
+        while after_slash < bytes.len() && bytes[after_slash] == b' ' {
+            after_slash += 1;
+        }
+        if s[after_slash..].starts_with(KEYWORD) {
+            let after_kw = after_slash + KEYWORD.len();
+            // Word boundary: end-of-string, whitespace, or another `/`.
+            if after_kw >= bytes.len() || bytes[after_kw] == b' ' || bytes[after_kw] == b'/' {
+                return Some(slash_pos);
+            }
+        }
+        search_from = slash_pos + 1;
+    }
+    None
 }
 
 /// Return type for [`parse_display_only_with_spans`].
