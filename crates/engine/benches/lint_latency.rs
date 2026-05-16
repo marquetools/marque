@@ -666,6 +666,66 @@ fn lint_intent_heavy_benchmark(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Parsed-markings cache stress advisory bench (perf/parsed-markings-vec, issue #432)
+// ---------------------------------------------------------------------------
+//
+// `lint_parsed_markings_cache_stress` packs ~1000 FixIntent-emitting JOINT
+// portions into a single document so the `parsed_markings` cache populates
+// on every candidate (each E014 FactAdd diagnostic carries `fix.is_some()`).
+// This is the cache-pressure worst case the existing 200-candidate
+// `lint_high_candidate_count` bench can't reach — at 1000 keyed inserts
+// + 1000 keyed lookups the HashMap's SipHash + bucket-traversal constant
+// factor becomes visible against the alternative sorted-Vec /
+// binary_search shape.
+//
+// Pair with `lint_10kb` (typical, intent-light) and `lint_intent_heavy_10kb`
+// (10KB intent-heavy) — together the three benches span the cache's
+// realistic load curve, with this fixture pinning the degenerate tail
+// case the issue calls out. Advisory bench — no entry in
+// `benches/baseline.json`. Report numbers in PRs that touch the cache
+// data structure; don't gate on it.
+
+fn build_parsed_markings_cache_stress_input(candidate_count: usize) -> Vec<u8> {
+    // Same E014 FactAdd shape as `build_intent_heavy_input` so each
+    // candidate fires a FixIntent and populates the cache. One portion
+    // per line; no prose interleaving so the document stays compact and
+    // the scanner emits all `candidate_count` portions in one pass.
+    let block = concat!(
+        "(//JOINT S AUS CAN USA)\n",
+        "(//JOINT S AUS GBR USA)\n",
+        "(//JOINT S CAN GBR USA)\n",
+        "(//JOINT C AUS NZL USA)\n",
+        "(//JOINT C CAN NZL USA)\n",
+    );
+    let block_bytes = block.as_bytes();
+    // 5 portions per block — round up so we reach at least candidate_count.
+    let block_count = candidate_count.div_ceil(5);
+    let mut input = Vec::with_capacity(block_bytes.len() * block_count);
+    for _ in 0..block_count {
+        input.extend_from_slice(block_bytes);
+    }
+    input
+}
+
+fn lint_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
+    let input = build_parsed_markings_cache_stress_input(1000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pin strict recognizer so the cache stress
+    // measurement isolates the (insert + lookup) cost from the
+    // dispatcher's decoder fallback. Issue #432.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_parsed_markings_cache_stress", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
 criterion_group!(
     benches,
     lint_latency_benchmark,
@@ -676,6 +736,7 @@ criterion_group!(
     lint_portion_dense_benchmark,
     lint_high_candidate_count_benchmark,
     lint_intent_heavy_benchmark,
+    lint_parsed_markings_cache_stress_benchmark,
     decoder_deep_scan_mangled_benchmark,
     decoder_clean_input_through_fallback_benchmark,
 );

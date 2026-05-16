@@ -647,7 +647,7 @@ impl Engine {
         &self,
         source: &[u8],
         opts: &LintOptions,
-    ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
+    ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
         // Public entry point — no pre-pass-1 cache is available
         // outside the two-pass fix orchestrator. Delegates to the
         // cache-aware path with `None`.
@@ -670,7 +670,7 @@ impl Engine {
         source: &[u8],
         opts: &LintOptions,
         pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
-    ) -> (LintResult, HashMap<Span, marque_capco::CapcoMarking>) {
+    ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
         use marque_core::Scanner;
         use marque_ism::{MarkingType, PageContext};
         use marque_rules::RuleContext;
@@ -685,7 +685,7 @@ impl Engine {
                     truncated: true,
                     ..Default::default()
                 },
-                HashMap::new(),
+                Vec::new(),
             );
         }
 
@@ -727,7 +727,18 @@ impl Engine {
         // `synthesize_intent_only_fixes` reads the cache only for
         // FixIntent-bearing diagnostics, so the gate matches the
         // consumer exactly.
-        let mut parsed_markings: HashMap<Span, marque_capco::CapcoMarking> = HashMap::new();
+        //
+        // Storage shape (issue #432): a sorted `Vec<(Span, _)>` rather
+        // than a `HashMap`. Candidates traverse in source order, so
+        // pushes naturally keep the vector sorted by `Span.start` (the
+        // scanner emits disjoint non-overlapping spans with strictly
+        // increasing starts). Point lookups go through binary search
+        // on `Span.start`; containment scans stay linear (defect path,
+        // <100 markings typical per `find_containing_marking` doc).
+        // Cache-locality + no SipHash + no bucket traversal — measured
+        // worth it on the high-candidate stress bench
+        // (`lint_parsed_markings_cache_stress`).
+        let mut parsed_markings: Vec<(Span, marque_capco::CapcoMarking)> = Vec::new();
 
         // corrections_arc was built once at Engine construction; each clone here
         // is an O(1) refcount bump.
@@ -1511,10 +1522,10 @@ impl Engine {
                 .any(|d| d.fix.is_some());
             if candidate.kind == MarkingType::Portion {
                 if intent_emitted {
-                    parsed_markings.insert(
+                    parsed_markings.push((
                         candidate.span,
                         marque_capco::CapcoMarking(attrs.clone(), marking.1),
-                    );
+                    ));
                     page_context.add_portion(attrs);
                 } else {
                     page_context.add_portion(attrs);
@@ -1528,7 +1539,7 @@ impl Engine {
                 page_marking_arc = None;
             } else if intent_emitted {
                 parsed_markings
-                    .insert(candidate.span, marque_capco::CapcoMarking(attrs, marking.1));
+                    .push((candidate.span, marque_capco::CapcoMarking(attrs, marking.1)));
             }
         }
 
@@ -2130,9 +2141,10 @@ impl<'engine> TwoPassFixer<'engine> {
         // `pass2_diags` partition directly.
         //
         // CanonicalAttrs is owned (no `<'src>` parameter), and
-        // parsed_markings is `HashMap<Span, CapcoMarking>`. Moving
-        // it in both branches keeps both arms producing the same
-        // owned type — no `Cow`, no clone (rust pre-flight Q3).
+        // parsed_markings is `Vec<(Span, CapcoMarking)>` (issue
+        // #432 swapped the type from `HashMap` to a sorted `Vec`).
+        // Moving it in both branches keeps both arms producing the
+        // same owned type — no `Cow`, no clone (rust pre-flight Q3).
         //
         // FR-023 (partial — full reshape-aware disambiguation lands
         // in PR 7c with the pre-pass-1 attrs cache + the
@@ -2397,7 +2409,7 @@ impl<'engine> TwoPassFixer<'engine> {
     fn run_pass1_localized(
         &self,
         effective_source: &[u8],
-        parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+        parsed_markings: &[(Span, marque_capco::CapcoMarking)],
         pass1_diags: &[&Diagnostic<CapcoScheme>],
         lint: &LintResult,
     ) -> Result<Pass1Result, EngineError> {
@@ -2528,7 +2540,7 @@ impl<'engine> TwoPassFixer<'engine> {
     fn run_pass2_whole_marking(
         &self,
         pass2_source: &[u8],
-        parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+        parsed_markings: &[(Span, marque_capco::CapcoMarking)],
         pass2_diags: &[&Diagnostic<CapcoScheme>],
         pass1_applied_keys: &HashSet<(RuleId, Span)>,
         lint: &LintResult,
@@ -2697,7 +2709,7 @@ impl<'engine> TwoPassFixer<'engine> {
     fn populate_pre_pass_1_cache(
         &self,
         pass1_applied: &[AppliedFix<CapcoScheme>],
-        parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+        parsed_markings: &[(Span, marque_capco::CapcoMarking)],
     ) -> PrePass1Cache {
         let mut cache: PrePass1Cache = SmallVec::new();
         if pass1_applied.is_empty() {
@@ -2732,7 +2744,7 @@ impl<'engine> TwoPassFixer<'engine> {
             if cache.iter().any(|(span, _)| *span == marking_span) {
                 continue;
             }
-            let Some(marking) = parsed_markings.get(&marking_span) else {
+            let Some(marking) = lookup_marking(parsed_markings, marking_span) else {
                 continue;
             };
             cache.push((marking_span, marking.0.clone()));
@@ -2990,19 +3002,46 @@ fn apply_fr023_and_i18(
     out
 }
 
-/// Find the marking span (key in `parsed_markings`) whose byte range
-/// contains `fix_span`. Linear scan over the markings table — typical
-/// documents have <100 markings and this is the defect path (a
-/// well-behaved Localized rule emits sub-token spans by
-/// construction), so no binary-search optimization is justified.
+/// Find the marking span (a key in the sorted `parsed_markings`
+/// slice) whose byte range contains `fix_span`. Linear scan over the
+/// markings table — typical documents have <100 markings and this is
+/// the defect path (a well-behaved Localized rule emits sub-token
+/// spans by construction), so no binary-search optimization is
+/// justified.
+///
+/// The slice is sorted by `Span.start` because the scanner emits
+/// disjoint non-overlapping candidates in source order; this function
+/// does not rely on that order for correctness, but a future
+/// containment-scan optimization could (e.g., `partition_point`
+/// against `start <= fix_span.start`).
 fn find_containing_marking(
-    parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
     fix_span: Span,
 ) -> Option<Span> {
     parsed_markings
-        .keys()
-        .copied()
+        .iter()
+        .map(|(s, _)| *s)
         .find(|marking_span| span_is_within_marking(fix_span, *marking_span))
+}
+
+/// Point lookup for the recognized marking at exactly `span`.
+///
+/// `parsed_markings` is sorted by `Span.start` because the scanner
+/// emits disjoint non-overlapping candidates in source order, so
+/// binary searching on `Span.start` is sound and finds the unique
+/// entry (if any). The post-search equality check protects the
+/// (currently impossible by construction) case where two cache
+/// entries share a start — preserving the prior `HashMap`'s
+/// full-`Span`-equality lookup semantics exactly.
+fn lookup_marking(
+    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
+    span: Span,
+) -> Option<&marque_capco::CapcoMarking> {
+    let idx = parsed_markings
+        .binary_search_by_key(&span.start, |(s, _)| s.start)
+        .ok()?;
+    let (s, m) = &parsed_markings[idx];
+    if *s == span { Some(m) } else { None }
 }
 
 /// FR-016 sort + C-1 dedup walk extracted into a helper so pass-1
@@ -3170,7 +3209,7 @@ fn engine_promotion_token() -> EnginePromotionToken {
 /// copied into the audit record — Constitution V Principle V (G13).
 fn synthesize_fixes(
     scheme: &CapcoScheme,
-    parsed_markings: &HashMap<Span, marque_capco::CapcoMarking>,
+    parsed_markings: &[(Span, marque_capco::CapcoMarking)],
     source: &[u8],
     diagnostics: &[&marque_rules::Diagnostic<CapcoScheme>],
     threshold: f32,
@@ -3231,7 +3270,7 @@ fn synthesize_fixes(
         // candidate. The cache is populated by
         // `lint_with_options_internal` so the marking here is
         // byte-identical to the one the rule fired against.
-        let Some(marking) = parsed_markings.get(&cspan) else {
+        let Some(marking) = lookup_marking(parsed_markings, cspan) else {
             tracing::warn!(
                 target: "marque_engine::fix_synth",
                 start = start,
@@ -6269,15 +6308,16 @@ mod tests {
         // candidate), so a fixture that exercises the cache via
         // `lint_with_options_internal` would need a FixIntent-emitting
         // input. The function under test (`find_containing_marking`)
-        // keys on `Span` only — building the map directly tests the
+        // keys on `Span` only — building the slice directly tests the
         // lookup semantics without coupling to engine cache policy.
-        let mut markings: std::collections::HashMap<Span, marque_capco::CapcoMarking> =
-            std::collections::HashMap::new();
+        // Issue #432: cache type swapped from `HashMap<Span, ...>` to
+        // `Vec<(Span, ...)>` sorted by `Span.start`; this fixture has
+        // one entry so order is trivial.
         let marking_span = Span::new(0, 13);
-        markings.insert(
+        let markings: Vec<(Span, marque_capco::CapcoMarking)> = vec![(
             marking_span,
             marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
-        );
+        )];
         // A sub-span inside marking_span resolves to marking_span.
         let sub = Span::new(marking_span.start, marking_span.start + 1);
         let found = super::find_containing_marking(&markings, sub);
@@ -6286,16 +6326,45 @@ mod tests {
 
     #[test]
     fn find_containing_marking_returns_none_when_no_marking_contains() {
-        let mut markings: std::collections::HashMap<Span, marque_capco::CapcoMarking> =
-            std::collections::HashMap::new();
-        markings.insert(
+        let markings: Vec<(Span, marque_capco::CapcoMarking)> = vec![(
             Span::new(0, 13),
             marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
-        );
+        )];
         // Way past the inserted marking span — no marking contains it.
         let far = Span::new(10_000, 10_001);
         let found = super::find_containing_marking(&markings, far);
         assert!(found.is_none());
+    }
+
+    #[test]
+    fn lookup_marking_finds_exact_span() {
+        // Pin the binary-search-by-start lookup semantics — exact
+        // `Span` match returns the entry; mismatched end returns None.
+        // Issue #432.
+        let span_a = Span::new(0, 13);
+        let span_b = Span::new(20, 35);
+        let markings: Vec<(Span, marque_capco::CapcoMarking)> = vec![
+            (
+                span_a,
+                marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+            ),
+            (
+                span_b,
+                marque_capco::CapcoMarking::new(CanonicalAttrs::default()),
+            ),
+        ];
+
+        assert!(super::lookup_marking(&markings, span_a).is_some());
+        assert!(super::lookup_marking(&markings, span_b).is_some());
+        // Same start, different end — does NOT match.
+        assert!(super::lookup_marking(&markings, Span::new(0, 12)).is_none());
+        // Start not in the table — does NOT match.
+        assert!(super::lookup_marking(&markings, Span::new(5, 10)).is_none());
+        // Between two entries — binary search lands on an adjacent
+        // entry, the equality post-check rejects. Pins the case that
+        // would silently regress if the search key changed from
+        // `s.start` to something else.
+        assert!(super::lookup_marking(&markings, Span::new(14, 19)).is_none());
     }
 
     // -------------------------------------------------------------------
