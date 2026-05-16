@@ -103,6 +103,14 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("failed to bind MARQUE_ADDR — is the port already in use?");
+
+    // Whitepaper §10.2 — Landlock process sandbox.
+    // Applied after bind (so the listening socket is already open) and before
+    // the first request is accepted.  Graceful: logs a warning and continues
+    // if the kernel does not support Landlock.
+    let sandbox_status = marque_server::sandbox::apply(&cwd);
+    tracing::info!(sandbox = ?sandbox_status, "process sandbox status");
+
     axum::serve(listener, app)
         .await
         .expect("server exited with error");

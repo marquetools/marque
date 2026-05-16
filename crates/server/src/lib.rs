@@ -37,6 +37,8 @@
 //! naming the channel and the endpoint path. The attempted override
 //! contents are never materialized, stored, or logged.
 
+pub mod sandbox;
+
 use axum::{
     Router,
     body::Bytes,
