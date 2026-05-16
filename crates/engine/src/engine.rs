@@ -703,12 +703,21 @@ impl Engine {
         let candidates_total = candidates.len();
         let mut candidates_processed: usize = 0;
 
-        // Cache of successfully-recognized markings, keyed by the
-        // scanner candidate's source-relative `Span`. Populated below
-        // immediately after each `Parsed::Unambiguous` recognition and
-        // consumed by `synthesize_intent_only_fixes` so the synthesis
-        // path looks up the same marking the lint phase saw — avoiding
-        // the `ParseContext` divergence Copilot finding #2 flagged.
+        // Cache of recognized markings, keyed by the scanner
+        // candidate's source-relative `Span`. Consumed by
+        // `synthesize_intent_only_fixes` so the synthesis path looks
+        // up the same marking the lint phase saw — avoiding the
+        // `ParseContext` divergence Copilot PR #369 finding #2
+        // flagged.
+        //
+        // Population policy (issue #433): the cache populates lazily
+        // at the END of each candidate's iteration, gated on
+        // `d.fix.is_some()` for any diagnostic that iteration
+        // produced. Candidates that emit only `text_correction`,
+        // no-fix, or no diagnostics leave the cache untouched —
+        // `synthesize_intent_only_fixes` reads the cache only for
+        // FixIntent-bearing diagnostics, so the gate matches the
+        // consumer exactly.
         let mut parsed_markings: HashMap<Span, marque_capco::CapcoMarking> = HashMap::new();
 
         // corrections_arc was built once at Engine construction; each clone here
@@ -2200,8 +2209,8 @@ impl<'engine> TwoPassFixer<'engine> {
                 // Localized rule ever emits a FixIntent, the sentinel
                 // will continue to behave correctly — the cache will
                 // populate for that candidate.
-                let pre_pass1_had_markings = !parsed_markings.is_empty();
-                if post_pass1_had_no_markings && pre_pass1_had_markings {
+                let pre_pass1_had_fix_intent_markings = !parsed_markings.is_empty();
+                if post_pass1_had_no_markings && pre_pass1_had_fix_intent_markings {
                     let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
                     let failure_span = Span::new(0, pass1.post_buffer.len());
                     let r002 = build_r002_diagnostic(contributing, failure_span);

@@ -579,44 +579,54 @@ fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
 // Intent-heavy advisory bench (perf/defer-parsed-markings-clone, issue #433)
 // ---------------------------------------------------------------------------
 //
-// `lint_intent_heavy_10kb` measures the per-candidate cost on an input
-// shape where every banner candidate fires a class-floor FixIntent
-// (E058 catalog). This is the input shape where issue #433's
-// deferred `parsed_markings` insert still pays the cost — the cache
-// is populated on every candidate because every candidate emits a
-// FixIntent diagnostic. Pair with `lint_10kb` (intent-light, typical)
-// to measure both shapes: #433's win lands on intent-light inputs and
+// `lint_intent_heavy_10kb` measures the per-candidate cost on an
+// input shape where every JOINT portion fires an E014 `FactAdd`
+// FixIntent — JOINT participants must appear in the REL TO list per
+// §H.3 p57, and the rule emits one FixIntent per missing co-owner.
+// This is the input shape where issue #433's deferred
+// `parsed_markings` insert still pays the cost: every candidate
+// emits a FixIntent-bearing diagnostic, so the cache populates on
+// every candidate. Pair with `lint_10kb` (intent-light, typical) to
+// measure both shapes — #433's win lands on intent-light inputs and
 // should not regress this intent-heavy worst case.
+//
+// E058 class-floor diagnostics carry `fix: None` today
+// (`CapcoScheme::fix_intent_by_name` returns `None` for those rows
+// — see scheme.rs), so a class-floor-only fixture would measure an
+// intent-light path even though it triggers lots of diagnostics.
+// E014 is the right driver for the intent-heavy worst case because
+// `e014_add_country_intent` produces a `FactAdd` `FixIntent` per
+// missing JOINT participant (verified against
+// `crates/capco/tests/e014_fact_add_engine.rs`).
 //
 // Advisory bench — no entry in `benches/baseline.json`, same pattern
 // as `lint_portion_dense` / `lint_high_candidate_count`. Report the
 // number in PRs that touch the lint hot loop's cache discipline.
 
 fn build_intent_heavy_input(target_bytes: usize) -> Vec<u8> {
-    // Banner shapes that each fire a class-floor FixIntent under the
-    // E058 catalog (sourced from `crates/capco/tests/class_floor_catalog.rs`):
-    //   - `SECRET//HCS-P JJJ//ORCON/NOFORN` — HCS-P at S, requires TS
-    //   - `SECRET//SI-G//ORCON/NOFORN`      — SI-G  at S, requires TS
-    //   - `SECRET//TK-BLFH//NOFORN`         — TK-BLFH at S, requires TS
-    //   - `CONFIDENTIAL//HCS-O//ORCON/NOFORN` — HCS-O at C, requires S
-    //   - `CONFIDENTIAL//RSV-ABC//NOFORN`   — RSV at C, requires S
+    // JOINT portion shapes that each fire E014 `FactAdd` FixIntents
+    // — every JOINT co-owner missing from `REL TO` produces one
+    // FixIntent-bearing diagnostic. Mix of two- and three-country
+    // JOINT lists keeps the per-candidate intent count >0.
     let block = concat!(
-        "SECRET//HCS-P JJJ//ORCON/NOFORN\n",
-        "SECRET//SI-G//ORCON/NOFORN\n",
-        "SECRET//TK-BLFH//NOFORN\n",
-        "CONFIDENTIAL//HCS-O//ORCON/NOFORN\n",
-        "CONFIDENTIAL//RSV-ABC//NOFORN\n",
+        "(//JOINT S AUS CAN USA)\n",
+        "(//JOINT S AUS GBR USA)\n",
+        "(//JOINT S CAN GBR USA)\n",
+        "(//JOINT C AUS NZL USA)\n",
+        "(//JOINT C CAN NZL USA)\n",
     );
     let block_bytes = block.as_bytes();
     let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
     while input.len() < target_bytes {
         input.extend_from_slice(block_bytes);
     }
-    // Trim to a block-aligned boundary so we never split a banner
-    // mid-token, then pad with spaces to reach exactly `target_bytes`.
-    // Both steps do real work: with block_bytes.len() ≈ 152 and
-    // target_bytes = 10_000, the truncate drops the overshoot to
-    // 9880 (65 complete blocks × 152) and the resize pads 120 bytes.
+    // Trim to a block-aligned boundary so we never split a portion
+    // mid-token, then pad with spaces to reach exactly
+    // `target_bytes`. Both steps do real work: the `while` loop
+    // overshoots `target_bytes` by up to `block_bytes.len() - 1`
+    // bytes, the truncate drops that overshoot to a block-aligned
+    // length ≤ `target_bytes`, and the resize pads any remaining
+    // gap with spaces.
     let complete_blocks = target_bytes / block_bytes.len();
     input.truncate(complete_blocks.max(1) * block_bytes.len());
     input.resize(target_bytes, b' ');
