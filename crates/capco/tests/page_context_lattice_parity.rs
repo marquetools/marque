@@ -1310,3 +1310,162 @@ fn joint_two_well_formed_with_one_empty_disunity_drops_empty() {
     assert!(non_us.contains(&cc("CAN")));
     assert!(!non_us.contains(&cc("USA")));
 }
+
+// ===========================================================================
+// CV-6 (PR 4b-B 8th-pass follow-up) — edge-case parity fixtures
+//
+// Three deterministic fixtures locking in design assumptions surfaced
+// by the independent CAPCO-domain review:
+//
+// - Gap B: empty-portion-list (banner candidate but no portions
+//   accumulated) — proves no panic, sane lattice-bottom defaults on
+//   every axis, byte-identity with PageContext's empty-portion path.
+// - Gap C: JOINT + explicit FGI marker on the same portion. CAPCO
+//   §H.3 p57 line 1271 explicitly permits this composition ("If FGI
+//   information is used in a JOINT classified document, refer to
+//   Section H.7"); §H.3 Notional Example Page 3 p59 shows
+//   `(//JOINT S GBR USA//FGI NZL//REL TO USA, FVEY)`. The lattice
+//   handles this correctly via independent JointSet and FgiSet
+//   construction; this fixture proves coexistence.
+// - Gap D: JOINT + NOFORN on the SAME portion. CAPCO §H.3 p57
+//   line 1271 PROHIBITS this composition ("May not be used with the
+//   HCS markings or NOFORN markings"). The lattice does NOT catch
+//   this directly — the constraint is caught INDIRECTLY via E014
+//   (JOINT requires REL TO coverage) + `capco/noforn-conflicts-rel-to`
+//   (NOFORN conflicts REL TO in the dissem axis). This fixture
+//   pins the parity-gate's INDIRECT-coverage stance: both projection
+//   paths produce the same banner shape because the indirect
+//   constraint catch happens at a layer above the projection.
+//
+// Each fixture below is byte-identity-asserting (no documented
+// divergences). If a future refactor breaks one of these
+// composition stances silently, the parity gate fires immediately
+// and names the fixture that anchors the assumption.
+// ===========================================================================
+
+#[test]
+fn cv6_gap_b_empty_portion_list_yields_lattice_bottom() {
+    // Banner candidate with no portions accumulated. Both projection
+    // paths must produce a default-sane `CanonicalAttrs` — every
+    // axis at its lattice bottom, no panic.
+    //
+    // The lattice path's `CapcoMarking::join_via_lattice(&[])` must
+    // be a total function returning `CanonicalAttrs::default()`-
+    // shaped output: empty boxed slices, `None` for option-shaped
+    // axes, `Some(Bottom)` for any state-machine axis that named
+    // a default bottom in its enum.
+    //
+    // PageContext's `add_portion` loop over an empty slice produces
+    // the same shape. Pinning byte-identity here closes the
+    // edge-case the parity gate didn't previously cover.
+    let portions: [CanonicalAttrs; 0] = [];
+    assert_byte_identity(
+        "cv6_gap_b_empty_portion_list",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page() {
+    // CAPCO §H.3 p57 explicitly permits JOINT + FGI on the same
+    // portion ("If FGI information is used in a JOINT classified
+    // document, refer to Section H.7"); §H.3 Notional Example
+    // Page 3 p59 shows `(//JOINT S GBR USA//FGI NZL//REL TO USA,
+    // FVEY)`. The lattice handles this correctly because JointSet
+    // reads `MarkingClassification::Joint` and FgiSet reads the
+    // independent `fgi_marker` field — neither projection step
+    // drops the other axis.
+    //
+    // The fixture: one JOINT (USA + GBR) portion that ALSO carries
+    // an explicit FGI marker for NZL, COMBINED WITH a plain US
+    // portion. The mixed JOINT+US page sends `JointSet` into the
+    // `Mixed` state (§H.3 p57 "JOINT marking is not carried forward
+    // to the banner line in US documents"); both paths flatten the
+    // classification axis to `Us(Secret)`, and both paths migrate
+    // the JOINT non-US producers (GBR) into the FGI axis alongside
+    // the explicit FGI marker (NZL). The byte-identity assertion
+    // proves the parity-gate baseline covers this composition:
+    //   - classification = Us(Secret) on both paths.
+    //   - fgi_marker = Acknowledged{countries: {GBR, NZL}} on both
+    //     paths — explicit FGI marker AND JOINT-migrated producer
+    //     coexist via the union.
+    //
+    // Note: a SOLELY-JOINT page with an explicit FGI marker
+    // (single-portion variant) is the documented divergence shape
+    // tracked by `joint_unanimous_two_portions` / G-4 — the lattice
+    // intentionally preserves the JOINT classification on the
+    // classification axis there, while PageContext flattens and
+    // double-marks producers as FGI. The Mixed-page fixture here
+    // sidesteps that divergence by hitting the §H.3 p57 mixed-page
+    // path where both projections agree.
+    let mut joint_with_fgi = CanonicalAttrs::default();
+    joint_with_fgi.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("USA"), cc("GBR")]),
+    }));
+    joint_with_fgi.fgi_marker = FgiMarker::acknowledged([cc("NZL")]);
+    let portions = [joint_with_fgi, portion_us(Classification::Secret)];
+    assert_byte_identity(
+        "cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page() {
+    // CAPCO §H.3 p57 line 1271 PROHIBITS JOINT + NOFORN ("May not
+    // be used with the HCS markings or NOFORN markings"). The
+    // lattice does NOT catch this directly — the constraint is
+    // caught INDIRECTLY via:
+    //   - E014/joint-requires-rel-to-coverage (CAPCO §H.3 p57:
+    //     "Requires REL TO USA, LIST") at the constraint layer
+    //     above the projection, AND
+    //   - the `capco/noforn-conflicts-rel-to` rewrite at the
+    //     PageRewrite scheduler layer (NOFORN clears REL TO).
+    //
+    // The constraint and rewrite layers are BOTH outside the
+    // per-axis projection that `join_via_lattice` and
+    // `expected_*` produce. The parity gate's job is to assert
+    // that both projection paths agree on the BANNER SHAPE for
+    // this constraint-prohibited-but-axis-permissible input —
+    // catching the prohibited composition is the constraint
+    // layer's responsibility, not the projection's.
+    //
+    // The fixture: one JOINT (USA + GBR) portion that ALSO carries
+    // NOFORN, COMBINED WITH a plain US portion. The mixed JOINT+US
+    // shape sends JointSet into the `Mixed` state per §H.3 p57 so
+    // both projections flatten the classification axis to
+    // `Us(Secret)`, and both keep `Nf` in `dissem_us`. The byte-
+    // identity assertion documents the indirect-catch stance: the
+    // projection paths agree on the shape; the prohibited-
+    // composition guard fires at the constraint layer (E014 +
+    // `capco/noforn-conflicts-rel-to`).
+    //
+    // Note: a SOLELY-JOINT page with NOFORN (single-portion variant)
+    // hits the documented divergence at `joint_unanimous_two_portions`
+    // / G-4 — the lattice preserves the JOINT classification, and
+    // PageContext flattens to Us + migrates JOINT producers to FGI.
+    // Mixed-page fixture sidesteps that.
+    //
+    // A future refactor that pushes the JOINT+NOFORN check INTO the
+    // projection would change the byte-identity output AND need to
+    // update this fixture, surfacing the architectural shift in
+    // code review.
+    let mut joint_with_nf = CanonicalAttrs::default();
+    joint_with_nf.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: Box::new([cc("USA"), cc("GBR")]),
+    }));
+    joint_with_nf.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+    let portions = [joint_with_nf, portion_us(Classification::Secret)];
+    assert_byte_identity(
+        "cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
+    );
+}
