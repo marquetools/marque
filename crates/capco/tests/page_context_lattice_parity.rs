@@ -314,21 +314,22 @@ fn relido_single_portion_with_relido_drops() {
 }
 
 #[test]
-fn relido_plus_nf_noforn_dominates_documented_divergence() {
-    // DIVERGENCE: §D.2 Table 3 row 2 + §H.8 p145: "NOFORN cannot be
-    // used with REL TO / RELIDO / DISPLAY ONLY." The lattice path
-    // correctly drops RELIDO when NOFORN is present (DissemSet
-    // overlay 3 — NOFORN dominates). The PageContext path keeps
-    // both — its `expected_dissem_us` does a plain union without
-    // the supersession overlay.
+fn relido_plus_nf_noforn_dominates_parity() {
+    // PARITY (post-staging-convergence): §D.2 Table 3 row 2 + §H.8
+    // p145: "NOFORN cannot be used with REL TO / RELIDO / DISPLAY
+    // ONLY." Both paths now correctly drop RELIDO when NOFORN is
+    // present.
     //
-    // This is a deliberate parity divergence the lattice path
-    // CORRECTS. PageContext is bug-shaped here per §H.8 p145; the
-    // fix migrates to the lattice path when PR 4b-D flips
-    // `CapcoScheme::project(Scope::Page, ...)`.
+    // Pre-staging-convergence this was a documented divergence —
+    // PageContext kept Relido via a plain union without the
+    // supersession overlay, while the lattice path's `DissemSet`
+    // overlay 3 dropped it per §H.8 p145. Staging's PageContext
+    // changes (DISPLAY ONLY Phase 2 / page-rewrite
+    // `capco/noforn-clears-fdr-family`) implemented the same
+    // supersession on the PageContext side, restoring parity.
     //
     // Citation: §D.2 Table 3 rows 1-2 + §H.8 p145 (verified
-    // 2026-05-15 against CAPCO-2016.md).
+    // 2026-05-16 against CAPCO-2016.md).
     let portions = [
         portion_with_dissem_us(
             Classification::Secret,
@@ -339,16 +340,11 @@ fn relido_plus_nf_noforn_dominates_documented_divergence() {
             &[DissemControl::Nf, DissemControl::Relido],
         ),
     ];
-    let pc = project_via_page_context(&portions);
-    let lat = project_via_lattice(&portions);
-    // PageContext keeps both NF + Relido (incorrect per §H.8 p145).
-    assert!(pc.dissem_us.contains(&DissemControl::Nf));
-    assert!(pc.dissem_us.contains(&DissemControl::Relido));
-    // Lattice path correctly drops Relido (per §H.8 p145 supersession).
-    assert!(lat.dissem_us.contains(&DissemControl::Nf));
-    assert!(
-        !lat.dissem_us.contains(&DissemControl::Relido),
-        "lattice path must drop Relido when NOFORN present per §H.8 p145"
+    assert_byte_identity(
+        "relido_plus_nf_noforn_dominates_parity",
+        &project_via_page_context(&portions),
+        &project_via_lattice(&portions),
+        &[],
     );
 }
 
@@ -373,20 +369,21 @@ fn rel_to_intersect_common() {
 
 #[test]
 fn rel_to_intersect_empty() {
-    // DIVERGENCE (P-2 8th-pass fix): §D.2 Table 3 row 9 states
+    // PARITY (post-staging-convergence): §D.2 Table 3 row 9 states
     // "REL TO [USA, LIST] | REL TO [USA, LIST] (with no common [LIST]
     // value(s)) | NOFORN". When two REL TO portions share no common
     // country list, the result is NOFORN on the dissem_us axis.
     //
-    // The lattice path (via RelToBlock::Empty → is_empty_intersection()
-    // check in scheme.rs project()) now correctly injects NOFORN into
-    // dissem_us per §D.2 p28-30 Table 3 row 9. The PageContext path
-    // does NOT inject NOFORN here — it is bug-shaped; the fix migrates
-    // to the lattice path when PR 4b-D flips CapcoScheme::project(
-    // Scope::Page, ...).
+    // Pre-staging-convergence this was a documented divergence — the
+    // lattice path (via RelToBlock::Empty → is_empty_intersection()
+    // check in scheme.rs project()) injected NOFORN, while the
+    // PageContext path did not. Staging's PageContext changes
+    // (DISPLAY ONLY Phase 2 / page-rewrite `capco/noforn-clears-
+    // fdr-family`) implemented the same NF-on-empty-REL-TO injection
+    // path, restoring parity.
     //
-    // Both paths produce empty rel_to (correct — no common members).
-    // The divergence is: lattice dissem_us=[Nf], PageContext dissem_us=[].
+    // Both paths now produce empty rel_to (correct — no common
+    // members) AND dissem_us = [Nf] per §D.2 row 9.
     //
     // Citation: §D.2 p28-30 Table 3 row 9 (verified 2026-05-16 against
     // CAPCO-2016.md).
@@ -398,7 +395,7 @@ fn rel_to_intersect_empty() {
         "rel_to_intersect_empty",
         &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &["dissem_us"],
+        &[],
     );
 }
 
@@ -1801,13 +1798,27 @@ fn display_only_single_portion_parity() {
 
 #[test]
 fn display_only_two_portions_disjoint_lists_parity() {
+    // DOCUMENTED DIVERGENCE (post-DISPLAY-ONLY-Phase-2):
     // §D.2 p28-30 Table 3 row 20: two DISPLAY ONLY portions with
-    // disjoint [LIST]s → NOFORN at the banner. Both paths produce
-    // `display_only_to = Box<[]>` today (Phase-2 deferred). This
-    // fixture gates that both paths agree on the degenerate (no
-    // common-element) shape. When Phase 2 lands, both paths should
-    // produce NOFORN in `dissem_us` and the `display_only_to` axis
-    // should carry no entries (NOFORN supersedes the axis per row 20).
+    // disjoint [LIST]s → NOFORN at the banner.
+    //
+    // Pre-DISPLAY-ONLY-Phase-2 both paths produced empty
+    // `display_only_to` and no NF injection (deferred). Staging
+    // landed PR #449 (DISPLAY ONLY Phase 2 banner roll-up) which
+    // adds the §D.2 row 20 NF injection to PageContext via the
+    // `capco/noforn-clears-fdr-family` page-rewrite. The lattice
+    // path (`CapcoMarking::join_via_lattice`) does NOT yet implement
+    // DISPLAY ONLY axis aggregation, so it skips the corresponding
+    // NF injection — the divergence is `pc=[Nf], lat=[]` on
+    // `dissem_us`.
+    //
+    // This is a TEMPORARY divergence — lattice path catches up when
+    // PR 4b-C/4b-D adds the DISPLAY ONLY axis aggregator + the
+    // mirrored NF injection. Tracked alongside issue #461
+    // (Phase::PageFinalization scope).
+    //
+    // Citation: §D.2 p28-30 Table 3 row 20 (verified 2026-05-16
+    // against CAPCO-2016.md).
     let mut p1 = portion_us(Classification::Secret);
     p1.display_only_to = vec![cc("IRQ")].into_boxed_slice();
     let mut p2 = portion_us(Classification::Secret);
@@ -1817,7 +1828,8 @@ fn display_only_two_portions_disjoint_lists_parity() {
         "display_only_two_portions_disjoint_lists_parity",
         &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        // Phase-2 deferred: both produce Box<[]>; no divergence today.
-        &[],
+        // Lattice path lags PageContext for DISPLAY ONLY §D.2 row 20
+        // NF injection — see fixture doc above.
+        &["dissem_us"],
     );
 }
