@@ -1102,6 +1102,12 @@ fn noop_action(_marking: &mut CapcoMarking) {}
 fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     let mut out = CanonicalAttrs::default();
 
+    // Destructure `expected_non_ic_dissem` up front so both the
+    // non-IC dissem assignment below AND the DISPLAY ONLY defensive
+    // clear (which fires when a later `*-implies-noforn` rewrite
+    // will inject NOFORN at banner) see the same `needs_nf` flag.
+    let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
+
     out.classification = ctx
         .expected_classification()
         .map(marque_ism::MarkingClassification::Us);
@@ -1120,19 +1126,23 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     // Cross-axis intersection over (REL TO ∪ DO) with banner-REL-TO
     // and USA subtraction — see `PageContext::expected_display_only`.
     //
-    // This must also respect deferred NOFORN injection handled by the
-    // page-rewrite layer below: NOFORN and DISPLAY ONLY cannot coexist
-    // in the projected banner, so when `_needs_nf` indicates a later
-    // `*-implies-noforn` rewrite will fire we clear DISPLAY ONLY here.
+    // Belt-and-suspenders defense against deferred NOFORN injection
+    // handled by the page-rewrite layer below: per §H.8 p154 + §D.2
+    // Table 3 row 2, NOFORN and DISPLAY ONLY cannot coexist in the
+    // projected banner. `expected_display_only` already short-
+    // circuits to empty when `needs_nf` is true (NODIS/EXDIS/SBU-NF/
+    // LES-NF), but this defensive `.clear()` keeps the scheme-layer
+    // invariant explicit and survives a future refactor that drops
+    // the PageContext-side short-circuit.
     let mut display_only_to = ctx.expected_display_only();
-    if _needs_nf {
+    if needs_nf {
         display_only_to.clear();
     }
     out.display_only_to = display_only_to.into_boxed_slice();
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
-    // `_needs_nf` is consumed above to suppress DISPLAY ONLY when a
-    // later rewrite will inject NOFORN.
+    // `needs_nf` is also consumed above to suppress DISPLAY ONLY when
+    // a later rewrite will inject NOFORN.
     // NOFORN injection into `out.dissem_us` (post PR 9b / FR-046 split;
     // the field was `out.dissem_controls` pre-split) for the non-IC
     // dissem trigger family (SBU-NF/LES-NF classified-context split, and
@@ -1148,7 +1158,6 @@ fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     // the line above) is consistent with the post-rewrite state via the
     // `expected_rel_to` short-circuit that fires whenever `needs_nf` is
     // true.
-    let (non_ic, _needs_nf) = ctx.expected_non_ic_dissem();
     out.non_ic_dissem = non_ic.into_boxed_slice();
 
     out
