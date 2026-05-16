@@ -85,7 +85,7 @@
 //!   the engine applies them through the normal `Diagnostic` /
 //!   `FixProposal` path with `FixSource::DecoderPosterior`.
 
-use std::collections::BTreeSet;
+use std::borrow::Cow;
 
 use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
@@ -925,31 +925,32 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     // K=16 ceiling spills cleanly. Each `CanonicalAttempt` is ~150 B
     // with its own inline buffers — 4 inline ≈ 600 B on the stack.
     let mut attempts: SmallVec<[CanonicalAttempt; 4]> = SmallVec::new();
-    let mut emit =
-        |bytes: Vec<u8>, features: Vec<FeatureEntry>, fix_source: marque_rules::FixSource| {
-            // Hard cap at K_MAX_CANDIDATES × 2 — guarantees the strict-parse
-            // work downstream is bounded even if new transform stages are added.
-            if attempts.len() >= K_MAX_CANDIDATES * 2 {
-                return;
-            }
-            // Dedup by the canonical byte string — different transform
-            // sequences can converge on the same output. Emit-first wins:
-            // the standard vocab-based attempts are emitted before the
-            // heuristic attempt, so a heuristic candidate with bytes that
-            // converge on a vocab-based result is dropped here, preserving
-            // the more authoritative `FixSource::DecoderPosterior`
-            // provenance.
-            if !attempts
-                .iter()
-                .any(|a| a.bytes.as_slice() == bytes.as_slice())
-            {
-                attempts.push(CanonicalAttempt {
-                    bytes: SmallVec::from_vec(bytes),
-                    features: SmallVec::from_vec(features),
-                    fix_source,
-                });
-            }
-        };
+    let mut emit = |bytes: Vec<u8>,
+                    features: SmallVec<[FeatureEntry; 4]>,
+                    fix_source: marque_rules::FixSource| {
+        // Hard cap at K_MAX_CANDIDATES × 2 — guarantees the strict-parse
+        // work downstream is bounded even if new transform stages are added.
+        if attempts.len() >= K_MAX_CANDIDATES * 2 {
+            return;
+        }
+        // Dedup by the canonical byte string — different transform
+        // sequences can converge on the same output. Emit-first wins:
+        // the standard vocab-based attempts are emitted before the
+        // heuristic attempt, so a heuristic candidate with bytes that
+        // converge on a vocab-based result is dropped here, preserving
+        // the more authoritative `FixSource::DecoderPosterior`
+        // provenance.
+        if !attempts
+            .iter()
+            .any(|a| a.bytes.as_slice() == bytes.as_slice())
+        {
+            attempts.push(CanonicalAttempt {
+                bytes: SmallVec::from_vec(bytes),
+                features,
+                fix_source,
+            });
+        }
+    };
 
     // ---- Raw: just trim + normalize delimiters/case. --------------
     let (normalized, mut delim_features) = normalize_delimiters_and_case(trimmed);
@@ -976,7 +977,7 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     //      correction would silently rewrite `RELT` → `REL` before
     //      pattern 2's header normalize could fire, and (b) REL TO
     //      trigraphs do NOT contribute to the prior in
-    //      `canonical_tokens_for` (only classification, SCI, dissem,
+    //      `for_each_canonical_token` (only classification, SCI, dissem,
     //      NIC, AEA, FGI do — see issue #186 for the corpus-weighted
     //      trigraph priors followup), so a separate fix candidate
     //      would tie with the raw on prior and lose on emit-order.
@@ -995,13 +996,13 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     //      `BaseRateCommonMarking` keeps the schema closed and
     //      composes additively with the other normalization paths
     //      that share the same id.
-    let repaired_text = match try_rel_to_structural_repair(&normalized) {
+    let repaired_text: Cow<'_, str> = match try_rel_to_structural_repair(&normalized) {
         Some(repaired) => {
             delim_features.push(FeatureEntry {
                 id: FeatureId::BaseRateCommonMarking,
                 delta: -0.3,
             });
-            repaired
+            Cow::Owned(repaired)
         }
         None => normalized,
     };
@@ -1017,13 +1018,13 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     //      penalty for the same reason as REL TO repair: a candidate
     //      that arrived clean should outrank one that needed
     //      structural cleanup when both produce the same shape.
-    let repaired_text = match try_sci_delimiter_repair(&repaired_text) {
+    let repaired_text: Cow<'_, str> = match try_sci_delimiter_repair(&repaired_text) {
         Some(repaired) => {
             delim_features.push(FeatureEntry {
                 id: FeatureId::BaseRateCommonMarking,
                 delta: -0.3,
             });
-            repaired
+            Cow::Owned(repaired)
         }
         None => repaired_text,
     };
@@ -1053,21 +1054,21 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     } else {
         MarkingType::Banner
     };
-    let repaired_text = match try_nato_fold(&repaired_text, local_kind) {
+    let repaired_text: Cow<'_, str> = match try_nato_fold(&repaired_text, local_kind) {
         Some(folded) => {
             // Delta 0.0: the fold restores a canonical abbreviated form from a
             // valid longhand variant (`(NATO S)` → `(//NS)`). This is an
             // equivalence transform, not a superseded-token penalization. A
             // negative delta here would cause `NR`/`NC` (which use US-equivalent
             // single-letter tokens `"R"`/`"C"` with high prose frequency) to fail
-            // the null-hypothesis filter even after `canonical_tokens_for` maps to
+            // the null-hypothesis filter even after `for_each_canonical_token` maps to
             // the low-prose-frequency NATO abbreviation form. The `SupersededToken`
             // feature still appears in the audit trail for provenance (T129).
             delim_features.push(FeatureEntry {
                 id: FeatureId::SupersededToken,
                 delta: 0.0,
             });
-            folded
+            Cow::Owned(folded)
         }
         None => repaired_text,
     };
@@ -1083,7 +1084,7 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     let mut features = delim_features.clone();
     features.extend(fuzzy_features.iter().copied());
     emit(
-        fuzzy_corrected.clone().into_bytes(),
+        fuzzy_corrected.as_bytes().to_vec(),
         features,
         marque_rules::FixSource::DecoderPosterior,
     );
@@ -1350,13 +1351,10 @@ pub fn diagnostic_canonical_attempts(bytes: &[u8]) -> Vec<Vec<u8>> {
 /// normalized cleanly and also resolved its tokens via fuzzy
 /// correction will still outrank a candidate that arrived dirty,
 /// but a canonical-from-the-start candidate beats both.
-fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
-    let mut features = Vec::new();
-
-    // Collapse fullwidth and spaced slash variants.
-    // The order matters: we want multi-char sequences first.
-    let mut normalized: String = text.to_owned();
-    let replacements = [
+fn normalize_delimiters_and_case(text: &str) -> (Cow<'_, str>, SmallVec<[FeatureEntry; 4]>) {
+    // Order matters: multi-char sequences first so the longer patterns
+    // win their byte ranges before the 2-char fallbacks consume them.
+    const REPLACEMENTS: &[(&str, &str)] = &[
         ("∕∕", "//"),
         (" // ", "//"),
         ("// ", "//"),
@@ -1365,40 +1363,51 @@ fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
         (" / / ", "//"),
         ("/ /", "//"),
     ];
-    let mut delim_changed = false;
-    for (from, to) in replacements {
-        if normalized.contains(from) {
-            normalized = normalized.replace(from, to);
-            delim_changed = true;
-        }
+
+    // Issue #452: short-circuit on the canonical-input common case. If
+    // none of the delimiter patterns are present AND no ASCII lowercase
+    // needs upper-casing, return the input borrowed with an empty
+    // feature list — zero allocation on the hot path through the
+    // decoder fallback.
+    let need_delim = REPLACEMENTS.iter().any(|(from, _)| text.contains(from));
+    let had_lowercase = text.bytes().any(|b| b.is_ascii_lowercase());
+
+    if !need_delim && !had_lowercase {
+        return (Cow::Borrowed(text), SmallVec::new());
     }
 
-    // Case normalization. If the input was all-lowercase or mixed-case
-    // (Title Case), uppercasing is a significant canonicalization the
-    // decoder flags (via the `BaseRateCommonMarking` feature below)
-    // so the posterior reflects that the candidate required cleanup.
-    let had_lowercase = normalized.chars().any(|c| c.is_ascii_lowercase());
+    let mut normalized = text.to_owned();
+    if need_delim {
+        for (from, to) in REPLACEMENTS {
+            if normalized.contains(from) {
+                normalized = normalized.replace(from, to);
+            }
+        }
+    }
     if had_lowercase {
+        // Case normalization. If the input was all-lowercase or
+        // mixed-case (Title Case), uppercasing is a significant
+        // canonicalization the decoder flags (via the
+        // `BaseRateCommonMarking` feature below) so the posterior
+        // reflects that the candidate required cleanup.
         normalized = normalized.to_ascii_uppercase();
     }
 
-    if delim_changed || had_lowercase {
-        // Record a `BaseRateCommonMarking` feature with a penalty
-        // delta. The feature doesn't fit into one of the sharper
-        // features (`EditDistance*`, `TokenReorder`,
-        // `SupersededToken`), but it flags that we had to massage
-        // the input — delimiters were non-canonical, or case was
-        // wrong. A small negative delta means a canonical-input
-        // candidate outranks an otherwise-equivalent normalized one,
-        // which is the intent: "arrives clean" should be preferred
-        // over "needed cleanup."
-        features.push(FeatureEntry {
-            id: FeatureId::BaseRateCommonMarking,
-            delta: -0.3,
-        });
-    }
+    // Record a `BaseRateCommonMarking` feature with a penalty delta.
+    // The feature doesn't fit into one of the sharper features
+    // (`EditDistance*`, `TokenReorder`, `SupersededToken`), but it
+    // flags that we had to massage the input — delimiters were
+    // non-canonical, or case was wrong. A small negative delta means
+    // a canonical-input candidate outranks an otherwise-equivalent
+    // normalized one, which is the intent: "arrives clean" should be
+    // preferred over "needed cleanup."
+    let mut features: SmallVec<[FeatureEntry; 4]> = SmallVec::new();
+    features.push(FeatureEntry {
+        id: FeatureId::BaseRateCommonMarking,
+        delta: -0.3,
+    });
 
-    (normalized, features)
+    (Cow::Owned(normalized), features)
 }
 
 /// Fuzzy-correct each whitespace/delimiter-separated token in `text`.
@@ -1423,13 +1432,24 @@ fn normalize_delimiters_and_case(text: &str) -> (String, Vec<FeatureEntry>) {
 /// Also consults [`SUPERSEDED_TOKEN_MAP`] for CAPCO-2016 retirement
 /// pairs (currently just `COMINT` → `SI`), recording the
 /// `SupersededToken` feature when triggered.
-fn fuzzy_correct_tokens(
-    text: &str,
+fn fuzzy_correct_tokens<'a>(
+    text: &'a str,
     matcher: &FuzzyVocabMatcher<'_>,
-) -> (String, Vec<FeatureEntry>) {
-    let mut features = Vec::new();
-    let mut out = String::with_capacity(text.len());
+) -> (Cow<'a, str>, SmallVec<[FeatureEntry; 4]>) {
+    let mut features: SmallVec<[FeatureEntry; 4]> = SmallVec::new();
+
+    // Issue #452: lazy-alloc output. `out` stays `None` while every
+    // walked segment matches its source verbatim — when nothing in
+    // the input needs correction (the common case through the
+    // decoder fallback), the function returns `Cow::Borrowed(text)`
+    // with zero string allocation. On the first segment that
+    // changes, we allocate, prefill `out` with the text up to the
+    // change point, and switch to the writing path.
+    let mut out: Option<String> = None;
     let mut rest = text;
+    // Byte offset into the ORIGINAL `text` of the start of `rest`.
+    // Used to prefill `out` when the first change is detected.
+    let mut pos: usize = 0;
 
     // We walk the text segment-by-segment, preserving the `//`,
     // `-`, `(`, `)`, `,`, and whitespace delimiters verbatim. Tokens
@@ -1444,8 +1464,11 @@ fn fuzzy_correct_tokens(
             .map(|c| c.len_utf8())
             .sum::<usize>();
         if non_token_len > 0 {
-            out.push_str(&rest[..non_token_len]);
+            if let Some(buf) = out.as_mut() {
+                buf.push_str(&rest[..non_token_len]);
+            }
             rest = &rest[non_token_len..];
+            pos += non_token_len;
             continue;
         }
         // Take the token: alnum + internal `-`.
@@ -1458,17 +1481,33 @@ fn fuzzy_correct_tokens(
         let (token, tail) = rest.split_at(token_len);
         rest = tail;
 
+        // Helper: when a change is detected on this token, lazily
+        // allocate `out` and prefill it with `text[..pos]` so the
+        // already-walked verbatim prefix is preserved.
+        macro_rules! ensure_owned_buf {
+            () => {{
+                if out.is_none() {
+                    let mut buf = String::with_capacity(text.len());
+                    buf.push_str(&text[..pos]);
+                    out = Some(buf);
+                }
+                out.as_mut().expect("just allocated above")
+            }};
+        }
+
         // Case 1: exact superseded token (e.g., standalone `COMINT` → `SI`).
         if let Some(replacement) = SUPERSEDED_TOKEN_MAP
             .iter()
             .find(|&&(from, _)| from == token)
             .map(|&(_, to)| to)
         {
-            out.push_str(replacement);
+            let buf = ensure_owned_buf!();
+            buf.push_str(replacement);
             features.push(FeatureEntry {
                 id: FeatureId::SupersededToken,
                 delta: -0.2,
             });
+            pos += token_len;
             continue;
         }
 
@@ -1484,11 +1523,13 @@ fn fuzzy_correct_tokens(
             .find(|&&(from, _)| token != from && token.contains(from))
             .map(|&(from, to)| token.replace(from, to));
         if let Some(replaced) = embedded_replacement {
-            out.push_str(&replaced);
+            let buf = ensure_owned_buf!();
+            buf.push_str(&replaced);
             features.push(FeatureEntry {
                 id: FeatureId::SupersededToken,
                 delta: -0.2,
             });
+            pos += token_len;
             continue;
         }
 
@@ -1496,7 +1537,10 @@ fn fuzzy_correct_tokens(
         // Check this first so we don't run a vocab scan + edit-
         // distance pass on tokens we already recognize.
         if CapcoTokenSet.canonicalize(token).is_some() || CapcoTokenSet.is_trigraph(token) {
-            out.push_str(token);
+            if let Some(buf) = out.as_mut() {
+                buf.push_str(token);
+            }
+            pos += token_len;
             continue;
         }
 
@@ -1505,7 +1549,8 @@ fn fuzzy_correct_tokens(
         // on tokens that weren't already canonical, doubling the
         // vocab-scan cost on exactly the unknown-token hot path.
         if let Some(correction) = matcher.correct(token) {
-            out.push_str(correction.token);
+            let buf = ensure_owned_buf!();
+            buf.push_str(correction.token);
             // `FeatureId` is part of the audit-schema contract (see
             // `crates/rules/src/confidence.rs` and the
             // `MARQUE_AUDIT_SCHEMA` pin); a wildcard `_` arm on it
@@ -1531,6 +1576,7 @@ fn fuzzy_correct_tokens(
             if let Some(entry) = feature {
                 features.push(entry);
             }
+            pos += token_len;
             continue;
         }
 
@@ -1540,10 +1586,17 @@ fn fuzzy_correct_tokens(
         // outright, so the decoder's outer loop (step 3a of
         // `DecoderRecognizer::recognize`) is what filters the
         // resulting partial-canonicalization candidate out.
-        out.push_str(token);
+        if let Some(buf) = out.as_mut() {
+            buf.push_str(token);
+        }
+        pos += token_len;
     }
 
-    (out, features)
+    let cow = match out {
+        Some(buf) => Cow::Owned(buf),
+        None => Cow::Borrowed(text),
+    };
+    (cow, features)
 }
 
 /// Token characters: ASCII alphanumerics. `-` is handled by
@@ -4571,7 +4624,7 @@ const MISSING_TOKEN_LOG_PRIOR: f32 = -12.0;
 /// slots the penalty actually defends.)
 ///
 /// **Why scoring needs help.** The bag-of-tokens scorer above sums
-/// log-priors for the marking's canonical tokens, and `canonical_tokens_for`
+/// log-priors for the marking's canonical tokens, and `for_each_canonical_token`
 /// deliberately excludes SAR program/compartment/sub-compartment text
 /// (open-set agency-assigned codewords). So an absorbing parse contributes
 /// only the classification's prior; the equivalent delim-inserted parse
@@ -4614,7 +4667,7 @@ const HARD_SPLITTER_ABSORPTION_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// three `Custom`-system SCI markings (USAR/CD/XR with attached
 /// compartments). The bag-of-tokens scorer can't tell that this is
 /// the wrong interpretation — `Custom` SCI control systems don't
-/// appear in `canonical_tokens_for`, so they don't shift the prior
+/// appear in `for_each_canonical_token`, so they don't shift the prior
 /// either way, and the candidate ties with structurally-richer
 /// alternatives like the SAR-repaired candidate that
 /// `try_sar_indicator_repair` emits.
@@ -4751,21 +4804,32 @@ fn score_candidate(
     // [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`] for prose) so
     // an unknown token contributes a neutral marking-y delta of zero.
     //
-    // The `kind` parameter (issue #258) lets `canonical_tokens_for`
+    // The `kind` parameter (issue #258) lets `for_each_canonical_token`
     // pick the form (portion abbrev vs banner full word) that
     // matches the input shape, so the prose-side lookup compares
     // the right corpus row for portion inputs like `(s)`.
     let mut prior: f32 = 0.0;
     let mut null_prior: f32 = 0.0;
-    let tokens = canonical_tokens_for(marking, kind);
-    for token in tokens {
-        prior += marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
-        null_prior += marque_capco::priors::token_prose_log_prior(token)
-            .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
-    }
+
+    // Issue #451: linear-search dedup over a SmallVec rather than a
+    // BTreeSet. N (distinct canonical tokens per marking) is typically
+    // ≤10, so a small stack-allocated buffer with linear `iter().any`
+    // dedup is cache-friendlier than B-tree node allocations, and
+    // folding the prior summation into the same dedup loop kills the
+    // intermediate token collection entirely.
+    let mut seen_tokens: SmallVec<[&'static str; 16]> = SmallVec::new();
+    for_each_canonical_token(marking, kind, |token| {
+        if !seen_tokens.contains(&token) {
+            seen_tokens.push(token);
+            prior +=
+                marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
+            null_prior += marque_capco::priors::token_prose_log_prior(token)
+                .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
+        }
+    });
 
     // Country-code prior contribution (issue #233). REL TO country
-    // codes are not part of the `canonical_tokens_for` set because
+    // codes are not part of the `for_each_canonical_token` set because
     // `CountryCode::as_str()` returns a borrowed `&str` rather than
     // `&'static str`, and because the per-token corpus coverage for
     // country codes used to be sparse. Issue #233 adds a parallel
@@ -4790,12 +4854,18 @@ fn score_candidate(
     // REL TO blocks), so the marking-y delta for "(USA)" is small —
     // the decoder pushes back on auto-fixing a proper-noun country
     // mention to a REL-TO-style marking.
-    let mut seen_rel_to_codes = BTreeSet::new();
+    //
+    // Issue #451 sub-finding F3: SmallVec linear-search dedup over the
+    // typical N=1-5 REL TO codes, rather than a per-call BTreeSet
+    // allocation.
+    let mut seen_rel_to_codes: SmallVec<[&str; 8]> = SmallVec::new();
     for country in marking.0.rel_to.iter() {
-        if seen_rel_to_codes.insert(country.as_str()) {
-            prior += marque_capco::priors::country_code_log_prior(country.as_str())
+        let code = country.as_str();
+        if !seen_rel_to_codes.contains(&code) {
+            seen_rel_to_codes.push(code);
+            prior += marque_capco::priors::country_code_log_prior(code)
                 .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
-            null_prior += marque_capco::priors::country_code_prose_log_prior(country.as_str())
+            null_prior += marque_capco::priors::country_code_prose_log_prior(code)
                 .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
         }
     }
@@ -4904,9 +4974,18 @@ fn contains_hard_splitter_word(s: &str) -> bool {
     s.split_whitespace().any(is_hard_splitter)
 }
 
-/// Enumerate the canonical tokens present in `marking` that have a
+/// Visit each canonical token present in `marking` that has a
 /// `&'static str` representation suitable for
 /// [`marque_capco::priors::TOKEN_BASE_RATES`] lookup.
+///
+/// Issue #451: this replaces the previous `canonical_tokens_for ->
+/// Vec<&'static str>` shape, which allocated a `BTreeSet` for dedup
+/// and a `Vec` for the return on every scored candidate (up to 16 per
+/// `recognize()` call). The visitor pattern hands raw, possibly-
+/// duplicate tokens to the caller; dedup happens at the call site
+/// where it can ride along with whatever per-token work the caller is
+/// already doing (e.g., [`score_candidate`] folds the prior summation
+/// into the same SmallVec linear-search dedup).
 ///
 /// Scored token families, by `CanonicalAttrs` field:
 ///
@@ -4938,12 +5017,18 @@ fn contains_hard_splitter_word(s: &str) -> bool {
 /// - CAB fields (`classified_by`, `derived_from`, `declassify_on`) —
 ///   free-form text, not CVE-enumerable.
 ///
-/// Expansion work is tracked in future PRs alongside any priors
-/// regeneration that widens coverage (e.g., counting SAR indicator
-/// base rates from a larger corpus).
-fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'static str> {
+/// Duplicate tokens (the unified `dissem_iter` can yield repeats
+/// across namespaces; an `sci_controls` slot could in principle repeat
+/// across positions) ARE visited per-occurrence — the caller must
+/// dedup if double-counting matters. The previous `BTreeSet`-based
+/// implementation deduped internally; the caller-side dedup in
+/// [`score_candidate`] preserves the same per-distinct-token behavior.
+fn for_each_canonical_token(
+    marking: &CapcoMarking,
+    kind: MarkingType,
+    mut f: impl FnMut(&'static str),
+) {
     let attrs = &marking.0;
-    let mut tokens: BTreeSet<&'static str> = BTreeSet::new();
 
     if let Some(class) = attrs.classification.as_ref() {
         // Pick the classification token that matches the marking shape and
@@ -4978,17 +5063,17 @@ fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'stat
                 class.effective_level().banner_str()
             }
         };
-        tokens.insert(class_token);
+        f(class_token);
     }
 
     for ctrl in attrs.sci_controls.iter() {
-        tokens.insert(ctrl.as_str());
+        f(ctrl.as_str());
     }
     // PR 9b (T132): the decoder feature extractor inserts dissem
     // canonical tokens regardless of namespace — the feature vector
     // captures "which control names appear?", not their attribution.
     for dis in attrs.dissem_iter() {
-        tokens.insert(dis.as_str());
+        f(dis.as_str());
     }
     for nic in attrs.non_ic_dissem.iter() {
         // `NonIcDissem::banner_str` returns `&'static str` with the
@@ -4997,16 +5082,14 @@ fn canonical_tokens_for(marking: &CapcoMarking, kind: MarkingType) -> Vec<&'stat
         // "LES NOFORN") won't hit a single-token priors entry — they
         // fall to MISSING_TOKEN_LOG_PRIOR. That's fine: the
         // comparison against peer candidates remains consistent.
-        tokens.insert(nic.banner_str());
+        f(nic.banner_str());
     }
     if !attrs.aea_markings.is_empty() {
-        tokens.insert("AEA");
+        f("AEA");
     }
     if attrs.fgi_marker.is_some() {
-        tokens.insert("FGI");
+        f("FGI");
     }
-
-    tokens.into_iter().collect()
 }
 
 // ---------------------------------------------------------------------------

@@ -427,6 +427,124 @@ fn lint_high_candidate_count_benchmark(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Decoder hot-path advisory benches (issues #451 / #452)
+// ---------------------------------------------------------------------------
+//
+// Two advisory benches pinning the decoder hot-path optimizations in PR
+// `perf/decoder-canonical-tokens-cow`:
+//
+//   - `decoder_deep_scan_mangled_10kb` (issue #451) — one mangled portion
+//     every ~500 bytes. Each mangled portion forces the dispatcher into the
+//     decoder leg, where `score_candidate` runs over K=8 candidates per
+//     mangled region. Pins the `canonical_tokens_for` → `for_each_canonical_token`
+//     visitor + SmallVec dedup win (kills the per-candidate BTreeSet+Vec
+//     allocations and the per-call `seen_rel_to_codes` BTreeSet allocation).
+//
+//   - `decoder_clean_input_through_fallback_10kb` (issue #452) — already-
+//     canonical text shaped to trip the dispatcher's decoder fallback
+//     anyway. Each portion contains one unknown SCI compartment letter
+//     (`SI-Z`, `SI-Y`, …) which the strict parser flags via
+//     `TokenKind::Unknown`, so the dispatcher routes to the decoder. But
+//     the rest of each portion is fully canonical, so
+//     `normalize_delimiters_and_case` and `fuzzy_correct_tokens` both hit
+//     their `Cow::Borrowed` short-circuit paths and skip the String
+//     allocation entirely. Pins the #452 lazy-alloc win.
+//
+// Advisory — no entry in `benches/baseline.json`. Report numbers in PRs
+// that touch the decoder hot path; don't gate on them.
+
+fn build_decoder_dense_mangled_input(target_bytes: usize) -> Vec<u8> {
+    // ~500-byte block carrying one mangled portion + a chunk of prose
+    // and a few canonical markings. `SERCET` is edit-distance-1 from
+    // `SECRET`, mirroring the SC-002 single-region fixture above.
+    let block = concat!(
+        "(SERCET//NF) Mangled portion forces decoder dispatch.\n",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut\n",
+        "enim ad minim veniam, quis nostrud exercitation ullamco laboris\n",
+        "nisi ut aliquip ex ea commodo consequat.\n",
+        "\n",
+        "SECRET//NOFORN//REL TO USA, GBR\n",
+        "\n",
+        "(TS//SI) Canonical portion between mangled regions.\n",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse\n",
+        "cillum dolore eu fugiat nulla pariatur.\n",
+        "\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn decoder_deep_scan_mangled_benchmark(c: &mut Criterion) {
+    let input = build_decoder_dense_mangled_input(10_000);
+    // Default engine: `StrictOrDecoderRecognizer` (issue #259). The
+    // mangled portions in each block trip the decoder fallback ~20×
+    // across the 10KB input, exercising `score_candidate` repeatedly.
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+
+    c.bench_function("decoder_deep_scan_mangled_10kb", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
+fn build_decoder_fallback_clean_input(target_bytes: usize) -> Vec<u8> {
+    // Already-canonical text. Each portion carries one unknown SCI
+    // compartment letter (`Z`, `Y`, `W`, …) so the strict parser emits
+    // `TokenKind::Unknown` and the dispatcher routes to the decoder.
+    // Once inside the decoder, the rest of each portion is canonical
+    // so `normalize_delimiters_and_case` returns `Cow::Borrowed` and
+    // `fuzzy_correct_tokens` returns `Cow::Borrowed` for the all-known
+    // tail tokens — pinning the issue #452 lazy-alloc win.
+    let block = concat!(
+        "(S//SI-Z) Unknown compartment letter forces decoder dispatch.\n",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do\n",
+        "eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
+        "\n",
+        "(TS//SI-Y//NOFORN) Another unknown-compartment portion.\n",
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco.\n",
+        "\n",
+        "(S//SI-W) Third unknown-compartment portion.\n",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse.\n",
+        "\n",
+    );
+    let block_bytes = block.as_bytes();
+    let mut input = Vec::with_capacity(target_bytes + block_bytes.len());
+    while input.len() < target_bytes {
+        input.extend_from_slice(block_bytes);
+    }
+    let complete_blocks = target_bytes / block_bytes.len();
+    input.truncate(complete_blocks.max(1) * block_bytes.len());
+    input.resize(target_bytes, b' ');
+    input
+}
+
+fn decoder_clean_input_through_fallback_benchmark(c: &mut Criterion) {
+    let input = build_decoder_fallback_clean_input(10_000);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles");
+
+    c.bench_function("decoder_clean_input_through_fallback_10kb", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
 criterion_group!(
     benches,
     lint_latency_benchmark,
@@ -436,5 +554,7 @@ criterion_group!(
     lint_prose_heavy_benchmark,
     lint_portion_dense_benchmark,
     lint_high_candidate_count_benchmark,
+    decoder_deep_scan_mangled_benchmark,
+    decoder_clean_input_through_fallback_benchmark,
 );
 criterion_main!(benches);
