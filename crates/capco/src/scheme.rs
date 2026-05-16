@@ -640,9 +640,18 @@ fn merge_fgi_markers(
     match (a, b) {
         (None, None) => None,
         (Some(x), None) | (None, Some(x)) => Some(x),
-        // Source-concealed dominates per §H.7 p123 — bare `FGI` (no
-        // LIST) is the most-restrictive marker. Either operand
-        // carrying it produces SourceConcealed.
+        // Source-concealed dominates per §H.7 pp123-124 — bare `FGI`
+        // (no LIST) is the most-restrictive marker. Either operand
+        // carrying it produces SourceConcealed. CV-4 (PR 4b-B 8th-pass):
+        // pre-CV-4 cited `§H.7 p123`; verified 2026-05-16 against
+        // CAPCO-2016.md — the §H.7 block begins on p123 but the
+        // load-bearing supersession sentence ("If any document
+        // contains portions of both source-concealed FGI ... and
+        // source-acknowledged FGI ... then only the 'FGI' marking
+        // without the source trigraph(s)/tetragraph(s) must appear
+        // in the banner line") lands on p124 in the Precedence Rules
+        // for Banner Line Guidance block. The page-span citation is
+        // the precise reference.
         (Some(FgiMarker::SourceConcealed), _) | (_, Some(FgiMarker::SourceConcealed)) => {
             Some(FgiMarker::SourceConcealed)
         }
