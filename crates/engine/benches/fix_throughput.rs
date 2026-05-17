@@ -32,6 +32,7 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use std::hint::black_box;
+use secrecy::ExposeSecret as _;
 
 /// Build an input of approximately `target_bytes` containing one fixable
 /// `SECRET//NF` banner per ~10.9 KB prose section.  The violation density
@@ -114,7 +115,7 @@ fn fix_throughput_benchmark(c: &mut Criterion) {
                     let result = engine.fix(black_box(input), FixMode::Apply);
                     // Prevent the compiler from eliding the call: consume the
                     // output length so the fix actually runs.
-                    black_box(result.source.len())
+                    black_box(result.source.expose_secret().len())
                 });
             },
         );

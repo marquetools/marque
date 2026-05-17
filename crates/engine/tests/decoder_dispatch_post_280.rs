@@ -62,6 +62,7 @@ use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::{Diagnostic, FixSource, RuleSet, Severity};
+use secrecy::ExposeSecret as _;
 
 fn build_engine() -> Engine {
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
@@ -164,7 +165,7 @@ fn sar_lowercase_program_id_emits_r001_fix() {
     // Severity::Fix → engine.fix DOES auto-apply.
     let fix = engine.fix(input, FixMode::Apply);
     assert_ne!(
-        fix.source.as_slice(),
+        fix.source.expose_secret(),
         input,
         "Fix severity must auto-apply; output bytes must differ from input",
     );
@@ -193,7 +194,7 @@ fn sar_mixed_case_program_id_emits_r001_fix() {
     assert_eq!(r001.severity, Severity::Fix);
 
     let fix = engine.fix(input, FixMode::Apply);
-    assert_ne!(fix.source.as_slice(), input);
+    assert_ne!(fix.source.expose_secret(), input);
     assert!(!fix.applied.is_empty());
 }
 
@@ -217,7 +218,7 @@ fn sar_lowercase_compartment_emits_r001_fix() {
     assert_eq!(r001.severity, Severity::Fix);
 
     let fix = engine.fix(input, FixMode::Apply);
-    assert_ne!(fix.source.as_slice(), input);
+    assert_ne!(fix.source.expose_secret(), input);
     assert!(!fix.applied.is_empty());
 }
 
@@ -241,7 +242,7 @@ fn sar_lowercase_sub_compartment_emits_r001_fix() {
     assert_eq!(r001.severity, Severity::Fix);
 
     let fix = engine.fix(input, FixMode::Apply);
-    assert_ne!(fix.source.as_slice(), input);
+    assert_ne!(fix.source.expose_secret(), input);
     assert!(!fix.applied.is_empty());
 }
 
@@ -303,7 +304,7 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
                 .map(|a| (a.rule.as_str(), a.source))
                 .collect::<Vec<_>>(),
         );
-        let output = String::from_utf8(fix.source).expect("UTF-8 output");
+        let output = String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output");
         assert_eq!(
             output, *expected,
             "decoder must canonicalize {display:?} to {expected:?}; \
@@ -350,7 +351,7 @@ fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
 
     let fix = engine.fix(input, FixMode::Apply);
     assert_eq!(
-        String::from_utf8(fix.source).expect("UTF-8 output"),
+        String::from_utf8(fix.source.expose_secret().to_vec()).expect("UTF-8 output"),
         "(S//FGI DEU)",
         "decoder must canonicalize lowercase `deu` to uppercase `DEU` \
          and write the fixed output byte-equal to the canonical form",

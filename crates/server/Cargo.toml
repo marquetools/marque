@@ -45,6 +45,10 @@ marque-extract = { workspace = true }
 marque-ism = { workspace = true, features = ["dates"] }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
+# Constitution Principle II — readout discipline at the HTTP response
+# boundary. `FixResult.source` is `SecretBox<[u8]>`; `expose_secret()`
+# calls in the fix-route handler are the grep target.
+secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -16,6 +16,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock, LintResult};
 use serde_json::json;
 use std::time::{Duration, UNIX_EPOCH};
+use secrecy::ExposeSecret as _;
 
 /// Fixed timestamp for deterministic audit records.
 const FIXED_TS: u64 = 1_700_000_000; // 2023-11-14T22:13:20Z
@@ -69,7 +70,7 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
 
     // The post-fix first line should have USA elevated and codes
     // sorted alphabetically.
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert!(
         fixed_text.starts_with("SECRET//REL TO USA"),
         "expected canonical REL TO list, got: {fixed_text:?}"
@@ -104,7 +105,7 @@ fn dry_run_parity_with_apply() {
     let dry_result = engine.fix(&source, FixMode::DryRun);
 
     // DryRun returns original source.
-    assert_eq!(dry_result.source, source);
+    assert_eq!(dry_result.source.expose_secret(), source);
 
     // Same number of applied fixes.
     assert_eq!(apply_result.applied.len(), dry_result.applied.len());
@@ -175,7 +176,7 @@ fn post_fix_relint_has_fewer_diagnostics() {
     let result = engine.fix(&source, FixMode::Apply);
 
     // Re-lint the fixed text.
-    let after: LintResult = engine.lint(&result.source);
+    let after: LintResult = engine.lint(result.source.expose_secret());
 
     // The fixed text should have fewer diagnostics than the original.
     assert!(
@@ -455,7 +456,7 @@ fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
         result.applied
     );
 
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert_eq!(
         fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
         "E002's splice must rewrite the full REL TO list, not just the \
@@ -474,7 +475,7 @@ fn e002_fix_rewrites_banner_when_usa_misplaced() {
     let source = b"SECRET//REL TO GBR, USA, AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert_eq!(
         fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
         "E002 must canonicalize a misplaced USA + unsorted rest in one \
@@ -493,7 +494,7 @@ fn e002_fix_leaves_no_trailing_comma_after_splice() {
     let source = b"SECRET//REL TO GBR, AUS,\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert_eq!(
         fixed_text, "SECRET//REL TO USA, AUS, GBR\n",
         "E002 splice must consume the trailing `,` inside the \
@@ -528,7 +529,7 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     // Intermediate `//NF//` content must survive in the output. Some
     // other rules may still rewrite other parts of the source (e.g.,
     // normalizing), so we only assert that NF is preserved.
-    let fixed_text = String::from_utf8(result.source).unwrap();
+    let fixed_text = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert!(
         fixed_text.contains("NF") || fixed_text.contains("NOFORN"),
         "intermediate NF content must survive multi-block scenario: \
@@ -587,7 +588,7 @@ fn r002_fired_false_on_clean_fixture() {
     let source = b"This is plain text with no markings.\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
     assert!(!result.r002_fired);
-    assert_eq!(result.source, source);
+    assert_eq!(result.source.expose_secret(), source);
     assert!(result.applied.is_empty());
 }
 

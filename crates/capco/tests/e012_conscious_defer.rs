@@ -97,6 +97,7 @@
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
+use secrecy::ExposeSecret as _;
 
 fn engine() -> Engine {
     Engine::with_clock(
@@ -350,12 +351,11 @@ fn e012_does_not_fire_on_pure_us_banner() {
 fn e012_idempotent_no_auto_fix_application() {
     let result = engine().fix(b"SECRET//NATO SECRET//NOFORN\n", FixMode::Apply);
 
-    assert_eq!(
-        result.source,
+    assert_eq!(result.source.expose_secret(),
         b"SECRET//NATO SECRET//NOFORN\n",
         "no fix should apply on dual-classification Conflict \
          (conscious-defer); got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
     assert!(
         result.applied.iter().all(|af| af.rule.as_str() != "E012"),

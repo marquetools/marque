@@ -126,6 +126,15 @@ insta = { version = "1.47.2", features = ["json"] }
 # Compile-time trait-bound assertions
 static_assertions = "1.1.0"
 
+# Sensitive-content access discipline (Constitution Principle II — Marque-
+# owned content-bearing buffers wipe on drop). `secrecy::SecretBox<_>` gates
+# readouts through `expose_secret()` — every content access is a grep target
+# for security review. Builds on `zeroize` for the underlying volatile-write
+# memset that the compiler cannot elide. RustCrypto, audited. Apache-2.0 OR
+# MIT licensed — WASM-safe.
+secrecy = "0.10.3"
+zeroize = "1.8.2"
+
 # Property-based testing
 proptest = { version = "1", default-features = false, features = ["std"] }
 

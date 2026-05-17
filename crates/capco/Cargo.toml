@@ -41,6 +41,9 @@ marque-core = { workspace = true }
 marque-engine = { workspace = true }
 marque-test-utils = { workspace = true }
 proptest = { workspace = true }
+# Constitution Principle II — capco integration tests assert against
+# `FixResult.source` (a `SecretBox<[u8]>`) via `expose_secret()`.
+secrecy = { workspace = true }
 
 [build-dependencies]
 # Phase-D decoder priors are baked in at compile time from

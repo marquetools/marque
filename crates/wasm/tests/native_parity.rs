@@ -16,6 +16,7 @@ use marque_rules::Diagnostic;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use secrecy::ExposeSecret as _;
 
 /// Shared engine instance — avoids reconstructing per-fixture (M-3 review fix).
 /// Uses `default_ruleset()` to stay synchronized with what `lint_native` uses (M-7).
@@ -216,7 +217,7 @@ fn fix_parity_invalid_fixtures() {
         let engine = shared_engine();
         let native_result = engine.fix(source.as_slice(), marque_engine::FixMode::Apply);
         let native_fixed =
-            String::from_utf8(native_result.source).expect("native fix produced non-UTF-8");
+            String::from_utf8(native_result.source.expose_secret().to_vec()).expect("native fix produced non-UTF-8");
 
         let wasm_json = marque_wasm::fix_native(text, default_threshold, None)
             .unwrap_or_else(|e| panic!("fix_native failed on {}: {e}", path.display()));
@@ -283,7 +284,7 @@ fn fix_parity_valid_fixtures() {
         let engine = shared_engine();
         let native_result = engine.fix(source.as_slice(), marque_engine::FixMode::Apply);
         let native_fixed =
-            String::from_utf8(native_result.source).expect("native fix produced non-UTF-8");
+            String::from_utf8(native_result.source.expose_secret().to_vec()).expect("native fix produced non-UTF-8");
 
         let wasm_json = marque_wasm::fix_native(text, default_threshold, None)
             .unwrap_or_else(|e| panic!("fix_native failed on {}: {e}", path.display()));

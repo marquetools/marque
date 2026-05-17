@@ -6,6 +6,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_rules::{AppliedFix, Diagnostic};
+use secrecy::SecretSlice;
 
 /// Result of a lint pass — diagnostics without source modification.
 ///
@@ -156,7 +157,17 @@ impl LintResult {
 pub struct FixResult {
     /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
     /// replacement is a valid UTF-8 `String`, so the result is always valid UTF-8.
-    pub source: Vec<u8>,
+    ///
+    /// Wrapped in [`secrecy::SecretSlice<u8>`] per Constitution Principle II
+    /// (Marque-owned content-bearing buffers wipe on drop). Readouts go
+    /// through [`secrecy::ExposeSecret::expose_secret`] which returns
+    /// `&[u8]` — every readout site is grep-able for security review. The
+    /// `Debug` impl auto-redacts to `SecretBox<[u8]>([REDACTED])`, closing
+    /// the accidental-log channel. Marque's responsibility ends at the
+    /// `SecretSlice` boundary: a caller that clones the inner bytes
+    /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
+    /// owns the clone's lifecycle.
+    pub source: SecretSlice<u8>,
     /// Audit records for every fix that was applied.
     pub applied: Vec<AppliedFix<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,

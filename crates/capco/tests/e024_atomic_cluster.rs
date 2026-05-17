@@ -37,6 +37,7 @@
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
+use secrecy::ExposeSecret as _;
 
 fn engine() -> Engine {
     Engine::with_clock(
@@ -58,12 +59,11 @@ fn engine() -> Engine {
 fn e024_fix_round_trip_removes_frd_when_rd_present() {
     let result = engine().fix(b"(TS//RD//FRD//NF)\n", FixMode::Apply);
 
-    assert_eq!(
-        result.source,
+    assert_eq!(result.source.expose_secret(),
         b"(TS//RD//NF)\n",
         "E024 round-trip must produce (TS//RD//NF) with FRD removed; \
          got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     assert!(
@@ -85,12 +85,11 @@ fn e024_fix_round_trip_removes_frd_when_rd_present() {
 fn e024_fix_round_trip_removes_tfni_when_rd_present() {
     let result = engine().fix(b"(TS//RD//TFNI//NF)\n", FixMode::Apply);
 
-    assert_eq!(
-        result.source,
+    assert_eq!(result.source.expose_secret(),
         b"(TS//RD//NF)\n",
         "E024 round-trip must produce (TS//RD//NF) with TFNI removed; \
          got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     assert!(
@@ -122,12 +121,11 @@ fn e024_atomic_cluster_removes_both_frd_and_tfni_in_one_audit_entry() {
     let result = engine().fix(b"(TS//RD//FRD//TFNI//NF)\n", FixMode::Apply);
 
     // Byte-level round-trip: both FRD and TFNI removed in one pass.
-    assert_eq!(
-        result.source,
+    assert_eq!(result.source.expose_secret(),
         b"(TS//RD//NF)\n",
         "E024 atomic-cluster must produce (TS//RD//NF) with both FRD and \
          TFNI removed in one pass; got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     // Audit cardinality: exactly ONE AppliedFix for E024.

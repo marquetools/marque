@@ -22,6 +22,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, Instant};
+use secrecy::ExposeSecret as _;
 
 const EX_OK: i32 = 0;
 const EX_DIAG_ERROR: i32 = 1;
@@ -861,7 +862,7 @@ fn run_fix(
                     .unwrap_or_else(|| std::path::Path::new("."));
                 match tempfile::NamedTempFile::new_in(dir) {
                     Ok(mut tmp) => {
-                        if let Err(e) = std::io::Write::write_all(&mut tmp, &result.source) {
+                        if let Err(e) = std::io::Write::write_all(&mut tmp, result.source.expose_secret()) {
                             eprintln!("error writing temp file: {e}");
                             return EX_IOERR;
                         }
@@ -880,7 +881,7 @@ fn run_fix(
 
         if should_write_stdout {
             let mut stdout_lock = stdout.lock();
-            if let Err(e) = std::io::Write::write_all(&mut stdout_lock, &result.source) {
+            if let Err(e) = std::io::Write::write_all(&mut stdout_lock, result.source.expose_secret()) {
                 eprintln!("error writing to stdout: {e}");
                 return EX_IOERR;
             }
@@ -915,13 +916,13 @@ fn run_fix(
         // replay itself trips the deadline, we fall back to the original
         // source for the re-lint baseline (worst case: exit code reflects
         // pre-fix diagnostics).
-        let relint_source = if dry_run {
+        let relint_source: Vec<u8> = if dry_run {
             match engine.fix_with_options(source, marque_engine::FixMode::Apply, &fix_opts) {
-                Ok(r) => r.source,
+                Ok(r) => r.source.expose_secret().to_vec(),
                 Err(_) => source.to_vec(),
             }
         } else {
-            result.source.clone()
+            result.source.expose_secret().to_vec()
         };
         // The re-lint pass for exit-code accounting also runs under the
         // same per-document deadline. If it trips, we fall back to a

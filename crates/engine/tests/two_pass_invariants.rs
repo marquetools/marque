@@ -40,6 +40,7 @@ use marque_engine::{Engine, FixMode};
 use proptest::prelude::*;
 use std::collections::HashSet;
 use std::sync::OnceLock;
+use secrecy::ExposeSecret as _;
 
 fn engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
@@ -212,7 +213,7 @@ proptest! {
         let bytes = src.as_bytes();
         let before = engine().lint(bytes).diagnostics.len();
         let result = engine().fix(bytes, FixMode::Apply);
-        let after = engine().lint(&result.source).diagnostics.len();
+        let after = engine().lint(result.source.expose_secret()).diagnostics.len();
         prop_assert!(
             after <= before,
             "fix introduced diagnostics: before={} after={} for input {:?}",

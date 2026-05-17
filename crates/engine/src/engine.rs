@@ -10,6 +10,8 @@ use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
 use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
+use secrecy::SecretSlice;
+use zeroize::Zeroizing;
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
 use marque_capco::provenance::DecoderProvenance;
@@ -2153,11 +2155,37 @@ struct TwoPassFixer<'engine> {
 }
 
 /// Promoted-fix tuple returned by [`TwoPassFixer::apply_kept_fixes`].
+///
+/// The post-splice buffer is wrapped in [`zeroize::Zeroizing`] so the
+/// scratch bytes wipe on drop — Constitution Principle II. Pass-1's
+/// post-buffer flows into pass-2's dispatch and then drops; pass-2's
+/// post-buffer flows into the public [`FixResult.source`]
+/// [`secrecy::SecretSlice`] via [`into_secret_slice`]. Either way, the
+/// transient `Vec<u8>` never sits in freed memory unwiped.
 type AppliedTuple = (
-    Vec<u8>,
+    Zeroizing<Vec<u8>>,
     Vec<AppliedFix<CapcoScheme>>,
     HashSet<(RuleId, Span)>,
 );
+
+/// Move a [`Zeroizing<Vec<u8>>`] into a [`SecretSlice<u8>`] without an
+/// extra heap allocation.
+///
+/// `std::mem::take` substitutes the empty [`Vec`] (the
+/// [`Default::default`] for `Vec<u8>`) so the [`Zeroizing`] wrapper
+/// drops without spending a wipe on capacity it never held content
+/// in. The taken bytes flow into the [`SecretSlice`] which carries
+/// its own [`zeroize::Zeroize`]-on-drop guarantee — wipe coverage
+/// transfers from the scratch wrapper to the public output wrapper
+/// without a gap.
+///
+/// Constitution Principle II — the single Zeroizing → SecretSlice
+/// transition for the public `FixResult.source` field. Engine-only
+/// helper; not exported.
+#[inline]
+fn into_secret_slice(mut z: Zeroizing<Vec<u8>>) -> SecretSlice<u8> {
+    std::mem::take(&mut *z).into()
+}
 
 /// Pre-pass-1 attribute cache entries (PR 7c / FR-023 / R-4).
 ///
@@ -2212,10 +2240,13 @@ fn pre_pass_1_attrs_for_span(
 }
 
 /// Outcome of pass-0 (text-corrections, UNCHANGED behavior).
+///
+/// `effective_source` is wrapped in [`Zeroizing`] per Constitution
+/// Principle II — Marque-owned scratch buffers wipe on drop.
 struct Pass0Result {
     /// Source bytes after pass-0 text corrections have been applied.
     /// Equals `source.to_vec()` when no text corrections fired.
-    effective_source: Vec<u8>,
+    effective_source: Zeroizing<Vec<u8>>,
     /// Promoted [`AppliedFix`] records from pass-0.
     applied: Vec<AppliedFix<CapcoScheme>>,
     /// Diagnostics whose text-correction fixes were dropped by the
@@ -2226,10 +2257,13 @@ struct Pass0Result {
 }
 
 /// Outcome of pass-1 ([`Phase::Localized`] rule fixes).
+///
+/// `post_buffer` is wrapped in [`Zeroizing`] per Constitution
+/// Principle II.
 struct Pass1Result {
     /// Buffer after pass-1 fixes have been spliced into `effective_source`.
     /// Equals `effective_source` when pass-1 produced no fixes.
-    post_buffer: Vec<u8>,
+    post_buffer: Zeroizing<Vec<u8>>,
     /// Promoted [`AppliedFix`] records from pass-1.
     applied: Vec<AppliedFix<CapcoScheme>>,
     /// `(rule_id, span)` keys of pass-1 fixes — feeds the
@@ -2239,9 +2273,14 @@ struct Pass1Result {
 }
 
 /// Outcome of pass-2 ([`Phase::WholeMarking`] rule fixes).
+///
+/// `output` is wrapped in [`Zeroizing`] per Constitution Principle II.
+/// On the happy path it transfers to [`FixResult.source`]
+/// ([`SecretSlice<u8>`]) via [`into_secret_slice`] — the wipe
+/// guarantee flows from the scratch wrapper to the public wrapper.
 struct Pass2Result {
     /// Final buffer (Apply mode) or original source (DryRun).
-    output: Vec<u8>,
+    output: Zeroizing<Vec<u8>>,
     applied: Vec<AppliedFix<CapcoScheme>>,
     applied_keys: HashSet<(RuleId, Span)>,
 }
@@ -2586,7 +2625,7 @@ impl<'engine> TwoPassFixer<'engine> {
         }
 
         Ok(FixResult {
-            source: pass2.output,
+            source: into_secret_slice(pass2.output),
             applied: all_applied,
             remaining_diagnostics,
             r002_fired: false,
@@ -2602,7 +2641,7 @@ impl<'engine> TwoPassFixer<'engine> {
             self.engine
                 .apply_text_corrections(self.source, lint, self.threshold, self.mode);
         Pass0Result {
-            effective_source,
+            effective_source: Zeroizing::new(effective_source),
             applied,
             dropped_diags,
         }
@@ -2640,7 +2679,7 @@ impl<'engine> TwoPassFixer<'engine> {
             // consumes its own pre-pass-1 buffer. Skip the document
             // clone; see the function's `post_buffer` invariant above.
             return Ok(Pass1Result {
-                post_buffer: Vec::new(),
+                post_buffer: Zeroizing::new(Vec::new()),
                 applied: Vec::new(),
                 applied_keys: HashSet::new(),
             });
@@ -2709,7 +2748,7 @@ impl<'engine> TwoPassFixer<'engine> {
             // consumes its own pre-pass-1 buffer; skip the document
             // clone per the `post_buffer` invariant above.
             return Ok(Pass1Result {
-                post_buffer: Vec::new(),
+                post_buffer: Zeroizing::new(Vec::new()),
                 applied: Vec::new(),
                 applied_keys: HashSet::new(),
             });
@@ -2769,10 +2808,10 @@ impl<'engine> TwoPassFixer<'engine> {
     ) -> Result<Pass2Result, EngineError> {
         if pass2_diags.is_empty() {
             return Ok(Pass2Result {
-                output: match self.mode {
+                output: Zeroizing::new(match self.mode {
                     FixMode::Apply => pass2_source.to_vec(),
                     FixMode::DryRun => self.source.to_vec(),
-                },
+                }),
                 applied: Vec::new(),
                 applied_keys: HashSet::new(),
             });
@@ -2803,7 +2842,7 @@ impl<'engine> TwoPassFixer<'engine> {
             // DryRun returns the original source verbatim — pass-1's
             // post-buffer is discarded so callers cannot accidentally
             // consume partial bytes when they asked for dry-run.
-            FixMode::DryRun => self.source.to_vec(),
+            FixMode::DryRun => Zeroizing::new(self.source.to_vec()),
         };
         Ok(Pass2Result {
             output,
@@ -2866,8 +2905,9 @@ impl<'engine> TwoPassFixer<'engine> {
 
         // Build the post-splice buffer in both modes — pass-2 needs
         // the post-pass-1 coordinate space to dispatch correctly even
-        // in DryRun.
-        let post_buffer = splice_fixes_forward(source_buf, &kept_fixes);
+        // in DryRun. Wrap in `Zeroizing` so the scratch bytes wipe on
+        // drop per Constitution Principle II.
+        let post_buffer = Zeroizing::new(splice_fixes_forward(source_buf, &kept_fixes));
         for fix in kept_fixes {
             if deadline_expired(self.deadline) {
                 return Err(EngineError::DeadlineExceeded {
@@ -3049,11 +3089,11 @@ impl<'engine> TwoPassFixer<'engine> {
         // R002 (the fixes happened; the audit log is honest about it).
         let output = match self.mode {
             FixMode::Apply => pass1.post_buffer,
-            FixMode::DryRun => self.source.to_vec(),
+            FixMode::DryRun => Zeroizing::new(self.source.to_vec()),
         };
 
         FixResult {
-            source: output,
+            source: into_secret_slice(output),
             applied: all_applied,
             remaining_diagnostics,
             r002_fired: true,
@@ -4801,6 +4841,7 @@ mod tests {
     };
     use marque_scheme::ReplacementIntent;
     use marque_scheme::fix_intent::RecanonScope;
+    use secrecy::ExposeSecret as _;
     use std::time::{Duration, UNIX_EPOCH};
 
     /// A pure-test stand-in for the old `FixProposal` shape: the
@@ -4998,7 +5039,7 @@ mod tests {
             proposal("E002", 8, 14, "BB"), // "NOFORN" → "BB"
         ]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        let out = String::from_utf8(result.source).unwrap();
+        let out = std::str::from_utf8(result.source.expose_secret()).unwrap();
         assert!(out.starts_with("AA//BB"), "got: {out:?}");
         assert_eq!(result.applied.len(), 2);
     }
@@ -5027,7 +5068,7 @@ mod tests {
     fn dry_run_returns_original_source_but_records_applied() {
         let engine = engine_with(vec![proposal("E001", 0, 6, "AA")]);
         let result = engine.fix(TEST_SRC, FixMode::DryRun);
-        assert_eq!(result.source, TEST_SRC, "dry-run must not mutate source");
+        assert_eq!(result.source.expose_secret(), TEST_SRC, "dry-run must not mutate source");
         assert_eq!(result.applied.len(), 1);
         assert!(result.applied[0].dry_run, "dry_run flag must be set");
     }
@@ -5299,7 +5340,7 @@ mod tests {
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(result.applied.len(), 0);
         // Source unchanged: no splice was attempted.
-        assert_eq!(result.source, TEST_SRC);
+        assert_eq!(result.source.expose_secret(), TEST_SRC);
     }
 
     // L-4: all the other threshold tests go through fix_with_threshold
@@ -6680,7 +6721,7 @@ mod tests {
         .expect("engine constructs cleanly");
 
         let result = engine.fix(TEST_SRC, FixMode::DryRun);
-        assert_eq!(result.source, TEST_SRC, "DryRun must not mutate source");
+        assert_eq!(result.source.expose_secret(), TEST_SRC, "DryRun must not mutate source");
         assert!(!result.r002_fired);
         let stub_fix = result
             .applied
@@ -6743,7 +6784,7 @@ mod tests {
             .apply_kept_fixes(source, kept_fixes.clone(), &dummy_lint)
             .expect("apply_kept_fixes succeeds in Apply mode");
         assert_eq!(
-            apply_post, expected_post_buffer,
+            &*apply_post, &expected_post_buffer,
             "Apply mode: post_buffer must be the spliced result",
         );
         for f in &apply_applied {
@@ -6764,7 +6805,7 @@ mod tests {
             .apply_kept_fixes(source, kept_fixes, &dummy_lint)
             .expect("apply_kept_fixes succeeds in DryRun mode");
         assert_eq!(
-            dry_run_post, expected_post_buffer,
+            &*dry_run_post, &expected_post_buffer,
             "DryRun mode: post_buffer must be the spliced result so pass-2 \
              dispatches against the same coordinate space as Apply (R2-3 lock)",
         );
@@ -6772,7 +6813,7 @@ mod tests {
         // the exact pre-R2-3 behavior this test exists to detect.
         assert_ne!(
             dry_run_post.as_slice(),
-            source.as_ref(),
+            source,
             "DryRun post_buffer must differ from the unspliced source — \
              returning the unspliced source is the R2-3 regression"
         );
@@ -7173,7 +7214,7 @@ mod tests {
         let pass0_applied = vec![synth_applied_fix("C001", 0, 6)];
         let pass1_applied = vec![synth_applied_fix("E006", 8, 12)];
         let pass1 = Pass1Result {
-            post_buffer: b"POST-PASS-1-BUFFER".to_vec(),
+            post_buffer: Zeroizing::new(b"POST-PASS-1-BUFFER".to_vec()),
             applied: pass1_applied,
             applied_keys: HashSet::new(),
         };
@@ -7202,7 +7243,7 @@ mod tests {
         let last = result.remaining_diagnostics.last().unwrap();
         assert_eq!(last.rule, super::R002_RULE_ID);
         // Apply mode returns the pass-1 buffer.
-        assert_eq!(result.source, b"POST-PASS-1-BUFFER");
+        assert_eq!(result.source.expose_secret(), b"POST-PASS-1-BUFFER");
     }
 
     #[test]
@@ -7221,7 +7262,7 @@ mod tests {
         };
 
         let pass1 = Pass1Result {
-            post_buffer: b"POST-PASS-1-BUFFER".to_vec(),
+            post_buffer: Zeroizing::new(b"POST-PASS-1-BUFFER".to_vec()),
             applied: vec![synth_applied_fix("E006", 8, 12)],
             applied_keys: HashSet::new(),
         };
@@ -7234,7 +7275,7 @@ mod tests {
         };
         let r002 = super::build_r002_diagnostic(SmallVec::new(), Span::new(0, 0));
         let result = fixer.assemble_r002_result(Vec::new(), Vec::new(), pass1, lint, r002);
-        assert_eq!(result.source, TEST_SRC);
+        assert_eq!(result.source.expose_secret(), TEST_SRC);
         assert!(result.r002_fired);
     }
 
@@ -7262,7 +7303,7 @@ mod tests {
             None,
         )];
         let pass1 = Pass1Result {
-            post_buffer: Vec::new(),
+            post_buffer: Zeroizing::new(Vec::new()),
             applied: Vec::new(),
             applied_keys: HashSet::new(),
         };
@@ -7320,7 +7361,7 @@ mod tests {
         );
         let pass1_applied = vec![synth_applied_fix("E006", 8, 14)];
         let pass1 = Pass1Result {
-            post_buffer: Vec::new(),
+            post_buffer: Zeroizing::new(Vec::new()),
             applied: pass1_applied,
             applied_keys: HashSet::new(),
         };

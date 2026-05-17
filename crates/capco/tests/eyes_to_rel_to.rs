@@ -23,6 +23,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
 use marque_rules::Severity;
 use std::time::{Duration, UNIX_EPOCH};
+use secrecy::ExposeSecret as _;
 
 const FIXED_TS: u64 = 1_700_000_000;
 
@@ -47,7 +48,7 @@ fn lint_e064(source: &[u8]) -> Vec<marque_rules::Diagnostic<marque_capco::CapcoS
 
 fn fix_once(source: &[u8]) -> String {
     let result = engine().fix(source, FixMode::Apply);
-    String::from_utf8(result.source).expect("engine output is valid UTF-8")
+    String::from_utf8(result.source.expose_secret().to_vec()).expect("engine output is valid UTF-8")
 }
 
 // =========================================================================

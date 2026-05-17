@@ -58,6 +58,13 @@ marque-ism = { workspace = true }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
 recoco-utils = { workspace = true, optional = true }
+# Constitution Principle II — Marque-owned content-bearing buffers wipe on
+# drop. `FixResult.source` wraps `SecretBox<Vec<u8>>` (grep-target readout
+# discipline at the public API boundary); `Engine::fix_inner`'s splice
+# scratch buffers use `Zeroizing<Vec<u8>>` directly (internal-only, no
+# readout discipline needed).
+secrecy = { workspace = true }
+zeroize = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
@@ -85,6 +92,11 @@ marque-test-utils = { workspace = true }
 proptest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Constitution Principle II — compile-time type-pin for
+# `FixResult.source: SecretSlice<u8>` in
+# `tests/content_zeroize.rs`. A refactor that drifts the field
+# type fails at compile time, not at integration-test runtime.
+static_assertions = { workspace = true }
 
 [features]
 default = ["batch"]
