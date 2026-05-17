@@ -8,7 +8,7 @@
 //!   on a single-portion input that produces exactly one E054 fix at
 //!   confidence 0.95. End-to-end per-fix latency: scanner + parser + rule
 //!   evaluation + intent synthesis + promotion + apply + audit. Criterion
-//!   amortises over thousands of iterations, so the reported time IS the
+//!   amortizes over thousands of iterations, so the reported time IS the
 //!   per-fix cost for an interactive caller fixing one marking at a time.
 //! - **`fix_single_e054_dry_run`** — same input, `FixMode::DryRun`. Drops
 //!   the source-rewrite cost; isolates the cost of generating the audit
@@ -34,7 +34,7 @@
 //!
 //! Marketing-facing number is `fix_single_e054_apply`: total wall-clock
 //! time to detect, promote, apply, and audit one fix on a one-portion
-//! input. The lint baseline contextualises how much of that is detection
+//! input. The lint baseline contextualizes how much of that is detection
 //! vs the fix-specific work.
 //!
 //! Not gated by `scripts/bench-check.sh` — there is no SC-target for
@@ -76,7 +76,7 @@ fn build_engine() -> Engine {
 
 /// Asserts the bench invariant: `SINGLE_FIX_INPUT` must produce exactly one
 /// E054 fix at combined confidence 0.95, and the rewritten source must equal
-/// `EXPECTED_FIXED_SOURCE`. If rule behaviour changes (E054 is retired,
+/// `EXPECTED_FIXED_SOURCE`. If rule behavior changes (E054 is retired,
 /// confidence drops below threshold, a new rule fires on this input, etc.)
 /// this panics with a descriptive message so the breakage is visible
 /// immediately rather than silently measuring a different code path.
