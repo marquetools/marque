@@ -458,7 +458,8 @@ struct ExpectedRuleCount {
 /// - **#461** (Phase::PageFinalization): retires E031, E035, E040 entries.
 /// - **#439** (S004 suppress under REL TO): retired all S004 entries.
 /// - **#470** (W002 over-fires on canonical FGI): retires W002 entries.
-/// - **#471** (E015 zero-width false-positive): retires E015 entries.
+/// - **#471** (E015 zero-width false-positive): retired — engine gates rule
+///   dispatch on sub-threshold decoder parses (closed in this PR).
 /// - **#472** (R001 prose parenthetical false-positives): retires R001 entries.
 /// - **#407** (Vocabulary sentinel set: CNWDI/UCNI long-forms): retires
 ///   the E008 entries on `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION`
@@ -732,12 +733,6 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     (
         "CIA-RDP96-00289R000200030004-1",
         &[
-            ExpectedRuleCount {
-                rule: "E015",
-                count: 2,
-                issue: 471,
-                reason: "E015 zero-width span / wrong-classification false-positive on US TOP SECRET",
-            },
             ExpectedRuleCount {
                 rule: "E031",
                 count: 1,
