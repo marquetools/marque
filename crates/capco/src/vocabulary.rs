@@ -22,9 +22,9 @@
 //! `CapcoScheme::Token = TokenId` — opaque numeric ids assigned
 //! per-sentinel in `crate::scheme`. The active sentinel set today
 //! is the small hand-curated list of TokenIds the catalog actually
-//! references (10 ids today; see [`SENTINEL_TO_CANONICAL`] below for
-//! the authoritative count — the doc reflects the table). Each is
-//! mapped to its canonical CVE value
+//! references (15 ids post-#407; see [`SENTINEL_TO_CANONICAL`] below
+//! for the authoritative count — the doc reflects the table). Each
+//! is mapped to its canonical CVE value
 //! by [`SENTINEL_TO_CANONICAL`]. Aggregate sentinels (`TOK_*` that
 //! span multiple tokens — `TOK_US_CLASSIFIED`,
 //! `TOK_NON_US_CLASSIFICATION`), trigraph sentinels (`TOK_USA` —
@@ -53,8 +53,8 @@
 use crate::scheme::{
     CAT_AEA, CAT_CLASSIFICATION, CAT_DISSEM, CAT_FGI_MARKER, CAT_JOINT_CLASSIFICATION,
     CAT_NON_US_CLASSIFICATION, CAT_REL_TO, CAT_SAR, CAT_SCI, CapcoScheme, FDR_DOMINATORS,
-    TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED,
-    TOK_TFNI, TOK_UCNI, capco_token_category,
+    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_NNPI, TOK_NODIS, TOK_NOFORN,
+    TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SSI, TOK_TFNI, TOK_UCNI, capco_token_category,
 };
 use marque_ism::Classification;
 use marque_ism::generated::migrations::find_migration;
@@ -112,10 +112,10 @@ const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
     // as a sub-flag on `AeaMarking::Rd { cnwdi: true }` (see
     // `satisfies_attrs` in `scheme.rs`).
     (TOK_CNWDI, "RD-CNWDI"),
-    // UCNI defaults to the DOE form (`UCNI`); the DOD form
-    // (`DCNI`) is its own marking with its own metadata. The
-    // sentinel was never disambiguated, so this is a deliberate
-    // best-fit choice — see the gap note in `satisfies_attrs`.
+    // UCNI is the DOE form (`UCNI`); the DOD form (`DCNI`) is its
+    // own sentinel + canonical entry below. Issue #407 split the
+    // pair so `forms()` can resolve each variant to the correct
+    // CVE entry.
     (TOK_UCNI, "UCNI"),
     // SCI — published in `CVEnumISMSCIControls.json`.
     (TOK_HCS, "HCS"),
@@ -125,14 +125,31 @@ const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
     // Non-IC dissem — published in `CVEnumISMNonIC.json`.
     (TOK_NODIS, "ND"),
     (TOK_EXDIS, "XD"),
+    // Issue #407: vocabulary surface for the five sentinels whose
+    // CVE canonicals were previously unreachable through
+    // `forms()`. Each entry's canonical is the §G.1 Table 4
+    // (p36) authorized portion mark; the matching `MARKING_FORMS`
+    // row supplies the banner title + abbreviation.
+    //
+    // CAT_DISSEM (IC dissem):
+    (TOK_ORCON_USGOV, "OC-USGOV"), // ORCON-USGOV — §H.8 p139
+    (TOK_FISA, "FISA"),            // FISA — §H.8 p161
+    // CAT_NON_IC_DISSEM (non-IC dissem):
+    (TOK_SSI, "SSI"), // SSI — §H.9 p189
+    // NNPI has no CAPCO-2016 §-citation (closes issue #407;
+    // see `crates/capco/src/scheme/mod.rs` TOK_NNPI comment for
+    // the in-tree authority).
+    (TOK_NNPI, "NNPI"),
+    // CAT_AEA:
+    (TOK_DCNI, "DCNI"), // DOD UCNI — §H.6 p116
 ];
 
 /// Resolve a sentinel TokenId to its canonical CVE value, or panic
 /// with a clear message if the id is outside the supported set.
 ///
 /// **Phase C scaling note (L1 in `docs/reviews/phase5-review.md`).**
-/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` (10
-/// entries today) on every accessor call. At this size the linear
+/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` (15
+/// entries post-#407) on every accessor call. At this size the linear
 /// scan is dominated by accessor-call overhead and is not a real
 /// concern — Constitution I (perceptual instantaneity) is not
 /// observably violated. Phase C extends the sentinel set to the full
@@ -513,29 +530,79 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
 ///
 /// ## Active sentinel coverage
 ///
-/// `SENTINEL_TO_CANONICAL` (10 entries) intersects the 9 divergent
-/// `MARKING_FORMS` rows at exactly one canonical: `"UCNI"` (the DOE
-/// form). `TOK_CNWDI` maps to canonical `"RD-CNWDI"`, not the bare
+/// `SENTINEL_TO_CANONICAL` (15 entries post-#407) intersects the
+/// divergent `MARKING_FORMS` rows at six canonicals: `"UCNI"` (DOE),
+/// `"DCNI"` (DOD UCNI), `"OC-USGOV"` (ORCON-USGOV), `"FISA"`, `"SSI"`,
+/// `"NNPI"`. `TOK_CNWDI` maps to canonical `"RD-CNWDI"`, not the bare
 /// `"CNWDI"` that the MARKING_FORMS row keys on — so its description
 /// title divergence is captured on the row but unreachable through
-/// `forms(TOK_CNWDI)`. Other divergent canonicals (SI-EU, SI-NK,
-/// DCNI, OC-USGOV, FISA, SSI, NNPI) have no active sentinel today;
-/// their `description_title` is populated on the row for the direct
-/// `description_title_divergence.rs` walk but `forms()` is
-/// unreachable for them (closed-CVE sentinel set only).
+/// `forms(TOK_CNWDI)`. The remaining divergent canonical (SI-EU /
+/// SI-NK) has no active sentinel today (the bare-form CNWDI / NK / EU
+/// rewriters in E067 operate at the rule layer, not the vocabulary
+/// surface); the divergence remains visible via direct iteration of
+/// `MARKING_FORMS.description_title` (exercised by
+/// `crates/ism/tests/description_title_divergence.rs`).
 const ALIASES_UCNI: &[(FormKind, &str)] = &[(
     FormKind::IsmDescriptionTitle,
     "DoE CONTROLLED NUCLEAR INFORMATION",
 )];
 
+const ALIASES_DCNI: &[(FormKind, &str)] = &[(
+    FormKind::IsmDescriptionTitle,
+    "DoD CONTROLLED NUCLEAR INFORMATION",
+)];
+
+const ALIASES_OC_USGOV: &[(FormKind, &str)] = &[(
+    FormKind::IsmDescriptionTitle,
+    "ORIGINATOR CONTROLLED US GOVERNMENT",
+)];
+
+const ALIASES_FISA: &[(FormKind, &str)] = &[(
+    FormKind::IsmDescriptionTitle,
+    "Foreign Intelligence Surveillance Act. Related to unclassified \
+     and declassified information that is collected from \
+     unconsenting individuals under the authority of the Foreign \
+     Intelligence Surveillance Act (FISA).",
+)];
+
+const ALIASES_SSI: &[(FormKind, &str)] = &[(
+    FormKind::IsmDescriptionTitle,
+    "Sensitive Security Information. As defined in 49 C.F.R. Part \
+     15.5, Sensitive Security Information is information obtained \
+     or developed in the conduct of security activities, including \
+     research and development, the disclosure of which DOT has \
+     determined would constitute an unwarranted invasion of \
+     privacy, reveal trade secrets or privileged or confidential \
+     information, or be detrimental to transportation safety. As \
+     defined in 49 C.F.R. Part 1520.5, Sensitive Security \
+     Information is information obtained or developed in the \
+     conduct of security activities, including research and \
+     development, the disclosure of which DHS/TSA has determined \
+     would, among other things, be detrimental to the security \
+     of transportation.",
+)];
+
+const ALIASES_NNPI: &[(FormKind, &str)] = &[(
+    FormKind::IsmDescriptionTitle,
+    "Naval Nuclear Propulsion Information. Related to the safety \
+     of reactors and associated naval nuclear propulsion plants, \
+     and control of radiation and radioactivity associated with \
+     naval nuclear propulsion activities, including prescribing \
+     and enforcing standards and regulations for these areas as \
+     they affect the environment and the safety and health of \
+     workers, operators, and the general public.",
+)];
+
 /// Lookup the `recognized_aliases` static slice for a `MarkingForm`'s
 /// canonical. Returns `&[]` for non-divergent rows.
 ///
-/// Match arms cover only canonicals that are BOTH active sentinels AND
-/// carry a populated `MarkingForm.description_title`. Non-sentinel
-/// divergent rows (SI-EU, SI-NK, DCNI, OC-USGOV, FISA, SSI, NNPI)
-/// fall through to `&[]` here because `forms()` is unreachable for
-/// them — the divergence remains visible via direct iteration of
+/// Match arms cover canonicals that are BOTH active sentinels AND
+/// carry a populated `MarkingForm.description_title`. Issue #407
+/// added five sentinels (DCNI / OC-USGOV / FISA / SSI / NNPI), each
+/// of which has a divergent `description_title` per `MARKING_FORMS`.
+/// The remaining divergent canonicals (SI-EU / SI-NK / CNWDI) have
+/// no active sentinel — they fall through to `&[]` here; the
+/// divergence remains visible via direct iteration of
 /// `MARKING_FORMS.description_title` (exercised by
 /// `crates/ism/tests/description_title_divergence.rs`).
 fn recognized_aliases_for_canonical(
@@ -543,6 +610,11 @@ fn recognized_aliases_for_canonical(
 ) -> &'static [(FormKind, &'static str)] {
     match canonical {
         "UCNI" => ALIASES_UCNI,
+        "DCNI" => ALIASES_DCNI,
+        "OC-USGOV" => ALIASES_OC_USGOV,
+        "FISA" => ALIASES_FISA,
+        "SSI" => ALIASES_SSI,
+        "NNPI" => ALIASES_NNPI,
         _ => &[],
     }
 }
@@ -1725,6 +1797,10 @@ mod fdr_dissem_pin {
             TOK_TFNI,
             TOK_CNWDI,
             TOK_UCNI,
+            // Issue #407: TOK_DCNI added so the probe set covers the
+            // DOD UCNI variant sentinel introduced alongside the
+            // UCNI/DCNI variant split.
+            TOK_DCNI,
             TOK_HCS,
             TOK_NODIS,
             TOK_EXDIS,
@@ -1739,10 +1815,19 @@ mod fdr_dissem_pin {
             TOK_DSEN,
             TOK_RSEN,
             TOK_FOUO,
+            // PR 4b-C Commit 1 IC dissem additions (sentinels already
+            // declared; absent from this probe set pre-#407).
+            TOK_PROPIN,
+            TOK_FISA,
+            TOK_RAWFISA,
             TOK_LIMDIS,
             TOK_LES,
             TOK_SBU,
             TOK_SSI,
+            // Issue #407: NNPI sentinel was missing from the probe
+            // set; add for coverage parity with the rest of the
+            // CAT_NON_IC_DISSEM family.
+            TOK_NNPI,
             TOK_EYES,
             TOK_ATOMAL,
             TOK_BALK,

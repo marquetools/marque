@@ -336,6 +336,29 @@ pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares
 // Closes issue #407. verified 2026-05-16.
 pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 
+// Issue #407 (PR feat/407): DOD UCNI sentinel disambiguation.
+//
+// DCNI lives in `attrs.aea_markings` as the `AeaMarking::DodUcni`
+// variant per CAPCO-2016 §H.6 p116 (`DOD UNCLASSIFIED CONTROLLED
+// NUCLEAR INFORMATION`, banner abbrev `DOD UCNI`, portion mark
+// `DCNI`). Prior to this PR `TOK_UCNI` aliased both `AeaMarking::
+// DodUcni` and `AeaMarking::DoeUcni`, which the vocabulary surface
+// then collapsed onto the single canonical `"UCNI"` (DOE). Splitting
+// the sentinel pair (`TOK_UCNI` → DOE-only, `TOK_DCNI` → DOD-only)
+// lets `forms(TOK_DCNI)` resolve to the correct DCNI portion form
+// and gives a per-system sentinel surface for any future class-
+// floor / banner-roll-up rule that needs to distinguish the two
+// agency variants.
+//
+// Routed via `capco_token_category` to `CAT_AEA` (mirrors
+// `TOK_UCNI`). Pattern-C strip closures
+// (`strip_dod_ucni_action` / `strip_doe_ucni_action` in
+// `crates/capco/src/scheme/actions/strip.rs`) read the AEA axis
+// directly via `AeaMarking::DodUcni` / `AeaMarking::DoeUcni`
+// variant match and do NOT depend on sentinel identity, so adding
+// `TOK_DCNI` is Pattern-C-neutral. verified 2026-05-16.
+pub const TOK_DCNI: TokenId = TokenId(147); // DCNI — DOD UCNI portion form, §H.6 p116
+
 // PR 9c.1 (T134): canonical NATO control-marking sentinels for
 // ATOMAL / BALK / BOHEMIA. These tokens identify the new structural
 // shapes added in `marque-ism` PR 9c.1 Commit 1:

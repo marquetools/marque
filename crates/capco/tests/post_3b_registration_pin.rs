@@ -2,19 +2,20 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-3c.B-Commit-7.4 registration pin (PR 4b-B updates: 38 → 39).
+//! Post-PR-3c.B-Commit-7.4 registration pin (issue #407 updates: 39 → 40).
 //!
-//! Asserts the **exact set** of 39 registered `Rule::id()` values in
-//! `CapcoRuleSet::new()` after PR 4b-B (006 T112) lands W004. The
-//! umbrella's structural commitment: the per-commit tests pin per-rule
-//! behavior; this pins the closed set the workspace delivers.
+//! Asserts the **exact set** of 40 registered `Rule::id()` values in
+//! `CapcoRuleSet::new()` after issue #407 lands the
+//! `BareCanonicalCompoundRule` (E067) walker. The umbrella's structural
+//! commitment: the per-commit tests pin per-rule behavior; this pins
+//! the closed set the workspace delivers.
 //!
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 39` (post-PR-4b-B; the count rolls
-//! forward in lock-step with this test as W004 / S007 / E066 / etc.
-//! land — see the running-count derivation comment in
+//! `rule_set.rules().len() == 40` (post-issue-#407; the count rolls
+//! forward in lock-step with this test as W004 / S007 / E066 / E067 /
+//! etc. land — see the running-count derivation comment in
 //! `corpus_parity.rs::rule_count_reflects_registration_changes`).
 //! That count pin catches "a rule was added or removed." It does
 //! **not** catch:
@@ -38,7 +39,7 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 39 registered `Rule::id()` strings post-PR-4b-B.
+/// The closed set of 40 registered `Rule::id()` strings post-issue-#407.
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
@@ -54,13 +55,16 @@ use std::collections::BTreeSet;
 /// — EYES / EYES ONLY → REL TO conversion per §H.8 p157 + p158
 /// (35 → 36). PR 9c.1 T134 adds `LegacyNatoCompoundRemarkRule` (E066)
 /// — legacy NATO compound text re-marking per §G.2 p40 + §H.7 p122 +
-/// §H.7 p127 (36 → 37). PR 9c.2 (this PR) adds
-/// `BareNatoRequiresRelToRule` (S007) — bare NATO classification in a
-/// US-classified document should carry `REL TO USA, NATO` per §H.7
-/// p127 Notional Example 2 (37 → 38). PR 4b-B (006 T112) adds W004 —
-/// joint-disunity-collapse-to-FGI per §H.3 p57 + §H.7 p123 (38 → 39)
-/// (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the migration
-/// trigger lives on p57's "Derivative Use" bullets).
+/// §H.7 p127 (36 → 37). PR 9c.2 adds `BareNatoRequiresRelToRule`
+/// (S007) — bare NATO classification in a US-classified document
+/// should carry `REL TO USA, NATO` per §H.7 p127 Notional Example 2
+/// (37 → 38). PR 4b-B (006 T112) adds W004 — joint-disunity-collapse-
+/// to-FGI per §H.3 p57 + §H.7 p123 (38 → 39) (CV-4 PR 4b-B 8th-pass
+/// updated from §H.3 p56 — the migration trigger lives on p57's
+/// "Derivative Use" bullets). Issue #407 (this PR) adds
+/// `BareCanonicalCompoundRule` (E067) — bare CNWDI / NK / EU portion-
+/// mark short-forms → canonical compound forms per §H.6 p106
+/// (RD-CNWDI), §H.4 p83 (SI-NK), §H.4 p78 (SI-EU). (39 → 40)
 /// The 27 class-floor + 5 SCI
 /// per-system catalog rows still fire; they emit through the bridge as
 /// `Diagnostic.rule = "E058"` and `Diagnostic.rule = "E059"`
@@ -76,7 +80,12 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // standalone registered control markings) + §H.7 p122 (ATOMAL
     // → AEA worked example) + §H.7 p127 (BALK/BOHEMIA → SCI
     // worked example).
-    "E066", "S003", "S004", "S005", "S006",
+    "E066",
+    // Issue #407: bare-canonical-compound rewriter. Three legacy
+    // short-forms (bare CNWDI / NK / EU in SCI position) carry
+    // CAPCO-2016 canonical compound portion marks (RD-CNWDI per
+    // §H.6 p106; SI-NK per §H.4 p83; SI-EU per §H.4 p78).
+    "E067", "S003", "S004", "S005", "S006",
     // PR 9c.2 / FR-048: bare NATO classification in a US-classified
     // document should carry `REL TO USA, NATO` per §H.7 p127 Notional
     // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
@@ -90,22 +99,23 @@ const EXPECTED_RULE_IDS: &[&str] = &[
 ];
 
 #[test]
-fn post_pr_4b_b_registers_exact_39_rule_ids() {
+fn post_407_registers_exact_40_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "39 unique IDs from 39
-    // registrations" from "39 unique IDs from 40 registrations
+    // assertion below cannot distinguish "40 unique IDs from 40
+    // registrations" from "40 unique IDs from 41 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
-    // PR 4b-B Commit 9 (006 T112): added W004 — bumped from 38 to 39.
+    // Issue #407: added E067 `BareCanonicalCompoundRule` — bumped
+    // from 39 to 40.
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 39,
-        "post-PR-4b-B raw rule slice length drifted from 39 \
+        raw_len, 40,
+        "post-#407 raw rule slice length drifted from 40 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -122,16 +132,16 @@ fn post_pr_4b_b_registers_exact_39_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        39,
-        "EXPECTED_RULE_IDS does not contain 39 unique entries: {expected:?}",
+        40,
+        "EXPECTED_RULE_IDS does not contain 40 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        39,
-        "post-PR-4b-B registered rule count drifted from 39: actual={actual:?}",
+        40,
+        "post-#407 registered rule count drifted from 40: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -147,7 +157,7 @@ fn post_pr_4b_b_registers_exact_39_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-PR-4b-B registered rule-ID set drifted. \
+        "post-#407 registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \

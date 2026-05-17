@@ -88,10 +88,22 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 .aea_markings
                 .iter()
                 .any(|a| matches!(a, AeaMarking::Rd(rd) if rd.cnwdi)),
+            // Issue #407: `TOK_UCNI` now resolves to the DOE
+            // variant only; `TOK_DCNI` covers the DOD variant per
+            // CAPCO-2016 §H.6 p118 (DOE UCNI) and §H.6 p116 (DOD
+            // UCNI / DCNI). Prior behavior aliased both variants
+            // under `TOK_UCNI` which the vocabulary surface then
+            // collapsed onto a single canonical form. Pattern-C
+            // strip closures read the AEA axis directly by variant
+            // match and are unaffected by this sentinel split.
             TOK_UCNI => attrs
                 .aea_markings
                 .iter()
-                .any(|a| matches!(a, AeaMarking::DodUcni | AeaMarking::DoeUcni)),
+                .any(|a| matches!(a, AeaMarking::DoeUcni)),
+            TOK_DCNI => attrs
+                .aea_markings
+                .iter()
+                .any(|a| matches!(a, AeaMarking::DodUcni)),
             // PR 9c.1 (T134): ATOMAL lives in the AEA axis per
             // CAPCO-2016 §H.7 p122 (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
             TOK_ATOMAL => attrs
@@ -393,8 +405,11 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             DissemControl::Rs => Some(TOK_RSEN),
             DissemControl::Fouo => Some(TOK_FOUO),
             DissemControl::Eyes => Some(TOK_EYES),
+            DissemControl::Pr => Some(TOK_PROPIN),
+            DissemControl::Fisa => Some(TOK_FISA),
+            DissemControl::Rawfisa => Some(TOK_RAWFISA),
             // Variants without TOK_* sentinels yet:
-            //   Rel, Pr, Rawfisa, Fisa, ExemptFromIcd501Discovery
+            //   Rel, ExemptFromIcd501Discovery
             //
             // DRIFT GUARD: `DissemControl` is `#[non_exhaustive]`. If
             // a future ODNI ISM schema bump adds a new variant, it
@@ -426,6 +441,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             NonIcDissem::Les => Some(TOK_LES),
             NonIcDissem::Sbu => Some(TOK_SBU),
             NonIcDissem::Ssi => Some(TOK_SSI),
+            NonIcDissem::Nnpi => Some(TOK_NNPI),
             // NonIcDissem is non-exhaustive; future variants fall through.
             _ => None,
         };
@@ -439,13 +455,18 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
         tokens.push(TokenRef::AnyInCategory(CAT_REL_TO));
     }
 
-    // AEA markings
+    // AEA markings. Issue #407: `DodUcni` and `DoeUcni` now emit
+    // distinct sentinels (`TOK_DCNI` and `TOK_UCNI` respectively) so
+    // `ConflictsWithFamily` family predicates that need to address
+    // one variant without the other can do so without re-walking the
+    // AEA axis.
     for a in attrs.aea_markings.iter() {
         let tok = match a {
             AeaMarking::Rd(_) => Some(TOK_RD),
             AeaMarking::Frd(_) => Some(TOK_FRD),
             AeaMarking::Tfni => Some(TOK_TFNI),
-            AeaMarking::DodUcni | AeaMarking::DoeUcni => Some(TOK_UCNI),
+            AeaMarking::DoeUcni => Some(TOK_UCNI),
+            AeaMarking::DodUcni => Some(TOK_DCNI),
             _ => None,
         };
         if let Some(id) = tok {

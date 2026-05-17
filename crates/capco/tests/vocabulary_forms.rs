@@ -47,8 +47,8 @@
 use marque_capco::CapcoScheme;
 use marque_capco::active_sentinel_count;
 use marque_capco::scheme::{
-    TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED,
-    TOK_TFNI, TOK_UCNI,
+    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_NNPI, TOK_NODIS, TOK_NOFORN,
+    TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SSI, TOK_TFNI, TOK_UCNI,
 };
 use marque_scheme::{FormKind, TokenId, Vocabulary};
 
@@ -111,6 +111,36 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // EXDIS row: title="EXCLUSIVE DISTRIBUTION", banner="EXDIS",
     // portion="XD". banner != title → Some("EXDIS").
     (TOK_EXDIS, "XD", "EXDIS", Some("EXDIS")),
+    // ----- Issue #407 sentinel additions -----
+    //
+    // OC-USGOV (ORCON-USGOV) row per §H.8 p139.
+    // title="ORIGINATOR CONTROLLED-USGOV", banner="ORCON-USGOV",
+    // portion="OC-USGOV". banner != title → Some("ORCON-USGOV").
+    (
+        TOK_ORCON_USGOV,
+        "OC-USGOV",
+        "ORCON-USGOV",
+        Some("ORCON-USGOV"),
+    ),
+    // FISA row per §H.8 p161.
+    // title="FOREIGN INTELLIGENCE SURVEILLANCE ACT", banner="FISA",
+    // portion="FISA". banner != title → Some("FISA").
+    (TOK_FISA, "FISA", "FISA", Some("FISA")),
+    // SSI row per §H.9 p189.
+    // title="SENSITIVE SECURITY INFORMATION", banner="SSI",
+    // portion="SSI". banner != title → Some("SSI").
+    (TOK_SSI, "SSI", "SSI", Some("SSI")),
+    // NNPI row. NNPI has no CAPCO-2016 §-citation (registered in
+    // ODNI ISM but governed by separate statutory authority — see
+    // `crates/ism/src/attrs.rs::NonIcDissem::Nnpi` doc-comment).
+    // title="NAVAL NUCLEAR PROPULSION INFORMATION", banner="NNPI",
+    // portion="NNPI". banner != title → Some("NNPI").
+    (TOK_NNPI, "NNPI", "NNPI", Some("NNPI")),
+    // DCNI (DOD UCNI) row per §H.6 p116.
+    // title="DOD UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION",
+    // banner="DOD UCNI", portion="DCNI". banner != title →
+    // Some("DOD UCNI").
+    (TOK_DCNI, "DCNI", "DOD UCNI", Some("DOD UCNI")),
 ];
 
 #[test]
@@ -196,10 +226,12 @@ fn forms_round_trips_for_every_active_sentinel() {
 ///
 /// Coverage: only sentinels whose CAPCO canonical (per
 /// `SENTINEL_TO_CANONICAL`) matches a `MARKING_FORMS` row with
-/// `description_title: Some(_)`. At PR 3d.3 that set has size 1:
-/// `TOK_UCNI` (the DOE form), whose row's ODNI Description
-/// (`"DoE CONTROLLED NUCLEAR INFORMATION"`) diverges from CAPCO's
-/// `"DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION"`.
+/// `description_title: Some(_)`. Post-#407 the set has six entries:
+/// `TOK_UCNI` (DoE form), `TOK_DCNI` (DoD form), `TOK_ORCON_USGOV`,
+/// `TOK_FISA`, `TOK_SSI`, and `TOK_NNPI`. Each row's ODNI Description
+/// diverges from CAPCO's authorized title in either casing,
+/// abbreviation, or regulatory citation prose; see the per-row
+/// `MARKING_FORMS` entries in `crates/ism/src/marking_forms.rs`.
 ///
 /// `TOK_CNWDI`'s `MARKING_FORMS` row (portion="CNWDI", divergent
 /// description "Controled Nuclear Weapon Design Information Warning
@@ -209,13 +241,71 @@ fn forms_round_trips_for_every_active_sentinel() {
 /// `crates/ism/tests/description_title_divergence.rs` walking
 /// `MARKING_FORMS` directly; it just isn't reachable through
 /// `forms(TOK_CNWDI)`.
-const EXPECTED_ALIASES: &[(TokenId, &[(FormKind, &str)])] = &[(
-    TOK_UCNI,
-    &[(
-        FormKind::IsmDescriptionTitle,
-        "DoE CONTROLLED NUCLEAR INFORMATION",
-    )],
-)];
+const EXPECTED_ALIASES: &[(TokenId, &[(FormKind, &str)])] = &[
+    (
+        TOK_UCNI,
+        &[(
+            FormKind::IsmDescriptionTitle,
+            "DoE CONTROLLED NUCLEAR INFORMATION",
+        )],
+    ),
+    (
+        TOK_DCNI,
+        &[(
+            FormKind::IsmDescriptionTitle,
+            "DoD CONTROLLED NUCLEAR INFORMATION",
+        )],
+    ),
+    (
+        TOK_ORCON_USGOV,
+        &[(
+            FormKind::IsmDescriptionTitle,
+            "ORIGINATOR CONTROLLED US GOVERNMENT",
+        )],
+    ),
+    (
+        TOK_FISA,
+        &[(
+            FormKind::IsmDescriptionTitle,
+            "Foreign Intelligence Surveillance Act. Related to unclassified \
+             and declassified information that is collected from \
+             unconsenting individuals under the authority of the Foreign \
+             Intelligence Surveillance Act (FISA).",
+        )],
+    ),
+    (
+        TOK_SSI,
+        &[(
+            FormKind::IsmDescriptionTitle,
+            "Sensitive Security Information. As defined in 49 C.F.R. Part \
+             15.5, Sensitive Security Information is information obtained \
+             or developed in the conduct of security activities, including \
+             research and development, the disclosure of which DOT has \
+             determined would constitute an unwarranted invasion of \
+             privacy, reveal trade secrets or privileged or confidential \
+             information, or be detrimental to transportation safety. As \
+             defined in 49 C.F.R. Part 1520.5, Sensitive Security \
+             Information is information obtained or developed in the \
+             conduct of security activities, including research and \
+             development, the disclosure of which DHS/TSA has determined \
+             would, among other things, be detrimental to the security \
+             of transportation.",
+        )],
+    ),
+    (
+        TOK_NNPI,
+        &[(
+            FormKind::IsmDescriptionTitle,
+            "Naval Nuclear Propulsion Information. Related to the safety \
+             of reactors and associated naval nuclear propulsion plants, \
+             and control of radiation and radioactivity associated with \
+             naval nuclear propulsion activities, including prescribing \
+             and enforcing standards and regulations for these areas as \
+             they affect the environment and the safety and health of \
+             workers, operators, and the general public.",
+        )],
+    ),
+];
 
 #[test]
 fn recognized_aliases_consistency_with_marking_forms_description_title() {

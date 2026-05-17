@@ -74,8 +74,14 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         TOK_USA | TOK_REL_TO => Some(CAT_REL_TO),
         // CAT_AEA — atomic-energy markings. ATOMAL lives in the AEA
         // axis per CAPCO-2016 §H.7 p122 worked example
-        // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`).
-        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI | TOK_ATOMAL => Some(CAT_AEA),
+        // (`SECRET//RD/ATOMAL//FGI NATO//NOFORN`). Issue #407:
+        // `TOK_DCNI` (DOD UCNI, §H.6 p116) and `TOK_UCNI` (DOE UCNI,
+        // §H.6 p118) are now distinct sentinels routed to the same
+        // AEA axis where their `AeaMarking::DodUcni` /
+        // `AeaMarking::DoeUcni` variants live.
+        TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI | TOK_DCNI | TOK_ATOMAL => {
+            Some(CAT_AEA)
+        }
         // CAT_SCI — sensitive compartmented information control systems.
         // BALK / BOHEMIA are NATO SAPs in the SCI category position per
         // §G.2 p40 + §H.7 p127 (rendered standalone, no SAR- prefix).

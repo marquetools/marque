@@ -317,6 +317,20 @@ impl CapcoRuleSet {
                 // compound EYES block span; trigraphs carry forward to the
                 // new REL TO list.
                 Box::new(EyesOnlyConvertToRelToRule),
+                // Issue #407 (rule E067): bare-canonical-compound
+                // rewriter. Three legacy short-forms (bare CNWDI / NK /
+                // EU in SCI position) have authoritative CAPCO-2016
+                // canonical compound portion marks (RD-CNWDI per §H.6
+                // p106; SI-NK per §H.4 p83; SI-EU per §H.4 p78). The
+                // walker filters `TokenKind::Unknown`, matches against
+                // a 3-row catalog, and emits `Severity::Fix`
+                // `text_correction` diagnostics whose replacements are
+                // hardcoded static literals (Constitution V audit
+                // content-ignorance). Co-firing with E008
+                // (`UnknownTokenRule`) is suppressed via
+                // `is_bare_canonical_compound_form` so the user sees
+                // only the actionable E067 diagnostic.
+                Box::new(crate::rules_declarative::BareCanonicalCompoundRule),
                 // PR 9c.1 T134 (rule E066): legacy NATO compound text
                 // re-marking per CAPCO-2016 §G.2 p40 (Table 5: ARH
                 // registers ATOMAL/BOHEMIA/BALK as standalone control
@@ -1199,9 +1213,17 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                 // that the structural subparser rejected DO fire E008 —
                 // the user sees a real diagnostic instead of a silent
                 // fallback. Only suppress well-known specialized paths.
+                //
+                // Issue #407: bare canonical compound forms (CNWDI / NK /
+                // EU in SCI position) are owned by E067
+                // (`BareCanonicalCompoundRule`); suppress E008 co-fire
+                // so the user sees only the actionable E067
+                // `text_correction` diagnostic, not a redundant
+                // "unrecognized token" Error.
                 find_migration(text).is_none()
                     && !looks_like_deprecated_x_shorthand(text)
                     && !is_repeated_sar_owned_by_e030(text, has_first_sar)
+                    && !crate::rules_declarative::is_bare_canonical_compound_form(text)
             })
             .map(|t| {
                 Diagnostic::new(

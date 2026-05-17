@@ -127,6 +127,11 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // companion block need to land together (e.g.,
     // `(//CTSA)` → `(//CTS//ATOMAL)`).
     ("E066", Phase::WholeMarking),
+    // Issue #407: bare-canonical-compound rewriter (CNWDI → RD-CNWDI,
+    // NK → SI-NK, EU → SI-EU). Phase::Localized — the text_correction
+    // span covers a single `TokenKind::Unknown` token (the bare-form
+    // text); replacements are byte-precise single-token splices.
+    ("E067", Phase::Localized),
     ("S003", Phase::WholeMarking),
     ("S005", Phase::WholeMarking),
     ("S006", Phase::WholeMarking),
