@@ -429,10 +429,10 @@ already members of the closure's fixed point).
 engine schedules at the page-finalization boundary — whether produced
 by the closure operator (per `marque-applied.md` section 4.7) or the
 topological rewrite scheduler — MUST mutate state strictly at the
-page-projection layer (`ProjectedMarking` categories) or at a
-page-axis aggregator (e.g., `SciSet`, `DissemSet`). It MUST NOT
-semantically rewrite individual `CanonicalAttrs` stored in
-`PageContext::portions()`.
+scheme-marking layer (`S::Marking`, i.e., `CapcoMarking` on
+`CapcoScheme`) or at a page-axis aggregator (e.g., `SciSet`,
+`DissemSet`). It MUST NOT semantically rewrite individual
+`CanonicalAttrs` stored in `PageContext::portions()`.
 `Phase::PageFinalization` rules (issue #461) read
 `ctx.page_context.portions()` and re-project per-portion lattices
 from that slice; mutating it behind their back is a silent
@@ -441,10 +441,10 @@ projection's banner-visible shape.
 
 | Shape | Status | Example |
 |---|---|---|
-| Mutate categories on `ProjectedMarking` (page-projection layer) | Allowed | `capco/noforn-clears-rel-to` — clears the page's REL TO entries on the projection (`CategoryAction::Clear { category: CAT_REL_TO }`) |
+| Mutate categories on `S::Marking` (the scheme-marking layer, `CapcoMarking` on `CapcoScheme`) | Allowed | `capco/noforn-clears-rel-to` — clears the page's REL TO entries on the projection (`CategoryAction::Clear { category: CAT_REL_TO }`) |
 | Mutate page-axis aggregator state (`SciSet`, `DissemSet`, `RelToBlock`, …) | Allowed | `capco/classification-evicts-fouo` — removes FOUO from the page-level dissem aggregator via `ReplacementIntent::FactRemove` |
 | Add cone tokens to closure state via `ClosureRule.cone` | Allowed | All 7 `CLOSURE_NOFORN_*` rows in `crates/capco/src/scheme/closure.rs` |
-| `CategoryAction::Custom(fn(&mut S::Marking))` | Allowed (read-only on `CanonicalAttrs`) | The `&mut` is on `S::Marking` (= `ProjectedMarking` on `CapcoScheme`) — the page-projection layer — never on `CanonicalAttrs` |
+| `CategoryAction::Custom(fn(&mut S::Marking))` | Allowed (read-only on `CanonicalAttrs`) | The `&mut` is on `S::Marking` — `CapcoMarking` on `CapcoScheme` — the page-aggregator layer, never on `CanonicalAttrs` |
 | Mutate any `CanonicalAttrs` in `page_context.portions()` | **Forbidden** | *(hypothetical)* a closure rule walking a future `portions_mut()` to drop `JointClassification.countries` entries |
 | Read per-portion `CanonicalAttrs` to compute new page-projection state | Allowed (read-only) | A future per-portion-aware closure trigger |
 
@@ -471,7 +471,7 @@ mutate the page-axis `JointSet` aggregator state only; leave
 
 **Reviewer checklist (closure-rule + PageRewrite authoring).**
 
-- [ ] Does the rewrite touch only `ProjectedMarking` categories or a page-axis aggregator?
+- [ ] Does the rewrite touch only `S::Marking` (the scheme-marking layer, `CapcoMarking` on `CapcoScheme`) categories or a page-axis aggregator?
 - [ ] Does the rewrite avoid taking `&mut` on any `CanonicalAttrs` from `page_context.portions()`?
 - [ ] If a `Phase::PageFinalization` predicate exists that reads the axes this rewrite affects, was that predicate's input checked for invariance under this rewrite?
 - [ ] Does this PR add any new method on `PageContext` (or any type reachable via `RuleContext::page_context`) that exposes `&mut` access to `CanonicalAttrs`? (If yes — e.g., a `portions_mut()` — re-evaluate the sentinel's coverage and update both this checklist and the sentinel itself in lockstep.)
