@@ -253,17 +253,19 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // `evaluate_custom_by_attrs` no longer routes to a
         // predicate for it).
 
-        // ---- W002: US + FGI commingling (§H.7 p124) ----------
+        // ---- W002: retired in the PR closing #470 ------------
         //
-        // §H.7 p124: documents not marked per ICD 206
-        // "must segregate the FGI from US portions." Custom (not
-        // Conflicts) because the rule is portion-only — the
-        // wrapper filters by `RuleContext::marking_type` after
-        // the predicate fires.
-        Constraint::Custom {
-            name: "W002/us-commingled-with-fgi",
-            label: "CAPCO-2016 §H.7 p124",
-        },
+        // The §H.7 p124 segregation rule the row was modeling is
+        // conditional on ICD-206 status — a document-level
+        // property the engine cannot determine from a portion.
+        // CAPCO-2016 §H.7 p123 lines 3051-3065 (vendored at
+        // `crates/capco/docs/CAPCO-2016.md`) explicitly authorize
+        // the `(US-CLASS//FGI [LIST]//NF)` shape under the
+        // "Example Portion Mark (when sources are acknowledged,
+        // but not segregated from US)" entry. The predicate
+        // matched every authorized portion in the corpus,
+        // emitting noise without a useful action.
+        //
         // ---- capco/noforn-conflicts-rel-to (§H.8 p145) -------
         //
         // §H.8 NOFORN entry p145: "Cannot be used with
