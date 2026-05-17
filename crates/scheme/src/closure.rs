@@ -163,11 +163,19 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
     ///
     /// # Contracts the function MUST satisfy
     ///
-    /// **Monotonicity**: `m1 ⊑ m2 ⇒ f(m1) ⊆ f(m2)` (as sets of (cat, tokenref)
-    /// pairs, under whatever join semantics the host categories provide). Without
-    /// this, the §4.7 closure operator loses monotonicity globally and the
-    /// fixpoint iteration's correctness guarantee fails. Static cones are
-    /// monotone by vacuous truth; derived cones MUST attest monotonicity per row.
+    /// **Monotonicity**: if `m1 ⊑ m2` in the marking lattice, then folding
+    /// `f(m1)` into `m1` via the host categories' joins produces a result
+    /// `⊑` folding `f(m2)` into `m2` via the same joins. Set inclusion of
+    /// the returned pair list (`f(m1) ⊆ f(m2)` as sets of `(CategoryId,
+    /// TokenRef)` pairs) is sufficient when every host category's join is
+    /// set-union — the static catalog's case. Categories whose join
+    /// transmutes variants — notably `JointSet` — need the property stated
+    /// on the join, not on the emitted set: equal emitted sets can join to
+    /// distinct markings, so `⊆` on the raw output is necessary but not
+    /// sufficient. Without monotonicity on the join, the §4.7 closure
+    /// operator loses monotonicity globally and the fixpoint iteration's
+    /// correctness guarantee fails. Static cones are monotone by vacuous
+    /// truth; derived cones MUST attest monotonicity per row.
     ///
     /// **Category agreement**: when the returned `TokenRef` is `Token(token_id)`,
     /// the paired `CategoryId` MUST equal `scheme.token_category(token_id)`. The

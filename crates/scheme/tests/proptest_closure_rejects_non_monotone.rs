@@ -839,15 +839,25 @@ proptest! {
     /// setting TOK_B (bit 1) in m2 ⊒ m1 causes the derived fact to be dropped
     /// from the cone, violating monotonicity.
     ///
-    /// Property: for any m1 with TOK_A present and TOK_B absent, the marking
-    /// m2 = m1 | {TOK_B} satisfies m1 ⊑ m2 but closure(m1) ⊄ closure(m2)
-    /// (because closure(m2) does not re-add TOK_B through the derived path).
-    /// However, the closure operator does add TOK_B to closure(m1) and also
-    /// closure(m2) trivially carries TOK_B from the input. So the violation
-    /// here is asserted directly: closure(m1) computed via derived-cone DOES
-    /// produce TOK_B from {A} but produces NOTHING new from {A, B} — visible
-    /// in the per-iteration delta but not in the final fact set (because
-    /// closure(m2) already had TOK_B as input). Assert through OPERATOR.
+    /// **Assertion boundary**: this test asserts the violation on the
+    /// `cone_derived` function's direct output (`derived_on_m1.len() >
+    /// derived_on_m2.len()`), NOT on the `closure()` operator result. The
+    /// structural reason is that BitMarking's join is bit-OR (set-union on
+    /// the implicit token set): non-monotonicity at the per-iteration fact
+    /// level collapses into the join because TOK_B is already present in
+    /// m2's input, so `closure(m1)` and `closure(m2)` agree at the final
+    /// fixpoint. The per-iteration view is the only place the violation
+    /// remains visible on this lattice.
+    ///
+    /// **For PR 4b-D's JOINT row**: variant-transmuting lattices like
+    /// `JointSet` expose this violation through `closure()` directly —
+    /// `UnanimousProducers{A} ⊔ UnanimousProducers{B}` collapses to
+    /// `DisunityCollapse{union_non_us}`, a *different variant* that strips
+    /// USA. A JOINT `cone_derived` proptest must compose `JointSet`
+    /// directly and assert `closure(m1).le(&closure(m2))`, not reuse this
+    /// BitMarking shape. The `JointSet` hazard note on
+    /// `ClosureRule::cone_derived` in `crates/scheme/src/closure.rs` is the
+    /// load-bearing pointer.
     #[test]
     fn non_monotone_derived_scheme_violation_proptest(
         // Construct m1 with TOK_A set, TOK_B unset; m2 with TOK_A and TOK_B set.

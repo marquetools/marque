@@ -976,7 +976,7 @@ table-row authority).
 ## D21 — Closure-rule open-vocab cone shape: B3 sibling field (PR 4b-D.0)
 
 **Decision**: Extend `marque_scheme::ClosureRule` with an optional
-sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[(CategoryId, TokenRef); 4]>>`
+sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[(CategoryId, TokenRef); 2]>>`
 to express marking-derived cones (JOINT's partner-list-floor case).
 The existing `cone: &'static [TokenRef]` field stays unchanged.
 

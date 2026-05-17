@@ -9,12 +9,18 @@
 //! 1. `closure_derived_path_routes_facts` — verifies that a closure rule
 //!    whose only cone source is `cone_derived` actually adds the derived
 //!    fact to the marking through the operator.
-//! 2. `closure_derived_none_static_path_parity` — verifies that the
-//!    `cone_derived: None` default is byte-for-byte equivalent to a rule
-//!    that emits the same fact via the static `cone` field. This is the
-//!    parity invariant that lets PR 4b-D.0 ship as a no-op refactor on
-//!    the static side: every existing `cone_derived: None` row produces
-//!    identical closure() output to its pre-PR-4b-D.0 self.
+//! 2. `closure_derived_none_static_path_parity` — verifies observational
+//!    equivalence of the two cone-emission paths: a rule that emits TOK_Y
+//!    via the static `cone` field (with `cone_derived: None`) produces the
+//!    same closure() output as a rule that emits TOK_Y via `cone_derived`
+//!    (with `cone: &[]`), given the same input marking. This is a stronger
+//!    invariant than a vacuous "None-branch is a no-op" test: it asserts
+//!    that for logically equivalent fact contributions, the two structurally
+//!    distinct dispatch paths through the closure executor produce
+//!    byte-identical output. The vacuous "adding `cone_derived: None` to an
+//!    existing static row changes nothing" property is guaranteed by the
+//!    shape of the code — the `None` branch is simply skipped — and is not
+//!    independently testable.
 
 use marque_scheme::{
     Category, ClosureRule, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme,
@@ -304,10 +310,15 @@ impl MarkingScheme for StaticParityScheme {
 #[test]
 fn closure_derived_none_static_path_parity() {
     // Run both schemes against the same input marking; the closure() result
-    // must be byte-for-byte equal. This is the load-bearing parity
-    // invariant that lets PR 4b-D.0 ship as a no-op refactor: every shipped
-    // `cone_derived: None` row produces identical output to its pre-PR-4b-D.0
-    // static-only self.
+    // must be byte-for-byte equal. The two schemes have structurally distinct
+    // rule shapes — `DerivedOnlyScheme` carries `cone: &[]` with `cone_derived:
+    // Some(_)` emitting TOK_Y, while `StaticParityScheme` carries `cone:
+    // &[TOK_Y]` with `cone_derived: None` — but their fact contributions are
+    // logically equivalent. Byte-equal closure() output proves the two
+    // dispatch paths through the executor are observationally equivalent for
+    // equivalent fact sets; it is NOT a test that adding `cone_derived: None`
+    // to a static row is a no-op (that property is guaranteed by code shape
+    // and is not independently testable).
     let input = BitMarking::with(0b01);
 
     let derived = DerivedOnlyScheme;
