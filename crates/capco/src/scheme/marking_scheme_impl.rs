@@ -1,0 +1,593 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! `impl MarkingScheme for CapcoScheme` — the 22-method trait body.
+//!
+//! Hosts the entire `impl MarkingScheme for CapcoScheme` block lifted
+//! from `scheme/mod.rs` per the Stage 2 PR B hub-split (issue #466).
+//! Method bodies are byte-identical to the pre-split source — imports
+//! adjusted to reach helpers via `super::actions::*` /
+//! `super::predicates::*` (the same glob pattern `mod.rs` used pre-
+//! split) plus explicit named imports of scheme-internal symbols
+//! (`RENDER_TABLE`, `DissemFamilyMembership`, `CAPCO_CLOSURE_RULES`,
+//! the CAT_*/TOK_* constants, the `CapcoMarking` / `CapcoScheme` /
+//! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
+//! the parent module's re-exports.
+
+use marque_ism::{CanonicalAttrs, PageContext};
+use marque_scheme::{
+    ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
+    ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
+    Template, TokenId, TokenRef,
+};
+
+use super::actions::*;
+use super::closure::CAPCO_CLOSURE_RULES;
+use super::predicates::*;
+use super::*;
+
+// T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
+// implemented on `CapcoScheme`, so calling
+// `marque_scheme::constraint::evaluate(&CapcoScheme::new(), &m)`
+// (or equivalently `scheme.validate(&m)` via the trait default)
+// fires every dyadic and Custom constraint in the catalog.
+//
+// The 11 hand-written rule impls retired by T035 dispatch through
+// `crate::rules_declarative`, which uses the inherent fast-path
+// method `CapcoScheme::evaluate_named_constraint` above (not the
+// trait-path `validate`) and constructs `Diagnostic` values
+// locally for byte-identical message/span/fix output. E018 / E019
+// remain hand-written pending the T035b predicate audit.
+impl MarkingScheme for CapcoScheme {
+    type Token = marque_scheme::TokenId;
+    type Marking = CapcoMarking;
+    type ParseError = CapcoParseError;
+    type OpenVocabRef = CapcoOpenVocabRef;
+
+    fn name(&self) -> &str {
+        "CAPCO-ISM"
+    }
+
+    fn schema_version(&self) -> &str {
+        crate::SCHEMA_VERSION
+    }
+
+    fn categories(&self) -> &[Category] {
+        &self.categories
+    }
+
+    fn constraints(&self) -> &[Constraint] {
+        &self.constraints
+    }
+
+    fn templates(&self) -> &[Template] {
+        &self.templates
+    }
+
+    fn parse(&self, _input: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        // Phase A: the trait impl exists to validate the abstraction's
+        // shape against CAPCO. Callers continue to use
+        // `marque_core::Parser` directly. Phase B/E tie parse() into
+        // the engine once the ambiguity resolver lands.
+        Err(CapcoParseError::NotImplemented)
+    }
+
+    /// Resolve a [`TokenRef`] against a `CapcoMarking`'s concrete
+    /// storage. Drives the dyadic-variant arms of
+    /// [`marque_scheme::constraint::evaluate`].
+    ///
+    /// **Token-presence semantics** (T035):
+    /// - [`TokenRef::Token(id)`] returns true when the marking carries
+    ///   the named token *anywhere* relevant — `TOK_USA` ⇒ "USA in
+    ///   REL TO" (the dissemination context), `TOK_RD` ⇒ "RD anywhere
+    ///   in `aea_markings`", etc. The mapping is per-sentinel and
+    ///   documented inline below.
+    /// - [`TokenRef::AnyInCategory(cat)`] returns true when the
+    ///   category has at least one populated value. `CAT_DISSEM`
+    ///   intentionally counts both the dissem axis (`dissem_us` and
+    ///   `dissem_nato` together, walked via `attrs.dissem_iter()`
+    ///   post PR 9b / FR-046 split) AND `rel_to` as dissem-flavored
+    ///   presence, matching the historical E015
+    ///   predicate ("non-US classification needs SOME dissem").
+    ///
+    /// Sentinel `TokenId`s not used by the current catalog
+    /// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`
+    /// — they remain declared for future T035b consumption when the
+    /// E018/E019 catalog entries are added back with corrected
+    /// predicates. Categories not listed (none today) likewise fall
+    /// through.
+    /// Resolve a [`TokenRef`] against a `CapcoMarking`'s concrete
+    /// storage. Drives the dyadic-variant arms of
+    /// [`marque_scheme::constraint::evaluate`] when callers go through
+    /// the trait path; the free-function `satisfies_attrs` below is
+    /// the authoritative implementation.
+    ///
+    /// See `satisfies_attrs` for the full sentinel-to-predicate
+    /// table.
+    fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
+        satisfies_attrs(&marking.0, token_ref)
+    }
+
+    /// Map a [`FactRef`] to its [`CategoryId`].
+    ///
+    /// Closed-CVE sentinels in the current constraint catalog get
+    /// explicit mappings; open-vocab references route by variant.
+    /// Tokens not in the table return `None`, signaling
+    /// [`ApplyIntentError::UnknownToken`] when the engine asks
+    /// `apply_intent` to route them.
+    fn category_of(&self, token: &FactRef<Self>) -> Option<CategoryId> {
+        match token {
+            FactRef::Cve(id) => capco_token_category(*id),
+            FactRef::OpenVocab(r) => Some(match r {
+                CapcoOpenVocabRef::Sar(_) => CAT_SAR,
+                CapcoOpenVocabRef::SciCompartment(_) | CapcoOpenVocabRef::SciSubCompartment(_) => {
+                    CAT_SCI
+                }
+                CapcoOpenVocabRef::FgiTetragraph(_) => CAT_FGI_MARKER,
+                // PR 3c.B Sub-PR 8.D.4 — open-vocab REL TO country codes
+                // route to CAT_REL_TO so E014's `FactAdd { CountryCode,
+                // Portion }` intents land on the same axis as the
+                // closed-CVE `TOK_USA` / `TOK_REL_TO` sentinels used by
+                // FactRemove paths in PR 3c.B Sub-PR 8.D.2.
+                CapcoOpenVocabRef::CountryCode(_) => CAT_REL_TO,
+            }),
+        }
+    }
+
+    /// Apply a batch of [`ReplacementIntent`]s to a [`CapcoMarking`].
+    ///
+    /// Clones the input marking, dispatches each intent through the
+    /// per-axis category mutators ([`capco_category_clear`] /
+    /// [`capco_category_replace`]) for `FactRemove` and an analogous
+    /// closed-vocab add path for `FactAdd`. `Recanonicalize` returns
+    /// the cloned marking unchanged — the engine renders it via
+    /// [`MarkingScheme::render_canonical`] to produce canonical form.
+    ///
+    /// # Idempotence
+    ///
+    /// **Per-intent vs batch-level `IntentInapplicable`**: the trait
+    /// invariants for `apply_intent` require idempotence and
+    /// commutativity *within a batch*. A redundant or already-satisfied
+    /// intent (e.g., a second `FactRemove` of the same token, or a
+    /// `FactRemove` of a token a prior intent in the same batch
+    /// already removed) MUST be treated as a per-intent no-op — it
+    /// MUST NOT abort the rest of the batch. Only when EVERY intent
+    /// in the batch is inapplicable does this method return
+    /// `Err(IntentInapplicable)`, signaling to the engine that the
+    /// whole fix is a no-op and should be dropped.
+    ///
+    /// Other error variants (`UnknownToken`, `IntentRejectsLattice`)
+    /// propagate immediately — they're not idempotency cases.
+    fn apply_intent(
+        &self,
+        marking: &Self::Marking,
+        intents: &[ReplacementIntent<Self>],
+    ) -> Result<Self::Marking, ApplyIntentError> {
+        let mut out = marking.clone();
+        let mut any_applied = false;
+        for intent in intents {
+            match apply_intent_to_marking(self, &mut out, intent) {
+                Ok(()) => {
+                    any_applied = true;
+                }
+                Err(ApplyIntentError::IntentInapplicable) => {
+                    // Per-intent no-op: redundant intent (e.g., a
+                    // prior intent in the same batch already produced
+                    // the desired state, or two rules emitted the
+                    // same FactRemove). Idempotence/commutativity
+                    // invariant requires the batch to continue.
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        if any_applied {
+            Ok(out)
+        } else {
+            // Whole-batch no-op: engine drops the fix silently.
+            Err(ApplyIntentError::IntentInapplicable)
+        }
+    }
+
+    /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
+    /// predicate body. Delegates to `evaluate_custom_by_attrs`, the
+    /// name→helper router that the fast-path
+    /// [`Self::evaluate_named_constraint`] uses.
+    fn evaluate_custom(
+        &self,
+        name: &'static str,
+        marking: &Self::Marking,
+    ) -> Vec<ConstraintViolation> {
+        evaluate_custom_by_attrs(&marking.0, name)
+    }
+
+    fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {
+        match scope {
+            Scope::Portion => {
+                // Identity under portion scope: if the caller passed a
+                // single marking we return it; empty → bottom.
+                markings
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
+            }
+            Scope::Page | Scope::Document | Scope::Diff => {
+                // Page / Document rollup: drive through the existing
+                // `PageContext` aggregator (which is already
+                // category-component-wise), then apply page rewrites.
+                //
+                // Byte-identical equivalence with `PageContext` is the
+                // Phase B verification gate — see the
+                // `scheme_equivalence.rs` tests. When CAPCO's categories
+                // move to individual `impl Lattice` types in their own
+                // right (Phase C continuation), this implementation
+                // swaps in the category-wise composition directly
+                // without changing the outward contract.
+                let mut ctx = PageContext::new();
+                for p in markings {
+                    ctx.add_portion(p.0.clone());
+                }
+                let mut out = CapcoMarking::new(page_context_to_attrs(&ctx));
+                // Apply declarative page rewrites. `PageContext`
+                // already applies NOFORN-clears-REL-TO internally, so
+                // the rewrite is effectively a no-op on today's
+                // storage — but declaring it here makes the semantic
+                // inspectable per §7a.
+                for rw in &self.page_rewrites {
+                    let fires = match &rw.trigger {
+                        CategoryPredicate::Contains { category, token } => {
+                            capco_category_contains(&out, *category, *token)
+                        }
+                        CategoryPredicate::Empty { category } => {
+                            !capco_category_has_values(&out, *category)
+                        }
+                        CategoryPredicate::Custom(f) => f(&out),
+                    };
+                    if fires {
+                        match &rw.action {
+                            CategoryAction::Clear { category } => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Clear",
+                                    ?category,
+                                    "PageRewrite fired",
+                                );
+                                capco_category_clear(&mut out, *category);
+                            }
+                            CategoryAction::Replace { category, with } => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Replace",
+                                    ?category,
+                                    "PageRewrite fired",
+                                );
+                                capco_category_replace(&mut out, *category, with);
+                            }
+                            CategoryAction::Promote { from, to, .. } => {
+                                // Phase 3 T034 declares the JOINT-
+                                // promotion and FGI-absorption rewrites
+                                // for the scheduler + catalog surface,
+                                // but runtime dispatch stays with
+                                // [`PageContext`] (engine.lint does not
+                                // drive aggregation through project()
+                                // yet — see the note on
+                                // `build_page_rewrites`). Treat
+                                // `Promote` as a no-op for now; full
+                                // transform-driven dispatch lands in
+                                // Phase D / Phase E when the engine
+                                // switches to scheme-driven roll-up.
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Promote",
+                                    ?from,
+                                    ?to,
+                                    "PageRewrite fired (Phase-3 no-op)",
+                                );
+                            }
+                            CategoryAction::Custom(f) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Custom",
+                                    "PageRewrite fired",
+                                );
+                                f(&mut out);
+                            }
+                            CategoryAction::Intent(intent) => {
+                                // Bridge to the existing per-intent helper. Errors are handled
+                                // as follows:
+                                // - `Ok(())`: rewrite applied, marking mutated.
+                                // - `IntentInapplicable`: silent no-op for this rewrite (idempotent
+                                //   — the marking was already in the post-rewrite state).
+                                // - `UnknownToken`: pre-validated for callers that go through
+                                //   `Engine::new` (see `validate_intent_rewrites` in
+                                //   marque-engine). Direct callers of `CapcoScheme::project` (e.g.,
+                                //   tests, scheme-exploration tooling) bypass that validation, so
+                                //   this arm IS reachable on the project path; it's also reachable
+                                //   if the scheme is mutated between Engine construction and call.
+                                // - `IntentRejectsLattice`: NOT pre-validated — it's a runtime
+                                //   condition (lattice invariant violation) that
+                                //   `validate_intent_rewrites` cannot detect without simulating
+                                //   the intent application.
+                                // - Future `ReplacementIntent` variants that reach the
+                                //   `apply_intent_to_marking` `_` arm also land here.
+                                // In every error-arm case, log and treat as a silent no-op rather
+                                // than panic; `Engine::lint`'s hot path must not unwind into Tower
+                                // middleware. The corpus-parity tests will surface incorrect
+                                // projection output.
+                                match apply_intent_to_marking(self, &mut out, intent) {
+                                    Ok(()) => {
+                                        tracing::debug!(
+                                            rewrite_id = rw.id,
+                                            action = "Intent",
+                                            "PageRewrite fired (CategoryAction::Intent)",
+                                        );
+                                    }
+                                    Err(ApplyIntentError::IntentInapplicable) => {
+                                        tracing::debug!(
+                                            rewrite_id = rw.id,
+                                            action = "Intent",
+                                            "PageRewrite no-op (intent already satisfied)",
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            rewrite_id = rw.id,
+                                            error = ?e,
+                                            "PageRewrite Intent failed at runtime — expected to be \
+                                             caught at Engine::new validation. Treating as no-op.",
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                out
+            }
+        }
+    }
+
+    fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &self.page_rewrites
+    }
+
+    /// Commit 5 — substantive `render_canonical` body driven by the
+    /// per-axis dispatch table [`RENDER_TABLE`].
+    ///
+    /// The dispatch loop walks `RENDER_TABLE` in declaration order
+    /// (which matches `Category::ordering_rank` per §A.6 p15-17
+    /// Figure 2), inserting `//` between consecutive non-empty axes.
+    /// Each per-axis renderer in [`crate::render`] writes ONLY its own
+    /// bytes to `out`; the dispatch loop is the sole owner of the
+    /// `//` major-category separator (CAPCO-2016 §A.6 p15-16).
+    ///
+    /// `Scope::Diff` returns `Err(fmt::Error)` because diff is a
+    /// rule-context query mode, not a renderer-output scope. See
+    /// the trait-method doc comment and `marque-rules`'
+    /// `RecanonScope` (which narrows `Scope` to exclude `Diff`).
+    ///
+    /// # Byte-identity invariant
+    ///
+    /// `scheme.render_canonical(m, Scope::Portion, &mut s)` and
+    /// `scheme.render_portion(m)` MUST produce byte-identical output
+    /// for any input the existing `render_portion` override handled
+    /// (and similarly for `Page` / `render_banner`). The
+    /// `render_canonical_default_chain.rs` integration tests pin this
+    /// property.
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        scope: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        if matches!(scope, Scope::Diff) {
+            return Err(core::fmt::Error);
+        }
+
+        // Track whether any axis has emitted bytes yet AND the family
+        // of the last-emitting row so the major-category separator
+        // `//` can be downgraded to within-category `/` when two
+        // consecutive emitting rows belong to the same dissem family.
+        //
+        // Authority: CAPCO-2016 §A.6 p16 "Dissemination Control
+        // Markings ... A single forward slash with no interjected
+        // space must be used to separate multiple dissemination
+        // controls." Per §G.1 Table 4 row 8 the dissem category
+        // includes single-token dissems (ORCON, NOFORN, ...),
+        // REL TO, and DISPLAY ONLY — all of which must be `/`
+        // separated when commingled in the same `//`-delimited
+        // dissem slot. Previously this loop unconditionally inserted
+        // `//` between every emitting row, producing canonical
+        // strings like `//ORCON//REL TO USA, GBR` (wrong) instead
+        // of `//ORCON/REL TO USA, GBR` (canonical).
+        //
+        // Implementation: render each axis to a per-axis scratch
+        // buffer; if non-empty, prepend `//` (different family) or
+        // `/` (same dissem family) and copy to `out`. Classification
+        // is special: for non-US / JOINT classifications it carries
+        // its OWN leading `//` (per §A.6 p15-16 — the `//` occludes
+        // the absent US position), so this loop does not prepend
+        // ANY separator to the very first axis that emits.
+        let mut scratch = String::new();
+        let mut prev_family: Option<DissemFamilyMembership> = None;
+        for row in RENDER_TABLE {
+            scratch.clear();
+            (row.render)(m, scope, &mut scratch)?;
+            if scratch.is_empty() {
+                continue;
+            }
+            let curr_family = dissem_family_of(row.category);
+            match prev_family {
+                None => {
+                    // First emitting row: classification owns its
+                    // leading `//`; every other first-emit just
+                    // writes its own bytes.
+                }
+                Some(prev) => {
+                    if prev == DissemFamilyMembership::Member
+                        && curr_family == DissemFamilyMembership::Member
+                    {
+                        // Two consecutive dissem-family rows:
+                        // within-category `/` separator.
+                        out.write_str("/")?;
+                    } else {
+                        // Cross-category: §A.6 p16 `//`.
+                        out.write_str("//")?;
+                    }
+                }
+            }
+            out.write_str(&scratch)?;
+            prev_family = Some(curr_family);
+        }
+        Ok(())
+    }
+
+    fn render_portion(&self, m: &Self::Marking) -> String {
+        // Override retained for the Phase A byte-identity gate
+        // (`render_canonical_default_chain.rs`). Commit 5's
+        // render_canonical body is the substantive renderer; this
+        // override delegates to it through the trait-default String
+        // round-trip. Removing the override is a follow-up once the
+        // engine call sites move off `render_portion` to
+        // `render_canonical` (commit 6+).
+        //
+        // `Write for String` is infallible, so a `String` write target
+        // never produces `fmt::Error`. The only way the discarded
+        // `Result` could be `Err` is a contract violation: an impl
+        // returning `Err` for `Scope::Portion`. The
+        // [`MarkingScheme::render_canonical`] doc comment forbids
+        // this. Debug-assert in development; in release, the contract
+        // violation produces an empty / partial `String` rather than
+        // a panic (matching the trait-default behavior in
+        // `MarkingScheme::render_portion`).
+        let mut s = String::new();
+        let result = self.render_canonical(m, Scope::Portion, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
+        s
+    }
+
+    fn render_banner(&self, m: &Self::Marking) -> String {
+        // See `render_portion`. Override retained for byte-identity
+        // gate; the substantive body is `render_canonical`. Same
+        // contract-violation invariant: `Write for String` is
+        // infallible, so `Err` here would be a conforming-impl bug
+        // forbidden by the trait doc.
+        let mut s = String::new();
+        let result = self.render_canonical(m, Scope::Page, &mut s);
+        debug_assert!(
+            result.is_ok(),
+            "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
+             Conforming impls MUST return Ok(()) for Portion / Page / Document — see trait doc."
+        );
+        s
+    }
+
+    /// Map a closed CVE [`TokenId`] to its host [`CategoryId`].
+    ///
+    /// Used by the closure operator to route cone tokens to the correct
+    /// marking axis when adding facts during implicit-fact propagation.
+    /// Per `docs/plans/2026-05-13-pr3.7-lattice-resolution-gate-plan.md`
+    /// §2 finding F1, this is the scheme-layer hook required because
+    /// [`Self::category_of`] is keyed by `FactRef<S>` (a `marque-rules`
+    /// type) and unavailable at the scheme layer.
+    ///
+    /// Delegates to the free function `capco_token_category` which is
+    /// also used by `category_of`. Returns `None` for sentinel marker
+    /// tokens (e.g., `TOK_IC_DISSEM`, `TOK_FGI_MARKER`) that label
+    /// categorical predicates rather than addressable atomic tokens.
+    fn token_category(&self, id: TokenId) -> Option<CategoryId> {
+        capco_token_category(id)
+    }
+
+    /// CAPCO implicit-fact propagation catalog (closure operator).
+    ///
+    /// Returns the static catalog of [`ClosureRule`] rows. The PR 3.7
+    /// catalog contains **only the Trio 1 NOFORN rows**, seven rows
+    /// covering the implicit-NOFORN markings whose default release
+    /// posture is "no foreign disclosure" unless an explicit FD&R
+    /// decision is present:
+    ///
+    /// | Rule key                              | Triggers                          |
+    /// |---------------------------------------|-----------------------------------|
+    /// | `capco/noforn-if-sar`                 | any SAR program                   |
+    /// | `capco/noforn-if-aea`                 | RD / FRD / TFNI                   |
+    /// | `capco/noforn-if-ucni`                | UCNI                              |
+    /// | `capco/noforn-if-fgi`                 | any FGI atom                      |
+    /// | `capco/noforn-if-orcon`               | ORCON / ORCON-USGOV               |
+    /// | `capco/noforn-if-imcon-dsen`          | IMCON / DSEN                      |
+    /// | `capco/noforn-if-non-ic-controls`     | LIMDIS / LES / SBU / SSI          |
+    ///
+    /// Each row is suppressed by `FDR_DOMINATORS` (any present
+    /// FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES, DISPLAY ONLY).
+    ///
+    /// The Trio 2 / Trio 3 placeholder rows and the per-marking SCI
+    /// implication rows (HCS-O/P[sub] ⇒ {NOFORN, ORCON};
+    /// TK-BLFH/KAND/IDIT ⇒ {NOFORN}; SI-G ⇒ {ORCON}) were removed in
+    /// PR 3.7 review pass 4 because their proxy triggers
+    /// (`AnyInCategory(CAT_SCI)`, `AnyInCategory(CAT_CLASSIFICATION)`)
+    /// were imprecise relative to the actual `marque-applied.md`
+    /// §4.7.1 semantics; the precise sentinel-based rows land in PR 4
+    /// once the per-marking SCI sentinels and open-vocab country-list
+    /// FactAdd primitive are available.
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
+    /// PUBLIC catalog surface — visible to tooling, scheme-exploration
+    /// UIs, and docs generators.
+    ///
+    /// # Engine wiring (PR 4 future)
+    ///
+    /// `CapcoScheme` does NOT override `MarkingScheme::closure()` in
+    /// PR 3.7 — it inherits the trait's no-op default. The catalog
+    /// data ships here as PUBLIC inspection surface (tooling, proptest
+    /// harnesses, docs generators can read it via `should_fire`) but
+    /// no production code path applies the cone in PR 3.7. PR 4 (T112)
+    /// lands both the `CapcoScheme::closure()` override (with Kleene-
+    /// fixpoint cone application via the runtime-resolved severity
+    /// per `decisions.md` D19 B) and the `Engine::project` call-site
+    /// that drives it.
+    fn closure_rules(&self) -> &[marque_scheme::ClosureRule] {
+        CAPCO_CLOSURE_RULES
+    }
+
+    /// Enumerate all tokens present in `marking`.
+    ///
+    /// Required by `Constraint::ConflictsWithFamily` evaluation: the
+    /// generic evaluator walks every present token and applies the
+    /// [`FamilyPredicate`] to each. Without this override, the family
+    /// predicate never fires (the default returns an empty iterator).
+    ///
+    /// This implementation walks each attribute field and emits two
+    /// shapes of `TokenRef` per the trait contract on
+    /// [`MarkingScheme::iter_present_tokens`]:
+    ///
+    /// - `TokenRef::Token(id)` for concrete closed-CVE tokens whose
+    ///   identity matters (the common case — dissem controls, AEA
+    ///   markings, non-IC dissem, classification sentinels).
+    /// - `TokenRef::AnyInCategory(cat)` for facts whose presence is
+    ///   axis-level only: `CAT_REL_TO` when a REL TO country list is
+    ///   present, `CAT_SCI` when any SCI marking is present, `CAT_SAR`
+    ///   when any SAR program is present, and `CAT_NON_US_CLASSIFICATION`
+    ///   for FGI / NATO / JOINT classifications. The
+    ///   `AnyInCategory` shape lets family predicates (e.g.
+    ///   `is_fdr_dominator`) match against an axis without enumerating
+    ///   each open-vocab token (REL TO trigraphs, SAR program names,
+    ///   SCI compartments).
+    ///
+    /// Open-vocab tokens whose **identity** is needed (specific REL TO
+    /// trigraphs, individual SAR program names, individual SCI
+    /// compartments) are not emitted as `TokenRef::Token` because no
+    /// current `ConflictsWithFamily` row needs them on the RHS. If a
+    /// future family predicate needs per-token granularity on those
+    /// axes, this method's emission set should be extended.
+    fn iter_present_tokens<'m>(
+        &self,
+        marking: &'m Self::Marking,
+    ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
+        Box::new(collect_present_tokens(&marking.0).into_iter())
+    }
+}
