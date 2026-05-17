@@ -456,7 +456,7 @@ struct ExpectedRuleCount {
 /// allowlist makes the unwind mechanical:
 ///
 /// - **#461** (Phase::PageFinalization): retires E031, E035, E040 entries.
-/// - **#439** (S004 suppress under REL TO): retires S004 entries.
+/// - **#439** (S004 suppress under REL TO): retired all S004 entries.
 /// - **#470** (W002 over-fires on canonical FGI): retires W002 entries.
 /// - **#471** (E015 zero-width false-positive): retires E015 entries.
 /// - **#472** (R001 prose parenthetical false-positives): retires R001 entries.
@@ -582,20 +582,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
     (
         "CIA-RDP73B00148A000200150009-6",
-        &[
-            ExpectedRuleCount {
-                rule: "E035",
-                count: 3,
-                issue: 461,
-                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "S004",
-                count: 2,
-                issue: 439,
-                reason: "S004 trigraph-suggest under REL TO block",
-            },
-        ],
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 3,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
     ),
     (
         "CIA-RDP74B00415R000300070018-9",
@@ -624,12 +616,6 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 reason: "sci-banner-rollup gap (Phase::PageFinalization)",
             },
             ExpectedRuleCount {
-                rule: "S004",
-                count: 4,
-                issue: 439,
-                reason: "S004 trigraph-suggest under REL TO block",
-            },
-            ExpectedRuleCount {
                 rule: "W034",
                 count: 3,
                 issue: 0,
@@ -644,15 +630,6 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
             count: 1,
             issue: 461,
             reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
-    ),
-    (
-        "CIA-RDP75-00149R000500420001-3",
-        &[ExpectedRuleCount {
-            rule: "S004",
-            count: 1,
-            issue: 439,
-            reason: "S004 trigraph-suggest under REL TO block",
         }],
     ),
     (
@@ -693,20 +670,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
     (
         "CIA-RDP80-00809A000500340084-9",
-        &[
-            ExpectedRuleCount {
-                rule: "E040",
-                count: 1,
-                issue: 461,
-                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "S004",
-                count: 9,
-                issue: 439,
-                reason: "S004 trigraph-suggest under REL TO block",
-            },
-        ],
+        &[ExpectedRuleCount {
+            rule: "E040",
+            count: 1,
+            issue: 461,
+            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+        }],
     ),
     (
         "CIA-RDP80-00809A000500720009-0",
@@ -757,12 +726,6 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 count: 2,
                 issue: 461,
                 reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "S004",
-                count: 1,
-                issue: 439,
-                reason: "S004 trigraph-suggest under REL TO block",
             },
         ],
     ),
@@ -850,20 +813,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
     (
         "initial-evidence-indicate-16559481",
-        &[
-            ExpectedRuleCount {
-                rule: "E035",
-                count: 1,
-                issue: 461,
-                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "S004",
-                count: 13,
-                issue: 439,
-                reason: "S004 trigraph-suggest under REL TO block",
-            },
-        ],
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 1,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
     ),
     (
         "keyplayersinruss00wash",
@@ -910,20 +865,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
     (
         "topofficialsinru00wash",
-        &[
-            ExpectedRuleCount {
-                rule: "S004",
-                count: 7,
-                issue: 439,
-                reason: "S004 trigraph-suggest under REL TO block",
-            },
-            ExpectedRuleCount {
-                rule: "W002",
-                count: 3,
-                issue: 470,
-                reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
-            },
-        ],
+        &[ExpectedRuleCount {
+            rule: "W002",
+            count: 3,
+            issue: 470,
+            reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
+        }],
     ),
 ];
 
