@@ -25,7 +25,7 @@ use marque_ism::{
     CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
     SciControlBare, SciControlSystem, SciMarking,
 };
-use marque_scheme::Lattice;
+use marque_scheme::{JoinSemilattice, MeetSemilattice};
 use smol_str::SmolStr;
 use std::collections::BTreeSet;
 

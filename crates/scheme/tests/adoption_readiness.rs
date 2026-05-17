@@ -44,7 +44,9 @@ use marque_scheme::ambiguity::{Candidate, Parsed};
 use marque_scheme::category::{Category, CategoryId, TokenId};
 use marque_scheme::codec::{Codec, CodecError};
 use marque_scheme::constraint::{Constraint, TokenRef};
-use marque_scheme::lattice::{BoundedLattice, Lattice};
+use marque_scheme::lattice::{
+    BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+};
 use marque_scheme::page_rewrite::{CategoryAction, CategoryPredicate, PageRewrite};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::scheme::MarkingScheme;
@@ -65,12 +67,15 @@ struct StubMarking {
     has_token: bool,
 }
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, other: &Self) -> Self {
         Self {
             has_token: self.has_token || other.has_token,
         }
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, other: &Self) -> Self {
         Self {
             has_token: self.has_token && other.has_token,
@@ -78,10 +83,13 @@ impl Lattice for StubMarking {
     }
 }
 
-impl BoundedLattice for StubMarking {
+impl BoundedJoinSemilattice for StubMarking {
     fn bottom() -> Self {
         Self { has_token: false }
     }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
     fn top() -> Self {
         Self { has_token: true }
     }

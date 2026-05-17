@@ -58,10 +58,13 @@ impl std::fmt::Display for MockParseError {
 }
 impl std::error::Error for MockParseError {}
 
-impl marque_scheme::lattice::Lattice for MockMarking {
+impl marque_scheme::lattice::JoinSemilattice for MockMarking {
     fn join(&self, _other: &Self) -> Self {
         Self
     }
+}
+
+impl marque_scheme::lattice::MeetSemilattice for MockMarking {
     fn meet(&self, _other: &Self) -> Self {
         Self
     }

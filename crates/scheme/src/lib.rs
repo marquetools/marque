@@ -21,7 +21,9 @@
 //!
 //! ## Module layout
 //!
-//! - [`lattice`] — `Lattice`, `BoundedLattice` traits.
+//! - [`lattice`] — `JoinSemilattice`, `MeetSemilattice`,
+//!   `BoundedJoinSemilattice`, `BoundedMeetSemilattice`, and the
+//!   `Lattice` / `BoundedLattice` blanket-impl marker traits.
 //! - [`category`] — `Category`, `AggregationOp`, `Cardinality`,
 //!   `IntraOrdering`, and generic reducers keyed by `AggregationOp`.
 //! - [`constraint`] — declarative `Constraint` invariants.
@@ -97,7 +99,10 @@ pub use closure::{ClosureRule, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
-pub use lattice::{BoundedLattice, Lattice};
+pub use lattice::{
+    BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
+    MeetSemilattice,
+};
 pub use page_rewrite::{
     CategoryAction, CategoryPredicate, PageRewrite, PageRewriteAxisError, RewriteId,
 };

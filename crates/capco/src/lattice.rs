@@ -44,7 +44,9 @@ use marque_ism::{
     RdBlock, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
     SciControlSystem, SciMarking,
 };
-use marque_scheme::{BoundedLattice, Lattice};
+use marque_scheme::{
+    BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -207,10 +209,10 @@ impl SciSet {
     }
 }
 
-impl Lattice for SciSet {
-    /// Component-wise union. For each control system present in either
-    /// operand, include it; within a system, union its compartments;
-    /// within a compartment, union its sub-compartments.
+impl JoinSemilattice for SciSet {
+    /// Component-wise union: merge control systems, compartments, and
+    /// sub-compartments. For each system present in either operand, union
+    /// its compartments; within a compartment, union its sub-compartments.
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (sys, comp_map) in &other.systems {
@@ -228,7 +230,9 @@ impl Lattice for SciSet {
         }
         out
     }
+}
 
+impl MeetSemilattice for SciSet {
     /// Component-wise **equal-depth** intersection per §3.3a policy
     /// (b). A system survives only if it appears on both sides; within
     /// a surviving system, a compartment survives only if present on
@@ -369,7 +373,7 @@ impl SarSet {
     }
 }
 
-impl Lattice for SarSet {
+impl JoinSemilattice for SarSet {
     fn join(&self, other: &Self) -> Self {
         let mut out = self.clone();
         for (pid, comp_map) in &other.programs {
@@ -381,7 +385,9 @@ impl Lattice for SarSet {
         }
         out
     }
+}
 
+impl MeetSemilattice for SarSet {
     fn meet(&self, other: &Self) -> Self {
         let mut out = Self::empty();
         for (pid, comp_map) in &self.programs {
@@ -544,7 +550,7 @@ impl FgiSet {
     }
 }
 
-impl Lattice for FgiSet {
+impl JoinSemilattice for FgiSet {
     fn join(&self, other: &Self) -> Self {
         match (self, other) {
             (Self::None, o) | (o, Self::None) => o.clone(),
@@ -575,7 +581,9 @@ impl Lattice for FgiSet {
             }
         }
     }
+}
 
+impl MeetSemilattice for FgiSet {
     fn meet(&self, other: &Self) -> Self {
         match (self, other) {
             (Self::None, _) | (_, Self::None) => Self::None,
@@ -1029,9 +1037,7 @@ impl AeaSet {
     }
 }
 
-impl Lattice for AeaSet {
-    /// Componentwise join across the five Product sub-axes per the
-    /// formal semantics in
+impl JoinSemilattice for AeaSet {
     /// `docs/plans/2026-05-01-lattice-design.md` §7.5.
     fn join(&self, other: &Self) -> Self {
         Self {
@@ -1058,7 +1064,9 @@ impl Lattice for AeaSet {
             atomal: self.atomal.or(other.atomal),
         }
     }
+}
 
+impl MeetSemilattice for AeaSet {
     /// Componentwise meet across the five Product sub-axes.
     ///
     /// Meet is included for trait-completeness; CAPCO's banner
@@ -1647,7 +1655,7 @@ fn meet_foreign_classification(
     }
 }
 
-impl Lattice for ClassificationLattice {
+impl JoinSemilattice for ClassificationLattice {
     fn join(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
             (None, x) | (x, None) => Self(x.clone()),
@@ -1687,7 +1695,9 @@ impl Lattice for ClassificationLattice {
             }
         }
     }
+}
 
+impl MeetSemilattice for ClassificationLattice {
     fn meet(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
             (None, _) | (_, None) => Self(None),
@@ -1742,12 +1752,15 @@ impl Lattice for ClassificationLattice {
     }
 }
 
-impl BoundedLattice for ClassificationLattice {
-    fn top() -> Self {
-        Self(Some(MarkingClassification::Us(Classification::TopSecret)))
-    }
+impl BoundedJoinSemilattice for ClassificationLattice {
     fn bottom() -> Self {
         Self(None)
+    }
+}
+
+impl BoundedMeetSemilattice for ClassificationLattice {
+    fn top() -> Self {
+        Self(Some(MarkingClassification::Us(Classification::TopSecret)))
     }
 }
 
@@ -1811,7 +1824,7 @@ impl NatoClassLattice {
     }
 }
 
-impl Lattice for NatoClassLattice {
+impl JoinSemilattice for NatoClassLattice {
     fn join(&self, other: &Self) -> Self {
         match (self.0, other.0) {
             (None, x) | (x, None) => Self(x),
@@ -1824,6 +1837,9 @@ impl Lattice for NatoClassLattice {
             }
         }
     }
+}
+
+impl MeetSemilattice for NatoClassLattice {
     fn meet(&self, other: &Self) -> Self {
         match (self.0, other.0) {
             (None, _) | (_, None) => Self(None),
@@ -1838,12 +1854,15 @@ impl Lattice for NatoClassLattice {
     }
 }
 
-impl BoundedLattice for NatoClassLattice {
-    fn top() -> Self {
-        Self(Some(NatoClassification::CosmicTopSecret))
-    }
+impl BoundedJoinSemilattice for NatoClassLattice {
     fn bottom() -> Self {
         Self(None)
+    }
+}
+
+impl BoundedMeetSemilattice for NatoClassLattice {
+    fn top() -> Self {
+        Self(Some(NatoClassification::CosmicTopSecret))
     }
 }
 
@@ -1931,7 +1950,7 @@ impl DeclassifyOnLattice {
     }
 }
 
-impl Lattice for DeclassifyOnLattice {
+impl JoinSemilattice for DeclassifyOnLattice {
     fn join(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
             (None, x) | (x, None) => Self(x.clone()),
@@ -1944,6 +1963,9 @@ impl Lattice for DeclassifyOnLattice {
             }
         }
     }
+}
+
+impl MeetSemilattice for DeclassifyOnLattice {
     fn meet(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
             (None, _) | (_, None) => Self(None),
@@ -2272,22 +2294,19 @@ impl DissemSet {
 
 // P-9-3 (9th-pass) — Partial-lattice divergence note for `DissemSet`.
 //
-// `DissemSet` implements `Lattice` (join + meet) but does NOT satisfy
-// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full
-// `(set, relido_observed_unanimous)` pair. The `relido_observed_unanimous`
-// flag is a join-side aggregation property (a record of observed page
-// composition); `meet` has no natural reading for this flag and returns
-// the vacuous-true value, which is the identity under subsequent AND-joins.
-// This keeps the load-bearing `a ⊔ (a ⊓ b) = a` law intact but means
-// generic `Lattice` consumers that call `meet` and rely on dual absorption
-// are NOT safe for `DissemSet`. The trait shape will be refined in a
-// follow-up PR once `marque-scheme` gains a `JoinSemilattice` /
-// `MeetSemilattice` split (tracked as GitHub issue #456).
+// `DissemSet` implements only `JoinSemilattice`, NOT `MeetSemilattice`.
+// The `relido_observed_unanimous` flag is a join-side aggregation property
+// (a record of observed page composition); `meet` has no natural reading
+// for this flag — the dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold
+// over the full `(set, relido_observed_unanimous)` pair. PR #456 resolved
+// this by splitting the `Lattice` trait into `JoinSemilattice` and
+// `MeetSemilattice` halves; `DissemSet` implements only the join half,
+// so the type system now rejects any attempt to call `.meet()` on it at
+// compile time.
 //
 // See the `DissemSet` doc comment above (§ "Partial-lattice note C-4")
-// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
-// IS guaranteed; only the meet-over-join direction diverges.
-impl Lattice for DissemSet {
+// for full rationale.
+impl JoinSemilattice for DissemSet {
     fn join(&self, other: &Self) -> Self {
         // The single-static-table convention is enforced by the
         // crate-private `apply_overlays` API taking
@@ -2312,31 +2331,6 @@ impl Lattice for DissemSet {
         };
         out.apply_overlays(DISSEM_SUPERSESSION_TABLE);
         out
-    }
-
-    fn meet(&self, other: &Self) -> Self {
-        // Meet over a bag-with-supersession is set-theoretic
-        // intersection. The overlays are not re-applied on meet —
-        // the smaller set's overlay state is preserved (the overlay
-        // rules only ever REMOVE elements; removing more from a
-        // smaller set is a no-op).
-        let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
-        // RELIDO observed-unanimity is a join-side property (the
-        // claim "every observed portion has RELIDO"). Meet has no
-        // natural reading for this flag, so we produce the vacuous
-        // (true) value — the identity under subsequent AND joins.
-        //
-        // C-4 (PR 4b-B follow-up): the prior `meet` propagated
-        // unanimity as AND, which broke the absorption law
-        // `a ⊔ (a ⊓ b) = a` (e.g., a unanimous RELIDO set met with
-        // an empty/non-unanimous set produced a `false` flag,
-        // joining that back into the original dropped RELIDO).
-        // Forcing `true` here keeps `meet` an algebraic operation
-        // that respects absorption.
-        Self {
-            set,
-            relido_observed_unanimous: true,
-        }
     }
 }
 
@@ -2409,13 +2403,15 @@ impl NatoDissemSet {
     }
 }
 
-impl Lattice for NatoDissemSet {
+impl JoinSemilattice for NatoDissemSet {
     fn join(&self, other: &Self) -> Self {
         let mut set = self.set.clone();
         set.extend(other.set.iter().copied());
         Self { set }
     }
+}
 
+impl MeetSemilattice for NatoDissemSet {
     fn meet(&self, other: &Self) -> Self {
         let set: BTreeSet<DissemControl> = self.set.intersection(&other.set).copied().collect();
         Self { set }
@@ -2731,37 +2727,20 @@ impl JointSet {
 
 // P-9-3 (9th-pass) — Partial-lattice divergence note for `JointSet`.
 //
-// `JointSet` implements `Lattice` (join + meet) but does NOT satisfy
-// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full state space.
+// `JointSet` implements only `JoinSemilattice`, NOT `MeetSemilattice`.
 // The `Mixed` / `DisunityCollapse` distinction is a record of observed
 // page composition (join-side aggregation), not an algebraic element;
-// `meet` has no natural reading for non-identical producer sets and
-// returns `Bottom`. Generic `Lattice` consumers that call `meet` and
-// rely on dual absorption are NOT safe for `JointSet`. The trait shape
-// will be refined in a follow-up PR once `marque-scheme` gains a
-// `JoinSemilattice` / `MeetSemilattice` split (tracked as GitHub issue
-// #456).
-//
-// See the `JointSet::meet` doc comment below (§ "Partial-lattice note C-6")
-// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
-// IS guaranteed over the `Bottom` / `UnanimousProducers` sub-lattice;
-// only the meet-over-join direction diverges outside that sub-lattice.
-impl Lattice for JointSet {
-    /// Compose two JointSets per the §H.3 + §H.7 transition table:
-    ///
-    /// - `Bottom ⊔ x = x` (bottom-identity).
-    /// - `Mixed ⊔ x = Mixed` for `x ∈ {Mixed, Unanimous, Disunity}`
-    ///   (absorbing — §H.3 p57: once JOINT and non-JOINT both
-    ///   observed, JOINT cannot resurrect a roll-up state regardless
-    ///   of subsequent joins).
-    /// - `UnanimousProducers ⊔ UnanimousProducers` with same
-    ///   producer set → `UnanimousProducers { max(l1,l2), p }`.
-    /// - `UnanimousProducers ⊔ UnanimousProducers` with different
-    ///   producer sets → `DisunityCollapse { max(l1,l2), (p1 ∪ p2) \
-    ///   USA }`.
-    /// - `UnanimousProducers ⊔ DisunityCollapse` → `DisunityCollapse`
-    ///   (absorbs).
-    /// - `DisunityCollapse ⊔ DisunityCollapse` → `DisunityCollapse`
+// `meet` has no natural reading for non-identical producer sets — the
+// dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold over the full state
+// space. Independently, the pre-split `meet` was non-idempotent on
+// `DisunityCollapse` self-pairs (`a ⊓ a = Bottom ≠ a`) because the
+// fallback arm collapsed every non-identical-payload pair to `Bottom`
+// — the partial behavior was stronger than dual-absorption failure alone.
+// PR #456 resolved this by splitting the `Lattice` trait into
+// `JoinSemilattice` and `MeetSemilattice` halves; `JointSet` implements
+// only the join half, so the type system now rejects any attempt to call
+// `.meet()` on it at compile time.
+impl JoinSemilattice for JointSet {
     ///   with union of non-US producers and max level.
     fn join(&self, other: &Self) -> Self {
         match (self, other) {
@@ -2846,55 +2825,6 @@ impl Lattice for JointSet {
                     union_non_us_producers: non_us,
                 }
             }
-        }
-    }
-
-    /// Meet over the JOINT axis.
-    ///
-    /// Same-producer-set `UnanimousProducers` operands meet to the
-    /// `min(level)` element. Different producer sets meet to
-    /// `Bottom` rather than producing a `DisunityCollapse` — collapse
-    /// is a JOIN-side concept (a record of disagreement observed
-    /// across the page), not a meet result. This is what makes the
-    /// absorption law `a ⊔ (a ⊓ b) = a` hold for two same-set
-    /// `UnanimousProducers` operands.
-    ///
-    /// **Partial-lattice note (C-6 PR 4b-B follow-up).** Like
-    /// `DissemSet`, `JointSet` carries join-side aggregation
-    /// information (the `Mixed` / `DisunityCollapse` distinction
-    /// is a record of observed page composition, not an algebraic
-    /// element). `meet` has no natural reading for non-identical
-    /// producer sets, so we return `Bottom`. The dual absorption
-    /// law `a ⊓ (a ⊔ b) = a` does NOT hold over the full state
-    /// space; the structural `meet` is provided for completeness.
-    ///
-    /// Pre-fix, meet returned a same-level `UnanimousProducers`
-    /// with the intersection of the two producer sets — that
-    /// produced a different element from `a` when set were
-    /// non-equal, then `a.join(a.meet(b))` returned
-    /// `DisunityCollapse` instead of `a`, breaking absorption.
-    fn meet(&self, other: &Self) -> Self {
-        match (self, other) {
-            (Self::Bottom, _) | (_, Self::Bottom) => Self::Bottom,
-            (Self::Mixed, Self::Mixed) => Self::Mixed,
-            (
-                Self::UnanimousProducers {
-                    level: l1,
-                    producers: p1,
-                },
-                Self::UnanimousProducers {
-                    level: l2,
-                    producers: p2,
-                },
-            ) if p1 == p2 => Self::UnanimousProducers {
-                level: (*l1).min(*l2),
-                producers: p1.clone(),
-            },
-            // Cross-variant, mixed-shape, or non-identical-producer
-            // pairs fall back to `Bottom`. The unanimity contract has
-            // no well-defined meet over disagreeing producer sets —
-            // collapse is a join-side observation, not a meet result.
-            _ => Self::Bottom,
         }
     }
 }
@@ -3136,7 +3066,7 @@ impl RelToBlock {
     }
 }
 
-impl Lattice for RelToBlock {
+impl JoinSemilattice for RelToBlock {
     fn join(&self, other: &Self) -> Self {
         // NofornSuperseded > Empty > Lattice{·} > Bottom.
         // NofornSuperseded and Empty are absorbing for non-Bottom
@@ -3160,7 +3090,9 @@ impl Lattice for RelToBlock {
             }
         }
     }
+}
 
+impl MeetSemilattice for RelToBlock {
     fn meet(&self, other: &Self) -> Self {
         // Meet over REL TO — union of country lists, semantically
         // "the broader release that BOTH sides could have authored."

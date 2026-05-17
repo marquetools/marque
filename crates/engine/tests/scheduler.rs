@@ -17,8 +17,8 @@ use marque_engine::{Engine, EngineConstructionError};
 use marque_rules::RuleSet;
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
-    ConstraintViolation, FactRef, Lattice, MarkingScheme, PageRewrite, Parsed, RecanonScope,
-    ReplacementIntent, RewriteId, Scope, Template, TokenId, TokenRef,
+    ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme, MeetSemilattice, PageRewrite,
+    Parsed, RecanonScope, ReplacementIntent, RewriteId, Scope, Template, TokenId, TokenRef,
 };
 
 // ---------------------------------------------------------------------------
@@ -29,10 +29,13 @@ use marque_scheme::{
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 struct StubMarking;
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _: &Self) -> Self {
         Self
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _: &Self) -> Self {
         Self
     }

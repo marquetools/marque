@@ -29,7 +29,7 @@
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::{Category, CategoryId, TokenId};
 use marque_scheme::constraint::{Constraint, TokenRef};
-use marque_scheme::lattice::Lattice;
+use marque_scheme::lattice::{JoinSemilattice, MeetSemilattice};
 use marque_scheme::page_rewrite::PageRewrite;
 use marque_scheme::scheme::MarkingScheme;
 use marque_scheme::scope::Scope;
@@ -53,10 +53,13 @@ use marque_scheme::vocabulary::{
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct NoFdrMarking;
 
-impl Lattice for NoFdrMarking {
+impl JoinSemilattice for NoFdrMarking {
     fn join(&self, _other: &Self) -> Self {
         Self
     }
+}
+
+impl MeetSemilattice for NoFdrMarking {
     fn meet(&self, _other: &Self) -> Self {
         Self
     }
