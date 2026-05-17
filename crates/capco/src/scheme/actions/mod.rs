@@ -35,6 +35,6 @@ pub(crate) use self::companions::{
     emit_companion_required, emit_hcs_o_companions, emit_hcs_p_sub_companions, emit_si_g_companions,
 };
 pub(crate) use self::fgi::{extract_foreign_sources, merge_fgi_markers};
-pub(crate) use self::intent::apply_intent_to_marking;
+pub(crate) use self::intent::{apply_closure_fact, apply_intent_to_marking};
 pub(crate) use self::page_context::page_context_to_attrs;
 pub(crate) use self::strip::{noop_action, strip_dod_ucni_action, strip_doe_ucni_action};

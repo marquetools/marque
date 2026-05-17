@@ -105,11 +105,14 @@ rule that proposes the encouraged marking.**
 `Authority::Originated` from the CAB; it cannot infer the pivot from
 the document text alone.
 
-**Caveats** (a portion is "caveated" if it bears) per §B.2 / §H.8:
-ORCON / ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO,
-or any non-IC dissem (LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF,
-SSI). NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
-markings, not the upstream "caveat" trigger.
+**Caveats** (a portion is "caveated" if it bears) per the §B.3 p20
+Note (structural "caveated" definition: bears no FD&R markings but has
+one or more AEA / SAP / dissemination control markings): ORCON /
+ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO, or any
+non-IC dissem (LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF, SSI).
+NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
+markings, not the upstream "caveat" trigger. Per-marking templates
+live in §H.8.
 
 **Marque encoding.** `marque-capco` SHOULD model the seven Table-2
 rows as Warn-level rules with a `confidence` reflecting how

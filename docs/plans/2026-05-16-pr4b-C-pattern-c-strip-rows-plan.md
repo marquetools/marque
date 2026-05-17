@@ -308,7 +308,7 @@ encode exactly this algebra:
 | `CLOSURE_NOFORN_UCNI` | `TOK_UCNI` (covers DodUcni + DoeUcni) | `FDR_DOMINATORS` | §B.3 Table 2 p21 |
 | `CLOSURE_NOFORN_FGI` | `TOK_FGI_MARKER + AnyInCategory(CAT_FGI_MARKER)` | `FDR_DOMINATORS` | §H.7 p122 (+ §B.3 Table 2 p21) |
 | `CLOSURE_NOFORN_ORCON` | `TOK_ORCON / TOK_ORCON_USGOV` | `FDR_DOMINATORS` | §B.3 Table 2 p21 (+ §H.8 p136/p139) |
-| `CLOSURE_NOFORN_IMCON_DSEN` | `TOK_IMCON / TOK_DSEN` | `FDR_DOMINATORS` | §B.3 Table 2 p21 (+ §H.8 p142/p159) |
+| `CLOSURE_NOFORN_RSEN_IMCON_DSEN` | `TOK_RSEN / TOK_IMCON / TOK_DSEN` | `FDR_DOMINATORS` | §B.3 Table 2 p21 (+ §H.8 p132/p142/p159) |
 | `CLOSURE_NOFORN_NONICCONTROLS` | `TOK_LIMDIS / TOK_LES / TOK_SBU / TOK_SSI` | `FDR_DOMINATORS` | §B.3 Table 2 p21 (+ §H.9 prose) |
 
 `FDR_DOMINATORS` at `scheme.rs:5046-5062` enumerates
@@ -1477,12 +1477,11 @@ The implementing agent ships only Commits 1-4 + 5-7 per §1.1.
   - `rsen_classified_caveated_implies_noforn` — `(S//RSEN)` →
     banner contains NOFORN. §B.3 Table 2 p21 + §H.8 p132. RSEN is
     classified-only per §H.8 p132 but is still a caveat marker.
-    **Note**: RSEN is NOT a trigger in the in-tree Trio 1 catalog
-    (verified 2026-05-16 — only IMCON / DSEN are at
-    `CLOSURE_NOFORN_IMCON_DSEN:5190`). Under OQ-4(A) this fixture
-    fails unless a new closure row is added for RSEN (the §H.8
-    p132 + §B.3 Table 2 p21 algebra applies). Surface as **Risk
-    #9**.
+    **Note**: this row was extended in the closure-runtime
+    landing — RSEN now triggers alongside IMCON / DSEN via
+    `CLOSURE_NOFORN_RSEN_IMCON_DSEN` (the §H.8 p132 + §B.3
+    Table 2 p21 algebra applies). Originally surfaced as **Risk
+    #9** below, now closed.
 
   Each fixture cites the §-page-number citation as an inline doc-
   comment on the test function. Helper:
@@ -1814,7 +1813,7 @@ above is the load-bearing quality gate.
 | 6 | **Compound-NF (`SbuNf` / `LesNf`) accidentally stripped** by the bare-token rows. Pattern C rule §3.5 invariant must hold. | High | The `CategoryPredicate::Contains` match is on `TokenId`, and `TOK_SBU ≠ TOK_SBU_NF` (verified `scheme.rs:4911 vs 4915`). The catalog row predicates are mechanical; the invariant holds by construction. Commit 6's `pattern_c_sbu_nf_in_classified_preserves_noforn` fixture is the regression gate. **However**: future refactors that unify `Sbu` and `SbuNf` into a single variant with a flag would break the invariant silently — the §3.5 invariant statement must live in the catalog doc-comment so it survives such a refactor. |
 | 7 | **§H.8 p134 citation-discipline lapse**: the umbrella rule on p134 is cited by every FOUO-matrix row (10-12 rows). A single misquote propagates to every row. | Med | Re-verify §H.8 p134 verbatim at Commit 1 + Commit 4 authorship per Constitution VIII; the reviewer chain (code-reviewer + capco-dissem-validator) does the sampling check. |
 | 8 | **Doc-comment LOC bloat**: each row gets a ~50-LOC doc-comment in the PR 3c.B precedent style. 15-17 new rows = ~800 LOC of doc-comments alone. The PR risks reviewer-fatigue review. | Low | The doc-comments are mechanical (each row's doc-comment follows the same template: §-citation, trigger, action, axis annotations, scheduler order, runtime execution gap, forward-pointer). Reviewers can pattern-match across them quickly. |
-| 9 | **RSEN gap in Trio 1 catalog** (OQ-4(A) only): the in-tree `CLOSURE_NOFORN_IMCON_DSEN` row at `scheme.rs:5190` covers IMCON + DSEN but NOT RSEN, even though §H.8 p132 + §B.3 Table 2 p21 algebra applies identically. The Pattern D fixture `rsen_classified_caveated_implies_noforn` will fail under OQ-4(A) unless a new closure row is added. | Med | Under OQ-4(A), add an 8th Trio 1 row `CLOSURE_NOFORN_RSEN` triggered by `TOK_RSEN`, suppressed by `FDR_DOMINATORS`, cone `[TOK_NOFORN]`, citation `§B.3 Table 2 p21 + §H.8 p132`. Under OQ-4(B) the compound predicate covers RSEN via `has_caveat_marker` over `attrs.dissem_us.iter().any(|d| !is_fdr_dissem(d))`. Under OQ-4(C) deferred to PR 4b-D. |
+| 9 | **RSEN gap in Trio 1 catalog** (OQ-4(A) only): the original in-tree `CLOSURE_NOFORN_IMCON_DSEN` row covered IMCON + DSEN but NOT RSEN, even though §H.8 p132 + §B.3 Table 2 p21 algebra applies identically. The Pattern D fixture `rsen_classified_caveated_implies_noforn` would have failed under OQ-4(A) without a new closure row. | Closed | Closed by the closure-runtime landing: the row was renamed to `CLOSURE_NOFORN_RSEN_IMCON_DSEN` and extended with `TOK_RSEN` as a third trigger, suppressed by `FDR_DOMINATORS`, cone `[TOK_NOFORN]`, citation `§B.3 Table 2 p21 + §H.8 p132`. |
 | 10 | **Pattern D `has_caveat_marker` SCI-uncaveated carve-out** (§B.3 p20 explicit: "If only an SCI marking is present, the information is considered uncaveated"). Under OQ-4(B) the compound predicate must encode the carve-out (`!is_sci_only(attrs)`); easy to miss. Under OQ-4(A) the carve-out is implicit (no closure row triggers on `CAT_SCI`). | Med | Commit 6 fixture `sci_only_uncaveated_no_noforn` is the regression-gate. The capco-classification-validator reviewer agent's pass MUST exercise this case explicitly. |
 | 11 | **Citation drift on PM's "p21 → defaults to NOFORN" phrasing**: the PM brief cites "CAPCO-2016 p21" as authority for default-NOFORN. Verified 2026-05-16: p21 carries **Table 2** with the row "Classified + caveated + on/after 28 June 2010 → Mark as NOFORN in IC DAPs / Handle as NOFORN in other IC info." The default-NOFORN claim is correct for IC DAPs (prescriptive) but only "encouraged" for other IC info. Marque defaults to IC-DAP scope per project memory `project_marque_assumes_modern_default_fdr.md`, so the prescriptive read is the right one — but the citation MUST cite **§B.3 Table 2 p21** specifically, not p21 alone. | Low | Use full citation form `§B.3 Table 2 p21` in every Pattern D doc-comment (already the existing in-tree convention for the 7 closure rules at `scheme.rs:5094 et seq`). |
 
