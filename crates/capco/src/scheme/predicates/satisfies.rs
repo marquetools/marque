@@ -15,7 +15,7 @@ use marque_scheme::TokenRef;
 
 use super::super::constraints::{
     e012_dual_classification, e014_joint_rel_to_coverage, e021_aea_requires_noforn,
-    e024_rd_precedence, e038_dos_dissem_requires_noforn, w002_us_commingled_with_fgi,
+    e024_rd_precedence, e038_dos_dissem_requires_noforn,
 };
 use super::super::*;
 use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
@@ -331,7 +331,8 @@ pub(crate) fn evaluate_custom_by_attrs(
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
         "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
         "E024/rd-precedence" => e024_rd_precedence(attrs),
-        "W002/us-commingled-with-fgi" => w002_us_commingled_with_fgi(attrs),
+        // W002/us-commingled-with-fgi retired in the PR closing #470.
+        // The catalog row + helper are removed in the same commit.
         "capco/joint-requires-usa" => joint_requires_usa(attrs),
         "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs),
         _ => Vec::new(),

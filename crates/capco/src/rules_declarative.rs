@@ -51,7 +51,7 @@
 //! while the catalog already cited the page-precise forms — is
 //! retired; wrappers and catalog rows are now in lockstep across
 //! every shared rule (E010, E012, E014, E015, E016, E021, E024,
-//! W002).
+//! W002 retired in the PR closing #470).
 //!
 //! New wrappers MUST cite the same authoritative passage as the
 //! corresponding catalog row, page-precise where the audit
@@ -1255,58 +1255,16 @@ impl Rule<CapcoScheme> for DeclarativeRdPrecedenceRule {
 // `CapcoScheme::bridge_emitted_rule_ids()`). The retired `E025` key
 // is rejected as `UnknownRuleOverride`.
 
-// ---------------------------------------------------------------------------
-// W002 — US + FGI comingling in portion (portion-only)
-// ---------------------------------------------------------------------------
-
-pub(crate) struct DeclarativeCominglingWarningRule;
-
-impl Rule<CapcoScheme> for DeclarativeCominglingWarningRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("W002")
-    }
-    fn name(&self) -> &'static str {
-        "us-fgi-comingling"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Warn
-    }
-    /// Phase::WholeMarking: §H.7 cross-axis advisory (US classification
-    /// co-present with FGI marker). No fix — the suggested remediation
-    /// is structural document reorganization.
-    fn phase(&self) -> Phase {
-        Phase::WholeMarking
-    }
-    fn trusted(&self) -> bool {
-        true
-    }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        use marque_ism::MarkingType;
-        // Portion-only filter: the catalog predicate fires on any
-        // US+FGI presence; user-facing diagnostic is portion-only per
-        // CAPCO §H.7 lines 8254-8268 (banner-level commingling is
-        // governed by different rules).
-        if ctx.marking_type != MarkingType::Portion {
-            return vec![];
-        }
-
-        if violations_for(attrs, "W002/us-commingled-with-fgi").is_empty() {
-            return vec![];
-        }
-
-        let span = first_span_of(attrs, TokenKind::FgiMarker);
-
-        vec![Diagnostic::new(
-            self.id(),
-            self.default_severity(),
-            span,
-            "portion mark comingles US classification with FGI; \
-             consider splitting into separate US and foreign paragraphs",
-            "CAPCO-2016 §H.7 p124",
-            None,
-        )]
-    }
-}
+// W002 retired in the PR closing #470. The predicate at
+// `crate::scheme::constraints::helpers::w002_us_commingled_with_fgi`
+// and the corresponding `Constraint::Custom` row in
+// `crate::scheme::constraints::core_catalog` are removed in the same
+// commit. CAPCO-2016 §H.7 p123 (vendored at
+// `crates/capco/docs/CAPCO-2016.md` lines 3051-3065) authorizes the
+// `(US-CLASS//FGI [LIST]//NF)` shape — that's the shape the rule
+// fired on. The §H.7 p124 segregation rule is conditioned on
+// ICD-206 status (a document-level property), so a portion-local
+// warning premised on it produces noise without action.
 
 // ---------------------------------------------------------------------------
 // E037 — NODIS and EXDIS must not coexist (T035c-21 PR-A)

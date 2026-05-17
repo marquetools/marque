@@ -457,7 +457,13 @@ struct ExpectedRuleCount {
 ///
 /// - **#461** (Phase::PageFinalization): retires E031, E035, E040 entries.
 /// - **#439** (S004 suppress under REL TO): retired all S004 entries.
-/// - **#470** (W002 over-fires on canonical FGI): retires W002 entries.
+/// - **#470** (W002 over-fires on canonical FGI): retired — W002
+///   `DeclarativeCominglingWarningRule` is retired in this PR because
+///   the rule's §H.7 p124 premise (segregate FGI from US portions
+///   unless ICD-206) is conditioned on a document-level property the
+///   engine cannot observe portion-locally, and the corpus shape it
+///   was firing on (`(S//FGI XXX//NF)`) is the §H.7 p123 canonical
+///   commingled form.
 /// - **#471** (E015 zero-width false-positive): retired — engine gates rule
 ///   dispatch on sub-threshold decoder parses (closed in this PR).
 /// - **#472** (R001 prose parenthetical false-positives): retires R001 entries.
@@ -478,20 +484,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
     (
         "CIA-RDP09T00207R001000100002-2",
-        &[
-            ExpectedRuleCount {
-                rule: "E035",
-                count: 4,
-                issue: 461,
-                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "W002",
-                count: 5,
-                issue: 470,
-                reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
-            },
-        ],
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 4,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
     ),
     (
         "CIA-RDP09T00207R001000100012-1",
@@ -592,20 +590,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     ),
     (
         "CIA-RDP74B00415R000300070018-9",
-        &[
-            ExpectedRuleCount {
-                rule: "E035",
-                count: 3,
-                issue: 461,
-                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "W002",
-                count: 3,
-                issue: 470,
-                reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
-            },
-        ],
+        &[ExpectedRuleCount {
+            rule: "E035",
+            count: 3,
+            issue: 461,
+            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+        }],
     ),
     (
         "CIA-RDP74B00415R000500120103-5",
@@ -858,15 +848,11 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
             },
         ],
     ),
-    (
-        "topofficialsinru00wash",
-        &[ExpectedRuleCount {
-            rule: "W002",
-            count: 3,
-            issue: 470,
-            reason: "W002 over-fires on canonical (S//FGI XXX//NF)",
-        }],
-    ),
+    // `topofficialsinru00wash` had only a W002 count=3 pin pre-#470;
+    // with W002 retired the fixture emits zero diagnostics and the
+    // entry is dropped entirely (a fixture with no allowlist entry
+    // is required to emit zero diagnostics by the
+    // `unexpected firing` arm of `document_fixtures_lint_against_expected`).
 ];
 
 /// Look up the pinned diagnostics for a fixture stem.
