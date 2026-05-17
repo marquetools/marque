@@ -64,13 +64,20 @@ use std::collections::BTreeMap;
 /// `fn phase(&self) -> Phase`. This table is the audit-controlled
 /// reflection of those per-rule declarations.
 const EXPECTED_PHASES: &[(&str, Phase)] = &[
-    // ----- Phase::Localized (4 rules) -------------------------------
+    // ----- Phase::Localized (4 rules + E064/E065 in the WholeMarking
+    // group, see PR 9a footnote at their row) -----------------------
     // Each fix is a single-token rewrite (typo, migration, suggest).
     ("C001", Phase::Localized),
     ("E006", Phase::Localized),
     ("E007", Phase::Localized),
     ("S004", Phase::Localized),
-    // ----- Phase::WholeMarking (27 rules) ---------------------------
+    // ----- Phase::WholeMarking (32 rows, post-#461 W004 retirement) -
+    // Note: E064 / E065 appear in their PR 9a / T135a footnoted rows
+    // BELOW with Phase::Localized declarations — they are
+    // numerically in the Localized partition; the listing order
+    // follows registration sequence (PR-of-introduction grouping)
+    // rather than strict phase ordering for review readability.
+    // -----------------------------------------------------------------
     // Banner roll-up walkers, cross-axis decisions, intent-only
     // FactAdd / FactRemove / Recanonicalize emissions, and no-fix
     // advisories whose span coverage is per-marking.
@@ -136,15 +143,22 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("S007", Phase::WholeMarking),
     ("W002", Phase::WholeMarking),
     ("W003", Phase::WholeMarking),
-    // PR 4b-B Commit 9 (006 T112): joint-disunity-collapse-to-FGI per
-    // CAPCO-2016 §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass updated
-    // from §H.3 p56). Reads the classification axis across all
-    // portions on the page; fires on Banner candidates ONLY (P-3
-    // 8th-pass — reverted Portion-firing to avoid Mixed-page false
-    // positives; see JointDisunityCollapseRule doc-comment for the
-    // layout-gap trade-off).
-    ("W004", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),
+    // ----- Phase::PageFinalization (1 rule, issue #461) -------------
+    // PR refactor-006-pr-pagefinalization (issue #461): W004
+    // joint-disunity-collapse migrated from `Phase::WholeMarking`
+    // (Banner-only firing) to `Phase::PageFinalization`. The engine
+    // dispatches PageFinalization rules once per page on the
+    // page-level fixpoint snapshot — at every scanner-emitted
+    // `MarkingType::PageBreak` BEFORE the PageContext reset, plus
+    // once at end-of-document. This closes the pre-#461
+    // banner-first false-negative (no closing banner → no firing
+    // surface) without re-introducing the 6th-pass Mixed-page
+    // false-positive (intermediate snapshot misread as
+    // DisunityCollapse). Authority: §H.3 p57 (Derivative Use
+    // bullets) + §H.7 p123 (FGI grammar). Re-verified 2026-05-16
+    // against `crates/capco/docs/CAPCO-2016.md`.
+    ("W004", Phase::PageFinalization),
 ];
 
 #[test]
@@ -228,15 +242,17 @@ fn every_registered_rule_declares_expected_phase() {
 
 #[test]
 fn allowlist_partitions_match_engine_partition_arithmetic() {
-    // Independent counting check: the allowlist's Localized / WholeMarking
-    // partition matches the registered ruleset's partition. This catches
-    // the case where a rule's `phase()` body is changed atomically with
-    // an EXPECTED_PHASES edit but the new total accidentally double-counts
-    // (e.g., a row added to both the Localized and WholeMarking
+    // Independent counting check: the allowlist's per-phase partition
+    // matches the registered ruleset's partition across all three
+    // phases (Localized, WholeMarking, PageFinalization — the third
+    // bucket landed in PR refactor-006-pr-pagefinalization for issue
+    // #461). This catches the case where a rule's `phase()` body is
+    // changed atomically with an EXPECTED_PHASES edit but the new
+    // total accidentally double-counts (e.g., a row added to both
     // sub-sections in a hand-merge). The primary
-    // `every_registered_rule_declares_expected_phase` test would already
-    // catch that via the duplicate-row guard, but this second view makes
-    // the count math explicit at the test surface.
+    // `every_registered_rule_declares_expected_phase` test would
+    // already catch that via the duplicate-row guard, but this
+    // second view makes the count math explicit at the test surface.
     let rule_set = CapcoRuleSet::new();
     let localized_actual = rule_set
         .rules()
@@ -248,6 +264,11 @@ fn allowlist_partitions_match_engine_partition_arithmetic() {
         .iter()
         .filter(|r| r.phase() == Phase::WholeMarking)
         .count();
+    let page_finalization_actual = rule_set
+        .rules()
+        .iter()
+        .filter(|r| r.phase() == Phase::PageFinalization)
+        .count();
     let localized_expected = EXPECTED_PHASES
         .iter()
         .filter(|(_, p)| *p == Phase::Localized)
@@ -255,6 +276,10 @@ fn allowlist_partitions_match_engine_partition_arithmetic() {
     let whole_marking_expected = EXPECTED_PHASES
         .iter()
         .filter(|(_, p)| *p == Phase::WholeMarking)
+        .count();
+    let page_finalization_expected = EXPECTED_PHASES
+        .iter()
+        .filter(|(_, p)| *p == Phase::PageFinalization)
         .count();
 
     assert_eq!(
@@ -267,9 +292,14 @@ fn allowlist_partitions_match_engine_partition_arithmetic() {
          allowlist={whole_marking_expected}",
     );
     assert_eq!(
-        localized_actual + whole_marking_actual,
+        page_finalization_actual, page_finalization_expected,
+        "PageFinalization count drift: registered={page_finalization_actual}, \
+         allowlist={page_finalization_expected}",
+    );
+    assert_eq!(
+        localized_actual + whole_marking_actual + page_finalization_actual,
         rule_set.rules().len(),
         "Phase partition does not cover every registered rule \
-         (Localized + WholeMarking should sum to rules().len())",
+         (Localized + WholeMarking + PageFinalization should sum to rules().len())",
     );
 }

@@ -14,8 +14,19 @@
 
 pub use marque_scheme::Span;
 
-/// Classification marking candidate type, determined by scanner heuristics.
+/// Classification marking candidate type, determined by scanner heuristics
+/// (plus one engine-synthesized variant — see [`MarkingType::PageFinalization`]).
+///
+/// **`#[non_exhaustive]`** (issue #461): a future scanner enhancement
+/// or engine pass may introduce additional variants (e.g., a sentence-
+/// boundary candidate, a header-region marker). Marking the enum
+/// `#[non_exhaustive]` means a future variant addition is a
+/// non-breaking change for downstream consumers, which matters
+/// because every exhaustive-match site in the workspace tracks every
+/// variant by construction (rust-reviewer §1 surfaces every site
+/// requiring a wildcard arm when this enum grows).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MarkingType {
     /// `(TS//SI//NF)` — parenthesized, typically at paragraph start.
     Portion,
@@ -28,6 +39,28 @@ pub enum MarkingType {
     /// this to reset its `PageContext` so banner/CAB rules on the next page
     /// see a fresh aggregate (Phase 3, plan §Task 1).
     PageBreak,
+    /// Engine-synthesized page-finalization boundary — dispatched at
+    /// every [`MarkingType::PageBreak`] BEFORE the `PageContext` reset,
+    /// plus once at end-of-document. Never emitted by the scanner.
+    /// Carries a zero-length `Span` at the boundary offset.
+    ///
+    /// Parsers MUST reject this kind — only `marque_rules::Phase::PageFinalization`
+    /// rules dispatched by the engine consume it, and they read
+    /// `RuleContext::page_context` / `RuleContext::page_marking` (the
+    /// page-level fixpoint snapshot the engine attaches to the
+    /// synthetic candidate), not `CanonicalAttrs` parsed from candidate
+    /// bytes.
+    ///
+    /// The variant exists so PageFinalization dispatch is
+    /// distinguishable from `PageBreak` (which carries the PageContext
+    /// reset semantic) without overloading. The two MUST NOT be
+    /// co-located in the candidate stream — `PageBreak` is the
+    /// scanner-emitted reset boundary; `PageFinalization` is the
+    /// engine-synthesized dispatch marker that runs strictly before
+    /// the matching `PageBreak`'s reset.
+    ///
+    /// Issue #461 (PR refactor-006-pr-pagefinalization).
+    PageFinalization,
 }
 
 /// A scanner-identified candidate with its type and source span.

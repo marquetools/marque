@@ -4995,15 +4995,14 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 }
 
 // ===========================================================================
-// W004 — JOINT producer-disunity collapse (PR 4b-B Commit 5)
+// W004 — JOINT producer-disunity collapse (issue #461 — Phase::PageFinalization)
 // ===========================================================================
 //
-// Authority (verified 2026-05-15 against CAPCO-2016.md):
-// - §H.3 p56 (JOINT classification grammar — banner form
-//   `//JOINT [class] [LIST]`).
-// - §H.3 pp55-59 (JOINT worked examples).
-// - §H.7 p123 (FGI source-acknowledged form — disunity-collapse
-//   non-US producers migrate to FGI [LIST]).
+// Authority (verified 2026-05-16 against CAPCO-2016.md):
+// - §H.3 p57 (JOINT not carried to banner in US documents — Derivative
+//   Use bullets specify the FGI [LIST] migration trigger).
+// - §H.7 p123 (FGI source-acknowledged form — the grammar the
+//   migrated producers render under).
 //
 // Constitution V Principle V G13: the W004 diagnostic message MUST
 // NOT contain document text. Permitted identifiers: `CountryCode`
@@ -5016,23 +5015,9 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// Fires when every portion on a page is JOINT-classified but the
 /// portions disagree on their producer (country) list. The banner
 /// cannot roll up the JOINT marking because the per-portion producer
-/// lists don't share a unanimous set; per §H.7 p123 the non-US
-/// producers migrate to FGI [LIST], and JOINT is dropped from the
-/// banner.
-///
-/// **Firing surface (PR 4b-B 8th-pass P-3 trade-off).** W004 fires on
-/// **Banner candidates only**. The 6th-pass added Portion-firing to
-/// cover real-world layouts where a header banner runs before any
-/// portions accumulate (page_context empty → W004 never fires at the
-/// top banner); however, portion-time firing introduced a correctness
-/// regression on Mixed pages — a page with
-/// `[P1=JOINT(USA,CAN), P2=JOINT(USA,GBR), P3=(S//NF)]` fires W004
-/// at P2 time (snapshot = [P1,P2] → DisunityCollapse) but the final
-/// page state is `Mixed` (P3 is non-JOINT) — W004 MUST NOT fire on
-/// Mixed per §H.3 p57. The 8th-pass reverted to Banner-only.
-/// Trade-off documented: a pure-JOINT page with a top banner and no
-/// closing footer banner will NOT fire W004 (page_context is None when
-/// the top banner runs). See the inline comment at the `check` impl.
+/// lists don't share a unanimous set; per §H.3 p57 + §H.7 p123 the
+/// non-US producers migrate to FGI [LIST], and JOINT is dropped from
+/// the banner.
 ///
 /// **Mixed JOINT + non-JOINT portions** (§H.3 p57 — "the JOINT
 /// marking is not carried forward to the banner line in US
@@ -5044,29 +5029,34 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// Severity: `Warn` (per `feedback_dissem_conflicts_emit_subtractive_fix.md`,
 /// JOINT disunity is a subtractive-fix case).
 ///
-/// **Fix payload deferred** (H-1 declined-in-scope in PR 4b-B
-/// follow-up triage). The cross-axis JOINT → FGI [LIST] migration
-/// is a renderer-canonical concern, not a single-span text
-/// replacement:
+/// **Fix payload deferred.** The cross-axis JOINT → FGI [LIST]
+/// migration is a renderer-canonical concern, not a single-span text
+/// replacement: a JOINT-disunity page has no banner JOINT block to
+/// rewrite (§H.3 p57 says JOINT does not roll up to the banner), the
+/// fix would have to edit each portion AND emit a new banner-shaped
+/// FGI [LIST] elsewhere, and `Diagnostic::text_correction` /
+/// `ReplacementIntent::FactAdd` / `FactRemove` / `Recanonicalize` are
+/// all single-axis-scoped. The `MarkingScheme::render_canonical`
+/// trait surface (PR 5+ Stage 4) is the right home for this
+/// transformation. The W004 diagnostic surfaces the transformation
+/// today so users have an audit trail without an auto-applied fix.
 ///
-/// - W004 fires on the banner candidate, but a JOINT-disunity page
-///   has no banner JOINT block to rewrite — §H.3 p57 says JOINT
-///   does not roll up to the banner. The "fix" would have to edit
-///   each portion (remove the JOINT block) AND emit a new banner-
-///   shaped FGI [LIST] elsewhere. That is multi-span / cross-axis
-///   territory; `Diagnostic::text_correction` is single-axis-scoped
-///   and `ReplacementIntent::FactAdd` / `FactRemove` /
-///   `Recanonicalize` are also single-axis (cross-axis migrations
-///   are text_correction-route, but text_correction is single-span).
-/// - The `MarkingScheme::render_canonical` trait surface (PR 5+
-///   Stage 4) is the right home for this transformation: the
-///   renderer reads the post-projection `CanonicalAttrs` (which
-///   already carries the FGI-migrated banner facts produced by
-///   `CapcoMarking::join_via_lattice`) and emits the canonical
-///   `[class]//FGI [LIST]` form for the whole page.
+/// Authority: §H.3 p57 (JOINT not carried to banner — Derivative
+/// Use bullets specify the FGI [LIST] migration trigger) + §H.7 p123
+/// (FGI grammar). Verified 2026-05-16 against
+/// `crates/capco/docs/CAPCO-2016.md`.
 ///
-/// The W004 diagnostic surfaces the transformation so users have
-/// an audit trail today, even without an auto-applied fix.
+/// **Phase: PageFinalization (issue #461).** Pre-#461 W004 declared
+/// `Phase::WholeMarking` and gated on `MarkingType::Banner`, which
+/// produced a documented false-negative on banner-first layouts (no
+/// closing banner → no Banner candidate ever runs against a
+/// non-empty PageContext) AND a 6th-pass false-positive on Mixed
+/// pages when the rule was briefly extended to Portion candidates
+/// (intermediate snapshot misread as DisunityCollapse before the
+/// final non-JOINT portion arrived). Phase::PageFinalization closes
+/// both: the engine dispatches W004 once per page on the page-level
+/// fixpoint snapshot, so banner-first layouts fire via the
+/// end-of-document path and Mixed-page false-positives don't recur.
 struct JointDisunityCollapseRule;
 
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {
@@ -5079,10 +5069,19 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn default_severity(&self) -> Severity {
         Severity::Warn
     }
-    /// Phase::WholeMarking: page-level banner decision reading the
-    /// classification axis across all portions on the page.
+    /// Phase::PageFinalization (issue #461): observes the
+    /// page-level fixpoint snapshot of the classification axis. The
+    /// engine dispatches this rule once per page at every
+    /// scanner-emitted `MarkingType::PageBreak` BEFORE the
+    /// PageContext reset, plus once at end-of-document. The
+    /// pre-#461 Banner-only firing produced a documented
+    /// false-negative on banner-first layouts (closed by the EOD
+    /// path); the 6th-pass Portion-firing experiment produced a
+    /// Mixed-page false-positive (not recur under PageFinalization
+    /// because the rule fires exactly once per page on the closed
+    /// state).
     fn phase(&self) -> Phase {
-        Phase::WholeMarking
+        Phase::PageFinalization
     }
     /// Trusted: implementation is a pure read-only check over
     /// `JointSet::from_attrs_iter`'s deterministic state machine plus
@@ -5094,47 +5093,13 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         true
     }
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        use marque_ism::MarkingType;
-        // P-3 (8th-pass trade-off): W004 fires on Banner candidates
-        // only. The 6th-pass added Portion-firing to cover banner-first
-        // layouts where the top banner fires before any portions accumulate
-        // (the "W004-banner-first" bug: banner sees empty page_context, rule
-        // returns early, no closing banner → W004 never fires). However,
-        // portion-time firing introduces a correctness regression: a page
-        // with [P1=JOINT(USA,CAN), P2=JOINT(USA,GBR), P3=(S//NF)] fires
-        // W004 at P2 time (snapshot = [P1, P2] → DisunityCollapse) but the
-        // final page state is `Mixed` (P3 is non-JOINT) — W004 must NOT fire
-        // on Mixed per §H.3 p57 ("JOINT marking not carried forward to the
-        // banner line in US documents"; the Mixed case is already
-        // well-handled).
-        //
-        // PM guidance (8th-pass): prefer correctness over coverage for a
-        // Warn-severity rule. The banner-first false-negative is documented
-        // below; the Mixed-page false-positive is a defect. Revert to
-        // Banner-only.
-        //
-        // Trade-off documented: a pure-JOINT page with a top banner (no
-        // footer banner) and disunified portions will NOT fire W004 under
-        // this restriction. The rule reads `page_context` (populated for
-        // Banner candidates) which is `None` when the top banner runs with
-        // no preceding portions. Callers that need to detect disunity in
-        // banner-first layouts should use the JointSet lattice projection
-        // directly (via `CapcoScheme::project` or `JointSet::from_attrs_iter`
-        // over the page's portions).
-        //
-        // N-9-2 (PR 437 10th-pass): `cross_portion_context` was removed
-        // from `RuleContext` — O(N²) per-portion PageContext cloning with
-        // zero active consumers. Future cross-portion aggregation rules
-        // that need the post-add accumulator state should add a lazy/gated
-        // field when a real consumer lands.
-        //
-        // §-authority: §H.3 p57 (JOINT not carried to banner line in US
-        // documents — this is the Mixed case that portion-time snapshot
-        // cannot distinguish from DisunityCollapse until all portions land).
-        // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
-        if !matches!(ctx.marking_type, MarkingType::Banner) {
-            return vec![];
-        }
+        // Phase::PageFinalization invariant: the engine's
+        // `dispatch_page_finalization` force-initializes
+        // `ctx.page_context` and `ctx.page_marking` before invoking
+        // the rule. The defensive `.as_ref()?` early-return below is
+        // belt-and-suspenders so the rule stays safe under future
+        // engine refactors that might relax the invariant; it should
+        // never fire in production.
         let Some(page_ctx) = ctx.page_context.as_ref() else {
             return vec![];
         };
@@ -5157,21 +5122,22 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // The diagnostic span points at the candidate itself (banner
-        // OR portion). The W004 message identifies the transformation
-        // by name and category ID; producer trigraphs and the JOINT
-        // category label are canonical vocabulary, not document bytes.
+        // Diagnostic span anchor: the engine passes a zero-length
+        // `Span(boundary_offset, boundary_offset)` at the page-break
+        // boundary (or `source.len()` for the EOD dispatch).
+        // PageContext stores `Box<[CanonicalAttrs]>` for its portions
+        // — no per-portion span is tracked. Per-portion span
+        // precision would require extending the hot-path PageContext
+        // data type for a single diagnostic with no fix, which the
+        // PR brief judged scope-creep. The boundary anchor is the
+        // best available pointer today; users joining "which page
+        // had disunity?" map the byte offset to a page number via
+        // their own document-position metadata.
         //
-        // CV-4 (PR 4b-B 8th-pass follow-up): cite §H.3 p57 + §H.7 p123
-        // in both the message text AND the Diagnostic.citation field
-        // (pre-CV-4 the citation said `§H.3 p56` which is the JOINT
-        // grammar page; the load-bearing migration trigger is on p57
-        // in the "Derivative Use" bullets — "The banner line contains
-        // the following: ... The FGI marking including all
-        // trigraph/tetragraph codes identified in the JOINT
-        // portion(s)"). §H.7 p123 grounds the FGI grammar the
-        // migrated producers render under. Verified 2026-05-16
-        // against `crates/capco/docs/CAPCO-2016.md`.
+        // Authority: §H.3 p57 (Derivative Use bullets specify the
+        // FGI [LIST] migration trigger) + §H.7 p123 (FGI grammar).
+        // Re-verified 2026-05-16 against
+        // `crates/capco/docs/CAPCO-2016.md`.
         let message = format!(
             "joint-disunity-collapse: portions on this page carry distinct \
              JOINT producer lists; banner cannot roll up JOINT. Non-US \
@@ -9041,7 +9007,16 @@ pub(crate) mod marque_capco_test_support {
         let mut page_context = PageContext::new();
         let mut page_context_arc: Option<Arc<PageContext>> = None;
         for candidate in &candidates {
-            if candidate.kind == MarkingType::PageBreak {
+            // PageBreak is scanner-emitted; PageFinalization is
+            // engine-synthesized and currently unreachable from
+            // `Scanner::scan`, but we filter both so the test
+            // helper cannot regress silently if a future scanner
+            // enhancement emits the new variant (`MarkingType` is
+            // `#[non_exhaustive]` per issue #461).
+            if matches!(
+                candidate.kind,
+                MarkingType::PageBreak | MarkingType::PageFinalization
+            ) {
                 page_context = PageContext::new();
                 page_context_arc = None;
                 continue;
