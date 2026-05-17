@@ -349,11 +349,6 @@ impl<T: Ord + Clone> MeetSemilattice for IntersectSet<T> {
 /// `a = {R}`, `b = {N}`, supersession `= [(N→R)]`:
 /// `a ⊔ b = {N}` (R dropped), so `a ⊓ {N} = {} ≠ a`.
 ///
-/// Additionally, `from_iter_sorted` does not apply the overlay on
-/// construction, so user-constructed inputs containing both a dominated
-/// token and its dominator can fail join-idempotence
-/// (`a.join(&a) ≠ a`) if the overlay was not pre-applied.
-///
 /// **Cross-category supersession** (like CAPCO's NOFORN in `dissem`
 /// clearing `rel_to` — two different categories) can't be expressed
 /// with this primitive because the superseding and superseded tokens
@@ -373,10 +368,11 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
         }
     }
 
-    /// Construct from an iterable; de-duplicated and sorted. The supersession
-    /// overlay is **not** applied at construction time — callers that need
-    /// canonical state after construction should call
-    /// `SupersessionSet::new` and then `join` the values in.
+    /// Construct from an iterable; sorted, de-duplicated, and **with the
+    /// supersession overlay applied**. The returned value is always in
+    /// canonical form, so `a.join(&a) == a` (join-idempotence) holds for
+    /// every value produced by this constructor — the [`JoinSemilattice`]
+    /// contract requires this for all safely-constructed values.
     pub fn from_iter_sorted<I: IntoIterator<Item = T>>(
         iter: I,
         supersession: &'static [(T, T)],
@@ -384,8 +380,9 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
         let mut v: Vec<T> = iter.into_iter().collect();
         v.sort();
         v.dedup();
+        let canonical = Self::apply_supersession(v, supersession);
         Self {
-            set: v,
+            set: canonical,
             supersession,
         }
     }
@@ -933,6 +930,21 @@ mod tests {
         let a = SupersessionSet::from_iter_sorted(vec![2_u8], TEST_SUP);
         let b: SupersessionSet<u8> = SupersessionSet::new(TEST_SUP);
         assert_eq!(a.join(&b).as_slice(), &[2]);
+    }
+
+    #[test]
+    fn supersession_from_iter_sorted_is_canonical() {
+        // Regression: pre-fix, `from_iter_sorted` did not apply the supersession
+        // overlay, so a caller constructing a value with both dominator and
+        // dominated token would observe `a.join(&a) != a` (join-idempotence
+        // failure). The constructor now applies the overlay so every observable
+        // value is canonical and the JoinSemilattice contract holds.
+        let a = SupersessionSet::from_iter_sorted(vec![1_u8, 2_u8], TEST_SUP);
+        // The dominated token (2) should be dropped at construction since the
+        // dominator (1) is present.
+        assert_eq!(a.as_slice(), &[1]);
+        // Join-idempotence now holds.
+        assert_eq!(a.join(&a), a);
     }
 
     #[test]
