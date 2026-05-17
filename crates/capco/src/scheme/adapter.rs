@@ -277,31 +277,38 @@ impl CapcoScheme {
     /// field to `ConstraintViolation` (in `marque-scheme`) would invert
     /// the graph and create a cycle. The bridge instead reconstructs
     /// the [`FixIntent`] from the row name on the way out — this is
-    /// the side-table pattern the now-retiring walker rules
-    /// (`DeclarativeClassFloorRule`, `DeclarativeSciPerSystemRule`)
-    /// used internally; PR 3c.B Commit 7.4 relocates the table to the
-    /// scheme so the walker can be deleted.
+    /// the side-table pattern the now-retired walker rules
+    /// (`DeclarativeClassFloorRule` retired in PR 3c.B Commit 7.3;
+    /// `DeclarativeSciPerSystemRule` retired in PR 3c.B Commit 7.4)
+    /// used internally.
     ///
-    /// # Cold-land contract (PR 3c.B Commit 7.2)
+    /// # Current contract
     ///
-    /// This method returns `None` for every input in Commit 7.2; the
-    /// only catalog rows that produce fixes today are E059's five
-    /// SCI-per-system rows (companion-insert, HCS-O / HCS-P sub /
-    /// SI-G; forbid-companion, HCS-P sub vs ORCON-USGOV). Those rows
-    /// still fire diagnostics through the walker until Commit 7.4
-    /// retires the walker and populates this helper. `None` is the
-    /// safe shape — the engine attaches no fix and the diagnostic
-    /// flows through unchanged. No behavior change at 7.2; the only
-    /// purpose of the method's existence here is to give the engine
-    /// bridge a stable scheme-side entry point to query.
+    /// This method returns `None` for every input today. The two
+    /// catalog families that ride the bridge take different paths:
+    ///
+    /// - The class-floor catalog (E058 rows) produces no fixes —
+    ///   every class-floor violation requires human review — so
+    ///   there is nothing for this method to synthesize.
+    /// - The SCI per-system catalog (E059 rows) DO produce fixes
+    ///   (companion-insertion, `ORCON-USGOV → ORCON` token
+    ///   replacement), but those fixes ride the direct bridge path
+    ///   via [`Self::bridge_sci_per_system_diagnostics`] rather than
+    ///   the `(name, attrs)` side-table — a single row can emit
+    ///   multiple diagnostics with distinct fixes, which the
+    ///   `(name, attrs)` shape cannot disambiguate.
+    ///
+    /// The method is kept as a stable scheme-side entry point so
+    /// future catalog families that DO fit the `(name, attrs) → fix`
+    /// shape can be wired in without changing the engine bridge
+    /// surface.
     pub fn fix_intent_by_name(
         &self,
         _name: &str,
         _attrs: &CanonicalAttrs,
     ) -> Option<marque_rules::FixIntent<CapcoScheme>> {
-        // PR 3c.B Commit 7.4 will populate the E059 catalog rows here.
-        // Until then, the walker rule `DeclarativeSciPerSystemRule`
-        // owns the E059 fixes via its own side-table.
+        // No current catalog row fits this side-table shape; see
+        // doc comment above for the routing rationale.
         None
     }
 

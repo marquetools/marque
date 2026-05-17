@@ -119,10 +119,10 @@ If the predicate-helpers inherent impl is heavy enough to push `adapter.rs` over
 
 These symbols MUST remain importable at exactly the paths they hold today:
 
-- `marque_capco::CapcoMarking`
-- `marque_capco::CapcoOpenVocabRef`
-- `marque_capco::CapcoScheme`
-- `marque_capco::CapcoParseError`
+- `marque_capco::CapcoMarking` (re-exported from `lib.rs`)
+- `marque_capco::CapcoOpenVocabRef` (re-exported from `lib.rs`)
+- `marque_capco::CapcoScheme` (re-exported from `lib.rs`)
+- `marque_capco::scheme::CapcoParseError` (NOT crate-root re-exported; reachable via the `scheme` module path only)
 - `marque_capco::CAT_*` (all 11 category-ID constants)
 - `marque_capco::TOK_*` (all token-ID constants — see lines 148-297 of pre-split mod.rs for the canonical list)
 - `marque_capco::is_fdr_dominator`

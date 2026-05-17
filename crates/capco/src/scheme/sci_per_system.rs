@@ -51,8 +51,14 @@ use super::*;
 // dissem token directly. See the per-emit-fn doc comments for the
 // branch-specific anchor.
 //
-// The walker `DeclarativeSciPerSystemRule` (in `rules_declarative.rs`)
-// iterates the table and emits per-row diagnostics.
+// The catalog is consumed by `CapcoScheme::bridge_sci_per_system_diagnostics`
+// (in `adapter.rs`), which is the engine's direct emit path for E059
+// diagnostics + fixes. PR 3c.B Commit 7.4 retired the original
+// `DeclarativeSciPerSystemRule` walker in favor of the direct bridge so
+// the catalog's per-row fixes (companion-insertion at the dissem-block
+// anchor and `ORCON-USGOV → ORCON` token replacement) could ride
+// alongside the diagnostics without threading a fix table through the
+// `ConstraintViolation` envelope.
 //
 // FORWARD LINK to PR 4 (per-category Lattice impls): once `marque-scheme`
 // exposes `Constraint::CompanionRequired<Set>` / `Forbid<Set>` primitives

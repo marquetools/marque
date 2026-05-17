@@ -39,9 +39,13 @@ use super::predicates::*;
 //   - `passthrough`: `true` for unknown-floor passthrough rows (drives the
 //      diagnostic message variant)
 //
-// The walker `DeclarativeClassFloorRule` (in `rules_declarative.rs`)
-// iterates the table and emits one `Diagnostic` per row whose presence
-// predicate fires AND whose floor/equality predicate is violated.
+// The catalog is consumed by the engine's class-floor bridge, which
+// reads `CapcoScheme::has_diagnostic_constraints` to short-circuit
+// the walk when the catalog has nothing to fire and otherwise runs
+// the standard `MarkingScheme::validate()` → `Vec<ConstraintViolation>`
+// path. PR 3c.B Commit 7.3 retired the original
+// `DeclarativeClassFloorRule` walker; the bridge is the only consumer
+// today.
 //
 // FORWARD LINK to PR 3.7 (T108b): once `TokenRef::ClassAtLeast(ClassLevel)`
 // or `Constraint::ClassFloor` lands as a primitive in `marque-scheme`,

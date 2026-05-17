@@ -325,9 +325,9 @@ impl CapcoMarking {
         } else if solely_non_us {
             // G-4b (PR 4b-B 7th-pass follow-up): solely-non-US page
             // where the lattice preserves a `Nato(_)` or `Fgi(_)`
-            // classification intact (the §H.7 reciprocal-raise was
-            // suppressed at scheme.rs:354 because there was no US
-            // portion to raise toward). The foreign source is already
+            // classification intact (the §H.7 reciprocal-raise is
+            // suppressed earlier in this method when no US portion
+            // is present to raise toward). The foreign source is already
             // recorded on the classification axis itself; calling
             // `expected_fgi_marker()` here would derive the SAME
             // producers from the classification a second time and

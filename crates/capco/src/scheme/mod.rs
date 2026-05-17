@@ -30,12 +30,6 @@
 // declarations and re-exports; the rest are kept in scope so the leaf
 // + test glob pattern stays one-line.
 //
-// `FamilyPredicate` is referenced by `is_fdr_dominator` /
-// `is_orcon_family` (public free fns living in the predicates leaf);
-// the actual catalog rows using `ConflictsWithFamily` were removed in
-// PR 3.7 rev 3 per Copilot review. The fns remain public API for PR 4
-// to wire into the rebuilt rule-wrapper dispatch when the enumerated
-// E054-E057 rows retire.
 // `Classification` + a wide marque_scheme set are imported here even
 // though mod.rs's own body only references `CategoryId` and `TokenId`
 // (for the `CAT_*` / `TOK_*` constant declarations below). The leaf-
@@ -57,28 +51,35 @@ use marque_scheme::{
 };
 
 // ---------------------------------------------------------------------------
-// Sibling-module declarations (issue #466 Stage-1 structural lift)
+// Sibling-module declarations (issue #466)
 // ---------------------------------------------------------------------------
 //
-// The body of `scheme.rs` was split into seven sibling files per the plan at
-// `claudedocs/refactor-466/split_proposal.md`. `mod.rs` keeps the type
-// definitions, the `impl MarkingScheme for CapcoScheme` core, the
-// `impl Lattice for CapcoMarking`, the constants tables (`CLASS_FLOOR_CATALOG`,
-// `RENDER_TABLE`, `SCI_PER_SYSTEM_CATALOG`, `CAPCO_CLOSURE_RULES`,
-// `FDR_DOMINATORS`), the `CapcoScheme::evaluate_named_constraint` /
-// `fix_intent_by_name` / `has_diagnostic_constraints` /
-// `bridge_emitted_rule_ids` / `bridge_sci_per_system_diagnostics` block,
-// `render_canonical`, `CapcoMarking::join_via_lattice`, and the open-vocab
-// reference enum. Sibling modules hold the supporting catalogs (rewrites,
-// constraints), per-axis evaluators (predicates), and mutators (actions).
+// The body of the original monolithic `scheme.rs` was carved into sibling
+// files in two stages:
 //
-// **TODO #466 Stage 2**: every sibling except `shared` is still over the
-// 800-line ceiling; the follow-up PR sub-splits per the plan §Risk 3:
-//   - rewrites → rewrites/{pattern_a,pattern_b,pattern_c,...}.rs
-//   - constraints → constraints/{class_floor,sci_per_system,rule_emitters}.rs
-//   - predicates → predicates/{presence,triggers,satisfies,class_floor}.rs
-//   - actions → actions/{intent,category_ops,companions,strip}.rs
-//   - mod proper → split out impl MarkingScheme and CLASS_FLOOR_CATALOG.
+//   Stage 1 (PR #479) — top-level lift into `actions.rs`, `constraints.rs`,
+//   `predicates.rs`, `rewrites.rs`, `shared.rs`.
+//
+//   Stage 2 PR A (PR #483) — the four large leaves above sub-split into
+//   per-axis directories (`actions/`, `constraints/`, `predicates/`,
+//   `rewrites/`).
+//
+//   Stage 2 PR B (this PR) — `mod.rs` itself split into per-section
+//   sibling files: `marking.rs` (the `CapcoMarking` type + impls + the
+//   `join_via_lattice` lattice-path composer), `adapter.rs`
+//   (`CapcoScheme` + ctors + `CapcoParseError` + the
+//   `evaluate_named_constraint` / `fix_intent_by_name` /
+//   `has_diagnostic_constraints` / `bridge_emitted_rule_ids` /
+//   `bridge_sci_per_system_diagnostics` block),
+//   `marking_scheme_impl.rs` (`impl MarkingScheme for CapcoScheme`),
+//   `closure.rs` (`FDR_DOMINATORS` + the closure-rule catalog),
+//   `render.rs` (`AxisRenderRow` + `RENDER_TABLE`), `class_floor.rs`
+//   (the class-floor catalog), and `sci_per_system.rs` (the SCI
+//   per-system catalog).
+//
+// After Stage 2, every sibling is ≤ 800 LOC and `mod.rs` is reduced to
+// the hub of module declarations, public re-exports, and the `CAT_*` /
+// `TOK_*` ID constants.
 
 pub(crate) mod actions;
 pub(crate) mod adapter;
