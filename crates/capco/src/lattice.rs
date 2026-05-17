@@ -44,6 +44,13 @@ use marque_ism::{
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Helper to conditionally lookup or initialize an entry while avoiding
+/// unconditional allocations on the hot path.
+///
+/// Using `map.entry(key.to_string()).or_default()` evaluates the `to_string()`
+/// on every call, allocating heap memory even if the key is already present.
+/// Using `.contains_key()` limits allocation solely to the cache miss path.
 fn get_or_insert_default<'a, V: Default>(map: &'a mut BTreeMap<String, V>, key: &str) -> &'a mut V {
     if map.contains_key(key) {
         return map.get_mut(key).unwrap();
