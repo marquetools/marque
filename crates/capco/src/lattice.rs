@@ -45,6 +45,19 @@ use marque_ism::{
 use marque_scheme::{BoundedLattice, Lattice};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Helper to conditionally lookup or initialize an entry while avoiding
+/// unconditional allocations on the hot path.
+///
+/// Using `map.entry(key.to_string()).or_default()` evaluates the `to_string()`
+/// on every call, allocating heap memory even if the key is already present.
+/// Using `.contains_key()` limits allocation solely to the cache miss path.
+fn get_or_insert_default<'a, V: Default>(map: &'a mut BTreeMap<String, V>, key: &str) -> &'a mut V {
+    if map.contains_key(key) {
+        return map.get_mut(key).unwrap();
+    }
+    map.entry(key.to_string()).or_default()
+}
+
 // ---------------------------------------------------------------------------
 // SciSet — lattice over the full SCI category state
 // ---------------------------------------------------------------------------
@@ -121,7 +134,7 @@ impl SciSet {
                 continue;
             }
             for comp in m.compartments.iter() {
-                let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
+                let sub_set = get_or_insert_default(comp_map, comp.identifier.as_ref());
                 sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
@@ -302,9 +315,9 @@ impl SarSet {
             return out;
         };
         for prog in sar.programs.iter() {
-            let comps = out.programs.entry(prog.identifier.to_string()).or_default();
+            let comps = get_or_insert_default(&mut out.programs, prog.identifier.as_ref());
             for comp in prog.compartments.iter() {
-                let subs = comps.entry(comp.identifier.to_string()).or_default();
+                let subs = get_or_insert_default(comps, comp.identifier.as_ref());
                 subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
