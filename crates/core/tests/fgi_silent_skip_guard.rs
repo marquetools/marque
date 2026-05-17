@@ -7,13 +7,24 @@
 //! Closure of the four open-vocabulary parser admission sites migrated in
 //! PR 2 of the engine-rule refactor (specs/006-engine-rule-refactor):
 //!
-//! 1. `parse_fgi_marker` → `CountryCode::admits_country_token`
-//!    (3-letter Annex B trigraph OR 4-letter Annex A tetragraph OR
-//!    2-letter registered exception code per §H.7 p122 + ISMCAT
-//!    CVEnumISMCATRelTo)
+//! 1. `parse_fgi_marker` → `CountryCode::admits_fgi_ownership_token` (#280)
 //! 2. SAR program identifier (abbrev) → `SarProgram::admits_program_id_abbrev`
 //! 3. SAR compartment identifier → `SarCompartment::admits_identifier`
 //! 4. SAR sub-compartment identifier → `SarCompartment::admits_identifier`
+//!
+//! Item 1 site detail: post-#280 the FGI parser admits any 2- or
+//! 3-byte ASCII-upper token OR the literal `NATO` tetragraph.
+//! Distribution-list tetragraphs like `FVEY` / `CFIUS` / `ACGU` /
+//! `ISAF` reject at this gate because they don't carry ownership
+//! semantic per §H.7 p122. The 2- and 3-byte branches are shape-
+//! only — unregistered uppercase tokens admit at the parser;
+//! registry validation is the rule layer's job (S004, E008) per
+//! the project's parser/rule split. EU motivates the 2-byte
+//! admission branch (its own classification system per Council
+//! Decision 2013/488/EU; registered in ISMCAT CVEnumISMCATRelTo).
+//! Pre-#280 this site routed through the broader
+//! `admits_country_token` predicate (which also admitted 4-byte
+//! distribution-list tetragraphs).
 //!
 //! Pre-PR-2 these sites used inline `is_ascii_alphanumeric()` byte-class checks
 //! (or, in the FGI case, a length-3 + `try_new` shortcut that silently dropped
@@ -210,17 +221,23 @@ fn parse_fgi_marker_mixed_trigraph_tetragraph_yields_acknowledged() {
 
 #[test]
 fn parse_fgi_marker_two_letter_eu_exception_yields_acknowledged() {
-    // ODNI ISMCAT `CVEnumISMCATRelTo` ships `EU` as a registered
-    // 2-letter exception code; pre-PR-2 admission accepted it via the
-    // union TRIGRAPHS table and the new `admits_country_token`
-    // surface preserves that. This test pins the EU-as-2-letter
-    // contract so a future narrowing regression (e.g., back to
-    // 3-or-4-only) is caught here.
+    // Issue #280 (widening amendment): the EU 2-letter exception
+    // code admits at the FGI ownership gate. EU has its own
+    // classification system (EU CONFIDENTIAL / EU SECRET / EU TOP
+    // SECRET, per Council Decision 2013/488/EU and successors) used
+    // by EU institutions and member states; registered in ODNI
+    // ISMCAT `CVEnumISMCATRelTo`. EU motivates the 2-byte admission
+    // branch.
+    //
+    // The 2-byte branch is shape-only (admits any uppercase 2-byte
+    // token, not just EU) — see
+    // `parse_fgi_marker_two_letter_unregistered_admits_shape_only_280_496`
+    // for the shape-only contract pin.
     use marque_ism::CountryCode;
     let attrs = parse_banner_attrs("SECRET//FGI EU//NOFORN");
     let marker = attrs
         .fgi_marker
-        .expect("FGI EU must admit per ISMCAT CVEnumISMCATRelTo");
+        .expect("FGI EU must admit at the FGI ownership gate (#280)");
     let countries = marker.countries();
     assert_eq!(
         countries.len(),
@@ -228,6 +245,113 @@ fn parse_fgi_marker_two_letter_eu_exception_yields_acknowledged() {
         "FGI EU must produce single-country Acknowledged"
     );
     assert_eq!(countries[0], CountryCode::try_new(b"EU").unwrap());
+}
+
+#[test]
+fn parse_fgi_marker_two_letter_lowercase_rejects() {
+    // Negative control for the EU widening (#280 amendment): the
+    // FGI ownership predicate routes 2-byte tokens through
+    // `admits_country_token`, which enforces uniform ASCII upper.
+    // Lowercase `eu` exercises that the length-2 branch is shape-
+    // gated (uniform ASCII upper), not a "any 2-byte sequence"
+    // wildcard. If a future regression strips the
+    // `admits_country_token` call, this test catches it. Note:
+    // unregistered uppercase 2-byte tokens (e.g., `XX`) DO admit —
+    // see the shape-only contract pin below.
+    let attrs = parse_banner_attrs("SECRET//FGI eu//NOFORN");
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "lowercase 2-byte token must reject at the FGI ownership \
+         gate via admits_country_token's uniform-upper rule; got {:?}",
+        attrs.fgi_marker,
+    );
+}
+
+#[test]
+fn parse_fgi_marker_two_letter_digit_bearing_rejects() {
+    // Negative control mirroring the lowercase case: a 2-byte
+    // token with a digit (`E1`) fails `admits_country_token`'s
+    // uniform-upper rule. Pins that the length-2 admission is
+    // shape-gated on character class (uniform ASCII upper), not on
+    // registry membership.
+    let attrs = parse_banner_attrs("SECRET//FGI E1//NOFORN");
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "digit-bearing 2-byte token must reject at the FGI ownership \
+         gate via admits_country_token's uniform-upper rule; got {:?}",
+        attrs.fgi_marker,
+    );
+}
+
+#[test]
+fn parse_fgi_marker_two_letter_unregistered_admits_shape_only_280_496() {
+    // Shape-only admission per #494 design decision: `XX` admits
+    // at the FGI ownership gate even though it is not a registered
+    // CountryCode. Downstream rules (S004 trigraph-suggest, E008
+    // unknown-token) carry the registry-validation responsibility
+    // per the project's parser/rule split. This matches the
+    // established convention (see project memory
+    // `project_long_form_trigraphs`).
+    //
+    // Driven through the banner form (`SECRET//FGI XX//NOFORN`)
+    // because that's the surface `parse_fgi_marker` gates; the
+    // portion form `(//FGI XX)` reaches a different parse path
+    // (`parse_fgi_classification`, which expects `<country>
+    // <level>` shape, not `FGI <country>`).
+    //
+    // TODO(#496): once decoder FGI-context investigation lands,
+    // may need a coordinated update if the decoder grows registry-
+    // aware matching for unregistered uppercase tokens in FGI
+    // ownership context. The parser-side shape-only contract here
+    // is independent of and composable with that future decoder
+    // behavior.
+    let attrs = parse_banner_attrs("SECRET//FGI XX//NOFORN");
+    let marker = attrs.fgi_marker.expect("XX admits at the shape-only gate");
+    match marker {
+        FgiMarker::Acknowledged { countries, .. } => {
+            assert_eq!(countries.len(), 1, "single token admitted");
+            assert_eq!(
+                countries[0].as_str(),
+                "XX",
+                "the unregistered token round-trips verbatim",
+            );
+        }
+        FgiMarker::SourceConcealed => {
+            panic!("XX should land in Acknowledged, not SourceConcealed")
+        }
+    }
+}
+
+#[test]
+fn parse_fgi_marker_three_letter_unregistered_admits_shape_only_280_496() {
+    // Shape-only contract for length-3 unregistered uppercase
+    // tokens. `ZZZ` is not a sovereign trigraph; admits at the
+    // FGI ownership gate. Same architectural rationale as the
+    // 2-byte case above — downstream rules (S004 / E008) catch the
+    // registry miss with actionable diagnostics, which is better UX
+    // than silent parser-level rejection. See
+    // `project_long_form_trigraphs` memory; see #496 for the
+    // decoder-side follow-up.
+    //
+    // Driven through the banner form for the same reason as the
+    // 2-byte test — `parse_fgi_marker` is the FGI ownership gate;
+    // portion `(//FGI ZZZ)` reaches `parse_fgi_classification`,
+    // which is a different surface.
+    let attrs = parse_banner_attrs("SECRET//FGI ZZZ//NOFORN");
+    let marker = attrs.fgi_marker.expect("ZZZ admits at the shape-only gate");
+    match marker {
+        FgiMarker::Acknowledged { countries, .. } => {
+            assert_eq!(countries.len(), 1, "single token admitted");
+            assert_eq!(
+                countries[0].as_str(),
+                "ZZZ",
+                "the unregistered token round-trips verbatim",
+            );
+        }
+        FgiMarker::SourceConcealed => {
+            panic!("ZZZ should land in Acknowledged, not SourceConcealed")
+        }
+    }
 }
 
 #[test]
@@ -455,4 +579,190 @@ fn sar_canonical_abbrev_form_round_trips() {
     let sar = attrs.sar_markings.expect("canonical SAR-BP parses");
     assert_eq!(sar.programs.len(), 1);
     assert_eq!(sar.programs[0].identifier.as_str(), "BP");
+}
+
+// =============================================================================
+// Issue #280 — SAR open-vocab case tightening (lowercase / mixed-case reject)
+// =============================================================================
+//
+// SAR has no CVE registry (`CVEnumISMSAR.xml` intentionally empty per ODNI
+// policy). With no registry to validate against, the shape gate IS the
+// validation. Per CAPCO-2016 §A.6 p15 + §G.1 p36, all banner-line and
+// portion-mark Register entries are uppercase, so SAR identifiers must
+// conform. Pre-#280 the shape predicates used `is_ascii_alphanumeric()`,
+// silently admitting lowercase. The lenient-admit path bypassed the
+// `DecoderRecognizer` that handles demangling: once strict parse "succeeds"
+// the decoder fallback (R001) does not run, so no diagnostic ever fires on
+// the case error. The fix tightens both `SarProgram::admits_program_id_abbrev`
+// and `SarCompartment::admits_identifier` to uppercase-or-digit; lowercase
+// inputs now fail strict parse and route to the decoder.
+//
+// TODO(#493): These tests verify strict-parse rejection (parser returns
+// None) but not the engine-level decoder dispatch that produces R001 with
+// the canonical fix. Cross-crate test can't live here (no access to
+// marque-engine). Follow-up #493 tracks the engine-level integration tests
+// pinning the decoder-dispatch contract for both SAR and FGI rejection
+// paths.
+
+#[test]
+fn sar_program_id_lowercase_rejects_issue_280() {
+    // Pre-#280: `SAR-fk` produced `SarProgram { id: "fk" }` silently.
+    // Post-#280: parser rejects; decoder fallback handles demangling.
+    let attrs = parse_portion_attrs("(TS//SAR-fk)");
+    assert!(
+        attrs.sar_markings.is_none(),
+        "lowercase SAR program id must reject at the strict gate \
+         (CAPCO §A.6 p15 + §G.1 p36, issue #280); got {:?}",
+        attrs.sar_markings,
+    );
+}
+
+#[test]
+fn sar_program_id_mixed_case_rejects_issue_280() {
+    // Pre-#280: `SAR-Fk` produced `SarProgram { id: "Fk" }` silently.
+    // Mixed case is the most subtle leak — looks "almost right" but
+    // still fails Register uppercase rule.
+    let attrs = parse_portion_attrs("(TS//SAR-Fk)");
+    assert!(
+        attrs.sar_markings.is_none(),
+        "mixed-case SAR program id must reject at the strict gate \
+         (CAPCO §A.6 p15 + §G.1 p36, issue #280); got {:?}",
+        attrs.sar_markings,
+    );
+}
+
+#[test]
+fn sar_compartment_lowercase_rejects_issue_280() {
+    // Pre-#280: `SAR-FK-blue42` produced `SarCompartment { id: "blue42" }`
+    // silently. The compartment identifier predicate carries the same
+    // Register-uppercase rule as the program identifier.
+    let attrs = parse_portion_attrs("(TS//SAR-FK-blue42)");
+    assert!(
+        attrs.sar_markings.is_none(),
+        "lowercase SAR compartment must reject at the strict gate \
+         (CAPCO §A.6 p15 + §G.1 p36, issue #280); got {:?}",
+        attrs.sar_markings,
+    );
+}
+
+#[test]
+fn sar_sub_compartment_lowercase_rejects_issue_280() {
+    // Pre-#280: `SAR-FK-BLUE 42a` produced
+    // `SarSubCompartment { id: "42a" }` silently. The sub-compartment
+    // slot uses the same predicate as the compartment slot per
+    // CAPCO-2016 §H.5 pp99-100.
+    let attrs = parse_portion_attrs("(TS//SAR-FK-BLUE 42a)");
+    assert!(
+        attrs.sar_markings.is_none(),
+        "lowercase SAR sub-compartment must reject at the strict gate \
+         (CAPCO §A.6 p15 + §G.1 p36, issue #280); got {:?}",
+        attrs.sar_markings,
+    );
+}
+
+#[test]
+fn sar_canonical_compartment_form_round_trips() {
+    // Positive control for the #280 negative tests. `SAR-FK-BLUE` is
+    // a §H.5 p100 Table 7-shape canonical example: 2-char program +
+    // 4-char compartment, all uppercase. If this fails, the negative
+    // tests are testing failure for the wrong reason.
+    let attrs = parse_portion_attrs("(TS//SAR-FK-BLUE)");
+    let sar = attrs.sar_markings.expect("canonical SAR-FK-BLUE parses");
+    assert_eq!(sar.programs.len(), 1);
+    assert_eq!(sar.programs[0].identifier.as_str(), "FK");
+    assert_eq!(sar.programs[0].compartments.len(), 1);
+    assert_eq!(sar.programs[0].compartments[0].identifier.as_str(), "BLUE",);
+}
+
+#[test]
+fn sar_canonical_sub_compartment_form_round_trips() {
+    // Positive control: §H.5 p100 Table 7-shape canonical example with
+    // a sub-compartment. `SAR-FK-BLUE 42` has program `FK`, compartment
+    // `BLUE`, sub-compartment `42`. Pins the all-uppercase round-trip.
+    let attrs = parse_portion_attrs("(TS//SAR-FK-BLUE 42)");
+    let sar = attrs.sar_markings.expect("canonical SAR-FK-BLUE 42 parses");
+    assert_eq!(sar.programs.len(), 1);
+    assert_eq!(sar.programs[0].identifier.as_str(), "FK");
+    let comp = &sar.programs[0].compartments[0];
+    assert_eq!(comp.identifier.as_str(), "BLUE");
+    assert_eq!(comp.sub_compartments.len(), 1);
+    assert_eq!(&*comp.sub_compartments[0], "42");
+}
+
+// =============================================================================
+// Issue #280 — FGI ownership-token narrowing (NATO admits; FVEY/CFIUS etc. reject)
+// =============================================================================
+//
+// Pre-#280: `parse_fgi_marker` accepted any 2-4 char uppercase token via
+// `CountryCode::admits_country_token` (a REL TO list-token shape). FGI is
+// fundamentally an OWNERSHIP marking per CAPCO-2016 §H.7 p122 ("Foreign
+// Government Information" — information that an entity originated). NATO is
+// the only alliance tetragraph CAPCO treats as an ownership identifier in
+// this slot; distribution-list tetragraphs (`FVEY`, `CFIUS`, `ACGU`, `ISAF`)
+// describe who may receive a marking, not who owns it. The fix narrows the
+// FGI parser-site predicate to `CountryCode::admits_fgi_ownership_token`
+// (3-byte trigraph OR literal `NATO`). REL TO list slots continue to admit
+// the broader surface.
+
+#[test]
+fn fgi_ownership_nato_tetragraph_admits_issue_280() {
+    // Positive control: `NATO` is the named ownership tetragraph per
+    // §H.7 p122 canonical example. The narrower predicate keeps it.
+    use marque_ism::CountryCode;
+    let attrs = parse_banner_attrs("SECRET//FGI NATO//NOFORN");
+    let marker = attrs
+        .fgi_marker
+        .expect("FGI NATO must admit per §H.7 p122 (#280)");
+    match marker {
+        FgiMarker::Acknowledged { countries, .. } => {
+            assert_eq!(countries.len(), 1);
+            assert_eq!(countries[0], CountryCode::try_new(b"NATO").unwrap());
+        }
+        FgiMarker::SourceConcealed => {
+            panic!("expected Acknowledged([NATO]); got SourceConcealed")
+        }
+    }
+}
+
+#[test]
+fn fgi_ownership_distribution_list_tetragraph_rejects_issue_280() {
+    // `FVEY` is a Five Eyes distribution-list tetragraph — lawful in
+    // REL TO slots but not an ownership identifier per §H.7. The
+    // narrowed parser predicate rejects it; decoder handles the
+    // routing-to-REL-TO suggestion.
+    let attrs = parse_banner_attrs("SECRET//FGI FVEY//NOFORN");
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "FVEY (distribution-list tetragraph) must reject at FGI \
+         ownership gate (#280); got {:?}",
+        attrs.fgi_marker,
+    );
+}
+
+#[test]
+fn fgi_ownership_unregistered_non_nato_tetragraph_rejects_issue_280() {
+    // `DEUX` is a 4-char non-`NATO` candidate. The narrowed predicate
+    // pins the rule to "3-byte trigraph OR literal NATO"; any other
+    // 4-byte sequence rejects irrespective of registry membership.
+    let attrs = parse_banner_attrs("SECRET//FGI DEUX//NOFORN");
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "non-NATO 4-char tetragraph must reject at FGI ownership \
+         gate (#280); got {:?}",
+        attrs.fgi_marker,
+    );
+}
+
+#[test]
+fn fgi_ownership_arbitrary_non_nato_tetragraph_rejects_issue_280() {
+    // `BLAH` — same as `DEUX` above but a distinct example pinning
+    // the predicate is "rule-based on shape + NATO literal", not a
+    // narrow CVE allow-list.
+    let attrs = parse_banner_attrs("SECRET//FGI BLAH//NOFORN");
+    assert!(
+        attrs.fgi_marker.is_none(),
+        "non-NATO 4-char tetragraph must reject at FGI ownership \
+         gate (#280); got {:?}",
+        attrs.fgi_marker,
+    );
 }

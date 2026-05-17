@@ -2362,32 +2362,54 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// # Country-token shape gate
 ///
 /// Token admission goes through
-/// [`marque_ism::CountryCode::admits_country_token`] — the canonical
-/// FGI/REL TO list-token shape predicate (3 ASCII upper letters for
-/// an Annex B trigraph **or** 4 ASCII upper letters for an Annex A
-/// tetragraph). This is the same predicate that
-/// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)` calls,
-/// so the parser admits exactly what the vocabulary surface
-/// documents. Routing both surfaces through one symbol satisfies
-/// FR-015 (admission via documented vocabulary surface) and CHK030
-/// (no inline `is_ascii_alphanumeric` byte-class checks).
+/// [`marque_ism::CountryCode::admits_fgi_ownership_token`] — a
+/// shape-only FGI-ownership predicate that admits any 2- or 3-byte
+/// ASCII-upper token OR the literal `NATO` tetragraph. This is
+/// intentionally narrower than the FGI/REL TO list-token predicate
+/// [`marque_ism::CountryCode::admits_country_token`] (which admits
+/// any 2-4 ASCII upper token) on the tetragraph axis only: issue
+/// #280 narrowed the FGI ownership slot so distribution-list
+/// tetragraphs (`FVEY`, `CFIUS`, `ACGU`, `ISAF`) reject — per §H.7
+/// they describe who may receive a marking, not who owns it; they
+/// are lawful in REL TO list slots, not FGI ownership slots. `NATO`
+/// is the only alliance tetragraph CAPCO treats as an ownership
+/// identifier in this slot.
 ///
-/// CAPCO-2016 §H.7 p122 spells out the shape: "Multiple FGI
-/// trigraph country codes or tetragraph codes must be separated by
-/// a single space ... example may appear as: `SECRET//FGI GBR JPN
-/// NATO//REL TO USA, GBR, JPN, NATO`." The order invariant
-/// (trigraphs alphabetic, then tetragraphs alphabetic) is rule-layer,
-/// not admission — real-world inputs arrive in any order and a
-/// dedicated rule normalizes them. Registry membership (Annex A
-/// for tetragraphs, Annex B for trigraphs) is also rule-layer.
+/// The 2- and 3-byte branches are shape-only — any conformant
+/// uppercase token admits, including unregistered ones like `XX`
+/// or `ZZZ`. Registry validation is the rule layer's job (S004
+/// trigraph-suggest, E008 unknown-token); see the predicate's
+/// doc-comment for the full rationale. This matches the project's
+/// established parser/rule split (the parser produces well-formed
+/// AST nodes; the rule layer flags unknown tokens with actionable
+/// diagnostics). Decoder coordination tracked at #496.
+///
+/// This is a deliberate FR-015 surface mismatch with the broader
+/// `Vocabulary<CapcoScheme>::shape_admits(CAT_FGI_MARKER, _)` arm
+/// in `marque-capco/src/vocabulary.rs` — the vocabulary surface
+/// continues to call `admits_country_token` for round-trip
+/// compatibility with the cross-axis admission contract. The parser
+/// is the FGI-ownership-narrowed path; vocabulary stays broader.
+///
+/// CAPCO-2016 §A.6 p16 spells out the list shape and gives the
+/// canonical multi-country example: "Multiple FGI trigraph country
+/// codes or tetragraph codes must be separated by a single space
+/// ... An example may appear as: `SECRET//FGI GBR JPN NATO//REL TO
+/// USA, GBR, JPN, NATO`." §H.7 p122 carries the ownership semantic
+/// and the `FGI [LIST]` Register form that drives the surface this
+/// predicate gates. The order invariant (trigraphs alphabetic, then
+/// tetragraphs alphabetic) is rule-layer, not admission — real-
+/// world inputs arrive in any order and a dedicated rule normalizes
+/// them. Registry membership (Annex B for trigraphs) is also
+/// rule-layer.
 ///
 /// `CountryCode::try_new` is a strictly weaker predicate at this
 /// site (it admits 2-15 byte values including digits and underscore
 /// for `AX2` / `AX3` / `AUSTRALIA_GROUP`), so going through
-/// `admits_country_token` first guarantees the subsequent `try_new`
-/// succeeds; the construct call is therefore infallible. That
-/// ordering is what lets the parser remain zero-allocation on the
-/// failure path (Constitution Principle II): `?` returns `None`
+/// `admits_fgi_ownership_token` first guarantees the subsequent
+/// `try_new` succeeds; the construct call is therefore infallible.
+/// That ordering is what lets the parser remain zero-allocation on
+/// the failure path (Constitution Principle II): `?` returns `None`
 /// immediately on any token-shape failure, no temporary allocation
 /// needed.
 ///
@@ -2404,10 +2426,28 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// - `parse_fgi_marker("FGI deu")` → `None` (lowercase fails the
 ///   country-token shape gate; admission requires uniform ASCII upper).
 /// - `parse_fgi_marker("FGI USA NATO")` →
-///   `Some(Acknowledged { countries: [USA, NATO] })`. NATO is a
-///   tetragraph; admitted at this site per §H.7 p122. Order
-///   normalization (trigraph-then-tetragraph) is a rule-layer
-///   concern; the parser preserves source order.
+///   `Some(Acknowledged { countries: [USA, NATO] })`. `NATO` is the
+///   only ownership-context tetragraph per §H.7. Order normalization
+///   (trigraph-then-tetragraph) is a rule-layer concern; the parser
+///   preserves source order.
+/// - `parse_fgi_marker("FGI EU")` →
+///   `Some(Acknowledged { countries: [EU] })`. The 2-byte branch
+///   admits per Council Decision 2013/488/EU (EU CONFIDENTIAL /
+///   EU SECRET / EU TOP SECRET); EU is registered in ISMCAT
+///   `CVEnumISMCATRelTo`.
+/// - `parse_fgi_marker("FGI XX")` / `parse_fgi_marker("FGI ZZZ")`
+///   → `Some(Acknowledged { countries: [...] })`. Shape-only
+///   admission: unregistered uppercase tokens admit at the parser;
+///   downstream rules (S004 / E008) carry the registry-validation
+///   responsibility. See predicate doc-comment for the full
+///   architectural rationale.
+/// - `parse_fgi_marker("FGI DEUX")` / `parse_fgi_marker("FGI BLAH")`
+///   → `None` (4-char non-`NATO` tetragraphs are distribution-list
+///   markers per §H.7, not ownership identifiers; the FGI ownership
+///   slot rejects them per issue #280).
+/// - `parse_fgi_marker("FGI FVEY")` → `None` (FVEY is a
+///   distribution-list tetragraph — lawful in REL TO, not in FGI
+///   ownership context per §H.7).
 /// - `parse_fgi_marker("FGI USAGB")` → `None` (5-byte token rejected
 ///   by the shape gate; `AUSTRALIA_GROUP`-class codes are out of
 ///   scope here per the §H.7 "exception is granted" carve-out).
@@ -2417,11 +2457,11 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
 /// # Authority
 ///
 /// CAPCO-2016 §H.7 p122 (FGI banner forms — concealed vs.
-/// acknowledged; trigraph-OR-tetragraph list grammar) + §A.6 p16
-/// ("Multiple FGI trigraph country codes or tetragraph codes must
-/// be separated by a single space"). The country-token predicate's
-/// authority chain is documented at
-/// [`marque_ism::CountryCode::admits_country_token`].
+/// acknowledged; trigraph-OR-`NATO`-tetragraph list grammar for the
+/// ownership slot) + §A.6 p16 ("Multiple FGI trigraph country codes
+/// or tetragraph codes must be separated by a single space"). The
+/// ownership-token predicate's authority chain is documented at
+/// [`marque_ism::CountryCode::admits_fgi_ownership_token`].
 /// Quick gate for "does this block start with an FGI marker, in either
 /// the abbreviation or long-form?".
 ///
@@ -2475,19 +2515,24 @@ fn parse_fgi_marker(s: &str) -> Option<FgiMarker> {
     // before the constructor re-collected.
     let mut countries: SmallVec<[CountryCode; 4]> = SmallVec::new();
     for token in rest.split_whitespace() {
-        // FR-015 admission: route every token through the canonical
-        // FGI/REL TO list-token shape predicate. Trigraphs (3 ASCII
-        // upper) and tetragraphs (4 ASCII upper) admit; anything
-        // else (lowercase, digits, 5+-byte codes, junk) is a parse
-        // failure that returns `None` — never silently dropped.
-        if !CountryCode::admits_country_token(token.as_bytes()) {
+        // Issue #280: FGI ownership context — route every token
+        // through the FGI-ownership shape predicate. A 2- or
+        // 3-byte ASCII-upper token (admits sovereign-state
+        // trigraphs, the EU 2-byte code, AND unregistered shape-
+        // conformant tokens — registry validation is the rule
+        // layer's job) or the literal `NATO` tetragraph admit;
+        // distribution-list tetragraphs (`FVEY`, `CFIUS`, `ACGU`,
+        // `ISAF`), lowercase, digits, 5+-byte codes, and junk are
+        // parse failures that return `None` — never silently dropped.
+        if !CountryCode::admits_fgi_ownership_token(token.as_bytes()) {
             return None;
         }
-        // `admits_country_token` (3 or 4 ASCII upper) is strictly
-        // stronger than `try_new` (2-15 alphanumeric/underscore), so
-        // this construction cannot fail. The `?` is here only as a
-        // type-system safeguard; it is unreachable for any input
-        // that passed the shape gate above.
+        // `admits_fgi_ownership_token` (2- or 3-byte ASCII upper OR
+        // literal `NATO`) is strictly stronger than `try_new`
+        // (2-15 alphanumeric/underscore), so this construction
+        // cannot fail. The `?` is here only as a type-system
+        // safeguard; it is unreachable for any input that passed
+        // the shape gate above.
         let code = CountryCode::try_new(token.as_bytes())?;
         countries.push(code);
     }
@@ -4497,8 +4542,12 @@ mod tests {
             other => panic!("expected 3-country Acknowledged([GBR, JPN, NATO]), got {other:?}"),
         }
 
-        // Case 2 (2-letter EU exception per ISMCAT
-        // CVEnumISMCATRelTo): bare `FGI EU` admits.
+        // Case 2 (#280 widening): the EU 2-letter exception code
+        // admits at the FGI ownership gate. EU is the only
+        // supranational sub-NATO entity with its own classification
+        // system (Council Decision 2013/488/EU); registered in
+        // ISMCAT `CVEnumISMCATRelTo`. Distinct from the broader
+        // `admits_country_token` surface used at REL TO list slots.
         match parse_fgi_marker("FGI EU") {
             Some(FgiMarker::Acknowledged { countries, .. }) => {
                 assert_eq!(countries.len(), 1);
@@ -4507,18 +4556,21 @@ mod tests {
             other => panic!("expected Acknowledged([EU]), got {other:?}"),
         }
 
-        // Case 2 (registry-unrecognized but shape-admissible
-        // tetragraph): `ABCD` admits at the shape gate; rule layer
-        // is responsible for flagging registry membership. Same
-        // policy as `XYZ` for trigraphs (see
-        // `fgi_marker_unregistered_trigraph_shape_admits_but_marker_records_it`).
-        match parse_fgi_marker("FGI ABCD") {
-            Some(FgiMarker::Acknowledged { countries, .. }) => {
-                assert_eq!(countries.len(), 1);
-                assert_eq!(countries[0].as_str(), "ABCD");
-            }
-            other => panic!("expected Acknowledged([ABCD]), got {other:?}"),
-        }
+        // Case 3 (#280): non-`NATO` tetragraphs reject in the FGI
+        // ownership slot. `ABCD` (and `FVEY`, `CFIUS`, `ACGU`, `ISAF`)
+        // are lawful at the broader REL TO list-token surface but
+        // distribution-list markers don't carry FGI's ownership
+        // semantic per §H.7.
+        assert!(
+            parse_fgi_marker("FGI ABCD").is_none(),
+            "non-NATO 4-char tetragraph rejects in FGI ownership \
+             context (#280)",
+        );
+        assert!(
+            parse_fgi_marker("FGI FVEY").is_none(),
+            "distribution-list tetragraph FVEY rejects in FGI ownership \
+             context (#280)",
+        );
 
         // Case 3: empty input → None
         assert!(parse_fgi_marker("").is_none());
@@ -4528,9 +4580,9 @@ mod tests {
         assert!(parse_fgi_marker("FGI nato").is_none());
 
         // Case 3: 5+-byte token rejects (out-of-scope of
-        // `admits_country_token`; the §H.7 "exception is granted"
-        // surface for AUSTRALIA_GROUP-class codes is not handled
-        // at this gate).
+        // `admits_fgi_ownership_token`; the §H.7 "exception is
+        // granted" surface for AUSTRALIA_GROUP-class codes is not
+        // handled at this gate).
         assert!(parse_fgi_marker("FGI USAGB").is_none());
         assert!(parse_fgi_marker("FGI AUSTRALIA_GROUP").is_none());
 
@@ -5820,12 +5872,19 @@ mod sar_parse_tests {
              2-3 char bound)",
         );
 
-        // Lower-case alnum and digits remain admitted by the
-        // predicate (style rule, not shape rule), matching the
-        // predicate's documented behavior.
-        let (marking, _spans) = parse_sar_category("SAR-bp", 0)
-            .expect("lowercase abbrev program id must accept (style, not shape)");
-        assert_eq!(&*marking.programs[0].identifier, "bp");
+        // Issue #280: SAR open-vocab tightening — lowercase is
+        // rejected (CAPCO §A.6 p15 + §G.1 p36: Register entries are
+        // uppercase; SAR has no CVE registry, so the shape gate is
+        // the validation). Digits still admit.
+        assert!(
+            parse_sar_category("SAR-bp", 0).is_none(),
+            "lowercase abbrev program id must reject (#280); decoder \
+             handles demangling",
+        );
+        assert!(
+            parse_sar_category("SAR-Bp", 0).is_none(),
+            "mixed-case abbrev program id must reject (#280)",
+        );
         let (marking, _spans) =
             parse_sar_category("SAR-99", 0).expect("digit-only abbrev id must accept");
         assert_eq!(&*marking.programs[0].identifier, "99");

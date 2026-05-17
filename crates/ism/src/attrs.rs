@@ -251,14 +251,24 @@ impl SarProgram {
     /// CAPCO-2016 §H.5 p99 ("SAR program identifiers are
     /// alphanumeric values") fixes the character class.
     ///
-    /// CAPCO-2016 prose does NOT explicitly require uppercase for
-    /// the abbreviation. Examples in §H.5 (`BP`, `SDA`, `XR`,
-    /// Table 7 §H.5 p100) are uppercase by Register convention. We
-    /// admit any-case ASCII alnum here and leave casing enforcement
-    /// to a downstream style rule (S###) if a project ever wants
-    /// one. This matches the existing `Vocabulary<CapcoScheme>`
-    /// `CAT_SAR` arm semantics and the sites' previous inline
-    /// behavior — the migration is byte-for-byte non-observable.
+    /// SAR is the only marking category with no CVE registry —
+    /// `CVEnumISMSAR.xml` is intentionally empty per ODNI policy.
+    /// With no registry to validate against, the shape gate IS the
+    /// validation. Per CAPCO-2016 §A.6 p15 and §G.1 p36, all
+    /// banner-line and portion-mark Register entries are uppercase,
+    /// so SAR identifiers must conform. Lenient acceptance would let
+    /// lowercase identifiers through the strict path silently,
+    /// bypassing the `DecoderRecognizer` that handles demangling
+    /// (e.g., mixed-case repair, missing-hyphen suggestions). The
+    /// parser/decoder split is intentional: the parser is strict so
+    /// the decoder can be lenient and informative.
+    ///
+    // TODO(decoder): the current SAR INFO message is generic
+    // ("you're on your own here"). Enhancing the decoder to emit
+    // specific demangling suggestions (e.g., `SAR-BP XA5` →
+    // `SAR-BP-XA5` with explicit missing-hyphen diagnostic) is
+    // future work tracked separately from this strict-shape fix
+    // (issue #280).
     ///
     /// # Examples
     ///
@@ -271,8 +281,10 @@ impl SarProgram {
     /// // §H.5 p99 — alphanumeric values (digits permitted).
     /// assert!(SarProgram::admits_program_id_abbrev(b"99"));
     /// assert!(SarProgram::admits_program_id_abbrev(b"A1"));
-    /// // Any-case admission (style rule, not shape rule).
-    /// assert!(SarProgram::admits_program_id_abbrev(b"bp"));
+    /// // Rejected: lowercase fails the Register-uppercase rule
+    /// // (§A.6 p15 + §G.1 p36); decoder handles demangling.
+    /// assert!(!SarProgram::admits_program_id_abbrev(b"bp"));
+    /// assert!(!SarProgram::admits_program_id_abbrev(b"Bp"));
     /// // Rejected: too short.
     /// assert!(!SarProgram::admits_program_id_abbrev(b"B"));
     /// // Rejected: too long.
@@ -291,7 +303,7 @@ impl SarProgram {
         }
         let mut i = 0;
         while i < len {
-            if !bytes[i].is_ascii_alphanumeric() {
+            if !(bytes[i].is_ascii_uppercase() || bytes[i].is_ascii_digit()) {
                 return false;
             }
             i += 1;
@@ -456,10 +468,24 @@ impl SarCompartment {
     /// future revision of CAPCO that pins a length cap would be a
     /// planned migration; this predicate is the lift point.
     ///
-    /// CAPCO-2016 does NOT require uppercase for compartments or
-    /// sub-compartments — the alphanumeric rule applies to both
-    /// cases. We admit any-case ASCII alnum here and leave casing
-    /// enforcement to a downstream style rule.
+    /// SAR is the only marking category with no CVE registry —
+    /// `CVEnumISMSAR.xml` is intentionally empty per ODNI policy.
+    /// With no registry to validate against, the shape gate IS the
+    /// validation. Per CAPCO-2016 §A.6 p15 and §G.1 p36, all
+    /// banner-line and portion-mark Register entries are uppercase,
+    /// so SAR identifiers (programs, compartments, sub-compartments)
+    /// must conform. Lenient acceptance would let lowercase
+    /// identifiers through the strict path silently, bypassing the
+    /// `DecoderRecognizer` that handles demangling (e.g.,
+    /// mixed-case repair, missing-hyphen suggestions). The
+    /// parser/decoder split is intentional: the parser is strict so
+    /// the decoder can be lenient and informative.
+    ///
+    // TODO(decoder): the current SAR INFO message is generic
+    // ("you're on your own here"). Enhancing the decoder to emit
+    // specific demangling suggestions for compartment / sub-
+    // compartment case-mismatches is future work tracked separately
+    // from this strict-shape fix (issue #280).
     ///
     /// # Examples
     ///
@@ -477,8 +503,10 @@ impl SarCompartment {
     /// // Single character is admitted (manual silent on lower bound
     /// // beyond ≥1; marque admits length 1+).
     /// assert!(SarCompartment::admits_identifier(b"1"));
-    /// // Any-case admission (style rule, not shape rule).
-    /// assert!(SarCompartment::admits_identifier(b"j12"));
+    /// // Rejected: lowercase fails the Register-uppercase rule
+    /// // (§A.6 p15 + §G.1 p36); decoder handles demangling.
+    /// assert!(!SarCompartment::admits_identifier(b"j12"));
+    /// assert!(!SarCompartment::admits_identifier(b"yYy"));
     /// // Rejected: empty.
     /// assert!(!SarCompartment::admits_identifier(b""));
     /// // Rejected: punctuation.
@@ -494,7 +522,7 @@ impl SarCompartment {
         }
         let mut i = 0;
         while i < bytes.len() {
-            if !bytes[i].is_ascii_alphanumeric() {
+            if !(bytes[i].is_ascii_uppercase() || bytes[i].is_ascii_digit()) {
                 return false;
             }
             i += 1;
@@ -1686,6 +1714,138 @@ impl CountryCode {
         }
         true
     }
+
+    /// Shape-only predicate for FGI ownership context: admits any
+    /// 2- or 3-byte ASCII-upper token (via
+    /// [`CountryCode::admits_country_token`]) OR the literal `NATO`
+    /// tetragraph. Other 4-byte tetragraphs (`CFIUS`, `FVEY`,
+    /// `ACGU`, `ISAF`, etc.) are distribution-list markers per
+    /// CAPCO-2016 §H.7 p122 — wrong semantic for FGI ownership, so
+    /// the gate excludes them.
+    ///
+    /// # Shape-only by design
+    ///
+    /// This predicate does NOT validate against the `CountryCode`
+    /// registry. Any shape-conformant 2- or 3-byte uppercase token
+    /// will admit here, including unregistered ones like `XX`,
+    /// `AB`, or `ZZZ`. Registry validation is the job of downstream
+    /// rules (S004 trigraph-suggest, E008 unknown-token) per the
+    /// established parser/rule split — the parser produces well-
+    /// formed AST nodes; the rule layer flags unknown tokens with
+    /// actionable diagnostics. This produces better UX than silent
+    /// parser-level rejection (an unrecognized 3-byte token like
+    /// `XYZ` lands as `Acknowledged([XYZ])` and a downstream rule
+    /// can suggest the closest registered trigraph).
+    ///
+    /// # Why 2-byte admission
+    ///
+    /// The 2-byte branch is motivated by EU specifically: EU has
+    /// its own classification system (EU CONFIDENTIAL / EU SECRET
+    /// / EU TOP SECRET per Council Decision 2013/488/EU and
+    /// successors) and is the only supranational sub-NATO entity
+    /// that produces classified information today. EU also appears
+    /// as a registered 2-letter exception code in ODNI ISMCAT
+    /// `CVEnumISMCATRelTo`. The branch is shape-only rather than
+    /// EU-only so the predicate stays composable with future
+    /// 2-letter registrations without needing a parser edit.
+    ///
+    /// # Why not narrower
+    ///
+    /// This is narrower than [`CountryCode::admits_country_token`]
+    /// (which admits any 2-4 char uppercase token) only on the
+    /// tetragraph axis: distribution-list tetragraphs reject. FGI
+    /// ownership semantic per §H.7 p122 places `NATO` as the only
+    /// alliance tetragraph treated as an ownership identifier;
+    /// `FVEY` / `CFIUS` / `ACGU` / `ISAF` describe who may receive
+    /// a marking, not who owns it — they are lawful in REL TO list
+    /// slots but not FGI ownership slots.
+    ///
+    /// # Decoder coordination
+    ///
+    /// Issue #496 tracks whether the decoder should add FGI-
+    /// context-aware confidence-bounded country-code matching for
+    /// unregistered uppercase tokens. If that lands, the parser
+    /// side here does NOT need to change — the shape-only contract
+    /// composes with decoder-side smartening.
+    ///
+    /// # Authority
+    ///
+    /// CAPCO-2016 §H.7 p122 (FGI as foreign-government ownership;
+    /// banner-form `FGI [LIST]` where the list identifies the
+    /// originating country/countries or NATO) + §H.7 p123 (banner-
+    /// form table). The canonical multi-country example
+    /// (`SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN, NATO`)
+    /// that places NATO in the FGI slot alongside sovereign-state
+    /// trigraphs lives at §A.6 p16, not §H.7 p122 (p122 carries the
+    /// ownership-semantic prose and the `FGI [LIST]` Register form;
+    /// the list grammar with NATO is the §A.6 example). ODNI
+    /// ISMCAT `CVEnumISMCATRelTo` registers `EU` as a 2-letter
+    /// exception code; Council Decision 2013/488/EU (and
+    /// successors) formalizes the EU classification system that
+    /// gives EU-originated information ownership semantic. The
+    /// asymmetry between this predicate and
+    /// [`CountryCode::admits_country_token`] (REL TO list-tokens)
+    /// is documented in this crate's parser at
+    /// `crates/core/src/parser.rs::parse_fgi_marker`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marque_ism::CountryCode;
+    /// // 3-byte registered trigraphs admit.
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"USA"));
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"GBR"));
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"DEU"));
+    /// // NATO admits — the only alliance tetragraph treated as
+    /// // ownership per §H.7.
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"NATO"));
+    /// // EU admits — its own classification system per Council
+    /// // Decision 2013/488/EU; registered in ISMCAT
+    /// // CVEnumISMCATRelTo. Drives the 2-byte admission branch.
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"EU"));
+    /// // Shape-only: unregistered 2- and 3-byte uppercase tokens
+    /// // also admit (downstream rules flag the registry miss).
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"XX"));
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"AB"));
+    /// assert!(CountryCode::admits_fgi_ownership_token(b"ZZZ"));
+    /// // Rejected: distribution-list tetragraphs (FVEY, CFIUS,
+    /// // ACGU, ISAF) are REL TO surface, not FGI ownership.
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"FVEY"));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"ACGU"));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"ISAF"));
+    /// // Rejected: arbitrary 4-char tetragraphs.
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"DEUX"));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"BLAH"));
+    /// // Rejected: NAT0 (digit zero substituted for `O`) — the
+    /// // 4-byte branch is a strict literal match against `NATO`,
+    /// // not a fuzzy compare. Pins that the predicate does not
+    /// // accidentally accept visually-similar candidates.
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"NAT0"));
+    /// // Rejected: lowercase (fails admits_country_token shape).
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"eu"));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"usa"));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"nato"));
+    /// // Rejected: wrong length (1-byte, 5+-byte).
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b""));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"U"));
+    /// assert!(!CountryCode::admits_fgi_ownership_token(b"USAGB"));
+    /// ```
+    #[inline]
+    pub const fn admits_fgi_ownership_token(bytes: &[u8]) -> bool {
+        // NATO is the only valid tetragraph in FGI ownership context.
+        if bytes.len() == 4 {
+            return matches!(bytes, b"NATO");
+        }
+        // Otherwise must be a 2- or 3-byte ASCII-upper token. Shape-
+        // only by design — any conformant token admits, including
+        // unregistered ones like `XX` or `ZZZ` (see doc-comment §
+        // "Shape-only by design"). Registry validation is the rule
+        // layer's job (S004 / E008). `admits_country_token` enforces
+        // uniform ASCII upper across 2..=4 byte lengths, so
+        // lowercase, digits, and punctuation are rejected at this
+        // site for both length branches.
+        (bytes.len() == 2 || bytes.len() == 3) && Self::admits_country_token(bytes)
+    }
 }
 
 impl std::fmt::Display for CountryCode {
@@ -2047,14 +2207,17 @@ mod sar_shape_tests {
     }
 
     #[test]
-    fn abbrev_accepts_lowercase_letting_style_rule_decide() {
-        // §H.5 p99–101 prose says "alphanumeric values"; uppercase
-        // is a Register convention. We accept lowercase here and
-        // leave casing enforcement to a downstream style rule.
-        // Mirrors the corresponding test in
-        // `crates/capco/src/vocabulary.rs::shape_admits_tests`.
-        assert!(SarProgram::admits_program_id_abbrev(b"bp"));
-        assert!(SarProgram::admits_program_id_abbrev(b"sDa"));
+    fn abbrev_rejects_lowercase_open_vocab_shape_is_validation() {
+        // Issue #280: SAR has no CVE registry (`CVEnumISMSAR.xml`
+        // intentionally empty per ODNI policy). With no registry to
+        // validate against, the shape gate IS the validation. Per
+        // CAPCO-2016 §A.6 p15 + §G.1 p36, all banner-line and
+        // portion-mark Register entries are uppercase; SAR
+        // identifiers must conform. Lowercase / mixed-case falls
+        // through to the decoder, which handles demangling.
+        assert!(!SarProgram::admits_program_id_abbrev(b"bp"));
+        assert!(!SarProgram::admits_program_id_abbrev(b"sDa"));
+        assert!(!SarProgram::admits_program_id_abbrev(b"Bp"));
     }
 
     #[test]
@@ -2173,9 +2336,15 @@ mod sar_shape_tests {
     }
 
     #[test]
-    fn compartment_accepts_lowercase_letting_style_rule_decide() {
-        assert!(SarCompartment::admits_identifier(b"j12"));
-        assert!(SarCompartment::admits_identifier(b"yYy"));
+    fn compartment_rejects_lowercase_open_vocab_shape_is_validation() {
+        // Issue #280: SAR open-vocab tightening (see
+        // `abbrev_rejects_lowercase_open_vocab_shape_is_validation`
+        // for the full rationale). The compartment / sub-compartment
+        // predicate enforces the same Register-uppercase rule per
+        // §A.6 p15 + §G.1 p36.
+        assert!(!SarCompartment::admits_identifier(b"j12"));
+        assert!(!SarCompartment::admits_identifier(b"yYy"));
+        assert!(!SarCompartment::admits_identifier(b"blue42"));
     }
 
     #[test]
@@ -2210,15 +2379,18 @@ mod sar_shape_tests {
     fn abbrev_implies_compartment() {
         // Property: anything `admits_program_id_abbrev` admits is
         // also admitted by `admits_identifier` — the abbreviation
-        // shape (2-3 alnum) is strictly within the compartment shape
-        // (1+ alnum). Useful as a sanity check that the two
-        // predicates don't drift apart on character class.
+        // shape (2-3 uppercase-or-digit) is strictly within the
+        // compartment shape (1+ uppercase-or-digit). Useful as a
+        // sanity check that the two predicates don't drift apart on
+        // character class. Issue #280 tightened both predicates to
+        // reject lowercase; the strict-subset property still holds
+        // over the new (uppercase + digit) character class.
         for input in [
             b"BP".as_slice(),
             b"SDA".as_slice(),
             b"99".as_slice(),
             b"A1".as_slice(),
-            b"bp".as_slice(),
+            b"XR".as_slice(),
         ] {
             assert!(SarProgram::admits_program_id_abbrev(input));
             assert!(
