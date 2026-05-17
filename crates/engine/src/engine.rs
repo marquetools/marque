@@ -1123,6 +1123,46 @@ impl Engine {
                 }
             }
 
+            // Issue #471: gate downstream rule dispatch and page-context
+            // accumulation on the decoder's recognition confidence. The
+            // recognizer can return a `Parsed::Unambiguous` for a
+            // candidate whose decoder posterior is below the configured
+            // confidence threshold — the R001 diagnostic above informs
+            // the user (and demotes to `Severity::Suggest` in the
+            // post-emission pass), but the parse is NOT authoritative
+            // until the user accepts it.
+            //
+            // Running rules against a sub-threshold decoder parse, or
+            // folding its synthetic attrs into `PageContext`, mints
+            // false positives keyed on a canonicalization the user
+            // never approved. Concrete repro:
+            // `(CTs)` / `(CMS)` in prose contexts → decoder weakly
+            // recognizes both as NATO CTS (recognition ≈ 0.86, below
+            // default 0.95 threshold); the synthetic
+            // `MarkingClassification::Nato(_)` then triggers E015
+            // `non-us-missing-dissem` at `span = 0..0` (the rule's
+            // span fallback for missing Classification tokens).
+            //
+            // The decoder's job in this state is to *suggest*; the
+            // rule pipeline's job is to enforce policy on accepted
+            // canonical forms. Skipping both rule dispatch and
+            // `page_context.add_portion` here aligns the two so the
+            // suggestion is the only visible signal until the user
+            // accepts (at which point a fix-apply re-lint exercises
+            // rules on the canonical form). Constitution V Principle V
+            // (audit content-ignorance) is preserved — the gate uses
+            // only the `recognition` scalar and the configured
+            // threshold, never document bytes.
+            //
+            // Strict-path parses (`marking.1.is_none()`) and decoder
+            // parses meeting the threshold both fall through to the
+            // rule dispatch loop unchanged.
+            if let Some(prov) = marking.1.as_ref()
+                && prov.recognition_score() < self.config.confidence_threshold()
+            {
+                continue;
+            }
+
             // Phase 3: zone and position are Option-typed and stay None
             // until a structural scanner pass can prove them. The previous
             // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
