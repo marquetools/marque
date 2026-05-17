@@ -4207,8 +4207,14 @@ fn dispatch_page_finalization(
     // span has no preceding-portion identity in the pre-pass-1
     // attrs cache (the cache is keyed by content-candidate spans;
     // a boundary span at offset N never equals one).
+    // PR #490: clone `page_ctx_arc` for the `RuleContext` so the
+    // original handle stays in scope through the dispatch loop and
+    // remains available to the portion-snapshot sentinel below
+    // (which observes `page_ctx_arc.portions()` — the slice the rule
+    // actually reads via `ctx.page_context`). `Arc::clone` is a
+    // refcount bump, no `PageContext` data is copied.
     let ctx = RuleContext::new(MarkingType::PageFinalization, boundary_span)
-        .with_page_context(Some(page_ctx_arc))
+        .with_page_context(Some(page_ctx_arc.clone()))
         .with_page_marking(Some(page_mark_arc))
         .with_corrections(corrections_arc.clone())
         .with_pre_pass_1_attrs(None);
@@ -4228,14 +4234,22 @@ fn dispatch_page_finalization(
     // future API changes that would open a mutation path.
     // See `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
     //
-    // Snapshot from the `&PageContext` parameter (not the cloned
-    // `page_ctx_arc`) so the check survives any future Arc-related
-    // refactor. Cost: a clone of `[CanonicalAttrs]` in debug builds
-    // only; `--release` strips the snapshot and the assertion
-    // entirely. Placement is AFTER the empty-bucket / all-Off
-    // short-circuits (they early-return before reaching this point).
+    // Snapshot the slice the rule actually observes (via
+    // `page_ctx_arc`), not the original `&PageContext` parameter.
+    // The two are equal today because `page_ctx_arc` is a deep-cloned
+    // `Arc` with strong_count >= 2 (so `Arc::get_mut` returns `None`),
+    // but the sentinel's purpose is to catch FUTURE API loosenings —
+    // e.g., interior mutability on `PageContext` (`RefCell`, `Mutex`),
+    // a `portions_mut()` addition, or an `Arc::get_mut` bypass via a
+    // future debug API. A future mutation reaches the rule through
+    // `page_ctx_arc`; observing the original parameter would silently
+    // miss it and the sentinel would return clean (false negative).
+    // Cost: a clone of `[CanonicalAttrs]` in debug builds only;
+    // `--release` strips the snapshot and the assertion entirely.
+    // Placement is AFTER the empty-bucket / all-Off short-circuits
+    // (they early-return before reaching this point).
     #[cfg(debug_assertions)]
-    let portions_before: Vec<marque_ism::CanonicalAttrs> = page_context.portions().to_vec();
+    let portions_before: Vec<marque_ism::CanonicalAttrs> = page_ctx_arc.portions().to_vec();
 
     // Mirror the main candidate-loop dispatch shape: fast-path
     // Off-skip via `fast_path_severities[set_idx][rule_idx]`,
@@ -4295,27 +4309,38 @@ fn dispatch_page_finalization(
     // PR #490: portion-snapshot assertion — see snapshot comment
     // above. The PageRewrite read-only-attrs invariant requires
     // that no `Phase::PageFinalization` rule mutate the per-portion
-    // `CanonicalAttrs` slice. Counts + indices in the message only
-    // (G13 / Constitution V Principle V audit-content-ignorance —
-    // debug builds may still run in classified-content environments).
+    // `CanonicalAttrs` slice (observed via `page_ctx_arc`, matching
+    // the slice the rule itself reads).
+    //
+    // `debug_assert!(cond, "msg", args)` is used here (not
+    // `debug_assert_eq!`) because `assert_eq!` / `debug_assert_eq!`
+    // call `core::panicking::assert_failed`, which formats both
+    // operands via `Debug` (`left: {left:?} right: {right:?}`)
+    // regardless of any custom message. That would dump both
+    // `&[CanonicalAttrs]` slices — token IDs, span offsets, country
+    // lists, AEA blocks — into the panic output, violating G13
+    // (Constitution V Principle V: audit-content-ignorance). The
+    // boolean form of `debug_assert!` only emits the formatted
+    // message, no operand `Debug` repr. Counts + indices in the
+    // message only; debug builds may still run in classified-content
+    // environments.
+    //
     // The outer-loop placement cannot attribute the violation to a
     // specific rule; if a sentinel firing requires per-rule
     // attribution, switch to a per-iteration snapshot inside the
     // loop temporarily for debugging.
     #[cfg(debug_assertions)]
-    debug_assert_eq!(
-        page_context.portions(),
-        portions_before.as_slice(),
+    debug_assert!(
+        page_ctx_arc.portions() == portions_before.as_slice(),
         "PageFinalization rule dispatch mutated PageContext::portions() \
-         ({} portion(s) before vs {} after). This violates the \
-         PageRewrite read-only-attrs invariant in \
+         ({} portion(s) before vs {} after, {} rule(s) dispatched). \
+         This violates the PageRewrite read-only-attrs invariant in \
          docs/plans/2026-05-01-lattice-design.md section 3 (e.1). \
          The portion-snapshot sentinel cannot pin the violating rule \
          from this outer-loop placement; to attribute, switch to \
-         a per-iteration snapshot inside the loop temporarily. \
-         pass_finalization_rule_indices.len() = {}.",
+         a per-iteration snapshot inside the loop temporarily.",
         portions_before.len(),
-        page_context.portions().len(),
+        page_ctx_arc.portions().len(),
         pass_finalization_rule_indices.len(),
     );
 
