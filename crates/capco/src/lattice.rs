@@ -44,6 +44,12 @@ use marque_ism::{
 };
 use marque_scheme::{BoundedLattice, Lattice};
 use std::collections::{BTreeMap, BTreeSet};
+fn get_or_insert_default<'a, V: Default>(map: &'a mut BTreeMap<String, V>, key: &str) -> &'a mut V {
+    if map.contains_key(key) {
+        return map.get_mut(key).unwrap();
+    }
+    map.entry(key.to_string()).or_default()
+}
 
 // ---------------------------------------------------------------------------
 // SciSet — lattice over the full SCI category state
@@ -121,10 +127,7 @@ impl SciSet {
                 continue;
             }
             for comp in m.compartments.iter() {
-                if !comp_map.contains_key(comp.identifier.as_ref()) {
-                    comp_map.insert(comp.identifier.to_string(), Default::default());
-                }
-                let sub_set = comp_map.get_mut(comp.identifier.as_ref()).unwrap();
+                let sub_set = get_or_insert_default(comp_map, comp.identifier.as_ref());
                 sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
@@ -305,16 +308,9 @@ impl SarSet {
             return out;
         };
         for prog in sar.programs.iter() {
-            if !out.programs.contains_key(prog.identifier.as_ref()) {
-                out.programs
-                    .insert(prog.identifier.to_string(), Default::default());
-            }
-            let comps = out.programs.get_mut(prog.identifier.as_ref()).unwrap();
+            let comps = get_or_insert_default(&mut out.programs, prog.identifier.as_ref());
             for comp in prog.compartments.iter() {
-                if !comps.contains_key(comp.identifier.as_ref()) {
-                    comps.insert(comp.identifier.to_string(), Default::default());
-                }
-                let subs = comps.get_mut(comp.identifier.as_ref()).unwrap();
+                let subs = get_or_insert_default(comps, comp.identifier.as_ref());
                 subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
