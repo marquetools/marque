@@ -4312,39 +4312,93 @@ fn dispatch_page_finalization(
     // `CanonicalAttrs` slice (observed via `page_ctx_arc`, matching
     // the slice the rule itself reads).
     //
-    // `debug_assert!(cond, "msg", args)` is used here (not
-    // `debug_assert_eq!`) because `assert_eq!` / `debug_assert_eq!`
-    // call `core::panicking::assert_failed`, which formats both
-    // operands via `Debug` (`left: {left:?} right: {right:?}`)
-    // regardless of any custom message. That would dump both
-    // `&[CanonicalAttrs]` slices — token IDs, span offsets, country
-    // lists, AEA blocks — into the panic output, violating G13
-    // (Constitution V Principle V: audit-content-ignorance). The
-    // boolean form of `debug_assert!` only emits the formatted
-    // message, no operand `Debug` repr. Counts + indices in the
-    // message only; debug builds may still run in classified-content
-    // environments.
+    // The comparison + error-message construction lives in
+    // [`check_portions_unchanged`] below so it can be unit-tested
+    // directly (Codecov patch-coverage gate on PR #498). On
+    // mismatch the helper returns `Err(msg)` and the call site
+    // panics with that message — the panic body is the
+    // structurally-uncoverable hot-path branch.
+    //
+    // Why this avoids `debug_assert_eq!`: `assert_eq!` /
+    // `debug_assert_eq!` call `core::panicking::assert_failed`,
+    // which formats both operands via `Debug`
+    // (`left: {left:?} right: {right:?}`) regardless of any custom
+    // message. That would dump both `&[CanonicalAttrs]` slices —
+    // token IDs, span offsets, country lists, AEA blocks — into the
+    // panic output, violating G13 (Constitution V Principle V:
+    // audit-content-ignorance). The helper-returns-`String` shape
+    // formats only counts + indices; debug builds may still run in
+    // classified-content environments.
     //
     // The outer-loop placement cannot attribute the violation to a
     // specific rule; if a sentinel firing requires per-rule
     // attribution, switch to a per-iteration snapshot inside the
     // loop temporarily for debugging.
     #[cfg(debug_assertions)]
-    debug_assert!(
-        page_ctx_arc.portions() == portions_before.as_slice(),
-        "PageFinalization rule dispatch mutated PageContext::portions() \
-         ({} portion(s) before vs {} after, {} rule(s) dispatched). \
-         This violates the PageRewrite read-only-attrs invariant in \
-         docs/plans/2026-05-01-lattice-design.md section 3 (e.1). \
-         The portion-snapshot sentinel cannot pin the violating rule \
-         from this outer-loop placement; to attribute, switch to \
-         a per-iteration snapshot inside the loop temporarily.",
-        portions_before.len(),
-        page_ctx_arc.portions().len(),
+    if let Err(msg) = check_portions_unchanged(
+        portions_before.as_slice(),
+        page_ctx_arc.portions(),
         pass_finalization_rule_indices.len(),
-    );
+    ) {
+        panic!("{msg}");
+    }
 
     Ok(())
+}
+
+/// Compare two `CanonicalAttrs` slices for the PageFinalization
+/// read-only-attrs sentinel. Returns `Ok(())` on equality,
+/// `Err(msg)` with a G13-compliant diagnostic message on mismatch
+/// (counts + indices only — never portion content).
+///
+/// Debug-only — only callers inside a `#[cfg(debug_assertions)]`
+/// block invoke this. `pub(crate)` for unit-testability: the
+/// helper is the detection primitive for the invariant described
+/// in `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
+/// Extracted from the inline `debug_assert!` body in
+/// [`dispatch_page_finalization`] so the comparison +
+/// error-message-construction paths land in Codecov patch coverage
+/// (PR #498 / issue #490).
+///
+/// # G13 (Constitution V Principle V) compliance
+///
+/// The returned error message contains **only**:
+///
+/// - The literal string `"PageFinalization rule dispatch ..."`
+/// - The before-slice length (a `usize` count, not content)
+/// - The after-slice length (a `usize` count, not content)
+/// - The `rule_count` parameter (a `usize` count, not content)
+/// - The doc-cross-reference literal
+///
+/// It MUST NOT contain any `CanonicalAttrs` field values, type
+/// names that imply field content (e.g., `"SciControl"`,
+/// `"Span"`), or any string formed from slice element content.
+/// `sentinel_tests::check_portions_unchanged_error_message_is_g13_compliant`
+/// pins this invariant with a synthetic distinctive-content
+/// fixture — modifying the format string MUST be done together
+/// with re-running that test.
+#[cfg(debug_assertions)]
+pub(crate) fn check_portions_unchanged(
+    before: &[marque_ism::CanonicalAttrs],
+    after: &[marque_ism::CanonicalAttrs],
+    rule_count: usize,
+) -> Result<(), String> {
+    if before == after {
+        Ok(())
+    } else {
+        Err(format!(
+            "PageFinalization rule dispatch mutated PageContext::portions() \
+             ({} portion(s) before vs {} after, {} rule(s) dispatched). \
+             This violates the PageRewrite read-only-attrs invariant in \
+             docs/plans/2026-05-01-lattice-design.md section 3 (e.1). \
+             The portion-snapshot sentinel cannot pin the violating rule \
+             from this outer-loop placement; to attribute, switch to \
+             a per-iteration snapshot inside the loop temporarily.",
+            before.len(),
+            after.len(),
+            rule_count,
+        ))
+    }
 }
 
 /// Pre-resolve all rule severity overrides into two indexed lookup
@@ -7243,5 +7297,203 @@ mod tests {
         // then R002 is pushed last.
         assert_eq!(result.remaining_diagnostics.len(), 1);
         assert_eq!(result.remaining_diagnostics[0].rule, super::R002_RULE_ID);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PR #490 — PageFinalization read-only-attrs sentinel helper tests
+// ---------------------------------------------------------------------------
+//
+// Separate `#[cfg(test)]` module from `mod tests` above because the
+// existing module carries `#[cfg_attr(coverage_nightly, coverage(off))]`
+// — these sentinel tests need to land in Codecov patch coverage (the
+// motivation for extracting `check_portions_unchanged` to a testable
+// helper in the first place). Keeping them in a coverage-included
+// module makes the comparison + error-message-construction paths
+// of `check_portions_unchanged` visible to the coverage tool.
+
+#[cfg(test)]
+mod sentinel_tests {
+    use super::check_portions_unchanged;
+    use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
+
+    /// Construct a default `CanonicalAttrs`. `CanonicalAttrs` is
+    /// `#[non_exhaustive]` so we use `Default::default()` and patch
+    /// the field(s) the test needs.
+    fn empty_attrs() -> CanonicalAttrs {
+        CanonicalAttrs::default()
+    }
+
+    /// `CanonicalAttrs` with a SECRET US classification — used as the
+    /// "before" snapshot in mismatched-content tests so the
+    /// "after" diverges on the classification field.
+    ///
+    /// `CanonicalAttrs` is `#[non_exhaustive]` so cross-crate
+    /// construction goes through `Default::default()` + field
+    /// mutation; the struct-expression form is not callable.
+    fn secret_attrs() -> CanonicalAttrs {
+        let mut attrs = CanonicalAttrs::default();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        attrs
+    }
+
+    /// Test 1 — equality path returns `Ok(())`.
+    ///
+    /// Exercises the `before == after` branch of
+    /// [`check_portions_unchanged`]. Covers both the empty-slice
+    /// case (the typical PageFinalization dispatch shape on a
+    /// no-portion page) and a single-portion case where the two
+    /// sides are independent clones.
+    #[test]
+    fn check_portions_unchanged_returns_ok_on_equal_slices() {
+        // Empty + empty — the typical no-portion dispatch shape.
+        assert!(check_portions_unchanged(&[], &[], 0).is_ok());
+
+        // Single portion, cloned — Vec clone proves the comparison
+        // is value-equality, not pointer-equality.
+        let portions = vec![secret_attrs()];
+        let cloned = portions.clone();
+        assert!(check_portions_unchanged(&portions, &cloned, 1).is_ok());
+    }
+
+    /// Test 2 — mismatched lengths return `Err`, error string
+    /// carries counts + rule_count, and no type/field names appear.
+    ///
+    /// Exercises the `Err` branch and verifies the format-arg
+    /// interpolation lands the three `usize` operands in the
+    /// rendered string. The G13 negative assertions guard against
+    /// a future format-string edit that re-introduces operand
+    /// `Debug` representation.
+    #[test]
+    fn check_portions_unchanged_returns_err_on_mismatched_lengths() {
+        let before = vec![secret_attrs()];
+        let after: Vec<CanonicalAttrs> = vec![];
+
+        let err = check_portions_unchanged(&before, &after, 7)
+            .expect_err("length mismatch must surface as Err");
+
+        // Counts present.
+        assert!(
+            err.contains("1 portion(s) before vs 0 after"),
+            "expected count phrase in error, got: {err}"
+        );
+        assert!(
+            err.contains("7 rule(s) dispatched"),
+            "expected rule_count phrase in error, got: {err}"
+        );
+
+        // G13 (Constitution V Principle V): no type names that
+        // would imply portion content leakage.
+        assert!(
+            !err.contains("CanonicalAttrs"),
+            "G13 violation: type name `CanonicalAttrs` in error: {err}"
+        );
+        assert!(
+            !err.contains("SciControl"),
+            "G13 violation: type name `SciControl` in error: {err}"
+        );
+        assert!(
+            !err.contains("Span"),
+            "G13 violation: type name `Span` in error: {err}"
+        );
+        assert!(
+            !err.contains("MarkingClassification"),
+            "G13 violation: type name `MarkingClassification` in error: {err}"
+        );
+        assert!(
+            !err.contains("Secret"),
+            "G13 violation: classification variant `Secret` in error: {err}"
+        );
+    }
+
+    /// Test 3 — same-length-but-different-content mismatch returns
+    /// `Err`. Distinct from test 2 (which exercises a length
+    /// mismatch); this one forces the slice `PartialEq` to walk
+    /// into element-by-element comparison before returning `false`.
+    #[test]
+    fn check_portions_unchanged_returns_err_on_mismatched_content() {
+        let before = vec![empty_attrs()];
+        let after = vec![secret_attrs()];
+
+        let err = check_portions_unchanged(&before, &after, 1)
+            .expect_err("content mismatch must surface as Err");
+
+        // Counts: both sides are length-1, so the count phrasing
+        // is symmetric. The error message reports the symmetry
+        // truthfully ("1 portion(s) before vs 1 after") — that is
+        // the documented limitation of the outer-loop sentinel
+        // placement (it cannot attribute which portion mutated).
+        assert!(
+            err.contains("1 portion(s) before vs 1 after"),
+            "expected count phrase in error, got: {err}"
+        );
+        assert!(
+            err.contains("1 rule(s) dispatched"),
+            "expected rule_count phrase in error, got: {err}"
+        );
+
+        // The doc-cross-reference is the audit trail back to the
+        // invariant statement — verify it survives format-arg
+        // expansion.
+        assert!(
+            err.contains("section 3 (e.1)"),
+            "expected doc-cross-reference in error, got: {err}"
+        );
+    }
+
+    /// Test 4 — load-bearing G13 invariant test.
+    ///
+    /// Constructs a `CanonicalAttrs` with distinctive free-text
+    /// content (`classified_by`) — the kind of field that the
+    /// retired `debug_assert_eq!` macro would have auto-dumped via
+    /// `Debug` formatting on panic per the Copilot round-1 finding
+    /// (`core::panicking::assert_failed_inner` formats both
+    /// operands as `left: {:?} right: {:?}` regardless of any
+    /// custom message). Calls the helper with a mismatch and
+    /// asserts the rendered error string does NOT contain the
+    /// distinctive content.
+    ///
+    /// This is the redundant-by-design G13 check that pins the
+    /// helper's content-ignorance contract independent of the
+    /// type-name negative assertions in test 2 — the failure mode
+    /// being guarded against is "a future helper edit pipes
+    /// element content through `{:?}`", and the sentinel value
+    /// here is what makes that regression detectable.
+    #[test]
+    fn check_portions_unchanged_error_message_is_g13_compliant() {
+        // Distinctive sentinel embedded in a free-text field. If
+        // any future edit to `check_portions_unchanged` formats
+        // a `CanonicalAttrs` field via `Debug` / `Display`, this
+        // string will surface in the rendered error.
+        const G13_SENTINEL: &str = "MARQUE-PR-490-G13-CANARY-XYZZY-7F3A1B2C";
+
+        let mut attrs_with_canary = CanonicalAttrs::default();
+        attrs_with_canary.classified_by = Some(G13_SENTINEL.into());
+        let before = vec![attrs_with_canary];
+        let after: Vec<CanonicalAttrs> = vec![];
+
+        let err = check_portions_unchanged(&before, &after, 1)
+            .expect_err("mismatch must surface as Err for the G13 check");
+
+        // The load-bearing assertion: the distinctive sentinel
+        // string MUST NOT appear anywhere in the rendered error.
+        // If this fires, the helper has regressed against the
+        // round-1 Copilot finding — operand content is leaking
+        // through the panic surface.
+        assert!(
+            !err.contains(G13_SENTINEL),
+            "G13 violation: classified_by content leaked into sentinel \
+             error message. Sentinel string `{G13_SENTINEL}` found in \
+             rendered error: {err}"
+        );
+
+        // Sanity: the helper still rendered a non-empty error
+        // (i.e., we didn't accidentally pass the assertion by
+        // making the helper a no-op).
+        assert!(
+            !err.is_empty(),
+            "G13 test fixture invalid: helper returned empty error \
+             string — the negative assertion above is vacuous."
+        );
     }
 }
