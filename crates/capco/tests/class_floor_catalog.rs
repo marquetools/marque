@@ -1396,12 +1396,14 @@ fn orcon_family_does_not_fire_when_marking_absent() {
 // ---------------------------------------------------------------------------
 
 // EYES ONLY: the parser recognizes the CVE `EYES` form (per
-// `marque-ism::DissemControl::Eyes`). The banner-form
-// `USA/[LIST] EYES ONLY` syntax requires lexer support for
-// trigraph-EYES coupling that doesn't yet exist; portion form
-// `(U//EYES)` / `(C//EYES)` is what the parser recognizes via the
-// CVE projection. The fires-below + at-floor + absent triplet uses
-// portion form so the engine path actually exercises the row.
+// `marque-ism::DissemControl::Eyes`). The compound banner-form
+// `USA/[LIST] EYES ONLY` syntax is supported via
+// `recognize_eyes_only_block` (PR 9a / T135a Commit 5); bare
+// `EYES ONLY` in a banner maps to `DissemControl::Eyes` via the
+// `MARKING_FORMS` entry added in the banner-lexer issue. The
+// fires-below + at-floor + absent triplet below uses portion form
+// `(U//EYES)` / `(C//EYES)` since it is equivalent; banner-form
+// variants are exercised in `crates/capco/tests/eyes_to_rel_to.rs`.
 
 #[test]
 fn eyes_only_fires_when_unclassified() {

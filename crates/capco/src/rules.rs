@@ -102,8 +102,8 @@
 use crate::scheme::CapcoScheme;
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
-    CanonicalAttrs, CountryCode, MarkingClassification, SciControlSystem, SciMarking, Span,
-    TokenKind, TokenSpan, sar_sort_key,
+    CanonicalAttrs, CountryCode, MarkingClassification, MarkingType, SciControlSystem, SciMarking,
+    Span, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
@@ -3158,7 +3158,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     fn trusted(&self) -> bool {
         true
     }
-    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
         for token in attrs.token_spans.iter() {
             if token.kind != TokenKind::DissemControl {
@@ -3166,21 +3166,66 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
             }
             // The compound EYES block carries `<trigraph>(/<trigraph>)*
             // EYES [ONLY]`. We detect the compound form by suffix-
-            // matching `EYES ONLY` / `EYES` with a non-empty prefix.
-            // Bare `EYES` tokens (no preceding country list) are
-            // E064-out-of-scope — the user wrote EYES with no specific
-            // country list, so Marque cannot synthesize one (and §H.8
-            // p158's "carry forward the trigraph codes" guidance does
-            // not apply when no codes were given).
+            // matching ` EYES ONLY` / ` EYES` (with a space before EYES)
+            // so the prefix is the trigraph list. The bare forms (`"EYES"`
+            // and `"EYES ONLY"` without any preceding list) are handled
+            // by the explicit equality arms below — they do not carry the
+            // leading space that `strip_suffix` requires.
             let text = token.text.as_str();
             let (prefix, _full_form) = if let Some(p) = text.strip_suffix(" EYES ONLY") {
                 (p, true)
             } else if let Some(p) = text.strip_suffix(" EYES") {
                 (p, false)
+            } else if text == "EYES ONLY" {
+                // Bare ODNI-title form: token text is the full ODNI long
+                // description "EYES ONLY" (from MARKING_FORMS banner
+                // form). No trigraph prefix — empty prefix triggers the
+                // banner-FVEY branch below.
+                ("", true)
+            } else if text == "EYES" {
+                // Bare CVE-value form: token text is the raw CVE value
+                // "EYES". Same semantics as bare "EYES ONLY" — no
+                // trigraph prefix, banner-FVEY branch below.
+                ("", false)
             } else {
                 continue;
             };
             if prefix.is_empty() {
+                // Bare `EYES` / `EYES ONLY` token — no preceding country
+                // list. Semantics differ by marking context:
+                //
+                // • Banner context: per §H.8 p157, a bare EYES ONLY banner
+                //   without a country list implies the full Five Eyes (FVEY)
+                //   membership (USA, AUS, CAN, GBR, NZL). Fire E064 with the
+                //   FVEY REL TO replacement so the author gets a canonical
+                //   conversion rather than a silent, unresolvable token.
+                //
+                // • Portion context: out of scope. §H.8 p158 says "carry
+                //   forward the trigraph codes listed in the source document
+                //   banner line" — a bare portion `EYES` is intentionally
+                //   abbreviated when the page banner has the full `[LIST]
+                //   EYES ONLY` form. Marque cannot synthesize the country
+                //   list from the portion alone without banner context.
+                //
+                // Authority: CAPCO-2016 §H.8 p157 + p158.
+                if ctx.marking_type == MarkingType::Banner {
+                    out.push(Diagnostic::text_correction(
+                        self.id(),
+                        self.default_severity(),
+                        token.span,
+                        concat!(
+                            "EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
+                            "convert to REL TO. A bare EYES ONLY banner without a country list ",
+                            "implies Five Eyes (FVEY) membership per §H.8 p157",
+                        )
+                        .to_owned(),
+                        "CAPCO-2016 §H.8 p157 + p158",
+                        "REL TO USA, AUS, CAN, GBR, NZL".to_owned(),
+                        FixSource::BuiltinRule,
+                        Confidence::strict(1.0),
+                        None,
+                    ));
+                }
                 continue;
             }
 

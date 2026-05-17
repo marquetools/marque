@@ -383,6 +383,29 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         portion: "DSEN",
         description_title: None,
     },
+    MarkingForm {
+        // CAPCO-2016 §H.8 p157: EYES ONLY is NSA-only and deprecated;
+        // the markings waiver expired 1 Oct 2017. The CVE value (portion
+        // mark) is `"EYES"`; the ODNI `<Description>` long title is
+        // `"EYES ONLY"` — the two forms differ, so this is a
+        // differing-form entry.
+        //
+        // The compound banner form `USA/[LIST] EYES ONLY` (with a
+        // country-trigraph list) is recognized by the scanner/parser's
+        // `recognize_eyes_only_block` function (PR 9a / T135a Commit 5).
+        // This entry covers the bare banner form `EYES ONLY` (no country
+        // list), which exists in legacy documents and in the wild. The
+        // mapping `banner_to_portion("EYES ONLY")` → `Some("EYES")` →
+        // `DissemControl::Eyes` ensures the parser tags these tokens
+        // correctly rather than falling through to Unknown.
+        //
+        // Authority: CAPCO-2016 §H.8 p157; ODNI CVEnumISMDissem.xml
+        // (`<Value>EYES</Value>`, `<Description>EYES ONLY</Description>`).
+        title: "EYES ONLY",
+        banner: "EYES ONLY",
+        portion: "EYES",
+        description_title: None,
+    },
     // §H.8 same-form entries: banner == portion, but title differs.
     // S001 fires when a banner line spells out the Marking Title instead
     // of the authorized abbreviation. §G.1 Table 4 / §H.8 p157–171.
@@ -618,6 +641,10 @@ mod tests {
         // §H.4 SCI compounds — CAPCO-2016 §H.4 p78, p83.
         assert_eq!(banner_to_portion("SI-ECRU"), Some("SI-EU"));
         assert_eq!(banner_to_portion("SI-NONBOOK"), Some("SI-NK"));
+        // §H.8 EYES ONLY — bare banner form maps to CVE portion `EYES`.
+        // CAPCO-2016 §H.8 p157. Allows `SECRET//EYES ONLY` to parse as
+        // `DissemControl::Eyes` instead of falling through to Unknown.
+        assert_eq!(banner_to_portion("EYES ONLY"), Some("EYES"));
     }
 
     #[test]
@@ -647,6 +674,9 @@ mod tests {
         // CAPCO-2016 §H.4 p78, p83.
         assert_eq!(portion_to_banner("SI-EU"), Some("SI-ECRU"));
         assert_eq!(portion_to_banner("SI-NK"), Some("SI-NONBOOK"));
+        // §H.8 EYES ONLY — inverse direction. CVE portion `EYES` → bare
+        // banner title `EYES ONLY`. CAPCO-2016 §H.8 p157.
+        assert_eq!(portion_to_banner("EYES"), Some("EYES ONLY"));
     }
 
     #[test]
@@ -860,6 +890,15 @@ mod tests {
             // CVE Value `DISPLAYONLY` → portion `DISPLAY ONLY`, banner
             // `DISPLAY ONLY` per CAPCO-2016 §H.8 p163.
             "DISPLAY ONLY",
+            // §H.8 EYES ONLY: title == banner ("EYES ONLY") but portion is
+            // distinct ("EYES", the CVE value). The bare banner form is the
+            // same as the ODNI description title; no distinct banner
+            // abbreviation exists (§G.1 Table 4 abbreviation column is
+            // effectively `None` for this deprecated marking). S001 must
+            // NOT fire (title == banner means title_to_banner returns None,
+            // so no substitution is possible). E001/E009 are retired.
+            // CAPCO-2016 §H.8 p157; ODNI CVEnumISMDissem.xml.
+            "EYES ONLY",
             // §H.4 SCI compounds (banner == title, distinct portion).
             // CAPCO-2016 §H.4 p78, p83.
             "SI-ECRU",

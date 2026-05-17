@@ -264,3 +264,138 @@ fn regression_full_form_eyes_only() {
     let fixed = fix_once(source);
     assert_eq!(fixed, "(S//REL TO USA, AUS, CAN, GBR, NZL)");
 }
+
+// =========================================================================
+// Banner-form EYES ONLY tests (issue: EYES ONLY banner-form lexer)
+// =========================================================================
+//
+// The banner forms tested here cover:
+//   1. Compound form `SECRET//USA/GBR EYES ONLY` — trigraph list present;
+//      recognized by `recognize_eyes_only_block` (PR 9a / T135a Commit 5).
+//   2. Bare form `SECRET//EYES ONLY` — no country list; maps to
+//      `DissemControl::Eyes` via the MARKING_FORMS entry; E064 fires with
+//      the FVEY implied list per §H.8 p157.
+//   3. Bare form `SECRET//EYES` — the CVE-value form in a banner; same
+//      FVEY treatment as (2).
+//
+// Authority: CAPCO-2016 §H.8 p157 + p158.
+// =========================================================================
+
+#[test]
+fn banner_with_trigraph_list_fires_e064() {
+    // Compound banner form — trigraph list present. The compound block
+    // `USA/CAN/GBR EYES ONLY` appears as the dissem block in a banner
+    // line (`SECRET//USA/CAN/GBR EYES ONLY`). E064 fires and replaces it
+    // with the canonical REL TO form.
+    // Authority: CAPCO-2016 §H.8 p158 "carry forward the trigraph codes".
+    let source = b"SECRET//USA/CAN/GBR EYES ONLY";
+    let diags = lint_e064(source);
+    assert_eq!(
+        diags.len(),
+        1,
+        "banner compound EYES ONLY must fire E064; got {diags:?}"
+    );
+    let fixed = fix_once(source);
+    assert_eq!(
+        fixed, "SECRET//REL TO USA, CAN, GBR",
+        "banner EYES ONLY with list must convert to REL TO USA-first alpha-sorted"
+    );
+}
+
+#[test]
+fn banner_bare_eyes_only_fires_e064_with_fvey() {
+    // Bare banner form — `EYES ONLY` with no country list. Per §H.8 p157
+    // a bare EYES ONLY banner without a list implies Five Eyes (FVEY)
+    // membership. E064 fires and supplies the FVEY REL TO replacement.
+    // Authority: CAPCO-2016 §H.8 p157.
+    let source = b"SECRET//EYES ONLY";
+    let diags = lint_e064(source);
+    assert_eq!(
+        diags.len(),
+        1,
+        "bare EYES ONLY in a banner must fire E064 with FVEY; got {diags:?}"
+    );
+    assert_eq!(diags[0].severity, Severity::Error);
+    assert!(
+        diags[0].citation.contains("§H.8 p157"),
+        "citation must cite §H.8 p157; got {:?}",
+        diags[0].citation
+    );
+    let fixed = fix_once(source);
+    assert_eq!(
+        fixed, "SECRET//REL TO USA, AUS, CAN, GBR, NZL",
+        "bare EYES ONLY banner must convert to full FVEY REL TO"
+    );
+}
+
+#[test]
+fn banner_bare_eyes_cve_form_fires_e064_with_fvey() {
+    // Bare `EYES` (CVE-value form, no `ONLY`) in a banner. Same FVEY
+    // treatment as bare `EYES ONLY` — the markings waiver covered both
+    // forms per §H.8 p157. E064 fires with FVEY.
+    // Authority: CAPCO-2016 §H.8 p157.
+    let source = b"SECRET//EYES";
+    let diags = lint_e064(source);
+    assert_eq!(
+        diags.len(),
+        1,
+        "bare EYES (CVE form) in a banner must fire E064 with FVEY; got {diags:?}"
+    );
+    let fixed = fix_once(source);
+    assert_eq!(
+        fixed, "SECRET//REL TO USA, AUS, CAN, GBR, NZL",
+        "bare EYES (CVE form) banner must convert to full FVEY REL TO"
+    );
+}
+
+#[test]
+fn bare_eyes_in_portion_still_does_not_fire_e064() {
+    // Regression: bare `(S//EYES)` in a portion remains out of E064's
+    // scope even after the banner-form extension. A bare portion EYES
+    // may be intentional when the page banner has the full country list;
+    // Marque must not synthesize the list without banner context.
+    // Authority: CAPCO-2016 §H.8 p158 ("carry forward the trigraph codes
+    // listed in the source document banner line").
+    let source = b"(S//EYES)";
+    let diags = lint_e064(source);
+    assert!(
+        diags.is_empty(),
+        "bare EYES in a portion must remain E064-out-of-scope after \
+         banner-form extension; got {diags:?}"
+    );
+}
+
+#[test]
+fn banner_eyes_only_fix_is_idempotent() {
+    // Second pass on the fixed output `SECRET//REL TO USA, AUS, CAN, GBR, NZL`
+    // must be a no-op (fixed-point / idempotent).
+    let source = b"SECRET//EYES ONLY";
+    let pass1 = fix_once(source);
+    assert_eq!(pass1, "SECRET//REL TO USA, AUS, CAN, GBR, NZL");
+    let pass2 = fix_once(pass1.as_bytes());
+    assert_eq!(
+        pass1, pass2,
+        "second fix pass on banner EYES ONLY output must be a no-op"
+    );
+}
+
+#[test]
+fn banner_compound_eyes_only_unordered_list_converts_correctly() {
+    // EYES block with country list in non-USA-first order. The output
+    // must be USA-first with the remaining codes alpha-sorted per §H.3
+    // and §H.8 p150-151.
+    // Authority: CAPCO-2016 §H.8 p150-151 (REL TO USA-first order).
+    let source = b"SECRET//GBR/NZL/USA/AUS/CAN EYES ONLY";
+    let diags = lint_e064(source);
+    assert_eq!(
+        diags.len(),
+        1,
+        "unordered trigraph list must still fire E064; got {diags:?}"
+    );
+    let fixed = fix_once(source);
+    assert_eq!(
+        fixed, "SECRET//REL TO USA, AUS, CAN, GBR, NZL",
+        "REL TO output must be USA-first with remainder alpha-sorted \
+         regardless of input order"
+    );
+}
