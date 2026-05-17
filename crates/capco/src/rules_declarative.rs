@@ -50,8 +50,9 @@
 //! `§B.3` / unpaginated `§H.4` / `§H.6` / `§H.7` in the wrappers
 //! while the catalog already cited the page-precise forms — is
 //! retired; wrappers and catalog rows are now in lockstep across
-//! every shared rule (E010, E012, E014, E015, E016, E021, E024,
-//! W002 retired in the PR closing #470).
+//! every shared rule (E010, E012, E014, E015, E016, E021, E024).
+//! W002 was retired in the PR closing #470 — see the rule-module
+//! header in `crate::rules` for the citation-driven rationale.
 //!
 //! New wrappers MUST cite the same authoritative passage as the
 //! corresponding catalog row, page-precise where the audit
