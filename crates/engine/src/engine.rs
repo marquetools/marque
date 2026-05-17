@@ -892,6 +892,45 @@ impl Engine {
             // — otherwise the parser's MalformedMarking error would skip the
             // continue and leave us accumulating across pages.
             if candidate.kind == MarkingType::PageBreak {
+                // Issue #461: dispatch every `Phase::PageFinalization`
+                // rule against the CLOSING page's fixpoint snapshot
+                // BEFORE the PageContext reset, so the rule observes
+                // every portion that contributed to this page. The
+                // skip on empty pages is in `dispatch_page_finalization`'s
+                // caller (this `if`) so an empty page costs zero rule
+                // dispatches and no `PageContext::project` call. On
+                // deadline expiry the dispatch returns `Err(())`; we
+                // propagate the truncated `LintResult` the same way
+                // the per-candidate deadline check at the top of the
+                // loop does.
+                if !page_context.is_empty()
+                    && dispatch_page_finalization(
+                        &self.rule_sets,
+                        &self.pass_finalization_rule_indices,
+                        &self.fast_path_severities,
+                        &self.emitted_id_overrides,
+                        &page_context,
+                        &mut page_context_arc,
+                        &mut page_marking_arc,
+                        &corrections_arc,
+                        candidate.span.start,
+                        opts.deadline,
+                        &mut diagnostics,
+                    )
+                    .is_err()
+                {
+                    return (
+                        LintResult {
+                            diagnostics,
+                            truncated: true,
+                            candidates_processed,
+                            candidates_total,
+                            recognized_marking_count,
+                            ..Default::default()
+                        },
+                        parsed_markings,
+                    );
+                }
                 page_context = PageContext::new();
                 page_context_arc = None;
                 // PR 9b (T133): the page-marking cache resets on the
@@ -1590,6 +1629,51 @@ impl Engine {
                 parsed_markings
                     .push((candidate.span, marque_capco::CapcoMarking(attrs, marking.1)));
             }
+        }
+
+        // Issue #461: end-of-document PageFinalization dispatch.
+        // After the candidate loop closes, the final page's
+        // PageContext still holds every trailing portion that did
+        // not precede a `MarkingType::PageBreak` boundary. Without
+        // this dispatch, banner-first / single-page layouts (no
+        // closing page-break, no footer banner) would never see
+        // their PageFinalization rules fire — the documented
+        // false-negative W004 had under the pre-#461 Banner-only
+        // firing.
+        //
+        // Skips when the final page is empty (no portions in the
+        // accumulator), mirroring the PageBreak branch above. The
+        // boundary anchor is `source.len()` (the EOD offset). On
+        // deadline expiry the dispatch returns `Err(())` and we
+        // propagate the truncated `LintResult` the same way the
+        // PageBreak branch does.
+        if !page_context.is_empty()
+            && dispatch_page_finalization(
+                &self.rule_sets,
+                &self.pass_finalization_rule_indices,
+                &self.fast_path_severities,
+                &self.emitted_id_overrides,
+                &page_context,
+                &mut page_context_arc,
+                &mut page_marking_arc,
+                &corrections_arc,
+                source.len(),
+                opts.deadline,
+                &mut diagnostics,
+            )
+            .is_err()
+        {
+            return (
+                LintResult {
+                    diagnostics,
+                    truncated: true,
+                    candidates_processed,
+                    candidates_total,
+                    recognized_marking_count,
+                    ..Default::default()
+                },
+                parsed_markings,
+            );
         }
 
         // Pre-scanner text corrections: scan the raw source for
@@ -3919,6 +4003,179 @@ fn partition_rules_by_phase(
         }
     }
     (pass1, pass2, pass_finalization)
+}
+
+/// Dispatch every registered [`Phase::PageFinalization`] rule against
+/// the page-level fixpoint snapshot at a page-boundary anchor offset.
+///
+/// Issue #461. Called by the engine's lint loop at every
+/// scanner-emitted [`marque_ism::MarkingType::PageBreak`] (BEFORE the
+/// PageContext reset, so the dispatched rules see the closing page's
+/// final state) and once at end-of-document (so trailing portions
+/// that never reached a page-break boundary still observe the
+/// fixpoint).
+///
+/// This is a free function rather than an `&self` method on `Engine`
+/// because the inputs are decomposed and the helper has no need for
+/// other engine state. Threading the decomposition explicitly keeps
+/// the contract visible at the call site — every input the dispatch
+/// depends on is named in the parameter list, and a future refactor
+/// can lift it into a different orchestration shape (an iterator
+/// transformation, a streaming dispatch) without spelunking through
+/// `Engine`'s field list.
+///
+/// # Invariants
+///
+/// - `page_context` must be non-empty at call time (the caller
+///   guards on `!page_context.is_empty()`). An empty-page dispatch
+///   produces no useful work and `PageContext::project` would emit
+///   a noisy default. The skip is in the caller so the cost of the
+///   `is_empty()` probe is paid at the boundary, not per rule.
+/// - `page_context_arc` / `page_marking_arc` are mutable `Option`
+///   references because the dispatch path force-initializes both
+///   Arcs (PageFinalization rules expect `Some(_)` for both). The
+///   caller threads the same Arcs through to a possible subsequent
+///   banner/CAB candidate on the same page — except for the
+///   end-of-document call, where the document ends without further
+///   candidates.
+/// - The synthetic boundary candidate carries a zero-length `Span`
+///   at the boundary offset. Rules MAY use that span as a fallback
+///   diagnostic anchor, but typically resolve to a portion span
+///   from `ctx.page_context.portions()` for user-facing precision.
+/// - `candidates_processed` is NOT incremented by this dispatch.
+///   That counter tracks scanner-emitted candidates; the synthetic
+///   PageFinalization candidate is engine-internal.
+///
+/// # Returns
+///
+/// `Ok(())` on a complete dispatch pass. `Err(())` on per-dispatch
+/// deadline expiry — the caller propagates the truncated `LintResult`
+/// shape. The deadline is checked once at the top of the dispatch
+/// (the per-page work is small relative to the per-candidate rule
+/// loop) so an already-expired deadline returns immediately without
+/// invoking any rule.
+#[allow(clippy::too_many_arguments)]
+fn dispatch_page_finalization(
+    rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
+    pass_finalization_rule_indices: &PassFinalizationIndices,
+    fast_path_severities: &FastPathSeverities,
+    emitted_id_overrides: &EmittedIdOverrides,
+    page_context: &marque_ism::PageContext,
+    page_context_arc: &mut Option<Arc<marque_ism::PageContext>>,
+    page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
+    corrections_arc: &Option<Arc<HashMap<String, String>>>,
+    boundary_offset: usize,
+    deadline: Option<Instant>,
+    out_diagnostics: &mut Vec<Diagnostic<CapcoScheme>>,
+) -> Result<(), ()> {
+    use marque_ism::MarkingType;
+    use marque_rules::RuleContext;
+
+    // Deadline guard once at the dispatch boundary. Per-rule
+    // deadline checks would amortize the wall-clock probe across a
+    // very short rule list (currently 1 rule); the boundary-level
+    // check is cheap and keeps the failure mode aligned with the
+    // main candidate loop's pre-iteration check.
+    if deadline_expired(deadline) {
+        return Err(());
+    }
+
+    // PageFinalization rules contract: ctx.page_context AND
+    // ctx.page_marking are both populated. Force-init both Arcs
+    // here BEFORE building the RuleContext so the rule body can
+    // unconditionally read them. Subsequent same-page banner/CAB
+    // candidates reuse these Arcs through the normal lazy path.
+    let page_ctx_arc = page_context_arc
+        .get_or_insert_with(|| Arc::new(page_context.clone()))
+        .clone();
+    let page_mark_arc = page_marking_arc
+        .get_or_insert_with(|| Arc::new(page_context.project()))
+        .clone();
+
+    // Zero-length span at the boundary anchor. Rules use this as
+    // the candidate-span anchor; if the rule wants a user-facing
+    // span on a specific portion, it walks `ctx.page_context.portions()`
+    // and refers to that portion's span (when tracked). PageContext
+    // does not store per-portion spans today; rules that need
+    // sub-page precision fall back to this anchor and document the
+    // limitation.
+    let boundary_span = Span::new(boundary_offset, boundary_offset);
+
+    // PageFinalization rules don't read `attrs`; they read
+    // `ctx.page_context` / `ctx.page_marking`. The dummy attrs are
+    // a `Default::default()` to satisfy the `Rule::check`
+    // signature. We pass `&dummy` so the borrow doesn't outlive the
+    // dispatch loop; rules that try to introspect dummy attrs will
+    // observe `Default` values (e.g., empty `Box<[T]>` collections)
+    // — they would be misimplemented PageFinalization rules anyway.
+    let dummy_attrs = marque_ism::CanonicalAttrs::default();
+
+    // `pre_pass_1_attrs` is `None` because the synthetic boundary
+    // span has no preceding-portion identity in the pre-pass-1
+    // attrs cache (the cache is keyed by content-candidate spans;
+    // a boundary span at offset N never equals one).
+    let ctx = RuleContext::new(MarkingType::PageFinalization, boundary_span)
+        .with_page_context(Some(page_ctx_arc))
+        .with_page_marking(Some(page_mark_arc))
+        .with_corrections(corrections_arc.clone())
+        .with_pre_pass_1_attrs(None);
+
+    // Mirror the main candidate-loop dispatch shape: fast-path
+    // Off-skip via `fast_path_severities[set_idx][rule_idx]`,
+    // `catch_unwind` for untrusted rules, per-diagnostic
+    // emitted-id override via `emitted_id_overrides`. The walker
+    // path (`additional_emitted_ids().is_empty()` is false) gates
+    // on the per-diagnostic override loop below; no
+    // PageFinalization rule today registers walker IDs, but the
+    // shape is preserved for forward compatibility.
+    for &(set_idx, rule_idx) in pass_finalization_rule_indices.iter() {
+        let rule = &rule_sets[set_idx].rules()[rule_idx];
+
+        if rule.additional_emitted_ids().is_empty() {
+            let configured_severity = fast_path_severities[set_idx][rule_idx];
+            if configured_severity == Severity::Off {
+                continue;
+            }
+        }
+
+        let rule_id = rule.id();
+        let mut diags = if rule.trusted() {
+            rule.check(&dummy_attrs, &ctx)
+        } else {
+            match std::panic::catch_unwind(AssertUnwindSafe(|| rule.check(&dummy_attrs, &ctx))) {
+                Ok(d) => d,
+                Err(payload) => {
+                    let msg = panic_payload_to_string(&payload);
+                    tracing::warn!(
+                        target: "marque_engine::rule_panic",
+                        rule = rule_id.as_str(),
+                        error = %msg,
+                        "PageFinalization rule check panicked; skipping this rule for the current page boundary"
+                    );
+                    Vec::new()
+                }
+            }
+        };
+
+        // Per-emitted-id override (Site B equivalent for the
+        // synthetic dispatch). Mirrors the main loop's
+        // `diags.retain_mut` exactly so a `[rules] W004 = "off"`
+        // config silences the rule the same way it would in the
+        // main candidate loop.
+        diags.retain_mut(|d| {
+            match emitted_id_overrides.get(d.rule.as_str()).copied() {
+                Some(Severity::Off) => false,
+                Some(override_severity) => {
+                    d.severity = override_severity;
+                    true
+                }
+                None => true,
+            }
+        });
+        out_diagnostics.extend(diags);
+    }
+
+    Ok(())
 }
 
 /// Pre-resolve all rule severity overrides into two indexed lookup
