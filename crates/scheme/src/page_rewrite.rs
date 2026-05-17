@@ -396,7 +396,7 @@ mod tests {
     use crate::ambiguity::Parsed;
     use crate::category::{Category, TokenId};
     use crate::constraint::{Constraint, ConstraintViolation};
-    use crate::lattice::Lattice;
+    use crate::lattice::{JoinSemilattice, MeetSemilattice};
     use crate::scope::Scope;
     use crate::template::Template;
 
@@ -407,10 +407,13 @@ mod tests {
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct FakeMarking(u32);
 
-    impl Lattice for FakeMarking {
+    impl JoinSemilattice for FakeMarking {
         fn join(&self, other: &Self) -> Self {
             Self(self.0.max(other.0))
         }
+    }
+
+    impl MeetSemilattice for FakeMarking {
         fn meet(&self, other: &Self) -> Self {
             Self(self.0.min(other.0))
         }

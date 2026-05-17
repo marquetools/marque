@@ -172,7 +172,9 @@ mod tests {
     use marque_scheme::category::Category;
     use marque_scheme::constraint::Constraint;
     use marque_scheme::fix_intent::{FactRef, RecanonScope};
-    use marque_scheme::lattice::{BoundedLattice, Lattice};
+    use marque_scheme::lattice::{
+        BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+    };
     use marque_scheme::scope::Scope;
     use marque_scheme::template::Template;
 
@@ -183,19 +185,25 @@ mod tests {
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     struct TestMarking;
 
-    impl Lattice for TestMarking {
+    impl JoinSemilattice for TestMarking {
         fn join(&self, _other: &Self) -> Self {
             TestMarking
         }
+    }
+
+    impl MeetSemilattice for TestMarking {
         fn meet(&self, _other: &Self) -> Self {
             TestMarking
         }
     }
 
-    impl BoundedLattice for TestMarking {
+    impl BoundedJoinSemilattice for TestMarking {
         fn bottom() -> Self {
             TestMarking
         }
+    }
+
+    impl BoundedMeetSemilattice for TestMarking {
         fn top() -> Self {
             TestMarking
         }

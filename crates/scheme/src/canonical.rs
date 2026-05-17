@@ -476,7 +476,9 @@ mod tests {
     use crate::ambiguity::Parsed;
     use crate::category::Category;
     use crate::constraint::Constraint;
-    use crate::lattice::{BoundedLattice, Lattice};
+    use crate::lattice::{
+        BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+    };
     use crate::template::Template;
 
     /// Minimal `MarkingScheme` impl used to instantiate `Canonical<S>`
@@ -487,19 +489,25 @@ mod tests {
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     struct TestMarking;
 
-    impl Lattice for TestMarking {
+    impl JoinSemilattice for TestMarking {
         fn join(&self, _other: &Self) -> Self {
             TestMarking
         }
+    }
+
+    impl MeetSemilattice for TestMarking {
         fn meet(&self, _other: &Self) -> Self {
             TestMarking
         }
     }
 
-    impl BoundedLattice for TestMarking {
+    impl BoundedJoinSemilattice for TestMarking {
         fn bottom() -> Self {
             TestMarking
         }
+    }
+
+    impl BoundedMeetSemilattice for TestMarking {
         fn top() -> Self {
             TestMarking
         }

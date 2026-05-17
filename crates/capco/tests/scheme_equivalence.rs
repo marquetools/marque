@@ -227,7 +227,7 @@ fn project_banner_noforn_supersedes_rel_to() {
 
 #[test]
 fn lattice_join_agrees_with_project_banner_pairwise() {
-    use marque_scheme::Lattice;
+    use marque_scheme::JoinSemilattice;
 
     let mut p1 = portion(Classification::Confidential);
     p1.sci_controls = vec![SciControl::Si].into();
@@ -1234,7 +1234,7 @@ fn sci_set_from_to_roundtrip_agrees_with_page_context() {
     // Lattice path.
     let set1 = SciSet::from_markings(&p1.sci_markings);
     let set2 = SciSet::from_markings(&p2.sci_markings);
-    let joined = marque_scheme::Lattice::join(&set1, &set2);
+    let joined = marque_scheme::JoinSemilattice::join(&set1, &set2);
     let from_lattice = joined.to_markings();
 
     // PageContext path.
@@ -1315,7 +1315,7 @@ fn capco_scheme_templates_slice_returns_empty_in_phase_a() {
 
 #[test]
 fn capco_marking_meet_narrow_components() {
-    use marque_scheme::Lattice;
+    use marque_scheme::MeetSemilattice;
 
     // Exercise the CapcoMarking::meet impl (Phase A narrow
     // component-wise min on classification, SCI, dissem).
@@ -1339,7 +1339,7 @@ fn capco_marking_meet_narrow_components() {
 
 #[test]
 fn capco_marking_meet_with_missing_classification_is_none() {
-    use marque_scheme::Lattice;
+    use marque_scheme::MeetSemilattice;
 
     // One side has no classification → meet.classification = None.
     let a = CanonicalAttrs::default();
