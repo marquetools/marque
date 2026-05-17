@@ -21,7 +21,9 @@
 //!
 //! ## Module layout
 //!
-//! - [`lattice`] — `Lattice`, `BoundedLattice` traits.
+//! - [`lattice`] — `JoinSemilattice`, `MeetSemilattice`,
+//!   `BoundedJoinSemilattice`, `BoundedMeetSemilattice`, and the
+//!   `Lattice` / `BoundedLattice` blanket-impl marker traits.
 //! - [`category`] — `Category`, `AggregationOp`, `Cardinality`,
 //!   `IntraOrdering`, and generic reducers keyed by `AggregationOp`.
 //! - [`constraint`] — declarative `Constraint` invariants.

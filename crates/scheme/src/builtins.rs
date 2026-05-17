@@ -688,8 +688,8 @@ impl BoundedMeetSemilattice for MaxDate {
 /// with join-only inner types (e.g., `OptionalSingleton<DissemSet>`)
 /// can construct values without a `meet` impl. The wrapper implements
 /// [`MeetSemilattice`] conditionally — only when `L: MeetSemilattice`.
-/// This means `OptionalSingleton<L>` is a full [`Lattice`] when `L` is
-/// a full lattice, and a join-semilattice when `L` is join-only.
+/// This means `OptionalSingleton<L>` is a full [`Lattice`](crate::lattice::Lattice)
+/// when `L` is a full lattice, and a join-semilattice when `L` is join-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OptionalSingleton<L: JoinSemilattice>(pub Option<L>);
 
@@ -762,8 +762,8 @@ impl<L: JoinSemilattice + BoundedMeetSemilattice> BoundedMeetSemilattice for Opt
 /// The struct has no algebraic constraint on `A` and `B` — it
 /// implements [`JoinSemilattice`] when both factors do, and
 /// [`MeetSemilattice`] when both factors do. This means `Product<A, B>`
-/// is a full [`Lattice`] when both factors are full lattices, and a
-/// join-semilattice when either factor is join-only.
+/// is a full [`Lattice`](crate::lattice::Lattice) when both factors are full
+/// lattices, and a join-semilattice when either factor is join-only.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Product<A, B>(pub A, pub B);
 

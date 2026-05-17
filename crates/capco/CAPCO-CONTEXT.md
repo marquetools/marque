@@ -188,7 +188,7 @@ PageContext bugs in lock-step:
 
 (PR #456 subsequently split `Lattice` into `JoinSemilattice +
 MeetSemilattice` halves; `DissemSet` and `JointSet` implement only the
-join half — see `docs/plans/2026-05-01-lattice-design.md` §12.)
+join half — see `docs/plans/2026-05-01-lattice-design.md` section 12.)
 
 - OC-USGOV supersession (replaces unanimity-drop) per §H.8 p136 + p140.
 - RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
