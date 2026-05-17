@@ -808,8 +808,8 @@ PY
 # report_fix_latency
 #
 # Advisory (non-gating): runs the `fix_latency` bench and prints the three
-# timings — `fix_single_e001_apply`, `fix_single_e001_dry_run`,
-# `lint_single_e001_baseline` — without enforcing a threshold. There is no
+# timings — `fix_single_e054_apply`, `fix_single_e054_dry_run`,
+# `lint_single_e054_baseline` — without enforcing a threshold. There is no
 # SC-target for per-fix latency yet; this exists so the numbers print
 # alongside the gated benches and so a regression in single-fix throughput
 # is at least visible in CI logs.
@@ -843,9 +843,9 @@ import re, sys
 
 text = sys.argv[1]
 preferred = (
-    "fix_single_e001_apply",
-    "fix_single_e001_dry_run",
-    "lint_single_e001_baseline",
+    "fix_single_e054_apply",
+    "fix_single_e054_dry_run",
+    "lint_single_e054_baseline",
 )
 
 pat = re.compile(
