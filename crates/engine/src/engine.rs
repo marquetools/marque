@@ -10,8 +10,6 @@ use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
 use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
-use secrecy::SecretSlice;
-use zeroize::Zeroizing;
 use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
 use marque_capco::provenance::DecoderProvenance;
@@ -24,9 +22,11 @@ use marque_rules::{
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{MarkingScheme, RewriteId};
+use secrecy::{SecretBox, SecretSlice};
 use std::collections::{HashMap, HashSet};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use zeroize::Zeroizing;
 // See note in `options.rs` — `web_time::Instant` is `std::time::Instant`
 // on native and a Performance.now() polyfill on wasm32-unknown-unknown.
 use web_time::Instant;
@@ -2168,23 +2168,44 @@ type AppliedTuple = (
     HashSet<(RuleId, Span)>,
 );
 
-/// Move a [`Zeroizing<Vec<u8>>`] into a [`SecretSlice<u8>`] without an
-/// extra heap allocation.
+/// Move a [`Zeroizing<Vec<u8>>`] into a [`SecretSlice<u8>`] without
+/// leaking content through a shrink-reallocation.
 ///
-/// `std::mem::take` substitutes the empty [`Vec`] (the
-/// [`Default::default`] for `Vec<u8>`) so the [`Zeroizing`] wrapper
-/// drops without spending a wipe on capacity it never held content
-/// in. The taken bytes flow into the [`SecretSlice`] which carries
-/// its own [`zeroize::Zeroize`]-on-drop guarantee — wipe coverage
-/// transfers from the scratch wrapper to the public output wrapper
-/// without a gap.
+/// The naive `vec.into()` path goes through [`Vec::into_boxed_slice`],
+/// which **may reallocate to shrink** when `capacity > len` — and
+/// the freed source allocation contains the content bytes the
+/// realloc just copied, never wiped. [`splice_fixes_forward`]'s
+/// pre-sized `Vec::with_capacity(source.len() + extra)` lands in
+/// that state whenever a fix shrinks bytes (replacement shorter
+/// than its span), so the channel is reachable on every
+/// shrinking-fix path.
+///
+/// This helper sidesteps the channel by allocating the destination
+/// `Box<[u8]>` separately via [`Box::from`] over a borrowed slice.
+/// The `T: Copy` specialization for `u8` allocates exactly
+/// `slice.len()` bytes through `RawVec::with_capacity` and
+/// constructs the `Box<[u8]>` with `len == slice.len()` — no
+/// shrinking realloc, no freed-and-unwiped buffer. The source
+/// [`Zeroizing<Vec<u8>>`] retains ownership of its (possibly
+/// over-allocated) original buffer through the copy and drops at
+/// end-of-scope, wiping its full capacity via the `Vec<u8>`
+/// [`zeroize::Zeroize`] impl before the Vec's backing memory is
+/// freed.
+///
+/// Trade-off: one additional `len`-byte allocation and memcpy per
+/// fix call (~1µs on 10KB inputs). Constitutional ceilings
+/// (SC-001 16ms p95 on 10KB) remain comfortable.
 ///
 /// Constitution Principle II — the single Zeroizing → SecretSlice
 /// transition for the public `FixResult.source` field. Engine-only
 /// helper; not exported.
 #[inline]
-fn into_secret_slice(mut z: Zeroizing<Vec<u8>>) -> SecretSlice<u8> {
-    std::mem::take(&mut *z).into()
+fn into_secret_slice(z: Zeroizing<Vec<u8>>) -> SecretSlice<u8> {
+    let bytes: Box<[u8]> = Box::from(&z[..]);
+    SecretBox::new(bytes)
+    // `z` drops here. `Zeroizing::drop` wipes its full capacity
+    // (including the over-allocation tail that motivated this
+    // helper) BEFORE the backing Vec frees its buffer.
 }
 
 /// Pre-pass-1 attribute cache entries (PR 7c / FR-023 / R-4).
@@ -5068,7 +5089,11 @@ mod tests {
     fn dry_run_returns_original_source_but_records_applied() {
         let engine = engine_with(vec![proposal("E001", 0, 6, "AA")]);
         let result = engine.fix(TEST_SRC, FixMode::DryRun);
-        assert_eq!(result.source.expose_secret(), TEST_SRC, "dry-run must not mutate source");
+        assert_eq!(
+            result.source.expose_secret(),
+            TEST_SRC,
+            "dry-run must not mutate source"
+        );
         assert_eq!(result.applied.len(), 1);
         assert!(result.applied[0].dry_run, "dry_run flag must be set");
     }
@@ -6721,7 +6746,11 @@ mod tests {
         .expect("engine constructs cleanly");
 
         let result = engine.fix(TEST_SRC, FixMode::DryRun);
-        assert_eq!(result.source.expose_secret(), TEST_SRC, "DryRun must not mutate source");
+        assert_eq!(
+            result.source.expose_secret(),
+            TEST_SRC,
+            "DryRun must not mutate source"
+        );
         assert!(!result.r002_fired);
         let stub_fix = result
             .applied

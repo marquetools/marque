@@ -215,7 +215,8 @@ fn e010_does_not_fire_when_hcs_o_present() {
 fn e010_idempotent_no_auto_fix_application() {
     let result = engine().fix(b"(TS//HCS)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(TS//HCS)\n",
         "no fix should apply on bare HCS (conscious-defer); \
          got: {:?}",

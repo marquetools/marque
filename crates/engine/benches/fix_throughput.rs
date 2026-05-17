@@ -31,8 +31,8 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
-use std::hint::black_box;
 use secrecy::ExposeSecret as _;
+use std::hint::black_box;
 
 /// Build an input of approximately `target_bytes` containing one fixable
 /// `SECRET//NF` banner per ~10.9 KB prose section.  The violation density

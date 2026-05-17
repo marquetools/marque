@@ -38,9 +38,9 @@ use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use proptest::prelude::*;
+use secrecy::ExposeSecret as _;
 use std::collections::HashSet;
 use std::sync::OnceLock;
-use secrecy::ExposeSecret as _;
 
 fn engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();

@@ -61,7 +61,8 @@ fn engine() -> Engine {
 fn e041_fix_round_trip_produces_canonical_nodis_only_portion() {
     let result = engine().fix(b"(S//NF//ND/XD)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(S//NF//ND)\n",
         "E041 round-trip must produce canonical portion with EXDIS \
          removed; got: {:?}",

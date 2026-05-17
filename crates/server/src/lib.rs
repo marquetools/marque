@@ -48,10 +48,10 @@ use axum::{
     routing::{get, post},
 };
 use marque_engine::{Engine, EngineError, FixOptions, LintOptions};
+use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use secrecy::ExposeSecret as _;
 
 // ---------------------------------------------------------------------------
 // Body-size cap (whitepaper §10.2 / gap register #6)
@@ -770,8 +770,8 @@ pub async fn fix_handler(
         &fix_opts,
     ) {
         Ok(result) => {
-            let fixed =
-                String::from_utf8(result.source.expose_secret().to_vec()).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+            let fixed = String::from_utf8(result.source.expose_secret().to_vec())
+                .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
             Ok(Json(FixResponse {
                 fixed_text: fixed,
                 applied_count: result.applied.len(),

@@ -72,7 +72,8 @@ fn engine() -> Engine {
 fn round_trip_e053_removes_rel_to_when_noforn_present() {
     let result = engine().fix(b"(S//NF//REL TO USA, GBR)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(S//NF)\n",
         "E053 round-trip must produce canonical NOFORN-only portion \
          with REL TO axis cleared; got: {:?}",
@@ -152,7 +153,9 @@ fn e053_idempotent_after_one_pass() {
 #[test]
 fn e053_does_not_fire_when_rel_to_absent() {
     let result = engine().fix(b"(S//NF)\n", FixMode::Apply);
-    assert_eq!(result.source.expose_secret(), b"(S//NF)\n",
+    assert_eq!(
+        result.source.expose_secret(),
+        b"(S//NF)\n",
         "no fix should apply on clean portion"
     );
     assert!(

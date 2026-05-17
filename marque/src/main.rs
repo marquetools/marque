@@ -18,11 +18,11 @@ mod render;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use marque_capco::capco_rules;
 use marque_engine::{Engine, EngineError, FixOptions, LintOptions};
+use secrecy::ExposeSecret as _;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, Instant};
-use secrecy::ExposeSecret as _;
 
 const EX_OK: i32 = 0;
 const EX_DIAG_ERROR: i32 = 1;
@@ -862,7 +862,9 @@ fn run_fix(
                     .unwrap_or_else(|| std::path::Path::new("."));
                 match tempfile::NamedTempFile::new_in(dir) {
                     Ok(mut tmp) => {
-                        if let Err(e) = std::io::Write::write_all(&mut tmp, result.source.expose_secret()) {
+                        if let Err(e) =
+                            std::io::Write::write_all(&mut tmp, result.source.expose_secret())
+                        {
                             eprintln!("error writing temp file: {e}");
                             return EX_IOERR;
                         }
@@ -881,7 +883,9 @@ fn run_fix(
 
         if should_write_stdout {
             let mut stdout_lock = stdout.lock();
-            if let Err(e) = std::io::Write::write_all(&mut stdout_lock, result.source.expose_secret()) {
+            if let Err(e) =
+                std::io::Write::write_all(&mut stdout_lock, result.source.expose_secret())
+            {
                 eprintln!("error writing to stdout: {e}");
                 return EX_IOERR;
             }

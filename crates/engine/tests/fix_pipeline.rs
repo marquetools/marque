@@ -14,9 +14,9 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock, LintResult};
+use secrecy::ExposeSecret as _;
 use serde_json::json;
 use std::time::{Duration, UNIX_EPOCH};
-use secrecy::ExposeSecret as _;
 
 /// Fixed timestamp for deterministic audit records.
 const FIXED_TS: u64 = 1_700_000_000; // 2023-11-14T22:13:20Z

@@ -351,7 +351,8 @@ fn e012_does_not_fire_on_pure_us_banner() {
 fn e012_idempotent_no_auto_fix_application() {
     let result = engine().fix(b"SECRET//NATO SECRET//NOFORN\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"SECRET//NATO SECRET//NOFORN\n",
         "no fix should apply on dual-classification Conflict \
          (conscious-defer); got: {:?}",

@@ -16,8 +16,8 @@ use marque_engine::{Engine, FixMode};
 use marque_test_utils::{
     corpus_root, invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
 };
-use std::collections::HashMap;
 use secrecy::ExposeSecret as _;
+use std::collections::HashMap;
 
 /// Default-engine corpus-accuracy gate.
 ///

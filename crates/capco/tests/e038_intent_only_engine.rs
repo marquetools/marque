@@ -60,7 +60,8 @@ fn engine() -> Engine {
 fn round_trip_e038_adds_noforn_to_nodis_portion() {
     let result = engine().fix(b"(S//ND)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(S//NF//ND)\n",
         "E038 round-trip must produce canonical portion with NOFORN \
          added before the non-IC dissem block; got: {:?}",
@@ -106,7 +107,8 @@ fn round_trip_e038_adds_noforn_to_nodis_portion() {
 fn round_trip_e038_adds_noforn_to_exdis_portion() {
     let result = engine().fix(b"(S//XD)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(S//NF//XD)\n",
         "E038 EXDIS-branch round-trip must produce canonical portion \
          with NOFORN added before the non-IC dissem block; got: {:?}",
@@ -237,7 +239,8 @@ fn e038_idempotent_after_one_pass() {
 fn e038_fr016_split_against_e037() {
     let result = engine().fix(b"(S//ND/XD)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(S//NF//ND)\n",
         "FR-016 split: E038's FactAdd(NOFORN) and E041's FactRemove(EXDIS) \
          must both apply atomically despite E037 (no-fix) firing on the \

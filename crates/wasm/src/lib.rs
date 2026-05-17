@@ -140,12 +140,12 @@ use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
+use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use secrecy::ExposeSecret as _;
 // Single-threaded allocator: WasmDynamicTalc grows WASM memory via memory.grow and
 // carries no spinlock overhead. Active when `talc_alloc` is set without
 // `multi-threading` or `talc_debug`.

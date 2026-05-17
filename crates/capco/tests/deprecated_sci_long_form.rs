@@ -22,8 +22,8 @@ use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
 use marque_rules::Severity;
-use std::time::{Duration, UNIX_EPOCH};
 use secrecy::ExposeSecret as _;
+use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
 

@@ -41,9 +41,9 @@ use marque_rules::{
     RuleId, RuleSet, Severity,
 };
 use marque_scheme::{FactRef, ReplacementIntent, Scope};
+use secrecy::ExposeSecret as _;
 use smallvec::SmallVec;
 use std::time::{Duration, UNIX_EPOCH};
-use secrecy::ExposeSecret as _;
 
 const FIXED_TS: u64 = 1_700_000_000;
 

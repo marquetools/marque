@@ -12,8 +12,8 @@ use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use proptest::prelude::*;
-use std::sync::OnceLock;
 use secrecy::ExposeSecret as _;
+use std::sync::OnceLock;
 
 // Build the engine once per test binary; constructing the Aho-Corasick
 // automaton on every proptest case would dominate the runtime.

@@ -59,7 +59,8 @@ fn engine() -> Engine {
 fn e024_fix_round_trip_removes_frd_when_rd_present() {
     let result = engine().fix(b"(TS//RD//FRD//NF)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(TS//RD//NF)\n",
         "E024 round-trip must produce (TS//RD//NF) with FRD removed; \
          got: {:?}",
@@ -85,7 +86,8 @@ fn e024_fix_round_trip_removes_frd_when_rd_present() {
 fn e024_fix_round_trip_removes_tfni_when_rd_present() {
     let result = engine().fix(b"(TS//RD//TFNI//NF)\n", FixMode::Apply);
 
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(TS//RD//NF)\n",
         "E024 round-trip must produce (TS//RD//NF) with TFNI removed; \
          got: {:?}",
@@ -121,7 +123,8 @@ fn e024_atomic_cluster_removes_both_frd_and_tfni_in_one_audit_entry() {
     let result = engine().fix(b"(TS//RD//FRD//TFNI//NF)\n", FixMode::Apply);
 
     // Byte-level round-trip: both FRD and TFNI removed in one pass.
-    assert_eq!(result.source.expose_secret(),
+    assert_eq!(
+        result.source.expose_secret(),
         b"(TS//RD//NF)\n",
         "E024 atomic-cluster must produce (TS//RD//NF) with both FRD and \
          TFNI removed in one pass; got: {:?}",
