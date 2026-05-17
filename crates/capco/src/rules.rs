@@ -3220,7 +3220,13 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                         )
                         .to_owned(),
                         "CAPCO-2016 §H.8 p157 + p158",
-                        "REL TO USA, AUS, CAN, GBR, NZL".to_owned(),
+                        build_rel_to_replacement(&[
+                            CountryCode::USA,
+                            CountryCode::AUS,
+                            CountryCode::CAN,
+                            CountryCode::GBR,
+                            CountryCode::NZL,
+                        ]),
                         FixSource::BuiltinRule,
                         Confidence::strict(1.0),
                         None,
