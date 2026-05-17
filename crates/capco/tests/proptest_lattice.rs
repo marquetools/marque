@@ -14,7 +14,7 @@ use marque_ism::{
     CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
     SciControlBare, SciControlSystem, SciMarking,
 };
-use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+use marque_scheme::{JoinSemilattice, MeetSemilattice};
 use proptest::prelude::*;
 use smol_str::SmolStr;
 

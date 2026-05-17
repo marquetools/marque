@@ -28,7 +28,7 @@
 
 use marque_capco::lattice::{AeaPrimary, AeaSet, UcniKind};
 use marque_ism::{AeaMarking, AtomalBlock, FrdBlock, RdBlock};
-use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+use marque_scheme::JoinSemilattice;
 
 // ===========================================================================
 // AEA: RD evicts FRD / TFNI (§H.6 p104)

@@ -96,8 +96,6 @@ const _: fn() = || {
 
 #[test]
 fn full_lattice_join_and_meet_via_blanket() {
-    use marque_scheme::lattice::Lattice;
-
     let a = FullLattice(3);
     let b = FullLattice(7);
     // `join` and `meet` are now on `JoinSemilattice`/`MeetSemilattice`,

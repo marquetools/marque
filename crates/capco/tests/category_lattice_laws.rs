@@ -24,7 +24,7 @@ use std::collections::BTreeSet;
 
 use marque_capco::lattice::{AeaPrimary, AeaSet, UcniKind};
 use marque_ism::{AeaMarking, AtomalBlock, FrdBlock, RdBlock};
-use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+use marque_scheme::{JoinSemilattice, MeetSemilattice};
 use proptest::prelude::*;
 
 // ===========================================================================
@@ -499,10 +499,7 @@ fn aea_set_meet_join_absorption() {
 mod classification_lattice {
     use marque_capco::ClassificationLattice;
     use marque_ism::{Classification, MarkingClassification};
-    use marque_scheme::{
-        BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
-        MeetSemilattice,
-    };
+    use marque_scheme::{BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice};
 
     fn lvl(c: Classification) -> ClassificationLattice {
         ClassificationLattice::new(Some(MarkingClassification::Us(c)))
@@ -1158,10 +1155,7 @@ mod classification_lattice {
 mod nato_class_lattice {
     use marque_capco::NatoClassLattice;
     use marque_ism::NatoClassification;
-    use marque_scheme::{
-        BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
-        MeetSemilattice,
-    };
+    use marque_scheme::{BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice};
 
     const ALL: [NatoClassification; 5] = [
         NatoClassification::NatoUnclassified,
@@ -1224,7 +1218,7 @@ mod nato_class_lattice {
 mod declassify_on_lattice {
     use marque_capco::DeclassifyOnLattice;
     use marque_ism::IsmDate;
-    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+    use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
     fn d(y: i32, m: u8, day: u8) -> DeclassifyOnLattice {
         DeclassifyOnLattice::new(Some(IsmDate::Date(y, m, day)))
@@ -1298,7 +1292,7 @@ mod declassify_on_lattice {
 mod dissem_set {
     use marque_capco::DissemSet;
     use marque_ism::{CanonicalAttrs, DissemControl};
-    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+    use marque_scheme::JoinSemilattice;
     use proptest::prelude::*;
 
     fn portion(controls: &[DissemControl]) -> CanonicalAttrs {
@@ -1535,7 +1529,7 @@ mod dissem_set {
 mod nato_dissem_set {
     use marque_capco::NatoDissemSet;
     use marque_ism::{CanonicalAttrs, DissemControl};
-    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+    use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
     fn portion(controls: &[DissemControl]) -> CanonicalAttrs {
         let mut a = CanonicalAttrs::default();
@@ -1620,7 +1614,7 @@ mod joint_set {
     use marque_ism::{
         CanonicalAttrs, Classification, CountryCode, JointClassification, MarkingClassification,
     };
-    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+    use marque_scheme::JoinSemilattice;
     use proptest::prelude::*;
 
     fn cc(s: &str) -> CountryCode {
@@ -1934,7 +1928,7 @@ mod joint_set {
 mod rel_to_block {
     use marque_capco::RelToBlock;
     use marque_ism::{CanonicalAttrs, CountryCode, DissemControl, NonIcDissem};
-    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+    use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
     fn cc(s: &str) -> CountryCode {
         CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
@@ -2199,7 +2193,7 @@ mod rel_to_block {
 mod fgi_set_concealed_top {
     use marque_capco::lattice::FgiSet;
     use marque_ism::{CountryCode, FgiMarker};
-    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
+    use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
     fn gbr() -> CountryCode {
         CountryCode::try_new(b"GBR").expect("GBR")
