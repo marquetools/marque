@@ -25,9 +25,8 @@
 //! | `Conflict { .. }` | no | no | no | no |
 //! | dissem-axis fgi_marker only (`Us` cls, `fgi_marker = Some(_)`) | no | no | yes (dual-axis) | no |
 //!
-//! Authority: CAPCO-2016 §H.7 p123 (FGI grammar — singular-owner
-//! invariant for the classification axis); CAPCO-2016 §H.3 p56 (JOINT
-//! classification); CAPCO-2016 §H.2 p55 (NATO classification);
+//! Authority: CAPCO-2016 §H.3 p56 (JOINT classification);
+//! CAPCO-2016 §H.2 p55 (NATO classification);
 //! `crates/capco/src/scheme/predicates/satisfies.rs` doc block
 //! ("Per-variant classification emission" — the in-tree authority for
 //! the emission contract).
@@ -147,10 +146,10 @@ fn fgi_acknowledged_matches_fgi_class_and_fgi_marker_dual_axis() {
 
 #[test]
 fn fgi_concealed_matches_fgi_class_and_fgi_marker_dual_axis() {
-    // CAPCO-2016 §H.7 p123: source-concealed FGI has 0 countries
-    // (`//FGI S`). The classification-axis sentinel matching is the
-    // same as the acknowledged case — variant identity, not country
-    // population, drives the per-variant emission.
+    // Source-concealed FGI has 0 countries (`//FGI S`, per CAPCO-2016
+    // §H.7 p123 worked example `(//FGI TS)`). The classification-axis
+    // sentinel matching is the same as the acknowledged case — variant
+    // identity, not country population, drives the per-variant emission.
     let scheme = CapcoScheme::new();
     let m = wrap(fgi_concealed());
     assert!(scheme.satisfies(&m, &TokenRef::Token(TOK_FGI_CLASS)));

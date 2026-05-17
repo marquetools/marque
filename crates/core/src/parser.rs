@@ -2276,24 +2276,16 @@ fn parse_joint_classification(s: &str) -> Option<JointClassification> {
     })
 }
 
-/// Parse an FGI classification block: `"GBR S"`, `"DEU TS"`, or `"FGI S"`
-/// (FGI as placeholder for unknown country).
+/// Parse an FGI classification block: `"GBR S"`, `"DEU TS"`, `"GBR DEU S"`,
+/// or `"FGI S"` (FGI as placeholder for unknown country).
 ///
-/// Format: a single country trigraph (or "FGI" placeholder) + classification
-/// level. Countries are space-delimited. The last token is the
-/// classification level.
+/// Format: one or more country trigraphs (or "FGI") + classification level.
+/// Countries are space-delimited. The last token is the classification level.
 ///
-/// # Singular-owner invariant (CAPCO-2016 §H.7 p123)
-///
-/// Per CAPCO-2016 §H.7 p123, the `//[trigraph] [class]` portion form is
-/// always singular ownership (`(//DEU S)`, `(//FRA R)`, never
-/// `(//GBR JPN SECRET)`). Multi-owner FGI routes through the FGI **marker**
-/// axis ([`marque_ism::FgiMarker::Acknowledged`]) — e.g.
-/// `SECRET//FGI GBR DEU//NF` — or through [`marque_ism::JointClassification`]
-/// for co-ownership. The classification axis never carries >1 country.
-///
-/// This function therefore returns `None` if more than one trigraph
-/// precedes the level token.
+/// Multi-country FGI at the classification axis is authoritative per
+/// CAPCO-2016 §H.7 p123 worked example `(//CAN GBR S)` and the §H.7 p124
+/// prose ("Multiple FGI countries must be listed alphabetically and
+/// separated by a single space"; ICD 206 commingling clause).
 ///
 /// Returns `None` if no classification level is found (e.g., bare `"FGI"` with
 /// no level — that's an error, not a valid FGI classification).
@@ -2335,20 +2327,6 @@ fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {
             return None; // Not a trigraph or "FGI"
         }
     }
-
-    // FGI singular-owner invariant per CAPCO-2016 §H.7 p123:
-    // `//[trigraph] [class]` portion form is always singular ownership
-    // (`(//DEU S)`, `(//FRA R)`, never `(//GBR JPN SECRET)`). Multi-
-    // owner FGI routes through `FgiMarker::Acknowledged` (banner-level
-    // commingled form) or `JointClassification` (co-ownership). See
-    // `FgiClassification` doc-comment for the full discussion.
-    if countries.len() > 1 {
-        return None;
-    }
-    debug_assert!(
-        countries.len() <= 1,
-        "FgiClassification.countries must be 0 (concealed) or 1 (acknowledged) per CAPCO-2016 §H.7 p123"
-    );
 
     Some(FgiClassification {
         countries: countries.into_boxed_slice(),
@@ -4313,23 +4291,15 @@ mod tests {
     }
 
     #[test]
-    fn fgi_multiple_countries_rejected_at_classification_level() {
-        // CAPCO-2016 §H.7 p123: `//[trigraph] [class]` portion grammar
-        // is singular ownership. Multi-owner FGI routes through the
-        // FGI **marker** axis (`SECRET//FGI GBR DEU//...`), not the
-        // classification axis. Multi-country at the classification
-        // position must fail to parse rather than silently mint an
-        // invalid `FgiClassification` with >1 country. See
-        // `FgiClassification` doc-comment in `crates/ism/src/attrs.rs`.
+    fn fgi_multiple_countries_parses() {
         let parsed = parse_banner("//GBR DEU TS//NF");
-        assert!(
-            !matches!(
-                parsed.attrs.classification,
-                Some(MarkingClassification::Fgi(_))
-            ),
-            "multi-country at FGI classification position must not parse as Fgi: {:?}",
-            parsed.attrs.classification,
-        );
+        match &parsed.attrs.classification {
+            Some(MarkingClassification::Fgi(f)) => {
+                assert_eq!(f.level, Classification::TopSecret);
+                assert_eq!(f.countries.len(), 2);
+            }
+            other => panic!("expected Fgi, got: {other:?}"),
+        }
     }
 
     #[test]

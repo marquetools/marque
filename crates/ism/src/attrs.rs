@@ -654,30 +654,25 @@ impl Classification {
 ///
 /// Two forms exist:
 ///
-/// - **Source-acknowledged**: a single country trigraph identifies the
-///   originator. `//GBR S//REL TO USA, GBR`
-/// - **Source-concealed**: `FGI` replaces the country trigraph when
+/// - **Source-acknowledged**: country trigraph(s) identify the originator.
+///   `//GBR S//REL TO USA, GBR` (single owner) or `//CAN GBR S` (multiple
+///   producers per the §H.7 p123 worked example `(//CAN GBR S)` and §H.7
+///   p124 prose authorizing multi-country FGI alphabetically space-
+///   separated; ICD 206 commingling clause).
+/// - **Source-concealed**: `FGI` replaces the country trigraph(s) when
 ///   the originating country is sensitive. `//FGI S//REL TO USA, GBR`
 ///   An empty `countries` list indicates source-concealed FGI.
 ///
-/// # Singular-owner invariant (CAPCO-2016 §H.7 p123)
+/// Countries are space-delimited in the source marking.
 ///
-/// Per CAPCO-2016 §H.7 p123 portion grammar, `//[trigraph] [class]` is
-/// **always singular ownership** (`(//DEU S)`, `(//FRA R)`, never
-/// `(//GBR JPN SECRET)`). Multi-owner FGI is expressed through:
+/// # Disambiguation from sibling axes
 ///
-/// - The **FGI marker** axis ([`FgiMarker::Acknowledged`]) for commingled
-///   banner forms like `SECRET//FGI DEU GBR//REL TO USA, DEU, GBR`,
-///   where multiple foreign producers co-exist on the dissem axis but
-///   the document's *classification* is US.
-/// - **JOINT classification** ([`JointClassification`]) for co-ownership
-///   where the US is one of the producers.
-///
-/// `FgiClassification.countries` therefore carries either 0 elements
-/// (concealed source) or exactly 1 element (acknowledged single-owner).
-/// The strict parser (`crates/core/src/parser.rs::parse_fgi_classification`)
-/// enforces this at construction; test fixtures that exercise edge cases
-/// should respect the invariant.
+/// - [`FgiMarker`] is a **dissem-axis** marker for commingled US+FGI
+///   banner forms (`SECRET//FGI GBR DEU//...`), separate from the
+///   classification axis modeled here. The two can coexist.
+/// - [`JointClassification`] models US-inclusive co-ownership where
+///   the US is itself one of the producers. `FgiClassification` is the
+///   non-US classification axis and does not include the US.
 ///
 /// # Banner aggregation
 ///
@@ -688,14 +683,8 @@ impl Classification {
 /// during banner validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FgiClassification {
-    /// Originating country trigraph (space-delimited in source).
-    ///
-    /// Per CAPCO-2016 §H.7 p123 (`//[trigraph] [class]` portion form),
-    /// this carries **0 elements** for source-concealed FGI (`//FGI S`)
-    /// or **exactly 1 element** for source-acknowledged single-owner
-    /// FGI (`//GBR S`). Multi-owner forms route through
-    /// [`FgiMarker::Acknowledged`] (commingled banner) or
-    /// [`JointClassification`] (co-ownership); they never appear here.
+    /// Originating countries (space-delimited in source).
+    /// Empty for source-concealed FGI (`//FGI S//...`).
     pub countries: Box<[CountryCode]>,
     /// Classification level (includes RESTRICTED).
     pub level: Classification,
