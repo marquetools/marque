@@ -121,7 +121,13 @@ impl SciSet {
                 continue;
             }
             for comp in m.compartments.iter() {
-                let sub_set = comp_map.entry(comp.identifier.to_string()).or_default();
+                if !comp_map.contains_key(comp.identifier.as_ref()) {
+                    comp_map.insert(
+                        comp.identifier.to_string(),
+                        Default::default(),
+                    );
+                }
+                let sub_set = comp_map.get_mut(comp.identifier.as_ref()).unwrap();
                 sub_set.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
@@ -302,9 +308,21 @@ impl SarSet {
             return out;
         };
         for prog in sar.programs.iter() {
-            let comps = out.programs.entry(prog.identifier.to_string()).or_default();
+            if !out.programs.contains_key(prog.identifier.as_ref()) {
+                out.programs.insert(
+                    prog.identifier.to_string(),
+                    Default::default(),
+                );
+            }
+            let comps = out.programs.get_mut(prog.identifier.as_ref()).unwrap();
             for comp in prog.compartments.iter() {
-                let subs = comps.entry(comp.identifier.to_string()).or_default();
+                if !comps.contains_key(comp.identifier.as_ref()) {
+                    comps.insert(
+                        comp.identifier.to_string(),
+                        Default::default(),
+                    );
+                }
+                let subs = comps.get_mut(comp.identifier.as_ref()).unwrap();
                 subs.extend(comp.sub_compartments.iter().map(ToString::to_string));
             }
         }
