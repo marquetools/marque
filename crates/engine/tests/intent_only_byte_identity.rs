@@ -41,6 +41,7 @@ use marque_rules::{
     RuleId, RuleSet, Severity,
 };
 use marque_scheme::{FactRef, ReplacementIntent, Scope};
+use secrecy::ExposeSecret as _;
 use smallvec::SmallVec;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -149,7 +150,7 @@ fn intent_only_path_removes_relido_from_portion() {
     let result = engine.fix(source, FixMode::Apply);
 
     assert_eq!(
-        std::str::from_utf8(&result.source).unwrap(),
+        std::str::from_utf8(result.source.expose_secret()).unwrap(),
         "(S)",
         "intent-only synthesis must remove RELIDO and re-render the portion canonically"
     );
@@ -280,7 +281,7 @@ fn intent_only_path_below_threshold_becomes_suggest() {
 
     // Below-threshold intent-only diagnostics must not auto-apply.
     assert_eq!(
-        std::str::from_utf8(&result.source).unwrap(),
+        std::str::from_utf8(result.source.expose_secret()).unwrap(),
         "(S//RELIDO)",
         "source must be unchanged when intent-only confidence is below threshold"
     );
@@ -423,7 +424,7 @@ fn intent_only_path_collapses_multi_diagnostic_group_to_one_fix_proposal() {
     // Both intents applied atomically through scheme.apply_intent: NF
     // and RELIDO removed, only S remains in the portion.
     assert_eq!(
-        std::str::from_utf8(&result.source).unwrap(),
+        std::str::from_utf8(result.source.expose_secret()).unwrap(),
         "(S)",
         "atomic multi-intent batch must remove both NF and RELIDO"
     );
@@ -571,7 +572,7 @@ fn intent_only_path_collapses_multi_rule_same_candidate_to_lex_min_rule_id() {
 
     // Both intents applied atomically: NF AND RELIDO removed.
     assert_eq!(
-        std::str::from_utf8(&result.source).unwrap(),
+        std::str::from_utf8(result.source.expose_secret()).unwrap(),
         "(S)",
         "atomic multi-intent batch must remove both NF and RELIDO"
     );
@@ -687,7 +688,7 @@ fn intent_only_path_preserves_leading_whitespace_on_banner() {
     let source = b"    SECRET//NOFORN\n";
     let result = engine.fix(source, FixMode::Apply);
 
-    let out = std::str::from_utf8(&result.source).unwrap();
+    let out = std::str::from_utf8(result.source.expose_secret()).unwrap();
     assert!(
         out.starts_with("    "),
         "leading 4-space indentation must be preserved across intent-only synthesis \
@@ -711,7 +712,7 @@ fn intent_only_path_preserves_trailing_whitespace_on_banner() {
     let source = b"SECRET//NOFORN   \n";
     let result = engine.fix(source, FixMode::Apply);
 
-    let out = std::str::from_utf8(&result.source).unwrap();
+    let out = std::str::from_utf8(result.source.expose_secret()).unwrap();
     assert!(
         out.ends_with("   \n"),
         "trailing 3-space-then-newline must be preserved (got: {out:?})"
@@ -735,7 +736,7 @@ fn intent_only_path_preserves_surrounding_whitespace_on_portion() {
     let source = b"  (S//RELIDO)  \n";
     let result = engine.fix(source, FixMode::Apply);
 
-    let out = std::str::from_utf8(&result.source).unwrap();
+    let out = std::str::from_utf8(result.source.expose_secret()).unwrap();
     assert_eq!(
         out, "  (S)  \n",
         "surrounding whitespace OUTSIDE the portion candidate must be preserved verbatim"

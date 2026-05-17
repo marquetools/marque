@@ -57,6 +57,7 @@ use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
 use marque_rules::{AppliedFix, AppliedFixProposal, FixSource};
+use secrecy::ExposeSecret as _;
 
 // ---------------------------------------------------------------------------
 // Baseline fixtures — captured at merge-base 30e11b0d
@@ -174,7 +175,7 @@ fn e054_simple_synthesized_matches_pre_pr3c_baseline() {
     assert!(synth.migration_ref.is_none());
 
     // Post-fix source: RELIDO removed.
-    assert_eq!(result.source, b"(S//NF)\n");
+    assert_eq!(result.source.expose_secret(), b"(S//NF)\n");
 }
 
 #[test]
@@ -195,7 +196,7 @@ fn e054_multi_synthesized_matches_pre_pr3c_baseline() {
     assert_eq!(synth.span.end, 17, "e054_multi: span.end drifted");
     assert_eq!(synth.original.as_ref(), "/RELIDO");
     assert_eq!(synth.replacement.as_ref(), "");
-    assert_eq!(result.source, b"(S//NF/IMC)\n");
+    assert_eq!(result.source.expose_secret(), b"(S//NF/IMC)\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -215,5 +216,5 @@ fn e057_simple_synthesized_matches_pre_pr3c_baseline() {
     assert_eq!(synth.span.end, 19, "e057_simple: span.end drifted");
     assert_eq!(synth.original.as_ref(), "/RELIDO");
     assert_eq!(synth.replacement.as_ref(), "");
-    assert_eq!(result.source, b"(S//OC-USGOV)\n");
+    assert_eq!(result.source.expose_secret(), b"(S//OC-USGOV)\n");
 }

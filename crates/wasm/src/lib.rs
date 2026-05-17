@@ -140,6 +140,7 @@ use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
 use marque_rules::{AppliedFix, Diagnostic, FixSource};
+use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -895,7 +896,7 @@ pub fn fix_native(
                 Err(e) => return Err(e.to_string()),
             };
 
-            let fixed_text = String::from_utf8(result.source)
+            let fixed_text = String::from_utf8(result.source.expose_secret().to_vec())
                 .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
 
             let applied: Vec<Box<serde_json::value::RawValue>> = result

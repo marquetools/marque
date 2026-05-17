@@ -35,6 +35,7 @@ use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::Severity;
+use secrecy::ExposeSecret as _;
 use std::sync::OnceLock;
 
 fn engine() -> &'static Engine {
@@ -127,7 +128,10 @@ fn i2_fix_does_not_introduce_new_defects_on_clean_input() {
     let src = b"SECRET//NOFORN\n(S//NF)\n";
     let before = engine().lint(src).diagnostics.len();
     let result = engine().fix(src, FixMode::Apply);
-    let after = engine().lint(&result.source).diagnostics.len();
+    let after = engine()
+        .lint(result.source.expose_secret())
+        .diagnostics
+        .len();
     assert!(
         after <= before,
         "fix introduced diagnostics on clean input: before={before} after={after}"
@@ -143,7 +147,7 @@ fn i2_fix_strictly_reduces_diagnostics_on_correctable_input() {
     let src = b"SERCET//NOFORN\n(S//NF)\n";
     let before = eng.lint(src).diagnostics.len();
     let result = eng.fix(src, FixMode::Apply);
-    let after = eng.lint(&result.source).diagnostics.len();
+    let after = eng.lint(result.source.expose_secret()).diagnostics.len();
     assert!(
         after <= before,
         "fix introduced diagnostics: before={before} after={after}"
@@ -305,7 +309,8 @@ fn dry_run_audit_records_carry_dry_run_flag() {
     // the audit stream tells the truth about what was promoted,
     // but the caller sees the untouched buffer).
     assert_eq!(
-        result.source, src,
+        result.source.expose_secret(),
+        src,
         "DryRun mode should not modify the source buffer"
     );
 }

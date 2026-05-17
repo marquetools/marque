@@ -47,6 +47,7 @@ use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
 use marque_rules::AppliedFixProposal;
+use secrecy::ExposeSecret as _;
 
 fn engine() -> Engine {
     Engine::with_clock(
@@ -72,11 +73,11 @@ fn round_trip_e053_removes_rel_to_when_noforn_present() {
     let result = engine().fix(b"(S//NF//REL TO USA, GBR)\n", FixMode::Apply);
 
     assert_eq!(
-        result.source,
+        result.source.expose_secret(),
         b"(S//NF)\n",
         "E053 round-trip must produce canonical NOFORN-only portion \
          with REL TO axis cleared; got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     assert!(
@@ -153,7 +154,8 @@ fn e053_idempotent_after_one_pass() {
 fn e053_does_not_fire_when_rel_to_absent() {
     let result = engine().fix(b"(S//NF)\n", FixMode::Apply);
     assert_eq!(
-        result.source, b"(S//NF)\n",
+        result.source.expose_secret(),
+        b"(S//NF)\n",
         "no fix should apply on clean portion"
     );
     assert!(

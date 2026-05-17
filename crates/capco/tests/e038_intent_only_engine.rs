@@ -35,6 +35,7 @@
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
+use secrecy::ExposeSecret as _;
 
 fn engine() -> Engine {
     Engine::with_clock(
@@ -60,11 +61,11 @@ fn round_trip_e038_adds_noforn_to_nodis_portion() {
     let result = engine().fix(b"(S//ND)\n", FixMode::Apply);
 
     assert_eq!(
-        result.source,
+        result.source.expose_secret(),
         b"(S//NF//ND)\n",
         "E038 round-trip must produce canonical portion with NOFORN \
          added before the non-IC dissem block; got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     let e038 = result
@@ -107,11 +108,11 @@ fn round_trip_e038_adds_noforn_to_exdis_portion() {
     let result = engine().fix(b"(S//XD)\n", FixMode::Apply);
 
     assert_eq!(
-        result.source,
+        result.source.expose_secret(),
         b"(S//NF//XD)\n",
         "E038 EXDIS-branch round-trip must produce canonical portion \
          with NOFORN added before the non-IC dissem block; got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     assert!(
@@ -155,7 +156,7 @@ fn e038_scans_past_other_non_ic_dissem_to_find_trigger() {
     // renderer's `render_non_ic_dissem` priority table — assert that
     // NOFORN is present in the output as the load-bearing property,
     // not the exact byte arrangement of the trailing block.
-    let s = std::str::from_utf8(&result.source).unwrap_or("<non-utf8>");
+    let s = std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>");
     assert!(
         s.contains("NF"),
         "E038 fix must place NOFORN in the output; got: {s:?}",
@@ -239,12 +240,12 @@ fn e038_fr016_split_against_e037() {
     let result = engine().fix(b"(S//ND/XD)\n", FixMode::Apply);
 
     assert_eq!(
-        result.source,
+        result.source.expose_secret(),
         b"(S//NF//ND)\n",
         "FR-016 split: E038's FactAdd(NOFORN) and E041's FactRemove(EXDIS) \
          must both apply atomically despite E037 (no-fix) firing on the \
          same candidate; got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     let applied_ids: Vec<&str> = result.applied.iter().map(|af| af.rule.as_str()).collect();

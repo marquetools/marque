@@ -48,6 +48,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use marque_rules::{AppliedFixProposal, FixSource, Severity};
 use marque_scheme::{FactRef, RecanonScope, ReplacementIntent, ReplacementIntent::FactAdd, Scope};
+use secrecy::ExposeSecret as _;
 
 // ---------------------------------------------------------------------------
 // Engine helpers
@@ -169,7 +170,7 @@ fn e054_promotes_through_engine_as_new_variant() {
     }
 
     // Post-fix source: RELIDO removed.
-    assert_eq!(result.source, b"(S//NF)");
+    assert_eq!(result.source.expose_secret(), b"(S//NF)");
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +232,7 @@ fn e057_promotes_through_engine_as_new_variant() {
         }
         AppliedFixProposal::Legacy(_) => panic!("E057 must promote as New"),
     }
-    assert_eq!(result.source, b"(S//OC-USGOV)");
+    assert_eq!(result.source.expose_secret(), b"(S//OC-USGOV)");
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +333,7 @@ fn e021_promotes_through_engine_as_new_variant() {
     }
 
     // Post-fix source: NOFORN appended after IMC.
-    assert_eq!(result.source, b"(S//RD//IMC/NOFORN)");
+    assert_eq!(result.source.expose_secret(), b"(S//RD//IMC/NOFORN)");
 }
 
 #[test]
@@ -530,7 +531,7 @@ fn e056_promotes_through_engine_as_new_variant() {
              the intent_index pairing did not fire."
         ),
     }
-    assert_eq!(result.source, b"(S//OC)");
+    assert_eq!(result.source.expose_secret(), b"(S//OC)");
 }
 
 // ---------------------------------------------------------------------------

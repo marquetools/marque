@@ -38,6 +38,7 @@ use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use proptest::prelude::*;
+use secrecy::ExposeSecret as _;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -212,7 +213,7 @@ proptest! {
         let bytes = src.as_bytes();
         let before = engine().lint(bytes).diagnostics.len();
         let result = engine().fix(bytes, FixMode::Apply);
-        let after = engine().lint(&result.source).diagnostics.len();
+        let after = engine().lint(result.source.expose_secret()).diagnostics.len();
         prop_assert!(
             after <= before,
             "fix introduced diagnostics: before={} after={} for input {:?}",

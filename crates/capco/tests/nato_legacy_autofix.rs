@@ -48,6 +48,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
 use marque_rules::Confidence;
 use marque_scheme::{RecanonScope, ReplacementIntent};
+use secrecy::ExposeSecret as _;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -118,7 +119,7 @@ fn assert_e066_fires_and_rewrites_to(
 
     // Property 3: fix produces the canonical multi-block form.
     let result = eng.fix(input.as_bytes(), FixMode::Apply);
-    let actual = String::from_utf8(result.source.clone())
+    let actual = String::from_utf8(result.source.expose_secret().to_vec())
         .unwrap_or_else(|e| panic!("Engine::fix produced non-UTF8 output on {input:?}: {e}"));
     assert_eq!(
         actual,

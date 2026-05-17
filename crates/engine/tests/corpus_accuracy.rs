@@ -16,6 +16,7 @@ use marque_engine::{Engine, FixMode};
 use marque_test_utils::{
     corpus_root, invalid_fixtures, load_expected, load_fixture, prose_fixtures, valid_fixtures,
 };
+use secrecy::ExposeSecret as _;
 use std::collections::HashMap;
 
 /// Default-engine corpus-accuracy gate.
@@ -206,7 +207,7 @@ fn fix_accuracy_invalid_fixtures() {
         let fix_result = engine.fix(&source, FixMode::Apply);
 
         // Re-lint the fixed output
-        let relint = engine.lint(&fix_result.source);
+        let relint = engine.lint(fix_result.source.expose_secret());
 
         // Check which fixable rules still have violations
         let remaining_rules: std::collections::HashSet<&str> =

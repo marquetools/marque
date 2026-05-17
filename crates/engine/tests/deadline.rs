@@ -21,6 +21,7 @@
 use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, EngineError, FixMode, FixOptions, InvalidThreshold, LintOptions};
+use secrecy::ExposeSecret as _;
 use std::time::{Duration, Instant};
 
 fn engine() -> Engine {
@@ -52,7 +53,11 @@ fn assert_fix_results_match_byte_for_byte(
     expected: &marque_engine::FixResult,
     label: &str,
 ) {
-    assert_eq!(actual.source, expected.source, "{label}: source bytes");
+    assert_eq!(
+        actual.source.expose_secret(),
+        expected.source.expose_secret(),
+        "{label}: source bytes"
+    );
     assert_eq!(
         actual.applied.len(),
         expected.applied.len(),

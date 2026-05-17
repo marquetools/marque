@@ -31,6 +31,7 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
+use secrecy::ExposeSecret as _;
 use std::hint::black_box;
 
 /// Build an input of approximately `target_bytes` containing one fixable
@@ -114,7 +115,7 @@ fn fix_throughput_benchmark(c: &mut Criterion) {
                     let result = engine.fix(black_box(input), FixMode::Apply);
                     // Prevent the compiler from eliding the call: consume the
                     // output length so the fix actually runs.
-                    black_box(result.source.len())
+                    black_box(result.source.expose_secret().len())
                 });
             },
         );

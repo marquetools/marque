@@ -37,6 +37,7 @@
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
+use secrecy::ExposeSecret as _;
 
 fn engine() -> Engine {
     Engine::with_clock(
@@ -61,11 +62,11 @@ fn e041_fix_round_trip_produces_canonical_nodis_only_portion() {
     let result = engine().fix(b"(S//NF//ND/XD)\n", FixMode::Apply);
 
     assert_eq!(
-        result.source,
+        result.source.expose_secret(),
         b"(S//NF//ND)\n",
         "E041 round-trip must produce canonical portion with EXDIS \
          removed; got: {:?}",
-        std::str::from_utf8(&result.source).unwrap_or("<non-utf8>")
+        std::str::from_utf8(result.source.expose_secret()).unwrap_or("<non-utf8>")
     );
 
     assert!(

@@ -12,6 +12,7 @@ use marque_capco::CapcoRuleSet;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
 use proptest::prelude::*;
+use secrecy::ExposeSecret as _;
 use std::sync::OnceLock;
 
 // Build the engine once per test binary; constructing the Aho-Corasick
@@ -125,9 +126,9 @@ proptest! {
     fn fix_idempotent(src in arb_source()) {
         let e = engine();
         let first = e.fix(src.as_bytes(), FixMode::Apply);
-        let second = e.fix(&first.source, FixMode::Apply);
+        let second = e.fix(first.source.expose_secret(), FixMode::Apply);
         prop_assert!(
-            second.source == first.source,
+            second.source.expose_secret() == first.source.expose_secret(),
             "fix not idempotent on: {:?}", src,
         );
     }
@@ -163,7 +164,7 @@ proptest! {
         let bytes = src.as_bytes().to_vec();
         let result = engine().fix(&bytes, FixMode::DryRun);
         prop_assert!(
-            result.source == bytes,
+            result.source.expose_secret() == bytes,
             "dry-run modified source for {:?}", src,
         );
     }

@@ -47,6 +47,7 @@ use std::sync::Arc;
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, StrictRecognizer};
+use secrecy::ExposeSecret as _;
 
 /// Single-portion input that produces exactly one E054 fix at confidence
 /// 0.95. RELIDO conflicts with NOFORN (NF) per CAPCO-2016 §H.8 p154;
@@ -121,12 +122,12 @@ fn assert_bench_invariants(engine: &Engine) {
     );
 
     assert_eq!(
-        fix_result.source.as_slice(),
+        fix_result.source.expose_secret(),
         EXPECTED_FIXED_SOURCE,
         "fix_latency invariant: rewritten source mismatch. \
          expected {:?}, got {:?}",
         std::str::from_utf8(EXPECTED_FIXED_SOURCE).unwrap_or("<non-utf8>"),
-        std::str::from_utf8(&fix_result.source).unwrap_or("<non-utf8>"),
+        std::str::from_utf8(fix_result.source.expose_secret()).unwrap_or("<non-utf8>"),
     );
 
     let lint_result = engine.lint(SINGLE_FIX_INPUT);

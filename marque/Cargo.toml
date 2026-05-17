@@ -38,6 +38,11 @@ marque-extract = { workspace = true }
 marque-ism = { workspace = true, features = ["dates"] }
 marque-rules = { workspace = true }
 marque-scheme = { workspace = true }
+# Constitution Principle II — readout discipline at the CLI output
+# boundary (stdout / atomic temp-file rename). `FixResult.source` is
+# `SecretBox<[u8]>`; `expose_secret()` calls at the write sites are
+# the grep target.
+secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

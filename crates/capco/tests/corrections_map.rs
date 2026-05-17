@@ -31,6 +31,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
+use secrecy::ExposeSecret as _;
 use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -78,7 +79,7 @@ fn c001_pass1_dispatch_noop_after_pass0() {
             .collect::<Vec<_>>()
     );
     // Sanity: the output buffer contains the corrected token.
-    let out = String::from_utf8(result.source).unwrap();
+    let out = String::from_utf8(result.source.expose_secret().to_vec()).unwrap();
     assert!(
         out.contains("SECRET"),
         "expected SECRET in corrected output, got: {out:?}"
