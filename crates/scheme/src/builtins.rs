@@ -7,23 +7,29 @@
 //! Phase B ships a small family of generic lattice types that cover the
 //! bulk of category shapes across CAPCO, CUI, and NATO. A scheme author
 //! picks a constructor appropriate to their category rather than writing
-//! `impl Lattice` by hand every time.
+//! `impl JoinSemilattice` / `impl MeetSemilattice` by hand every time.
 //!
-//! | Constructor            | Shape                                      | CAPCO example           |
-//! |------------------------|--------------------------------------------|-------------------------|
-//! | [`OrdMax`]             | total order, join = `max`                  | classification ladder   |
-//! | [`OrdMin`]             | total order, join = `min`                  | "most specific" picks   |
-//! | [`FlatSet`]            | powerset, join = union, meet = intersect   | SCI / SAR / dissem      |
-//! | [`IntersectSet`]       | inverted powerset, join = intersect        | REL TO (pre-expansion)  |
-//! | [`SupersessionSet`]    | union, then drop superseded tokens         | NOFORN ⊐ REL TO (intra) |
-//! | [`ModeSet`]            | multiset, join = most-frequent             | corporate sensitivity   |
-//! | [`MaxDate`]            | dates, join = later, bottom = absent       | declassify-on           |
-//! | [`OptionalSingleton`]  | lifts any lattice `L` to `Option<L>`       | optional single fields  |
-//! | [`Product`]            | tuple product of two lattices              | composed sub-lattices   |
+//! | Constructor            | Shape                                      | CAPCO example           | Laws                |
+//! |------------------------|--------------------------------------------|-------------------------|---------------------|
+//! | [`OrdMax`]             | total order, join = `max`                  | classification ladder   | Full lattice        |
+//! | [`OrdMin`]             | total order, join = `min`                  | "most specific" picks   | Full lattice        |
+//! | [`FlatSet`]            | powerset, join = union, meet = intersect   | SCI / SAR / dissem      | Full lattice        |
+//! | [`IntersectSet`]       | inverted powerset, join = intersect        | REL TO (pre-expansion)  | Full lattice        |
+//! | [`SupersessionSet`]    | union, then drop superseded tokens         | NOFORN ⊐ REL TO (intra) | **Join-only**       |
+//! | [`ModeSet`]            | multiset, join = most-frequent             | corporate sensitivity   | Full lattice        |
+//! | [`MaxDate`]            | dates, join = later, bottom = absent       | declassify-on           | Full lattice        |
+//! | [`OptionalSingleton`]  | lifts any `JoinSemilattice` to `Option<L>` | optional single fields  | Mirrors inner type  |
+//! | [`Product`]            | tuple product of two semilattices          | composed sub-lattices   | Mirrors inner types |
 //!
-//! All types are `#[derive(Clone, PartialEq, Eq)]` and implement
-//! [`Lattice`]; where a meaningful `top()` exists they also implement
-//! [`BoundedLattice`].
+//! `SupersessionSet` implements only [`JoinSemilattice`] — the supersession
+//! overlay is a join-side post-filter and the meet direction is
+//! non-idempotent on inputs that contain both a dominated token and its
+//! dominator. See the type-level doc for the counterexample.
+//!
+//! `OptionalSingleton<L>` and `Product<A, B>` mirror their inner type(s):
+//! if the inner type(s) are full lattices, the wrapper is a full lattice
+//! (via the blanket impl); if the inner type(s) are join-only, the wrapper
+//! is join-only.
 //!
 //! # Contract
 //!
@@ -33,7 +39,9 @@
 //! the checks to the CAPCO structural lattices that consume these
 //! primitives.
 
-use crate::lattice::{BoundedLattice, Lattice};
+use crate::lattice::{
+    BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+};
 use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
@@ -50,11 +58,12 @@ use std::collections::BTreeMap;
 /// This type is *not* `BoundedLattice` generically — a bounded
 /// implementation requires knowing `T`'s `MIN` and `MAX`, which the
 /// standard library only exposes on specific numeric types. For typed
-/// scheme enums, implement `BoundedLattice` on a local newtype.
+/// scheme enums, implement `BoundedJoinSemilattice` and
+/// `BoundedMeetSemilattice` on a local newtype.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OrdMax<T: Ord + Clone>(pub T);
 
-impl<T: Ord + Clone> Lattice for OrdMax<T> {
+impl<T: Ord + Clone> JoinSemilattice for OrdMax<T> {
     #[inline]
     fn join(&self, other: &Self) -> Self {
         if self.0 >= other.0 {
@@ -63,6 +72,9 @@ impl<T: Ord + Clone> Lattice for OrdMax<T> {
             other.clone()
         }
     }
+}
+
+impl<T: Ord + Clone> MeetSemilattice for OrdMax<T> {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         if self.0 <= other.0 {
@@ -82,7 +94,7 @@ impl<T: Ord + Clone> Lattice for OrdMax<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OrdMin<T: Ord + Clone>(pub T);
 
-impl<T: Ord + Clone> Lattice for OrdMin<T> {
+impl<T: Ord + Clone> JoinSemilattice for OrdMin<T> {
     #[inline]
     fn join(&self, other: &Self) -> Self {
         if self.0 <= other.0 {
@@ -91,6 +103,9 @@ impl<T: Ord + Clone> Lattice for OrdMin<T> {
             other.clone()
         }
     }
+}
+
+impl<T: Ord + Clone> MeetSemilattice for OrdMin<T> {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         if self.0 >= other.0 {
@@ -159,7 +174,7 @@ impl<T: Ord + Clone> FlatSet<T> {
     }
 }
 
-impl<T: Ord + Clone> Lattice for FlatSet<T> {
+impl<T: Ord + Clone> JoinSemilattice for FlatSet<T> {
     #[inline]
     fn join(&self, other: &Self) -> Self {
         // Both sides are sorted; merge deduped.
@@ -186,7 +201,9 @@ impl<T: Ord + Clone> Lattice for FlatSet<T> {
         out.extend_from_slice(&other.0[j..]);
         Self(out)
     }
+}
 
+impl<T: Ord + Clone> MeetSemilattice for FlatSet<T> {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         let mut out: Vec<T> = Vec::with_capacity(self.0.len().min(other.0.len()));
@@ -255,7 +272,7 @@ impl<T: Ord + Clone> IntersectSet<T> {
     }
 }
 
-impl<T: Ord + Clone> Lattice for IntersectSet<T> {
+impl<T: Ord + Clone> JoinSemilattice for IntersectSet<T> {
     /// Join = intersection (flipped).
     #[inline]
     fn join(&self, other: &Self) -> Self {
@@ -275,7 +292,9 @@ impl<T: Ord + Clone> Lattice for IntersectSet<T> {
         }
         Self(out)
     }
+}
 
+impl<T: Ord + Clone> MeetSemilattice for IntersectSet<T> {
     /// Meet = union (flipped).
     #[inline]
     fn meet(&self, other: &Self) -> Self {
@@ -306,7 +325,7 @@ impl<T: Ord + Clone> Lattice for IntersectSet<T> {
 }
 
 // ---------------------------------------------------------------------------
-// SupersessionSet — union, then drop superseded tokens
+// SupersessionSet — union, then drop superseded tokens (join-only)
 // ---------------------------------------------------------------------------
 
 /// Intra-category supersession: join is union, then post-filter that
@@ -319,11 +338,27 @@ impl<T: Ord + Clone> Lattice for IntersectSet<T> {
 /// every value of the category across the whole program — matching how
 /// schemes declare supersession at scheme build time.
 ///
+/// # Join-semilattice only
+///
+/// `SupersessionSet` implements [`JoinSemilattice`] but NOT
+/// [`MeetSemilattice`]. The supersession overlay is a join-side
+/// post-filter — it is monotone with respect to union but not with
+/// respect to set-inclusion, so the dual absorption law
+/// `a ⊓ (a ⊔ b) = a` fails whenever `a` contains a dominated token
+/// and `b` contains its dominator. Counterexample:
+/// `a = {R}`, `b = {N}`, supersession `= [(N→R)]`:
+/// `a ⊔ b = {N}` (R dropped), so `a ⊓ {N} = {} ≠ a`.
+///
+/// Additionally, `from_iter_sorted` does not apply the overlay on
+/// construction, so user-constructed inputs containing both a dominated
+/// token and its dominator can fail join-idempotence
+/// (`a.join(&a) ≠ a`) if the overlay was not pre-applied.
+///
 /// **Cross-category supersession** (like CAPCO's NOFORN in `dissem`
-/// clearing `rel_to` — two different categories) can't be expressed with
-/// this primitive because the superseding and superseded tokens live in
-/// different category storage. That's what `PageRewrite` (below) exists
-/// for.
+/// clearing `rel_to` — two different categories) can't be expressed
+/// with this primitive because the superseding and superseded tokens
+/// live in different category storage. That's what `PageRewrite`
+/// (in `marque-scheme`) exists for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupersessionSet<T: Ord + Clone + 'static> {
     set: Vec<T>,
@@ -338,6 +373,10 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
         }
     }
 
+    /// Construct from an iterable; de-duplicated and sorted. The supersession
+    /// overlay is **not** applied at construction time — callers that need
+    /// canonical state after construction should call
+    /// `SupersessionSet::new` and then `join` the values in.
     pub fn from_iter_sorted<I: IntoIterator<Item = T>>(
         iter: I,
         supersession: &'static [(T, T)],
@@ -376,7 +415,7 @@ impl<T: Ord + Clone + 'static> SupersessionSet<T> {
     }
 }
 
-impl<T: Ord + Clone + 'static> Lattice for SupersessionSet<T> {
+impl<T: Ord + Clone + 'static> JoinSemilattice for SupersessionSet<T> {
     /// Join = union then apply supersession. Both operands must carry
     /// the same supersession table (pointer equality) — schemes
     /// construct a single `&'static [(T, T)]` per category and use it
@@ -396,26 +435,6 @@ impl<T: Ord + Clone + 'static> Lattice for SupersessionSet<T> {
         let filtered = Self::apply_supersession(flat.0, self.supersession);
         Self {
             set: filtered,
-            supersession: self.supersession,
-        }
-    }
-
-    /// Meet = intersection. Supersession is a join-side post-filter only
-    /// (the spec never defines a "meet with supersession"); the meet is
-    /// the plain intersection on the stored set.
-    ///
-    /// Same table-equality invariant as `join` — enforced via
-    /// `debug_assert!`.
-    #[inline]
-    fn meet(&self, other: &Self) -> Self {
-        debug_assert!(
-            std::ptr::eq(self.supersession, other.supersession),
-            "SupersessionSet::meet called on operands with different supersession tables; \
-             see SupersessionSet::join for the invariant"
-        );
-        let flat = FlatSet(self.set.clone()).meet(&FlatSet(other.set.clone()));
-        Self {
-            set: flat.0,
             supersession: self.supersession,
         }
     }
@@ -483,7 +502,7 @@ impl<T: Ord + Clone> ModeSet<T> {
     /// lattice operation** — sums are not idempotent. Callers who want
     /// "how many total votes did each value get across N sources" use
     /// this; callers who want "highest frequency observed across any
-    /// single source" use [`Lattice::join`].
+    /// single source" use [`JoinSemilattice::join`].
     pub fn extend_counts(&self, other: &Self) -> Self {
         let mut out = self.0.clone();
         for (k, v) in &other.0 {
@@ -497,7 +516,7 @@ impl<T: Ord + Clone> ModeSet<T> {
     }
 }
 
-impl<T: Ord + Clone> Lattice for ModeSet<T> {
+impl<T: Ord + Clone> JoinSemilattice for ModeSet<T> {
     /// Per-key max of counts. Idempotent: `a.join(&a) = a`.
     #[inline]
     fn join(&self, other: &Self) -> Self {
@@ -513,7 +532,9 @@ impl<T: Ord + Clone> Lattice for ModeSet<T> {
         }
         Self(out)
     }
+}
 
+impl<T: Ord + Clone> MeetSemilattice for ModeSet<T> {
     /// Meet = per-key min (the multiset that both operands dominate).
     #[inline]
     fn meet(&self, other: &Self) -> Self {
@@ -544,7 +565,7 @@ impl<T: Ord + Clone> Lattice for ModeSet<T> {
 /// [`MaxDate::present`] (panicking on invalid) or [`MaxDate::try_present`]
 /// (fallible). Accepted inputs are exactly `[0-9]{4}` or `[0-9]{8}` —
 /// the two forms CAPCO's `declassify_on` uses. This is what makes
-/// [`BoundedLattice::top`] lawful: its sentinel `99991231` is strictly
+/// [`BoundedMeetSemilattice::top`] lawful: its sentinel `99991231` is strictly
 /// greater than every representable value under the lex ordering.
 /// Without this gate, a caller could construct e.g. `"ZZZZ"` whose
 /// lex order is greater than `99991231`, breaking `top ⊔ a = top`.
@@ -603,7 +624,7 @@ impl MaxDate {
     }
 }
 
-impl Lattice for MaxDate {
+impl JoinSemilattice for MaxDate {
     #[inline]
     fn join(&self, other: &Self) -> Self {
         match (&self.inner, &other.inner) {
@@ -619,7 +640,9 @@ impl Lattice for MaxDate {
             },
         }
     }
+}
 
+impl MeetSemilattice for MaxDate {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         match (&self.inner, &other.inner) {
@@ -631,7 +654,13 @@ impl Lattice for MaxDate {
     }
 }
 
-impl BoundedLattice for MaxDate {
+impl BoundedJoinSemilattice for MaxDate {
+    fn bottom() -> Self {
+        Self { inner: None }
+    }
+}
+
+impl BoundedMeetSemilattice for MaxDate {
     /// Sentinel top. `99991231` is strictly greater than every
     /// `[0-9]{4}` and `[0-9]{8}` value under lex order, so the
     /// `top ⊔ a = top` law holds for every validly-constructed
@@ -641,32 +670,39 @@ impl BoundedLattice for MaxDate {
             inner: Some("99991231".into()),
         }
     }
-    fn bottom() -> Self {
-        Self { inner: None }
-    }
 }
 
+// `MaxDate` gets `Lattice` and `BoundedLattice` via the blanket impls.
+
 // ---------------------------------------------------------------------------
-// OptionalSingleton — lift a lattice to `Option<L>` with absent bottom
+// OptionalSingleton — lift a semilattice to `Option<L>` with absent bottom
 // ---------------------------------------------------------------------------
 
-/// Optional wrapper around any inner lattice. `None` is the bottom —
-/// the join with `None` is whichever operand has a value, and the join
-/// of two `Some`s calls the inner lattice's `join`.
+/// Optional wrapper around any inner join-semilattice. `None` is the
+/// bottom — the join with `None` is whichever operand has a value,
+/// and the join of two `Some`s calls the inner type's `join`.
 ///
 /// Use for optional single-value categories where the "value-present"
-/// case already has a lattice (e.g., `OptionalSingleton<OrdMax<Level>>`
-/// for a scheme where classification is optional).
+/// case already has a semilattice (e.g.,
+/// `OptionalSingleton<OrdMax<Level>>` for a scheme where classification
+/// is optional).
+///
+/// The struct bound is relaxed to `JoinSemilattice` so that callers
+/// with join-only inner types (e.g., `OptionalSingleton<DissemSet>`)
+/// can construct values without a `meet` impl. The wrapper implements
+/// [`MeetSemilattice`] conditionally — only when `L: MeetSemilattice`.
+/// This means `OptionalSingleton<L>` is a full [`Lattice`] when `L` is
+/// a full lattice, and a join-semilattice when `L` is join-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OptionalSingleton<L: Lattice>(pub Option<L>);
+pub struct OptionalSingleton<L: JoinSemilattice>(pub Option<L>);
 
-impl<L: Lattice> Default for OptionalSingleton<L> {
+impl<L: JoinSemilattice> Default for OptionalSingleton<L> {
     fn default() -> Self {
         Self(None)
     }
 }
 
-impl<L: Lattice> OptionalSingleton<L> {
+impl<L: JoinSemilattice> OptionalSingleton<L> {
     #[inline]
     pub fn absent() -> Self {
         Self(None)
@@ -678,7 +714,7 @@ impl<L: Lattice> OptionalSingleton<L> {
     }
 }
 
-impl<L: Lattice> Lattice for OptionalSingleton<L> {
+impl<L: JoinSemilattice> JoinSemilattice for OptionalSingleton<L> {
     #[inline]
     fn join(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
@@ -688,7 +724,9 @@ impl<L: Lattice> Lattice for OptionalSingleton<L> {
             (Some(a), Some(b)) => Self(Some(a.join(b))),
         }
     }
+}
 
+impl<L: MeetSemilattice + JoinSemilattice> MeetSemilattice for OptionalSingleton<L> {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
@@ -698,57 +736,84 @@ impl<L: Lattice> Lattice for OptionalSingleton<L> {
     }
 }
 
-impl<L: BoundedLattice> BoundedLattice for OptionalSingleton<L> {
-    fn top() -> Self {
-        Self(Some(L::top()))
-    }
+impl<L: JoinSemilattice> BoundedJoinSemilattice for OptionalSingleton<L> {
     fn bottom() -> Self {
         Self(None)
     }
 }
 
+impl<L: MeetSemilattice + JoinSemilattice + BoundedMeetSemilattice> BoundedMeetSemilattice
+    for OptionalSingleton<L>
+{
+    fn top() -> Self {
+        Self(Some(L::top()))
+    }
+}
+
+// `OptionalSingleton<L>` gets `Lattice` / `BoundedLattice` via blanket impls
+// when `L` satisfies both halves.
+
 // ---------------------------------------------------------------------------
-// Product — tuple product of two lattices
+// Product — tuple product of two semilattices
 // ---------------------------------------------------------------------------
 
-/// Pair lattice: `Product(a, b)` joins component-wise.
+/// Pair semilattice: `Product(a, b)` joins component-wise.
 ///
 /// Trivially generalizes to n-ary products via nested `Product`s. For
 /// CAPCO's ten-category marking, we use a struct instead of a tower of
 /// `Product`s (readability), but this constructor is the right shape
 /// for shallow composition.
+///
+/// The struct has no algebraic constraint on `A` and `B` — it
+/// implements [`JoinSemilattice`] when both factors do, and
+/// [`MeetSemilattice`] when both factors do. This means `Product<A, B>`
+/// is a full [`Lattice`] when both factors are full lattices, and a
+/// join-semilattice when either factor is join-only.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Product<A: Lattice, B: Lattice>(pub A, pub B);
+pub struct Product<A, B>(pub A, pub B);
 
 impl<A, B> Default for Product<A, B>
 where
-    A: Lattice + Default,
-    B: Lattice + Default,
+    A: Default,
+    B: Default,
 {
     fn default() -> Self {
         Self(A::default(), B::default())
     }
 }
 
-impl<A: Lattice, B: Lattice> Lattice for Product<A, B> {
+impl<A: JoinSemilattice, B: JoinSemilattice> JoinSemilattice for Product<A, B> {
     #[inline]
     fn join(&self, other: &Self) -> Self {
         Self(self.0.join(&other.0), self.1.join(&other.1))
     }
+}
+
+impl<A: MeetSemilattice, B: MeetSemilattice> MeetSemilattice for Product<A, B> {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         Self(self.0.meet(&other.0), self.1.meet(&other.1))
     }
 }
 
-impl<A: BoundedLattice, B: BoundedLattice> BoundedLattice for Product<A, B> {
-    fn top() -> Self {
-        Self(A::top(), B::top())
-    }
+impl<A: JoinSemilattice + BoundedJoinSemilattice, B: JoinSemilattice + BoundedJoinSemilattice>
+    BoundedJoinSemilattice for Product<A, B>
+{
     fn bottom() -> Self {
         Self(A::bottom(), B::bottom())
     }
 }
+
+impl<A: MeetSemilattice + BoundedMeetSemilattice, B: MeetSemilattice + BoundedMeetSemilattice>
+    BoundedMeetSemilattice for Product<A, B>
+{
+    fn top() -> Self {
+        Self(A::top(), B::top())
+    }
+}
+
+// `Product<A,B>` gets `Lattice` / `BoundedLattice` via blanket impls
+// when both factors satisfy both halves.
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -870,6 +935,17 @@ mod tests {
         let a = SupersessionSet::from_iter_sorted(vec![2_u8], TEST_SUP);
         let b: SupersessionSet<u8> = SupersessionSet::new(TEST_SUP);
         assert_eq!(a.join(&b).as_slice(), &[2]);
+    }
+
+    #[test]
+    fn supersession_is_join_semilattice_only() {
+        // Compile-time gate: SupersessionSet satisfies JoinSemilattice but not
+        // MeetSemilattice. This test confirms the type-system enforcement.
+        fn _assert_join<T: JoinSemilattice>() {}
+        _assert_join::<SupersessionSet<u8>>();
+        // The following would fail to compile (expected):
+        // fn _assert_lattice<T: Lattice>() {}
+        // _assert_lattice::<SupersessionSet<u8>>();
     }
 
     // ModeSet
@@ -1171,7 +1247,7 @@ mod tests {
         assert!(a.join(&b).is_empty());
     }
 
-    // SupersessionSet — constructors, accessors, meet, and edge cases
+    // SupersessionSet — constructors, accessors, and edge cases
 
     static SUP_COV: &[(u8, u8)] = &[(1, 2)];
 
@@ -1193,16 +1269,6 @@ mod tests {
     fn supersession_set_from_iter_dedupes() {
         let s = SupersessionSet::from_iter_sorted(vec![2_u8, 2, 3, 3], SUP_COV);
         assert_eq!(s.as_slice(), &[2, 3]);
-    }
-
-    #[test]
-    fn supersession_set_meet_is_intersection() {
-        let a = SupersessionSet::from_iter_sorted(vec![1_u8, 2], SUP_COV);
-        let b = SupersessionSet::from_iter_sorted(vec![2_u8, 3], SUP_COV);
-        let m = a.meet(&b);
-        // Plain intersection on the stored set — supersession is
-        // join-only. Both had 2.
-        assert_eq!(m.as_slice(), &[2]);
     }
 
     #[test]

@@ -19,7 +19,7 @@ use crate::category::{Category, CategoryId, TokenId};
 use crate::closure::ClosureRule;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
-use crate::lattice::Lattice;
+use crate::lattice::JoinSemilattice;
 use crate::page_rewrite::PageRewrite;
 use crate::scope::Scope;
 use crate::template::Template;
@@ -38,9 +38,11 @@ pub trait MarkingScheme {
     /// engine's call sites.
     type Token;
 
-    /// The scheme's full-marking type. Must be a lattice: the product
-    /// over the scheme's categories.
-    type Marking: Lattice;
+    /// The scheme's full-marking type. Must be a join-semilattice: the join
+    /// is the product over the scheme's categories. Doubly-lawful schemes
+    /// (where every category satisfies meet too) get [] automatically
+    /// via the blanket impl in [].
+    type Marking: JoinSemilattice;
 
     /// Parse-level errors produced by `parse`.
     type ParseError;

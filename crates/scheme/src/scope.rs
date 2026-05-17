@@ -21,7 +21,7 @@
 //! call sites.
 
 use crate::ambiguity::Parsed;
-use crate::lattice::Lattice;
+use crate::lattice::JoinSemilattice;
 
 /// Where a projection is being evaluated.
 ///
@@ -52,8 +52,14 @@ pub enum Scope {
 /// about diffs. Callers (CLI batch mode, server diff endpoints, email-
 /// thread walkers) construct the `DiffInput` explicitly; the engine
 /// does not fetch second markings.
+///
+/// The bound is [`JoinSemilattice`] rather than the full `Lattice` so
+/// that schemes whose marking type satisfies only the join half (e.g.,
+/// because a category like `DissemSet` or `JointSet` carries join-side
+/// aggregation state) can still construct `DiffInput` values without
+/// requiring a `meet` implementation.
 #[derive(Debug, Clone)]
-pub struct DiffInput<M: Lattice> {
+pub struct DiffInput<M: JoinSemilattice> {
     pub from: Parsed<M>,
     pub to: Parsed<M>,
     pub relation: DiffRelation,

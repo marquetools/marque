@@ -11,8 +11,8 @@
 //! violation.
 
 use marque_scheme::{
-    Category, CategoryId, Constraint, ConstraintViolation, Lattice, MarkingScheme, PageRewrite,
-    Parsed, Scope, Template, TokenId, TokenRef, constraint::evaluate,
+    Category, CategoryId, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme,
+    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, constraint::evaluate,
 };
 
 // ---------------------------------------------------------------------------
@@ -25,10 +25,13 @@ struct StubMarking {
     category_members: Vec<(CategoryId, TokenId)>,
 }
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _: &Self) -> Self {
         self.clone()
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _: &Self) -> Self {
         self.clone()
     }
