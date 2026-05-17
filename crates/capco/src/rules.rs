@@ -5010,6 +5010,24 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     }
 }
 
+// TOMBSTONED post-PR-#488: the `S006` references in this module's bodies
+// (e.g., `s006_info_when_banner_equals_atom_intersection`,
+// `s006_info_when_banner_is_proper_superset_of_atom_intersection`,
+// `s006_emits_no_fix_and_no_fix_intent_pending_stage4_admonition_channel`,
+// the `count_s005_or_s006` helper, and the
+// `assert!(ids.contains(&"S006"))` call in `capco_rule_set_registers_all_rules`)
+// describe the pre-#488 world where S005 and S006 were both registered.
+// PR #488 retired S006 entirely (collapsed the Suggest/Info split into a
+// single Suggest-severity S005 at `Phase::PageFinalization`). When this
+// `#[cfg(any())]` module is rewritten (per the "PR 3c.B Commit 10: inline
+// tests reading legacy FixProposal fields disabled pending rewrite" header
+// below), update every S006 reference to reflect the post-#488 reality:
+// the `s006_*` test names should be removed (the Info-branch contract
+// no longer exists), `count_s005_or_s006` collapses to a plain S005
+// counter, and the registration assertion drops the `S006` membership
+// check. Per Constitution Principle V (audit-first compliance) the
+// fabricated `FixProposal`-bearing test bodies were already dead at
+// the cfg gate; this is a documentation tombstone, not a semantic claim.
 #[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

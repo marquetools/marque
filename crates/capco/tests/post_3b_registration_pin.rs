@@ -2,7 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-#488 registration pin (PR #491 → PR #488: 40 → 39).
+//! Post-PR-#488 registration pin (PR #491 brought count to 40 by adding
+//! E067; PR #488 retires S006, net 39).
 //!
 //! Asserts the **exact set** of 39 registered `Rule::id()` values in
 //! `CapcoRuleSet::new()` after PR #488 retires S006 (collapsing the
