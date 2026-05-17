@@ -7,6 +7,37 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 <!--
 SYNC IMPACT REPORT
 ==================
+Version change: 1.5.0 → 1.6.0
+
+Bump type: MINOR
+  - Principle II (Zero-Copy, Streaming Core) — new lifecycle bullet
+    requiring Marque-owned content-bearing buffers to wipe on drop
+    via the `secrecy` / `zeroize` machinery. Applies to the public
+    output surface (`FixResult.source`) and internal scratch buffers
+    (`Engine::fix_inner` splice buffers). Public content-bearing
+    fields SHOULD use `secrecy::SecretBox<_>` so every readout site
+    goes through `expose_secret()` (grep-target audit signal);
+    internal scratch buffers MAY use `zeroize::Zeroizing<_>` directly.
+    Caller-supplied input buffers and caller-side downstream
+    destinations remain out of scope — Marque's responsibility ends
+    at the buffers Marque owns.
+  - Principle II rationale extended with the lifecycle / grep-target
+    framing.
+  - Technology Stack table — two new rows: `secrecy` (sensitive-content
+    access discipline) and `zeroize` (memory wipe). Both cite
+    Principle II as the locking rationale.
+
+Modified sections:
+  - Principle II (new bullet + extended rationale).
+  - Technology Stack table (two new rows).
+
+No principles added/removed. No backward-incompatible removals — the
+new requirement applies forward to Marque-owned content surfaces.
+The companion Tier 3 design direction (reshape the API so Marque
+holds less content at all — `FixMode::DeltasOnly` / streaming
+output) is tracked as a separate long-term issue, not codified here.
+==================
+
 Version change: 1.4.0 → 1.5.0
 
 Bump type: MINOR
@@ -335,10 +366,27 @@ heap allocation on the hot path.
   detected (validated by `--features count-allocs` harness where applicable).
 - Cached `LintResult` spans MUST remain valid via fingerprint guarantee; no span
   re-computation on cache hit is permitted.
+- Content-bearing buffers Marque owns MUST wipe on drop. This applies to the
+  public output surface (`FixResult.source`) and to internal scratch buffers
+  (e.g., `Engine::fix_inner`'s splice buffers) — every `Vec<u8>` or equivalent
+  that Marque allocates and that reproduces caller-document content. The
+  implementation MUST use the `secrecy` / `zeroize` machinery, which performs
+  volatile writes the compiler cannot elide. Marque's responsibility ends at
+  the buffers Marque owns: caller-supplied input buffers, caller logs, and
+  caller-side downstream destinations are out of scope by definition. Public
+  content-bearing fields SHOULD use `secrecy::SecretBox<_>` so every readout
+  site goes through `expose_secret()` — the grep target is the audit signal.
+  Internal scratch buffers MAY use `zeroize::Zeroizing<_>` directly when no
+  readout discipline is needed.
 
 **Rationale**: Sensitive content (classified documents) MUST be minimized in
 memory footprint. Zero-copy also enables future secure-enclave (SGX/TrustZone)
-integration without architectural changes.
+integration without architectural changes. The lifecycle property is the
+companion to zero-copy: minimize what Marque holds, and wipe what Marque does
+hold when it's done. The grep-target property of `secrecy::expose_secret()`
+makes every sanctioned content readout site auditable for security reviewers
+without trusting that a log statement somewhere doesn't accidentally print
+the bytes.
 
 ### III. Format-Agnostic Core / WASM Safety
 
@@ -709,6 +757,8 @@ require a constitution amendment with migration rationale.
 | Incremental cache store (v0.2) | heed (LMDB) | Embedded, memory-mapped, ACID |
 | Cache serialization (v0.2) | rmp_serde (MessagePack) | Compact binary; 2–5× smaller than JSON |
 | Document fingerprint | blake3 | Speed; already in dep tree |
+| Sensitive-content access | secrecy | Type-level `expose_secret()` gate, redacted Debug, blocks Clone — auditable readout sites on Marque-owned content (Principle II) |
+| Memory wipe | zeroize | Volatile-write memset compilers cannot elide; RustCrypto, audited — Marque-owned content wipes on drop (Principle II) |
 | WASM packaging | wasm-pack | Best-in-class Rust→WASM compilation |
 
 **Licensing**: All marque source code is under the **Marque License 1.0**
@@ -821,4 +871,4 @@ table.
 crate responsibilities, and code generation details. Per-crate `README.md`
 files carry crate-specific invariants.
 
-**Version**: 1.5.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-08
+**Version**: 1.6.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-05-17
