@@ -1469,10 +1469,11 @@ pub struct CountryCode {
 impl CountryCode {
     /// The always-valid `USA` country code constant.
     ///
-    /// Constructed via [`CountryCode::try_new`] in `const` context;
-    /// the `expect` is statically unreachable for `b"USA"` (3 bytes,
-    /// all ASCII uppercase) and exists only to satisfy `const`
-    /// unwrap.
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"USA"`
+    /// (3 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
     pub const USA: Self = match Self::try_new(b"USA") {
         Some(c) => c,
         None => panic!("CountryCode::USA literal must satisfy try_new invariants"),
@@ -1483,10 +1484,11 @@ impl CountryCode {
 
     /// The always-valid `AUS` country code constant.
     ///
-    /// Constructed via [`CountryCode::try_new`] in `const` context;
-    /// the `expect` is statically unreachable for `b"AUS"` (3 bytes,
-    /// all ASCII uppercase) and exists only to satisfy `const`
-    /// unwrap.
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"AUS"`
+    /// (3 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
     pub const AUS: Self = match Self::try_new(b"AUS") {
         Some(c) => c,
         None => panic!("CountryCode::AUS literal must satisfy try_new invariants"),
@@ -1494,10 +1496,11 @@ impl CountryCode {
 
     /// The always-valid `CAN` country code constant.
     ///
-    /// Constructed via [`CountryCode::try_new`] in `const` context;
-    /// the `expect` is statically unreachable for `b"CAN"` (3 bytes,
-    /// all ASCII uppercase) and exists only to satisfy `const`
-    /// unwrap.
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"CAN"`
+    /// (3 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
     pub const CAN: Self = match Self::try_new(b"CAN") {
         Some(c) => c,
         None => panic!("CountryCode::CAN literal must satisfy try_new invariants"),
@@ -1505,10 +1508,11 @@ impl CountryCode {
 
     /// The always-valid `GBR` country code constant.
     ///
-    /// Constructed via [`CountryCode::try_new`] in `const` context;
-    /// the `expect` is statically unreachable for `b"GBR"` (3 bytes,
-    /// all ASCII uppercase) and exists only to satisfy `const`
-    /// unwrap.
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"GBR"`
+    /// (3 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
     pub const GBR: Self = match Self::try_new(b"GBR") {
         Some(c) => c,
         None => panic!("CountryCode::GBR literal must satisfy try_new invariants"),
@@ -1516,10 +1520,11 @@ impl CountryCode {
 
     /// The always-valid `NZL` country code constant.
     ///
-    /// Constructed via [`CountryCode::try_new`] in `const` context;
-    /// the `expect` is statically unreachable for `b"NZL"` (3 bytes,
-    /// all ASCII uppercase) and exists only to satisfy `const`
-    /// unwrap.
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"NZL"`
+    /// (3 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
     pub const NZL: Self = match Self::try_new(b"NZL") {
         Some(c) => c,
         None => panic!("CountryCode::NZL literal must satisfy try_new invariants"),
