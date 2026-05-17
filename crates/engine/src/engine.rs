@@ -4274,6 +4274,21 @@ fn dispatch_page_finalization(
     // future API changes that would open a mutation path.
     // See `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
     //
+    // **Sibling sentinel pending closure hot-path wiring.**
+    // `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1) flags
+    // that the **closure-operator's rewrite-application site** needs a
+    // parallel sentinel when `Engine::project::closure()` is wired on
+    // the production hot path. `CapcoScheme::closure()` (the operator)
+    // is reachable today through direct `scheme.closure(marking)` calls
+    // (tests + opt-in callers) but is NOT invoked from any per-page
+    // engine call site; the closure operates on `S::Marking` (a
+    // per-portion or composed marking the caller owns), never on
+    // `PageContext::portions()`. When the engine wires `closure()` into
+    // the page-projection hot path, the sibling sentinel must land
+    // alongside the wiring to enforce the same read-only-attrs property
+    // for the closure-application site that this PageFinalization
+    // sentinel enforces for rule dispatch.
+    //
     // Snapshot the slice the rule actually observes (via
     // `page_ctx_arc`), not the original `&PageContext` parameter.
     // The two are equal today because `page_ctx_arc` is a deep-cloned
