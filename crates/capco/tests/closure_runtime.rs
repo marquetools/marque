@@ -298,20 +298,17 @@ fn closure_fires_noforn_on_sar_marking() {
     );
 }
 
-/// Documented gap in the `capco/noforn-if-ucni` row: the current
-/// trigger uses `TOK_UCNI`, which resolves to `AeaMarking::DoeUcni`
-/// only (issue #407 — `DodUcni` resolves to the distinct `TOK_DCNI`
-/// sentinel). A DOD UCNI marking therefore does NOT fire the
-/// closure today, even though §B.3 Table 2 p21 + §H.6 p116 (DOD
-/// UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION) imply the same
-/// NOFORN closure as DOE UCNI.
+/// Trio 1 row `capco/noforn-if-ucni` (DOD UCNI): a DOD UCNI marking
+/// triggers implicit-NOFORN closure.
 ///
-/// This test pins the gap so a fix later cannot silently regress
-/// (and so any agent reading the file sees the gap exists). When
-/// `CLOSURE_NOFORN_UCNI` is extended to include `TOK_DCNI`, this
-/// test should be inverted to assert the positive firing.
+/// Authority: §B.3 Table 2 p21 + §H.6 p116 (DOD UNCLASSIFIED CONTROLLED
+/// NUCLEAR INFORMATION). The DOD variant resolves through `TOK_DCNI`
+/// per issue #407; `CLOSURE_NOFORN_UCNI` includes both `TOK_UCNI`
+/// (DOE) and `TOK_DCNI` (DOD) in its trigger list because the §B.3
+/// Table 2 p21 algebra is grammar-agnostic over which sentinel
+/// surfaces the UCNI marking. Closes #518.
 #[test]
-fn closure_does_not_fire_noforn_on_dod_ucni_marking_today() {
+fn closure_fires_noforn_on_dod_ucni_marking() {
     let scheme = CapcoScheme::new();
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Secret));
@@ -320,13 +317,40 @@ fn closure_does_not_fire_noforn_on_dod_ucni_marking_today() {
 
     let closed = scheme.closure(m);
     assert!(
-        !dissem_us_contains(&closed, DissemControl::Nf),
-        "current catalog gap: CLOSURE_NOFORN_UCNI triggers on TOK_UCNI \
-         (resolves to DoeUcni only per issue #407 / TOK_DCNI is separate \
-         for DodUcni). A separate TOK_DCNI trigger is the right fix; \
-         when added, invert this test. dissem_us = {:?}",
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on DOD UCNI (§B.3 Table 2 p21 + \
+         §H.6 p116); dissem_us = {:?}",
         closed.0.dissem_us
     );
+}
+
+/// FD&R-dominator parity for DOD UCNI: the `capco/noforn-if-ucni`
+/// row is suppressed when an FD&R dominator (RELIDO) is already
+/// present, matching the DOE-UCNI / SAR / FGI / LIMDIS rows that
+/// share `FDR_DOMINATORS` as their suppressor set.
+///
+/// Authority: §B.3 Table 2 p21 (classified + uncaveated +
+/// post-28-Jun-2010 → RELIDO is the explicit FD&R decision; the
+/// implicit NOFORN closure backs off).
+#[test]
+fn closure_dod_ucni_suppressed_by_relido_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN on DOD UCNI when RELIDO is \
+         already present (FDR_DOMINATORS suppresses Trio 1 rows); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    // RELIDO must survive the closure (extensive property).
+    assert!(dissem_us_contains(&closed, DissemControl::Relido));
 }
 
 /// Trio 1 row `capco/noforn-if-ucni` (DOE UCNI): a DOE UCNI marking

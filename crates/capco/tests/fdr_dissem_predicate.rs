@@ -21,8 +21,8 @@
 
 use marque_capco::CapcoScheme;
 use marque_capco::scheme::{
-    TOK_DISPLAY_ONLY, TOK_DSEN, TOK_EXDIS, TOK_EYES, TOK_FOUO, TOK_FRD, TOK_HCS, TOK_IMCON,
-    TOK_JOINT, TOK_NODIS, TOK_NOFORN, TOK_ORCON, TOK_ORCON_USGOV, TOK_RD, TOK_RELIDO,
+    TOK_DCNI, TOK_DISPLAY_ONLY, TOK_DSEN, TOK_EXDIS, TOK_EYES, TOK_FOUO, TOK_FRD, TOK_HCS,
+    TOK_IMCON, TOK_JOINT, TOK_NODIS, TOK_NOFORN, TOK_ORCON, TOK_ORCON_USGOV, TOK_RD, TOK_RELIDO,
     TOK_RESTRICTED, TOK_RSEN, TOK_TFNI, TOK_UCNI, TOK_USA,
 };
 use marque_scheme::Vocabulary;
@@ -130,7 +130,12 @@ fn is_fdr_dissem_rejects_non_dissem_tokens() {
         ("RD (§H.6 p104)", TOK_RD),
         ("FRD (§H.6 p111)", TOK_FRD),
         ("TFNI (§H.6 p120)", TOK_TFNI),
-        ("DOD UCNI (§H.6 p116)", TOK_UCNI),
+        // Per issue #407, the two UCNI sentinels are separate:
+        // `TOK_UCNI` resolves to `AeaMarking::DoeUcni` (DOE UCNI at
+        // §H.6 p118), `TOK_DCNI` resolves to `AeaMarking::DodUcni`
+        // (DOD UCNI at §H.6 p116). Both are non-dissem AEA tokens.
+        ("DOE UCNI (§H.6 p118)", TOK_UCNI),
+        ("DOD UCNI (§H.6 p116)", TOK_DCNI),
         // SCI — §H.4 p62 (HCS template start; p61 is the §H.4 SCI
         // overview header, not the HCS marking itself).
         ("HCS (§H.4 p62)", TOK_HCS),

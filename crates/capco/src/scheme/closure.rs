@@ -172,10 +172,19 @@ const CLOSURE_NOFORN_AEA_RD: ClosureRule<CapcoScheme> = ClosureRule {
 /// itself is constrained to UNCLASSIFIED per §H.6 DCNI pp116-117 (DoD)
 /// and §H.6 UCNI pp118-119 (DoE); the NOFORN closure fires regardless
 /// of class.
+///
+/// Both UCNI sentinels are required in the trigger list: per issue
+/// #407, `TOK_UCNI` resolves to `AeaMarking::DoeUcni` only and the
+/// DOD variant resolves through the distinct `TOK_DCNI` sentinel
+/// (see `predicates::satisfies::aea_marking_to_token` at
+/// `AeaMarking::DodUcni => Some(TOK_DCNI)`). The §B.3 Table 2 p21
+/// caveated→NOFORN algebra is grammar-agnostic over which sentinel
+/// surfaces the UCNI marking, so both rows compose through the same
+/// closure label.
 const CLOSURE_NOFORN_UCNI: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-ucni",
     label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[TokenRef::Token(TOK_UCNI)],
+    triggers: &[TokenRef::Token(TOK_UCNI), TokenRef::Token(TOK_DCNI)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
     cone_derived: None,
