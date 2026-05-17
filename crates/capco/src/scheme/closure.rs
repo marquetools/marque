@@ -145,12 +145,13 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// US-originator-controlled marking for which NOFORN is the implicit
 /// release posture. CAPCO-2016 §H.5 (pp99-102) governs SAR markings;
 /// the NOFORN implication flows from §B.3 Table 2 p21.
-const CLOSURE_NOFORN_SAR: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_SAR: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-sar",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[TokenRef::AnyInCategory(CAT_SAR)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -160,7 +161,7 @@ const CLOSURE_NOFORN_SAR: ClosureRule = ClosureRule {
 /// Transclassified Foreign Nuclear Information) carry NOFORN by definition
 /// for the IC marking context. Per CAPCO-2016 §H.6 (pp104-121) and
 /// §B.3 Table 2 p21.
-const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_AEA_RD: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-aea",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[
@@ -170,6 +171,7 @@ const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -180,12 +182,13 @@ const CLOSURE_NOFORN_AEA_RD: ClosureRule = ClosureRule {
 /// itself is constrained to UNCLASSIFIED per §H.6 DCNI pp116-117 (DoD)
 /// and §H.6 UCNI pp118-119 (DoE); the NOFORN closure fires regardless
 /// of class.
-const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_UCNI: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-ucni",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[TokenRef::Token(TOK_UCNI)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -194,7 +197,7 @@ const CLOSURE_NOFORN_UCNI: ClosureRule = ClosureRule {
 /// Foreign Government Information markings carry an implicit NOFORN posture
 /// because the equity belongs to a foreign government and its release requires
 /// FD&R authority. Per CAPCO-2016 §H.7 (pp122-130) and §B.3 Table 2 p21.
-const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_FGI: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-fgi",
     label: "CAPCO-2016 §H.7 p122",
     // BOTH triggers are required to cover the two FGI sources per
@@ -216,6 +219,7 @@ const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -225,12 +229,13 @@ const CLOSURE_NOFORN_FGI: ClosureRule = ClosureRule {
 /// dissemination; their implicit release posture is NOFORN when no explicit
 /// FD&R decision is present. Per CAPCO-2016 §H.8 p136 (ORCON) and
 /// §H.8 p139 (ORCON-USGOV), cross-referenced with §B.3 Table 2 p21.
-const CLOSURE_NOFORN_ORCON: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_ORCON: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-orcon",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[TokenRef::Token(TOK_ORCON), TokenRef::Token(TOK_ORCON_USGOV)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -240,12 +245,13 @@ const CLOSURE_NOFORN_ORCON: ClosureRule = ClosureRule {
 /// controlled markings whose implicit release posture is NOFORN. Per
 /// CAPCO-2016 §H.8 p142 (IMCON) and §H.8 p159 (DEA SENSITIVE), cross-
 /// referenced with §B.3 Table 2 p21.
-const CLOSURE_NOFORN_IMCON_DSEN: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_IMCON_DSEN: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-imcon-dsen",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[TokenRef::Token(TOK_IMCON), TokenRef::Token(TOK_DSEN)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -256,7 +262,7 @@ const CLOSURE_NOFORN_IMCON_DSEN: ClosureRule = ClosureRule {
 /// the IC marking context when no explicit FD&R decision is present. Per
 /// CAPCO-2016 §H.9 p170 (LIMDIS), §H.9 p181 (LES), §H.9 p176 (SBU),
 /// §H.9 p189 (SSI), cross-referenced with §B.3 Table 2 p21.
-const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
+const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-non-ic-controls",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[
@@ -267,6 +273,7 @@ const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
     default_severity: Severity::Info,
 };
 
@@ -295,7 +302,7 @@ const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule = ClosureRule {
 /// on any SCI marking, not just the specific compartments) rather than
 /// PRECISE. The engine call-site at PR 4 will add precise triggers
 /// alongside the per-compartment sentinels (T112 follow-up).
-pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule] = &[
+pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // Trio 1: implicit NOFORN rows — these have correct token-level
     // triggers and ship as functional catalog data. The Trio 1 rows
     // are the load-bearing closure-operator entries the engine wires
