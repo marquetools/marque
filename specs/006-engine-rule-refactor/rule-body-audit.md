@@ -1,6 +1,18 @@
 # Rule-Body Audit (PR 3c re-grounding)
 
-**Date.** 2026-05-10.
+**Date.** 2026-05-10. **Updated 2026-05-17 (PR #488):** the S006 rows
+in this audit (line ~57 in §"Per-rule table" and the tally at line ~100
+counting S006 as a (no clean fit) member) describe the pre-PR-#488
+world where S005 and S006 were both registered. PR #488 retired S006
+entirely; the historical Suggest/Info split was an engine workaround
+(per-rule severity overwrite), NOT §-grounded — CAPCO-2016 §H.8 +
+§D.2 Table 3 rule 21 apply uniformly to REL TO atom-semantics. S005
+is now the sole survivor (dispatched at `Phase::PageFinalization`).
+This audit document is a frozen snapshot of the 2026-05-10 state and
+is not being rewritten for #488; future readers should subtract S006
+from any post-2026-05-17 reasoning about (no clean fit) counts, while
+treating S005's row as still-accurate aside from the now-collapsed
+Suggest/Info branch description.
 
 **Provenance.** Restarted after the user merged the bag-of-tokens architectural
 restatement at `specs/006-engine-rule-refactor/architecture.md` (2026-05-09).

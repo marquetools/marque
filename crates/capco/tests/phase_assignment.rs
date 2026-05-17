@@ -71,7 +71,8 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("E006", Phase::Localized),
     ("E007", Phase::Localized),
     ("S004", Phase::Localized),
-    // ----- Phase::WholeMarking (32 rows, post-#461 W004 retirement) -
+    // ----- Phase::WholeMarking (31 rows, post-#488 S005 retirement to
+    // PageFinalization + S006 collapse) ------------------------------
     // Note: E064 / E065 appear in their PR 9a / T135a footnoted rows
     // BELOW with Phase::Localized declarations — they are
     // numerically in the Localized partition; the listing order
@@ -133,8 +134,6 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // text); replacements are byte-precise single-token splices.
     ("E067", Phase::Localized),
     ("S003", Phase::WholeMarking),
-    ("S005", Phase::WholeMarking),
-    ("S006", Phase::WholeMarking),
     // PR 9c.2 / FR-048: S007 emits text_correction at the
     // classification token's span; the augmentation branch can also
     // emit at a RelToBlock token's span (a different token than the
@@ -144,7 +143,24 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     ("W002", Phase::WholeMarking),
     ("W003", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),
-    // ----- Phase::PageFinalization (1 rule, issue #461) -------------
+    // ----- Phase::PageFinalization (2 rules, issues #461 + #488) ----
+    // PR #488 (issue #488): S005 rel-to-opaque-uncertain-reduction
+    // migrated from `Phase::WholeMarking` (Banner/CAB-gated firing)
+    // to `Phase::PageFinalization`. Same dispatch shape as W004 —
+    // page-level fixpoint snapshot, fires once per page at every
+    // scanner-emitted `MarkingType::PageBreak` BEFORE the
+    // PageContext reset plus once at end-of-document. The pre-#488
+    // banner/CAB gate produced a documented false-negative on
+    // banner-first / banner-less layouts (no banner candidate ⇒ no
+    // firing surface). PR #488 also collapsed the historical
+    // S005/S006 Suggest/Info split into a single Suggest-severity
+    // rule — the split was an engine-workaround (per-rule severity
+    // overwrite), NOT §-grounded; §H.8 + §D.2 Table 3 rule 21 apply
+    // uniformly. Authority: CAPCO-2016 §H.8 (REL TO grammar) +
+    // ODNI ISMCAT V[`marque_ism::ISMCAT_TETRA_VERSION`] Tetragraph
+    // Taxonomy. Re-verified 2026-05-17 against
+    // `crates/capco/docs/CAPCO-2016.md`.
+    ("S005", Phase::PageFinalization),
     // PR refactor-006-pr-pagefinalization (issue #461): W004
     // joint-disunity-collapse migrated from `Phase::WholeMarking`
     // (Banner-only firing) to `Phase::PageFinalization`. The engine

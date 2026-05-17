@@ -1,11 +1,22 @@
 ---
 date: 2026-05-10
-status: tracked deferral from PR 3c (engine + rule architecture refactor)
+status: tracked deferral from PR 3c (engine + rule architecture refactor) — updated 2026-05-17 (PR #488) to reflect S006 retirement
 parent: specs/006-engine-rule-refactor/
 covers: structural diagnostic channel for advisory markings
 trigger: first concrete consumer needs structurally-distinct admonition emission
-authors: synthesized from architecture.md §3.0.b, decisions/02-04*.md, rule-body-audit.md
+authors: synthesized from architecture.md §3.0.b, decisions/02-04*.md, rule-body-audit.md; S006-retirement annotations from PR #488 (2026-05-17)
 ---
+
+> **PR #488 update (2026-05-17).** S006 was retired entirely — the
+> historical S005/S006 Suggest/Info split was an engine workaround
+> (per-rule severity overwrite), NOT §-grounded; CAPCO-2016 §H.8 +
+> §D.2 Table 3 rule 21 apply uniformly to REL TO atom-semantics.
+> The collapse leaves S005 as the sole survivor at `Phase::PageFinalization`.
+> The admonition channel remains the documented long-term home for the
+> per-emission severity signal the collapse temporarily forecloses;
+> when the channel lands, the post-#488 single-S005 rule will split
+> per-emission into the original Suggest/Info semantics without
+> re-introducing two registered rules.
 
 # Admonition Channel (Deferred)
 
@@ -63,9 +74,15 @@ Until the trigger fires, the admonition rules sit at:
 
 - **W002, W034** — keep emitting via `Severity::Warn` on the
   standard diagnostic stream. No source change.
-- **S005, S006** — remain provisional `Constraint::Custom` per D4,
-  with retirement-target comments in source naming admonition as
-  the eventual home.
+- **S005** — Post-PR-#488, dispatched at `Phase::PageFinalization`
+  (single Suggest-severity rule). Pre-PR-#488 this entry read
+  "S005, S006 — remain provisional `Constraint::Custom` per D4";
+  S006 was retired in PR #488 as not §-grounded (see PR #488 update
+  banner at the top of this file). The retirement-target comment in
+  source still names admonition as the eventual home: when the
+  channel lands, the single S005 rule splits per-emission into
+  the original Suggest/Info semantics without re-introducing two
+  registered rules.
 - **RD warning, RAWFISA notice, IMCON SAT warning** (three audit-
   named future rules) — **DO NOT add to the rule catalog before
   the channel exists.** They are admonition-shape from day one;

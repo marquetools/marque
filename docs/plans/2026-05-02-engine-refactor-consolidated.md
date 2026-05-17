@@ -813,12 +813,18 @@ page-level fixpoint registers two entries.
 #### 9.1.1 Phase::PageFinalization (issue #461)
 
 PageFinalization is the third dispatch bucket. It exists because
-three rule classes (W004 joint-disunity-collapse today; S007 and
-`BannerMatchesProjectedRule` migrations scheduled as follow-up PRs)
-need to observe the **closed** page-level state — the
-Knaster-Tarski fixpoint of every page-axis lattice (classification,
-SCI, SAR, AEA, dissem, REL TO, FGI marker) — not an intermediate
-PageContext snapshot tied to a Banner candidate's arrival ordering.
+three rule classes (W004 joint-disunity-collapse from issue #461,
+S005 rel-to-opaque-uncertain-reduction from issue #488 — PR #488
+also collapsed the historical S005/S006 Suggest/Info split into
+single S005 since CAPCO-2016 §H.8 + §D.2 Table 3 rule 21 don't
+distinguish "active validation" from "consistent case"; the split
+was an engine-workaround for per-rule severity override, not
+§-grounded — and the scheduled S007 +
+`BannerMatchesProjectedRule` migrations) need to observe the
+**closed** page-level state — the Knaster-Tarski fixpoint of every
+page-axis lattice (classification, SCI, SAR, AEA, dissem, REL TO,
+FGI marker) — not an intermediate PageContext snapshot tied to a
+Banner candidate's arrival ordering.
 
 The engine synthesizes a single dispatch per page-boundary:
 
@@ -841,9 +847,12 @@ Arcs are force-initialized to `Some(_)` before invoking a
 PageFinalization rule. Defensive `.as_ref()?` early-returns are
 belt-and-suspenders rather than necessary correctness.
 
-**No-fix emission convention.** Today's only consumer (W004) emits
-diagnostics without `FixProposal` — the JOINT→FGI migration is
-renderer-canonical territory (PR 5+ Stage 4). A future fixable
+**No-fix emission convention.** Today's consumers (W004 from issue
+#461; S005 from issue #488) emit diagnostics without `FixProposal`
+— W004's JOINT→FGI migration is renderer-canonical territory
+(PR 5+ Stage 4); S005's REL TO membership-uncertainty is not
+resolvable from in-tree data (only the producer's external
+membership data can settle it). A future fixable
 PageFinalization rule will need to thread the synthetic boundary
 candidate through the existing two-pass fix pipeline. The
 `TwoPassFixer` naming reflects fix-application passes — pass-1
@@ -855,6 +864,10 @@ if they ever produce fixes.
 as every other phase: PageFinalization diagnostic messages MUST NOT
 contain document bytes. W004 carries this property by emitting only
 canonical `CountryCode` trigraphs from the `JointSet` projection.
+S005 (PR #488) carries it by emitting only canonical CAPCO REL TO
+codes from the closed vocabulary plus verbatim ODNI taxonomy
+`<Description>` text from `lookup_tetragraph_provenance` — neither
+source can leak document bytes.
 
 `Phase` is `#[non_exhaustive]` so future dispatch phases (e.g., a
 document-finalization pass once cross-page rules land) can be added

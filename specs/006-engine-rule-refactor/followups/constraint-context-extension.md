@@ -1,17 +1,28 @@
 ---
 date: 2026-05-11
-status: tracked deferral from PR 3c.B Commit 9 (engine + rule architecture refactor)
+status: tracked deferral from PR 3c.B Commit 9 (engine + rule architecture refactor) — updated 2026-05-17 (PR #488) to reflect S006 retirement
 parent: specs/006-engine-rule-refactor/
 covers: extending `MarkingScheme::evaluate_custom` to accept rule context (marking_type, page_context)
-trigger: Stage-4 trait-surface extension PR — gated on `render_canonical` (for E005) and admonition emitter channel (for S005/S006) landing on the trait surface
-authors: synthesized from PR 3c.B Commit 9 preflight (3-reviewer chain, 2026-05-11), decisions/02-catalog-shape.md D4
+trigger: Stage-4 trait-surface extension PR — gated on `render_canonical` (for E005) and admonition emitter channel (for S005, the post-#488 sole survivor of the historical S005/S006 pair) landing on the trait surface
+authors: synthesized from PR 3c.B Commit 9 preflight (3-reviewer chain, 2026-05-11), decisions/02-catalog-shape.md D4; S006-retirement annotations from PR #488 (2026-05-17)
 references:
   - specs/006-engine-rule-refactor/decisions/02-catalog-shape.md D4 (Path A fallback)
-  - specs/006-engine-rule-refactor/followups/admonition-channel.md (S005/S006 retirement target)
+  - specs/006-engine-rule-refactor/followups/admonition-channel.md (S005 retirement target — post-PR-#488; was the S005/S006 retirement target pre-#488)
   - specs/006-engine-rule-refactor/architecture.md §"What this commits us to" (render_canonical)
   - crates/scheme/src/scheme.rs:124-130 (evaluate_custom signature)
   - crates/engine/src/engine.rs:864-866 (constraint-catalog bridge call site)
 ---
+
+> **PR #488 update (2026-05-17).** S006 was retired entirely: the
+> historical S005/S006 Suggest/Info split was an engine workaround
+> (per-rule severity overwrite), NOT §-grounded. CAPCO-2016 §H.8 +
+> §D.2 Table 3 rule 21 apply uniformly to REL TO atom-semantics.
+> S005 was migrated to `Phase::PageFinalization`. Body references to
+> S006 below remain only as pre-#488 historical record; the
+> blocker-table entry for S006 collapsed into S005's, leaving the
+> extension prerequisite for two rules instead of three (E005 and
+> S005). The admonition channel remains the long-term home for the
+> per-emission-severity signal that the collapse temporarily forecloses.
 
 # `MarkingScheme::evaluate_custom` Context Extension (Deferred)
 
@@ -51,8 +62,8 @@ Three rules need context the predicate cannot reach:
 | Rule | Context field needed | Why |
 |---|---|---|
 | **E005** (declassify-misplaced) | `RuleContext.marking_type` | Must skip `MarkingType::Cab` (declass legitimately lives in CAB). Without the gate the predicate fires on every CAB candidate carrying `declassify_on`. |
-| **S005** (rel-to-uncertain-suggest) | `RuleContext.page_context` | Entire detection (`analyze_uncertain_reduction`) reads `page.portions()`, computes a page-level REL TO atom intersection, and decides the Suggest vs Info branch from page-wide banner state. |
-| **S006** (rel-to-uncertain-info) | `RuleContext.page_context` | Shares `analyze_uncertain_reduction` with S005; same dependency. |
+| **S005** (rel-to-uncertain-suggest) | `RuleContext.page_context` | Entire detection (`analyze_uncertain_reduction`) reads `page.portions()` and computes a page-level REL TO atom intersection. Post-PR-#488 the rule is dispatched at `Phase::PageFinalization`, so the `page_context` access is satisfied by the existing PageFinalization dispatch path rather than by an `evaluate_custom` extension. S005 may still migrate to a catalog row when the admonition channel lands. |
+| ~~**S006** (rel-to-uncertain-info)~~ | ~~`RuleContext.page_context`~~ | **RETIRED in PR #488.** The historical Suggest/Info split was an engine workaround, NOT §-grounded; collapsed into S005 as a single Suggest-severity rule. The per-emission severity signal returns when the admonition channel lands. |
 
 `evaluate_custom` has no path to either field today.
 

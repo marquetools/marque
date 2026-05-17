@@ -239,7 +239,7 @@ const OFF_RULES: &[&str] = &[
     "E061", "E062", "E063", "E064", "E065", // PR 9c.1 / 9c.2 NATO additions.
     "E066", "S007", // PR 9c.1 / 9c.2 NATO additions (don't fire in this fixture).
     "W002", "W003", "W034", // Style suggestions.
-    "S003", "S004", "S005", "S006",
+    "S003", "S004", "S005",
     // Dissem / SCI / SAR per-axis rules outside the fixture's coverage.
     "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016",
     // Misc rare-fire rules.

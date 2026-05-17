@@ -39,8 +39,9 @@
 //! Net effect: any caller reading `PageContext::expected_rel_to()` saw a
 //! non-empty intersection (the raw portion data) when a NODIS/EXDIS
 //! portion was present, while the scheme's final projection saw it
-//! cleared. The S005/S006 atom-semantics rule (`crates/capco/src/rules.rs`)
-//! and `render_expected_banner` (`crates/ism/src/page_context.rs`) both
+//! cleared. The S005 atom-semantics rule (`crates/capco/src/rules.rs`;
+//! post-PR-#488 collapsed from the historical S005/S006 pair) and
+//! `render_expected_banner` (`crates/ism/src/page_context.rs`) both
 //! depend on the read API matching the final-projection state.
 //!
 //! # What this PR closed

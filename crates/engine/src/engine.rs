@@ -289,17 +289,20 @@ pub struct Engine {
     /// `(rule_set_index, rule_index_within_set)` pair indexing back
     /// into `self.rule_sets[set_idx].rules()[rule_idx]`.
     ///
-    /// Today's only consumer is W004 `joint-disunity-collapse`,
-    /// which fires on the page-level fixpoint snapshot of the
-    /// classification axis. Future PageFinalization rules (S007 and
-    /// `BannerMatchesProjectedRule` migrations are scheduled
-    /// follow-ups) will appear here without altering the dispatch
-    /// structure. The partition is read at lint time (via
-    /// `dispatch_page_finalization`); none of today's PageFinalization
-    /// rules emit a `FixProposal`, so fix-time pass-2 does not yet
-    /// need to consult this field. When the first fixable
-    /// PageFinalization rule lands, the `TwoPassFixer` will need a
-    /// matching pass-2 read site here.
+    /// Today's consumers are W004 `joint-disunity-collapse` (issue
+    /// #461; fires on the page-level fixpoint snapshot of the
+    /// classification axis) and S005 `rel-to-opaque-uncertain-reduction`
+    /// (issue #488; fires on the page-level fixpoint snapshot of the
+    /// REL TO axis — pre-#488 the rule was Banner-gated under
+    /// `Phase::WholeMarking` and missed banner-less layouts). Future
+    /// PageFinalization rules (S007 and `BannerMatchesProjectedRule`
+    /// migrations are scheduled follow-ups) will appear here without
+    /// altering the dispatch structure. The partition is read at lint
+    /// time (via `dispatch_page_finalization`); none of today's
+    /// PageFinalization rules emit a `FixProposal`, so fix-time
+    /// pass-2 does not yet need to consult this field. When the
+    /// first fixable PageFinalization rule lands, the `TwoPassFixer`
+    /// will need a matching pass-2 read site here.
     pass_finalization_rule_indices: PassFinalizationIndices,
 
     /// Pre-resolved severity for every registered rule's *registered* ID,
@@ -1218,9 +1221,10 @@ impl Engine {
                     //
                     // The linear scan over `pass_finalization_rule_indices`
                     // is intentional: the SmallVec is inline-4 and holds
-                    // 1 entry today (W004), growing to a small handful as
-                    // S007 + BannerMatchesProjectedRule migrate. A HashSet
-                    // probe pays a hash + bucket traversal per rule per
+                    // 2 entries today (W004 from issue #461; S005 from
+                    // issue #488), growing to a small handful as S007 +
+                    // BannerMatchesProjectedRule migrate. A HashSet probe
+                    // pays a hash + bucket traversal per rule per
                     // candidate; a 1-3 element linear scan is faster and
                     // generates simpler code. Revisit if the bucket grows
                     // past ~16 entries.
@@ -3965,11 +3969,12 @@ type Pass2Indices = SmallVec<[(usize, usize); 32]>;
 /// PageFinalization rule-index partition (issue #461). Inline-4 —
 /// PageFinalization is dispatched once per page (not per candidate),
 /// so the registered-rule count drives this, not call frequency. W004
-/// is the first consumer (one rule). Two scheduled follow-up PRs
-/// (S007, BannerMatchesProjectedRule) will add at most a handful
-/// more; if the count grows beyond inline capacity the SmallVec
-/// spills to the heap (one allocation at engine construction time —
-/// not on the hot path). 4 is a deliberate small-inline budget: this
+/// (issue #461) and S005 (issue #488) are today's consumers (two
+/// rules). Two scheduled follow-up PRs (S007, BannerMatchesProjectedRule)
+/// will add at most a handful more; if the count grows beyond inline
+/// capacity the SmallVec spills to the heap (one allocation at engine
+/// construction time — not on the hot path). 4 is a deliberate
+/// small-inline budget: this
 /// partition is consulted once per page-break + once at EOD, which
 /// is O(pages) per document, not O(candidates).
 type PassFinalizationIndices = SmallVec<[(usize, usize); 4]>;
@@ -4020,7 +4025,8 @@ type EmittedIdOverrides = HashMap<&'static str, Severity>;
 /// the issue #461 third bucket — read directly by
 /// `dispatch_page_finalization` at lint time and (when a future
 /// PageFinalization rule emits a fix) by the corresponding pass-2
-/// path at fix time. Today's only consumer (W004) emits no fix.
+/// path at fix time. Today's consumers (W004 from issue #461; S005
+/// from issue #488) emit no fix.
 fn partition_rules_by_phase(
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
 ) -> (Pass1Indices, Pass2Indices, PassFinalizationIndices) {
@@ -4089,7 +4095,8 @@ fn partition_rules_by_phase(
 ///   stores `Box<[CanonicalAttrs]>` without per-portion spans, so
 ///   `ctx.page_context.portions()` cannot recover an offending
 ///   portion's own offsets. Rules document this limitation in their
-///   doc comments (W004 is the worked example). A future enhancement
+///   doc comments (W004 from issue #461 and S005 from issue #488 are
+///   the worked examples). A future enhancement
 ///   that adds per-portion spans to `PageContext` — or threads a
 ///   span-lookup helper into `RuleContext` — would let rules refine
 ///   the anchor to the specific offending portion.
