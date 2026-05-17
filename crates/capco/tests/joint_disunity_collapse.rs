@@ -183,6 +183,16 @@ fn w004_fires_on_joint_disunity_banner() {
     // because the same disunity is observable on the closed state
     // regardless of which boundary closes the page.
     //
+    // **Copilot-flagged regression guard.** Pre-fix this test was a
+    // `.find().is_some()` assertion that masked the engine's
+    // main-loop double-dispatch defect: the main candidate loop
+    // ran W004 on the Banner candidate (because the loop had no
+    // phase filter), and `dispatch_page_finalization` ran it
+    // again at EOD. Tightened to `count == 1` so any future
+    // regression that re-introduces a missing phase filter at
+    // the engine main-loop level (`engine.rs:1202-1203`) fails
+    // this test loudly.
+    //
     // Assertions: rule = "W004", Warn severity, citation references
     // §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass — updated from
     // `§H.3 p56`).
@@ -192,16 +202,24 @@ fn w004_fires_on_joint_disunity_banner() {
                    SECRET//FGI CAN GBR//NOFORN\n";
 
     let lint = engine.lint(source);
-    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
-    assert!(
-        w004.is_some(),
-        "W004 must fire on JOINT-disunity page; diagnostics: {:?}",
+    let w004_diags: Vec<_> = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .collect();
+    assert_eq!(
+        w004_diags.len(),
+        1,
+        "W004 must fire EXACTLY once on a JOINT-disunity page with a \
+         closing banner (regression guard for the engine main-loop \
+         phase-filter defect Copilot flagged on PR #461). All \
+         diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.as_str())
             .collect::<Vec<_>>()
     );
-    let w004 = w004.unwrap();
+    let w004 = w004_diags[0];
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
     // CV-4 (PR 4b-B 8th-pass): citation amended from
     // `§H.3 p56 + §H.7 p123` to `§H.3 p57 + §H.7 p123` — §H.3 p57
@@ -449,7 +467,8 @@ fn w004_fires_per_page_break_independently() {
         .filter(|d| d.rule.as_str() == "W004")
         .count();
     assert_eq!(
-        w004_count, 1,
+        w004_count,
+        1,
         "W004 must fire exactly once (page 1 has disunity, page 2 is \
          unanimous); diagnostics: {:?}",
         lint.diagnostics
@@ -480,7 +499,8 @@ fn w004_fires_on_both_disunity_pages() {
         .filter(|d| d.rule.as_str() == "W004")
         .count();
     assert_eq!(
-        w004_count, 2,
+        w004_count,
+        2,
         "W004 must fire exactly twice (one per disunity page); \
          diagnostics: {:?}",
         lint.diagnostics
@@ -562,6 +582,113 @@ fn w004_eod_fires_for_trailing_disunity_without_pagebreak() {
         w004.is_some(),
         "Issue #461 closure: W004 MUST fire via EOD PageFinalization \
          on trailing-portions-only layout; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Engine main-loop phase-filter regression guards (Copilot review on
+// PR refactor-006-pr-pagefinalization / issue #461).
+// ---------------------------------------------------------------------------
+//
+// Copilot's HIGH-severity finding: the engine's main candidate-loop
+// (`engine.rs:1202-1203`) iterated `self.rule_sets[..].rules()[..]`
+// with NO phase filter, so every registered rule — including
+// `Phase::PageFinalization` rules — ran on every Portion / Banner /
+// CAB candidate. With W004's body no longer gated on
+// `MarkingType::Banner`, the rule fired TWICE on any page with a
+// closing banner: once from the main loop's Banner-candidate
+// dispatch (because the engine attaches `ctx.page_context` to
+// non-Portion candidates with non-empty pages), and once from
+// `dispatch_page_finalization` at the next PageBreak / EOD.
+//
+// The two tests below pin "exactly once per page" semantics on the
+// two layout shapes where the pre-fix bug would surface as a
+// double-fire: single page with closing banner, and two-page document
+// with closing banners on both pages.
+//
+// Both tests would FAIL on the pre-fix engine; they PASS on
+// the post-fix engine (`pass_finalization_rule_indices` skipped from
+// the main loop). The companion regression tightening lives at
+// `w004_fires_on_joint_disunity_banner` (top of file) where
+// `.find().is_some()` was upgraded to `.filter().count() == 1`.
+
+#[test]
+fn w004_fires_exactly_once_on_page_with_closing_banner() {
+    // Single page with two disunified JOINT portions AND a closing
+    // banner. Pre-Copilot-fix the main candidate loop's
+    // Banner-candidate dispatch ran W004 once (the body would early-
+    // return on the Banner-only guard, but the guard was removed in
+    // the PageFinalization migration — now the body runs and
+    // emits because `page_context` is populated on Banner candidates
+    // by accumulation, and `JointSet::DisunityCollapse` is true at
+    // that snapshot). `dispatch_page_finalization` then ran W004 a
+    // second time at EOD. Net: 2 W004 diagnostics. Post-fix: the
+    // main loop's phase filter skips PageFinalization rules entirely,
+    // so only the EOD synthesis dispatches W004 → count == 1.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) first portion.\n\
+                   (//JOINT S USA CAN) second portion.\n\
+                   SECRET//FGI CAN GBR//NOFORN\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert_eq!(
+        w004_count,
+        1,
+        "W004 must fire EXACTLY once on a single page with a closing \
+         banner. A count of 2 means the engine's main candidate loop \
+         did NOT skip Phase::PageFinalization rules and W004 ran both \
+         (a) on the Banner candidate in the main loop, AND (b) via \
+         dispatch_page_finalization at EOD. This is the Copilot-HIGH \
+         regression guard for PR #461. Diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_fires_exactly_once_per_page_when_banner_closes_page() {
+    // Two-page document, each page has disunified JOINT portions
+    // AND a closing banner before the form-feed (or end-of-document
+    // for page 2). Pre-Copilot-fix this would emit FOUR W004
+    // diagnostics: two from main-loop Banner dispatches + two from
+    // PageFinalization (one per `\f` boundary + one at EOD — except
+    // the EOD page's banner doesn't precede a `\f`, so dispatch
+    // fires at EOD instead; either way, one PageFinalization fire
+    // per page). Post-fix: only the PageFinalization-path fires,
+    // one per page → count == 2.
+    let engine = engine_with_fixed_clock();
+    let source: &[u8] = b"(//JOINT S USA GBR) page 1 first portion.\n\
+                          (//JOINT S USA CAN) page 1 disunity portion.\n\
+                          SECRET//FGI CAN GBR//NOFORN\n\
+                          \x0c\
+                          (//JOINT S USA FRA) page 2 first portion.\n\
+                          (//JOINT S USA DEU) page 2 disunity portion.\n\
+                          SECRET//FGI DEU FRA//NOFORN\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert_eq!(
+        w004_count,
+        2,
+        "W004 must fire EXACTLY twice on a two-page document where \
+         each page has a closing banner (one per page, not four). \
+         A count of 4 indicates the main-loop phase filter regressed \
+         and W004 dispatched on both Banner candidates AND both \
+         PageFinalization synthesis points. Copilot-HIGH regression \
+         guard for PR #461. Diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.as_str())

@@ -77,7 +77,12 @@ fn detect_kind(source: &[u8]) -> Kind {
     // #461).
     let mut markings: Vec<&MarkingCandidate> = candidates
         .iter()
-        .filter(|c| !matches!(c.kind, MarkingType::PageBreak | MarkingType::PageFinalization))
+        .filter(|c| {
+            !matches!(
+                c.kind,
+                MarkingType::PageBreak | MarkingType::PageFinalization
+            )
+        })
         .collect();
     if markings.len() != 1 {
         return Kind::Other;

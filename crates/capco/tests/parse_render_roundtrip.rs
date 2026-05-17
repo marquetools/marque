@@ -125,7 +125,12 @@ fn detect_kind(source: &[u8]) -> Kind {
     // `#[non_exhaustive]` enum).
     let real: Vec<_> = candidates
         .iter()
-        .filter(|c| !matches!(c.kind, MarkingType::PageBreak | MarkingType::PageFinalization))
+        .filter(|c| {
+            !matches!(
+                c.kind,
+                MarkingType::PageBreak | MarkingType::PageFinalization
+            )
+        })
         .collect();
     if real.len() != 1 {
         return Kind::Other;

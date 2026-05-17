@@ -1201,6 +1201,37 @@ impl Engine {
                 .with_pre_pass_1_attrs(pre_pass_1_attrs);
             for (set_idx, rule_set) in self.rule_sets.iter().enumerate() {
                 for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
+                    // `Phase::PageFinalization` rules are dispatched
+                    // exclusively by `dispatch_page_finalization` at
+                    // every scanner-emitted `MarkingType::PageBreak`
+                    // (BEFORE the `PageContext` reset) and once at
+                    // end-of-document. Skipping them in the main
+                    // candidate loop is what makes the "fires once on
+                    // the page fixpoint" contract documented on
+                    // `Phase::PageFinalization` (`crates/rules/src/lib.rs`)
+                    // mechanically true. Without this skip the rule
+                    // would ALSO fire on every Banner/CAB candidate
+                    // whose `ctx.page_context` is populated, producing
+                    // a duplicate diagnostic per page on layouts with
+                    // a closing banner — caught by Copilot review on
+                    // PR #487 (issue #461).
+                    //
+                    // The linear scan over `pass_finalization_rule_indices`
+                    // is intentional: the SmallVec is inline-4 and holds
+                    // 1 entry today (W004), growing to a small handful as
+                    // S007 + BannerMatchesProjectedRule migrate. A HashSet
+                    // probe pays a hash + bucket traversal per rule per
+                    // candidate; a 1-3 element linear scan is faster and
+                    // generates simpler code. Revisit if the bucket grows
+                    // past ~16 entries.
+                    if self
+                        .pass_finalization_rule_indices
+                        .iter()
+                        .any(|&(s, r)| s == set_idx && r == rule_idx)
+                    {
+                        continue;
+                    }
+
                     // Hybrid Off handling:
                     //
                     //   - **Fast path** (every non-walker rule): when
@@ -4094,6 +4125,20 @@ fn dispatch_page_finalization(
         return Err(());
     }
 
+    // Empty-bucket short-circuit (Copilot review on PR #487 / issue
+    // #461). If no rule declared `Phase::PageFinalization` the Arc
+    // force-init below would still clone `page_context` and project
+    // `page_marking` — both non-trivial — without a consumer. This
+    // matters for future schemes that may register no PageFinalization
+    // rules, and for any future config layer that disables every
+    // PageFinalization rule via severity override `Off` (the per-rule
+    // Off-skip below would no-op, but the clone has already happened).
+    // Returning early keeps the cost proportional to actual consumer
+    // count.
+    if pass_finalization_rule_indices.is_empty() {
+        return Ok(());
+    }
+
     // PageFinalization rules contract: ctx.page_context AND
     // ctx.page_marking are both populated. Force-init both Arcs
     // here BEFORE building the RuleContext so the rule body can
@@ -4176,16 +4221,16 @@ fn dispatch_page_finalization(
         // `diags.retain_mut` exactly so a `[rules] W004 = "off"`
         // config silences the rule the same way it would in the
         // main candidate loop.
-        diags.retain_mut(|d| {
-            match emitted_id_overrides.get(d.rule.as_str()).copied() {
+        diags.retain_mut(
+            |d| match emitted_id_overrides.get(d.rule.as_str()).copied() {
                 Some(Severity::Off) => false,
                 Some(override_severity) => {
                     d.severity = override_severity;
                     true
                 }
                 None => true,
-            }
-        });
+            },
+        );
         out_diagnostics.extend(diags);
     }
 
