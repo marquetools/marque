@@ -313,15 +313,19 @@ pub enum Phase {
     /// (no portions) are skipped — there is no page-level fixpoint to
     /// observe.
     ///
-    /// **`Diagnostic::span`.** Rules typically reference a portion
-    /// span looked up from `ctx.page_context.portions()` for
-    /// user-facing precision. When no per-portion span survives in
-    /// `PageContext` (the type stores `Box<[CanonicalAttrs]>` only, not
-    /// attrs-with-span — issue #461 chose not to extend the hot-path
-    /// data type for a single diagnostic), the rule MAY fall back to
-    /// `ctx.candidate_span` which the engine sets to a zero-length
-    /// anchor at the boundary offset. Document the limitation in the
-    /// rule's doc comment if you use the fallback.
+    /// **`Diagnostic::span`.** The engine provides
+    /// `ctx.candidate_span` as a zero-length anchor at the page-break
+    /// byte offset (or `source.len()` at end-of-document). Today this
+    /// is the only span a PageFinalization rule can produce:
+    /// `PageContext` stores `Box<[CanonicalAttrs]>` only — no
+    /// per-portion spans — so there is no way to recover a portion's
+    /// own span from `ctx.page_context.portions()`. Issue #461 chose
+    /// not to extend the hot-path data type for a single Warn-severity
+    /// diagnostic. Rules using the boundary anchor MUST document the
+    /// limitation in their doc comment (W004 is the worked example).
+    /// A future enhancement that adds spans to `PageContext` or
+    /// threads a portion-span lookup into `RuleContext` would let
+    /// rules refine the anchor to the specific offending portion.
     ///
     /// **No-fix emission convention.** Rules in this phase today
     /// surface diagnostics without `FixProposal` (W004 is the first

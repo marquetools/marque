@@ -4139,6 +4139,28 @@ fn dispatch_page_finalization(
         return Ok(());
     }
 
+    // All-Off short-circuit (Copilot round-2 on PR #487). If every
+    // PageFinalization rule's registered-id severity resolves to
+    // `Off`, the per-rule loop below would skip them all — but only
+    // after the Arc force-init paid `page_context.clone()` +
+    // `page_context.project()`. Pre-scanning the bucket lets us
+    // return BEFORE those costs.
+    //
+    // Walker rules (those with `additional_emitted_ids()` non-empty)
+    // can still fire under per-emitted-id severity overrides even
+    // when their registered-id severity is `Off`, so they MUST NOT
+    // be treated as Off by this gate. No PageFinalization rule
+    // today registers walker IDs; the gate is shaped to stay
+    // correct if one is added.
+    let any_rule_can_fire = pass_finalization_rule_indices.iter().any(|&(s, r)| {
+        let rule = &rule_sets[s].rules()[r];
+        !rule.additional_emitted_ids().is_empty()
+            || fast_path_severities[s][r] != Severity::Off
+    });
+    if !any_rule_can_fire {
+        return Ok(());
+    }
+
     // PageFinalization rules contract: ctx.page_context AND
     // ctx.page_marking are both populated. Force-init both Arcs
     // here BEFORE building the RuleContext so the rule body can

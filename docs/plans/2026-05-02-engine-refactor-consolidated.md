@@ -783,16 +783,21 @@ trait Rule {
 }
 ```
 
-Engine enforces at registration:
+Per-phase span conventions (the engine does NOT mechanically enforce
+these — they are documented expectations for rule authors; the engine
+only provides `ctx.candidate_span` and the dispatch context):
 - `Phase::Localized` rule's `FixProposal::span` is sub-token-only.
 - `Phase::WholeMarking` rule's span covers a full marking.
-- `Phase::PageFinalization` rule's `Diagnostic.span` defaults to a
-  zero-length boundary anchor (the `PageBreak` byte offset, or
-  `source.len()` at end-of-document). Rules MAY refine to a portion
-  span by walking `ctx.page_context.portions()` when per-portion
-  precision matters, but `PageContext` does not track per-portion
-  spans today, so the boundary anchor is the typical surface for
-  no-fix advisories.
+- `Phase::PageFinalization` rule's `Diagnostic.span` is the
+  engine-provided boundary anchor — a zero-length `Span` at the
+  `PageBreak` byte offset, or `source.len()` at end-of-document —
+  unless the rule refines it. Refinement requires per-portion span
+  data; `PageContext` today stores only `Box<[CanonicalAttrs]>` with
+  no per-portion spans, so the boundary anchor is the only span the
+  rule can produce without extending the hot-path data type. A
+  future enhancement that adds spans to `PageContext` (or threads a
+  span-lookup helper into `RuleContext`) would let rules anchor on
+  the specific offending portion.
 
 Each rule belongs to exactly one phase. If a defect class genuinely
 needs detection in both phases (rare), register two rule entries
