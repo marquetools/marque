@@ -567,16 +567,27 @@ impl MarkingScheme for CapcoScheme {
     ///
     /// - `TokenRef::Token(id)` for concrete closed-CVE tokens whose
     ///   identity matters (the common case — dissem controls, AEA
-    ///   markings, non-IC dissem, classification sentinels).
-    /// - `TokenRef::AnyInCategory(cat)` for facts whose presence is
-    ///   axis-level only: `CAT_REL_TO` when a REL TO country list is
-    ///   present, `CAT_SCI` when any SCI marking is present, `CAT_SAR`
-    ///   when any SAR program is present, and `CAT_NON_US_CLASSIFICATION`
-    ///   for FGI / NATO / JOINT classifications. The
+    ///   markings, non-IC dissem) **and** for per-variant
+    ///   classification sentinels: `TOK_JOINT`, `TOK_NATO_CLASS`,
+    ///   `TOK_FGI_CLASS`, and the dual-axis `TOK_FGI_MARKER`.
+    /// - `TokenRef::AnyInCategory(cat)` for axis-level open-vocab
+    ///   facts only: `CAT_REL_TO` when a REL TO country list is
+    ///   present, `CAT_SCI` when any SCI marking is present,
+    ///   `CAT_SAR` when any SAR program is present. The
     ///   `AnyInCategory` shape lets family predicates (e.g.
-    ///   `is_fdr_dominator`) match against an axis without enumerating
-    ///   each open-vocab token (REL TO trigraphs, SAR program names,
-    ///   SCI compartments).
+    ///   `is_fdr_dominator`) match against an axis without
+    ///   enumerating each open-vocab token (REL TO trigraphs, SAR
+    ///   program names, SCI compartments).
+    ///
+    /// Per-variant classification sentinels (added in #509) replaced
+    /// the umbrella `AnyInCategory(CAT_NON_US_CLASSIFICATION)`
+    /// emission so family predicates can target NATO / FGI / JOINT
+    /// individually without re-walking the classification axis. The
+    /// umbrella shape is no longer emitted here; `CAT_NON_US_CLASSIFICATION`
+    /// remains live as a `Constraint::Requires` LHS (evaluated via
+    /// `satisfies_attrs`, not `collect_present_tokens` — see E015 in
+    /// `core_catalog.rs`) and for vocabulary admission, just not as
+    /// a `collect_present_tokens` emission target.
     ///
     /// Open-vocab tokens whose **identity** is needed (specific REL TO
     /// trigraphs, individual SAR program names, individual SCI

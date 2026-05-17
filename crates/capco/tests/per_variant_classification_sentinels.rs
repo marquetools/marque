@@ -32,7 +32,10 @@
 //! the emission contract).
 
 use marque_capco::CapcoMarking;
-use marque_capco::scheme::{CapcoScheme, TOK_FGI_CLASS, TOK_FGI_MARKER, TOK_JOINT, TOK_NATO_CLASS};
+use marque_capco::scheme::{
+    CAT_NON_US_CLASSIFICATION, CapcoScheme, TOK_FGI_CLASS, TOK_FGI_MARKER, TOK_JOINT,
+    TOK_NATO_CLASS,
+};
 use marque_ism::{
     CanonicalAttrs, Classification, CountryCode, FgiClassification, FgiMarker,
     ForeignClassification, JointClassification, MarkingClassification, NatoClassification,
@@ -317,4 +320,43 @@ fn dissem_axis_fgi_marker_emits_fgi_marker_without_fgi_class() {
     );
     assert!(!tokens.contains(&TokenRef::Token(TOK_NATO_CLASS)));
     assert!(!tokens.contains(&TokenRef::Token(TOK_JOINT)));
+}
+
+// ---------------------------------------------------------------------------
+// Umbrella retirement — asymmetry-repair regression guard
+// ---------------------------------------------------------------------------
+
+#[test]
+fn umbrella_cat_non_us_classification_no_longer_emitted_for_classification_variants() {
+    // Asymmetry-repair contract (#509): per-variant classification
+    // sentinels (TOK_NATO_CLASS / TOK_FGI_CLASS / TOK_JOINT)
+    // replaced the umbrella `AnyInCategory(CAT_NON_US_CLASSIFICATION)`
+    // emission from `collect_present_tokens`. A regression that
+    // re-introduces the umbrella shape alongside the concrete
+    // sentinel would silently break family predicates that expect
+    // single-emission per axis (double-counting on
+    // `ConflictsWithFamily` evaluation). Pin against it.
+    //
+    // Note: `CAT_NON_US_CLASSIFICATION` remains live as a
+    // `Constraint::Requires` LHS (E015 at `core_catalog.rs:116`,
+    // evaluated through `satisfies_attrs`); this test only pins the
+    // `iter_present_tokens` emission contract.
+    let scheme = CapcoScheme::new();
+    let umbrella = TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION);
+    let fixtures: &[(&str, CanonicalAttrs)] = &[
+        ("nato_secret", nato_secret()),
+        ("fgi_acknowledged_deu", fgi_acknowledged_deu()),
+        ("fgi_concealed", fgi_concealed()),
+        ("joint_usa_gbr", joint_usa_gbr()),
+    ];
+    for (name, attrs) in fixtures {
+        let m = wrap(attrs.clone());
+        let tokens = collect_emitted(&scheme, &m);
+        assert!(
+            !tokens.contains(&umbrella),
+            "umbrella `AnyInCategory(CAT_NON_US_CLASSIFICATION)` must not be emitted \
+             for fixture `{name}` post-#509 (per-variant sentinels replaced it); \
+             got {tokens:?}",
+        );
+    }
 }

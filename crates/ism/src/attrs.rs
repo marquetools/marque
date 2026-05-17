@@ -1553,11 +1553,10 @@ impl CountryCode {
     /// `const fn` does not yet permit unwrapping an `Option` —
     /// `match` is the workaround.
     ///
-    /// Forward-investment for the NATO classification closure cone
-    /// deferred to #508 (PR 4b-D). The closure row will inject
-    /// `REL TO USA, NATO` on portions carrying
-    /// `MarkingClassification::Nato(_)` per CAPCO-2016 §H.7 p127
-    /// Notional Example 2.
+    /// Forward-investment for the deferred NATO classification
+    /// closure row tracked in #508 (PR 4b-D). The closure cone,
+    /// severity, suppressor set, and S007 interaction are open
+    /// design decisions — see #508 for the calibration question.
     pub const NATO: Self = match Self::try_new(b"NATO") {
         Some(c) => c,
         None => panic!("CountryCode::NATO literal must satisfy try_new invariants"),
