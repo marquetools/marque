@@ -212,12 +212,20 @@ fn rule_count_reflects_registration_changes() {
     // carved out via `PageContext::is_solely_nato_classified`.
     // Net delta: +1. Final: 37 + 1 = 38.
     //
+    // Issue #407: added `BareCanonicalCompoundRule` (E067) — bare
+    // CNWDI / NK / EU portion-mark short-forms → canonical CAPCO-2016
+    // compound forms per §H.6 p106 (RD-CNWDI), §H.4 p83 (SI-NK),
+    // §H.4 p78 (SI-EU). Walker filters `TokenKind::Unknown`,
+    // emits `Severity::Fix` text-correction diagnostics with
+    // hardcoded static replacement literals (Constitution V).
+    // Net delta: +1. Final: 39 + 1 = 40.
+    //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        39,
+        40,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -242,7 +250,10 @@ fn rule_count_reflects_registration_changes() {
          §H.7 p123 (CV-4 PR 4b-B 8th-pass updated from §H.3 p56; \
          Warn-only; cross-axis fix deferred to renderer in \
          PR 5+ per H-1 PR 4b-B follow-up triage); net delta +1. \
-         Final: 39. \
+         Final: 39. Issue #407 adds `BareCanonicalCompoundRule` \
+         (E067) — bare CNWDI / NK / EU short-forms → canonical \
+         CAPCO-2016 compound portion marks per §H.6 p106, §H.4 p83, \
+         §H.4 p78; net delta +1. Final: 40. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
