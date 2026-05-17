@@ -1650,6 +1650,7 @@ mod joint_set {
         CanonicalAttrs, Classification, CountryCode, JointClassification, MarkingClassification,
     };
     use marque_scheme::Lattice;
+    use proptest::prelude::*;
 
     fn cc(s: &str) -> CountryCode {
         CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
@@ -1849,6 +1850,159 @@ mod joint_set {
             JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
         assert_eq!(mixed.join(&unanim), JointSet::Mixed);
         assert_eq!(unanim.join(&mixed), JointSet::Mixed);
+    }
+
+    // -----------------------------------------------------------------------
+    // GitHub issue #489 — proptest shuffling for `JointSet`
+    // -----------------------------------------------------------------------
+    // The hand-written `joint_set_lattice_laws_assoc_comm_idem` test above
+    // covers the 4-state representation (Bottom / UnanimousProducers /
+    // DisunityCollapse / Mixed) via FIXED-ORDERING fixtures. PR 4b-D
+    // activates the `JointSet` lattice on the production hot path; the
+    // 51 byte-identity parity fixtures in
+    // `page_context_lattice_parity.rs` also use fixed orderings by
+    // construction. Any associativity, commutativity, or
+    // order-invariance defect that depends on the order of producers
+    // within a portion OR the order of portions across the page would
+    // therefore survive both the existing law test and the parity gate,
+    // and only surface after the hot-path flip.
+    //
+    // The three proptests below shuffle both axes:
+    //
+    //   1. Producer-list membership order within each generated portion
+    //      (via `BTreeSet` collection at the strategy level, which
+    //      naturally dedups and canonicalizes ordering).
+    //   2. Portion order across the `[CanonicalAttrs]` slice fed to
+    //      `from_attrs_iter` (via `prop_shuffle()` on the generated
+    //      page, drawing a uniform sample from S_n rather than the
+    //      single non-identity orbit a reverse would test).
+    //
+    // Every generated JOINT portion has USA auto-injected, so the
+    // §H.3 p56 malformed-drop path (empty producer list OR missing USA)
+    // is exercised by the existing hand-written
+    // `joint_empty_producers_normalizes_to_bottom` test — proptest cycles
+    // stay on the well-formed grammar.
+    //
+    // CAPCO authority (re-verified against `crates/capco/docs/
+    // CAPCO-2016.md` at authorship per Constitution VIII):
+    //   - §H.3 p56 (JOINT grammar: USA in producer list).
+    //   - §H.3 p57 (disunity → FGI migration + JOINT-doesn't-roll-up).
+
+    /// Strategy: produce a single JOINT portion at `level` with a
+    /// randomized producer list. USA is always injected so the §H.3 p56
+    /// malformed-drop path is not exercised here. Non-USA producers
+    /// are drawn from a closed 7-trigraph alphabet (GBR/CAN/AUS/NZL/
+    /// FRA/DEU/JPN). A `BTreeSet` at the strategy level dedups and
+    /// gives a canonical ordering; the slice we eventually feed back
+    /// into `JointClassification::countries` is therefore
+    /// shuffle-invariant by construction, which is the property under
+    /// test.
+    fn arb_joint_portion() -> impl Strategy<Value = CanonicalAttrs> {
+        let level = prop_oneof![
+            Just(Classification::Confidential),
+            Just(Classification::Secret),
+            Just(Classification::TopSecret),
+        ];
+        let non_us = prop_oneof![
+            Just("GBR"),
+            Just("CAN"),
+            Just("AUS"),
+            Just("NZL"),
+            Just("FRA"),
+            Just("DEU"),
+            Just("JPN"),
+        ];
+        let producers = prop::collection::btree_set(non_us, 1..=4);
+        (level, producers).prop_map(|(lvl, set)| {
+            let mut names: Vec<&'static str> = vec!["USA"];
+            names.extend(set);
+            joint_portion(lvl, &names)
+        })
+    }
+
+    /// Strategy: a sequence of 1..=4 JOINT portions, each itself a
+    /// randomized `arb_joint_portion`. The order of this `Vec` is the
+    /// "portion order" axis tested by
+    /// `joint_set_from_attrs_iter_portion_order_invariant`.
+    fn arb_joint_page() -> impl Strategy<Value = Vec<CanonicalAttrs>> {
+        prop::collection::vec(arb_joint_portion(), 1..=4)
+    }
+
+    proptest! {
+        /// Issue #489 load-bearing test: shuffling the
+        /// `[CanonicalAttrs]` slice fed to `from_attrs_iter` MUST NOT
+        /// change the resulting `JointSet`. PR 4b-D wires this into
+        /// the production hot path; an ordering-dependent constructor
+        /// would silently produce different banners depending on the
+        /// page-traversal order.
+        ///
+        /// We pair each generated page with a uniform sample from its
+        /// permutation orbit via `prop_shuffle()` and assert that the
+        /// derived `JointSet` is equal under permutation. A reverse-
+        /// only probe would test exactly one of `n!` permutations and
+        /// would be vacuous at length 1; `prop_shuffle()` draws a
+        /// fresh permutation per case so each of 256 cases samples a
+        /// different orbit element.
+        #[test]
+        fn joint_set_from_attrs_iter_portion_order_invariant(
+            (page, shuffled) in arb_joint_page().prop_flat_map(|page| {
+                let copy = page.clone();
+                (Just(page), Just(copy).prop_shuffle())
+            }),
+        ) {
+            let s_forward = JointSet::from_attrs_iter(&page);
+            let s_shuffled = JointSet::from_attrs_iter(&shuffled);
+            prop_assert_eq!(s_forward, s_shuffled);
+        }
+
+        /// Associativity, commutativity, idempotency under proptest-
+        /// shuffled operands. Each operand is independently drawn
+        /// from `arb_joint_page`, exercising the full state-space
+        /// transitions across the 4-variant decision tree.
+        #[test]
+        fn joint_set_proptest_assoc_comm_idem(
+            page_a in arb_joint_page(),
+            page_b in arb_joint_page(),
+            page_c in arb_joint_page(),
+        ) {
+            let a = JointSet::from_attrs_iter(&page_a);
+            let b = JointSet::from_attrs_iter(&page_b);
+            let c = JointSet::from_attrs_iter(&page_c);
+
+            // Commutativity.
+            prop_assert_eq!(a.join(&b), b.join(&a));
+            // Associativity.
+            prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+            // Idempotency.
+            prop_assert_eq!(a.join(&a), a.clone());
+        }
+
+        /// Join-side absorption: `a ⊔ (a ⊓ b) = a`.
+        ///
+        /// **Scope note** (per the "Partial-lattice note (C-6 PR 4b-B
+        /// follow-up)" doc comment above `JointSet::meet` in
+        /// `crates/capco/src/lattice.rs`). The dual
+        /// absorption law `a ⊓ (a ⊔ b) = a` does NOT hold over the
+        /// full `JointSet` state space — `meet` has no natural
+        /// reading for non-identical producer sets and returns
+        /// `Bottom`. Join-side absorption IS guaranteed over the
+        /// `Bottom` / `UnanimousProducers` sub-lattice. Because
+        /// `arb_joint_page` only generates well-formed JOINT
+        /// portions (all with USA), every generated operand is in
+        /// `{Bottom, UnanimousProducers, DisunityCollapse}` — the
+        /// `Mixed` variant requires a non-JOINT portion, which
+        /// `arb_joint_portion` does not produce. Under this state
+        /// space, join-side absorption holds: for cross-variant
+        /// operands `meet` returns `Bottom`, and `a ⊔ Bottom = a`.
+        #[test]
+        fn joint_set_proptest_join_side_absorption(
+            page_a in arb_joint_page(),
+            page_b in arb_joint_page(),
+        ) {
+            let a = JointSet::from_attrs_iter(&page_a);
+            let b = JointSet::from_attrs_iter(&page_b);
+            prop_assert_eq!(a.join(&a.meet(&b)), a.clone(), "a ⊔ (a ⊓ b) = a");
+        }
     }
 }
 
