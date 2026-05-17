@@ -4160,8 +4160,7 @@ fn dispatch_page_finalization(
     // correct if one is added.
     let any_rule_can_fire = pass_finalization_rule_indices.iter().any(|&(s, r)| {
         let rule = &rule_sets[s].rules()[r];
-        !rule.additional_emitted_ids().is_empty()
-            || fast_path_severities[s][r] != Severity::Off
+        !rule.additional_emitted_ids().is_empty() || fast_path_severities[s][r] != Severity::Off
     });
     if !any_rule_can_fire {
         return Ok(());
