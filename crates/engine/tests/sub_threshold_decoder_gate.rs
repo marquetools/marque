@@ -315,3 +315,71 @@ fn us_axis_bare_class_whitelist_end_to_end_zero_diagnostics() {
         );
     }
 }
+
+/// Lowercase US-axis bare-classification portions mid-prose must emit
+/// zero diagnostics end-to-end (Copilot #7 follow-up; #472 + #511).
+///
+/// **Mechanism that saves them today.** Lowercase forms (`(c)`,
+/// `(s)`, `(ts)`, …) are NOT on the
+/// [`is_bare_classification_shape`] whitelist — the whitelist is
+/// byte-exact and uppercase-only. Lowercase portions therefore go
+/// through the post-#472 null-hypothesis gate (`!has_double_slash &&
+/// !is_bare_classification_shape`), and the null gate suppresses
+/// them because their observed prose prior is the in-table value for
+/// the uppercase canonical token (`S` at `-5.49`, `C` at similar)
+/// after case-fold canonicalization, while the marking-side
+/// posterior takes a `LinePositionPenalty` (`-2.0`) for sitting deep
+/// into a prose line. For lowercase `(c)` specifically, the
+/// `LowercaseSurroundingContext` penalty (`-2.0`) also fires when
+/// surrounding bytes are lowercase-dominant — multiple paths
+/// converge to suppression.
+///
+/// **Fragility note (load-bearing).** If a future calibration change
+/// expands the whitelist to include lowercase forms (e.g., to admit
+/// archival lowercase IC documents that legitimately mark
+/// `(c)`/`(s)`), the no-op-rewrite filter in
+/// `build_decoder_diagnostic` would **NOT** save these mid-prose
+/// cases — canonicalization rewrites `(c)` → `(C)`, so
+/// `observed != canonical` and the synthetic R001 is emitted. The
+/// `(C)` end-to-end test
+/// (`bare_class_whitelist_relies_on_no_op_rewrite_filter`) is
+/// fundamentally different: uppercase observed bytes round-trip to
+/// themselves, lowercase do not. This test pins the current
+/// null-gate-saves-lowercase invariant so a whitelist expansion
+/// without simultaneous decoder-layer suppression for lowercase
+/// would surface as a clear failure here.
+///
+/// Tracking: #472 (this PR) for the null gate; #511 for the
+/// layered-confidence territory that defers a stronger lowercase
+/// discriminator and the eventual archival-lowercase-mode decision.
+#[test]
+fn us_axis_lowercase_bare_class_mid_prose_zero_diagnostics() {
+    let engine = build_engine();
+    // Lowercase US-axis forms mid-prose. Each is realistic prose
+    // (section references, function-call shapes, test specifications)
+    // that humans actually write.
+    let cases: &[&[u8]] = &[
+        b"section (c) of the report describes the protocol.",
+        b"the function (s) returns a list of cohorts.",
+        b"reference appendix (ts) for the test specification.",
+        b"clause (u) of the agreement is suspended pending review.",
+        b"option (r) on the menu remains unselected.",
+    ];
+    for input in cases {
+        let result = engine.lint(input);
+        assert!(
+            result.diagnostics.is_empty(),
+            "lowercase US-axis bare-class form in {:?} must emit zero \
+             diagnostics — null gate is what saves it today (whitelist \
+             is uppercase-only and no-op-rewrite filter does NOT \
+             apply to lowercase since canonicalization changes \
+             bytes). Got {:?}",
+            std::str::from_utf8(input).unwrap_or("<bytes>"),
+            result
+                .diagnostics
+                .iter()
+                .map(|d| (d.rule.as_str().to_owned(), d.severity))
+                .collect::<Vec<_>>(),
+        );
+    }
+}

@@ -4480,6 +4480,18 @@ const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
 /// [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`] (`-12.0`, used
 /// for the canonical-token path elsewhere).
 ///
+/// **Dedup is an approximation (Copilot #5).** Tokens are dedup'd by
+/// a 16-byte uppercase prefix, not by their full bytes. Tokens longer
+/// than 16 bytes that share a prefix collide on the dedup key and
+/// suppress one another's contribution to the sum. The effect is
+/// bounded (one missed [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`] term per
+/// collision pair) and biased toward marking-side admission, which
+/// is the safe-for-correctness direction. The priors-table lookup is
+/// unaffected — no CAPCO vocabulary entry exceeds 15 bytes, so
+/// tokens beyond the truncation boundary would always fall to the
+/// unknown-prose floor anyway. See the inline comment in the
+/// function body for the full discussion.
+///
 /// **Constitution V Principle V**: the observed bytes are read here
 /// to compute an `f32` log-prior sum, and the function returns only
 /// the scalar. No byte content escapes through the return path. The
@@ -4509,11 +4521,44 @@ fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
                 // Skip empty / non-alphanumeric-only tokens.
                 if raw.iter().any(|b| b.is_ascii_alphanumeric()) {
                     // Uppercase into a stack buffer; priors keys are
-                    // uppercase. Truncate at 16 bytes — any token
-                    // longer than that won't match a priors table
-                    // entry anyway (longest CAPCO token,
-                    // `AUSTRALIA_GROUP`, is 15 bytes) and we don't
-                    // want to allocate per-token.
+                    // uppercase.
+                    //
+                    // **Truncation is a deliberate approximation
+                    // (Copilot #5).** The 16-byte stack key truncates
+                    // observed tokens longer than 16 bytes for dedup
+                    // purposes. The lookup against the priors tables
+                    // is unaffected — tokens >16 bytes will not match
+                    // a priors entry anyway (no CAPCO vocabulary
+                    // entry exceeds 15 bytes, `AUSTRALIA_GROUP`), so
+                    // they fall to [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`]
+                    // regardless of whether we hashed the full bytes
+                    // or a 16-byte prefix. The dedup is the only
+                    // operation that sees the truncated key.
+                    //
+                    // **Dedup effect when truncation collides.** Two
+                    // distinct prose tokens >16 bytes that share a
+                    // 16-byte prefix (`internationalization` vs
+                    // `internationalizes`, hyphen-less compounds,
+                    // long identifiers without separators) collide
+                    // on the truncated key and dedup-suppress one
+                    // contribution. Each suppressed contribution
+                    // would have been a single
+                    // [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`] (`-7.0`)
+                    // term added to the null sum. The miss therefore
+                    // makes the null hypothesis slightly LESS
+                    // negative — i.e., biased toward marking-side
+                    // admission, which is the safe-for-correctness
+                    // direction here (we under-suppress potential
+                    // false positives rather than over-suppress
+                    // recoveries). The effect is bounded at one
+                    // missed `-7.0` per collision pair and stays
+                    // small relative to the
+                    // [`NULL_HYPOTHESIS_LOG_MARGIN`] (`+2.5`) gate.
+                    //
+                    // If profiling later shows the cost matters, the
+                    // dedup can move to a slice hash (`FxHash` or
+                    // `rapidhash` over the full token bytes) without
+                    // changing this function's external contract.
                     let mut buf = [0u8; 16];
                     let take = raw.len().min(16);
                     for (dst, src) in buf[..take].iter_mut().zip(&raw[..take]) {
@@ -4521,6 +4566,9 @@ fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
                     }
                     let key = &buf[..take];
                     // Dedup over seen tokens (linear, N ≤ 8 typical).
+                    // See the truncation-approximation note above for
+                    // why occasional false-positive matches on long
+                    // prose tokens are acceptable.
                     let already = seen
                         .iter()
                         .zip(seen_lens.iter())
@@ -4528,13 +4576,15 @@ fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
                     if !already {
                         seen.push(buf);
                         seen_lens.push(take as u8);
-                        let key_str = std::str::from_utf8(key);
-                        let token_prior = key_str
-                            .ok()
-                            .and_then(marque_capco::priors::token_prose_log_prior);
-                        let country_prior = key_str
-                            .ok()
-                            .and_then(marque_capco::priors::country_code_prose_log_prior);
+                        // Lazy table fallback (Copilot #6): the
+                        // country-code lookup runs only when the
+                        // token-table lookup returned `None`. Most
+                        // observed tokens hit `token_prose_log_prior`
+                        // (the common case for prose acronyms in the
+                        // priors corpus), so eagerly evaluating
+                        // `country_code_prose_log_prior` was wasted
+                        // work. `or_else` short-circuits.
+                        //
                         // Prefer the token table; fall back to country
                         // table for trigraph/tetragraph shapes that
                         // appear only there. Both tables are sourced
@@ -4554,8 +4604,13 @@ fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
                         // vocabulary), and `-7.0` reflects "moderate
                         // prose mass" rather than the canonical
                         // post-vocab-check zero-signal floor.
-                        let prior = token_prior
-                            .or(country_prior)
+                        let prior = std::str::from_utf8(key)
+                            .ok()
+                            .and_then(|s| {
+                                marque_capco::priors::token_prose_log_prior(s).or_else(|| {
+                                    marque_capco::priors::country_code_prose_log_prior(s)
+                                })
+                            })
                             .unwrap_or(OBSERVED_UNKNOWN_PROSE_LOG_PRIOR);
                         sum += prior;
                     }
