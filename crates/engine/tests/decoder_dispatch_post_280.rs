@@ -251,46 +251,71 @@ fn sar_lowercase_sub_compartment_emits_r001_suggest() {
 }
 
 #[test]
-fn sar_lowercase_program_id_canonicalizes_to_uppercase_under_zero_threshold() {
-    // Companion to `sar_lowercase_program_id_emits_r001_suggest` that
-    // pins the actual canonical bytes the decoder produces, not just
-    // that R001 fires. With `confidence_threshold = 0.0` the engine's
-    // severity-demotion pass leaves the R001 diagnostic at
-    // `Severity::Fix`, so the fix auto-applies and the canonical
-    // bytes flow out via `engine.fix(...).source`.
+fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
+    // Companion to the four `*_emits_r001_suggest` tests above that
+    // pins the actual canonical bytes the decoder produces for every
+    // SAR fixture, not just that R001 fires. With
+    // `confidence_threshold = 0.0` the engine's severity-demotion
+    // pass leaves R001 at `Severity::Fix`, so the fix auto-applies
+    // and the canonical bytes flow out via `engine.fix(...).source`.
     //
-    // This is the rust-reviewer-requested spot-check (#493 review):
-    // without it, a decoder regression that uppercased noise bytes
-    // into a syntactically-plausible-but-wrong canonical form would
-    // pass the four `*_emits_r001_suggest` tests above. The
-    // threshold-zero variant catches a wrong-bytes regression while
-    // the default-threshold tests above pin the dispatch + severity
-    // contract.
+    // Spot-check requested by rust-reviewer (#493 PR review) and
+    // extended to every SAR shape per Copilot review on PR #500:
+    // without canonical-bytes pinning a decoder regression that
+    // uppercased noise bytes into a syntactically plausible but
+    // semantically wrong canonical form (e.g., `(TS//SAR-FK-blue42)`
+    // rendering to `(TS//SAR-FK-BLU 42)` instead of
+    // `(TS//SAR-FK-BLUE42)`) would slip past the default-threshold
+    // tests above. The default-threshold tests pin the dispatch +
+    // severity contract; this loop pins what the decoder actually
+    // writes.
+    //
+    // The `applied.iter().filter(...).count() == 1` form (rather
+    // than `.any(...)`) is load-bearing: it catches the case where
+    // additional decoder fixes also land — extra fixes would
+    // indicate the engine over-applied recovery or that the
+    // dispatcher reached the decoder twice on the same input.
     //
     // Audit-content-ignorance (Constitution V Principle V) is
-    // preserved: the canonical bytes are read from `fix.source` (the
-    // fixed document buffer), not from a diagnostic message field.
+    // preserved: the canonical bytes are read from `fix.source`
+    // (the fixed document buffer), not from a diagnostic message
+    // field.
     let engine = build_engine_threshold_zero();
-    let input = b"(TS//SAR-fk)";
-    let fix = engine.fix(input, FixMode::Apply);
-    assert_eq!(
-        String::from_utf8(fix.source).expect("UTF-8 output"),
-        "(TS//SAR-FK)",
-        "decoder must canonicalize lowercase `fk` to uppercase `FK` \
-         in the SAR program slot; any other canonical replacement \
-         indicates the decoder is producing wrong canonical bytes",
-    );
-    assert!(
-        fix.applied
+    let cases: &[(&[u8], &str)] = &[
+        // (input, expected_canonical_output)
+        (b"(TS//SAR-fk)", "(TS//SAR-FK)"),
+        (b"(TS//SAR-Fk)", "(TS//SAR-FK)"),
+        (b"(TS//SAR-FK-blue42)", "(TS//SAR-FK-BLUE42)"),
+        (b"(TS//SAR-FK-BLUE 42a)", "(TS//SAR-FK-BLUE 42A)"),
+    ];
+    for (input, expected) in cases {
+        let display = std::str::from_utf8(input).unwrap_or("<bytes>");
+        let fix = engine.fix(input, FixMode::Apply);
+        let r001_decoder_count = fix
+            .applied
             .iter()
-            .any(|a| a.rule.as_str() == "R001" && matches!(a.source, FixSource::DecoderPosterior)),
-        "exactly one R001 DecoderPosterior fix should apply under the \
-         zero-threshold engine; applied = {:?}",
-        fix.applied
-            .iter()
-            .map(|a| (a.rule.as_str(), a.source))
-            .collect::<Vec<_>>(),
-    );
+            .filter(|a| {
+                a.rule.as_str() == "R001" && matches!(a.source, FixSource::DecoderPosterior)
+            })
+            .count();
+        assert_eq!(
+            r001_decoder_count,
+            1,
+            "input {display:?} must produce exactly one R001 DecoderPosterior \
+             AppliedFix under the zero-threshold engine; applied = {:?}",
+            fix.applied
+                .iter()
+                .map(|a| (a.rule.as_str(), a.source))
+                .collect::<Vec<_>>(),
+        );
+        let output = String::from_utf8(fix.source).expect("UTF-8 output");
+        assert_eq!(
+            output, *expected,
+            "decoder must canonicalize {display:?} to {expected:?}; \
+             a different canonical form indicates the decoder is \
+             writing the wrong canonical bytes",
+        );
+    }
 }
 
 // ============================================================================
