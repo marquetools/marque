@@ -654,13 +654,30 @@ impl Classification {
 ///
 /// Two forms exist:
 ///
-/// - **Source-acknowledged**: country trigraph(s) identify the originator.
-///   `//GBR S//REL TO USA, GBR`
-/// - **Source-concealed**: `FGI` replaces the country trigraph(s) when
+/// - **Source-acknowledged**: a single country trigraph identifies the
+///   originator. `//GBR S//REL TO USA, GBR`
+/// - **Source-concealed**: `FGI` replaces the country trigraph when
 ///   the originating country is sensitive. `//FGI S//REL TO USA, GBR`
 ///   An empty `countries` list indicates source-concealed FGI.
 ///
-/// Countries are space-delimited in the source marking.
+/// # Singular-owner invariant (CAPCO-2016 §H.7 p123)
+///
+/// Per CAPCO-2016 §H.7 p123 portion grammar, `//[trigraph] [class]` is
+/// **always singular ownership** (`(//DEU S)`, `(//FRA R)`, never
+/// `(//GBR JPN SECRET)`). Multi-owner FGI is expressed through:
+///
+/// - The **FGI marker** axis ([`FgiMarker::Acknowledged`]) for commingled
+///   banner forms like `SECRET//FGI DEU GBR//REL TO USA, DEU, GBR`,
+///   where multiple foreign producers co-exist on the dissem axis but
+///   the document's *classification* is US.
+/// - **JOINT classification** ([`JointClassification`]) for co-ownership
+///   where the US is one of the producers.
+///
+/// `FgiClassification.countries` therefore carries either 0 elements
+/// (concealed source) or exactly 1 element (acknowledged single-owner).
+/// The strict parser (`crates/core/src/parser.rs::parse_fgi_classification`)
+/// enforces this at construction; test fixtures that exercise edge cases
+/// should respect the invariant.
 ///
 /// # Banner aggregation
 ///
@@ -671,8 +688,14 @@ impl Classification {
 /// during banner validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FgiClassification {
-    /// Originating countries (space-delimited in source).
-    /// Empty for source-concealed FGI (`//FGI S//...`).
+    /// Originating country trigraph (space-delimited in source).
+    ///
+    /// Per CAPCO-2016 §H.7 p123 (`//[trigraph] [class]` portion form),
+    /// this carries **0 elements** for source-concealed FGI (`//FGI S`)
+    /// or **exactly 1 element** for source-acknowledged single-owner
+    /// FGI (`//GBR S`). Multi-owner forms route through
+    /// [`FgiMarker::Acknowledged`] (commingled banner) or
+    /// [`JointClassification`] (co-ownership); they never appear here.
     pub countries: Box<[CountryCode]>,
     /// Classification level (includes RESTRICTED).
     pub level: Classification,
@@ -1480,7 +1503,10 @@ impl CountryCode {
     };
 
     // The remaining Five Eyes constituent codes (AUS / CAN / GBR / NZL) —
-    // used by E064 FVEY-expansion in `marque-capco`.
+    // used by E064 FVEY-expansion in `marque-capco`. The NATO tetragraph
+    // is forward-investment for the NATO classification closure cone
+    // deferred to #508 (PR 4b-D); same const-construction shape so the
+    // future closure row can reference `CountryCode::NATO` directly.
 
     /// The always-valid `AUS` country code constant.
     ///
@@ -1528,6 +1554,24 @@ impl CountryCode {
     pub const NZL: Self = match Self::try_new(b"NZL") {
         Some(c) => c,
         None => panic!("CountryCode::NZL literal must satisfy try_new invariants"),
+    };
+
+    /// The always-valid `NATO` tetragraph constant.
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"NATO"`
+    /// (4 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
+    ///
+    /// Forward-investment for the NATO classification closure cone
+    /// deferred to #508 (PR 4b-D). The closure row will inject
+    /// `REL TO USA, NATO` on portions carrying
+    /// `MarkingClassification::Nato(_)` per CAPCO-2016 §H.7 p127
+    /// Notional Example 2.
+    pub const NATO: Self = match Self::try_new(b"NATO") {
+        Some(c) => c,
+        None => panic!("CountryCode::NATO literal must satisfy try_new invariants"),
     };
 
     /// Returns `true` if `b` is in the CAPCO country-code byte set:
@@ -2035,6 +2079,18 @@ mod country_code_tests {
         assert_eq!(CountryCode::USA, runtime);
         assert_eq!(CountryCode::USA.as_bytes(), runtime.as_bytes());
         assert_eq!(CountryCode::USA.len(), runtime.len());
+    }
+
+    #[test]
+    fn nato_constant_matches_try_new() {
+        // PR #505: `CountryCode::NATO` is forward-investment for the
+        // NATO classification closure cone deferred to #508. Same
+        // const-construction invariant as USA / AUS / CAN / GBR / NZL.
+        let runtime = CountryCode::try_new(b"NATO").expect("NATO is a valid tetragraph");
+        assert_eq!(CountryCode::NATO, runtime);
+        assert_eq!(CountryCode::NATO.as_str(), "NATO");
+        assert_eq!(CountryCode::NATO.as_bytes(), b"NATO");
+        assert_eq!(CountryCode::NATO.len(), 4);
     }
 
     // ----------------------------------------------------------------
