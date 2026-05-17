@@ -906,13 +906,19 @@ fn classification_banner_to_portion(s: &str) -> Option<&'static str> {
 /// with a diagnostic. Same separation as `admits_fgi_trigraph` ↔
 /// Annex B membership.
 ///
-/// The strict parser at
-/// `crates/core/src/parser.rs::parse_fgi_marker` calls into the same
-/// `marque_ism::CountryCode::admits_country_token` directly (it
-/// cannot reach this private wrapper across the `marque-capco`
-/// boundary without violating Constitution VII), so both surfaces
-/// are pinned to the same canonical predicate by depending on the
-/// same exported symbol.
+/// Note: per issue #280, `crates/core/src/parser.rs::parse_fgi_marker`
+/// was narrowed to `marque_ism::CountryCode::admits_fgi_ownership_token`
+/// (a stricter predicate that rejects distribution-list tetragraphs
+/// like `FVEY`/`CFIUS`/`ACGU`/`ISAF` while admitting `NATO` + 2-3
+/// byte `CountryCode`-admissible tokens including the `EU` exception
+/// code). This vocabulary surface intentionally remains on
+/// `admits_country_token` for round-trip compatibility with the
+/// broader FGI-marker vocabulary contract; see the `parse_fgi_marker`
+/// doc-comment for the full divergence rationale. Future changes that
+/// harmonize `CAT_FGI_MARKER`'s vocabulary admission to match the
+/// parser MUST treat that as a deliberate contract narrowing, not a
+/// cleanup. The `fgi_country_token_admits_tetragraphs` test pins this
+/// divergence.
 #[inline]
 fn shape_country_token(bytes: &[u8]) -> bool {
     marque_ism::CountryCode::admits_country_token(bytes)
@@ -1232,16 +1238,20 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
 
             // FGI marker list-token: 3 ASCII upper (Annex B
             // trigraph) OR 4 ASCII upper (Annex A tetragraph).
-            // CAPCO-2016 §H.7 p122 admits both shapes in a single
-            // FGI list ("Multiple FGI trigraph country codes or
-            // tetragraph codes must be separated by a single
-            // space ... example may appear as: SECRET//FGI GBR
-            // JPN NATO//REL TO USA, GBR, JPN, NATO."). The
-            // canonical-order invariant (trigraphs alphabetic,
-            // then tetragraphs alphabetic) is rule-layer, not
-            // admission. Registry membership (whether the
-            // tetragraph appears in Annex A / `TETRAGRAPH_MEMBERS`)
-            // is also rule-layer.
+            // CAPCO-2016 §H.7 p122 admits both shapes (ownership
+            // semantic + `FGI [LIST]` Register form); the
+            // canonical multi-country example
+            // (`SECRET//FGI GBR JPN NATO//REL TO USA, GBR, JPN,
+            // NATO`) lives at §A.6 p16. The canonical-order
+            // invariant (trigraphs alphabetic, then tetragraphs
+            // alphabetic) is rule-layer, not admission. Registry
+            // membership (whether the tetragraph appears in Annex
+            // A / `TETRAGRAPH_MEMBERS`) is also rule-layer.
+            //
+            // Note: vocabulary surface admits the broader CountryCode shape here; the
+            // strict parser narrows to admits_fgi_ownership_token (NATO + 2-3 byte
+            // CountryCode only). See parse_fgi_marker for the FR-015 divergence
+            // rationale (issue #280).
             CAT_FGI_MARKER => shape_country_token(bytes),
 
             // REL TO list-token: shape (2/3/4 ASCII upper) OR
@@ -1320,6 +1330,15 @@ mod shape_admits_tests {
 
     #[test]
     fn fgi_country_token_admits_tetragraphs() {
+        // NOTE: CAT_FGI_MARKER at the vocabulary surface admits these
+        // tetragraphs (FVEY, etc.) for round-trip compatibility, while
+        // `parse_fgi_marker` (the strict parser) rejects all non-`NATO`
+        // tetragraphs via `admits_fgi_ownership_token`. This is a
+        // deliberate divergence per issue #280; see `parse_fgi_marker`
+        // doc-comment for the rationale. A future change that
+        // "harmonizes" the two surfaces would silently re-narrow
+        // CAT_FGI_MARKER — that is the contract this test pins against.
+        //
         // Per CAPCO-2016 §H.7 p122, the FGI list grammar admits
         // tetragraphs (e.g., NATO, FVEY, ISAF). Registry membership
         // is rule-layer; this gate is pure shape.
@@ -1460,12 +1479,19 @@ mod shape_admits_tests {
     }
 
     #[test]
-    fn sar_accepts_lowercase_letting_style_rule_decide() {
-        // §H.5 p99–101 prose says "alphanumeric values"; uppercase
-        // is a Register convention. We accept lowercase here and
-        // leave casing enforcement to a downstream style rule.
+    fn sar_rejects_lowercase_open_vocab_shape_is_validation() {
+        // Issue #280: SAR has no CVE registry (`CVEnumISMSAR.xml`
+        // intentionally empty per ODNI policy). With no registry to
+        // validate against, the shape gate IS the validation. Per
+        // CAPCO-2016 §A.6 p15 + §G.1 p36, all banner-line and
+        // portion-mark Register entries are uppercase; SAR
+        // identifiers must conform. The `CAT_SAR` shape gate
+        // delegates to `SarProgram::admits_program_id_abbrev`, which
+        // was tightened in #280. Lowercase falls through to the
+        // decoder, which handles demangling.
         let v = vocab();
-        assert!(v.shape_admits(CAT_SAR, b"bp"));
+        assert!(!v.shape_admits(CAT_SAR, b"bp"));
+        assert!(!v.shape_admits(CAT_SAR, b"Bp"));
     }
 
     #[test]
