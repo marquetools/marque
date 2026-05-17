@@ -4226,7 +4226,7 @@ fn dispatch_page_finalization(
     // `&mut` API, so a conformant rule cannot violate the contract
     // through the public API; the sentinel is a static guard against
     // future API changes that would open a mutation path.
-    // See `docs/plans/2026-05-01-lattice-design.md` §3 (e.1).
+    // See `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
     //
     // Snapshot from the `&PageContext` parameter (not the cloned
     // `page_ctx_arc`) so the check survives any future Arc-related
@@ -4309,8 +4309,8 @@ fn dispatch_page_finalization(
         "PageFinalization rule dispatch mutated PageContext::portions() \
          ({} portion(s) before vs {} after). This violates the \
          PageRewrite read-only-attrs invariant in \
-         docs/plans/2026-05-01-lattice-design.md §3 (e.1). The \
-         portion-snapshot sentinel cannot pin the violating rule \
+         docs/plans/2026-05-01-lattice-design.md section 3 (e.1). \
+         The portion-snapshot sentinel cannot pin the violating rule \
          from this outer-loop placement; to attribute, switch to \
          a per-iteration snapshot inside the loop temporarily. \
          pass_finalization_rule_indices.len() = {}.",
