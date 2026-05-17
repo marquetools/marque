@@ -4084,9 +4084,15 @@ fn partition_rules_by_phase(
 ///   end-of-document call, where the document ends without further
 ///   candidates.
 /// - The synthetic boundary candidate carries a zero-length `Span`
-///   at the boundary offset. Rules MAY use that span as a fallback
-///   diagnostic anchor, but typically resolve to a portion span
-///   from `ctx.page_context.portions()` for user-facing precision.
+///   at the boundary offset. Today this is the only span a
+///   PageFinalization rule can emit on its `Diagnostic`: `PageContext`
+///   stores `Box<[CanonicalAttrs]>` without per-portion spans, so
+///   `ctx.page_context.portions()` cannot recover an offending
+///   portion's own offsets. Rules document this limitation in their
+///   doc comments (W004 is the worked example). A future enhancement
+///   that adds per-portion spans to `PageContext` — or threads a
+///   span-lookup helper into `RuleContext` — would let rules refine
+///   the anchor to the specific offending portion.
 /// - `candidates_processed` is NOT incremented by this dispatch.
 ///   That counter tracks scanner-emitted candidates; the synthetic
 ///   PageFinalization candidate is engine-internal.
