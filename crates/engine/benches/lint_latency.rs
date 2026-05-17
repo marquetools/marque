@@ -238,7 +238,7 @@ const OFF_RULES: &[&str] = &[
     // PR 9a additions (very rare in clean fixture).
     "E061", "E062", "E063", "E064", "E065", // PR 9c.1 / 9c.2 NATO additions.
     "E066", "S007", // PR 9c.1 / 9c.2 NATO additions (don't fire in this fixture).
-    "W002", "W003", "W034", // Style suggestions.
+    "W003", "W034", // Style suggestions. (W002 retired in PR closing #470.)
     "S003", "S004", "S005",
     // Dissem / SCI / SAR per-axis rules outside the fixture's coverage.
     "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016",

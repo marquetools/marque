@@ -37,7 +37,14 @@
 //!   W001 = retired in T035c-14 (CAPCO-2016 §F treats legacy
 //!           markings as unauthorized, not "deprecated but legal";
 //!           no authoritative bucket for a warning-severity rule)
-//!   W002 = US + FGI comingling in portion
+//!   W002 = retired in PR closing #470 — CAPCO §H.7 p123 authorizes the
+//!           canonical `(US-CLASS//FGI [LIST]//NF)` shape as the
+//!           commingled-with-US-classification form for acknowledged
+//!           foreign sources; the §H.7 p124 segregation rule applies
+//!           only to non-ICD-206 documents, a doc-level property the
+//!           engine cannot determine from a single portion. The
+//!           predicate fired indiscriminately on the canonical shape
+//!           and produced noise rather than signal.
 //!   E016 = RESTRICTED not allowed with JOINT
 //!   E017 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
 //!   E018 = retired in T035b (over-restrictive per CAPCO §H.3 p57)
@@ -126,13 +133,12 @@ impl Default for CapcoRuleSet {
 impl CapcoRuleSet {
     pub fn new() -> Self {
         use crate::rules_declarative::{
-            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeCominglingWarningRule,
-            DeclarativeDualClassificationRule, DeclarativeJointHcsRule, DeclarativeJointRelToRule,
-            DeclarativeJointRestrictedRule, DeclarativeNofornRelToConflictRule,
-            DeclarativeNonUsMissingDissemRule, DeclarativeOrconRelidoConflictRule,
-            DeclarativeOrconUsgovRelidoConflictRule, DeclarativeRdPrecedenceRule,
-            DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
-            DeprecatedSciLongFormRule,
+            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeDualClassificationRule,
+            DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
+            DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
+            DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
+            DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
+            DeclarativeRelidoNofornConflictRule, DeprecatedSciLongFormRule,
         };
         Self {
             rules: vec![
@@ -180,9 +186,17 @@ impl CapcoRuleSet {
                 // a separate rule with org-config authority, not CAPCO §F.
                 Box::new(CorrectionsMapRule),
                 // T035a: declarative wrappers for E010/E012/E014-E016/
-                // E021/E022/E024/E025/W002. Catalog in `crate::scheme`
-                // owns the predicate; wrappers own span/message/fix
+                // E021/E022/E024/E025. Catalog in `crate::scheme` owns
+                // the predicate; wrappers own span/message/fix
                 // construction.
+                //
+                // PR closing #470: W002 (`DeclarativeCominglingWarningRule`)
+                // retired. CAPCO §H.7 p123 documents the
+                // `(US-CLASS//FGI [LIST]//NF)` shape as the canonical
+                // commingled-with-US-classification form for
+                // acknowledged foreign sources; the §H.7 p124
+                // segregation rule applies only to non-ICD-206 docs,
+                // which the engine has no portion-local way to detect.
                 //
                 // T035b: E017/E018/E019 retired entirely (over-
                 // restrictive per CAPCO §H.3 lines 4140-4146).
@@ -190,7 +204,6 @@ impl CapcoRuleSet {
                 // JOINT exclusion §H.3 p57 actually names).
                 Box::new(DeclarativeBareHcsRule),
                 Box::new(DeclarativeDualClassificationRule),
-                Box::new(DeclarativeCominglingWarningRule),
                 Box::new(DeclarativeJointRelToRule),
                 Box::new(DeclarativeNonUsMissingDissemRule),
                 Box::new(NonIcInClassifiedBannerRule),
@@ -5190,7 +5203,11 @@ mod tests {
         assert!(ids.contains(&"E012"));
         assert!(ids.contains(&"E014"));
         assert!(ids.contains(&"E015"));
-        assert!(ids.contains(&"W002"));
+        // W002 retired in the PR closing #470 — CAPCO §H.7 p123
+        // authorizes the canonical commingled shape this rule was
+        // firing on; the §H.7 p124 segregation rule is doc-level
+        // (ICD-206 status) and unenforceable portion-local.
+        assert!(!ids.contains(&"W002"));
         assert!(ids.contains(&"E016"));
         assert!(ids.contains(&"E021"));
         assert!(ids.contains(&"E024"));
@@ -7046,27 +7063,10 @@ mod tests {
         );
     }
 
-    // --- W002: Comingling warning ---
-
-    #[test]
-    fn w002_fires_on_us_plus_fgi_in_portion() {
-        let diags = lint_portion("(S//FGI DEU//REL TO USA, DEU)");
-        let w002: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "W002").collect();
-        assert_eq!(w002.len(), 1);
-    }
-
-    #[test]
-    fn w002_does_not_fire_on_banner() {
-        // Comingling warning is portion-only.
-        let diags = lint_banner("SECRET//FGI DEU//NOFORN");
-        assert!(diags.iter().all(|d| d.rule.as_str() != "W002"));
-    }
-
-    #[test]
-    fn w002_does_not_fire_without_fgi_marker() {
-        let diags = lint_portion("(S//NF)");
-        assert!(diags.iter().all(|d| d.rule.as_str() != "W002"));
-    }
+    // W002 retired (closes #470). Live regression coverage lives in
+    // `crates/capco/tests/w002_retired.rs`; the dormant inline tests
+    // (this block is `#[cfg(any())]`-gated at the module level) are
+    // not re-added here.
 
     // --- E014: JOINT participants missing from REL TO ---
 

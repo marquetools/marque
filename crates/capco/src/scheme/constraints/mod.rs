@@ -33,7 +33,7 @@ mod sci_per_system_catalog;
 pub(crate) use self::helpers::{
     class_floor_emit, e012_dual_classification, e014_joint_rel_to_coverage,
     e021_aea_requires_noforn, e024_rd_precedence, e038_dos_dissem_requires_noforn,
-    sci_per_system_emit, w002_us_commingled_with_fgi,
+    sci_per_system_emit,
 };
 
 /// Build the scheme's category table. Lives in
