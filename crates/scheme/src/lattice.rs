@@ -81,6 +81,27 @@ pub trait MeetSemilattice: Sized + Clone + Eq {
 /// Implemented automatically for any type that satisfies both
 /// [`JoinSemilattice`] and [`MeetSemilattice`] — no manual `impl Lattice`
 /// is needed.
+///
+/// # The blanket impl rejects join-only types
+///
+/// A type that implements only [`JoinSemilattice`] does not satisfy
+/// `Lattice`; the type system rejects it at any call site that requires
+/// the full trait. The following example does not compile:
+///
+/// ```compile_fail
+/// use marque_scheme::lattice::{JoinSemilattice, Lattice};
+///
+/// #[derive(Clone, PartialEq, Eq)]
+/// struct JoinOnly(u32);
+///
+/// impl JoinSemilattice for JoinOnly {
+///     fn join(&self, other: &Self) -> Self { JoinOnly(self.0.max(other.0)) }
+/// }
+///
+/// fn requires_full_lattice<T: Lattice>() {}
+/// requires_full_lattice::<JoinOnly>();
+/// // ERROR: the trait bound `JoinOnly: MeetSemilattice` is not satisfied
+/// ```
 pub trait Lattice: JoinSemilattice + MeetSemilattice {}
 
 /// Blanket impl: any type satisfying both halves is automatically a full lattice.

@@ -2393,8 +2393,9 @@ usable in generic lattice contexts.
 (`relido_observed_unanimous` and the `Mixed`/`DisunityCollapse` distinction
 respectively) that has no sensible interpretation in a meet operation. Pre-PR
 #456 the "solution" was to implement `meet` with a vacuous identity-safe value
-and document the partial violation via the P-9-3 comments (kept above in §11.3
-/ §11.4). The "trait shape will be refined in a follow-up PR" language in those
+and document the partial violation via the P-9-3 comments (kept above in
+section 11.3 / section 11.4). The "trait shape will be refined in a follow-up
+PR" language in those
 comments referred to this PR.
 
 `SupersessionSet` has a different problem: its post-join supersession overlay

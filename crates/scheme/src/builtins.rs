@@ -726,7 +726,7 @@ impl<L: JoinSemilattice> JoinSemilattice for OptionalSingleton<L> {
     }
 }
 
-impl<L: MeetSemilattice + JoinSemilattice> MeetSemilattice for OptionalSingleton<L> {
+impl<L: JoinSemilattice + MeetSemilattice> MeetSemilattice for OptionalSingleton<L> {
     #[inline]
     fn meet(&self, other: &Self) -> Self {
         match (&self.0, &other.0) {
@@ -742,9 +742,7 @@ impl<L: JoinSemilattice> BoundedJoinSemilattice for OptionalSingleton<L> {
     }
 }
 
-impl<L: MeetSemilattice + JoinSemilattice + BoundedMeetSemilattice> BoundedMeetSemilattice
-    for OptionalSingleton<L>
-{
+impl<L: JoinSemilattice + BoundedMeetSemilattice> BoundedMeetSemilattice for OptionalSingleton<L> {
     fn top() -> Self {
         Self(Some(L::top()))
     }

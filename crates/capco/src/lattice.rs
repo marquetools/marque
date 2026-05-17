@@ -2732,7 +2732,11 @@ impl JointSet {
 // page composition (join-side aggregation), not an algebraic element;
 // `meet` has no natural reading for non-identical producer sets — the
 // dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold over the full state
-// space. PR #456 resolved this by splitting the `Lattice` trait into
+// space. Independently, the pre-split `meet` was non-idempotent on
+// `DisunityCollapse` self-pairs (`a ⊓ a = Bottom ≠ a`) because the
+// fallback arm collapsed every non-identical-payload pair to `Bottom`
+// — the partial behavior was stronger than dual-absorption failure alone.
+// PR #456 resolved this by splitting the `Lattice` trait into
 // `JoinSemilattice` and `MeetSemilattice` halves; `JointSet` implements
 // only the join half, so the type system now rejects any attempt to call
 // `.meet()` on it at compile time.
