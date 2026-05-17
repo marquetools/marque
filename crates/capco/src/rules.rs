@@ -2147,16 +2147,23 @@ pub(crate) fn dedup_country_codes(
 // external membership data we don't have or simply mis-marked, so it
 // surfaces the uncertainty for the operator to resolve.
 //
-// Phase. Phase::PageFinalization. The trigger is page-scoped (it
-// computes an intersection across all portions carrying REL TO and
-// reads expected vs observed banner state) so the rule must run once
-// per page on the closed page-level fixpoint snapshot, not once per
-// banner/CAB candidate. The pre-PR-#488 Phase::WholeMarking dispatch
-// produced a documented false-negative on banner-first layouts (no
-// closing banner ⇒ no Banner candidate ⇒ no firing surface) and a
-// 6th-pass false-positive on intermediate snapshots when the rule
-// briefly ran on Portion candidates. Phase::PageFinalization closes
-// both — the engine dispatches S005 exactly once per page at every
+// Phase. Phase::PageFinalization. The trigger is page-scoped — it
+// computes the REL TO atom-semantics intersection across every
+// portion on the page and emits one diagnostic per uncertain
+// tetragraph that drops out of that intersection. The rule reads
+// `ctx.page_context` only; under PageFinalization dispatch the
+// engine passes `CanonicalAttrs::default()` as `attrs`, so the rule
+// neither reads nor depends on banner-witness state (pre-PR-#488
+// the rule read `attrs.rel_to` to decide a Suggest-vs-Info branch;
+// see "History — retired S006" below for why that branch was
+// removed). The rule therefore must run once per page on the
+// closed page-level fixpoint snapshot, not once per banner/CAB
+// candidate. The pre-PR-#488 Phase::WholeMarking dispatch produced
+// a documented false-negative on banner-first layouts (no closing
+// banner ⇒ no Banner candidate ⇒ no firing surface) and a 6th-pass
+// false-positive on intermediate snapshots when the rule briefly
+// ran on Portion candidates. Phase::PageFinalization closes both —
+// the engine dispatches S005 exactly once per page at every
 // scanner-emitted `MarkingType::PageBreak` BEFORE the PageContext
 // reset, plus once at end-of-document.
 //

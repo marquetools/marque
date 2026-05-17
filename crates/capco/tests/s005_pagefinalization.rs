@@ -73,9 +73,10 @@ fn s005_fires_at_eod_on_banner_less_layout() {
     // on the closed page state; the disjoint REL TO lists trigger
     // S005 via the RSMA uncertain-code path.
     //
-    // RSMA is a `decomposable="NA"` (deprecated, MembershipSupressed
-    // sentinel) tetragraph in ISMCAT V2022-NOV per
-    // `crates/capco/tests/tetragraph_consolidation.rs::
+    // RSMA is a `decomposable="NA"` (deprecated, `<MembershipSupressed/>`
+    // sentinel — single `p`, ODNI's spelling, preserved verbatim
+    // from the source XSD; see `crates/ism/src/build.rs`) tetragraph
+    // in ISMCAT V2022-NOV per `crates/capco/tests/tetragraph_consolidation.rs::
     // trichotomy_decomposable_na_deprecated_suppressed`. It satisfies
     // `is_decomposable(_).is_none() && len != 3`, the S005 trigger.
     //
