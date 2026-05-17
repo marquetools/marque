@@ -553,9 +553,17 @@ proptest! {
 //   `m` only adds facts to `derived(m)` — strictly monotone.
 //
 // NonMonotoneDerivedScheme:
-//   Rule has a `cone_derived` fn that returns TOK_B only when bit 0 is set
-//   AND bit 1 is unset. Setting bit 1 in `m2 ⊒ m1` drops the TOK_B fact.
-//   Non-monotone by construction.
+//   Rule has a `cone_derived` fn that emits DISJOINT facts on complementary
+//   bit-0/bit-1 inputs:
+//     - bit 0 set AND bit 1 unset → emit TOK_C (bit 2)
+//     - bit 0 set AND bit 1 set   → emit nothing
+//   For m1 = 0b001 ⊑ m2 = 0b011, closure(m1) acquires TOK_C while closure(m2)
+//   does not — closure(m1).le(&closure(m2)) returns false through the
+//   operator, surfacing the violation independent of the bit-OR join.
+//
+//   This mirrors the static `NonMonotoneScheme` pattern (rule fires on m1
+//   but not m2, cone fact ends up in c1 but not c2) translated onto the
+//   `cone_derived` callback.
 // ---------------------------------------------------------------------------
 
 use smallvec::{SmallVec, smallvec};
@@ -577,10 +585,17 @@ fn monotone_derived_cone(m: &BitMarking) -> SmallVec<[FactRef<MonotoneDerivedSch
 }
 
 fn non_monotone_derived_cone(m: &BitMarking) -> SmallVec<[FactRef<NonMonotoneDerivedScheme>; 2]> {
-    // Returns TOK_B only when TOK_A is present AND TOK_B is absent.
-    // Adding TOK_B to the marking removes the derived fact — non-monotone.
+    // Two complementary trigger predicates emit DISJOINT cone facts:
+    //   - bit 0 set AND bit 1 unset → emit TOK_C
+    //   - bit 0 set AND bit 1 set   → emit nothing
+    //
+    // For m1 = 0b001 ⊑ m2 = 0b011, the first branch fires on m1 only and
+    // adds TOK_C (bit 2). m2 carries TOK_B (bit 1), which is NOT in the
+    // cone, so the closure operator never sets bit 2 for m2. The fact
+    // emitted under m1 is therefore absent in closure(m2) — the violation
+    // surfaces through the operator regardless of the bit-OR join.
     if m.has_token(0) && !m.has_token(1) {
-        smallvec![FactRef::Cve(TOK_B)]
+        smallvec![FactRef::Cve(TOK_C)]
     } else {
         SmallVec::new()
     }
@@ -843,93 +858,78 @@ proptest! {
 }
 
 proptest! {
-    /// Derived-cone non-monotone catalog produces an observable violation.
+    /// Derived-cone non-monotone catalog produces an observable violation
+    /// through the `closure()` operator.
     ///
     /// Mirrors `non_monotone_synthetic_scheme_violation_proptest` above but
     /// exercises the `cone_derived` path. The `non_monotone_derived_cone` fn
-    /// returns TOK_B only when TOK_A is present AND TOK_B is absent — so
-    /// setting TOK_B (bit 1) in m2 ⊒ m1 causes the derived fact to be dropped
-    /// from the cone, violating monotonicity.
+    /// emits TOK_C when TOK_A is present AND TOK_B is absent, and emits
+    /// nothing when both TOK_A and TOK_B are present — two complementary
+    /// trigger predicates with DISJOINT cones.
     ///
-    /// **Assertion boundary**: this test asserts the violation on the
-    /// `cone_derived` function's direct output (`derived_on_m1.len() >
-    /// derived_on_m2.len()`), NOT on the `closure()` operator result. The
-    /// structural reason is that BitMarking's join is bit-OR (set-union on
-    /// the implicit token set): non-monotonicity at the per-iteration fact
-    /// level collapses into the join because TOK_B is already present in
-    /// m2's input, so `closure(m1)` and `closure(m2)` agree at the final
-    /// fixpoint. The per-iteration view is the only place the violation
-    /// remains visible on this lattice.
+    /// For m1 ⊑ m2 with m1 carrying TOK_A only and m2 carrying TOK_A + TOK_B,
+    /// the rule fires on m1 (adding TOK_C to the closure) and is suppressed
+    /// on m2 (TOK_C never enters the closure). Because TOK_C is not in m2's
+    /// input either, `closure(m1)` carries a token `closure(m2)` lacks and
+    /// `closure(m1).le(&closure(m2))` returns false — the violation surfaces
+    /// through the operator, independent of the bit-OR join.
     ///
-    /// **For PR 4b-D's JOINT row**: variant-transmuting lattices like
-    /// `JointSet` expose this violation through `closure()` directly —
+    /// **For PR 4b-D's JOINT row**: this proptest already exercises the
+    /// monotonicity violation through `closure()`, but on a bit-OR lattice.
+    /// `JointSet` exposes a structurally different family of violations —
     /// `UnanimousProducers{A} ⊔ UnanimousProducers{B}` collapses to
     /// `DisunityCollapse{union_non_us}`, a *different variant* that strips
     /// USA. A JOINT `cone_derived` proptest must compose `JointSet`
-    /// directly and assert `closure(m1).le(&closure(m2))`, not reuse this
-    /// BitMarking shape. The `JointSet` hazard note on
-    /// `ClosureRule::cone_derived` in `crates/scheme/src/closure.rs` is the
-    /// load-bearing pointer.
+    /// directly so the variant transmutation actually happens during the
+    /// join (it cannot be modeled by a bit-OR fixture). The `JointSet`
+    /// hazard note on `ClosureRule::cone_derived` in
+    /// `crates/scheme/src/closure.rs` is the load-bearing pointer.
     #[test]
     fn non_monotone_derived_scheme_violation_proptest(
-        // Construct m1 with TOK_A set, TOK_B unset; m2 with TOK_A and TOK_B set.
-        // Extra bit 2 (TOK_C) is random.
-        m1_extra_bit2 in any::<bool>(),
+        // Random high bits (3..=7) for m1 — bit 0 (TOK_A) is forced set,
+        // bit 1 (TOK_B) is forced unset, bit 2 (TOK_C) is forced unset so
+        // the derived cone fact is observably absent from m2's closure.
+        m1_high_bits in any::<u8>().prop_map(|b| b & 0b1111_1000),
     ) {
         let scheme = NonMonotoneDerivedScheme;
-        // m1: {TOK_A} or {TOK_A, TOK_C}.
-        let m1_bits = 0b001 | (if m1_extra_bit2 { 0b100 } else { 0 });
-        let m1 = BitMarking::with(m1_bits);
-        // m2: m1 | {TOK_B}.
+        // m1: bit 0 set, bit 1 unset, bit 2 unset, high bits arbitrary.
+        let m1 = BitMarking::with(0b001 | m1_high_bits);
+        // m2: m1 | TOK_B (bit 1). Still no TOK_C (bit 2) in the input.
         let m2 = BitMarking::with(m1.bits | 0b010);
 
         prop_assert!(m1.le(&m2), "test setup: m1 = {:08b} must be ⊑ m2 = {:08b}", m1.bits, m2.bits);
+        // Sanity: TOK_C must be absent from both inputs, otherwise the
+        // closure can't distinguish the rule's contribution from the input.
+        prop_assert!(!m1.has_token(2), "test setup: m1 must not carry TOK_C: m1 = {:08b}", m1.bits);
+        prop_assert!(!m2.has_token(2), "test setup: m2 must not carry TOK_C: m2 = {:08b}", m2.bits);
 
         let c1 = scheme.closure(m1.clone());
         let c2 = scheme.closure(m2.clone());
 
-        // closure(m1): TOK_A present, TOK_B absent → derived fires → adds TOK_B.
-        //   Now TOK_B is present, so on the second iteration the predicate fails
-        //   and the fixpoint is reached at {TOK_A, TOK_B} (+ TOK_C if m1 had it).
+        // closure(m1): predicate "bit 0 set AND bit 1 unset" matches → emits
+        //   TOK_C → c1 acquires bit 2. Fixpoint at m1 | TOK_C.
         prop_assert!(
-            c1.has_token(1),
-            "non-monotone-derived rule should fire on m1 (TOK_A set, TOK_B absent): m1={:08b}, c1={:08b}",
+            c1.has_token(2),
+            "non-monotone-derived rule should fire on m1 (TOK_A set, TOK_B absent): \
+             m1={:08b}, c1={:08b}",
             m1.bits, c1.bits
         );
+        // closure(m2): predicate fails immediately (bit 1 set) → emits nothing
+        //   → c2 == m2. TOK_C remains absent.
+        prop_assert!(
+            !c2.has_token(2),
+            "non-monotone-derived rule should NOT fire on m2 (TOK_B suppresses the predicate): \
+             m2={:08b}, c2={:08b}",
+            m2.bits, c2.bits
+        );
 
-        // For the observable monotonicity-violation property to hold, we need
-        // a case where adding facts to m1 produces fewer derived facts in m2.
-        // The derived fn checks "TOK_A AND NOT TOK_B" — on m2 the predicate
-        // fails immediately, so the operator adds nothing NEW (TOK_B was
-        // already in input). closure(m2) = m2 = {TOK_A, TOK_B, possibly TOK_C}.
-        // closure(m1) = m1 | {TOK_B} = {TOK_A, TOK_B, possibly TOK_C}.
-        //
-        // In this fact-set view the two are equal, so the violation is
-        // structurally invisible at the final fixpoint. The violation IS
-        // observable on the per-iteration step (m1 advances, m2 does not),
-        // but the bit-OR collapses it. The load-bearing assertion is the
-        // categorical-state observation: the derived fn returns DIFFERENT
-        // results for m1 vs m2 even though m1 ⊑ m2 — verify that directly.
-        let derived_on_m1 = non_monotone_derived_cone(&m1);
-        let derived_on_m2 = non_monotone_derived_cone(&m2);
+        // Operator-level monotonicity violation: closure(m1) carries TOK_C,
+        // closure(m2) does not, so closure(m1) ⊄ closure(m2) for m1 ⊑ m2.
         prop_assert!(
-            !derived_on_m1.is_empty(),
-            "derived cone should produce facts on m1 = {:08b}", m1.bits
+            !c1.le(&c2),
+            "non-monotone-derived violation: closure(m1) = {:08b} should NOT be ⊑ closure(m2) = {:08b} \
+             (TOK_C is in c1 but not c2) for m1 = {:08b} ⊑ m2 = {:08b}",
+            c1.bits, c2.bits, m1.bits, m2.bits
         );
-        prop_assert!(
-            derived_on_m2.is_empty(),
-            "derived cone should produce ZERO facts on m2 = {:08b} (TOK_B suppresses the predicate)", m2.bits
-        );
-        // Operator-level: the derived fn produces strictly fewer facts on m2 ⊒ m1.
-        // This IS the monotonicity violation expressed through the operator's
-        // intermediate state — even though the final fixpoint collapses it
-        // through the bit-OR, the cone-derived output itself is non-monotone.
-        prop_assert!(
-            derived_on_m1.len() > derived_on_m2.len(),
-            "non-monotone-derived violation: |derived(m1)|={} > |derived(m2)|={} for m1={:08b} ⊑ m2={:08b}",
-            derived_on_m1.len(), derived_on_m2.len(), m1.bits, m2.bits
-        );
-        // Pin the closure() outputs for documentation — the fact-set view.
-        let _ = (c1, c2);
     }
 }
