@@ -34,6 +34,8 @@
 //! 3. The CIA-RDP96-00289R000200030004-1 corpus document — the
 //!    motivating fixture — emits zero E015 firings end-to-end.
 
+use std::path::{Path, PathBuf};
+
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::Engine;
@@ -42,6 +44,25 @@ use marque_rules::{FixSource, RuleSet, Severity};
 fn build_engine() -> Engine {
     let rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>> = vec![Box::new(CapcoRuleSet::new())];
     Engine::new(Config::default(), rule_sets, CapcoScheme::new()).expect("CAPCO engine constructs")
+}
+
+/// Workspace-root-anchored corpus path so the fixture loads identically
+/// from `cargo test` (workspace cwd) and `cargo test -p marque-engine`
+/// (crate cwd). Walking up from `CARGO_MANIFEST_DIR` (`crates/engine`)
+/// by two levels lands at the workspace root. Mirrors the
+/// `fixtures_root()` helper in `decoder_accuracy.rs`.
+fn corpus_documents_root() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| {
+            root.join("tests")
+                .join("corpus")
+                .join("documents")
+                .join("marked")
+        })
+        .expect("CARGO_MANIFEST_DIR has a workspace-root grandparent")
 }
 
 /// `(CTs)` is "Career Trainees" — a common prose acronym. The decoder
@@ -166,9 +187,9 @@ fn strict_path_aea_rd_drives_e021() {
 /// boundary.
 #[test]
 fn cia_rdp96_fixture_emits_no_e015() {
-    let bytes =
-        std::fs::read("../../tests/corpus/documents/marked/CIA-RDP96-00289R000200030004-1.md")
-            .expect("fixture exists");
+    let path = corpus_documents_root().join("CIA-RDP96-00289R000200030004-1.md");
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|e| panic!("fixture {} must be readable: {e}", path.display()));
     let engine = build_engine();
     let result = engine.lint(&bytes);
     let e015: Vec<_> = result
