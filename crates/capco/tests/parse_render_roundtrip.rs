@@ -117,10 +117,20 @@ enum Kind {
 
 fn detect_kind(source: &[u8]) -> Kind {
     let candidates = Scanner::scan(source);
-    // Skip page breaks (form-feed / blank-line heuristic emits these).
+    // Skip engine-internal boundary candidates (PageBreak +
+    // PageFinalization — the scanner only emits PageBreak today,
+    // but PageFinalization (issue #461) is engine-synthesized and
+    // could never appear in the scanner-emitted candidate stream
+    // here anyway; included for forward-compatibility against the
+    // `#[non_exhaustive]` enum).
     let real: Vec<_> = candidates
         .iter()
-        .filter(|c| c.kind != MarkingType::PageBreak)
+        .filter(|c| {
+            !matches!(
+                c.kind,
+                MarkingType::PageBreak | MarkingType::PageFinalization
+            )
+        })
         .collect();
     if real.len() != 1 {
         return Kind::Other;
@@ -129,7 +139,11 @@ fn detect_kind(source: &[u8]) -> Kind {
         MarkingType::Portion => Kind::Portion,
         MarkingType::Banner => Kind::Banner,
         MarkingType::Cab => Kind::Cab,
-        MarkingType::PageBreak => Kind::Other,
+        MarkingType::PageBreak | MarkingType::PageFinalization => Kind::Other,
+        // `MarkingType` is `#[non_exhaustive]` (issue #461). Any
+        // future variant the scanner emits is not a known
+        // round-trip surface for this test and falls to `Other`.
+        _ => Kind::Other,
     }
 }
 

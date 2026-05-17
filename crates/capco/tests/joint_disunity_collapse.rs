@@ -4,13 +4,16 @@
 
 //! W004 joint-disunity-collapse rule + JointSet lattice integration tests.
 //!
-//! Authority (verified 2026-05-15 against CAPCO-2016.md):
+//! Authority (verified 2026-05-16 against CAPCO-2016.md):
 //! - §H.3 p56 (JOINT classification grammar).
 //! - §H.3 pp55-59 (JOINT worked examples).
 //! - §H.3 p57 ("JOINT not carried forward to banner in US documents").
 //! - §H.7 p123 (FGI source-acknowledged form for disunity-collapse migration).
 //!
-//! PR 4b-B Commit 5 (006 T112).
+//! PR refactor-006-pr-pagefinalization / issue #461 (Phase::PageFinalization
+//! migration; the JointSet lattice tests originally landed in PR 4b-B
+//! Commit 5 (006 T112) and were rebaselined here under the
+//! PageFinalization dispatch contract).
 
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, JointSet};
@@ -169,28 +172,54 @@ fn engine_with_fixed_clock() -> Engine {
 
 #[test]
 fn w004_fires_on_joint_disunity_banner() {
-    // Two JOINT-classified portions with disagreeing producer lists
-    // appear BEFORE the banner candidate so the engine's
-    // PageContext has accumulated them by the time the banner is
-    // evaluated. W004 must fire on the banner with rule = "W004",
-    // Warn severity, and reference the §H.3 p57 + §H.7 p123 citation
-    // (CV-4 PR 4b-B 8th-pass — updated from `§H.3 p56`).
+    // Two JOINT portions with disagreeing producer lists accumulate
+    // on the page; the EOD `Phase::PageFinalization` dispatch sees
+    // the closed `JointSet::DisunityCollapse` state and emits W004.
+    // The trailing banner is incidental — issue #461 closure means
+    // W004 is no longer Banner-gated, so the firing surface is the
+    // page fixpoint regardless of whether a closing banner exists.
+    // The test name is retained from pre-#461 for git-blame
+    // continuity; the assertions still hold under PageFinalization
+    // because the same disunity is observable on the closed state
+    // regardless of which boundary closes the page.
+    //
+    // **Copilot-flagged regression guard.** Pre-fix this test was a
+    // `.find().is_some()` assertion that masked the engine's
+    // main-loop double-dispatch defect: the main candidate loop
+    // ran W004 on the Banner candidate (because the loop had no
+    // phase filter), and `dispatch_page_finalization` ran it
+    // again at EOD. Tightened to `count == 1` so any future
+    // regression that re-introduces a missing phase filter at
+    // the engine main-loop level (`engine.rs:1202-1203`) fails
+    // this test loudly.
+    //
+    // Assertions: rule = "W004", Warn severity, citation references
+    // §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass — updated from
+    // `§H.3 p56`).
     let engine = engine_with_fixed_clock();
     let source = b"(//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion.\n\
                    SECRET//FGI CAN GBR//NOFORN\n";
 
     let lint = engine.lint(source);
-    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
-    assert!(
-        w004.is_some(),
-        "W004 must fire on JOINT-disunity page; diagnostics: {:?}",
+    let w004_diags: Vec<_> = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .collect();
+    assert_eq!(
+        w004_diags.len(),
+        1,
+        "W004 must fire EXACTLY once on a JOINT-disunity page with a \
+         closing banner (regression guard for the engine main-loop \
+         phase-filter defect Copilot flagged on PR #461). All \
+         diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.as_str())
             .collect::<Vec<_>>()
     );
-    let w004 = w004.unwrap();
+    let w004 = w004_diags[0];
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
     // CV-4 (PR 4b-B 8th-pass): citation amended from
     // `§H.3 p56 + §H.7 p123` to `§H.3 p57 + §H.7 p123` — §H.3 p57
@@ -327,62 +356,121 @@ fn joint_disunity_union_excludes_usa() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-B eighth-pass P-3 trade-off: W004 reverted to Banner-only.
+// Issue #461 closure: W004 migrated to Phase::PageFinalization. The
+// engine synthesizes a PageFinalization candidate at every PageBreak
+// (BEFORE the PageContext reset) and once at end-of-document; W004
+// now sees the page-level fixpoint snapshot. The pre-#461 8th-pass
+// false-negative (banner-first layouts without closing banner) is
+// closed by the EOD path; the pre-#461 6th-pass false-positive
+// (Mixed-page mis-detection at Portion time) does not recur because
+// PageFinalization fires exactly once per page on the closed page
+// state.
+//
+// §-authority: §H.3 p57 (JOINT not carried to banner — Derivative
+// Use bullets specify the FGI [LIST] migration trigger) + §H.7 p123
+// (FGI grammar). Verified 2026-05-16 against
+// `crates/capco/docs/CAPCO-2016.md`.
 // ---------------------------------------------------------------------------
-//
-// Triage code W004-banner-first (DOCUMENTED FALSE-NEGATIVE as of 8th-pass).
-//
-// History:
-// - 6th-pass: W004 expanded to fire on Portion candidates to cover
-//   banner-first layouts (top banner → JOINT portions → no footer).
-//   The engine sees `ctx.page_context = None` on the top banner (no
-//   portions accumulated yet), so the old Banner-only rule missed
-//   disunity on these pages.
-// - 8th-pass P-3: reverted to Banner-only. The Portion-time firing
-//   produces false positives on pages where the final state is `Mixed`
-//   (JOINT portions followed by a non-JOINT portion): the snapshot at
-//   portion-2 time shows `DisunityCollapse` → W004 fires; but the
-//   final page state after portion-3 is `Mixed` → W004 should NOT fire
-//   per §H.3 p57. Portion-time snapshots cannot see future portions and
-//   therefore cannot distinguish DisunityCollapse from pre-Mixed.
-//   PM guidance: correctness over coverage for a Warn-severity rule.
-//
-// Documented false-negative: a pure-JOINT page with a top banner (no
-// footer banner) and disunified JOINT portions will NOT fire W004. The
-// rule only fires when a Banner candidate runs with a non-empty
-// `page_context` (which requires at least one preceding portion). In
-// banner-first pure-JOINT documents without a footer banner, no such
-// Banner candidate ever runs — W004 stays silent even though the
-// disunity is real. Callers that need to detect this case should use
-// `JointSet::from_attrs_iter(page.portions())` directly.
-//
-// §-authority: §H.3 p57 ("JOINT marking not carried forward to the
-// banner line in US documents"). Verified 2026-05-16 against
-// crates/capco/docs/CAPCO-2016.md.
 
 #[test]
-fn w004_does_not_fire_on_banner_first_document_with_no_closing_banner() {
-    // P-3 (8th-pass): this is the DOCUMENTED FALSE-NEGATIVE case. A
-    // top banner fires before any portions accumulate, so page_context
-    // is None on the banner candidate → W004 returns early. Subsequent
-    // JOINT-disunity portions fire on Portion candidates but W004 is
-    // now Banner-only → no W004. No closing footer banner → rule never
-    // sees a non-empty page_context for a Banner candidate.
-    //
-    // This test asserts the current (intentional) behavior: W004 does
-    // NOT fire on this layout. It replaces the 6th-pass positive
-    // assertion that W004 MUST fire on this layout, which was
-    // predicated on the now-reverted Portion-firing path.
+fn w004_fires_on_banner_first_via_eod_finalization() {
+    // Pre-#461: this layout was a documented false-negative. The top
+    // banner ran before any portions accumulated (so the old
+    // Banner-only firing path saw `page_context = None` and bailed),
+    // and no closing footer banner meant the rule never re-fired.
+    // Post-#461: PageFinalization dispatch at end-of-document
+    // observes the page-level fixpoint snapshot — JOINT-disunity
+    // across the two portions surfaces W004 once. Authority:
+    // §H.3 p57 (banner cannot carry JOINT in US documents) + §H.7
+    // p123 (FGI grammar the non-US producers migrate under).
     let engine = engine_with_fixed_clock();
     let source = b"//JOINT SECRET USA, GBR, CAN\n\
                    (//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion creates disunity.\n";
     let lint = engine.lint(source);
+    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
+    assert!(
+        w004.is_some(),
+        "Issue #461 closure: W004 MUST fire via EOD PageFinalization \
+         on banner-first JOINT-disunity layout with no closing banner; \
+         diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+    let w004 = w004.unwrap();
+    assert_eq!(w004.severity, marque_rules::Severity::Warn);
+    assert!(
+        w004.citation.contains("§H.3 p57") && w004.citation.contains("§H.7 p123"),
+        "W004 citation must reference both §H.3 p57 AND §H.7 p123: {:?}",
+        w004.citation
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_single_joint_portion_at_eod() {
+    // A single JOINT portion can never produce disunity — disunity
+    // needs at least two JOINT portions with disagreeing producer
+    // lists. Even under Phase::PageFinalization (which now reaches
+    // single-portion pages via the EOD dispatch), the JointSet is
+    // `UnanimousProducers` for a one-portion page, not
+    // `DisunityCollapse`, so W004 stays silent. Verifies the
+    // PageFinalization closure didn't accidentally widen the firing
+    // surface beyond the §H.3 p57 disunity contract.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) only portion on the page.\n";
+    let lint = engine.lint(source);
     assert!(
         lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
-        "P-3 documented false-negative: W004 must NOT fire on banner-\
-         first JOINT-disunity page with no closing banner under the \
-         8th-pass Banner-only restriction; diagnostics: {:?}",
+        "W004 must NOT fire on a single JOINT portion (no disunity \
+         possible); diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #461 — Phase::PageFinalization behavioral coverage (new tests).
+// ---------------------------------------------------------------------------
+//
+// These tests pin behavior of the PageFinalization dispatch path
+// against §H.3 p57 + §H.7 p123. Names describe what the user sees
+// ("fires", "does NOT fire", which page), not the dispatch
+// mechanism. The engine's `dispatch_page_finalization` synthesizes
+// one boundary candidate per `MarkingType::PageBreak` (BEFORE the
+// PageContext reset) and one at end-of-document. The PageBreak
+// heuristic is form-feed (`\f`) or `\n\n\n+`; the tests below use
+// form-feed for determinism.
+
+#[test]
+fn w004_fires_per_page_break_independently() {
+    // §H.3 p57 + §H.7 p123: each page's banner is finalized
+    // independently. Page 1 has JOINT disunity → W004 fires.
+    // Page 2 has unanimous JOINT producers (no disunity) → W004
+    // stays silent on page 2. Net: exactly one W004 diagnostic
+    // across the document. The form-feed separates the pages so
+    // the scanner emits a `MarkingType::PageBreak` candidate that
+    // triggers the first PageFinalization dispatch.
+    let engine = engine_with_fixed_clock();
+    let source: &[u8] = b"(//JOINT S USA GBR) page 1 first portion.\n\
+                          (//JOINT S USA CAN) page 1 disunity portion.\n\
+                          \x0c\
+                          (//JOINT S USA GBR) page 2 first portion.\n\
+                          (//JOINT S USA GBR) page 2 same producers.\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert_eq!(
+        w004_count,
+        1,
+        "W004 must fire exactly once (page 1 has disunity, page 2 is \
+         unanimous); diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.as_str())
@@ -391,19 +479,216 @@ fn w004_does_not_fire_on_banner_first_document_with_no_closing_banner() {
 }
 
 #[test]
-fn w004_does_not_fire_on_first_disunity_portion_alone() {
-    // Defensive: a single JOINT portion can never produce disunity —
-    // disunity needs at least two JOINT portions with disagreeing
-    // producer lists. The portion-fire path must NOT emit on the
-    // first JOINT portion (only one portion → JointSet::
-    // UnanimousProducers, not DisunityCollapse).
+fn w004_fires_on_both_disunity_pages() {
+    // Two pages, both with JOINT disunity. PageFinalization dispatch
+    // fires per-page on the page-level fixpoint, so W004 emits
+    // twice — once at the form-feed boundary (closing page 1), once
+    // at end-of-document (closing page 2). Authority: §H.3 p57
+    // (JOINT not carried to banner; non-US producers migrate per
+    // §H.7 p123).
     let engine = engine_with_fixed_clock();
-    let source = b"(//JOINT S USA GBR) only portion on the page.\n";
+    let source: &[u8] = b"(//JOINT S USA GBR) page 1 first portion.\n\
+                          (//JOINT S USA CAN) page 1 disunity portion.\n\
+                          \x0c\
+                          (//JOINT S USA FRA) page 2 first portion.\n\
+                          (//JOINT S USA DEU) page 2 disunity portion.\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert_eq!(
+        w004_count,
+        2,
+        "W004 must fire exactly twice (one per disunity page); \
+         diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_mixed_page_via_finalization() {
+    // §H.3 p57: a page with JOINT portions AND a non-JOINT portion
+    // collapses to `JointSet::Mixed` at the page-level fixpoint.
+    // The FGI migration for the JOINT non-US producers rides
+    // through the existing PageContext-resident `expected_fgi_marker`
+    // path, NOT through W004. PageFinalization sees the closed
+    // page state — Mixed, not DisunityCollapse — so W004 stays
+    // silent. This is the regression that the 6th-pass
+    // Portion-firing experiment introduced and the 8th-pass
+    // Banner-only reverted; PageFinalization preserves the
+    // 8th-pass correctness while also closing the banner-first
+    // false-negative.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) joint-classified portion.\n\
+                   (//JOINT S USA CAN) joint-classified portion.\n\
+                   (S//NF) non-joint portion forces Mixed.\n";
     let lint = engine.lint(source);
     assert!(
         lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
-        "W004 must NOT fire on a single JOINT portion (no disunity \
-         possible); diagnostics: {:?}",
+        "W004 must NOT fire on a Mixed page (JOINT + non-JOINT \
+         portions) per §H.3 p57; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_does_not_fire_on_empty_page() {
+    // A document with a banner only (no portions) has an empty
+    // PageContext at end-of-document — `dispatch_page_finalization`
+    // skips empty pages by construction (its caller guards on
+    // `!page_context.is_empty()`). No rule body runs and no W004
+    // diagnostic emits. Authority for the empty-page guard:
+    // `dispatch_page_finalization` doc + Constitution VI (engine
+    // does not invoke PageFinalization on empty pages).
+    let engine = engine_with_fixed_clock();
+    let source = b"//JOINT SECRET USA, GBR\n";
+    let lint = engine.lint(source);
+    assert!(
+        lint.diagnostics.iter().all(|d| d.rule.as_str() != "W004"),
+        "W004 must NOT fire on a banner-only document with no \
+         portions; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_eod_fires_for_trailing_disunity_without_pagebreak() {
+    // No form-feed, no `\n\n\n+`, no closing banner — purely
+    // trailing JOINT portions running off the end of the document.
+    // Pre-#461 this was the documented false-negative
+    // (`w004_does_not_fire_on_banner_first_document_with_no_closing_banner`,
+    // renamed to `w004_fires_on_banner_first_via_eod_finalization`).
+    // Post-#461 the EOD PageFinalization dispatch closes it
+    // unconditionally — even without a banner anywhere. This is
+    // the minimum case where the EOD path matters: a document
+    // composed of nothing but disunified JOINT portions.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) first portion.\n\
+                   (//JOINT S USA CAN) second portion forces disunity.\n";
+    let lint = engine.lint(source);
+    let w004 = lint.diagnostics.iter().find(|d| d.rule.as_str() == "W004");
+    assert!(
+        w004.is_some(),
+        "Issue #461 closure: W004 MUST fire via EOD PageFinalization \
+         on trailing-portions-only layout; diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Engine main-loop phase-filter regression guards (Copilot review on
+// PR refactor-006-pr-pagefinalization / issue #461).
+// ---------------------------------------------------------------------------
+//
+// Copilot's HIGH-severity finding: the engine's main candidate-loop
+// (`engine.rs:1202-1203`) iterated `self.rule_sets[..].rules()[..]`
+// with NO phase filter, so every registered rule — including
+// `Phase::PageFinalization` rules — ran on every Portion / Banner /
+// CAB candidate. With W004's body no longer gated on
+// `MarkingType::Banner`, the rule fired TWICE on any page with a
+// closing banner: once from the main loop's Banner-candidate
+// dispatch (because the engine attaches `ctx.page_context` to
+// non-Portion candidates with non-empty pages), and once from
+// `dispatch_page_finalization` at the next PageBreak / EOD.
+//
+// The two tests below pin "exactly once per page" semantics on the
+// two layout shapes where the pre-fix bug would surface as a
+// double-fire: single page with closing banner, and two-page document
+// with closing banners on both pages.
+//
+// Both tests would FAIL on the pre-fix engine; they PASS on
+// the post-fix engine (`pass_finalization_rule_indices` skipped from
+// the main loop). The companion regression tightening lives at
+// `w004_fires_on_joint_disunity_banner` (top of file) where
+// `.find().is_some()` was upgraded to `.filter().count() == 1`.
+
+#[test]
+fn w004_fires_exactly_once_on_page_with_closing_banner() {
+    // Single page with two disunified JOINT portions AND a closing
+    // banner. Pre-Copilot-fix the main candidate loop's
+    // Banner-candidate dispatch ran W004 once (the body would early-
+    // return on the Banner-only guard, but the guard was removed in
+    // the PageFinalization migration — now the body runs and
+    // emits because `page_context` is populated on Banner candidates
+    // by accumulation, and `JointSet::DisunityCollapse` is true at
+    // that snapshot). `dispatch_page_finalization` then ran W004 a
+    // second time at EOD. Net: 2 W004 diagnostics. Post-fix: the
+    // main loop's phase filter skips PageFinalization rules entirely,
+    // so only the EOD synthesis dispatches W004 → count == 1.
+    let engine = engine_with_fixed_clock();
+    let source = b"(//JOINT S USA GBR) first portion.\n\
+                   (//JOINT S USA CAN) second portion.\n\
+                   SECRET//FGI CAN GBR//NOFORN\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert_eq!(
+        w004_count,
+        1,
+        "W004 must fire EXACTLY once on a single page with a closing \
+         banner. A count of 2 means the engine's main candidate loop \
+         did NOT skip Phase::PageFinalization rules and W004 ran both \
+         (a) on the Banner candidate in the main loop, AND (b) via \
+         dispatch_page_finalization at EOD. This is the Copilot-HIGH \
+         regression guard for PR #461. Diagnostics: {:?}",
+        lint.diagnostics
+            .iter()
+            .map(|d| d.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn w004_fires_exactly_once_per_page_when_banner_closes_page() {
+    // Two-page document, each page has disunified JOINT portions
+    // AND a closing banner before the form-feed (or end-of-document
+    // for page 2). Pre-Copilot-fix this would emit FOUR W004
+    // diagnostics: two from main-loop Banner dispatches + two from
+    // PageFinalization (one per `\f` boundary + one at EOD — except
+    // the EOD page's banner doesn't precede a `\f`, so dispatch
+    // fires at EOD instead; either way, one PageFinalization fire
+    // per page). Post-fix: only the PageFinalization-path fires,
+    // one per page → count == 2.
+    let engine = engine_with_fixed_clock();
+    let source: &[u8] = b"(//JOINT S USA GBR) page 1 first portion.\n\
+                          (//JOINT S USA CAN) page 1 disunity portion.\n\
+                          SECRET//FGI CAN GBR//NOFORN\n\
+                          \x0c\
+                          (//JOINT S USA FRA) page 2 first portion.\n\
+                          (//JOINT S USA DEU) page 2 disunity portion.\n\
+                          SECRET//FGI DEU FRA//NOFORN\n";
+    let lint = engine.lint(source);
+    let w004_count = lint
+        .diagnostics
+        .iter()
+        .filter(|d| d.rule.as_str() == "W004")
+        .count();
+    assert_eq!(
+        w004_count,
+        2,
+        "W004 must fire EXACTLY twice on a two-page document where \
+         each page has a closing banner (one per page, not four). \
+         A count of 4 indicates the main-loop phase filter regressed \
+         and W004 dispatched on both Banner candidates AND both \
+         PageFinalization synthesis points. Copilot-HIGH regression \
+         guard for PR #461. Diagnostics: {:?}",
         lint.diagnostics
             .iter()
             .map(|d| d.rule.as_str())

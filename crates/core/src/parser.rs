@@ -109,6 +109,24 @@ impl<'t> Parser<'t> {
             MarkingType::PageBreak => Err(CoreError::MalformedMarking(
                 "page-break candidate must not be parsed".to_owned(),
             )),
+            // PageFinalization candidates are engine-synthesized
+            // dispatch markers, never scanner-emitted. They reach
+            // `Phase::PageFinalization` rules through the engine's
+            // synthetic-dispatch path and never enter the parser.
+            // Reaching this arm is a programming error in the
+            // pipeline, same as `PageBreak`; surface
+            // `MalformedMarking` so the failure stays loud rather
+            // than silently parsing as something else.
+            MarkingType::PageFinalization => Err(CoreError::MalformedMarking(
+                "page-finalization candidate must not be parsed".to_owned(),
+            )),
+            // `MarkingType` is `#[non_exhaustive]` (issue #461). A
+            // future variant should fail loudly at parse time so the
+            // pipeline maintainer sees it explicitly; do NOT
+            // silently drop into a permissive arm.
+            _ => Err(CoreError::MalformedMarking(
+                "unsupported candidate kind for parser".to_owned(),
+            )),
         }
     }
 

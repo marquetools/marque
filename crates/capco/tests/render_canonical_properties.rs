@@ -69,9 +69,20 @@ enum Kind {
 
 fn detect_kind(source: &[u8]) -> Kind {
     let candidates = Scanner::scan(source);
+    // PageBreak is scanner-emitted; PageFinalization is engine-
+    // synthesized and currently unreachable from `Scanner::scan`,
+    // but we filter both so the property test cannot regress
+    // silently if a future scanner enhancement emits the new
+    // variant (`MarkingType` is `#[non_exhaustive]` per issue
+    // #461).
     let mut markings: Vec<&MarkingCandidate> = candidates
         .iter()
-        .filter(|c| !matches!(c.kind, MarkingType::PageBreak))
+        .filter(|c| {
+            !matches!(
+                c.kind,
+                MarkingType::PageBreak | MarkingType::PageFinalization
+            )
+        })
         .collect();
     if markings.len() != 1 {
         return Kind::Other;
