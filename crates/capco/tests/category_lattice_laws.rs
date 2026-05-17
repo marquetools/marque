@@ -24,7 +24,7 @@ use std::collections::BTreeSet;
 
 use marque_capco::lattice::{AeaPrimary, AeaSet, UcniKind};
 use marque_ism::{AeaMarking, AtomalBlock, FrdBlock, RdBlock};
-use marque_scheme::Lattice;
+use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
 use proptest::prelude::*;
 
 // ===========================================================================
@@ -499,7 +499,10 @@ fn aea_set_meet_join_absorption() {
 mod classification_lattice {
     use marque_capco::ClassificationLattice;
     use marque_ism::{Classification, MarkingClassification};
-    use marque_scheme::{BoundedLattice, Lattice};
+    use marque_scheme::{
+        BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
+        MeetSemilattice,
+    };
 
     fn lvl(c: Classification) -> ClassificationLattice {
         ClassificationLattice::new(Some(MarkingClassification::Us(c)))
@@ -1155,7 +1158,10 @@ mod classification_lattice {
 mod nato_class_lattice {
     use marque_capco::NatoClassLattice;
     use marque_ism::NatoClassification;
-    use marque_scheme::{BoundedLattice, Lattice};
+    use marque_scheme::{
+        BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
+        MeetSemilattice,
+    };
 
     const ALL: [NatoClassification; 5] = [
         NatoClassification::NatoUnclassified,
@@ -1218,7 +1224,7 @@ mod nato_class_lattice {
 mod declassify_on_lattice {
     use marque_capco::DeclassifyOnLattice;
     use marque_ism::IsmDate;
-    use marque_scheme::Lattice;
+    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
 
     fn d(y: i32, m: u8, day: u8) -> DeclassifyOnLattice {
         DeclassifyOnLattice::new(Some(IsmDate::Date(y, m, day)))
@@ -1292,7 +1298,7 @@ mod declassify_on_lattice {
 mod dissem_set {
     use marque_capco::DissemSet;
     use marque_ism::{CanonicalAttrs, DissemControl};
-    use marque_scheme::Lattice;
+    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
     use proptest::prelude::*;
 
     fn portion(controls: &[DissemControl]) -> CanonicalAttrs {
@@ -1442,40 +1448,12 @@ mod dissem_set {
             prop_assert_eq!(s1.join(&bottom), s1.clone());
         }
 
-        #[test]
-        fn dissem_set_join_side_absorption(
-            p1 in arb_portions(),
-            p2 in arb_portions(),
-        ) {
-            // C-4 (PR 4b-B follow-up): the join-side absorption law
-            // `a ⊔ (a ⊓ b) = a` MUST hold. This is the law users
-            // actually depend on when folding per-portion state
-            // through `Lattice::join`.
-            //
-            // Pre-fix, `meet` propagated `relido_observed_unanimous`
-            // as AND, so meeting a unanimous RELIDO set with an
-            // empty/non-unanimous set produced `unanimous=false`;
-            // joining that back into the unanimous set dropped RELIDO,
-            // breaking absorption.
-            //
-            // Post-fix, `meet` produces the vacuous-true flag value
-            // (the identity under subsequent AND joins). This makes
-            // `a ⊔ (a ⊓ b) = a` algebraically clean.
-            //
-            // Note: the dual absorption law `a ⊓ (a ⊔ b) = a` does
-            // NOT hold for `DissemSet` because the unanimity flag is
-            // a join-side aggregation property — meet has no natural
-            // reading for it, so we produce the vacuous-true value
-            // which can disagree with `a.relido_observed_unanimous`.
-            // `DissemSet` is a join-semilattice for the unanimity
-            // axis; the `Lattice` trait's `meet` is provided for
-            // structural completeness (it composes the underlying
-            // set via intersection) but does not satisfy the dual
-            // absorption law over the full `(set, flag)` pair.
-            let a = DissemSet::from_attrs_iter(&p1);
-            let b = DissemSet::from_attrs_iter(&p2);
-            prop_assert_eq!(a.join(&a.meet(&b)), a.clone(), "a ⊔ (a ⊓ b) = a");
-        }
+        // NOTE (PR #456 trait split): `DissemSet` is join-only
+        // (`JoinSemilattice` but NOT `MeetSemilattice`). The C-4 meet-
+        // side absorption test `a ⊔ (a ⊓ b) = a` is enforced at the
+        // type level — `DissemSet::meet` does not exist. The join-only
+        // laws (commutativity, idempotency, associativity, identity)
+        // are fully covered by `dissem_set_lattice_laws_idempotent_associative`.
     }
 
     #[test]
@@ -1540,20 +1518,13 @@ mod dissem_set {
         );
     }
 
-    #[test]
-    fn dissem_set_absorption_specific_relido_case() {
-        // Concrete C-4 case: unanimous RELIDO set met with empty.
-        // Pre-fix, `meet` returned `unanimous=false` (AND-propagation),
-        // which dropped RELIDO under the join's overlay.
-        let unanimous_relido = DissemSet::from_attrs_iter(&[portion(&[DissemControl::Relido])]);
-        let empty = DissemSet::empty();
-        // a ⊔ (a ⊓ b) = a, with b = empty.
-        let meet = unanimous_relido.meet(&empty);
-        let absorbed = unanimous_relido.join(&meet);
-        assert_eq!(absorbed, unanimous_relido);
-        assert!(absorbed.as_set().contains(&DissemControl::Relido));
-        assert!(absorbed.relido_unanimous());
-    }
+    // NOTE (PR #456 trait split): `DissemSet::absorption_specific_relido_case`
+    // was removed because `DissemSet` no longer implements `MeetSemilattice`.
+    // The C-4 correction (unanimous-RELIDO join-absorption) is now enforced
+    // structurally by the trait split: callers cannot call `.meet()` on
+    // `DissemSet`, eliminating the class of bugs the test was guarding.
+    // The RELIDO-unanimity preservation regression is covered by
+    // `dissem_set_default_does_not_drop_relido_when_joined` above.
 }
 
 // ===========================================================================
@@ -1564,7 +1535,7 @@ mod dissem_set {
 mod nato_dissem_set {
     use marque_capco::NatoDissemSet;
     use marque_ism::{CanonicalAttrs, DissemControl};
-    use marque_scheme::Lattice;
+    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
 
     fn portion(controls: &[DissemControl]) -> CanonicalAttrs {
         let mut a = CanonicalAttrs::default();
@@ -1649,7 +1620,7 @@ mod joint_set {
     use marque_ism::{
         CanonicalAttrs, Classification, CountryCode, JointClassification, MarkingClassification,
     };
-    use marque_scheme::Lattice;
+    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
     use proptest::prelude::*;
 
     fn cc(s: &str) -> CountryCode {
@@ -1790,47 +1761,14 @@ mod joint_set {
         }
     }
 
-    #[test]
-    fn joint_set_join_side_absorption() {
-        // C-6 (PR 4b-B follow-up): `a ⊔ (a ⊓ b) = a` for JOINT.
-        // Pre-fix, `meet` of two UnanimousProducers with different
-        // sets returned a same-level UnanimousProducers with the
-        // intersection; joining that back into `a` produced
-        // `DisunityCollapse` (because the producer sets differed),
-        // not `a`. Post-fix, `meet` of disagreeing sets returns
-        // `Bottom`, which is `join`-identity, so absorption holds.
-        let a = JointSet::from_attrs_iter(&[joint_portion(
-            Classification::Secret,
-            &["USA", "GBR", "CAN"],
-        )]);
-        let b =
-            JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
-        let meet = a.meet(&b);
-        // Different producer sets → meet is Bottom.
-        assert!(matches!(meet, JointSet::Bottom));
-        let absorbed = a.join(&meet);
-        assert_eq!(absorbed, a, "a ⊔ (a ⊓ b) = a");
-    }
-
-    #[test]
-    fn joint_set_meet_identical_producers_returns_min_level() {
-        // Identical producer sets meet to the min-level
-        // UnanimousProducers — this is the "shared truth" of two
-        // observations of the same JOINT page at different
-        // sensitivities.
-        let a =
-            JointSet::from_attrs_iter(&[joint_portion(Classification::TopSecret, &["USA", "GBR"])]);
-        let b =
-            JointSet::from_attrs_iter(&[joint_portion(Classification::Secret, &["USA", "GBR"])]);
-        let meet = a.meet(&b);
-        match meet {
-            JointSet::UnanimousProducers { level, producers } => {
-                assert_eq!(level, Classification::Secret); // min
-                assert_eq!(producers.len(), 2);
-            }
-            other => panic!("expected UnanimousProducers, got {other:?}"),
-        }
-    }
+    // NOTE (PR #456 trait split): `JointSet` is join-only (`JoinSemilattice`
+    // but NOT `MeetSemilattice`). The C-6 meet-side absorption test and the
+    // `meet_identical_producers` test are removed because `JointSet::meet`
+    // no longer exists. The join-absorption law `a ⊔ (a ⊓ b) = a` is now
+    // enforced at the type level — callers that would have called `.meet()`
+    // on `JointSet` are rejected at compile time. The join-side laws
+    // (commutativity, idempotency, identity, DisunityCollapse absorbing)
+    // are fully covered by `joint_set_join_laws_*` tests above.
 
     #[test]
     fn joint_set_mixed_absorbs_unanimous_under_grouped_join() {
@@ -1977,32 +1915,12 @@ mod joint_set {
             prop_assert_eq!(a.join(&a), a.clone());
         }
 
-        /// Join-side absorption: `a ⊔ (a ⊓ b) = a`.
-        ///
-        /// **Scope note** (per the "Partial-lattice note (C-6 PR 4b-B
-        /// follow-up)" doc comment above `JointSet::meet` in
-        /// `crates/capco/src/lattice.rs`). The dual
-        /// absorption law `a ⊓ (a ⊔ b) = a` does NOT hold over the
-        /// full `JointSet` state space — `meet` has no natural
-        /// reading for non-identical producer sets and returns
-        /// `Bottom`. Join-side absorption IS guaranteed over the
-        /// `Bottom` / `UnanimousProducers` sub-lattice. Because
-        /// `arb_joint_page` only generates well-formed JOINT
-        /// portions (all with USA), every generated operand is in
-        /// `{Bottom, UnanimousProducers, DisunityCollapse}` — the
-        /// `Mixed` variant requires a non-JOINT portion, which
-        /// `arb_joint_portion` does not produce. Under this state
-        /// space, join-side absorption holds: for cross-variant
-        /// operands `meet` returns `Bottom`, and `a ⊔ Bottom = a`.
-        #[test]
-        fn joint_set_proptest_join_side_absorption(
-            page_a in arb_joint_page(),
-            page_b in arb_joint_page(),
-        ) {
-            let a = JointSet::from_attrs_iter(&page_a);
-            let b = JointSet::from_attrs_iter(&page_b);
-            prop_assert_eq!(a.join(&a.meet(&b)), a.clone(), "a ⊔ (a ⊓ b) = a");
-        }
+        // NOTE (PR #456 trait split): `joint_set_proptest_join_side_absorption`
+        // removed. `JointSet` no longer implements `MeetSemilattice`, so the
+        // absorption expression `a ⊔ (a ⊓ b) = a` is not expressible. The
+        // join-only laws (commutativity, associativity, idempotency) in
+        // `joint_set_join_laws_commutative_associative_idempotent` above
+        // fully cover the `JoinSemilattice` contract.
     }
 }
 
@@ -2016,7 +1934,7 @@ mod joint_set {
 mod rel_to_block {
     use marque_capco::RelToBlock;
     use marque_ism::{CanonicalAttrs, CountryCode, DissemControl, NonIcDissem};
-    use marque_scheme::Lattice;
+    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
 
     fn cc(s: &str) -> CountryCode {
         CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
@@ -2281,7 +2199,7 @@ mod rel_to_block {
 mod fgi_set_concealed_top {
     use marque_capco::lattice::FgiSet;
     use marque_ism::{CountryCode, FgiMarker};
-    use marque_scheme::Lattice;
+    use marque_scheme::{JoinSemilattice, Lattice, MeetSemilattice};
 
     fn gbr() -> CountryCode {
         CountryCode::try_new(b"GBR").expect("GBR")

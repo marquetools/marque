@@ -418,8 +418,8 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
 mod tests {
     use super::*;
     use marque_scheme::{
-        Category, Constraint, ConstraintViolation, Lattice, Parsed, Scope, Template, TokenId,
-        TokenRef,
+        Category, Constraint, ConstraintViolation, JoinSemilattice, MeetSemilattice, Parsed, Scope,
+        Template, TokenId, TokenRef,
     };
 
     // Minimal scheme used to exercise the scheduler without pulling in
@@ -431,10 +431,13 @@ mod tests {
     #[derive(Clone, Debug, PartialEq, Eq, Default)]
     struct StubMarking;
 
-    impl Lattice for StubMarking {
+    impl JoinSemilattice for StubMarking {
         fn join(&self, _other: &Self) -> Self {
             Self
         }
+    }
+
+    impl MeetSemilattice for StubMarking {
         fn meet(&self, _other: &Self) -> Self {
             Self
         }

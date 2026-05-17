@@ -18,7 +18,9 @@ use marque_rules::{Confidence, FixIntent, FixSource, Message, MessageArgs, Messa
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
-use marque_scheme::lattice::{BoundedLattice, Lattice};
+use marque_scheme::lattice::{
+    BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
+};
 use marque_scheme::template::Template;
 use marque_scheme::{FactRef, MarkingScheme, RecanonScope, ReplacementIntent, Scope, TokenId};
 use smallvec::SmallVec;
@@ -26,19 +28,25 @@ use smallvec::SmallVec;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct StubMarking;
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _other: &Self) -> Self {
         StubMarking
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _other: &Self) -> Self {
         StubMarking
     }
 }
 
-impl BoundedLattice for StubMarking {
+impl BoundedJoinSemilattice for StubMarking {
     fn bottom() -> Self {
         StubMarking
     }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
     fn top() -> Self {
         StubMarking
     }

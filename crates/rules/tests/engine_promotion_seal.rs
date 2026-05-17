@@ -33,7 +33,7 @@ use marque_scheme::{
     category::Category,
     constraint::Constraint,
     fix_intent::RecanonScope,
-    lattice::{BoundedLattice, Lattice},
+    lattice::{BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice},
     template::Template,
 };
 use std::sync::Arc;
@@ -46,19 +46,25 @@ use std::time::{Duration, UNIX_EPOCH};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct StubMarking;
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _other: &Self) -> Self {
         StubMarking
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _other: &Self) -> Self {
         StubMarking
     }
 }
 
-impl BoundedLattice for StubMarking {
+impl BoundedJoinSemilattice for StubMarking {
     fn bottom() -> Self {
         StubMarking
     }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
     fn top() -> Self {
         StubMarking
     }
