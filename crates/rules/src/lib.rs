@@ -432,8 +432,9 @@ pub struct RuleContext<'a> {
     /// scanner-emitted `MarkingType::PageBreak`.
     ///
     /// **PR 9b (T133) migration in progress.** Portion-level rules that
-    /// reason about per-portion membership (e.g., S005/S006
-    /// "uncertain-codes appeared in some-but-not-every portion") still
+    /// reason about per-portion membership (e.g., S005
+    /// "uncertain-codes appeared in some-but-not-every portion" —
+    /// post-PR-#488 collapse of the historical S005/S006 pair) still
     /// read `page_context.portions()`. Banner-validation rules that
     /// need only the rolled-up shape SHOULD migrate to
     /// [`Self::page_marking`] (`&ProjectedMarking`). The two fields

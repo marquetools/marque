@@ -12,8 +12,9 @@
 //! releasable back to NATO".
 //!
 //! The rule is `Severity::Suggest` (the citation is example-derived
-//! rather than mandate prose; S004/S005/S006 precedent). Solely-NATO
-//! documents are carved out via
+//! rather than mandate prose; S004 + S005 precedent — the latter
+//! post-PR-#488 collapse of the historical S005/S006 pair).
+//! Solely-NATO documents are carved out via
 //! [`marque_ism::PageContext::is_solely_nato_classified`].
 //!
 //! # Authority
@@ -54,7 +55,7 @@ fn engine() -> Engine {
 /// The default `confidence_threshold` is `0.95`; S007 emits at the
 /// `S007_SUGGEST_CONFIDENCE` constant defined in
 /// `marque_capco::rules` (currently `0.85` — example-derived citation
-/// calibrates with S005/S006). Without the threshold drop the
+/// calibrates with S005). Without the threshold drop the
 /// suggest-channel demotion loop in `engine.rs::lint` would demote the
 /// overridden `Fix` back to `Suggest` because `0.85 < 0.95`, which
 /// would defeat the override. We drop the threshold to `0.80` here to

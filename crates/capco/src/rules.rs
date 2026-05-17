@@ -92,8 +92,9 @@
 //!           program ascending alpha §H.5 p99, SCI compartment +
 //!           sub-compartment numeric-then-alpha §H.4 p61) absorbed by
 //!           `MarkingScheme::render_canonical`
-//!   S005 = REL TO membership-uncertain reduction — Suggest branch (issue #206)
-//!   S006 = REL TO membership-uncertain reduction — Info branch (issue #206)
+//!   S005 = REL TO membership-uncertain reduction (issue #206; PR #488
+//!           collapsed the S005/S006 Suggest/Info split — S006 retired,
+//!           S005 migrated to Phase::PageFinalization)
 //!   S007 = bare NATO classification in a US-classified document should
 //!           carry `REL TO USA, NATO` (PR 9c.2 / FR-048, §H.7 p127)
 //!   C001 = corrections-map typo (T058, Phase 5)
@@ -267,15 +268,20 @@ impl CapcoRuleSet {
                 // dispatch parity with class-floor; the bridge takes
                 // the inherent-method shortcut. See
                 // `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md`.
-                // Issue #206 — REL TO membership-uncertain reduction.
-                // Two registered rules sharing one analysis helper:
-                //   S005 — Suggest, fires when banner is missing a
-                //          code atom-semantics says should survive,
-                //          OR banner has no REL TO at all.
-                //   S006 — Info, fires when banner is consistent
-                //          with atom-semantics. Audit-only signal.
+                // Issue #206 / PR #488: REL TO membership-uncertain
+                // reduction. PR #488 collapsed the original
+                // S005/S006 Suggest/Info split into one
+                // Suggest-severity rule under
+                // `Phase::PageFinalization`. The pre-#488 split was
+                // an engine-workaround (per-rule severity override
+                // was the only way to surface two severities for
+                // one trigger); CAPCO-2016 §H.8 + §D.2 Table 3
+                // rule 21 don't distinguish "active validation"
+                // from "consistent case." See the rule's doc
+                // comment for the retirement rationale and the
+                // admonition-channel future home for the per-
+                // emission-severity signal.
                 Box::new(RelToOpaqueUncertainReductionSuggestRule),
-                Box::new(RelToOpaqueUncertainReductionInfoRule),
                 // Issue #256: NOFORN + REL TO mutual exclusion at
                 // marking level. §H.8 p145 says NOFORN "Cannot be
                 // used with REL TO." Declarative wrapper over the
@@ -2128,161 +2134,84 @@ pub(crate) fn dedup_country_codes(
 }
 
 // ---------------------------------------------------------------------------
-// Rules: S005 + S006 — REL TO membership-uncertain reduction (issue #206)
+// Rule: S005 — REL TO membership-uncertain reduction (issue #206; PR #488)
 // ---------------------------------------------------------------------------
 //
-// Conceptually one diagnostic with a context-dependent severity (Info
-// when the banner is consistent with atom-semantics; Suggest when not),
-// per plan §3.1. Implementation-wise two registered rules because
+// What S005 detects. An `is_decomposable == None` tetragraph (NA-
+// deprecated, taxonomy-absent, or org-fork extension code) drops out
+// of the page-level REL TO atom-semantics intersection because at
+// least one portion does not carry the code, AND there exist atoms in
+// every-portion-without-the-code that the operator might have
+// intended to release to via the dropped code's hypothetical
+// membership. The rule cannot decide whether the producer drew on
+// external membership data we don't have or simply mis-marked, so it
+// surfaces the uncertainty for the operator to resolve.
+//
+// Phase. Phase::PageFinalization. The trigger is page-scoped (it
+// computes an intersection across all portions carrying REL TO and
+// reads expected vs observed banner state) so the rule must run once
+// per page on the closed page-level fixpoint snapshot, not once per
+// banner/CAB candidate. The pre-PR-#488 Phase::WholeMarking dispatch
+// produced a documented false-negative on banner-first layouts (no
+// closing banner ⇒ no Banner candidate ⇒ no firing surface) and a
+// 6th-pass false-positive on intermediate snapshots when the rule
+// briefly ran on Portion candidates. Phase::PageFinalization closes
+// both — the engine dispatches S005 exactly once per page at every
+// scanner-emitted `MarkingType::PageBreak` BEFORE the PageContext
+// reset, plus once at end-of-document.
+//
+// Severity / fix. Severity::Suggest with no fix. The ambiguity is not
+// resolvable from in-tree data — only the producer's external
+// membership data can settle it. The engine never auto-applies a
+// Suggest-severity diagnostic regardless of confidence
+// (`Engine::fix_inner` excludes `Severity::Suggest` from the apply
+// gate), so the no-fix shape is the safest and most honest signal.
+//
+// History — retired S006. Pre-PR-#488 the rule was a Suggest/Info
+// pair: S005 emitted when the banner was inconsistent or missing
+// (active validation), S006 emitted at Info severity when the banner
+// was consistent with atom-semantics (`expected ⊆ banner_atomic`).
+// The two-rule split was an engine-workaround, NOT §-grounded —
+// CAPCO-2016 §H.8 treats REL TO via pure set-membership language and
+// §D.2 Table 3 rule 21 (the roll-up intersection law) applies
+// uniformly without distinguishing "active validation" from
+// "consistent case." The split existed because
 // `marque_engine::Engine::lint` overwrites every emitted diagnostic's
-// severity with the rule's configured/default severity (engine.rs
-// `// Apply configured severity override`); a single rule cannot
-// stably emit at two different severities. Both rules share
-// `analyze_uncertain_reduction` and split only on which branch they
-// keep.
+// severity with the rule's configured/default severity, so a single
+// rule could not stably emit at two severities. PR #488 collapsed the
+// pair to a single Suggest-severity rule. The eventual admonition
+// channel (deferred per
+// `specs/006-engine-rule-refactor/followups/admonition-channel.md`)
+// will restore per-emission severity if a future need arises; the
+// collapse-now matches that eventual end state.
 //
-// Naming:
-//   S005 `rel-to-opaque-uncertain-reduction` — Suggest. Active
-//        validation (banner has no REL TO) or banner REL TO drops
-//        a code atom-semantics says should survive.
-//   S006 `rel-to-opaque-uncertain-reduction-info` — Info. Banner
-//        REL TO is consistent with atom-semantics
-//        (`expected ⊆ banner`). The producer plausibly drew on
-//        membership data we don't have; surface the uncertainty
-//        without flagging.
+// Authority. CAPCO-2016 §H.8 (REL TO list grammar — syntax and
+// tetragraph definition) + ODNI ISMCAT
+// V[`marque_ism::ISMCAT_TETRA_VERSION`] Tetragraph Taxonomy (member-
+// country expansion). The ISMCAT taxonomy is the authoritative
+// member-country source per ODNI; §H.8 itself does not delegate to
+// ISMCAT (the string "ISMCAT" does not appear in
+// `crates/capco/docs/CAPCO-2016.md`). The two authorities compose;
+// they are not in a delegating relationship. `S005_CITATION` below
+// uses an additive `+` form; read it as "§H.8 (grammar) plus ISMCAT
+// (expansion data)", not as "§H.8 delegating to ISMCAT."
 //
-// Both rules share:
-//   - the trigger condition (uncertain code dropped + non-empty
-//     other-codes set)
-//   - the diagnostic message body (state text from
-//     `marque_ism::lookup_tetragraph_provenance`, atom intersection,
-//     membership-hypothesis candidates)
-//   - the `fix: None` shape (ambiguity not resolvable from in-tree
-//     data)
-//   - audit-content-ignorance per Constitution V (canonical tokens
-//     plus verbatim ODNI taxonomy `<Description>` text only)
-
-/// S005 (Suggest): REL TO membership-uncertain reduction — primary
-/// branch. Fires when an `is_decomposable == None` tetragraph drops
-/// out of the page-level atom-semantics intersection AND either
-///
-/// - the banner has no REL TO list (active-validation context — we'd
-///   be computing the marking from scratch), or
-/// - the banner's REL TO list (post tetragraph expansion) is missing
-///   a code atom-semantics says should survive (`expected ⊄ banner`).
-///
-/// See the module-level S005/S006 header for the rationale on the
-/// two-rule split. Severity: `Suggest` (engine-overridable).
-///
-/// # Authority
-///
-/// CAPCO-2016 §H.8 (REL TO list grammar) + ODNI ISMCAT
-/// V[`marque_ism::ISMCAT_TETRA_VERSION`] Tetragraph Taxonomy. Atom-
-/// semantics is the lowest-risk default (drop the code), but when
-/// the code is uncertain the default is not authoritatively grounded
-/// — the dropped code might genuinely include the atoms the
-/// intersection just lost. The "consistent" comparison runs in
-/// post-expansion atom space, matching the rollup XSL's
-/// `util:expandDecomposableTetras` semantics
-/// (`Schematron/ISM_XML-ROLLUP-phase.xsl`, plan §8 Q3).
-///
-/// # Fix
-///
-/// **None.** The rule cannot resolve the ambiguity from in-tree
-/// data — the dropped uncertain tetragraph may genuinely include
-/// the atoms the intersection just lost; only the producer's
-/// external membership data can settle the question. Note that
-/// `Engine::fix_inner` excludes `Severity::Suggest` only (see the
-/// `d.severity != Severity::Suggest` filter at engine.rs ~L1378),
-/// so emitting a `FixProposal` here WOULD risk auto-apply at
-/// engine-overridable Info/Warn/Error severities. A no-fix
-/// diagnostic is the safer shape.
-// ---------------------------------------------------------------------------
-// Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A
-// per `specs/006-engine-rule-refactor/decisions/02-catalog-shape.md` D4.
-// S005 (and its sister rule S006 below) stay as hand-written `Rule` impls
-// in this file; neither migrates to a `Constraint::Custom` catalog row on
-// `CapcoScheme` in this PR.
-//
-// Retirement target: admonition emitter channel (deferred per
-// `specs/006-engine-rule-refactor/followups/admonition-channel.md`). The
-// Suggest/Info severity split between S005 and S006 is operational, NOT
-// §-grounded — CAPCO-2016 §H.8 treats REL TO via pure set-membership
-// language, and §D.2 Table 3 rule 21 (the roll-up intersection law)
-// applies uniformly without distinguishing "active validation" from
-// "consistent case." The split exists because
-// `marque_engine::Engine::lint` overwrites every emitted diagnostic's
-// severity with the rule's configured/default severity (see engine.rs
-// `// Apply configured severity override`); a single rule cannot stably
-// emit at two severities. The admonition channel — when built — collapses
-// the two registered rules into one signal with per-emission severity.
-//
-// Authority for the underlying invariant: CAPCO-2016 §H.8 (REL TO list
-// grammar — syntax and tetragraph definition) + ODNI ISMCAT Tetragraph
-// Taxonomy (member-country expansion). The ISMCAT taxonomy is the
-// authoritative member-country source per ODNI; §H.8 itself does not
-// delegate to ISMCAT (the string "ISMCAT" does not appear in
-// `crates/capco/docs/CAPCO-2016.md`). The two authorities compose; they
-// are not in a delegating relationship. The `S005_CITATION` const below
-// uses an additive `+` form for historical continuity; readers should
-// interpret it as "§H.8 (grammar) plus ISMCAT (expansion data)", not as
-// "§H.8 delegating to ISMCAT."
-//
-// Citations explicitly NOT load-bearing for S005/S006:
+// Citations explicitly NOT load-bearing for S005:
 //   - §D.2 Table 3 rule 23 (TEYE/ACGU/FVEY-only intersection special
-//     case) — strictly outside S005/S006's general-tetragraph case.
+//     case) — strictly outside S005's general-tetragraph case.
 //   - §H.8 p151 ("Commingling Rule(s) Within a Portion" — per-portion,
 //     not page-level roll-up).
-// Reviewers verifying citation chains for S005/S006 should not follow
-// either of these as authority for the rules' behavior.
+// Reviewers verifying citation chains for S005 should not follow
+// either of these as authority for the rule's behavior.
 //
-// Structural blocker (why Path A in PR 3c.B Commit 9):
-// `MarkingScheme::evaluate_custom` (crates/scheme/src/scheme.rs:124-130)
-// receives only `&Self::Marking`. It has no access to
-// `RuleContext.page_context`. The entire body of
-// `analyze_uncertain_reduction` below is page-context-dependent — it
-// reads `page.portions()`, computes a page-level atom-semantics
-// intersection across all portions carrying REL TO, and decides the
-// Suggest vs Info branch from page-wide banner state. A constraint-
-// catalog predicate cannot reproduce any of this without context access.
-// The trait-surface extension that would unblock this migration is
-// tracked in
-// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
-//
-// `Diagnostic::with_fix(..., None)` constructor (in the `check`
-// bodies below): this rule emits neither a legacy `FixProposal` nor a
-// structural `FixIntent<S>` because the ambiguity is not resolvable from
-// in-tree data — the dropped uncertain tetragraph may genuinely include
-// the atoms the intersection lost; only the producer's external
-// membership data can settle the question. The constructor swap (vs
-// `Diagnostic::new(..., None)`) signals consciously-decided deferred
-// migration evaluation, matching the PR #349 pattern for E016/E036.
-// Downstream audit consumers observe no behavioral difference.
+// Audit-content-ignorance per Constitution V Principle V G13. The
+// diagnostic message embeds canonical token strings (CAPCO REL TO
+// codes that survived parsing — closed vocabulary, never document
+// text) plus verbatim ODNI taxonomy `<Description>` text from
+// `lookup_tetragraph_provenance`. No input bytes from the document
+// being linted are interpolated. §-citation re-verified 2026-05-17
+// against `crates/capco/docs/CAPCO-2016.md`.
 struct RelToOpaqueUncertainReductionSuggestRule;
-
-/// S006 (Info): REL TO membership-uncertain reduction — companion
-/// branch covering the banner-consistent case. Fires under the same
-/// trigger as S005 (uncertain code dropped + non-empty other-codes
-/// set), but only when the banner's REL TO list (post tetragraph
-/// expansion) is consistent with atom-semantics (`expected ⊆
-/// banner_atomic`). The producer plausibly drew on membership data
-/// we don't have; surface the uncertainty for audit visibility
-/// without raising it to Suggest.
-///
-/// Severity: `Info` (engine-overridable). The banner-consistent
-/// case has high false-positive cost if surfaced as Suggest — the
-/// operator's marking is correct under the safe default — so plan
-/// §3.1 distinguishes it as audit-only signal.
-///
-/// See the S005 doc above for authority and the module-level
-/// S005/S006 header for why the split is two registered rules.
-// Migration status (PR 3c.B Sub-PR 9, 2026-05-11): provisional Path A,
-// same retirement target and structural blocker as S005. See the
-// migration-status comment block above S005's struct decl
-// (`RelToOpaqueUncertainReductionSuggestRule`) for the full rationale,
-// the admonition-channel retirement target, citation guidance, and the
-// `evaluate_custom` context-access blocker.
-struct RelToOpaqueUncertainReductionInfoRule;
 
 /// Format the `{state}` text for an S005 diagnostic. Pulls from the
 /// build-time-generated [`marque_ism::TetragraphProvenance`] table so
@@ -2362,46 +2291,33 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
     codes.join(", ")
 }
 
-/// Which severity branch a candidate diagnostic belongs to. The
-/// branch is determined per-page (banner state is page-wide, not
-/// per-uncertain-code) and is identical for every diagnostic emitted
-/// from a single `analyze_uncertain_reduction` call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum S005Branch {
-    /// Active validation (banner has no REL TO) OR banner is
-    /// inconsistent (`expected ⊄ banner_atomic`). S005 fires.
-    Suggest,
-    /// Banner is consistent with atom-semantics
-    /// (`expected ⊆ banner_atomic`). S006 fires.
-    Info,
-}
-
-/// One candidate diagnostic produced by the shared analysis. Both
-/// S005 and S006 build their final `Diagnostic` from these, filtering
-/// by branch.
-struct S005Candidate {
-    branch: S005Branch,
-    span: Span,
-    message: String,
-}
-
-/// Run the full S005/S006 trigger analysis and return the candidate
-/// diagnostics tagged with the severity branch they belong to. Both
-/// rule wrappers call this; each wrapper filters by branch.
+/// Run the S005 trigger analysis on the page-level fixpoint snapshot
+/// and emit one Suggest-severity diagnostic per uncertain code that
+/// dropped out of the intersection and had a non-empty "other codes"
+/// candidate set.
 ///
-/// The analysis runs once per banner/CAB candidate per registered
-/// rule (so twice total under the current registration). The cost is
-/// bounded by the number of portions with non-empty REL TO and the
-/// number of uncertain codes across them — a handful of operations
-/// over BTreeSets in practice. Sharing the helper keeps S005 and
-/// S006 from drifting on the trigger condition or the message body.
-fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<S005Candidate> {
-    use marque_ism::{MarkingType, is_decomposable};
+/// Called by `RelToOpaqueUncertainReductionSuggestRule::check` under
+/// `Phase::PageFinalization`. The `_attrs` parameter is unused — the
+/// engine passes `CanonicalAttrs::default()` for PageFinalization
+/// dispatch — and the entire decision is made from `ctx.page_context`
+/// (the closed page state) per the rule's doc comment.
+///
+/// The cost is bounded by the number of portions with non-empty REL
+/// TO and the number of uncertain codes across them — a handful of
+/// operations over `BTreeSet`s in practice.
+fn analyze_uncertain_reduction(
+    _attrs: &CanonicalAttrs,
+    ctx: &RuleContext,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    use marque_ism::is_decomposable;
 
-    if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
-        return Vec::new();
-    }
-
+    // Defensive — `dispatch_page_finalization` force-initializes
+    // `ctx.page_context` to `Some(_)` before invoking PageFinalization
+    // rules (see `crates/engine/src/engine.rs::dispatch_page_finalization`
+    // doc). This belt-and-suspenders early-return keeps the rule
+    // safe under future engine refactors that might relax the
+    // invariant; it should never fire in production. Same shape as
+    // W004's defensive early-return in `JointDisunityCollapseRule`.
     let Some(page) = ctx.page_context.as_ref() else {
         return Vec::new();
     };
@@ -2436,21 +2352,22 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
     //      EXDIS information. In this case, NOFORN would convey in
     //      the banner line.").
     //
-    // Firing S005/S006 under any of these conditions produces a
+    // Firing S005 under any of these conditions produces a
     // misleading "intersection produced REL TO (empty)" diagnostic
     // — the operator's actual problem is supersession, which is a
-    // different rule's territory. Bail so S005/S006 only run when
-    // REL TO is semantically in play. Mirrors the supersession
-    // checks `PageContext::expected_rel_to` runs internally; we
-    // duplicate them here because the rule needs to distinguish
-    // "empty due to supersession" from "empty due to genuinely-
-    // disjoint portion REL TO lists" (the latter is a legitimate
-    // S005/S006 trigger). Trigger 1 (NOFORN-direct) needs its own
-    // check because `expected_non_ic_dissem`'s `needs_nf` only
-    // covers triggers 2–4; triggers 2–4 are all reflected in the
-    // `needs_nf` flag. Caught originally by Copilot review on
-    // PR #249; expanded to cover triggers 3–4 in PR
-    // 3c.B-8F-engine-gap.
+    // different rule's territory. Bail so S005 only runs when REL
+    // TO is semantically in play. Mirrors the supersession checks
+    // `PageContext::expected_rel_to` runs internally; we duplicate
+    // them here because the rule needs to distinguish "empty due to
+    // supersession" from "empty due to genuinely-disjoint portion
+    // REL TO lists" (the latter is a legitimate S005 trigger).
+    // Trigger 1 (NOFORN-direct) needs its own check because
+    // `expected_non_ic_dissem`'s `needs_nf` only covers triggers
+    // 2–4; triggers 2–4 are all reflected in the `needs_nf` flag.
+    // Caught originally by Copilot review on PR #249; expanded to
+    // cover triggers 3–4 in PR 3c.B-8F-engine-gap. Page-extension
+    // stable post-PR-#488 — the bails fire on the same closed page
+    // state PageFinalization observes.
     let any_portion_noforn = page.portions().iter().any(|p| {
         p.dissem_iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf))
@@ -2470,31 +2387,6 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
     let expected = page.expected_rel_to();
     let expected_set: std::collections::BTreeSet<&str> =
         expected.iter().map(|c| c.as_str()).collect();
-
-    // Banner's REL TO, if present. `attrs.rel_to.is_empty()`
-    // distinguishes "banner doesn't carry an REL TO at all" (active
-    // validation context — Suggest) from "banner has an REL TO list"
-    // (consistency check decides Info vs Suggest). Expansion runs in
-    // atom space, matching the rollup XSL's
-    // `util:expandDecomposableTetras` semantics
-    // (Schematron/ISM_XML-ROLLUP-phase.xsl, plan §8 Q3).
-    let banner_atomic: Option<std::collections::BTreeSet<&str>> = if attrs.rel_to.is_empty() {
-        None
-    } else {
-        Some(s005_expand_atomic(&attrs.rel_to))
-    };
-
-    // Branch is page-wide (banner state, not per-uncertain-code).
-    // The "consistent" comparison is `expected ⊆ banner_atomic` —
-    // the banner may legitimately carry MORE codes than
-    // atom-semantics produced (operator drew on external membership
-    // data), but it must not drop a code atom-semantics says should
-    // survive.
-    let branch = match &banner_atomic {
-        None => S005Branch::Suggest,
-        Some(b) if expected_set.is_subset(b) => S005Branch::Info,
-        Some(_) => S005Branch::Suggest,
-    };
 
     // Collect uncertain codes (deduped, sorted) across all portions.
     //
@@ -2527,22 +2419,18 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
         return Vec::new();
     }
 
-    // Pick the diagnostic span: prefer the banner's RelToBlock if
-    // present, fall back to the first banner token. Pointing at the
-    // RelToBlock makes the diagnostic land where the operator can
-    // act on it; the first-token fallback covers the
-    // banner-without-REL TO active-validation case. Banner has at
-    // least one token (the candidate parsed successfully) so the
-    // `Span::new(0, 0)` fallback is purely defensive.
-    let span = attrs
-        .token_spans
-        .iter()
-        .find(|t| t.kind == TokenKind::RelToBlock)
-        .or_else(|| attrs.token_spans.first())
-        .map(|t| t.span)
-        .unwrap_or(Span::new(0, 0));
+    // Diagnostic span anchor: the engine passes a zero-length
+    // `Span(boundary_offset, boundary_offset)` at the page-break
+    // boundary (or `source.len()` for the EOD dispatch). PageContext
+    // does not store per-portion spans, so per-uncertain-code span
+    // precision would require extending the hot-path PageContext
+    // data type. The boundary anchor is the best available pointer
+    // today; users locating "which page surfaced uncertainty?" map
+    // the byte offset to a page number via their own document-position
+    // metadata. Same convention as W004 (`JointDisunityCollapseRule`).
+    let span = ctx.candidate_span;
 
-    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
     for x in &uncertain_codes {
         // Per X: portions that don't contain X. Since X is opaque
         // (atom-semantics treats it as an atom), X survives
@@ -2623,20 +2511,28 @@ fn analyze_uncertain_reduction(attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec
              known membership."
         );
 
-        candidates.push(S005Candidate {
-            branch,
+        // No fix — the ambiguity is not resolvable from in-tree
+        // data. `Diagnostic::with_fix(..., None)` signals the
+        // conscious deferred-migration decision per the same
+        // pattern E016/E036 used pre-PR-3c.B (matching PR #349).
+        diagnostics.push(Diagnostic::with_fix(
+            RuleId::new("S005"),
+            Severity::Suggest,
             span,
             message,
-        });
+            S005_CITATION,
+            None,
+        ));
     }
-    candidates
+    diagnostics
 }
 
-/// Citation shared by S005 and S006. Stays static (not formatted with
+/// Citation for S005. Stays static (not formatted with
 /// `ISMCAT_TETRA_VERSION`) because `Diagnostic::citation` is
 /// `&'static str`. The version reference is in the state text inside
 /// the message body, which is dynamically formatted via
-/// `s005_state_text`.
+/// `s005_state_text`. Pre-PR-#488 this constant was shared with S006;
+/// post-#488 S005 is the sole consumer.
 const S005_CITATION: &str =
     "CAPCO-2016 §H.8 + ODNI ISMCAT Tetragraph Taxonomy (see ISMCAT_TETRA_VERSION)";
 
@@ -2650,76 +2546,33 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn default_severity(&self) -> Severity {
         Severity::Suggest
     }
-    /// Phase::WholeMarking: reads the full REL TO list + page context to
-    /// score atom-semantics ambiguity per trigraph; emits no fix.
-    /// Spans point at individual trigraphs but the decision is
-    /// list-scoped.
+    /// Phase::PageFinalization (PR #488): observes the page-level
+    /// fixpoint snapshot of the REL TO axis and emits one diagnostic
+    /// per uncertain code that dropped out of the page intersection.
+    /// The engine dispatches this rule once per page at every
+    /// scanner-emitted `MarkingType::PageBreak` BEFORE the
+    /// `PageContext` reset, plus once at end-of-document. The
+    /// pre-#488 `Phase::WholeMarking` + Banner-only gating produced
+    /// a documented false-negative on banner-first layouts (closed
+    /// by the EOD path) and a 6th-pass false-positive on
+    /// intermediate Portion-time snapshots (does not recur under
+    /// PageFinalization because the rule fires exactly once per
+    /// page on the closed state).
     fn phase(&self) -> Phase {
-        Phase::WholeMarking
+        Phase::PageFinalization
     }
+    /// Trusted: implementation is a pure read-only set-algebra walk
+    /// over `PageContext::expected_rel_to` + per-portion REL TO
+    /// projections plus a `format!` message synthesis using only
+    /// canonical CountryCode strings (closed CAPCO vocabulary) and a
+    /// fixed §-citation. No mutable global state, no I/O, no
+    /// allocation that could fail unexpectedly; the rule is safe to
+    /// skip `catch_unwind` per PR #448.
     fn trusted(&self) -> bool {
         true
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
-            .into_iter()
-            .filter(|c| c.branch == S005Branch::Suggest)
-            .map(|c| {
-                // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
-                // signals consciously-decided deferred migration evaluation. See the
-                // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
-                // for the full rationale and admonition-channel retirement target.
-                Diagnostic::with_fix(
-                    self.id(),
-                    self.default_severity(),
-                    c.span,
-                    c.message,
-                    S005_CITATION,
-                    None,
-                )
-            })
-            .collect()
-    }
-}
-
-impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionInfoRule {
-    fn id(&self) -> RuleId {
-        RuleId::new("S006")
-    }
-    fn name(&self) -> &'static str {
-        "rel-to-opaque-uncertain-reduction-info"
-    }
-    fn default_severity(&self) -> Severity {
-        Severity::Info
-    }
-    /// Phase::WholeMarking: companion to S005 (same `analyze_uncertain_reduction`
-    /// helper, filtered to the `Info` branch). List-scoped decision, no
-    /// fix.
-    fn phase(&self) -> Phase {
-        Phase::WholeMarking
-    }
-    fn trusted(&self) -> bool {
-        true
-    }
-    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
-        analyze_uncertain_reduction(attrs, ctx)
-            .into_iter()
-            .filter(|c| c.branch == S005Branch::Info)
-            .map(|c| {
-                // PR 3c.B Sub-PR 9: provisional Path A — `with_fix_intent(..., None)`
-                // signals consciously-decided deferred migration evaluation. See the
-                // migration-status block above `struct RelToOpaqueUncertainReductionSuggestRule;`
-                // for the full rationale and admonition-channel retirement target.
-                Diagnostic::with_fix(
-                    self.id(),
-                    self.default_severity(),
-                    c.span,
-                    c.message,
-                    S005_CITATION,
-                    None,
-                )
-            })
-            .collect()
     }
 }
 
@@ -3323,8 +3176,9 @@ fn build_rel_to_replacement(trigraphs: &[String]) -> String {
 // worked example `(//CTS//BOHEMIA//REL TO USA, NATO)` — "a NATO COSMIC
 // TOP SECRET (CTS) BOHEMIA portion within a US classified document and
 // is releasable back to NATO". The citation is example-derived (no
-// "MUST" prose), so the rule is `Severity::Suggest` to match S004/S005/
-// S006 precedent. Users can opt up via `[rules] S007 = "warn"` in
+// "MUST" prose), so the rule is `Severity::Suggest` to match the
+// S004 + S005 precedent (post-PR-#488 collapse of the historical
+// S005/S006 pair). Users can opt up via `[rules] S007 = "warn"` in
 // `.marque.toml` if their org demands stronger surfacing.
 //
 // The original FR-048 wording mandated a declarative `Constraint`. The
@@ -3344,8 +3198,9 @@ fn build_rel_to_replacement(trigraphs: &[String]) -> String {
 /// **Calibration.** §H.7 p127 Notional Example 2 is the load-bearing
 /// citation. The worked example is illustrative prose ("a NATO COSMIC
 /// TOP SECRET (CTS) BOHEMIA portion within a US classified document and
-/// is releasable back to NATO"), not "MUST"-mandate prose; S004 / S005 /
-/// S006 set the precedent that example-derived FD&R guidance ships as
+/// is releasable back to NATO"), not "MUST"-mandate prose; S004 + S005
+/// set the precedent (post-PR-#488 collapse of the historical S005/S006
+/// pair) that example-derived FD&R guidance ships as
 /// `Severity::Suggest`. Within the suggest channel, the confidence
 /// scalar reflects how strongly the source dictates the rewrite. The
 /// chosen value `0.85` is below the (broader) `Confidence::strict(0.95)`
@@ -4061,7 +3916,7 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
         // `ProjectedMarking` projection) instead of going through
         // `PageContext::expected_*` accessors. The per-portion view
         // stays on `ctx.page_context` for rules that need it
-        // (S005/S006).
+        // (e.g. S005 post-PR-#488 — formerly the S005/S006 pair).
         let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
         };

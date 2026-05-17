@@ -102,7 +102,9 @@ fn rule_count_reflects_registration_changes() {
     // engine overwrites emitted severity with the rule's configured
     // severity (see the S005/S006 module-header comment in
     // crates/capco/src/rules.rs); a single rule cannot stably emit
-    // at two severities. Net: 56 + 2 = 58.
+    // at two severities. Net: 56 + 2 = 58. PR #488 retires S006 and
+    // migrates S005 to `Phase::PageFinalization` (see the PR #488
+    // section below for the rationale).
     // Issue #256: added E053 (noforn-rel-to-conflict), declarative
     // wrapper over the `capco/noforn-conflicts-rel-to` constraint
     // in CapcoScheme. §H.8 p145. Net: 58 + 1 = 59.
@@ -212,20 +214,32 @@ fn rule_count_reflects_registration_changes() {
     // carved out via `PageContext::is_solely_nato_classified`.
     // Net delta: +1. Final: 37 + 1 = 38.
     //
-    // Issue #407: added `BareCanonicalCompoundRule` (E067) — bare
-    // CNWDI / NK / EU portion-mark short-forms → canonical CAPCO-2016
-    // compound forms per §H.6 p106 (RD-CNWDI), §H.4 p83 (SI-NK),
-    // §H.4 p78 (SI-EU). Walker filters `TokenKind::Unknown`,
+    // Issue #407 / PR #491: added `BareCanonicalCompoundRule` (E067)
+    // — bare CNWDI / NK / EU portion-mark short-forms → canonical
+    // CAPCO-2016 compound forms per §H.6 p106 (RD-CNWDI), §H.4 p83
+    // (SI-NK), §H.4 p78 (SI-EU). Walker filters `TokenKind::Unknown`,
     // emits `Severity::Fix` text-correction diagnostics with
     // hardcoded static replacement literals (Constitution V).
     // Net delta: +1. Final: 39 + 1 = 40.
+    //
+    // PR #488 (issue #488): retired `RelToOpaqueUncertainReductionInfoRule`
+    // (S006) and migrated `RelToOpaqueUncertainReductionSuggestRule`
+    // (S005) to `Phase::PageFinalization`. The historical Suggest/Info
+    // split was an engine-workaround (per-rule severity override is
+    // the only way to surface two severities for one trigger), NOT
+    // §-grounded — CAPCO-2016 §H.8 (REL TO grammar) + §D.2 Table 3
+    // rule 21 (the roll-up intersection law) apply uniformly without
+    // distinguishing "active validation" from "consistent case." The
+    // collapse leaves a single Suggest-severity rule that fires on
+    // the page-level fixpoint snapshot (closes the pre-#488
+    // banner-less false-negative). Net delta: -1. Final: 40 - 1 = 39.
     //
     // Bumping this number means a rule was added or retired; either
     // action should be an intentional, documented change.
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        40,
+        39,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -250,10 +264,19 @@ fn rule_count_reflects_registration_changes() {
          §H.7 p123 (CV-4 PR 4b-B 8th-pass updated from §H.3 p56; \
          Warn-only; cross-axis fix deferred to renderer in \
          PR 5+ per H-1 PR 4b-B follow-up triage); net delta +1. \
-         Final: 39. Issue #407 adds `BareCanonicalCompoundRule` \
-         (E067) — bare CNWDI / NK / EU short-forms → canonical \
-         CAPCO-2016 compound portion marks per §H.6 p106, §H.4 p83, \
-         §H.4 p78; net delta +1. Final: 40. \
+         Final: 39. Issue #407 / PR #491 adds \
+         `BareCanonicalCompoundRule` (E067) — bare CNWDI / NK / EU \
+         short-forms → canonical CAPCO-2016 compound portion marks \
+         per §H.6 p106, §H.4 p83, §H.4 p78; net delta +1. Final: \
+         40. PR #488 (issue #488) retires \
+         `RelToOpaqueUncertainReductionInfoRule` (S006) and migrates \
+         `RelToOpaqueUncertainReductionSuggestRule` (S005) to \
+         `Phase::PageFinalization`. The S005/S006 Suggest/Info split \
+         was an engine-workaround (per-rule severity override the \
+         only way to surface two severities for one trigger), NOT \
+         §-grounded; CAPCO-2016 §H.8 + §D.2 Table 3 rule 21 apply \
+         uniformly to REL TO atom-semantics. Net delta: -1. Final: \
+         39. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

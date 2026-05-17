@@ -11,8 +11,9 @@
 //! FVEY/ACGU table that could (and did) drift. Issue #208 added the
 //! ODNI ISMCAT V2022-NOV taxonomy as the single source of truth and
 //! introduced the three-state decomposability discriminator that S005
-//! (#206) depends on; this test suite covers all three trichotomy
-//! branches and the §D Table 3 rule 23 round-trip.
+//! (#206; post-PR-#488 collapsed from the historical S005/S006 pair)
+//! depends on; this test suite covers all three trichotomy branches
+//! and the §D Table 3 rule 23 round-trip.
 
 use marque_capco::vocab::{expand_tetragraph, is_decomposable_tetragraph};
 use marque_ism::{
