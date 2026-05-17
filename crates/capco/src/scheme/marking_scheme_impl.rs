@@ -506,52 +506,154 @@ impl MarkingScheme for CapcoScheme {
 
     /// CAPCO implicit-fact propagation catalog (closure operator).
     ///
-    /// Returns the static catalog of [`ClosureRule`] rows. The PR 3.7
-    /// catalog contains **only the Trio 1 NOFORN rows**, seven rows
-    /// covering the implicit-NOFORN markings whose default release
-    /// posture is "no foreign disclosure" unless an explicit FD&R
-    /// decision is present:
+    /// Returns the static catalog of [`ClosureRule`] rows. The catalog
+    /// contains seven Trio 1 NOFORN rows (covering the implicit-NOFORN
+    /// markings whose default release posture is "no foreign disclosure"
+    /// unless an explicit FD&R decision is present) and one Trio 3 NATO
+    /// `REL TO USA, NATO` row:
     ///
-    /// | Rule key                              | Triggers                          |
-    /// |---------------------------------------|-----------------------------------|
-    /// | `capco/noforn-if-sar`                 | any SAR program                   |
-    /// | `capco/noforn-if-aea`                 | RD / FRD / TFNI                   |
-    /// | `capco/noforn-if-ucni`                | UCNI                              |
-    /// | `capco/noforn-if-fgi`                 | any FGI atom                      |
-    /// | `capco/noforn-if-orcon`               | ORCON / ORCON-USGOV               |
-    /// | `capco/noforn-if-imcon-dsen`          | IMCON / DSEN                      |
-    /// | `capco/noforn-if-non-ic-controls`     | LIMDIS / LES / SBU / SSI          |
+    /// | Rule key                                            | Triggers                          |
+    /// |-----------------------------------------------------|-----------------------------------|
+    /// | `capco/noforn-if-sar`                               | any SAR program                   |
+    /// | `capco/noforn-if-aea`                               | RD / FRD / TFNI                   |
+    /// | `capco/noforn-if-ucni`                              | UCNI                              |
+    /// | `capco/noforn-if-fgi`                               | any FGI atom                      |
+    /// | `capco/noforn-if-orcon`                             | ORCON / ORCON-USGOV               |
+    /// | `capco/noforn-if-rsen-imcon-dsen`                   | RSEN / IMCON / DSEN               |
+    /// | `capco/noforn-if-non-ic-controls`                   | LIMDIS / LES / SBU / SSI          |
+    /// | `capco/rel-to-usa-nato-if-nato-classification`      | bare NATO classification          |
     ///
-    /// Each row is suppressed by `FDR_DOMINATORS` (any present
+    /// Every row is suppressed by `FDR_DOMINATORS` (any present
     /// FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES, DISPLAY ONLY).
+    /// All rows ship at [`Severity::Info`] per `decisions.md` D19 B
+    /// (closure firings are silent lattice-layer fact propagation,
+    /// not byte-level fixes); user-visible byte diffs ride on
+    /// independent `Severity::Suggest` text-layer rules (e.g., S007
+    /// for the NATO row — see `decisions.md` D20).
     ///
-    /// The Trio 2 / Trio 3 placeholder rows and the per-marking SCI
-    /// implication rows (HCS-O/P[sub] ⇒ {NOFORN, ORCON};
-    /// TK-BLFH/KAND/IDIT ⇒ {NOFORN}; SI-G ⇒ {ORCON}) were removed in
-    /// PR 3.7 review pass 4 because their proxy triggers
-    /// (`AnyInCategory(CAT_SCI)`, `AnyInCategory(CAT_CLASSIFICATION)`)
-    /// were imprecise relative to the actual `marque-applied.md`
-    /// §4.7.1 semantics; the precise sentinel-based rows land in PR 4
-    /// once the per-marking SCI sentinels and open-vocab country-list
-    /// FactAdd primitive are available.
+    /// The Trio 2 (implicit RELIDO) and per-marking SCI implication
+    /// rows (HCS-O/P[sub] ⇒ {NOFORN, ORCON}; TK-BLFH/KAND/IDIT ⇒
+    /// {NOFORN}; SI-G ⇒ {ORCON}) are intentionally absent — they
+    /// require per-compartment sentinels (`TOK_HCS_O`, `TOK_SI_G`, etc.)
+    /// that do not yet exist; the alternative proxy triggers via
+    /// `AnyInCategory(CAT_SCI)` / `AnyInCategory(CAT_CLASSIFICATION)`
+    /// would over-fire on any SCI marking, not just the specific
+    /// compartments.
     ///
     /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
     /// PUBLIC catalog surface — visible to tooling, scheme-exploration
     /// UIs, and docs generators.
     ///
-    /// # Engine wiring (PR 4 future)
+    /// # Engine wiring
     ///
-    /// `CapcoScheme` does NOT override `MarkingScheme::closure()` in
-    /// PR 3.7 — it inherits the trait's no-op default. The catalog
-    /// data ships here as PUBLIC inspection surface (tooling, proptest
-    /// harnesses, docs generators can read it via `should_fire`) but
-    /// no production code path applies the cone in PR 3.7. PR 4 (T112)
-    /// lands both the `CapcoScheme::closure()` override (with Kleene-
-    /// fixpoint cone application via the runtime-resolved severity
-    /// per `decisions.md` D19 B) and the `Engine::project` call-site
-    /// that drives it.
+    /// `CapcoScheme::closure()` (below) makes the catalog data reachable
+    /// through the operator. Wiring `Engine::lint` to invoke
+    /// `scheme.closure()` on the hot path before banner-validation runs
+    /// is a separate change; today the operator runs through direct
+    /// `scheme.closure(marking)` calls (tests + `scheme.project(Scope::Page,
+    /// ...)` for callers that opt in).
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
+    }
+
+    /// CAPCO closure operator — Kleene fixpoint over the eight closure
+    /// rows in [`CAPCO_CLOSURE_RULES`].
+    ///
+    /// Implements the §4.7 implicit-fact propagation per
+    /// `docs/plans/2026-05-01-lattice-design.md` §3 (e). Walks the
+    /// catalog repeatedly; on each pass, every rule that satisfies
+    /// `should_fire` contributes both its static `cone` facts (routed
+    /// via the `apply_closure_fact` helper in `actions::intent`) and
+    /// its `cone_derived` facts (the D21 open-vocab branch — same
+    /// routing). Convergence is
+    /// detected by comparing the marking to a per-pass snapshot;
+    /// monotone catalogs reach the fixed point in at most
+    /// `|fact_universe|` iterations, well within
+    /// [`MAX_CLOSURE_ITERATIONS`]'s `N=16` safety cap.
+    ///
+    /// # Invariants preserved
+    ///
+    /// 1. **Extensive**: `closure(m) ⊒ m` — only facts are added; the
+    ///    underlying `apply_fact_add` path rejects removals.
+    /// 2. **Idempotent**: `closure(closure(m)) == closure(m)` — the
+    ///    snapshot-equality early-return guarantees stable fixpoints.
+    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` — relies
+    ///    on every catalog row's suppressors being disjoint from every
+    ///    cone (the §4.7.3 table-design property). Catalog regressions
+    ///    are pinned by
+    ///    `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`.
+    ///
+    /// # Routing
+    ///
+    /// Each cone fact (`TokenRef::Token(id)` from the static `cone`,
+    /// or `FactRef` from `cone_derived`) is routed through
+    /// [`CapcoScheme::category_of`] to its host category and applied
+    /// via the same per-axis [`apply_fact_add`] helper that
+    /// [`MarkingScheme::apply_intent`]'s `FactAdd` path uses. Per-fact
+    /// `IntentInapplicable` (already-present, idempotence) and
+    /// `UnknownToken` (sentinel that doesn't address a category — e.g.,
+    /// `TokenRef::AnyInCategory(_)` entries in `cone`) are silent
+    /// no-ops at the closure layer: the operator is monotone fact
+    /// propagation, so a fact the scheme can't route is, by definition,
+    /// not in the closure.
+    ///
+    /// # Non-convergence
+    ///
+    /// Per the [`MarkingScheme::closure`] trait contract, exceeding
+    /// `MAX_CLOSURE_ITERATIONS` panics. A monotone catalog cannot
+    /// reach this branch (the fact universe is bounded by the union of
+    /// every category's value set); non-convergence here indicates a
+    /// catalog regression — a non-monotone rule whose suppressor
+    /// depends on a fact in another rule's cone. The companion
+    /// proptest at
+    /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
+    /// pins the monotonicity property; this panic is the runtime
+    /// guard against unbounded-growth catalog defects that slip past
+    /// proptest.
+    fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        let mut working = marking;
+        for _iteration in 0..marque_scheme::MAX_CLOSURE_ITERATIONS {
+            let snapshot = working.clone();
+            for rule in CAPCO_CLOSURE_RULES {
+                if !rule.should_fire(self, &working) {
+                    continue;
+                }
+                // Static cone: walk closed-vocab `TokenRef::Token(id)`
+                // entries via the rule's helper iterator; the helper
+                // already filters out `TokenRef::AnyInCategory(_)`
+                // (which is a category-wildcard predicate, not a
+                // cone carrier — see the `ClosureRule::cone` doc
+                // contract).
+                for token_id in rule.cone_token_ids() {
+                    let fact_ref = FactRef::Cve(token_id);
+                    apply_closure_fact(self, &mut working, &fact_ref);
+                }
+                // Derived cone (D21 open-vocab path, e.g. NATO partner
+                // list): the function MUST be monotone in the marking
+                // (per `ClosureRule::cone_derived` doc contract). The
+                // NATO row's derived cone is constant-output (vacuously
+                // monotone); future rows with marking-dependent
+                // derivations (e.g. JOINT) must re-verify the §4.7.3
+                // chain-depth analysis per the cap's doc comment.
+                if let Some(derived_fn) = rule.cone_derived {
+                    for fact_ref in derived_fn(&working) {
+                        apply_closure_fact(self, &mut working, &fact_ref);
+                    }
+                }
+            }
+            if working == snapshot {
+                return working;
+            }
+        }
+        // Non-convergence: catalog regression. See doc-comment above.
+        // Per `MarkingScheme::closure` trait contract: MUST panic.
+        panic!(
+            "CapcoScheme::closure did not converge in {} iterations; \
+             this indicates a non-monotone catalog row (see \
+             crates/scheme/tests/proptest_closure_rejects_non_monotone.rs \
+             for the property under test)",
+            marque_scheme::MAX_CLOSURE_ITERATIONS,
+        );
     }
 
     /// Enumerate all tokens present in `marking`.

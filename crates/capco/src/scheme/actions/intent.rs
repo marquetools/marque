@@ -266,6 +266,78 @@ fn apply_fact_add(
     Err(ApplyIntentError::IntentInapplicable)
 }
 
+/// Apply a single closure-cone fact to `marking`, silencing the three
+/// per-fact no-op error variants that closure propagation treats as
+/// nominal.
+///
+/// The closure operator is monotone fact propagation. `Ok(())`,
+/// `IntentInapplicable` (already present, or axis not wired for
+/// FactAdd), and `UnknownToken` (a marker sentinel like
+/// `TOK_NATO_CLASS` or a sentinel that has no FactAdd semantic on
+/// its routed category, e.g. `TOK_REL_TO` as a whole-axis-clear
+/// sentinel) are all silent no-ops. `UnknownToken` arms on legitimate
+/// dispatch paths (e.g. `TOK_NATO_CLASS` as a trigger sentinel that
+/// is not itself a cone fact) MUST stay silent here; an
+/// `UnknownToken` on a cone fact whose `category_of()` succeeded but
+/// whose specific token isn't dispatched is a catalog-authoring
+/// error that the warn! call surfaces without crashing.
+///
+/// `IntentRejectsLattice` indicates a structural fact-set violation
+/// that the scheme can't repair via fact-set delta alone — a catalog
+/// regression. Today's CAPCO catalog cannot reach this branch (no
+/// cone fact targets a lattice-rejecting axis); the panic guards
+/// against future cone authors.
+pub(crate) fn apply_closure_fact(
+    scheme: &CapcoScheme,
+    marking: &mut CapcoMarking,
+    fact: &FactRef<CapcoScheme>,
+) {
+    let Some(category) = scheme.category_of(fact) else {
+        // Fact isn't addressable (marker sentinel with no category
+        // mapping). Closure no-op.
+        return;
+    };
+    match apply_fact_add(marking, category, fact) {
+        Ok(()) | Err(ApplyIntentError::IntentInapplicable) => {
+            // Ok: fact added.
+            // IntentInapplicable: already-present (idempotence) or axis
+            //   not yet wired for FactAdd — closure no-op.
+        }
+        Err(ApplyIntentError::UnknownToken) => {
+            // Token has no FactAdd semantic on its routed category.
+            // For known sentinel cases (e.g., `TOK_REL_TO` whole-axis-
+            // clear sentinel landing on `CAT_REL_TO`) this is expected
+            // and silent. For catalog-authoring errors where a cone
+            // fact's `category_of()` succeeded but the specific token
+            // isn't dispatched by `apply_fact_add`, this is a real bug;
+            // surface it at runtime via tracing rather than crashing
+            // the hot path.
+            tracing::warn!(
+                target: "marque_capco::closure",
+                ?category,
+                fact = ?fact,
+                "CapcoScheme::closure: cone fact routed to a known category \
+                 but apply_fact_add returned UnknownToken. Either a sentinel \
+                 with no FactAdd semantic (expected, silent) or a catalog \
+                 regression (a cone fact whose specific token isn't \
+                 dispatched). Audit the closure rule whose cone references \
+                 this token.",
+            );
+        }
+        Err(ApplyIntentError::IntentRejectsLattice) => {
+            // The exhaustive match catches new `ApplyIntentError`
+            // variants at compile time, not via silent drop.
+            panic!(
+                "CapcoScheme::closure: cone fact rejected by lattice during \
+                 apply_fact_add — this is a catalog regression; a cone fact \
+                 targets an axis whose structural invariant the fact-set delta \
+                 cannot uphold. Audit every closure rule whose cone references \
+                 this axis."
+            );
+        }
+    }
+}
+
 /// Remove a single closed-vocab token from the marking's axis.
 ///
 /// Returns `Err(IntentInapplicable)` when the token is not present
