@@ -269,6 +269,55 @@ fn fix_accuracy_invalid_fixtures() {
 // ---------------------------------------------------------------------------
 // SC-003a: Zero diagnostics on clean prose (precision gate)
 // ---------------------------------------------------------------------------
+//
+// Per-fixture suppression mechanism (HIGH 2, review; Copilot #4 — verified).
+//
+// The prose corpus exercises FOUR distinct suppression paths in the
+// decoder. The single zero-diagnostic assertion below covers all
+// four, but a regression in any one path would surface as a
+// per-fixture failure. The table below maps each fixture to the
+// specific mechanism that suppresses it so a future bisect can route
+// the failure correctly.
+//
+// **Verification methodology (Copilot #4 follow-up).** The
+// attributions below were checked by temporarily disabling the null
+// gate (`scored.retain(...)` in `decoder.rs::recognize`) and
+// re-running this test against each fixture. Fixtures that newly
+// emitted R001 with the gate disabled are attributed to the null
+// gate; fixtures that still emitted zero diagnostics were traced to
+// the upstream filter that catches them. The verification correctly
+// identified that some fixtures the original PR description
+// attributed to the null gate are actually killed by other
+// mechanisms (step 3a unknown-token discard, step 3e no-classification
+// discard, prose-glue early-return, no-op-rewrite filter); the table
+// below is the corrected mapping.
+//
+// | fixture                       | mechanism (verified)                                                                                                          |
+// |-------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+// | `article.txt`                 | Null gate. With gate disabled, R001 emits on `(s)` at offset 106370 (confidence 0.110).                                       |
+// | `federalist_10_excerpt.txt`   | Null gate. With gate disabled, R001 emits on `(s)` at offset 16 (confidence 0.110). The original SC-003a regression target.   |
+// | `cms_mid_prose.txt`           | Null gate. With gate disabled, R001 emits on `(CMS)` at offset 28 (confidence 0.282); fuzzy-correction lands on NATO `CTS`.   |
+// | `cts_mid_prose.txt`           | Null gate. With gate disabled, R001 emits on `(CTs)` at offset 20 (confidence 0.103) after LinePos + LowercaseContext penalties drop posterior. |
+// | `c_mid_prose.txt`             | **Whitelist bypass + no-op-rewrite filter** (NOT the null gate). `(C)` is on `is_bare_classification_shape` so the null gate is skipped; `build_decoder_diagnostic` returns `None` because observed bytes (`(C)`) equal canonical bytes (`(C)`). |
+// | `si_mid_prose.txt`            | **Step 3e no-classification filter** (NOT the null gate). `(SI)` parses cleanly as `sci_controls = [Si]` but `classification: None`; step 3e discards portion candidates without a classification. |
+// | `s_mid_prose.txt`             | **Prose-glue early-return** (NOT the null gate). `function(s)` has `preceded_by_whitespace = false`, so the `recognize` early-return at the top of the function fires before any scoring. |
+// | `bare_letters_mid_prose.txt`  | **Step 3a unknown-token discard** (NOT the null gate). `(M)` / `(X)` fall under `MIN_FUZZY_LEN = 3` so fuzzy-correction returns `None`; the strict parse produces an `Unknown` token span; step 3a discards the partial canonicalization. |
+//
+// **`c_mid_prose.txt` is intentionally a different path.** `(C)` is
+// on the [`is_bare_classification_shape`] whitelist in `decoder.rs`
+// because it is the only grammar form for a CONFIDENTIAL portion;
+// the null-hypothesis filter is deliberately bypassed for it. The
+// decoder produces a candidate, but `build_decoder_diagnostic` in
+// `engine.rs` returns `None` when observed bytes equal canonical
+// bytes (no-op rewrite — the canonical form for `(C)` is `(C)`), so
+// the synthetic R001 is never emitted. If a future change relaxes
+// the no-op-rewrite filter (for audit-verbosity, FR-014 schema
+// evolution, etc.), `c_mid_prose.txt` will start failing — the
+// failure points at the bypass path, not the null gate. An
+// engine-level integration test
+// (`sub_threshold_decoder_gate::bare_class_whitelist_relies_on_no_op_rewrite_filter`)
+// pins this end-to-end so the regression is caught even if a future
+// refactor drops the corpus fixture.
 
 #[test]
 fn precision_prose_zero_diagnostics() {
@@ -734,12 +783,6 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 count: 1,
                 issue: 461,
                 reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-            },
-            ExpectedRuleCount {
-                rule: "R001",
-                count: 2,
-                issue: 472,
-                reason: "decoder R001 over-fires on prose parentheticals (CMS)/(C)",
             },
         ],
     ),
