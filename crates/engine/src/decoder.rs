@@ -5109,19 +5109,12 @@ fn for_each_canonical_token(
                 MarkingClassification::Nato(n) => n.portion_str(),
                 _ => class.effective_level().portion_str(),
             },
-            // Banner/CAB use the full-word banner form. PageBreak and
-            // PageFinalization are non-content boundaries that never
-            // reach the decoder's recognize path on a real candidate
-            // — but the feature extractor is shape-only and the
-            // fall-through to `banner_str()` is the safe choice if
-            // an exhaustive arm ever drove it here in the future.
-            // `MarkingType` is `#[non_exhaustive]` (issue #461); the
-            // wildcard arm keeps this site forward-compatible.
-            MarkingType::Banner
-            | MarkingType::Cab
-            | MarkingType::PageBreak
-            | MarkingType::PageFinalization
-            | _ => class.effective_level().banner_str(),
+            // All non-Portion variants — kept as wildcard for
+            // `#[non_exhaustive]` forward-compat (issue #461). The
+            // feature extractor is shape-only and `banner_str()` is
+            // the safe fallback for any non-portion shape, including
+            // future variants of the `MarkingType` enum.
+            _ => class.effective_level().banner_str(),
         };
         f(class_token);
     }

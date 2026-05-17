@@ -4,13 +4,16 @@
 
 //! W004 joint-disunity-collapse rule + JointSet lattice integration tests.
 //!
-//! Authority (verified 2026-05-15 against CAPCO-2016.md):
+//! Authority (verified 2026-05-16 against CAPCO-2016.md):
 //! - §H.3 p56 (JOINT classification grammar).
 //! - §H.3 pp55-59 (JOINT worked examples).
 //! - §H.3 p57 ("JOINT not carried forward to banner in US documents").
 //! - §H.7 p123 (FGI source-acknowledged form for disunity-collapse migration).
 //!
-//! PR 4b-B Commit 5 (006 T112).
+//! PR refactor-006-pr-pagefinalization / issue #461 (Phase::PageFinalization
+//! migration; the JointSet lattice tests originally landed in PR 4b-B
+//! Commit 5 (006 T112) and were rebaselined here under the
+//! PageFinalization dispatch contract).
 
 use marque_capco::scheme::CapcoScheme;
 use marque_capco::{CapcoRuleSet, JointSet};
@@ -169,12 +172,20 @@ fn engine_with_fixed_clock() -> Engine {
 
 #[test]
 fn w004_fires_on_joint_disunity_banner() {
-    // Two JOINT-classified portions with disagreeing producer lists
-    // appear BEFORE the banner candidate so the engine's
-    // PageContext has accumulated them by the time the banner is
-    // evaluated. W004 must fire on the banner with rule = "W004",
-    // Warn severity, and reference the §H.3 p57 + §H.7 p123 citation
-    // (CV-4 PR 4b-B 8th-pass — updated from `§H.3 p56`).
+    // Two JOINT portions with disagreeing producer lists accumulate
+    // on the page; the EOD `Phase::PageFinalization` dispatch sees
+    // the closed `JointSet::DisunityCollapse` state and emits W004.
+    // The trailing banner is incidental — issue #461 closure means
+    // W004 is no longer Banner-gated, so the firing surface is the
+    // page fixpoint regardless of whether a closing banner exists.
+    // The test name is retained from pre-#461 for git-blame
+    // continuity; the assertions still hold under PageFinalization
+    // because the same disunity is observable on the closed state
+    // regardless of which boundary closes the page.
+    //
+    // Assertions: rule = "W004", Warn severity, citation references
+    // §H.3 p57 + §H.7 p123 (CV-4 PR 4b-B 8th-pass — updated from
+    // `§H.3 p56`).
     let engine = engine_with_fixed_clock();
     let source = b"(//JOINT S USA GBR) first portion.\n\
                    (//JOINT S USA CAN) second portion.\n\

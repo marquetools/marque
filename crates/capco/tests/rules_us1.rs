@@ -42,7 +42,16 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let mut page_context = PageContext::new();
     let mut page_context_arc: Option<Arc<PageContext>> = None;
     for candidate in &candidates {
-        if candidate.kind == MarkingType::PageBreak {
+        // PageBreak is scanner-emitted; PageFinalization is engine-
+        // synthesized and currently unreachable from `Scanner::scan`,
+        // but we filter both so a future scanner enhancement that
+        // emits the new variant cannot silently change this test's
+        // behavior (`MarkingType` is `#[non_exhaustive]` per issue
+        // #461).
+        if matches!(
+            candidate.kind,
+            MarkingType::PageBreak | MarkingType::PageFinalization
+        ) {
             page_context = PageContext::new();
             page_context_arc = None;
             continue;

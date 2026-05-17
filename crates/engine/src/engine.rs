@@ -1544,8 +1544,22 @@ impl Engine {
                 // marking type: a portion candidate emits at portion
                 // scope; a banner candidate emits at page scope (the
                 // FactAdd applies to the banner roll-up's per-page
-                // projection). CAB / page-break candidates don't
-                // reach here — the outer loop filters them earlier.
+                // projection). Two engine-internal `MarkingType`
+                // variants don't reach here, by separate-but-equivalent
+                // exclusion paths:
+                //   - `MarkingType::PageBreak` (scanner-emitted): the
+                //     outer candidate loop's early-`continue` at the
+                //     page-break branch fires above the scheme bridge
+                //     call.
+                //   - `MarkingType::PageFinalization` (issue #461,
+                //     engine-synthesized): never appears in the
+                //     scanner-emitted candidate stream; the
+                //     `dispatch_page_finalization` helper handles its
+                //     own RuleContext and bypasses this bridge
+                //     entirely (the synthetic candidate carries no
+                //     parsed attrs to bridge over).
+                // `MarkingType` is `#[non_exhaustive]` so the `_` arm
+                // also fields future variants safely.
                 let fix_scope = match candidate.kind {
                     MarkingType::Portion => marque_scheme::Scope::Portion,
                     _ => marque_scheme::Scope::Page,

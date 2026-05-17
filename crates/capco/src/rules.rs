@@ -8985,7 +8985,16 @@ pub(crate) mod marque_capco_test_support {
         let mut page_context = PageContext::new();
         let mut page_context_arc: Option<Arc<PageContext>> = None;
         for candidate in &candidates {
-            if candidate.kind == MarkingType::PageBreak {
+            // PageBreak is scanner-emitted; PageFinalization is
+            // engine-synthesized and currently unreachable from
+            // `Scanner::scan`, but we filter both so the test
+            // helper cannot regress silently if a future scanner
+            // enhancement emits the new variant (`MarkingType` is
+            // `#[non_exhaustive]` per issue #461).
+            if matches!(
+                candidate.kind,
+                MarkingType::PageBreak | MarkingType::PageFinalization
+            ) {
                 page_context = PageContext::new();
                 page_context_arc = None;
                 continue;

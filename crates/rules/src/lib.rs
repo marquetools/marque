@@ -435,6 +435,15 @@ pub struct RuleContext<'a> {
     /// [`Self::page_marking`] (`&ProjectedMarking`). The two fields
     /// are populated for the same set of `RuleContext`s during the
     /// migration; rule code chooses which to read.
+    ///
+    /// **Phase::PageFinalization invariant (issue #461).** For
+    /// `Phase::PageFinalization` dispatches the engine force-initializes
+    /// this to `Some` before invoking the rule; see
+    /// [`Phase::PageFinalization`]. PageFinalization rules MAY rely on
+    /// `Some(_)` and a defensive `.as_ref()?` is belt-and-suspenders
+    /// rather than necessary correctness. For other phases the field
+    /// may be `None` (Portion candidates, or banner/CAB candidates on
+    /// an empty page).
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
@@ -451,6 +460,12 @@ pub struct RuleContext<'a> {
     /// `PageBreak` reset semantics; same `Arc` clone discipline so a
     /// per-page snapshot is shared cheaply across all banner-rule
     /// invocations on that page.
+    ///
+    /// **Phase::PageFinalization invariant (issue #461).** For
+    /// `Phase::PageFinalization` dispatches the engine force-initializes
+    /// this to `Some` before invoking the rule; see
+    /// [`Phase::PageFinalization`]. PageFinalization rules MAY rely on
+    /// `Some(_)` for both this field and [`Self::page_context`].
     ///
     /// Banner-validation rules read fields directly:
     ///

@@ -769,9 +769,12 @@ failure modes; this section specifies the resolution.
 Each rule declares its phase at construction:
 
 ```rust
+#[non_exhaustive]
 enum Phase {
-    Localized,      // span MUST be strictly inside a single token boundary
-    WholeMarking,   // span MUST cover a full marking span
+    Localized,        // span MUST be strictly inside a single token boundary
+    WholeMarking,     // span MUST cover a full marking span
+    PageFinalization, // dispatched once per page on the page-level
+                      // Knaster-Tarski fixpoint (issue #461)
 }
 
 trait Rule {
@@ -783,6 +786,13 @@ trait Rule {
 Engine enforces at registration:
 - `Phase::Localized` rule's `FixProposal::span` is sub-token-only.
 - `Phase::WholeMarking` rule's span covers a full marking.
+- `Phase::PageFinalization` rule's `Diagnostic.span` defaults to a
+  zero-length boundary anchor (the `PageBreak` byte offset, or
+  `source.len()` at end-of-document). Rules MAY refine to a portion
+  span by walking `ctx.page_context.portions()` when per-portion
+  precision matters, but `PageContext` does not track per-portion
+  spans today, so the boundary anchor is the typical surface for
+  no-fix advisories.
 
 Each rule belongs to exactly one phase. If a defect class genuinely
 needs detection in both phases (rare), register two rule entries
@@ -791,7 +801,62 @@ sharing a backend module — one `Phase::Localized`, one
 dispatch contract single-valued at registration and surfaces the
 "this rule is doing two distinct jobs" cost at the rule-set level
 where it can be reviewed, rather than hiding it behind a `Both`
-escape hatch.
+escape hatch. The rationale extends to `Phase::PageFinalization`
+without change: a rule needing both a per-marking pass and the
+page-level fixpoint registers two entries.
+
+#### 9.1.1 Phase::PageFinalization (issue #461)
+
+PageFinalization is the third dispatch bucket. It exists because
+three rule classes (W004 joint-disunity-collapse today; S007 and
+`BannerMatchesProjectedRule` migrations scheduled as follow-up PRs)
+need to observe the **closed** page-level state — the
+Knaster-Tarski fixpoint of every page-axis lattice (classification,
+SCI, SAR, AEA, dissem, REL TO, FGI marker) — not an intermediate
+PageContext snapshot tied to a Banner candidate's arrival ordering.
+
+The engine synthesizes a single dispatch per page-boundary:
+
+- At every scanner-emitted `MarkingType::PageBreak`, BEFORE the
+  PageContext reset (so the closing page's final state is what the
+  rule sees).
+- Once at end-of-document, so trailing portions on a banner-first
+  layout with no closing banner still observe the fixpoint. This
+  closes the documented W004 false-negative on banner-first layouts.
+
+**Empty-page skip invariant.** The dispatch helper's caller guards
+on `!page_context.is_empty()`. An empty page (banner-only document,
+or a stray `\f` before any portions) costs zero rule dispatches and
+no `PageContext::project` call. Rules MUST NOT assume PageFinalization
+fires on every page-boundary candidate the scanner emits; they fire
+once per page that accumulated at least one portion.
+
+**`page_context` / `page_marking` force-init.** Both `RuleContext`
+Arcs are force-initialized to `Some(_)` before invoking a
+PageFinalization rule. Defensive `.as_ref()?` early-returns are
+belt-and-suspenders rather than necessary correctness.
+
+**No-fix emission convention.** Today's only consumer (W004) emits
+diagnostics without `FixProposal` — the JOINT→FGI migration is
+renderer-canonical territory (PR 5+ Stage 4). A future fixable
+PageFinalization rule will need to thread the synthetic boundary
+candidate through the existing two-pass fix pipeline. The
+`TwoPassFixer` naming reflects fix-application passes — pass-1
+Localized splice → re-parse → pass-2 WholeMarking apply_intent —
+and stays accurate: PageFinalization rules ride pass-2 at fix-time
+if they ever produce fixes.
+
+**Audit-content-ignorance (Constitution V Principle V G13).** Same
+as every other phase: PageFinalization diagnostic messages MUST NOT
+contain document bytes. W004 carries this property by emitting only
+canonical `CountryCode` trigraphs from the `JointSet` projection.
+
+`Phase` is `#[non_exhaustive]` so future dispatch phases (e.g., a
+document-finalization pass once cross-page rules land) can be added
+as non-breaking changes. The wildcard arm in
+`partition_rules_by_phase` panics on an unknown variant rather than
+silently bucketing into an existing pass — the dispatch path stays
+explicit.
 
 ### 9.2 I-18 — span non-overlap between passes
 
