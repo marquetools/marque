@@ -19,7 +19,7 @@
 //! pattern `mod.rs` used pre-split).
 
 use marque_ism::{CanonicalAttrs, Classification, MarkingClassification, PageContext};
-use marque_scheme::Lattice;
+use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
 use super::actions::*;
 
@@ -562,7 +562,7 @@ impl CapcoMarking {
 // `meet` keeps its narrow PageContext-free shape — it's used by a
 // small set of overlap-check call sites that do not need full
 // component-wise coverage. PR 4b-D widens it when `project` flips.
-impl Lattice for CapcoMarking {
+impl JoinSemilattice for CapcoMarking {
     /// Join = banner-aggregate both portions via `PageContext`.
     ///
     /// Delegates to [`PageContext`] so the scheme's join is
@@ -581,7 +581,9 @@ impl Lattice for CapcoMarking {
         ctx.add_portion(other.0.clone());
         CapcoMarking::new(page_context_to_attrs(&ctx))
     }
+}
 
+impl MeetSemilattice for CapcoMarking {
     /// Meet = partial component-wise minimum.
     ///
     /// Implemented only on classification, SCI, and dissem — enough to
