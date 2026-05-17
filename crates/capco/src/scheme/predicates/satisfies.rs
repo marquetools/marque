@@ -405,8 +405,11 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             DissemControl::Rs => Some(TOK_RSEN),
             DissemControl::Fouo => Some(TOK_FOUO),
             DissemControl::Eyes => Some(TOK_EYES),
+            DissemControl::Pr => Some(TOK_PROPIN),
+            DissemControl::Fisa => Some(TOK_FISA),
+            DissemControl::Rawfisa => Some(TOK_RAWFISA),
             // Variants without TOK_* sentinels yet:
-            //   Rel, Pr, Rawfisa, Fisa, ExemptFromIcd501Discovery
+            //   Rel, ExemptFromIcd501Discovery
             //
             // DRIFT GUARD: `DissemControl` is `#[non_exhaustive]`. If
             // a future ODNI ISM schema bump adds a new variant, it
@@ -438,6 +441,7 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
             NonIcDissem::Les => Some(TOK_LES),
             NonIcDissem::Sbu => Some(TOK_SBU),
             NonIcDissem::Ssi => Some(TOK_SSI),
+            NonIcDissem::Nnpi => Some(TOK_NNPI),
             // NonIcDissem is non-exhaustive; future variants fall through.
             _ => None,
         };

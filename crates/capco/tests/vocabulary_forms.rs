@@ -116,7 +116,12 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // OC-USGOV (ORCON-USGOV) row per §H.8 p139.
     // title="ORIGINATOR CONTROLLED-USGOV", banner="ORCON-USGOV",
     // portion="OC-USGOV". banner != title → Some("ORCON-USGOV").
-    (TOK_ORCON_USGOV, "OC-USGOV", "ORCON-USGOV", Some("ORCON-USGOV")),
+    (
+        TOK_ORCON_USGOV,
+        "OC-USGOV",
+        "ORCON-USGOV",
+        Some("ORCON-USGOV"),
+    ),
     // FISA row per §H.8 p161.
     // title="FOREIGN INTELLIGENCE SURVEILLANCE ACT", banner="FISA",
     // portion="FISA". banner != title → Some("FISA").
