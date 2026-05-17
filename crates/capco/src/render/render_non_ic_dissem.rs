@@ -74,6 +74,24 @@ pub(crate) fn render_non_ic_dissem(
 }
 
 fn register_rank(n: &NonIcDissem) -> u8 {
+    // Issue #407: NNPI placed after SSI (rank 8) for register
+    // ordering. Placement is local-policy — CAPCO-2016 §H.9 has no
+    // NNPI Register row — but pairing NNPI with SSI is consistent
+    // with their shared `propagates_to_classified_banner = true`
+    // semantic in `crates/ism/src/attrs.rs:1326`.
+    //
+    // `NonIcDissem` is `#[non_exhaustive]` (declared upstream in
+    // `marque-ism`), so the wildcard arm is required by the
+    // compiler — Rust treats out-of-crate `#[non_exhaustive]` as
+    // open even when every published variant is named. The wildcard
+    // body is intentionally `u8::MAX` (not a panic) so that, if a
+    // future ODNI schema bump adds a variant before the
+    // capco render rank is updated, the unknown sorts to the
+    // tail rather than panicking on the hot path. The drift signal
+    // is the missing render-rank entry; the test that catches it
+    // lives at the integration boundary (a future render-rank
+    // exhaustivity test would assert every public variant has a
+    // distinct rank).
     match n {
         NonIcDissem::Limdis => 0,
         NonIcDissem::Exdis => 1,
@@ -83,8 +101,7 @@ fn register_rank(n: &NonIcDissem) -> u8 {
         NonIcDissem::Les => 5,
         NonIcDissem::LesNf => 6,
         NonIcDissem::Ssi => 7,
-        // Defensive: any future variant lands at the end pending a
-        // re-audit against the Register.
+        NonIcDissem::Nnpi => 8,
         _ => u8::MAX,
     }
 }
