@@ -655,12 +655,24 @@ impl Classification {
 /// Two forms exist:
 ///
 /// - **Source-acknowledged**: country trigraph(s) identify the originator.
-///   `//GBR S//REL TO USA, GBR`
+///   `//GBR S//REL TO USA, GBR` (single owner) or `//CAN GBR S` (multiple
+///   producers per the §H.7 p123 worked example `(//CAN GBR S)` and §H.7
+///   p124 prose authorizing multi-country FGI alphabetically space-
+///   separated; ICD 206 commingling clause).
 /// - **Source-concealed**: `FGI` replaces the country trigraph(s) when
 ///   the originating country is sensitive. `//FGI S//REL TO USA, GBR`
 ///   An empty `countries` list indicates source-concealed FGI.
 ///
 /// Countries are space-delimited in the source marking.
+///
+/// # Disambiguation from sibling axes
+///
+/// - [`FgiMarker`] is a **dissem-axis** marker for commingled US+FGI
+///   banner forms (`SECRET//FGI GBR DEU//...`), separate from the
+///   classification axis modeled here. The two can coexist.
+/// - [`JointClassification`] models US-inclusive co-ownership where
+///   the US is itself one of the producers. `FgiClassification` is the
+///   non-US classification axis and does not include the US.
 ///
 /// # Banner aggregation
 ///
@@ -1480,7 +1492,10 @@ impl CountryCode {
     };
 
     // The remaining Five Eyes constituent codes (AUS / CAN / GBR / NZL) —
-    // used by E064 FVEY-expansion in `marque-capco`.
+    // used by E064 FVEY-expansion in `marque-capco`. The NATO tetragraph
+    // is forward-investment for the NATO classification closure cone
+    // deferred to #508 (PR 4b-D); same const-construction shape so the
+    // future closure row can reference `CountryCode::NATO` directly.
 
     /// The always-valid `AUS` country code constant.
     ///
@@ -1528,6 +1543,23 @@ impl CountryCode {
     pub const NZL: Self = match Self::try_new(b"NZL") {
         Some(c) => c,
         None => panic!("CountryCode::NZL literal must satisfy try_new invariants"),
+    };
+
+    /// The always-valid `NATO` tetragraph constant.
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context.
+    /// The `panic!` arm is statically unreachable for `b"NATO"`
+    /// (4 bytes, all ASCII uppercase) and exists only because
+    /// `const fn` does not yet permit unwrapping an `Option` —
+    /// `match` is the workaround.
+    ///
+    /// Forward-investment for the deferred NATO classification
+    /// closure row tracked in #508 (PR 4b-D). The closure cone,
+    /// severity, suppressor set, and S007 interaction are open
+    /// design decisions — see #508 for the calibration question.
+    pub const NATO: Self = match Self::try_new(b"NATO") {
+        Some(c) => c,
+        None => panic!("CountryCode::NATO literal must satisfy try_new invariants"),
     };
 
     /// Returns `true` if `b` is in the CAPCO country-code byte set:
@@ -2035,6 +2067,18 @@ mod country_code_tests {
         assert_eq!(CountryCode::USA, runtime);
         assert_eq!(CountryCode::USA.as_bytes(), runtime.as_bytes());
         assert_eq!(CountryCode::USA.len(), runtime.len());
+    }
+
+    #[test]
+    fn nato_constant_matches_try_new() {
+        // PR #505: `CountryCode::NATO` is forward-investment for the
+        // NATO classification closure cone deferred to #508. Same
+        // const-construction invariant as USA / AUS / CAN / GBR / NZL.
+        let runtime = CountryCode::try_new(b"NATO").expect("NATO is a valid tetragraph");
+        assert_eq!(CountryCode::NATO, runtime);
+        assert_eq!(CountryCode::NATO.as_str(), "NATO");
+        assert_eq!(CountryCode::NATO.as_bytes(), b"NATO");
+        assert_eq!(CountryCode::NATO.len(), 4);
     }
 
     // ----------------------------------------------------------------

@@ -378,3 +378,31 @@ pub const TOK_DCNI: TokenId = TokenId(147); // DCNI — DOD UCNI portion form, �
 pub const TOK_ATOMAL: TokenId = TokenId(140);
 pub const TOK_BALK: TokenId = TokenId(141);
 pub const TOK_BOHEMIA: TokenId = TokenId(142);
+
+// PR #505 (T112 follow-up): per-variant classification sentinels for the
+// `MarkingClassification::{Nato,Fgi}(_)` arms. These complement
+// `TOK_JOINT` (`TokenId(103)`) which already carries `Joint(_)` per-variant
+// matching, and round out the classification-axis sentinel surface so
+// `collect_present_tokens` emits a concrete `TokenRef::Token(...)` for
+// every non-US classification variant.
+//
+// Disambiguation vs the existing tokens / categories:
+//   - `TOK_NON_US_CLASSIFICATION` (`TokenId(121)`) and
+//     `CAT_NON_US_CLASSIFICATION` (`CategoryId(2)`) match ALL of
+//     `Fgi(_) | Nato(_) | Joint(_)` (the supercategory umbrella).
+//   - `TOK_FGI_MARKER` (`TokenId(117)`) matches BOTH
+//     `attrs.fgi_marker.is_some()` AND `Fgi(_)` (dual-axis), to support
+//     family predicates that need FGI presence regardless of which axis
+//     the FGI lives on.
+//   - `TOK_NATO_CLASS` / `TOK_FGI_CLASS` (this block) match the
+//     classification axis variant ONLY (strict per-variant).
+//
+// Reserved for the NATO closure cone deferred to #508 (PR 4b-D) and for
+// any future `ConflictsWithFamily` row that needs strict-classification
+// FGI/NATO match without the dissem-axis or umbrella shape.
+//
+// Routed as marker sentinels in `token_routing.rs::capco_token_category`
+// (no addressable category — they label categorical predicates, not
+// atomic addressable tokens). Mirrors `TOK_FGI_MARKER`'s routing.
+pub const TOK_NATO_CLASS: TokenId = TokenId(148);
+pub const TOK_FGI_CLASS: TokenId = TokenId(149);

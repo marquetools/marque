@@ -2282,6 +2282,11 @@ fn parse_joint_classification(s: &str) -> Option<JointClassification> {
 /// Format: one or more country trigraphs (or "FGI") + classification level.
 /// Countries are space-delimited. The last token is the classification level.
 ///
+/// Multi-country FGI at the classification axis is authoritative per
+/// CAPCO-2016 §H.7 p123 worked example `(//CAN GBR S)` and the §H.7 p124
+/// prose ("Multiple FGI countries must be listed alphabetically and
+/// separated by a single space"; ICD 206 commingling clause).
+///
 /// Returns `None` if no classification level is found (e.g., bare `"FGI"` with
 /// no level — that's an error, not a valid FGI classification).
 fn parse_fgi_classification(s: &str) -> Option<FgiClassification> {

@@ -333,6 +333,11 @@ fn category_of_returns_none_for_marker_sentinels() {
     );
     assert_eq!(scheme.category_of(&FactRef::Cve(TOK_US_CLASSIFIED)), None);
     assert_eq!(scheme.category_of(&FactRef::Cve(TOK_FGI_MARKER)), None);
+    // PR #505: `TOK_NATO_CLASS` and `TOK_FGI_CLASS` are per-variant
+    // classification-axis marker sentinels (no addressable category).
+    // Mirrors `TOK_FGI_MARKER`'s routing.
+    assert_eq!(scheme.category_of(&FactRef::Cve(TOK_NATO_CLASS)), None);
+    assert_eq!(scheme.category_of(&FactRef::Cve(TOK_FGI_CLASS)), None);
 }
 
 // apply_intent — round-trip FactRemove against the wired axes.

@@ -68,6 +68,17 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
             TOK_JOINT => {
                 matches!(&attrs.classification, Some(MarkingClassification::Joint(_)))
             }
+            // PR #505: per-variant classification sentinels. Strict
+            // match on the classification-axis variant, excluding
+            // `MarkingClassification::Conflict { .. }` (that state is
+            // E012's concern — see fn doc above for the same convention
+            // applied to `TOK_NON_US_CLASSIFICATION`).
+            TOK_NATO_CLASS => {
+                matches!(&attrs.classification, Some(MarkingClassification::Nato(_)))
+            }
+            TOK_FGI_CLASS => {
+                matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
+            }
             TOK_RESTRICTED => matches!(
                 &attrs.classification,
                 Some(c) if c.effective_level() == Classification::Restricted
@@ -352,35 +363,51 @@ pub(crate) fn evaluate_custom_by_attrs(
 /// where the family predicate holds — same algorithm as
 /// `marque_scheme::constraint::evaluate`'s `ConflictsWithFamily` arm.
 ///
-/// ## Forward-compat note (FGI / JOINT family predicates)
+/// ## Per-variant classification emission (post-#505)
 ///
-/// This function emits `TokenRef::Token(TOK_FGI_MARKER)` for FGI
-/// classifications and `TokenRef::Token(TOK_JOINT)` for JOINT
-/// classifications (concrete sentinels), but NATO is emitted as
-/// `TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION)` (category
-/// shape). Family predicates that need to match FGI or JOINT MUST
-/// accept either shape — a predicate that only matches
-/// `AnyInCategory(CAT_FGI_MARKER)` will silently miss FGI portions
-/// emitted as `Token(TOK_FGI_MARKER)`. PR 3.7 has no active
-/// FGI- or JOINT-targeting family predicate so the asymmetry is
-/// dormant; a future row that does match those axes should be
-/// written as
-/// `|t| matches!(t, TokenRef::Token(TOK_FGI_MARKER) | TokenRef::AnyInCategory(CAT_FGI_MARKER))`
-/// (and analogously for JOINT / NATO).
+/// Each `MarkingClassification` variant emits a distinct concrete
+/// sentinel, retiring the pre-#505 asymmetry where NATO was emitted as
+/// `AnyInCategory(CAT_NON_US_CLASSIFICATION)` (umbrella-category shape)
+/// while FGI and JOINT emitted concrete `TokenRef::Token(...)` values:
+///
+///   - `Fgi(_)` → `Token(TOK_FGI_MARKER)` (dual-axis — also matched by
+///     `attrs.fgi_marker.is_some()`) **AND** `Token(TOK_FGI_CLASS)`
+///     (strict classification-axis FGI).
+///   - `Nato(_)` → `Token(TOK_NATO_CLASS)`.
+///   - `Joint(_)` → `Token(TOK_JOINT)`.
+///   - `Us(_)` / `Conflict { .. }` → no emission (US is the default;
+///     `Conflict` is E012's concern, not a `ConflictsWithFamily` LHS).
+///
+/// Family predicates that need to match the per-variant case should use
+/// the corresponding `TOK_*_CLASS` sentinel. The `CAT_NON_US_CLASSIFICATION`
+/// category remains as the supercategory for the `E015` Requires constraint
+/// (`crates/capco/src/scheme/constraints/core_catalog.rs` E015 row uses
+/// `AnyInCategory(CAT_NON_US_CLASSIFICATION)` as the LHS of a
+/// `Constraint::Requires`, evaluated through [`satisfies_attrs`], **not**
+/// through [`collect_present_tokens`]) and for vocabulary admission;
+/// it is no longer a `collect_present_tokens` emission target.
 pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<TokenRef> {
     use marque_ism::{AeaMarking, DissemControl, MarkingClassification, NonIcDissem};
     let mut tokens = Vec::new();
 
-    // Classification tokens
+    // Classification tokens — per-variant emission post-#505. See the
+    // "Per-variant classification emission" doc block above.
     if let Some(ref cls) = attrs.classification {
         match cls {
             MarkingClassification::Us(_) | MarkingClassification::Conflict { .. } => {}
             MarkingClassification::Fgi(_) => {
+                // Dual-axis: `TOK_FGI_MARKER` (matches `fgi_marker.is_some()`
+                // OR `Fgi(_)`) so family predicates that read FGI presence
+                // regardless of axis still fire.
                 tokens.push(TokenRef::Token(TOK_FGI_MARKER));
+                // Strict: `TOK_FGI_CLASS` matches the classification-axis
+                // variant only, for future `ConflictsWithFamily` rows that
+                // need to distinguish classification-axis FGI from
+                // dissem-axis fgi_marker.
+                tokens.push(TokenRef::Token(TOK_FGI_CLASS));
             }
             MarkingClassification::Nato(_) => {
-                // NATO classification uses AnyInCategory(CAT_NON_US_CLASSIFICATION).
-                tokens.push(TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION));
+                tokens.push(TokenRef::Token(TOK_NATO_CLASS));
             }
             MarkingClassification::Joint(_) => {
                 tokens.push(TokenRef::Token(TOK_JOINT));
