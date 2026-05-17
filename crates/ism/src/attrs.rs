@@ -1478,6 +1478,53 @@ impl CountryCode {
         None => panic!("CountryCode::USA literal must satisfy try_new invariants"),
     };
 
+    // The remaining Five Eyes constituent codes (AUS / CAN / GBR / NZL) —
+    // used by E064 FVEY-expansion in `marque-capco`.
+
+    /// The always-valid `AUS` country code constant.
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context;
+    /// the `expect` is statically unreachable for `b"AUS"` (3 bytes,
+    /// all ASCII uppercase) and exists only to satisfy `const`
+    /// unwrap.
+    pub const AUS: Self = match Self::try_new(b"AUS") {
+        Some(c) => c,
+        None => panic!("CountryCode::AUS literal must satisfy try_new invariants"),
+    };
+
+    /// The always-valid `CAN` country code constant.
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context;
+    /// the `expect` is statically unreachable for `b"CAN"` (3 bytes,
+    /// all ASCII uppercase) and exists only to satisfy `const`
+    /// unwrap.
+    pub const CAN: Self = match Self::try_new(b"CAN") {
+        Some(c) => c,
+        None => panic!("CountryCode::CAN literal must satisfy try_new invariants"),
+    };
+
+    /// The always-valid `GBR` country code constant.
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context;
+    /// the `expect` is statically unreachable for `b"GBR"` (3 bytes,
+    /// all ASCII uppercase) and exists only to satisfy `const`
+    /// unwrap.
+    pub const GBR: Self = match Self::try_new(b"GBR") {
+        Some(c) => c,
+        None => panic!("CountryCode::GBR literal must satisfy try_new invariants"),
+    };
+
+    /// The always-valid `NZL` country code constant.
+    ///
+    /// Constructed via [`CountryCode::try_new`] in `const` context;
+    /// the `expect` is statically unreachable for `b"NZL"` (3 bytes,
+    /// all ASCII uppercase) and exists only to satisfy `const`
+    /// unwrap.
+    pub const NZL: Self = match Self::try_new(b"NZL") {
+        Some(c) => c,
+        None => panic!("CountryCode::NZL literal must satisfy try_new invariants"),
+    };
+
     /// Returns `true` if `b` is in the CAPCO country-code byte set:
     /// ASCII uppercase letter, ASCII digit, or underscore. Digits cover
     /// `AX2`/`AX3`; underscore covers `AUSTRALIA_GROUP`.
