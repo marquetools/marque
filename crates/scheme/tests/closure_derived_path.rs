@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 //! Unit tests for the PR 4b-D.0 `ClosureRule::cone_derived` field.
 //!
 //! Two scenarios:
@@ -44,6 +46,7 @@ impl BitMarking {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl JoinSemilattice for BitMarking {
     fn join(&self, other: &Self) -> Self {
         Self {
@@ -52,6 +55,7 @@ impl JoinSemilattice for BitMarking {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MeetSemilattice for BitMarking {
     fn meet(&self, other: &Self) -> Self {
         Self {
@@ -92,6 +96,7 @@ static DERIVED_ONLY_RULES: &[ClosureRule<DerivedOnlyScheme>] = &[ClosureRule {
 
 struct DerivedOnlyScheme;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MarkingScheme for DerivedOnlyScheme {
     type Token = TokenId;
     type Marking = BitMarking;
@@ -215,6 +220,7 @@ static STATIC_PARITY_RULES: &[ClosureRule<StaticParityScheme>] = &[ClosureRule {
 
 struct StaticParityScheme;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MarkingScheme for StaticParityScheme {
     type Token = TokenId;
     type Marking = BitMarking;

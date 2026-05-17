@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 //! Negative property test: non-monotone closure-catalog bugs produce
 //! an observable monotonicity violation.
 //!
@@ -609,6 +611,7 @@ static NON_MONOTONE_DERIVED_RULES: &[ClosureRule<NonMonotoneDerivedScheme>] = &[
 
 struct MonotoneDerivedScheme;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MarkingScheme for MonotoneDerivedScheme {
     type Token = TokenId;
     type Marking = BitMarking;
@@ -706,6 +709,7 @@ impl MarkingScheme for MonotoneDerivedScheme {
 
 struct NonMonotoneDerivedScheme;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MarkingScheme for NonMonotoneDerivedScheme {
     type Token = TokenId;
     type Marking = BitMarking;
