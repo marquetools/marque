@@ -9,10 +9,10 @@
 //!   (`(U) Example Portion Mark: (S//RD-CNWDI)`).
 //! - NK bare form → `SI-NK`: CAPCO-2016 §H.4 p83
 //!   (`(U) Authorized Portion Mark: SI-NK`,
-//!    `(U) Example Portion Mark: (TS//SI-NK)`).
+//!   `(U) Example Portion Mark: (TS//SI-NK)`).
 //! - EU bare form (in SCI position) → `SI-EU`: CAPCO-2016 §H.4 p78
 //!   (`(U) Authorized Portion Mark: SI-EU`,
-//!    `(U) Example Portion Mark: (TS//SI-EU)`).
+//!   `(U) Example Portion Mark: (TS//SI-EU)`).
 //!
 //! The walker filters `TokenKind::Unknown` spans and emits one
 //! `Diagnostic::text_correction` per bare-form match. Hardcoded
