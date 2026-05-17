@@ -25,9 +25,9 @@
 //!    independently testable.
 
 use marque_scheme::{
-    Category, ClosureRule, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme,
-    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, category::CategoryId,
-    closure::MAX_CLOSURE_ITERATIONS, severity::Severity,
+    Category, ClosureRule, Constraint, ConstraintViolation, FactRef, JoinSemilattice,
+    MarkingScheme, MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef,
+    category::CategoryId, closure::MAX_CLOSURE_ITERATIONS, severity::Severity,
 };
 use smallvec::{SmallVec, smallvec};
 
@@ -80,8 +80,8 @@ fn bit_index(id: TokenId) -> Option<u8> {
 // Scheme 1: cone_derived emits TOK_Y unconditionally.
 // ---------------------------------------------------------------------------
 
-fn derived_cone_emits_y(_m: &BitMarking) -> SmallVec<[(CategoryId, TokenRef); 2]> {
-    smallvec![(CAT_X, TokenRef::Token(TOK_Y))]
+fn derived_cone_emits_y(_m: &BitMarking) -> SmallVec<[FactRef<DerivedOnlyScheme>; 2]> {
+    smallvec![FactRef::Cve(TOK_Y)]
 }
 
 static DERIVED_ONLY_RULES: &[ClosureRule<DerivedOnlyScheme>] = &[ClosureRule {
@@ -171,11 +171,12 @@ impl MarkingScheme for DerivedOnlyScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }
@@ -186,6 +187,10 @@ impl MarkingScheme for DerivedOnlyScheme {
             }
         }
         panic!("derived-only closure did not converge");
+    }
+
+    fn token_category(&self, id: TokenId) -> Option<CategoryId> {
+        bit_index(id).map(|_| CAT_X)
     }
 }
 
@@ -295,11 +300,12 @@ impl MarkingScheme for StaticParityScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }
@@ -310,6 +316,10 @@ impl MarkingScheme for StaticParityScheme {
             }
         }
         panic!("static-parity closure did not converge");
+    }
+
+    fn token_category(&self, id: TokenId) -> Option<CategoryId> {
+        bit_index(id).map(|_| CAT_X)
     }
 }
 

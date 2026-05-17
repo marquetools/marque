@@ -976,28 +976,48 @@ table-row authority).
 ## D21 — Closure-rule open-vocab cone shape: B3 sibling field (PR 4b-D.0)
 
 **Decision**: Extend `marque_scheme::ClosureRule` with an optional
-sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[(CategoryId, TokenRef); 2]>>`
+sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[FactRef<S>; 2]>>`
 to express marking-derived cones (JOINT's partner-list-floor case).
 The existing `cone: &'static [TokenRef]` field stays unchanged.
 
-Concrete shape:
+> **Addendum (2026-05-17, post-Copilot review of PR #514)**: this
+> entry originally typed the derived cone as `SmallVec<[(CategoryId,
+> TokenRef); 2]>`. Copilot review on PR #514 (the 4b-D.0 implementation
+> PR) identified that the `TokenRef` carrier cannot express open-
+> vocabulary facts — JOINT's `REL TO USA, GBR, JPN` partner-list cone
+> needs `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))` per
+> the established pattern at `crates/capco/src/rules_declarative.rs:711-718`.
+> The signature was redesigned to return `SmallVec<[FactRef<S>; 2]>`,
+> dropping the pre-bound `CategoryId` (the closure executor now calls
+> `scheme.category_of(&fact_ref)` to route — symmetric with the static
+> path, which calls `scheme.token_category(token_id)`). All other D21
+> reasoning — sibling field vs. enum, SmallVec inline-2 sizing, zero-
+> touch on the 7 `CLOSURE_NOFORN_*` rows, sequencing — stands.
+
+Concrete shape (post-addendum):
 
 ```rust
-pub struct ClosureRule<S: MarkingScheme> {
+pub struct ClosureRule<S: MarkingScheme + ?Sized> {
     pub name: &'static str,
     pub label: &'static str,
     pub triggers: &'static [TokenRef],
     pub suppressors: &'static [TokenRef],
     pub cone: &'static [TokenRef],
     pub cone_derived: Option<
-        fn(&S::Marking) -> smallvec::SmallVec<[(CategoryId, TokenRef); 2]>
+        fn(&S::Marking) -> smallvec::SmallVec<[FactRef<S>; 2]>
     >,
     pub default_severity: Severity,
 }
 ```
 
 `ClosureRule<S>` becomes generic over the scheme — unavoidable: any
-shape that lets the cone read `S::Marking` requires it.
+shape that lets the cone read `S::Marking` requires it. The `?Sized`
+bound mirrors `FactRef<S>`'s bound at
+`crates/scheme/src/fix_intent.rs:63`; `Debug` / `Clone` are written
+manually rather than derived so the bounds resolve through the
+struct's fields without over-constraining to `S: Debug + Clone`
+(the `CapcoScheme: !Clone` constraint would otherwise silently
+prevent `ClosureRule<CapcoScheme>` from being cloned).
 
 **Rejected alternative B2 (enum-replace `cone`)**:
 
@@ -1032,22 +1052,24 @@ list (1-5 countries per §H.3 worked examples) will spill to the
 heap for ≥3 entries; the doc-comment on `cone_derived` records
 the explicit "bump to inline-4 or inline-8 if the eventual JOINT
 row routinely produces ≥3 facts per firing" follow-up. `smol_str`
-does NOT apply — `TokenRef` is a `(TokenId, ...)` enum with no
-strings on the cone-fact path.
+does NOT apply — `FactRef<S>` carries closed-CVE `TokenId` or
+typed open-vocab refs (`S::OpenVocabRef`), no raw strings on the
+cone-fact path.
 
 **Sequencing implication (Constitution VII §IV)**:
 
 PR 4b-D.0 (the engine-gap PR) lands first:
 
-1. `ClosureRule<S>` generic propagation through `marque-scheme` +
-   `marque-engine` closure executor + every consumer
-2. `cone_derived: Option<fn(...) -> SmallVec<[(CategoryId, TokenRef); 2]>>`
+1. `ClosureRule<S>` generic propagation through `marque-scheme`
+   and every consumer (engine executor wiring defers — no
+   production caller exists in PR 4b-D.0; the catalog is
+   inspected via `MarkingScheme::closure_rules()` only)
+2. `cone_derived: Option<fn(...) -> SmallVec<[FactRef<S>; 2]>>`
    field defaulting `None`
-3. Closure executor branches `cone_derived.is_some()` on the cold
-   side; static path unchanged
-4. Existing 7 `CLOSURE_NOFORN_*` rows zero-touch — only the type
-   parameter propagates through the catalog
-5. Proves green against the corpus regression harness; no
+3. Existing 7 `CLOSURE_NOFORN_*` rows zero-touch — only the type
+   parameter propagates through the catalog (no rule uses
+   `cone_derived`; the field is `None` everywhere)
+4. Proves green against the corpus regression harness; no
    `CapcoScheme` semantic change
 
 THEN PR 4b-D consumes it: NATO closure row (static cone) +
@@ -1064,9 +1086,11 @@ fixed first in a separate PR..."
 **Lands in**:
 
 - PR 4b-D.0 (new engine-gap PR): `marque-scheme::ClosureRule`
-  shape change, `marque-engine` closure executor branch, generic
-  propagation, smallvec dep already in `marque-scheme` workspace
-  (no new dep)
+  shape change (`<S>` generic + `cone_derived` field), generic
+  propagation through `marque-capco`'s closure catalog, smallvec
+  dep already in `marque-scheme` workspace (no new dep). Engine
+  executor wiring defers to PR 4b-D (no production caller for
+  the closure operator exists in 4b-D.0).
 - Issue #508 scope item 3 (open-vocab cone primitive) marked
   resolved with the B3 choice
 - This `decisions.md` D21 entry (above)
@@ -1098,7 +1122,7 @@ fixed first in a separate PR..."
 | D19 | Topic 1 design pass: `AuditNote` audit-stream record + per-row severity for `ClosureRule` + `Constraint::Implies` retirement (narrowly supersedes D18 rationale bullet 3) | `tasks.md` T108e/T108f/T108g added; D18 bullet 3 annotated |
 | D9b-1 | Two parallel slice fields for `dissem_us` / `dissem_nato` | PR 9b T132 shipped two `Box<[DissemControl]>` fields per FR-046. Future cross-system translation (memory `project_cross_system_translation.md`) and a hypothetical third namespace (FVEY-only, partner-national) would be cleaner with `Box<[NamespacedDissem]>`. Owner reviewed and chose to defer; revisit in PR 10+ if cross-system translation work surfaces the smell as concrete blocking pain. Reference: PR 9b preflight, 2026-05-14. |
 | D20 | S007 / NATO-closure-row layer separation (PR 4b-D): closure injects `REL TO USA, NATO` silently at `Severity::Info` (lattice layer); S007 stays as the visible `Severity::Suggest` text-layer surface. Authority asymmetry preserved; option (c) NOFORN-injection rejected per user-stated invariant "(//NS) should never be NF" + §H.7 p127 worked-example interpretation. | `decisions.md` D20 (above); resolves issue #508 calibration question; PR 4b-D NATO closure row construction. |
-| D21 | Closure-rule open-vocab cone shape: B3 sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[(CategoryId, TokenRef); 2]>>` selected over B2 enum-replace. `ClosureRule<S>` generic required either way; B3 leaves the 7 shipped `CLOSURE_NOFORN_*` rows zero-touch and keeps the closed-vocab hot path tight. SmallVec inline cap matches the `marque-scheme` `ReplacementIntent::FactRemove::facts` inline-2 precedent from #348; bump to inline-4 / inline-8 is a one-line change if the eventual JOINT row routinely produces ≥3 facts per firing. PR 4b-D.0 lands the trait change ahead of PR 4b-D per Constitution VII §IV. | `decisions.md` D21 (above); resolves issue #508 scope item 3; PR 4b-D.0 (new engine-gap PR) trait-surface change. |
+| D21 | Closure-rule open-vocab cone shape: B3 sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[FactRef<S>; 2]>>` selected over B2 enum-replace. `ClosureRule<S>` generic required either way; B3 leaves the 7 shipped `CLOSURE_NOFORN_*` rows zero-touch and keeps the closed-vocab hot path tight. Return type is `FactRef<S>` (not `(CategoryId, TokenRef)`) so the derived path covers open-vocab facts like JOINT's REL TO partner-list — addendum applied post-Copilot review on PR #514, see D21 entry. SmallVec inline cap matches the `marque-scheme` `ReplacementIntent::FactRemove::facts` inline-2 precedent from #348; bump to inline-4 / inline-8 is a one-line change if the eventual JOINT row routinely produces ≥3 facts per firing. PR 4b-D.0 lands the trait change ahead of PR 4b-D per Constitution VII §IV. | `decisions.md` D21 (above); resolves issue #508 scope item 3; PR 4b-D.0 (new engine-gap PR) trait-surface change. |
 
 D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 / D20 / D21 are
 post-PR-0 implementation decisions: D17 is a PR 3b.C scope

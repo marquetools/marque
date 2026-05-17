@@ -41,8 +41,8 @@
 //! The bitset ordering is componentwise: `m1 ⊑ m2` iff `m1.bits & m2.bits == m1.bits`.
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme, MeetSemilattice,
-    PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
+    Category, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
+    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
     severity::Severity,
 };
 use proptest::prelude::*;
@@ -281,11 +281,12 @@ impl MarkingScheme for ClosureStubScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }

@@ -38,8 +38,8 @@
 //! closure operator's monotonicity property fails."
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme, MeetSemilattice,
-    PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
+    Category, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
+    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
     severity::Severity,
 };
 use proptest::prelude::*;
@@ -188,11 +188,12 @@ impl MarkingScheme for MonotoneScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }
@@ -426,11 +427,12 @@ impl MarkingScheme for NonMonotoneScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }
@@ -560,29 +562,25 @@ use smallvec::{SmallVec, smallvec};
 
 const CAT_X: marque_scheme::category::CategoryId = marque_scheme::category::CategoryId(0);
 
-fn monotone_derived_cone(
-    m: &BitMarking,
-) -> SmallVec<[(marque_scheme::category::CategoryId, TokenRef); 2]> {
-    let mut out: SmallVec<[(marque_scheme::category::CategoryId, TokenRef); 2]> = SmallVec::new();
+fn monotone_derived_cone(m: &BitMarking) -> SmallVec<[FactRef<MonotoneDerivedScheme>; 2]> {
+    let mut out: SmallVec<[FactRef<MonotoneDerivedScheme>; 2]> = SmallVec::new();
     if m.has_token(0) {
-        out.push((CAT_X, TokenRef::Token(TOK_A)));
+        out.push(FactRef::Cve(TOK_A));
     }
     if m.has_token(1) {
-        out.push((CAT_X, TokenRef::Token(TOK_B)));
+        out.push(FactRef::Cve(TOK_B));
     }
     if m.has_token(2) {
-        out.push((CAT_X, TokenRef::Token(TOK_C)));
+        out.push(FactRef::Cve(TOK_C));
     }
     out
 }
 
-fn non_monotone_derived_cone(
-    m: &BitMarking,
-) -> SmallVec<[(marque_scheme::category::CategoryId, TokenRef); 2]> {
+fn non_monotone_derived_cone(m: &BitMarking) -> SmallVec<[FactRef<NonMonotoneDerivedScheme>; 2]> {
     // Returns TOK_B only when TOK_A is present AND TOK_B is absent.
     // Adding TOK_B to the marking removes the derived fact — non-monotone.
     if m.has_token(0) && !m.has_token(1) {
-        smallvec![(CAT_X, TokenRef::Token(TOK_B))]
+        smallvec![FactRef::Cve(TOK_B)]
     } else {
         SmallVec::new()
     }
@@ -686,11 +684,12 @@ impl MarkingScheme for MonotoneDerivedScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }
@@ -704,6 +703,10 @@ impl MarkingScheme for MonotoneDerivedScheme {
             "monotone-derived closure did not converge in {} iterations",
             marque_scheme::closure::MAX_CLOSURE_ITERATIONS
         );
+    }
+
+    fn token_category(&self, id: TokenId) -> Option<marque_scheme::category::CategoryId> {
+        bit_index(id).map(|_| CAT_X)
     }
 }
 
@@ -784,11 +787,12 @@ impl MarkingScheme for NonMonotoneDerivedScheme {
                         }
                     }
                     if let Some(derived_fn) = rule.cone_derived {
-                        for (_cat, token_ref) in derived_fn(&working) {
-                            if let TokenRef::Token(id) = token_ref {
-                                if let Some(n) = bit_index(id) {
-                                    working.bits |= 1 << n;
-                                }
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
                             }
                         }
                     }
@@ -802,6 +806,10 @@ impl MarkingScheme for NonMonotoneDerivedScheme {
             "non-monotone-derived closure did not converge in {} iterations",
             marque_scheme::closure::MAX_CLOSURE_ITERATIONS
         );
+    }
+
+    fn token_category(&self, id: TokenId) -> Option<marque_scheme::category::CategoryId> {
+        bit_index(id).map(|_| CAT_X)
     }
 }
 

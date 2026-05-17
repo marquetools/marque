@@ -63,11 +63,22 @@ use crate::severity::Severity;
 
 /// Type alias for [`ClosureRule::cone_derived`] — silences `clippy::type_complexity`.
 ///
-/// See [`ClosureRule::cone_derived`] for the contract on category agreement and
-/// monotonicity.
-pub type ConeDerivedFn<S> = fn(
-    &<S as crate::scheme::MarkingScheme>::Marking,
-) -> smallvec::SmallVec<[(crate::category::CategoryId, TokenRef); 2]>;
+/// Returns a `SmallVec` of [`FactRef<S>`] values; the executor routes each
+/// fact to its host category via [`MarkingScheme::category_of`]. See
+/// [`ClosureRule::cone_derived`] for the contract on monotonicity and the
+/// closed-vs-open-vocab rationale.
+///
+/// The `?Sized` bound matches [`FactRef<S>`]'s bound at
+/// [`crate::fix_intent::FactRef`] so the alias is well-formed for
+/// `ClosureRule<S: MarkingScheme + ?Sized>`.
+///
+/// [`FactRef<S>`]: crate::fix_intent::FactRef
+/// [`MarkingScheme::category_of`]: crate::scheme::MarkingScheme::category_of
+#[allow(type_alias_bounds)]
+pub type ConeDerivedFn<S: crate::scheme::MarkingScheme + ?Sized> =
+    fn(
+        &<S as crate::scheme::MarkingScheme>::Marking,
+    ) -> smallvec::SmallVec<[crate::fix_intent::FactRef<S>; 2]>;
 
 /// A declarative closure rule: when `triggers` are present and `suppressors`
 /// are absent, add `cone` facts to the marking.
@@ -113,8 +124,7 @@ pub type ConeDerivedFn<S> = fn(
 ///
 /// [`MarkingScheme::satisfies`]: crate::scheme::MarkingScheme::satisfies
 /// [`MarkingScheme::token_category()`]: crate::scheme::MarkingScheme::token_category
-#[derive(Debug, Clone)]
-pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
+pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// Stable scheme-unique identifier (e.g., `"capco/noforn-if-no-fdr"`).
     ///
     /// Used as the catalog row key for `[closure_rules]` config overrides
@@ -158,16 +168,32 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
     /// Optional marking-derived cone facts — supplements the static `cone` field.
     ///
     /// When `Some(f)`, the closure executor evaluates `f(marking)` after the
-    /// static `cone` facts and adds each `(CategoryId, TokenRef)` pair as an
-    /// additional fact in the scheme's marking.
+    /// static `cone` facts and adds each [`FactRef<S>`] as an additional fact
+    /// in the scheme's marking. Each returned `FactRef` is routed to its host
+    /// category via [`MarkingScheme::category_of`] — the same dispatch the
+    /// engine uses for any other `FactRef` mutation — so the derived path is
+    /// symmetric with the static path: both ask the scheme to route, neither
+    /// pre-binds a `CategoryId`.
+    ///
+    /// # Why `FactRef<S>` and not `TokenRef`
+    ///
+    /// [`TokenRef`] carries only closed `TokenId` values and an axis-level
+    /// `AnyInCategory` predicate; it cannot express open-vocabulary facts
+    /// like REL TO country codes, FGI tetragraphs, or SAR program identifiers.
+    /// The motivating PR 4b-D JOINT use case — `REL TO USA, GBR, JPN`
+    /// partner-list cone — needs `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))`,
+    /// which is the established open-vocab carrier in CAPCO
+    /// (`crates/capco/src/rules_declarative.rs:711-718`). [`FactRef<S>`]'s
+    /// `Cve` / `OpenVocab` split covers both closed and open vocab uniformly,
+    /// and the scheme's `category_of` impl owns the routing.
     ///
     /// # Contracts the function MUST satisfy
     ///
     /// **Monotonicity**: if `m1 ⊑ m2` in the marking lattice, then folding
     /// `f(m1)` into `m1` via the host categories' joins produces a result
     /// `⊑` folding `f(m2)` into `m2` via the same joins. Set inclusion of
-    /// the returned pair list (`f(m1) ⊆ f(m2)` as sets of `(CategoryId,
-    /// TokenRef)` pairs) is sufficient when every host category's join is
+    /// the returned [`FactRef<S>`] list (`f(m1) ⊆ f(m2)` as sets of
+    /// `FactRef<S>` values) is sufficient when every host category's join is
     /// set-union — the static catalog's case. Categories whose join
     /// transmutes variants — notably `JointSet` — need the property stated
     /// on the join, not on the emitted set: equal emitted sets can join to
@@ -176,13 +202,6 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
     /// operator loses monotonicity globally and the fixpoint iteration's
     /// correctness guarantee fails. Static cones are monotone by vacuous
     /// truth; derived cones MUST attest monotonicity per row.
-    ///
-    /// **Category agreement**: when the returned `TokenRef` is `Token(token_id)`,
-    /// the paired `CategoryId` MUST equal `scheme.token_category(token_id)`. The
-    /// derived form pre-binds the category for executor efficiency; routing a
-    /// token to the wrong category is an error the static path cannot express.
-    /// The closure executor (lands in PR 4b-D) is expected to enforce this with
-    /// a `#[cfg(debug_assertions)] debug_assert!(...)`.
     ///
     /// # See also: JOINT JointSet hazard
     ///
@@ -195,11 +214,15 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
     /// JOINT-row author in PR 4b-D should design around this — likely by reading
     /// the post-join normalized form, not the raw producer list.
     ///
-    /// # SmallVec inline cap revisit
+    /// # SmallVec inline cap
     ///
     /// The inline-2 cap matches the `ReplacementIntent::FactRemove::facts`
-    /// precedent from issue #348. If the eventual JOINT row produces routinely
-    /// ≥3 facts per firing, bump to inline-4 or inline-8 — one-line change here.
+    /// precedent from issue #348. JOINT's typical partner list (1-3 countries
+    /// per §H.3 worked examples) fits inline; bump to inline-4 or inline-8 if
+    /// a row routinely overflows.
+    ///
+    /// [`FactRef<S>`]: crate::fix_intent::FactRef
+    /// [`MarkingScheme::category_of`]: crate::scheme::MarkingScheme::category_of
     pub cone_derived: Option<ConeDerivedFn<S>>,
 
     /// Catalog-author severity intent.
@@ -210,7 +233,41 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
     pub default_severity: Severity,
 }
 
-impl<S: crate::scheme::MarkingScheme> ClosureRule<S> {
+// Manual `Debug` and `Clone` impls — mirror the `FactRef<S>` pattern at
+// `crate::fix_intent::FactRef`'s `impl Debug` / `impl Clone` so the trait
+// bounds resolve through the struct's fields without over-constraining on
+// `S: Debug` or `S: Clone`. `CapcoScheme: !Clone`, so a `#[derive(Clone)]`
+// here would silently prevent any `ClosureRule<CapcoScheme>` from being
+// cloned even though every concrete field is `Copy`.
+impl<S: crate::scheme::MarkingScheme + ?Sized> core::fmt::Debug for ClosureRule<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ClosureRule")
+            .field("name", &self.name)
+            .field("label", &self.label)
+            .field("triggers", &self.triggers)
+            .field("suppressors", &self.suppressors)
+            .field("cone", &self.cone)
+            .field("cone_derived", &self.cone_derived.map(|_| "<fn>"))
+            .field("default_severity", &self.default_severity)
+            .finish()
+    }
+}
+
+impl<S: crate::scheme::MarkingScheme + ?Sized> Clone for ClosureRule<S> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name,
+            label: self.label,
+            triggers: self.triggers,
+            suppressors: self.suppressors,
+            cone: self.cone,
+            cone_derived: self.cone_derived,
+            default_severity: self.default_severity,
+        }
+    }
+}
+
+impl<S: crate::scheme::MarkingScheme + ?Sized> ClosureRule<S> {
     /// Returns `true` if the trigger condition is met for the given marking.
     ///
     /// The trigger condition is N-ary OR: true when ANY trigger in
