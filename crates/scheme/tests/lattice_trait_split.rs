@@ -118,10 +118,10 @@ fn full_lattice_bounded_identities() {
     let bottom = FullLattice::bottom();
     let top = FullLattice::top();
     let x = FullLattice(42);
-    assert_eq!(bottom.join(&x), x);   // bottom ⊔ x = x
-    assert_eq!(x.join(&bottom), x);   // x ⊔ bottom = x
-    assert_eq!(top.meet(&x), x);      // top ⊓ x = x
-    assert_eq!(x.meet(&top), x);      // x ⊓ top = x
+    assert_eq!(bottom.join(&x), x); // bottom ⊔ x = x
+    assert_eq!(x.join(&bottom), x); // x ⊔ bottom = x
+    assert_eq!(top.meet(&x), x); // top ⊓ x = x
+    assert_eq!(x.meet(&top), x); // x ⊓ top = x
 }
 
 #[test]
