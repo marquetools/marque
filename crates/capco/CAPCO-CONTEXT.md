@@ -186,6 +186,10 @@ installed per-category Lattice impls in `marque-capco::lattice`
 NatoDissemSet, RelToBlock, DeclassifyOnLattice) and fixed two
 PageContext bugs in lock-step:
 
+(PR #456 subsequently split `Lattice` into `JoinSemilattice +
+MeetSemilattice` halves; `DissemSet` and `JointSet` implement only the
+join half — see `docs/plans/2026-05-01-lattice-design.md` §12.)
+
 - OC-USGOV supersession (replaces unanimity-drop) per §H.8 p136 + p140.
 - RELIDO observed-unanimity at banner roll-up per §H.8 pp155-156.
 
@@ -227,7 +231,7 @@ PR 4b-C closed two G-divergences from PR 4b-B:
   kept UCNI through `AeaSet::from_markings`).
 
 The `CapcoMarking::join_via_lattice` sibling method composes the new
-lattice types; the production `Lattice::join` still delegates to
+lattice types; the production `JoinSemilattice::join` still delegates to
 PageContext, and the parity gate at
 `crates/capco/tests/page_context_lattice_parity.rs` (currently 69
 `#[test]` fixtures — 51 PageContext-vs-lattice byte-identity + 4

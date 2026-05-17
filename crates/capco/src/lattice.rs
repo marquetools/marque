@@ -2294,21 +2294,18 @@ impl DissemSet {
 
 // P-9-3 (9th-pass) — Partial-lattice divergence note for `DissemSet`.
 //
-// `DissemSet` implements `Lattice` (join + meet) but does NOT satisfy
-// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full
-// `(set, relido_observed_unanimous)` pair. The `relido_observed_unanimous`
-// flag is a join-side aggregation property (a record of observed page
-// composition); `meet` has no natural reading for this flag and returns
-// the vacuous-true value, which is the identity under subsequent AND-joins.
-// This keeps the load-bearing `a ⊔ (a ⊓ b) = a` law intact but means
-// generic `Lattice` consumers that call `meet` and rely on dual absorption
-// are NOT safe for `DissemSet`. The trait shape will be refined in a
-// follow-up PR once `marque-scheme` gains a `JoinSemilattice` /
-// `MeetSemilattice` split (tracked as GitHub issue #456).
+// `DissemSet` implements only `JoinSemilattice`, NOT `MeetSemilattice`.
+// The `relido_observed_unanimous` flag is a join-side aggregation property
+// (a record of observed page composition); `meet` has no natural reading
+// for this flag — the dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold
+// over the full `(set, relido_observed_unanimous)` pair. PR #456 resolved
+// this by splitting the `Lattice` trait into `JoinSemilattice` and
+// `MeetSemilattice` halves; `DissemSet` implements only the join half,
+// so the type system now rejects any attempt to call `.meet()` on it at
+// compile time.
 //
 // See the `DissemSet` doc comment above (§ "Partial-lattice note C-4")
-// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
-// IS guaranteed; only the meet-over-join direction diverges.
+// for full rationale.
 impl JoinSemilattice for DissemSet {
     fn join(&self, other: &Self) -> Self {
         // The single-static-table convention is enforced by the
@@ -2730,21 +2727,15 @@ impl JointSet {
 
 // P-9-3 (9th-pass) — Partial-lattice divergence note for `JointSet`.
 //
-// `JointSet` implements `Lattice` (join + meet) but does NOT satisfy
-// the dual absorption law `a ⊓ (a ⊔ b) = a` over the full state space.
+// `JointSet` implements only `JoinSemilattice`, NOT `MeetSemilattice`.
 // The `Mixed` / `DisunityCollapse` distinction is a record of observed
 // page composition (join-side aggregation), not an algebraic element;
-// `meet` has no natural reading for non-identical producer sets and
-// returns `Bottom`. Generic `Lattice` consumers that call `meet` and
-// rely on dual absorption are NOT safe for `JointSet`. The trait shape
-// will be refined in a follow-up PR once `marque-scheme` gains a
-// `JoinSemilattice` / `MeetSemilattice` split (tracked as GitHub issue
-// #456).
-//
-// See the `JointSet::meet` doc comment below (§ "Partial-lattice note C-6")
-// for full rationale. The join-side absorption law `a ⊔ (a ⊓ b) = a`
-// IS guaranteed over the `Bottom` / `UnanimousProducers` sub-lattice;
-// only the meet-over-join direction diverges outside that sub-lattice.
+// `meet` has no natural reading for non-identical producer sets — the
+// dual absorption law `a ⊓ (a ⊔ b) = a` cannot hold over the full state
+// space. PR #456 resolved this by splitting the `Lattice` trait into
+// `JoinSemilattice` and `MeetSemilattice` halves; `JointSet` implements
+// only the join half, so the type system now rejects any attempt to call
+// `.meet()` on it at compile time.
 impl JoinSemilattice for JointSet {
     ///   with union of non-US producers and max level.
     fn join(&self, other: &Self) -> Self {

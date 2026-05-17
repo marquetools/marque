@@ -2155,7 +2155,7 @@ The transitions satisfy assoc/comm/idem on the state space:
   space at the cost of a few microseconds at test time.
 
 **The transitions are structural lattice operations on a deterministic
-state space — NOT "normalization."** The `Lattice for JointSet` impl
+state space — NOT "normalization."** The `JoinSemilattice for JointSet` impl
 does not need to retain inputs and re-derive output; the post-join
 variant carries every fact the post-join state needs for `to_*`
 round-trips and for the W004 diagnostic.
@@ -2193,7 +2193,7 @@ is preserved bit-for-bit.
 **Empty-producer-list defensive shape**: `UnanimousProducers { level,
 producers: ∅ }` is malformed per §H.3 (JOINT requires at least USA + 1
 co-owner). The constructor `JointSet::from_attrs_iter` returns
-`Bottom` when given an empty producer set; the `Lattice::join`
+`Bottom` when given an empty producer set; the `JoinSemilattice::join`
 arithmetic above never produces an `UnanimousProducers` with an empty
 set from non-empty operands. The lattice consultant flagged this as a
 hazard; the test `joint_unanimous_empty_producers_normalizes_to_bottom`
@@ -2221,7 +2221,7 @@ order:
    portion lacks it.
 4. **NOFORN dominates** (§D.2 Table 3 rows 1-2 + §H.8 p145): drop
    REL TO / RELIDO / DISPLAY ONLY tokens when NOFORN is present in
-   the joined set. The post-join `Lattice::join` re-applies steps 2-4
+   the joined set. The post-join `JoinSemilattice::join` re-applies steps 2-4
    on the BTreeSet union so the supersession overlays remain
    idempotent.
 
@@ -2378,4 +2378,75 @@ This preserves the variant-tag information that `JointSet`/`FgiSet`
 need for accurate banner attribution downstream.
 
 ---
+
+## 12. PR #456 addenda (2026-05-17) — `JoinSemilattice` / `MeetSemilattice` trait split
+
+### 12.1 Motivation
+
+`marque-scheme` previously defined a single `Lattice` trait combining both
+`join` and `meet`. This forced `DissemSet`, `JointSet`, and `SupersessionSet`
+into an uncomfortable position: they had natural join semantics but no well-
+defined meet, yet they needed to implement the full `Lattice` trait to be
+usable in generic lattice contexts.
+
+`DissemSet` and `JointSet` both carry join-side observational state
+(`relido_observed_unanimous` and the `Mixed`/`DisunityCollapse` distinction
+respectively) that has no sensible interpretation in a meet operation. Pre-PR
+#456 the "solution" was to implement `meet` with a vacuous identity-safe value
+and document the partial violation via the P-9-3 comments (kept above in §11.3
+/ §11.4). The "trait shape will be refined in a follow-up PR" language in those
+comments referred to this PR.
+
+`SupersessionSet` has a different problem: its post-join supersession overlay
+makes `meet` non-idempotent for non-trivial inputs (`a ⊓ a ≠ a` when
+supersession strips a token that was present in both operands), violating a
+core lattice law.
+
+### 12.2 Resolution
+
+PR #456 split `Lattice` into:
+
+- `JoinSemilattice` — supplies `fn join(&self, other: &Self) -> Self`
+- `MeetSemilattice` — supplies `fn meet(&self, other: &Self) -> Self`
+- `Lattice` — blanket-impl marker: `impl<T: JoinSemilattice + MeetSemilattice> Lattice for T {}`
+- `BoundedJoinSemilattice` — supplies `fn bottom() -> Self`
+- `BoundedMeetSemilattice` — supplies `fn top() -> Self`
+- `BoundedLattice` — blanket-impl marker: `impl<T: Lattice + BoundedJoinSemilattice + BoundedMeetSemilattice> BoundedLattice for T {}`
+
+The three join-only types (`DissemSet`, `JointSet`, `SupersessionSet`) now
+implement ONLY `JoinSemilattice`. The type system rejects any `.meet()` call
+on these types at compile time, replacing the runtime tests that previously
+verified partial-absorption behavior.
+
+### 12.3 Affected types (summary)
+
+| Type | Before PR #456 | After PR #456 | Rationale |
+|---|---|---|---|
+| `DissemSet` | `impl Lattice` (with partial meet) | `impl JoinSemilattice` only | `relido_observed_unanimous` is join-side state; meet has no natural definition |
+| `JointSet` | `impl Lattice` (with partial meet) | `impl JoinSemilattice` only | `Mixed`/`DisunityCollapse` are observational join-side variants |
+| `SupersessionSet` | `impl Lattice` (with broken meet) | `impl JoinSemilattice` only | Post-join supersession makes meet non-idempotent |
+| `SciSet`, `SarSet`, `FgiSet`, `AeaSet`, `ClassificationLattice`, `NatoClassLattice`, `DeclassifyOnLattice`, `NatoDissemSet`, `RelToBlock` | `impl Lattice` | `impl JoinSemilattice + impl MeetSemilattice` (both) | Full lattice — no change in semantics, trait surface split only |
+| `ClassificationLattice`, `NatoClassLattice` | `impl BoundedLattice` | `impl BoundedJoinSemilattice + impl BoundedMeetSemilattice` | BoundedLattice is now a blanket impl; explicit bounded impls required |
+
+### 12.4 Scheme trait surface change
+
+`MarkingScheme::type Marking` bound relaxed from `Lattice` to
+`JoinSemilattice`. All generic code that only calls `.join()` now only requires
+`JoinSemilattice` in scope; callers that also need `.meet()` must bound on
+`MeetSemilattice` explicitly. `DiffInput<M>` follows the same relaxation
+(bound was `M: Lattice`, now `M: JoinSemilattice`).
+
+### 12.5 Tests removed (type-system enforcement)
+
+Five tests in `crates/capco/tests/category_lattice_laws.rs` that called
+`.meet()` on `DissemSet` or `JointSet` were removed. They are now
+compile-time rejections rather than runtime property tests:
+
+- `dissem_set_join_side_absorption` proptest
+- `dissem_set_absorption_specific_relido_case`
+- `joint_set_join_side_absorption`
+- `joint_set_meet_identical_producers_returns_min_level`
+- `joint_set_proptest_join_side_absorption` proptest
+
+Each removal site carries a comment noting the PR #456 trait-split resolution.
 
