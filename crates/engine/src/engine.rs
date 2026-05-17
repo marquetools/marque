@@ -282,6 +282,25 @@ pub struct Engine {
     /// shape rationale.
     #[allow(dead_code)]
     pass2_rule_indices: Pass2Indices,
+    /// PageFinalization rule partition (issue #461) — read by
+    /// `dispatch_page_finalization` at every scanner-emitted
+    /// `MarkingType::PageBreak` (BEFORE the PageContext reset) and
+    /// once at end-of-document. Each entry is a
+    /// `(rule_set_index, rule_index_within_set)` pair indexing back
+    /// into `self.rule_sets[set_idx].rules()[rule_idx]`.
+    ///
+    /// Today's only consumer is W004 `joint-disunity-collapse`,
+    /// which fires on the page-level fixpoint snapshot of the
+    /// classification axis. Future PageFinalization rules (S007 and
+    /// `BannerMatchesProjectedRule` migrations are scheduled
+    /// follow-ups) will appear here without altering the dispatch
+    /// structure. The partition is read at lint time (via
+    /// `dispatch_page_finalization`); none of today's PageFinalization
+    /// rules emit a `FixProposal`, so fix-time pass-2 does not yet
+    /// need to consult this field. When the first fixable
+    /// PageFinalization rule lands, the `TwoPassFixer` will need a
+    /// matching pass-2 read site here.
+    pass_finalization_rule_indices: PassFinalizationIndices,
 
     /// Pre-resolved severity for every registered rule's *registered* ID,
     /// indexed outer-by-rule-set, inner-by-rule-index-within-set. Built
@@ -474,13 +493,17 @@ impl Engine {
 
         // PR 7a phase-partition walk (FR-021). Read every registered
         // rule's declared `Phase` and partition the rule set into a
-        // pass-1 (Localized) list and a pass-2 (WholeMarking) list
-        // indexed by `(rule_set_index, rule_index_within_set)`. The
-        // walk runs once at construction time; per-document dispatch
-        // reads the cached partition. Phase partition stored but
-        // unused in 7a; 7b restructures `fix_inner` to dispatch on
-        // it.
-        let (pass1_rule_indices, pass2_rule_indices) = partition_rules_by_phase(&rule_sets);
+        // pass-1 (Localized) list, a pass-2 (WholeMarking) list, and
+        // (issue #461) a pass-finalization (PageFinalization) list,
+        // each indexed by `(rule_set_index, rule_index_within_set)`.
+        // The walk runs once at construction time; per-document
+        // dispatch reads the cached partition. Phase partition stored
+        // but unused in 7a; 7b restructures `fix_inner` to dispatch on
+        // it; the issue #461 third bucket is read by
+        // `dispatch_page_finalization` at every PageBreak boundary
+        // and at EOD.
+        let (pass1_rule_indices, pass2_rule_indices, pass_finalization_rule_indices) =
+            partition_rules_by_phase(&rule_sets);
 
         // Pre-resolve all rule severity overrides into indexed lookup
         // tables consumed by the lint hot loop. Drops the per-candidate
@@ -507,6 +530,7 @@ impl Engine {
             corpus_override: None,
             pass1_rule_indices,
             pass2_rule_indices,
+            pass_finalization_rule_indices,
             fast_path_severities,
             emitted_id_overrides,
         })
@@ -3809,6 +3833,17 @@ type Pass1Indices = SmallVec<[(usize, usize); 4]>;
 /// contracting, so 32 stays comfortable. See [`Engine::pass2_rule_indices`]
 /// for the same rationale at greater length.
 type Pass2Indices = SmallVec<[(usize, usize); 32]>;
+/// PageFinalization rule-index partition (issue #461). Inline-4 —
+/// PageFinalization is dispatched once per page (not per candidate),
+/// so the registered-rule count drives this, not call frequency. W004
+/// is the first consumer (one rule). Two scheduled follow-up PRs
+/// (S007, BannerMatchesProjectedRule) will add at most a handful
+/// more; if the count grows beyond inline capacity the SmallVec
+/// spills to the heap (one allocation at engine construction time —
+/// not on the hot path). 4 is a deliberate small-inline budget: this
+/// partition is consulted once per page-break + once at EOD, which
+/// is O(pages) per document, not O(candidates).
+type PassFinalizationIndices = SmallVec<[(usize, usize); 4]>;
 
 /// Pre-resolved registered-ID severity table consumed by Site A's
 /// fast-path Off-skip. Outer-indexed by rule-set, inner by rule-index-
@@ -3825,13 +3860,23 @@ type EmittedIdOverrides = HashMap<&'static str, Severity>;
 
 /// Partition the registered rules by their declared [`Phase`] (FR-021).
 ///
-/// Returns `(pass1, pass2)` where each entry is a
+/// Returns `(pass1, pass2, pass_finalization)` where each entry is a
 /// `(rule_set_index, rule_index_within_set)` pair indexing back into
-/// the caller's `rule_sets[i].rules()[j]`. `pass1` enumerates every
-/// [`Phase::Localized`] rule; `pass2` enumerates every
-/// [`Phase::WholeMarking`] rule. Together they cover every registered
-/// rule exactly once — the trait method is total over `Phase`'s two
-/// variants.
+/// the caller's `rule_sets[i].rules()[j]`:
+///
+/// - `pass1` enumerates every [`Phase::Localized`] rule (pass-1
+///   forward-splice in `TwoPassFixer`).
+/// - `pass2` enumerates every [`Phase::WholeMarking`] rule (pass-2
+///   apply_intent in `TwoPassFixer`).
+/// - `pass_finalization` enumerates every [`Phase::PageFinalization`]
+///   rule (issue #461). Dispatched by the engine's synthetic-candidate
+///   path at each scanner-emitted `MarkingType::PageBreak` (BEFORE the
+///   PageContext reset) and once at end-of-document — see
+///   `dispatch_page_finalization`.
+///
+/// Together they cover every registered rule exactly once. `Phase` is
+/// `#[non_exhaustive]` per issue #461; the wildcard arm below is a
+/// loud failure for a future variant rather than a silent bucket.
 ///
 /// Walked once at [`Engine::with_clock`] time and cached on the engine.
 /// Per-document `fix` dispatch reads `pass1_rule_indices` via
@@ -3842,21 +3887,38 @@ type EmittedIdOverrides = HashMap<&'static str, Severity>;
 /// that field) for symmetry with pass-1. PR 7c retained the
 /// complement dispatch (implementer Decision #4); see
 /// [`Engine::pass2_rule_indices`] for the rationale and the
-/// deferred-migration framing.
+/// deferred-migration framing. `pass_finalization_rule_indices` is
+/// the issue #461 third bucket — read directly by
+/// `dispatch_page_finalization` at lint time and (when a future
+/// PageFinalization rule emits a fix) by the corresponding pass-2
+/// path at fix time. Today's only consumer (W004) emits no fix.
 fn partition_rules_by_phase(
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
-) -> (Pass1Indices, Pass2Indices) {
+) -> (Pass1Indices, Pass2Indices, PassFinalizationIndices) {
     let mut pass1: Pass1Indices = SmallVec::new();
     let mut pass2: Pass2Indices = SmallVec::new();
+    let mut pass_finalization: PassFinalizationIndices = SmallVec::new();
     for (set_idx, rule_set) in rule_sets.iter().enumerate() {
         for (rule_idx, rule) in rule_set.rules().iter().enumerate() {
             match rule.phase() {
                 Phase::Localized => pass1.push((set_idx, rule_idx)),
                 Phase::WholeMarking => pass2.push((set_idx, rule_idx)),
+                Phase::PageFinalization => pass_finalization.push((set_idx, rule_idx)),
+                // `Phase` is `#[non_exhaustive]` (issue #461). A
+                // future variant should fail loudly at engine
+                // construction time so the dispatch path stays
+                // explicit — never silently bucket a new phase
+                // into an existing pass.
+                _ => panic!(
+                    "partition_rules_by_phase: unknown Phase variant for rule {:?}; \
+                     `Phase` is #[non_exhaustive] and a new variant requires explicit \
+                     engine plumbing before it can be registered",
+                    rule.id().as_str()
+                ),
             }
         }
     }
-    (pass1, pass2)
+    (pass1, pass2, pass_finalization)
 }
 
 /// Pre-resolve all rule severity overrides into two indexed lookup

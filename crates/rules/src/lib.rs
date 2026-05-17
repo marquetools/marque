@@ -232,11 +232,25 @@ pub use marque_scheme::Severity;
 /// No `Phase::Both` escape hatch. A defect class that genuinely needs
 /// detection in both phases registers two rule entries (one per phase)
 /// sharing a backend module — see `docs/plans/2026-05-02-engine-refactor-consolidated.md`
-/// §9.1 for the design rationale.
+/// §9.1 for the design rationale. The same rationale extends to
+/// [`Phase::PageFinalization`] (issue #461): a rule that needs both a
+/// per-marking pass and a page-level fixpoint pass registers two
+/// entries, not a Phase::Both wildcard.
 ///
 /// PR 7a (this commit) plumbs the type into `Rule` and stashes a
-/// partition on `Engine`; pass-split dispatch lands in 7b.
+/// partition on `Engine`; pass-split dispatch lands in 7b. Issue
+/// #461 (PR refactor-006-pr-pagefinalization) adds
+/// [`Phase::PageFinalization`] as a third dispatch bucket.
+///
+/// **`#[non_exhaustive]`** (issue #461): adding a future dispatch
+/// phase (e.g., document-finalization once cross-page rules land)
+/// should be a non-breaking change for downstream consumers. The
+/// project is pre-1.0 with no published external rule crates today
+/// (the engine refactor's API stability freeze begins at PR 10), so
+/// the cost of adding it now is zero and the long-term option value
+/// is high.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Phase {
     /// Every `Diagnostic` the rule emits has a `Diagnostic::span`
     /// strictly inside a single token boundary — applies regardless
@@ -273,6 +287,59 @@ pub enum Phase {
     /// for the design rationale per PM decision D-7.2 in
     /// `docs/refactor-006/pr-7-pm-decisions.md`).
     WholeMarking,
+    /// Dispatched exactly once per page on the **closed** page-level
+    /// fixpoint — at every scanner-emitted page-break boundary (BEFORE
+    /// the `PageContext` reset, see [`marque_ism::MarkingType::PageFinalization`])
+    /// and once at end-of-document. At dispatch time the engine has
+    /// finished accumulating every portion's contribution to the
+    /// `PageContext`, so a rule reading `ctx.page_context` /
+    /// `ctx.page_marking` sees the Knaster-Tarski fixpoint of the
+    /// page-axis lattices (classification, SCI, SAR, AEA, dissem,
+    /// REL TO, FGI marker), not an intermediate snapshot. This is the
+    /// closure of issue #461.
+    ///
+    /// Both `ctx.page_context` and `ctx.page_marking` are always
+    /// populated on a PageFinalization dispatch (the engine
+    /// force-initializes both Arcs from the live accumulator before
+    /// invoking the rule); a defensive `.as_ref()?` early-return is
+    /// nonetheless idiomatic so the rule stays safe under future
+    /// engine refactors that might relax the invariant.
+    ///
+    /// **Triggering surface.** The engine synthesizes a single
+    /// dispatch per `MarkingType::PageBreak` candidate (BEFORE the
+    /// PageContext reset, so the dispatched rules see the closing
+    /// page) and one final dispatch at end-of-document covering any
+    /// trailing portions that never reached a page-break. Empty pages
+    /// (no portions) are skipped — there is no page-level fixpoint to
+    /// observe.
+    ///
+    /// **`Diagnostic::span`.** Rules typically reference a portion
+    /// span looked up from `ctx.page_context.portions()` for
+    /// user-facing precision. When no per-portion span survives in
+    /// `PageContext` (the type stores `Box<[CanonicalAttrs]>` only, not
+    /// attrs-with-span — issue #461 chose not to extend the hot-path
+    /// data type for a single diagnostic), the rule MAY fall back to
+    /// `ctx.candidate_span` which the engine sets to a zero-length
+    /// anchor at the boundary offset. Document the limitation in the
+    /// rule's doc comment if you use the fallback.
+    ///
+    /// **No-fix emission convention.** Rules in this phase today
+    /// surface diagnostics without `FixProposal` (W004 is the first
+    /// consumer — the JOINT→FGI migration is renderer-canonical
+    /// territory; see W004's doc comment for the trade-off rationale).
+    /// A future PR that introduces a fixable PageFinalization rule
+    /// will need to thread the synthetic boundary candidate through
+    /// the existing two-pass fix pipeline. The naming
+    /// (`TwoPassFixer`) reflects fix-application passes — pass-1
+    /// Localized splice → re-parse → pass-2 WholeMarking apply_intent
+    /// — and stays accurate: PageFinalization rules ride pass-2 at
+    /// fix-time if they ever produce fixes.
+    ///
+    /// Issue #461 (PR refactor-006-pr-pagefinalization) introduces
+    /// this phase. The §9.1 "no Phase::Both escape hatch" rationale
+    /// (above) extends here: a rule needing both a per-marking pass
+    /// and a page-level pass registers two entries.
+    PageFinalization,
 }
 
 // ---------------------------------------------------------------------------

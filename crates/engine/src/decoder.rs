@@ -3663,8 +3663,16 @@ const NATO_LONGHAND_FOLD: &[(&str, NatoClassification)] = &[
 /// Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (canonical Register);
 /// §A.6 p15 (`//` prefix for non-US classifications); §H.7 (FGI transmutation).
 fn try_nato_fold(text: &str, kind: MarkingType) -> Option<String> {
-    // CAB and PageBreak inputs don't carry NATO classifications.
-    if matches!(kind, MarkingType::Cab | MarkingType::PageBreak) {
+    // CAB, PageBreak, and PageFinalization inputs don't carry NATO
+    // classifications — they are non-content / engine-synthesized
+    // boundary candidates. PageFinalization (issue #461) is dispatched
+    // only to `Phase::PageFinalization` rules and never enters the
+    // strict/decoder recognize path on actual bytes; the early-return
+    // mirrors the existing Cab/PageBreak shape.
+    if matches!(
+        kind,
+        MarkingType::Cab | MarkingType::PageBreak | MarkingType::PageFinalization
+    ) {
         return None;
     }
     // All NATO classification tokens are pure ASCII; non-ASCII input
@@ -5101,9 +5109,19 @@ fn for_each_canonical_token(
                 MarkingClassification::Nato(n) => n.portion_str(),
                 _ => class.effective_level().portion_str(),
             },
-            MarkingType::Banner | MarkingType::Cab | MarkingType::PageBreak => {
-                class.effective_level().banner_str()
-            }
+            // Banner/CAB use the full-word banner form. PageBreak and
+            // PageFinalization are non-content boundaries that never
+            // reach the decoder's recognize path on a real candidate
+            // — but the feature extractor is shape-only and the
+            // fall-through to `banner_str()` is the safe choice if
+            // an exhaustive arm ever drove it here in the future.
+            // `MarkingType` is `#[non_exhaustive]` (issue #461); the
+            // wildcard arm keeps this site forward-compatible.
+            MarkingType::Banner
+            | MarkingType::Cab
+            | MarkingType::PageBreak
+            | MarkingType::PageFinalization
+            | _ => class.effective_level().banner_str(),
         };
         f(class_token);
     }
