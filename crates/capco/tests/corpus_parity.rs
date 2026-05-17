@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        39,
+        38,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -276,7 +276,16 @@ fn rule_count_reflects_registration_changes() {
          only way to surface two severities for one trigger), NOT \
          §-grounded; CAPCO-2016 §H.8 + §D.2 Table 3 rule 21 apply \
          uniformly to REL TO atom-semantics. Net delta: -1. Final: \
-         39. \
+         39. PR closing #470 retires \
+         `DeclarativeCominglingWarningRule` (W002). CAPCO-2016 §H.7 \
+         p123 (`crates/capco/docs/CAPCO-2016.md` lines 3051-3065) \
+         documents `(S//FGI AUS GBR)` as the canonical \"Example \
+         Portion Mark (when sources are acknowledged, but not \
+         segregated from US)\" shape — exactly what the predicate \
+         was warning on. The §H.7 p124 segregation rule is \
+         conditioned on ICD-206 status (a document-level property), \
+         so a portion-local warning premised on it produces noise \
+         without a useful action. Net delta: -1. Final: 38. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

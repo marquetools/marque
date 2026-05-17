@@ -2,11 +2,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Custom-constraint predicate bodies (E012, E014, E021, E024, E038,
-//! W002) plus the catalog-row emit helpers (`class_floor_emit`,
+//! Custom-constraint predicate bodies (E012, E014, E021, E024, E038)
+//! plus the catalog-row emit helpers (`class_floor_emit`,
 //! `sci_per_system_emit`). Lifted from the monolithic `constraints.rs`
 //! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! (`claudedocs/refactor-466/stage2_leaves_plan.md`). W002 retired in
+//! the PR closing #470 — its predicate body and catalog row are gone.
 
 use super::super::actions::emit_companion_required;
 use super::super::predicates::{class_floor_anchor_span, class_floor_satisfied, rel_to_covers};
@@ -18,10 +19,9 @@ use super::super::*;
 //
 // Each helper is the predicate body for a `Constraint::Custom` entry in
 // `build_constraints`. The helpers do NOT reference `RuleContext` — only
-// `CanonicalAttrs`. Per-context filtering (e.g., W002 portion-only) lives in
-// the wrapper layer (`crate::rules_declarative`); the catalog represents
-// "this marking is structurally inconsistent" without regard to where the
-// marking appears.
+// `CanonicalAttrs`. Per-context filtering lives in the wrapper layer
+// (`crate::rules_declarative`); the catalog represents "this marking is
+// structurally inconsistent" without regard to where the marking appears.
 //
 // The returned `ConstraintViolation` populates `message` with text that the
 // wrapper inspects when constructing the user-facing `Diagnostic`. The
@@ -209,26 +209,6 @@ pub(crate) fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104",
-        span: None,
-        severity: None,
-    }]
-}
-
-/// W002 — US classification + FGI marker is commingling. Always fires when
-/// both are present; the wrapper filters by `RuleContext::marking_type ==
-/// Portion`. CAPCO §H.7 lines 8254-8268.
-pub(crate) fn w002_us_commingled_with_fgi(
-    attrs: &marque_ism::CanonicalAttrs,
-) -> Vec<ConstraintViolation> {
-    if attrs.us_classification().is_none() || attrs.fgi_marker.is_none() {
-        return Vec::new();
-    }
-    vec![ConstraintViolation {
-        constraint_label: "W002/us-commingled-with-fgi",
-        message: "portion mark comingles US classification with FGI; \
-                  consider splitting into separate US and foreign paragraphs"
-            .to_owned(),
-        citation: "CAPCO-2016 §H.7 p124",
         span: None,
         severity: None,
     }]

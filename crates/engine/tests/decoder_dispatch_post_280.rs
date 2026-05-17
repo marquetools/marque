@@ -456,8 +456,11 @@ fn canonical_sar_portion_emits_no_decoder_diagnostic() {
 #[test]
 fn canonical_fgi_portion_emits_no_decoder_diagnostic() {
     // `(S//FGI DEU)` — already canonical with a valid sovereign
-    // trigraph as the ownership token. The strict path admits DEU;
-    // W002 (commingling) fires but R001 does not.
+    // trigraph as the ownership token. The strict path admits DEU
+    // and R001 does not fire. (W002, the commingling-warning rule
+    // that used to fire on this shape, was retired in the PR
+    // closing #470; the canonical US-CLASS + FGI [LIST] shape is
+    // §H.7 p123-authorized and no longer triggers any rule.)
     let engine = build_engine();
     let lint = engine.lint(b"(S//FGI DEU)");
     assert!(

@@ -140,7 +140,8 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // classification block — crosses a token boundary). Phase::Localized's
     // single-token-span contract would fail the augmentation branch.
     ("S007", Phase::WholeMarking),
-    ("W002", Phase::WholeMarking),
+    // W002 retired in the PR closing #470 (CAPCO §H.7 p123
+    // authorized the shape the rule warned on).
     ("W003", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),
     // ----- Phase::PageFinalization (2 rules, issues #461 + #488) ----
