@@ -761,6 +761,68 @@ fn fix_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
     });
 }
 
+// SCI-composite parsing stress fixture.
+//
+// `crates/core/src/parser.rs` builds the `{ctrl}-{comp}` composite
+// string for the bare-CVE `SciControl::parse` lookup at three sites
+// (structural parser body, whole-block long-form recognizer body, and
+// deprecated long-form chunk recognizer body). This fixture packs SCI
+// portions across all nine known CVE composites (HCS-{O,P,X},
+// SI-{EU,G,NK}, TK-{BLFH,IDIT,KAND}) plus one structural-only
+// sub-compartment shape (`SI-G ABCD`) so the bench amplifies the
+// composite-lookup cost in the hot path without any prose dilution.
+// `Engine::lint` alone is sufficient — the cost lives inside the
+// parser, not the rule/fix machinery, so a per-portion FactAdd shape
+// is not needed.
+//
+// Provenance: issue #435 asked whether the `format!` heap-allocation
+// at the three SCI-composite sites was worth removing. The won't-fix
+// measurement on this fixture (600 portions, +0.28% p=0.72) closed
+// #435, but the fixture itself stays as advisory measurement
+// infrastructure for any future PR that touches the SCI composite
+// path (parser refactor, grammar extension, alternative CVE-lookup
+// scheme). Not in `benches/baseline.json`; don't gate on it.
+fn build_sci_composite_dense_input(portion_count: usize) -> Vec<u8> {
+    let block = concat!(
+        "(TS//HCS-O)\n",
+        "(TS//HCS-P)\n",
+        "(TS//HCS-X)\n",
+        "(TS//SI-EU)\n",
+        "(TS//SI-G)\n",
+        "(TS//SI-NK)\n",
+        "(TS//TK-BLFH)\n",
+        "(TS//TK-IDIT)\n",
+        "(TS//TK-KAND)\n",
+        "(TS//SI-G ABCD)\n",
+    );
+    let block_bytes = block.as_bytes();
+    // 10 portions per block — round up so we reach at least portion_count.
+    let block_count = portion_count.div_ceil(10);
+    let mut input = Vec::with_capacity(block_bytes.len() * block_count);
+    for _ in 0..block_count {
+        input.extend_from_slice(block_bytes);
+    }
+    input
+}
+
+fn lint_sci_composite_dense_benchmark(c: &mut Criterion) {
+    let input = build_sci_composite_dense_input(600);
+    let engine = Engine::new(
+        Config::default(),
+        marque_engine::default_ruleset(),
+        marque_engine::default_scheme(),
+    )
+    .expect("default CAPCO scheme has no rewrite cycles")
+    // INTENTIONAL-STRICT: pin strict recognizer so the SCI composite
+    // measurement isolates the parser path from the dispatcher's
+    // decoder fallback. Issue #435.
+    .with_recognizer(Arc::new(StrictRecognizer::new()));
+
+    c.bench_function("lint_sci_composite_dense", |b| {
+        b.iter(|| engine.lint(black_box(&input)));
+    });
+}
+
 criterion_group!(
     benches,
     lint_latency_benchmark,
@@ -773,6 +835,7 @@ criterion_group!(
     lint_intent_heavy_benchmark,
     lint_parsed_markings_cache_population_stress_benchmark,
     fix_parsed_markings_cache_stress_benchmark,
+    lint_sci_composite_dense_benchmark,
     decoder_deep_scan_mangled_benchmark,
     decoder_clean_input_through_fallback_benchmark,
 );
