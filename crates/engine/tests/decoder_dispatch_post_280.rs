@@ -120,23 +120,26 @@ fn find_r001(diags: &[Diagnostic<CapcoScheme>]) -> Option<&Diagnostic<CapcoSchem
 // ============================================================================
 
 #[test]
-fn sar_lowercase_program_id_emits_r001_suggest() {
+fn sar_lowercase_program_id_emits_r001_fix() {
     // `(TS//SAR-fk)` — lowercase program identifier. Pre-#280 the
     // strict parser silently accepted this as `SarProgram { id: "fk" }`.
     // Post-#280 the strict path rejects the shape; the dispatcher's
     // decoder fallback recognizes the canonical `SAR-FK` form.
     //
-    // NOTE: today the decoder's posterior on this SAR-shape recovery
-    // falls below the default `confidence_threshold = 0.95`, so the
-    // engine demotes the R001 diagnostic from `Severity::Fix` to
-    // `Severity::Suggest` (see `Engine::lint` post-emission demotion
-    // pass). #280's claim of "auto-fix via R001" was directionally
-    // right but glossed over this demotion. A future PR that
-    // tightens the decoder's posterior calibration for SAR shapes —
-    // or relaxes the threshold — would re-promote these to
-    // `Severity::Fix`; the assertion below is the explicit guard
-    // that pins today's behavior. Tracking is #493 (this PR); any
-    // change should land alongside an explicit pin update.
+    // NOTE: pre-#472 the decoder's posterior on this SAR-shape
+    // recovery fell below the default `confidence_threshold = 0.95`,
+    // so the engine demoted R001 to `Severity::Suggest`. Post-#472
+    // the null hypothesis is now summed over the **observed** bytes
+    // (`TS`, `SAR`, `FK`) instead of the canonical token set (just
+    // `TS` — SAR program identifiers aren't part of
+    // `for_each_canonical_token`'s walk). The observed-bytes null is
+    // materially more negative, recognition_runner_up drops, and the
+    // resulting recognition_score clears the 0.95 threshold —
+    // promoting R001 from `Severity::Suggest` to `Severity::Fix`.
+    // This is the audit-worthy severity escalation the pre-#472
+    // assertion explicitly tracked; updated to pin post-#472
+    // behavior. #280's "auto-fix via R001" claim is now structurally
+    // accurate.
     let engine = build_engine();
     let input = b"(TS//SAR-fk)";
     let lint = engine.lint(input);
@@ -150,42 +153,32 @@ fn sar_lowercase_program_id_emits_r001_suggest() {
     });
     assert_eq!(
         r001.severity,
-        Severity::Suggest,
-        "today's decoder emits R001 for SAR-shape recognition at \
-         Severity::Suggest. If this assertion changes, audit the \
-         severity escalation and update #280's issue-body claim.",
+        Severity::Fix,
+        "post-#472 the decoder emits R001 for SAR-shape recognition at \
+         Severity::Fix. The observed-bytes null hypothesis correctly \
+         reports SAR identifiers as low-prose-mass (they are not in \
+         the prose priors table), lowering the recognition runner-up \
+         and pushing the candidate above the 0.95 threshold.",
     );
 
-    // `engine.fix` does not auto-apply Suggest-severity fixes. The
-    // output bytes are unchanged, and `applied` is empty. The R001
-    // re-surfaces in `remaining_diagnostics` as a human-review channel.
+    // Severity::Fix → engine.fix DOES auto-apply.
     let fix = engine.fix(input, FixMode::Apply);
-    assert_eq!(
+    assert_ne!(
         fix.source.as_slice(),
         input,
-        "Suggest severity must not auto-apply; output bytes must equal input",
+        "Fix severity must auto-apply; output bytes must differ from input",
     );
     assert!(
-        fix.applied.is_empty(),
-        "no AppliedFix should land for SAR lowercase under current decoder \
-         severity; got {:?}",
-        fix.applied
-            .iter()
-            .map(|a| a.rule.as_str())
-            .collect::<Vec<_>>(),
-    );
-    assert!(
-        fix.remaining_diagnostics
-            .iter()
-            .any(|d| d.rule.as_str() == "R001"),
-        "R001 must surface in remaining_diagnostics under Suggest severity",
+        !fix.applied.is_empty(),
+        "AppliedFix must land for SAR lowercase under Fix severity",
     );
 }
 
 #[test]
-fn sar_mixed_case_program_id_emits_r001_suggest() {
+fn sar_mixed_case_program_id_emits_r001_fix() {
     // `(TS//SAR-Fk)` — title-case program identifier. Same
-    // shape-recognition path as the all-lowercase fixture.
+    // shape-recognition path as the all-lowercase fixture; same
+    // post-#472 severity escalation.
     let engine = build_engine();
     let input = b"(TS//SAR-Fk)";
     let lint = engine.lint(input);
@@ -197,18 +190,19 @@ fn sar_mixed_case_program_id_emits_r001_suggest() {
             diags_summary(&lint.diagnostics),
         );
     });
-    assert_eq!(r001.severity, Severity::Suggest);
+    assert_eq!(r001.severity, Severity::Fix);
 
     let fix = engine.fix(input, FixMode::Apply);
-    assert_eq!(fix.source.as_slice(), input);
-    assert!(fix.applied.is_empty());
+    assert_ne!(fix.source.as_slice(), input);
+    assert!(!fix.applied.is_empty());
 }
 
 #[test]
-fn sar_lowercase_compartment_emits_r001_suggest() {
+fn sar_lowercase_compartment_emits_r001_fix() {
     // `(TS//SAR-FK-blue42)` — uppercase program, lowercase
     // compartment. Tests the second SAR open-vocab tightening site
-    // (`SarCompartment::admits_identifier`).
+    // (`SarCompartment::admits_identifier`). Same post-#472
+    // escalation.
     let engine = build_engine();
     let input = b"(TS//SAR-FK-blue42)";
     let lint = engine.lint(input);
@@ -220,18 +214,19 @@ fn sar_lowercase_compartment_emits_r001_suggest() {
             diags_summary(&lint.diagnostics),
         );
     });
-    assert_eq!(r001.severity, Severity::Suggest);
+    assert_eq!(r001.severity, Severity::Fix);
 
     let fix = engine.fix(input, FixMode::Apply);
-    assert_eq!(fix.source.as_slice(), input);
-    assert!(fix.applied.is_empty());
+    assert_ne!(fix.source.as_slice(), input);
+    assert!(!fix.applied.is_empty());
 }
 
 #[test]
-fn sar_lowercase_sub_compartment_emits_r001_suggest() {
+fn sar_lowercase_sub_compartment_emits_r001_fix() {
     // `(TS//SAR-FK-BLUE 42a)` — uppercase program + compartment,
     // lowercase sub-compartment trailing letter. Tests the
-    // SAR sub-compartment open-vocab tightening site.
+    // SAR sub-compartment open-vocab tightening site. Same post-#472
+    // escalation.
     let engine = build_engine();
     let input = b"(TS//SAR-FK-BLUE 42a)";
     let lint = engine.lint(input);
@@ -243,11 +238,11 @@ fn sar_lowercase_sub_compartment_emits_r001_suggest() {
             diags_summary(&lint.diagnostics),
         );
     });
-    assert_eq!(r001.severity, Severity::Suggest);
+    assert_eq!(r001.severity, Severity::Fix);
 
     let fix = engine.fix(input, FixMode::Apply);
-    assert_eq!(fix.source.as_slice(), input);
-    assert!(fix.applied.is_empty());
+    assert_ne!(fix.source.as_slice(), input);
+    assert!(!fix.applied.is_empty());
 }
 
 #[test]

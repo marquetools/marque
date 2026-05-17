@@ -306,6 +306,34 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         // always have whitespace between the bullet and the marking
         // (`1. (S)`, `* (S//NF)`, `(a) (S)` all set
         // `preceded_by_whitespace = true`).
+        //
+        // **Interaction with the post-#472 null gate.** Both filters
+        // remain independently load-bearing — they are not
+        // duplicates:
+        //
+        // - This prose-glue early-return suppresses BEFORE scoring,
+        //   keyed on `!cx.preceded_by_whitespace` (a positional
+        //   signal the null gate cannot see). The null gate keys on
+        //   token-vs-prose log-prior deltas and shape predicates.
+        // - For `(s)` glued to a word, both filters would suppress.
+        //   For `(u)` glued to a word, ONLY this filter suppresses —
+        //   the `U`-token marking-y delta (`+2.86` per the
+        //   [`NULL_HYPOTHESIS_LOG_MARGIN`] doc) exceeds the
+        //   `+2.5` margin, so an isolated `(u)` recovers (the
+        //   `decoder_residual_gap_isolated_u_recovers_to_unclassified`
+        //   test pins that). The prose-glue early-return is what
+        //   prevents `function(u)` mid-prose from reaching that
+        //   recovery path.
+        // - The prose-glue check also short-circuits scoring,
+        //   canonicalization, and strict-parse work for the common
+        //   `function(s)` / `loss(c)` cases. Removing it would
+        //   force every such candidate through the full pipeline
+        //   before the null gate caught most of them.
+        //
+        // Test pin: `decoder_prose_glue_suppresses_u_that_null_gate_would_admit`
+        // demonstrates the independence by constructing an `(u)`
+        // input that the null gate alone admits and showing the
+        // prose-glue early-return suppresses it.
         if !cx.preceded_by_whitespace
             && matches!(kind, MarkingType::Portion)
             && is_single_letter_portion(bytes)
@@ -472,16 +500,44 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             //    there would double-count the features once the
             //    resolver re-adds them. Internal decoder sort /
             //    threshold decisions use the posterior.
-            let (prior, posterior, null_posterior) = score_candidate(&attempt, &marking, kind);
+            //
+            //    Issue #472: `null_posterior` is *not* per-candidate
+            //    in shape — it's a single observed-prose-prior sum
+            //    over the original input bytes, computed once below
+            //    the scoring loop and replicated into every
+            //    candidate's `null_posterior` field. Pre-#472 the
+            //    null was summed over each candidate's canonical
+            //    tokens; that evaluated the prose hypothesis against
+            //    a token set the user never typed whenever fuzzy
+            //    correction shifted a common prose acronym (e.g.,
+            //    `(CMS)`) to a rare CAPCO token (e.g., `CTS`).
+            let (prior, posterior) = score_candidate(&attempt, &marking, kind);
             scored.push(ScoredCandidate {
                 marking,
                 prior,
                 posterior,
-                null_posterior,
+                null_posterior: 0.0, // set below from observed bytes
                 canonical_bytes: attempt.bytes.into_boxed_slice(),
                 features: attempt.features,
                 fix_source: attempt.fix_source,
             });
+        }
+
+        // Issue #472: compute the prose null hypothesis once from the
+        // original observed bytes (NOT each candidate's canonical
+        // tokens) and replicate across every scored candidate. The
+        // observed bytes are the same for every candidate by
+        // construction, so this is a constant per `recognize` call —
+        // computing it inside the loop would just redo the same work.
+        //
+        // Constitution V Principle V: the bytes are read here to
+        // compute a scalar log-prior; the scalar flows into
+        // `null_posterior` and from there into scoring math
+        // (`posterior >= null_posterior + margin` and
+        // `recognition_runner_up`). No byte content escapes.
+        let observed_null = observed_prose_log_prior(bytes);
+        for candidate in &mut scored {
+            candidate.null_posterior = observed_null;
         }
 
         if scored.is_empty() {
@@ -578,20 +634,42 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
             scored.iter().all(|c| c.null_posterior.is_finite()),
             "decoder produced non-finite null_posterior — invariant violated"
         );
-        // Single-letter portion candidates (`(s)`, `(c)`, `(u)`,
-        // `(r)`) require a positive margin over the null because
-        // their parenthesized form collides directly with English
-        // prose glyphs (plural suffix, copyright, pronoun, etc.).
-        // Multi-letter portion forms and banner/CAB candidates
-        // bypass the null filter entirely — their shapes are long
-        // enough that English prose doesn't fabricate them by glyph
-        // coincidence, and a zero-margin gate would still reject
-        // legitimate NATO/IC abbreviation recovery (`(NU)` /
-        // `(NC)`) and banner-form recovery (`CONFIDENTIAL`) whose
-        // marking stratum has zero or near-zero examples. See
-        // [`NULL_HYPOTHESIS_LOG_MARGIN`] doc for the data behind
-        // the split.
-        if kind == MarkingType::Portion && is_single_letter_portion(bytes) {
+        // Portion-shape null-hypothesis filter (issue #472, expanded
+        // from issue #258).
+        //
+        // Pre-#472 the gate fired only for single-letter portions
+        // (`(s)`, `(c)`, `(u)`, `(r)`). That covered the
+        // SC-003a-Federalist `(s)` case but missed the broader class
+        // of prose acronym parentheticals (`(CMS)`, `(CTs)`, `(MD)`,
+        // …) where the user typed a 2-5-letter English acronym that
+        // happens to fuzzy-correct to a CAPCO portion shape. The
+        // pre-#472 gate also gated by canonical-token shape, so an
+        // observed `(CMS)` whose decoder canonicalized to `CTS` was
+        // measured against the prose prior for the (rare) CAPCO token
+        // it became, not the (common) prose acronym the user typed.
+        //
+        // #472 generalizes the gate to **every** portion shape except:
+        //
+        // - `has_double_slash(bytes)`: a portion containing `//`
+        //   carries a category separator that prose convention does
+        //   not produce, so the marking interpretation is the only
+        //   plausible reading; bypass the null comparison.
+        // - `is_bare_classification_shape(bytes)`: a portion whose
+        //   inner content is exactly a canonical classification token
+        //   (`(U)`, `(C)`, `(S)`, `(TS)`, `(R)` or the NATO
+        //   abbreviations `(NU)`, `(NR)`, `(NC)`, `(NS)`, `(CTS)`)
+        //   is the grammar's *only* shape for that classification
+        //   level. Suppressing it would reject legitimate IC
+        //   abbreviation recovery on the same grounds that motivate
+        //   the gate.
+        //
+        // Banner and CAB shapes bypass the filter entirely — their
+        // forms are long enough that English prose doesn't fabricate
+        // them by glyph coincidence.
+        if kind == MarkingType::Portion
+            && !has_double_slash(bytes)
+            && !is_bare_classification_shape(bytes)
+        {
             scored.retain(|c| c.posterior >= c.null_posterior + NULL_HYPOTHESIS_LOG_MARGIN);
         }
         if scored.is_empty() {
@@ -4275,6 +4353,222 @@ fn is_single_letter_portion(bytes: &[u8]) -> bool {
     matches!(trimmed, [b'(', inner, b')'] if inner.is_ascii_alphabetic())
 }
 
+/// Bare-classification-shape whitelist for the null-hypothesis gate
+/// (issue #472).
+///
+/// A portion-shaped input whose inner content is exactly a canonical
+/// classification token — `(U)`, `(C)`, `(S)`, `(TS)`, `(R)`, or one of
+/// the NATO portion abbreviations (`NU`, `NR`, `NC`, `NS`, `CTS`) —
+/// is the strict-grammar shape of a valid classification portion. The
+/// null-hypothesis filter MUST NOT suppress these: their byte form is
+/// short enough that a prose-side prior derived from observed bytes
+/// can outweigh the marking-side prior even when the strict grammar
+/// unambiguously accepts the form (e.g., short single-letter tokens
+/// have non-trivial prose mass as standalone parenthetical glyphs but
+/// are also the *only* CAPCO portion shape that exists for those
+/// classification levels).
+///
+/// The list is closed and byte-exact: leading/trailing whitespace
+/// inside the parens (`( C )`) is not matched, mixed case (`(cts)`,
+/// `(Ts)`) is not matched. This is intentional — case folding to a
+/// canonical bare form happens in the decoder's canonicalization
+/// stage; this gate operates on the raw observed bytes the caller
+/// passed to `recognize`, before any case-fold, so a lowercase or
+/// mixed-case input still goes through the null-hypothesis filter and
+/// is suppressed when the prose hypothesis dominates.
+///
+/// Companion to [`has_double_slash`] in the score-time null gate
+/// (`recognize` §5). Together they pass through (a) bare-classification
+/// portion shapes the grammar uniquely accepts and (b) any portion
+/// carrying a category separator (`//`) — the latter being a shape no
+/// English prose convention produces.
+fn is_bare_classification_shape(bytes: &[u8]) -> bool {
+    matches!(
+        bytes,
+        b"(U)"
+            | b"(C)"
+            | b"(S)"
+            | b"(TS)"
+            | b"(R)"
+            | b"(NU)"
+            | b"(NR)"
+            | b"(NC)"
+            | b"(NS)"
+            | b"(CTS)"
+    )
+}
+
+/// Does the input contain a `//` category separator anywhere in its
+/// bytes? Used by the null-hypothesis gate (issue #472).
+///
+/// A portion or banner shape containing `//` is by construction not a
+/// prose accident: English prose convention has no use for adjacent
+/// double-slashes inside parentheses or at line position. The
+/// presence of `//` is sufficient evidence that the input intends to
+/// be a marking; the score-time null filter passes such candidates
+/// through without the prose-vs-marking comparison.
+///
+/// Byte-windowed search — no allocation. Linear in `bytes.len()`,
+/// trivially short for portion/banner shapes.
+fn has_double_slash(bytes: &[u8]) -> bool {
+    bytes.windows(2).any(|w| w == b"//")
+}
+
+/// Per-token prose log-prior floor for **observed** tokens absent
+/// from the prose priors table (issue #472).
+///
+/// Distinct from [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`]
+/// (`-12.0`), which is the floor for the *canonical*-token side of
+/// the comparison. The canonical floor was sized to match
+/// [`MISSING_TOKEN_LOG_PRIOR`] so that an unknown CAPCO token
+/// contributes a zero marking-y delta — the right calibration for a
+/// post-canonicalization vocabulary check.
+///
+/// The observed-side is calibrated differently. An observed token
+/// that is **not** in the prose priors table is, by construction:
+///
+/// 1. Not a canonical CAPCO token (the vocabulary is closed, the
+///    priors table covers every canonical token via the Laplace-
+///    smoothed zero-count entry from `derive_priors`).
+/// 2. Either a non-vocabulary string the user actually typed
+///    (`CMS`, `MD`, `PR`, …) or a fuzzy-correctable variant of a
+///    vocabulary token. Either way it is shape-equivalent to a
+///    prose acronym: short, all-caps or mixed-case, occurring
+///    inside a parenthetical glyph at non-anchor line position.
+///
+/// `-7.0` (e^-7 ≈ 9e-4) sits in the middle of the in-table prose
+/// prior range (`-3` to `-12`): less informative than a known
+/// high-frequency prose token (USA at `-2.0`, S at `-5.49`), more
+/// informative than the canonical missing-token floor (`-12.0`). It
+/// roughly corresponds to "moderate prose mass" — the conservative
+/// estimate for an unknown short all-caps acronym mid-prose. The
+/// SC-003a Federalist `(s)` regression and the issue-472 `(CMS)` /
+/// `(MD)` parenthetical-acronym suppression both clear the
+/// `NULL_HYPOTHESIS_LOG_MARGIN = 2.5` gate at this floor while
+/// legitimate single-token mangled-marking recoveries
+/// (`(SERCET//NF)`) stay above it because the marking-side prior
+/// for `SECRET` dominates.
+const OBSERVED_UNKNOWN_PROSE_LOG_PRIOR: f32 = -7.0;
+
+/// Compute the prose-side log-prior sum for the input bytes (issue
+/// #472).
+///
+/// Walks the original `bytes` slice (as received by `recognize`) to
+/// produce a bag of observed tokens, then sums
+/// [`marque_capco::priors::token_prose_log_prior`] per distinct token.
+/// This is the **observed** null hypothesis: how prose-like are the
+/// bytes the user actually typed, irrespective of what canonical form
+/// the decoder later canonicalizes them to?
+///
+/// Pre-#472 the null-side prior was summed over the *canonical* tokens
+/// produced after fuzzy correction, so an observed `(CMS)` whose
+/// fuzzy-correction landed on `CTS` would contribute the prose prior
+/// for `CTS` (rare in prose) to the null hypothesis even though the
+/// user typed `CMS` (a much-more-common prose acronym). The fuzzy
+/// correction was silently shifting the null-side mass away from the
+/// shape the user actually produced. Re-deriving observed tokens here
+/// restores the symmetric comparison: marking prior vs prose prior
+/// over the *observed* bytes.
+///
+/// Tokenization is intentionally simple — split on `()/,-` and
+/// whitespace, uppercase each piece, look up against the prose priors
+/// table. Order does not matter (the result is a sum); duplicates are
+/// removed via linear-search dedup over a `SmallVec` (typical token
+/// counts are ≤ 8 for portion shapes). Unknown observed tokens fall
+/// back to [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`] (`-7.0`) — see that
+/// constant's doc for why this differs from
+/// [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`] (`-12.0`, used
+/// for the canonical-token path elsewhere).
+///
+/// **Constitution V Principle V**: the observed bytes are read here
+/// to compute an `f32` log-prior sum, and the function returns only
+/// the scalar. No byte content escapes through the return path. The
+/// caller writes the resulting `f32` into `ScoredCandidate::null_posterior`,
+/// where it flows into the decoder's scoring math but never reaches
+/// `AppliedFix.proposal.original`, `proposal.replacement`, or the
+/// R001 diagnostic message (those channels were closed in PR #259).
+fn observed_prose_log_prior(bytes: &[u8]) -> f32 {
+    let mut sum: f32 = 0.0;
+    let mut seen: SmallVec<[[u8; 16]; 16]> = SmallVec::new();
+    let mut seen_lens: SmallVec<[u8; 16]> = SmallVec::new();
+
+    let mut start: Option<usize> = None;
+    let mut i = 0;
+    while i <= bytes.len() {
+        let is_sep = if i == bytes.len() {
+            true
+        } else {
+            let b = bytes[i];
+            matches!(b, b'(' | b')' | b'/' | b',' | b'-') || b.is_ascii_whitespace()
+        };
+        if is_sep {
+            if let Some(s) = start.take()
+                && i > s
+            {
+                let raw = &bytes[s..i];
+                // Skip empty / non-alphanumeric-only tokens.
+                if raw.iter().any(|b| b.is_ascii_alphanumeric()) {
+                    // Uppercase into a stack buffer; priors keys are
+                    // uppercase. Truncate at 16 bytes — any token
+                    // longer than that won't match a priors table
+                    // entry anyway (longest CAPCO token,
+                    // `AUSTRALIA_GROUP`, is 15 bytes) and we don't
+                    // want to allocate per-token.
+                    let mut buf = [0u8; 16];
+                    let take = raw.len().min(16);
+                    for (dst, src) in buf[..take].iter_mut().zip(&raw[..take]) {
+                        *dst = src.to_ascii_uppercase();
+                    }
+                    let key = &buf[..take];
+                    // Dedup over seen tokens (linear, N ≤ 8 typical).
+                    let already = seen
+                        .iter()
+                        .zip(seen_lens.iter())
+                        .any(|(b, l)| &b[..*l as usize] == key);
+                    if !already {
+                        seen.push(buf);
+                        seen_lens.push(take as u8);
+                        let key_str = std::str::from_utf8(key);
+                        let token_prior = key_str
+                            .ok()
+                            .and_then(marque_capco::priors::token_prose_log_prior);
+                        let country_prior = key_str
+                            .ok()
+                            .and_then(marque_capco::priors::country_code_prose_log_prior);
+                        // Prefer the token table; fall back to country
+                        // table for trigraph/tetragraph shapes that
+                        // appear only there. Both tables are sourced
+                        // from the same prose stratum so summing once
+                        // (token OR country, not both) keeps the null
+                        // hypothesis a single log-prior over the
+                        // observed token bag.
+                        //
+                        // Unknown observed tokens fall to
+                        // [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`] (`-7.0`),
+                        // not [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`]
+                        // (`-12.0`). See the constant's doc — the
+                        // observed-side and canonical-side floors are
+                        // intentionally asymmetric: an observed unknown
+                        // token is shape-equivalent to a prose acronym
+                        // (the user typed something not in the CAPCO
+                        // vocabulary), and `-7.0` reflects "moderate
+                        // prose mass" rather than the canonical
+                        // post-vocab-check zero-signal floor.
+                        let prior = token_prior
+                            .or(country_prior)
+                            .unwrap_or(OBSERVED_UNKNOWN_PROSE_LOG_PRIOR);
+                        sum += prior;
+                    }
+                }
+            }
+        } else if start.is_none() {
+            start = Some(i);
+        }
+        i += 1;
+    }
+    sum
+}
+
 /// Does this prefix look like a bullet, list, or section anchor?
 ///
 /// Recognizes the common forms of enumeration prefix that precede
@@ -4779,7 +5073,7 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 
 /// Bag-of-tokens scorer (foundational-plan §5.2).
 ///
-/// Returns `(prior, posterior, null_posterior)` where:
+/// Returns `(prior, posterior)` where:
 ///
 /// - `prior` = Σ [`marque_capco::priors::token_log_prior`] over the
 ///   marking's canonical tokens **plus** Σ
@@ -4799,29 +5093,20 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 ///   on. The only structural penalty today is
 ///   [`HARD_SPLITTER_ABSORPTION_PENALTY`], applied when the strict
 ///   parse buries a reserved dissem-control token in a SAR/SCI slot.
-/// - `null_posterior` (issue #258) = Σ
-///   [`marque_capco::priors::token_prose_log_prior`] over the same
-///   canonical tokens **plus** Σ
-///   [`marque_capco::priors::country_code_prose_log_prior`] over the
-///   same `rel_to` country codes. This is the **prose hypothesis**
-///   for the same input — `log P(tokens | prose)` evaluated against
-///   the prose-stratum corpus. Feature deltas and structural
-///   penalties are NOT applied to `null_posterior`: those are
-///   likelihood statements about *parse* plausibility, not
-///   corpus-frequency claims, so adding them would silently bias the
-///   marking-vs-prose comparison.
 ///
-///   The decoder consumes `null_posterior` as a virtual runner-up at
-///   the dispatch layer (see [`DecoderRecognizer::recognize`] §6).
-///   When `null_posterior` exceeds `posterior` for the top candidate,
-///   the decoder returns a zero-candidate `Ambiguous` — "we see
-///   signal, can't resolve to a marking" (FR-015) — rather than
-///   emitting a fix that would auto-correct prose to a marking. When
-///   `null_posterior` is below `posterior`, it competes against the
-///   next-best CAPCO candidate as the runner-up that flows into
-///   `recognition_score`, so a candidate with a moderately strong
-///   prose alternative ends up with a lower recognition than one
-///   whose prose-side score is far below.
+/// The null (prose) posterior is **not** computed here. Pre-#472 it
+/// was, summed over the marking's canonical tokens; the canonical
+/// token set is post-fuzzy-correction so the prose hypothesis was
+/// evaluated on tokens the user never typed, biasing the
+/// marking-vs-prose comparison whenever fuzzy correction shifted a
+/// common prose acronym (e.g., `(CMS)`) to a rare CAPCO token (e.g.,
+/// `CTS`). Issue #472 moves the null computation to
+/// [`observed_prose_log_prior`], which walks the original `bytes`
+/// parameter to `recognize` and sums prose priors per distinct
+/// observed token — restoring the symmetric marking-vs-prose
+/// comparison. The caller computes the observed null once per
+/// `recognize` call and writes it into every
+/// [`ScoredCandidate::null_posterior`].
 ///
 /// Splitting prior and posterior prevents the caller from writing the
 /// full posterior into `Candidate::prior_log_odds` — that would double-
@@ -4835,31 +5120,20 @@ const CUSTOM_SCI_MARKING_PENALTY: f32 = MISSING_TOKEN_LOG_PRIOR;
 /// and the feature deltas are small constants (single-digit magnitude
 /// at most), so the accumulator doesn't need `f64` headroom for the
 /// K=8 candidate set.
+///
+/// The `kind` parameter selects portion vs banner canonical token
+/// forms for the prior computation (e.g., `S` vs `SECRET`) so the
+/// marking-side lookup matches the input shape.
 fn score_candidate(
     attempt: &CanonicalAttempt,
     marking: &CapcoMarking,
     kind: MarkingType,
-) -> (f32, f32, f32) {
+) -> (f32, f32) {
     // Prior: sum of baked log-priors for the canonical tokens that
     // appear in the parsed marking. Tokens missing from the baked
     // table receive the floor penalty rather than a neutral 0.0
     // contribution — see the MISSING_TOKEN_LOG_PRIOR doc.
-    //
-    // Issue #258: the prose-side `null_prior` is summed in parallel
-    // over the same canonical-token set so the marking-y delta
-    // `prior - null_prior` for each token is the per-token
-    // discrimination signal `log P(token|marking) - log P(token|prose)`.
-    // Missing tokens contribute the same floor on both sides
-    // ([`MISSING_TOKEN_LOG_PRIOR`] for marking,
-    // [`marque_capco::priors::MISSING_PROSE_LOG_PRIOR`] for prose) so
-    // an unknown token contributes a neutral marking-y delta of zero.
-    //
-    // The `kind` parameter (issue #258) lets `for_each_canonical_token`
-    // pick the form (portion abbrev vs banner full word) that
-    // matches the input shape, so the prose-side lookup compares
-    // the right corpus row for portion inputs like `(s)`.
     let mut prior: f32 = 0.0;
-    let mut null_prior: f32 = 0.0;
 
     // Issue #451: linear-search dedup over a SmallVec rather than a
     // BTreeSet. N (distinct canonical tokens per marking) is typically
@@ -4873,8 +5147,6 @@ fn score_candidate(
             seen_tokens.push(token);
             prior +=
                 marque_capco::priors::token_log_prior(token).unwrap_or(MISSING_TOKEN_LOG_PRIOR);
-            null_prior += marque_capco::priors::token_prose_log_prior(token)
-                .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
         }
     });
 
@@ -4897,14 +5169,6 @@ fn score_candidate(
     // behavior for a candidate that resolved to a non-CVE country
     // string.
     //
-    // Issue #258: parallel prose-side sum over the same country-code
-    // set. A standalone "(USA)" mention in prose contributes a high
-    // prose-side log-prior (USA is extremely common in prose corpora)
-    // and a comparable marking-side log-prior (USA is also common in
-    // REL TO blocks), so the marking-y delta for "(USA)" is small —
-    // the decoder pushes back on auto-fixing a proper-noun country
-    // mention to a REL-TO-style marking.
-    //
     // Issue #451 sub-finding F3: SmallVec linear-search dedup over the
     // typical N=1-5 REL TO codes, rather than a per-call BTreeSet
     // allocation.
@@ -4915,8 +5179,6 @@ fn score_candidate(
             seen_rel_to_codes.push(code);
             prior += marque_capco::priors::country_code_log_prior(code)
                 .unwrap_or(MISSING_TOKEN_LOG_PRIOR);
-            null_prior += marque_capco::priors::country_code_prose_log_prior(code)
-                .unwrap_or(marque_capco::priors::MISSING_PROSE_LOG_PRIOR);
         }
     }
 
@@ -4928,13 +5190,7 @@ fn score_candidate(
     }
     posterior += custom_sci_marking_penalty(marking);
 
-    // Null posterior (issue #258): the prose hypothesis. No feature
-    // deltas, no structural penalties — those bias the marking-side
-    // posterior on parse-plausibility grounds and would skew the
-    // marking-vs-prose comparison if applied here.
-    let null_posterior = null_prior;
-
-    (prior, posterior, null_posterior)
+    (prior, posterior)
 }
 
 /// Total per-entry penalty for SCI markings whose strict parse landed
@@ -5877,8 +6133,7 @@ mod tests {
             features: features.iter().copied().collect(),
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
-        let (prior, posterior, _null_posterior) =
-            score_candidate(&attempt, &marking, MarkingType::Banner);
+        let (prior, posterior) = score_candidate(&attempt, &marking, MarkingType::Banner);
 
         let feature_sum: f32 = features.iter().map(|f| f.delta).sum();
         let reconstructed = prior + feature_sum;
@@ -5942,8 +6197,8 @@ mod tests {
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
 
-        let (prior_one, _, _) = score_candidate(&attempt_one, &one_marking, MarkingType::Banner);
-        let (prior_two, _, _) = score_candidate(&attempt_two, &two_marking, MarkingType::Banner);
+        let (prior_one, _) = score_candidate(&attempt_one, &one_marking, MarkingType::Banner);
+        let (prior_two, _) = score_candidate(&attempt_two, &two_marking, MarkingType::Banner);
 
         // GBR has a known negative log-prior, so adding it to the REL TO
         // list must make the total prior strictly more negative.
@@ -5994,8 +6249,8 @@ mod tests {
             fix_source: marque_rules::FixSource::DecoderPosterior,
         };
 
-        let (prior_dup, _, _) = score_candidate(&attempt_dup, &dup_marking, MarkingType::Banner);
-        let (prior_once, _, _) = score_candidate(&attempt_once, &once_marking, MarkingType::Banner);
+        let (prior_dup, _) = score_candidate(&attempt_dup, &dup_marking, MarkingType::Banner);
+        let (prior_once, _) = score_candidate(&attempt_once, &once_marking, MarkingType::Banner);
 
         // Deduplication ensures the duplicate USA is only scored once, so
         // both priors must be equal (same base tokens + same single USA prior).
@@ -6465,6 +6720,68 @@ mod tests {
     }
 
     #[test]
+    fn decoder_prose_glue_suppresses_u_that_null_gate_would_admit() {
+        // HIGH 1 (review) — pins the independence of the prose-glue
+        // early-return from the post-#472 null gate.
+        //
+        // The `U`-token marking-y delta is `+2.86`, which exceeds the
+        // [`NULL_HYPOTHESIS_LOG_MARGIN`] (`+2.5`) — an isolated `(u)`
+        // with `preceded_by_whitespace = true` clears the null gate
+        // and recovers to UNCLASSIFIED (the
+        // `decoder_residual_gap_isolated_u_recovers_to_unclassified`
+        // test pins that recovery).
+        //
+        // This test pins the symmetric case: the SAME `(u)` with
+        // `preceded_by_whitespace = false` (e.g., `function(u)`,
+        // `sec(u)rity`) must be suppressed. Because the null gate
+        // alone would admit it, the prose-glue early-return is
+        // independently load-bearing here. Removing the early-return
+        // (e.g., on the assumption that the null gate now subsumes
+        // it) would silently regress this case.
+        let rx = DecoderRecognizer::new();
+
+        // Baseline: not glued, null gate admits, recovers to
+        // UNCLASSIFIED.
+        let standalone = rx.recognize(b"(u)", 0, &deep_cx());
+        assert!(
+            matches!(
+                &standalone,
+                Parsed::Unambiguous(m)
+                    if m.0.classification
+                        == Some(MarkingClassification::Us(Classification::Unclassified))
+            ),
+            "standalone `(u)` must recover to UNCLASSIFIED via the \
+             null gate's +2.86 marking-y delta exceeding the +2.5 \
+             margin; got {standalone:?}",
+        );
+
+        // Glued: same input, `preceded_by_whitespace = false`. The
+        // prose-glue early-return suppresses BEFORE the null gate.
+        let glued_cx = ParseContext {
+            preceded_by_whitespace: false,
+            ..deep_cx()
+        };
+        let glued = rx.recognize(b"(u)", 0, &glued_cx);
+        match glued {
+            Parsed::Ambiguous { candidates } => assert!(
+                candidates.is_empty(),
+                "glued `(u)` (preceded_by_whitespace=false) must be \
+                 zero-candidate via the prose-glue early-return; got \
+                 {} candidate(s)",
+                candidates.len(),
+            ),
+            Parsed::Unambiguous(m) => panic!(
+                "glued `(u)` must be suppressed by the prose-glue \
+                 early-return — the post-#472 null gate alone admits \
+                 this case ({:+.2} delta exceeds {:+.2} margin), so \
+                 prose-glue removal would silently regress it. Got \
+                 Unambiguous({:?})",
+                2.86_f32, NULL_HYPOTHESIS_LOG_MARGIN, m.0.classification,
+            ),
+        }
+    }
+
+    #[test]
     fn decoder_suppresses_single_letter_portion_via_null_hypothesis() {
         // Issue #258 + PR1 (documents-corpus marking stratum): an
         // isolated `(s)` (preceded by whitespace, so the prose-glue
@@ -6504,6 +6821,236 @@ mod tests {
                 "isolated lowercase (s) must be suppressed by the prose null \
                  hypothesis, got Unambiguous({:?})",
                 m.0.classification,
+            ),
+        }
+    }
+
+    #[test]
+    fn is_bare_classification_shape_recognizes_whitelist() {
+        // Issue #472: the 10-entry closed whitelist covers every
+        // canonical CAPCO portion classification token. All entries
+        // must match byte-exact.
+        for s in &[
+            b"(U)" as &[u8],
+            b"(C)",
+            b"(S)",
+            b"(TS)",
+            b"(R)",
+            b"(NU)",
+            b"(NR)",
+            b"(NC)",
+            b"(NS)",
+            b"(CTS)",
+        ] {
+            assert!(
+                is_bare_classification_shape(s),
+                "whitelist entry {:?} must match",
+                std::str::from_utf8(s).unwrap_or("<bytes>"),
+            );
+        }
+
+        // Non-whitelist 3-letter all-caps acronyms — the prose-acronym
+        // false-positive surface the gate is designed to suppress.
+        for s in &[
+            b"(CMS)" as &[u8],
+            b"(MD)",
+            b"(SI)",
+            b"(CTs)", // mixed case — case-fold happens later, the gate runs on raw bytes
+            b"(c)",   // lowercase fails the byte-exact match
+            b"(s)",
+            b"(u)",
+            b"(C//NF)", // has `//`
+            b"( C )",   // interior whitespace fails byte-exact
+            b"(CT)",    // not on the canonical token set
+        ] {
+            assert!(
+                !is_bare_classification_shape(s),
+                "non-whitelist input {:?} must not match",
+                std::str::from_utf8(s).unwrap_or("<bytes>"),
+            );
+        }
+    }
+
+    #[test]
+    fn is_bare_classification_shape_is_byte_exact() {
+        // Interior whitespace inside the parens (`( C )`, `(C )`,
+        // `( C)`) does not match — that's intentional. Whitespace
+        // tolerance happens elsewhere (the strict recognizer strips
+        // leading whitespace on portion candidates), but this gate
+        // operates on the raw observed bytes. Any whitespace-bearing
+        // shape goes through the null-hypothesis filter so a
+        // prose-shaped `( C )` mid-prose is correctly tested against
+        // the observed prose prior.
+        assert!(!is_bare_classification_shape(b"( C)"));
+        assert!(!is_bare_classification_shape(b"(C )"));
+        assert!(!is_bare_classification_shape(b"( C )"));
+        assert!(!is_bare_classification_shape(b" (C)"));
+        assert!(!is_bare_classification_shape(b"(C) "));
+    }
+
+    #[test]
+    fn has_double_slash_detects_slash_slash() {
+        // True cases: any input containing `//` anywhere.
+        assert!(has_double_slash(b"(S//NF)"));
+        assert!(has_double_slash(b"S//REL"));
+        assert!(has_double_slash(b"//"));
+        assert!(has_double_slash(b"prefix//suffix"));
+        assert!(has_double_slash(b"SECRET//NOFORN"));
+
+        // False cases: no `//` sequence.
+        assert!(!has_double_slash(b"/"));
+        assert!(!has_double_slash(b"(S)"));
+        assert!(!has_double_slash(b"(S/NF)"));
+        assert!(!has_double_slash(b""));
+        assert!(!has_double_slash(b"/foo/bar/"));
+    }
+
+    #[test]
+    fn observed_prose_log_prior_reflects_observed_not_canonical() {
+        // Issue #472: the observed-side prior is summed over the
+        // *bytes the user typed*, not over the canonical tokens the
+        // fuzzy-corrector chose. Verify that an input whose
+        // observed-token bag differs from a hypothetical canonical
+        // bag receives a different prose-prior sum.
+        //
+        // `(CMS)` is not in any priors table → falls to
+        // [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`] (`-7.0`).
+        // `(CTS)` IS in the prose priors table (canonical token,
+        // Laplace-smoothed entry materialized by `derive_priors`).
+        //
+        // The two values must differ — if they were equal, the
+        // observed-vs-canonical asymmetry the gate depends on would
+        // have collapsed, and the issue #472 fix would be a no-op.
+        let observed_cms = observed_prose_log_prior(b"(CMS)");
+        let observed_cts = observed_prose_log_prior(b"(CTS)");
+        assert!(
+            (observed_cms - OBSERVED_UNKNOWN_PROSE_LOG_PRIOR).abs() < 1e-5,
+            "observed `(CMS)` must fall to OBSERVED_UNKNOWN_PROSE_LOG_PRIOR; \
+             got {observed_cms}",
+        );
+        // CTS is in the prose table; the lookup must succeed.
+        let cts_table = marque_capco::priors::token_prose_log_prior("CTS")
+            .expect("CTS must be in token_prose_base_rates");
+        assert!(
+            (observed_cts - cts_table).abs() < 1e-5,
+            "observed `(CTS)` must equal token_prose_log_prior(\"CTS\"); \
+             got {observed_cts}, expected {cts_table}",
+        );
+        // The exact magnitude depends on the in-table value for `CTS`
+        // (Laplace-smoothed prose count) vs the constant
+        // [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`]; the two are calibrated
+        // to live in adjacent regions of the log-prior range, so a
+        // sub-1.0-nat difference is acceptable. The test pins
+        // "different by more than floating-point noise" — the actual
+        // numerical distance documents the calibration gap rather
+        // than gates it.
+        assert!(
+            (observed_cms - observed_cts).abs() > 0.1,
+            "observed prose prior for (CMS) must differ from (CTS) — the \
+             observed-vs-canonical asymmetry is the issue #472 fix's \
+             mechanism; got {observed_cms} vs {observed_cts}",
+        );
+    }
+
+    #[test]
+    fn observed_prose_log_prior_dedupes_repeated_tokens() {
+        // The sum runs over *distinct* observed tokens; a duplicate
+        // contributes once. Without dedup an input like `(USA, USA)`
+        // would double-count USA's prose prior, which would
+        // (incorrectly) push the null hypothesis arbitrarily low for
+        // repeated tokens.
+        let dup = observed_prose_log_prior(b"(USA, USA)");
+        let once = observed_prose_log_prior(b"(USA)");
+        assert!(
+            (dup - once).abs() < 1e-5,
+            "duplicate observed tokens must not double-count; \
+             dup={dup}, once={once}",
+        );
+    }
+
+    #[test]
+    fn observed_prose_log_prior_handles_empty_and_separator_only() {
+        // Defensive: empty input, separator-only input, and bare
+        // delimiters must produce zero (no observed tokens to sum).
+        assert_eq!(observed_prose_log_prior(b""), 0.0);
+        assert_eq!(observed_prose_log_prior(b"()"), 0.0);
+        assert_eq!(observed_prose_log_prior(b"//"), 0.0);
+        assert_eq!(observed_prose_log_prior(b" , -/"), 0.0);
+    }
+
+    #[test]
+    fn decoder_admits_mangled_marking_under_observed_null_gate() {
+        // Copilot #3 follow-up: must-not-over-suppress stress test
+        // for the [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`] = -7.0 floor.
+        //
+        // The constant's doc-comment names `(CMS)` / SC-003a as the
+        // must-suppress side: prose acronyms with no marking
+        // vocabulary support should fall below
+        // [`NULL_HYPOTHESIS_LOG_MARGIN`] and be suppressed.
+        // This test pins the symmetric must-NOT-over-suppress side:
+        // a genuinely mangled-but-recoverable marking
+        // (`(SERCET//NF)`, edit-distance-1 typo of `SECRET`) must
+        // clear the same gate and reach `Parsed::Unambiguous`. If a
+        // future calibration change tightens the floor too far —
+        // raising it to where multi-token mangled markings get
+        // swept up — this test fails.
+        //
+        // `(SERCET//NF)` chosen because:
+        // 1. Already named in the [`OBSERVED_UNKNOWN_PROSE_LOG_PRIOR`]
+        //    constant doc as the example case the floor was sized to
+        //    admit ("legitimate single-token mangled-marking
+        //    recoveries (`(SERCET//NF)`) stay above it").
+        // 2. Has `//` so [`has_double_slash`] bypasses the null gate
+        //    entirely — this test pins the bypass + scoring path,
+        //    not just the gate threshold. A regression that broke
+        //    `has_double_slash` would surface as this candidate
+        //    failing recovery, with the gate threshold a secondary
+        //    suspect.
+        // 3. Strong marking-side prior (SECRET + NOFORN both in
+        //    `token_base_rates`) producing a high posterior so the
+        //    runner-up ratio and resulting confidence sit well
+        //    above the default `confidence_threshold = 0.95`.
+        let rx = DecoderRecognizer::new();
+        match rx.recognize(b"(SERCET//NF)", 0, &deep_cx()) {
+            Parsed::Unambiguous(m) => {
+                // The strict parse on the canonicalized bytes must
+                // yield `Us(Secret)`.
+                assert_eq!(
+                    m.0.classification,
+                    Some(MarkingClassification::Us(Classification::Secret)),
+                    "(SERCET//NF) must recover to Us(Secret); got {:?}",
+                    m.0.classification,
+                );
+                // Provenance must carry an EditDistance feature —
+                // confirms the fuzzy-correction path was exercised
+                // (SERCET → SECRET, Levenshtein 2: R↔C transpose
+                // requires two substitutions). EditDistance1 OR
+                // EditDistance2 both indicate the fuzzy path
+                // produced the canonical form.
+                let prov =
+                    m.1.as_ref()
+                        .expect("decoder-path recovery must carry DecoderProvenance");
+                let has_edit_distance = prov
+                    .features
+                    .iter()
+                    .any(|f| matches!(f.id, FeatureId::EditDistance1 | FeatureId::EditDistance2));
+                assert!(
+                    has_edit_distance,
+                    "(SERCET//NF) recovery must record an EditDistance \
+                     feature in provenance (SERCET → SECRET); got {:?}",
+                    prov.features,
+                );
+            }
+            Parsed::Ambiguous { candidates } => panic!(
+                "(SERCET//NF) is the canonical must-not-over-suppress \
+                 case named in the OBSERVED_UNKNOWN_PROSE_LOG_PRIOR \
+                 constant doc — recovery must succeed. If this fails, \
+                 audit (a) whether `has_double_slash` still bypasses \
+                 the null gate for `//`-bearing inputs, (b) whether \
+                 the `-7.0` floor or `+2.5` margin was tightened, or \
+                 (c) whether SECRET / NOFORN dropped out of \
+                 `token_base_rates`. Got Ambiguous with {} candidate(s).",
+                candidates.len(),
             ),
         }
     }
@@ -6712,11 +7259,28 @@ mod tests {
 
     #[test]
     fn decoder_applies_line_position_penalty_for_mid_line_portion() {
-        // A `(C)` candidate that would otherwise survive (preceded by
-        // whitespace, copyright/CONFIDENTIAL ambiguity is borderline
-        // under the null filter) is suppressed when the engine
-        // reports the candidate sits deep into a line of running text
-        // whose prefix doesn't look like an enumeration anchor.
+        // Issue #472: `(C)` is on the
+        // [`is_bare_classification_shape`] whitelist — its byte form
+        // IS the canonical grammar for CONFIDENTIAL, so the
+        // null-hypothesis filter intentionally does NOT suppress it
+        // at the decoder layer. The decoder returns
+        // `Unambiguous(Us(Confidential))` and records the
+        // `LinePositionPenalty` feature on the candidate's posterior.
+        // Engine-layer no-op-rewrite filtering (the original bytes
+        // equal the canonical bytes, so `build_decoder_diagnostic`
+        // returns `None`) eats the synthetic R001 in production, so
+        // the false-positive surface stays closed end-to-end; this
+        // test pins the decoder-internal observation that the
+        // position penalty was computed.
+        //
+        // `(C)` mid-prose canonicalizing to CONFIDENTIAL when the
+        // observed bytes already match the canonical form is the
+        // tracked #511 layered-confidence territory, not a #472
+        // regression — the bypass exists because there is no other
+        // grammar shape for that classification level, and the
+        // remaining false-positive surface (when canonicalization
+        // would change bytes — e.g., `(c)` → `(C)`) is handled by
+        // the lowercase-context penalty pathway.
         let rx = DecoderRecognizer::new();
         let mid_line_cx = ParseContext {
             line_offset: Some(20),
@@ -6724,29 +7288,44 @@ mod tests {
             ..deep_cx()
         };
         match rx.recognize(b"(C)", 0, &mid_line_cx) {
-            Parsed::Ambiguous { candidates } => assert!(
-                candidates.is_empty(),
-                "(C) deep into prose line must be zero-candidate, \
-                 got {}",
+            Parsed::Unambiguous(m) => {
+                // Verify the line position penalty was recorded on
+                // the surviving candidate.
+                let has_penalty = m.1.as_ref().is_some_and(|p| {
+                    p.features
+                        .iter()
+                        .any(|f| matches!(f.id, FeatureId::LinePositionPenalty))
+                });
+                assert!(
+                    has_penalty,
+                    "(C) mid-line must record LinePositionPenalty in \
+                     provenance even though it survives the null-filter \
+                     bypass; got {:?}",
+                    m.1,
+                );
+            }
+            Parsed::Ambiguous { candidates } => panic!(
+                "(C) on the bare-classification whitelist must reach \
+                 Unambiguous (engine eats the no-op rewrite); got \
+                 Ambiguous with {} candidate(s)",
                 candidates.len(),
-            ),
-            Parsed::Unambiguous(m) => panic!(
-                "(C) deep into prose line must be suppressed, \
-                 got Unambiguous({:?})",
-                m.0.classification,
             ),
         }
     }
 
     #[test]
-    fn decoder_skips_penalty_when_line_prefix_is_bullet_anchor() {
+    fn decoder_records_position_penalty_vs_bullet_bonus_for_bare_classification() {
         // The bullet anchor `1B.a.3.` cancels the position penalty
-        // AND adds a positive bonus, so a `(C)` candidate after an
-        // anchor recovers cleanly. The same `(C)` after running
-        // prose with a non-anchor prefix that exceeds the position
-        // budget gets suppressed. This pair test demonstrates the
-        // bullet-bonus / position-penalty asymmetry directly:
-        // identical input bytes, differing context, divergent result.
+        // AND adds a positive bonus; running-prose context with a
+        // non-anchor prefix that exceeds the position budget records
+        // the position penalty. Issue #472: `(C)` is on the
+        // [`is_bare_classification_shape`] whitelist so both contexts
+        // resolve to Unambiguous at the decoder layer — engine-layer
+        // no-op-rewrite filtering eats any synthetic R001 when the
+        // observed bytes already match the canonical form. This test
+        // pins the *feature-emission* asymmetry (penalty vs bonus)
+        // directly on the surviving candidates, identical input bytes,
+        // differing context.
         let rx = DecoderRecognizer::new();
         let bullet_cx = ParseContext {
             line_offset: Some(8),
@@ -6761,16 +7340,29 @@ mod tests {
         let bullet_result = rx.recognize(b"(C)", 0, &bullet_cx);
         let prose_result = rx.recognize(b"(C)", 0, &prose_cx);
 
-        // Prose context: position penalty + null filter suppresses.
-        assert!(
-            matches!(
-                &prose_result,
-                Parsed::Ambiguous { candidates } if candidates.is_empty()
+        // Prose context: position penalty recorded on the candidate.
+        match &prose_result {
+            Parsed::Unambiguous(m) => {
+                let has_penalty = m.1.as_ref().is_some_and(|p| {
+                    p.features
+                        .iter()
+                        .any(|f| matches!(f.id, FeatureId::LinePositionPenalty))
+                });
+                assert!(
+                    has_penalty,
+                    "prose context `(C)` must record LinePositionPenalty \
+                     in provenance, got {:?}",
+                    m.1,
+                );
+            }
+            Parsed::Ambiguous { candidates } => panic!(
+                "`(C)` mid-prose must reach Unambiguous at decoder layer \
+                 (engine eats no-op rewrite); got Ambiguous with {} \
+                 candidate(s)",
+                candidates.len(),
             ),
-            "mid-line `(C)` after running prose must be suppressed, \
-             got {prose_result:?}",
-        );
-        // Bullet context: bonus applied → candidate recovers.
+        }
+        // Bullet context: bonus recorded on the candidate.
         match &bullet_result {
             Parsed::Unambiguous(m) => {
                 let has_bonus = m.1.as_ref().is_some_and(|p| {
@@ -6831,13 +7423,13 @@ mod tests {
         // lowercase penalty.
         //
         // `(S//NF)` (not `(S)`) bypasses both the
-        // single-letter-portion null filter (the trigger is
-        // `is_single_letter_portion`, which requires inner to be a
-        // single letter — `S//NF` is multi-token) and the position
-        // penalty (`line_offset: 0`). That isolates the lowercase
-        // feature gate: if the candidate-has-lowercase predicate
-        // is wrong, this test fails; if the gate is correct, the
-        // candidate recovers.
+        // portion-shape null filter (the trigger is
+        // `!has_double_slash(bytes) && !is_bare_classification_shape(bytes)`;
+        // `S//NF` contains `//`) and the position penalty
+        // (`line_offset: 0`). That isolates the lowercase feature
+        // gate: if the candidate-has-lowercase predicate is wrong,
+        // this test fails; if the gate is correct, the candidate
+        // recovers.
         let rx = DecoderRecognizer::new();
         let cx = ParseContext {
             line_offset: Some(0),
