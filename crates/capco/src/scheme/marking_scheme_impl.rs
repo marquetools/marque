@@ -550,7 +550,7 @@ impl MarkingScheme for CapcoScheme {
     /// fixpoint cone application via the runtime-resolved severity
     /// per `decisions.md` D19 B) and the `Engine::project` call-site
     /// that drives it.
-    fn closure_rules(&self) -> &[marque_scheme::ClosureRule] {
+    fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
     }
 

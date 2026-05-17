@@ -61,6 +61,25 @@ use crate::category::TokenId;
 use crate::constraint::TokenRef;
 use crate::severity::Severity;
 
+/// Type alias for [`ClosureRule::cone_derived`] — silences `clippy::type_complexity`.
+///
+/// Returns a `SmallVec` of [`FactRef<S>`] values; the executor routes each
+/// fact to its host category via [`MarkingScheme::category_of`]. See
+/// [`ClosureRule::cone_derived`] for the contract on monotonicity and the
+/// closed-vs-open-vocab rationale.
+///
+/// The `?Sized` bound matches [`FactRef<S>`]'s bound at
+/// [`crate::fix_intent::FactRef`] so the alias is well-formed for
+/// `ClosureRule<S: MarkingScheme + ?Sized>`.
+///
+/// [`FactRef<S>`]: crate::fix_intent::FactRef
+/// [`MarkingScheme::category_of`]: crate::scheme::MarkingScheme::category_of
+#[allow(type_alias_bounds)]
+pub type ConeDerivedFn<S: crate::scheme::MarkingScheme + ?Sized> =
+    fn(
+        &<S as crate::scheme::MarkingScheme>::Marking,
+    ) -> smallvec::SmallVec<[crate::fix_intent::FactRef<S>; 2]>;
+
 /// A declarative closure rule: when `triggers` are present and `suppressors`
 /// are absent, add `cone` facts to the marking.
 ///
@@ -89,11 +108,16 @@ use crate::severity::Severity;
 ///
 /// ## Cone semantics
 ///
-/// Each entry in `cone` is a [`TokenRef::Token`] or [`TokenRef::AnyInCategory`]
-/// (the latter is reserved for future open-vocab cones; the current CAPCO
-/// catalog uses `TokenRef::Token` exclusively). The scheme's
-/// [`MarkingScheme::token_category()`] lookup routes each token to its host
-/// category for addition.
+/// Each entry in `cone` is a [`TokenRef::Token`]; the current CAPCO catalog
+/// uses `TokenRef::Token` exclusively. [`TokenRef::AnyInCategory`] is a
+/// category-wildcard *predicate* — useful in `triggers` and `suppressors` to
+/// match "any token in this category" — and is NOT the carrier for open-
+/// vocab cone facts. Open-vocab facts (REL TO country codes, FGI
+/// tetragraphs, SAR program identifiers, etc.) are emitted through
+/// `cone_derived` returning [`FactRef::OpenVocab`] values; see the
+/// `cone_derived` field below for the rationale and contract. The scheme's
+/// [`MarkingScheme::token_category()`] lookup routes each `TokenRef::Token`
+/// entry to its host category for addition.
 ///
 /// ## Severity
 ///
@@ -105,8 +129,7 @@ use crate::severity::Severity;
 ///
 /// [`MarkingScheme::satisfies`]: crate::scheme::MarkingScheme::satisfies
 /// [`MarkingScheme::token_category()`]: crate::scheme::MarkingScheme::token_category
-#[derive(Debug, Clone)]
-pub struct ClosureRule {
+pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// Stable scheme-unique identifier (e.g., `"capco/noforn-if-no-fdr"`).
     ///
     /// Used as the catalog row key for `[closure_rules]` config overrides
@@ -139,13 +162,92 @@ pub struct ClosureRule {
 
     /// Facts added by this rule when `triggers ∧ ¬suppressors`.
     ///
-    /// Each entry is a [`TokenRef::Token`] or [`TokenRef::AnyInCategory`]
-    /// (the latter reserved for future open-vocab cones; the current CAPCO
-    /// catalog uses `TokenRef::Token` exclusively). Each token in `cone` is
-    /// routed to its host category via [`MarkingScheme::token_category`].
+    /// Each entry is a [`TokenRef::Token`]; the current CAPCO catalog uses
+    /// `TokenRef::Token` exclusively. [`TokenRef::AnyInCategory`] is a
+    /// category-wildcard predicate (intended for `triggers` / `suppressors`
+    /// matching "any token in this category") and is NOT the carrier for
+    /// open-vocab cone facts. Open-vocab facts go through [`Self::cone_derived`]
+    /// returning [`FactRef::OpenVocab`] values — see that field's docs for
+    /// the rationale. Each token in `cone` is routed to its host category
+    /// via [`MarkingScheme::token_category`].
     ///
+    /// [`FactRef::OpenVocab`]: crate::fix_intent::FactRef::OpenVocab
     /// [`MarkingScheme::token_category`]: crate::scheme::MarkingScheme::token_category
     pub cone: &'static [TokenRef],
+
+    /// Optional marking-derived cone facts — supplements the static `cone` field.
+    ///
+    /// When `Some(f)`, the closure executor evaluates `f(marking)` after the
+    /// static `cone` facts and adds each [`FactRef<S>`] as an additional fact
+    /// in the scheme's marking. Each returned `FactRef` is routed to its host
+    /// category via [`MarkingScheme::category_of`] — the same dispatch the
+    /// engine uses for any other `FactRef` mutation — so the derived path is
+    /// symmetric with the static path: both ask the scheme to route, neither
+    /// pre-binds a `CategoryId`.
+    ///
+    /// # Why `FactRef<S>` and not `TokenRef`
+    ///
+    /// [`TokenRef`] carries only closed `TokenId` values and an axis-level
+    /// `AnyInCategory` predicate; it cannot express open-vocabulary facts
+    /// like REL TO country codes, FGI tetragraphs, or SAR program identifiers.
+    /// The motivating PR 4b-D JOINT use case — `REL TO USA, GBR, JPN`
+    /// partner-list cone — needs `FactRef::OpenVocab(CapcoOpenVocabRef::CountryCode(_))`,
+    /// which is the established open-vocab carrier in CAPCO
+    /// (`crates/capco/src/rules_declarative.rs:711-718`). [`FactRef<S>`]'s
+    /// `Cve` / `OpenVocab` split covers both closed and open vocab uniformly,
+    /// and the scheme's `category_of` impl owns the routing.
+    ///
+    /// # Contracts the function MUST satisfy
+    ///
+    /// **Monotonicity**: if `m1 ⊑ m2` in the marking lattice, then folding
+    /// `f(m1)` into `m1` via the host categories' joins produces a result
+    /// `⊑` folding `f(m2)` into `m2` via the same joins. Set inclusion of
+    /// the returned [`FactRef<S>`] list (`f(m1) ⊆ f(m2)` as sets of
+    /// `FactRef<S>` values) is sufficient when every host category's join is
+    /// set-union — the static catalog's case. Categories whose join
+    /// transmutes variants — notably `JointSet` — need the property stated
+    /// on the join, not on the emitted set: equal emitted sets can join to
+    /// distinct markings, so `⊆` on the raw output is necessary but not
+    /// sufficient. Without monotonicity on the join, the §4.7 closure
+    /// operator loses monotonicity globally and the fixpoint iteration's
+    /// correctness guarantee fails. For static rows the cone-producing
+    /// function is constant — vacuously monotone in `m` — but the
+    /// rule-as-a-whole still requires the suppressor/redundancy
+    /// monotonicity attestation: adding facts to a marking MUST NOT
+    /// unmask a suppressor and silence a row that previously fired.
+    /// Derived rows owe both attestations: the cone-producing function
+    /// itself must be monotone in `S::Marking`'s join order, AND the
+    /// same suppressor monotonicity property must hold. The
+    /// `NonMonotoneScheme` fixture in
+    /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
+    /// shows the failure mode for a static rule whose suppressor flips
+    /// from inactive to active as facts accrete — observationally
+    /// non-monotone at the rule level even though the static cone
+    /// itself is constant.
+    ///
+    /// # See also: JOINT JointSet hazard
+    ///
+    /// `JointSet::join` collapses `UnanimousProducers{A} ⊔ UnanimousProducers{B}`
+    /// (where `A ≠ B`) into `DisunityCollapse{union_non_us_producers}` — a
+    /// *different variant* that strips USA. A future JOINT `cone_derived` that
+    /// reads partner countries directly from `JointSet` and emits one fact per
+    /// country can produce a *smaller* country set on `m2 ⊒ m1` than on `m1`
+    /// (because the variant change drops USA from the underlying set). The
+    /// JOINT-row author in PR 4b-D should design around this — likely by reading
+    /// the post-join normalized form, not the raw producer list.
+    ///
+    /// # SmallVec inline cap
+    ///
+    /// The inline-2 cap matches the `ReplacementIntent::FactRemove::facts`
+    /// precedent from issue #348. JOINT partner lists of 1-2 countries fit
+    /// inline; lists of 3+ (which §H.3 worked examples do include) spill to
+    /// the heap. The cap is intentionally aligned with the existing FactRemove
+    /// precedent rather than widened speculatively — bump to inline-4 or
+    /// inline-8 once a concrete row demonstrates the spill is hot.
+    ///
+    /// [`FactRef<S>`]: crate::fix_intent::FactRef
+    /// [`MarkingScheme::category_of`]: crate::scheme::MarkingScheme::category_of
+    pub cone_derived: Option<ConeDerivedFn<S>>,
 
     /// Catalog-author severity intent.
     ///
@@ -155,17 +257,48 @@ pub struct ClosureRule {
     pub default_severity: Severity,
 }
 
-impl ClosureRule {
+// Manual `Debug` and `Clone` impls — mirror the `FactRef<S>` pattern at
+// `crate::fix_intent::FactRef`'s `impl Debug` / `impl Clone` so the trait
+// bounds resolve through the struct's fields without over-constraining on
+// `S: Debug` or `S: Clone`. `CapcoScheme: !Clone`, so a `#[derive(Clone)]`
+// here would silently prevent any `ClosureRule<CapcoScheme>` from being
+// cloned even though every concrete field is `Copy`.
+impl<S: crate::scheme::MarkingScheme + ?Sized> core::fmt::Debug for ClosureRule<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ClosureRule")
+            .field("name", &self.name)
+            .field("label", &self.label)
+            .field("triggers", &self.triggers)
+            .field("suppressors", &self.suppressors)
+            .field("cone", &self.cone)
+            .field("cone_derived", &self.cone_derived.map(|_| "<fn>"))
+            .field("default_severity", &self.default_severity)
+            .finish()
+    }
+}
+
+impl<S: crate::scheme::MarkingScheme + ?Sized> Clone for ClosureRule<S> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name,
+            label: self.label,
+            triggers: self.triggers,
+            suppressors: self.suppressors,
+            cone: self.cone,
+            cone_derived: self.cone_derived,
+            default_severity: self.default_severity,
+        }
+    }
+}
+
+impl<S: crate::scheme::MarkingScheme + ?Sized> ClosureRule<S> {
     /// Returns `true` if the trigger condition is met for the given marking.
     ///
     /// The trigger condition is N-ary OR: true when ANY trigger in
     /// `self.triggers` satisfies the marking, OR when `triggers` is empty
     /// (unconditional firing).
     #[inline]
-    pub fn trigger_fires<S>(&self, scheme: &S, marking: &S::Marking) -> bool
-    where
-        S: crate::scheme::MarkingScheme,
-    {
+    pub fn trigger_fires(&self, scheme: &S, marking: &S::Marking) -> bool {
         if self.triggers.is_empty() {
             return true;
         }
@@ -179,10 +312,7 @@ impl ClosureRule {
     /// `self.suppressors` satisfies the marking. False (not suppressed) when
     /// `suppressors` is empty.
     #[inline]
-    pub fn is_suppressed<S>(&self, scheme: &S, marking: &S::Marking) -> bool
-    where
-        S: crate::scheme::MarkingScheme,
-    {
+    pub fn is_suppressed(&self, scheme: &S, marking: &S::Marking) -> bool {
         self.suppressors
             .iter()
             .any(|s| scheme.satisfies(marking, s))
@@ -214,10 +344,7 @@ impl ClosureRule {
     /// was reverted and the placeholder rows were removed from
     /// `CapcoScheme::closure_rules()` entirely.)
     #[inline]
-    pub fn should_fire<S>(&self, scheme: &S, marking: &S::Marking) -> bool
-    where
-        S: crate::scheme::MarkingScheme,
-    {
+    pub fn should_fire(&self, scheme: &S, marking: &S::Marking) -> bool {
         self.trigger_fires(scheme, marking) && !self.is_suppressed(scheme, marking)
     }
 
@@ -255,4 +382,16 @@ impl ClosureRule {
 /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
 /// exercises that observable violation directly; the cap here only
 /// catches the unbounded-growth failure mode.
+///
+/// # Derived-cone catalogs require per-scheme chain-depth re-verification
+///
+/// The `N=16` bound is calibrated against the CAPCO catalog's static
+/// cones (chain depth 3, 5× safety padding). The PR 4b-D.0 addition of
+/// [`ClosureRule::cone_derived`] permits marking-derived facts whose
+/// per-firing fact-count and inter-rule chaining behavior are scheme-
+/// specific. A scheme that wires a `cone_derived` row whose firing
+/// produces facts that re-trigger other rows MUST re-do the chain-depth
+/// analysis from `docs/plans/2026-05-01-lattice-design.md` §4.7.3
+/// against its own catalog before relying on the `N=16` bound; the
+/// existing cap was calibrated against static catalogs only.
 pub const MAX_CLOSURE_ITERATIONS: usize = 16;

@@ -41,8 +41,8 @@
 //! The bitset ordering is componentwise: `m1 ⊑ m2` iff `m1.bits & m2.bits == m1.bits`.
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme, MeetSemilattice,
-    PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
+    Category, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
+    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
     severity::Severity,
 };
 use proptest::prelude::*;
@@ -137,7 +137,7 @@ fn bit_index(id: TokenId) -> Option<u8> {
 // based violation scenario.
 // ---------------------------------------------------------------------------
 
-static CLOSURE_RULES: &[ClosureRule] = &[
+static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     // Row 1: A→B (one-hop)
     ClosureRule {
         name: "stub/a-implies-b",
@@ -145,6 +145,7 @@ static CLOSURE_RULES: &[ClosureRule] = &[
         triggers: &[TokenRef::Token(TOK_A)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_B)],
+        cone_derived: None,
         default_severity: Severity::Info,
     },
     // Row 2: B→C (chains off row 1 — A→B→C is a true transitive
@@ -157,6 +158,7 @@ static CLOSURE_RULES: &[ClosureRule] = &[
         triggers: &[TokenRef::Token(TOK_B)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_C)],
+        cone_derived: None,
         default_severity: Severity::Info,
     },
     // Row 3: C→D (extends the chain to depth 3 — A→B→C→D is the
@@ -168,6 +170,7 @@ static CLOSURE_RULES: &[ClosureRule] = &[
         triggers: &[TokenRef::Token(TOK_C)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_D)],
+        cone_derived: None,
         default_severity: Severity::Info,
     },
     // Row 4: independent F→{G,H} (multi-cone, no chain interaction)
@@ -177,6 +180,7 @@ static CLOSURE_RULES: &[ClosureRule] = &[
         triggers: &[TokenRef::Token(TOK_F)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_G), TokenRef::Token(TOK_H)],
+        cone_derived: None,
         default_severity: Severity::Info,
     },
 ];
@@ -237,7 +241,7 @@ impl MarkingScheme for ClosureStubScheme {
         write!(out, "bits=0x{:02x}", m.bits)
     }
 
-    fn closure_rules(&self) -> &[ClosureRule] {
+    fn closure_rules(&self) -> &[ClosureRule<Self>] {
         CLOSURE_RULES
     }
 
@@ -274,6 +278,16 @@ impl MarkingScheme for ClosureStubScheme {
                     for token_id in rule.cone_token_ids() {
                         if let Some(n) = bit_index(token_id) {
                             working.bits |= 1 << n;
+                        }
+                    }
+                    if let Some(derived_fn) = rule.cone_derived {
+                        for fact_ref in derived_fn(&working) {
+                            // `OpenVocabRef = Infallible` makes `Cve` the only
+                            // inhabitable variant — irrefutable destructure.
+                            let FactRef::Cve(id) = fact_ref;
+                            if let Some(n) = bit_index(id) {
+                                working.bits |= 1 << n;
+                            }
                         }
                     }
                 }

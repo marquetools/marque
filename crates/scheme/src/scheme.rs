@@ -329,7 +329,10 @@ pub trait MarkingScheme {
     /// and docs generators — not a private engine detail.
     ///
     /// Default: empty slice (no closure rules declared).
-    fn closure_rules(&self) -> &[ClosureRule] {
+    fn closure_rules(&self) -> &[ClosureRule<Self>]
+    where
+        Self: Sized,
+    {
         &[]
     }
 
