@@ -1612,6 +1612,45 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
 /// - `SA` → 2-character non-trigraph; same as USB / ASU, not in
 ///   `attrs.rel_to`. Decoder/parser path.
 ///
+/// # Coverage exclusion (issue #439)
+///
+/// If the candidate replacement trigraph is **already covered** by
+/// another entry in the same `attrs.rel_to` block — either directly
+/// (the other entry equals the candidate) or transitively (the other
+/// entry is a decomposable tetragraph whose
+/// [`expand_tetragraph`](crate::vocab::expand_tetragraph) members
+/// contain the candidate) — S004 stays silent for that entry. The
+/// author's `AUT` cannot be a typo for `AUS` if `FVEY` (or `ACGU`, or
+/// a direct `AUS`) already covers Australia in the same block:
+/// `AUS` is *already* a permitted recipient, so duplicating it as
+/// `AUT` would have produced redundant content rather than a typo.
+/// The remaining hypothesis is "the author meant Austria"; S004
+/// respects that and emits nothing.
+///
+/// The check is general over the ODNI ISMCAT Tetragraph Taxonomy —
+/// `FVEY`, `ACGU`, `NATO`, `AUSTRALIA_GROUP`, and any other
+/// `decomposable="Yes"` row are all consulted via the same table.
+/// Atomic tetragraphs (`decomposable="No"` — `EU`, `GCCH`, `KFOR`,
+/// …), deprecated entries (`decomposable="NA"`), and codes unknown
+/// to both the taxonomy and `country_extensions.toml` return
+/// `None` from `expand_tetragraph` and therefore cannot suppress
+/// the diagnostic.
+///
+/// Authority: CAPCO-2016 §D.2 Table 3 Row 23 pp28–30 explicitly
+/// licenses tetragraph-to-trigraph expansion for banner-line REL TO
+/// roll-up — "Expansion of the TEYE, ACGU, and FVEY tetragraphs is
+/// allowed for common country roll-up of banner line REL TO [USA,
+/// LIST] marking". §H.8 p151 (REL TO Precedence Rules for Banner
+/// Line Guidance) delegates roll-up semantics to §D.2 Table 3 by
+/// reference. The suppression operationalizes that already-licensed
+/// equivalence: if `FVEY` is in the block, its expanded members are
+/// already permitted recipients of the same banner-rolled-up release
+/// decision, so a "did you mean a member of that expansion?"
+/// suggestion against a different rare trigraph is corpus noise.
+/// The data source for the expansion (the ODNI ISMCAT
+/// `decomposable="Yes"` rows) is described under
+/// [`expand_tetragraph`](crate::vocab::expand_tetragraph).
+///
 /// # Constitution V audit-content-ignorance
 ///
 /// The diagnostic message uses **only canonical token strings**
@@ -1687,6 +1726,37 @@ fn s004_edit_distance(a: &str, b: &str) -> usize {
         std::mem::swap(&mut prev, &mut curr);
     }
     prev[n]
+}
+
+/// Issue #439: returns `true` when `candidate` (the trigraph S004
+/// would suggest) is already covered by some other entry in
+/// `rel_to` — either directly (another entry equals `candidate`)
+/// or transitively (another entry is a tetragraph whose
+/// [`expand_tetragraph`](crate::vocab::expand_tetragraph) members
+/// contain `candidate`). Generic over the ODNI ISMCAT
+/// `decomposable="Yes"` rows; atomic and unknown entries return
+/// `None` from `expand_tetragraph` and therefore never cover.
+///
+/// The `self_idx` parameter excludes the rare entry itself from
+/// the scan — `expand_tetragraph` returns `None` for a trigraph
+/// like `AUT`, but skipping the self-index avoids both the lookup
+/// and any future-edit pitfall if the table grows to include
+/// trigraph rows.
+fn s004_candidate_covered_by_block(
+    rel_to: &[marque_ism::CountryCode],
+    candidate: &str,
+    self_idx: usize,
+) -> bool {
+    rel_to.iter().enumerate().any(|(i, code)| {
+        if i == self_idx {
+            return false;
+        }
+        let s = code.as_str();
+        if s == candidate {
+            return true;
+        }
+        crate::vocab::expand_tetragraph(s).is_some_and(|members| members.contains(&candidate))
+    })
 }
 
 /// Build an S004 diagnostic message for a given (rare, candidate)
@@ -1842,6 +1912,19 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
             let Some((candidate, _candidate_log_prior, _candidate_dist)) = best else {
                 continue;
             };
+
+            // Issue #439: skip when the candidate replacement is
+            // already covered by another entry in the same REL TO
+            // block (direct trigraph match OR transitive coverage via
+            // a decomposable tetragraph like FVEY / ACGU / NATO /
+            // AUSTRALIA_GROUP). The author cannot have meant the
+            // candidate trigraph as a typo target when it's already
+            // a permitted recipient — the rare entry is either
+            // intentional or a typo for something else entirely, and
+            // S004's signal in that regime is at its weakest.
+            if s004_candidate_covered_by_block(&attrs.rel_to, candidate, idx) {
+                continue;
+            }
 
             // Pull the matching span. If the parser's RelToTrigraph
             // tokens don't match `rel_to.len()` (defensive against a
