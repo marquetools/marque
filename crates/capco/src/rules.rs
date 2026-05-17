@@ -3214,8 +3214,8 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                         self.default_severity(),
                         token.span,
                         concat!(
-                            "EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
-                            "convert to REL TO. A bare EYES ONLY banner without a country list ",
+                            "EYES/EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
+                            "convert to REL TO. A bare EYES/EYES ONLY banner without a country list ",
                             "implies Five Eyes (FVEY) membership per §H.8 p157",
                         )
                         .to_owned(),
