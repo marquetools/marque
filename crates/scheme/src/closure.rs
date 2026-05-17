@@ -61,6 +61,14 @@ use crate::category::TokenId;
 use crate::constraint::TokenRef;
 use crate::severity::Severity;
 
+/// Type alias for [`ClosureRule::cone_derived`] — silences `clippy::type_complexity`.
+///
+/// See [`ClosureRule::cone_derived`] for the contract on category agreement and
+/// monotonicity.
+pub type ConeDerivedFn<S> = fn(
+    &<S as crate::scheme::MarkingScheme>::Marking,
+) -> smallvec::SmallVec<[(crate::category::CategoryId, TokenRef); 2]>;
+
 /// A declarative closure rule: when `triggers` are present and `suppressors`
 /// are absent, add `cone` facts to the marking.
 ///
@@ -106,7 +114,7 @@ use crate::severity::Severity;
 /// [`MarkingScheme::satisfies`]: crate::scheme::MarkingScheme::satisfies
 /// [`MarkingScheme::token_category()`]: crate::scheme::MarkingScheme::token_category
 #[derive(Debug, Clone)]
-pub struct ClosureRule {
+pub struct ClosureRule<S: crate::scheme::MarkingScheme> {
     /// Stable scheme-unique identifier (e.g., `"capco/noforn-if-no-fdr"`).
     ///
     /// Used as the catalog row key for `[closure_rules]` config overrides
@@ -147,6 +155,45 @@ pub struct ClosureRule {
     /// [`MarkingScheme::token_category`]: crate::scheme::MarkingScheme::token_category
     pub cone: &'static [TokenRef],
 
+    /// Optional marking-derived cone facts — supplements the static `cone` field.
+    ///
+    /// When `Some(f)`, the closure executor evaluates `f(marking)` after the
+    /// static `cone` facts and adds each `(CategoryId, TokenRef)` pair as an
+    /// additional fact in the scheme's marking.
+    ///
+    /// # Contracts the function MUST satisfy
+    ///
+    /// **Monotonicity**: `m1 ⊑ m2 ⇒ f(m1) ⊆ f(m2)` (as sets of (cat, tokenref)
+    /// pairs, under whatever join semantics the host categories provide). Without
+    /// this, the §4.7 closure operator loses monotonicity globally and the
+    /// fixpoint iteration's correctness guarantee fails. Static cones are
+    /// monotone by vacuous truth; derived cones MUST attest monotonicity per row.
+    ///
+    /// **Category agreement**: when the returned `TokenRef` is `Token(token_id)`,
+    /// the paired `CategoryId` MUST equal `scheme.token_category(token_id)`. The
+    /// derived form pre-binds the category for executor efficiency; routing a
+    /// token to the wrong category is an error the static path cannot express.
+    /// The closure executor (lands in PR 4b-D) is expected to enforce this with
+    /// a `#[cfg(debug_assertions)] debug_assert!(...)`.
+    ///
+    /// # See also: JOINT JointSet hazard
+    ///
+    /// `JointSet::join` collapses `UnanimousProducers{A} ⊔ UnanimousProducers{B}`
+    /// (where `A ≠ B`) into `DisunityCollapse{union_non_us_producers}` — a
+    /// *different variant* that strips USA. A future JOINT `cone_derived` that
+    /// reads partner countries directly from `JointSet` and emits one fact per
+    /// country can produce a *smaller* country set on `m2 ⊒ m1` than on `m1`
+    /// (because the variant change drops USA from the underlying set). The
+    /// JOINT-row author in PR 4b-D should design around this — likely by reading
+    /// the post-join normalized form, not the raw producer list.
+    ///
+    /// # SmallVec inline cap revisit
+    ///
+    /// The inline-2 cap matches the `ReplacementIntent::FactRemove::facts`
+    /// precedent from issue #348. If the eventual JOINT row produces routinely
+    /// ≥3 facts per firing, bump to inline-4 or inline-8 — one-line change here.
+    pub cone_derived: Option<ConeDerivedFn<S>>,
+
     /// Catalog-author severity intent.
     ///
     /// Per `decisions.md` D19 B, the typical value is [`Severity::Info`].
@@ -155,17 +202,14 @@ pub struct ClosureRule {
     pub default_severity: Severity,
 }
 
-impl ClosureRule {
+impl<S: crate::scheme::MarkingScheme> ClosureRule<S> {
     /// Returns `true` if the trigger condition is met for the given marking.
     ///
     /// The trigger condition is N-ary OR: true when ANY trigger in
     /// `self.triggers` satisfies the marking, OR when `triggers` is empty
     /// (unconditional firing).
     #[inline]
-    pub fn trigger_fires<S>(&self, scheme: &S, marking: &S::Marking) -> bool
-    where
-        S: crate::scheme::MarkingScheme,
-    {
+    pub fn trigger_fires(&self, scheme: &S, marking: &S::Marking) -> bool {
         if self.triggers.is_empty() {
             return true;
         }
@@ -179,10 +223,7 @@ impl ClosureRule {
     /// `self.suppressors` satisfies the marking. False (not suppressed) when
     /// `suppressors` is empty.
     #[inline]
-    pub fn is_suppressed<S>(&self, scheme: &S, marking: &S::Marking) -> bool
-    where
-        S: crate::scheme::MarkingScheme,
-    {
+    pub fn is_suppressed(&self, scheme: &S, marking: &S::Marking) -> bool {
         self.suppressors
             .iter()
             .any(|s| scheme.satisfies(marking, s))
@@ -214,10 +255,7 @@ impl ClosureRule {
     /// was reverted and the placeholder rows were removed from
     /// `CapcoScheme::closure_rules()` entirely.)
     #[inline]
-    pub fn should_fire<S>(&self, scheme: &S, marking: &S::Marking) -> bool
-    where
-        S: crate::scheme::MarkingScheme,
-    {
+    pub fn should_fire(&self, scheme: &S, marking: &S::Marking) -> bool {
         self.trigger_fires(scheme, marking) && !self.is_suppressed(scheme, marking)
     }
 
@@ -255,4 +293,16 @@ impl ClosureRule {
 /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
 /// exercises that observable violation directly; the cap here only
 /// catches the unbounded-growth failure mode.
+///
+/// # Derived-cone catalogs require per-scheme chain-depth re-verification
+///
+/// The `N=16` bound is calibrated against the CAPCO catalog's static
+/// cones (chain depth 3, 5× safety padding). The PR 4b-D.0 addition of
+/// [`ClosureRule::cone_derived`] permits marking-derived facts whose
+/// per-firing fact-count and inter-rule chaining behavior are scheme-
+/// specific. A scheme that wires a `cone_derived` row whose firing
+/// produces facts that re-trigger other rows MUST re-do the chain-depth
+/// analysis from `docs/plans/2026-05-01-lattice-design.md` §4.7.3
+/// against its own catalog before relying on the `N=16` bound; the
+/// existing cap was calibrated against static catalogs only.
 pub const MAX_CLOSURE_ITERATIONS: usize = 16;

@@ -95,7 +95,7 @@ pub use category::{
     AggregationOp, Cardinality, Category, CategoryId, CategoryShape, ExpansionFn, IntraOrdering,
     TokenId, reduce_intersect, reduce_max, reduce_union, reduce_union_with_supersession,
 };
-pub use closure::{ClosureRule, MAX_CLOSURE_ITERATIONS};
+pub use closure::{ClosureRule, ConeDerivedFn, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
