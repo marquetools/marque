@@ -108,11 +108,16 @@ pub type ConeDerivedFn<S: crate::scheme::MarkingScheme + ?Sized> =
 ///
 /// ## Cone semantics
 ///
-/// Each entry in `cone` is a [`TokenRef::Token`] or [`TokenRef::AnyInCategory`]
-/// (the latter is reserved for future open-vocab cones; the current CAPCO
-/// catalog uses `TokenRef::Token` exclusively). The scheme's
-/// [`MarkingScheme::token_category()`] lookup routes each token to its host
-/// category for addition.
+/// Each entry in `cone` is a [`TokenRef::Token`]; the current CAPCO catalog
+/// uses `TokenRef::Token` exclusively. [`TokenRef::AnyInCategory`] is a
+/// category-wildcard *predicate* — useful in `triggers` and `suppressors` to
+/// match "any token in this category" — and is NOT the carrier for open-
+/// vocab cone facts. Open-vocab facts (REL TO country codes, FGI
+/// tetragraphs, SAR program identifiers, etc.) are emitted through
+/// `cone_derived` returning [`FactRef::OpenVocab`] values; see the
+/// `cone_derived` field below for the rationale and contract. The scheme's
+/// [`MarkingScheme::token_category()`] lookup routes each `TokenRef::Token`
+/// entry to its host category for addition.
 ///
 /// ## Severity
 ///
@@ -157,11 +162,16 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
 
     /// Facts added by this rule when `triggers ∧ ¬suppressors`.
     ///
-    /// Each entry is a [`TokenRef::Token`] or [`TokenRef::AnyInCategory`]
-    /// (the latter reserved for future open-vocab cones; the current CAPCO
-    /// catalog uses `TokenRef::Token` exclusively). Each token in `cone` is
-    /// routed to its host category via [`MarkingScheme::token_category`].
+    /// Each entry is a [`TokenRef::Token`]; the current CAPCO catalog uses
+    /// `TokenRef::Token` exclusively. [`TokenRef::AnyInCategory`] is a
+    /// category-wildcard predicate (intended for `triggers` / `suppressors`
+    /// matching "any token in this category") and is NOT the carrier for
+    /// open-vocab cone facts. Open-vocab facts go through [`Self::cone_derived`]
+    /// returning [`FactRef::OpenVocab`] values — see that field's docs for
+    /// the rationale. Each token in `cone` is routed to its host category
+    /// via [`MarkingScheme::token_category`].
     ///
+    /// [`FactRef::OpenVocab`]: crate::fix_intent::FactRef::OpenVocab
     /// [`MarkingScheme::token_category`]: crate::scheme::MarkingScheme::token_category
     pub cone: &'static [TokenRef],
 
@@ -200,8 +210,20 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// distinct markings, so `⊆` on the raw output is necessary but not
     /// sufficient. Without monotonicity on the join, the §4.7 closure
     /// operator loses monotonicity globally and the fixpoint iteration's
-    /// correctness guarantee fails. Static cones are monotone by vacuous
-    /// truth; derived cones MUST attest monotonicity per row.
+    /// correctness guarantee fails. For static rows the cone-producing
+    /// function is constant — vacuously monotone in `m` — but the
+    /// rule-as-a-whole still requires the suppressor/redundancy
+    /// monotonicity attestation: adding facts to a marking MUST NOT
+    /// unmask a suppressor and silence a row that previously fired.
+    /// Derived rows owe both attestations: the cone-producing function
+    /// itself must be monotone in `S::Marking`'s join order, AND the
+    /// same suppressor monotonicity property must hold. The
+    /// `NonMonotoneScheme` fixture in
+    /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
+    /// shows the failure mode for a static rule whose suppressor flips
+    /// from inactive to active as facts accrete — observationally
+    /// non-monotone at the rule level even though the static cone
+    /// itself is constant.
     ///
     /// # See also: JOINT JointSet hazard
     ///
@@ -217,9 +239,11 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// # SmallVec inline cap
     ///
     /// The inline-2 cap matches the `ReplacementIntent::FactRemove::facts`
-    /// precedent from issue #348. JOINT's typical partner list (1-3 countries
-    /// per §H.3 worked examples) fits inline; bump to inline-4 or inline-8 if
-    /// a row routinely overflows.
+    /// precedent from issue #348. JOINT partner lists of 1-2 countries fit
+    /// inline; lists of 3+ (which §H.3 worked examples do include) spill to
+    /// the heap. The cap is intentionally aligned with the existing FactRemove
+    /// precedent rather than widened speculatively — bump to inline-4 or
+    /// inline-8 once a concrete row demonstrates the spill is hot.
     ///
     /// [`FactRef<S>`]: crate::fix_intent::FactRef
     /// [`MarkingScheme::category_of`]: crate::scheme::MarkingScheme::category_of
