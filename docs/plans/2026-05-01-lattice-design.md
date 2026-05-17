@@ -423,6 +423,60 @@ pipeline; the PageRewrites are inflationary on the closed state
 (they remove dominated tokens but the remaining tokens are
 already members of the closure's fixed point).
 
+### (e.1) PageRewrite read-only-attrs invariant
+
+**Invariant (PageRewrite read-only-attrs).** A `PageRewrite` that the
+engine schedules at the page-finalization boundary — whether produced
+by the closure operator (§4.7.4) or the topological rewrite scheduler
+— MUST mutate state strictly at the page-projection layer
+(`ProjectedMarking` categories) or at a page-axis aggregator (e.g.,
+`SciSet`, `DissemSet`). It MUST NOT semantically rewrite individual
+`CanonicalAttrs` stored in `PageContext::portions()`.
+`Phase::PageFinalization` rules (issue #461) read
+`ctx.page_context.portions()` and re-project per-portion lattices
+from that slice; mutating it behind their back is a silent
+correctness defect for any predicate finer than the page
+projection's banner-visible shape.
+
+| Shape | Status | Example |
+|---|---|---|
+| Mutate categories on `ProjectedMarking` (page-projection layer) | Allowed | `capco/noforn-clears-rel-to` — clears the page's REL TO entries on the projection (`CategoryAction::Clear { category: CAT_REL_TO }`) |
+| Mutate page-axis aggregator state (`SciSet`, `DissemSet`, `RelToBlock`, …) | Allowed | `capco/classification-evicts-fouo` — removes FOUO from the page-level dissem aggregator via `ReplacementIntent::FactRemove` |
+| Add cone tokens to closure state via `ClosureRule.cone` | Allowed | All 7 `CLOSURE_NOFORN_*` rows in `crates/capco/src/scheme/closure.rs` |
+| Mutate any `CanonicalAttrs` in `page_context.portions()` | **Forbidden** | *(hypothetical)* a closure rule walking a future `portions_mut()` to drop `JointClassification.countries` entries |
+| Read per-portion `CanonicalAttrs` to compute new page-projection state | Allowed (read-only) | A future per-portion-aware closure trigger |
+
+**Worked example — Forbidden case.** Consider a hypothetical closure
+rule `capco/joint-disunity-fold-attrs` that, when JOINT portions
+disagree on country list, walks `page_context.portions_mut()` and
+rewrites each portion's `JointClassification.countries` to the
+page-level intersection. The page projection ends up consistent and
+the banner renders correctly. But W004 (`joint-disunity-collapse-to-FGI`,
+§H.3 p57) reads the per-portion country slices via
+`JointSet::from_attrs_iter(page_ctx.portions())` and decides whether
+disunity exists from those slices. After the rule fires, every
+portion's slice is identical — disunity is invisible, W004 silently
+stops firing on a real §H.3 p57 derivative-use migration trigger.
+The correct shape: mutate the page-axis `JointSet` aggregator state
+only; leave `portions()` untouched.
+
+**Reviewer checklist (closure-rule + PageRewrite authoring).**
+
+- [ ] Does the rewrite touch only `ProjectedMarking` categories or a page-axis aggregator?
+- [ ] Does the rewrite avoid taking `&mut` on any `CanonicalAttrs` from `page_context.portions()`?
+- [ ] If a `Phase::PageFinalization` predicate exists that reads the axes this rewrite affects, was that predicate's input checked for invariance under this rewrite?
+- [ ] (Debug builds) Does `cargo test` pass with the `dispatch_page_finalization` portion-snapshot sentinel enabled?
+
+**Enforcement.** A debug-only sentinel in `dispatch_page_finalization`
+(`crates/engine/src/engine.rs`) snapshots `page_context.portions()`
+before the PageFinalization rule-dispatch loop and asserts the slice
+is unchanged after the loop completes. The sentinel is gated on
+`#[cfg(debug_assertions)]` — it ships in `cargo test` runs and
+unoptimized development builds, and costs nothing in `--release`.
+The sibling sentinel for the closure-operator's rewrite-application
+site lands with PR 4b-D when `Engine::project::closure()` is wired
+on the hot path.
+
 ### Worked examples
 
 **Example 1 — FD&R chain join + NOFORN clears REL TO:**

@@ -4213,6 +4213,30 @@ fn dispatch_page_finalization(
         .with_corrections(corrections_arc.clone())
         .with_pre_pass_1_attrs(None);
 
+    // PR #490: portion-snapshot sentinel for the PageRewrite
+    // read-only-attrs invariant. `Phase::PageFinalization` rules
+    // read `ctx.page_context.portions()` and re-project per-portion
+    // lattices from that slice (e.g., W004's
+    // `JointSet::from_attrs_iter(page_ctx.portions())` per
+    // §H.3 p57 derivative-use migration trigger). A rule that
+    // mutated portions through any future API change — or a future
+    // closure-operator rewrite-application site that did so — would
+    // silently break that predicate's input invariance. Today
+    // `PageContext::portions()` returns `&[CanonicalAttrs]` with no
+    // `&mut` API, so a conformant rule cannot violate the contract
+    // through the public API; the sentinel is a static guard against
+    // future API changes that would open a mutation path.
+    // See `docs/plans/2026-05-01-lattice-design.md` §3 (e.1).
+    //
+    // Snapshot from the `&PageContext` parameter (not the cloned
+    // `page_ctx_arc`) so the check survives any future Arc-related
+    // refactor. Cost: a clone of `[CanonicalAttrs]` in debug builds
+    // only; `--release` strips the snapshot and the assertion
+    // entirely. Placement is AFTER the empty-bucket / all-Off
+    // short-circuits (they early-return before reaching this point).
+    #[cfg(debug_assertions)]
+    let portions_before: Vec<marque_ism::CanonicalAttrs> = page_context.portions().to_vec();
+
     // Mirror the main candidate-loop dispatch shape: fast-path
     // Off-skip via `fast_path_severities[set_idx][rule_idx]`,
     // `catch_unwind` for untrusted rules, per-diagnostic
@@ -4267,6 +4291,33 @@ fn dispatch_page_finalization(
         );
         out_diagnostics.extend(diags);
     }
+
+    // PR #490: portion-snapshot assertion — see snapshot comment
+    // above. The PageRewrite read-only-attrs invariant requires
+    // that no `Phase::PageFinalization` rule mutate the per-portion
+    // `CanonicalAttrs` slice. Counts + indices in the message only
+    // (G13 / Constitution V Principle V audit-content-ignorance —
+    // debug builds may still run in classified-content environments).
+    // The outer-loop placement cannot attribute the violation to a
+    // specific rule; if a sentinel firing requires per-rule
+    // attribution, switch to a per-iteration snapshot inside the
+    // loop temporarily for debugging.
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        page_context.portions(),
+        portions_before.as_slice(),
+        "PageFinalization rule dispatch mutated PageContext::portions() \
+         ({} portion(s) before vs {} after). This violates the \
+         PageRewrite read-only-attrs invariant in \
+         docs/plans/2026-05-01-lattice-design.md §3 (e.1). The \
+         portion-snapshot sentinel cannot pin the violating rule \
+         from this outer-loop placement; to attribute, switch to \
+         a per-iteration snapshot inside the loop temporarily. \
+         pass_finalization_rule_indices.len() = {}.",
+        portions_before.len(),
+        page_context.portions().len(),
+        pass_finalization_rule_indices.len(),
+    );
 
     Ok(())
 }
