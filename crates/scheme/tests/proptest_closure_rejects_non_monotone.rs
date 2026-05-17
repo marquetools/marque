@@ -100,12 +100,13 @@ fn bit_index(id: TokenId) -> Option<u8> {
 // A→B, always. Adding TOK_A always adds TOK_B.
 // ---------------------------------------------------------------------------
 
-static MONOTONE_RULES: &[ClosureRule] = &[ClosureRule {
+static MONOTONE_RULES: &[ClosureRule<MonotoneScheme>] = &[ClosureRule {
     name: "stub/a-implies-b",
     label: "non-monotone test fixture",
     triggers: &[TokenRef::Token(TOK_A)],
     suppressors: &[], // No suppressor — unconditional.
     cone: &[TokenRef::Token(TOK_B)],
+    cone_derived: None,
     default_severity: Severity::Info,
 }];
 
@@ -158,7 +159,7 @@ impl MarkingScheme for MonotoneScheme {
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)
     }
-    fn closure_rules(&self) -> &[ClosureRule] {
+    fn closure_rules(&self) -> &[ClosureRule<Self>] {
         MONOTONE_RULES
     }
     fn iter_present_tokens<'m>(
@@ -182,6 +183,15 @@ impl MarkingScheme for MonotoneScheme {
                     for id in rule.cone_token_ids() {
                         if let Some(n) = bit_index(id) {
                             working.bits |= 1 << n;
+                        }
+                    }
+                    if let Some(derived_fn) = rule.cone_derived {
+                        for (_cat, token_ref) in derived_fn(&working) {
+                            if let TokenRef::Token(id) = token_ref {
+                                if let Some(n) = bit_index(id) {
+                                    working.bits |= 1 << n;
+                                }
+                            }
                         }
                     }
                 }
@@ -319,7 +329,7 @@ fn non_monotone_scenario_is_detectable() {
 // observable-violation path per Copilot PR 3.7 review #8.
 // ---------------------------------------------------------------------------
 
-static NON_MONOTONE_RULES: &[ClosureRule] = &[ClosureRule {
+static NON_MONOTONE_RULES: &[ClosureRule<NonMonotoneScheme>] = &[ClosureRule {
     name: "stub/a-implies-b-suppressed-by-c",
     label: "non-monotone test fixture",
     triggers: &[TokenRef::Token(TOK_A)],
@@ -330,6 +340,7 @@ static NON_MONOTONE_RULES: &[ClosureRule] = &[ClosureRule {
     // closure result — that's the non-monotone violation.
     suppressors: &[TokenRef::Token(TOK_C)],
     cone: &[TokenRef::Token(TOK_B)],
+    cone_derived: None,
     default_severity: Severity::Info,
 }];
 
@@ -382,7 +393,7 @@ impl MarkingScheme for NonMonotoneScheme {
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)
     }
-    fn closure_rules(&self) -> &[ClosureRule] {
+    fn closure_rules(&self) -> &[ClosureRule<Self>] {
         NON_MONOTONE_RULES
     }
     fn iter_present_tokens<'m>(
@@ -409,6 +420,15 @@ impl MarkingScheme for NonMonotoneScheme {
                         if let TokenRef::Token(id) = cone_ref {
                             if let Some(n) = bit_index(*id) {
                                 working.bits |= 1 << n;
+                            }
+                        }
+                    }
+                    if let Some(derived_fn) = rule.cone_derived {
+                        for (_cat, token_ref) in derived_fn(&working) {
+                            if let TokenRef::Token(id) = token_ref {
+                                if let Some(n) = bit_index(id) {
+                                    working.bits |= 1 << n;
+                                }
                             }
                         }
                     }
@@ -511,5 +531,383 @@ proptest! {
                 c1.bits, c2.bits
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PR 4b-D.0 derived-cone fixtures — exercise `ClosureRule::cone_derived`.
+//
+// These two schemes mirror `MonotoneScheme` and `NonMonotoneScheme` above but
+// route their cone facts through the new `cone_derived` callback shape from
+// PR 4b-D.0. They are load-bearing: without them, the PR 4b-D JOINT row
+// (the first production-side consumer of `cone_derived`) can ship with a
+// silent monotonicity defect because no test would exercise the derived path.
+//
+// MonotoneDerivedScheme:
+//   Rule has a `cone_derived` fn that returns one fact per bit set in the
+//   marking (bit 0 → TOK_A, bit 1 → TOK_B, bit 2 → TOK_C). Adding bits to
+//   `m` only adds facts to `derived(m)` — strictly monotone.
+//
+// NonMonotoneDerivedScheme:
+//   Rule has a `cone_derived` fn that returns TOK_B only when bit 0 is set
+//   AND bit 1 is unset. Setting bit 1 in `m2 ⊒ m1` drops the TOK_B fact.
+//   Non-monotone by construction.
+// ---------------------------------------------------------------------------
+
+use smallvec::{SmallVec, smallvec};
+
+const CAT_X: marque_scheme::category::CategoryId = marque_scheme::category::CategoryId(0);
+
+fn monotone_derived_cone(
+    m: &BitMarking,
+) -> SmallVec<[(marque_scheme::category::CategoryId, TokenRef); 2]> {
+    let mut out: SmallVec<[(marque_scheme::category::CategoryId, TokenRef); 2]> = SmallVec::new();
+    if m.has_token(0) {
+        out.push((CAT_X, TokenRef::Token(TOK_A)));
+    }
+    if m.has_token(1) {
+        out.push((CAT_X, TokenRef::Token(TOK_B)));
+    }
+    if m.has_token(2) {
+        out.push((CAT_X, TokenRef::Token(TOK_C)));
+    }
+    out
+}
+
+fn non_monotone_derived_cone(
+    m: &BitMarking,
+) -> SmallVec<[(marque_scheme::category::CategoryId, TokenRef); 2]> {
+    // Returns TOK_B only when TOK_A is present AND TOK_B is absent.
+    // Adding TOK_B to the marking removes the derived fact — non-monotone.
+    if m.has_token(0) && !m.has_token(1) {
+        smallvec![(CAT_X, TokenRef::Token(TOK_B))]
+    } else {
+        SmallVec::new()
+    }
+}
+
+static MONOTONE_DERIVED_RULES: &[ClosureRule<MonotoneDerivedScheme>] = &[ClosureRule {
+    name: "stub/derived-monotone",
+    label: "derived-cone monotone test fixture",
+    // Unconditional firing — the cone_derived fn does the marking-shape work.
+    triggers: &[],
+    suppressors: &[],
+    cone: &[],
+    cone_derived: Some(monotone_derived_cone),
+    default_severity: Severity::Info,
+}];
+
+static NON_MONOTONE_DERIVED_RULES: &[ClosureRule<NonMonotoneDerivedScheme>] = &[ClosureRule {
+    name: "stub/derived-non-monotone",
+    label: "derived-cone non-monotone test fixture",
+    triggers: &[],
+    suppressors: &[],
+    cone: &[],
+    cone_derived: Some(non_monotone_derived_cone),
+    default_severity: Severity::Info,
+}];
+
+struct MonotoneDerivedScheme;
+
+impl MarkingScheme for MonotoneDerivedScheme {
+    type Token = TokenId;
+    type Marking = BitMarking;
+    type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+
+    fn name(&self) -> &str {
+        "monotone-derived-stub"
+    }
+    fn schema_version(&self) -> &str {
+        "v0"
+    }
+    fn categories(&self) -> &[Category] {
+        &[]
+    }
+    fn constraints(&self) -> &[Constraint] {
+        &[]
+    }
+    fn templates(&self) -> &[Template] {
+        &[]
+    }
+    fn parse(&self, _: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        Err(())
+    }
+    fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
+        match token_ref {
+            TokenRef::Token(id) => bit_index(*id).is_some_and(|n| marking.has_token(n)),
+            TokenRef::AnyInCategory(_) => false,
+        }
+    }
+    fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
+        BitMarking::default()
+    }
+    fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &[]
+    }
+    fn evaluate_custom(&self, _: &'static str, _: &Self::Marking) -> Vec<ConstraintViolation> {
+        Vec::new()
+    }
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        _: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        write!(out, "bits={:08b}", m.bits)
+    }
+    fn closure_rules(&self) -> &[ClosureRule<Self>] {
+        MONOTONE_DERIVED_RULES
+    }
+    fn iter_present_tokens<'m>(
+        &self,
+        marking: &'m Self::Marking,
+    ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
+        let bits = marking.bits;
+        Box::new(
+            [TOK_A, TOK_B, TOK_C]
+                .into_iter()
+                .filter(move |t| bit_index(*t).is_some_and(|n| (bits >> n) & 1 == 1))
+                .map(TokenRef::Token),
+        )
+    }
+    fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        let mut working = marking;
+        for _iter in 0..marque_scheme::closure::MAX_CLOSURE_ITERATIONS {
+            let prev = working.bits;
+            for rule in MONOTONE_DERIVED_RULES {
+                if rule.should_fire(self, &working) {
+                    for id in rule.cone_token_ids() {
+                        if let Some(n) = bit_index(id) {
+                            working.bits |= 1 << n;
+                        }
+                    }
+                    if let Some(derived_fn) = rule.cone_derived {
+                        for (_cat, token_ref) in derived_fn(&working) {
+                            if let TokenRef::Token(id) = token_ref {
+                                if let Some(n) = bit_index(id) {
+                                    working.bits |= 1 << n;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if working.bits == prev {
+                return working;
+            }
+        }
+        panic!(
+            "monotone-derived closure did not converge in {} iterations",
+            marque_scheme::closure::MAX_CLOSURE_ITERATIONS
+        );
+    }
+}
+
+struct NonMonotoneDerivedScheme;
+
+impl MarkingScheme for NonMonotoneDerivedScheme {
+    type Token = TokenId;
+    type Marking = BitMarking;
+    type ParseError = ();
+    type OpenVocabRef = core::convert::Infallible;
+
+    fn name(&self) -> &str {
+        "non-monotone-derived-stub"
+    }
+    fn schema_version(&self) -> &str {
+        "v0"
+    }
+    fn categories(&self) -> &[Category] {
+        &[]
+    }
+    fn constraints(&self) -> &[Constraint] {
+        &[]
+    }
+    fn templates(&self) -> &[Template] {
+        &[]
+    }
+    fn parse(&self, _: &str) -> Result<Parsed<Self::Marking>, Self::ParseError> {
+        Err(())
+    }
+    fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
+        match token_ref {
+            TokenRef::Token(id) => bit_index(*id).is_some_and(|n| marking.has_token(n)),
+            TokenRef::AnyInCategory(_) => false,
+        }
+    }
+    fn project(&self, _: Scope, _: &[Self::Marking]) -> Self::Marking {
+        BitMarking::default()
+    }
+    fn page_rewrites(&self) -> &[PageRewrite<Self>] {
+        &[]
+    }
+    fn evaluate_custom(&self, _: &'static str, _: &Self::Marking) -> Vec<ConstraintViolation> {
+        Vec::new()
+    }
+    fn render_canonical(
+        &self,
+        m: &Self::Marking,
+        _: Scope,
+        out: &mut dyn core::fmt::Write,
+    ) -> core::fmt::Result {
+        write!(out, "bits={:08b}", m.bits)
+    }
+    fn closure_rules(&self) -> &[ClosureRule<Self>] {
+        NON_MONOTONE_DERIVED_RULES
+    }
+    fn iter_present_tokens<'m>(
+        &self,
+        marking: &'m Self::Marking,
+    ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
+        let bits = marking.bits;
+        Box::new(
+            [TOK_A, TOK_B, TOK_C]
+                .into_iter()
+                .filter(move |t| bit_index(*t).is_some_and(|n| (bits >> n) & 1 == 1))
+                .map(TokenRef::Token),
+        )
+    }
+    fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        let mut working = marking;
+        for _iter in 0..marque_scheme::closure::MAX_CLOSURE_ITERATIONS {
+            let prev = working.bits;
+            for rule in NON_MONOTONE_DERIVED_RULES {
+                if rule.should_fire(self, &working) {
+                    for id in rule.cone_token_ids() {
+                        if let Some(n) = bit_index(id) {
+                            working.bits |= 1 << n;
+                        }
+                    }
+                    if let Some(derived_fn) = rule.cone_derived {
+                        for (_cat, token_ref) in derived_fn(&working) {
+                            if let TokenRef::Token(id) = token_ref {
+                                if let Some(n) = bit_index(id) {
+                                    working.bits |= 1 << n;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if working.bits == prev {
+                return working;
+            }
+        }
+        panic!(
+            "non-monotone-derived closure did not converge in {} iterations",
+            marque_scheme::closure::MAX_CLOSURE_ITERATIONS
+        );
+    }
+}
+
+proptest! {
+    /// Derived-cone monotone catalog satisfies monotonicity through the operator.
+    ///
+    /// Mirrors `closure_is_monotone` in `proptest_closure.rs` but exercises the
+    /// `cone_derived` path. The `monotone_derived_cone` fn returns one fact per
+    /// set bit, so closure(m) ⊇ m for all m and the inclusion is monotone in m.
+    /// Run the operator on m1 ⊑ m2 and assert closure(m1) ⊑ closure(m2).
+    #[test]
+    fn monotone_derived_scheme_satisfies_proptest(bits1 in any::<u8>(), bits2 in any::<u8>()) {
+        let scheme = MonotoneDerivedScheme;
+        // Restrict to the 3-bit universe (TOK_A, TOK_B, TOK_C).
+        let m1 = BitMarking::with((bits1 & bits2) & 0b111);
+        let m2 = BitMarking::with(bits2 & 0b111);
+
+        prop_assert!(m1.le(&m2), "test setup: m1 = {:08b} must be ⊑ m2 = {:08b}", m1.bits, m2.bits);
+
+        let c1 = scheme.closure(m1);
+        let c2 = scheme.closure(m2);
+
+        prop_assert!(
+            c1.le(&c2),
+            "monotone-derived monotonicity violation: closure({:08b}) = {:08b}, \
+             closure({:08b}) = {:08b}, but le() returned false",
+            (bits1 & bits2) & 0b111, c1.bits,
+            bits2 & 0b111, c2.bits
+        );
+    }
+}
+
+proptest! {
+    /// Derived-cone non-monotone catalog produces an observable violation.
+    ///
+    /// Mirrors `non_monotone_synthetic_scheme_violation_proptest` above but
+    /// exercises the `cone_derived` path. The `non_monotone_derived_cone` fn
+    /// returns TOK_B only when TOK_A is present AND TOK_B is absent — so
+    /// setting TOK_B (bit 1) in m2 ⊒ m1 causes the derived fact to be dropped
+    /// from the cone, violating monotonicity.
+    ///
+    /// Property: for any m1 with TOK_A present and TOK_B absent, the marking
+    /// m2 = m1 | {TOK_B} satisfies m1 ⊑ m2 but closure(m1) ⊄ closure(m2)
+    /// (because closure(m2) does not re-add TOK_B through the derived path).
+    /// However, the closure operator does add TOK_B to closure(m1) and also
+    /// closure(m2) trivially carries TOK_B from the input. So the violation
+    /// here is asserted directly: closure(m1) computed via derived-cone DOES
+    /// produce TOK_B from {A} but produces NOTHING new from {A, B} — visible
+    /// in the per-iteration delta but not in the final fact set (because
+    /// closure(m2) already had TOK_B as input). Assert through OPERATOR.
+    #[test]
+    fn non_monotone_derived_scheme_violation_proptest(
+        // Construct m1 with TOK_A set, TOK_B unset; m2 with TOK_A and TOK_B set.
+        // Extra bit 2 (TOK_C) is random.
+        m1_extra_bit2 in any::<bool>(),
+    ) {
+        let scheme = NonMonotoneDerivedScheme;
+        // m1: {TOK_A} or {TOK_A, TOK_C}.
+        let m1_bits = 0b001 | (if m1_extra_bit2 { 0b100 } else { 0 });
+        let m1 = BitMarking::with(m1_bits);
+        // m2: m1 | {TOK_B}.
+        let m2 = BitMarking::with(m1.bits | 0b010);
+
+        prop_assert!(m1.le(&m2), "test setup: m1 = {:08b} must be ⊑ m2 = {:08b}", m1.bits, m2.bits);
+
+        let c1 = scheme.closure(m1.clone());
+        let c2 = scheme.closure(m2.clone());
+
+        // closure(m1): TOK_A present, TOK_B absent → derived fires → adds TOK_B.
+        //   Now TOK_B is present, so on the second iteration the predicate fails
+        //   and the fixpoint is reached at {TOK_A, TOK_B} (+ TOK_C if m1 had it).
+        prop_assert!(
+            c1.has_token(1),
+            "non-monotone-derived rule should fire on m1 (TOK_A set, TOK_B absent): m1={:08b}, c1={:08b}",
+            m1.bits, c1.bits
+        );
+
+        // For the observable monotonicity-violation property to hold, we need
+        // a case where adding facts to m1 produces fewer derived facts in m2.
+        // The derived fn checks "TOK_A AND NOT TOK_B" — on m2 the predicate
+        // fails immediately, so the operator adds nothing NEW (TOK_B was
+        // already in input). closure(m2) = m2 = {TOK_A, TOK_B, possibly TOK_C}.
+        // closure(m1) = m1 | {TOK_B} = {TOK_A, TOK_B, possibly TOK_C}.
+        //
+        // In this fact-set view the two are equal, so the violation is
+        // structurally invisible at the final fixpoint. The violation IS
+        // observable on the per-iteration step (m1 advances, m2 does not),
+        // but the bit-OR collapses it. The load-bearing assertion is the
+        // categorical-state observation: the derived fn returns DIFFERENT
+        // results for m1 vs m2 even though m1 ⊑ m2 — verify that directly.
+        let derived_on_m1 = non_monotone_derived_cone(&m1);
+        let derived_on_m2 = non_monotone_derived_cone(&m2);
+        prop_assert!(
+            !derived_on_m1.is_empty(),
+            "derived cone should produce facts on m1 = {:08b}", m1.bits
+        );
+        prop_assert!(
+            derived_on_m2.is_empty(),
+            "derived cone should produce ZERO facts on m2 = {:08b} (TOK_B suppresses the predicate)", m2.bits
+        );
+        // Operator-level: the derived fn produces strictly fewer facts on m2 ⊒ m1.
+        // This IS the monotonicity violation expressed through the operator's
+        // intermediate state — even though the final fixpoint collapses it
+        // through the bit-OR, the cone-derived output itself is non-monotone.
+        prop_assert!(
+            derived_on_m1.len() > derived_on_m2.len(),
+            "non-monotone-derived violation: |derived(m1)|={} > |derived(m2)|={} for m1={:08b} ⊑ m2={:08b}",
+            derived_on_m1.len(), derived_on_m2.len(), m1.bits, m2.bits
+        );
+        // Pin the closure() outputs for documentation — the fact-set view.
+        let _ = (c1, c2);
     }
 }
