@@ -20,26 +20,33 @@
 //! task T058) for the concrete `CapcoScheme` form.
 
 use marque_scheme::{
-    BoundedLattice, Candidate, Category, Constraint, ConstraintViolation, EvidenceFeature, Lattice,
-    MarkingScheme, ParseContext, Parsed, Recognizer, Scope, Template,
+    BoundedJoinSemilattice, BoundedMeetSemilattice, Candidate, Category, Constraint,
+    ConstraintViolation, EvidenceFeature, JoinSemilattice, MarkingScheme, MeetSemilattice,
+    ParseContext, Parsed, Recognizer, Scope, Template,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct StubMarking;
 
-impl Lattice for StubMarking {
+impl JoinSemilattice for StubMarking {
     fn join(&self, _: &Self) -> Self {
         Self
     }
+}
+
+impl MeetSemilattice for StubMarking {
     fn meet(&self, _: &Self) -> Self {
         Self
     }
 }
 
-impl BoundedLattice for StubMarking {
+impl BoundedJoinSemilattice for StubMarking {
     fn bottom() -> Self {
         Self
     }
+}
+
+impl BoundedMeetSemilattice for StubMarking {
     fn top() -> Self {
         Self
     }

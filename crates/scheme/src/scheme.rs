@@ -19,7 +19,7 @@ use crate::category::{Category, CategoryId, TokenId};
 use crate::closure::ClosureRule;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
-use crate::lattice::Lattice;
+use crate::lattice::JoinSemilattice;
 use crate::page_rewrite::PageRewrite;
 use crate::scope::Scope;
 use crate::template::Template;
@@ -38,9 +38,12 @@ pub trait MarkingScheme {
     /// engine's call sites.
     type Token;
 
-    /// The scheme's full-marking type. Must be a lattice: the product
-    /// over the scheme's categories.
-    type Marking: Lattice;
+    /// The scheme's full-marking type. Must be a join-semilattice: the join
+    /// is the product over the scheme's categories. Doubly-lawful schemes
+    /// (where every category satisfies meet too) automatically satisfy
+    /// [`Lattice`](crate::lattice::Lattice) via the blanket impl in the
+    /// [`crate::lattice`] module.
+    type Marking: JoinSemilattice;
 
     /// Parse-level errors produced by `parse`.
     type ParseError;
@@ -471,8 +474,8 @@ pub trait MarkingScheme {
     ///
     /// # Lattice-equal-byte-identical property
     ///
-    /// Two markings that compare equal under [`Lattice`] equality
-    /// MUST render to byte-identical output for the same `scope`.
+    /// Two markings that compare equal under [`Lattice`](crate::lattice::Lattice)
+    /// equality MUST render to byte-identical output for the same `scope`.
     /// This is what makes `Recanonicalize` a sound fix: the renderer
     /// is referentially transparent over lattice-equivalent inputs,
     /// and the engine can therefore re-render a `ProjectedMarking`

@@ -36,8 +36,9 @@
 //! closure operator's monotonicity property fails."
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, Lattice, MarkingScheme, PageRewrite, Parsed, Scope,
-    Template, TokenId, TokenRef, closure::ClosureRule, severity::Severity,
+    Category, Constraint, ConstraintViolation, JoinSemilattice, MarkingScheme, MeetSemilattice,
+    PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
+    severity::Severity,
 };
 use proptest::prelude::*;
 
@@ -65,12 +66,15 @@ impl BitMarking {
     }
 }
 
-impl Lattice for BitMarking {
+impl JoinSemilattice for BitMarking {
     fn join(&self, other: &Self) -> Self {
         Self {
             bits: self.bits | other.bits,
         }
     }
+}
+
+impl MeetSemilattice for BitMarking {
     fn meet(&self, other: &Self) -> Self {
         Self {
             bits: self.bits & other.bits,
