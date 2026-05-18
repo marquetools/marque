@@ -2,15 +2,33 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Property-based tests for `PageContext` roll-up monotonicity.
+//! Property-based tests for page roll-up monotonicity.
 //!
-//! Generates small vecs of `CanonicalAttrs` (1–5 portions), feeds them to
-//! `PageContext::add_portion`, and asserts the structural invariants of the
-//! roll-up: classification monotonicity, dissem-control union superset,
-//! REL-TO intersection subset, and empty-page sentinel.
+//! Generates small vecs of `CanonicalAttrs` (1–5 portions) and asserts the
+//! structural invariants of the per-axis lattice roll-up: classification
+//! monotonicity, dissem-control union superset, REL-TO intersection subset,
+//! and empty-page sentinel.
+//!
+//! # PR 4b-E migration note
+//!
+//! Pre-PR-4b-E these proptests fed portions into `PageContext::add_portion`
+//! and read `expected_classification` / `expected_dissem_us` /
+//! `expected_dissem_nato` / `expected_rel_to`. Post-PR-4b-E those
+//! accessors retired and the same invariants are exercised via the
+//! lattice-native helpers in `marque-capco::lattice`:
+//! `ClassificationLattice::from_attrs_iter`, `DissemSet::from_attrs_iter`,
+//! `NatoDissemSet::from_attrs_iter`, `RelToBlock::from_attrs_iter`.
+//! Test file renamed from `proptest_page_context.rs` →
+//! `proptest_page_rollup.rs` and moved from `crates/ism/tests/` to
+//! `crates/capco/tests/` because the lattice helpers live in
+//! `marque-capco` (and `marque-ism` cannot dev-depend on
+//! `marque-capco` without creating a dev-cycle).
 
+use marque_capco::lattice::{
+    ClassificationLattice, DissemSet, NatoDissemSet, RelToBlock,
+};
 use marque_ism::{
-    CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification, PageContext,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
 };
 use proptest::prelude::*;
 use proptest::sample::subsequence;
@@ -30,9 +48,10 @@ fn arb_classification() -> impl Strategy<Value = Classification> {
 }
 
 fn arb_dissem_subset() -> impl Strategy<Value = Vec<DissemControl>> {
-    // Use only controls that do not trigger complex PageContext filtering logic
-    // (OC-USGOV is conditional on OC presence; FOUO drops in classified docs).
-    // Testing the invariants with a stable subset keeps properties clean.
+    // Use only controls that do not trigger complex page-rollup filtering
+    // logic (OC-USGOV is conditional on OC presence; FOUO drops in
+    // classified docs). Testing the invariants with a stable subset
+    // keeps properties clean.
     let stable: Vec<DissemControl> = vec![
         DissemControl::Nf,
         DissemControl::Relido,
@@ -111,15 +130,13 @@ fn arb_portions() -> impl Strategy<Value = Vec<CanonicalAttrs>> {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    // expected_classification() must equal the exact max over portions.
+    // ClassificationLattice::from_attrs_iter must produce the exact max
+    // over portions for US-attributed classifications.
     #[test]
     fn classification_monotone(portions in arb_portions()) {
-        let mut ctx = PageContext::new();
-        for p in &portions {
-            ctx.add_portion(p.clone());
-        }
-
-        let rolled = ctx.expected_classification();
+        let rolled = ClassificationLattice::from_attrs_iter(&portions)
+            .into_inner()
+            .map(|c| c.effective_level());
         let portion_max = portions
             .iter()
             .filter_map(|a| a.us_classification())
@@ -128,16 +145,16 @@ proptest! {
         prop_assert_eq!(
             rolled,
             portion_max,
-            "expected_classification roll-up does not equal portion max for portions: {:?}",
+            "classification roll-up does not equal portion max for portions: {:?}",
             portions,
         );
     }
 
     // Every dissem token in any portion's `dissem_us` must appear in
-    // the rolled-up `expected_dissem_us()`. Pins the US-namespace
-    // union direction post PR 9b / FR-046 split — the prior
+    // the rolled-up `DissemSet`. Pins the US-namespace union
+    // direction (post PR 9b / FR-046 split — the prior
     // `dissem_controls_union_superset` name referred to the retired
-    // unified field.
+    // unified field).
     //
     // Two exception classes are NOT covered by this pure-union claim:
     //
@@ -152,36 +169,26 @@ proptest! {
     //      observed-unanimity).
     //    - `Fouo` per §H.8 p134: drops in classified documents and
     //      when DSEN is present.
-    //    Behavior pinned by dedicated tests in `page_context.rs`
-    //    `#[cfg(test)]`: `dissem_oc_usgov_supersession_*`,
-    //    `dissem_relido_observed_unanimity_*`, `dissem_*_fouo_*`.
+    //    Per-overlay behavior is pinned by dedicated tests in
+    //    `crates/capco/src/lattice.rs::tests` and the parity gate
+    //    at `crates/capco/tests/page_context_lattice_parity.rs`.
     //
     // 2. **FD&R-family eviction under NOFORN dominance** — the
     //    FD&R-family tokens (REL, RELIDO, EYES, DISPLAY ONLY marker)
-    //    are evicted by `expected_dissem_us` Step 6 whenever NF
-    //    reaches the rolled-up banner. Per §D.2 Table 3 rows 1+2
-    //    (NF + no other FD&R → NOFORN; NF + any other FD&R →
-    //    NOFORN) and §H.8 p154 / p157, NOFORN supersedes every other
-    //    FD&R-class marking at banner scope. NF may arrive at the
-    //    banner via any of the union, SBU-NF/LES-NF split,
-    //    NODIS/EXDIS needs_nf, or Step 5 FD&R-intent injection
-    //    paths; the eviction is unconditional on NF presence, so a
-    //    portion-contributed FD&R token and a separately-contributed
-    //    NF (cross-portion, not portion-level) is correctly resolved
-    //    to banner NOFORN with the other FD&R tokens dropped.
+    //    are evicted by the §H.8 p145 NOFORN-dominates overlay
+    //    whenever NF reaches the rolled-up banner. Per §D.2 Table 3
+    //    rows 1+2 and §H.8 p154 / p157, NOFORN supersedes every
+    //    other FD&R-class marking at banner scope.
     //
-    // The remaining ~25 DissemControl values pass through by plain
-    // union. `expected_rel_to` short-circuits to empty when any
-    // portion carries NOFORN, so REL TO axis parity is maintained
-    // by its sibling accessor.
+    // The remaining DissemControl values pass through by plain union.
     #[test]
     fn dissem_us_union_superset(portions in arb_portions()) {
-        let mut ctx = PageContext::new();
-        for p in &portions {
-            ctx.add_portion(p.clone());
-        }
         let rolled: std::collections::BTreeSet<DissemControl> =
-            ctx.expected_dissem_us().into_iter().collect();
+            DissemSet::from_attrs_iter(&portions)
+                .into_boxed_slice()
+                .iter()
+                .copied()
+                .collect();
         let banner_has_noforn = rolled.contains(&DissemControl::Nf);
 
         let fdr_family = [
@@ -218,18 +225,17 @@ proptest! {
     }
 
     // Every dissem token in any portion's `dissem_nato` must appear
-    // in the rolled-up `expected_dissem_nato()`. Companion to the
-    // dissem_us property above — exercises the parallel NATO channel
-    // wired by PR 9b T132 / FR-046 (CAPCO-2016 §G.2 Table 5 (pp 40-45):
-    // pure-NATO portions contribute here, not to dissem_us).
+    // in the rolled-up `NatoDissemSet`. Companion to the dissem_us
+    // property above — exercises the parallel NATO channel (CAPCO-2016
+    // §G.2 Table 5 (pp 40-45): pure-NATO portions contribute here).
     #[test]
     fn dissem_nato_union_superset(portions in arb_portions()) {
-        let mut ctx = PageContext::new();
-        for p in &portions {
-            ctx.add_portion(p.clone());
-        }
         let rolled: std::collections::BTreeSet<DissemControl> =
-            ctx.expected_dissem_nato().into_iter().collect();
+            NatoDissemSet::from_attrs_iter(&portions)
+                .into_boxed_slice()
+                .iter()
+                .copied()
+                .collect();
 
         for portion in &portions {
             for ctrl in portion.dissem_nato.iter() {
@@ -241,17 +247,14 @@ proptest! {
         }
     }
 
-    // If a country code appears in expected_rel_to(), it must appear in every
-    // portion that carries a non-empty REL TO list (intersection property).
+    // If a country code appears in the rolled-up REL TO, it must
+    // appear in every portion that carries a non-empty REL TO list
+    // (intersection property).
     #[test]
     fn rel_to_intersection_property(portions in arb_portions()) {
-        let mut ctx = PageContext::new();
-        for p in &portions {
-            ctx.add_portion(p.clone());
-        }
-        let rolled_set: std::collections::BTreeSet<String> = ctx
-            .expected_rel_to()
-            .into_iter()
+        let rolled_set: std::collections::BTreeSet<String> = RelToBlock::from_attrs_iter(&portions)
+            .into_boxed_slice()
+            .iter()
             .map(|t| t.as_str().to_owned())
             .collect();
 
@@ -281,7 +284,8 @@ proptest! {
 
 // Empty page sentinel: not a proptest, just a deterministic guard.
 #[test]
-fn empty_page_context_returns_none_classification() {
-    let ctx = PageContext::new();
-    assert_eq!(ctx.expected_classification(), None);
+fn empty_page_rollup_returns_none_classification() {
+    let rolled = ClassificationLattice::from_attrs_iter(&[])
+        .into_inner();
+    assert!(rolled.is_none());
 }

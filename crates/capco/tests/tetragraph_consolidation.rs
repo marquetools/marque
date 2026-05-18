@@ -15,10 +15,11 @@
 //! depends on; this test suite covers all three trichotomy branches
 //! and the §D Table 3 rule 23 round-trip.
 
+use marque_capco::lattice::RelToBlock;
 use marque_capco::vocab::{expand_tetragraph, is_decomposable_tetragraph};
 use marque_ism::{
-    CanonicalAttrs, Classification, CountryCode, MarkingClassification, PageContext,
-    TETRAGRAPH_MEMBERS, is_decomposable, lookup_tetragraph_members,
+    CanonicalAttrs, Classification, CountryCode, MarkingClassification, TETRAGRAPH_MEMBERS,
+    is_decomposable, lookup_tetragraph_members,
 };
 
 fn cc(code: &str) -> CountryCode {
@@ -213,11 +214,11 @@ fn rel_to_intersection_d_table_3_rule_23_round_trip() {
     p2.classification = Some(MarkingClassification::Us(Classification::Secret));
     p2.rel_to = vec![cc("USA"), cc("GBR")].into_boxed_slice();
 
-    let mut ctx = PageContext::default();
-    ctx.add_portion(p1);
-    ctx.add_portion(p2);
-
-    let rel = ctx.expected_rel_to();
+    // PR 4b-E: migrated from `PageContext::expected_rel_to` (retired)
+    // to `RelToBlock::from_attrs_iter` (lattice-native). Same tetragraph
+    // expansion + intersection semantics — §D Table 3 rule 23 round-trip
+    // pinned identically. §-authority unchanged.
+    let rel = RelToBlock::from_attrs_iter(&[p1, p2]).into_boxed_slice();
     let codes: std::collections::BTreeSet<String> = rel
         .iter()
         .map(|c| String::from_utf8_lossy(c.as_bytes()).into_owned())
