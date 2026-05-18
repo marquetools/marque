@@ -121,6 +121,7 @@ pub(crate) fn capco_category_has_values(m: &CapcoMarking, category: CategoryId) 
     let attrs = &m.0;
     match category {
         CAT_REL_TO => !attrs.rel_to.is_empty(),
+        CAT_DISPLAY_ONLY_TO => !attrs.display_only_to.is_empty(),
         CAT_DISSEM => !attrs.dissem_us.is_empty() || !attrs.dissem_nato.is_empty(),
         CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
         CAT_SCI => !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty(),
@@ -133,6 +134,12 @@ pub(crate) fn capco_category_clear(m: &mut CapcoMarking, category: CategoryId) {
     let attrs = &mut m.0;
     if category == CAT_REL_TO {
         attrs.rel_to = Box::new([]);
+    } else if category == CAT_DISPLAY_ONLY_TO {
+        // PR 4b-D.2 Copilot R1 #2: DISPLAY ONLY country-list axis.
+        // Parallel to `attrs.rel_to` for symmetric clearing under
+        // `capco/noforn-clears-display-only-to` (§H.8 p145 + §D.2
+        // Table 3 rows 1-2).
+        attrs.display_only_to = Box::new([]);
     } else if category == CAT_DISSEM {
         // PR 9b (T132): clearing the dissem category zeroes both
         // namespaces. The CAT_DISSEM axis is namespace-agnostic from

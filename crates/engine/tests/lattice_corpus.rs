@@ -16,13 +16,20 @@
 //!   suppressed because there is no US-document context to emit a
 //!   text-layer suggestion against. Asserts via `scheme.project()`.
 //! - `closure_nato_rel_to_us_plus_nato`: US doc with a NATO portion.
-//!   Closure injects USA/NATO into REL TO; the lattice state shows
-//!   USA + NATO membership. S007 fires through `Engine::lint`'s
-//!   NDJSON path at `Severity::Suggest` — but this file does NOT
-//!   exercise `Engine::lint` (the strict-recognizer fixture surface
-//!   for S007's text-layer behavior lives in
-//!   `crates/capco/tests/dissem_nato_*.rs`); it pins the lattice
-//!   layer's injection observable.
+//!   The §H.7 pp123-125 reciprocal-raise flattens the NATO
+//!   classification to `Us(_)` at join time, so `TOK_NATO_CLASS` is
+//!   absent in the joined marking by the time the closure operator
+//!   sees it. Closure therefore does NOT inject USA/NATO into REL TO
+//!   on this path — that's the load-bearing assertion the test
+//!   makes (closure is suppressed by the reciprocal-raise). The
+//!   NATO source provenance survives on the FGI axis (`fgi_marker`);
+//!   S007 owns the text-layer Severity::Suggest behavior for this
+//!   scenario, exercised end-to-end in
+//!   `crates/capco/tests/dissem_nato_*.rs`.
+//!
+//!   Copilot R1 review #6 fixed this doc — pre-fix the summary
+//!   claimed "Closure injects USA/NATO into REL TO" which is the
+//!   opposite of what the test actually verifies.
 //! - `closure_relido_unanimity`: confirms the PR 4b-B
 //!   RELIDO-observed-unanimity overlay survives the PR 4b-D.2 hot-path
 //!   flip. When every portion on a page carries RELIDO, the projected

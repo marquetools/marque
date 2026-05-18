@@ -1043,9 +1043,13 @@ fn scheme_declares_phase3_rewrites() {
     // PR 4b-C Commit 3 added 7 Pattern-C rows between the four
     // Pattern-A `*-implies-noforn` rewrites and `capco/noforn-clears-rel-to`.
     // PR 4b-C Commit 4 added 2 Pattern-B structural rows immediately
-    // after the Pattern-C cohort. Total: 23. Each row carries its own
-    // §-citation.
-    assert_eq!(rewrites.len(), 23);
+    // after the Pattern-C cohort.
+    //
+    // PR 4b-D.2 Copilot R1 #2 added `capco/noforn-clears-display-only-to`
+    // (between the existing two NOFORN-clears entries and the transmutation
+    // rewrites) for the §H.8 p145 + §D.2 Table 3 rows 1-2 country-list
+    // axis clear. Total: 24. Each row carries its own §-citation.
+    assert_eq!(rewrites.len(), 24);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
@@ -1073,6 +1077,9 @@ fn scheme_declares_phase3_rewrites() {
             // — end Pattern-B
             "capco/noforn-clears-rel-to",
             "capco/noforn-clears-fdr-family",
+            // PR 4b-D.2 Copilot R1 #2 — DISPLAY ONLY country-list axis
+            // clear, symmetric with `capco/noforn-clears-rel-to`.
+            "capco/noforn-clears-display-only-to",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/fgi-rollup-on-us-contact",
             "capco/fgi-restricted-rollup-on-us-contact",
@@ -1131,14 +1138,20 @@ fn scheme_declares_phase3_rewrites() {
         rewrites[14].citation,
         "CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157"
     );
-    assert_eq!(rewrites[15].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[16].citation, "CAPCO-2016 §H.7 p122");
+    // PR 4b-D.2 Copilot R1 #2 — new row inserted at index 15;
+    // pre-existing rows below shift +1.
+    assert_eq!(
+        rewrites[15].citation,
+        "CAPCO-2016 §H.8 p145 + §D.2 Table 3 rows 1-2"
+    );
+    assert_eq!(rewrites[16].citation, "CAPCO-2016 §H.6 p113");
     assert_eq!(rewrites[17].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[18].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[19].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[20].citation, "CAPCO-2016 §H.8 p136");
-    assert_eq!(rewrites[21].citation, "CAPCO-2016 §H.9 p178");
-    assert_eq!(rewrites[22].citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rewrites[18].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[19].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[20].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[21].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[22].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[23].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]

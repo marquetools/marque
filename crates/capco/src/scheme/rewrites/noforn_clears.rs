@@ -48,6 +48,28 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
     const NF_CLEARS_FDR_FAMILY_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
     const NF_CLEARS_FDR_FAMILY_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
+    // `capco/noforn-clears-display-only-to` reads CAT_DISSEM (to
+    // find the NOFORN trigger) and writes CAT_DISPLAY_ONLY_TO (the
+    // country-list axis on `attrs.display_only_to`). PR 4b-D.2
+    // Copilot R1 #2 added `CAT_DISPLAY_ONLY_TO` so this rewrite
+    // could use the symmetric `Clear { CAT_DISPLAY_ONLY_TO }`
+    // shape — exactly parallel to `capco/noforn-clears-rel-to`'s
+    // `Clear { CAT_REL_TO }`.
+    //
+    // The rewrite is needed because the closure operator (e.g.
+    // `CLOSURE_NOFORN_SAR` on a portion that ALSO carries DISPLAY
+    // ONLY USA, GBR) injects NOFORN AFTER `join_via_lattice` has
+    // set `attrs.display_only_to` from the per-portion union.
+    // Without this rewrite the renderer would emit an inconsistent
+    // banner: NOFORN in `dissem_us` AND a populated
+    // `display_only_to` country list, violating §H.8 p145.
+    //
+    // Self-edge on CAT_DISPLAY_ONLY_TO is skipped by the scheduler
+    // (no other rewrite reads/writes this axis today).
+    const NF_CLEARS_DISPLAY_ONLY_TO_READS: &[marque_scheme::CategoryId] =
+        &[CAT_DISSEM, CAT_DISPLAY_ONLY_TO];
+    const NF_CLEARS_DISPLAY_ONLY_TO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISPLAY_ONLY_TO];
+
     vec![
         // §D.2 Table 3 (FD&R Markings Precedence Rules for Banner
         // Line Roll-Up) Rule #2 specifies that NOFORN supersedes
@@ -142,6 +164,38 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
             }),
             NF_CLEARS_FDR_FAMILY_READS,
             NF_CLEARS_FDR_FAMILY_WRITES,
+        ),
+        // `capco/noforn-clears-display-only-to` — companion to
+        // `capco/noforn-clears-rel-to` for the `display_only_to`
+        // country-list axis. PR 4b-D.2 Copilot R1 #2: pre-fix,
+        // closure-injected NOFORN on a portion that also carried
+        // DISPLAY ONLY USA, GBR left `attrs.display_only_to`
+        // populated even though NOFORN had landed in `dissem_us`
+        // (the `fdr-family` row above strips the token but the
+        // country list is a separate field). The renderer would
+        // then emit an inconsistent banner per §H.8 p145 ("NOFORN
+        // ... Cannot be used with REL TO / RELIDO / EYES ONLY /
+        // DISPLAY ONLY") + §D.2 Table 3 rows 1-2 (NOFORN dominates
+        // the FD&R family).
+        //
+        // Uses `CategoryAction::Clear { CAT_DISPLAY_ONLY_TO }`
+        // symmetrically with the REL TO clearer above; the
+        // `CAT_DISPLAY_ONLY_TO` CategoryId was added in PR 4b-D.2
+        // Copilot R1 #2 (`crates/capco/src/scheme/mod.rs`) and
+        // routed through `capco_category_clear` /
+        // `capco_category_has_values`.
+        PageRewrite::declarative(
+            "capco/noforn-clears-display-only-to",
+            "CAPCO-2016 §H.8 p145 + §D.2 Table 3 rows 1-2",
+            CategoryPredicate::Contains {
+                category: CAT_DISSEM,
+                token: TOK_NOFORN,
+            },
+            CategoryAction::Clear {
+                category: CAT_DISPLAY_ONLY_TO,
+            },
+            NF_CLEARS_DISPLAY_ONLY_TO_READS,
+            NF_CLEARS_DISPLAY_ONLY_TO_WRITES,
         ),
     ]
 }

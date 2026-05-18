@@ -81,10 +81,18 @@ fn build_input(target_bytes: usize) -> Vec<u8> {
     input
 }
 
-/// Extract the set of per-portion `CanonicalAttrs` produced by the
-/// engine's strict pipeline on the bench input. We lint once and grab
-/// the page-context portions; replay them under the per-phase
-/// micro-benches below.
+/// Build the representative `CanonicalAttrs` slice used by the
+/// per-phase micro-benches. PR 4b-D.2 Copilot R1 #10 corrected this
+/// doc — the prior "extract portions from the strict pipeline" was
+/// misleading: `Engine::lint` doesn't expose per-portion `CanonicalAttrs`,
+/// and the body below synthesizes a representative `(S//NF)` +
+/// `(TS//SI)` pair AFTER an Engine::lint warmup call.
+///
+/// The synthesis is intentional — see the file-level "Phase F vs
+/// Phases G-I — synthesis caveat" doc. The Engine::lint call kept
+/// here is a warmup so the per-phase benches see a stable runtime
+/// state (criterion caching, instruction cache, etc.); the returned
+/// portions are NOT extracted from the lint result.
 fn collect_portions() -> Vec<CanonicalAttrs> {
     let input = build_input(10_000);
     let engine = Engine::new(

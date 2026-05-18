@@ -208,7 +208,20 @@ impl CapcoMarking {
     /// residue-axis accessor results from another, which is a
     /// semantically-corrupt projection. Debug-mode assertion below
     /// guards this at test time.
-    pub fn join_via_lattice_with_context(
+    ///
+    /// ## Visibility
+    ///
+    /// `pub(crate)` per Copilot R1 review #4. The only production
+    /// callers are the in-crate `CapcoScheme::project_attrs_pipeline_with_context`
+    /// (engine fast-path entry) and the `join_via_lattice` wrapper
+    /// above. The same-slice contract on `portions` /
+    /// `page_ctx.portions()` is verified only under
+    /// `#[cfg(debug_assertions)]`; promoting to `pub` without a
+    /// release-mode guard would invite cross-crate callers to violate
+    /// the contract silently. If an out-of-crate caller's use case
+    /// requires it, promote back to `pub` AND add a release-mode
+    /// equality check.
+    pub(crate) fn join_via_lattice_with_context(
         portions: &[CanonicalAttrs],
         page_ctx: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
@@ -234,9 +247,18 @@ impl CapcoMarking {
     ///
     /// ## Size guideline
     ///
-    /// Clippy's `too_many_lines` lint fires on this function at 129
-    /// LOC vs the 100-line default. The size is structurally
-    /// justified — splitting would harm correctness:
+    /// Clippy's `too_many_lines` lint fires on this function at
+    /// ~423 LOC (function body spans `crates/capco/src/scheme/marking.rs`
+    /// lines 284-706 in the current revision) vs the 100-line default.
+    /// Copilot R1 review #8 caught a prior incorrect "~129 LOC"
+    /// statement here — the body has always been ~420 LOC since
+    /// PR 4b-B Commit 7 added the per-axis lattice composition; the
+    /// 129 figure was wrong on inspection. The structural justification
+    /// (axis ordering + inline citations + cross-axis state flow) is
+    /// even stronger at the actual size — splitting a 400+ LOC
+    /// cross-axis fold into per-axis sub-functions would require
+    /// threading every intermediate state value via a struct, which
+    /// pays the readability cost without the maintainability win.
     ///
     /// - Axis ordering is load-bearing. The G-3 / G-4 / G-4c
     ///   solely-non-US handling, the G-8 NOFORN-supersession overlay,

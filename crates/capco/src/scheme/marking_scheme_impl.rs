@@ -231,12 +231,14 @@ impl MarkingScheme for CapcoScheme {
                 // clone round because the trait's `markings:
                 // &[CapcoMarking]` slice ties us to per-portion
                 // CapcoMarking values. The engine's hot path bypasses
-                // this via `CapcoScheme::project_from_attrs_slice`
-                // (inherent method below), which consumes
-                // `&[CanonicalAttrs]` directly and shares the rest of
-                // the pipeline. Test fixtures and external tooling
-                // continue to use this trait-path entry; the engine
-                // takes the fast path.
+                // this via `CapcoScheme::project_from_page_context`
+                // (the production fast-path; sibling to
+                // `project_from_attrs_slice` which is `pub(crate)`
+                // post-PR-4b-D.2 Copilot R1 review #5). Both inherent
+                // entries consume their input WITHOUT the trait
+                // wrap-then-unwrap round; only this trait-path body
+                // pays it. Test fixtures and external tooling
+                // continue to use this trait-path entry.
                 let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
                 let out_attrs = self.project_from_attrs_slice(&raw);
                 CapcoMarking::new(out_attrs)

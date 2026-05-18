@@ -362,6 +362,38 @@ mod tests {
         assert_eq!(p.declassify_on, Some(date));
     }
 
+    // PR 4b-D.2 Copilot R1 #9 — preserve `display_only_to` across the
+    // bridge. The pre-fix test surface covered `rel_to` but not the
+    // parallel `display_only_to` country-list axis, leaving a
+    // type-renaming regression undetectable.
+
+    #[test]
+    fn from_canonical_preserves_display_only_to_single_country() {
+        let attrs = CanonicalAttrs {
+            display_only_to: vec![gbr()].into_boxed_slice(),
+            ..CanonicalAttrs::default()
+        };
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert_eq!(p.display_only_to.as_ref(), &[gbr()]);
+    }
+
+    #[test]
+    fn from_canonical_preserves_display_only_to_multiple_countries() {
+        let attrs = CanonicalAttrs {
+            display_only_to: vec![usa(), gbr()].into_boxed_slice(),
+            ..CanonicalAttrs::default()
+        };
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert_eq!(p.display_only_to.as_ref(), &[usa(), gbr()]);
+    }
+
+    #[test]
+    fn from_canonical_preserves_display_only_to_empty() {
+        let attrs = CanonicalAttrs::default();
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert!(p.display_only_to.is_empty());
+    }
+
     #[test]
     fn from_canonical_drops_cab_only_fields_silently() {
         // CAB fields on CanonicalAttrs are not part of ProjectedMarking

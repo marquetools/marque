@@ -4218,50 +4218,6 @@ fn partition_rules_by_phase(
 /// (the per-page work is small relative to the per-candidate rule
 /// loop) so an already-expired deadline returns immediately without
 /// invoking any rule.
-/// Project the current [`marque_ism::PageContext`] into a
-/// [`marque_ism::ProjectedMarking`] via the scheme's production
-/// page-projection path.
-///
-/// PR 4b-D.2 flipped the hot path from `PageContext::project()` (the
-/// transitional PageContext-driven projection) to
-/// `scheme.project(Scope::Page, ...)` (the lattice + closure +
-/// PageRewrite pipeline). The bridge from `CanonicalAttrs` to
-/// `ProjectedMarking` lives in `marque_ism::ProjectedMarking::from_canonical`
-/// so the scheme crate and the engine crate share one source of truth.
-///
-/// Authorization: this helper centralizes the projection-call shape
-/// shared by the primary lazy-init in `Engine::lint` (around the
-/// banner/CAB candidate dispatch) and the secondary
-/// `dispatch_page_finalization` initialization. Both sites need the
-/// scheme handle to drive the lattice path; passing `scheme` and
-/// `page_context` here keeps the closure capture minimal at each call
-/// site and avoids duplicating the per-portion conversion logic.
-///
-/// Authority: `docs/plans/2026-05-01-lattice-design.md` §4.7.4
-/// pipeline ordering.
-fn project_page_marking(
-    scheme: &CapcoScheme,
-    page_context: &marque_ism::PageContext,
-) -> marque_ism::ProjectedMarking {
-    // PR 4b-D.2 Commit 7 perf optimization: route through
-    // `CapcoScheme::project_from_page_context`, the engine fast-path
-    // that consumes the pre-built `&PageContext` directly. This skips
-    // three categories of redundant work the trait-level
-    // `MarkingScheme::project` would pay:
-    //
-    //   1. Wrapping each portion in a `CapcoMarking::new(p.clone())`
-    //      at the engine boundary.
-    //   2. Re-extracting `m.0.clone()` for each marking back into a
-    //      `Vec<CanonicalAttrs>` inside the trait body.
-    //   3. Rebuilding a tmp_ctx via `add_portion(p.clone())` for each
-    //      portion inside `join_via_lattice`.
-    //
-    // The engine ALREADY owns a `PageContext` accumulating portions
-    // across the document; reusing it here eliminates all three.
-    let projected = scheme.project_from_page_context(page_context);
-    marque_ism::ProjectedMarking::from_canonical(projected)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn dispatch_page_finalization(
     scheme: &CapcoScheme,
@@ -4511,6 +4467,55 @@ fn dispatch_page_finalization(
     }
 
     Ok(())
+}
+
+/// Project the current [`marque_ism::PageContext`] into a
+/// [`marque_ism::ProjectedMarking`] via the scheme's production
+/// page-projection path.
+///
+/// PR 4b-D.2 flipped the hot path from `PageContext::project()` (the
+/// transitional PageContext-driven projection) to
+/// `scheme.project(Scope::Page, ...)` (the lattice + closure +
+/// PageRewrite pipeline). The bridge from `CanonicalAttrs` to
+/// `ProjectedMarking` lives in `marque_ism::ProjectedMarking::from_canonical`
+/// so the scheme crate and the engine crate share one source of truth.
+///
+/// Authorization: this helper centralizes the projection-call shape
+/// shared by the primary lazy-init in `Engine::lint` (around the
+/// banner/CAB candidate dispatch) and the secondary
+/// `dispatch_page_finalization` initialization. Both sites need the
+/// scheme handle to drive the lattice path; passing `scheme` and
+/// `page_context` here keeps the closure capture minimal at each call
+/// site and avoids duplicating the per-portion conversion logic.
+///
+/// PR 4b-D.2 Copilot R1 #5: this helper now lives BELOW
+/// `dispatch_page_finalization` so its doc-comment doesn't run into
+/// the dispatch function's `# Returns` block. The placement is purely
+/// for doc-attribution clarity; the function body is unchanged.
+///
+/// Authority: `docs/plans/2026-05-01-lattice-design.md` §4.7.4
+/// pipeline ordering.
+fn project_page_marking(
+    scheme: &CapcoScheme,
+    page_context: &marque_ism::PageContext,
+) -> marque_ism::ProjectedMarking {
+    // PR 4b-D.2 Commit 7 perf optimization: route through
+    // `CapcoScheme::project_from_page_context`, the engine fast-path
+    // that consumes the pre-built `&PageContext` directly. This skips
+    // three categories of redundant work the trait-level
+    // `MarkingScheme::project` would pay:
+    //
+    //   1. Wrapping each portion in a `CapcoMarking::new(p.clone())`
+    //      at the engine boundary.
+    //   2. Re-extracting `m.0.clone()` for each marking back into a
+    //      `Vec<CanonicalAttrs>` inside the trait body.
+    //   3. Rebuilding a tmp_ctx via `add_portion(p.clone())` for each
+    //      portion inside `join_via_lattice`.
+    //
+    // The engine ALREADY owns a `PageContext` accumulating portions
+    // across the document; reusing it here eliminates all three.
+    let projected = scheme.project_from_page_context(page_context);
+    marque_ism::ProjectedMarking::from_canonical(projected)
 }
 
 /// Compare two `CanonicalAttrs` slices for the PageFinalization

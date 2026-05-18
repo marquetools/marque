@@ -416,6 +416,89 @@ fn apply_fact_add_noforn_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
+// PR 4b-D.2 Copilot R1 #2 — `capco/noforn-clears-display-only-to` rewrite
+// ---------------------------------------------------------------------------
+
+/// Production-catalog fixture: two portions on the same page —
+/// portion 1 carries NOFORN, portion 2 carries DISPLAY ONLY USA, GBR.
+/// After `join_via_lattice` the merged marking has NOFORN in `dissem_us`
+/// AND `display_only_to = [USA, GBR]`. Without the
+/// `capco/noforn-clears-display-only-to` rewrite, the projected
+/// marking would still carry the populated `display_only_to` country
+/// list even though NOFORN is also present — invalid per §H.8 p145.
+///
+/// Post-PR-4b-D.2-Copilot-R1: the new rewrite clears the country-list
+/// axis symmetrically with `capco/noforn-clears-rel-to`. The renderer
+/// no longer emits an inconsistent banner.
+///
+/// Companion to `apply_fact_add_noforn_strips_displayonly_via_supersession`
+/// above which covers the DissemSet supersession overlay for the
+/// `Displayonly` token in `dissem_us`; this fixture covers the
+/// page-rewrite layer that clears the parallel country-list field
+/// (`attrs.display_only_to`).
+///
+/// Authority: CAPCO-2016 §H.8 p145 ("NOFORN ... Cannot be used with
+/// REL TO / RELIDO / EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows
+/// 1-2 (NOFORN dominates the FD&R family).
+#[test]
+fn noforn_clears_display_only_to_via_cross_portion_join() {
+    let usa = CountryCode::USA;
+    let gbr = CountryCode::try_new(b"GBR").expect("trigraph");
+
+    // Portion 1: NOFORN. Portion 2: DISPLAY ONLY USA, GBR.
+    let nf_portion = classified_with_dissem(Classification::Secret, DissemControl::Nf);
+    let mut do_portion = classified_us(Classification::Secret);
+    do_portion.dissem_us = vec![DissemControl::Displayonly].into_boxed_slice();
+    do_portion.display_only_to = vec![usa, gbr].into_boxed_slice();
+
+    let projected = project_page(&[nf_portion, do_portion]);
+
+    // NOFORN survives.
+    assert!(
+        dissem_contains(&projected, DissemControl::Nf),
+        "NOFORN must survive cross-portion join; dissem_us = {:?}",
+        projected.0.dissem_us,
+    );
+
+    // The `capco/noforn-clears-fdr-family` rewrite stripped the
+    // Displayonly token from dissem_us.
+    assert!(
+        !dissem_contains(&projected, DissemControl::Displayonly),
+        "`capco/noforn-clears-fdr-family` must strip Displayonly token \
+         (§D.2 Table 3 row 2); dissem_us = {:?}",
+        projected.0.dissem_us,
+    );
+
+    // The new `capco/noforn-clears-display-only-to` rewrite cleared
+    // the country-list field. Pre-fix this would still hold [USA, GBR]
+    // — a §H.8 p145 violation.
+    assert!(
+        projected.0.display_only_to.is_empty(),
+        "`capco/noforn-clears-display-only-to` must clear \
+         `display_only_to` when NOFORN is present (§H.8 p145 + \
+         §D.2 Table 3 rows 1-2); display_only_to = {:?}",
+        projected.0.display_only_to,
+    );
+}
+
+/// The rewrite is idempotent: if `display_only_to` is already empty
+/// the rewrite is a no-op. (Tests the `Clear` action's idempotence,
+/// which is structural.)
+#[test]
+fn noforn_clears_display_only_to_is_idempotent_on_empty_field() {
+    // Portion with NOFORN but no DISPLAY ONLY country list.
+    let portion = classified_with_dissem(Classification::Secret, DissemControl::Nf);
+    let projected = project_page(&[portion]);
+    assert!(dissem_contains(&projected, DissemControl::Nf));
+    assert!(
+        projected.0.display_only_to.is_empty(),
+        "rewrite must be idempotent on empty input; \
+         display_only_to = {:?}",
+        projected.0.display_only_to,
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Compile-time anchor — keep the helpers attached to the public surface.
 // If `SciControl` / `SciControlSystem` / `SciMarking` move under
 // `marque-ism`'s reorganization, the import block at the top breaks
