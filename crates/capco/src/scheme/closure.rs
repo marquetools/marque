@@ -135,8 +135,9 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 
 // --- The implicit-default trio (FD&R-suppressed) ---
 
-/// Trio 1: any caveated marking implies NOFORN unless an explicit FD&R
-/// decision (NOFORN, REL TO, RELIDO, DISPLAY ONLY, EYES) is present.
+/// Trio 1: every trigger marking enumerated in the `triggers` list
+/// below implies NOFORN unless an explicit FD&R decision (NOFORN,
+/// REL TO, RELIDO, DISPLAY ONLY, EYES) is present.
 ///
 /// **Universal IC principle.** Any AEA marking, SAP marking, or
 /// dissemination control marking on classified information is
@@ -149,6 +150,25 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// information governed by policy regimes outside IC marking authority,
 /// so implicit NOFORN is the conservative default absent an explicit
 /// FD&R decision.
+///
+/// **Trigger-set scope.** The `triggers` list enumerates the caveated
+/// markings *currently in the catalog*. The universal §B.3 p20 Note
+/// definition is broader — it covers every AEA / SAP / dissem marking
+/// — but several caveated markings are intentionally out of scope of
+/// this row:
+/// - **ATOMAL** (NATO AEA) — routed through the AEA axis with its own
+///   per-marking handling; see `marque-ism` AEA layer.
+/// - **FISA / RAWFISA / PROPIN** — class-bivalent (different semantics
+///   at classified vs unclassified) so they cannot be unconditional
+///   triggers of the CAVEATED row; tracked at issue #526.
+/// - Per-compartment SCI implications (HCS-O/P, SI-G, TK-BLFH/KAND/IDIT)
+///   require per-compartment sentinels that do not exist yet; tracked
+///   at issue #524.
+///
+/// New markings registered upstream MUST evaluate against this rule's
+/// universal basis (§B.3 p20 Note + §B.3 Table 2 p21) and be added to
+/// the trigger list unless one of the structural exceptions above
+/// applies.
 ///
 /// This row is the algebraic union of seven previously separate Trio 1
 /// rows (SAR / AEA-RD / UCNI / FGI / ORCON / RSEN-IMCON-DSEN /
@@ -185,29 +205,43 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// | `Token(TOK_SSI)`                   | SSI                      | §H.9 p189           |
 ///
 /// Triggers are evaluated as a logical OR — any single trigger firing
-/// fires the row. Two of the trigger pairs below need BOTH `TokenRef`s
-/// in the pair (not both pairs simultaneously) to cover their full
-/// surface, because each `TokenRef` in the pair routes through a
-/// distinct sentinel-resolution path:
-/// - **UCNI pair** — `TOK_UCNI` resolves only to `AeaMarking::DoeUcni`;
-///   the DOD variant resolves through the distinct `TOK_DCNI` sentinel
-///   (issue #407, `predicates::satisfies::aea_marking_to_token`).
-/// - **FGI pair** — `Token(TOK_FGI_MARKER)` is satisfied by
-///   `MarkingClassification::Fgi` (foreign-classified portions like
-///   `//GBR SECRET`); `AnyInCategory(CAT_FGI_MARKER)` is satisfied by
-///   `attrs.fgi_marker` (explicit `FGI` token). Disjoint surfaces.
+/// fires the row. Two notes on the trigger list shape:
+/// - **UCNI pair (`TOK_UCNI` + `TOK_DCNI`)** — both sentinels are
+///   required to cover DOE and DOD UCNI as disjoint surfaces.
+///   `TOK_UCNI` resolves only to `AeaMarking::DoeUcni`; the DOD variant
+///   resolves through the distinct `TOK_DCNI` sentinel (issue #407,
+///   `predicates::satisfies::aea_marking_to_token`).
+/// - **FGI pair (`TOK_FGI_MARKER` + `AnyInCategory(CAT_FGI_MARKER)`)**
+///   — kept as both forms for catalog symmetry with the rest of the
+///   `AnyInCategory` triggers, but both `TokenRef`s currently resolve
+///   to the same composite predicate
+///   `attrs.fgi_marker.is_some() || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))`
+///   (see `crates/capco/src/scheme/predicates/satisfies.rs` —
+///   `TOK_FGI_MARKER` arm and `CAT_FGI_MARKER` arm under
+///   `category_has_any`). The pair is therefore *redundant*, not
+///   complementary — the closure operator's idempotence makes the
+///   double-firing harmless. A follow-up could prune one form once
+///   `satisfies_attrs` and `category_has_any` semantics are pinned
+///   against accidental divergence.
 ///
 /// **NNPI** is registered in ODNI `CVEnumISMNonIC.xml` but does not
 /// appear in CAPCO-2016 §H.9; its governing authority (10 USC 7314 /
 /// 50 USC 2511 — Naval Nuclear Propulsion Program) lives outside IC
 /// marking policy, and the universal caveated-default principle applies.
 ///
-/// **LES-NF / SBU-NF** are intentionally absent from the trigger list:
-/// they entail NOFORN through their own PageRewrite (`SBU NOFORN` /
-/// `LES NOFORN` add NOFORN at the rewrite layer), so by the time the
-/// closure operator runs, NOFORN is already present and the row would
-/// be suppressed by `FDR_DOMINATORS` regardless. See the maintenance
-/// note on `FDR_DOMINATORS` for the algebraic justification.
+/// **LES-NF / SBU-NF** are intentionally absent from the trigger list,
+/// but the rationale is *not* "the closure operator sees NOFORN first."
+/// The page-projection pipeline is
+/// `join_via_lattice → closure → PageRewrites` (per
+/// `MarkingScheme::project` body comments at
+/// `crates/capco/src/scheme/marking_scheme_impl.rs`'s `closure()`
+/// implementation), so when closure runs, the LES-NF / SBU-NF
+/// PageRewrites have not yet added NOFORN. Closure is permitted to
+/// over-fire on bare-LES-NF / bare-SBU-NF — the cone fact it would add
+/// (`{NOFORN}`) is byte-identical to what the downstream PageRewrite
+/// would add anyway, so the over-fire is mathematically harmless. See
+/// the maintenance note on `FDR_DOMINATORS` for the full algebraic
+/// justification.
 const CLOSURE_NOFORN_CAVEATED: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-caveated",
     label: "CAPCO-2016 §B.3 Table 2 p21 (rooted in ICD 403)",

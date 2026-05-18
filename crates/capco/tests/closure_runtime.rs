@@ -537,6 +537,133 @@ fn closure_fires_noforn_on_classified_with_dsen() {
 }
 
 // ---------------------------------------------------------------------------
+// Per-arm parity — every individual `TokenRef` in the unified
+// CAVEATED row's trigger list fires the closure (issue #522 follow-up).
+//
+// The compact fixtures below close the per-arm coverage gap noted in
+// the PR #529 review: the historical per-row tests skipped FRD, TFNI,
+// ORCON-USGOV, LES, SBU, and SSI even though every one of them is a
+// distinct entry in the CAVEATED row's trigger list. Without these,
+// a future edit that silently drops an arm from the trigger list
+// could pass the existing closure_runtime suite. Each arm pins its
+// per-token §-citation (re-verified against `crates/capco/docs/CAPCO-2016.md`).
+// ---------------------------------------------------------------------------
+
+/// FRD arm — Formerly Restricted Data implies NOFORN.
+/// Authority: §H.6 p111 (FRD marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_frd_marking() {
+    use marque_ism::FrdBlock;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.aea_markings = vec![AeaMarking::Frd(FrdBlock::default())].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on FRD (§H.6 p111 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// TFNI arm — Transclassified Foreign Nuclear Information implies NOFORN.
+/// Authority: §H.6 p120 (TFNI marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_tfni_marking() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.aea_markings = vec![AeaMarking::Tfni].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on TFNI (§H.6 p120 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// ORCON-USGOV arm — distinct from ORCON, must fire its own trigger.
+/// Authority: §H.8 p139 (ORCON-USGOV marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_orcon_usgov_marking() {
+    let scheme = CapcoScheme::new();
+    let m = classified_with_dissem(Classification::Secret, DissemControl::OcUsgov);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on ORCON-USGOV (§H.8 p139 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(
+        dissem_us_contains(&closed, DissemControl::OcUsgov),
+        "closure must not remove existing facts (extensive property)"
+    );
+}
+
+/// LES arm — Law Enforcement Sensitive non-IC dissem.
+/// Authority: §H.9 p181 (LES marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_les_marking() {
+    use marque_ism::NonIcDissem;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on LES (§H.9 p181 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// SBU arm — Sensitive But Unclassified non-IC dissem (bare SBU, not
+/// SBU-NF which carries its own PageRewrite).
+/// Authority: §H.9 p176 (SBU marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_sbu_marking() {
+    use marque_ism::NonIcDissem;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on SBU (§H.9 p176 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// SSI arm — Sensitive Security Information non-IC dissem.
+/// Authority: §H.9 p189 (SSI marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_ssi_marking() {
+    use marque_ism::NonIcDissem;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Ssi].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on SSI (§H.9 p189 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Algebraic properties — extensive, idempotent (operator-level)
 // ---------------------------------------------------------------------------
 

@@ -57,13 +57,18 @@ fn rel_to_contains(m: &CapcoMarking, target: CountryCode) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Trio 1 — implicit NOFORN closure rule (one fixture per trigger arm)
+// Trio 1 — implicit NOFORN closure rule (representative fixtures per
+// trigger family)
 //
 // Per `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`. The
 // single `CLOSURE_NOFORN_CAVEATED` row fires on
 // `scheme.project(Scope::Page, ...)` when any of its 18 triggers is
-// observed and no FD&R dominator is present. Each test below exercises
-// a distinct trigger arm of the unified row.
+// observed and no FD&R dominator is present. The fixtures below
+// exercise one representative arm per trigger family (SAR / AEA / UCNI
+// / FGI / ORCON / RSEN-IMCON-DSEN / non-IC-controls); the per-arm
+// algebraic-firing parity is pinned by `closure_runtime.rs` in
+// `marque-capco` (which exercises every individual `TokenRef` in the
+// trigger list).
 // ---------------------------------------------------------------------------
 
 /// SAR arm of `CLOSURE_NOFORN_CAVEATED` (§H.5 p101 + §B.3 Table 2 p21):

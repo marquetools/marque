@@ -469,8 +469,9 @@ impl MarkingScheme for CapcoScheme {
         CAPCO_CLOSURE_RULES
     }
 
-    /// CAPCO closure operator — Kleene fixpoint over the eight closure
-    /// rows in [`CAPCO_CLOSURE_RULES`].
+    /// CAPCO closure operator — Kleene fixpoint over the two closure
+    /// rows in [`CAPCO_CLOSURE_RULES`] (Trio 1 CAVEATED + Trio 3
+    /// NATO REL TO).
     ///
     /// Implements the §4.7 implicit-fact propagation per
     /// `docs/plans/2026-05-01-lattice-design.md` §3 (e). Walks the
