@@ -353,6 +353,14 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
             CAT_DISSEM => attrs.dissem_iter().next().is_some() || !attrs.rel_to.is_empty(),
+            // Issue #524 Phase 3 gap fix: `CAT_NON_IC_DISSEM` was
+            // previously unreachable (fell through to `_ => false`),
+            // silently making `TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)`
+            // a dead reference for any closure / constraint that needed
+            // category-level non-IC-dissem suppression. Consumed by
+            // `CLOSURE_RELIDO_US_CLASS`'s "no other dissem" suppressor
+            // list (`marque-applied.md` Section 4.7.5).
+            CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
             CAT_REL_TO => !attrs.rel_to.is_empty(),
             CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),
             _ => false,

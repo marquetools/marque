@@ -536,32 +536,47 @@ fn compute_banner_prose_only_no_portions_returns_unclassified() {
 
 #[test]
 fn compute_banner_single_secret_portion() {
+    // Issue #524 Phase 3: `CLOSURE_RELIDO_US_CLASS` fires the implicit
+    // RELIDO default on bare US classifications with no other dissem
+    // per `marque-applied.md` Section 4.7.5 (CAPCO-2016 §H.8 p154).
+    // Pre-Phase-3 this returned plain `SECRET`; Phase 3 makes the
+    // implicit FD&R default explicit in the banner.
     let banner = marque_wasm::compute_banner_native("(S) Only one portion here.")
         .expect("compute_banner single S");
     assert_eq!(
-        banner, "SECRET",
-        "single SECRET portion must produce SECRET banner"
+        banner, "SECRET//RELIDO",
+        "single SECRET portion must produce SECRET//RELIDO banner \
+         (Phase 3 implicit-RELIDO default)"
     );
 }
 
 #[test]
 fn compute_banner_single_unclassified_portion() {
+    // Issue #524 Phase 3 trigger list (`marque-applied.md` Section
+    // 4.7.5) explicitly enumerates `U / C / S / TS` for the
+    // US_CLASS Trio 2 row; the closure therefore fires on
+    // UNCLASSIFIED. The banner remains UNCLASSIFIED at the
+    // classification axis with the implicit RELIDO appended.
     let banner = marque_wasm::compute_banner_native("(U) Unclassified paragraph.")
         .expect("compute_banner single U");
     assert_eq!(
-        banner, "UNCLASSIFIED",
-        "single UNCLASSIFIED portion must produce UNCLASSIFIED banner"
+        banner, "UNCLASSIFIED//RELIDO",
+        "single UNCLASSIFIED portion must produce UNCLASSIFIED//RELIDO \
+         banner (Phase 3 implicit-RELIDO default applies to U per \
+         marque-applied Section 4.7.5)"
     );
 }
 
 #[test]
 fn compute_banner_ts_beats_secret_max_wins() {
     // Classification max: TOP SECRET takes precedence over SECRET.
+    // Phase 3 adds implicit RELIDO (see sibling tests).
     let text = "(S) Lower classification.\n(TS) Higher classification.";
     let banner = marque_wasm::compute_banner_native(text).expect("compute_banner TS>S");
     assert_eq!(
-        banner, "TOP SECRET",
-        "TOP SECRET must dominate SECRET in banner roll-up"
+        banner, "TOP SECRET//RELIDO",
+        "TOP SECRET must dominate SECRET in banner roll-up; Phase 3 \
+         implicit-RELIDO default applies to the post-roll-up bare US TS"
     );
 }
 
@@ -613,14 +628,16 @@ fn compute_banner_with_rel_to() {
 #[test]
 fn compute_banner_mixed_classified_and_unclassified_portions() {
     // Unclassified portions must not drag the banner below the highest
-    // classified level.
+    // classified level. Phase 3 adds implicit RELIDO on the post-roll-up
+    // bare US SECRET (sibling tests cite the §4.7.5 trigger list).
     let text =
         "(U) Public info.\n(C) Confidential portion.\n(U) More public info.\n(S) Secret item.";
     let banner =
         marque_wasm::compute_banner_native(text).expect("compute_banner mixed classification");
     assert_eq!(
-        banner, "SECRET",
-        "maximum classification across all portions must be reflected in the banner"
+        banner, "SECRET//RELIDO",
+        "maximum classification across all portions must be reflected in the banner; \
+         Phase 3 implicit-RELIDO default applies to the post-roll-up bare US SECRET"
     );
 }
 
