@@ -9,7 +9,7 @@
 //! larger space of compartment-tree combinations that the fixed samples can't
 //! reach.
 //!
-//! # Audit coverage (issue #<D24-follow-up>)
+//! # Audit coverage (decisions.md D24 follow-up)
 //!
 //! In addition to the original `SciSet`, `SarSet`, `FgiSet`, and `RelToBlock`
 //! tests, this file covers the three per-axis types identified by PR #456 as
