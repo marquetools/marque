@@ -208,18 +208,22 @@ fn closure_rel_to_usa_nato_fires_on_hotpath() {
 // Operator laws — idempotence + monotonicity (sanity) on the hot path
 // ---------------------------------------------------------------------------
 
-/// Idempotence: `project(project(m).into()) == project(m)`. The
-/// closure operator is monotone-extensive-idempotent per
-/// `marque-applied.md` §4.7.3; the production hot path inherits the
-/// property.
+/// Pipeline idempotence on the ORCON-derived closed state:
+/// `project(project(m).into()) == project(m)`. The closure operator
+/// is monotone-extensive-idempotent per `marque-applied.md` §4.7.3;
+/// the production hot path inherits the property.
 ///
-/// Implementation note: the second projection takes a `&[CapcoMarking]`
-/// containing the result of the first projection, so this also
-/// exercises that the closure's output is a fixed point under
-/// re-projection (i.e., not just `closure(m) == closure(closure(m))`
-/// but the whole `join → closure → page_rewrites` pipeline).
+/// Note that the second projection's input is NOT the original
+/// ORCON-only portion — it's the post-pass-1 closed state, which
+/// already has NOFORN injected by closure. The test verifies that
+/// running the whole `join → closure → page_rewrites` pipeline on
+/// that closed state is a fixed point (no further facts added, no
+/// facts removed). The "_on_orcon_derived_closed_state" suffix names
+/// what the assertion actually shows; the original
+/// "_on_classified_orcon" name suggested the second pass also ran on
+/// ORCON-only state, which it does not.
 #[test]
-fn project_is_idempotent_on_classified_orcon() {
+fn project_pipeline_is_idempotent_on_orcon_derived_closed_state() {
     let portion = classified_with_dissem(Classification::Secret, DissemControl::Oc);
     let pass1 = project_page(&[portion]);
     let pass2 = project_page(std::slice::from_ref(&pass1.0));

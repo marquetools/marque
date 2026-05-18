@@ -6,16 +6,37 @@
 //!
 //! Holds the `CapcoMarking` tuple struct (with optional decoder
 //! provenance side channel), `PartialEq`/`Eq`/`From<CanonicalAttrs>`
-//! impls, the inherent block carrying `new` + the 486-LOC
-//! `join_via_lattice` lattice-path composer, the `Lattice` trait impl
-//! (which currently delegates `join` to `PageContext::add_portion`
-//! per PR 4b-B's plan), the `CapcoOpenVocabRef` open-vocab enum, and
-//! the test-convenience `classification()` accessor.
+//! impls, the inherent block carrying `new` + the production
+//! `join_via_lattice` lattice-path composer (and its PR 4b-D.2
+//! `_with_context` fast-path variant), the `JoinSemilattice` trait
+//! impl (which delegates to `join_via_lattice` per PR 4b-D.2's flip),
+//! the `CapcoOpenVocabRef` open-vocab enum, and the test-convenience
+//! `classification()` accessor.
+//!
+//! ## Post-PR-4b-D.2 status
+//!
+//! The lattice path is the production page-aggregation surface.
+//! `JoinSemilattice::join` delegates to `CapcoMarking::join_via_lattice`,
+//! and `CapcoScheme::project(Scope::Page, ...)` runs the full
+//! `join_via_lattice → closure → page_rewrites` pipeline (see
+//! `docs/plans/2026-05-01-lattice-design.md` §4.7.4).
+//!
+//! `PageContext` is NOT retired — it stays alive as the page-state
+//! accumulator the engine fills via `add_portion` across the document,
+//! AND as the residue-axis bridge: five tmp_ctx-driven accessor calls
+//! inside `join_via_lattice_body` (`expected_sci_controls`,
+//! `expected_fgi_marker`, `expected_declass_exemption`,
+//! `expected_non_ic_dissem`, `expected_display_only`) still go through
+//! PageContext methods. PR 4b-E retires the residue bridge by
+//! refactoring the five accessors into free functions on
+//! `&[CanonicalAttrs]`, at which point this module can drop the
+//! `tmp_ctx` parameter entirely. Constitution VII §IV gates the
+//! refactor; PR 4b-E's authorization basis is identical to
+//! PR 4b-D.2's.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
-//! (issue #466). Module contents are byte-identical to the pre-split
-//! source — imports adjusted to reach helpers via `super::actions::*`
-//! / `super::predicates::*` / `super::constraints::*` (the same glob
+//! (issue #466). Imports reach helpers via `super::actions::*` /
+//! `super::predicates::*` / `super::constraints::*` (the same glob
 //! pattern `mod.rs` used pre-split).
 
 use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
@@ -171,6 +192,52 @@ impl CapcoMarking {
         Self::join_via_lattice_body(portions, page_ctx)
     }
 
+    /// Shared body for the two `join_via_lattice` entry points.
+    ///
+    /// Composes per-axis lattice results across 10+ axes
+    /// (classification + JointSet, SciSet, SarSet, AeaSet, FgiSet,
+    /// DissemSet, NatoDissemSet, RelToBlock, DeclassifyOnLattice,
+    /// declass_exemption, non_ic_dissem, display_only) using `portions`
+    /// as the per-axis input and `tmp_ctx` for the residue-axis
+    /// accessor surface that PageContext still bridges
+    /// (PR 4b-E retires the residue bridge — see the module-level doc).
+    ///
+    /// ## Size guideline
+    ///
+    /// Clippy's `too_many_lines` lint fires on this function at 129
+    /// LOC vs the 100-line default. The size is structurally
+    /// justified — splitting would harm correctness:
+    ///
+    /// - Axis ordering is load-bearing. The G-3 / G-4 / G-4c
+    ///   solely-non-US handling, the G-8 NOFORN-supersession overlay,
+    ///   and the G-6 SBU-NF/LES-NF NOFORN injection are encoded as
+    ///   ordered phases within this function. Each phase reads
+    ///   state computed by the prior phase (e.g. `out.classification`
+    ///   informs G-4c's foreign-source comparison; `rel_to_was_*`
+    ///   flags drive the final DissemSet overlay). Splitting into
+    ///   per-axis sub-functions would either (a) require threading
+    ///   all the cross-axis state via a struct, paying the
+    ///   readability cost it would notionally save, or
+    ///   (b) duplicate per-portion walks across sub-function
+    ///   boundaries, breaking the §3 (e.1) read-only-attrs
+    ///   invariant's audit surface.
+    /// - The per-axis citations (`§H.7 pp123-125`, `§H.3 p57`,
+    ///   `§H.8 p145`, etc.) live inline alongside the code they
+    ///   justify. A split would scatter them across files and harm
+    ///   Constitution VIII (citation-fidelity) maintainability.
+    ///
+    /// Per the PR 4b-D.2 reviewer attestation, future maintainers
+    /// hitting `clippy::too_many_lines` here should `#[allow]` rather
+    /// than split. The `#[allow]` below is permanent — not a TODO.
+    ///
+    /// Authority: `docs/plans/2026-05-01-lattice-design.md` §2 (axis
+    /// ordering rationale per CAPCO-2016 §G.1 Table 4 p38) +
+    /// §11 (PR 4b-B per-axis follow-ups encoded as inline phases).
+    #[allow(
+        clippy::too_many_lines,
+        reason = "Cross-axis state flow + inline §-citations are \
+                  structurally justified; see doc comment above."
+    )]
     fn join_via_lattice_body(
         portions: &[CanonicalAttrs],
         tmp_ctx: &marque_ism::PageContext,

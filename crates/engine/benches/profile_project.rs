@@ -2,19 +2,47 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-D.2 commit 7 — one-shot phase-attribution probe for
+//! PR 4b-D.2 commit 7 — phase-attribution probe for
 //! `CapcoScheme::project`.
 //!
-//! Mirrors `build_representative_input` from `lint_latency.rs`, parses
-//! the document into per-portion `CanonicalAttrs` values via the
-//! engine's strict pipeline, then measures isolated calls to
-//! (a) `join_via_lattice`, (b) `closure`, (c) `page_rewrites` loop,
-//! (d) `from_canonical`, and (e) the whole `scheme.project +
-//! from_canonical` pipeline.
+//! Measures isolated calls to (a) `join_via_lattice`, (b) `closure`,
+//! (c) the trait-path `scheme.project`, (d) `from_canonical`,
+//! (e) the engine fast-path `project_from_page_context + from_canonical`,
+//! (f) the whole `Engine::lint(10KB input)`, (g) project scaling at
+//! several portion counts (1, 5, 10, 25, 50), (h) the tmp_ctx rebuild
+//! in isolation, and (i) `join_via_lattice` scaling.
 //!
-//! Used to attribute the lint_10kb regression; the file ships with
-//! commit 7 but is hand-run via `cargo bench --bench profile_project`
-//! when needed.
+//! Used to attribute the PR 4b-D.2 hot-path-flip regression and to
+//! verify the commit 6-8 optimization wins. Ships in-tree so future
+//! perf work has a baseline to compare against.
+//!
+//! ## Phase F vs Phases G-I — synthesis caveat
+//!
+//! **Phase F** runs the full `Engine::lint` on the same 10KB input
+//! `lint_latency.rs` uses; it's an authoritative measurement of the
+//! end-to-end cost.
+//!
+//! **Phases A-E and G-I** measure isolated calls against
+//! **synthesized** `CanonicalAttrs` portions (`collect_portions`
+//! returns a hand-built `(S//NF)` + `(TS//SI)` pair rather than
+//! lifting the parser's actual output). The synthesis is a
+//! phase-attribution probe, not a regression gate: it lets us
+//! attribute "what is the cost of one `join_via_lattice` call?"
+//! independent of the parser's contribution to lint latency.
+//!
+//! ### Maintenance contract
+//!
+//! If the bench corpus's representative axis mix drifts away from
+//! the `(S//NF)` + `(TS//SI)` pair the synthesizer mimics — e.g. the
+//! lint_10kb input gains heavy SCI / FGI / AEA portions — the
+//! per-phase numbers here may silently understate the production
+//! cost on those axes. When refactoring per-axis lattice code,
+//! regenerate the synthesis input from the actual `lint_10kb`
+//! parse trace or extend it to cover the new axes.
+//!
+//! This is a **maintenance item, not a bug**. The synthesis is
+//! correct for the bench input it mirrors today; the contract is
+//! "keep it in sync if the bench input shape changes."
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_capco::CapcoMarking;
@@ -172,7 +200,7 @@ fn phase_attribution(c: &mut Criterion) {
         });
     }
 
-    // Phase G: scaling — project_from_attrs_slice at portion counts
+    // Phase G: scaling — project_from_page_context at portion counts
     // matching the lint_10kb call sequence (1, 5, 10, 25, 50). The
     // bench profiling discovered that ~50 cache-miss calls happen
     // with portions growing monotonically; the per-call O(n) work

@@ -644,8 +644,19 @@ impl CapcoScheme {
     /// engine-boundary clone rounds dominated the regression; this
     /// method eliminates them.
     ///
+    /// ## Visibility
+    ///
+    /// `pub(crate)` because, post-commit-8, the engine's hot path
+    /// calls [`Self::project_from_page_context`] (which skips a third
+    /// clone round by reusing the engine's existing `PageContext`).
+    /// This method survives as the in-crate trait-path delegate for
+    /// [`MarkingScheme::project`] and as a callable entry for future
+    /// in-crate callers that have an owned `&[CanonicalAttrs]` slice
+    /// but no pre-built PageContext. Promote back to `pub` only when
+    /// an out-of-crate caller's use case requires it.
+    ///
     /// [`PageContext::portions()`]: marque_ism::PageContext::portions
-    pub fn project_from_attrs_slice(
+    pub(crate) fn project_from_attrs_slice(
         &self,
         portions: &[CanonicalAttrs],
     ) -> CanonicalAttrs {
@@ -759,20 +770,28 @@ impl CapcoScheme {
                     CategoryAction::Promote { from, to, .. } => {
                         // Phase 3 T034 declares the JOINT-promotion and
                         // FGI-absorption rewrites for the scheduler +
-                        // catalog surface, but runtime dispatch stays
-                        // with [`PageContext`] (engine.lint does not
-                        // drive aggregation through project() yet —
-                        // see the note on `build_page_rewrites`).
-                        // Treat `Promote` as a no-op for now; full
-                        // transform-driven dispatch lands in Phase D /
-                        // Phase E when the engine switches to
-                        // scheme-driven roll-up.
+                        // catalog surface. Post-PR-4b-D.2 the engine
+                        // drives page-marking aggregation through
+                        // `scheme.project(Scope::Page, ...)`, so this
+                        // arm is reachable at runtime. `Promote` stays
+                        // a no-op here because the JOINT-promotion and
+                        // FGI-absorption rewrites are renderer-canonical
+                        // territory — they restate the same fact set in
+                        // a different surface form, which is
+                        // `render_canonical`'s job, not the projection
+                        // lattice's. The renderer-vs-lattice boundary
+                        // is documented in
+                        // `docs/plans/2026-05-01-lattice-design.md`
+                        // §10 row 4 (SCI per-system canonicalization)
+                        // + §10 row 5 (SAR ordering). PR 5+ Stage 4
+                        // lands the renderer trait surface that picks
+                        // these rewrites up.
                         tracing::debug!(
                             rewrite_id = rw.id,
                             action = "Promote",
                             ?from,
                             ?to,
-                            "PageRewrite fired (Phase-3 no-op)",
+                            "PageRewrite fired (Promote — renderer-territory no-op)",
                         );
                     }
                     CategoryAction::Custom(f) => {
