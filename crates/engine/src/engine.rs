@@ -14,11 +14,11 @@ use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
 use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
-use marque_scheme::Span;
 use marque_rules::{
     AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken, FixIntent,
     FixSource, Phase, RuleId, RuleSet, Severity, SmallVec,
 };
+use marque_scheme::Span;
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use marque_scheme::{MarkingScheme, RewriteId};

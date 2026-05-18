@@ -190,6 +190,116 @@ fn closure_suppressed_by_relido_dominator() {
     assert!(dissem_us_contains(&closed, DissemControl::Oc));
 }
 
+/// FD&R-dominator parity: NOFORN already present suppresses Trio 1.
+/// Trivially correct (the cone fact equals an already-present fact),
+/// but pinned so a future edit to `FDR_DOMINATORS` slice ordering or
+/// `satisfies_attrs(TOK_NOFORN)` resolution cannot silently break it.
+///
+/// Authority: §B.3.a p19 (FD&R-set membership; NOFORN is the most
+/// restrictive FD&R marking); §H.8 p145 (NOFORN supersession overlay).
+#[test]
+fn closure_suppressed_by_noforn_dominator() {
+    let scheme = CapcoScheme::new();
+    // ORCON + NOFORN: closure already sees NOFORN present, so the
+    // FDR_DOMINATORS suppressor fires for the Trio 1 row.
+    let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
+    let mut a = m.0.clone();
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m.clone());
+    // Idempotent — no second NOFORN added; dissem_us unchanged.
+    assert_eq!(
+        closed.0.dissem_us.len(),
+        m.0.dissem_us.len(),
+        "closure must not duplicate or add to dissem_us when NOFORN \
+         dominator is already present; dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(dissem_us_contains(&closed, DissemControl::Nf));
+    assert!(dissem_us_contains(&closed, DissemControl::Oc));
+}
+
+/// FD&R-dominator parity: REL TO already present suppresses Trio 1.
+///
+/// REL TO is an explicit FD&R decision — `AnyInCategory(CAT_REL_TO)`
+/// in `FDR_DOMINATORS` matches any non-empty `attrs.rel_to`. With a
+/// caveat (ORCON) present alongside REL TO, the closure must back off:
+/// the explicit REL TO supersedes the implicit NOFORN default.
+///
+/// Authority: §B.3.a p19 (FD&R-set membership; REL TO is canonical);
+/// §H.8 p150 (REL TO marking template).
+#[test]
+fn closure_suppressed_by_rel_to_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc].into_boxed_slice();
+    a.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN when REL TO is already present \
+         (FDR_DOMINATORS suppresses Trio 1 via AnyInCategory(CAT_REL_TO)); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(rel_to_contains(&closed, CountryCode::USA));
+    assert!(rel_to_contains(&closed, CountryCode::GBR));
+}
+
+/// FD&R-dominator parity: DISPLAY ONLY already present suppresses Trio 1.
+///
+/// Authority: §B.3.a p19 (FD&R-set membership; DISPLAY ONLY is a
+/// viewing-only FD&R marking); §H.8 p163 (DISPLAY ONLY marking
+/// template).
+#[test]
+fn closure_suppressed_by_display_only_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Displayonly].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN when DISPLAY ONLY is already \
+         present (FDR_DOMINATORS suppresses Trio 1); dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(dissem_us_contains(&closed, DissemControl::Displayonly));
+}
+
+/// FD&R-dominator parity: EYES already present suppresses Trio 1.
+///
+/// EYES (USA/[LIST] EYES ONLY) is an FD&R marking per §H.8 p157
+/// (deprecated 2017-10-01 but still recognized for legacy-input
+/// compatibility). `FDR_DOMINATORS` includes `TOK_EYES` so EYES-marked
+/// portions correctly suppress the implicit-NOFORN trio.
+///
+/// Authority: §H.8 p157 (EYES marking template / FD&R designation).
+#[test]
+fn closure_suppressed_by_eyes_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Eyes].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN when EYES is already present \
+         (FDR_DOMINATORS includes TOK_EYES per §H.8 p157); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(dissem_us_contains(&closed, DissemControl::Eyes));
+}
+
 // ---------------------------------------------------------------------------
 // NATO row (CLOSURE_REL_TO_USA_NATO)
 // ---------------------------------------------------------------------------

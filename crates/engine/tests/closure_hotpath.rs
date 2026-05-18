@@ -7,16 +7,18 @@
 //! Exercises [`CapcoScheme::project(Scope::Page, ...)`] post-flip
 //! (PR 4b-D.2 Commit 3). The closure operator now runs between the
 //! per-axis lattice join and the declarative `PageRewrite` catalog;
-//! these tests pin that each of the seven `CLOSURE_NOFORN_*` rules
-//! and `CLOSURE_REL_TO_USA_NATO` fires through the production page
-//! projection, that the operator is idempotent and monotone in the
-//! marking, and that NOFORN-injection at the closure layer
+//! these tests pin that the unified `CLOSURE_NOFORN_CAVEATED` Trio 1
+//! row (post-PR-#522 collapse of the seven historical `CLOSURE_NOFORN_*`
+//! rows) and `CLOSURE_REL_TO_USA_NATO` fire through the production
+//! page projection, that the operator is idempotent and monotone in
+//! the marking, and that NOFORN-injection at the closure layer
 //! correctly composes with the `DissemSet` supersession overlay
 //! (§H.8 p145 NOFORN-dominates).
 //!
 //! Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e) +
-//! §4.7.4 pipeline ordering. Per-row §-citations on the
-//! `CLOSURE_NOFORN_*` constants in `crates/capco/src/scheme/closure.rs`.
+//! §4.7.4 pipeline ordering. Per-trigger §-citations on the
+//! `CLOSURE_NOFORN_CAVEATED` row doc-comment at
+//! `crates/capco/src/scheme/closure.rs`.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{

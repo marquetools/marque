@@ -140,16 +140,30 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// REL TO, RELIDO, DISPLAY ONLY, EYES) is present.
 ///
 /// **Universal IC principle.** Any AEA marking, SAP marking, or
-/// dissemination control marking on classified information is
-/// structurally **caveated** per CAPCO-2016 §B.3 p20 Note: "Caveated
-/// means bears no FD&R markings, but has one or more AEA markings, SAP
-/// markings, and/or dissemination control marking(s)." Per §B.3
-/// Table 2 p21, classified + caveated + post-28-Jun-2010 → NOFORN.
-/// The principle is rooted in ICD 403 (Foreign Disclosure and Release):
-/// the IC cannot presume releasability or RELIDO-suitability of
-/// information governed by policy regimes outside IC marking authority,
-/// so implicit NOFORN is the conservative default absent an explicit
-/// FD&R decision.
+/// dissemination control marking renders information structurally
+/// **caveated** per CAPCO-2016 §B.3 p20 Note: "Caveated means bears no
+/// FD&R markings, but has one or more AEA markings, SAP markings,
+/// and/or dissemination control marking(s)." The §B.3 Table 2 p21 row
+/// "Classified, caveated, on/after 28 Jun 2010 → NOFORN" is the
+/// algebraic anchor for the classified case; for triggers that exist
+/// at UNCLASSIFIED (UCNI/DCNI by §H.6 marking template, non-IC dissem
+/// markings under §H.9 that may be applied at any classification
+/// level), the per-marking template authority carries the NOFORN
+/// implication independently of §B.3 Table 2 p21. The principle is
+/// rooted in ICD 403 (Foreign Disclosure and Release): the IC cannot
+/// presume releasability or RELIDO-suitability of information governed
+/// by policy regimes outside IC marking authority, so implicit NOFORN
+/// is the conservative default absent an explicit FD&R decision.
+///
+/// **The row is intentionally class-agnostic** — it has no
+/// classification gate. Every trigger marking carries an implicit
+/// NOFORN release posture under its own per-marking authority,
+/// regardless of whether the host information is classified or
+/// unclassified. This is correct for UCNI (constrained to UNCLASSIFIED
+/// per §H.6 pp116-119) and for non-IC dissem markings (which may apply
+/// at any classification level per §H.9 marking templates). The
+/// per-trigger authority table below names the load-bearing
+/// per-marking citation for each arm.
 ///
 /// **Trigger-set scope.** The `triggers` list enumerates the caveated
 /// markings *currently in the catalog*. The universal §B.3 p20 Note
@@ -232,16 +246,29 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// **LES-NF / SBU-NF** are intentionally absent from the trigger list,
 /// but the rationale is *not* "the closure operator sees NOFORN first."
 /// The page-projection pipeline is
-/// `join_via_lattice → closure → PageRewrites` (per
-/// `MarkingScheme::project` body comments at
-/// `crates/capco/src/scheme/marking_scheme_impl.rs`'s `closure()`
-/// implementation), so when closure runs, the LES-NF / SBU-NF
-/// PageRewrites have not yet added NOFORN. Closure is permitted to
-/// over-fire on bare-LES-NF / bare-SBU-NF — the cone fact it would add
-/// (`{NOFORN}`) is byte-identical to what the downstream PageRewrite
-/// would add anyway, so the over-fire is mathematically harmless. See
-/// the maintenance note on `FDR_DOMINATORS` for the full algebraic
-/// justification.
+/// `join_via_lattice → closure → PageRewrites` per the body of
+/// `CapcoScheme::project_attrs_pipeline_with_context` (the shared
+/// pipeline helper that `MarkingScheme::project`, the engine fast-path
+/// entries, and direct `scheme.project(Scope::Page, ...)` callers all
+/// delegate through — see `crates/capco/src/scheme/marking_scheme_impl.rs`).
+/// When closure runs, the LES-NF / SBU-NF PageRewrites have not yet
+/// added NOFORN. Closure is permitted to over-fire on bare-LES-NF /
+/// bare-SBU-NF — the cone fact it would add (`{NOFORN}`) is
+/// byte-identical to what the downstream PageRewrite would add anyway,
+/// so the over-fire is mathematically harmless. See the maintenance
+/// note on `FDR_DOMINATORS` for the full algebraic justification.
+///
+/// **Row name stability.** `ClosureRule::name` is the documented
+/// public key for `[closure_rules]` severity overrides and future audit
+/// row-name emission. This PR (#522) consolidates seven previously
+/// public row names (`capco/noforn-if-sar`, `…-aea`, `…-ucni`, `…-fgi`,
+/// `…-orcon`, `…-rsen-imcon-dsen`, `…-non-ic-controls`) into the single
+/// new `capco/noforn-if-caveated` key. Marque is pre-users per project
+/// policy (no deprecation phasing, no alias maps), so the previous keys
+/// are not retained as aliases. A config keyed to a retired name will
+/// silently become a no-op; the broader gap that the config layer does
+/// not validate unknown closure-row keys is independent of this
+/// renaming and applies to every closure-rule rename.
 const CLOSURE_NOFORN_CAVEATED: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-caveated",
     label: "CAPCO-2016 §B.3 Table 2 p21 (rooted in ICD 403)",
