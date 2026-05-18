@@ -1376,13 +1376,14 @@ impl NonIcDissem {
     ///     with NOFORN split into the dissem block (§H.9 p185: "the 'LES'
     ///     marking is used in the banner line and the NOFORN marking is
     ///     applied as a Dissemination Control Marking. For example:
-    ///     `SECRET//NOFORN//LES`."). The split itself is handled by
-    ///     [`crate::PageContext::expected_non_ic_dissem`]; this predicate
-    ///     only answers the binary "does the marking appear in the
-    ///     banner at all?" question, which is what W003 consumes.
-    ///     Treating `SECRET//LES NOFORN` as non-canonical (so that the
-    ///     canonicalization becomes fixable) is a separate page-rewrite
-    ///     concern, not a W003 concern.
+    ///     `SECRET//NOFORN//LES`."). The split itself lives in the
+    ///     scheme-side lattice path (`NonIcDissemSet::from_attrs_iter`
+    ///     in `marque-capco::lattice`); this predicate only answers
+    ///     the binary "does the marking appear in the banner at all?"
+    ///     question, which is what W003 consumes. Treating
+    ///     `SECRET//LES NOFORN` as non-canonical (so that the
+    ///     canonicalization becomes fixable) is a separate
+    ///     page-rewrite concern, not a W003 concern.
     ///
     /// (‡) NNPI does not have a §H.9 row at all — its authority lives
     ///     outside CAPCO's IC-marking scope (10 USC 7314 / 50 USC
@@ -1395,14 +1396,15 @@ impl NonIcDissem {
     ///     non-canonical in a classified document per §H.9 p178
     ///     ("applicable only to unclassified information"). The **NOFORN
     ///     half does propagate** via
-    ///     [`crate::PageContext::expected_non_ic_dissem`], which splits a
-    ///     portion-level `SBU-NF` into `SBU + NF-flag` and emits the
-    ///     resulting NOFORN into the classified banner's dissem block.
-    ///     So a document with a `(U//SBU-NF)` portion rolls up to a
-    ///     `SECRET//NOFORN` banner (NOFORN present, SBU dropped), not
-    ///     `SECRET//SBU NOFORN`. W003 therefore fires on the literal
-    ///     `SECRET//SBU NOFORN` banner input because that surface form
-    ///     is the non-canonical one, not because NOFORN is disallowed.
+    ///     `NonIcDissemSet::from_attrs_iter` in `marque-capco::lattice`,
+    ///     which splits a portion-level `SBU-NF` into `SBU + NF-flag`
+    ///     and emits the resulting NOFORN into the classified banner's
+    ///     dissem block. So a document with a `(U//SBU-NF)` portion
+    ///     rolls up to a `SECRET//NOFORN` banner (NOFORN present, SBU
+    ///     dropped), not `SECRET//SBU NOFORN`. W003 therefore fires on
+    ///     the literal `SECRET//SBU NOFORN` banner input because that
+    ///     surface form is the non-canonical one, not because NOFORN
+    ///     is disallowed.
     pub fn propagates_to_classified_banner(self) -> bool {
         match self {
             // Do NOT propagate — banner-absent in classified documents.
@@ -2590,8 +2592,9 @@ pub enum SciControlSystem {
 /// before BOHEMIA when both are present (numeric-then-alpha ordering
 /// per §A.6 p15-16; `BALK < BOHEMIA` lexicographically).
 /// Derive `Ord` so [`SciControlSystem::NatoSap`] participates in the
-/// numeric-then-alpha ordering used by `PageContext::expected_sci_markings`
-/// roll-up via `SystemKey`. The variants are declared `Balk` then
+/// numeric-then-alpha ordering used by the lattice-side
+/// `SciSet::from_markings` SCI roll-up via `SystemKey`. The variants
+/// are declared `Balk` then
 /// `Bohemia` (alphabetical text), so the derived `Ord` orders `Balk <
 /// Bohemia` — which matches `as_str()`-based lexicographic ordering.
 /// `as_str()` text remains the sort key consulted by the renderer and

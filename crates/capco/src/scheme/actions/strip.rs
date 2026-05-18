@@ -15,11 +15,12 @@ use super::super::*;
 /// or within-axis transform that the Phase-3 declarative surface
 /// can't express cleanly (e.g., the §3.4.1 transmutations).
 ///
-/// Runtime page-rewrite dispatch stays in [`PageContext`] until
-/// Phase D / Phase E lands real rewrite bodies; until then the
-/// action body is a no-op and only the row's `reads` / `writes`
-/// axis annotations are consumed (by the engine's topological
-/// scheduler, T031–T032). Pairs with [`never_fires`] for triggers.
+/// Runtime page-rewrite dispatch stays in
+/// `CapcoScheme::project_attrs_pipeline` until Phase D / Phase E
+/// lands real rewrite bodies; until then the action body is a no-op
+/// and only the row's `reads` / `writes` axis annotations are
+/// consumed (by the engine's topological scheduler, T031–T032).
+/// Pairs with [`never_fires`] for triggers.
 pub(crate) fn noop_action(_marking: &mut CapcoMarking) {}
 
 /// Pattern-C action body: strip every `AeaMarking::DodUcni` from the

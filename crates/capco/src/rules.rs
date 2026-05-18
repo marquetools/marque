@@ -382,7 +382,7 @@ impl CapcoRuleSet {
                 // reverted to Banner-only firing to avoid Mixed-page
                 // false positives — see the `JointDisunityCollapseRule`
                 // doc-comment for the layout-gap trade-off. Fires on
-                // Banner candidates only; reads `ctx.page_context` for
+                // Banner candidates only; reads `ctx.page_portions` for
                 // the `JointSet::DisunityCollapse` state. The diagnostic
                 // message uses canonical CountryCode trigraphs only
                 // (Constitution V Principle V G13).
@@ -2247,7 +2247,7 @@ pub(crate) fn dedup_country_codes(
 // computes the REL TO atom-semantics intersection across every
 // portion on the page and emits one diagnostic per uncertain
 // tetragraph that drops out of that intersection. The rule reads
-// `ctx.page_context` only; under PageFinalization dispatch the
+// `ctx.page_portions` only; under PageFinalization dispatch the
 // engine passes `CanonicalAttrs::default()` as `attrs`, so the rule
 // neither reads nor depends on banner-witness state (pre-PR-#488
 // the rule read `attrs.rel_to` to decide a Suggest-vs-Info branch;
@@ -2260,8 +2260,8 @@ pub(crate) fn dedup_country_codes(
 // false-positive on intermediate snapshots when the rule briefly
 // ran on Portion candidates. Phase::PageFinalization closes both —
 // the engine dispatches S005 exactly once per page at every
-// scanner-emitted `MarkingType::PageBreak` BEFORE the PageContext
-// reset, plus once at end-of-document.
+// scanner-emitted `MarkingType::PageBreak` BEFORE the per-page
+// accumulator reset, plus once at end-of-document.
 //
 // Severity / fix. Severity::Suggest with no fix. The ambiguity is not
 // resolvable from in-tree data — only the producer's external
@@ -2402,7 +2402,7 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// Called by `RelToOpaqueUncertainReductionSuggestRule::check` under
 /// `Phase::PageFinalization`. The `_attrs` parameter is unused — the
 /// engine passes `CanonicalAttrs::default()` for PageFinalization
-/// dispatch — and the entire decision is made from `ctx.page_context`
+/// dispatch — and the entire decision is made from `ctx.page_portions`
 /// (the closed page state) per the rule's doc comment.
 ///
 /// The cost is bounded by the number of portions with non-empty REL
@@ -2410,16 +2410,14 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// operations over `BTreeSet`s in practice.
 ///
 /// **PR 4b-D.3 note (2026-05-18):** This helper intentionally reads
-/// `ctx.page_context` rather than `ctx.page_marking`. S005's
+/// `ctx.page_portions` rather than `ctx.page_marking`. S005's
 /// per-portion REL TO + uncertain-trigraph membership analysis
 /// requires the portion-level `CanonicalAttrs` slice that
 /// `ProjectedMarking` does not expose by design (a projected
-/// marking is an aggregate, not a portion view). PR 4b-E retains
-/// a trimmed `PageContext` exposing only `portions()` for
-/// this consumer and W004; the architecturally-clean successor
-/// is lifting per-portion REL TO membership analysis into the
-/// lattice / scheme layer as derived state on `ProjectedMarking`,
-/// deferred post-4b-E.
+/// marking is an aggregate, not a portion view). The
+/// architecturally-clean successor is lifting per-portion REL TO
+/// membership analysis into the lattice / scheme layer as derived
+/// state on `ProjectedMarking`, deferred post-PR-6c.
 fn analyze_uncertain_reduction(
     _attrs: &CanonicalAttrs,
     ctx: &RuleContext,

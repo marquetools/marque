@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use marque_rules::{Rule, RuleSet};
+use marque_rules::{Rule, RuleContext, RuleSet};
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::category::Category;
 use marque_scheme::constraint::Constraint;
@@ -115,3 +115,23 @@ assert_impl_all!(Box<dyn Rule<StubScheme>>: Send, Sync);
 assert_impl_all!(Arc<dyn Rule<StubScheme>>: Send, Sync);
 assert_impl_all!(Box<dyn RuleSet<StubScheme>>: Send, Sync);
 assert_impl_all!(Arc<dyn RuleSet<StubScheme>>: Send, Sync);
+
+// PR 6c (T069) compile-time pin on `RuleContext: Send + Sync`.
+//
+// PR 6c deleted the `assert_impl_all!(PageContext: Send, Sync)` pin
+// in `crates/ism/tests/send_sync.rs` when the `PageContext` newtype
+// was retired. The new field type on `RuleContext` is
+// `Option<Arc<Box<[CanonicalAttrs]>>>`, which is `Send + Sync` iff
+// `CanonicalAttrs: Send + Sync` (asserted in
+// `crates/ism/tests/send_sync.rs`). This file closes the gap by
+// asserting the property on `RuleContext` itself.
+//
+// `RuleContext<'a>` is lifetime-parameterized so `assert_impl_all!`
+// (which requires `'static`) cannot be applied directly. The HRTB
+// function-bound form below proves the property for every `'a` at
+// compile time.
+fn _rule_context_is_send_sync<'a>()
+where
+    RuleContext<'a>: Send + Sync,
+{
+}

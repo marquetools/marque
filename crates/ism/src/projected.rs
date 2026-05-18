@@ -8,19 +8,20 @@
 //! PR 6 wires it.
 //!
 //! Today's `MarkingScheme::project` (in `marque-scheme`) returns
-//! `Self::Marking` (scheme-specific). PR 6's cutover changes the
+//! `Self::Marking` (scheme-specific). PR 6's cutover changed the
 //! engine-facing call path so banner-validation rules consume
-//! `&ProjectedMarking` instead of reaching through `PageContext`. PR 5
-//! widens `expected_classification` to `Option<MarkingClassification>`
-//! ahead of that wiring (FR-007). This type is defined at PR 3a so
-//! both PRs have a stable target without a separate type-system
-//! change.
+//! `&ProjectedMarking` instead of reaching through a separate page
+//! accumulator type. PR 5 widened the per-axis classification rollup
+//! to `Option<MarkingClassification>` ahead of that wiring (FR-007).
+//! This type is defined at PR 3a so both PRs had a stable target
+//! without a separate type-system change.
 //!
-//! Post-PR-4b-D.2 (hot-path flip) + PR 4b-E (PageContext expected_*
-//! deletion), `ProjectedMarking` is the production page-roll-up shape
-//! that banner/CAB rules consume via `RuleContext::page_marking`. The
-//! engine drives the projection through
-//! `CapcoScheme::project_from_page_context` + `ProjectedMarking::from_canonical`.
+//! Post-PR-4b-D.2 (hot-path flip) + PR 4b-E (lattice-driven page
+//! roll-up) + PR 6c (full `PageContext` retirement), `ProjectedMarking`
+//! is the production page-roll-up shape that banner/CAB rules consume
+//! via `RuleContext::page_marking`. The engine drives the projection
+//! through `CapcoScheme::project_from_attrs_slice` +
+//! `ProjectedMarking::from_canonical`.
 //!
 //! # Field shape
 //!
@@ -50,13 +51,14 @@ use marque_scheme::Scope;
 ///
 /// # PR-3a scope note
 ///
-/// Post-PR-4b-D.2 hot-path flip + PR 4b-E PageContext deletion,
-/// `ProjectedMarking` is the production page-roll-up shape banner/CAB
-/// rules consume via `RuleContext::page_marking`. The type
-/// is `pub` so `dead_code` does not fire across the workspace; per the
-/// design's Risk #6 a targeted `#[allow(dead_code)]` is reserved should
-/// the workspace lints flag it. PR 6 turns `ProjectedMarking` into a
-/// real consumer.
+/// Post-PR-4b-D.2 hot-path flip, PR 4b-E expected-accessor deletion,
+/// and PR 6c `PageContext` retirement, `ProjectedMarking` is the
+/// production page-roll-up shape banner/CAB rules consume via
+/// `RuleContext::page_marking`. The type is `pub` so `dead_code`
+/// does not fire across the workspace; per the design's Risk #6 a
+/// targeted `#[allow(dead_code)]` is reserved should the workspace
+/// lints flag it. PR 6 turns `ProjectedMarking` into a real
+/// consumer.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectedMarking {
@@ -160,7 +162,7 @@ impl ProjectedMarking {
     /// that `CapcoScheme::project` calls this was wrong):
     ///
     /// - `marque_engine::project_page_marking` — the engine fast-path
-    ///   helper that wraps `CapcoScheme::project_from_page_context`'s
+    ///   helper that wraps `CapcoScheme::project_from_attrs_slice`'s
     ///   `CanonicalAttrs` output into a `ProjectedMarking` for
     ///   `RuleContext::page_marking`.
     /// - `crates/engine/benches/profile_project.rs` — phase-attribution
@@ -188,12 +190,14 @@ impl ProjectedMarking {
     ///
     /// # Lifecycle
     ///
-    /// PR 4b-D wires the engine to call this on the hot path. PR 4b-E
-    /// retires [`crate::PageContext::project`] in favor of this
-    /// constructor + the scheme's lattice path; until then, both
-    /// constructors coexist and the parity gate at
-    /// `crates/capco/tests/page_context_lattice_parity.rs` enforces
-    /// agreement on the documented-divergence set.
+    /// PR 4b-D wired the engine to call this on the hot path; PR 4b-E
+    /// retired the historical `PageContext::project` accessor in
+    /// favor of this constructor + the scheme's lattice path; PR 6c
+    /// retired the `PageContext` accumulator type itself. The parity
+    /// gate at `crates/capco/tests/lattice_vs_scheme_parity.rs`
+    /// continues to enforce agreement on the documented-divergence
+    /// set across the two surviving surfaces (`project_via_lattice`
+    /// and `project_via_scheme`).
     pub fn from_canonical(attrs: CanonicalAttrs) -> ProjectedMarking {
         ProjectedMarking {
             scope: Scope::Page,
@@ -220,31 +224,15 @@ impl ProjectedMarking {
     /// This is the `ProjectedMarking`-side predicate consumed by
     /// `marque-capco`'s S007 rule (`bare-nato-requires-rel-to-usa-nato`)
     /// to silence the bare-NATO → `REL TO USA, NATO` suggestion on
-    /// documents that are wholly NATO-owned. The engine-facing successor
-    /// to [`crate::PageContext::is_solely_nato_classified`], introduced
-    /// ahead of PR 4b-E retiring the `PageContext.expected_*` machinery
-    /// and consolidating page-aggregate reads on
-    /// `RuleContext.page_marking`.
-    ///
-    /// # Equivalence note
-    ///
-    /// This predicate reads the post-lattice page aggregate
-    /// (`self.classification`, `self.fgi_marker`); the legacy
-    /// `PageContext::is_solely_nato_classified` walks `self.portions`
-    /// directly and pattern-matches each portion with the same
-    /// `matches!` template. Both return the same answer on every page
-    /// where every portion contributes a parsed classification (the
-    /// documented and tested scenarios). The two may diverge on pages
-    /// containing portions with `classification = None`:
-    /// `ProjectedMarking` reflects the lattice aggregate (which may
-    /// classify the page as solely-NATO if all classification-bearing
-    /// portions are NATO and the `None` portions surrender to the
-    /// lattice bottom), while `PageContext` requires every portion to
-    /// bear `Some(Nato(_))`. The post-lattice semantic is the forward
-    /// direction. The divergence does not affect current S007 dispatch
-    /// because portion rules do not yet receive a populated
-    /// `page_marking` (see fr048 trip-wire test); revisit when the
-    /// engine plumbs page state to portion-rule dispatch.
+    /// documents that are wholly NATO-owned. The successor to the
+    /// pre-PR-4b-E `PageContext::is_solely_nato_classified` walker,
+    /// reading the post-lattice page aggregate
+    /// (`self.classification`, `self.fgi_marker`) instead of looping
+    /// over per-portion attrs. The post-lattice semantic is the
+    /// forward direction; the divergence does not affect current
+    /// S007 dispatch because portion rules do not yet receive a
+    /// populated `page_marking` (see fr048 trip-wire test); revisit
+    /// when the engine plumbs page state to portion-rule dispatch.
     ///
     /// # Predicate truth conditions
     ///

@@ -1294,15 +1294,16 @@ impl Engine {
                     // `Phase::PageFinalization` rules are dispatched
                     // exclusively by `dispatch_page_finalization` at
                     // every scanner-emitted `MarkingType::PageBreak`
-                    // (BEFORE the `PageContext` reset) and once at
-                    // end-of-document. Skipping them in the main
-                    // candidate loop is what makes the "fires once on
-                    // the page fixpoint" contract documented on
-                    // `Phase::PageFinalization` (`crates/rules/src/lib.rs`)
-                    // mechanically true. Without this skip the rule
-                    // would ALSO fire on every Banner/CAB candidate
-                    // whose `ctx.page_context` is populated, producing
-                    // a duplicate diagnostic per page on layouts with
+                    // (BEFORE the per-page accumulator reset) and
+                    // once at end-of-document. Skipping them in the
+                    // main candidate loop is what makes the "fires
+                    // once on the page fixpoint" contract documented
+                    // on `Phase::PageFinalization`
+                    // (`crates/rules/src/lib.rs`) mechanically true.
+                    // Without this skip the rule would ALSO fire on
+                    // every Banner/CAB candidate whose
+                    // `ctx.page_portions` is populated, producing a
+                    // duplicate diagnostic per page on layouts with
                     // a closing banner — caught by Copilot review on
                     // PR #487 (issue #461).
                     //
@@ -4345,7 +4346,7 @@ fn dispatch_page_finalization(
     let boundary_span = Span::new(boundary_offset, boundary_offset);
 
     // PageFinalization rules don't read `attrs`; they read
-    // `ctx.page_context` / `ctx.page_marking`. The dummy attrs are
+    // `ctx.page_portions` / `ctx.page_marking`. The dummy attrs are
     // a `Default::default()` to satisfy the `Rule::check`
     // signature. We pass `&dummy` so the borrow doesn't outlive the
     // dispatch loop; rules that try to introspect dummy attrs will

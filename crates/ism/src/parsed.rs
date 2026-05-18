@@ -16,8 +16,8 @@
 //! Short-lived. `ParsedAttrs<'src>` exists only between Phase 2 (parser
 //! emits) and the immediate canonicalization step. It MUST NOT outlive
 //! the input byte buffer it borrows from. Storing one in `RuleContext`,
-//! `PageContext`, or any cross-document structure is a misuse — those
-//! consumers want `CanonicalAttrs` (owned).
+//! the engine's per-page accumulator, or any cross-document structure
+//! is a misuse — those consumers want `CanonicalAttrs` (owned).
 //!
 //! # Why a borrowed type at this layer
 //!

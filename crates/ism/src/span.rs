@@ -36,26 +36,27 @@ pub enum MarkingType {
     Cab,
     /// Document page break — `\f` (form feed) or `\n\n\n+` heuristic.
     /// Carries a zero-length span at the boundary offset. The engine uses
-    /// this to reset its `PageContext` so banner/CAB rules on the next page
-    /// see a fresh aggregate (Phase 3, plan §Task 1).
+    /// this to reset its per-page accumulator so banner/CAB rules on the
+    /// next page see a fresh aggregate (Phase 3, plan §Task 1).
     PageBreak,
     /// Engine-synthesized page-finalization boundary — dispatched at
-    /// every [`MarkingType::PageBreak`] BEFORE the `PageContext` reset,
-    /// plus once at end-of-document. Never emitted by the scanner.
-    /// Carries a zero-length `Span` at the boundary offset.
+    /// every [`MarkingType::PageBreak`] BEFORE the per-page
+    /// accumulator reset, plus once at end-of-document. Never emitted
+    /// by the scanner. Carries a zero-length `Span` at the boundary
+    /// offset.
     ///
     /// Parsers MUST reject this kind — only `marque_rules::Phase::PageFinalization`
     /// rules dispatched by the engine consume it, and they read
-    /// `RuleContext::page_context` / `RuleContext::page_marking` (the
+    /// `RuleContext::page_portions` / `RuleContext::page_marking` (the
     /// page-level fixpoint snapshot the engine attaches to the
     /// synthetic candidate), not `CanonicalAttrs` parsed from candidate
     /// bytes.
     ///
     /// The variant exists so PageFinalization dispatch is
-    /// distinguishable from `PageBreak` (which carries the PageContext
-    /// reset semantic) without overloading. The two MUST NOT be
-    /// co-located in the candidate stream — `PageBreak` is the
-    /// scanner-emitted reset boundary; `PageFinalization` is the
+    /// distinguishable from `PageBreak` (which carries the per-page
+    /// accumulator reset semantic) without overloading. The two MUST
+    /// NOT be co-located in the candidate stream — `PageBreak` is
+    /// the scanner-emitted reset boundary; `PageFinalization` is the
     /// engine-synthesized dispatch marker that runs strictly before
     /// the matching `PageBreak`'s reset.
     ///

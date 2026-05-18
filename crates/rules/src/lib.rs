@@ -439,29 +439,27 @@ pub struct RuleContext<'a> {
     /// lazily at the first banner / CAB / PageFinalization dispatch
     /// and reuses the `Arc` across consecutive dispatches on the page.
     /// `None` for portion candidates and for banner / CAB candidates
-    /// on an empty page (same `None`-shape as [`Self::page_context`]).
+    /// on an empty page.
     ///
-    /// PR 6c retirement plan — this field is the structural successor
-    /// to [`Self::page_context`]. Commit 1 introduces it alongside the
-    /// existing `page_context` so the tree stays green per-commit;
-    /// commit 3 retires `page_context` once every consumer migrates.
-    /// `Box<[CanonicalAttrs]>` (immutable snapshot) is what `Arc`
-    /// wraps because the slice form mirrors Constitution Principle II
-    /// "pivot fields use `Box<[T]>`" and the snapshot is genuinely
-    /// immutable once frozen at the banner/CAB boundary.
+    /// PR 6c (T069) introduced this field as the structural successor
+    /// to the historical `page_context: Option<Arc<PageContext>>`
+    /// field. `Box<[CanonicalAttrs]>` (immutable snapshot) is what
+    /// `Arc` wraps because the slice form mirrors Constitution
+    /// Principle II "pivot fields use `Box<[T]>`" and the snapshot
+    /// is genuinely immutable once frozen at the banner/CAB
+    /// boundary.
     pub page_portions: Option<std::sync::Arc<Box<[CanonicalAttrs]>>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
     /// [`marque_ism::MarkingType::PageBreak`]. PR 9b (T133 / FR-006)
-    /// adds this alongside [`Self::page_context`] for
-    /// banner-validation rules to consume without going through the
-    /// `page_context_to_attrs()` shim or the
-    /// `PageContext::expected_*` accessors.
+    /// added this alongside the per-page portion snapshot
+    /// ([`Self::page_portions`]) so banner-validation rules can
+    /// consume the rolled-up shape directly.
     ///
     /// Populated by the engine for every non-portion candidate
     /// (Banner, CAB) once at least one portion has accumulated on the
     /// page. `None` otherwise. The shape mirrors
-    /// [`Self::page_context`]: same engine pass populates both; same
+    /// [`Self::page_portions`]: same engine pass populates both; same
     /// `PageBreak` reset semantics; same `Arc` clone discipline so a
     /// per-page snapshot is shared cheaply across all banner-rule
     /// invocations on that page.
@@ -470,7 +468,7 @@ pub struct RuleContext<'a> {
     /// `Phase::PageFinalization` dispatches the engine force-initializes
     /// this to `Some` before invoking the rule; see
     /// [`Phase::PageFinalization`]. PageFinalization rules MAY rely on
-    /// `Some(_)` for both this field and [`Self::page_context`].
+    /// `Some(_)` for both this field and [`Self::page_portions`].
     ///
     /// Banner-validation rules read fields directly:
     ///

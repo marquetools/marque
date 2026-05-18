@@ -37,7 +37,7 @@ chooses to register. Rule crates depend only on `marque-rules` and
 | `Diagnostic` | A violation: rule, severity, span, message, citation, optional fix. |
 | `FixProposal` | A proposed edit with `confidence: f32` and `FixSource` provenance. |
 | `AppliedFix` | A `FixProposal` promoted by the engine, with timestamp + classifier id. The audit record. |
-| `RuleContext` | Position context (`Zone`, `DocumentPosition`, `PageContext`) and corrections map handed to `Rule::check`. |
+| `RuleContext` | Position context (`Zone`, `DocumentPosition`, per-page portion snapshot, page-level `ProjectedMarking`) and corrections map handed to `Rule::check`. |
 
 ## Usage
 

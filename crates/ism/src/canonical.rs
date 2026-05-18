@@ -21,13 +21,13 @@
 //!
 //! # Why owned
 //!
-//! Rules need attrs that outlive the source byte buffer (e.g.,
-//! `PageContext` accumulates per-portion attrs across the whole page
-//! before banner-validation rules consume the aggregate; the source
-//! buffer of an early portion may have been freed by then). Having
-//! `CanonicalAttrs` own its data simplifies the lifetimes that flow
-//! through the engine without forcing every rule signature to carry
-//! an `'src` parameter.
+//! Rules need attrs that outlive the source byte buffer (e.g., the
+//! engine's per-page accumulator collects per-portion attrs across
+//! the whole page before banner-validation rules consume the
+//! aggregate; the source buffer of an early portion may have been
+//! freed by then). Having `CanonicalAttrs` own its data simplifies
+//! the lifetimes that flow through the engine without forcing every
+//! rule signature to carry an `'src` parameter.
 //!
 //! # Field shape
 //!
