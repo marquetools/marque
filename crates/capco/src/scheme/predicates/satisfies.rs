@@ -57,10 +57,17 @@ use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catal
 /// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM` — the *token* sentinels,
 /// distinct from the category form) fall through to `false`;
 /// they are declared for future T035b consumption. The
-/// `AnyInCategory(CAT_NON_IC_DISSEM)` arm IS live as of Issue
-/// #524 Phase 3 (consumed by `CLOSURE_RELIDO_US_CLASS`'s "no
-/// other dissem" suppressor list); the token-form
-/// `TOK_NON_IC_DISSEM` stays in the fall-through arm.
+/// `AnyInCategory(CAT_NON_IC_DISSEM)` arm WAS added as of Issue
+/// #524 Phase 3 to close a gap-fix where the category form
+/// silently fell through. Initial Phase 3 design wired it as a
+/// `CLOSURE_RELIDO_US_CLASS` suppressor; the final design moved
+/// the "no other dissem" gate from anti-monotone suppressors to
+/// composition-via-`CLOSURE_NOFORN_CAVEATED` (per #544 Copilot
+/// monotonicity review), so the resolver arm has no current
+/// consumer in `CapcoScheme`'s `closure_rules()`. It stays live
+/// for any future closure rule or constraint that needs to
+/// dispatch on category-level non-IC-dissem presence. The
+/// token-form `TOK_NON_IC_DISSEM` stays in the fall-through arm.
 pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> bool {
     use marque_ism::{
         AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
@@ -386,9 +393,15 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
             // previously unreachable (fell through to `_ => false`),
             // silently making `TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)`
             // a dead reference for any closure / constraint that needed
-            // category-level non-IC-dissem suppression. Consumed by
-            // `CLOSURE_RELIDO_US_CLASS`'s "no other dissem" suppressor
-            // list (`marque-applied.md` Section 4.7.5).
+            // category-level non-IC-dissem dispatch. No current consumer
+            // in `CapcoScheme`'s `closure_rules()` — the Phase 3 design
+            // initially wired it into `CLOSURE_RELIDO_US_CLASS`'s
+            // suppressor list, then moved the "no other dissem" gate
+            // from anti-monotone suppressors to composition-via-Trio-1
+            // per the #544 monotonicity review. The arm remains live
+            // for future consumers (e.g., a `ConflictsWithFamily`
+            // constraint dispatching on category-level non-IC-dissem
+            // presence).
             CAT_NON_IC_DISSEM => !attrs.non_ic_dissem.is_empty(),
             CAT_REL_TO => !attrs.rel_to.is_empty(),
             CAT_DECLASSIFY_ON => attrs.declassify_on.is_some(),

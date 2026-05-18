@@ -693,21 +693,28 @@ const CLOSURE_RELIDO_SCI: ClosureRule<CapcoScheme> = ClosureRule {
 // Encodes the FD&R precedence rule from CAPCO-2016 §D.2 Table 3
 // pp.28-30: an explicit FD&R decision (NOFORN, RELIDO, REL TO,
 // DISPLAY ONLY, EYES) supersedes the implicit-RELIDO default. The
-// slice contains exactly the FD&R dominator set per §H.8 p145.
+// slice contains the FD&R dominator set per §H.8 p145 (five
+// entries) plus six per-compartment SCI sentinels whose case-2
+// monotonicity property is satisfied by closure composition — see
+// the per-block doc-comments below.
 //
 // **Monotonicity (load-bearing).** Every suppressor in this slice
 // has the `marque-applied.md` Section 4.7.3 case-2 property:
 // "the suppressor either contains the cone's intent or makes the
-// cone inapplicable." All five entries are FD&R dominators that
-// supersede RELIDO via the §H.8 p145 / §D.2 Table 3 supersession
-// overlay — adding any of them to a marking lifts the dissem-axis
-// state to a point at or above {RELIDO} in the SupersessionSet
-// lattice (NOFORN ⊐ RELIDO; REL TO / DISPLAY ONLY / EYES are
-// mutually-exclusive with RELIDO and supersede it in §D.2 Table 3
-// rows 12-17; RELIDO contains RELIDO trivially). This is what
-// keeps `MarkingScheme::closure`'s monotonicity invariant
-// (`m1 ⊑ m2 ⇒ closure(m1) ⊑ closure(m2)`) intact — verified by
-// the `proptest_closure_rejects_non_monotone` harness.
+// cone inapplicable." The five FD&R dominators satisfy this
+// directly — adding any of them to a marking lifts the dissem-
+// axis state to a point at or above {RELIDO} in the
+// SupersessionSet lattice (NOFORN ⊐ RELIDO; REL TO / DISPLAY ONLY
+// / EYES are mutually-exclusive with RELIDO and supersede it in
+// §D.2 Table 3 rows 12-17; RELIDO contains RELIDO trivially). The
+// six SCI per-compartment sentinels satisfy it by composition —
+// each compartment's per-marking row adds NOFORN or ORCON, and
+// CAVEATED (Trio 1) promotes ORCON → NOFORN, so the composite
+// Cl(y) contains NOFORN ⊐ RELIDO whenever any of these
+// compartments is present. The composite monotonicity invariant
+// (`m1 ⊑ m2 ⇒ closure(m1) ⊑ closure(m2)`) is verified by the
+// `proptest_closure` harness on synthetic schemes and by the
+// `us_class_monotone_under_added_*` Phase 3 pins.
 //
 // **Why "no other dissem" lives in the trigger, not here.** A
 // prior revision of this PR encoded the `marque-applied.md`
@@ -838,22 +845,50 @@ const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
 ///
 /// **"No other dissem" via composition.** The
 /// `marque-applied.md` Section 4.7.5 "no other dissem" qualifier
-/// is achieved by closure-rule composition rather than by
-/// anti-monotone suppressors: any caveat marker (AEA / SAP /
-/// FGI / dissem control) triggers `CLOSURE_NOFORN_CAVEATED`
-/// (Trio 1) which adds NOFORN, and NOFORN then supersedes the
-/// RELIDO injection via the `with_noforn_injected` §H.8 p145
-/// overlay. The fixpoint result on `(S, <caveat>)` is therefore
-/// `(S, <caveat>, NOFORN, no RELIDO)` — the correct §B.3 Table 2
-/// p21 semantic.
+/// is achieved for **most** caveat markers via closure-rule
+/// composition rather than anti-monotone suppressors: any token in
+/// `CLOSURE_NOFORN_CAVEATED`'s trigger list (Trio 1 — AEA, SAR,
+/// FGI markers, ORCON / ORCON_USGOV, RSEN / IMCON / DSEN /
+/// LIMDIS / LES / NNPI / SBU / SSI) drives the composite to
+/// inject NOFORN, and NOFORN then supersedes the RELIDO injection
+/// via the `with_noforn_injected` §H.8 p145 overlay. The fixpoint
+/// result on `(S, <Trio-1-trigger>)` is therefore `(S, <trigger>,
+/// NOFORN, no RELIDO)` — the §B.3 Table 2 p21 semantic.
+///
+/// **Coverage gaps in the composition path.** Four IC dissem
+/// controls are NOT in `CLOSURE_NOFORN_CAVEATED`'s trigger list:
+/// FOUO, FISA, RAWFISA, and PROPIN. For these, the closure-layer
+/// output of `(S, <token>)` is `(S, <token>, RELIDO)` — this row
+/// fires unchecked by Trio 1. FOUO additionally participates in
+/// the §H.8 p134 PageRewrites
+/// (`classification-evicts-fouo` / `non-fdr-control-evicts-fouo`)
+/// that strip FOUO from classified context, so the post-rewrite
+/// scheme output for `(S, FOUO)` is `(S, RELIDO)`. FISA / RAWFISA
+/// / PROPIN do not have analogous strip rewrites today. If a
+/// future CAPCO interpretation requires NOFORN-injection for those
+/// markings, the fix is to extend CAVEATED's trigger list, not to
+/// re-anti-monotone-ify this row's suppressor slice.
 ///
 /// **Kleene-fixpoint composition.** This row is ordered after
 /// `CLOSURE_RELIDO_SCI` in `CAPCO_CLOSURE_RULES`. The two rows can
-/// both fire on the same input (e.g., `(S, SI)` triggers both —
-/// SI is in CAT_SCI for CLOSURE_RELIDO_SCI's trigger, US Secret
-/// is collateral for CLOSURE_RELIDO_US_CLASS's trigger); since
-/// both cones are `{RELIDO}` the addition is idempotent (RELIDO
-/// added once, deduplicated by the dissem set).
+/// both fire on the same input — e.g., a bare-SI marking (no
+/// matching per-compartment sentinel) with US Secret classification
+/// triggers both: SI satisfies `AnyInCategory(CAT_SCI)` for
+/// CLOSURE_RELIDO_SCI's trigger, US Secret satisfies
+/// `TOK_US_COLLATERAL_CLASSIFIED` for this row's trigger. Whichever
+/// fires first adds RELIDO; the second then sees RELIDO in the
+/// dissem axis (FDR_DOMINATORS suppressor matches) and is
+/// suppressed. The cones are identical (`{RELIDO}`), so the
+/// observable result is the same either way.
+///
+/// **SCI per-compartment paths.** The six per-compartment SCI
+/// sentinels (SI-G / HCS-O / HCS-P[sub] / TK-BLFH / TK-IDIT /
+/// TK-KAND) are in BOTH `FDR_OR_RELIDO_INCOMPAT` (suppressing
+/// CLOSURE_RELIDO_SCI) and `RELIDO_US_CLASS_SUPPRESSORS`
+/// (suppressing this row). Neither Trio 2 row fires; the
+/// per-marking compartment rows add NOFORN or ORCON; CAVEATED
+/// promotes ORCON→NOFORN as needed. End state: `(S, <compartment>,
+/// NOFORN, ...)` — no RELIDO.
 ///
 /// **Severity calibration.** `Severity::Info` matches the rest of
 /// the Trio 2 catalog (silent lattice-layer propagation; byte-level
@@ -893,13 +928,19 @@ const CLOSURE_RELIDO_US_CLASS: ClosureRule<CapcoScheme> = ClosureRule {
 /// Every suppressor fact either contains the cone's intent or makes it
 /// redundant. For Trio 1/3 (FDR_DOMINATORS): the suppressor is always a
 /// manifest FD&R decision that supersedes the implicit default. For Trio 2
-/// (FDR_OR_RELIDO_INCOMPAT): same, plus RELIDO-incompatible tokens make the
-/// RELIDO cone inapplicable by definition. `CLOSURE_RELIDO_US_CLASS`
-/// extends this with the "no other dissem" qualifier, where every
-/// category-level suppressor breaks the trigger's premise rather
-/// than dominating the cone — both shapes still satisfy the case-2
-/// invariant. Unconditional rows have no suppressor — monotonicity
-/// is trivial (empty suppressor → no case 2).
+/// `CLOSURE_RELIDO_SCI` (FDR_OR_RELIDO_INCOMPAT): same, plus
+/// RELIDO-incompatible tokens make the RELIDO cone inapplicable by
+/// definition. For Trio 2 `CLOSURE_RELIDO_US_CLASS`
+/// (RELIDO_US_CLASS_SUPPRESSORS): five FD&R dominators directly
+/// supersede RELIDO via §H.8 p145, and six per-compartment SCI
+/// sentinels satisfy case-2 by composition (their per-marking rows
+/// add NOFORN or ORCON, CAVEATED promotes ORCON → NOFORN, and the
+/// composite Cl(y) contains NOFORN ⊐ RELIDO). The §H.8 p154
+/// Unclassified carve-out is enforced at the trigger level
+/// (`TOK_US_COLLATERAL_CLASSIFIED` doesn't fire on Unclassified),
+/// not via a suppressor — keeping the trigger predicate upward-
+/// closed. Unconditional rows have no suppressor — monotonicity is
+/// trivial (empty suppressor → no case 2).
 ///
 /// # Remaining Trio 2 triggers (deferred)
 ///
@@ -959,16 +1000,28 @@ pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // FDR_OR_RELIDO_INCOMPAT / RELIDO_US_CLASS_SUPPRESSORS
     // suppressor checks within the same Kleene iteration.
     //
-    // Intra-Trio-2 ordering: SCI → US_CLASS. The two rows are
-    // pairwise disjoint by suppressor on most inputs — an SCI
-    // marking suppresses US_CLASS via `CAT_SCI`; ordering only
-    // matters for stability when a single iteration sees more
-    // than one trigger candidate. The catalog walks in order;
-    // each row mutates `working` in place before the next row
-    // evaluates, so adding RELIDO via the first matching row
-    // idempotently suppresses subsequent Trio 2 firings on the
-    // same iteration. See "Remaining Trio 2 triggers (deferred)"
-    // below for the FOUO / RSEN / U cases that do not ship.
+    // Intra-Trio-2 ordering: SCI → US_CLASS. The two rows can
+    // both fire on the same input — e.g., a bare-SI marking (no
+    // matching per-compartment sentinel) with US-collateral
+    // classification satisfies both triggers
+    // (`AnyInCategory(CAT_SCI)` for CLOSURE_RELIDO_SCI; US
+    // collateral for CLOSURE_RELIDO_US_CLASS). The catalog walks
+    // in order; whichever row fires first adds RELIDO to
+    // `working`, and the second then sees RELIDO in the dissem
+    // axis (RELIDO is in FDR_DOMINATORS which is in BOTH rows'
+    // suppressor lists) and is suppressed. Cones are identical
+    // (`{RELIDO}`); the observable result is the same either way.
+    //
+    // For markings carrying one of the six per-compartment SCI
+    // sentinels (SI-G / HCS-O / HCS-P[sub] / TK-BLFH / TK-IDIT /
+    // TK-KAND), BOTH Trio 2 rows are suppressed by direct token
+    // match (those sentinels are in `FDR_OR_RELIDO_INCOMPAT` and
+    // in `RELIDO_US_CLASS_SUPPRESSORS`); the per-marking
+    // compartment rows above this point produce NOFORN/ORCON
+    // directly and that flows through `with_noforn_injected` to
+    // strip RELIDO if it ever appears. See "Remaining Trio 2
+    // triggers (deferred)" below for the FOUO / RSEN / U cases
+    // that do not ship.
     CLOSURE_RELIDO_SCI,
     CLOSURE_RELIDO_US_CLASS,
 ];
@@ -1605,8 +1658,10 @@ mod phase3_closure_pin {
     /// Build a `CapcoMarking` with a single US classification and
     /// nothing else populated. Trigger for `CLOSURE_RELIDO_US_CLASS`
     /// when `level` is Restricted/Confidential/Secret/TopSecret;
-    /// suppressed by `TOK_US_UNCLASSIFIED` when `level` is
-    /// Unclassified.
+    /// the trigger predicate (`TOK_US_COLLATERAL_CLASSIFIED`)
+    /// doesn't fire on `Us(Unclassified)`, so the §H.8 p154
+    /// carve-out is enforced at the trigger level (not via a
+    /// suppressor) when `level` is Unclassified.
     fn us_classified(level: Classification) -> CapcoMarking {
         let mut a = CanonicalAttrs::default();
         a.classification = Some(MarkingClassification::Us(level));
