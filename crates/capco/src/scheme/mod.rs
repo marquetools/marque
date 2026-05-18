@@ -326,13 +326,16 @@ pub const TOK_PROPIN: TokenId = TokenId(143); // PROPIN — §H.8 p148
 pub const TOK_FISA: TokenId = TokenId(144); // FISA — §H.8 p161
 pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares the FISA section)
 
-// NNPI lives in `attrs.non_ic_dissem` as the NonIcDissem::Nnpi variant
-// (per `crates/ism/src/attrs.rs:1326` doc-comment on NNPI). NNPI has
-// no confirmed CAPCO-2016 §-citation in ISM-v2022-DEC; the ODNI ISM
-// `attrs.rs:1326` banner-roll-up doc-comment is the in-tree authority
-// for NNPI's "propagates regardless of classification" behavior, which
-// makes NNPI a §H.8 p134 "other dissemination control markings"
-// trigger by the same reasoning as SSI (§H.9 p189).
+// NNPI lives in `attrs.non_ic_dissem` as the NonIcDissem::Nnpi variant.
+// NNPI has no confirmed CAPCO-2016 §-citation in ISM-v2022-DEC; the
+// ODNI ISM `NonIcDissem::Nnpi` banner-roll-up doc-comment is the
+// in-tree authority for NNPI's "propagates regardless of classification"
+// behavior. The §H.8 p134 "other dissemination control markings" phrase
+// is reasoning-by-analogy bridge prose, NOT a normative §-citation for
+// NNPI — §H.8 p134 does not enumerate the token, and elevating the
+// bridge phrase to a citation would constitute citation drift per
+// Constitution VIII. For the closure-rule wiring see
+// `marque-capco::scheme::closure::CLOSURE_NOFORN_NON_IC_DISSEM`.
 // Closes issue #407. verified 2026-05-16.
 pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 
