@@ -29,9 +29,9 @@
 //! its own axis (`render_rel_to`) so the renderer can sort countries
 //! and dispatch the trigraph/tetragraph ordering independently. The
 //! bare `REL` token (DissemControl::Rel without a country list) is
-//! also dropped at render time when REL TO is non-empty (per
-//! `PageContext::render_expected_banner` precedent — emit `REL TO ...`
-//! once, not also a bare `REL`).
+//! also dropped at render time when REL TO is non-empty per the
+//! §H.8 p150-151 REL TO template — emit `REL TO …` once, not also
+//! a bare `REL`.
 
 use core::fmt;
 
@@ -136,8 +136,7 @@ fn register_rank(d: &DissemControl) -> u8 {
 /// Banner form per CAPCO-2016 Table 4 row 8 (p36). The CVE `as_str()`
 /// method returns the portion form, not the banner form, for several
 /// entries (`OC` vs `ORCON`, `NF` vs `NOFORN`, etc.) — this mapping
-/// is the §A.6 banner form used in `PageContext::render_expected_banner`
-/// precedent.
+/// surfaces the §A.6 banner form (CAPCO-2016 §A.6 p15-17).
 fn banner_str(d: &DissemControl) -> &'static str {
     match d {
         DissemControl::Rs => "RSEN",

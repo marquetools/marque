@@ -7,8 +7,7 @@
 //! Holds the `CapcoMarking` tuple struct (with optional decoder
 //! provenance side channel), `PartialEq`/`Eq`/`From<CanonicalAttrs>`
 //! impls, the inherent block carrying `new` + the production
-//! `join_via_lattice` lattice-path composer (and its PR 4b-D.2
-//! `_with_context` fast-path variant), the `CapcoOpenVocabRef`
+//! `join_via_lattice` lattice-path composer, the `CapcoOpenVocabRef`
 //! open-vocab enum, and the test-convenience `classification()`
 //! accessor.
 //!
@@ -35,8 +34,7 @@
 //! → after `m.join(m)` → `m.rel_to = {30 expanded trigraphs}`, so
 //! `m != m.join(m)` under derived `Eq`). The fix was to drop the
 //! false trait claim; the cross-axis fold remains accessible as the
-//! inherent methods `join_via_lattice` and
-//! `join_via_lattice_with_context`. See `marque-applied.md` §3 for
+//! inherent method `join_via_lattice`. See `marque-applied.md` §3 for
 //! the "per-axis lattices are real; the cross-axis composition is
 //! structural folding, not a lattice operation" framing.
 //!
@@ -56,10 +54,9 @@
 //! (`sci_controls_from_markings`, `FgiSet::from_attrs_iter`,
 //! `DeclassExemptionAccumulator::from_attrs_iter`,
 //! `NonIcDissemSet::from_attrs_iter`,
-//! `DisplayOnlyBlock::from_attrs_iter`). `join_via_lattice_body`'s
-//! `_tmp_ctx` parameter is retained at the function boundary for
-//! signature stability with the engine's hot path; the body no
-//! longer reads it.
+//! `DisplayOnlyBlock::from_attrs_iter`). PR 4b-F retired the last
+//! `&PageContext` parameter from the lattice fold body; the pipeline
+//! now consumes `&[CanonicalAttrs]` end-to-end.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
 //! (issue #466). Imports reach helpers via `super::actions::*` /
@@ -142,145 +139,57 @@ impl CapcoMarking {
         Self(attrs, None)
     }
 
-    /// **PR 4b-B Commit 7** — component-wise join via the per-category
-    /// `marque-capco::lattice` types.
+    /// Component-wise join via the per-category `marque-capco::lattice`
+    /// types — the production page-projection composer.
     ///
-    /// This is the new "lattice path" exposed alongside the existing
-    /// `Lattice::join` impl (which still delegates to `PageContext`).
-    /// The parity-gate test
-    /// `crates/capco/tests/page_context_lattice_parity.rs` (Commit 8)
-    /// proves byte-identity between the two paths across 51 `#[test]`
-    /// fixtures with **six documented divergences** (enumerated in
-    /// `crates/capco/CAPCO-CONTEXT.md` §3): G-1 FOUO-classified, G-2
-    /// AEA-UCNI-classified, G-3 pure-NATO, the
-    /// RELIDO+NOFORN-dominates correctness divergence, plus the two
-    /// pure-JOINT cases
-    /// (`joint_unanimous_two_portions_converge_to_joint_variant` /
-    /// `joint_single_portion_no_us_converge_to_joint_variant`)
-    /// where the lattice produces
-    /// `Joint(_)` per §H.3 p56 banner-fidelity and PageContext
-    /// produces `Us(_)`. (Fixtures renamed in PR 4b-E review fix-up
-    /// to reflect post-deletion convergence.) G-4..G-9 land as
-    /// parity-RESTORING fixtures
-    /// (each cited inline against its §). Corpus-fixture coverage
-    /// is deferred to PR 4b-D when
-    /// `CapcoScheme::project(Scope::Page, ...)` flips to use this
-    /// path.
+    /// Composes per-axis lattice results across the 10+ CAPCO axes
+    /// (classification together with JointSet, SciSet, SarSet, AeaSet,
+    /// FgiSet, DissemSet, NatoDissemSet, RelToBlock, DeclassifyOnLattice,
+    /// declass_exemption, non_ic_dissem, display_only). Originally
+    /// introduced in PR 4b-B Commit 7 alongside a `_with_context`
+    /// fast-path variant; PR 4b-D.2 flipped the production
+    /// `MarkingScheme::project` to drive page aggregation through this
+    /// path, and PR 4b-F collapsed the `_with_context` fast-path now
+    /// that no caller threads a `&PageContext` through the body.
     ///
-    /// **Two residues** preserved from PageContext for one more PR:
+    /// Both call surfaces — the trait-path
+    /// `MarkingScheme::project(Scope::Page, ...)` and the engine
+    /// fast-path `CapcoScheme::project_from_page_context` — delegate
+    /// through `CapcoScheme::project_attrs_pipeline`, which calls this
+    /// method directly. The parity gate at
+    /// `crates/capco/tests/lattice_vs_scheme_parity.rs` pins the
+    /// `per-axis lattice` ↔ `full scheme pipeline` byte-identity
+    /// claim across 74 fixtures (with documented divergences for the
+    /// closure-rule and PageRewrite-catalog operations that the per-axis
+    /// path does not yet model).
     ///
-    /// 1. `non_ic_dissem` axis (classification-gated SBU-NF/LES-NF
-    ///    split + the implied-NF injection family). Documented in
-    ///    the plan §3.3 as a `Constraint::Custom("capco/fouo-eviction")`
-    ///    PR 4b-C migration target. The `needs_nf` flag is propagated
-    ///    into `out.dissem_us` (G-6 PR 4b-B follow-up) so SBU-NF /
-    ///    LES-NF classified pages produce the correct NOFORN
-    ///    injection on the lattice path.
-    /// 2. The JOINT non-US producer FGI migration — Commit 5's
-    ///    `JointSet::DisunityCollapse` carries the producer set,
-    ///    and the W004 rule (Commit 9) surfaces it, but the
-    ///    renderer-canonical FGI attribution is PR 5+ Stage 4
-    ///    territory.
-    ///
-    /// Authority (verified 2026-05-15): per-axis citations are on
-    /// each `lattice` module type's doc comment.
+    /// Authority (verified 2026-05-15): per-axis citations are on each
+    /// `lattice` module type's doc comment.
     pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
-        // Build a one-shot tmp_ctx for residue-axis accessor calls
-        // and delegate to the borrowed-context variant. Callers that
-        // already own a `&PageContext` (e.g. `Engine::lint`'s hot path)
-        // SHOULD call `join_via_lattice_with_context` directly to skip
-        // this clone round.
-        let mut tmp_ctx = marque_ism::PageContext::new();
-        for p in portions {
-            tmp_ctx.add_portion(p.clone());
-        }
-        Self::join_via_lattice_with_context(portions, &tmp_ctx)
+        Self::join_via_lattice_body(portions)
     }
 
-    /// PR 4b-D.2 Commit 7+ — hot-path fast variant of
-    /// [`Self::join_via_lattice`] that consumes a pre-built
-    /// [`marque_ism::PageContext`] reference instead of cloning the
-    /// per-portion `CanonicalAttrs` into a fresh tmp_ctx.
-    ///
-    /// The engine's `project_page_marking` already owns a
-    /// `&PageContext` (the same one that accumulates portions across
-    /// the document via `add_portion`), so the hot path can route
-    /// through here and skip the n×clone tmp_ctx rebuild that the
-    /// trait-path entry pays.
-    ///
-    /// `portions` and `page_ctx.portions()` MUST refer to the same
-    /// underlying slice — the caller's contract. Mismatched inputs
-    /// would mix per-axis lattice results from one slice with
-    /// residue-axis accessor results from another, which is a
-    /// semantically-corrupt projection. Debug-mode assertion below
-    /// guards this at test time.
-    ///
-    /// ## Visibility
-    ///
-    /// `pub(crate)` per Copilot R1 review #4. The only production
-    /// callers are the in-crate `CapcoScheme::project_attrs_pipeline_with_context`
-    /// (engine fast-path entry) and the `join_via_lattice` wrapper
-    /// above. The same-slice contract on `portions` /
-    /// `page_ctx.portions()` is verified only under
-    /// `#[cfg(debug_assertions)]`; promoting to `pub` without a
-    /// release-mode guard would invite cross-crate callers to violate
-    /// the contract silently. If an out-of-crate caller's use case
-    /// requires it, promote back to `pub` AND add a release-mode
-    /// equality check.
-    pub(crate) fn join_via_lattice_with_context(
-        portions: &[CanonicalAttrs],
-        page_ctx: &marque_ism::PageContext,
-    ) -> CanonicalAttrs {
-        // ## G13 content-ignorance (Constitution V Principle V +
-        // Copilot R2 #4)
-        //
-        // The failure path emits ONLY counts and the contract
-        // description — never `portions` / `page_ctx.portions()`
-        // content. `debug_assert_eq!`'s default `{:?}` would dump
-        // full `CanonicalAttrs` (token values, country lists,
-        // spans), violating G13. The explicit `if !=` + `panic!`
-        // with a count-only message mirrors the
-        // `check_portions_unchanged` pattern at
-        // `crates/engine/src/engine.rs:4540-4574`.
-        #[cfg(debug_assertions)]
-        {
-            if portions != page_ctx.portions() {
-                panic!(
-                    "join_via_lattice_with_context: portions slice and page_ctx \
-                     portions() must be the same slice ({} vs {} portions); \
-                     caller's contract violated.",
-                    portions.len(),
-                    page_ctx.portions().len(),
-                );
-            }
-        }
-        Self::join_via_lattice_body(portions, page_ctx)
-    }
-
-    /// Shared body for the two `join_via_lattice` entry points.
+    /// Shared body for the `join_via_lattice` entry point.
     ///
     /// Composes per-axis lattice results across 10+ axes
     /// (classification + JointSet, SciSet, SarSet, AeaSet, FgiSet,
     /// DissemSet, NatoDissemSet, RelToBlock, DeclassifyOnLattice,
-    /// declass_exemption, non_ic_dissem, display_only) using `portions`
-    /// as the per-axis input and `tmp_ctx` for the residue-axis
-    /// accessor surface that PageContext still bridges
-    /// (PR 4b-E retires the residue bridge — see the module-level doc).
+    /// declass_exemption, non_ic_dissem, display_only). The body now
+    /// consumes only `portions: &[CanonicalAttrs]` — the residue-axis
+    /// `PageContext` bridge that earlier PRs threaded through this
+    /// function retired in PR 4b-E (free helpers in
+    /// `crates/capco/src/lattice.rs`) and PR 4b-F (the `_tmp_ctx`
+    /// parameter itself).
     ///
     /// ## Size guideline
     ///
     /// Clippy's `too_many_lines` lint fires on this function at
-    /// ~423 LOC (function body spans `crates/capco/src/scheme/marking.rs`
-    /// lines 284-706 in the current revision) vs the 100-line default.
-    /// Copilot R1 review #8 caught a prior incorrect "~129 LOC"
-    /// statement here — the body has always been ~420 LOC since
-    /// PR 4b-B Commit 7 added the per-axis lattice composition; the
-    /// 129 figure was wrong on inspection. The structural justification
+    /// ~420 LOC vs the 100-line default. The structural justification
     /// (axis ordering + inline citations + cross-axis state flow) is
-    /// even stronger at the actual size — splitting a 400+ LOC
-    /// cross-axis fold into per-axis sub-functions would require
-    /// threading every intermediate state value via a struct, which
-    /// pays the readability cost without the maintainability win.
+    /// load-bearing — splitting a 400+ LOC cross-axis fold into
+    /// per-axis sub-functions would require threading every
+    /// intermediate state value via a struct, which pays the
+    /// readability cost without the maintainability win.
     ///
     /// - Axis ordering is load-bearing. The G-3 / G-4 / G-4c
     ///   solely-non-US handling, the G-8 NOFORN-supersession overlay,
@@ -312,17 +221,7 @@ impl CapcoMarking {
         reason = "Cross-axis state flow + inline §-citations are \
                   structurally justified; see doc comment above."
     )]
-    fn join_via_lattice_body(
-        portions: &[CanonicalAttrs],
-        // PR 4b-E: `_tmp_ctx` retained at the boundary so the
-        // engine's hot path keeps passing a `&PageContext` reference
-        // (no signature churn for the caller). The body no longer
-        // reads it — all five residue-axis accessors migrated to
-        // free helpers in `crates/capco/src/lattice.rs`. The
-        // `join_via_lattice_with_context` same-slice contract still
-        // uses `page_ctx.portions()` for the debug-assert.
-        _tmp_ctx: &marque_ism::PageContext,
-    ) -> CanonicalAttrs {
+    fn join_via_lattice_body(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
         use crate::lattice::{
             AeaSet, ClassificationLattice, DeclassExemptionAccumulator, DeclassifyOnLattice,
             DisplayOnlyBlock, DissemSet, FgiSet, JointSet, NatoDissemSet, NonIcDissemSet,
@@ -428,16 +327,13 @@ impl CapcoMarking {
                             }
                             // G-9 (PR 4b-B follow-up): Conflict always
                             // flattens to its implicit `us` level in
-                            // this non-JOINT branch. PageContext's
-                            // `expected_classification` uses
-                            // `effective_level()` over Conflict, which
-                            // returns the `us` field, and wraps the
-                            // result in `Us(_)`. The lattice path
-                            // matches that semantic: Conflict is the
+                            // this non-JOINT branch. `Conflict` is the
                             // parser's way of recording "I saw two
                             // classification systems; US wins per
                             // §H.7"; the foreign side rides separately
-                            // through the FGI axis. Authority:
+                            // through the FGI axis, so the
+                            // classification axis carries only the US
+                            // level here. Authority:
                             // CAPCO-2016 §H.7 pp123-125.
                             Some(MarkingClassification::Conflict { us, .. }) => {
                                 q.classification = Some(MarkingClassification::Us(*us));
@@ -450,13 +346,6 @@ impl CapcoMarking {
                 ClassificationLattice::from_attrs_iter(&filtered).into_inner()
             }
         };
-
-        // PR 4b-D.2 Commit 7+: tmp_ctx is now received by reference
-        // from the caller (the engine's hot path passes its existing
-        // `&PageContext`, eliminating the inner n×clone tmp_ctx rebuild
-        // round). The trait-path entry point (`join_via_lattice`) still
-        // builds a one-shot tmp_ctx and delegates; the engine path
-        // skips that round via `join_via_lattice_with_context`.
 
         // Axis 2-5: SCI / SAR / AEA / FGI — assemble from per-portion
         // markings via the PR 4b-A precedent constructors. SciSet /
@@ -499,8 +388,10 @@ impl CapcoMarking {
 
         // FGI marker — compose via FgiSet from per-portion markers
         // AND merge with classification-derived producers
-        // (PageContext::expected_fgi_marker unions NATO/JOINT/FGI
-        // classification countries into the same axis).
+        // (`FgiSet::from_attrs_iter` unions per-portion `fgi_marker`
+        // values with classification-derived producers — NATO/JOINT/FGI
+        // classification countries are surfaced onto the FGI axis per
+        // §H.7 p123 + p128).
         //
         // G-4 (PR 4b-B follow-up): when JointSet is
         // `UnanimousProducers`, the producers are already captured in
@@ -520,8 +411,8 @@ impl CapcoMarking {
         let ctx_fgi_marker = if matches!(joint_set, JointSet::UnanimousProducers { .. }) {
             // G-4: JOINT-unanimous page — producers ride on the
             // `Joint(_)` classification, not on the FGI axis. Suppress
-            // the PageContext FGI fallback so we don't double-mark
-            // (§H.3 p56 + §H.7 p123).
+            // the classification-derived FGI fallback so we don't
+            // double-mark (§H.3 p56 + §H.7 p123).
             None
         } else if solely_non_us {
             // G-4b (PR 4b-B 7th-pass follow-up): solely-non-US page
@@ -529,17 +420,11 @@ impl CapcoMarking {
             // classification intact (the §H.7 reciprocal-raise is
             // suppressed earlier in this method when no US portion
             // is present to raise toward). The foreign source is already
-            // recorded on the classification axis itself; calling
-            // `expected_fgi_marker()` here would derive the SAME
+            // recorded on the classification axis itself; running
+            // `FgiSet::from_attrs_iter` here would derive the SAME
             // producers from the classification a second time and
             // surface them on the dissem-axis `fgi_marker`, producing
-            // a doubled marker.
-            //
-            // PageContext doesn't have this problem because its
-            // `expected_classification` ALWAYS wraps in `Us(_)`
-            // regardless of source — the foreign-source info has to
-            // ride on `expected_fgi_marker` since it can't ride on the
-            // classification axis. The lattice path preserves the
+            // a doubled marker. The lattice path preserves the
             // foreign variant on the classification axis (per the
             // `pure_nato_both_paths_preserve_nato_variant` parity
             // fixture — renamed from `pure_nato_lattice_vs_pagecontext_diverges`
@@ -566,8 +451,8 @@ impl CapcoMarking {
             //   ClassificationLattice winner: Fgi(Secret, [CAN])
             //     (OrdMax: Secret > Confidential)
             //   Pre-G-4c: GBR is silently lost from the FGI axis.
-            //   PageContext path preserves both via its
-            //   `expected_fgi_marker` union.
+            //   The correct §H.7 p124 behavior is to surface both
+            //   producers on the FGI axis (source-loss reconstruction).
             //
             // The fix gathers the union of foreign sources from all
             // non-US classification portions, compares against the
@@ -634,13 +519,12 @@ impl CapcoMarking {
                 }
             }
         } else {
-            // PR 4b-E: residue migration. The "non-solely-non-US"
-            // branch unions per-portion `fgi_marker` with
-            // classification-derived producers (NATO / JOINT / FGI
-            // variants), formerly via `PageContext::expected_fgi_marker`.
-            // `FgiSet::from_attrs_iter` carries the same semantics
-            // (§H.7 p122 + p123 + p128); the result is then merged
-            // with the explicit-FGI-marker fold via `merge_fgi_markers`.
+            // The "non-solely-non-US" branch unions per-portion
+            // `fgi_marker` with classification-derived producers (NATO
+            // / JOINT / FGI variants). `FgiSet::from_attrs_iter`
+            // carries the §H.7 p122 + p123 + p128 semantics; the
+            // result is then merged with the explicit-FGI-marker fold
+            // via `merge_fgi_markers`.
             FgiSet::from_attrs_iter(portions).to_marker()
         };
         out.fgi_marker = merge_fgi_markers(fgi_acc.to_marker(), ctx_fgi_marker);
@@ -810,13 +694,13 @@ impl CapcoMarking {
 //      (massive blast radius). Both options were rejected.
 //
 // The cross-axis-fold entry remains accessible as the inherent
-// methods `CapcoMarking::join_via_lattice` and
-// `CapcoMarking::join_via_lattice_with_context` above. Engine and
-// scheme call sites that used `<CapcoMarking as JoinSemilattice>::
-// join` previously now call those inherent methods directly. The
-// `MarkingScheme::Marking` trait bound was also relaxed
-// (`crates/scheme/src/scheme.rs:46`) to remove the false claim at
-// the trait surface.
+// method `CapcoMarking::join_via_lattice` above (PR 4b-F collapsed
+// the earlier `_with_context` fast-path variant once no body in the
+// chain still read a `&PageContext`). Engine and scheme call sites
+// that used `<CapcoMarking as JoinSemilattice>::join` previously now
+// call the inherent method directly. The `MarkingScheme::Marking`
+// trait bound was also relaxed in `crates/scheme/src/scheme.rs` to
+// remove the false claim at the trait surface.
 //
 // `MeetSemilattice for CapcoMarking` was dropped for the same
 // algebraic reason — the implementation was a "partial component-
