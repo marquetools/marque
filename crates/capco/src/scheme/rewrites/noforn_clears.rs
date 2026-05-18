@@ -2,11 +2,25 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Active NOFORN clears: `capco/noforn-clears-rel-to` (PR 4b-A,
-//! the canonical worked example) and `capco/noforn-clears-fdr-family`
-//! (DISPLAY ONLY Phase 2). Lifted from the monolithic `rewrites.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! Active NOFORN clears (three rows, declaration order):
+//!   1. `capco/noforn-clears-rel-to` (PR 4b-A, canonical worked
+//!      example) — clears `attrs.rel_to`.
+//!   2. `capco/noforn-clears-fdr-family` (DISPLAY ONLY Phase 2) —
+//!      strips RELIDO / DISPLAY ONLY / EYES tokens from `dissem_us`.
+//!   3. `capco/noforn-clears-display-only-to` (PR 4b-D.2 Copilot
+//!      R1 #2) — clears `attrs.display_only_to`, the country-list
+//!      sibling of `attrs.rel_to`.
+//!
+//! All three rows fire when NOFORN is present in `dissem_us` at
+//! the page-rewrite phase; together they maintain the §H.8 p145
+//! banner invariant ("NOFORN ... Cannot be used with REL TO /
+//! RELIDO / EYES ONLY / DISPLAY ONLY"). PR 4b-D.2 Copilot R2 #1
+//! made `apply_fact_add` self-sufficient for the same invariant at
+//! the injection site; these rewrites remain as defense-in-depth
+//! for paths that bypass `apply_fact_add`.
+//!
+//! Lifted from the monolithic `rewrites.rs` per the issue #466
+//! Stage 2 PR A leaf split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
@@ -14,9 +28,10 @@ use marque_scheme::{
 
 use super::super::*;
 
-/// The two NOFORN-clears rows in declaration order:
-/// `capco/noforn-clears-rel-to` followed by
-/// `capco/noforn-clears-fdr-family`.
+/// The three NOFORN-clears rows in declaration order:
+///   1. `capco/noforn-clears-rel-to`
+///   2. `capco/noforn-clears-fdr-family`
+///   3. `capco/noforn-clears-display-only-to` (PR 4b-D.2 R1 #2)
 pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // `capco/noforn-clears-rel-to` reads `CAT_DISSEM` to look for
     // NOFORN and writes `CAT_REL_TO` to clear it. The CAT_DISSEM
@@ -47,6 +62,50 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // axes the *-implies-noforn entries don't touch.
     const NF_CLEARS_FDR_FAMILY_READS: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
     const NF_CLEARS_FDR_FAMILY_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
+
+    // `capco/noforn-clears-display-only-to` reads CAT_DISSEM (to
+    // find the NOFORN trigger) and writes CAT_DISPLAY_ONLY_TO (the
+    // country-list axis on `attrs.display_only_to`). PR 4b-D.2
+    // Copilot R1 #2 added `CAT_DISPLAY_ONLY_TO` so this rewrite
+    // could use the symmetric `Clear { CAT_DISPLAY_ONLY_TO }`
+    // shape — exactly parallel to `capco/noforn-clears-rel-to`'s
+    // `Clear { CAT_REL_TO }`.
+    //
+    // The rewrite is needed as defense-in-depth — the load-bearing
+    // production path is a Pattern-C UCNI strip + NOFORN promote
+    // (e.g., `capco/dod-ucni-promotes-noforn-when-classified` at
+    // §H.6 p116): on a classified page where some portion carries
+    // DOD UCNI alongside DISPLAY ONLY US, the Pattern-C rewrite
+    // injects NOFORN AFTER `join_via_lattice` populated
+    // `attrs.display_only_to` from the per-portion union. Without
+    // a cleanup mechanism the renderer would emit an inconsistent
+    // banner — NOFORN in `dissem_us` AND a populated
+    // `display_only_to` country list, violating §H.8 p145.
+    //
+    // Copilot R2 #1 made `apply_fact_add` self-sufficient for the
+    // country-axis clearing: every direct FactAdd of NOFORN clears
+    // `attrs.rel_to` and `attrs.display_only_to` at the injection
+    // site. That covers the Pattern-C UCNI-promote path AND the
+    // closure-injection path AND the direct-rule path (E021, E038)
+    // by construction. The PageRewrite layer remains as defensive
+    // redundancy — a future refactor that bypasses `apply_fact_add`
+    // or changes its clearing semantics will be caught by this
+    // rewrite. Closure paths covered by `apply_fact_add` directly
+    // hit `apply_closure_fact` → `apply_fact_add`, which is
+    // wired (`crates/capco/src/scheme/actions/intent.rs:380`).
+    //
+    // Note: the prior comment cited `CLOSURE_NOFORN_SAR` as the
+    // load-bearing trigger; Copilot R2 #3 caught that this is
+    // wrong — DISPLAY ONLY is in `FDR_DOMINATORS` so the closure
+    // rule is SUPPRESSED on portions that carry it. The realistic
+    // trigger is a Pattern-A/C rewrite (UCNI promote, NODIS-implies-
+    // NOFORN, etc.), not a closure rule.
+    //
+    // Self-edge on CAT_DISPLAY_ONLY_TO is skipped by the scheduler
+    // (no other rewrite reads/writes this axis today).
+    const NF_CLEARS_DISPLAY_ONLY_TO_READS: &[marque_scheme::CategoryId] =
+        &[CAT_DISSEM, CAT_DISPLAY_ONLY_TO];
+    const NF_CLEARS_DISPLAY_ONLY_TO_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISPLAY_ONLY_TO];
 
     vec![
         // §D.2 Table 3 (FD&R Markings Precedence Rules for Banner
@@ -142,6 +201,49 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
             }),
             NF_CLEARS_FDR_FAMILY_READS,
             NF_CLEARS_FDR_FAMILY_WRITES,
+        ),
+        // `capco/noforn-clears-display-only-to` — companion to
+        // `capco/noforn-clears-rel-to` for the `display_only_to`
+        // country-list axis. PR 4b-D.2 Copilot R1 #2: pre-fix, a
+        // Pattern-C UCNI-promote rewrite (`capco/dod-ucni-promotes-noforn-when-classified`
+        // at §H.6 p116) injecting NOFORN on a classified page that
+        // also carried DISPLAY ONLY USA, GBR left
+        // `attrs.display_only_to` populated even though NOFORN had
+        // landed in `dissem_us` (the `fdr-family` row above strips
+        // the token but the country list is a separate field). The
+        // renderer would then emit an inconsistent banner per §H.8
+        // p145 ("NOFORN ... Cannot be used with REL TO / RELIDO /
+        // EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows 1-2 (NOFORN
+        // dominates the FD&R family).
+        //
+        // Copilot R2 #1 / R2 #3: closure rules with DISPLAY ONLY
+        // in `FDR_DOMINATORS` are SUPPRESSED when DISPLAY ONLY is
+        // already present — they cannot be the load-bearing trigger
+        // for this rewrite. The actual load-bearing path is a
+        // Pattern-A/C PageRewrite (UCNI promote, NODIS-implies-NF,
+        // etc.) injecting NOFORN POST-join. With the R2-#1
+        // `apply_fact_add` self-sufficiency landed, that injection
+        // ALSO clears the country axes directly; this rewrite
+        // remains as defense-in-depth.
+        //
+        // Uses `CategoryAction::Clear { CAT_DISPLAY_ONLY_TO }`
+        // symmetrically with the REL TO clearer above; the
+        // `CAT_DISPLAY_ONLY_TO` CategoryId was added in PR 4b-D.2
+        // Copilot R1 #2 (`crates/capco/src/scheme/mod.rs`) and
+        // routed through `capco_category_clear` /
+        // `capco_category_has_values`.
+        PageRewrite::declarative(
+            "capco/noforn-clears-display-only-to",
+            "CAPCO-2016 §H.8 p145 + §D.2 Table 3 rows 1-2",
+            CategoryPredicate::Contains {
+                category: CAT_DISSEM,
+                token: TOK_NOFORN,
+            },
+            CategoryAction::Clear {
+                category: CAT_DISPLAY_ONLY_TO,
+            },
+            NF_CLEARS_DISPLAY_ONLY_TO_READS,
+            NF_CLEARS_DISPLAY_ONLY_TO_WRITES,
         ),
     ]
 }

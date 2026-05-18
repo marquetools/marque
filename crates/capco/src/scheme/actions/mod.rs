@@ -36,5 +36,9 @@ pub(crate) use self::companions::{
 };
 pub(crate) use self::fgi::{extract_foreign_sources, merge_fgi_markers};
 pub(crate) use self::intent::{apply_closure_fact, apply_intent_to_marking};
+// PR 4b-D.2 retired the lone production consumer; the function
+// survives behind `#[allow(dead_code)]` in `page_context.rs` until
+// PR 4b-E deletes it alongside the PageContext aggregator.
+#[allow(unused_imports)]
 pub(crate) use self::page_context::page_context_to_attrs;
 pub(crate) use self::strip::{noop_action, strip_dod_ucni_action, strip_doe_ucni_action};

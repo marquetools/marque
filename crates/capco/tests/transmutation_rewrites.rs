@@ -288,7 +288,10 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
     // PR 4b-C Commit 4 added 2 Pattern-B structural FOUO-eviction
     // rows (classification-evicts-fouo + non-fdr-control-evicts-fouo;
     // §H.8 p134; 21 → 23).
-    assert_eq!(engine.scheduled_rewrites().len(), 23);
+    // PR 4b-D.2 Copilot R1 #2 added capco/noforn-clears-display-only-to
+    // (§H.8 p145 + §D.2 Table 3 rows 1-2; 23 → 24) — companion to
+    // capco/noforn-clears-rel-to for the DISPLAY ONLY country-list axis.
+    assert_eq!(engine.scheduled_rewrites().len(), 24);
 }
 
 #[test]

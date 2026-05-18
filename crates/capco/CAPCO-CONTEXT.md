@@ -233,32 +233,53 @@ PR 4b-C closed two G-divergences from PR 4b-B:
   PageContext lost the buggy strip; the lattice path always
   kept UCNI through `AeaSet::from_markings`).
 
-The `CapcoMarking::join_via_lattice` sibling method composes the new
-lattice types; the production `JoinSemilattice::join` still delegates to
-PageContext, and the parity gate at
-`crates/capco/tests/page_context_lattice_parity.rs` (currently 69
-`#[test]` fixtures — 51 PageContext-vs-lattice byte-identity + 4
-documented divergences + 16 PR 4b-C Pattern-B/C declarative-row
-fixtures via the new `project_via_scheme` helper) proves byte-
-identity between the two paths, with **four documented divergences**
-(down from 6 after PR 4b-C closed G-1 + G-2):
+The `CapcoMarking::join_via_lattice` inherent method (and its
+`_with_context` fast-path variant) composes the per-axis lattice
+types. PR 4b-D.2 (2026-05-17) flipped the production
+`MarkingScheme::project` to drive page aggregation through that
+lattice path. Copilot R1 review (decisions.md D24, 2026-05-18)
+subsequently REMOVED `impl JoinSemilattice for CapcoMarking` —
+cross-axis folds are projections, not lattice ops; the
+`JoinSemilattice` claim violated structural-`Eq` idempotence in
+the presence of per-axis normalization (e.g., `RelToBlock`'s
+tetragraph expansion). Page-aggregation flows go through the
+inherent `CapcoMarking::join_via_lattice` (for trait callers)
+and `CapcoScheme::project_from_page_context` (for the engine
+fast-path); the `JoinSemilattice` trait bound on
+`MarkingScheme::Marking` was also relaxed in commit 11. The parity gate at
+`crates/capco/tests/page_context_lattice_parity.rs` (74 `#[test]`
+fixtures: 45+ PageContext-vs-lattice byte-identity + 3 documented
+divergences + Pattern-B/C declarative-row fixtures via the
+`project_via_scheme` helper + PR 4b-D.2 retargets) continues to
+guard the two paths, with **3 documented active divergences** (down
+from 4 after PR 4b-D.2 retargeted the two `_pending_pr_4b_d`
+fixtures into `_scheme_project_strips_*` shapes that assert the
+correct post-flip behavior, and the
+`relido_plus_nf_noforn_dominates_parity` row converged in staging
+prior to PR 4b-D.2):
 
 1. **`pure_nato_lattice_vs_pagecontext_diverges`** (G-3): SOLELY-NATO page
-   (no US portion). PageContext flattens to `Us(_)`; the lattice path
-   preserves `Nato(_)` per §H.7 pp123-125. Mixed US+NATO pages reciprocal-
-   raise to `Us(level)` on both paths.
-2. **`relido_plus_nf_noforn_dominates_documented_divergence`**: classified
-   page with RELIDO + NOFORN on the same portion. PageContext keeps both
-   (its `expected_dissem_us` skips the §H.8 p145 supersession overlay);
-   the lattice path correctly drops RELIDO per §D.2 Table 3 + §H.8 p145.
-   This divergence is a LATTICE-CORRECTING-PAGE-CONTEXT case — the
-   lattice is right, PageContext is bug-shaped.
-3. **`joint_unanimous_two_portions`**: pure-JOINT page (no US portion).
-   PageContext returns `Us(_)`; the lattice path returns `Joint(_)` per
-   §H.3 p56 banner-fidelity. Converges when the renderer lands at PR 5+.
-4. **`joint_single_portion_no_us`**: solo JOINT portion. Same shape as
-   #3 — pure-JOINT page; PageContext returns `Us(_)`, lattice returns
-   `Joint(_)` per §H.3 p56.
+   (no US portion). PageContext flattens to `Us(_)`; the lattice and
+   scheme paths preserve `Nato(_)` per §H.7 pp123-125. Mixed US+NATO
+   pages reciprocal-raise to `Us(level)` on all three paths.
+2. **`joint_unanimous_two_portions`**: pure-JOINT page (no US portion).
+   PageContext returns `Us(_)`; the lattice and scheme paths return
+   `Joint(_)` per §H.3 p56 banner-fidelity. Converges when the
+   renderer lands at PR 5+.
+3. **`joint_single_portion_no_us`**: solo JOINT portion. Same shape as
+   #2 — pure-JOINT page; PageContext returns `Us(_)`, lattice and
+   scheme paths return `Joint(_)` per §H.3 p56.
+
+**Parity-gate direction inversion (PR 4b-D.2).** Post-flip,
+`project_via_scheme` (the production path) agrees with
+`project_via_lattice` (both compose through `join_via_lattice`);
+`project_via_page_context` is the divergent side until PR 4b-E
+retires the PageContext aggregator entirely. The retargeted
+fixtures `fouo_classified_scheme_project_strips_fouo` and
+`aea_ucni_classified_scheme_project_strips_and_promotes_noforn`
+encode the new shape: per-axis helpers (PageContext + lattice) keep
+the to-be-stripped marking; `scheme.project` strips it through the
+declarative PageRewrite catalog.
 
 G-4..G-9 are parity-RESTORING fixes (each cited inline against its §):
 JOINT-unanimous double-mark suppression (G-4, §H.3 p56 + §H.7 p123),
@@ -269,15 +290,11 @@ axis NOFORN injection through the supersession overlay (G-8, §H.8 p145),
 and `Conflict` participates in the solely-non-US gate (G-9, §H.7
 pp123-125). Each lands as an `assert_byte_identity` parity fixture.
 
-PR 4b-D will flip `CapcoScheme::project(Scope::Page, ...)` to use the
-lattice path.
-
 Remaining FD&R rows the lattice path does NOT yet fully model
-(deferred to PR 4b-D's closure-operator landing per `docs/plans/
-2026-05-01-lattice-design.md` §3 (e)):
+(tracked at `docs/plans/2026-05-01-lattice-design.md` §11):
 
 - Rule 17: RELIDO date-pivot + non-FD&R-caveat ambiguity (depends on
-  Table 2 lookup — Layer 2 FD&R inference is PR 4b-D territory).
+  Table 2 lookup — Layer 2 FD&R inference is post-PR-4b-D territory).
 - Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
   release-implies-disclosure".
 - Rule 27: dual-channel REL TO/DISPLAY ONLY composition where each
