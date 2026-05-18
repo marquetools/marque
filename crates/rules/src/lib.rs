@@ -360,12 +360,31 @@ pub enum Phase {
 /// document structural metadata (page count, line numbers, header/footer
 /// detection on extracted documents).
 ///
-/// `page_portions` is populated by the engine for every non-portion
-/// candidate (Banner, CAB) so banner-validation rules can compare the
-/// observed banner against the composite expected from all preceding
-/// portions. The engine resets it at scanner-emitted `MarkingType::PageBreak`
-/// candidates (form-feed `\f` and `\n\n\n+` heuristics) so the context
-/// reflects only the current page.
+/// `page_portions` and `page_marking` are two views over the same
+/// per-page state, populated by the engine for every non-portion
+/// candidate (Banner, CAB) and reset at scanner-emitted
+/// `MarkingType::PageBreak` candidates (form-feed `\f` and `\n\n\n+`
+/// heuristics) so each reflects only the current page:
+///
+/// - **`page_portions`** — `Arc<Box<[CanonicalAttrs]>>` raw per-portion
+///   slice. Rules that need per-portion membership (e.g. W004's
+///   `JointSet::from_attrs_iter` for the `DisunityCollapse` state, S005's
+///   per-portion REL TO intersection analysis) read this directly. NOT
+///   the surface a banner-rollup walker should compare against — see
+///   `page_marking` below.
+/// - **`page_marking`** — `Arc<ProjectedMarking>` composite roll-up of
+///   the page's lattice projection. `BannerMatchesProjectedRule` (the
+///   walker dispatching E031 / E035 / E040) and E039
+///   (`NodisExdisClearsBannerRelToRule`) compare the observed banner /
+///   CAB against this composite. Constructed by
+///   `CapcoScheme::project_from_attrs_slice(&page_portions)` lazily at
+///   first banner/CAB use; PR 9b T133 / FR-006.
+///
+/// New banner / CAB validation rules SHOULD read `page_marking` (the
+/// rolled-up shape the banner is supposed to convey). Reach for
+/// `page_portions` only when the rule's logic is genuinely
+/// per-portion-structural (i.e. the projection has flattened away
+/// information the rule needs).
 ///
 /// **`#[non_exhaustive]`** (PR 4b-B 9th-pass follow-up): the engine
 /// has added several public fields during the 006 refactor

@@ -380,12 +380,17 @@ impl CapcoRuleSet {
                 // migration trigger lives on p57's "Derivative Use"
                 // bullets, not the p56 grammar block). P-3 (8th-pass):
                 // reverted to Banner-only firing to avoid Mixed-page
-                // false positives — see the `JointDisunityCollapseRule`
-                // doc-comment for the layout-gap trade-off. Fires on
-                // Banner candidates only; reads `ctx.page_portions` for
-                // the `JointSet::DisunityCollapse` state. The diagnostic
-                // message uses canonical CountryCode trigraphs only
-                // (Constitution V Principle V G13).
+                // false positives, then issue #461 moved to
+                // `Phase::PageFinalization` so the rule observes the
+                // page-level fixpoint snapshot exactly once per page —
+                // see the `JointDisunityCollapseRule` doc-comment for
+                // the layout-gap trade-off. Fires at PageFinalization
+                // dispatch (per page at `MarkingType::PageBreak` BEFORE
+                // the engine resets the per-page portion accumulator,
+                // plus once at end-of-document); reads `ctx.page_portions`
+                // for the `JointSet::DisunityCollapse` state. The
+                // diagnostic message uses canonical CountryCode
+                // trigraphs only (Constitution V Principle V G13).
                 // Severity: Warn (configurable per .marque.toml).
                 Box::new(JointDisunityCollapseRule),
             ],
@@ -3926,8 +3931,11 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
 // ===========================================================================
 //
 // Three hand-written rules that can't ride the declarative-constraint
-// path (all three need either page-portions access or token-level fix
-// proposals):
+// path. E039 and E040 read `ctx.page_marking` (the composite
+// `ProjectedMarking` projection — banner-validation surface, PR 9b
+// T133 / FR-006); E041 is portion-only and reads its dispatch attrs
+// directly. None of the three has a single-span text replacement the
+// declarative path can synthesize:
 //
 //   E039  — REL TO not authorized in banner when any portion has NODIS
 //           or EXDIS. No fix (removing REL TO from a banner is multi-
@@ -4063,8 +4071,8 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 //
 // The `evaluate_*` fns are verbatim moves of the bodies of the retiring
 // rules' `check` methods; the only structural change is that they take an
-// explicit `&ProjectedMarking` parameter (the marking-type and page-portions
-// guards moved up to the walker's `check`).
+// explicit `&ProjectedMarking` parameter (the marking-type guard and the
+// `ctx.page_marking.as_ref()` guard moved up to the walker's `check`).
 
 /// Walker that asserts the banner / CAB candidate matches the page's
 /// projected marking for each per-category roll-up. See the section header
@@ -8535,11 +8543,11 @@ mod tests {
     fn e035_no_ops_without_page_marking() {
         // E035 is dispatched by `BannerMatchesProjectedRule::check`,
         // whose first-line guard is `ctx.page_marking.as_ref()` (PR 9b
-        // T133 / FR-006). The test harness produces no portions, so
-        // the engine never populates a page marking projection. Until
-        // P4 lands and the harness wires per-page state through to
-        // banner candidates, E035 must stay silent rather than emit
-        // false positives.
+        // T133 / FR-006). On a banner with no preceding portions the
+        // engine never produces a page-marking projection — there is
+        // nothing to project from — so the walker returns early and
+        // E035 must stay silent. This is the stable empty-page guard,
+        // not a temporary harness gap.
         let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E035"),
