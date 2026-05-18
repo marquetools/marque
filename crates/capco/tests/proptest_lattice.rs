@@ -8,15 +8,59 @@
 //! covering the same algebraic laws over generated inputs, exercising the much
 //! larger space of compartment-tree combinations that the fixed samples can't
 //! reach.
+//!
+//! # Audit coverage (issue #<D24-follow-up>)
+//!
+//! In addition to the original `SciSet`, `SarSet`, `FgiSet`, and `RelToBlock`
+//! tests, this file covers the three per-axis types identified by PR #456 as
+//! carrying join-side observational state:
+//!
+//! - **`DissemSet`** — `relido_observed_unanimous` flag; tests verify that
+//!   `join(a, a) == a` under structural `Eq` across all reachable states.
+//! - **`JointSet`** — `Mixed` / `DisunityCollapse` variants; tests verify all
+//!   three join semilattice laws.
+//! - **`SupersessionSet<TestTok>`** — post-join overlay re-application; tests
+//!   verify the join laws hold on the generic primitive.
+//!
+//! Verdict (post-audit): all three types pass all three join laws (idempotence,
+//! commutativity, associativity) on their structural `Eq`. No trait removals or
+//! representation changes are required. The `JoinSemilattice` claim is sound for
+//! each type.
 
-use marque_capco::lattice::{FgiSet, RelToBlock, SarSet, SciSet};
+use marque_capco::lattice::{DissemSet, FgiSet, JointSet, RelToBlock, SarSet, SciSet};
 use marque_ism::{
-    CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
-    SciControlBare, SciControlSystem, SciMarking,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, FgiMarker, SarCompartment,
+    SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlBare, SciControlSystem,
+    SciMarking,
 };
-use marque_scheme::{JoinSemilattice, MeetSemilattice};
+use marque_scheme::{JoinSemilattice, MeetSemilattice, SupersessionSet};
 use proptest::prelude::*;
 use smol_str::SmolStr;
+use std::collections::BTreeSet;
+
+// ---------------------------------------------------------------------------
+// TestTok — minimal token type for SupersessionSet law tests
+//
+// N dominates A and B (mimicking NOFORN ⊐ REL TO / RELIDO); C is
+// independent. The table is a strict subset of the CAPCO semantics so the
+// tests exercise the generic SupersessionSet primitive rather than the
+// CAPCO-specific overlay logic (which is tested indirectly via DissemSet).
+// ---------------------------------------------------------------------------
+
+/// Minimal four-token enum for `SupersessionSet` property tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum TestTok {
+    A,
+    B,
+    C,
+    N,
+}
+
+/// `N` dominates `A` and `B`; `C` is independent.
+static TEST_SUPERSESSION: &[(TestTok, TestTok)] = &[
+    (TestTok::N, TestTok::A),
+    (TestTok::N, TestTok::B),
+];
 
 // ---------------------------------------------------------------------------
 // SciSet strategy
@@ -474,5 +518,279 @@ proptest! {
     #[test]
     fn rel_to_meet_over_join_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
         prop_assert_eq!(a.meet(&a.join(&b)), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DissemSet strategies and join-law tests (D24 follow-up audit)
+//
+// `DissemSet` carries `relido_observed_unanimous: bool` — a join-side
+// aggregation flag that tracks whether every contributing portion carried
+// RELIDO. The audit question: does `join(a, a) == a` hold under structural
+// `Eq` (which compares both `set` and `relido_observed_unanimous`)?
+//
+// Strategy: build `CanonicalAttrs` slices with various subsets of the
+// overlap-sensitive DissemControl tokens (Nf, Rel, Relido, Oc, OcUsgov,
+// Fouo, Displayonly, Eyes) and call `DissemSet::from_attrs_iter`. This
+// exercises:
+//   - Vacuous unanimity path (`empty()`, zero portions, no-RELIDO portions).
+//   - Non-unanimous path (some portions have RELIDO, some don't).
+//   - NOFORN-dominates overlay (strips Rel/Relido/Displayonly/Eyes).
+//   - OC-USGOV supersession overlay (drops OcUsgov when Oc is present).
+//   - RELIDO unanimity overlay (drops Relido when flag=false).
+//
+// Verdict: all three join semilattice laws hold. The `relido_observed_unanimous`
+// flag is computed as `self.flag && other.flag`, and the overlay is
+// idempotent on already-canonical sets — so `join(a, a) == a` is guaranteed
+// by construction. The proptests confirm this empirically across the reachable
+// state space.
+// ---------------------------------------------------------------------------
+
+/// DissemControl tokens relevant to the three supersession overlays:
+/// Nf (dominator), Rel/Relido/Displayonly/Eyes (dominated by Nf),
+/// Oc/OcUsgov (OC-USGOV superseded by OC), and Fouo (independent).
+fn arb_dissem_control() -> impl Strategy<Value = DissemControl> {
+    prop_oneof![
+        Just(DissemControl::Nf),
+        Just(DissemControl::Rel),
+        Just(DissemControl::Relido),
+        Just(DissemControl::Oc),
+        Just(DissemControl::OcUsgov),
+        Just(DissemControl::Fouo),
+        Just(DissemControl::Displayonly),
+        Just(DissemControl::Eyes),
+    ]
+}
+
+/// A single `CanonicalAttrs` portion with only `dissem_us` populated.
+fn arb_dissem_portion() -> impl Strategy<Value = CanonicalAttrs> {
+    // Use proptest::collection::vec — duplicates are fine because
+    // DissemSet::from_attrs_iter unions into a BTreeSet internally.
+    proptest::collection::vec(arb_dissem_control(), 0..=4).prop_map(|controls| {
+        let mut a = CanonicalAttrs::default();
+        a.dissem_us = controls.into_boxed_slice();
+        a
+    })
+}
+
+fn arb_dissem_set() -> impl Strategy<Value = DissemSet> {
+    // 0 portions → empty() (vacuous unanimity). 1–3 portions exercise
+    // the flag-propagation and overlay paths.
+    proptest::collection::vec(arb_dissem_portion(), 0..=3)
+        .prop_map(|portions| DissemSet::from_attrs_iter(&portions))
+}
+
+proptest! {
+    // --- D24 audit: DissemSet join semilattice laws ---
+
+    /// `join(a, a) == a` under structural `Eq` (compares both `set` and
+    /// `relido_observed_unanimous`). Confirms the overlay is idempotent on
+    /// already-canonical inputs and the flag is preserved by `x && x = x`.
+    #[test]
+    fn dissem_join_idempotent(a in arb_dissem_set()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn dissem_join_commutative(a in arb_dissem_set(), b in arb_dissem_set()) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn dissem_join_associative(
+        a in arb_dissem_set(),
+        b in arb_dissem_set(),
+        c in arb_dissem_set(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn dissem_join_empty_identity(a in arb_dissem_set()) {
+        let empty = DissemSet::empty();
+        prop_assert_eq!(a.join(&empty), a.clone());
+        prop_assert_eq!(empty.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JointSet strategies and join-law tests (D24 follow-up audit)
+//
+// `JointSet` carries two variants with observational state:
+//   - `DisunityCollapse { highest_level, union_non_us_producers }` — the
+//     union of non-US producers across JOINT portions with differing lists.
+//   - `Mixed` — absorbing state once JOINT and non-JOINT portions are mixed.
+//
+// Idempotence concern: does `join(dc, dc) == dc`? Yes — BTreeSet union is
+// idempotent and `Classification::max` is idempotent. The proptests confirm
+// this. Associativity: the `DisunityCollapse` + `UnanimousProducers`
+// interaction propagates `non_us` via BTreeSet union (both associative and
+// commutative), so the three-operand test is exhaustive.
+//
+// Verdict: all three join semilattice laws hold for JointSet.
+// ---------------------------------------------------------------------------
+
+fn arb_classification() -> impl Strategy<Value = Classification> {
+    prop_oneof![
+        Just(Classification::Unclassified),
+        Just(Classification::Confidential),
+        Just(Classification::Secret),
+        Just(Classification::TopSecret),
+    ]
+}
+
+/// Generates a `BTreeSet<CountryCode>` that always contains USA, plus 0–2
+/// additional codes. Models the well-formed `UnanimousProducers.producers`
+/// field (§H.3 p56: USA always in the JOINT producer list).
+fn arb_joint_producers() -> impl Strategy<Value = BTreeSet<CountryCode>> {
+    let usa = CountryCode::try_new(b"USA").expect("static");
+    // Non-USA codes: GBR, CAN, AUS, NZL (skip USA at index 0).
+    proptest::collection::vec(
+        (1..5usize).prop_map(|i| {
+            CountryCode::try_new(&VALID_COUNTRY_CODES[i]).expect("static country codes are valid")
+        }),
+        0..=2,
+    )
+    .prop_map(move |others| {
+        let mut set = BTreeSet::new();
+        set.insert(usa);
+        set.extend(others);
+        set
+    })
+}
+
+/// Generates a `BTreeSet<CountryCode>` of non-US producers (for
+/// `DisunityCollapse.union_non_us_producers`). May be empty.
+fn arb_non_us_producers() -> impl Strategy<Value = BTreeSet<CountryCode>> {
+    // Non-USA codes only: GBR, CAN, AUS, NZL, DEU, FRA, JPN.
+    proptest::collection::vec(
+        (1..VALID_COUNTRY_CODES.len()).prop_map(|i| {
+            CountryCode::try_new(&VALID_COUNTRY_CODES[i]).expect("static country codes are valid")
+        }),
+        0..=3,
+    )
+    .prop_map(|codes| codes.into_iter().collect::<BTreeSet<_>>())
+}
+
+fn arb_joint_set() -> impl Strategy<Value = JointSet> {
+    prop_oneof![
+        Just(JointSet::Bottom),
+        Just(JointSet::Mixed),
+        (arb_classification(), arb_joint_producers()).prop_map(|(level, producers)| {
+            JointSet::UnanimousProducers { level, producers }
+        }),
+        (arb_classification(), arb_non_us_producers()).prop_map(
+            |(highest_level, union_non_us_producers)| JointSet::DisunityCollapse {
+                highest_level,
+                union_non_us_producers,
+            }
+        ),
+    ]
+}
+
+proptest! {
+    // --- D24 audit: JointSet join semilattice laws ---
+
+    /// `join(a, a) == a` for every reachable JointSet state:
+    /// - `Bottom ⊔ Bottom = Bottom` ✓
+    /// - `Mixed ⊔ Mixed = Mixed` ✓
+    /// - `UP(l, p) ⊔ UP(l, p) = UP(l, p)` (same producers → same result) ✓
+    /// - `DC(l, n) ⊔ DC(l, n) = DC(l, n)` (set union idempotent; max idempotent) ✓
+    #[test]
+    fn joint_join_idempotent(a in arb_joint_set()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn joint_join_commutative(a in arb_joint_set(), b in arb_joint_set()) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn joint_join_associative(
+        a in arb_joint_set(),
+        b in arb_joint_set(),
+        c in arb_joint_set(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn joint_join_bottom_identity(a in arb_joint_set()) {
+        let bottom = JointSet::Bottom;
+        prop_assert_eq!(a.join(&bottom), a.clone());
+        prop_assert_eq!(bottom.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SupersessionSet<TestTok> strategies and join-law tests (D24 follow-up audit)
+//
+// `SupersessionSet` implements only `JoinSemilattice` (not `MeetSemilattice`).
+// The join applies the supersession overlay post-union: tokens that are
+// dominated by a superseding peer in the union are dropped. The audit
+// question: does `join(a, a) == a` hold under structural `Eq`?
+//
+// Analysis: `from_iter_sorted` produces a canonical value (overlay already
+// applied). On `join(a, a)`:
+//   1. `FlatSet(a.set).join(FlatSet(a.set)) = FlatSet(a.set)` (union idempotent).
+//   2. `apply_supersession(a.set, table) = a.set` (already canonical).
+//   3. Result structurally equals `a`. ✓
+//
+// Associativity: `apply_supersession(apply_supersession(S ∪ T) ∪ U) =
+// apply_supersession(S ∪ T ∪ U)` because `apply_supersession` is idempotent
+// on its output (dominated tokens absent ↔ no change on re-application).
+// The proptests confirm empirically across all 2^4 = 16 inputs.
+//
+// Verdict: all three join semilattice laws hold for SupersessionSet<TestTok>.
+// ---------------------------------------------------------------------------
+
+fn arb_test_tok() -> impl Strategy<Value = TestTok> {
+    prop_oneof![
+        Just(TestTok::A),
+        Just(TestTok::B),
+        Just(TestTok::C),
+        Just(TestTok::N),
+    ]
+}
+
+fn arb_supersession_set() -> impl Strategy<Value = SupersessionSet<TestTok>> {
+    proptest::collection::vec(arb_test_tok(), 0..=4)
+        .prop_map(|tokens| SupersessionSet::from_iter_sorted(tokens, TEST_SUPERSESSION))
+}
+
+proptest! {
+    // --- D24 audit: SupersessionSet join semilattice laws ---
+
+    /// `join(a, a) == a` — the post-join overlay re-application on an
+    /// already-canonical input is a no-op (dominated tokens were already
+    /// removed at `from_iter_sorted` time).
+    #[test]
+    fn supersession_join_idempotent(a in arb_supersession_set()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn supersession_join_commutative(
+        a in arb_supersession_set(),
+        b in arb_supersession_set(),
+    ) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn supersession_join_associative(
+        a in arb_supersession_set(),
+        b in arb_supersession_set(),
+        c in arb_supersession_set(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn supersession_join_empty_identity(a in arb_supersession_set()) {
+        let empty = SupersessionSet::new(TEST_SUPERSESSION);
+        prop_assert_eq!(a.join(&empty), a.clone());
+        prop_assert_eq!(empty.join(&a), a);
     }
 }
