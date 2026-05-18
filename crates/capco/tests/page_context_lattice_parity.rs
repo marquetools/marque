@@ -476,16 +476,32 @@ fn joint_unanimous_two_portions() {
     // that fixes a §H.3 p56 banner-fidelity gap on the PageContext
     // path. Once the renderer trait surface lands (PR 5+ Stage 4),
     // both paths will produce //JOINT SECRET USA, GBR.
+    //
+    // PR 4b-D.2 added a third comparison column: `project_via_scheme`.
+    // Post-flip the scheme path goes through `join_via_lattice` so it
+    // agrees with `project_via_lattice` (both produce Joint(_)). The
+    // disagreement is now scheme/lattice vs PageContext, not the
+    // pre-flip "lattice vs both PageContext+scheme" shape.
+    // Citation: §H.3 p56 + §H.3 p57.
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
-    // PageContext path: classification = Us(Secret); fgi_marker
-    // = Some(Acknowledged{GBR}).
-    // Lattice path: classification = Joint(S, [USA, GBR]); fgi_marker
-    // = None or PageContext fallback.
-    // We assert the lattice path produces the §H.3 p56-correct shape:
+    let scheme_proj = project_via_scheme(&portions);
+    // PageContext path: classification = Us(Secret).
+    // Lattice path: classification = Joint(S, [USA, GBR]).
+    // Scheme path (post-PR-4b-D.2 flip): agrees with lattice.
     assert!(
         matches!(lat.classification, Some(MarkingClassification::Joint(_))),
         "lattice should produce Joint classification on unanimous JOINT"
+    );
+    assert!(
+        matches!(
+            scheme_proj.classification,
+            Some(MarkingClassification::Joint(_))
+        ),
+        "PR 4b-D.2 post-flip: scheme.project agrees with the lattice \
+         path (both go through join_via_lattice); \
+         scheme_proj.classification = {:?}",
+        scheme_proj.classification,
     );
     // PageContext path's known behavior — Us classification at
     // banner per §H.3 p57 ("JOINT not carried forward in
@@ -611,9 +627,14 @@ fn joint_single_portion_no_us() {
     // Joint(_) classification. The PageContext path produces
     // Us(_) per its existing semantic. Documented divergence per
     // §H.3 p56.
+    //
+    // PR 4b-D.2 third comparison: `project_via_scheme` agrees with
+    // the lattice path (both go through join_via_lattice). The
+    // divergence is now scheme/lattice vs PageContext.
     let portions = [portion_joint(Classification::Secret, &["USA", "GBR"])];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
+    let scheme_proj = project_via_scheme(&portions);
     assert!(matches!(
         pc.classification,
         Some(MarkingClassification::Us(_))
@@ -622,6 +643,15 @@ fn joint_single_portion_no_us() {
         lat.classification,
         Some(MarkingClassification::Joint(_))
     ));
+    assert!(
+        matches!(
+            scheme_proj.classification,
+            Some(MarkingClassification::Joint(_))
+        ),
+        "PR 4b-D.2 post-flip: scheme.project agrees with the lattice \
+         path; scheme_proj.classification = {:?}",
+        scheme_proj.classification,
+    );
 }
 
 // ===========================================================================
@@ -706,98 +736,124 @@ fn nodis_clears_rel_to() {
 // ===========================================================================
 
 #[test]
-fn fouo_classified_pagecontext_and_lattice_both_keep_fouo_pending_pr_4b_d() {
-    // G-1 (PR 4b-B follow-up) was a divergence test: PageContext
-    // dropped FOUO on classified pages while the lattice path did
-    // not. PR 4b-C Commit 5 (006 T112) retired the imperative
-    // `expected_dissem_us` Step 3 (the FOUO classification gate)
-    // and migrated the §H.8 p134 strip to declarative PageRewrite
-    // rows on `CapcoScheme` (`capco/fouo-evicted-by-classified` +
-    // `capco/classification-evicts-fouo` +
-    // `capco/non-fdr-control-evicts-fouo`).
+fn fouo_classified_scheme_project_strips_fouo() {
+    // G-1 retarget (PR 4b-D.2): pre-flip this fixture was named
+    // `fouo_classified_pagecontext_and_lattice_both_keep_fouo_pending_pr_4b_d`
+    // and asserted that both per-axis helpers (project_via_page_context
+    // + project_via_lattice) kept FOUO on classified pages because the
+    // §H.8 p134 strip lived only in `scheme.project`'s page-rewrite
+    // loop. PR 4b-D.2 flipped the hot path to use `scheme.project`;
+    // this fixture now asserts the scheme-side strip directly via the
+    // `project_via_scheme` helper.
     //
-    // Post-PR-4b-C state: BOTH paths now keep FOUO on the dissem
-    // axis observed via the per-axis projections this parity gate
-    // exercises. The lattice path's DissemSet never applied the
-    // gate; PageContext lost it in Commit 5. The §H.8 p134 strip
-    // lives in `scheme.project(Scope::Page, ...)`'s page-rewrite
-    // loop, which neither `project_via_page_context` (here) nor
-    // `project_via_lattice` invoke — both helpers compose the
-    // per-axis projections directly. PR 4b-D wires
-    // `scheme.project` as the production banner validator at which
-    // point both observable paths produce the correct §H.8 p134
-    // strip.
+    // Post-flip semantic: on a classified+FOUO page, the
+    // `capco/classification-evicts-fouo` + `capco/fouo-evicted-by-classified`
+    // PageRewrites fire through `scheme.project(Scope::Page, ...)` and
+    // strip FOUO from dissem_us. The per-axis helpers
+    // (project_via_page_context + project_via_lattice) still produce
+    // FOUO-present output because they bypass the page-rewrite loop —
+    // that asymmetry is the documented post-flip parity-direction
+    // inversion (the lattice/PageContext composition and the scheme
+    // projection now diverge on the strip-rule axes).
     //
     // Citation: §H.8 p134 FOUO Precedence Rules for Banner Line
-    // Guidance. verified 2026-05-16 against
-    // `crates/capco/docs/CAPCO-2016.md`.
+    // Guidance (verified 2026-05-17 against
+    // `crates/capco/docs/CAPCO-2016.md`).
     let portions = [portion_with_dissem_us(
         Classification::Secret,
         &[DissemControl::Fouo],
     )];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
+    let scheme_proj = project_via_scheme(&portions);
+
     assert!(
         pc.dissem_us.contains(&DissemControl::Fouo),
-        "PR 4b-C post-deletion: PageContext keeps FOUO on classified \
-         pages — the §H.8 p134 strip is now in the declarative \
-         PageRewrite catalog. pc.dissem_us = {:?}",
+        "Per-axis PageContext helper keeps FOUO (PageRewrite catalog is \
+         not invoked by this helper); pc.dissem_us = {:?}",
         pc.dissem_us,
     );
     assert!(
         lat.dissem_us.contains(&DissemControl::Fouo),
-        "Lattice path keeps FOUO unchanged from PR 4b-B; the §H.8 p134 \
-         strip lives only in `scheme.project`'s page-rewrite loop. \
-         lat.dissem_us = {:?}",
+        "Per-axis lattice helper keeps FOUO (DissemSet does not apply \
+         the §H.8 p134 classification-gate strip); lat.dissem_us = {:?}",
         lat.dissem_us,
+    );
+    assert!(
+        !scheme_proj.dissem_us.contains(&DissemControl::Fouo),
+        "PR 4b-D.2 hot-path flip: `scheme.project(Scope::Page, ...)` \
+         strips FOUO from dissem_us on classified pages via the \
+         `capco/classification-evicts-fouo` + \
+         `capco/fouo-evicted-by-classified` PageRewrites \
+         (§H.8 p134). scheme_proj.dissem_us = {:?}",
+        scheme_proj.dissem_us,
     );
 }
 
 #[test]
-fn aea_ucni_classified_pagecontext_and_lattice_both_keep_ucni_pending_pr_4b_d() {
-    // G-2 (PR 4b-B follow-up) was a divergence test: PageContext
-    // stripped DOD UCNI on classified pages while the lattice path
-    // did not. PR 4b-C Commit 5 (006 T112) retired the imperative
-    // `expected_aea_markings` UCNI strip and migrated the §H.6
-    // p116 / p118 strip-plus-NOFORN-promotion to four declarative
-    // rows on `CapcoScheme`
-    // (`capco/{dod,doe}-ucni-{evicted-by-classified, promotes-noforn-when-classified}`).
-    // The pre-deletion PageContext branch dropped UCNI silently
-    // without the §H.6 NOFORN-promotion clause (a real bug; Commit
-    // 2's RED regression test pinned it).
+fn aea_ucni_classified_scheme_project_strips_and_promotes_noforn() {
+    // G-2 retarget (PR 4b-D.2): pre-flip this fixture was named
+    // `aea_ucni_classified_pagecontext_and_lattice_both_keep_ucni_pending_pr_4b_d`
+    // and asserted both per-axis helpers kept UCNI on classified pages
+    // because the §H.6 p116/p118 strip-plus-NOFORN-promotion lived
+    // only in `scheme.project`'s page-rewrite loop. PR 4b-D.2 flipped
+    // the hot path to use `scheme.project`; this fixture now asserts
+    // BOTH the UCNI strip AND the NOFORN promotion via the
+    // `project_via_scheme` helper.
     //
-    // Post-PR-4b-C state: BOTH paths now keep UCNI on the AEA axis
-    // observed via the per-axis projections this parity gate
-    // exercises. The §H.6 strip-plus-promote lives in
-    // `scheme.project(Scope::Page, ...)`. PR 4b-D wires that as
-    // the production banner validator at which point UCNI is
-    // stripped AND NOFORN is promoted correctly.
+    // Post-flip semantic: on a classified+DOD-UCNI page, four
+    // PageRewrites fire through `scheme.project`:
+    //   - `capco/dod-ucni-evicted-by-classified` (strip UCNI)
+    //   - `capco/dod-ucni-promotes-noforn-when-classified` (inject NF)
+    // The strip-and-promote pair was the §H.6 NOFORN-promotion clause
+    // the pre-PR-4b-C PageContext branch silently dropped (a real bug
+    // pinned by `pattern_c_dod_ucni_classified_strip_promotes_noforn`
+    // in `crates/capco/tests/pattern_c_dod_ucni_classified_strip.rs`).
     //
     // Citation: §H.6 p116 (DOD UCNI / DCNI Precedence Rules) +
-    // §H.6 p118 (DOE UCNI Precedence Rules). verified 2026-05-16
+    // §H.6 p118 (DOE UCNI Precedence Rules) — verified 2026-05-17
     // against `crates/capco/docs/CAPCO-2016.md`.
     let mut p = portion_us(Classification::Secret);
     p.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
     let portions = [p];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
+    let scheme_proj = project_via_scheme(&portions);
+
     assert!(
         pc.aea_markings
             .iter()
             .any(|m| matches!(m, AeaMarking::DodUcni)),
-        "PR 4b-C post-deletion: PageContext keeps DOD UCNI on \
-         classified pages — the §H.6 p116 strip-plus-NOFORN-promotion \
-         is now in the declarative PageRewrite catalog. pc.aea_markings = {:?}",
+        "Per-axis PageContext helper keeps DOD UCNI (PageRewrite catalog \
+         is not invoked); pc.aea_markings = {:?}",
         pc.aea_markings,
     );
     assert!(
         lat.aea_markings
             .iter()
             .any(|m| matches!(m, AeaMarking::DodUcni)),
-        "Lattice path keeps DOD UCNI unchanged from PR 4b-B; the §H.6 \
-         strip-plus-promote lives only in `scheme.project`'s page-rewrite \
-         loop. lat.aea_markings = {:?}",
+        "Per-axis lattice helper keeps DOD UCNI (AeaSet does not apply \
+         the §H.6 p116 strip); lat.aea_markings = {:?}",
         lat.aea_markings,
+    );
+    assert!(
+        !scheme_proj
+            .aea_markings
+            .iter()
+            .any(|m| matches!(m, AeaMarking::DodUcni)),
+        "PR 4b-D.2 hot-path flip: `scheme.project(Scope::Page, ...)` \
+         strips DOD UCNI from aea_markings on classified pages via \
+         `capco/dod-ucni-evicted-by-classified` (§H.6 p116); \
+         scheme_proj.aea_markings = {:?}",
+        scheme_proj.aea_markings,
+    );
+    assert!(
+        scheme_proj.dissem_us.contains(&DissemControl::Nf),
+        "PR 4b-D.2 hot-path flip: `scheme.project(Scope::Page, ...)` \
+         promotes NOFORN into dissem_us on classified+UCNI pages via \
+         `capco/dod-ucni-promotes-noforn-when-classified` (§H.6 p116); \
+         scheme_proj.dissem_us = {:?}",
+        scheme_proj.dissem_us,
     );
 }
 
@@ -817,12 +873,18 @@ fn pure_nato_lattice_vs_pagecontext_diverges() {
     // `Us(effective_level)` (matching PageContext), so the
     // divergence is scoped to truly solely-non-US pages.
     //
+    // PR 4b-D.2 third comparison: `project_via_scheme` goes through
+    // join_via_lattice and agrees with the lattice path (both
+    // preserve Nato(_) on solely-NATO pages). Disagreement is now
+    // scheme/lattice vs PageContext.
+    //
     // Citation: §H.7 pp123-125 (reciprocal-raise rule).
     let mut nato_portion = CanonicalAttrs::default();
     nato_portion.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
     let portions = [nato_portion];
     let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
+    let scheme_proj = project_via_scheme(&portions);
     assert!(
         matches!(pc.classification, Some(MarkingClassification::Us(_))),
         "PageContext flattens non-US to Us(_) at banner"
@@ -830,6 +892,15 @@ fn pure_nato_lattice_vs_pagecontext_diverges() {
     assert!(
         matches!(lat.classification, Some(MarkingClassification::Nato(_))),
         "Lattice preserves Nato variant on solely-NATO page per §H.7 pp123-125"
+    );
+    assert!(
+        matches!(
+            scheme_proj.classification,
+            Some(MarkingClassification::Nato(_))
+        ),
+        "PR 4b-D.2 post-flip: scheme.project agrees with the lattice \
+         path on solely-NATO; scheme_proj.classification = {:?}",
+        scheme_proj.classification,
     );
 }
 

@@ -1123,9 +1123,11 @@ fixed first in a separate PR..."
 | D9b-1 | Two parallel slice fields for `dissem_us` / `dissem_nato` | PR 9b T132 shipped two `Box<[DissemControl]>` fields per FR-046. Future cross-system translation (memory `project_cross_system_translation.md`) and a hypothetical third namespace (FVEY-only, partner-national) would be cleaner with `Box<[NamespacedDissem]>`. Owner reviewed and chose to defer; revisit in PR 10+ if cross-system translation work surfaces the smell as concrete blocking pain. Reference: PR 9b preflight, 2026-05-14. |
 | D20 | S007 / NATO-closure-row layer separation (PR 4b-D): closure injects `REL TO USA, NATO` silently at `Severity::Info` (lattice layer); S007 stays as the visible `Severity::Suggest` text-layer surface. Authority asymmetry preserved; option (c) NOFORN-injection rejected per user-stated invariant "(//NS) should never be NF" + §H.7 p127 worked-example interpretation. | `decisions.md` D20 (above); resolves issue #508 calibration question; PR 4b-D NATO closure row construction. |
 | D21 | Closure-rule open-vocab cone shape: B3 sibling field `cone_derived: Option<fn(&S::Marking) -> SmallVec<[FactRef<S>; 2]>>` selected over B2 enum-replace. `ClosureRule<S>` generic required either way; B3 leaves the 7 shipped `CLOSURE_NOFORN_*` rows zero-touch and keeps the closed-vocab hot path tight. Return type is `FactRef<S>` (not `(CategoryId, TokenRef)`) so the derived path covers open-vocab facts like JOINT's REL TO partner-list — addendum applied post-Copilot review on PR #514, see D21 entry. SmallVec inline cap matches the `marque-scheme` `ReplacementIntent::FactRemove::facts` inline-2 precedent from #348; bump to inline-4 / inline-8 is a one-line change if the eventual JOINT row routinely produces ≥3 facts per firing. PR 4b-D.0 lands the trait change ahead of PR 4b-D per Constitution VII §IV. | `decisions.md` D21 (above); resolves issue #508 scope item 3; PR 4b-D.0 (new engine-gap PR) trait-surface change. |
+| D22 | NOFORN-supersession at FactAdd injection site: when `apply_fact_add` inserts `NOFORN` into `CAT_DISSEM`, route through `DissemSet::with_noforn_injected` so the §H.8 p145 supersession overlay strips dominated FD&R controls (REL TO / RELIDO / DISPLAY ONLY / EYES ONLY) at the injection site. Pre-PR-4b-D.2 the path appended `Nf` to `dissem_us` without re-applying overlays, leaving `{Nf, Displayonly}` / `{Nf, Relido}` in the bag — invalid per §H.8 p145. Post-fix the injection is correct by construction, idempotent under re-insertion, and works equally for closure-driven and rule-driven FactAdd paths. Authority: §H.8 p145 + §D.2 Table 3 rows 1-2 + §H.8 p157. | `decisions.md` D22 (above); PR 4b-D.2 commit 3; `crates/capco/src/scheme/actions/intent.rs::apply_fact_add` CAT_DISSEM branch. |
+| D23 | Closure-rewrite-application sentinel placement: the `#[cfg(debug_assertions)]` read-only-attrs sentinel for the closure operator's rewrite-application site lives inside `CapcoScheme::project(Scope::Page \| Document \| Diff, ...)` between the `join_via_lattice` composition and the closure invocation. Snapshots the raw per-portion `CanonicalAttrs` slice; asserts byte-identity after `closure()` returns. Sibling to the existing `dispatch_page_finalization` PageFinalization-rule sentinel (engine.rs); together they pin the §3 (e.1) read-only-attrs invariant across both engine-facing consumer surfaces (scheme-side projection + engine-side rule dispatch). Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e.1) read-only-attrs invariant. | `decisions.md` D23 (above); PR 4b-D.2 commit 3; `crates/capco/src/scheme/marking_scheme_impl.rs::project` Scope::Page arm. |
 
-D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 / D20 / D21 are
-post-PR-0 implementation decisions: D17 is a PR 3b.C scope
+D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 / D20 / D21 / D22 / D23
+are post-PR-0 implementation decisions: D17 is a PR 3b.C scope
 correction amending a consultation verdict projection; D18 is a
 PR 3.7 T108c catalog-shape pivot from the 2026-05-07 trait-shape
 pin to a public `ClosureRule` catalog (Option C); D19 is the
@@ -1135,6 +1137,9 @@ T108e/f/g tasks under PR 3.7; D9b-1 is the PR 9b T132 dissem-split
 shape choice (two-parallel-fields over namespaced-tuple); D20 is
 the PR 4b-D S007 / NATO-closure-row layer-separation calibration;
 D21 is the PR 4b-D.0 / PR 4b-D `ClosureRule` open-vocab cone shape
-(B3 sibling field over B2 enum-replace). Subsequent PRs execute
+(B3 sibling field over B2 enum-replace); D22 is the PR 4b-D.2
+NOFORN-supersession-at-injection-site fix; D23 is the PR 4b-D.2
+closure-rewrite-application sentinel placement (sibling to the
+existing PageFinalization-rule sentinel). Subsequent PRs execute
 against this register; amendments require a follow-up PR editing
 this file.
