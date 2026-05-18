@@ -34,6 +34,25 @@
 //! `CanonicalAttrs` fixtures hand-built in this file cover the
 //! specific axes the PR touches with full control over the input
 //! shape; the strict-recognizer is orthogonal to the parity claim.
+//!
+//! ## DISSEM_US divergence (hoisted rationale)
+//!
+//! 12 fixtures in this file declare `&["dissem_us"]` as a deliberate
+//! divergence between `project_via_lattice` and `project_via_scheme`.
+//! Per Copilot R2 (PR #539): duplicating the same 7-line rationale
+//! inline at 12 call-sites is a citation-drift hazard — Constitution
+//! VIII "propagation requires re-verification" applies. The canonical
+//! rationale lives here; each fixture-site comment is one line that
+//! points back.
+//!
+//! **The divergence (single source of truth):** §B.3 Table 2 p21
+//! caveated-classified rule fires on the scheme path's
+//! `CLOSURE_NOFORN_CAVEATED` closure (the input is a classified +
+//! caveated marking — caveat per §B.3 p20 Note covers ORCON /
+//! non-IC dissem / etc.). The per-axis lattice path does not run
+//! closure rules; the expected `dissem_us` divergence is
+//! `lat=[..no Nf], scheme=[..Nf]`. Verified 2026-05-18 against
+//! `crates/capco/docs/CAPCO-2016.md` §B.3 p20 + Table 2 p21.
 
 use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
@@ -198,13 +217,8 @@ fn oc_usgov_one_orcon_many_usgov() {
         "oc_usgov_one_orcon_many_usgov",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -223,13 +237,8 @@ fn oc_usgov_many_orcon_one_usgov() {
         "oc_usgov_many_orcon_one_usgov",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -244,13 +253,8 @@ fn oc_usgov_pure_oc() {
         "oc_usgov_pure_oc",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -265,13 +269,8 @@ fn oc_usgov_pure_usgov() {
         "oc_usgov_pure_usgov",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -297,13 +296,8 @@ fn oc_usgov_mix() {
         "oc_usgov_mix",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -539,13 +533,8 @@ fn joint_mixed_with_us_returns_mixed() {
         "joint_mixed_with_us_returns_mixed",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -875,13 +864,8 @@ fn mixed_us_plus_nato_lattice_flattens_to_us() {
         "mixed_us_plus_nato_lattice_flattens_to_us",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -1123,13 +1107,8 @@ fn conflict_plus_nato_flattens_to_us() {
         "conflict_plus_nato_flattens_to_us",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -1212,13 +1191,8 @@ fn joint_plus_nato_same_level_flattens_to_us() {
         "joint_plus_nato_same_level_flattens_to_us",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -1242,13 +1216,8 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
         "joint_plus_fgi_same_level_flattens_to_us",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -1721,13 +1690,8 @@ fn joint_missing_usa_parity_with_pagecontext() {
         "joint_missing_usa_parity_with_pagecontext",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }
@@ -1833,13 +1797,8 @@ fn cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page() {
         "cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // PR 4b-E note: §B.3 Table 2 p21 caveated-classified rule fires
-        // on the scheme path's `CLOSURE_NOFORN_CAVEATED` closure
-        // (the input is a classified+caveated marking — caveat per
-        // §B.3 p20 Note covers ORCON / non-IC dissem / etc.). The
-        // per-axis lattice path does not run closure rules; the
-        // expected `dissem_us` divergence is `lat=[..no Nf], scheme=[..Nf]`.
-        // Verified 2026-05-18 against crates/capco/docs/CAPCO-2016.md.
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
         &["dissem_us"],
     );
 }

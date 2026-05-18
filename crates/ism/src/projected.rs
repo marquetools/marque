@@ -94,11 +94,10 @@ pub struct ProjectedMarking {
     /// [`crate::CanonicalAttrs::dissem_us`] for the CAPCO-2016 p41
     /// reciprocity rule. Page roll-up unions each namespace
     /// independently via the per-axis lattice helpers
-    /// [`DissemSet::from_attrs_iter`] / [`NatoDissemSet::from_attrs_iter`]
-    /// in `marque-capco::lattice`.
-    ///
-    /// [`DissemSet::from_attrs_iter`]: https://docs.rs/marque-capco
-    /// [`NatoDissemSet::from_attrs_iter`]: https://docs.rs/marque-capco
+    /// `DissemSet::from_attrs_iter` / `NatoDissemSet::from_attrs_iter`
+    /// in `marque-capco::lattice` (this leaf crate cannot intra-doc-link
+    /// into the downstream domain crate; the names are stable and
+    /// greppable).
     pub dissem_us: Box<[DissemControl]>,
 
     /// NATO-attributed IC dissemination controls in the page rollup.
