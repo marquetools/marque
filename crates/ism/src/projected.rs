@@ -210,6 +210,43 @@ impl ProjectedMarking {
             provenance: ProjectionProvenance::default(),
         }
     }
+
+    /// Returns `true` iff every portion on the page is NATO-classified
+    /// and no portion contributes Foreign Government Information.
+    ///
+    /// This is the post-PR-4b-D.2 successor to
+    /// [`crate::PageContext::is_solely_nato_classified`]. The PageContext
+    /// implementation walks `portions` directly and silently returns
+    /// `false` on post-flip pure-NATO pages because PageContext flattens
+    /// `MarkingClassification::Nato(_)` to `Us(_)` (see the
+    /// `pure_nato_lattice_vs_pagecontext_diverges` parity-gate fixture
+    /// in `crates/capco/tests/page_context_lattice_parity.rs`). Reading
+    /// the lattice-path aggregate directly gives the correct answer.
+    ///
+    /// # Invariants relied upon (post-PR-4b-D.2 hot-path flip)
+    ///
+    /// The aggregate `classification` and `fgi_marker` shape exactly
+    /// characterizes "solely NATO" because the lattice projection
+    /// composes per-axis as follows:
+    ///
+    /// - Pure-NATO page (all portions bare-NATO): classification is
+    ///   `Some(Nato(_))` (NATO OrdMax), `fgi_marker` is `None` → true.
+    /// - Mixed US + NATO portions: classification reciprocal-raises
+    ///   to `Some(Us(_))` per CAPCO-2016 §H.7 pp123-125 → false.
+    /// - Mixed JOINT + NATO portions: classification collapses to
+    ///   `Some(Joint(_))` (or `Some(Us(_))` after reciprocal-raise) per
+    ///   §H.3 p56 → false.
+    /// - NATO + FGI portions: `fgi_marker` is `Some(_)` → false.
+    ///
+    /// Authority: CAPCO-2016 §H.7 pp123-125 (NATO classification
+    /// reciprocity), §H.3 p56 (JOINT grammar), §H.7 p127 (solely-NATO
+    /// REL TO carve-out — alliance ownership implicit).
+    pub fn is_solely_nato_classified(&self) -> bool {
+        matches!(
+            self.classification,
+            Some(crate::attrs::MarkingClassification::Nato(_))
+        ) && self.fgi_marker.is_none()
+    }
 }
 
 /// Lattice trace + per-portion contribution record for a
@@ -404,6 +441,54 @@ mod tests {
         let attrs = CanonicalAttrs::default();
         let p = ProjectedMarking::from_canonical(attrs);
         assert!(p.display_only_to.is_empty());
+    }
+
+    // PR 4b-D.3 — `is_solely_nato_classified` predicate. These tests
+    // exercise the four invariants the doc-comment relies on; the
+    // S007 callsite migration in `crates/capco/src/rules.rs` is the
+    // load-bearing consumer.
+
+    #[test]
+    fn is_solely_nato_classified_true_on_pure_nato() {
+        // classification = Some(Nato(_)), fgi_marker = None
+        let attrs = CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
+            ..CanonicalAttrs::default()
+        };
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert!(p.is_solely_nato_classified());
+    }
+
+    #[test]
+    fn is_solely_nato_classified_false_on_us_classification() {
+        // Mixed US+NATO reciprocal-raises to Us(_); predicate must be false.
+        let attrs = CanonicalAttrs {
+            classification: Some(MarkingClassification::Us(Classification::Secret)),
+            ..CanonicalAttrs::default()
+        };
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert!(!p.is_solely_nato_classified());
+    }
+
+    #[test]
+    fn is_solely_nato_classified_false_when_fgi_present() {
+        // FgiMarker::acknowledged enforces non-empty list — see
+        // attrs.rs §H.7 p122 (CHK028 / FR-017).
+        let fgi = FgiMarker::acknowledged([gbr()]).expect("non-empty list");
+        let attrs = CanonicalAttrs {
+            classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
+            fgi_marker: Some(fgi),
+            ..CanonicalAttrs::default()
+        };
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert!(!p.is_solely_nato_classified());
+    }
+
+    #[test]
+    fn is_solely_nato_classified_false_when_classification_absent() {
+        let attrs = CanonicalAttrs::default();
+        let p = ProjectedMarking::from_canonical(attrs);
+        assert!(!p.is_solely_nato_classified());
     }
 
     #[test]
