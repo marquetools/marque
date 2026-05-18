@@ -248,11 +248,12 @@ and `CapcoScheme::project_from_attrs_slice` (for the engine
 fast-path; renamed from `project_from_page_context` in PR 6c
 alongside the `PageContext` struct retirement); the `JoinSemilattice` trait bound on
 `MarkingScheme::Marking` was also relaxed in commit 11. The parity gate at
-`crates/capco/tests/page_context_lattice_parity.rs` (74 `#[test]`
-fixtures: 45+ PageContext-vs-lattice byte-identity + 3 documented
-divergences + Pattern-B/C declarative-row fixtures via the
-`project_via_scheme` helper + PR 4b-D.2 retargets) continues to
-guard the two paths, with **3 documented active divergences** (down
+`crates/capco/tests/lattice_vs_scheme_parity.rs` (renamed from
+`page_context_lattice_parity.rs` in PR 4b-E once PageContext's residue
+accessors retired; 74 `#[test]` fixtures: 45+ lattice-vs-scheme
+byte-identity + 3 documented divergences + Pattern-B/C declarative-row
+fixtures via the `project_via_scheme` helper + PR 4b-D.2 retargets)
+continues to guard the two paths, with **3 documented active divergences** (down
 from 4 after PR 4b-D.2 retargeted the two `_pending_pr_4b_d`
 fixtures into `_scheme_project_strips_*` shapes that assert the
 correct post-flip behavior, and the

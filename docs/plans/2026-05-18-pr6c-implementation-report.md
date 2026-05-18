@@ -19,20 +19,24 @@ surface).
 > own commit messages and in the PR description body. As of PR
 > submission the branch carries:
 >
-> - `42f31db1` — commit 1 (`marque-rules`)
-> - `16124a3c` — commit 2 (`marque-capco` + minimal engine bridge)
-> - `eda09358` — commit 3 (`marque-engine` accumulator inline)
-> - `507e5da9` — commit 4 (`marque-ism` deletion + Send+Sync re-pin)
-> - `89e6b96b` — commit 5 (reviewer fix-ups + tasks.md tick T069 +
+> - `42f31db1` — commit 1 (`marque-rules`: add `page_portions` field)
+> - `16124a3c` — commit 2 (`marque-capco` migrate S005 + W004 + engine bridge)
+> - `eda09358` — commit 3 (`marque-engine` accumulator inline; old field deleted)
+> - `507e5da9` — commit 4 (`marque-ism` `page_context.rs` deletion + Send+Sync re-pin)
+> - `89e6b96b` — commit 5 (3-reviewer-pass fix-ups + tasks.md tick T069 +
 >   4 reviewer reports committed under `docs/plans/`)
-> - `2f35b875` — merge from `origin/staging` (PR #544 RELIDO closeout,
->   no PageContext surface touched)
-> - `4b0fd889` — commit 6 (`cargo fmt`)
-> - `89e6b96b` follow-up: Copilot suppressed-low-confidence review fix-ups
+> - `2f35b875` — merge from `origin/staging` (PR #544 RELIDO closeout;
+>   no `PageContext` surface touched)
+> - `4b0fd889` — commit 6 (`cargo fmt` drift fix-up)
+> - `b35469e7` — commit 7 (Copilot R1 suppressed-low-confidence review
+>   fix-ups: walker-guard test rename to `page_marking`,
+>   `fresh_page_portions_accumulator()` helper extraction + capacity
+>   unit test, this disclaimer block)
 >
-> All commits in the branch are GPG-signed. See the PR description
+> All commits in the branch were GPG-signed. See the PR description
 > for the consolidated test plan and the per-commit summary table
-> that supersedes the §"Commit summary" table below.
+> that supersedes the §"Commit summary" table below. The PR merged at
+> commit `6fee9818` on 2026-05-18T21:49Z.
 **Companions:**
 - Architect strategic plan: `docs/plans/2026-05-18-pr6c-pagecontext-retirement-plan.md`
 - Rust risk register: `docs/plans/2026-05-18-pr6c-rust-preflight.md`

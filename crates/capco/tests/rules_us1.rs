@@ -87,6 +87,16 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         // PR 4b-B 9th-pass follow-up: `RuleContext` is
         // `#[non_exhaustive]`; cross-crate construction goes through
         // `RuleContext::new` + `with_*` setters.
+        //
+        // **Re-enablement gap (Copilot R2 / PR 6c):** this fixture
+        // currently attaches only `page_portions`. If the
+        // `#[cfg(any())]` gate is lifted, the banner-rollup walker
+        // (`BannerMatchesProjectedRule::check`) will return early
+        // because it guards on `ctx.page_marking.as_ref()` (PR 9b
+        // T133), silently disabling E031 / E035 / E040 coverage. Any
+        // re-enablement MUST additionally project `page_portions` ->
+        // `ProjectedMarking` (via `CapcoScheme::project_from_attrs_slice`
+        // or equivalent) and attach via `with_page_marking`.
         let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_portions(ctx_page);
         for rule in rule_set.rules() {
             for d in rule.check(&attrs, &ctx) {
