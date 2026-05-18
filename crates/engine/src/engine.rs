@@ -1199,9 +1199,14 @@ impl Engine {
             // doc note added in this PR.
             //
             // PR 9b (T133): lazy/cached construction for the
-            // page-marking projection. Built from `PageContext::project`
-            // so banner-validation rules see the rolled-up shape
-            // (classification / SCI / SAR / AEA / dissem_us /
+            // page-marking projection. Built from
+            // `project_page_marking(&self.scheme, &page_context)`
+            // (post-PR-4b-D.2 hot-path flip — the helper invokes
+            // `CapcoScheme::project_from_page_context` which drives
+            // the lattice + closure + page-rewrite pipeline, NOT
+            // `PageContext::project` which has been retired from the
+            // hot path) so banner-validation rules see the rolled-up
+            // shape (classification / SCI / SAR / AEA / dissem_us /
             // dissem_nato / REL TO) without going through
             // `PageContext::expected_*` accessors. Sharing the Arc
             // across consecutive banner/CAB candidates on the same

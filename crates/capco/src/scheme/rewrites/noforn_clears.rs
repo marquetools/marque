@@ -2,11 +2,25 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Active NOFORN clears: `capco/noforn-clears-rel-to` (PR 4b-A,
-//! the canonical worked example) and `capco/noforn-clears-fdr-family`
-//! (DISPLAY ONLY Phase 2). Lifted from the monolithic `rewrites.rs`
-//! per the issue #466 Stage 2 PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! Active NOFORN clears (three rows, declaration order):
+//!   1. `capco/noforn-clears-rel-to` (PR 4b-A, canonical worked
+//!      example) — clears `attrs.rel_to`.
+//!   2. `capco/noforn-clears-fdr-family` (DISPLAY ONLY Phase 2) —
+//!      strips RELIDO / DISPLAY ONLY / EYES tokens from `dissem_us`.
+//!   3. `capco/noforn-clears-display-only-to` (PR 4b-D.2 Copilot
+//!      R1 #2) — clears `attrs.display_only_to`, the country-list
+//!      sibling of `attrs.rel_to`.
+//!
+//! All three rows fire when NOFORN is present in `dissem_us` at
+//! the page-rewrite phase; together they maintain the §H.8 p145
+//! banner invariant ("NOFORN ... Cannot be used with REL TO /
+//! RELIDO / EYES ONLY / DISPLAY ONLY"). PR 4b-D.2 Copilot R2 #1
+//! made `apply_fact_add` self-sufficient for the same invariant at
+//! the injection site; these rewrites remain as defense-in-depth
+//! for paths that bypass `apply_fact_add`.
+//!
+//! Lifted from the monolithic `rewrites.rs` per the issue #466
+//! Stage 2 PR A leaf split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
@@ -14,9 +28,10 @@ use marque_scheme::{
 
 use super::super::*;
 
-/// The two NOFORN-clears rows in declaration order:
-/// `capco/noforn-clears-rel-to` followed by
-/// `capco/noforn-clears-fdr-family`.
+/// The three NOFORN-clears rows in declaration order:
+///   1. `capco/noforn-clears-rel-to`
+///   2. `capco/noforn-clears-fdr-family`
+///   3. `capco/noforn-clears-display-only-to` (PR 4b-D.2 R1 #2)
 pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // `capco/noforn-clears-rel-to` reads `CAT_DISSEM` to look for
     // NOFORN and writes `CAT_REL_TO` to clear it. The CAT_DISSEM

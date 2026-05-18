@@ -225,13 +225,29 @@ impl CapcoMarking {
         portions: &[CanonicalAttrs],
         page_ctx: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
+        // ## G13 content-ignorance (Constitution V Principle V +
+        // Copilot R2 #4)
+        //
+        // The failure path emits ONLY counts and the contract
+        // description — never `portions` / `page_ctx.portions()`
+        // content. `debug_assert_eq!`'s default `{:?}` would dump
+        // full `CanonicalAttrs` (token values, country lists,
+        // spans), violating G13. The explicit `if !=` + `panic!`
+        // with a count-only message mirrors the
+        // `check_portions_unchanged` pattern at
+        // `crates/engine/src/engine.rs:4540-4574`.
         #[cfg(debug_assertions)]
-        debug_assert_eq!(
-            portions,
-            page_ctx.portions(),
-            "join_via_lattice_with_context: portions slice and page_ctx \
-             portions() must be the same slice — caller's contract."
-        );
+        {
+            if portions != page_ctx.portions() {
+                panic!(
+                    "join_via_lattice_with_context: portions slice and page_ctx \
+                     portions() must be the same slice ({} vs {} portions); \
+                     caller's contract violated.",
+                    portions.len(),
+                    page_ctx.portions().len(),
+                );
+            }
+        }
         Self::join_via_lattice_body(portions, page_ctx)
     }
 

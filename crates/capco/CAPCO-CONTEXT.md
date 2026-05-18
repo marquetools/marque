@@ -233,10 +233,20 @@ PR 4b-C closed two G-divergences from PR 4b-B:
   PageContext lost the buggy strip; the lattice path always
   kept UCNI through `AeaSet::from_markings`).
 
-The `CapcoMarking::join_via_lattice` sibling method composes the
-per-axis lattice types; PR 4b-D.2 (2026-05-17) flipped the
-production `JoinSemilattice::join` and `MarkingScheme::project` to
-delegate to that lattice path. The parity gate at
+The `CapcoMarking::join_via_lattice` inherent method (and its
+`_with_context` fast-path variant) composes the per-axis lattice
+types. PR 4b-D.2 (2026-05-17) flipped the production
+`MarkingScheme::project` to drive page aggregation through that
+lattice path. Copilot R1 review (decisions.md D24, 2026-05-18)
+subsequently REMOVED `impl JoinSemilattice for CapcoMarking` —
+cross-axis folds are projections, not lattice ops; the
+`JoinSemilattice` claim violated structural-`Eq` idempotence in
+the presence of per-axis normalization (e.g., `RelToBlock`'s
+tetragraph expansion). Page-aggregation flows go through the
+inherent `CapcoMarking::join_via_lattice` (for trait callers)
+and `CapcoScheme::project_from_page_context` (for the engine
+fast-path); the `JoinSemilattice` trait bound on
+`MarkingScheme::Marking` was also relaxed in commit 11. The parity gate at
 `crates/capco/tests/page_context_lattice_parity.rs` (74 `#[test]`
 fixtures: 45+ PageContext-vs-lattice byte-identity + 3 documented
 divergences + Pattern-B/C declarative-row fixtures via the

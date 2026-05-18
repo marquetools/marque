@@ -152,9 +152,21 @@ impl ProjectedMarking {
     /// The bridge lives in `marque-ism` because `ProjectedMarking` is
     /// `#[non_exhaustive]` — its constructor MUST live in the type's
     /// home crate so cross-crate callers cannot bypass field-addition
-    /// migrations (Constitution Principle VII). `CapcoScheme::project`
-    /// (in `marque-capco`) calls this; engine code (in `marque-engine`)
-    /// calls this; both go through the same single source of truth.
+    /// migrations (Constitution Principle VII).
+    ///
+    /// Production callers (Copilot R2 #12 — the previous doc claim
+    /// that `CapcoScheme::project` calls this was wrong):
+    ///
+    /// - `marque_engine::project_page_marking` — the engine fast-path
+    ///   helper that wraps `CapcoScheme::project_from_page_context`'s
+    ///   `CanonicalAttrs` output into a `ProjectedMarking` for
+    ///   `RuleContext::page_marking`.
+    /// - `crates/engine/benches/profile_project.rs` — phase-attribution
+    ///   benchmark.
+    ///
+    /// `CapcoScheme::project` itself returns a `CapcoMarking`
+    /// (`CapcoScheme::Marking`), not a `ProjectedMarking` — the bridge
+    /// is engine-side, not scheme-side.
     ///
     /// # Field mapping
     ///

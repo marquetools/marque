@@ -222,9 +222,20 @@ impl MarkingScheme for CapcoScheme {
                 //                            → PageRewrites
                 //                            → render
                 //
-                // The closure operator and PageRewrites are both
-                // monotone, and PageRewrites operate on the closed
-                // state's remaining tokens.
+                // The closure operator is monotone (adds facts only,
+                // never removes; preserves the join order). PageRewrites
+                // are NOT monotone in the FactSet sense — `Clear` /
+                // `FactRemove` actions are anti-monotone, and the
+                // `noforn-clears-*` family explicitly removes tokens
+                // and country-list entries. The pipeline-termination
+                // guarantee on PageRewrites comes from the **topological
+                // ordering** the scheduler imposes on `reads` / `writes`
+                // axes (Kahn's algorithm at `Engine::new`, see
+                // `crates/engine/src/scheduler.rs`) — the rewrite graph
+                // is a DAG, every rewrite fires at most once per
+                // projection, and there is no fixpoint loop at this
+                // layer (unlike `closure`'s Kleene fixpoint). Copilot
+                // R2 #6 caught the previous "both monotone" claim.
                 //
                 // Commit 7 perf: the trait path still pays the
                 // `markings.iter().map(|m| m.0.clone()).collect()`
@@ -712,6 +723,20 @@ impl CapcoScheme {
         // MUST NOT mutate the per-portion CanonicalAttrs slice it
         // observes. Snapshot the input pre-closure and assert
         // byte-identity afterward.
+        //
+        // ## G13 content-ignorance (Constitution V Principle V +
+        // Copilot R2 #4)
+        //
+        // The failure path emits ONLY counts and the §-citation
+        // literal — never `raw` / `raw_snapshot` content. `debug_assert_eq!`'s
+        // default `{:?}` format would dump full `CanonicalAttrs`
+        // (token values, country lists, spans), violating G13. The
+        // explicit `if !=` + `panic!` with a count-only message
+        // mirrors the `check_portions_unchanged` pattern at
+        // `crates/engine/src/engine.rs:4540-4574` (PageFinalization-
+        // rule-dispatch sentinel). Both sentinels enforce the same
+        // §3 (e.1) read-only-attrs invariant; both must keep audit-
+        // content-ignorance on the failure path.
         #[cfg(debug_assertions)]
         let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
 
@@ -719,13 +744,18 @@ impl CapcoScheme {
         let mut out = self.closure(joined);
 
         #[cfg(debug_assertions)]
-        debug_assert_eq!(
-            raw,
-            raw_snapshot.as_slice(),
-            "closure() mutated the per-portion CanonicalAttrs slice — \
-             violates PageRewrite read-only-attrs invariant \
-             (docs/plans/2026-05-01-lattice-design.md §3 (e.1))"
-        );
+        {
+            if raw != raw_snapshot.as_slice() {
+                panic!(
+                    "closure() mutated the per-portion CanonicalAttrs slice \
+                     ({} portion(s) before vs {} after) — violates PageRewrite \
+                     read-only-attrs invariant \
+                     (docs/plans/2026-05-01-lattice-design.md §3 (e.1))",
+                    raw_snapshot.len(),
+                    raw.len(),
+                );
+            }
+        }
 
         // Apply declarative page rewrites. PR 4b-D.2 hot-path flip:
         // page rewrites run on the post-closure state, so any cone

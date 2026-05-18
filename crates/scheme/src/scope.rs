@@ -55,7 +55,8 @@ pub enum Scope {
 /// `DiffInput` carries a `from`/`to` pair of `Parsed<M>` values and a
 /// [`DiffRelation`] tag. The type holds no lattice machinery itself —
 /// its fields are inspected by diff rules, which compose per-axis
-/// lattice operations on the inner `M::Marking` if they need to.
+/// lattice operations on the inner `M` (the scheme's marking type,
+/// `MarkingScheme::Marking`) if they need to.
 ///
 /// PR 4b-D.2 (2026-05-18) dropped the prior `M: JoinSemilattice` bound
 /// in lock-step with the `MarkingScheme::Marking` bound relaxation

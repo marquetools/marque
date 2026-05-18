@@ -28,11 +28,12 @@ mod transmutation_stubs;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
-/// **23 rewrites, in six groups** (post-PR-4b-C, 006 T112; PR
-/// 4b-A landed group 4; PR 3c.B Sub-PR 8.F / 8.F.2 landed group
-/// 3; PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
-/// declarative rows that own the §H.6 / §H.8 / §H.9 strip-plus-
-/// promote semantics):
+/// **24 rewrites, in six groups** (post-PR-4b-D.2 Copilot R1 #2;
+/// PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
+/// declarative rows owning the §H.6 / §H.8 / §H.9 strip-plus-
+/// promote semantics; PR 4b-A landed group 4; PR 3c.B Sub-PR 8.F /
+/// 8.F.2 landed group 3; PR 4b-D.2 added
+/// `capco/noforn-clears-display-only-to` to group 5):
 ///
 /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
 ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
