@@ -429,3 +429,147 @@ pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // not catalog-baked). The rows will return once the per-marking
     // sentinels land and the engine consults runtime severity per-row.
 ];
+
+// ---------------------------------------------------------------------------
+// Runtime suppression pin for `FDR_DOMINATORS` × `CLOSURE_NOFORN_CAVEATED`
+// ---------------------------------------------------------------------------
+
+/// Runtime companion to `vocabulary::fdr_dissem_pin`.
+///
+/// `fdr_dissem_pin` walks `FDR_DOMINATORS` at the `Vocabulary::is_fdr_dissem`
+/// predicate layer. This module walks the same slice at the
+/// `MarkingScheme::closure` runtime layer: for each `FDR_DOMINATORS` entry,
+/// build a Trio 1 trigger (classified Secret + ORCON) plus that entry as a
+/// suppressor, and assert `CLOSURE_NOFORN_CAVEATED` does not inject NOFORN.
+/// The two surfaces are independently testable per the issue: the predicate
+/// can resolve correctly while the runtime suppression wiring drifts (or
+/// vice versa), so each gets its own pin.
+///
+/// The fixture-construction `match` is exhaustive against the *patterns*
+/// `FDR_DOMINATORS` uses today (`TokenRef::Token(t)` for the four sentinel
+/// dominators, `TokenRef::AnyInCategory(c)` for `CAT_REL_TO`). A future
+/// addition that fits an existing pattern but a new `TokenId` /
+/// `CategoryId` falls through to the panic arm and fails the test with a
+/// message naming the unmapped entry — the right failure mode for the
+/// source-of-truth drift this pin is supposed to catch.
+///
+/// Authority: §B.3.a p19 (core FD&R enumeration:
+/// NOFORN/REL TO/RELIDO/DISPLAY ONLY); §H.8 p157 (EYES designated FD&R,
+/// deprecated 2017-10-01 but still recognized). The two citations
+/// together cover the full `FDR_DOMINATORS` slice — `§B.3.a p19` alone
+/// would mis-attribute the EYES arm.
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod fdr_dominators_runtime_pin {
+    use super::*;
+    use marque_ism::{
+        CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
+    };
+    use marque_scheme::MarkingScheme;
+
+    /// Build the per-FDR-dominator suppression fixture: classified Secret
+    /// and ORCON (a Trio 1 trigger from `CLOSURE_NOFORN_CAVEATED`) and the
+    /// given suppressor. The fixture mutates `dissem_us` for the four
+    /// `Token(...)` dominators and `rel_to` for `AnyInCategory(CAT_REL_TO)`
+    /// because the runtime `satisfies_attrs` resolution routes each
+    /// `TokenRef` against the matching `CanonicalAttrs` axis.
+    fn fixture_with_suppressor(suppressor: &TokenRef) -> CapcoMarking {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        // ORCON is the Trio 1 trigger — present on every fixture so the
+        // CAVEATED row would fire absent the suppressor.
+        let mut dissem = vec![DissemControl::Oc];
+        match suppressor {
+            // NOTE: The `TOK_NOFORN` arm is a fixture-completeness check,
+            // not a suppression-correctness check. The cone fact `Nf`
+            // would dedup against the fixture-planted `Nf` regardless of
+            // whether the suppressor fires — a broken suppressor here is
+            // observationally identical to a working one. Kept in the
+            // iteration so a future `FDR_DOMINATORS` addition matching
+            // the `Token(...)` pattern is not silently skipped. See the
+            // test-function doc-comment for the full rationale.
+            TokenRef::Token(t) if *t == TOK_NOFORN => dissem.push(DissemControl::Nf),
+            TokenRef::Token(t) if *t == TOK_RELIDO => dissem.push(DissemControl::Relido),
+            TokenRef::Token(t) if *t == TOK_DISPLAY_ONLY => dissem.push(DissemControl::Displayonly),
+            TokenRef::Token(t) if *t == TOK_EYES => dissem.push(DissemControl::Eyes),
+            TokenRef::AnyInCategory(c) if *c == CAT_REL_TO => {
+                // `REL TO USA, GBR` — `AnyInCategory(CAT_REL_TO)` matches
+                // any non-empty `attrs.rel_to`; USA is the required leader
+                // per §H.8 p150 and GBR a representative partner trigraph.
+                a.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
+            }
+            other => panic!(
+                "fdr_dominators_runtime_pin: no fixture mapping for \
+                 FDR_DOMINATORS entry {other:?}. A new dominator was added \
+                 to the slice; extend the match in fixture_with_suppressor \
+                 with a `CanonicalAttrs` mutation that the runtime \
+                 `satisfies_attrs` resolution will recognize as that token \
+                 (or category) being present.",
+            ),
+        }
+        a.dissem_us = dissem.into_boxed_slice();
+        CapcoMarking::new(a)
+    }
+
+    /// Source-of-truth pin: every entry in `FDR_DOMINATORS` must suppress
+    /// `CLOSURE_NOFORN_CAVEATED`. A drift in the slice or in the
+    /// `satisfies_attrs` resolution for any entry fails this test with a
+    /// message naming the failing entry.
+    ///
+    /// The assertion shape is "closure adds no facts" rather than "NOFORN
+    /// is absent from post-closure `dissem_us`". The latter is unworkable
+    /// for the `TOK_NOFORN` case (where the fixture must populate
+    /// `dissem_us` with `Nf` for `satisfies_attrs(TOK_NOFORN)` to resolve
+    /// true, so post-closure `Nf` is unavoidably present). The
+    /// length-stability assertion is uniformly meaningful: if a
+    /// suppressor fails for any non-self-referential dominator, the
+    /// CAVEATED row fires and adds a `Nf` fact, growing `dissem_us` by
+    /// one. The `TOK_NOFORN` arm is a trivial smoke check (the cone fact
+    /// would dedup against the pre-existing fact, so growth would be
+    /// zero even on a broken suppressor) but is included so the iteration
+    /// covers the full slice without a special-case skip.
+    #[test]
+    fn every_fdr_dominator_suppresses_caveated_noforn_injection() {
+        let scheme = CapcoScheme::new();
+        for suppressor in FDR_DOMINATORS {
+            let m = fixture_with_suppressor(suppressor);
+            let dissem_before = m.0.dissem_us.clone();
+            let rel_to_before = m.0.rel_to.clone();
+            let closed = scheme.closure(m);
+            assert_eq!(
+                closed.0.dissem_us.len(),
+                dissem_before.len(),
+                "FDR_DOMINATORS entry {:?} did NOT suppress \
+                 `CLOSURE_NOFORN_CAVEATED`: closure grew `dissem_us` from \
+                 {} to {} despite the explicit FD&R decision being \
+                 present. Either the suppressor wiring drifted or \
+                 `satisfies_attrs(...)` no longer resolves this entry \
+                 against the populated attrs axis. Authority: §B.3.a p19 \
+                 (core FD&R enumeration) + §H.8 p157 (EYES). Pre-closure \
+                 dissem_us = {:?}; post-closure dissem_us = {:?}, \
+                 rel_to = {:?}.",
+                suppressor,
+                dissem_before.len(),
+                closed.0.dissem_us.len(),
+                dissem_before,
+                closed.0.dissem_us,
+                closed.0.rel_to,
+            );
+            assert_eq!(
+                closed.0.rel_to.len(),
+                rel_to_before.len(),
+                "FDR_DOMINATORS entry {:?} did NOT suppress \
+                 `CLOSURE_NOFORN_CAVEATED`: closure grew `rel_to` from \
+                 {} to {}. CAVEATED has cone `{{NOFORN}}` (no rel_to \
+                 facts), so growth here means a different closure row \
+                 fired unexpectedly. Pre-closure rel_to = {:?}; \
+                 post-closure rel_to = {:?}.",
+                suppressor,
+                rel_to_before.len(),
+                closed.0.rel_to.len(),
+                rel_to_before,
+                closed.0.rel_to,
+            );
+        }
+    }
+}
