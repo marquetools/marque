@@ -336,7 +336,7 @@ pub const TOK_EYES: TokenId = TokenId(139); // USA/[LIST] EYES ONLY — §H.8 p1
 // docs (Pattern B). verified 2026-05-16 against CAPCO-2016.md.
 pub const TOK_PROPIN: TokenId = TokenId(143); // PROPIN — §H.8 p148
 pub const TOK_FISA: TokenId = TokenId(144); // FISA — §H.8 p161
-pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares the FISA section)
+pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — ODNI `CVEnumISMDissem.xml` (post-CAPCO-2016; not in vendored manual)
 
 // NNPI lives in `attrs.non_ic_dissem` as the NonIcDissem::Nnpi variant.
 // NNPI has no confirmed CAPCO-2016 §-citation in ISM-v2022-DEC; the
