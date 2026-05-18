@@ -244,8 +244,9 @@ cross-axis folds are projections, not lattice ops; the
 the presence of per-axis normalization (e.g., `RelToBlock`'s
 tetragraph expansion). Page-aggregation flows go through the
 inherent `CapcoMarking::join_via_lattice` (for trait callers)
-and `CapcoScheme::project_from_page_context` (for the engine
-fast-path); the `JoinSemilattice` trait bound on
+and `CapcoScheme::project_from_attrs_slice` (for the engine
+fast-path; renamed from `project_from_page_context` in PR 6c
+alongside the `PageContext` struct retirement); the `JoinSemilattice` trait bound on
 `MarkingScheme::Marking` was also relaxed in commit 11. The parity gate at
 `crates/capco/tests/page_context_lattice_parity.rs` (74 `#[test]`
 fixtures: 45+ PageContext-vs-lattice byte-identity + 3 documented

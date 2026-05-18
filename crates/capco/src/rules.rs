@@ -382,7 +382,7 @@ impl CapcoRuleSet {
                 // reverted to Banner-only firing to avoid Mixed-page
                 // false positives — see the `JointDisunityCollapseRule`
                 // doc-comment for the layout-gap trade-off. Fires on
-                // Banner candidates only; reads `ctx.page_context` for
+                // Banner candidates only; reads `ctx.page_portions` for
                 // the `JointSet::DisunityCollapse` state. The diagnostic
                 // message uses canonical CountryCode trigraphs only
                 // (Constitution V Principle V G13).
@@ -2247,7 +2247,7 @@ pub(crate) fn dedup_country_codes(
 // computes the REL TO atom-semantics intersection across every
 // portion on the page and emits one diagnostic per uncertain
 // tetragraph that drops out of that intersection. The rule reads
-// `ctx.page_context` only; under PageFinalization dispatch the
+// `ctx.page_portions` only; under PageFinalization dispatch the
 // engine passes `CanonicalAttrs::default()` as `attrs`, so the rule
 // neither reads nor depends on banner-witness state (pre-PR-#488
 // the rule read `attrs.rel_to` to decide a Suggest-vs-Info branch;
@@ -2260,8 +2260,8 @@ pub(crate) fn dedup_country_codes(
 // false-positive on intermediate snapshots when the rule briefly
 // ran on Portion candidates. Phase::PageFinalization closes both —
 // the engine dispatches S005 exactly once per page at every
-// scanner-emitted `MarkingType::PageBreak` BEFORE the PageContext
-// reset, plus once at end-of-document.
+// scanner-emitted `MarkingType::PageBreak` BEFORE the per-page
+// accumulator reset, plus once at end-of-document.
 //
 // Severity / fix. Severity::Suggest with no fix. The ambiguity is not
 // resolvable from in-tree data — only the producer's external
@@ -2402,7 +2402,7 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// Called by `RelToOpaqueUncertainReductionSuggestRule::check` under
 /// `Phase::PageFinalization`. The `_attrs` parameter is unused — the
 /// engine passes `CanonicalAttrs::default()` for PageFinalization
-/// dispatch — and the entire decision is made from `ctx.page_context`
+/// dispatch — and the entire decision is made from `ctx.page_portions`
 /// (the closed page state) per the rule's doc comment.
 ///
 /// The cost is bounded by the number of portions with non-empty REL
@@ -2410,16 +2410,14 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// operations over `BTreeSet`s in practice.
 ///
 /// **PR 4b-D.3 note (2026-05-18):** This helper intentionally reads
-/// `ctx.page_context` rather than `ctx.page_marking`. S005's
+/// `ctx.page_portions` rather than `ctx.page_marking`. S005's
 /// per-portion REL TO + uncertain-trigraph membership analysis
 /// requires the portion-level `CanonicalAttrs` slice that
 /// `ProjectedMarking` does not expose by design (a projected
-/// marking is an aggregate, not a portion view). PR 4b-E retains
-/// a trimmed `PageContext` exposing only `portions()` for
-/// this consumer and W004; the architecturally-clean successor
-/// is lifting per-portion REL TO membership analysis into the
-/// lattice / scheme layer as derived state on `ProjectedMarking`,
-/// deferred post-4b-E.
+/// marking is an aggregate, not a portion view). The
+/// architecturally-clean successor is lifting per-portion REL TO
+/// membership analysis into the lattice / scheme layer as derived
+/// state on `ProjectedMarking`, deferred post-PR-6c.
 fn analyze_uncertain_reduction(
     _attrs: &CanonicalAttrs,
     ctx: &RuleContext,
@@ -2427,24 +2425,26 @@ fn analyze_uncertain_reduction(
     use marque_ism::is_decomposable;
 
     // Defensive — `dispatch_page_finalization` force-initializes
-    // `ctx.page_context` to `Some(_)` before invoking PageFinalization
+    // `ctx.page_portions` to `Some(_)` before invoking PageFinalization
     // rules (see `crates/engine/src/engine.rs::dispatch_page_finalization`
     // doc). This belt-and-suspenders early-return keeps the rule
     // safe under future engine refactors that might relax the
     // invariant; it should never fire in production. Same shape as
     // W004's defensive early-return in `JointDisunityCollapseRule`.
-    let Some(page) = ctx.page_context.as_ref() else {
+    //
+    // PR 6c migration (T069): read `ctx.page_portions` (the
+    // `Box<[CanonicalAttrs]>` slice snapshot) instead of the retired
+    // `ctx.page_context` / `PageContext::portions()` accessor pair.
+    let Some(page_portions) = ctx.page_portions.as_ref() else {
         return Vec::new();
     };
+    let portions: &[CanonicalAttrs] = page_portions.as_ref();
 
     // Plan §3.2 requires "at least two portions carrying a
     // non-empty REL TO list." Anything less and there's no
     // intersection to compute.
-    let portions_with_rel_to: Vec<&CanonicalAttrs> = page
-        .portions()
-        .iter()
-        .filter(|p| !p.rel_to.is_empty())
-        .collect();
+    let portions_with_rel_to: Vec<&CanonicalAttrs> =
+        portions.iter().filter(|p| !p.rel_to.is_empty()).collect();
     if portions_with_rel_to.len() < 2 {
         return Vec::new();
     }
@@ -2483,7 +2483,7 @@ fn analyze_uncertain_reduction(
     // cover triggers 3–4 in PR 3c.B-8F-engine-gap. Page-extension
     // stable post-PR-#488 — the bails fire on the same closed page
     // state PageFinalization observes.
-    let any_portion_noforn = page.portions().iter().any(|p| {
+    let any_portion_noforn = portions.iter().any(|p| {
         p.dissem_iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf))
     });
@@ -2496,7 +2496,7 @@ fn analyze_uncertain_reduction(
     // SBU-NF/LES-NF/NODIS/EXDIS NF-injection semantics
     // (§H.9 p172/p174/p178/p185); the second tuple element
     // `needs_nf` is the same flag.
-    let needs_nf = crate::lattice::NonIcDissemSet::from_attrs_iter(page.portions()).needs_nf();
+    let needs_nf = crate::lattice::NonIcDissemSet::from_attrs_iter(portions).needs_nf();
     if needs_nf {
         return Vec::new();
     }
@@ -2513,7 +2513,7 @@ fn analyze_uncertain_reduction(
     // `RelToBlock`; the per-axis bails above already short-circuit
     // S005 in those cases (so the lattice-side supersession arms
     // produce the same empty result without redundant work).
-    let expected = crate::lattice::RelToBlock::from_attrs_iter(page.portions()).into_boxed_slice();
+    let expected = crate::lattice::RelToBlock::from_attrs_iter(portions).into_boxed_slice();
     let expected_set: std::collections::BTreeSet<&str> =
         expected.iter().map(|c| c.as_str()).collect();
 
@@ -3445,7 +3445,7 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 ///    implicit — `REL TO USA, NATO` is not needed. **Today this branch
 ///    is forward-looking**: `Engine::lint` gates
 ///    `with_page_marking(ctx_page_marking)` on
-///    `candidate.kind != MarkingType::Portion && !page_context.is_empty()`,
+///    `candidate.kind != MarkingType::Portion && !page_portions.is_empty()`,
 ///    so portion rules always see `page_marking = None` and the
 ///    carve-out is unreachable. S007 fires on every bare-NATO portion
 ///    regardless of solely-NATO document status until a future engine
@@ -3926,7 +3926,7 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
 // ===========================================================================
 //
 // Three hand-written rules that can't ride the declarative-constraint
-// path (all three need either page_context access or token-level fix
+// path (all three need either page-portions access or token-level fix
 // proposals):
 //
 //   E039  — REL TO not authorized in banner when any portion has NODIS
@@ -4063,7 +4063,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 //
 // The `evaluate_*` fns are verbatim moves of the bodies of the retiring
 // rules' `check` methods; the only structural change is that they take an
-// explicit `&PageContext` parameter (the marking-type and page_context
+// explicit `&ProjectedMarking` parameter (the marking-type and page-portions
 // guards moved up to the walker's `check`).
 
 /// Walker that asserts the banner / CAB candidate matches the page's
@@ -4110,8 +4110,8 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
         // PR 9b (T133 / FR-006): banner-validation rules read the
         // rolled-up shape via `ctx.page_marking` (the
         // `ProjectedMarking` projection) instead of going through
-        // `PageContext::expected_*` accessors. The per-portion view
-        // stays on `ctx.page_context` for rules that need it
+        // the retired `PageContext::expected_*` accessors. The
+        // per-portion view is available via `ctx.page_portions`
         // (e.g. S005 post-PR-#488 — formerly the S005/S006 pair).
         let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
@@ -5146,25 +5146,30 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Phase::PageFinalization invariant: the engine's
         // `dispatch_page_finalization` force-initializes
-        // `ctx.page_context` and `ctx.page_marking` before invoking
+        // `ctx.page_portions` and `ctx.page_marking` before invoking
         // the rule. The defensive `.as_ref()?` early-return below is
         // belt-and-suspenders so the rule stays safe under future
         // engine refactors that might relax the invariant; it should
         // never fire in production.
         //
-        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads
-        // `ctx.page_context.portions()` rather than `ctx.page_marking`.
+        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads the
+        // per-portion attrs slice rather than `ctx.page_marking`.
         // `JointSet::from_attrs_iter` requires the per-portion
-        // `CanonicalAttrs` slice that `ProjectedMarking` does not expose
-        // (the JointSet `DisunityCollapse` state is structurally
-        // per-portion). PR 4b-E retains a trimmed PageContext for this
-        // consumer; lifting `JointSet`'s derived state onto
-        // `ProjectedMarking` is the post-4b-E successor.
-        let Some(page_ctx) = ctx.page_context.as_ref() else {
+        // `CanonicalAttrs` slice that `ProjectedMarking` does not
+        // expose (the JointSet `DisunityCollapse` state is structurally
+        // per-portion). Lifting `JointSet`'s derived state onto
+        // `ProjectedMarking` is post-PR-6c future work.
+        //
+        // PR 6c migration (T069): read `ctx.page_portions` (the
+        // `Box<[CanonicalAttrs]>` slice snapshot) instead of the
+        // retired `ctx.page_context` / `PageContext::portions()`
+        // accessor pair.
+        let Some(page_portions) = ctx.page_portions.as_ref() else {
             return vec![];
         };
+        let portions: &[CanonicalAttrs] = page_portions.as_ref();
 
-        let joint_set = crate::lattice::JointSet::from_attrs_iter(page_ctx.portions());
+        let joint_set = crate::lattice::JointSet::from_attrs_iter(portions);
         if !joint_set.is_disunity_collapse() {
             return vec![];
         }
@@ -8527,14 +8532,18 @@ mod tests {
     // --- E035: SCI banner rollup ---
 
     #[test]
-    fn e035_no_ops_without_page_context() {
-        // The test harness passes `page_context: None`. Until P4 lands and
-        // populates a real PageContext with expected_sci_markings(), E035
-        // must stay silent rather than emit false positives.
+    fn e035_no_ops_without_page_marking() {
+        // E035 is dispatched by `BannerMatchesProjectedRule::check`,
+        // whose first-line guard is `ctx.page_marking.as_ref()` (PR 9b
+        // T133 / FR-006). The test harness produces no portions, so
+        // the engine never populates a page marking projection. Until
+        // P4 lands and the harness wires per-page state through to
+        // banner candidates, E035 must stay silent rather than emit
+        // false positives.
         let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E035"),
-            "E035 must no-op without a PageContext: {diags:?}"
+            "E035 must no-op without per-page marking: {diags:?}"
         );
     }
 
@@ -8975,8 +8984,8 @@ mod tests {
     /// is specced and built per
     /// `specs/006-engine-rule-refactor/followups/admonition-channel.md`.
     /// The structural blocker — `MarkingScheme::evaluate_custom` having
-    /// no access to `RuleContext.page_context` (the entire body of
-    /// `analyze_uncertain_reduction` is page-context-dependent) — is
+    /// no access to `RuleContext.page_portions` (the entire body of
+    /// `analyze_uncertain_reduction` is page-portions-dependent) — is
     /// tracked in
     /// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
     /// Until either retirement vehicle lands, the rule emits a diagnostic

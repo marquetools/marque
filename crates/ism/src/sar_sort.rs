@@ -8,13 +8,13 @@
 //! first, followed by alphabetic values" at each hierarchical level.
 //! The implementation splits the identifier at its leading digit run.
 //!
-//! Pre-PR-4b-E this lived inside `crates/ism/src/page_context.rs`
-//! alongside the `PageContext` accumulator. PR 4b-E relocated it to
-//! its own module per the architect plan §3 Decision 4: SAR sort is
-//! structurally orthogonal to `PageContext`'s page-aggregator role,
-//! and isolating it makes a future full `PageContext` removal a
-//! single-file deletion. The re-export at `marque_ism::sar_sort_key`
-//! preserves the public API.
+//! Pre-PR-4b-E this lived inside the now-retired
+//! `crates/ism/src/page_context.rs` alongside the `PageContext`
+//! accumulator. PR 4b-E relocated it to its own module per the
+//! architect plan §3 Decision 4 (structurally orthogonal to the
+//! page-aggregator role), making PR 6c's full `PageContext`
+//! retirement a clean single-file deletion. The re-export at
+//! `marque_ism::sar_sort_key` preserves the public API.
 
 /// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort
 /// order with numbered values first, followed by alphabetic values" at each

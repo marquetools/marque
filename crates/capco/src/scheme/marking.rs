@@ -44,19 +44,20 @@
 //! `join_via_lattice → closure → page_rewrites` pipeline (see
 //! `docs/plans/2026-05-01-lattice-design.md` §4.7.4).
 //!
-//! `PageContext` stays alive as the page-state accumulator the engine
-//! fills via `add_portion` across the document; its `expected_*`
-//! accessor surface retired in PR 4b-E. The five former residue
-//! accessors (`expected_sci_controls`, `expected_fgi_marker`,
+//! Page state is the engine's inline `Vec<CanonicalAttrs>`
+//! accumulator (PR 6c retired the historical `PageContext` newtype
+//! wrapper). Pre-PR-4b-E this carried an `expected_*` accessor
+//! surface; PR 4b-E migrated the five former residue accessors
+//! (`expected_sci_controls`, `expected_fgi_marker`,
 //! `expected_declass_exemption`, `expected_non_ic_dissem`,
-//! `expected_display_only`) migrated to free helpers and lattice
-//! constructors in `crates/capco/src/lattice.rs`
-//! (`sci_controls_from_markings`, `FgiSet::from_attrs_iter`,
+//! `expected_display_only`) to free helpers and lattice constructors
+//! in `crates/capco/src/lattice.rs` (`sci_controls_from_markings`,
+//! `FgiSet::from_attrs_iter`,
 //! `DeclassExemptionAccumulator::from_attrs_iter`,
 //! `NonIcDissemSet::from_attrs_iter`,
 //! `DisplayOnlyBlock::from_attrs_iter`). PR 4b-F retired the last
 //! `&PageContext` parameter from the lattice fold body; the pipeline
-//! now consumes `&[CanonicalAttrs]` end-to-end.
+//! consumes `&[CanonicalAttrs]` end-to-end.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
 //! (issue #466). Imports reach helpers via `super::actions::*` /
@@ -154,9 +155,9 @@ impl CapcoMarking {
     ///
     /// Both call surfaces — the trait-path
     /// `MarkingScheme::project(Scope::Page, ...)` and the engine
-    /// fast-path `CapcoScheme::project_from_page_context` — delegate
-    /// through `CapcoScheme::project_attrs_pipeline`, which calls this
-    /// method directly. The parity gate at
+    /// fast-path `CapcoScheme::project_from_attrs_slice` — delegate
+    /// through `CapcoScheme::project_attrs_pipeline`, which calls
+    /// this method directly. The parity gate at
     /// `crates/capco/tests/lattice_vs_scheme_parity.rs` pins the
     /// `per-axis lattice` ↔ `full scheme pipeline` byte-identity
     /// claim across 74 fixtures (with documented divergences for the

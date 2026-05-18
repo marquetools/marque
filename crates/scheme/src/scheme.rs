@@ -65,7 +65,7 @@ pub trait MarkingScheme {
     /// cross-axis-fold needs a "join-shaped" entry point should expose
     /// it as an inherent method on the scheme's marking type (e.g.
     /// `CapcoMarking::join_via_lattice`) rather than via this trait
-    /// bound; the engine's `project_from_page_context` hot path takes
+    /// bound; the engine's `project_from_attrs_slice` hot path takes
     /// exactly that shape.
     ///
     /// See `marque-applied.md` §3 (PR 3b stall walkthrough) for the

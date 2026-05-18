@@ -31,7 +31,6 @@ pub mod date;
 pub mod dissem_attribution;
 pub mod generated;
 pub mod marking_forms;
-pub mod page_context;
 pub mod parsed;
 pub mod projected;
 pub mod sar_sort;
@@ -54,7 +53,6 @@ pub use generated::values::{
     ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, TetragraphProvenance,
     is_bare_cve_value, is_decomposable, lookup_tetragraph_members, lookup_tetragraph_provenance,
 };
-pub use page_context::PageContext;
 // PR 4b-E: `sar_sort_key` lives in its own module post-relocation; the
 // re-export at the crate root preserves the `marque_ism::sar_sort_key`
 // public path (architect plan §3 Decision 4).

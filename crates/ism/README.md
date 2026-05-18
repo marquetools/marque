@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ISM vocabulary types and generated CVE enums for marque.
 
-This crate is the foundational vocabulary crate of the marque workspace. It owns the pivot-type triple (`ParsedAttrs<'src>`, `CanonicalAttrs`, `ProjectedMarking`), zero-copy position types (`Span`), page-level aggregation (`PageContext`), and the closed Rust enums generated at build time from ODNI ISM schemas. `marque-ism` depends on `marque-scheme` (one-way edge — `ProjectedMarking::scope` carries `marque_scheme::Scope`); the consolidated plan's Appendix D anticipated this edge and Constitution VII v1.4.0 codified it.
+This crate is the foundational vocabulary crate of the marque workspace. It owns the pivot-type triple (`ParsedAttrs<'src>`, `CanonicalAttrs`, `ProjectedMarking`), zero-copy position types (`Span`), and the closed Rust enums generated at build time from ODNI ISM schemas. `marque-ism` depends on `marque-scheme` (one-way edge — `ProjectedMarking::scope` carries `marque_scheme::Scope`); the consolidated plan's Appendix D anticipated this edge and Constitution VII v1.4.0 codified it.
 
 This crate implements the ISM vocabulary model *for* the marque rule engine. For the engine itself, see `marque-engine`. For the CAPCO rule implementations that consume this vocabulary, see `marque-capco`.
 
@@ -73,7 +73,6 @@ when ODNI publishes updates and the ism-data workspace is re-vendored.
 | `Span` | Byte offset range into the original source buffer. Never copies. |
 | `MarkingCandidate`, `MarkingType` | Scanner output (Portion, Banner, CAB, PageBreak). |
 | `Zone`, `DocumentPosition` | Structural context. Both are `Option`-typed in `RuleContext`. |
-| `PageContext` | Page-level aggregation: `max()` for classification, union for SCI/SAR/dissem, intersection (with NOFORN supersession) for `REL TO`. Reset at scanner-emitted page-break candidates. |
 | `Classification`, `SciControl`, `DissemControl`, `Trigraph`, … | Generated CVE enums. |
 | `SarMarking`, `SarIndicator`, `SarProgram`, `SarCompartment` | Structural SAR types (not CVE-derived — see migration note below). |
 | `CapcoTokenSet` | Aho-Corasick automaton over CVE token list. |
