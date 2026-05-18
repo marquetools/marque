@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 1
       - name: Get token
         id: get-token
-        uses: marquetools/.github/.github/actions/mint-token@cf142411134fd35c1e034e1d338e0bff3fcf9c32
+        uses: marquetools/.github/.github/actions/mint-token@5e4d7384a049aa938b0ea80d0ac9787ae820f3bd
         with:
           permission-issues: write
           permission-pull-requests: write
@@ -53,7 +53,7 @@ jobs:
           contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.issue.author_association)
       )
     needs: token
-    uses: marquetools/.github/.github/workflows/claude-code-review.yml@cf142411134fd35c1e034e1d338e0bff3fcf9c32
+    uses: marquetools/.github/.github/workflows/claude-code-review.yml@5e4d7384a049aa938b0ea80d0ac9787ae820f3bd
     permissions:
       contents: read
       pull-requests: write
