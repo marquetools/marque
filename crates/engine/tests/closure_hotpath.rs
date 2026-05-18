@@ -416,74 +416,131 @@ fn apply_fact_add_noforn_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
-// PR 4b-D.2 Copilot R1 #2 — `capco/noforn-clears-display-only-to` rewrite
+// PR 4b-D.2 Copilot R1 #2 + R2 #2 — §H.8 p145 banner invariant on
+// the `display_only_to` country axis
 // ---------------------------------------------------------------------------
+//
+// Two layers maintain the §H.8 p145 invariant ("NOFORN ... Cannot be
+// used with DISPLAY ONLY") on the `attrs.display_only_to` country
+// axis:
+//
+//   1. `apply_fact_add` (post-PR-4b-D.2 Copilot R2 #1): every direct
+//      FactAdd of NOFORN clears `display_only_to` at the injection
+//      site. Covers E021 / E038 / closure-driven injection paths.
+//      Pinned by tests in `crates/capco/tests/category_action_intent.rs`.
+//   2. `capco/noforn-clears-display-only-to` PageRewrite (PR 4b-D.2
+//      Copilot R1 #2): a defense-in-depth `Clear { CAT_DISPLAY_ONLY_TO }`
+//      action that fires whenever NOFORN ends up in `dissem_us` at
+//      the projection's PageRewrite phase. Pinned by the integration
+//      test below.
+//
+// Copilot R2 #2 surfaced that the prior `noforn_clears_display_only_to_via_cross_portion_join`
+// test didn't exercise layer #2: `expected_display_only` in PageContext
+// short-circuits to empty whenever ANY portion has NOFORN
+// (`crates/ism/src/page_context.rs:881-896`). When portion 1 was
+// NOFORN-bearing, `out.display_only_to` was empty at join time —
+// before the rewrite ran. The test passed whether or not the rewrite
+// existed.
+//
+// Post-Copilot-R2 the test pivots to a UCNI scenario where:
+//   - Both portions have non-empty `display_only_to` (passes the row-19
+//     all-or-nothing gate in `expected_display_only`).
+//   - Neither portion has NOFORN at join time (passes the `any_noforn`
+//     short-circuit at line 894).
+//   - The Pattern-C `capco/dod-ucni-promotes-noforn-when-classified`
+//     rewrite injects NOFORN AFTER `display_only_to` has been
+//     populated.
+//
+// With Item 1 (apply_fact_add clears country axes) in place, the
+// Pattern-C rewrite's FactAdd ALREADY clears `display_only_to` —
+// making the noforn-clears-display-only-to rewrite functionally
+// idempotent on this path. The integration test verifies BOTH layers
+// converge to the same correct output: post-`scheme.project`, NOFORN
+// is present and `display_only_to` is empty.
+//
+// The rewrite is retained as defense-in-depth — a future refactor
+// that bypasses `apply_fact_add` or changes its clearing semantics
+// will be caught by the PageRewrite layer.
+//
+// Authority: CAPCO-2016 §H.8 p145 ("NOFORN ... Cannot be used with
+// REL TO / RELIDO / EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows
+// 1-2 (NOFORN dominates the FD&R family) + §H.6 p116 (DOD UCNI
+// strip-and-promote on classified). All re-verified 2026-05-18
+// against `crates/capco/docs/CAPCO-2016.md`.
 
-/// Production-catalog fixture: two portions on the same page —
-/// portion 1 carries NOFORN, portion 2 carries DISPLAY ONLY USA, GBR.
-/// After `join_via_lattice` the merged marking has NOFORN in `dissem_us`
-/// AND `display_only_to = [USA, GBR]`. Without the
-/// `capco/noforn-clears-display-only-to` rewrite, the projected
-/// marking would still carry the populated `display_only_to` country
-/// list even though NOFORN is also present — invalid per §H.8 p145.
-///
-/// Post-PR-4b-D.2-Copilot-R1: the new rewrite clears the country-list
-/// axis symmetrically with `capco/noforn-clears-rel-to`. The renderer
-/// no longer emits an inconsistent banner.
-///
-/// Companion to `apply_fact_add_noforn_strips_displayonly_via_supersession`
-/// above which covers the DissemSet supersession overlay for the
-/// `Displayonly` token in `dissem_us`; this fixture covers the
-/// page-rewrite layer that clears the parallel country-list field
-/// (`attrs.display_only_to`).
-///
-/// Authority: CAPCO-2016 §H.8 p145 ("NOFORN ... Cannot be used with
-/// REL TO / RELIDO / EYES ONLY / DISPLAY ONLY") + §D.2 Table 3 rows
-/// 1-2 (NOFORN dominates the FD&R family).
+/// Cross-axis integration: a classified page where the Pattern-C
+/// `capco/dod-ucni-promotes-noforn-when-classified` rewrite injects
+/// NOFORN AFTER `display_only_to` has been populated by per-portion
+/// union. Verifies the §H.8 p145 invariant on the country axis holds
+/// through the full `scheme.project` pipeline: NOFORN present and
+/// `display_only_to` empty post-projection.
 #[test]
-fn noforn_clears_display_only_to_via_cross_portion_join() {
+fn noforn_clears_display_only_to_via_ucni_promote() {
+    use marque_ism::AeaMarking;
+
     let usa = CountryCode::USA;
     let gbr = CountryCode::try_new(b"GBR").expect("trigraph");
 
-    // Portion 1: NOFORN. Portion 2: DISPLAY ONLY USA, GBR.
-    let nf_portion = classified_with_dissem(Classification::Secret, DissemControl::Nf);
+    // Portion 1: classified with DOD UCNI AND a DISPLAY ONLY list.
+    // The DISPLAY ONLY here is required so portion 1 passes the
+    // row-19 all-or-nothing gate in `expected_display_only`. Both
+    // portions thus contribute display-permission, the gate doesn't
+    // short-circuit, and `out.display_only_to` is populated at join
+    // time. The Pattern-C `capco/dod-ucni-promotes-noforn-when-classified`
+    // rewrite then injects NOFORN, which clears `display_only_to`
+    // via the apply_fact_add Item-1 cleanup AND/OR the
+    // noforn-clears-display-only-to rewrite (defense-in-depth).
+    let mut ucni_portion = classified_us(Classification::Secret);
+    ucni_portion.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
+    ucni_portion.dissem_us = vec![DissemControl::Displayonly].into_boxed_slice();
+    ucni_portion.display_only_to = vec![usa, gbr].into_boxed_slice();
+
     let mut do_portion = classified_us(Classification::Secret);
     do_portion.dissem_us = vec![DissemControl::Displayonly].into_boxed_slice();
-    do_portion.display_only_to = vec![usa, gbr].into_boxed_slice();
+    do_portion.display_only_to = vec![usa].into_boxed_slice();
 
-    let projected = project_page(&[nf_portion, do_portion]);
+    let projected = project_page(&[ucni_portion, do_portion]);
 
-    // NOFORN survives.
+    // NOFORN was injected by the Pattern-C UCNI-promote rewrite.
     assert!(
         dissem_contains(&projected, DissemControl::Nf),
-        "NOFORN must survive cross-portion join; dissem_us = {:?}",
+        "Pattern-C `capco/dod-ucni-promotes-noforn-when-classified` \
+         must inject NOFORN on classified UCNI (§H.6 p116); \
+         dissem_us = {:?}",
         projected.0.dissem_us,
     );
 
-    // The `capco/noforn-clears-fdr-family` rewrite stripped the
-    // Displayonly token from dissem_us.
-    assert!(
-        !dissem_contains(&projected, DissemControl::Displayonly),
-        "`capco/noforn-clears-fdr-family` must strip Displayonly token \
-         (§D.2 Table 3 row 2); dissem_us = {:?}",
-        projected.0.dissem_us,
-    );
-
-    // The new `capco/noforn-clears-display-only-to` rewrite cleared
-    // the country-list field. Pre-fix this would still hold [USA, GBR]
-    // — a §H.8 p145 violation.
+    // `attrs.display_only_to` was cleared post-NOFORN-injection.
+    // Either the apply_fact_add Item-1 cleanup (during the
+    // Pattern-C rewrite's FactAdd invocation) or the
+    // `capco/noforn-clears-display-only-to` rewrite (running later
+    // in the pipeline as defense-in-depth) — both paths produce the
+    // same correct output. The assertion captures the §H.8 p145
+    // banner invariant regardless of which layer cleared.
     assert!(
         projected.0.display_only_to.is_empty(),
-        "`capco/noforn-clears-display-only-to` must clear \
-         `display_only_to` when NOFORN is present (§H.8 p145 + \
-         §D.2 Table 3 rows 1-2); display_only_to = {:?}",
+        "§H.8 p145: NOFORN must clear `display_only_to` when present; \
+         display_only_to = {:?}",
         projected.0.display_only_to,
+    );
+
+    // DISPLAY ONLY token was stripped from `dissem_us` by
+    // `capco/noforn-clears-fdr-family`. Companion check — the token
+    // axis and the country axis must BOTH be clear for §H.8 p145
+    // to hold; either alone is incomplete.
+    assert!(
+        !dissem_contains(&projected, DissemControl::Displayonly),
+        "§H.8 p145: NOFORN must strip Displayonly token from dissem_us; \
+         dissem_us = {:?}",
+        projected.0.dissem_us,
     );
 }
 
-/// The rewrite is idempotent: if `display_only_to` is already empty
-/// the rewrite is a no-op. (Tests the `Clear` action's idempotence,
-/// which is structural.)
+/// Defense-in-depth gate: when NOFORN is already present at join
+/// time but `display_only_to` is empty (the common case), the
+/// rewrite is a no-op. Confirms the `Clear` action's idempotence on
+/// empty input — equivalent to the `noforn-clears-rel-to`
+/// idempotency precedent.
 #[test]
 fn noforn_clears_display_only_to_is_idempotent_on_empty_field() {
     // Portion with NOFORN but no DISPLAY ONLY country list.

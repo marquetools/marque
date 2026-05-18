@@ -369,3 +369,175 @@ fn g13_open_vocab_factref_does_not_leak_source_bytes() {
         out.0.rel_to,
     );
 }
+
+// ---------------------------------------------------------------------------
+// PR 4b-D.2 Copilot R2 #1 — `apply_fact_add` self-sufficiency for the
+// §H.8 p145 NOFORN supersession invariant
+// ---------------------------------------------------------------------------
+//
+// The PR 4b-D.2 D22 fix routed NOFORN FactAdd through
+// `DissemSet::with_noforn_injected` to apply the token-axis
+// supersession overlay (strip REL TO / RELIDO / DISPLAY ONLY / EYES
+// tokens from `dissem_us`). Copilot R2 surfaced two remaining gaps:
+//
+// 1. Direct `apply_intent` callers (E021 AEA → NOFORN, E038
+//    NODIS/EXDIS → NOFORN) bypass `scheme.project` and the
+//    `capco/noforn-clears-rel-to` / `capco/noforn-clears-display-only-to`
+//    PageRewrites. Those callers got `dissem_us = [Nf]` plus
+//    `attrs.rel_to = [USA, GBR]` and `attrs.display_only_to = [...]`
+//    populated — a §H.8 p145 violation on the country-list axes.
+//
+// 2. The inverse case: FactAdd of RELIDO / DISPLAY ONLY / EYES onto a
+//    marking that already has NOFORN was appending the dominated
+//    token instead of rejecting with `IntentInapplicable`. Same
+//    §H.8 p145 violation on the token axis.
+//
+// PR 4b-D.2 Copilot R2 commit 13 makes `apply_fact_add` self-sufficient
+// for both directions. These tests pin the contract.
+
+fn run_apply_intent(
+    attrs: CanonicalAttrs,
+    intents: Vec<ReplacementIntent<CapcoScheme>>,
+) -> Result<CapcoMarking, ApplyIntentError> {
+    let scheme = CapcoScheme::new();
+    let marking = wrap(attrs);
+    scheme.apply_intent(&marking, &intents)
+}
+
+fn fact_add_noforn() -> ReplacementIntent<CapcoScheme> {
+    ReplacementIntent::FactAdd {
+        token: FactRef::Cve(TOK_NOFORN),
+        scope: Scope::Page,
+    }
+}
+
+fn fact_add(token: TokenId) -> ReplacementIntent<CapcoScheme> {
+    ReplacementIntent::FactAdd {
+        token: FactRef::Cve(token),
+        scope: Scope::Page,
+    }
+}
+
+/// Direct `apply_intent` FactAdd of NOFORN onto a marking with
+/// `rel_to = [USA, GBR]` clears `rel_to` post-injection.
+#[test]
+fn apply_fact_add_noforn_clears_rel_to_country_list() {
+    let usa = CountryCode::USA;
+    let gbr = CountryCode::try_new(b"GBR").expect("trigraph");
+    let mut attrs = portion_at(Classification::Secret);
+    attrs.rel_to = vec![usa, gbr].into_boxed_slice();
+
+    let out = run_apply_intent(attrs, vec![fact_add_noforn()]).expect("FactAdd should apply");
+
+    assert!(
+        out.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
+        "NOFORN must be present post-injection; dissem_us = {:?}",
+        out.0.dissem_us,
+    );
+    assert!(
+        out.0.rel_to.is_empty(),
+        "§H.8 p145: NOFORN must clear `attrs.rel_to` at the injection \
+         site; got rel_to = {:?}",
+        out.0.rel_to,
+    );
+}
+
+/// Direct `apply_intent` FactAdd of NOFORN onto a marking with
+/// `display_only_to = [USA]` clears `display_only_to` post-injection.
+#[test]
+fn apply_fact_add_noforn_clears_display_only_to_country_list() {
+    let usa = CountryCode::USA;
+    let mut attrs = portion_at(Classification::Secret);
+    attrs.display_only_to = vec![usa].into_boxed_slice();
+
+    let out = run_apply_intent(attrs, vec![fact_add_noforn()]).expect("FactAdd should apply");
+
+    assert!(
+        out.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
+        "NOFORN must be present post-injection; dissem_us = {:?}",
+        out.0.dissem_us,
+    );
+    assert!(
+        out.0.display_only_to.is_empty(),
+        "§H.8 p145: NOFORN must clear `attrs.display_only_to` at the \
+         injection site; got display_only_to = {:?}",
+        out.0.display_only_to,
+    );
+}
+
+/// Inverse case: FactAdd of RELIDO onto a marking with `dissem_us = [NF]`
+/// returns `IntentInapplicable` (no mutation, `dissem_us` unchanged).
+#[test]
+fn apply_fact_add_relido_rejected_when_noforn_already_present() {
+    let mut attrs = portion_at(Classification::Secret);
+    attrs.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+
+    let result = run_apply_intent(attrs, vec![fact_add(TOK_RELIDO)]);
+    assert!(
+        matches!(result, Err(ApplyIntentError::IntentInapplicable)),
+        "§H.8 p145: FactAdd of RELIDO onto NOFORN-bearing marking must \
+         be IntentInapplicable; got {:?}",
+        result,
+    );
+}
+
+/// Inverse case: FactAdd of DISPLAY ONLY onto a marking with
+/// `dissem_us = [NF]` returns `IntentInapplicable`.
+#[test]
+fn apply_fact_add_displayonly_rejected_when_noforn_already_present() {
+    use marque_capco::scheme::TOK_DISPLAY_ONLY;
+    let mut attrs = portion_at(Classification::Secret);
+    attrs.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+
+    let result = run_apply_intent(attrs, vec![fact_add(TOK_DISPLAY_ONLY)]);
+    assert!(
+        matches!(result, Err(ApplyIntentError::IntentInapplicable)),
+        "§H.8 p145: FactAdd of DISPLAY ONLY onto NOFORN-bearing marking \
+         must be IntentInapplicable; got {:?}",
+        result,
+    );
+}
+
+/// Idempotency: re-running FactAdd(NOFORN) on a marking already at
+/// the supersession fixed point (NOFORN already present, rel_to /
+/// display_only_to already empty) is still `IntentInapplicable`.
+/// Mirrors the existing double-NOFORN-insertion idempotency guard.
+#[test]
+fn apply_fact_add_noforn_idempotent_at_supersession_fixed_point() {
+    let mut attrs = portion_at(Classification::Secret);
+    attrs.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+    // rel_to / display_only_to are already empty — the fixed point.
+
+    let result = run_apply_intent(attrs, vec![fact_add_noforn()]);
+    assert!(
+        matches!(result, Err(ApplyIntentError::IntentInapplicable)),
+        "FactAdd of NOFORN onto NOFORN-already-present marking must \
+         be IntentInapplicable; got {:?}",
+        result,
+    );
+}
+
+/// Idempotency continues to hold when the marking ALREADY satisfies
+/// the §H.8 p145 invariant (NOFORN present, country lists empty,
+/// dominated tokens absent). Confirms the inverse-case rejection
+/// doesn't change the existing double-insertion semantic.
+#[test]
+fn apply_fact_add_noforn_double_insertion_with_clear_axes() {
+    let usa = CountryCode::USA;
+    let mut attrs = portion_at(Classification::Secret);
+    attrs.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
+    // Confounding: rel_to populated but NOFORN-dominated. The
+    // double-insertion guard fires before the country-list clear, so
+    // rel_to stays populated (this would normally be cleaned by the
+    // first NOFORN injection; we're testing the no-op path).
+    attrs.rel_to = vec![usa].into_boxed_slice();
+
+    let result = run_apply_intent(attrs, vec![fact_add_noforn()]);
+    assert!(
+        matches!(result, Err(ApplyIntentError::IntentInapplicable)),
+        "FactAdd of NOFORN onto NOFORN-already-present marking is \
+         idempotent; the country-list cleanup is the FIRST injection's \
+         responsibility, not the no-op second one's; got {:?}",
+        result,
+    );
+}
