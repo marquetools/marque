@@ -156,6 +156,21 @@ const R002_CITATION: &str = "engine-synthetic";
 /// accumulator. Issue #430.
 pub(crate) const DEFAULT_PORTIONS_CAPACITY: usize = 8;
 
+/// Construct a fresh per-page portion accumulator pre-sized to
+/// [`DEFAULT_PORTIONS_CAPACITY`].
+///
+/// Centralized so the lint-loop startup site and the `MarkingType::PageBreak`
+/// reset site cannot drift apart. If a future edit replaces this body with
+/// `Vec::new()`, multi-page documents would pay the `Vec` growth sequence
+/// (capacity doubling: 0→4→8→16…) on the first several `add_portion` pushes
+/// of every page — silent perf regression that no functional test catches.
+/// The `fresh_accumulator_uses_default_capacity` unit test below pins the
+/// capacity contract.
+#[inline]
+pub(crate) fn fresh_page_portions_accumulator() -> Vec<marque_ism::CanonicalAttrs> {
+    Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY)
+}
+
 /// Whether to apply fixes or just simulate (dry-run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixMode {
@@ -814,8 +829,7 @@ impl Engine {
         // `Arc<Box<[CanonicalAttrs]>>` lazily at first banner/CAB
         // use; consecutive banner/CAB candidates on the same page
         // share that Arc through the cache below.
-        let mut page_portions: Vec<marque_ism::CanonicalAttrs> =
-            Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
+        let mut page_portions: Vec<marque_ism::CanonicalAttrs> = fresh_page_portions_accumulator();
         // Cache the current `Arc<Box<[CanonicalAttrs]>>` snapshot so
         // consecutive banner/CAB candidates on the same page share a
         // single allocation. Invalidated (set to None) whenever a new
@@ -966,7 +980,7 @@ impl Engine {
                         parsed_markings,
                     );
                 }
-                page_portions = Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
+                page_portions = fresh_page_portions_accumulator();
                 page_portions_arc = None;
                 // PR 9b (T133): the page-marking cache resets on the
                 // same boundary as the per-page accumulator
@@ -4987,6 +5001,31 @@ mod tests {
     use marque_scheme::fix_intent::RecanonScope;
     use secrecy::ExposeSecret as _;
     use std::time::{Duration, UNIX_EPOCH};
+
+    /// Pins the issue #430 pre-size contract on the per-page portion
+    /// accumulator. If `fresh_page_portions_accumulator` ever drifts
+    /// to `Vec::new()` (or a smaller capacity), every subsequent page
+    /// on a multi-page document would pay the `Vec` growth sequence
+    /// (4 → 8 → 16 …) on the first several portion pushes — a silent
+    /// perf regression no functional test catches. This test fails
+    /// at compile-after-edit time if the helper body diverges from
+    /// `DEFAULT_PORTIONS_CAPACITY`.
+    #[test]
+    fn fresh_accumulator_uses_default_capacity() {
+        let v = fresh_page_portions_accumulator();
+        assert!(
+            v.is_empty(),
+            "fresh accumulator must be empty, got len={}",
+            v.len()
+        );
+        assert_eq!(
+            v.capacity(),
+            DEFAULT_PORTIONS_CAPACITY,
+            "fresh accumulator capacity drifted from DEFAULT_PORTIONS_CAPACITY ({}); \
+             multi-page perf regression risk per issue #430",
+            DEFAULT_PORTIONS_CAPACITY,
+        );
+    }
 
     /// A pure-test stand-in for the old `FixProposal` shape: the
     /// fields engine tests actually exercise (rule, span, replacement,

@@ -10,6 +10,29 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 **Base:** `origin/staging` @ `480fccf8` (merge-base; staging has since
 advanced to `840700c3` with PR #544, which does NOT touch the PageContext
 surface).
+
+> **Pre-fixup snapshot.** This report captures the state at the end of
+> commit 4 (`507e5da9`), immediately after the implementer's local
+> verification chain completed. Commits landed after this report was
+> written are NOT reflected in the file/LOC accounting, commit list,
+> or GPG attestation below — they are documented separately in their
+> own commit messages and in the PR description body. As of PR
+> submission the branch carries:
+>
+> - `42f31db1` — commit 1 (`marque-rules`)
+> - `16124a3c` — commit 2 (`marque-capco` + minimal engine bridge)
+> - `eda09358` — commit 3 (`marque-engine` accumulator inline)
+> - `507e5da9` — commit 4 (`marque-ism` deletion + Send+Sync re-pin)
+> - `89e6b96b` — commit 5 (reviewer fix-ups + tasks.md tick T069 +
+>   4 reviewer reports committed under `docs/plans/`)
+> - `2f35b875` — merge from `origin/staging` (PR #544 RELIDO closeout,
+>   no PageContext surface touched)
+> - `4b0fd889` — commit 6 (`cargo fmt`)
+> - `89e6b96b` follow-up: Copilot suppressed-low-confidence review fix-ups
+>
+> All commits in the branch are GPG-signed. See the PR description
+> for the consolidated test plan and the per-commit summary table
+> that supersedes the §"Commit summary" table below.
 **Companions:**
 - Architect strategic plan: `docs/plans/2026-05-18-pr6c-pagecontext-retirement-plan.md`
 - Rust risk register: `docs/plans/2026-05-18-pr6c-rust-preflight.md`

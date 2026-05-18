@@ -344,23 +344,24 @@ fn walker_silent_on_portion_candidates() {
 }
 
 // ---------------------------------------------------------------------------
-// page-portions guard — banner with no preceding portions
+// banner guard — banner with no preceding portions
 // ---------------------------------------------------------------------------
 
 #[test]
 fn walker_silent_when_banner_has_no_preceding_portions() {
     // A document with a banner but no portion candidates anywhere.
-    // The engine never populates per-page portions (no portions to
-    // accumulate), so `ctx.page_portions` stays `None` and the walker
-    // returns early. No E031 / E035 / E040 emitted.
+    // The engine never produces a page-marking projection (no portions
+    // to accumulate → no roll-up), so `ctx.page_marking` stays `None`
+    // and `BannerMatchesProjectedRule::check`'s `ctx.page_marking.as_ref()`
+    // guard returns early. No E031 / E035 / E040 emitted.
     let source = "TOP SECRET//SI-G//SAR-BP//NOFORN//NODIS";
     let diags = lint(source);
     for rule_id in ["E031", "E035", "E040"] {
         let row_diags = diags_for_rule(&diags, rule_id);
         assert!(
             row_diags.is_empty(),
-            "walker fired on a banner with no page portions — \
-             page-portions guard regression. {rule_id} diags: \
+            "walker fired on a banner with no preceding portions — \
+             `ctx.page_marking` guard regression. {rule_id} diags: \
              {row_diags:?}",
         );
     }

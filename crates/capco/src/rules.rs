@@ -8532,14 +8532,18 @@ mod tests {
     // --- E035: SCI banner rollup ---
 
     #[test]
-    fn e035_no_ops_without_page_portions() {
-        // The test harness passes `page_portions: None`. Until P4 lands and
-        // populates real page portions producing `expected_sci_markings()`,
-        // E035 must stay silent rather than emit false positives.
+    fn e035_no_ops_without_page_marking() {
+        // E035 is dispatched by `BannerMatchesProjectedRule::check`,
+        // whose first-line guard is `ctx.page_marking.as_ref()` (PR 9b
+        // T133 / FR-006). The test harness produces no portions, so
+        // the engine never populates a page marking projection. Until
+        // P4 lands and the harness wires per-page state through to
+        // banner candidates, E035 must stay silent rather than emit
+        // false positives.
         let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E035"),
-            "E035 must no-op without per-page portions: {diags:?}"
+            "E035 must no-op without per-page marking: {diags:?}"
         );
     }
 
