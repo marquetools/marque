@@ -483,6 +483,25 @@ fn apply_fact_remove(
             // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`
             // §H.8 p134 (FOUO subsection p131-134 in citation index).
             TOK_FOUO => DissemControl::Fouo,
+            // #546 — TOK_EYES removal for the
+            // `capco/noforn-clears-fdr-family` rewrite (declared in
+            // `rewrites::noforn_clears::noforn_clears_rows`). The
+            // rewrite's FactRemove batch lists TOK_RELIDO +
+            // TOK_DISPLAY_ONLY + TOK_EYES; without this arm the EYES
+            // sub-intent returned `UnknownToken`, aborting the batch
+            // on every page where NOFORN landed in CAT_DISSEM and
+            // (with EYES preceded by RELIDO / DISPLAY_ONLY in the
+            // batch) leaving the marking partially mutated while the
+            // engine reported the rewrite as no-op'd. §H.8 p157-158
+            // (EYES ONLY entry) plus §H.8 p145 (NOFORN: "Cannot be
+            // used with REL TO / RELIDO / EYES ONLY / DISPLAY ONLY")
+            // + §D.2 Table 3 rows 1-2 — same citation chain already
+            // on the rewrite. The EYES↔`DissemControl::Eyes` mapping
+            // is established in `predicates::satisfies` and
+            // `predicates::dissem`; this arm is the missing dispatch
+            // site in `apply_fact_remove`. Re-verified 2026-05-18
+            // against `crates/capco/docs/CAPCO-2016.md`.
+            TOK_EYES => DissemControl::Eyes,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
         // PR 9b (T132): FactRemove on the CAT_DISSEM axis filters the
