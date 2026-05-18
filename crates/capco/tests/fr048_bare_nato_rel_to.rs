@@ -15,7 +15,7 @@
 //! rather than mandate prose; S004 + S005 precedent — the latter
 //! post-PR-#488 collapse of the historical S005/S006 pair).
 //! Solely-NATO documents are carved out via
-//! [`marque_ism::PageContext::is_solely_nato_classified`].
+//! [`marque_ism::ProjectedMarking::is_solely_nato_classified`].
 //!
 //! # Authority
 //!
@@ -184,12 +184,12 @@ fn example_c_nato_plus_us_fouo_silent() {
 }
 
 // =========================================================================
-// Solely-NATO carve-out — `PageContext::is_solely_nato_classified` is
-// read by the rule but the engine's current portion-rule dispatch
-// (`engine.rs::lint` line 851) does NOT supply `page_context` to
+// Solely-NATO carve-out — `ProjectedMarking::is_solely_nato_classified`
+// is read by the rule but the engine's current portion-rule dispatch
+// (`engine.rs::lint` line 851) does NOT supply `page_marking` to
 // portion-level `RuleContext`s — only to banner/CAB candidates. The
 // rule's carve-out branch is therefore load-bearing for a future engine
-// migration that plumbs page_context to portion rules; today it is
+// migration that plumbs page_marking to portion rules; today it is
 // preserved as forward-looking code with no current short-circuit.
 //
 // Until that migration lands, S007 fires on every bare-NATO portion
@@ -201,13 +201,13 @@ fn example_c_nato_plus_us_fouo_silent() {
 fn solely_nato_doc_two_portions_conservative_fire() {
     // CAPCO-2016 §H.7 p127 Notional Example 2: the solely-NATO
     // carve-out cannot evaluate under the current engine (portion
-    // rules receive `ctx.page_context = None`), so S007 fires on
+    // rules receive `ctx.page_marking = None`), so S007 fires on
     // both bare-NATO portions conservatively. PM decision #2: this
     // single-pass false-positive in solely-NATO docs is an
     // acceptable rare case (users silence via config).
     //
     // The S007 rule's `is_solely_nato_classified` branch is
-    // load-bearing for a future engine pass that plumbs page_context
+    // load-bearing for a future engine pass that plumbs page_marking
     // to portions; this test pins the present-day behavior so the
     // migration trip-wires.
     //
@@ -215,9 +215,9 @@ fn solely_nato_doc_two_portions_conservative_fire() {
     // MIGRATION TRIP-WIRE — read before flipping the assertion.
     // ============================================================
     //
-    // When the engine plumbs `page_context` to portion-rule dispatch
+    // When the engine plumbs `page_marking` to portion-rule dispatch
     // (today only banner/CAB candidates receive a populated
-    // `RuleContext::page_context`), this test must change. The
+    // `RuleContext::page_marking`), this test must change. The
     // migrating engineer MUST first decide which semantic the engine
     // implements for "when does a portion rule see the accumulator":
     //
@@ -242,12 +242,12 @@ fn solely_nato_doc_two_portions_conservative_fire() {
     //     Migration assertion: `assert_eq!(diags.len(), 0, ...)`.
     //
     // The single-pass behavior pinned today (2 diagnostics) is the
-    // `page_context = None` conservative-fire path; it matches
+    // `page_marking = None` conservative-fire path; it matches
     // neither (a) nor (b). The migration author MUST pick the engine
     // semantic, update both the assertion AND this comment to reflect
     // the chosen branch, and re-verify against the
-    // `is_solely_nato_classified_one_bare_nato_portion_is_true` unit
-    // test in `crates/ism/src/page_context.rs` (which is the
+    // `is_solely_nato_classified_true_on_pure_nato` unit test in
+    // `crates/ism/src/projected.rs` (which is the
     // single-portion-bare-NATO base case the analysis above relies
     // on). Do NOT blindly flip to a hard-coded number.
     let source = b"(//CTS)\n(//NS)";
@@ -257,7 +257,7 @@ fn solely_nato_doc_two_portions_conservative_fire() {
         2,
         "S007 conservative-fire path: both bare-NATO portions fire \
          under the current engine because portion rules receive \
-         `ctx.page_context = None`. See the migration trip-wire \
+         `ctx.page_marking = None`. See the migration trip-wire \
          comment above for the snapshot-semantic decision the next \
          engineer must make before changing this assertion. Got {} \
          diagnostic(s)",
@@ -279,12 +279,12 @@ fn solely_nato_single_portion_fires_then_silent_after_fix() {
     // Two-pass coverage:
     //   1. Pass-1 lint sees `(//CTS)` and emits exactly one S007
     //      diagnostic — the conservative-fire path is engaged
-    //      because `ctx.page_context = None` today.
+    //      because `ctx.page_marking = None` today.
     //   2. Applying the S007 fix produces `(//CTS//REL TO USA,
     //      NATO)`, which already covers `{USA, NATO}`. Pass-2 lint
     //      over the post-fix bytes silences S007 (the coverage
     //      check `has_usa && has_nato` short-circuits before the
-    //      page_context branch). This is the convergence guarantee
+    //      page_marking branch). This is the convergence guarantee
     //      a future engine migration that flips the conservative
     //      path also has to preserve; pinning it here documents
     //      the property independent of the carve-out's plumbing.

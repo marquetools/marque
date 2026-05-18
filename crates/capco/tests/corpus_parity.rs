@@ -211,7 +211,7 @@ fn rule_count_reflects_registration_changes() {
     // carry `REL TO USA, NATO` per CAPCO-2016 §H.7 p127 Notional
     // Example 2. Suggest-channel severity; users can opt up via
     // `[rules] S007 = "warn"`. The solely-NATO-document case is
-    // carved out via `PageContext::is_solely_nato_classified`.
+    // carved out via `ProjectedMarking::is_solely_nato_classified`.
     // Net delta: +1. Final: 37 + 1 = 38.
     //
     // Issue #407 / PR #491: added `BareCanonicalCompoundRule` (E067)
