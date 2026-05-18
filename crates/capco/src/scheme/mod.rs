@@ -335,7 +335,8 @@ pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares
 // NNPI — §H.8 p134 does not enumerate the token, and elevating the
 // bridge phrase to a citation would constitute citation drift per
 // Constitution VIII. For the closure-rule wiring see
-// `marque-capco::scheme::closure::CLOSURE_NOFORN_NON_IC_DISSEM`.
+// `crates/capco/src/scheme/closure.rs` — the row whose `name` field
+// is `"capco/noforn-if-non-ic-controls"`.
 // Closes issue #407. verified 2026-05-16.
 pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 

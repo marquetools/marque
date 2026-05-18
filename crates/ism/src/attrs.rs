@@ -1289,8 +1289,8 @@ pub enum NonIcDissem {
     /// (the IC cannot presume releasability or RELIDO-suitability of
     /// information governed by policy regimes outside IC marking
     /// authority); the closure-rule wiring lives in
-    /// `marque-capco::scheme::closure` under the
-    /// `CLOSURE_NOFORN_NON_IC_DISSEM` row.
+    /// `crates/capco/src/scheme/closure.rs` under the row whose
+    /// `name` field is `"capco/noforn-if-non-ic-controls"`.
     Nnpi,
 }
 

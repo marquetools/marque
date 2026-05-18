@@ -252,12 +252,11 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 .non_ic_dissem
                 .iter()
                 .any(|d| matches!(d, marque_ism::NonIcDissem::Ssi)),
-            // PR 4b-C Commit 1 — NNPI scans attrs.non_ic_dissem for the
-            // Nnpi variant. Closes issue #407. The CAPCO-2016 manual
-            // does not explicitly enumerate NNPI; the in-tree authority
-            // is `crates/ism/src/attrs.rs:1326` (NNPI banner-roll-up
-            // doc-comment, propagates regardless of classification).
-            // verified 2026-05-16 against the marque-ism attrs.rs entry.
+            // NNPI scans attrs.non_ic_dissem for the Nnpi variant.
+            // The CAPCO-2016 manual does not explicitly enumerate NNPI;
+            // the in-tree authority is the `NonIcDissem::Nnpi` variant
+            // doc-comment in `crates/ism/src/attrs.rs` (NNPI banner-roll-up
+            // semantic — propagates regardless of classification).
             TOK_NNPI => attrs
                 .non_ic_dissem
                 .iter()
