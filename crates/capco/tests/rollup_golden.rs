@@ -139,6 +139,16 @@ fn aea_ucni_strip_on_classified_via_scheme_project() {
         aea.iter().any(|m| matches!(m, AeaMarking::DodUcni)),
         "per-axis AeaSet helper keeps DOD UCNI; aea = {aea:?}"
     );
+    // Copilot R1 suppressed-comment fix: the fixture sets both DOD UCNI
+    // (p1) and DOE UCNI (p2). DOD UCNI lives at §H.6 p116; DOE UCNI
+    // lives at §H.6 p118. The per-axis helper carries no cross-axis
+    // classification gate, so both variants must survive — asymmetric
+    // handling between DOD/DOE UCNI in `AeaSet::from_markings` would
+    // be a real regression a DOD-only assertion couldn't catch.
+    assert!(
+        aea.iter().any(|m| matches!(m, AeaMarking::DoeUcni)),
+        "per-axis AeaSet helper keeps DOE UCNI; aea = {aea:?}"
+    );
 
     // Scheme path applies the declarative strip rows on classified pages.
     let scheme = CapcoScheme::new();

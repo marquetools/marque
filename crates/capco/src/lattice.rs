@@ -4782,39 +4782,66 @@ mod tests {
     }
 
     #[test]
-    fn display_only_block_cross_axis_with_rel_to() {
-        // §D.2 Table 3 row 26 Note: DO portion + REL TO portion
-        // (with REL TO GBR/CAN) — each portion's display permission
-        // is the union; banner DO = intersection minus banner REL TO.
-        // With both portions sharing GBR in their display-permission
-        // sets and banner REL TO = USA/GBR (from REL TO portion),
-        // DO subtracts GBR → empty.
+    fn display_only_block_cross_axis_with_empty_rel_to_keeps_gbr() {
+        // §D.2 Table 3 row 26 Note (no banner REL TO branch):
+        // when the input `rel_to_block` is empty/`Bottom`, the
+        // row-27 subtraction has nothing to subtract — the DO
+        // intersection survives intact.
+        //
+        // Copilot R1 fix: the previous combined test computed
+        // `RelToBlock::from_attrs_iter(portions)` and admitted
+        // an ambiguous outcome ("Lattice{GBR} or Empty are both
+        // acceptable"). That admitted-ambiguity passes even if
+        // a future change silently swaps the variants. Splitting
+        // into two tests with deterministic `rel_to_block` inputs
+        // (`empty()` and the `Lattice {USA,GBR}` construction
+        // below) pins each row-27 branch independently.
         let portions = [
             portion_with_rel_to(Classification::Secret, &["USA", "GBR"]),
             portion_with_display_only(Classification::Secret, &["GBR"]),
         ];
-        let rel_to_block = RelToBlock::from_attrs_iter(&portions);
-        // Note: rel_to_block here is the banner REL TO derived from
-        // the REL TO axis only (REL TO portion has [USA, GBR]; DO
-        // portion has empty REL TO so it falls into Empty per row
-        // 9-ish logic). For this test we manually subtract.
-        let b = DisplayOnlyBlock::from_attrs_iter(&portions, &rel_to_block, false);
-        // The display-permission intersection is {GBR}; banner REL
-        // TO covers GBR; row-27 subtraction → empty.
-        // But also: the REL TO portion's REL TO is non-empty so its
-        // display-permission = {USA, GBR}; DO portion's
-        // display-permission = {GBR}; intersection = {GBR}; minus
-        // USA → {GBR}; minus banner REL TO {USA,GBR} → empty.
-        // OR if RelToBlock from this input is NofornSuperseded/Empty
-        // because the DO portion lacks REL TO → rel_set is empty
-        // → result keeps GBR.
-        // Either outcome is acceptable per the row-27 semantics; we
-        // test that the block constructed is one of the expected
-        // shapes (not Bottom, not NofornSuperseded — those would be
-        // wrong).
+        let b = DisplayOnlyBlock::from_attrs_iter(&portions, &RelToBlock::empty(), false);
+        // With `rel_to_block = Bottom`, row-27 subtraction is a
+        // no-op. The DO intersection is {GBR} (REL TO portion
+        // contributes display-permission {USA,GBR}; DO portion
+        // contributes {GBR}; intersection {GBR}; USA stripped per
+        // §H.8 p163 USA-subtraction). Result: `Lattice {GBR}`.
+        let codes = b.to_vec();
+        assert_eq!(
+            codes,
+            vec![CountryCode::GBR],
+            "empty rel_to_block leaves DO intersection {{GBR}} intact, \
+             got {b:?}"
+        );
+    }
+
+    #[test]
+    fn display_only_block_cross_axis_with_banner_rel_to_empties_gbr() {
+        // §D.2 Table 3 row 27: when banner REL TO covers the same
+        // countries as the DO intersection, row-27 subtraction
+        // empties the DO list — the explicit REL TO authorization
+        // makes the explicit DISPLAY ONLY redundant.
+        //
+        // Copilot R1 fix: companion to
+        // `display_only_block_cross_axis_with_empty_rel_to_keeps_gbr`
+        // pinning the non-empty banner REL TO branch. Construct
+        // `RelToBlock::Lattice {USA,GBR}` directly inside the crate
+        // (the variant is `#[non_exhaustive]` for external callers
+        // only) so the row-27 subtraction has a deterministic input.
+        let portions = [
+            portion_with_rel_to(Classification::Secret, &["USA", "GBR"]),
+            portion_with_display_only(Classification::Secret, &["GBR"]),
+        ];
+        let banner_rel_to = RelToBlock::Lattice {
+            countries: [CountryCode::USA, CountryCode::GBR].into_iter().collect(),
+        };
+        let b = DisplayOnlyBlock::from_attrs_iter(&portions, &banner_rel_to, false);
+        // DO intersection {GBR} minus banner REL TO {USA,GBR} = {}
+        // → `Empty` (row 9-ish absorbing, distinct from `Bottom`).
         assert!(
-            !matches!(b, DisplayOnlyBlock::Bottom) && !b.is_noforn_superseded(),
-            "expected Lattice or Empty, got {b:?}"
+            matches!(b, DisplayOnlyBlock::Empty),
+            "row-27 subtraction over {{USA,GBR}} empties the DO list, \
+             expected Empty, got {b:?}"
         );
     }
 

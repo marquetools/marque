@@ -1342,14 +1342,13 @@ pub fn generate_cab_native(
     // composes the per-axis lattice projection of which classification
     // is one component; the predicate is the same — "effective
     // classification level above Unclassified."
-    let projected = if markings.is_empty() {
-        // No portions → no classification, treat as Unclassified.
-        // (Same fall-through behavior as the pre-PR-4b-E
-        // `page_context.is_classified()` over an empty accumulator.)
+    // No portions → no classification, treat as Unclassified.
+    // (Same fall-through behavior as the pre-PR-4b-E
+    // `page_context.is_classified()` over an empty accumulator.)
+    if markings.is_empty() {
         return Ok(String::new());
-    } else {
-        scheme.project(marque_scheme::Scope::Page, &markings)
-    };
+    }
+    let projected = scheme.project(marque_scheme::Scope::Page, &markings);
     let is_classified = projected
         .0
         .classification
