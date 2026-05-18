@@ -553,8 +553,8 @@ impl<T: Ord + Clone> MeetSemilattice for ModeSet<T> {
 ///
 /// Join picks the lexicographically greater string (which is also the
 /// chronologically later date under that encoding — same rationale as
-/// `PageContext::expected_declassify_on`). Bottom is the absent date
-/// (`None`).
+/// `marque_capco::lattice::DeclassifyOnLattice::from_attrs_iter`).
+/// Bottom is the absent date (`None`).
 ///
 /// # Validation
 ///

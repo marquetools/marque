@@ -2,16 +2,28 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-B Commit 8 — PageContext-vs-lattice parity gate (006 T112).
+//! PR 4b-E renamed parity gate — lattice-vs-scheme byte-identity
+//! (post-PageContext-deletion).
 //!
-//! Synthetic-fixture parity matrix comparing the post-fix PageContext
-//! path (`PageContext::add_portion` + `page_context_to_attrs`) against
-//! the new lattice path (`CapcoMarking::join_via_lattice`).
+//! History: this file landed in PR 4b-B Commit 8 (006 T112) as
+//! `page_context_lattice_parity.rs`, a THREE-path comparison
+//! (`PageContext::expected_*` vs `join_via_lattice` vs
+//! `CapcoScheme::project(Scope::Page, ...)`). PR 4b-E deleted the
+//! `PageContext::expected_*` accessor surface entirely; this PR
+//! renamed the file to `lattice_vs_scheme_parity.rs` to reflect
+//! the surviving TWO-path comparison.
+//!
+//! Synthetic-fixture parity matrix comparing the per-axis lattice
+//! path (`project_via_lattice` = `CapcoMarking::join_via_lattice`)
+//! against the full scheme pipeline
+//! (`project_via_scheme` = `CapcoScheme::project(Scope::Page, ...)`,
+//! which composes per-axis lattices then runs the declarative
+//! PageRewrite catalog).
 //!
 //! The two paths MUST produce byte-identical `CanonicalAttrs` on every
 //! axis EXCEPT the deliberate divergences documented inline below.
-//! Each divergence carries a `§X.Y pNN` citation re-verified
-//! 2026-05-15 against `crates/capco/docs/CAPCO-2016.md`.
+//! Each divergence carries a `§X.Y pNN` citation re-verified against
+//! `crates/capco/docs/CAPCO-2016.md`.
 //!
 //! ## Why synthetic instead of corpus fixtures
 //!
@@ -20,19 +32,34 @@
 //! parity gate's job is to compare TWO projection paths from
 //! pre-parsed per-portion `CanonicalAttrs` values. Synthetic
 //! `CanonicalAttrs` fixtures hand-built in this file cover the
-//! specific axes PR 4b-B touches with full control over the input
+//! specific axes the PR touches with full control over the input
 //! shape; the strict-recognizer is orthogonal to the parity claim.
 //!
-//! PR 4b-D will widen this gate to corpus fixtures when
-//! `CapcoScheme::project(Scope::Page, ...)` flips to use the lattice
-//! path.
+//! ## DISSEM_US divergence (hoisted rationale)
+//!
+//! 12 fixtures in this file declare `&["dissem_us"]` as a deliberate
+//! divergence between `project_via_lattice` and `project_via_scheme`.
+//! Per Copilot R2 (PR #539): duplicating the same 7-line rationale
+//! inline at 12 call-sites is a citation-drift hazard — Constitution
+//! VIII "propagation requires re-verification" applies. The canonical
+//! rationale lives here; each fixture-site comment is one line that
+//! points back.
+//!
+//! **The divergence (single source of truth):** §B.3 Table 2 p21
+//! caveated-classified rule fires on the scheme path's
+//! `CLOSURE_NOFORN_CAVEATED` closure (the input is a classified +
+//! caveated marking — caveat per §B.3 p20 Note covers ORCON /
+//! non-IC dissem / etc.). The per-axis lattice path does not run
+//! closure rules; the expected `dissem_us` divergence is
+//! `lat=[..no Nf], scheme=[..Nf]`. Verified 2026-05-18 against
+//! `crates/capco/docs/CAPCO-2016.md` §B.3 p20 + Table 2 p21.
 
 use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
 use marque_ism::{
     AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl, FgiClassification,
     FgiMarker, ForeignClassification, JointClassification, MarkingClassification,
-    NatoClassification, NonIcDissem, PageContext,
+    NatoClassification, NonIcDissem,
 };
 use marque_scheme::{MarkingScheme as _, Scope};
 
@@ -44,39 +71,12 @@ fn cc(s: &str) -> CountryCode {
     CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
 }
 
-/// Build the PageContext-path projection.
-fn project_via_page_context(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
-    let mut ctx = PageContext::new();
-    for p in portions {
-        ctx.add_portion(p.clone());
-    }
-    let mut out = CanonicalAttrs::default();
-    out.classification = ctx.expected_classification().map(MarkingClassification::Us);
-    out.sci_controls = ctx.expected_sci_controls().into_boxed_slice();
-    out.sci_markings = ctx.expected_sci_markings();
-    out.sar_markings = ctx.expected_sar_marking();
-    out.aea_markings = ctx.expected_aea_markings().into_boxed_slice();
-    out.fgi_marker = ctx.expected_fgi_marker();
-    out.dissem_us = ctx.expected_dissem_us().into_boxed_slice();
-    out.dissem_nato = ctx.expected_dissem_nato().into_boxed_slice();
-    out.rel_to = ctx.expected_rel_to().into_boxed_slice();
-    out.declassify_on = ctx.expected_declassify_on().cloned();
-    out.declass_exemption = ctx.expected_declass_exemption();
-    let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
-    out.non_ic_dissem = non_ic.into_boxed_slice();
-    // PR 4b-D.2: mirror `page_context_to_attrs`' DISPLAY ONLY wiring
-    // so the parity helper matches the production scheme.project
-    // hot-path output. `expected_display_only` already short-circuits
-    // to empty when `needs_nf` is true; mirror the defensive `.clear()`
-    // from `page_context_to_attrs` for the same belt-and-suspenders
-    // semantics. §H.8 p163 + §D.2 Table 3 rows 25-27.
-    let mut display_only_to = ctx.expected_display_only();
-    if needs_nf {
-        display_only_to.clear();
-    }
-    out.display_only_to = display_only_to.into_boxed_slice();
-    out
-}
+// PR 4b-E: `project_via_page_context` retired alongside the
+// `PageContext::expected_*` accessor surface. Post-deletion the
+// gate compares `project_via_lattice` (per-axis lattice composition)
+// against `project_via_scheme` (full pipeline including the
+// PageRewrite catalog). See `lattice_vs_scheme_parity.rs` rename
+// in PR 4b-E Commit 7.
 
 fn project_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
     CapcoMarking::join_via_lattice(portions)
@@ -215,9 +215,11 @@ fn oc_usgov_one_orcon_many_usgov() {
     ];
     assert_byte_identity(
         "oc_usgov_one_orcon_many_usgov",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -233,9 +235,11 @@ fn oc_usgov_many_orcon_one_usgov() {
     ];
     assert_byte_identity(
         "oc_usgov_many_orcon_one_usgov",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -247,9 +251,11 @@ fn oc_usgov_pure_oc() {
     ];
     assert_byte_identity(
         "oc_usgov_pure_oc",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -261,9 +267,11 @@ fn oc_usgov_pure_usgov() {
     ];
     assert_byte_identity(
         "oc_usgov_pure_usgov",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -272,8 +280,8 @@ fn oc_usgov_no_oc_no_usgov() {
     let portions = [portion_us(Classification::Secret)];
     assert_byte_identity(
         "oc_usgov_no_oc_no_usgov",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -286,9 +294,11 @@ fn oc_usgov_mix() {
     ];
     assert_byte_identity(
         "oc_usgov_mix",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -306,8 +316,8 @@ fn relido_unanimous_all_portions() {
     ];
     assert_byte_identity(
         "relido_unanimous_all_portions",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -322,8 +332,8 @@ fn relido_mixed_drops() {
     ];
     assert_byte_identity(
         "relido_mixed_drops",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -338,8 +348,8 @@ fn relido_single_portion_with_relido_drops() {
     ];
     assert_byte_identity(
         "relido_single_portion_with_relido_drops",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -373,8 +383,8 @@ fn relido_plus_nf_noforn_dominates_parity() {
     ];
     assert_byte_identity(
         "relido_plus_nf_noforn_dominates_parity",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -392,8 +402,8 @@ fn rel_to_intersect_common() {
     ];
     assert_byte_identity(
         "rel_to_intersect_common",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -424,8 +434,8 @@ fn rel_to_intersect_empty() {
     ];
     assert_byte_identity(
         "rel_to_intersect_empty",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -438,8 +448,8 @@ fn rel_to_tetragraph_fvey() {
     ];
     assert_byte_identity(
         "rel_to_tetragraph_fvey",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -453,8 +463,8 @@ fn rel_to_usa_first_sort() {
     ];
     assert_byte_identity(
         "rel_to_usa_first_sort",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -464,31 +474,23 @@ fn rel_to_usa_first_sort() {
 // ===========================================================================
 
 #[test]
-fn joint_unanimous_two_portions() {
+fn joint_unanimous_two_portions_converge_to_joint_variant() {
     let portions = [
         portion_joint(Classification::Secret, &["USA", "GBR"]),
         portion_joint(Classification::Secret, &["USA", "GBR"]),
     ];
-    // The PageContext path uses expected_classification (Us-only) and
-    // expected_fgi_marker (folds JOINT non-US producers into FGI).
-    // The lattice path uses JointSet::UnanimousProducers to emit a
-    // proper Joint(_) classification. This is a deliberate divergence
-    // that fixes a §H.3 p56 banner-fidelity gap on the PageContext
-    // path. Once the renderer trait surface lands (PR 5+ Stage 4),
-    // both paths will produce //JOINT SECRET USA, GBR.
+    // PR 4b-E (OQ-7 convergence): the pre-PR-4b-E divergence was
+    // PageContext (Us-only) vs lattice/scheme (Joint(_)).
+    // Post-deletion the PageContext side is gone; both surviving paths
+    // produce `Joint(S, [USA, GBR])` per the §H.3 p56 + §H.3 p57
+    // banner-fidelity reading. CONVERGED. Fixture renamed in PR 4b-E
+    // review fix-up to reflect the post-deletion claim: the lattice
+    // and scheme paths CONVERGE to a `Joint(_)` classification, not
+    // diverge.
     //
-    // PR 4b-D.2 added a third comparison column: `project_via_scheme`.
-    // Post-flip the scheme path goes through `join_via_lattice` so it
-    // agrees with `project_via_lattice` (both produce Joint(_)). The
-    // disagreement is now scheme/lattice vs PageContext, not the
-    // pre-flip "lattice vs both PageContext+scheme" shape.
     // Citation: §H.3 p56 + §H.3 p57.
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
-    // PageContext path: classification = Us(Secret).
-    // Lattice path: classification = Joint(S, [USA, GBR]).
-    // Scheme path (post-PR-4b-D.2 flip): agrees with lattice.
     assert!(
         matches!(lat.classification, Some(MarkingClassification::Joint(_))),
         "lattice should produce Joint classification on unanimous JOINT"
@@ -498,23 +500,10 @@ fn joint_unanimous_two_portions() {
             scheme_proj.classification,
             Some(MarkingClassification::Joint(_))
         ),
-        "PR 4b-D.2 post-flip: scheme.project agrees with the lattice \
-         path (both go through join_via_lattice); \
-         scheme_proj.classification = {:?}",
+        "scheme.project agrees with the lattice path (both go through \
+         join_via_lattice); scheme_proj.classification = {:?}",
         scheme_proj.classification,
     );
-    // PageContext path's known behavior — Us classification at
-    // banner per §H.3 p57 ("JOINT not carried forward in
-    // US documents") — applies here because PageContext doesn't
-    // distinguish pure-JOINT-page from JOINT-with-US-page. The
-    // §H.3 p56 "JOINT [class] [LIST]" banner form is a
-    // pure-JOINT-page concern that PR 4b-B's JointSet correctly
-    // models. Divergence acceptable; the §H.3 p56 + §H.3 p57 line
-    // 1288 citations document the asymmetry.
-    assert!(matches!(
-        pc.classification,
-        Some(MarkingClassification::Us(_))
-    ));
 }
 
 #[test]
@@ -542,9 +531,11 @@ fn joint_mixed_with_us_returns_mixed() {
     ];
     assert_byte_identity(
         "joint_mixed_with_us_returns_mixed",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -566,14 +557,17 @@ fn joint_disunity_two_portions_different_producers() {
         portion_joint(Classification::Secret, &["USA", "GBR"]),
         portion_joint(Classification::Secret, &["USA", "CAN"]),
     ];
-    let pc = project_via_page_context(&portions);
+    // PR 4b-E: PageContext side retired; assert the same invariants
+    // on the lattice and scheme paths. Both must produce Us(Secret)
+    // classification and FGI marker carrying {GBR, CAN}.
     let lat = project_via_lattice(&portions);
+    let scheme_proj = project_via_scheme(&portions);
     assert_eq!(
-        pc.classification,
+        lat.classification,
         Some(MarkingClassification::Us(Classification::Secret))
     );
     assert_eq!(
-        lat.classification,
+        scheme_proj.classification,
         Some(MarkingClassification::Us(Classification::Secret))
     );
     let expected_producers = {
@@ -595,14 +589,14 @@ fn joint_disunity_two_portions_different_producers() {
         }
     };
     assert_eq!(
-        extract_producers(&pc.fgi_marker),
-        expected_producers,
-        "PageContext FGI producer set must be {{CAN, GBR}}"
-    );
-    assert_eq!(
         extract_producers(&lat.fgi_marker),
         expected_producers,
         "Lattice FGI producer set must be {{CAN, GBR}}"
+    );
+    assert_eq!(
+        extract_producers(&scheme_proj.fgi_marker),
+        expected_producers,
+        "scheme.project FGI producer set must be {{CAN, GBR}}"
     );
 }
 
@@ -614,31 +608,24 @@ fn joint_classification_pure_us_no_joint() {
     ];
     assert_byte_identity(
         "joint_classification_pure_us_no_joint",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
 
 #[test]
-fn joint_single_portion_no_us() {
-    // A solitary JOINT portion (pure-JOINT page). The lattice
-    // path's JointSet::UnanimousProducers fires and produces
-    // Joint(_) classification. The PageContext path produces
-    // Us(_) per its existing semantic. Documented divergence per
-    // §H.3 p56.
-    //
-    // PR 4b-D.2 third comparison: `project_via_scheme` agrees with
-    // the lattice path (both go through join_via_lattice). The
-    // divergence is now scheme/lattice vs PageContext.
+fn joint_single_portion_no_us_converge_to_joint_variant() {
+    // A solitary JOINT portion (pure-JOINT page). Both surviving
+    // paths produce Joint(_) classification per §H.3 p56
+    // banner-fidelity. The pre-PR-4b-E PageContext side was the
+    // divergent path; OQ-7 convergence achieved post-deletion.
+    // Fixture renamed in PR 4b-E review fix-up to reflect the
+    // post-deletion claim: the lattice and scheme paths CONVERGE
+    // to a `Joint(_)` classification, not diverge.
     let portions = [portion_joint(Classification::Secret, &["USA", "GBR"])];
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
-    assert!(matches!(
-        pc.classification,
-        Some(MarkingClassification::Us(_))
-    ));
     assert!(matches!(
         lat.classification,
         Some(MarkingClassification::Joint(_))
@@ -648,8 +635,8 @@ fn joint_single_portion_no_us() {
             scheme_proj.classification,
             Some(MarkingClassification::Joint(_))
         ),
-        "PR 4b-D.2 post-flip: scheme.project agrees with the lattice \
-         path; scheme_proj.classification = {:?}",
+        "scheme.project agrees with the lattice path; \
+         scheme_proj.classification = {:?}",
         scheme_proj.classification,
     );
 }
@@ -667,8 +654,8 @@ fn classification_max_promotes() {
     ];
     assert_byte_identity(
         "classification_max_promotes",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -678,8 +665,8 @@ fn classification_single_portion() {
     let portions = [portion_us(Classification::Secret)];
     assert_byte_identity(
         "classification_single_portion",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -699,8 +686,8 @@ fn noforn_clears_rel_to() {
     ];
     assert_byte_identity(
         "noforn_clears_rel_to",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -718,17 +705,15 @@ fn nodis_clears_rel_to() {
         portion_with_rel_to(Classification::Secret, &["USA", "GBR"]),
         nodis_portion,
     ];
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
-    // Both paths: rel_to is cleared by the NODIS supersession.
-    assert!(pc.rel_to.is_empty());
+    let scheme_proj = project_via_scheme(&portions);
+    // Both surviving paths: rel_to is cleared by the NODIS
+    // supersession; NOFORN is injected per §H.9 p174 ("NOFORN would
+    // convey in the banner line").
     assert!(lat.rel_to.is_empty());
-    // PageContext path: needs_nf is true → NOFORN injected into
-    // expected_dissem_us. Lattice path: NofornSuperseded fires →
-    // NOFORN injected into the lattice's dissem_us output. Both
-    // should contain NOFORN.
-    assert!(pc.dissem_us.contains(&DissemControl::Nf));
+    assert!(scheme_proj.rel_to.is_empty());
     assert!(lat.dissem_us.contains(&DissemControl::Nf));
+    assert!(scheme_proj.dissem_us.contains(&DissemControl::Nf));
 }
 
 // ===========================================================================
@@ -737,24 +722,12 @@ fn nodis_clears_rel_to() {
 
 #[test]
 fn fouo_classified_scheme_project_strips_fouo() {
-    // G-1 retarget (PR 4b-D.2): pre-flip this fixture was named
-    // `fouo_classified_pagecontext_and_lattice_both_keep_fouo_pending_pr_4b_d`
-    // and asserted that both per-axis helpers (project_via_page_context
-    // + project_via_lattice) kept FOUO on classified pages because the
-    // §H.8 p134 strip lived only in `scheme.project`'s page-rewrite
-    // loop. PR 4b-D.2 flipped the hot path to use `scheme.project`;
-    // this fixture now asserts the scheme-side strip directly via the
-    // `project_via_scheme` helper.
-    //
-    // Post-flip semantic: on a classified+FOUO page, the
+    // PR 4b-E: PageContext side retired; the post-flip asymmetry is
+    // now between the per-axis lattice helper (keeps FOUO — the
+    // DissemSet's BTreeSet union doesn't apply classification-gated
+    // strips) and the scheme path (strips FOUO via the
     // `capco/classification-evicts-fouo` + `capco/fouo-evicted-by-classified`
-    // PageRewrites fire through `scheme.project(Scope::Page, ...)` and
-    // strip FOUO from dissem_us. The per-axis helpers
-    // (project_via_page_context + project_via_lattice) still produce
-    // FOUO-present output because they bypass the page-rewrite loop —
-    // that asymmetry is the documented post-flip parity-direction
-    // inversion (the lattice/PageContext composition and the scheme
-    // projection now diverge on the strip-rule axes).
+    // PageRewrites).
     //
     // Citation: §H.8 p134 FOUO Precedence Rules for Banner Line
     // Guidance (verified 2026-05-17 against
@@ -763,16 +736,9 @@ fn fouo_classified_scheme_project_strips_fouo() {
         Classification::Secret,
         &[DissemControl::Fouo],
     )];
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
 
-    assert!(
-        pc.dissem_us.contains(&DissemControl::Fouo),
-        "Per-axis PageContext helper keeps FOUO (PageRewrite catalog is \
-         not invoked by this helper); pc.dissem_us = {:?}",
-        pc.dissem_us,
-    );
     assert!(
         lat.dissem_us.contains(&DissemControl::Fouo),
         "Per-axis lattice helper keeps FOUO (DissemSet does not apply \
@@ -781,9 +747,8 @@ fn fouo_classified_scheme_project_strips_fouo() {
     );
     assert!(
         !scheme_proj.dissem_us.contains(&DissemControl::Fouo),
-        "PR 4b-D.2 hot-path flip: `scheme.project(Scope::Page, ...)` \
-         strips FOUO from dissem_us on classified pages via the \
-         `capco/classification-evicts-fouo` + \
+        "scheme.project(Scope::Page, ...) strips FOUO from dissem_us on \
+         classified pages via the `capco/classification-evicts-fouo` + \
          `capco/fouo-evicted-by-classified` PageRewrites \
          (§H.8 p134). scheme_proj.dissem_us = {:?}",
         scheme_proj.dissem_us,
@@ -816,18 +781,9 @@ fn aea_ucni_classified_scheme_project_strips_and_promotes_noforn() {
     let mut p = portion_us(Classification::Secret);
     p.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
     let portions = [p];
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
 
-    assert!(
-        pc.aea_markings
-            .iter()
-            .any(|m| matches!(m, AeaMarking::DodUcni)),
-        "Per-axis PageContext helper keeps DOD UCNI (PageRewrite catalog \
-         is not invoked); pc.aea_markings = {:?}",
-        pc.aea_markings,
-    );
     assert!(
         lat.aea_markings
             .iter()
@@ -841,16 +797,16 @@ fn aea_ucni_classified_scheme_project_strips_and_promotes_noforn() {
             .aea_markings
             .iter()
             .any(|m| matches!(m, AeaMarking::DodUcni)),
-        "PR 4b-D.2 hot-path flip: `scheme.project(Scope::Page, ...)` \
-         strips DOD UCNI from aea_markings on classified pages via \
+        "scheme.project(Scope::Page, ...) strips DOD UCNI from \
+         aea_markings on classified pages via \
          `capco/dod-ucni-evicted-by-classified` (§H.6 p116); \
          scheme_proj.aea_markings = {:?}",
         scheme_proj.aea_markings,
     );
     assert!(
         scheme_proj.dissem_us.contains(&DissemControl::Nf),
-        "PR 4b-D.2 hot-path flip: `scheme.project(Scope::Page, ...)` \
-         promotes NOFORN into dissem_us on classified+UCNI pages via \
+        "scheme.project(Scope::Page, ...) promotes NOFORN into dissem_us \
+         on classified+UCNI pages via \
          `capco/dod-ucni-promotes-noforn-when-classified` (§H.6 p116); \
          scheme_proj.dissem_us = {:?}",
         scheme_proj.dissem_us,
@@ -858,37 +814,25 @@ fn aea_ucni_classified_scheme_project_strips_and_promotes_noforn() {
 }
 
 #[test]
-fn pure_nato_lattice_vs_pagecontext_diverges() {
-    // G-3 (PR 4b-B follow-up) documented divergence: a SOLELY-NATO
-    // page (no US portion). PageContext::expected_classification
-    // always returns `Us(_)` (it flattens variants); the lattice
-    // path preserves the `Nato(_)` variant per §H.7 pp123-125
-    // reciprocal normalization, which is "Us-equivalent at portion-
-    // parse time when ANY US portion is present, but the non-US
-    // variant survives at banner when the page has no US
-    // contribution."
-    //
-    // G-3 sharper framing: when a page has even one US portion in
-    // scope, the lattice path now flattens NATO/FGI to
-    // `Us(effective_level)` (matching PageContext), so the
-    // divergence is scoped to truly solely-non-US pages.
-    //
-    // PR 4b-D.2 third comparison: `project_via_scheme` goes through
-    // join_via_lattice and agrees with the lattice path (both
-    // preserve Nato(_) on solely-NATO pages). Disagreement is now
-    // scheme/lattice vs PageContext.
+fn pure_nato_both_paths_preserve_nato_variant() {
+    // PR 4b-E (OQ-7 convergence): pre-PR-4b-E G-3 divergence —
+    // PageContext flattens NATO to Us(_); lattice/scheme preserve
+    // Nato(_). Post-deletion the PageContext side is gone; both
+    // surviving paths preserve `Nato(_)` per §H.7 pp123-125
+    // reciprocal-raise (the rule applies only when a US portion is
+    // in scope; pure-NATO pages preserve the foreign variant).
+    // CONVERGED — file renamed to `lattice_vs_scheme_parity.rs` in
+    // PR 4b-E Commit 7; fixture renamed in PR 4b-E review fix-up
+    // (former name `pure_nato_lattice_vs_pagecontext_diverges` was
+    // stale: the PageContext side is deleted, and the post-deletion
+    // claim is that both surviving paths PRESERVE `Nato(_)`).
     //
     // Citation: §H.7 pp123-125 (reciprocal-raise rule).
     let mut nato_portion = CanonicalAttrs::default();
     nato_portion.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
     let portions = [nato_portion];
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
-    assert!(
-        matches!(pc.classification, Some(MarkingClassification::Us(_))),
-        "PageContext flattens non-US to Us(_) at banner"
-    );
     assert!(
         matches!(lat.classification, Some(MarkingClassification::Nato(_))),
         "Lattice preserves Nato variant on solely-NATO page per §H.7 pp123-125"
@@ -898,8 +842,8 @@ fn pure_nato_lattice_vs_pagecontext_diverges() {
             scheme_proj.classification,
             Some(MarkingClassification::Nato(_))
         ),
-        "PR 4b-D.2 post-flip: scheme.project agrees with the lattice \
-         path on solely-NATO; scheme_proj.classification = {:?}",
+        "scheme.project agrees with the lattice path on solely-NATO; \
+         scheme_proj.classification = {:?}",
         scheme_proj.classification,
     );
 }
@@ -918,9 +862,11 @@ fn mixed_us_plus_nato_lattice_flattens_to_us() {
     let portions = [portion_us(Classification::Secret), nato_portion];
     assert_byte_identity(
         "mixed_us_plus_nato_lattice_flattens_to_us",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -941,20 +887,23 @@ fn classified_sbu_nf_injects_noforn_and_clears_rel_to() {
         portion_with_rel_to(Classification::Secret, &["USA", "GBR"]),
         sbunf,
     ];
-    let pc = project_via_page_context(&portions);
     let lat = project_via_lattice(&portions);
-    // Both paths inject NOFORN.
-    assert!(
-        pc.dissem_us.contains(&DissemControl::Nf),
-        "PageContext injects NF"
-    );
+    let scheme_proj = project_via_scheme(&portions);
+    // Both surviving paths inject NOFORN.
     assert!(
         lat.dissem_us.contains(&DissemControl::Nf),
         "Lattice injects NF (G-6)"
     );
-    // Both paths clear REL TO.
-    assert!(pc.rel_to.is_empty(), "PageContext clears REL TO");
+    assert!(
+        scheme_proj.dissem_us.contains(&DissemControl::Nf),
+        "scheme.project injects NF"
+    );
+    // Both surviving paths clear REL TO.
     assert!(lat.rel_to.is_empty(), "Lattice clears REL TO (G-6)");
+    assert!(
+        scheme_proj.rel_to.is_empty(),
+        "scheme.project clears REL TO"
+    );
 }
 
 #[test]
@@ -1134,8 +1083,8 @@ fn conflict_classification_flattens_to_us() {
     )];
     assert_byte_identity(
         "conflict_classification_flattens_to_us",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -1156,9 +1105,11 @@ fn conflict_plus_nato_flattens_to_us() {
     ];
     assert_byte_identity(
         "conflict_plus_nato_flattens_to_us",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -1181,8 +1132,8 @@ fn conflict_plus_us_flattens_to_us() {
     ];
     assert_byte_identity(
         "conflict_plus_us_flattens_to_us",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -1238,9 +1189,11 @@ fn joint_plus_nato_same_level_flattens_to_us() {
     ];
     assert_byte_identity(
         "joint_plus_nato_same_level_flattens_to_us",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -1261,9 +1214,11 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
     ];
     assert_byte_identity(
         "joint_plus_fgi_same_level_flattens_to_us",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -1293,7 +1248,9 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
 // `Some(Acknowledged{[NATO]})` — the latter is double-marking.
 //
 // This is a documented divergence in the existing parity gate
-// (`pure_nato_lattice_vs_pagecontext_diverges`). The new test below
+// (`pure_nato_both_paths_preserve_nato_variant` — renamed from
+// `pure_nato_lattice_vs_pagecontext_diverges` in PR 4b-E review
+// fix-up). The new test below
 // asserts the lattice does NOT double-mark — the solo-non-US case
 // keeps the foreign source on the classification axis and leaves
 // `fgi_marker` empty on solely-non-US pages where FGI semantics
@@ -1307,8 +1264,10 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
 #[test]
 fn solely_nato_does_not_double_mark_fgi() {
     // G-4b: pure-NATO page. Lattice path correctly preserves the
-    // Nato(_) classification per §H.7 pp123-125 (documented divergence
-    // — see `pure_nato_lattice_vs_pagecontext_diverges`). The FGI
+    // Nato(_) classification per §H.7 pp123-125 (see the
+    // `pure_nato_both_paths_preserve_nato_variant` parity fixture —
+    // renamed from `pure_nato_lattice_vs_pagecontext_diverges` in
+    // PR 4b-E review fix-up). The FGI
     // axis must NOT additionally receive an Acknowledged marker for
     // the NATO source — that information is already on the
     // classification axis.
@@ -1729,9 +1688,11 @@ fn joint_missing_usa_parity_with_pagecontext() {
     let portions = [portion_joint(Classification::Secret, &["GBR"])];
     assert_byte_identity(
         "joint_missing_usa_parity_with_pagecontext",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -1785,8 +1746,8 @@ fn cv6_gap_b_empty_portion_list_yields_lattice_bottom() {
     let portions: [CanonicalAttrs; 0] = [];
     assert_byte_identity(
         "cv6_gap_b_empty_portion_list",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -1818,7 +1779,8 @@ fn cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page() {
     //
     // Note: a SOLELY-JOINT page with an explicit FGI marker
     // (single-portion variant) is the documented divergence shape
-    // tracked by `joint_unanimous_two_portions` / G-4 — the lattice
+    // tracked by `joint_unanimous_two_portions_converge_to_joint_variant`
+    // / G-4 — the lattice
     // intentionally preserves the JOINT classification on the
     // classification axis there, while PageContext flattens and
     // double-marks producers as FGI. The Mixed-page fixture here
@@ -1833,9 +1795,11 @@ fn cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page() {
     let portions = [joint_with_fgi, portion_us(Classification::Secret)];
     assert_byte_identity(
         "cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        &[],
+        &project_via_scheme(&portions),
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence (hoisted rationale)"
+        // for the §B.3 Table 2 p21 + §B.3 p20 Note caveated-classified citation.
+        &["dissem_us"],
     );
 }
 
@@ -1870,7 +1834,8 @@ fn cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page() {
     // `capco/noforn-conflicts-rel-to`).
     //
     // Note: a SOLELY-JOINT page with NOFORN (single-portion variant)
-    // hits the documented divergence at `joint_unanimous_two_portions`
+    // hits the documented divergence at
+    // `joint_unanimous_two_portions_converge_to_joint_variant`
     // / G-4 — the lattice preserves the JOINT classification, and
     // PageContext flattens to Us + migrates JOINT producers to FGI.
     // Mixed-page fixture sidesteps that.
@@ -1888,8 +1853,8 @@ fn cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page() {
     let portions = [joint_with_nf, portion_us(Classification::Secret)];
     assert_byte_identity(
         "cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         &[],
     );
 }
@@ -1924,8 +1889,8 @@ fn display_only_single_portion_parity() {
     let portions = [p];
     assert_byte_identity(
         "display_only_single_portion_parity",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
         // Phase-2 deferred: both produce Box<[]>; no divergence today.
         // When Phase 2 lands, remove the empty divergence list and add
         // a row checking the non-empty result.
@@ -1935,26 +1900,23 @@ fn display_only_single_portion_parity() {
 
 #[test]
 fn display_only_two_portions_disjoint_lists_parity() {
-    // DOCUMENTED DIVERGENCE (post-DISPLAY-ONLY-Phase-2):
     // §D.2 p28-30 Table 3 row 20: two DISPLAY ONLY portions with
     // disjoint [LIST]s → NOFORN at the banner.
     //
-    // Pre-DISPLAY-ONLY-Phase-2 both paths produced empty
-    // `display_only_to` and no NF injection (deferred). Staging
-    // landed PR #449 (DISPLAY ONLY Phase 2 banner roll-up) which
-    // adds the §D.2 row 20 NF injection to PageContext via the
-    // `capco/noforn-clears-fdr-family` page-rewrite. The lattice
-    // path (`CapcoMarking::join_via_lattice`) does NOT yet implement
-    // DISPLAY ONLY axis aggregation, so it skips the corresponding
-    // NF injection — the divergence is `pc=[Nf], lat=[]` on
-    // `dissem_us`.
+    // PR 4b-E note: pre-deletion the pc-vs-lat comparison expected
+    // PC=[Nf], lat=[]. Post-deletion the comparison is lat-vs-scheme;
+    // neither path currently injects NF at the dissem layer when the
+    // DisplayOnlyBlock collapses to Empty (§D.2 row 20). The
+    // DisplayOnlyBlock correctly produces empty DO output and the
+    // PageRewrite catalog does not (yet) declare a row that fires NF
+    // when DO collapses to Empty. Both paths produce `dissem_us=[]`
+    // — convergent at the wrong value relative to §D.2 row 20. This
+    // is a real lattice/scheme gap (NF should be injected here per
+    // §D.2 row 20) but it's the same gap on both paths, so the
+    // parity assertion is satisfied. Issue tracked for follow-up
+    // PR; not blocking PR 4b-E.
     //
-    // This is a TEMPORARY divergence — lattice path catches up when
-    // PR 4b-C/4b-D adds the DISPLAY ONLY axis aggregator + the
-    // mirrored NF injection. Tracked alongside issue #461
-    // (Phase::PageFinalization scope).
-    //
-    // Citation: §D.2 p28-30 Table 3 row 20 (verified 2026-05-16
+    // Citation: §D.2 p28-30 Table 3 row 20 (verified 2026-05-18
     // against CAPCO-2016.md).
     let mut p1 = portion_us(Classification::Secret);
     p1.display_only_to = vec![cc("IRQ")].into_boxed_slice();
@@ -1963,11 +1925,11 @@ fn display_only_two_portions_disjoint_lists_parity() {
     let portions = [p1, p2];
     assert_byte_identity(
         "display_only_two_portions_disjoint_lists_parity",
-        &project_via_page_context(&portions),
         &project_via_lattice(&portions),
-        // Lattice path lags PageContext for DISPLAY ONLY §D.2 row 20
-        // NF injection — see fixture doc above.
-        &["dissem_us"],
+        &project_via_scheme(&portions),
+        // Both paths converge to `dissem_us=[]`; the §D.2 row 20 NF
+        // injection is a known follow-up gap (same on both paths).
+        &[],
     );
 }
 

@@ -2490,16 +2490,30 @@ fn analyze_uncertain_reduction(
     if any_portion_noforn {
         return Vec::new();
     }
-    let (_expected_non_ic, needs_nf) = page.expected_non_ic_dissem();
+    // PR 4b-E: migrated from `page.expected_non_ic_dissem()` (the
+    // retired PageContext method) to the lattice-native
+    // `NonIcDissemSet::from_attrs_iter` constructor. Same
+    // SBU-NF/LES-NF/NODIS/EXDIS NF-injection semantics
+    // (§H.9 p172/p174/p178/p185); the second tuple element
+    // `needs_nf` is the same flag.
+    let needs_nf = crate::lattice::NonIcDissemSet::from_attrs_iter(page.portions()).needs_nf();
     if needs_nf {
         return Vec::new();
     }
 
-    // The atom-semantics intersection. `PageContext::expected_rel_to`
-    // already does tetragraph expansion before intersection and
-    // returns the result USA-first then alphabetical (per CAPCO
-    // §H.8). We project to a string set for set-algebra.
-    let expected = page.expected_rel_to();
+    // The atom-semantics intersection. The lattice-native
+    // `RelToBlock::from_attrs_iter` does tetragraph expansion before
+    // intersection and `into_boxed_slice` returns the result USA-first
+    // then alphabetical per §H.8 p150-151. We project to a string set
+    // for set-algebra.
+    //
+    // PR 4b-E: migrated from `page.expected_rel_to()` (the retired
+    // PageContext method). The NOFORN-dominates / NODIS/EXDIS
+    // supersession is encoded as the `NofornSuperseded` arm of
+    // `RelToBlock`; the per-axis bails above already short-circuit
+    // S005 in those cases (so the lattice-side supersession arms
+    // produce the same empty result without redundant work).
+    let expected = crate::lattice::RelToBlock::from_attrs_iter(page.portions()).into_boxed_slice();
     let expected_set: std::collections::BTreeSet<&str> =
         expected.iter().map(|c| c.as_str()).collect();
 
@@ -9024,108 +9038,11 @@ mod tests {
     }
 }
 
-/// Internal test support module — drives the parser and rules directly,
-/// without depending on the engine crate. This avoids a circular dependency
-/// (`marque-capco` is below `marque-engine` in the workspace graph).
-///
-/// `pub(crate)` so sibling rule modules (any future per-cluster module)
-/// can share the same test harness rather than duplicating the parser-
-/// driving boilerplate. Gated on `cfg(test)` so it never ships in release
-/// builds.
-// Dead-code allow: the only consumers (inline `mod tests` at line 3628 +
-// retired integration tests) are gated `cfg(any())` pending rewrite per
-// PR 3c.B Commit 10. Lifting the gate brings these functions back into
-// use without further surgery.
-#[allow(dead_code)]
-#[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-pub(crate) mod marque_capco_test_support {
-    use super::{CapcoRuleSet, CapcoScheme};
-    use marque_core::{Parser, Scanner};
-    use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
-    use marque_rules::{Diagnostic, RuleContext, RuleSet};
-    use std::sync::Arc;
-
-    fn run(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
-        let token_set = CapcoTokenSet;
-        let parser = Parser::new(&token_set);
-        let candidates = Scanner::scan(source);
-        let rule_set = CapcoRuleSet::new();
-        let mut out = Vec::new();
-        // Accumulate a PageContext across portions so banner/CAB rules that
-        // read `ctx.page_context` (E031) behave the same here as in the
-        // real engine. Reset on scanner-emitted PageBreak candidates.
-        let mut page_context = PageContext::new();
-        let mut page_context_arc: Option<Arc<PageContext>> = None;
-        for candidate in &candidates {
-            // PageBreak is scanner-emitted; PageFinalization is
-            // engine-synthesized and currently unreachable from
-            // `Scanner::scan`, but we filter both so the test
-            // helper cannot regress silently if a future scanner
-            // enhancement emits the new variant (`MarkingType` is
-            // `#[non_exhaustive]` per issue #461).
-            if matches!(
-                candidate.kind,
-                MarkingType::PageBreak | MarkingType::PageFinalization
-            ) {
-                page_context = PageContext::new();
-                page_context_arc = None;
-                continue;
-            }
-            let Ok(parsed) = parser.parse(candidate, source) else {
-                continue;
-            };
-            // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
-            // PageContext / Rule::check consume CanonicalAttrs.
-            // Test-fixture carve-out per Constitution V Principle V — the
-            // adapter is invoked here to construct the test input only.
-            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
-            if parsed.kind == MarkingType::Portion {
-                page_context.add_portion(attrs.clone());
-                page_context_arc = None;
-            }
-            let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
-                Some(
-                    page_context_arc
-                        .get_or_insert_with(|| Arc::new(page_context.clone()))
-                        .clone(),
-                )
-            } else {
-                None
-            };
-            // PR 9b (T133): mirror the engine's lazy projection for
-            // the test driver so banner-validation rules reading
-            // `ctx.page_marking` get the same shape they see in
-            // production. Computed each iteration when needed because
-            // this is a small synthetic test loop, not a perf-critical
-            // hot path; the engine caches across consecutive banner
-            // candidates.
-            let ctx_page_marking =
-                if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
-                    Some(Arc::new(page_context.project()))
-                } else {
-                    None
-                };
-            // Test-driver synthetic context; no two-pass fix pipeline
-            // is in play, so the pre-pass-1 cache slot stays `None`.
-            // PR 4b-B 9th-pass follow-up: `RuleContext` is
-            // `#[non_exhaustive]`; cross-crate construction goes
-            // through the `new` + `with_*` builder.
-            let ctx = RuleContext::new(candidate.kind, candidate.span)
-                .with_page_context(ctx_page)
-                .with_page_marking(ctx_page_marking);
-            for rule in rule_set.rules() {
-                out.extend(rule.check(&attrs, &ctx));
-            }
-        }
-        out
-    }
-
-    pub(crate) fn lint_banner(s: &str) -> Vec<Diagnostic<CapcoScheme>> {
-        run(s.as_bytes())
-    }
-
-    pub(crate) fn lint_portion(s: &str) -> Vec<Diagnostic<CapcoScheme>> {
-        run(s.as_bytes())
-    }
-}
+// PR 4b-E (OQ-2): `marque_capco_test_support` module retired. The
+// only consumers were the `#[cfg(any())]`-disabled `mod tests` block
+// at line 5222 (pending the `marque-mvp-3 → marque-1.0`
+// `FixProposal` migration in PR 3c.2) and the historical retired
+// integration tests at the same gate. The module was dead code at
+// the gate level even before this PR; the deletion clears the last
+// PageContext consumer in the rules layer alongside the residue-axis
+// migration in Commit 2.

@@ -14,7 +14,7 @@
 //! `Lattice::join` composed over all portions), then applies the
 //! scheme's `page_rewrites()` in declaration order, then validates
 //! constraints. Declaring the rewrite as *data* — rather than hiding it
-//! inside `PageContext::expected_rel_to` — means tooling (constraint
+//! inside per-axis scheme methods — means tooling (constraint
 //! catalog, scheme-exploration UI, docs generator) can render the
 //! scheme's full aggregation semantics without executing scheme code.
 //!
