@@ -214,33 +214,41 @@ impl ProjectedMarking {
     /// Returns `true` iff every portion on the page is NATO-classified
     /// and no portion contributes Foreign Government Information.
     ///
-    /// This is the post-PR-4b-D.2 successor to
-    /// [`crate::PageContext::is_solely_nato_classified`]. The PageContext
-    /// implementation walks `portions` directly and silently returns
-    /// `false` on post-flip pure-NATO pages because PageContext flattens
-    /// `MarkingClassification::Nato(_)` to `Us(_)` (see the
-    /// `pure_nato_lattice_vs_pagecontext_diverges` parity-gate fixture
-    /// in `crates/capco/tests/page_context_lattice_parity.rs`). Reading
-    /// the lattice-path aggregate directly gives the correct answer.
+    /// This is the `ProjectedMarking`-side predicate consumed by
+    /// `marque-capco`'s S007 rule (`bare-nato-requires-rel-to-usa-nato`)
+    /// to silence the bare-NATO → `REL TO USA, NATO` suggestion on
+    /// documents that are wholly NATO-owned. The legacy
+    /// [`crate::PageContext::is_solely_nato_classified`] returns the same
+    /// boolean on every scenario (it walks `self.portions` directly with
+    /// the same `matches!` pattern); this method is the engine-facing
+    /// successor that consumers migrate to ahead of PR 4b-E retiring the
+    /// `PageContext.expected_*` machinery and consolidating page-aggregate
+    /// reads on `RuleContext.page_marking`.
     ///
-    /// # Invariants relied upon (post-PR-4b-D.2 hot-path flip)
+    /// # Predicate truth conditions
     ///
-    /// The aggregate `classification` and `fgi_marker` shape exactly
-    /// characterizes "solely NATO" because the lattice projection
-    /// composes per-axis as follows:
+    /// - **Pure-NATO page** (e.g., 3× `(//NS)`): `classification` is
+    ///   `Some(MarkingClassification::Nato(_))`, `fgi_marker` is `None`
+    ///   → `true`.
+    /// - **Mixed US + NATO portions**: `classification` is `Some(Us(_))`
+    ///   (the lattice's banner-roll-up of US + NATO in a US-authored
+    ///   document), `fgi_marker` is `None` → `false`.
+    /// - **Mixed JOINT + NATO portions**: `classification` is
+    ///   `Some(Joint(_))` (or higher US after JOINT derivative use) →
+    ///   `false`.
+    /// - **NATO + FGI portions**: `fgi_marker` is `Some(_)` → `false`.
+    /// - **Empty page**: `classification` is `None` → `false`.
     ///
-    /// - Pure-NATO page (all portions bare-NATO): classification is
-    ///   `Some(Nato(_))` (NATO OrdMax), `fgi_marker` is `None` → true.
-    /// - Mixed US + NATO portions: classification reciprocal-raises
-    ///   to `Some(Us(_))` per CAPCO-2016 §H.7 pp123-125 → false.
-    /// - Mixed JOINT + NATO portions: classification collapses to
-    ///   `Some(Joint(_))` (or `Some(Us(_))` after reciprocal-raise) per
-    ///   §H.3 p56 → false.
-    /// - NATO + FGI portions: `fgi_marker` is `Some(_)` → false.
+    /// # Authority
     ///
-    /// Authority: CAPCO-2016 §H.7 pp123-125 (NATO classification
-    /// reciprocity), §H.3 p56 (JOINT grammar), §H.7 p127 (solely-NATO
-    /// REL TO carve-out — alliance ownership implicit).
+    /// The solely-NATO carve-out is derived **by extension** from
+    /// CAPCO-2016 §H.7 p127's Notional Example 2
+    /// (`(//CTS//BOHEMIA//REL TO USA, NATO)`), which establishes
+    /// `REL TO USA, NATO` as the canonical form for NATO content in
+    /// US-authored documents — the marker is unnecessary when the
+    /// entire document is NATO-owned (alliance ownership is implicit).
+    /// The S007 doc-block (`crates/capco/src/rules.rs` —
+    /// `BareNatoRequiresRelToRule`) frames this same extension.
     pub fn is_solely_nato_classified(&self) -> bool {
         matches!(
             self.classification,
@@ -473,7 +481,7 @@ mod tests {
     #[test]
     fn is_solely_nato_classified_false_when_fgi_present() {
         // FgiMarker::acknowledged enforces non-empty list — see
-        // attrs.rs §H.7 p122 (CHK028 / FR-017).
+        // attrs.rs §H.7 p123 (CHK028 / FR-017).
         let fgi = FgiMarker::acknowledged([gbr()]).expect("non-empty list");
         let attrs = CanonicalAttrs {
             classification: Some(MarkingClassification::Nato(NatoClassification::NatoSecret)),
