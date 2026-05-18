@@ -3428,12 +3428,17 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 /// 3. **Solely-NATO doc carve-out**: when `ctx.page_marking` is `Some`
 ///    and `ProjectedMarking::is_solely_nato_classified()` returns `true`,
 ///    every portion on the page is bare NATO and alliance ownership is
-///    implicit — `REL TO USA, NATO` is not needed. When
-///    `page_marking.is_none()` (no pass-1 evidence yet) fire
-///    conservatively; pass-2 re-evaluation silences this case in a
-///    solely-NATO document. Single-portion solely-NATO documents may
-///    see one false-positive that users can silence via
-///    `.marque.toml`. PM decision #2.
+///    implicit — `REL TO USA, NATO` is not needed. **Today this branch
+///    is forward-looking**: `Engine::lint` gates
+///    `with_page_marking(ctx_page_marking)` on
+///    `candidate.kind != MarkingType::Portion && !page_context.is_empty()`,
+///    so portion rules always see `page_marking = None` and the
+///    carve-out is unreachable. S007 fires on every bare-NATO portion
+///    regardless of solely-NATO document status until a future engine
+///    pass plumbs page-level state to portion-rule dispatch
+///    (load-bearing for that migration; see fr048 trip-wire test).
+///    Users in solely-NATO contexts can silence with
+///    `[rules] S007 = "off"` in `.marque.toml`. PM decision #2.
 /// 4. **NOFORN guard**: when this portion carries `DissemControl::Nf`,
 ///    the conflict is owned by the page rewrite
 ///    `capco/noforn-conflicts-rel-to` (declarative constraint in
@@ -3627,10 +3632,13 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
 
         // Clause 3: solely-NATO doc carve-out. When page-marking is
         // populated AND every portion is bare-NATO, alliance ownership
-        // is implicit — silence. When page-marking is `None` (e.g.,
-        // first portion observed; no pass-1 evidence yet) fire
-        // conservatively — a US-classified doc is the dominant case
-        // and pass-2 re-evaluation silences solely-NATO docs.
+        // is implicit — silence. **Today this branch is forward-looking**:
+        // `Engine::lint` does not populate `RuleContext::page_marking`
+        // for `MarkingType::Portion` candidates, so `ctx.page_marking`
+        // is always `None` here and the carve-out is unreachable. S007
+        // fires on every bare-NATO portion regardless of solely-NATO
+        // document status until a future engine pass plumbs page state
+        // to portion-rule dispatch (see fr048 trip-wire test).
         //
         // PR 4b-D.3 (2026-05-18): migrated from `ctx.page_context` to
         // `ctx.page_marking`. Both predicates return identical answers
