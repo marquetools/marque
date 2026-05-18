@@ -47,6 +47,10 @@ name = "fix_10kb"
 harness = false
 name = "recognition_token_heavy"
 
+[[bench]]
+harness = false
+name = "profile_project"
+
 [dependencies]
 aho-corasick = { workspace = true }
 futures = { workspace = true, optional = true }

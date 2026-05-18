@@ -4243,14 +4243,16 @@ fn project_page_marking(
     scheme: &CapcoScheme,
     page_context: &marque_ism::PageContext,
 ) -> marque_ism::ProjectedMarking {
-    let portions: Vec<marque_capco::CapcoMarking> = page_context
-        .portions()
-        .iter()
-        .cloned()
-        .map(marque_capco::CapcoMarking::new)
-        .collect();
-    let projected = scheme.project(marque_scheme::Scope::Page, &portions);
-    marque_ism::ProjectedMarking::from_canonical(projected.0)
+    // PR 4b-D.2 Commit 7 perf optimization: route through
+    // `CapcoScheme::project_from_attrs_slice`, which consumes
+    // `&[CanonicalAttrs]` directly (the shape `PageContext::portions()`
+    // already returns). The trait-level `MarkingScheme::project` would
+    // require wrapping each portion in a `CapcoMarking` and the project
+    // body would then re-extract `.0.clone()` — both round-trips are
+    // pure deep-clone allocation cost on the hot path. The
+    // scheme-specific fast-path skips them.
+    let projected = scheme.project_from_attrs_slice(page_context.portions());
+    marque_ism::ProjectedMarking::from_canonical(projected)
 }
 
 #[allow(clippy::too_many_arguments)]
