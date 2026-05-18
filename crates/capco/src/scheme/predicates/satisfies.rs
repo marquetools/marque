@@ -228,22 +228,30 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
             TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
-            // Issue #524 Phase 3: grammar-shape sentinel firing
-            // only when the marking carries
-            // `MarkingClassification::Us(Classification::Unclassified)`.
-            // Used as a suppressor on `CLOSURE_RELIDO_US_CLASS` to
-            // gate the implicit-RELIDO closure to collateral
-            // classified content (§H.8 p154 carves out unclassified).
-            // The Conflict variant is intentionally NOT matched here
-            // because Conflict carries a US side that is by definition
-            // classified at some level (Conflict requires both US and
-            // foreign classification to be present); a future tightening
-            // could narrow this if needed. Pinned by
-            // `phase3_closure_pin::us_class_excluded_for_unclassified`.
-            TOK_US_UNCLASSIFIED => matches!(
-                &attrs.classification,
-                Some(MarkingClassification::Us(Classification::Unclassified))
-            ),
+            // Issue #524 Phase 3: grammar-shape sentinel firing on
+            // US collateral classification (any of Restricted /
+            // Confidential / Secret / TopSecret). Used as the
+            // trigger for `CLOSURE_RELIDO_US_CLASS` to gate the
+            // implicit-RELIDO closure to collateral classified
+            // content (§H.8 p154 carves out unclassified). Fires
+            // on the Conflict variant whose US side is collateral
+            // classified — `us_classification()` returns the
+            // resolved US side for Conflict. Pinned by
+            // `phase3_closure_pin::us_class_fires_on_collateral_levels`
+            // and `phase3_closure_pin::us_class_excluded_for_unclassified`.
+            //
+            // Why a trigger gate (vs. a suppressor): the trigger
+            // predicate is upward-closed (adding more facts to a
+            // collateral-classified marking doesn't make this stop
+            // firing), preserving closure-operator monotonicity
+            // per the `MarkingScheme::closure` contract. Encoding
+            // "Us is not Unclassified" as a suppressor would have
+            // been anti-monotone in the same way that the broader
+            // "no other dissem" qualifier was (Copilot HIGH on the
+            // Phase 3 PR review).
+            TOK_US_COLLATERAL_CLASSIFIED => attrs
+                .us_classification()
+                .is_some_and(|l| l != Classification::Unclassified),
             // `Conflict` deliberately excluded — see fn doc.
             TOK_NON_US_CLASSIFICATION => matches!(
                 &attrs.classification,

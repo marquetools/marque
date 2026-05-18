@@ -688,143 +688,134 @@ const CLOSURE_RELIDO_SCI: ClosureRule<CapcoScheme> = ClosureRule {
 };
 
 // `RELIDO_US_CLASS_SUPPRESSORS` — the `CLOSURE_RELIDO_US_CLASS`
-// extended suppressor slice.
+// FD&R-dominator suppressor slice.
 //
-// Encodes the "no other dissem" qualifier from `marque-applied.md`
-// Section 4.7.5: "US collateral classification (Restricted /
-// Confidential / Secret / TopSecret, with no other dissem)". The
-// trigger fires on US classification presence; this slice
-// suppresses on any other dissem-axis token, on non-US
-// classification, and on `MarkingClassification::Us(Unclassified)`
-// specifically (per CAPCO-2016 §H.8 p154 carve-out — explicit
-// foreign disclosure and release markings are not required on
-// unclassified information).
+// Encodes the FD&R precedence rule from CAPCO-2016 §D.2 Table 3
+// pp.28-30: an explicit FD&R decision (NOFORN, RELIDO, REL TO,
+// DISPLAY ONLY, EYES) supersedes the implicit-RELIDO default. The
+// slice contains exactly the FD&R dominator set per §H.8 p145.
 //
-// Composition: `FDR_OR_RELIDO_INCOMPAT` minus the per-compartment
-// SCI sentinels (covered by `AnyInCategory(CAT_SCI)` below), plus
-// the category-level suppressors that close the "no other dissem"
-// qualifier, plus `TOK_US_UNCLASSIFIED` for the Unclassified
-// carve-out. The FGI / JOINT / NATO atomic tokens stay listed
-// individually because `AnyInCategory(CAT_NON_US_CLASSIFICATION)`
-// covers the classification-axis case only — the dissem-axis FGI
-// marker (`TOK_FGI_MARKER`, `AnyInCategory(CAT_FGI_MARKER)`) and
-// the JOINT / NATO classification sentinels need direct presence
-// for the case where they live alongside a US classification.
-// `TOK_FGI_MARKER`, `AnyInCategory(CAT_FGI_MARKER)`, and
-// `TOK_FGI_CLASS` overlap (`satisfies_attrs` resolves both marker
-// forms via the same `fgi_marker.is_some() || matches!(Fgi(_))`
-// expression); the three are kept inline because the slice
-// declares the catalog author's intent and because future
-// resolver changes to one entry must not silently change the
-// rule's semantics.
+// **Monotonicity (load-bearing).** Every suppressor in this slice
+// has the `marque-applied.md` Section 4.7.3 case-2 property:
+// "the suppressor either contains the cone's intent or makes the
+// cone inapplicable." All five entries are FD&R dominators that
+// supersede RELIDO via the §H.8 p145 / §D.2 Table 3 supersession
+// overlay — adding any of them to a marking lifts the dissem-axis
+// state to a point at or above {RELIDO} in the SupersessionSet
+// lattice (NOFORN ⊐ RELIDO; REL TO / DISPLAY ONLY / EYES are
+// mutually-exclusive with RELIDO and supersede it in §D.2 Table 3
+// rows 12-17; RELIDO contains RELIDO trivially). This is what
+// keeps `MarkingScheme::closure`'s monotonicity invariant
+// (`m1 ⊑ m2 ⇒ closure(m1) ⊑ closure(m2)`) intact — verified by
+// the `proptest_closure_rejects_non_monotone` harness.
 //
-// Algebraic note (re: `marque-applied.md` Section 4.7.3 case 2):
-// every suppressor either contains the RELIDO cone's intent
-// (explicit FD&R supersedes the implicit default per §D.2 Table 3
-// pp.28-30 FD&R precedence) or makes the cone inapplicable
-// (RELIDO-incompatible foreign-equity markings; non-US
-// classification breaks the US-only trigger premise; other
-// dissem-axis presence violates the "no other dissem" qualifier;
-// `TOK_US_UNCLASSIFIED` breaks the collateral-classified premise
-// per §H.8 p154).
+// **Why "no other dissem" lives in the trigger, not here.** A
+// prior revision of this PR encoded the `marque-applied.md`
+// Section 4.7.5 "no other dissem" qualifier as a set of category-
+// level suppressors (CAT_DISSEM, CAT_NON_IC_DISSEM, CAT_AEA,
+// CAT_SCI, CAT_SAR, CAT_NON_US_CLASSIFICATION) plus a
+// `TOK_US_UNCLASSIFIED` suppressor for the §H.8 p154 carve-out.
+// Copilot review (PR #544 HIGH) correctly flagged this as
+// anti-monotone: adding any other dissem-axis fact to a bare
+// US-Secret marking would suppress the rule, leaving
+// `Cl(y).dissem_us` lacking RELIDO even though `Cl(x).dissem_us`
+// contained it — `Cl(x) ⊑ Cl(y)` would not hold. The redesign
+// moves the gate into the trigger (`TOK_US_COLLATERAL_CLASSIFIED`)
+// and relies on closure composition (Trio 1
+// `CLOSURE_NOFORN_CAVEATED` injects NOFORN on any caveat marker;
+// NOFORN then supersedes RELIDO via `with_noforn_injected`) to
+// produce the correct §B.3 Table 2 p21 semantic on caveated
+// inputs.
 //
-// Conflict-variant note: `TOK_US_CLASSIFIED` fires on the
-// `MarkingClassification::Conflict { us, foreign }` variant
-// (because `attrs.us_classification()` returns the resolved US
-// side for Conflict). `AnyInCategory(CAT_NON_US_CLASSIFICATION)`
-// does NOT fire on Conflict (the resolver explicitly excludes
-// Conflict — see `crates/capco/src/scheme/predicates/satisfies.rs`).
-// `TOK_US_UNCLASSIFIED` does NOT fire on Conflict (matches only
-// the plain `Us(Unclassified)` variant). Result:
-// `CLOSURE_RELIDO_US_CLASS` IS allowed to fire on Conflict
-// markings. This is acceptable because Conflict is a parser-flagged
-// structural error (a single marking declaring both US and non-US
-// classification); the implicit RELIDO addition is downstream of
-// the Conflict diagnostic and harmless. Pinned by
+// **Conflict-variant note.** `TOK_US_COLLATERAL_CLASSIFIED` fires
+// on `MarkingClassification::Conflict { us, foreign }` when the
+// US side is collateral classified, because
+// `attrs.us_classification()` returns the resolved US side. The
+// closure adds RELIDO on Conflict markings whose US side is
+// classified collateral; this is acceptable because Conflict is
+// a parser-flagged structural error condition (a single marking
+// declaring both US and non-US classification), and the implicit
+// RELIDO addition is downstream of the Conflict diagnostic. The
+// foreign-equity side will independently trigger
+// `CLOSURE_NOFORN_CAVEATED` (any FGI / NATO atom in the dissem
+// axis) which injects NOFORN and supersedes the RELIDO via the
+// §H.8 p145 overlay. Pinned by
 // `phase3_closure_pin::us_class_conflict_variant_pin`.
 const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
-    // FD&R dominators (same as `FDR_OR_RELIDO_INCOMPAT`).
+    // FD&R dominators — every entry supersedes RELIDO via the
+    // §D.2 Table 3 pp.28-30 / §H.8 p145 precedence overlay,
+    // satisfying the §4.7.3 case-2 monotonicity property
+    // directly.
     TokenRef::Token(TOK_NOFORN),
     TokenRef::Token(TOK_RELIDO),
     TokenRef::Token(TOK_DISPLAY_ONLY),
     TokenRef::AnyInCategory(CAT_REL_TO),
     TokenRef::Token(TOK_EYES),
-    // Foreign-equity / origination — §H.7 p123 (FGI), §H.3 p56
-    // (JOINT), §G.1 Table 4 p38 + §H.7 p127 (NATO).
-    TokenRef::Token(TOK_FGI_MARKER),
-    TokenRef::AnyInCategory(CAT_FGI_MARKER),
-    TokenRef::Token(TOK_FGI_CLASS),
-    TokenRef::Token(TOK_JOINT),
-    TokenRef::Token(TOK_NATO_CLASS),
-    // "No other dissem" qualifier (`marque-applied.md` Section 4.7.5):
-    // category-level presence of any other dissem-axis token
-    // disqualifies the trigger. `CAT_DISSEM` covers IC dissem
-    // (NOFORN/RELIDO/ORCON/IMCON/DSEN/RSEN/PROPIN/FISA/RAWFISA/FOUO/
-    // DISPLAY_ONLY/EYES + REL TO). `CAT_NON_IC_DISSEM` covers
-    // NODIS / EXDIS / LIMDIS / LES / SBU / SSI / NNPI + the LES-NF /
-    // SBU-NF promoted forms. `CAT_AEA` covers RD / FRD / TFNI /
-    // CNWDI / UCNI / DCNI / ATOMAL. `CAT_SCI` covers every SCI
-    // control system. `CAT_SAR` covers every SAR program.
+    // Per-compartment SCI sentinels (`marque-applied.md`
+    // Section 4.7.5 exclusion list): SI-G / HCS-O / HCS-P[sub] /
+    // TK-BLFH / TK-IDIT / TK-KAND. Each compartment's per-marking
+    // closure row adds NOFORN or ORCON; CAVEATED (Trio 1) then
+    // promotes ORCON → NOFORN (it's in CAVEATED's trigger list).
+    // The composite Kleene fixpoint therefore yields NOFORN
+    // whenever any of these compartments is present, and NOFORN
+    // supersedes RELIDO via §H.8 p145. So although none of these
+    // sentinels directly dominates RELIDO at the same iteration,
+    // their presence guarantees the final-state dissem axis
+    // contains NOFORN ⊐ RELIDO — satisfying the §4.7.3 case-2
+    // "makes the cone inapplicable" clause via closure composition.
     //
-    // `CAT_NON_US_CLASSIFICATION` closes the "US classification"
-    // half of the trigger ('US collateral'): a marking with pure
-    // NATO / JOINT / FGI classification has
-    // `attrs.us_classification() == None`, so `TOK_US_CLASSIFIED`
-    // already won't fire on those. The category-level suppressor is
-    // included as a defensive belt-and-suspenders against future
-    // changes to `us_classification()` semantics, and to make the
-    // "US-only" intent explicit on the surface.
-    TokenRef::AnyInCategory(CAT_DISSEM),
-    TokenRef::AnyInCategory(CAT_NON_IC_DISSEM),
-    TokenRef::AnyInCategory(CAT_AEA),
-    TokenRef::AnyInCategory(CAT_SCI),
-    TokenRef::AnyInCategory(CAT_SAR),
-    TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
-    // Unclassified carve-out per CAPCO-2016 §H.8 p154 ("Explicit
-    // foreign disclosure and release markings are not required on
-    // unclassified information. Follow internal agency procedures
-    // for the use of RELIDO with unclassified information."). The
-    // Trio 2 row therefore fires only on collateral classified
-    // content (Restricted / Confidential / Secret / TopSecret).
-    // Agencies whose internal policy mandates U → RELIDO can opt in
-    // via a future style-rule mechanism tracked as a follow-up.
-    TokenRef::Token(TOK_US_UNCLASSIFIED),
+    // Why this is necessary: SI-G specifically adds ORCON only
+    // (no direct NOFORN). Without suppressing US_CLASS on SI-G,
+    // US_CLASS would fire on iteration 1 and inject RELIDO; RELIDO
+    // would then suppress CAVEATED on iteration 2 (RELIDO is in
+    // FDR_DOMINATORS), preventing the NOFORN injection and leaving
+    // RELIDO in the final state — semantically wrong per §4.7.5.
+    // Suppressing US_CLASS directly on SI-G lets CAVEATED→NOFORN
+    // run in iteration 2 with no RELIDO present to block it.
+    TokenRef::Token(TOK_SI_G),
+    TokenRef::Token(TOK_HCS_O),
+    TokenRef::Token(TOK_HCS_P_SUB),
+    TokenRef::Token(TOK_TK_BLFH),
+    TokenRef::Token(TOK_TK_IDIT),
+    TokenRef::Token(TOK_TK_KAND),
 ];
 
 /// `CLOSURE_RELIDO_US_CLASS` — US collateral classification
-/// (Restricted / Confidential / Secret / TopSecret) with no
-/// other dissem implies `RELIDO` unless FD&R-marked.
+/// (Restricted / Confidential / Secret / TopSecret) implies
+/// `RELIDO` unless an explicit FD&R decision is already present.
 ///
-/// **Primary authority.** CAPCO-2016 §B.3 Table 2 p21
-/// (rooted in ICD 403): "Classified + uncaveated + on/after
-/// 28 June 2010 → Mark as RELIDO." This is the obligation that
-/// makes the closure row load-bearing for compliance.
+/// **Primary authority.** CAPCO-2016 §B.3 Table 2 p21 (rooted in
+/// ICD 403): "Classified + uncaveated + on/after 28 June 2010 →
+/// Mark as RELIDO." This is the obligation that makes the closure
+/// row load-bearing for compliance.
 ///
-/// **Grammar reference.** CAPCO-2016 §H.8 p154 (the RELIDO
-/// marking template), which establishes that RELIDO is applicable
-/// to classified intelligence material and explicitly carves out
+/// **Grammar reference.** CAPCO-2016 §H.8 p154 (the RELIDO marking
+/// template), which establishes that RELIDO is applicable to
+/// classified intelligence material and explicitly carves out
 /// unclassified information: "Explicit foreign disclosure and
 /// release markings are not required on unclassified information.
 /// Follow internal agency procedures for the use of RELIDO with
-/// unclassified information." This is why `TOK_US_UNCLASSIFIED`
-/// is in the suppressor slice — the unclassified case follows
-/// agency internal procedures, not the §B.3 Table 2 p21 default.
+/// unclassified information." This is why the trigger
+/// (`TOK_US_COLLATERAL_CLASSIFIED`) gates out Unclassified — the
+/// unclassified case follows agency internal procedures, not the
+/// §B.3 Table 2 p21 default.
 ///
 /// **Design synthesis.** `marque-applied.md` Section 4.7.5 (Trio 2
 /// trigger list) carries marque's structural rendering of the
 /// catalog combining the §B.3 obligation, the §H.8 carve-out, and
 /// the `has_relido_incompatible` exclusion list.
 ///
-/// **Trigger semantic.** `TOK_US_CLASSIFIED` resolves via
-/// `attrs.us_classification().is_some()` — fires for any
-/// `MarkingClassification::Us(_)` (Unclassified / Restricted /
-/// Confidential / Secret / TopSecret) and for
-/// `MarkingClassification::Conflict { us, foreign }`
-/// (`us_classification()` returns the resolved US side for the
-/// Conflict variant). The `TOK_US_UNCLASSIFIED` suppressor then
-/// excludes the `Us(Unclassified)` variant per §H.8 p154. The
-/// Conflict-variant behavior is pinned —
-/// see `RELIDO_US_CLASS_SUPPRESSORS`'s Conflict-variant note.
+/// **Trigger semantic.** `TOK_US_COLLATERAL_CLASSIFIED` fires
+/// when `attrs.us_classification()` returns `Some(level)` with
+/// `level != Unclassified` — i.e., for
+/// `MarkingClassification::Us(Restricted/Confidential/Secret/
+/// TopSecret)` and for `MarkingClassification::Conflict { us,
+/// foreign }` whose US side is collateral classified
+/// (`us_classification()` returns the resolved US side for
+/// Conflict). The trigger is upward-closed in the lattice order
+/// — adding facts to a collateral-classified marking can't make
+/// this predicate stop firing — which keeps closure monotonicity
+/// intact per the `MarkingScheme::closure` contract.
 ///
 /// **Restricted note.** `Classification::Restricted` is included
 /// in the trigger because it is a US collateral classification
@@ -836,31 +827,42 @@ const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
 /// `Some(Restricted)`. A follow-up should align the
 /// marque-applied.md enumeration with the implementation.
 ///
-/// **Suppressor semantic.** `RELIDO_US_CLASS_SUPPRESSORS` encodes
-/// FD&R + RELIDO-incompatible suppression (same shape as
-/// `FDR_OR_RELIDO_INCOMPAT`), the "no other dissem" qualifier
-/// (category-level suppression on every other dissem-axis presence
-/// plus non-US classification), AND the §H.8 p154 Unclassified
-/// carve-out via `TOK_US_UNCLASSIFIED`. See that slice's
-/// doc-comment for the per-token authority breakdown.
+/// **Suppressor semantic.** `RELIDO_US_CLASS_SUPPRESSORS` is the
+/// pure FD&R-dominator set (NOFORN, RELIDO, DISPLAY ONLY, REL TO,
+/// EYES) per §D.2 Table 3 pp.28-30 / §H.8 p145. Every entry
+/// satisfies the `marque-applied.md` Section 4.7.3 case-2
+/// monotonicity property (the suppressor either contains the cone
+/// or supersedes it via the §H.8 p145 overlay). See that slice's
+/// doc-comment for the per-token rationale and the redesign-from-
+/// non-monotone history.
+///
+/// **"No other dissem" via composition.** The
+/// `marque-applied.md` Section 4.7.5 "no other dissem" qualifier
+/// is achieved by closure-rule composition rather than by
+/// anti-monotone suppressors: any caveat marker (AEA / SAP /
+/// FGI / dissem control) triggers `CLOSURE_NOFORN_CAVEATED`
+/// (Trio 1) which adds NOFORN, and NOFORN then supersedes the
+/// RELIDO injection via the `with_noforn_injected` §H.8 p145
+/// overlay. The fixpoint result on `(S, <caveat>)` is therefore
+/// `(S, <caveat>, NOFORN, no RELIDO)` — the correct §B.3 Table 2
+/// p21 semantic.
 ///
 /// **Kleene-fixpoint composition.** This row is ordered after
-/// `CLOSURE_RELIDO_SCI` in `CAPCO_CLOSURE_RULES`. The two rows are
-/// disjoint by suppressor — `CLOSURE_RELIDO_SCI` triggers on SCI
-/// presence (which is in `CAT_SCI`, a US_CLASS suppressor), and
-/// `CLOSURE_RELIDO_US_CLASS` triggers on US collateral classification
-/// with no SCI (so the SCI row's trigger doesn't fire). Either row
-/// reaches the same fixpoint when alone; ordering only matters for
-/// stability when both could fire (which the suppressors prevent).
+/// `CLOSURE_RELIDO_SCI` in `CAPCO_CLOSURE_RULES`. The two rows can
+/// both fire on the same input (e.g., `(S, SI)` triggers both —
+/// SI is in CAT_SCI for CLOSURE_RELIDO_SCI's trigger, US Secret
+/// is collateral for CLOSURE_RELIDO_US_CLASS's trigger); since
+/// both cones are `{RELIDO}` the addition is idempotent (RELIDO
+/// added once, deduplicated by the dissem set).
 ///
 /// **Severity calibration.** `Severity::Info` matches the rest of
 /// the Trio 2 catalog (silent lattice-layer propagation; byte-level
 /// surfacing is a future text-layer rule's responsibility per the
 /// D20 layer-separation principle).
 const CLOSURE_RELIDO_US_CLASS: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/relido-if-us-collateral-class-and-no-other-dissem",
+    name: "capco/relido-if-us-collateral-class",
     label: "CAPCO-2016 §B.3 Table 2 p21 (grammar: §H.8 p154)",
-    triggers: &[TokenRef::Token(TOK_US_CLASSIFIED)],
+    triggers: &[TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)],
     suppressors: RELIDO_US_CLASS_SUPPRESSORS,
     cone: &[TokenRef::Token(TOK_RELIDO)],
     cone_derived: None,
@@ -1566,34 +1568,35 @@ mod phase2_closure_pin {
 /// Covers:
 ///   1. `CLOSURE_RELIDO_US_CLASS` fires RELIDO on US collateral
 ///      classifications (Restricted / Confidential / Secret /
-///      TopSecret) absent any suppressor.
+///      TopSecret) absent any FD&R-dominator suppressor.
 ///   2. The §H.8 p154 Unclassified carve-out: bare US Unclassified
-///      portions do NOT trigger implicit RELIDO (Issue #524 Phase 3
-///      design decision — agencies whose internal policy requires
-///      U → RELIDO will opt in via a future style rule).
-///   3. Every entry in `RELIDO_US_CLASS_SUPPRESSORS` suppresses
-///      `CLOSURE_RELIDO_US_CLASS` when paired with a US-classified
-///      marking — runtime companion to the slice's source-of-truth
-///      role for the "no other dissem" qualifier and the
-///      Unclassified carve-out.
-///   4. Conflict-variant pin documenting the deliberate inclusion of
-///      `MarkingClassification::Conflict` in the US_CLASS trigger
-///      (us_classification() returns Some; CAT_NON_US_CLASSIFICATION
-///      and TOK_US_UNCLASSIFIED both deliberately exclude Conflict).
+///      portions do NOT trigger implicit RELIDO (gated at the
+///      trigger level via `TOK_US_COLLATERAL_CLASSIFIED` — the
+///      predicate doesn't match `Us(Unclassified)`). Agencies
+///      whose internal policy requires U → RELIDO will opt in
+///      via a future style rule.
+///   3. Every entry in `RELIDO_US_CLASS_SUPPRESSORS` (the
+///      FD&R-dominator set: NOFORN / RELIDO / DISPLAY ONLY /
+///      REL TO / EYES) suppresses `CLOSURE_RELIDO_US_CLASS` when
+///      paired with a US-classified marking — runtime companion to
+///      the slice's source-of-truth role.
+///   4. Conflict-variant pin documenting the deliberate firing of
+///      the closure on `MarkingClassification::Conflict` whose US
+///      side is collateral classified.
 ///   5. Idempotence under repeated closure application.
 ///
 /// Authority: `marque-applied.md` Section 4.7.5 (Trio 2 trigger
 /// list); CAPCO-2016 §B.3 Table 2 p21 (defaulting rule — the
 /// primary obligation); §H.8 p154 (RELIDO grammar + Unclassified
-/// carve-out).
+/// carve-out); §D.2 Table 3 pp.28-30 / §H.8 p145 (FD&R precedence
+/// supporting the suppressor monotonicity).
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod phase3_closure_pin {
     use super::*;
     use marque_ism::{
-        AeaMarking, CanonicalAttrs, Classification, CountryCode, DissemControl,
-        ForeignClassification, MarkingClassification, NatoClassification, NonIcDissem,
-        SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControlBare,
+        CanonicalAttrs, Classification, CountryCode, DissemControl, ForeignClassification,
+        MarkingClassification, NatoClassification, SciCompartment, SciControlBare,
         SciControlSystem, SciMarking,
     };
     use marque_scheme::MarkingScheme;
@@ -1610,8 +1613,8 @@ mod phase3_closure_pin {
         CapcoMarking::new(a)
     }
 
-    /// Mutate a US-Secret base marking so the given suppressor is
-    /// present in the matching attrs axis. Used by
+    /// Mutate a US-Secret base marking so the given FD&R-dominator
+    /// suppressor is present in the matching attrs axis. Used by
     /// `every_us_class_suppressor_entry_suppresses_trio2_relido`.
     ///
     /// Panics on unmapped suppressors so a drift in
@@ -1621,7 +1624,9 @@ mod phase3_closure_pin {
     fn us_class_suppression_fixture(suppressor: &TokenRef) -> CapcoMarking {
         let mut m = us_classified(Classification::Secret);
         match suppressor {
-            // FD&R dominators populating dissem_us / rel_to.
+            // FD&R dominators populating dissem_us / rel_to. All five
+            // satisfy the §4.7.3 case-2 monotonicity property — see
+            // `RELIDO_US_CLASS_SUPPRESSORS`'s doc-comment.
             TokenRef::Token(t) if *t == TOK_NOFORN => {
                 m.0.dissem_us = Box::new([DissemControl::Nf]);
             }
@@ -1637,113 +1642,71 @@ mod phase3_closure_pin {
             TokenRef::AnyInCategory(c) if *c == CAT_REL_TO => {
                 m.0.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
             }
-            // Foreign-equity / origination — §H.7 p123, §H.3 p56,
-            // §G.1 Table 4 p38. NATO/JOINT/FGI classifications also
-            // populate the non-US classification axis; we use the
-            // dissem-axis FGI marker for the marker-token cases so
-            // the base marking remains US-classified (preserving the
-            // trigger; only the suppressor flips).
-            TokenRef::Token(t) if *t == TOK_FGI_MARKER => {
-                m.0.fgi_marker = Some(marque_ism::FgiMarker::SourceConcealed);
+            // Per-compartment SCI sentinels — each attaches the
+            // matching SCI marking to a US-TopSecret base (SI-G's
+            // class floor is TS per §H.4 p80; the other compartments
+            // are also TS-only, so TS keeps all fixtures within
+            // their valid class envelopes). The composite closure
+            // produces NOFORN via SI-G → ORCON → CAVEATED → NOFORN
+            // (or directly via HCS/TK per-marking rows that add
+            // NOFORN themselves), satisfying §4.7.3 case-2
+            // monotonicity through composition.
+            TokenRef::Token(t) if *t == TOK_SI_G => {
+                let comp = SciCompartment::new(SmolStr::new("G"), Box::new([]));
+                m.0.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+                m.0.sci_markings = Box::new([SciMarking::new(
+                    SciControlSystem::Published(SciControlBare::Si),
+                    Box::new([comp]),
+                    None,
+                )]);
             }
-            TokenRef::AnyInCategory(c) if *c == CAT_FGI_MARKER => {
-                m.0.fgi_marker = marque_ism::FgiMarker::acknowledged([CountryCode::GBR]);
-            }
-            TokenRef::Token(t) if *t == TOK_FGI_CLASS => {
-                m.0.classification =
-                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
-                        countries: vec![CountryCode::GBR].into_boxed_slice(),
-                        level: Classification::Secret,
-                    }));
-            }
-            TokenRef::Token(t) if *t == TOK_JOINT => {
-                m.0.classification = Some(MarkingClassification::Joint(
-                    marque_ism::JointClassification {
-                        level: Classification::Secret,
-                        countries: vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice(),
-                    },
-                ));
-            }
-            TokenRef::Token(t) if *t == TOK_NATO_CLASS => {
-                m.0.classification =
-                    Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
-            }
-            // Category-level "no other dissem" suppressors. Each
-            // populates one axis with a minimal token whose presence
-            // makes `AnyInCategory(CAT_X)` resolve true (per
-            // `satisfies.rs` AnyInCategory arms).
-            TokenRef::AnyInCategory(c) if *c == CAT_DISSEM => {
-                // ORCON populates `attrs.dissem_us`, resolving
-                // CAT_DISSEM via `dissem_iter().next().is_some()`.
-                // ORCON is chosen (rather than FOUO) because FOUO
-                // separately triggers `CLOSURE_RELIDO_FOUO`, which
-                // would add RELIDO and mask whether US_CLASS was
-                // actually suppressed. ORCON additionally triggers
-                // `CLOSURE_NOFORN_CAVEATED` (any non-FD&R dissem
-                // token does), so NOFORN appears in the post-closure
-                // state and adds a second path to US_CLASS
-                // suppression via the FD&R-dominator branch — both
-                // paths converge on RELIDO absence.
-                m.0.dissem_us = Box::new([DissemControl::Oc]);
-            }
-            TokenRef::AnyInCategory(c) if *c == CAT_NON_IC_DISSEM => {
-                m.0.non_ic_dissem = Box::new([NonIcDissem::Limdis]);
-            }
-            TokenRef::AnyInCategory(c) if *c == CAT_AEA => {
-                // TFNI is the simplest standalone AEA marking
-                // (§H.6 p104); no inner block structure to populate.
-                m.0.aea_markings = Box::new([AeaMarking::Tfni]);
-            }
-            TokenRef::AnyInCategory(c) if *c == CAT_SCI => {
-                // HCS-O is the cleanest CAT_SCI suppressor witness:
-                // it populates `attrs.sci_markings` so
-                // `AnyInCategory(CAT_SCI)` resolves true, AND
-                // `TOK_HCS_O` is in `FDR_OR_RELIDO_INCOMPAT` so
-                // `CLOSURE_RELIDO_SCI` doesn't independently fire
-                // RELIDO. A bare-SI fixture would trigger
-                // CLOSURE_RELIDO_SCI and mask the US_CLASS
-                // suppression assertion.
+            TokenRef::Token(t) if *t == TOK_HCS_O => {
                 let comp = SciCompartment::new(SmolStr::new("O"), Box::new([]));
-                let marking = SciMarking::new(
+                m.0.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+                m.0.sci_markings = Box::new([SciMarking::new(
                     SciControlSystem::Published(SciControlBare::Hcs),
                     Box::new([comp]),
                     None,
+                )]);
+            }
+            TokenRef::Token(t) if *t == TOK_HCS_P_SUB => {
+                let comp = SciCompartment::new(
+                    SmolStr::new("P"),
+                    vec![SmolStr::new("ABCD")].into_boxed_slice(),
                 );
-                m.0.sci_markings = Box::new([marking]);
+                m.0.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+                m.0.sci_markings = Box::new([SciMarking::new(
+                    SciControlSystem::Published(SciControlBare::Hcs),
+                    Box::new([comp]),
+                    None,
+                )]);
             }
-            TokenRef::AnyInCategory(c) if *c == CAT_SAR => {
-                let program =
-                    SarProgram::new(SmolStr::new("BP"), Box::<[SarCompartment]>::from([]));
-                m.0.sar_markings = Some(SarMarking::new(SarIndicator::Abbrev, Box::new([program])));
+            TokenRef::Token(t) if *t == TOK_TK_BLFH => {
+                let comp = SciCompartment::new(SmolStr::new("BLFH"), Box::new([]));
+                m.0.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+                m.0.sci_markings = Box::new([SciMarking::new(
+                    SciControlSystem::Published(SciControlBare::Tk),
+                    Box::new([comp]),
+                    None,
+                )]);
             }
-            TokenRef::AnyInCategory(c) if *c == CAT_NON_US_CLASSIFICATION => {
-                // Replace the US classification with a pure NATO
-                // classification. NOTE: this also makes
-                // `TOK_US_CLASSIFIED` (the trigger) NOT fire — the
-                // suppression effect is mooted because the trigger
-                // doesn't match. The expected outcome (no RELIDO
-                // added) holds either way; we keep the entry in the
-                // pin so a future tightening of `TOK_US_CLASSIFIED`
-                // semantics is still covered by the source-of-truth
-                // iteration. This is the documented carve-out for
-                // this entry (parallel to the `is_self_relido`
-                // carve-out below) — the iteration tests "RELIDO is
-                // absent post-closure" for the broader assertion;
-                // for this one entry the absence is due to trigger
-                // non-match rather than suppressor action.
-                m.0.classification =
-                    Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+            TokenRef::Token(t) if *t == TOK_TK_IDIT => {
+                let comp = SciCompartment::new(SmolStr::new("IDIT"), Box::new([]));
+                m.0.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+                m.0.sci_markings = Box::new([SciMarking::new(
+                    SciControlSystem::Published(SciControlBare::Tk),
+                    Box::new([comp]),
+                    None,
+                )]);
             }
-            // §H.8 p154 Unclassified carve-out: replace US Secret
-            // with US Unclassified. `TOK_US_UNCLASSIFIED` then
-            // resolves true and suppresses the row. (Distinct from
-            // the `CAT_NON_US_CLASSIFICATION` carve-out above:
-            // `TOK_US_CLASSIFIED` STILL fires on Us(Unclassified) —
-            // us_classification() returns Some — so this entry
-            // exercises actual suppressor action, not trigger
-            // absence.)
-            TokenRef::Token(t) if *t == TOK_US_UNCLASSIFIED => {
-                m.0.classification = Some(MarkingClassification::Us(Classification::Unclassified));
+            TokenRef::Token(t) if *t == TOK_TK_KAND => {
+                let comp = SciCompartment::new(SmolStr::new("KAND"), Box::new([]));
+                m.0.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+                m.0.sci_markings = Box::new([SciMarking::new(
+                    SciControlSystem::Published(SciControlBare::Tk),
+                    Box::new([comp]),
+                    None,
+                )]);
             }
             other => panic!(
                 "phase3_closure_pin: no fixture mapping for \
@@ -1751,7 +1714,11 @@ mod phase3_closure_pin {
                  was added to the slice; extend the match in \
                  us_class_suppression_fixture with a `CanonicalAttrs` \
                  mutation that the runtime `satisfies_attrs` resolution \
-                 will recognize as that token being present.",
+                 will recognize as that token being present. NOTE: only \
+                 suppressors satisfying §4.7.3 case-2 monotonicity (direct \
+                 FD&R supersession, or composition-via-NOFORN) are valid \
+                 additions — see the slice's doc-comment for the redesign \
+                 history.",
             ),
         }
         m
@@ -1784,13 +1751,102 @@ mod phase3_closure_pin {
         }
     }
 
+    /// Monotonicity sanity pins for `CLOSURE_RELIDO_US_CLASS`.
+    ///
+    /// `MarkingScheme::closure` contract requires
+    /// `m1 ⊑ m2 ⇒ closure(m1) ⊑ closure(m2)`. The
+    /// `proptest_closure::closure_is_monotone` harness in
+    /// `marque-scheme` covers synthetic schemes; these pins cover
+    /// the specific Capco-side scenarios Copilot flagged in the
+    /// PR #544 review (HIGH on the prior anti-monotone suppressor
+    /// design that this revision replaces).
+    ///
+    /// In the SupersessionSet dissem lattice:
+    ///   - `{} ⊑ {Relido} ⊑ {Nf}` (NOFORN supersedes RELIDO via
+    ///     §H.8 p145).
+    ///   - `{Relido} ⊑ {Relido, X}` for any X that coexists with
+    ///     RELIDO at the same lattice point.
+    ///
+    /// Each scenario below picks a pair `(x, y)` with `x ⊑ y` (y
+    /// has strictly more facts on some axis) and asserts the
+    /// post-closure dissem axis preserves the order.
+    #[test]
+    fn us_class_monotone_under_added_fouo() {
+        // x = (S). y = (S, FOUO). FOUO is NOT in CAVEATED's
+        // trigger list, so CAVEATED doesn't fire on y. US_CLASS
+        // fires on both (FOUO is not a US_CLASS suppressor in the
+        // redesigned slice). Both Cl(x) and Cl(y) carry RELIDO.
+        let scheme = CapcoScheme::new();
+        let cl_x = scheme.closure(us_classified(Classification::Secret));
+        let mut a_y = CanonicalAttrs::default();
+        a_y.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a_y.dissem_us = Box::new([DissemControl::Fouo]);
+        let cl_y = scheme.closure(CapcoMarking::new(a_y));
+        // Cl(x) ⊑ Cl(y): RELIDO ∈ Cl(x), RELIDO ∈ Cl(y).
+        assert!(
+            cl_x.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(x = bare S) should contain Relido; dissem_us = {:?}",
+            cl_x.0.dissem_us
+        );
+        assert!(
+            cl_y.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(y = S + FOUO) should still contain Relido (FOUO is not a \
+             US_CLASS suppressor); dissem_us = {:?}",
+            cl_y.0.dissem_us
+        );
+    }
+
+    #[test]
+    fn us_class_monotone_under_added_si_g() {
+        // x = (S). y = (S, SI-G). Cl(x) has Relido. Cl(y) has
+        // SI-G → ORCON (per-marking row) → NOFORN (CAVEATED on
+        // ORCON in iter 2); NOFORN ⊐ Relido via §H.8 p145
+        // supersession, so monotonicity holds via lattice
+        // ordering (not subset).
+        let scheme = CapcoScheme::new();
+        let cl_x = scheme.closure(us_classified(Classification::Secret));
+        let mut a_y = CanonicalAttrs::default();
+        a_y.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+        let comp = SciCompartment::new(SmolStr::new("G"), Box::new([]));
+        a_y.sci_markings = Box::new([SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([comp]),
+            None,
+        )]);
+        let cl_y = scheme.closure(CapcoMarking::new(a_y));
+        assert!(
+            cl_x.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(x = bare S) should contain Relido; dissem_us = {:?}",
+            cl_x.0.dissem_us
+        );
+        // Cl(y) should contain NOFORN (which ⊐ Relido) and NOT
+        // contain Relido (composite path: SI-G → ORCON → CAVEATED
+        // → NOFORN; SI-G in US_CLASS suppressor prevents premature
+        // RELIDO injection).
+        assert!(
+            cl_y.0.dissem_us.contains(&DissemControl::Nf),
+            "Cl(y = S + SI-G) should contain Nf (via SI-G → ORCON → \
+             CAVEATED → NOFORN composition); dissem_us = {:?}",
+            cl_y.0.dissem_us
+        );
+        assert!(
+            !cl_y.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(y) should NOT contain Relido — Nf supersedes it; \
+             dissem_us = {:?}",
+            cl_y.0.dissem_us
+        );
+        // Monotonicity in the lattice: {Relido} ⊑ {Nf} via §H.8
+        // p145 supersession.
+    }
+
     /// §H.8 p154 Unclassified carve-out (Issue #524 Phase 3): bare
     /// US `Unclassified` does NOT trigger `CLOSURE_RELIDO_US_CLASS`
     /// — CAPCO explicitly carves out unclassified content from the
-    /// implicit-RELIDO default. The `TOK_US_UNCLASSIFIED` suppressor
-    /// in `RELIDO_US_CLASS_SUPPRESSORS` enforces this gate.
-    /// Agencies whose internal policy mandates U → RELIDO will land
-    /// as an opt-in style rule in a future PR.
+    /// implicit-RELIDO default. Enforced at the trigger level via
+    /// `TOK_US_COLLATERAL_CLASSIFIED` not firing on
+    /// `Us(Unclassified)` (keeps the rule monotone). Agencies
+    /// whose internal policy mandates U → RELIDO will land as an
+    /// opt-in style rule in a future PR.
     #[test]
     fn us_class_excluded_for_unclassified() {
         let scheme = CapcoScheme::new();
@@ -1813,24 +1869,14 @@ mod phase3_closure_pin {
     /// `satisfies_attrs` resolution for any entry) fails this test
     /// naming the entry.
     ///
-    /// **Documented carve-outs (RELIDO-absence for non-suppressor
-    /// reasons):**
+    /// **`TOK_RELIDO` carve-out.** The cone itself; RELIDO is
+    /// present in the fixture seed, so the assertion would always
+    /// pass trivially. Skipped via `is_self_relido` guard.
     ///
-    /// - `TOK_RELIDO` — the cone itself. RELIDO is present in the
-    ///   fixture seed; the assertion would always pass trivially.
-    ///   Skipped via `is_self_relido` guard.
-    /// - `AnyInCategory(CAT_NON_US_CLASSIFICATION)` — the fixture
-    ///   replaces US classification with NATO, which makes
-    ///   `TOK_US_CLASSIFIED` (the trigger) not fire. RELIDO is
-    ///   absent for trigger-absence reasons, not suppressor action.
-    ///   Kept in the iteration so a future tightening of
-    ///   `TOK_US_CLASSIFIED` semantics still exercises this entry.
-    ///
-    /// The remaining entries exercise true suppressor action —
-    /// including the new `TOK_US_UNCLASSIFIED` entry, which keeps
-    /// the trigger satisfied (us_classification() returns
-    /// Some(Unclassified)) and asserts that the suppressor itself
-    /// gates the rule.
+    /// The remaining four entries (NOFORN, DISPLAY_ONLY, EYES,
+    /// CAT_REL_TO) exercise true FD&R-dominator suppression — each
+    /// supersedes RELIDO via the §H.8 p145 / §D.2 Table 3 pp.28-30
+    /// precedence overlay.
     #[test]
     fn every_us_class_suppressor_entry_suppresses_trio2_relido() {
         let scheme = CapcoScheme::new();
@@ -1845,17 +1891,10 @@ mod phase3_closure_pin {
                      `CLOSURE_RELIDO_US_CLASS`: RELIDO appeared in post-closure dissem_us \
                      despite the suppressor being present. Either the suppressor wiring \
                      drifted or `satisfies_attrs(...)` no longer resolves this entry. \
-                     Authority: marque-applied Section 4.7.5 'no other dissem' qualifier. \
-                     post-closure dissem_us = {:?}, fgi_marker = {:?}, classification = {:?}, \
-                     non_ic_dissem = {:?}, aea_markings = {:?}, sci_markings = {:?}, \
-                     sar_markings = {:?}, rel_to = {:?}",
+                     Authority: §D.2 Table 3 pp.28-30 + §H.8 p145 FD&R precedence. \
+                     post-closure dissem_us = {:?}, classification = {:?}, rel_to = {:?}",
                     closed.0.dissem_us,
-                    closed.0.fgi_marker,
                     closed.0.classification,
-                    closed.0.non_ic_dissem,
-                    closed.0.aea_markings,
-                    closed.0.sci_markings,
-                    closed.0.sar_markings,
                     closed.0.rel_to,
                 );
             }
@@ -1864,16 +1903,16 @@ mod phase3_closure_pin {
 
     /// `MarkingClassification::Conflict { us, foreign }` makes
     /// `attrs.us_classification()` return `Some(us)`, so
-    /// `TOK_US_CLASSIFIED` fires. `AnyInCategory(CAT_NON_US_CLASSIFICATION)`
-    /// does NOT fire on Conflict (the resolver explicitly excludes
-    /// the Conflict variant). Net effect: `CLOSURE_RELIDO_US_CLASS`
-    /// fires on Conflict markings.
+    /// `TOK_US_COLLATERAL_CLASSIFIED` fires when the US side is
+    /// collateral classified. Net effect:
+    /// `CLOSURE_RELIDO_US_CLASS` fires on Conflict markings whose
+    /// US side is at or above Restricted.
     ///
     /// This is documented behavior — Conflict is a parser-flagged
     /// structural error condition, and the implicit RELIDO addition
     /// is downstream of (orthogonal to) the Conflict diagnostic. A
-    /// future tightening of `TOK_US_CLASSIFIED` semantics that
-    /// excludes Conflict would flip this assertion and require
+    /// future tightening of `TOK_US_COLLATERAL_CLASSIFIED` semantics
+    /// that excludes Conflict would flip this assertion and require
     /// updating the doc-comment on `RELIDO_US_CLASS_SUPPRESSORS`.
     #[test]
     fn us_class_conflict_variant_pin() {
@@ -1888,8 +1927,8 @@ mod phase3_closure_pin {
         assert!(
             closed.0.dissem_us.contains(&DissemControl::Relido),
             "Conflict variant currently allows `CLOSURE_RELIDO_US_CLASS` to fire \
-             (us_classification() returns Some, CAT_NON_US_CLASSIFICATION excludes \
-             Conflict). dissem_us = {:?}",
+             (us_classification() returns Some(Secret) for the US side, and \
+             `TOK_US_COLLATERAL_CLASSIFIED` is therefore satisfied). dissem_us = {:?}",
             closed.0.dissem_us
         );
     }

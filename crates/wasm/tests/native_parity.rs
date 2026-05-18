@@ -536,11 +536,14 @@ fn compute_banner_prose_only_no_portions_returns_unclassified() {
 
 #[test]
 fn compute_banner_single_secret_portion() {
-    // Issue #524 Phase 3: `CLOSURE_RELIDO_US_CLASS` fires the implicit
-    // RELIDO default on bare US classifications with no other dissem
-    // per `marque-applied.md` Section 4.7.5 (CAPCO-2016 §H.8 p154).
-    // Pre-Phase-3 this returned plain `SECRET`; Phase 3 makes the
-    // implicit FD&R default explicit in the banner.
+    // Issue #524 Phase 3: `CLOSURE_RELIDO_US_CLASS` fires the
+    // implicit RELIDO default on US collateral classifications
+    // absent any FD&R-dominator. Primary authority CAPCO-2016
+    // §B.3 Table 2 p21 ("Classified + uncaveated + on/after
+    // 28 June 2010 → Mark as RELIDO"); grammar reference §H.8
+    // p154 (the RELIDO marking template). Pre-Phase-3 this
+    // returned plain `SECRET`; Phase 3 makes the implicit FD&R
+    // default explicit in the banner.
     let banner = marque_wasm::compute_banner_native("(S) Only one portion here.")
         .expect("compute_banner single S");
     assert_eq!(

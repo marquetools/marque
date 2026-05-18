@@ -56,16 +56,20 @@
 //!    2026-05-18 against `crates/capco/docs/CAPCO-2016.md` §B.3
 //!    p20 + Table 2 p21.
 //!
-//! 2. **§H.8 p154 implicit-RELIDO on US classification (Issue #524
-//!    Phase 3).** Fires on the scheme path's
-//!    `CLOSURE_RELIDO_US_CLASS` closure (the input is a US
-//!    classified marking with no other dissem). The per-axis
-//!    lattice path does not run closure rules; the expected
-//!    `dissem_us` divergence is `lat=[..no Relido], scheme=
-//!    [..Relido]`. Authority: `marque-applied.md` Section 4.7.5
-//!    (Trio 2 trigger list); CAPCO-2016 §H.8 p154 (RELIDO
-//!    foundational citation). Verified 2026-05-18 against
-//!    `crates/capco/docs/CAPCO-2016.md` §H.8 p154.
+//! 2. **§B.3 Table 2 p21 implicit-RELIDO on US collateral
+//!    classification (Issue #524 Phase 3).** Fires on the scheme
+//!    path's `CLOSURE_RELIDO_US_CLASS` closure (the input is a
+//!    US collateral classification — Restricted / Confidential /
+//!    Secret / TopSecret — absent any FD&R-dominator). The
+//!    per-axis lattice path does not run closure rules; the
+//!    expected `dissem_us` divergence is `lat=[..no Relido],
+//!    scheme=[..Relido]`. Primary authority: CAPCO-2016 §B.3
+//!    Table 2 p21 ("Classified + uncaveated + on/after 28 June
+//!    2010 → Mark as RELIDO"). Grammar reference: §H.8 p154
+//!    (RELIDO marking template + Unclassified carve-out). Design
+//!    synthesis: `marque-applied.md` Section 4.7.5. Verified
+//!    2026-05-18 against `crates/capco/docs/CAPCO-2016.md` §B.3
+//!    Table 2 p21 + §H.8 p154.
 
 use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
