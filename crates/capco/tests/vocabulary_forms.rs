@@ -47,8 +47,9 @@
 use marque_capco::CapcoScheme;
 use marque_capco::active_sentinel_count;
 use marque_capco::scheme::{
-    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_NNPI, TOK_NODIS, TOK_NOFORN,
-    TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SSI, TOK_TFNI, TOK_UCNI,
+    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_HCS_O, TOK_HCS_P, TOK_NNPI,
+    TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SI_G, TOK_SSI, TOK_TFNI,
+    TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI,
 };
 use marque_scheme::{FormKind, TokenId, Vocabulary};
 
@@ -141,6 +142,24 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // banner="DOD UCNI", portion="DCNI". banner != title →
     // Some("DOD UCNI").
     (TOK_DCNI, "DCNI", "DOD UCNI", Some("DOD UCNI")),
+    // ----- Issue #524 (Phase 1) per-compartment SCI sentinel additions -----
+    //
+    // All six rows are canonical-collapse: no MARKING_FORMS entry
+    // exists for these compound forms, so `build_form_set` returns
+    // `portion = banner_title = canonical` and
+    // `banner_abbreviation = None`. The CAPCO Register §G.1 Table 4
+    // describes the per-system parent rows (HCS, SI, TK) but the
+    // §H.4 per-compartment templates do not introduce distinct
+    // banner abbreviations — the canonical CVE value is used at
+    // both portion and banner positions. Authority: §H.4 marking
+    // templates (see TOK_* doc-comments in
+    // `crates/capco/src/scheme/mod.rs`).
+    (TOK_HCS_O, "HCS-O", "HCS-O", None),
+    (TOK_HCS_P, "HCS-P", "HCS-P", None),
+    (TOK_SI_G, "SI-G", "SI-G", None),
+    (TOK_TK_BLFH, "TK-BLFH", "TK-BLFH", None),
+    (TOK_TK_IDIT, "TK-IDIT", "TK-IDIT", None),
+    (TOK_TK_KAND, "TK-KAND", "TK-KAND", None),
 ];
 
 #[test]

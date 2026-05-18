@@ -31,7 +31,15 @@ extend-exclude = [
   # files contain axis-name codes (e.g. `wdth`) that are valid font
   # metadata, not spelling errors.
   "demo/assets/fonts/",
-  "tests/corpus/documents/"
+  "tests/corpus/documents/",
+  # OCR cleanup script: every regex pattern in this file encodes a known
+  # CAPCO-2016 OCR corruption (e.g. `r'clas sification'` → "classification",
+  # `r'di sc l os ure'` → "disclosure", `r'elemenTheads'` → "element heads")
+  # and the canonical replacement. The broken-word side of every pattern is
+  # by definition a misspelling typos cannot distinguish from a real one.
+  # Per-pattern allowlisting would grow without bound as new OCR cases
+  # land; whole-file exclusion is the maintenance-cheap choice.
+  "scripts/clean_ocr.py",
 ]
 
 [default]

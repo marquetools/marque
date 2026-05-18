@@ -423,3 +423,53 @@ pub const TOK_BOHEMIA: TokenId = TokenId(142);
 // atomic addressable tokens). Mirrors `TOK_FGI_MARKER`'s routing.
 pub const TOK_NATO_CLASS: TokenId = TokenId(148);
 pub const TOK_FGI_CLASS: TokenId = TokenId(149);
+
+// Issue #524 (Phase 1): per-compartment SCI sentinels.
+//
+// Six closed-CVE compound tokens addressing specific SCI
+// system+compartment pairs that CAPCO-2016 §H.4 registers with their
+// own marking templates and ARH read-in (§G.2 Table 5 p40, the
+// "Conceptual ARH by Registered Marking" row block).
+// The bare `TOK_HCS` sentinel (TokenId(116)) already matches any HCS
+// compound via the structural `attrs.sci_markings` scan; these new
+// sentinels resolve at finer compartment granularity so future
+// per-marking unconditional implications (HCS-O ⇒ NOFORN+ORCON,
+// SI-G ⇒ ORCON, TK-BLFH/KAND/IDIT ⇒ NOFORN) and per-compartment
+// class-floor rules can address them without re-walking the SCI axis.
+//
+// All six resolve via `satisfies_attrs` against
+// `attrs.sci_markings`: the system anchor must match
+// `SciControlSystem::Published(SciControlBare::{Hcs,Si,Tk})` AND at
+// least one entry in `marking.compartments` must carry the matching
+// identifier (e.g., `"G"` for SI-G, `"BLFH"` for TK-BLFH). The
+// structural shape — not `canonical_enum` — is the load-bearing
+// witness so sub-compartmented forms (HCS-P with sub-compartments
+// per §H.4 p68, TK-BLFH/KAND/IDIT with sub-compartments per §H.4
+// p89/p93/p97) still resolve. `canonical_enum` is `None` whenever
+// sub-compartments are present (see `SciMarking.canonical_enum`
+// doc-comment at `crates/ism/src/attrs.rs`), so reading it would
+// silently under-fire on the sub-compartment cases.
+//
+// Routed to `CAT_SCI` via `capco_token_category` (mirrors
+// `TOK_HCS`/`TOK_BALK`/`TOK_BOHEMIA`). Phase 2 (issue #524 follow-up)
+// will consume these as triggers of the per-marking unconditional
+// implication rows; the sentinels land in Phase 1 because the
+// introduction is itself a substantial change to the predicate /
+// routing / vocabulary surface and merits its own review window.
+//
+// Authority (per §H.4 marking templates):
+//   - TOK_SI_G — SI-GAMMA, §H.4 p80 (sub-compartment §H.4 p81)
+//   - TOK_HCS_O — HCS-OPERATIONS, §H.4 p64
+//   - TOK_HCS_P — HCS-PRODUCT, §H.4 p66 (sub-compartment §H.4 p68)
+//   - TOK_TK_BLFH — TALENT KEYHOLE BLUEFISH, §H.4 p87
+//     (sub-compartment §H.4 p89)
+//   - TOK_TK_IDIT — TALENT KEYHOLE IDITAROD, §H.4 p91
+//     (sub-compartment §H.4 p93)
+//   - TOK_TK_KAND — TALENT KEYHOLE KANDIK, §H.4 p95
+//     (sub-compartment §H.4 p97)
+pub const TOK_SI_G: TokenId = TokenId(150);
+pub const TOK_HCS_O: TokenId = TokenId(151);
+pub const TOK_HCS_P: TokenId = TokenId(152);
+pub const TOK_TK_BLFH: TokenId = TokenId(153);
+pub const TOK_TK_IDIT: TokenId = TokenId(154);
+pub const TOK_TK_KAND: TokenId = TokenId(155);
