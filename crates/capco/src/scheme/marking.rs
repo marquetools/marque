@@ -169,7 +169,7 @@ impl CapcoMarking {
         Self::join_via_lattice_body(portions)
     }
 
-    /// Shared body for the two `join_via_lattice` entry points.
+    /// Shared body for the `join_via_lattice` entry point.
     ///
     /// Composes per-axis lattice results across 10+ axes
     /// (classification + JointSet, SciSet, SarSet, AeaSet, FgiSet,
