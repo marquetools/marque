@@ -53,8 +53,9 @@
 use crate::scheme::{
     CAT_AEA, CAT_CLASSIFICATION, CAT_DISSEM, CAT_FGI_MARKER, CAT_JOINT_CLASSIFICATION,
     CAT_NON_US_CLASSIFICATION, CAT_REL_TO, CAT_SAR, CAT_SCI, CapcoScheme, FDR_DOMINATORS,
-    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_NNPI, TOK_NODIS, TOK_NOFORN,
-    TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SSI, TOK_TFNI, TOK_UCNI, capco_token_category,
+    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_HCS_O, TOK_HCS_P, TOK_NNPI,
+    TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SI_G, TOK_SSI, TOK_TFNI,
+    TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI, capco_token_category,
 };
 use marque_ism::Classification;
 use marque_ism::generated::migrations::find_migration;
@@ -119,6 +120,18 @@ const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
     (TOK_UCNI, "UCNI"),
     // SCI — published in `CVEnumISMSCIControls.json`.
     (TOK_HCS, "HCS"),
+    // Issue #524 (Phase 1): per-compartment SCI compounds published
+    // in `CVEnumISMSCIControls.json` (verified against the generated
+    // TOKEN_METADATA at build time — entries `HCS-O`, `HCS-P`, `SI-G`,
+    // `TK-BLFH`, `TK-IDIT`, `TK-KAND`). Each compound is a registered
+    // ODNI CVE value with its own §H.4 marking template (see the
+    // `TOK_*` const doc-comments in `crates/capco/src/scheme/mod.rs`).
+    (TOK_HCS_O, "HCS-O"),
+    (TOK_HCS_P, "HCS-P"),
+    (TOK_SI_G, "SI-G"),
+    (TOK_TK_BLFH, "TK-BLFH"),
+    (TOK_TK_IDIT, "TK-IDIT"),
+    (TOK_TK_KAND, "TK-KAND"),
     // Classification — `R` = RESTRICTED, published in
     // `CVEnumISMClassificationAll.json`.
     (TOK_RESTRICTED, "R"),
@@ -1858,6 +1871,14 @@ mod fdr_dissem_pin {
             TOK_ATOMAL,
             TOK_BALK,
             TOK_BOHEMIA,
+            // Issue #524 (Phase 1): per-compartment SCI sentinels routed
+            // to CAT_SCI alongside `TOK_HCS` / `TOK_BALK` / `TOK_BOHEMIA`.
+            TOK_SI_G,
+            TOK_HCS_O,
+            TOK_HCS_P,
+            TOK_TK_BLFH,
+            TOK_TK_IDIT,
+            TOK_TK_KAND,
         ];
         probes
             .iter()
