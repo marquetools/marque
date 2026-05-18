@@ -71,7 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: rust-lang/crates-io-auth-action@f8c4b7797acde66a9450d56cbbbed37bb22e4447
+      - uses: rust-lang/crates-io-auth-action@1d2b8f3552d69b407d7790fa3ec7c39041305a61
         id: auth
       - name: Publish crates
         env:
@@ -232,7 +232,7 @@ jobs:
 
       - name: Create GitHub release
         if: inputs.dry-run == false
-        uses: softprops/action-gh-release@437e073e786973c6b6af97d9e445c41ae43b1d29
+        uses: softprops/action-gh-release@403a5240f3837fa857f642062e05aad6bb3391ca
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
