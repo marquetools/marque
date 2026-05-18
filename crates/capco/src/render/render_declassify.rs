@@ -21,11 +21,10 @@
 //! # Canonical form (banner / portion line)
 //!
 //! **The CAB is not rendered inline with the banner / portion line.**
-//! Per CAPCO-2016 §E.1, the banner line is
-//! `CLASSIFICATION//SCI//SAR//AEA//FGI//DISSEM//NON-IC` — the CAB
-//! ("Classified By", "Derived From", "Declassify On") lives on its
-//! own block elsewhere on the page (typically the bottom of the
-//! cover page).
+//! The banner line is `CLASSIFICATION//SCI//SAR//AEA//FGI//DISSEM//NON-IC`
+//! per CAPCO-2016 §A.6 pp 15-17 Figure 2; the CAB ("Classified By",
+//! "Derived From", "Declassify On") lives on its own block elsewhere
+//! on the page (typically the bottom of the cover page) per §E.1.
 //!
 //! This renderer therefore emits **nothing** for `Scope::Portion |
 //! Page | Document`. The CAB block's renderer is a separate concern
