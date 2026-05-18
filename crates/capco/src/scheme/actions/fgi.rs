@@ -16,12 +16,17 @@ use marque_ism::MarkingClassification;
 /// G-4c (PR 4b-B 9th-pass follow-up): used by the lattice path's
 /// solely-non-US FGI suppression branch to detect source loss when
 /// `ClassificationLattice`'s OrdMax winner discards a foreign source
-/// observed on a lower-level portion. Mirrors PageContext's
-/// `expected_fgi_marker` country-extraction step (`page_context.rs`
-/// lines 894–921) so the two projection paths agree on which
-/// portions contribute which producers to the FGI axis.
+/// observed on a lower-level portion. The semantics mirror the
+/// country-extraction step of the retired
+/// `PageContext::expected_fgi_marker` accessor (deleted with the
+/// `PageContext::expected_*` surface in PR 4b-E) so the lattice and
+/// scheme projection paths agree on which portions contribute which
+/// producers to the FGI axis. The lattice-native form lives in
+/// `FgiSet::from_attrs_iter` (see `crates/capco/src/lattice.rs`);
+/// this helper isolates the per-variant extraction logic.
 ///
-/// Per-variant semantic:
+/// Per-variant semantic (§H.7 p123 + p128, ISM `Nato`/`Joint`
+/// variant definitions):
 /// - `Us(_)`: contributes nothing (US is the home authority).
 /// - `Fgi(f)`: contributes every country in `f.countries`.
 ///   Source-concealed FGI portions (`f.countries.is_empty()`) return
@@ -31,10 +36,12 @@ use marque_ism::MarkingClassification;
 ///   (§H.7 p128: "a document containing portions of both
 ///   source-concealed FGI and source-acknowledged FGI must have only
 ///   the 'FGI' marking"). Verified 2026-05-16.
-/// - `Nato(_)`: contributes the literal `"NATO"` trigraph (matches
-///   `page_context.rs:911-912`).
+/// - `Nato(_)`: contributes the literal `"NATO"` trigraph (NATO
+///   ownership reciprocity per §H.7 p123 — NATO classification
+///   portions surface "NATO" as the producer trigraph on the FGI
+///   axis when not commingled with US).
 /// - `Joint(j)`: contributes every non-USA country in `j.countries`
-///   (matches `page_context.rs:914-921`).
+///   (USA is implicit on the JOINT axis per §H.3 p56).
 /// - `Conflict { foreign, .. }`: recurses into the foreign payload
 ///   so the implicit US classification at `us` is excluded but the
 ///   foreign side's producers still contribute. Returns the same

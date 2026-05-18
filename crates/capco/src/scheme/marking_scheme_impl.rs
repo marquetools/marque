@@ -242,16 +242,15 @@ impl MarkingScheme for CapcoScheme {
                 // clone round because the trait's `markings:
                 // &[CapcoMarking]` slice ties us to per-portion
                 // CapcoMarking values. The engine's hot path bypasses
-                // this via `CapcoScheme::project_from_page_context`
-                // (the production fast-path; sibling to
-                // `project_from_attrs_slice` which is `pub(crate)`
-                // post-PR-4b-D.2 Copilot R1 review #5). Both inherent
-                // entries consume their input WITHOUT the trait
-                // wrap-then-unwrap round; only this trait-path body
-                // pays it. Test fixtures and external tooling
-                // continue to use this trait-path entry.
+                // this via `CapcoScheme::project_from_page_context`,
+                // which derives `&[CanonicalAttrs]` from a pre-built
+                // `&PageContext` and delegates to the same shared
+                // `project_attrs_pipeline` body — without paying the
+                // trait wrap-then-unwrap round. Test fixtures and
+                // external tooling continue to use this trait-path
+                // entry.
                 let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
-                let out_attrs = self.project_from_attrs_slice(&raw);
+                let out_attrs = self.project_attrs_pipeline(&raw);
                 CapcoMarking::new(out_attrs)
             }
         }
@@ -638,90 +637,66 @@ impl MarkingScheme for CapcoScheme {
 }
 
 impl CapcoScheme {
-    /// PR 4b-D.2 Commit 7 — engine-side fast-path entry that consumes
-    /// `&[CanonicalAttrs]` directly (the shape
-    /// [`PageContext::portions()`] already returns).
-    ///
-    /// The trait-level [`MarkingScheme::project`] is constrained to
-    /// `&[Self::Marking]` — the engine's call-site at
-    /// `crates/engine/src/engine.rs::project_page_marking` would have
-    /// to wrap each portion in a `CapcoMarking` (one clone per portion)
-    /// and the trait body would then re-extract `.0.clone()` for each
-    /// (a second clone per portion) before calling
-    /// [`Self::project_attrs_pipeline`]. The engine's hot path runs
-    /// this projection ~50× per 10KB document with portion-count
-    /// growing monotonically per call, turning those two clone rounds
-    /// into a quadratic-in-portions cost. This fast-path bypass closes
-    /// both clone rounds and shares the pipeline-step body with the
-    /// trait path.
-    ///
-    /// Authority: PR 4b-D.2 commit 7 perf attribution found 50
-    /// projection invocations on the bench input, each processing the
-    /// monotone-growing portion list (1, 2, 3, … 50). The two
-    /// engine-boundary clone rounds dominated the regression; this
-    /// method eliminates them.
-    ///
-    /// ## Visibility
-    ///
-    /// `pub(crate)` because, post-commit-8, the engine's hot path
-    /// calls [`Self::project_from_page_context`] (which skips a third
-    /// clone round by reusing the engine's existing `PageContext`).
-    /// This method survives as the in-crate trait-path delegate for
-    /// [`MarkingScheme::project`] and as a callable entry for future
-    /// in-crate callers that have an owned `&[CanonicalAttrs]` slice
-    /// but no pre-built PageContext. Promote back to `pub` only when
-    /// an out-of-crate caller's use case requires it.
-    ///
-    /// [`PageContext::portions()`]: marque_ism::PageContext::portions
-    pub(crate) fn project_from_attrs_slice(&self, portions: &[CanonicalAttrs]) -> CanonicalAttrs {
-        // Build a one-shot tmp_ctx for residue-axis accessors and
-        // delegate to the borrowed-context pipeline. Callers that
-        // already own a `&PageContext` SHOULD call
-        // `project_from_page_context` directly to skip the n×clone.
-        let mut tmp_ctx = marque_ism::PageContext::new();
-        for p in portions {
-            tmp_ctx.add_portion(p.clone());
-        }
-        self.project_attrs_pipeline_with_context(portions, &tmp_ctx)
-    }
-
-    /// PR 4b-D.2 Commit 7+ — hot-path entry that consumes a pre-built
-    /// [`marque_ism::PageContext`] directly. The engine's
+    /// PR 4b-D.2 Commit 7+ — engine-facing hot-path entry that consumes
+    /// a pre-built [`marque_ism::PageContext`] directly. The engine's
     /// `project_page_marking` already owns the PageContext that
     /// accumulates portions across the document via `add_portion`; this
-    /// entry reuses it, skipping the n×clone tmp_ctx rebuild that
-    /// [`Self::project_from_attrs_slice`] pays.
+    /// entry derives `&[CanonicalAttrs]` once at the boundary
+    /// (`page_context.portions()`) and forwards to the shared
+    /// [`Self::project_attrs_pipeline`] body, skipping the trait-path's
+    /// `Vec<CapcoMarking> → Vec<CanonicalAttrs>` wrap-then-unwrap
+    /// round.
+    ///
+    /// The trait-level [`MarkingScheme::project`] entry handles
+    /// `&[Self::Marking]` callers — test fixtures and external
+    /// tooling — and pays one `.0.clone()` per portion to bridge into
+    /// the same `project_attrs_pipeline`.
     ///
     /// Phase-attribution profiling (`crates/engine/benches/profile_project.rs`)
-    /// found tmp_ctx rebuild at ~2.8µs / n=50 portions; eliminating it
-    /// closes ~60-80µs of the lint_10kb regression on the bench's
-    /// monotone-growing call sequence (sum_i=1^50 of the per-call
-    /// tmp_ctx cost).
+    /// found the tmp_ctx-build round earlier PRs paid at ~2.8µs / n=50
+    /// portions; eliminating it closed ~60-80µs of the lint_10kb
+    /// regression on the bench's monotone-growing call sequence
+    /// (sum_i=1^50 of the per-call tmp_ctx cost). PR 4b-F retired the
+    /// last remnant of that tmp_ctx build at every layer.
+    ///
+    /// ## Same-slice property
+    ///
+    /// `raw` is derived structurally here: `page_context.portions()`
+    /// is called once and the resulting slice flows to
+    /// `project_attrs_pipeline`. There is no parallel slice the inner
+    /// pipeline could drift from, so the earlier debug-assert that
+    /// PR 4b-D.2 carried at the fold-body boundary became vacuous in
+    /// PR 4b-F and retired with the `_with_context` variant. Future
+    /// maintenance that reintroduces a parallel derivation path MUST
+    /// re-add the contract at the new fork — the invariant lives in
+    /// this doc-comment, not in a runtime check.
     pub fn project_from_page_context(
         &self,
         page_context: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
-        self.project_attrs_pipeline_with_context(page_context.portions(), page_context)
+        self.project_attrs_pipeline(page_context.portions())
     }
 
     /// Shared body of the page-projection pipeline. Both
-    /// [`MarkingScheme::project`] (trait entry) and
-    /// [`Self::project_from_attrs_slice`] / [`Self::project_from_page_context`]
-    /// (engine fast-path entries) delegate here, so the pipeline-step
-    /// semantics are identical across all surfaces. Per PR 4b-D.2 §4.7.4:
+    /// [`MarkingScheme::project`] (trait entry, after a per-portion
+    /// `.0.clone()`) and [`Self::project_from_page_context`] (engine
+    /// fast-path) delegate here, so the pipeline-step semantics are
+    /// identical across all surfaces. Per PR 4b-D.2 §4.7.4:
     ///
     /// ```text
     /// join_via_lattice → closure → PageRewrites
     /// ```
     ///
-    /// `raw` and `page_ctx.portions()` MUST refer to the same slice
-    /// (caller's contract — debug-asserted by
-    /// `join_via_lattice_with_context`).
-    fn project_attrs_pipeline_with_context(
-        &self,
-        raw: &[CanonicalAttrs],
-        page_ctx: &marque_ism::PageContext,
-    ) -> CanonicalAttrs {
+    /// PR 4b-F retired the `page_ctx: &PageContext` parameter — the
+    /// pipeline now consumes only `raw: &[CanonicalAttrs]`. The
+    /// same-slice contract that earlier PRs threaded as a debug-assert
+    /// at this layer became vacuous once `join_via_lattice_body` no
+    /// longer reads a PageContext: there is no parallel slice for the
+    /// inner body to drift from. Engine callers that need to bridge
+    /// from a `&PageContext` go through
+    /// [`Self::project_from_page_context`], which derives
+    /// `page_context.portions()` once at the boundary.
+    fn project_attrs_pipeline(&self, raw: &[CanonicalAttrs]) -> CanonicalAttrs {
         // PR 4b-D.2 D23 (decisions.md): closure-rewrite-application
         // sentinel. Per `docs/plans/2026-05-01-lattice-design.md`
         // §3 (e.1) read-only-attrs invariant, the closure operator
@@ -737,15 +712,15 @@ impl CapcoScheme {
         // default `{:?}` format would dump full `CanonicalAttrs`
         // (token values, country lists, spans), violating G13. The
         // explicit `if !=` + `panic!` with a count-only message
-        // mirrors the `check_portions_unchanged` pattern at
-        // `crates/engine/src/engine.rs:4540-4574` (PageFinalization-
-        // rule-dispatch sentinel). Both sentinels enforce the same
-        // §3 (e.1) read-only-attrs invariant; both must keep audit-
-        // content-ignorance on the failure path.
+        // mirrors the `check_portions_unchanged` pattern in
+        // `crates/engine/src/engine.rs` (PageFinalization-rule-dispatch
+        // sentinel). Both sentinels enforce the same §3 (e.1)
+        // read-only-attrs invariant; both must keep audit-content-
+        // ignorance on the failure path.
         #[cfg(debug_assertions)]
         let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
 
-        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice_with_context(raw, page_ctx));
+        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(raw));
         let mut out = self.closure(joined);
 
         #[cfg(debug_assertions)]

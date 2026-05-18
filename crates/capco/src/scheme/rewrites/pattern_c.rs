@@ -82,9 +82,10 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // portion appears on the page alongside the U-only control;
         // the two UCNI rows additionally promote NOFORN per §H.6's
         // explicit "less restrictive FD&R marking would otherwise be
-        // conveyed" clause (the load-bearing pre-fix bug in
-        // `PageContext::expected_aea_markings` — see Commit 2's
-        // regression test).
+        // conveyed" clause (the load-bearing pre-fix bug that the
+        // imperative pre-PR-4b-C UCNI classified-strip silently
+        // dropped — see Commit 2's regression test
+        // `pattern_c_dod_ucni_classified_strip_promotes_noforn`).
         //
         // Trigger shape: all seven rows use `CategoryPredicate::Custom`
         // because `Contains` cannot express the
