@@ -118,20 +118,88 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
     TokenRef::Token(TOK_EYES),
 ];
 
-// `FDR_OR_RELIDO_INCOMPAT` (the Trio 2 / Trio 3 extended suppressor
-// covering FD&R dominators + RELIDO-incompatible tokens like FGI / JOINT
-// / NATO / ORCON / LES-NF / SBU-NF) is intentionally absent from the
-// active catalog. It was previously consumed by two Trio 2 placeholder
-// rows (`CLOSURE_RELIDO_US_CLASS`, `CLOSURE_RELIDO_RSEN_FOUO`) whose
-// over-broad triggers (`AnyInCategory(CAT_CLASSIFICATION)` and
-// `Token(TOK_RSEN)`/`Token(TOK_FOUO)`) over-fired on SCI-bearing
-// markings before the SCI rows could add their suppressors.
+// `FDR_OR_RELIDO_INCOMPAT` — the Trio 2 / Trio 3 extended suppressor.
 //
-// The Trio 2 rows will return once per-compartment sentinels exist and
-// the engine consults runtime severity per-row (per `decisions.md` D19 B).
-// Until then, the suppressor knowledge lives only in the inline comments
-// on E054/E055/E056/E057 rows; the algebraic shape is documented in
-// `marque-applied.md` §4.7.1.
+// Covers FD&R dominators (everything in `FDR_DOMINATORS`) plus the
+// RELIDO-incompatible tokens enumerated in `marque-applied.md`
+// §4.7.1 `has_relido_incompatible`: foreign-equity / origination
+// markings (any FGI atom, any JOINT atom, any NATO atom) plus the
+// six per-compartment SCI sentinels (SI-G, HCS-O, HCS-P[sub],
+// TK-BLFH, TK-IDIT, TK-KAND) whose per-marking unconditional
+// implications make RELIDO inapplicable by definition (per
+// `marque-applied.md` §4.7.5 Trio 2 exclusion list: "Excludes SCI
+// controls that already carry NOFORN implication: SI-G, HCS-O,
+// HCS-P[sub], TK-BLFH, TK-KAND, TK-IDIT — those go through the
+// implicit-NOFORN path").
+//
+// LES-NF and SBU-NF are not enumerated separately because their
+// presence is represented as `dissem_us: [Les | Sbu, Noforn]` —
+// `TOK_NOFORN` (already in `FDR_DOMINATORS`) covers them via the
+// `iter_present_tokens` emission of `TokenRef::Token(TOK_NOFORN)`
+// for the `Noforn` element.
+//
+// Algebraic note: per `marque-applied.md` §4.7.3 case 2
+// (table-design property), every suppressor either contains the
+// suppressed cone's intent (NOFORN ⊐ RELIDO via §H.8 p145
+// supersession chain) or makes the cone inapplicable
+// (RELIDO-incompatible tokens prevent the RELIDO cone from being
+// meaningful by definition). The six SCI compartment sentinels are
+// admitted under the second clause: their per-marking
+// unconditional implications (NOFORN / ORCON per §H.4 templates)
+// make RELIDO inapplicable per CAPCO-2016 §H.4 marking-template
+// authority.
+//
+// Per-token authority table:
+//
+// | Token                       | Authority                  |
+// |-----------------------------|----------------------------|
+// | (all `FDR_DOMINATORS`)      | §B.3.a p19, §H.8 p157 EYES |
+// | `TOK_FGI_MARKER`            | §H.7 p123                  |
+// | `AnyInCategory(CAT_FGI_MARKER)` | §H.7 p123              |
+// | `TOK_FGI_CLASS`             | §H.7 p123                  |
+// | `TOK_JOINT`                 | §H.3 p56                   |
+// | `TOK_NATO_CLASS`            | §G.1 Table 4 p38 / §H.7 p127 |
+// | `TOK_SI_G`                  | §H.4 p80                   |
+// | `TOK_HCS_O`                 | §H.4 p64                   |
+// | `TOK_HCS_P_SUB`             | §H.4 p68                   |
+// | `TOK_TK_BLFH`               | §H.4 p87                   |
+// | `TOK_TK_IDIT`               | §H.4 p91                   |
+// | `TOK_TK_KAND`               | §H.4 p95                   |
+//
+// `pub(crate)` for symmetry with `FDR_DOMINATORS` and so future
+// runtime-pin modules can walk the slice as a source-of-truth.
+pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
+    // FD&R dominators (NOFORN ⊐ RELIDO per §H.8 p145; REL TO / RELIDO
+    // / DISPLAY ONLY / EYES are explicit FD&R decisions). Listed
+    // inline rather than spread-imported from `FDR_DOMINATORS` so the
+    // slice is a compile-time constant readable in one place.
+    TokenRef::Token(TOK_NOFORN),
+    TokenRef::Token(TOK_RELIDO),
+    TokenRef::Token(TOK_DISPLAY_ONLY),
+    TokenRef::AnyInCategory(CAT_REL_TO),
+    TokenRef::Token(TOK_EYES),
+    // Foreign-equity / origination — §H.7 p123 (FGI), §H.3 p56
+    // (JOINT), §G.1 Table 4 p38 + §H.7 p127 (NATO).
+    TokenRef::Token(TOK_FGI_MARKER),
+    TokenRef::AnyInCategory(CAT_FGI_MARKER),
+    TokenRef::Token(TOK_FGI_CLASS),
+    TokenRef::Token(TOK_JOINT),
+    TokenRef::Token(TOK_NATO_CLASS),
+    // Per-compartment SCI sentinels carrying NOFORN/ORCON per-marking
+    // unconditional implications (§H.4 marking templates). Including
+    // them in this slice makes the Trio 2 `CLOSURE_RELIDO_SCI` row's
+    // suppression of bare-SI-G correct without depending on Kleene-
+    // fixpoint ordering — see the `CLOSURE_RELIDO_SCI` row's
+    // doc-comment for the SI-G-specific rationale (SI-G's per-marking
+    // cone is `{ORCON}` only, so NOFORN-via-Trio-1-fixpoint does not
+    // cover the SI-G suppression case).
+    TokenRef::Token(TOK_SI_G),
+    TokenRef::Token(TOK_HCS_O),
+    TokenRef::Token(TOK_HCS_P_SUB),
+    TokenRef::Token(TOK_TK_BLFH),
+    TokenRef::Token(TOK_TK_IDIT),
+    TokenRef::Token(TOK_TK_KAND),
+];
 
 // --- The implicit-default trio (FD&R-suppressed) ---
 
@@ -380,13 +448,267 @@ const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
     default_severity: Severity::Info,
 };
 
+// ---------------------------------------------------------------------------
+// Per-marking unconditional implications (Issue #524 Phase 2)
+// ---------------------------------------------------------------------------
+//
+// Per `marque-applied.md` §4.7.5 "Per-marking unconditional
+// implications": rules that fire regardless of FD&R state. The
+// `suppressors` field is `&[]` for every row — these implications
+// are an unconditional consequence of the trigger marking's
+// per-marking authority (§H.4 marking templates), not a default
+// override-able by FD&R presence. Idempotence preserves
+// correctness when the cone fact is already present (closure
+// re-adding NOFORN to a marking that already carries NOFORN is a
+// no-op).
+//
+// Per-marking authority anchored in CAPCO-2016 §H.4 marking
+// templates with the load-bearing Example Banner Line / Notional
+// Example Page citations. Each row's doc-comment names the page
+// and the example whose form establishes the per-marking
+// implication.
+
+/// `HCS-O` implies `NOFORN` and `ORCON`.
+///
+/// **Authority.** CAPCO-2016 §H.4 p64 (HCS-OPERATIONS marking
+/// template):
+///
+/// - Example Banner Line: `SECRET//HCS-O//ORCON/NOFORN`
+/// - Example Portion Mark: `(S//HCS-O//OC/NF)`
+/// - Notional Example Page: `SECRET//HCS-O//ORCON/NOFORN` —
+///   "contains HCS-O information that is originator controlled,
+///   and not releasable to foreign nationals."
+///
+/// The Example Banner Line is prescriptive form: HCS-O is conveyed
+/// alongside ORCON/NOFORN in the dissem-control band. Marque
+/// automates the re-marking the manual permits doing by hand (per
+/// project memory `remark-on-derivative-use-is-marque-autofix`).
+const CLOSURE_HCS_O_IMPLIES_NF_OC: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/hcs-o-implies-noforn-orcon",
+    label: "CAPCO-2016 §H.4 p64",
+    triggers: &[TokenRef::Token(TOK_HCS_O)],
+    suppressors: &[],
+    cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
+/// `HCS-P` with at least one sub-compartment implies `NOFORN` and
+/// `ORCON`.
+///
+/// **Authority.** CAPCO-2016 §H.4 p68 (HCS-PRODUCT
+/// [SUB-COMPARTMENT] marking template):
+///
+/// - Example Banner Line: `TOP SECRET//HCS-P JJJ//ORCON/NOFORN`
+/// - Example Portion Mark: `(TS//HCS-P JJJ//OC/NF)`
+/// - Notional Example Page: `TOP SECRET//HCS-P EFG//ORCON/NOFORN`
+///   — "contains HCS-PRODUCT EFG information, is originator
+///   controlled, and not releasable to foreign nationals."
+///
+/// The sub-compartmented form's per-marking semantic differs from
+/// bare HCS-P at §H.4 p66 (`SECRET//HCS-P//NOFORN` — NOFORN only,
+/// no ORCON). The grammar-shape sentinel `TOK_HCS_P_SUB` discriminates
+/// the two cases — see its doc-comment in
+/// `crates/capco/src/scheme/mod.rs`.
+const CLOSURE_HCS_P_SUB_IMPLIES_NF_OC: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/hcs-p-sub-implies-noforn-orcon",
+    label: "CAPCO-2016 §H.4 p68",
+    triggers: &[TokenRef::Token(TOK_HCS_P_SUB)],
+    suppressors: &[],
+    cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
+/// `SI-G` implies `ORCON`.
+///
+/// **Authority.** CAPCO-2016 §H.4 p80 (SI-GAMMA marking template):
+///
+/// - Example Banner Line: `TOP SECRET//SI-G//ORCON`
+/// - Example Portion Mark: `(TS//SI-G//OC)`
+/// - Notional Example Page: `TOP SECRET//SI-G//ORCON/NOFORN` —
+///   "contains SI-GAMMA information, is originator controlled,
+///   and not releasable to foreign nationals."
+///
+/// **NOFORN is NOT in the cone.** The Example Banner Line at
+/// §H.4 p80 is prescriptive ORCON only; the Notional Example Page
+/// adds NOFORN as a use-case-specific FD&R decision, not a
+/// per-marking requirement. Per `marque-applied.md` §4.7.5: "If
+/// `SI-G`, then `ORCON` must be present → closure fires `ORCON`."
+/// SI-G's class floor (TS) is a `Constraint::Requires` concern per
+/// §3.4.6, not a closure addition (§H.4 p80 Example Banner Line
+/// starts at TOP SECRET).
+///
+/// **Trio 2 RELIDO suppression (stability optimization).** SI-G's
+/// per-marking cone is `{ORCON}` only; NOFORN is not added in
+/// iteration 1. Without `TOK_SI_G` in `FDR_OR_RELIDO_INCOMPAT`,
+/// `CLOSURE_RELIDO_SCI` would fire in iteration 1 (adding RELIDO),
+/// which would then be stripped in iteration 2 when ORCON triggers
+/// `CLOSURE_NOFORN_CAVEATED` → NOFORN → `with_noforn_injected` (the
+/// §H.8 p145 supersession overlay that strips dominated dissem
+/// controls). The fixpoint result is the same either way; including
+/// `TOK_SI_G` directly avoids the transient incorrect intermediate
+/// state and keeps the in-pass invariant "Trio 2 doesn't fire on
+/// SI-G" stable.
+const CLOSURE_SI_G_IMPLIES_OC: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/si-g-implies-orcon",
+    label: "CAPCO-2016 §H.4 p80",
+    triggers: &[TokenRef::Token(TOK_SI_G)],
+    suppressors: &[],
+    cone: &[TokenRef::Token(TOK_ORCON)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
+/// `TK-BLFH` implies `NOFORN`.
+///
+/// **Authority.** CAPCO-2016 §H.4 p87 (TK-BLUEFISH marking
+/// template):
+///
+/// - Example Banner Line: `TOP SECRET//TK-BLFH//NOFORN`
+/// - Example Portion Mark: `(TS//TK-BLFH//NF)`
+/// - Notional Example Page: `TOP SECRET//TK-BLFH//NOFORN` —
+///   "contains TALENT KEYHOLE-BLUEFISH information, and is not
+///   releasable to foreign nationals."
+///
+/// TK-BLFH's class floor (TS) is a `Constraint::Requires` concern
+/// per §3.4.6, not a closure addition (§H.4 p87 Example Banner Line
+/// starts at TOP SECRET).
+const CLOSURE_TK_BLFH_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/tk-blfh-implies-noforn",
+    label: "CAPCO-2016 §H.4 p87",
+    triggers: &[TokenRef::Token(TOK_TK_BLFH)],
+    suppressors: &[],
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
+/// `TK-IDIT` implies `NOFORN`.
+///
+/// **Authority.** CAPCO-2016 §H.4 p91 (TK-IDITAROD marking
+/// template):
+///
+/// - Example Banner Line: `TOP SECRET//TK-IDIT//NOFORN`
+/// - Example Portion Mark: `(TS//TK-IDIT //NF)`
+/// - Notional Example Page: `TOP SECRET//TK-IDIT//NOFORN` —
+///   "contains TALENT KEYHOLE-IDITAROD information, and is not
+///   releasable to foreign nationals."
+const CLOSURE_TK_IDIT_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/tk-idit-implies-noforn",
+    label: "CAPCO-2016 §H.4 p91",
+    triggers: &[TokenRef::Token(TOK_TK_IDIT)],
+    suppressors: &[],
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
+/// `TK-KAND` implies `NOFORN`.
+///
+/// **Authority.** CAPCO-2016 §H.4 p95 (TK-KANDIK marking template).
+/// The §H.4 p95 marking template mirrors §H.4 p91 (TK-IDIT) and
+/// §H.4 p87 (TK-BLFH) in shape: Example Banner Line at TOP SECRET
+/// with NOFORN, Example Portion Mark in parens, Notional Example
+/// Page reiterating the not-releasable semantic. The structural
+/// uniformity across the three TK sub-compartment families is
+/// itself the authority that TK-KAND's per-marking implication
+/// matches TK-BLFH and TK-IDIT.
+const CLOSURE_TK_KAND_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/tk-kand-implies-noforn",
+    label: "CAPCO-2016 §H.4 p95",
+    triggers: &[TokenRef::Token(TOK_TK_KAND)],
+    suppressors: &[],
+    cone: &[TokenRef::Token(TOK_NOFORN)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
+// ---------------------------------------------------------------------------
+// Trio 2 — implicit RELIDO (FD&R + RELIDO-incompatible-suppressed)
+// ---------------------------------------------------------------------------
+
+/// `CLOSURE_RELIDO_SCI` — bare SCI control implies `RELIDO` unless
+/// FD&R-marked or RELIDO-incompatible.
+///
+/// **Trigger semantic.** `AnyInCategory(CAT_SCI)` fires when any
+/// SCI marking is present in the page-projection. The Phase 2
+/// scope ships only this Trio 2 row; the additional Trio 2 rows
+/// (`CLOSURE_RELIDO_US_CLASS` for US unclassified-or-collateral and
+/// `CLOSURE_RELIDO_FOUO`) are deferred — `CLOSURE_RELIDO_US_CLASS`
+/// requires a more sophisticated "no other dissem" trigger
+/// composition than the bare-CAT_CLASSIFICATION proxy that
+/// over-fired in the historical placeholder (see the predecessor
+/// commit's deferral comment at this slice's old location), and
+/// `CLOSURE_RELIDO_FOUO` follows once the US_CLASS encoding lands.
+///
+/// **Suppressor semantic.** `FDR_OR_RELIDO_INCOMPAT` covers two
+/// disjoint cases:
+///
+/// 1. **FD&R-marked** — explicit FD&R decision present (NOFORN,
+///    REL TO, RELIDO, DISPLAY ONLY, EYES). The implicit-RELIDO
+///    default is superseded by the explicit decision per
+///    `marque-applied.md` §4.7.3.
+/// 2. **RELIDO-incompatible** — foreign-equity / origination
+///    markings (FGI / JOINT / NATO) or per-marking NOFORN/ORCON-
+///    implying SCI compartments (SI-G, HCS-O, HCS-P[sub],
+///    TK-BLFH, TK-IDIT, TK-KAND). RELIDO is structurally
+///    inapplicable to these markings per `marque-applied.md`
+///    §4.7.5 Trio 2 exclusion list.
+///
+/// **Kleene-fixpoint composition with per-marking rows.** The five
+/// per-marking unconditional NOFORN-cone rows (HCS-O, HCS-P[sub],
+/// TK-BLFH, TK-IDIT, TK-KAND) precede this row in the catalog
+/// order, so within a single closure iteration NOFORN is added to
+/// `working` before this row evaluates — NOFORN ∈
+/// `FDR_OR_RELIDO_INCOMPAT` then suppresses the RELIDO cone in
+/// iteration 1. For SI-G (cone = `{ORCON}` only), the in-pass
+/// NOFORN→suppression path does NOT cover iteration 1 because SI-G
+/// doesn't add NOFORN immediately. Across multiple iterations,
+/// SI-G's ORCON would trigger `CLOSURE_NOFORN_CAVEATED` (ORCON is
+/// in its trigger list), adding NOFORN in iteration 2, which would
+/// then strip a previously-injected RELIDO via `with_noforn_injected`
+/// (the §H.8 p145 supersession overlay) in iteration 3 — the
+/// fixpoint is correct without the direct guard. Including
+/// `TOK_SI_G` in `FDR_OR_RELIDO_INCOMPAT` directly is a stability
+/// optimization that avoids the transient intermediate state and
+/// keeps the per-iteration invariant "Trio 2 doesn't fire on SI-G"
+/// stable from iteration 1.
+///
+/// **Severity calibration.** `Severity::Info` matches the other
+/// closure rows (Trio 1, Trio 3, per-marking). The text-layer
+/// surface (which proposes the actual byte-level RELIDO insertion)
+/// is the responsibility of a future rule, not this lattice-layer
+/// row. Per D20 layer-separation principle.
+const CLOSURE_RELIDO_SCI: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/relido-if-sci-and-not-incompatible",
+    label: "CAPCO-2016 §H.8 p154",
+    triggers: &[TokenRef::AnyInCategory(CAT_SCI)],
+    suppressors: FDR_OR_RELIDO_INCOMPAT,
+    cone: &[TokenRef::Token(TOK_RELIDO)],
+    cone_derived: None,
+    default_severity: Severity::Info,
+};
+
 /// The full static CAPCO closure-rule catalog.
 ///
 /// Rows are grouped by the three-trio framing from `marque-applied.md` §4.7.1:
 ///   1. Trio 1 — implicit NOFORN (FD&R-suppressed)
-///   2. Trio 2 — implicit RELIDO (FD&R + RELIDO-incompatible-suppressed)
+///   2. Per-marking unconditional implications (unsuppressed; Issue #524 Phase 2)
 ///   3. Trio 3 — implicit REL TO USA, NATO (FD&R-suppressed)
-///   4. Per-marking unconditional implications (unsuppressed)
+///   4. Trio 2 — implicit RELIDO (FD&R + RELIDO-incompatible-suppressed)
+///
+/// **Catalog order is load-bearing.** The closure operator
+/// (`CapcoScheme::closure`) walks this catalog in order within each
+/// Kleene iteration, mutating the working marking in place between
+/// rules. Per-marking unconditional rows precede the Trio 2 RELIDO
+/// row so that NOFORN added by HCS-O / HCS-P[sub] / TK-BLFH /
+/// TK-IDIT / TK-KAND is visible to Trio 2's suppressor check in
+/// the same iteration. SI-G adds ORCON only (no NOFORN), so its
+/// suppression of Trio 2 routes through `TOK_SI_G ∈
+/// FDR_OR_RELIDO_INCOMPAT` directly rather than via Kleene chain.
+/// See `CLOSURE_RELIDO_SCI`'s doc-comment for the full ordering
+/// rationale.
 ///
 /// Per-row monotonicity attestation (§4.7.3 table-design property, case 2):
 /// Every suppressor fact either contains the cone's intent or makes it
@@ -396,14 +718,14 @@ const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
 /// RELIDO cone inapplicable by definition. Unconditional rows have no
 /// suppressor — monotonicity is trivial (empty suppressor → no case 2).
 ///
-/// # Coalesced triggers (current limitation)
+/// # Deferred Trio 2 rows
 ///
-/// Several per-marking unconditional implications (HCS-O/P[sub], SI-G,
-/// TK-BLFH/KAND/IDIT) would naturally use `AnyInCategory(CAT_SCI)` as a
-/// proxy trigger because per-compartment sentinels (`TOK_HCS_O`, `TOK_SI_G`,
-/// etc.) do not exist yet. They are intentionally omitted until those
-/// sentinels land — the broad proxy would fire NOFORN/ORCON on any SCI
-/// marking, not just the specific compartments, which is unsound.
+/// `CLOSURE_RELIDO_US_CLASS` (US unclassified-or-collateral implies
+/// RELIDO) and `CLOSURE_RELIDO_FOUO` (FOUO implies RELIDO) are
+/// deferred to a follow-up. The US_CLASS row needs a more
+/// sophisticated "no other dissem" trigger composition than the
+/// bare-CAT_CLASSIFICATION proxy that over-fired in the historical
+/// placeholder; the FOUO row follows once US_CLASS lands.
 pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // Trio 1: implicit NOFORN — single CAVEATED row whose triggers union
     // every caveat marking per §B.3 p20 Note (SAR / AEA / dissem controls /
@@ -411,6 +733,16 @@ pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // ({NOFORN}) collapse the seven historical rows into one per D18
     // rationale 2.
     CLOSURE_NOFORN_CAVEATED,
+    // Per-marking unconditional implications (Issue #524 Phase 2). Ordered
+    // before the Trio 2 RELIDO row so the NOFORN/ORCON cones populate
+    // `working` before `CLOSURE_RELIDO_SCI`'s suppressor check runs in the
+    // same Kleene iteration.
+    CLOSURE_HCS_O_IMPLIES_NF_OC,
+    CLOSURE_HCS_P_SUB_IMPLIES_NF_OC,
+    CLOSURE_SI_G_IMPLIES_OC,
+    CLOSURE_TK_BLFH_IMPLIES_NF,
+    CLOSURE_TK_IDIT_IMPLIES_NF,
+    CLOSURE_TK_KAND_IMPLIES_NF,
     // Trio 3: implicit `REL TO USA, NATO` for bare NATO classification.
     // Fires at `Severity::Info` (silent lattice-layer fact propagation);
     // S007 owns the text-layer `Severity::Suggest` byte-diff per D20.
@@ -418,16 +750,10 @@ pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // USA via the static cone (`TOK_USA` → `CountryCode::USA` through
     // `apply_fact_add`'s CAT_REL_TO arm).
     CLOSURE_REL_TO_USA_NATO,
-    // Trio 2 (implicit RELIDO) and the per-marking unconditional SCI
-    // implications (HCS-O, HCS-P[sub], SI-G, TK-BLFH, TK-KAND, TK-IDIT)
-    // are intentionally absent. They require per-compartment sentinels
-    // (TOK_HCS_O, TOK_SI_G, etc.) that do not yet exist; the alternative
-    // — proxy triggers via `AnyInCategory(CAT_SCI)` /
-    // `AnyInCategory(CAT_CLASSIFICATION)` — would over-fire on bare SI /
-    // bare TK / any classified marking. A `Severity::Off` catalog-data
-    // dormancy gate would contradict D19 B (severity is runtime-resolved,
-    // not catalog-baked). The rows will return once the per-marking
-    // sentinels land and the engine consults runtime severity per-row.
+    // Trio 2: implicit RELIDO for bare SCI controls. Ordered last so
+    // the per-marking NOFORN cones above are visible in `working`
+    // for the FDR_OR_RELIDO_INCOMPAT suppressor check.
+    CLOSURE_RELIDO_SCI,
 ];
 
 // ---------------------------------------------------------------------------
@@ -569,6 +895,448 @@ mod fdr_dominators_runtime_pin {
                 closed.0.rel_to.len(),
                 rel_to_before,
                 closed.0.rel_to,
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Issue #524 Phase 2 — per-marking unconditional + Trio 2 RELIDO pin
+// ---------------------------------------------------------------------------
+
+/// Phase 2 closure-row pins.
+///
+/// Covers:
+///   1. Each per-marking unconditional row fires its specified cone
+///      on a minimal trigger fixture (`per_marking_*` tests).
+///   2. The Trio 2 `CLOSURE_RELIDO_SCI` row fires RELIDO on a bare
+///      SCI control absent any suppressor.
+///   3. Every entry in `FDR_OR_RELIDO_INCOMPAT` suppresses
+///      `CLOSURE_RELIDO_SCI` when paired with a bare SCI control —
+///      the runtime companion to `FDR_OR_RELIDO_INCOMPAT`'s source-
+///      of-truth role for Trio 2 suppression.
+///   4. The grammar-shape sentinel `TOK_HCS_P_SUB` discriminates
+///      bare HCS-P (no sub) from HCS-P with sub-compartments.
+///
+/// Authority: CAPCO-2016 §H.4 marking templates (p64 HCS-O, p66/p68
+/// HCS-P, p80 SI-G, p87 TK-BLFH, p91 TK-IDIT, p95 TK-KAND); §H.8
+/// p154 (RELIDO foundational citation for Trio 2).
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod phase2_closure_pin {
+    use super::*;
+    use marque_ism::{
+        CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
+        SciCompartment, SciControlBare, SciControlSystem, SciMarking,
+    };
+    use marque_scheme::MarkingScheme;
+    use smol_str::SmolStr;
+
+    /// Build a `CapcoMarking` with a single SciMarking anchored on
+    /// `system` carrying one compartment `identifier`. Optional
+    /// `sub_compartments` are attached to the compartment.
+    fn sci_marking(
+        system: SciControlBare,
+        identifier: &str,
+        sub_compartments: Vec<&str>,
+    ) -> CapcoMarking {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+        let comp = SciCompartment::new(
+            SmolStr::new(identifier),
+            sub_compartments
+                .into_iter()
+                .map(SmolStr::new)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
+        let marking = SciMarking::new(SciControlSystem::Published(system), Box::new([comp]), None);
+        a.sci_markings = Box::new([marking]);
+        CapcoMarking::new(a)
+    }
+
+    /// Build a `CapcoMarking` that triggers `CLOSURE_RELIDO_SCI` (any
+    /// SCI control present) but carries the given suppressor in the
+    /// matching attrs axis so the row should NOT fire.
+    fn relido_sci_suppression_fixture(suppressor: &TokenRef) -> CapcoMarking {
+        // Start with a bare SI compartment that does NOT match any
+        // per-compartment NOFORN-implying sentinel — picks a synthetic
+        // compartment name `Z9` so neither TOK_SI_G nor any TK sentinel
+        // fires. The SCI presence still triggers Trio 2.
+        let mut m = sci_marking(SciControlBare::Si, "Z9", vec![]);
+        match suppressor {
+            // FD&R-axis tokens populate dissem_us / rel_to.
+            TokenRef::Token(t) if *t == TOK_NOFORN => {
+                m.0.dissem_us = Box::new([DissemControl::Nf]);
+            }
+            TokenRef::Token(t) if *t == TOK_RELIDO => {
+                m.0.dissem_us = Box::new([DissemControl::Relido]);
+            }
+            TokenRef::Token(t) if *t == TOK_DISPLAY_ONLY => {
+                m.0.dissem_us = Box::new([DissemControl::Displayonly]);
+            }
+            TokenRef::Token(t) if *t == TOK_EYES => {
+                m.0.dissem_us = Box::new([DissemControl::Eyes]);
+            }
+            TokenRef::AnyInCategory(c) if *c == CAT_REL_TO => {
+                m.0.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
+            }
+            // FGI marker — populates the FGI marker axis. SourceConcealed
+            // is the FGI bare form (§H.7 p122); Acknowledged carries a
+            // non-empty country list (§H.7 p123).
+            TokenRef::Token(t) if *t == TOK_FGI_MARKER => {
+                m.0.fgi_marker = Some(marque_ism::FgiMarker::SourceConcealed);
+            }
+            TokenRef::AnyInCategory(c) if *c == CAT_FGI_MARKER => {
+                m.0.fgi_marker = marque_ism::FgiMarker::acknowledged([CountryCode::GBR]);
+            }
+            // FGI classification — Fgi variant carries `countries` + `level`.
+            TokenRef::Token(t) if *t == TOK_FGI_CLASS => {
+                m.0.classification =
+                    Some(MarkingClassification::Fgi(marque_ism::FgiClassification {
+                        countries: vec![CountryCode::GBR].into_boxed_slice(),
+                        level: Classification::Secret,
+                    }));
+            }
+            // JOINT classification — Joint variant carries `level` +
+            // `countries` (must include USA).
+            TokenRef::Token(t) if *t == TOK_JOINT => {
+                m.0.classification = Some(MarkingClassification::Joint(
+                    marque_ism::JointClassification {
+                        level: Classification::Secret,
+                        countries: vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice(),
+                    },
+                ));
+            }
+            // NATO classification — `NatoSecret` is the §G.1 Table 4 p38
+            // NS variant.
+            TokenRef::Token(t) if *t == TOK_NATO_CLASS => {
+                m.0.classification = Some(MarkingClassification::Nato(
+                    marque_ism::NatoClassification::NatoSecret,
+                ));
+            }
+            // Per-compartment SCI sentinels — replace the fixture's
+            // SCI marking with the matching compartment shape.
+            TokenRef::Token(t) if *t == TOK_SI_G => {
+                m = sci_marking(SciControlBare::Si, "G", vec![]);
+            }
+            TokenRef::Token(t) if *t == TOK_HCS_O => {
+                m = sci_marking(SciControlBare::Hcs, "O", vec![]);
+            }
+            TokenRef::Token(t) if *t == TOK_HCS_P_SUB => {
+                m = sci_marking(SciControlBare::Hcs, "P", vec!["ABCD"]);
+            }
+            TokenRef::Token(t) if *t == TOK_TK_BLFH => {
+                m = sci_marking(SciControlBare::Tk, "BLFH", vec![]);
+            }
+            TokenRef::Token(t) if *t == TOK_TK_IDIT => {
+                m = sci_marking(SciControlBare::Tk, "IDIT", vec![]);
+            }
+            TokenRef::Token(t) if *t == TOK_TK_KAND => {
+                m = sci_marking(SciControlBare::Tk, "KAND", vec![]);
+            }
+            other => panic!(
+                "phase2_closure_pin: no fixture mapping for \
+                 FDR_OR_RELIDO_INCOMPAT entry {other:?}. A new entry \
+                 was added to the slice; extend the match in \
+                 relido_sci_suppression_fixture with a `CanonicalAttrs` \
+                 mutation that the runtime `satisfies_attrs` resolution \
+                 will recognize as that token being present.",
+            ),
+        }
+        m
+    }
+
+    /// HCS-O ⇒ {NOFORN, ORCON}. §H.4 p64.
+    #[test]
+    fn per_marking_hcs_o_implies_nf_oc() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Hcs, "O", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "HCS-O closure should add NOFORN; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Oc),
+            "HCS-O closure should add ORCON; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// HCS-P [sub] ⇒ {NOFORN, ORCON}. §H.4 p68.
+    #[test]
+    fn per_marking_hcs_p_sub_implies_nf_oc() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Hcs, "P", vec!["JJJ"]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "HCS-P[sub] closure should add NOFORN; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Oc),
+            "HCS-P[sub] closure should add ORCON; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// Bare HCS-P (no sub) does NOT trip the HCS-P[sub] closure
+    /// row — ORCON must not be added. §H.4 p66 Example Banner Line
+    /// is `SECRET//HCS-P//NOFORN` (no ORCON); §H.4 p68 distinguishes
+    /// the sub-compartmented form (which adds ORCON via
+    /// `CLOSURE_HCS_P_SUB_IMPLIES_NF_OC`). Bare HCS-P additionally
+    /// triggers `CLOSURE_RELIDO_SCI` (it sits in `CAT_SCI` and is
+    /// not in `FDR_OR_RELIDO_INCOMPAT`), so RELIDO may appear in
+    /// post-closure `dissem_us`; this test asserts only that ORCON
+    /// is absent — the load-bearing property for the p66/p68
+    /// distinction.
+    #[test]
+    fn per_marking_hcs_p_bare_does_not_imply_orcon() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Hcs, "P", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Oc),
+            "bare HCS-P closure must NOT add ORCON (§H.4 p66 vs p68 \
+             distinguishes bare from sub-compartmented). dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// SI-G ⇒ {ORCON}. §H.4 p80. NOFORN must NOT be in SI-G's cone
+    /// — the §H.4 p80 Example Banner Line is `TOP SECRET//SI-G//ORCON`
+    /// (ORCON only). NOFORN may appear from another closure row but
+    /// not from SI-G's per-marking row.
+    #[test]
+    fn per_marking_si_g_implies_oc_only() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Si, "G", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Oc),
+            "SI-G closure should add ORCON; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        // SI-G is in FDR_OR_RELIDO_INCOMPAT, so Trio 2 RELIDO must
+        // NOT fire either.
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "SI-G must be excluded from Trio 2 RELIDO (per \
+             marque-applied §4.7.5); dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// TK-BLFH ⇒ {NOFORN}. §H.4 p87.
+    #[test]
+    fn per_marking_tk_blfh_implies_nf() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Tk, "BLFH", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "TK-BLFH closure should add NOFORN; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// TK-IDIT ⇒ {NOFORN}. §H.4 p91.
+    #[test]
+    fn per_marking_tk_idit_implies_nf() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Tk, "IDIT", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "TK-IDIT closure should add NOFORN; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// TK-KAND ⇒ {NOFORN}. §H.4 p95.
+    #[test]
+    fn per_marking_tk_kand_implies_nf() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Tk, "KAND", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "TK-KAND closure should add NOFORN; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// Idempotence: closing an already-closed marking is stable.
+    /// Picks HCS-O which exercises both NOFORN and ORCON cone facts.
+    #[test]
+    fn per_marking_idempotent() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Hcs, "O", vec![]);
+        let once = scheme.closure(m);
+        let twice = scheme.closure(once.clone());
+        assert_eq!(
+            once, twice,
+            "closure must be idempotent (Constitution Principle II algebraic \
+             contract); once = {once:?}, twice = {twice:?}"
+        );
+    }
+
+    /// Trio 2: bare SCI control (here SI-Z9, no per-marking
+    /// sentinel match) implies RELIDO unless suppressed.
+    #[test]
+    fn trio2_relido_fires_on_bare_sci() {
+        let scheme = CapcoScheme::new();
+        let m = sci_marking(SciControlBare::Si, "Z9", vec![]);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Relido),
+            "bare SCI should fire CLOSURE_RELIDO_SCI; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// Source-of-truth pin: every entry in `FDR_OR_RELIDO_INCOMPAT`
+    /// must suppress `CLOSURE_RELIDO_SCI` when paired with a bare
+    /// SCI control. Drift in the slice or in the `satisfies_attrs`
+    /// resolution for any entry fails this test with a message
+    /// naming the failing entry.
+    #[test]
+    fn every_relido_incompat_entry_suppresses_trio2_relido() {
+        let scheme = CapcoScheme::new();
+        for suppressor in FDR_OR_RELIDO_INCOMPAT {
+            // RELIDO itself is observationally identical to a working
+            // suppressor (cone is `{RELIDO}`, fixture has `RELIDO` →
+            // dedup) — kept in the iteration for completeness but
+            // skipped from the strict assertion.
+            let is_self_relido = matches!(suppressor, TokenRef::Token(t) if *t == TOK_RELIDO);
+            let m = relido_sci_suppression_fixture(suppressor);
+            let closed = scheme.closure(m);
+            if !is_self_relido {
+                // No non-RELIDO fixture seeds `DissemControl::Relido`
+                // in the attrs (the `TOK_RELIDO` arm does, and is
+                // skipped via `is_self_relido`). Therefore any
+                // post-closure `Relido` came from
+                // `CLOSURE_RELIDO_SCI` firing — exactly what the
+                // suppressor is supposed to prevent. Assert
+                // strict absence.
+                assert!(
+                    !closed.0.dissem_us.contains(&DissemControl::Relido),
+                    "FDR_OR_RELIDO_INCOMPAT entry {suppressor:?} did NOT suppress \
+                     `CLOSURE_RELIDO_SCI`: RELIDO appeared in post-closure dissem_us \
+                     despite the suppressor being present. Either the suppressor \
+                     wiring drifted or `satisfies_attrs(...)` no longer resolves this \
+                     entry against the populated attrs axis. Authority: \
+                     marque-applied §4.7.1 has_relido_incompatible. \
+                     post-closure dissem_us = {:?}, fgi_marker = {:?}, classification \
+                     = {:?}, rel_to = {:?}",
+                    closed.0.dissem_us,
+                    closed.0.fgi_marker,
+                    closed.0.classification,
+                    closed.0.rel_to,
+                );
+            }
+        }
+    }
+
+    /// Coexistence: a marking carrying BOTH HCS-P[sub] (cone:
+    /// {NOFORN, ORCON}) and TK-BLFH (cone: {NOFORN}) — the kind of
+    /// commingled portion that §H.4 commingling rules permit
+    /// (e.g., `TOP SECRET//HCS-P JJJ/TK-BLFH//ORCON/NOFORN`) — must
+    /// close to exactly `{NOFORN, ORCON}` and must NOT produce
+    /// RELIDO from Trio 2.
+    ///
+    /// Two independent suppression paths converge here:
+    ///   1. Direct token: both `TOK_HCS_P_SUB` and `TOK_TK_BLFH` are
+    ///      in `FDR_OR_RELIDO_INCOMPAT`.
+    ///   2. Kleene chain: both per-marking rows add NOFORN, and
+    ///      NOFORN ∈ `FDR_OR_RELIDO_INCOMPAT`.
+    ///
+    /// Idempotence preserves NOFORN as a singleton in `dissem_us`
+    /// despite two cone rows adding it.
+    #[test]
+    fn coexistence_hcs_p_sub_and_tk_blfh_produces_nf_oc_no_relido() {
+        let scheme = CapcoScheme::new();
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::TopSecret));
+        let hcs_p = SciCompartment::new(
+            SmolStr::new("P"),
+            vec![SmolStr::new("JJJ")].into_boxed_slice(),
+        );
+        let tk_blfh = SciCompartment::new(SmolStr::new("BLFH"), Box::new([]));
+        let hcs_marking = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Hcs),
+            Box::new([hcs_p]),
+            None,
+        );
+        let tk_marking = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Tk),
+            Box::new([tk_blfh]),
+            None,
+        );
+        a.sci_markings = Box::new([hcs_marking, tk_marking]);
+        let m = CapcoMarking::new(a);
+        let closed = scheme.closure(m);
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "HCS-P[sub] + TK-BLFH should produce NOFORN; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Oc),
+            "HCS-P[sub] + TK-BLFH should produce ORCON (from HCS-P[sub] row); \
+             dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "HCS-P[sub] + TK-BLFH must NOT produce RELIDO (both compartments \
+             are in FDR_OR_RELIDO_INCOMPAT); dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        // Idempotence: NOFORN appears once, not twice, despite two
+        // per-marking rows adding it.
+        let nf_count = closed
+            .0
+            .dissem_us
+            .iter()
+            .filter(|d| **d == DissemControl::Nf)
+            .count();
+        assert_eq!(
+            nf_count, 1,
+            "NOFORN must be deduplicated by closure (idempotence); \
+             observed {nf_count} occurrences in dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// Per-compartment NOFORN-cone rows (HCS-O, TK-BLFH/IDIT/KAND,
+    /// HCS-P[sub]) suppress Trio 2 RELIDO via the Kleene-fixpoint
+    /// NOFORN-injection-then-suppression chain. This is a separate
+    /// assertion from the `FDR_OR_RELIDO_INCOMPAT` source-of-truth
+    /// pin: the chain-via-NOFORN suppression and the direct-token
+    /// suppression are two independent paths to the same outcome
+    /// for these compartments, and both should hold.
+    #[test]
+    fn noforn_implying_sci_compartments_suppress_trio2_via_kleene() {
+        let scheme = CapcoScheme::new();
+        let fixtures = [
+            (SciControlBare::Hcs, "O", vec![]),
+            (SciControlBare::Hcs, "P", vec!["ABCD"]),
+            (SciControlBare::Tk, "BLFH", vec![]),
+            (SciControlBare::Tk, "IDIT", vec![]),
+            (SciControlBare::Tk, "KAND", vec![]),
+        ];
+        for (system, comp, sub) in fixtures {
+            let m = sci_marking(system, comp, sub.clone());
+            let closed = scheme.closure(m);
+            assert!(
+                !closed.0.dissem_us.contains(&DissemControl::Relido),
+                "{system:?}-{comp} (sub={sub:?}) should suppress Trio 2 RELIDO; \
+                 dissem_us = {:?}",
+                closed.0.dissem_us
             );
         }
     }

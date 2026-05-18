@@ -473,3 +473,40 @@ pub const TOK_HCS_P: TokenId = TokenId(152);
 pub const TOK_TK_BLFH: TokenId = TokenId(153);
 pub const TOK_TK_IDIT: TokenId = TokenId(154);
 pub const TOK_TK_KAND: TokenId = TokenId(155);
+
+// Issue #524 (Phase 2): grammar-shape sentinel distinguishing HCS-P
+// with a registered sub-compartment from bare HCS-P.
+//
+// CAPCO-2016 §H.4 p66 (bare HCS-P) shows the Example Banner Line
+// `SECRET//HCS-P//NOFORN` (NOFORN only) while §H.4 p68 (HCS-P
+// [SUB-COMPARTMENT]) shows `TOP SECRET//HCS-P JJJ//ORCON/NOFORN`
+// (ORCON + NOFORN). The two markings carry different per-marking
+// unconditional implications, so the closure operator needs to
+// distinguish them at the trigger level. The Phase 1 sentinel
+// `TOK_HCS_P` fires for both bare and sub-compartmented forms (it
+// witnesses the HCS-P compartment), and per the structural-witness
+// design that semantic is correct; `TOK_HCS_P_SUB` is the
+// additional sentinel that fires only when HCS-P carries at least
+// one sub-compartment.
+//
+// `TOK_HCS_P_SUB` is a **grammar-shape sentinel** (like
+// `TOK_FGI_MARKER` and `TOK_JOINT`). It has no CVE-registered
+// canonical because sub-compartments are open-vocabulary
+// alphanumeric strings, not pre-registered compounds. It is
+// deliberately excluded from `SENTINEL_TO_CANONICAL` and the
+// `EXPECTED_FORMS` test catalog in `crates/capco/tests/
+// vocabulary_forms.rs` — see the `canonical_for` panic message in
+// `crates/capco/src/vocabulary.rs` for the active-sentinel
+// admission contract.
+//
+// Routed to `CAT_SCI` via `capco_token_category`. Consumed by the
+// `CLOSURE_HCS_P_SUB_IMPLIES_NF_OC` per-marking unconditional row in
+// `crates/capco/src/scheme/closure.rs`.
+//
+// Authority: §H.4 p68 (HCS-P [SUB-COMPARTMENT] marking template).
+// The Example Banner Line `TOP SECRET//HCS-P JJJ//ORCON/NOFORN`
+// and the Notional Example Page (`TOP SECRET//HCS-P EFG//ORCON/NOFORN`
+// — "originator controlled, and not releasable to foreign
+// nationals") establish the per-marking ORCON+NOFORN implication
+// for the sub-compartmented form.
+pub const TOK_HCS_P_SUB: TokenId = TokenId(156);
