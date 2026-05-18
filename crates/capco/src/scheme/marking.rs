@@ -56,10 +56,9 @@
 //! (`sci_controls_from_markings`, `FgiSet::from_attrs_iter`,
 //! `DeclassExemptionAccumulator::from_attrs_iter`,
 //! `NonIcDissemSet::from_attrs_iter`,
-//! `DisplayOnlyBlock::from_attrs_iter`). `join_via_lattice_body`'s
-//! `_tmp_ctx` parameter is retained at the function boundary for
-//! signature stability with the engine's hot path; the body no
-//! longer reads it.
+//! `DisplayOnlyBlock::from_attrs_iter`). PR 4b-F retired the last
+//! `&PageContext` parameter from the lattice fold body; the pipeline
+//! now consumes `&[CanonicalAttrs]` end-to-end.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
 //! (issue #466). Imports reach helpers via `super::actions::*` /
@@ -254,7 +253,7 @@ impl CapcoMarking {
                 );
             }
         }
-        Self::join_via_lattice_body(portions, page_ctx)
+        Self::join_via_lattice_body(portions)
     }
 
     /// Shared body for the two `join_via_lattice` entry points.
@@ -262,25 +261,22 @@ impl CapcoMarking {
     /// Composes per-axis lattice results across 10+ axes
     /// (classification + JointSet, SciSet, SarSet, AeaSet, FgiSet,
     /// DissemSet, NatoDissemSet, RelToBlock, DeclassifyOnLattice,
-    /// declass_exemption, non_ic_dissem, display_only) using `portions`
-    /// as the per-axis input and `tmp_ctx` for the residue-axis
-    /// accessor surface that PageContext still bridges
-    /// (PR 4b-E retires the residue bridge — see the module-level doc).
+    /// declass_exemption, non_ic_dissem, display_only). The body now
+    /// consumes only `portions: &[CanonicalAttrs]` — the residue-axis
+    /// `PageContext` bridge that earlier PRs threaded through this
+    /// function retired in PR 4b-E (free helpers in
+    /// `crates/capco/src/lattice.rs`) and PR 4b-F (the `_tmp_ctx`
+    /// parameter itself).
     ///
     /// ## Size guideline
     ///
     /// Clippy's `too_many_lines` lint fires on this function at
-    /// ~423 LOC (function body spans `crates/capco/src/scheme/marking.rs`
-    /// lines 284-706 in the current revision) vs the 100-line default.
-    /// Copilot R1 review #8 caught a prior incorrect "~129 LOC"
-    /// statement here — the body has always been ~420 LOC since
-    /// PR 4b-B Commit 7 added the per-axis lattice composition; the
-    /// 129 figure was wrong on inspection. The structural justification
+    /// ~420 LOC vs the 100-line default. The structural justification
     /// (axis ordering + inline citations + cross-axis state flow) is
-    /// even stronger at the actual size — splitting a 400+ LOC
-    /// cross-axis fold into per-axis sub-functions would require
-    /// threading every intermediate state value via a struct, which
-    /// pays the readability cost without the maintainability win.
+    /// load-bearing — splitting a 400+ LOC cross-axis fold into
+    /// per-axis sub-functions would require threading every
+    /// intermediate state value via a struct, which pays the
+    /// readability cost without the maintainability win.
     ///
     /// - Axis ordering is load-bearing. The G-3 / G-4 / G-4c
     ///   solely-non-US handling, the G-8 NOFORN-supersession overlay,
@@ -312,17 +308,7 @@ impl CapcoMarking {
         reason = "Cross-axis state flow + inline §-citations are \
                   structurally justified; see doc comment above."
     )]
-    fn join_via_lattice_body(
-        portions: &[CanonicalAttrs],
-        // PR 4b-E: `_tmp_ctx` retained at the boundary so the
-        // engine's hot path keeps passing a `&PageContext` reference
-        // (no signature churn for the caller). The body no longer
-        // reads it — all five residue-axis accessors migrated to
-        // free helpers in `crates/capco/src/lattice.rs`. The
-        // `join_via_lattice_with_context` same-slice contract still
-        // uses `page_ctx.portions()` for the debug-assert.
-        _tmp_ctx: &marque_ism::PageContext,
-    ) -> CanonicalAttrs {
+    fn join_via_lattice_body(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
         use crate::lattice::{
             AeaSet, ClassificationLattice, DeclassExemptionAccumulator, DeclassifyOnLattice,
             DisplayOnlyBlock, DissemSet, FgiSet, JointSet, NatoDissemSet, NonIcDissemSet,
@@ -450,13 +436,6 @@ impl CapcoMarking {
                 ClassificationLattice::from_attrs_iter(&filtered).into_inner()
             }
         };
-
-        // PR 4b-D.2 Commit 7+: tmp_ctx is now received by reference
-        // from the caller (the engine's hot path passes its existing
-        // `&PageContext`, eliminating the inner n×clone tmp_ctx rebuild
-        // round). The trait-path entry point (`join_via_lattice`) still
-        // builds a one-shot tmp_ctx and delegates; the engine path
-        // skips that round via `join_via_lattice_with_context`.
 
         // Axis 2-5: SCI / SAR / AEA / FGI — assemble from per-portion
         // markings via the PR 4b-A precedent constructors. SciSet /
