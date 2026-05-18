@@ -148,11 +148,7 @@ fn phase_attribution(c: &mut Criterion) {
     });
 
     // Phase C: whole scheme.project(Scope::Page, ...) call.
-    let markings: Vec<CapcoMarking> = portions
-        .iter()
-        .cloned()
-        .map(CapcoMarking::new)
-        .collect();
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     c.bench_function("phase_c_scheme_project", |b| {
         b.iter(|| {
             let out = scheme.project(Scope::Page, black_box(&markings));

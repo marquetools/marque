@@ -350,7 +350,11 @@ fn apply_fact_add_noforn_strips_displayonly_via_supersession() {
     let projected = scheme.project(Scope::Page, &[CapcoMarking::new(portion)]);
 
     assert!(
-        projected.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
+        projected
+            .0
+            .dissem_us
+            .iter()
+            .any(|d| d == &DissemControl::Nf),
         "FactAdd routing must inject NOFORN; dissem_us = {:?}",
         projected.0.dissem_us,
     );

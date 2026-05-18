@@ -237,8 +237,7 @@ impl MarkingScheme for CapcoScheme {
                 // the pipeline. Test fixtures and external tooling
                 // continue to use this trait-path entry; the engine
                 // takes the fast path.
-                let raw: Vec<CanonicalAttrs> =
-                    markings.iter().map(|m| m.0.clone()).collect();
+                let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
                 let out_attrs = self.project_from_attrs_slice(&raw);
                 CapcoMarking::new(out_attrs)
             }
@@ -656,10 +655,7 @@ impl CapcoScheme {
     /// an out-of-crate caller's use case requires it.
     ///
     /// [`PageContext::portions()`]: marque_ism::PageContext::portions
-    pub(crate) fn project_from_attrs_slice(
-        &self,
-        portions: &[CanonicalAttrs],
-    ) -> CanonicalAttrs {
+    pub(crate) fn project_from_attrs_slice(&self, portions: &[CanonicalAttrs]) -> CanonicalAttrs {
         // Build a one-shot tmp_ctx for residue-axis accessors and
         // delegate to the borrowed-context pipeline. Callers that
         // already own a `&PageContext` SHOULD call
@@ -717,14 +713,13 @@ impl CapcoScheme {
         #[cfg(debug_assertions)]
         let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
 
-        let joined = CapcoMarking::new(
-            CapcoMarking::join_via_lattice_with_context(raw, page_ctx),
-        );
+        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice_with_context(raw, page_ctx));
         let mut out = self.closure(joined);
 
         #[cfg(debug_assertions)]
         debug_assert_eq!(
-            raw, raw_snapshot.as_slice(),
+            raw,
+            raw_snapshot.as_slice(),
             "closure() mutated the per-portion CanonicalAttrs slice — \
              violates PageRewrite read-only-attrs invariant \
              (docs/plans/2026-05-01-lattice-design.md §3 (e.1))"
@@ -795,11 +790,7 @@ impl CapcoScheme {
                         );
                     }
                     CategoryAction::Custom(f) => {
-                        tracing::debug!(
-                            rewrite_id = rw.id,
-                            action = "Custom",
-                            "PageRewrite fired",
-                        );
+                        tracing::debug!(rewrite_id = rw.id, action = "Custom", "PageRewrite fired",);
                         f(&mut out);
                     }
                     CategoryAction::Intent(intent) => {

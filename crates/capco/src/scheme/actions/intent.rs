@@ -276,8 +276,8 @@ fn apply_fact_add(
         // through lint per scheme.rs:190).
         if target == DissemControl::Nf {
             let portion_attrs = [attrs.clone()];
-            let dissem_set = crate::lattice::DissemSet::from_attrs_iter(&portion_attrs)
-                .with_noforn_injected();
+            let dissem_set =
+                crate::lattice::DissemSet::from_attrs_iter(&portion_attrs).with_noforn_injected();
             attrs.dissem_us = dissem_set.into_boxed_slice();
             return Ok(());
         }

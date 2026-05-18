@@ -618,10 +618,7 @@ fn closure_short_circuits_on_bare_unclassified() {
     let scheme = CapcoScheme::new();
     let m = CapcoMarking::new(CanonicalAttrs::default());
     let closed = scheme.closure(m.clone());
-    assert_eq!(
-        m, closed,
-        "closure must be a no-op when no triggers fire"
-    );
+    assert_eq!(m, closed, "closure must be a no-op when no triggers fire");
 }
 
 /// Closure is a no-op on a classified-but-uncaveated portion (`(S)`).
@@ -632,10 +629,7 @@ fn closure_short_circuits_on_uncaveated_classified() {
     let scheme = CapcoScheme::new();
     let m = classified_no_dissem(Classification::Secret);
     let closed = scheme.closure(m.clone());
-    assert_eq!(
-        m, closed,
-        "closure must be a no-op on uncaveated `(S)`"
-    );
+    assert_eq!(m, closed, "closure must be a no-op on uncaveated `(S)`");
 }
 
 /// Closure still contributes when a trigger fires. `(S//OC)` carries
