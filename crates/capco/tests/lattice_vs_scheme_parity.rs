@@ -37,22 +37,39 @@
 //!
 //! ## DISSEM_US divergence (hoisted rationale)
 //!
-//! 12 fixtures in this file declare `&["dissem_us"]` as a deliberate
-//! divergence between `project_via_lattice` and `project_via_scheme`.
-//! Per Copilot R2 (PR #539): duplicating the same 7-line rationale
-//! inline at 12 call-sites is a citation-drift hazard — Constitution
-//! VIII "propagation requires re-verification" applies. The canonical
-//! rationale lives here; each fixture-site comment is one line that
-//! points back.
+//! Many fixtures in this file declare `&["dissem_us"]` as a
+//! deliberate divergence between `project_via_lattice` and
+//! `project_via_scheme`. Per Copilot R2 (PR #539): duplicating the
+//! same rationale inline at every call-site is a citation-drift
+//! hazard — Constitution VIII "propagation requires re-verification"
+//! applies. The canonical rationale lives here; each fixture-site
+//! comment is one line that points back.
 //!
-//! **The divergence (single source of truth):** §B.3 Table 2 p21
-//! caveated-classified rule fires on the scheme path's
-//! `CLOSURE_NOFORN_CAVEATED` closure (the input is a classified +
-//! caveated marking — caveat per §B.3 p20 Note covers ORCON /
-//! non-IC dissem / etc.). The per-axis lattice path does not run
-//! closure rules; the expected `dissem_us` divergence is
-//! `lat=[..no Nf], scheme=[..Nf]`. Verified 2026-05-18 against
-//! `crates/capco/docs/CAPCO-2016.md` §B.3 p20 + Table 2 p21.
+//! **Two divergence sources today (single source of truth):**
+//!
+//! 1. **§B.3 Table 2 p21 caveated-classified.** Fires on the scheme
+//!    path's `CLOSURE_NOFORN_CAVEATED` closure (the input is a
+//!    classified + caveated marking — caveat per §B.3 p20 Note
+//!    covers ORCON / non-IC dissem / etc.). The per-axis lattice
+//!    path does not run closure rules; the expected `dissem_us`
+//!    divergence is `lat=[..no Nf], scheme=[..Nf]`. Verified
+//!    2026-05-18 against `crates/capco/docs/CAPCO-2016.md` §B.3
+//!    p20 + Table 2 p21.
+//!
+//! 2. **§B.3 Table 2 p21 implicit-RELIDO on US collateral
+//!    classification (Issue #524 Phase 3).** Fires on the scheme
+//!    path's `CLOSURE_RELIDO_US_CLASS` closure (the input is a
+//!    US collateral classification — Restricted / Confidential /
+//!    Secret / TopSecret — absent any FD&R-dominator). The
+//!    per-axis lattice path does not run closure rules; the
+//!    expected `dissem_us` divergence is `lat=[..no Relido],
+//!    scheme=[..Relido]`. Primary authority: CAPCO-2016 §B.3
+//!    Table 2 p21 ("Classified + uncaveated + on/after 28 June
+//!    2010 → Mark as RELIDO"). Grammar reference: §H.8 p154
+//!    (RELIDO marking template + Unclassified carve-out). Design
+//!    synthesis: `marque-applied.md` Section 4.7.5. Verified
+//!    2026-05-18 against `crates/capco/docs/CAPCO-2016.md` §B.3
+//!    Table 2 p21 + §H.8 p154.
 
 use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
@@ -282,7 +299,10 @@ fn oc_usgov_no_oc_no_usgov() {
         "oc_usgov_no_oc_no_usgov",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — see module doc "DISSEM_US divergence
+        // (hoisted rationale)" source 2 (§H.8 p154 implicit-RELIDO,
+        // Issue #524 Phase 3) for the citation.
+        &["dissem_us"],
     );
 }
 
@@ -334,7 +354,11 @@ fn relido_mixed_drops() {
         "relido_mixed_drops",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — the third (bare) portion triggers
+        // CLOSURE_RELIDO_US_CLASS (Issue #524 Phase 3). See module
+        // doc "DISSEM_US divergence (hoisted rationale)" source 2
+        // for the §H.8 p154 + marque-applied Section 4.7.5 citation.
+        &["dissem_us"],
     );
 }
 
@@ -350,7 +374,10 @@ fn relido_single_portion_with_relido_drops() {
         "relido_single_portion_with_relido_drops",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — the bare US portion triggers
+        // CLOSURE_RELIDO_US_CLASS (Issue #524 Phase 3). See module
+        // doc "DISSEM_US divergence (hoisted rationale)" source 2.
+        &["dissem_us"],
     );
 }
 
@@ -610,7 +637,10 @@ fn joint_classification_pure_us_no_joint() {
         "joint_classification_pure_us_no_joint",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — pure US classified, CLOSURE_RELIDO_US_CLASS
+        // fires on the scheme path (Issue #524 Phase 3). See module
+        // doc "DISSEM_US divergence (hoisted rationale)" source 2.
+        &["dissem_us"],
     );
 }
 
@@ -656,7 +686,10 @@ fn classification_max_promotes() {
         "classification_max_promotes",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — pure US classified, CLOSURE_RELIDO_US_CLASS
+        // fires on the scheme path (Issue #524 Phase 3). See module
+        // doc "DISSEM_US divergence (hoisted rationale)" source 2.
+        &["dissem_us"],
     );
 }
 
@@ -667,7 +700,10 @@ fn classification_single_portion() {
         "classification_single_portion",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — pure US classified, CLOSURE_RELIDO_US_CLASS
+        // fires on the scheme path (Issue #524 Phase 3). See module
+        // doc "DISSEM_US divergence (hoisted rationale)" source 2.
+        &["dissem_us"],
     );
 }
 
@@ -1085,7 +1121,15 @@ fn conflict_classification_flattens_to_us() {
         "conflict_classification_flattens_to_us",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — Conflict-variant US classification
+        // satisfies the `TOK_US_CLASSIFIED` trigger (us_classification()
+        // returns the resolved US side) and CAT_NON_US_CLASSIFICATION
+        // excludes Conflict per fn-doc, so CLOSURE_RELIDO_US_CLASS
+        // fires on the scheme path (Issue #524 Phase 3 — see
+        // `phase3_closure_pin::us_class_conflict_variant_pin`). See
+        // module doc "DISSEM_US divergence (hoisted rationale)"
+        // source 2.
+        &["dissem_us"],
     );
 }
 
@@ -1134,7 +1178,12 @@ fn conflict_plus_us_flattens_to_us() {
         "conflict_plus_us_flattens_to_us",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        &[],
+        // DISSEM_US divergence — the explicit US portion satisfies
+        // `TOK_US_CLASSIFIED` and the lattice-joined output is pure
+        // Us(_), so CLOSURE_RELIDO_US_CLASS fires on the scheme path
+        // (Issue #524 Phase 3). See module doc "DISSEM_US divergence
+        // (hoisted rationale)" source 2.
+        &["dissem_us"],
     );
 }
 
@@ -1891,10 +1940,14 @@ fn display_only_single_portion_parity() {
         "display_only_single_portion_parity",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // Phase-2 deferred: both produce Box<[]>; no divergence today.
-        // When Phase 2 lands, remove the empty divergence list and add
-        // a row checking the non-empty result.
-        &[],
+        // display_only_to: both paths produce Box<[]> (Phase-2
+        // deferred). When Phase 2 lands, add a row checking the
+        // non-empty result.
+        // DISSEM_US divergence — pure US classified, no other
+        // dissem; CLOSURE_RELIDO_US_CLASS fires on the scheme path
+        // (Issue #524 Phase 3). See module doc "DISSEM_US divergence
+        // (hoisted rationale)" source 2.
+        &["dissem_us"],
     );
 }
 
@@ -1927,9 +1980,14 @@ fn display_only_two_portions_disjoint_lists_parity() {
         "display_only_two_portions_disjoint_lists_parity",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // Both paths converge to `dissem_us=[]`; the §D.2 row 20 NF
-        // injection is a known follow-up gap (same on both paths).
-        &[],
+        // §D.2 row 20 NF-when-DO-collapses-to-Empty injection is a
+        // known follow-up gap (same on both paths).
+        // DISSEM_US divergence — both portions are pure US classified,
+        // no other dissem (display_only_to is a separate axis);
+        // CLOSURE_RELIDO_US_CLASS fires on the scheme path (Issue #524
+        // Phase 3). See module doc "DISSEM_US divergence (hoisted
+        // rationale)" source 2.
+        &["dissem_us"],
     );
 }
 

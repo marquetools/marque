@@ -896,26 +896,37 @@ fn closure_converges_within_max_iterations_on_multi_trigger_marking() {
 // Negative / safety — closure does not over-fire.
 // ---------------------------------------------------------------------------
 
-/// A bare US classification with no caveat and no Trio-1 trigger
-/// receives no closure injection: NOFORN is NOT added.
+/// A bare US classification with no caveat receives the Trio 2
+/// implicit-RELIDO injection but no NOFORN (the §B.3 Table 2 p21
+/// FD&R consequence for uncaveated classified is RELIDO, not
+/// NOFORN). This was a no-op pre-Issue #524 Phase 3 (the Trio 2
+/// `CLOSURE_RELIDO_US_CLASS` row did not exist; the pre-Phase-3
+/// comment explicitly noted "the per-marking sentinels its triggers
+/// require do not yet exist"). Phase 3 wires
+/// `TOK_US_CLASSIFIED` as the trigger and the closure now adds
+/// RELIDO per `marque-applied.md` Section 4.7.5.
 ///
-/// This is the negative control: a `(S)` portion is uncaveated; per
-/// §B.3 Table 2 p21 the FD&R consequence is RELIDO, not NOFORN — but
-/// the catalog has no Trio 2 (implicit RELIDO) row today (the
-/// per-marking sentinels its triggers require do not yet exist).
-/// The catalog therefore makes no claim here, and the marking is
-/// unchanged.
+/// The "does not overfire" property is preserved in its actual
+/// load-bearing form: NOFORN must NOT be added (only RELIDO).
 #[test]
-fn closure_does_not_overfire_on_uncaveated_classified() {
+fn closure_adds_relido_but_not_noforn_on_uncaveated_classified() {
     let scheme = CapcoScheme::new();
     let m = classified_no_dissem(Classification::Secret);
 
-    let closed = scheme.closure(m.clone());
+    let closed = scheme.closure(m);
 
-    assert_eq!(
-        m, closed,
-        "closure must not modify a marking with no triggers fired \
-         (uncaveated classified — no Trio-1 caveat present)"
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Relido),
+        "Phase 3 CLOSURE_RELIDO_US_CLASS must add RELIDO to bare US (S); \
+         dissem_us = {:?}",
+        closed.0.dissem_us,
+    );
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "uncaveated (S) must NOT receive implicit NOFORN (Trio 1 \
+         requires a caveat trigger; bare classification alone is not \
+         a caveat per §B.3 p20); dissem_us = {:?}",
+        closed.0.dissem_us,
     );
 }
 
@@ -946,15 +957,24 @@ fn closure_short_circuits_on_bare_unclassified() {
     assert_eq!(m, closed, "closure must be a no-op when no triggers fire");
 }
 
-/// Closure is a no-op on a classified-but-uncaveated portion (`(S)`).
-/// No Trio-1 caveat, no NATO classification, no FGI marker — nothing
-/// for the closure to do.
+/// Closure is NOT a no-op on a classified-but-uncaveated portion
+/// (`(S)`) as of Issue #524 Phase 3: the Trio 2
+/// `CLOSURE_RELIDO_US_CLASS` row fires on `TOK_US_CLASSIFIED` and
+/// injects RELIDO. The short-circuit predicate correctly reports
+/// `true` here (the trigger fires) so the fixpoint runs and
+/// produces the new fact. Pre-Phase-3 this case short-circuited
+/// to a no-op; the flip is intentional.
 #[test]
-fn closure_short_circuits_on_uncaveated_classified() {
+fn closure_runs_fixpoint_on_uncaveated_classified() {
     let scheme = CapcoScheme::new();
     let m = classified_no_dissem(Classification::Secret);
-    let closed = scheme.closure(m.clone());
-    assert_eq!(m, closed, "closure must be a no-op on uncaveated `(S)`");
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Relido),
+        "CLOSURE_RELIDO_US_CLASS must add RELIDO to bare US (S) \
+         per Phase 3 (marque-applied Section 4.7.5); dissem_us = {:?}",
+        closed.0.dissem_us,
+    );
 }
 
 /// Closure still contributes when a trigger fires. `(S//OC)` carries
