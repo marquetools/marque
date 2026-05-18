@@ -308,11 +308,19 @@ impl CapcoMarking {
     )]
     fn join_via_lattice_body(
         portions: &[CanonicalAttrs],
-        tmp_ctx: &marque_ism::PageContext,
+        // PR 4b-E: `_tmp_ctx` retained at the boundary so the
+        // engine's hot path keeps passing a `&PageContext` reference
+        // (no signature churn for the caller). The body no longer
+        // reads it — all five residue-axis accessors migrated to
+        // free helpers in `crates/capco/src/lattice.rs`. The
+        // `join_via_lattice_with_context` same-slice contract still
+        // uses `page_ctx.portions()` for the debug-assert.
+        _tmp_ctx: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
         use crate::lattice::{
-            AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet, JointSet,
-            NatoDissemSet, RelToBlock, SarSet, SciSet,
+            AeaSet, ClassificationLattice, DeclassExemptionLattice, DeclassifyOnLattice,
+            DisplayOnlyBlock, DissemSet, FgiSet, JointSet, NatoDissemSet, NonIcDissemSet,
+            RelToBlock, SarSet, SciSet, sci_controls_from_markings,
         };
 
         let mut out = CanonicalAttrs::default();
@@ -457,9 +465,15 @@ impl CapcoMarking {
 
         // Compatibility view: sci_controls is the flat CVE-enum
         // projection. The structural axis above is the authoritative
-        // form; we re-derive sci_controls via the existing PageContext
-        // shape so the parity gate compares both forms.
-        out.sci_controls = tmp_ctx.expected_sci_controls().into_boxed_slice();
+        // form; PR 4b-E migrated the flat union of per-portion
+        // `sci_controls` to the free helper
+        // `marque_capco::lattice::sci_controls_from_markings` (which
+        // reads `attrs.sci_controls` per portion — the parser-populated
+        // CVE projection — not from `out.sci_markings`; the structural
+        // roll-up sets `canonical_enum: None` on every output so a
+        // project-from-markings path would always return empty).
+        // §H.4 p61.
+        out.sci_controls = sci_controls_from_markings(portions);
 
         // SAR: PR 4b-A SarSet operates on a single SarMarking
         // (`sar_markings` field is `Option<SarMarking>`). Join
@@ -613,7 +627,14 @@ impl CapcoMarking {
                 }
             }
         } else {
-            tmp_ctx.expected_fgi_marker()
+            // PR 4b-E: residue migration. The "non-solely-non-US"
+            // branch unions per-portion `fgi_marker` with
+            // classification-derived producers (NATO / JOINT / FGI
+            // variants), formerly via `PageContext::expected_fgi_marker`.
+            // `FgiSet::from_attrs_iter` carries the same semantics
+            // (§H.7 p122 + p123 + p128); the result is then merged
+            // with the explicit-FGI-marker fold via `merge_fgi_markers`.
+            FgiSet::from_attrs_iter(portions).to_marker()
         };
         out.fgi_marker = merge_fgi_markers(fgi_acc.to_marker(), ctx_fgi_marker);
 
@@ -635,7 +656,7 @@ impl CapcoMarking {
         // intersection means no common release audience exists, so the banner
         // MUST carry NOFORN per §D.2 Table 3 row 9.
         //
-        // Pre-fix the NOFORN injection at line ~662 only checked
+        // Pre-fix the NOFORN injection only checked
         // `rel_to_was_noforn_superseded` (the `NofornSuperseded` absorbing
         // state) and missed `Empty`. A page with two REL TO portions listing
         // disjoint countries produced an empty `rel_to` slice with no `Nf`
@@ -645,52 +666,59 @@ impl CapcoMarking {
         // TO [USA, LIST] with no common [LIST] → NOFORN banner).
         // Verified 2026-05-16 against crates/capco/docs/CAPCO-2016.md.
         let rel_to_was_empty_intersection = rel_to_block.is_empty_intersection();
-        out.rel_to = rel_to_block.into_boxed_slice();
+        // PR 4b-E: defer `out.rel_to` assignment until after
+        // `DisplayOnlyBlock::from_attrs_iter` borrows `rel_to_block`
+        // for the row-27 banner-REL-TO subtraction — see below.
 
         // Axis 9: declassify_on (and declass_exemption rides as
-        // last-observed per the existing PageContext semantic for
-        // now — Phase 3 TODO at page_context.rs:639).
+        // last-observed per the existing semantic — Phase 3 TODO
+        // carried over on `DeclassExemptionLattice`).
+        // PR 4b-E: `declass_exemption` migrated from
+        // `PageContext::expected_declass_exemption` to the
+        // `DeclassExemptionLattice::from_attrs_iter` helper. Same
+        // semantics; the Phase-3 duration-aware comparator is
+        // queued on the lattice type's doc-comment.
         out.declassify_on = DeclassifyOnLattice::from_attrs_iter(portions).into_inner();
-        out.declass_exemption = tmp_ctx.expected_declass_exemption();
+        out.declass_exemption =
+            DeclassExemptionLattice::from_attrs_iter(portions).into_inner();
 
-        // Residue 1: non_ic_dissem — classification-gated SBU-NF/
-        // LES-NF split + implied-NF stays on PageContext for one
-        // more PR (PR 4b-C migration target).
+        // Axis 10: non_ic_dissem — classification-gated SBU-NF /
+        // LES-NF split (§H.9 p178 / p185) + implied-NF for
+        // NODIS / EXDIS (§H.9 p172 / p174).
         //
-        // G-6 (PR 4b-B follow-up): propagate `needs_nf` from
-        // `expected_non_ic_dissem`. When set, inject NOFORN into
-        // `dissem_us` AND clear REL TO — matches
-        // PageContext::expected_dissem_us step 4 + the implicit
-        // REL TO clear via §H.9 p178 (SBU-NF) / §H.9 p185 (LES-NF).
-        // Pre-fix, the lattice path ignored this flag and a
-        // classified page with REL TO + SBU-NF / LES-NF kept REL TO
-        // and missed NOFORN.
-        let (non_ic, needs_nf) = tmp_ctx.expected_non_ic_dissem();
-        out.non_ic_dissem = non_ic.into_boxed_slice();
+        // PR 4b-E: `NonIcDissemSet::from_attrs_iter` lifts the same
+        // semantics off `PageContext::expected_non_ic_dissem`. The
+        // `needs_nf` flag is still consumed at the cross-axis NOFORN
+        // injection rendezvous below (G-6 PR 4b-B follow-up):
+        // when set, NOFORN is injected into `dissem_us` AND REL TO
+        // is cleared.
+        let non_ic_set = NonIcDissemSet::from_attrs_iter(portions);
+        let needs_nf = non_ic_set.needs_nf();
+        out.non_ic_dissem = non_ic_set.into_boxed_slice();
 
         // DISPLAY ONLY axis (§D.2 Table 3 rows 18-20 + 25-27, §H.8
         // p163). Cross-axis intersection over (REL TO ∪ DO) with
-        // banner-REL-TO and USA subtraction — see
-        // `PageContext::expected_display_only`. PR 4b-D.2 mirrors the
-        // `page_context_to_attrs` semantic into the lattice path so
-        // the production scheme.project hot-path output preserves the
-        // axis. A dedicated `DisplayOnlyBlock` lattice (parallel to
-        // RelToBlock) is queued for the same PR-cycle as the
-        // PageContext deletion.
+        // banner-REL-TO and USA subtraction.
         //
-        // Belt-and-suspenders defense against deferred NOFORN
-        // injection: per §H.8 p154 + §D.2 Table 3 row 2, NOFORN and
-        // DISPLAY ONLY cannot coexist in the projected banner.
-        // `expected_display_only` already short-circuits to empty
-        // when `needs_nf` is true; the defensive `.clear()` mirrors
-        // `page_context_to_attrs` so a future refactor that drops
-        // the PageContext-side short-circuit cannot silently
-        // re-introduce the bug here.
-        let mut display_only_to = tmp_ctx.expected_display_only();
-        if needs_nf {
-            display_only_to.clear();
-        }
-        out.display_only_to = display_only_to.into_boxed_slice();
+        // PR 4b-E: the residue migration. The dedicated
+        // `DisplayOnlyBlock` lattice (parallel to `RelToBlock`)
+        // lifts the §D.2 Table 3 row 18-20 + 25-27 + §H.8 p163
+        // semantics out of `PageContext::expected_display_only`.
+        // The constructor consumes the pre-computed `rel_to_block`
+        // (for row-27 subtraction) and `needs_nf` (for the
+        // NODIS/EXDIS short-circuit per §H.9 p172 / p174). NOFORN
+        // supersession (§D.2 Table 3 rows 1-2 + §H.8 p145) is
+        // applied inside the lattice constructor.
+        out.display_only_to =
+            DisplayOnlyBlock::from_attrs_iter(portions, &rel_to_block, needs_nf)
+                .into_boxed_slice();
+
+        // PR 4b-E: now that DisplayOnlyBlock has consumed its read
+        // of `rel_to_block`, materialize `out.rel_to` from the same
+        // value. (Deferred from the §H.8 p150-151 / §D.2 Table 3
+        // row 9 computation above so a single RelToBlock value
+        // serves both consumers.)
+        out.rel_to = rel_to_block.into_boxed_slice();
 
         // NOFORN-clears-REL-TO interaction + cross-axis NOFORN
         // injection.
