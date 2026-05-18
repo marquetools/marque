@@ -557,7 +557,7 @@ Under **OQ-1(A) + OQ-2(A) — the default — 10 rows ship**:
 | `capco/rawfisa-evicts-fouo` | **`TOK_RAWFISA`** | CAT_DISSEM | **NEW (Commit 1)** | §H.8 p134 + §H.8 p161 (RAWFISA shares the FISA section) |
 | `capco/rsen-evicts-fouo` | `TOK_RSEN` | CAT_DISSEM | exists | §H.8 p134 + §H.8 p132 |
 | `capco/ssi-evicts-fouo` | `TOK_SSI` | CAT_NON_IC_DISSEM | exists | §H.8 p134 + §H.9 p189 |
-| `capco/nnpi-evicts-fouo` | **`TOK_NNPI`** | CAT_NON_IC_DISSEM | **NEW (Commit 1)** | §H.8 p134 + `crates/ism/src/attrs.rs:1326` (NNPI banner-roll-up doc-comment, propagates regardless of classification) |
+| `capco/nnpi-evicts-fouo` | **`TOK_NNPI`** | CAT_NON_IC_DISSEM | **NEW (Commit 1)** | §H.8 p134 + `NonIcDissem::Nnpi` variant doc-comment in `crates/ism/src/attrs.rs` (NNPI banner-roll-up — propagates regardless of classification) |
 | (OQ-2(A)) `capco/nodis-evicts-fouo` | `TOK_NODIS` | CAT_NON_IC_DISSEM | exists | §H.8 p134 + §H.9 p174 |
 | (OQ-2(A)) `capco/exdis-evicts-fouo` | `TOK_EXDIS` | CAT_NON_IC_DISSEM | exists | §H.8 p134 + §H.9 p172 |
 

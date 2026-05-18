@@ -172,10 +172,19 @@ const CLOSURE_NOFORN_AEA_RD: ClosureRule<CapcoScheme> = ClosureRule {
 /// itself is constrained to UNCLASSIFIED per §H.6 DCNI pp116-117 (DoD)
 /// and §H.6 UCNI pp118-119 (DoE); the NOFORN closure fires regardless
 /// of class.
+///
+/// Both UCNI sentinels are required in the trigger list: per issue
+/// #407, `TOK_UCNI` resolves to `AeaMarking::DoeUcni` only and the
+/// DOD variant resolves through the distinct `TOK_DCNI` sentinel
+/// (see `predicates::satisfies::aea_marking_to_token` at
+/// `AeaMarking::DodUcni => Some(TOK_DCNI)`). The §B.3 Table 2 p21
+/// caveated→NOFORN algebra is grammar-agnostic over which sentinel
+/// surfaces the UCNI marking, so both rows compose through the same
+/// closure label.
 const CLOSURE_NOFORN_UCNI: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-ucni",
     label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[TokenRef::Token(TOK_UCNI)],
+    triggers: &[TokenRef::Token(TOK_UCNI), TokenRef::Token(TOK_DCNI)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
     cone_derived: None,
@@ -339,19 +348,35 @@ const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
     default_severity: Severity::Info,
 };
 
-/// Trio 1, row 7: Non-IC controls LIMDIS / LES / SBU / SSI imply NOFORN
-/// unless FD&R-marked.
+/// Trio 1, row 7: Non-IC controls LIMDIS / LES / NNPI / SBU / SSI imply
+/// NOFORN unless FD&R-marked.
 ///
-/// These non-IC dissemination controls have a NOFORN-equivalent treatment in
-/// the IC marking context when no explicit FD&R decision is present. Per
-/// CAPCO-2016 §H.9 p170 (LIMDIS), §H.9 p181 (LES), §H.9 p176 (SBU),
-/// §H.9 p189 (SSI), cross-referenced with §B.3 Table 2 p21.
-const CLOSURE_NOFORN_NONICCONTROLS: ClosureRule<CapcoScheme> = ClosureRule {
+/// The underlying IC principle is uniform across all non-IC dissem
+/// controls: the marking identifies information governed by a policy
+/// regime outside IC marking authority, so the IC cannot presume
+/// releasability or RELIDO-suitability without an explicit FD&R
+/// decision — implicit NOFORN is the conservative default. This is
+/// the §B.3 p20 Note caveated-definition path (any dissem control
+/// marking → caveated) feeding the §B.3 Table 2 p21 row
+/// (classified, caveated, post-28-Jun-2010 → NOFORN), rooted in
+/// ICD 403 (Foreign Disclosure and Release).
+///
+/// Per-token authority:
+/// - LIMDIS: §H.9 p170
+/// - LES: §H.9 p181
+/// - SBU: §H.9 p176
+/// - SSI: §H.9 p189
+/// - NNPI: ODNI `CVEnumISMNonIC.xml` (value `NNPI`). CAPCO-2016
+///   does not enumerate NNPI under §H.9 because its governing
+///   authority (10 USC 7314 / 50 USC 2511; Naval Nuclear Propulsion
+///   Program) lives outside IC marking policy.
+const CLOSURE_NOFORN_NON_IC_DISSEM: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/noforn-if-non-ic-controls",
     label: "CAPCO-2016 §B.3 Table 2 p21",
     triggers: &[
         TokenRef::Token(TOK_LIMDIS),
         TokenRef::Token(TOK_LES),
+        TokenRef::Token(TOK_NNPI),
         TokenRef::Token(TOK_SBU),
         TokenRef::Token(TOK_SSI),
     ],
@@ -394,7 +419,7 @@ pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     CLOSURE_NOFORN_FGI,
     CLOSURE_NOFORN_ORCON,
     CLOSURE_NOFORN_RSEN_IMCON_DSEN,
-    CLOSURE_NOFORN_NONICCONTROLS,
+    CLOSURE_NOFORN_NON_IC_DISSEM,
     // Trio 3: implicit `REL TO USA, NATO` for bare NATO classification.
     // Fires at `Severity::Info` (silent lattice-layer fact propagation);
     // S007 owns the text-layer `Severity::Suggest` byte-diff per D20.
