@@ -674,15 +674,9 @@ impl CapcoScheme {
     ///
     /// [`PageContext::portions()`]: marque_ism::PageContext::portions
     pub(crate) fn project_from_attrs_slice(&self, portions: &[CanonicalAttrs]) -> CanonicalAttrs {
-        // Build a one-shot tmp_ctx for residue-axis accessors and
-        // delegate to the borrowed-context pipeline. Callers that
-        // already own a `&PageContext` SHOULD call
-        // `project_from_page_context` directly to skip the n×clone.
-        let mut tmp_ctx = marque_ism::PageContext::new();
-        for p in portions {
-            tmp_ctx.add_portion(p.clone());
-        }
-        self.project_attrs_pipeline_with_context(portions, &tmp_ctx)
+        // PR 4b-F retired the one-shot tmp_ctx build: the inner
+        // pipeline no longer carries a `&PageContext` parameter.
+        self.project_attrs_pipeline(portions)
     }
 
     /// PR 4b-D.2 Commit 7+ — hot-path entry that consumes a pre-built
@@ -701,7 +695,11 @@ impl CapcoScheme {
         &self,
         page_context: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
-        self.project_attrs_pipeline_with_context(page_context.portions(), page_context)
+        // The same-slice property is now structural: we derive `raw`
+        // from `page_context.portions()` literally, here at the
+        // boundary. The earlier debug-assert that guarded this in
+        // `join_via_lattice_with_context` became vacuous in PR 4b-F.
+        self.project_attrs_pipeline(page_context.portions())
     }
 
     /// Shared body of the page-projection pipeline. Both
@@ -714,14 +712,16 @@ impl CapcoScheme {
     /// join_via_lattice → closure → PageRewrites
     /// ```
     ///
-    /// `raw` and `page_ctx.portions()` MUST refer to the same slice
-    /// (caller's contract — debug-asserted by
-    /// `join_via_lattice_with_context`).
-    fn project_attrs_pipeline_with_context(
-        &self,
-        raw: &[CanonicalAttrs],
-        page_ctx: &marque_ism::PageContext,
-    ) -> CanonicalAttrs {
+    /// PR 4b-F retired the `page_ctx: &PageContext` parameter — the
+    /// pipeline now consumes only `raw: &[CanonicalAttrs]`. The
+    /// same-slice contract that earlier PRs threaded as a debug-assert
+    /// at this layer became vacuous once `join_via_lattice_body` no
+    /// longer reads a PageContext: there is no parallel slice for the
+    /// inner body to drift from. Engine callers that need to bridge
+    /// from a `&PageContext` go through
+    /// [`Self::project_from_page_context`], which derives
+    /// `page_context.portions()` once at the boundary.
+    fn project_attrs_pipeline(&self, raw: &[CanonicalAttrs]) -> CanonicalAttrs {
         // PR 4b-D.2 D23 (decisions.md): closure-rewrite-application
         // sentinel. Per `docs/plans/2026-05-01-lattice-design.md`
         // §3 (e.1) read-only-attrs invariant, the closure operator
@@ -737,15 +737,15 @@ impl CapcoScheme {
         // default `{:?}` format would dump full `CanonicalAttrs`
         // (token values, country lists, spans), violating G13. The
         // explicit `if !=` + `panic!` with a count-only message
-        // mirrors the `check_portions_unchanged` pattern at
-        // `crates/engine/src/engine.rs:4540-4574` (PageFinalization-
-        // rule-dispatch sentinel). Both sentinels enforce the same
-        // §3 (e.1) read-only-attrs invariant; both must keep audit-
-        // content-ignorance on the failure path.
+        // mirrors the `check_portions_unchanged` pattern in
+        // `crates/engine/src/engine.rs` (PageFinalization-rule-dispatch
+        // sentinel). Both sentinels enforce the same §3 (e.1)
+        // read-only-attrs invariant; both must keep audit-content-
+        // ignorance on the failure path.
         #[cfg(debug_assertions)]
         let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
 
-        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice_with_context(raw, page_ctx));
+        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(raw));
         let mut out = self.closure(joined);
 
         #[cfg(debug_assertions)]

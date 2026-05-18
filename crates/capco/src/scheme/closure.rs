@@ -315,10 +315,10 @@ pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
 /// but the rationale is *not* "the closure operator sees NOFORN first."
 /// The page-projection pipeline is
 /// `join_via_lattice → closure → PageRewrites` per the body of
-/// `CapcoScheme::project_attrs_pipeline_with_context` (the shared
-/// pipeline helper that `MarkingScheme::project`, the engine fast-path
-/// entries, and direct `scheme.project(Scope::Page, ...)` callers all
-/// delegate through — see `crates/capco/src/scheme/marking_scheme_impl.rs`).
+/// `CapcoScheme::project_attrs_pipeline` (the shared pipeline helper
+/// that `MarkingScheme::project`, the engine fast-path entries, and
+/// direct `scheme.project(Scope::Page, ...)` callers all delegate
+/// through — see `crates/capco/src/scheme/marking_scheme_impl.rs`).
 /// When closure runs, the LES-NF / SBU-NF PageRewrites have not yet
 /// added NOFORN. Closure is permitted to over-fire on bare-LES-NF /
 /// bare-SBU-NF — the cone fact it would add (`{NOFORN}`) is
