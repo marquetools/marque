@@ -2,16 +2,28 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 4b-B Commit 8 — PageContext-vs-lattice parity gate (006 T112).
+//! PR 4b-E renamed parity gate — lattice-vs-scheme byte-identity
+//! (post-PageContext-deletion).
 //!
-//! Synthetic-fixture parity matrix comparing the post-fix PageContext
-//! path (`PageContext::add_portion` + `page_context_to_attrs`) against
-//! the new lattice path (`CapcoMarking::join_via_lattice`).
+//! History: this file landed in PR 4b-B Commit 8 (006 T112) as
+//! `page_context_lattice_parity.rs`, a THREE-path comparison
+//! (`PageContext::expected_*` vs `join_via_lattice` vs
+//! `CapcoScheme::project(Scope::Page, ...)`). PR 4b-E deleted the
+//! `PageContext::expected_*` accessor surface entirely; this PR
+//! renamed the file to `lattice_vs_scheme_parity.rs` to reflect
+//! the surviving TWO-path comparison.
+//!
+//! Synthetic-fixture parity matrix comparing the per-axis lattice
+//! path (`project_via_lattice` = `CapcoMarking::join_via_lattice`)
+//! against the full scheme pipeline
+//! (`project_via_scheme` = `CapcoScheme::project(Scope::Page, ...)`,
+//! which composes per-axis lattices then runs the declarative
+//! PageRewrite catalog).
 //!
 //! The two paths MUST produce byte-identical `CanonicalAttrs` on every
 //! axis EXCEPT the deliberate divergences documented inline below.
-//! Each divergence carries a `§X.Y pNN` citation re-verified
-//! 2026-05-15 against `crates/capco/docs/CAPCO-2016.md`.
+//! Each divergence carries a `§X.Y pNN` citation re-verified against
+//! `crates/capco/docs/CAPCO-2016.md`.
 //!
 //! ## Why synthetic instead of corpus fixtures
 //!
@@ -20,12 +32,8 @@
 //! parity gate's job is to compare TWO projection paths from
 //! pre-parsed per-portion `CanonicalAttrs` values. Synthetic
 //! `CanonicalAttrs` fixtures hand-built in this file cover the
-//! specific axes PR 4b-B touches with full control over the input
+//! specific axes the PR touches with full control over the input
 //! shape; the strict-recognizer is orthogonal to the parity claim.
-//!
-//! PR 4b-D will widen this gate to corpus fixtures when
-//! `CapcoScheme::project(Scope::Page, ...)` flips to use the lattice
-//! path.
 
 use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
@@ -472,7 +480,7 @@ fn rel_to_usa_first_sort() {
 // ===========================================================================
 
 #[test]
-fn joint_unanimous_two_portions() {
+fn joint_unanimous_two_portions_converge_to_joint_variant() {
     let portions = [
         portion_joint(Classification::Secret, &["USA", "GBR"]),
         portion_joint(Classification::Secret, &["USA", "GBR"]),
@@ -481,7 +489,10 @@ fn joint_unanimous_two_portions() {
     // PageContext (Us-only) vs lattice/scheme (Joint(_)).
     // Post-deletion the PageContext side is gone; both surviving paths
     // produce `Joint(S, [USA, GBR])` per the §H.3 p56 + §H.3 p57
-    // banner-fidelity reading. CONVERGED.
+    // banner-fidelity reading. CONVERGED. Fixture renamed in PR 4b-E
+    // review fix-up to reflect the post-deletion claim: the lattice
+    // and scheme paths CONVERGE to a `Joint(_)` classification, not
+    // diverge.
     //
     // Citation: §H.3 p56 + §H.3 p57.
     let lat = project_via_lattice(&portions);
@@ -615,11 +626,14 @@ fn joint_classification_pure_us_no_joint() {
 }
 
 #[test]
-fn joint_single_portion_no_us() {
+fn joint_single_portion_no_us_converge_to_joint_variant() {
     // A solitary JOINT portion (pure-JOINT page). Both surviving
     // paths produce Joint(_) classification per §H.3 p56
     // banner-fidelity. The pre-PR-4b-E PageContext side was the
     // divergent path; OQ-7 convergence achieved post-deletion.
+    // Fixture renamed in PR 4b-E review fix-up to reflect the
+    // post-deletion claim: the lattice and scheme paths CONVERGE
+    // to a `Joint(_)` classification, not diverge.
     let portions = [portion_joint(Classification::Secret, &["USA", "GBR"])];
     let lat = project_via_lattice(&portions);
     let scheme_proj = project_via_scheme(&portions);
@@ -811,15 +825,18 @@ fn aea_ucni_classified_scheme_project_strips_and_promotes_noforn() {
 }
 
 #[test]
-fn pure_nato_lattice_vs_pagecontext_diverges() {
+fn pure_nato_both_paths_preserve_nato_variant() {
     // PR 4b-E (OQ-7 convergence): pre-PR-4b-E G-3 divergence —
     // PageContext flattens NATO to Us(_); lattice/scheme preserve
     // Nato(_). Post-deletion the PageContext side is gone; both
     // surviving paths preserve `Nato(_)` per §H.7 pp123-125
     // reciprocal-raise (the rule applies only when a US portion is
     // in scope; pure-NATO pages preserve the foreign variant).
-    // CONVERGED — file renames to `lattice_vs_scheme_parity.rs` in
-    // PR 4b-E Commit 7.
+    // CONVERGED — file renamed to `lattice_vs_scheme_parity.rs` in
+    // PR 4b-E Commit 7; fixture renamed in PR 4b-E review fix-up
+    // (former name `pure_nato_lattice_vs_pagecontext_diverges` was
+    // stale: the PageContext side is deleted, and the post-deletion
+    // claim is that both surviving paths PRESERVE `Nato(_)`).
     //
     // Citation: §H.7 pp123-125 (reciprocal-raise rule).
     let mut nato_portion = CanonicalAttrs::default();
@@ -899,7 +916,10 @@ fn classified_sbu_nf_injects_noforn_and_clears_rel_to() {
     );
     // Both surviving paths clear REL TO.
     assert!(lat.rel_to.is_empty(), "Lattice clears REL TO (G-6)");
-    assert!(scheme_proj.rel_to.is_empty(), "scheme.project clears REL TO");
+    assert!(
+        scheme_proj.rel_to.is_empty(),
+        "scheme.project clears REL TO"
+    );
 }
 
 #[test]
@@ -1259,7 +1279,9 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
 // `Some(Acknowledged{[NATO]})` — the latter is double-marking.
 //
 // This is a documented divergence in the existing parity gate
-// (`pure_nato_lattice_vs_pagecontext_diverges`). The new test below
+// (`pure_nato_both_paths_preserve_nato_variant` — renamed from
+// `pure_nato_lattice_vs_pagecontext_diverges` in PR 4b-E review
+// fix-up). The new test below
 // asserts the lattice does NOT double-mark — the solo-non-US case
 // keeps the foreign source on the classification axis and leaves
 // `fgi_marker` empty on solely-non-US pages where FGI semantics
@@ -1273,8 +1295,10 @@ fn joint_plus_fgi_same_level_flattens_to_us() {
 #[test]
 fn solely_nato_does_not_double_mark_fgi() {
     // G-4b: pure-NATO page. Lattice path correctly preserves the
-    // Nato(_) classification per §H.7 pp123-125 (documented divergence
-    // — see `pure_nato_lattice_vs_pagecontext_diverges`). The FGI
+    // Nato(_) classification per §H.7 pp123-125 (see the
+    // `pure_nato_both_paths_preserve_nato_variant` parity fixture —
+    // renamed from `pure_nato_lattice_vs_pagecontext_diverges` in
+    // PR 4b-E review fix-up). The FGI
     // axis must NOT additionally receive an Acknowledged marker for
     // the NATO source — that information is already on the
     // classification axis.
@@ -1791,7 +1815,8 @@ fn cv6_gap_c_joint_with_explicit_fgi_marker_coexist_mixed_us_page() {
     //
     // Note: a SOLELY-JOINT page with an explicit FGI marker
     // (single-portion variant) is the documented divergence shape
-    // tracked by `joint_unanimous_two_portions` / G-4 — the lattice
+    // tracked by `joint_unanimous_two_portions_converge_to_joint_variant`
+    // / G-4 — the lattice
     // intentionally preserves the JOINT classification on the
     // classification axis there, while PageContext flattens and
     // double-marks producers as FGI. The Mixed-page fixture here
@@ -1850,7 +1875,8 @@ fn cv6_gap_d_joint_with_noforn_parity_indirect_catch_mixed_us_page() {
     // `capco/noforn-conflicts-rel-to`).
     //
     // Note: a SOLELY-JOINT page with NOFORN (single-portion variant)
-    // hits the documented divergence at `joint_unanimous_two_portions`
+    // hits the documented divergence at
+    // `joint_unanimous_two_portions_converge_to_joint_variant`
     // / G-4 — the lattice preserves the JOINT classification, and
     // PageContext flattens to Us + migrates JOINT producers to FGI.
     // Mixed-page fixture sidesteps that.

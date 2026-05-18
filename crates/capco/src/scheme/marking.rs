@@ -54,7 +54,7 @@
 //! `expected_display_only`) migrated to free helpers and lattice
 //! constructors in `crates/capco/src/lattice.rs`
 //! (`sci_controls_from_markings`, `FgiSet::from_attrs_iter`,
-//! `DeclassExemptionLattice::from_attrs_iter`,
+//! `DeclassExemptionAccumulator::from_attrs_iter`,
 //! `NonIcDissemSet::from_attrs_iter`,
 //! `DisplayOnlyBlock::from_attrs_iter`). `join_via_lattice_body`'s
 //! `_tmp_ctx` parameter is retained at the function boundary for
@@ -154,10 +154,14 @@ impl CapcoMarking {
     /// `crates/capco/CAPCO-CONTEXT.md` §3): G-1 FOUO-classified, G-2
     /// AEA-UCNI-classified, G-3 pure-NATO, the
     /// RELIDO+NOFORN-dominates correctness divergence, plus the two
-    /// pure-JOINT cases (`joint_unanimous_two_portions` /
-    /// `joint_single_portion_no_us`) where the lattice produces
+    /// pure-JOINT cases
+    /// (`joint_unanimous_two_portions_converge_to_joint_variant` /
+    /// `joint_single_portion_no_us_converge_to_joint_variant`)
+    /// where the lattice produces
     /// `Joint(_)` per §H.3 p56 banner-fidelity and PageContext
-    /// produces `Us(_)`. G-4..G-9 land as parity-RESTORING fixtures
+    /// produces `Us(_)`. (Fixtures renamed in PR 4b-E review fix-up
+    /// to reflect post-deletion convergence.) G-4..G-9 land as
+    /// parity-RESTORING fixtures
     /// (each cited inline against its §). Corpus-fixture coverage
     /// is deferred to PR 4b-D when
     /// `CapcoScheme::project(Scope::Page, ...)` flips to use this
@@ -320,7 +324,7 @@ impl CapcoMarking {
         _tmp_ctx: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
         use crate::lattice::{
-            AeaSet, ClassificationLattice, DeclassExemptionLattice, DeclassifyOnLattice,
+            AeaSet, ClassificationLattice, DeclassExemptionAccumulator, DeclassifyOnLattice,
             DisplayOnlyBlock, DissemSet, FgiSet, JointSet, NatoDissemSet, NonIcDissemSet,
             RelToBlock, SarSet, SciSet, sci_controls_from_markings,
         };
@@ -537,8 +541,9 @@ impl CapcoMarking {
             // ride on `expected_fgi_marker` since it can't ride on the
             // classification axis. The lattice path preserves the
             // foreign variant on the classification axis (per the
-            // documented `pure_nato_lattice_vs_pagecontext_diverges`
-            // divergence, §H.7 pp123-125), which makes the FGI-axis
+            // `pure_nato_both_paths_preserve_nato_variant` parity
+            // fixture — renamed from `pure_nato_lattice_vs_pagecontext_diverges`
+            // in PR 4b-E review fix-up; §H.7 pp123-125), which makes the FGI-axis
             // duplication redundant.
             //
             // Per-portion `fgi_marker` fields (FgiSet) are still
@@ -674,15 +679,15 @@ impl CapcoMarking {
 
         // Axis 9: declassify_on (and declass_exemption rides as
         // last-observed per the existing semantic — Phase 3 TODO
-        // carried over on `DeclassExemptionLattice`).
+        // carried over on `DeclassExemptionAccumulator`).
         // PR 4b-E: `declass_exemption` migrated from
         // `PageContext::expected_declass_exemption` to the
-        // `DeclassExemptionLattice::from_attrs_iter` helper. Same
-        // semantics; the Phase-3 duration-aware comparator is
-        // queued on the lattice type's doc-comment.
+        // `DeclassExemptionAccumulator::from_attrs_iter` helper. Same
+        // semantics; the Phase-3 duration-aware comparator (§E.3 pp
+        // 32-33 "longest period of protection") is queued on the
+        // accumulator type's doc-comment.
         out.declassify_on = DeclassifyOnLattice::from_attrs_iter(portions).into_inner();
-        out.declass_exemption =
-            DeclassExemptionLattice::from_attrs_iter(portions).into_inner();
+        out.declass_exemption = DeclassExemptionAccumulator::from_attrs_iter(portions).into_inner();
 
         // Axis 10: non_ic_dissem — classification-gated SBU-NF /
         // LES-NF split (§H.9 p178 / p185) + implied-NF for
@@ -712,8 +717,7 @@ impl CapcoMarking {
         // supersession (§D.2 Table 3 rows 1-2 + §H.8 p145) is
         // applied inside the lattice constructor.
         out.display_only_to =
-            DisplayOnlyBlock::from_attrs_iter(portions, &rel_to_block, needs_nf)
-                .into_boxed_slice();
+            DisplayOnlyBlock::from_attrs_iter(portions, &rel_to_block, needs_nf).into_boxed_slice();
 
         // PR 4b-E: now that DisplayOnlyBlock has consumed its read
         // of `rel_to_block`, materialize `out.rel_to` from the same

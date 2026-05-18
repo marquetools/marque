@@ -1158,8 +1158,8 @@ pub fn lint_batch(entries_json: &str, config_json: Option<String>) -> Result<Str
 /// `MarkingScheme` trait's "single source of truth for canonical form"
 /// contract (`crates/scheme/src/scheme.rs` `render_canonical` doc).
 pub fn compute_banner_native(text: &str) -> Result<String, String> {
-    use marque_capco::scheme::CapcoScheme;
     use marque_capco::CapcoMarking;
+    use marque_capco::scheme::CapcoScheme;
     use marque_core::{Parser, Scanner};
     use marque_ism::{CapcoTokenSet, MarkingType};
     use marque_scheme::MarkingScheme as _;
@@ -1239,8 +1239,8 @@ pub fn generate_cab_native(
     classified_by: Option<String>,
     derived_from: Option<String>,
 ) -> Result<String, String> {
-    use marque_capco::scheme::CapcoScheme;
     use marque_capco::CapcoMarking;
+    use marque_capco::scheme::CapcoScheme;
     use marque_core::{Parser, Scanner};
     use marque_ism::{CapcoTokenSet, Classification, MarkingType};
     use marque_scheme::MarkingScheme as _;
@@ -1306,8 +1306,23 @@ pub fn generate_cab_native(
             }
             // Track the last-observed exemption across portions for
             // the fallback below — mirrors
-            // `DeclassExemptionLattice::from_attrs_iter`'s last-wins
-            // semantic.
+            // `DeclassExemptionAccumulator::from_attrs_iter`'s
+            // last-wins semantic.
+            //
+            // M-4 (PR 4b-E review fix-up): the dual-accumulator
+            // asymmetry here is intentional. `last_observed_exemption`
+            // is portion-kind-gated because that's the accumulator the
+            // CAB fallback ladder uses when no explicit `declass_*`
+            // CAB-line field appears in the input (and the §E.3 pp
+            // 32-33 "longest period of protection" semantics is what
+            // the Phase-3 successor will produce). `found_*` above are
+            // first-wins across ALL candidate kinds (banner / CAB /
+            // portion) — they're capturing the explicit CAB-line
+            // values when present, which can appear in a banner-or-CAB
+            // candidate that is NOT itself a portion. The two
+            // accumulators feed different rungs of the fallback ladder
+            // (see the `let declass = ...` below) per OQ-1 option (a) /
+            // architect plan §3 Decision 1.
             if candidate.kind == MarkingType::Portion {
                 if let Some(ex) = attrs.declass_exemption {
                     last_observed_exemption = Some(ex);
@@ -1350,7 +1365,8 @@ pub fn generate_cab_native(
     // formerly went through `page_context.expected_declass_exemption()`;
     // it now reads `last_observed_exemption` accumulated inline above.
     // Same last-observed semantic; same Phase-3 TODO carries over on
-    // `DeclassExemptionLattice` for a duration-aware comparator.
+    // `DeclassExemptionAccumulator` for a duration-aware comparator
+    // (§E.3 pp 32-33 "longest period of protection").
     let declass = if let Some(date) = found_declass_date {
         date
     } else if let Some(ex) = found_declass_exemption {

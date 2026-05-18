@@ -43,8 +43,8 @@ use marque_capco::lattice::{
     sci_controls_from_markings,
 };
 use marque_capco::scheme::CapcoScheme;
-use marque_ism::attrs::*;
 use marque_ism::CanonicalAttrs;
+use marque_ism::attrs::*;
 use marque_scheme::{MarkingScheme as _, Scope};
 
 fn portion(c: Classification) -> CanonicalAttrs {
@@ -55,8 +55,7 @@ fn portion(c: Classification) -> CanonicalAttrs {
 
 fn render_banner_from_portions(portions: &[CanonicalAttrs]) -> String {
     let scheme = CapcoScheme::new();
-    let markings: Vec<CapcoMarking> =
-        portions.iter().cloned().map(CapcoMarking::new).collect();
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     let projected = scheme.project(Scope::Page, &markings);
     scheme.render_banner(&projected)
 }
@@ -143,8 +142,7 @@ fn aea_ucni_strip_on_classified_via_scheme_project() {
 
     // Scheme path applies the declarative strip rows on classified pages.
     let scheme = CapcoScheme::new();
-    let markings: Vec<CapcoMarking> =
-        portions.iter().cloned().map(CapcoMarking::new).collect();
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     let projected = scheme.project(Scope::Page, &markings);
     assert!(
         !projected
@@ -204,8 +202,7 @@ fn non_ic_sbu_nf_splits_in_classified() {
 
     // NF injection at the scheme layer.
     let scheme = CapcoScheme::new();
-    let markings: Vec<CapcoMarking> =
-        portions.iter().cloned().map(CapcoMarking::new).collect();
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     let projected = scheme.project(Scope::Page, &markings);
     assert!(projected.0.dissem_us.contains(&DissemControl::Nf));
 }
@@ -312,8 +309,7 @@ fn dissem_fouo_strip_classified_via_scheme_project() {
 
     // Scheme path strips FOUO on classified pages.
     let scheme = CapcoScheme::new();
-    let markings: Vec<CapcoMarking> =
-        portions.iter().cloned().map(CapcoMarking::new).collect();
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     let projected = scheme.project(Scope::Page, &markings);
     assert!(
         !projected.0.dissem_us.contains(&DissemControl::Fouo),

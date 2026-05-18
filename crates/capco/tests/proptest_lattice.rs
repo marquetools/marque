@@ -9,10 +9,10 @@
 //! larger space of compartment-tree combinations that the fixed samples can't
 //! reach.
 
-use marque_capco::lattice::{FgiSet, RelToBlock, SarSet, SciSet};
+use marque_capco::lattice::{DisplayOnlyBlock, FgiSet, RelToBlock, SarSet, SciSet};
 use marque_ism::{
-    CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
-    SciControlBare, SciControlSystem, SciMarking,
+    CanonicalAttrs, CountryCode, FgiMarker, MarkingClassification, SarCompartment, SarIndicator,
+    SarMarking, SarProgram, SciCompartment, SciControlBare, SciControlSystem, SciMarking,
 };
 use marque_scheme::{JoinSemilattice, MeetSemilattice};
 use proptest::prelude::*;
@@ -474,5 +474,167 @@ proptest! {
     #[test]
     fn rel_to_meet_over_join_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
         prop_assert_eq!(a.meet(&a.join(&b)), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DisplayOnlyBlock laws (PR 4b-E review fix-up — rust-reviewer H-2 +
+// lattice-consultant L-5)
+//
+// `DisplayOnlyBlock` is a new `JoinSemilattice` implementor introduced
+// in PR 4b-E. The inline `#[cfg(test)]` suite in `lattice.rs` covers
+// associativity, identity-with-bottom, empty-absorbs, and
+// NofornSuperseded-absorbs at fixed samples; the proptest suite below
+// pins commutativity, idempotence, and associativity over arbitrary
+// generated inputs.
+//
+// The strategy mirrors `RelToBlock`'s 4-variant shape (Bottom / Empty /
+// NofornSuperseded / Lattice{countries}) so the same absorbing-element
+// structure is exercised. Tetragraph expansion is NOT generated as a
+// strategy input — `DisplayOnlyBlock` lives on the post-expansion
+// trigraph domain; expansion happens at `from_attrs_iter` time before
+// the lattice state is built (same precedent as `RelToBlock`).
+// ---------------------------------------------------------------------------
+
+fn arb_display_only_block() -> impl Strategy<Value = DisplayOnlyBlock> {
+    prop_oneof![
+        Just(DisplayOnlyBlock::Bottom),
+        Just(DisplayOnlyBlock::Empty),
+        Just(DisplayOnlyBlock::NofornSuperseded),
+        proptest::collection::vec(arb_country_code(), 1..=4).prop_map(|countries| {
+            let set: std::collections::BTreeSet<CountryCode> = countries.into_iter().collect();
+            DisplayOnlyBlock::Lattice { countries: set }
+        }),
+    ]
+}
+
+proptest! {
+    // Join laws — commutativity, idempotence, associativity, identity-
+    // with-bottom. The H-1 root-cause (non-commutative `join` body)
+    // would surface immediately under `display_only_block_join_commutative`
+    // if it ever recurs.
+    #[test]
+    fn display_only_block_join_idempotent(a in arb_display_only_block()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn display_only_block_join_commutative(
+        a in arb_display_only_block(),
+        b in arb_display_only_block(),
+    ) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn display_only_block_join_associative(
+        a in arb_display_only_block(),
+        b in arb_display_only_block(),
+        c in arb_display_only_block(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn display_only_block_join_bottom_identity(a in arb_display_only_block()) {
+        let bottom = DisplayOnlyBlock::Bottom;
+        prop_assert_eq!(a.join(&bottom), a.clone());
+        prop_assert_eq!(bottom.join(&a), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FgiSet::from_attrs_iter — proptest coverage of the new constructor
+// (PR 4b-E review fix-up — rust-reviewer H-2)
+//
+// The existing `fgi_join_*` proptests use `FgiSet::from_marker` and
+// only exercise the `FgiSet` algebra in isolation. PR 4b-E introduced
+// `FgiSet::from_attrs_iter` as the production page-rollup constructor.
+// The proptests below pin (a) "bulk construction agrees with iterated
+// per-portion construction" and (b) "concealment dominates" over
+// arbitrary multi-portion inputs — extending the `FgiSet` coverage to
+// the actual production entry point.
+// ---------------------------------------------------------------------------
+
+fn arb_portion_with_fgi_marker() -> impl Strategy<Value = CanonicalAttrs> {
+    // Two-branch strategy: portions carrying explicit `FgiMarker`
+    // values, and bare portions with no FGI axis at all. The
+    // `from_attrs_iter` semantic differs across these branches
+    // (acknowledged-vs-concealed-dominates, contribution-vs-no-op).
+    prop_oneof![
+        Just({
+            let mut p = CanonicalAttrs::default();
+            p.fgi_marker = Some(FgiMarker::SourceConcealed);
+            p
+        }),
+        proptest::collection::vec(arb_country_code(), 1..=3).prop_map(|countries| {
+            let mut p = CanonicalAttrs::default();
+            // `acknowledged()` returns `Option<FgiMarker>` — only
+            // populated when the country list is non-empty. The
+            // 1..=3 size bound above guarantees Some.
+            p.fgi_marker = FgiMarker::acknowledged(countries);
+            p
+        }),
+        // Bare portion with classification-derived contribution: a
+        // JOINT classification with at least one non-US producer.
+        // Exercises the `Classification::Joint` branch of
+        // `from_attrs_iter` (which strips USA and contributes the
+        // remaining producers).
+        proptest::collection::vec(arb_country_code(), 1..=3).prop_map(|countries| {
+            let mut p = CanonicalAttrs::default();
+            p.classification = Some(MarkingClassification::Joint(
+                marque_ism::JointClassification {
+                    level: marque_ism::Classification::Secret,
+                    countries: countries.into_boxed_slice(),
+                },
+            ));
+            p
+        }),
+        // Portion with no FGI axis at all — contributes nothing.
+        Just(CanonicalAttrs::default()),
+    ]
+}
+
+proptest! {
+    // Concealed-dominates invariant — §H.7 p128. If any portion in
+    // the input carries `FgiMarker::SourceConcealed`, the resulting
+    // `FgiSet` must be `Present { concealed: true, .. }` regardless
+    // of the other portions.
+    #[test]
+    fn fgi_set_from_attrs_iter_concealed_dominates(
+        portions in proptest::collection::vec(arb_portion_with_fgi_marker(), 1..=4),
+    ) {
+        let any_concealed = portions.iter().any(|p| {
+            matches!(p.fgi_marker, Some(FgiMarker::SourceConcealed))
+        });
+        let result = FgiSet::from_attrs_iter(&portions);
+        if any_concealed {
+            prop_assert!(
+                matches!(
+                    result,
+                    FgiSet::Present { concealed: true, .. }
+                ),
+                "concealed portion in input must yield concealed result: \
+                 result={result:?}",
+            );
+        }
+    }
+
+    // Bulk construction agrees with iterated join. The
+    // `from_attrs_iter` constructor walks portions in document order
+    // and unions per-portion contributions; assembling per-portion
+    // singletons via repeated `FgiSet::join` should produce the same
+    // `FgiSet` value. This pins the "constructor is a fold over
+    // join" property at the production entry point.
+    #[test]
+    fn fgi_set_from_attrs_iter_agrees_with_iterated_join(
+        portions in proptest::collection::vec(arb_portion_with_fgi_marker(), 1..=4),
+    ) {
+        let bulk = FgiSet::from_attrs_iter(&portions);
+        let stepped = portions
+            .iter()
+            .map(|p| FgiSet::from_attrs_iter(std::slice::from_ref(p)))
+            .fold(FgiSet::empty(), |acc, x| acc.join(&x));
+        prop_assert_eq!(bulk, stepped);
     }
 }

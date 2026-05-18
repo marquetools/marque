@@ -259,8 +259,13 @@ correct post-flip behavior, and the
 prior to PR 4b-D.2):
 
 **PR 4b-E convergence (2026-05-18).** The three pre-PR-4b-E
-divergences — `pure_nato_lattice_vs_pagecontext_diverges` (G-3),
-`joint_unanimous_two_portions`, `joint_single_portion_no_us` — all
+divergences — `pure_nato_both_paths_preserve_nato_variant` (G-3,
+renamed from `pure_nato_lattice_vs_pagecontext_diverges` in PR 4b-E
+review fix-up),
+`joint_unanimous_two_portions_converge_to_joint_variant` (renamed
+from `joint_unanimous_two_portions`),
+`joint_single_portion_no_us_converge_to_joint_variant` (renamed
+from `joint_single_portion_no_us`) — all
 **CONVERGED to byte-identity** post-PR-4b-E (OQ-7 BLOCKING discipline
 satisfied). Both compared sides are now lattice-derived
 (`project_via_lattice` and `project_via_scheme`); the PageContext

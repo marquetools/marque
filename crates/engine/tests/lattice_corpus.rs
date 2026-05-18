@@ -41,8 +41,10 @@
 //! - §H.7 p127 + §G.2 Table 5 p40 — NATO REL TO closure cone.
 //! - §H.8 pp155-156 — RELIDO observed-unanimity at banner roll-up.
 //! - §H.7 pp123-125 — solely-NATO classification preservation (the
-//!   `pure_nato_lattice_vs_pagecontext_diverges` divergence row
-//!   established in PR 4b-B Commit 8).
+//!   `pure_nato_both_paths_preserve_nato_variant` parity fixture,
+//!   established in PR 4b-B Commit 8 as `pure_nato_lattice_vs_pagecontext_diverges`
+//!   and renamed in PR 4b-E review fix-up to reflect post-deletion
+//!   convergence).
 //!
 //! ### Why not JSON-file fixtures
 //!
@@ -95,8 +97,11 @@ fn dissem_contains(m: &CapcoMarking, target: DissemControl) -> bool {
 /// `CLOSURE_REL_TO_USA_NATO` at `Severity::Info` (silent lattice-layer
 /// fact propagation per decisions.md D20); the projection's REL TO axis
 /// gains USA + NATO; the page-classification axis preserves the
-/// `Nato(_)` variant per §H.7 pp123-125 (the `pure_nato_lattice_vs_pagecontext_diverges`
-/// divergence documented in PR 4b-B Commit 8).
+/// `Nato(_)` variant per §H.7 pp123-125 (see the
+/// `pure_nato_both_paths_preserve_nato_variant` parity fixture —
+/// renamed from `pure_nato_lattice_vs_pagecontext_diverges` in PR
+/// 4b-E review fix-up; the PageContext-vs-lattice divergence
+/// resolved when the PageContext surface retired).
 ///
 /// S007 (the text-layer Severity::Suggest companion) is suppressed
 /// on solely-NATO documents because there is no US-document context

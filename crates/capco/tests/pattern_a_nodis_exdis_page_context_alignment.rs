@@ -83,10 +83,7 @@ fn nodis_portion_clears_rel_to_via_page_rewrite() {
     let nodis_portion = portion_with_non_ic(Classification::Secret, &[NonIcDissem::Nodis]);
     let rel_to_portion = portion_with_rel_to(Classification::Secret, &[CountryCode::USA, gbr()]);
 
-    let projected = scheme.project(
-        Scope::Page,
-        &[lift(nodis_portion), lift(rel_to_portion)],
-    );
+    let projected = scheme.project(Scope::Page, &[lift(nodis_portion), lift(rel_to_portion)]);
 
     assert!(
         projected.0.rel_to.is_empty(),
@@ -113,10 +110,7 @@ fn exdis_portion_clears_rel_to_via_page_rewrite() {
     let exdis_portion = portion_with_non_ic(Classification::Secret, &[NonIcDissem::Exdis]);
     let rel_to_portion = portion_with_rel_to(Classification::Secret, &[CountryCode::USA, gbr()]);
 
-    let projected = scheme.project(
-        Scope::Page,
-        &[lift(exdis_portion), lift(rel_to_portion)],
-    );
+    let projected = scheme.project(Scope::Page, &[lift(exdis_portion), lift(rel_to_portion)]);
 
     assert!(
         projected.0.rel_to.is_empty(),

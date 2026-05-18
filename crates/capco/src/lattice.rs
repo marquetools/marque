@@ -3293,13 +3293,21 @@ impl FgiSet {
 ///
 /// **`Default`** is the bottom: empty set, `needs_nf = false`.
 ///
-/// **Lattice scope.** This type currently exposes only
-/// `from_attrs_iter` + read accessors — `JoinSemilattice` is not
-/// implemented because the SBU-NF / LES-NF split is gated on the
-/// page-level `is_classified` predicate, which depends on the OUTER
-/// classification axis being known. A two-stage join (split then
-/// union) is sound but not yet wired; the from-attrs-iter constructor
-/// is the production entry point used by `join_via_lattice_with_context`.
+/// **Projection helper, NOT a `JoinSemilattice`.** Earlier review
+/// passes flagged the missing trait impl (rust-reviewer H-3); the
+/// lattice-consultant verdict was that the missing impl is the
+/// architecturally correct shape, not a gap. The classified-context
+/// SBU-NF / LES-NF split (`set.remove(&NonIcDissem::SbuNf)` plus
+/// `needs_nf = true`) is gated on the page-level `is_classified`
+/// predicate, which depends on the OUTER classification axis being
+/// known. A pure per-axis `join` cannot read the classification
+/// axis; implementing the trait would silently produce wrong output
+/// on any cross-axis composition path. Production consumers use
+/// [`Self::from_attrs_iter`] directly. See
+/// [`DeclassExemptionAccumulator`] (which retired its
+/// `JoinSemilattice` impl in PR 4b-E review for the dual reason: a
+/// commutativity violation) for the same precedent. The structural
+/// template is **"don't claim a trait when the laws can't hold."**
 ///
 /// §-authority (verified 2026-05-18 against
 /// `crates/capco/docs/CAPCO-2016.md`):
@@ -3397,34 +3405,49 @@ impl NonIcDissemSet {
 }
 
 // ---------------------------------------------------------------------------
-// DeclassExemptionLattice — last-observed declass exemption.
+// DeclassExemptionAccumulator — last-observed declass exemption.
 // ---------------------------------------------------------------------------
 
-/// Lattice form of the declass-exemption axis.
+/// Last-observed accumulator for the declass-exemption axis.
 ///
-/// Conservative "last-observed" semantics: joins keep the right-hand
-/// (later-observed) value when both are present. Empty input yields
-/// `Bottom` (no exemption observed).
+/// **Projection helper, NOT a lattice.** Earlier drafts of this type
+/// implemented `JoinSemilattice` with a "right-operand-wins" join body
+/// that was admittedly non-commutative. The trait contract at
+/// `crates/scheme/src/lattice.rs:55-64` requires commutativity, so the
+/// review chain (rust-reviewer H-1 + lattice-consultant L-1) called
+/// the impl what it was — a contract violation. The fix follows
+/// [`NonIcDissemSet`]'s precedent: drop the `JoinSemilattice` impl,
+/// keep the type as a projection accumulator surfacing
+/// `from_attrs_iter` + `into_inner` / `as_inner`. The rename
+/// `DeclassExemptionLattice -> DeclassExemptionAccumulator` makes the
+/// non-lattice nature explicit at the type-name level.
 ///
-/// **Phase 3 TODO (carried over from `PageContext::expected_declass_exemption`):**
-/// a correct implementation would return the exemption with the
-/// longest default retention duration (e.g., `50X1-HUM` > `25X1` under
-/// EO 13526 § 3.3(b)). The current implementation returns the last
-/// observed exemption as a conservative placeholder; Phase 3 should
-/// add a duration-aware comparator. See `crates/ism/src/page_context.rs`
-/// (pre-PR-4b-E) `expected_declass_exemption` doc-comment for the
-/// historical statement of the gap.
+/// Conservative "last-observed" semantics: `from_attrs_iter` walks
+/// portions in document order and keeps the last portion's
+/// `declass_exemption`, or `None` if no portion carries one. The CAB
+/// generator in `crates/wasm/src/lib.rs` uses the same shape via an
+/// inline accumulator (see `generate_cab_native`).
+///
+/// **Phase 3 TODO** (carried over from
+/// `PageContext::expected_declass_exemption`): a correct implementation
+/// would return the exemption providing the longest period of protection
+/// per CAPCO-2016 §E.3 pp 32-33 (Multiple Sources hierarchy:
+/// 50X1 - HUM > 50X2 - WMD > ... > 25X# > derived calculation). The
+/// current implementation is the conservative last-observed placeholder;
+/// Phase 3 should add a duration-aware comparator.
 ///
 /// §-authority (verified 2026-05-18 against
 /// `crates/capco/docs/CAPCO-2016.md`):
-/// - §E.1 p31 (EO 13526 default-duration framing).
-/// - §H.6 p104 (declass exemption interaction with AEA — orthogonal,
-///   not authoritative for this axis but cited for cross-reference).
+/// - §E.1 p31 (exemption-category catalog: 25X#/50X#/75X# values).
+/// - §E.3 pp 32-33 (Multiple Sources hierarchy — the "longest period
+///   of protection" rule the Phase 3 TODO targets; the §E.3 prose at
+///   lines 665+ of the markdown spells out the 50X > 25X precedence and
+///   the same-date-tiebreaker rule).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DeclassExemptionLattice(Option<marque_ism::DeclassExemption>);
+pub struct DeclassExemptionAccumulator(Option<marque_ism::DeclassExemption>);
 
-impl DeclassExemptionLattice {
-    /// An empty exemption — the lattice bottom.
+impl DeclassExemptionAccumulator {
+    /// An empty exemption — the accumulator's identity / bottom value.
     pub fn empty() -> Self {
         Self(None)
     }
@@ -3449,26 +3472,6 @@ impl DeclassExemptionLattice {
     /// Borrow the inner `Option<DeclassExemption>`.
     pub fn as_inner(&self) -> Option<marque_ism::DeclassExemption> {
         self.0
-    }
-}
-
-impl JoinSemilattice for DeclassExemptionLattice {
-    fn join(&self, other: &Self) -> Self {
-        // Last-observed: right operand wins when both are Some.
-        // Idempotent: x.join(&x) = x (Some(e).join(&Some(e)) → Some(e)).
-        // Commutative? NO — last-observed is order-sensitive by design.
-        // We expose this only as a `JoinSemilattice` because the
-        // operator we need is associative + idempotent over our
-        // construction path (only `from_attrs_iter` builds non-bottom
-        // values, and that path is intrinsically order-preserving).
-        // Production composition routes through `from_attrs_iter`,
-        // never through repeated `join` calls; this impl is here for
-        // type-system symmetry with sibling lattices.
-        match (&self.0, &other.0) {
-            (_, Some(b)) => Self(Some(*b)),
-            (Some(a), None) => Self(Some(*a)),
-            (None, None) => Self(None),
-        }
     }
 }
 
@@ -4432,8 +4435,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use marque_ism::{
-        CanonicalAttrs, Classification, DeclassExemption, MarkingClassification, NatoClassification,
-        NonIcDissem,
+        CanonicalAttrs, Classification, DeclassExemption, MarkingClassification,
+        NatoClassification, NonIcDissem,
     };
 
     fn portion_us(level: Classification) -> CanonicalAttrs {
@@ -4510,9 +4513,9 @@ mod tests {
         let mut concealed_portion = CanonicalAttrs::default();
         concealed_portion.fgi_marker = Some(FgiMarker::SourceConcealed);
         let mut acknowledged_portion = CanonicalAttrs::default();
-        acknowledged_portion.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]);
-        let result =
-            FgiSet::from_attrs_iter(&[concealed_portion, acknowledged_portion]);
+        acknowledged_portion.fgi_marker =
+            FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]);
+        let result = FgiSet::from_attrs_iter(&[concealed_portion, acknowledged_portion]);
         assert!(
             matches!(
                 result,
@@ -4570,7 +4573,10 @@ mod tests {
         let step = FgiSet::from_attrs_iter(&[p1])
             .join(&FgiSet::from_attrs_iter(&[p2]))
             .join(&FgiSet::from_attrs_iter(&[p3]));
-        assert_eq!(bulk, step, "bulk construction must agree with iterated join");
+        assert_eq!(
+            bulk, step,
+            "bulk construction must agree with iterated join"
+        );
     }
 
     // NonIcDissemSet — classification gate, NF injection, lattice
@@ -4635,62 +4641,44 @@ mod tests {
         assert_eq!(s, NonIcDissemSet::empty());
     }
 
-    // DeclassExemptionLattice — last-observed, idempotence, identity.
+    // DeclassExemptionAccumulator — last-observed projection helper.
+    //
+    // Renamed from `DeclassExemptionLattice` in PR 4b-E review fix-up
+    // (rust-reviewer H-1 + lattice-consultant L-1): the type is a
+    // projection accumulator, not a lattice — the prior
+    // `JoinSemilattice` impl was non-commutative by construction and
+    // violated the trait contract. The `idempotent_on_join` and
+    // `identity_with_bottom` tests retired with the impl; only the
+    // `from_attrs_iter` invariants remain.
 
     #[test]
-    fn declass_exemption_lattice_default_is_bottom() {
-        let l = DeclassExemptionLattice::default();
+    fn declass_exemption_accumulator_default_is_bottom() {
+        let l = DeclassExemptionAccumulator::default();
         assert_eq!(l.as_inner(), None);
     }
 
     #[test]
-    fn declass_exemption_lattice_empty_equals_default() {
-        assert_eq!(DeclassExemptionLattice::empty(), DeclassExemptionLattice::default());
+    fn declass_exemption_accumulator_empty_equals_default() {
+        assert_eq!(
+            DeclassExemptionAccumulator::empty(),
+            DeclassExemptionAccumulator::default()
+        );
     }
 
     #[test]
-    fn declass_exemption_lattice_idempotent_on_join() {
-        // Lattice law: x.join(&x) = x.
-        let ex = DeclassExemption::X25x1;
-        let l = DeclassExemptionLattice(Some(ex));
-        assert_eq!(l.join(&l), l);
-    }
-
-    #[test]
-    fn declass_exemption_lattice_identity_with_bottom() {
-        // Identity-with-bottom: x.join(bot) = bot.join(x) = x.
-        let ex = DeclassExemption::X25x1;
-        let l = DeclassExemptionLattice(Some(ex));
-        let bot = DeclassExemptionLattice::empty();
-        assert_eq!(l.join(&bot), l);
-        assert_eq!(bot.join(&l), l);
-    }
-
-    #[test]
-    fn declass_exemption_lattice_last_observed_wins() {
-        // Last-observed: right wins when both Some (order-sensitive
-        // by design — see DeclassExemptionLattice doc).
-        let ex_a = DeclassExemption::X25x1;
-        let ex_b = DeclassExemption::X25x2;
-        let a = DeclassExemptionLattice(Some(ex_a));
-        let b = DeclassExemptionLattice(Some(ex_b));
-        assert_eq!(a.join(&b).as_inner(), Some(ex_b));
-    }
-
-    #[test]
-    fn declass_exemption_lattice_from_attrs_iter_picks_last_observed() {
+    fn declass_exemption_accumulator_from_attrs_iter_picks_last_observed() {
         let mut p1 = CanonicalAttrs::default();
         p1.declass_exemption = Some(DeclassExemption::X25x1);
         let mut p2 = CanonicalAttrs::default();
         p2.declass_exemption = Some(DeclassExemption::X25x2);
-        let l = DeclassExemptionLattice::from_attrs_iter(&[p1, p2]);
+        let l = DeclassExemptionAccumulator::from_attrs_iter(&[p1, p2]);
         assert_eq!(l.as_inner(), Some(DeclassExemption::X25x2));
     }
 
     #[test]
-    fn declass_exemption_lattice_from_attrs_iter_empty_is_bottom() {
-        let l = DeclassExemptionLattice::from_attrs_iter(&[]);
-        assert_eq!(l, DeclassExemptionLattice::empty());
+    fn declass_exemption_accumulator_from_attrs_iter_empty_is_bottom() {
+        let l = DeclassExemptionAccumulator::from_attrs_iter(&[]);
+        assert_eq!(l, DeclassExemptionAccumulator::empty());
     }
 
     // ----------------------------------------------------------------
@@ -4707,10 +4695,7 @@ mod tests {
         a
     }
 
-    fn portion_with_display_only(
-        level: Classification,
-        display: &[&str],
-    ) -> CanonicalAttrs {
+    fn portion_with_display_only(level: Classification, display: &[&str]) -> CanonicalAttrs {
         let mut a = portion_us(level);
         a.display_only_to = display
             .iter()
@@ -4867,19 +4852,28 @@ mod tests {
     #[test]
     fn display_only_block_join_associative() {
         let a = DisplayOnlyBlock::Lattice {
-            countries: [CountryCode::try_new(b"GBR").unwrap(), CountryCode::try_new(b"CAN").unwrap()]
-                .iter()
-                .copied()
-                .collect(),
+            countries: [
+                CountryCode::try_new(b"GBR").unwrap(),
+                CountryCode::try_new(b"CAN").unwrap(),
+            ]
+            .iter()
+            .copied()
+            .collect(),
         };
         let b = DisplayOnlyBlock::Lattice {
-            countries: [CountryCode::try_new(b"GBR").unwrap(), CountryCode::try_new(b"AUS").unwrap()]
+            countries: [
+                CountryCode::try_new(b"GBR").unwrap(),
+                CountryCode::try_new(b"AUS").unwrap(),
+            ]
+            .iter()
+            .copied()
+            .collect(),
+        };
+        let c = DisplayOnlyBlock::Lattice {
+            countries: [CountryCode::try_new(b"GBR").unwrap()]
                 .iter()
                 .copied()
                 .collect(),
-        };
-        let c = DisplayOnlyBlock::Lattice {
-            countries: [CountryCode::try_new(b"GBR").unwrap()].iter().copied().collect(),
         };
         // (a.join(b)).join(c) == a.join(b.join(c))
         let left = a.join(&b).join(&c);

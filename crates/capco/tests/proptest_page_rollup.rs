@@ -24,9 +24,7 @@
 //! `marque-capco` (and `marque-ism` cannot dev-depend on
 //! `marque-capco` without creating a dev-cycle).
 
-use marque_capco::lattice::{
-    ClassificationLattice, DissemSet, NatoDissemSet, RelToBlock,
-};
+use marque_capco::lattice::{ClassificationLattice, DissemSet, NatoDissemSet, RelToBlock};
 use marque_ism::{
     CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
 };
@@ -285,7 +283,6 @@ proptest! {
 // Empty page sentinel: not a proptest, just a deterministic guard.
 #[test]
 fn empty_page_rollup_returns_none_classification() {
-    let rolled = ClassificationLattice::from_attrs_iter(&[])
-        .into_inner();
+    let rolled = ClassificationLattice::from_attrs_iter(&[]).into_inner();
     assert!(rolled.is_none());
 }

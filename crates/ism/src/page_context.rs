@@ -22,7 +22,7 @@
 //! lattice-native helpers in `marque-capco::lattice` (`SciSet`,
 //! `SarSet`, `AeaSet`, `DissemSet`, `NatoDissemSet`, `RelToBlock`,
 //! `DisplayOnlyBlock`, `FgiSet`, `NonIcDissemSet`,
-//! `DeclassifyOnLattice`, `DeclassExemptionLattice`,
+//! `DeclassifyOnLattice`, `DeclassExemptionAccumulator`,
 //! `ClassificationLattice`, `NatoClassLattice`, `JointSet`,
 //! `sci_controls_from_markings`) and the scheme-level
 //! `render_canonical(Scope::Page, ...)` for banner rendering. See
