@@ -57,10 +57,8 @@ enum TestTok {
 }
 
 /// `N` dominates `A` and `B`; `C` is independent.
-static TEST_SUPERSESSION: &[(TestTok, TestTok)] = &[
-    (TestTok::N, TestTok::A),
-    (TestTok::N, TestTok::B),
-];
+static TEST_SUPERSESSION: &[(TestTok, TestTok)] =
+    &[(TestTok::N, TestTok::A), (TestTok::N, TestTok::B)];
 
 // ---------------------------------------------------------------------------
 // SciSet strategy
@@ -676,9 +674,8 @@ fn arb_joint_set() -> impl Strategy<Value = JointSet> {
     prop_oneof![
         Just(JointSet::Bottom),
         Just(JointSet::Mixed),
-        (arb_classification(), arb_joint_producers()).prop_map(|(level, producers)| {
-            JointSet::UnanimousProducers { level, producers }
-        }),
+        (arb_classification(), arb_joint_producers())
+            .prop_map(|(level, producers)| { JointSet::UnanimousProducers { level, producers } }),
         (arb_classification(), arb_non_us_producers()).prop_map(
             |(highest_level, union_non_us_producers)| JointSet::DisunityCollapse {
                 highest_level,
