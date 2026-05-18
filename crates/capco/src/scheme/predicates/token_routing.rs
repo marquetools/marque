@@ -85,7 +85,13 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // CAT_SCI — sensitive compartmented information control systems.
         // BALK / BOHEMIA are NATO SAPs in the SCI category position per
         // §G.2 p40 + §H.7 p127 (rendered standalone, no SAR- prefix).
-        TOK_HCS | TOK_BALK | TOK_BOHEMIA => Some(CAT_SCI),
+        // Issue #524 Phase 1: per-compartment SCI sentinels (SI-G,
+        // HCS-O, HCS-P, TK-BLFH, TK-IDIT, TK-KAND) route to the same
+        // CAT_SCI category — they address specific compartments under
+        // their parent SCI control systems and are addressable in the
+        // SCI axis alongside the bare control sentinel `TOK_HCS`.
+        TOK_HCS | TOK_BALK | TOK_BOHEMIA | TOK_SI_G | TOK_HCS_O | TOK_HCS_P | TOK_TK_BLFH
+        | TOK_TK_IDIT | TOK_TK_KAND => Some(CAT_SCI),
         // CAT_JOINT_CLASSIFICATION — JOINT classification marker
         TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
         // CAT_CLASSIFICATION — overall classification level surface
