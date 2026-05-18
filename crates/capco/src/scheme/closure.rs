@@ -236,16 +236,10 @@ pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
 /// **Trigger-set scope.** The `triggers` list enumerates the caveated
 /// markings *currently in the catalog*. The universal §B.3 p20 Note
 /// definition is broader — it covers every AEA / SAP / dissem marking
-/// — but several caveated markings are intentionally out of scope of
-/// this row:
+/// — but one class of caveated marking is intentionally out of scope
+/// of this row:
 /// - **ATOMAL** (NATO AEA) — routed through the AEA axis with its own
 ///   per-marking handling; see `marque-ism` AEA layer.
-/// - **FISA / RAWFISA / PROPIN** — class-bivalent (different semantics
-///   at classified vs unclassified) so they cannot be unconditional
-///   triggers of the CAVEATED row; tracked at issue #526.
-/// - Per-compartment SCI implications (HCS-O/P, SI-G, TK-BLFH/KAND/IDIT)
-///   require per-compartment sentinels that do not exist yet; tracked
-///   at issue #524.
 ///
 /// New markings registered upstream MUST evaluate against this rule's
 /// universal basis (§B.3 p20 Note + §B.3 Table 2 p21) and be added to
@@ -279,7 +273,10 @@ pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
 /// | `Token(TOK_ORCON_USGOV)`           | ORCON-USGOV              | §H.8 p139           |
 /// | `Token(TOK_RSEN)`                  | RSEN                     | §H.8 p132           |
 /// | `Token(TOK_IMCON)`                 | IMCON                    | §H.8 p142           |
+/// | `Token(TOK_PROPIN)`                | PROPIN                   | §H.8 p148           |
 /// | `Token(TOK_DSEN)`                  | DEA SENSITIVE            | §H.8 p159           |
+/// | `Token(TOK_FISA)`                  | FISA                     | §H.8 p161           |
+/// | `Token(TOK_RAWFISA)`               | RAWFISA                  | ODNI `CVEnumISMDissem.xml` |
 /// | `Token(TOK_LIMDIS)`                | LIMDIS                   | §H.9 p170           |
 /// | `Token(TOK_LES)`                   | LES                      | §H.9 p181           |
 /// | `Token(TOK_NNPI)`                  | NNPI                     | ODNI `CVEnumISMNonIC.xml` |
@@ -310,6 +307,17 @@ pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
 /// appear in CAPCO-2016 §H.9; its governing authority (10 USC 7314 /
 /// 50 USC 2511 — Naval Nuclear Propulsion Program) lives outside IC
 /// marking policy, and the universal caveated-default principle applies.
+///
+/// **RAWFISA** is a post-CAPCO-2016 IC dissem control registered in
+/// ODNI `CVEnumISMDissem.xml` only — the vendored
+/// `crates/capco/docs/CAPCO-2016.md` does not contain a RAWFISA
+/// section. Per Constitution VIII the ISM-schema citation is the
+/// authoritative source (the "too new to cite" carve-out applies).
+/// Semantically RAWFISA is the unminimized variant of FISA and shares
+/// the §B.3 p20 Note IC-dissem-control basis for the caveated-default
+/// implication; the trigger entry follows from the same algebraic
+/// reasoning that places FISA and PROPIN in the list, not from a
+/// CAPCO-2016 prose citation.
 ///
 /// **LES-NF / SBU-NF** are intentionally absent from the trigger list,
 /// but the rationale is *not* "the closure operator sees NOFORN first."
@@ -353,7 +361,10 @@ const CLOSURE_NOFORN_CAVEATED: ClosureRule<CapcoScheme> = ClosureRule {
         TokenRef::Token(TOK_ORCON_USGOV),
         TokenRef::Token(TOK_RSEN),
         TokenRef::Token(TOK_IMCON),
+        TokenRef::Token(TOK_PROPIN),
         TokenRef::Token(TOK_DSEN),
+        TokenRef::Token(TOK_FISA),
+        TokenRef::Token(TOK_RAWFISA),
         TokenRef::Token(TOK_LIMDIS),
         TokenRef::Token(TOK_LES),
         TokenRef::Token(TOK_NNPI),
@@ -848,26 +859,25 @@ const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
 /// is achieved for **most** caveat markers via closure-rule
 /// composition rather than anti-monotone suppressors: any token in
 /// `CLOSURE_NOFORN_CAVEATED`'s trigger list (Trio 1 — AEA, SAR,
-/// FGI markers, ORCON / ORCON_USGOV, RSEN / IMCON / DSEN /
-/// LIMDIS / LES / NNPI / SBU / SSI) drives the composite to
-/// inject NOFORN, and NOFORN then supersedes the RELIDO injection
-/// via the `with_noforn_injected` §H.8 p145 overlay. The fixpoint
-/// result on `(S, <Trio-1-trigger>)` is therefore `(S, <trigger>,
-/// NOFORN, no RELIDO)` — the §B.3 Table 2 p21 semantic.
+/// FGI markers, ORCON / ORCON_USGOV, RSEN / IMCON / PROPIN / DSEN /
+/// FISA / RAWFISA / LIMDIS / LES / NNPI / SBU / SSI) drives the
+/// composite to inject NOFORN, and NOFORN then supersedes the
+/// RELIDO injection via the `with_noforn_injected` §H.8 p145
+/// overlay. The fixpoint result on `(S, <Trio-1-trigger>)` is
+/// therefore `(S, <trigger>, NOFORN, no RELIDO)` — the §B.3
+/// Table 2 p21 semantic.
 ///
-/// **Coverage gaps in the composition path.** Four IC dissem
-/// controls are NOT in `CLOSURE_NOFORN_CAVEATED`'s trigger list:
-/// FOUO, FISA, RAWFISA, and PROPIN. For these, the closure-layer
-/// output of `(S, <token>)` is `(S, <token>, RELIDO)` — this row
-/// fires unchecked by Trio 1. FOUO additionally participates in
-/// the §H.8 p134 PageRewrites
+/// **Coverage gap in the composition path.** FOUO is the one IC
+/// dissem control NOT in `CLOSURE_NOFORN_CAVEATED`'s trigger list.
+/// For FOUO, the closure-layer output of `(S, FOUO)` is `(S,
+/// FOUO, RELIDO)` — this row fires unchecked by Trio 1. FOUO
+/// additionally participates in the §H.8 p134 PageRewrites
 /// (`classification-evicts-fouo` / `non-fdr-control-evicts-fouo`)
 /// that strip FOUO from classified context, so the post-rewrite
-/// scheme output for `(S, FOUO)` is `(S, RELIDO)`. FISA / RAWFISA
-/// / PROPIN do not have analogous strip rewrites today. If a
-/// future CAPCO interpretation requires NOFORN-injection for those
-/// markings, the fix is to extend CAVEATED's trigger list, not to
-/// re-anti-monotone-ify this row's suppressor slice.
+/// scheme output for `(S, FOUO)` is `(S, RELIDO)`. (Issue #525
+/// landed FISA / RAWFISA / PROPIN as CAVEATED triggers per the
+/// §B.3 p20 Note algebraic basis — those three no longer fall
+/// into this gap.)
 ///
 /// **Kleene-fixpoint composition.** This row is ordered after
 /// `CLOSURE_RELIDO_SCI` in `CAPCO_CLOSURE_RULES`. The two rows can
@@ -2234,5 +2244,218 @@ mod phase3_closure_pin {
             "Cl(y = S + FOUO) must still contain FOUO; dissem_us = {:?}",
             cl_y.0.dissem_us
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Issue #525 — FISA / RAWFISA / PROPIN as CAVEATED triggers
+// ---------------------------------------------------------------------------
+
+/// Issue #525 closure-row pins.
+///
+/// CAPCO §B.3 p20 Note: a portion carrying any IC dissem control is
+/// caveated. PROPIN (§H.8 p148) and FISA (§H.8 p161) are IC dissem
+/// controls; RAWFISA is the post-CAPCO-2016 unminimized variant of
+/// FISA registered in ODNI `CVEnumISMDissem.xml` (no CAPCO-2016
+/// prose section — see the RAWFISA paragraph below the CAVEATED
+/// authority table). All three are structurally identical to
+/// ORCON / RSEN / IMCON / DSEN already in
+/// `CLOSURE_NOFORN_CAVEATED.triggers`. These pins assert each fires
+/// the CAVEATED row's NOFORN cone in isolation AND that the
+/// concurrent `CLOSURE_RELIDO_US_CLASS` row is suppressed (NOFORN
+/// dominates RELIDO via the §H.8 p145 supersession overlay).
+///
+/// The pre-existing `every_fdr_dominator_suppresses_caveated_noforn_injection`
+/// pin covers the suppressor side of the CAVEATED row; these three
+/// pins are the trigger-side companions for the new entries.
+///
+/// Banner-roll-up of `(U//FISA)` as "considered RELIDO for purposes
+/// of developing the overall banner line FD&R marking" (CAPCO-2016
+/// `crates/capco/docs/CAPCO-2016.md` notional example, verified
+/// 2026-05-18) is a PageContext-layer artifact — it is how a single
+/// unclassified-FISA portion contributes to a page's FD&R
+/// determination when classified portions are also present. It is
+/// NOT a per-portion closure semantic and is out of scope for #525.
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod issue_525_caveated_dissem_pin {
+    use super::*;
+    use marque_ism::{CanonicalAttrs, Classification, DissemControl, MarkingClassification};
+    use marque_scheme::MarkingScheme;
+
+    /// Construct a `(S, dissem)` marking — Secret base with one IC
+    /// dissem control on the dissem_us axis. Secret is chosen
+    /// arbitrarily as a classified collateral level; the CAVEATED
+    /// trigger is class-agnostic (the row has no class floor), so any
+    /// classification level not in `FDR_DOMINATORS` would work.
+    fn secret_with_dissem(d: DissemControl) -> CapcoMarking {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a.dissem_us = Box::new([d]);
+        CapcoMarking::new(a)
+    }
+
+    /// PROPIN is an IC dissem control per §H.8 p148. Caveated per
+    /// §B.3 p20 Note → §B.3 Table 2 p21 default → NOFORN absent
+    /// FD&R. `TOK_PROPIN` is a `CLOSURE_NOFORN_CAVEATED` trigger.
+    /// The `!Relido` postcondition pins the behavioral change
+    /// versus the pre-issue-525 state where CAVEATED was silent on
+    /// PROPIN and `CLOSURE_RELIDO_US_CLASS` injected `Relido`
+    /// instead.
+    #[test]
+    fn caveated_fires_on_propin() {
+        let scheme = CapcoScheme::new();
+        let closed = scheme.closure(secret_with_dissem(DissemControl::Pr));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "PROPIN must trigger CLOSURE_NOFORN_CAVEATED → NOFORN injection. \
+             Authority: §H.8 p148 (PROPIN as IC dissem control) + §B.3 p20 \
+             Note + §B.3 Table 2 p21. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Pr),
+            "PROPIN itself must be retained — CAVEATED's cone is `{{NOFORN}}` \
+             only. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "RELIDO must NOT appear: NOFORN supersedes RELIDO via §H.8 p145 \
+             overlay. Pre-issue-525 behavior (CAVEATED silent on PROPIN, \
+             CLOSURE_RELIDO_US_CLASS injects Relido) is now retired. \
+             dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// FISA is an IC dissem control per §H.8 p161. Caveated → NOFORN
+    /// absent FD&R. `TOK_FISA` is a `CLOSURE_NOFORN_CAVEATED` trigger.
+    #[test]
+    fn caveated_fires_on_fisa() {
+        let scheme = CapcoScheme::new();
+        let closed = scheme.closure(secret_with_dissem(DissemControl::Fisa));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "FISA must trigger CLOSURE_NOFORN_CAVEATED → NOFORN injection. \
+             Authority: §H.8 p161 (FISA as IC dissem control) + §B.3 p20 \
+             Note + §B.3 Table 2 p21. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Fisa),
+            "FISA itself must be retained — CAVEATED's cone is `{{NOFORN}}` \
+             only. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "RELIDO must NOT appear: NOFORN supersedes RELIDO via §H.8 p145 \
+             overlay. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// RAWFISA is the post-CAPCO-2016 unminimized variant of FISA,
+    /// registered in ODNI `CVEnumISMDissem.xml`. Same caveated →
+    /// NOFORN semantic by §B.3 p20 Note algebraic basis (IC dissem
+    /// control). `TOK_RAWFISA` is a `CLOSURE_NOFORN_CAVEATED`
+    /// trigger.
+    #[test]
+    fn caveated_fires_on_rawfisa() {
+        let scheme = CapcoScheme::new();
+        let closed = scheme.closure(secret_with_dissem(DissemControl::Rawfisa));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "RAWFISA must trigger CLOSURE_NOFORN_CAVEATED → NOFORN injection. \
+             Authority: ODNI `CVEnumISMDissem.xml` (post-CAPCO-2016) + §B.3 \
+             p20 Note + §B.3 Table 2 p21. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Rawfisa),
+            "RAWFISA itself must be retained — CAVEATED's cone is `{{NOFORN}}` \
+             only. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "RELIDO must NOT appear: NOFORN supersedes RELIDO via §H.8 p145 \
+             overlay. dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// Source-of-truth pin: each of the three new triggers fires
+    /// CAVEATED. If a future refactor renames or removes any of
+    /// `TOK_PROPIN` / `TOK_FISA` / `TOK_RAWFISA`, or drops one of
+    /// them from `CLOSURE_NOFORN_CAVEATED.triggers`, this pin
+    /// surfaces it with a single failure-site naming the missing
+    /// trigger.
+    #[test]
+    fn each_new_trigger_appears_in_caveated_triggers() {
+        let new_triggers = [TOK_PROPIN, TOK_FISA, TOK_RAWFISA];
+        for tok in new_triggers {
+            assert!(
+                CLOSURE_NOFORN_CAVEATED
+                    .triggers
+                    .iter()
+                    .any(|t| matches!(t, TokenRef::Token(id) if *id == tok)),
+                "TokenId {tok:?} missing from CLOSURE_NOFORN_CAVEATED.triggers. \
+                 Issue #525 requires PROPIN/FISA/RAWFISA in the trigger list \
+                 per §B.3 p20 Note (IC dissem controls are caveated). \
+                 Authority: §H.8 p148 (PROPIN), §H.8 p161 (FISA + RAWFISA), \
+                 §B.3 Table 2 p21 (caveated-default obligation)."
+            );
+        }
+    }
+
+    /// `FDR_DOMINATORS` continues to suppress CAVEATED on the new
+    /// triggers — pinning the algebraic identity that PROPIN/FISA/
+    /// RAWFISA are structurally identical to the other IC dissem
+    /// caveats in the trigger list (closing under the same FD&R
+    /// suppressor set).
+    ///
+    /// **Observability caveat.** NOFORN is the suppressor AND the
+    /// CAVEATED row's cone is `{NOFORN}`. When NOFORN is pre-seeded
+    /// in `dissem_us`, a broken suppressor injecting `Nf` again would
+    /// dedup against the existing fact — `dissem_us.len()` stays
+    /// constant either way, making this assertion shape vacuously
+    /// true for the NOFORN-suppresses-NOFORN-cone case. The pin is
+    /// kept anyway because (a) it documents the algebraic identity
+    /// at the new-trigger × suppressor intersection, and (b) the
+    /// retention assertion (`contains(Nf)`) would still flag a
+    /// regression that strips or transforms the seed `Nf`. The
+    /// existing `every_fdr_dominator_suppresses_caveated_noforn_injection`
+    /// pin has the same property and the same rationale (see its
+    /// `TOK_NOFORN` arm comment).
+    #[test]
+    fn fdr_dominator_noforn_suppresses_new_triggers() {
+        let scheme = CapcoScheme::new();
+        for trigger in [
+            DissemControl::Pr,
+            DissemControl::Fisa,
+            DissemControl::Rawfisa,
+        ] {
+            let mut a = CanonicalAttrs::default();
+            a.classification = Some(MarkingClassification::Us(Classification::Secret));
+            a.dissem_us = Box::new([trigger, DissemControl::Nf]);
+            let before_len = a.dissem_us.len();
+            let closed = scheme.closure(CapcoMarking::new(a));
+            assert_eq!(
+                closed.0.dissem_us.len(),
+                before_len,
+                "FD&R dominator NOFORN must suppress CAVEATED on trigger \
+                 {trigger:?}: closure should add no facts. dissem_us = {:?}",
+                closed.0.dissem_us
+            );
+            assert!(
+                closed.0.dissem_us.contains(&DissemControl::Nf),
+                "FD&R dominator NOFORN must be retained on trigger \
+                 {trigger:?}: closure must not strip the seed Nf fact. \
+                 dissem_us = {:?}",
+                closed.0.dissem_us
+            );
+        }
     }
 }
