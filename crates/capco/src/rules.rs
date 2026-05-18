@@ -2408,6 +2408,18 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// The cost is bounded by the number of portions with non-empty REL
 /// TO and the number of uncertain codes across them — a handful of
 /// operations over `BTreeSet`s in practice.
+///
+/// **PR 4b-D.3 note (2026-05-18):** This helper intentionally reads
+/// `ctx.page_context` rather than `ctx.page_marking`. S005's
+/// per-portion REL TO + uncertain-trigraph membership analysis
+/// requires the portion-level `CanonicalAttrs` slice that
+/// `ProjectedMarking` does not expose by design (a projected
+/// marking is an aggregate, not a portion view). PR 4b-E may
+/// retain a trimmed `PageContext` exposing only `portions()` for
+/// this consumer and W004; the architecturally-clean successor
+/// is lifting per-portion REL TO membership analysis into the
+/// lattice / scheme layer as derived state on `ProjectedMarking`,
+/// deferred post-4b-E.
 fn analyze_uncertain_reduction(
     _attrs: &CanonicalAttrs,
     ctx: &RuleContext,
@@ -3613,13 +3625,19 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         };
         let nato_class = *nato_class;
 
-        // Clause 3: solely-NATO doc carve-out. When page-context is
+        // Clause 3: solely-NATO doc carve-out. When page-marking is
         // populated AND every portion is bare-NATO, alliance ownership
-        // is implicit — silence. When page-context is `None` (e.g.,
+        // is implicit — silence. When page-marking is `None` (e.g.,
         // first portion observed; no pass-1 evidence yet) fire
         // conservatively — a US-classified doc is the dominant case
         // and pass-2 re-evaluation silences solely-NATO docs.
-        if let Some(page) = ctx.page_context.as_ref()
+        //
+        // PR 4b-D.3 (2026-05-18): migrated from `ctx.page_context` to
+        // `ctx.page_marking`. The PageContext-based predicate silently
+        // returned `false` on post-PR-4b-D.2 pure-NATO pages because
+        // PageContext flattens `Nato(_)` to `Us(_)` (parity divergence
+        // #1); `ProjectedMarking` reads the lattice aggregate directly.
+        if let Some(page) = ctx.page_marking.as_ref()
             && page.is_solely_nato_classified()
         {
             return vec![];
@@ -5109,6 +5127,15 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // belt-and-suspenders so the rule stays safe under future
         // engine refactors that might relax the invariant; it should
         // never fire in production.
+        //
+        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads
+        // `ctx.page_context.portions()` rather than `ctx.page_marking`.
+        // `JointSet::from_attrs_iter` requires the per-portion
+        // `CanonicalAttrs` slice that `ProjectedMarking` does not expose
+        // (the JointSet `DisunityCollapse` state is structurally
+        // per-portion). PR 4b-E retains a trimmed PageContext for this
+        // consumer; lifting `JointSet`'s derived state onto
+        // `ProjectedMarking` is the post-4b-E successor.
         let Some(page_ctx) = ctx.page_context.as_ref() else {
             return vec![];
         };
