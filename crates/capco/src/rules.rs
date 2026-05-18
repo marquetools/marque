@@ -372,7 +372,7 @@ impl CapcoRuleSet {
                 // citation, no "MUST" prose); users opt up via
                 // `[rules] S007 = "warn"` if their org demands stronger
                 // surfacing. The solely-NATO-document case is carved
-                // out via `PageContext::is_solely_nato_classified`.
+                // out via `ProjectedMarking::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
                 // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
                 // collapse-to-FGI per CAPCO-2016 §H.3 p57 + §H.7 p123
@@ -2408,6 +2408,18 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// The cost is bounded by the number of portions with non-empty REL
 /// TO and the number of uncertain codes across them — a handful of
 /// operations over `BTreeSet`s in practice.
+///
+/// **PR 4b-D.3 note (2026-05-18):** This helper intentionally reads
+/// `ctx.page_context` rather than `ctx.page_marking`. S005's
+/// per-portion REL TO + uncertain-trigraph membership analysis
+/// requires the portion-level `CanonicalAttrs` slice that
+/// `ProjectedMarking` does not expose by design (a projected
+/// marking is an aggregate, not a portion view). PR 4b-E retains
+/// a trimmed `PageContext` exposing only `portions()` for
+/// this consumer and W004; the architecturally-clean successor
+/// is lifting per-portion REL TO membership analysis into the
+/// lattice / scheme layer as derived state on `ProjectedMarking`,
+/// deferred post-4b-E.
 fn analyze_uncertain_reduction(
     _attrs: &CanonicalAttrs,
     ctx: &RuleContext,
@@ -3413,15 +3425,20 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 ///    portions are not in scope. (ATOMAL companions on the AEA axis
 ///    coexist with `Nato(_)` and do **not** immunize the portion — see
 ///    project memory `project_atomal_is_aea`.)
-/// 3. **Solely-NATO doc carve-out**: when `ctx.page_context` is `Some`
-///    and `PageContext::is_solely_nato_classified()` returns `true`,
+/// 3. **Solely-NATO doc carve-out**: when `ctx.page_marking` is `Some`
+///    and `ProjectedMarking::is_solely_nato_classified()` returns `true`,
 ///    every portion on the page is bare NATO and alliance ownership is
-///    implicit — `REL TO USA, NATO` is not needed. When
-///    `page_context.is_none()` (no pass-1 evidence yet) fire
-///    conservatively; pass-2 re-evaluation silences this case in a
-///    solely-NATO document. Single-portion solely-NATO documents may
-///    see one false-positive that users can silence via
-///    `.marque.toml`. PM decision #2.
+///    implicit — `REL TO USA, NATO` is not needed. **Today this branch
+///    is forward-looking**: `Engine::lint` gates
+///    `with_page_marking(ctx_page_marking)` on
+///    `candidate.kind != MarkingType::Portion && !page_context.is_empty()`,
+///    so portion rules always see `page_marking = None` and the
+///    carve-out is unreachable. S007 fires on every bare-NATO portion
+///    regardless of solely-NATO document status until a future engine
+///    pass plumbs page-level state to portion-rule dispatch
+///    (load-bearing for that migration; see fr048 trip-wire test).
+///    Users in solely-NATO contexts can silence with
+///    `[rules] S007 = "off"` in `.marque.toml`. PM decision #2.
 /// 4. **NOFORN guard**: when this portion carries `DissemControl::Nf`,
 ///    the conflict is owned by the page rewrite
 ///    `capco/noforn-conflicts-rel-to` (declarative constraint in
@@ -3613,13 +3630,24 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         };
         let nato_class = *nato_class;
 
-        // Clause 3: solely-NATO doc carve-out. When page-context is
+        // Clause 3: solely-NATO doc carve-out. When page-marking is
         // populated AND every portion is bare-NATO, alliance ownership
-        // is implicit — silence. When page-context is `None` (e.g.,
-        // first portion observed; no pass-1 evidence yet) fire
-        // conservatively — a US-classified doc is the dominant case
-        // and pass-2 re-evaluation silences solely-NATO docs.
-        if let Some(page) = ctx.page_context.as_ref()
+        // is implicit — silence. **Today this branch is forward-looking**:
+        // `Engine::lint` does not populate `RuleContext::page_marking`
+        // for `MarkingType::Portion` candidates, so `ctx.page_marking`
+        // is always `None` here and the carve-out is unreachable. S007
+        // fires on every bare-NATO portion regardless of solely-NATO
+        // document status until a future engine pass plumbs page state
+        // to portion-rule dispatch (see fr048 trip-wire test).
+        //
+        // PR 4b-D.3 (2026-05-18): migrated from `ctx.page_context` to
+        // `ctx.page_marking`. Both predicates return identical answers
+        // (the legacy `PageContext::is_solely_nato_classified` walks
+        // `self.portions` with the same `matches!` pattern); the
+        // migration is architectural alignment ahead of PR 4b-E
+        // retiring the `PageContext.expected_*` machinery and
+        // consolidating page-aggregate reads on `ctx.page_marking`.
+        if let Some(page) = ctx.page_marking.as_ref()
             && page.is_solely_nato_classified()
         {
             return vec![];
@@ -5109,6 +5137,15 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // belt-and-suspenders so the rule stays safe under future
         // engine refactors that might relax the invariant; it should
         // never fire in production.
+        //
+        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads
+        // `ctx.page_context.portions()` rather than `ctx.page_marking`.
+        // `JointSet::from_attrs_iter` requires the per-portion
+        // `CanonicalAttrs` slice that `ProjectedMarking` does not expose
+        // (the JointSet `DisunityCollapse` state is structurally
+        // per-portion). PR 4b-E retains a trimmed PageContext for this
+        // consumer; lifting `JointSet`'s derived state onto
+        // `ProjectedMarking` is the post-4b-E successor.
         let Some(page_ctx) = ctx.page_context.as_ref() else {
             return vec![];
         };

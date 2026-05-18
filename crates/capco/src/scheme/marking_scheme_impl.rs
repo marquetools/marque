@@ -432,7 +432,7 @@ impl MarkingScheme for CapcoScheme {
     /// and the same default severity (`Severity::Info`); per D18
     /// rationale 2 the rows are interchangeable with a single n-ary
     /// trigger. The universal label cites CAPCO-2016 §B.3 Table 2 p21
-    /// (rooted in ICD 403); per-token §H.X authorities live in the row
+    /// (rooted in ICD 403); per-token Section H subsection authorities live in the row
     /// doc-comment's per-trigger authority table at
     /// `crates/capco/src/scheme/closure.rs`.
     ///

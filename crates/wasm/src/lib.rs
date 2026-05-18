@@ -1279,6 +1279,16 @@ pub fn generate_cab_native(
     }
 
     // Determine the declassification marking.
+    //
+    // PR 4b-D.3 (2026-05-18): `expected_declass_exemption` is
+    // intentionally NOT migrated to `ProjectedMarking`. CAB-only
+    // fields (`declass_exemption`, `classified_by`, `derived_from`,
+    // `token_spans`) are excluded from the projection by design
+    // (see `crates/ism/src/projected.rs` "page aggregate, not a CAB"
+    // contract). PR 4b-E will either (a) inline the per-portion
+    // accumulator here, or (b) introduce a separate `CabProjection`
+    // type for CAB-only roll-up. Do not delete or migrate this read
+    // without addressing the type-level contract.
     let declass = if let Some(date) = found_declass_date {
         date
     } else if let Some(ex) = found_declass_exemption {

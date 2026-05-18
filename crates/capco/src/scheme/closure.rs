@@ -18,8 +18,8 @@
 //! (`FDR_DOMINATORS`), same cone (`{NOFORN}`), same default severity. The
 //! Trio 1 catalog is now a single `CLOSURE_NOFORN_CAVEATED` row whose
 //! `label` cites the universal §B.3 algebraic basis (ICD 403 → caveated
-//! default); per-token §H.X authorities live in the row doc-comment's
-//! authority table.
+//! default); per-token Section H subsection authorities live in the row
+//! doc-comment's authority table.
 
 use marque_scheme::{ClosureRule, FactRef, Severity, TokenRef};
 use smallvec::{SmallVec, smallvec};
@@ -191,7 +191,7 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 /// (`Severity::Info`); per D18 rationale 2 ("triggers reduce to n-ary
 /// OR over `TokenRef`s") the rows are algebraically identical. The
 /// universal §B.3 citation in `label` reflects the rule's actual
-/// algebraic basis; per-token §H.X authorities live in the per-trigger
+/// algebraic basis; per-token Section H subsection authorities live in the per-trigger
 /// authority table below (per-token traceability without per-row
 /// duplication of identical operator structure).
 ///
