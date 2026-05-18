@@ -512,3 +512,22 @@ pub const TOK_TK_KAND: TokenId = TokenId(155);
 // nationals") establish the per-marking ORCON+NOFORN implication
 // for the sub-compartmented form.
 pub const TOK_HCS_P_SUB: TokenId = TokenId(156);
+
+// Issue #524 Phase 3: grammar-shape sentinel distinguishing
+// `MarkingClassification::Us(Classification::Unclassified)` from
+// the higher US classification levels (Restricted / Confidential
+// / Secret / TopSecret). Used as a suppressor on the
+// `CLOSURE_RELIDO_US_CLASS` row to gate the implicit-RELIDO
+// closure to collateral classified content only — CAPCO-2016
+// §H.8 p154 explicitly states "Explicit foreign disclosure and
+// release markings are not required on unclassified information.
+// Follow internal agency procedures for the use of RELIDO with
+// unclassified information." A future opt-in agency-style rule
+// can re-enable U → RELIDO for organizations whose policy
+// requires it (see follow-up issue tracked in the Phase 3 PR
+// description).
+//
+// Routed to `CAT_CLASSIFICATION` via `capco_token_category`.
+// Resolves via `satisfies_attrs` against
+// `matches!(attrs.classification, Some(MarkingClassification::Us(Classification::Unclassified)))`.
+pub const TOK_US_UNCLASSIFIED: TokenId = TokenId(157);

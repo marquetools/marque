@@ -54,8 +54,13 @@ use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catal
 /// state is E012's concern, not E015's.
 ///
 /// Sentinel `TokenId`s not used by the current catalog
-/// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM`) fall through to `false`;
-/// they are declared for future T035b consumption.
+/// (`TOK_IC_DISSEM`, `TOK_NON_IC_DISSEM` — the *token* sentinels,
+/// distinct from the category form) fall through to `false`;
+/// they are declared for future T035b consumption. The
+/// `AnyInCategory(CAT_NON_IC_DISSEM)` arm IS live as of Issue
+/// #524 Phase 3 (consumed by `CLOSURE_RELIDO_US_CLASS`'s "no
+/// other dissem" suppressor list); the token-form
+/// `TOK_NON_IC_DISSEM` stays in the fall-through arm.
 pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &TokenRef) -> bool {
     use marque_ism::{
         AeaMarking, DissemControl, MarkingClassification, SciControl, SciControlBare,
@@ -223,6 +228,22 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                     || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))
             }
             TOK_US_CLASSIFIED => attrs.us_classification().is_some(),
+            // Issue #524 Phase 3: grammar-shape sentinel firing
+            // only when the marking carries
+            // `MarkingClassification::Us(Classification::Unclassified)`.
+            // Used as a suppressor on `CLOSURE_RELIDO_US_CLASS` to
+            // gate the implicit-RELIDO closure to collateral
+            // classified content (§H.8 p154 carves out unclassified).
+            // The Conflict variant is intentionally NOT matched here
+            // because Conflict carries a US side that is by definition
+            // classified at some level (Conflict requires both US and
+            // foreign classification to be present); a future tightening
+            // could narrow this if needed. Pinned by
+            // `phase3_closure_pin::us_class_excluded_for_unclassified`.
+            TOK_US_UNCLASSIFIED => matches!(
+                &attrs.classification,
+                Some(MarkingClassification::Us(Classification::Unclassified))
+            ),
             // `Conflict` deliberately excluded — see fn doc.
             TOK_NON_US_CLASSIFICATION => matches!(
                 &attrs.classification,
@@ -536,6 +557,18 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
         if let Some(id) = tok {
             tokens.push(TokenRef::Token(id));
         }
+    }
+    // Issue #524 Phase 3: emit `AnyInCategory(CAT_NON_IC_DISSEM)` when
+    // any non-IC dissem token is present. Mirrors the SCI / SAR /
+    // REL TO category-level emission pattern. Closes a latent
+    // asymmetry where the category form was unreachable via
+    // `collect_present_tokens` while `satisfies_attrs`'s
+    // `AnyInCategory` arm resolved it correctly — any future
+    // `ConflictsWithFamily` or family-predicate path using
+    // `AnyInCategory(CAT_NON_IC_DISSEM)` would silently fail without
+    // this emission.
+    if !attrs.non_ic_dissem.is_empty() {
+        tokens.push(TokenRef::AnyInCategory(CAT_NON_IC_DISSEM));
     }
 
     // REL TO countries — emit AnyInCategory(CAT_REL_TO) if any country present

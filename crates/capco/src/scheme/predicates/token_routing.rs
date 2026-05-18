@@ -97,8 +97,13 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         | TOK_TK_BLFH | TOK_TK_IDIT | TOK_TK_KAND => Some(CAT_SCI),
         // CAT_JOINT_CLASSIFICATION — JOINT classification marker
         TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
-        // CAT_CLASSIFICATION — overall classification level surface
-        TOK_RESTRICTED => Some(CAT_CLASSIFICATION),
+        // CAT_CLASSIFICATION — overall classification level surface.
+        // Issue #524 Phase 3: `TOK_US_UNCLASSIFIED` is a grammar-shape
+        // sentinel firing on `MarkingClassification::Us(Unclassified)`
+        // specifically, used as a suppressor in
+        // `CLOSURE_RELIDO_US_CLASS` to gate the implicit-RELIDO closure
+        // to collateral classified content (§H.8 p154).
+        TOK_RESTRICTED | TOK_US_UNCLASSIFIED => Some(CAT_CLASSIFICATION),
         // Sentinel marker tokens (used in catalog predicates, not as
         // addressable atomic tokens): no category mapping.
         _ => None,

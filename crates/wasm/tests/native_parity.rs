@@ -552,18 +552,20 @@ fn compute_banner_single_secret_portion() {
 
 #[test]
 fn compute_banner_single_unclassified_portion() {
-    // Issue #524 Phase 3 trigger list (`marque-applied.md` Section
-    // 4.7.5) explicitly enumerates `U / C / S / TS` for the
-    // US_CLASS Trio 2 row; the closure therefore fires on
-    // UNCLASSIFIED. The banner remains UNCLASSIFIED at the
-    // classification axis with the implicit RELIDO appended.
+    // Issue #524 Phase 3 Unclassified carve-out (CAPCO-2016 §H.8 p154
+    // — "Explicit foreign disclosure and release markings are not
+    // required on unclassified information"): the
+    // `CLOSURE_RELIDO_US_CLASS` row's `TOK_US_UNCLASSIFIED`
+    // suppressor gates the implicit-RELIDO closure to collateral
+    // classified content. Bare UNCLASSIFIED produces a plain
+    // `UNCLASSIFIED` banner.
     let banner = marque_wasm::compute_banner_native("(U) Unclassified paragraph.")
         .expect("compute_banner single U");
     assert_eq!(
-        banner, "UNCLASSIFIED//RELIDO",
-        "single UNCLASSIFIED portion must produce UNCLASSIFIED//RELIDO \
-         banner (Phase 3 implicit-RELIDO default applies to U per \
-         marque-applied Section 4.7.5)"
+        banner, "UNCLASSIFIED",
+        "single UNCLASSIFIED portion must produce UNCLASSIFIED banner \
+         (Phase 3 §H.8 p154 carve-out — RELIDO not required on \
+         unclassified information)"
     );
 }
 
