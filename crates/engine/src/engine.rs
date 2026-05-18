@@ -4190,9 +4190,10 @@ fn partition_rules_by_phase(
 ///
 /// - `page_context` must be non-empty at call time (the caller
 ///   guards on `!page_context.is_empty()`). An empty-page dispatch
-///   produces no useful work and `PageContext::project` would emit
-///   a noisy default. The skip is in the caller so the cost of the
-///   `is_empty()` probe is paid at the boundary, not per rule.
+///   produces no useful work and `CapcoScheme::project_from_page_context`
+///   would emit a noisy default. The skip is in the caller so the
+///   cost of the `is_empty()` probe is paid at the boundary, not
+///   per rule.
 /// - `page_context_arc` / `page_marking_arc` are mutable `Option`
 ///   references because the dispatch path force-initializes both
 ///   Arcs (PageFinalization rules expect `Some(_)` for both). The
@@ -4268,8 +4269,8 @@ fn dispatch_page_finalization(
     // PageFinalization rule's registered-id severity resolves to
     // `Off`, the per-rule loop below would skip them all — but only
     // after the Arc force-init paid `page_context.clone()` +
-    // `page_context.project()`. Pre-scanning the bucket lets us
-    // return BEFORE those costs.
+    // `CapcoScheme::project_from_page_context`. Pre-scanning the
+    // bucket lets us return BEFORE those costs.
     //
     // Walker rules (those with `additional_emitted_ids()` non-empty)
     // can still fire under per-emitted-id severity overrides even

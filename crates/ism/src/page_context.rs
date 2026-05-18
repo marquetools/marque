@@ -42,26 +42,9 @@
 
 use crate::canonical::CanonicalAttrs;
 
-/// Sort key for SAR identifiers per CAPCO §H.5 (p99–100): "ascending sort
-/// order with numbered values first, followed by alphabetic values" at each
-/// hierarchical level.
-///
-/// Splits the identifier at its leading digit run. If present, the digits are
-/// parsed as `u64` and the tuple `(false, n, rest)` is returned (with `false`
-/// sorting before `true`). Pure-alpha identifiers return `(true, 0, s)`.
-///
-/// This helper is the canonical SAR sort-key implementation; both
-/// `marque-ism` (banner roll-up) and `marque-capco` (rules E028/E029) use it
-/// via the crate re-export.
-pub fn sar_sort_key(s: &str) -> (bool, u64, &str) {
-    let prefix_len = s.bytes().take_while(|b| b.is_ascii_digit()).count();
-    if prefix_len == 0 {
-        (true, 0, s)
-    } else {
-        let n: u64 = s[..prefix_len].parse().unwrap_or(u64::MAX);
-        (false, n, &s[prefix_len..])
-    }
-}
+// PR 4b-E: `sar_sort_key` relocated to `crates/ism/src/sar_sort.rs`
+// per architect plan §3 Decision 4. The `marque_ism::sar_sort_key`
+// public re-export is preserved via `lib.rs`.
 
 /// Page-level portion accumulator, built by the engine as it processes
 /// portion markings on a page.

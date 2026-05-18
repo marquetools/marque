@@ -16,10 +16,11 @@
 //! both PRs have a stable target without a separate type-system
 //! change.
 //!
-//! At PR 3a no engine call site reads or writes `ProjectedMarking` —
-//! `PageContext::expected_*` continues to drive page roll-up. The type
-//! is `pub` and its `dead_code` is suppressed only when the workspace
-//! lints flag it (Risk #6 in the PR 3a design doc).
+//! Post-PR-4b-D.2 (hot-path flip) + PR 4b-E (PageContext expected_*
+//! deletion), `ProjectedMarking` is the production page-roll-up shape
+//! that banner/CAB rules consume via `RuleContext::page_marking`. The
+//! engine drives the projection through
+//! `CapcoScheme::project_from_page_context` + `ProjectedMarking::from_canonical`.
 //!
 //! # Field shape
 //!
@@ -49,8 +50,9 @@ use marque_scheme::Scope;
 ///
 /// # PR-3a scope note
 ///
-/// `ProjectedMarking` is defined but not constructed at PR 3a —
-/// `PageContext::expected_*` continues to drive page roll-up. The type
+/// Post-PR-4b-D.2 hot-path flip + PR 4b-E PageContext deletion,
+/// `ProjectedMarking` is the production page-roll-up shape banner/CAB
+/// rules consume via `RuleContext::page_marking`. The type
 /// is `pub` so `dead_code` does not fire across the workspace; per the
 /// design's Risk #6 a targeted `#[allow(dead_code)]` is reserved should
 /// the workspace lints flag it. PR 6 turns `ProjectedMarking` into a
@@ -91,11 +93,12 @@ pub struct ProjectedMarking {
     /// `dissem_controls` field; see
     /// [`crate::CanonicalAttrs::dissem_us`] for the CAPCO-2016 p41
     /// reciprocity rule. Page roll-up unions each namespace
-    /// independently (see [`PageContext::expected_dissem_us`] /
-    /// [`PageContext::expected_dissem_nato`]).
+    /// independently via the per-axis lattice helpers
+    /// [`DissemSet::from_attrs_iter`] / [`NatoDissemSet::from_attrs_iter`]
+    /// in `marque-capco::lattice`.
     ///
-    /// [`PageContext::expected_dissem_us`]: crate::PageContext::expected_dissem_us
-    /// [`PageContext::expected_dissem_nato`]: crate::PageContext::expected_dissem_nato
+    /// [`DissemSet::from_attrs_iter`]: https://docs.rs/marque-capco
+    /// [`NatoDissemSet::from_attrs_iter`]: https://docs.rs/marque-capco
     pub dissem_us: Box<[DissemControl]>,
 
     /// NATO-attributed IC dissemination controls in the page rollup.

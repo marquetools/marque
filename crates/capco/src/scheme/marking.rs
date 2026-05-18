@@ -46,18 +46,20 @@
 //! `join_via_lattice → closure → page_rewrites` pipeline (see
 //! `docs/plans/2026-05-01-lattice-design.md` §4.7.4).
 //!
-//! `PageContext` is NOT retired — it stays alive as the page-state
-//! accumulator the engine fills via `add_portion` across the document,
-//! AND as the residue-axis bridge: five tmp_ctx-driven accessor calls
-//! inside `join_via_lattice_body` (`expected_sci_controls`,
-//! `expected_fgi_marker`, `expected_declass_exemption`,
-//! `expected_non_ic_dissem`, `expected_display_only`) still go through
-//! PageContext methods. PR 4b-E retires the residue bridge by
-//! refactoring the five accessors into free functions on
-//! `&[CanonicalAttrs]`, at which point this module can drop the
-//! `tmp_ctx` parameter entirely. Constitution VII Principle IV
-//! gates the refactor; PR 4b-E's authorization basis is identical
-//! to PR 4b-D.2's.
+//! `PageContext` stays alive as the page-state accumulator the engine
+//! fills via `add_portion` across the document; its `expected_*`
+//! accessor surface retired in PR 4b-E. The five former residue
+//! accessors (`expected_sci_controls`, `expected_fgi_marker`,
+//! `expected_declass_exemption`, `expected_non_ic_dissem`,
+//! `expected_display_only`) migrated to free helpers and lattice
+//! constructors in `crates/capco/src/lattice.rs`
+//! (`sci_controls_from_markings`, `FgiSet::from_attrs_iter`,
+//! `DeclassExemptionLattice::from_attrs_iter`,
+//! `NonIcDissemSet::from_attrs_iter`,
+//! `DisplayOnlyBlock::from_attrs_iter`). `join_via_lattice_body`'s
+//! `_tmp_ctx` parameter is retained at the function boundary for
+//! signature stability with the engine's hot path; the body no
+//! longer reads it.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
 //! (issue #466). Imports reach helpers via `super::actions::*` /

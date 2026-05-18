@@ -34,6 +34,7 @@ pub mod marking_forms;
 pub mod page_context;
 pub mod parsed;
 pub mod projected;
+pub mod sar_sort;
 pub mod span;
 pub mod token_set;
 
@@ -53,7 +54,11 @@ pub use generated::values::{
     ISMCAT_TETRA_VERSION, SCHEMA_VERSION, TETRAGRAPH_MEMBERS, TRIGRAPHS, TetragraphProvenance,
     is_bare_cve_value, is_decomposable, lookup_tetragraph_members, lookup_tetragraph_provenance,
 };
-pub use page_context::{PageContext, sar_sort_key};
+pub use page_context::PageContext;
+// PR 4b-E: `sar_sort_key` lives in its own module post-relocation; the
+// re-export at the crate root preserves the `marque_ism::sar_sort_key`
+// public path (architect plan §3 Decision 4).
+pub use sar_sort::sar_sort_key;
 pub use parsed::{
     ParsedAea, ParsedAttrs, ParsedClassification, ParsedDeclassifyOn, ParsedDisplayOnlyEntry,
     ParsedDissem, ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking,

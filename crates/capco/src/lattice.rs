@@ -8,8 +8,11 @@
 //! structural types [`marque_ism::SciMarking`], [`marque_ism::SarMarking`],
 //! and [`marque_ism::FgiMarker`] — newtype wrappers that implement
 //! [`Lattice`] so CAPCO's structural categories compose through the
-//! generic engine machinery instead of through hand-written
-//! `PageContext::expected_*` functions.
+//! generic engine machinery. Post-PR-4b-E (this module's
+//! `*::from_attrs_iter` constructors + free helpers like
+//! [`sci_controls_from_markings`]) these helpers ARE the production
+//! page-roll-up path — the retired `PageContext::expected_*` accessor
+//! surface was the pre-PR-4b-E shape.
 //!
 //! # Policy (§3.3a of the Phase B design doc)
 //!
@@ -63,8 +66,9 @@ use std::collections::{BTreeMap, BTreeSet};
 ///
 /// `SciSet` round-trips with `[SciMarking]` via [`SciSet::from_markings`]
 /// and [`SciSet::to_markings`]. The byte-level equivalence with the
-/// existing [`marque_ism::PageContext::expected_sci_markings`] output
-/// is the Phase B verification gate.
+/// retired `PageContext::expected_sci_markings` output was the Phase B
+/// verification gate; post-PR-4b-E `SciSet::to_markings()` is the
+/// production roll-up path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SciSet {
     /// system → compartment identifier → set of sub-compartment
