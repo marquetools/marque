@@ -7,10 +7,11 @@
 //!
 //! Measures isolated calls to (a) `join_via_lattice`, (b) `closure`,
 //! (c) the trait-path `scheme.project`, (d) `from_canonical`,
-//! (e) the engine fast-path `project_from_page_context + from_canonical`,
+//! (e) the engine fast-path `project_from_attrs_slice + from_canonical`,
 //! (f) the whole `Engine::lint(10KB input)`, (g) project scaling at
-//! several portion counts (1, 5, 10, 25, 50), (h) the tmp_ctx rebuild
-//! in isolation, and (i) `join_via_lattice` scaling.
+//! several portion counts (1, 5, 10, 25, 50), (h) the per-page
+//! accumulator rebuild in isolation, and (i) `join_via_lattice`
+//! scaling.
 //!
 //! Used to attribute the PR 4b-D.2 hot-path-flip regression and to
 //! verify the commit 6-8 optimization wins. Ships in-tree so future
@@ -49,7 +50,7 @@ use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Engine, StrictRecognizer};
-use marque_ism::{CanonicalAttrs, PageContext};
+use marque_ism::CanonicalAttrs;
 use marque_scheme::{MarkingScheme, Scope};
 use std::hint::black_box;
 use std::sync::Arc;
@@ -111,11 +112,11 @@ fn collect_portions() -> Vec<CanonicalAttrs> {
     // scheme.project ~20× per call (cache miss per portion). One
     // miss is sufficient to attribute the per-call cost.
     //
-    // Simulate the cache-miss state: parse the input once, grab
-    // the post-lint portions via a fresh `PageContext::add_portion`
-    // walk of the engine's first-pass parsed markings. Rather than
-    // wiring through internal accessors, just synthesize a
-    // representative portion mix matching the bench input.
+    // Simulate the cache-miss state: parse the input once, then
+    // synthesize a representative portion mix matching the bench
+    // input. Rather than wiring through internal accessors, build
+    // a Vec<CanonicalAttrs> directly — that's the same shape the
+    // engine accumulator carries internally post-PR-6c (T069).
     let _ = engine.lint(black_box(&input));
 
     let mut p1 = CanonicalAttrs::default();
@@ -173,15 +174,13 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase E: end-to-end engine-side replay through the new fast-path
-    // `project_from_page_context`.
-    let mut page_context = PageContext::new();
-    for p in &portions {
-        page_context.add_portion(p.clone());
-    }
+    // Phase E: end-to-end engine-side replay through the
+    // `project_from_attrs_slice` fast-path (PR 6c (T069) successor
+    // to `project_from_page_context`).
+    let page_portions: Vec<CanonicalAttrs> = portions.to_vec();
     c.bench_function("phase_e_engine_project_path", |b| {
         b.iter(|| {
-            let projected = scheme.project_from_page_context(&page_context);
+            let projected = scheme.project_from_attrs_slice(&page_portions);
             let pm = marque_ism::ProjectedMarking::from_canonical(projected);
             black_box(pm);
         });
@@ -204,34 +203,33 @@ fn phase_attribution(c: &mut Criterion) {
         });
     }
 
-    // Phase G: scaling — project_from_page_context at portion counts
+    // Phase G: scaling — project_from_attrs_slice at portion counts
     // matching the lint_10kb call sequence (1, 5, 10, 25, 50). The
     // bench profiling discovered that ~50 cache-miss calls happen
     // with portions growing monotonically; the per-call O(n) work
     // dominates the regression.
     for &n in &[1usize, 5, 10, 25, 50] {
-        let mut large_page = PageContext::new();
-        for _ in 0..n {
-            large_page.add_portion(portions[0].clone());
-        }
+        let large_page: Vec<CanonicalAttrs> = (0..n).map(|_| portions[0].clone()).collect();
         c.bench_function(&format!("phase_g_project_n{}", n), |b| {
             b.iter(|| {
-                let projected = scheme.project_from_page_context(&large_page);
+                let projected = scheme.project_from_attrs_slice(&large_page);
                 let pm = marque_ism::ProjectedMarking::from_canonical(projected);
                 black_box(pm);
             });
         });
     }
 
-    // Phase H: isolate the tmp_ctx rebuild cost. Mirrors
-    // `join_via_lattice`'s per-call tmp_ctx construction.
+    // Phase H: isolate the per-page accumulator rebuild cost.
+    // Mirrors the engine's per-PageBreak `page_portions =
+    // Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY)` + per-portion
+    // `push` sequence.
     for &n in &[10usize, 25, 50] {
         let portions_slice: Vec<CanonicalAttrs> = (0..n).map(|_| portions[0].clone()).collect();
         c.bench_function(&format!("phase_h_tmp_ctx_rebuild_n{}", n), |b| {
             b.iter(|| {
-                let mut ctx = PageContext::new();
+                let mut ctx: Vec<CanonicalAttrs> = Vec::with_capacity(8);
                 for p in black_box(&portions_slice) {
-                    ctx.add_portion(p.clone());
+                    ctx.push(p.clone());
                 }
                 black_box(ctx);
             });

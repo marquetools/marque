@@ -675,18 +675,6 @@ impl CapcoScheme {
         self.project_attrs_pipeline(raw)
     }
 
-    /// Transitional shim — engine-side caller in `dispatch_page_finalization` /
-    /// `project_page_marking` migrates to [`Self::project_from_attrs_slice`]
-    /// in PR 6c commit 3. Retained for one commit so the workspace stays
-    /// green across the rename. Deleted at commit 3 once the engine no
-    /// longer constructs a `PageContext`.
-    pub fn project_from_page_context(
-        &self,
-        page_context: &marque_ism::PageContext,
-    ) -> CanonicalAttrs {
-        self.project_from_attrs_slice(page_context.portions())
-    }
-
     /// Shared body of the page-projection pipeline. Both
     /// [`MarkingScheme::project`] (trait entry, after a per-portion
     /// `.0.clone()`) and [`Self::project_from_attrs_slice`] (engine

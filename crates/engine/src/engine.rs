@@ -141,6 +141,21 @@ pub const R002_RULE_ID: RuleId = RuleId::new("R002");
 /// branching on citation strings can tell them apart.
 const R002_CITATION: &str = "engine-synthetic";
 
+/// Default capacity for the per-page portion accumulator
+/// (`Engine::lint_inner`'s `page_portions: Vec<CanonicalAttrs>`).
+/// Sized to the typical CAPCO per-page portion count: the scanner
+/// emits `MarkingType::PageBreak` candidates at form-feed and at
+/// `\n\n\n+` runs, slicing larger docs into multiple per-page
+/// contexts, so 8 covers the typical 1-10-portion case in zero
+/// reallocations. Larger pages pay only the reallocations needed
+/// past 8 instead of the early growth sequence a `Vec::new()` path
+/// would incur on the first several pushes.
+///
+/// PR 6c (T069) moved this const from the retired
+/// `marque_ism::PageContext` to its single owner site at the engine
+/// accumulator. Issue #430.
+pub(crate) const DEFAULT_PORTIONS_CAPACITY: usize = 8;
+
 /// Whether to apply fixes or just simulate (dry-run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixMode {
@@ -701,7 +716,7 @@ impl Engine {
         pre_pass_1_cache: Option<&[(Span, marque_ism::CanonicalAttrs)]>,
     ) -> (LintResult, Vec<(Span, marque_capco::CapcoMarking)>) {
         use marque_core::Scanner;
-        use marque_ism::{MarkingType, PageContext};
+        use marque_ism::MarkingType;
         use marque_rules::RuleContext;
 
         // T007: pre-pass deadline check. An already-expired deadline
@@ -782,21 +797,34 @@ impl Engine {
         let corrections_arc = self.corrections_arc.clone();
 
         let mut diagnostics = Vec::new();
-        // Build page context by accumulating portion markings in document order.
-        // Banner and CAB rules receive this context so they can validate the
-        // observed banner against the expected composite. Phase 3 wires the
-        // page-break reset below — the scanner emits a `MarkingType::PageBreak`
-        // candidate at every form-feed and at every `\n\n\n+` run; on each
-        // such candidate we drop the accumulator and start a fresh page.
-        let mut page_context = PageContext::new();
-        // Cache the current Arc<PageContext> so that consecutive banner/CAB
-        // candidates on the same page share a single allocation. The cache is
-        // invalidated (set to None) whenever a new portion is accumulated or
-        // a page break resets the context.
-        let mut page_context_arc: Option<Arc<PageContext>> = None;
+        // Build per-page state by accumulating portion markings in
+        // document order. Banner and CAB rules receive this context
+        // so they can validate the observed banner against the
+        // expected composite. Phase 3 wires the page-break reset
+        // below — the scanner emits a `MarkingType::PageBreak`
+        // candidate at every form-feed and at every `\n\n\n+` run;
+        // on each such candidate we drop the accumulator and start
+        // a fresh page.
+        //
+        // PR 6c (T069) retired the `marque_ism::PageContext` wrapper
+        // type in favor of inlining the `Vec<CanonicalAttrs>`
+        // accumulator at its single owner site. The `DEFAULT_PORTIONS_CAPACITY`
+        // pre-size (issue #430) moves alongside the accumulator. The
+        // banner/CAB rule hand-off freezes the live `Vec` into an
+        // `Arc<Box<[CanonicalAttrs]>>` lazily at first banner/CAB
+        // use; consecutive banner/CAB candidates on the same page
+        // share that Arc through the cache below.
+        let mut page_portions: Vec<marque_ism::CanonicalAttrs> =
+            Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
+        // Cache the current `Arc<Box<[CanonicalAttrs]>>` snapshot so
+        // consecutive banner/CAB candidates on the same page share a
+        // single allocation. Invalidated (set to None) whenever a new
+        // portion is accumulated or a page break resets the
+        // accumulator.
+        let mut page_portions_arc: Option<Arc<Box<[marque_ism::CanonicalAttrs]>>> = None;
         // PR 9b (T133 / FR-006). Cache of the page-marking projection
         // for `RuleContext::page_marking`. Same invalidation
-        // semantics as `page_context_arc` — lazy on first banner/CAB
+        // semantics as `page_portions_arc` — lazy on first banner/CAB
         // consumer, dropped on portion accumulation and on page
         // break. PR 4b-D.2 flipped the projection driver from
         // `PageContext::project` to `scheme.project(Scope::Page, ...)`
@@ -894,30 +922,30 @@ impl Engine {
             candidates_processed += 1;
 
             // Page-break candidates are scanner-emitted boundaries with no
-            // parsable content. Reset the context BEFORE attempting to parse
-            // — otherwise the parser's MalformedMarking error would skip the
-            // continue and leave us accumulating across pages.
+            // parsable content. Reset the accumulator BEFORE attempting to
+            // parse — otherwise the parser's MalformedMarking error would
+            // skip the continue and leave us accumulating across pages.
             if candidate.kind == MarkingType::PageBreak {
                 // Issue #461: dispatch every `Phase::PageFinalization`
                 // rule against the CLOSING page's fixpoint snapshot
-                // BEFORE the PageContext reset, so the rule observes
+                // BEFORE the accumulator reset, so the rule observes
                 // every portion that contributed to this page. The
                 // skip on empty pages is in `dispatch_page_finalization`'s
                 // caller (this `if`) so an empty page costs zero rule
-                // dispatches and no `PageContext::project` call. On
-                // deadline expiry the dispatch returns `Err(())`; we
-                // propagate the truncated `LintResult` the same way
-                // the per-candidate deadline check at the top of the
-                // loop does.
-                if !page_context.is_empty()
+                // dispatches and no projection call. On deadline
+                // expiry the dispatch returns `Err(())`; we propagate
+                // the truncated `LintResult` the same way the
+                // per-candidate deadline check at the top of the loop
+                // does.
+                if !page_portions.is_empty()
                     && dispatch_page_finalization(
                         &self.scheme,
                         &self.rule_sets,
                         &self.pass_finalization_rule_indices,
                         &self.fast_path_severities,
                         &self.emitted_id_overrides,
-                        &page_context,
-                        &mut page_context_arc,
+                        &page_portions,
+                        &mut page_portions_arc,
                         &mut page_marking_arc,
                         &corrections_arc,
                         candidate.span.start,
@@ -938,19 +966,21 @@ impl Engine {
                         parsed_markings,
                     );
                 }
-                page_context = PageContext::new();
-                page_context_arc = None;
+                page_portions = Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
+                page_portions_arc = None;
                 // PR 9b (T133): the page-marking cache resets on the
-                // same boundary as the PageContext (Constitution VI
-                // invariant — page-rollup state is per-page).
+                // same boundary as the per-page accumulator
+                // (Constitution VI invariant — page-rollup state is
+                // per-page).
                 page_marking_arc = None;
                 classification_floor = None;
                 // PR 3c.B Commit 4: clear the per-page render
                 // scratch buffer at the same boundary as the
-                // PageContext reset (Constitution VI invariant).
-                // Commit 6's first `Recanonicalize`-emitting rule
-                // depends on this happening BEFORE the next page's
-                // first portion is rendered.
+                // per-page accumulator reset (Constitution VI
+                // invariant). Commit 6's first
+                // `Recanonicalize`-emitting rule depends on this
+                // happening BEFORE the next page's first portion is
+                // rendered.
                 render_scratch.clear();
                 continue;
             }
@@ -1171,20 +1201,28 @@ impl Engine {
             // until a structural scanner pass can prove them. The previous
             // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
             // lie to any future rule that read them.
-            let ctx_page = if candidate.kind != MarkingType::Portion && !page_context.is_empty() {
-                // Lazily wrap the accumulated context in an Arc once per
-                // page-context snapshot; subsequent banner/CAB candidates on
-                // the same page clone only the cheap Arc pointer.
-                Some(
-                    page_context_arc
-                        .get_or_insert_with(|| Arc::new(page_context.clone()))
-                        .clone(),
-                )
-            } else {
-                None
-            };
+            //
+            // PR 6c (T069): the per-page accumulator freezes into an
+            // `Arc<Box<[CanonicalAttrs]>>` once at first banner/CAB
+            // consumer; consecutive banner/CAB candidates on the same
+            // page clone only the cheap Arc pointer. The
+            // `into_boxed_slice()` allocation pays once per page on
+            // the first banner/CAB use, matching the cadence of the
+            // pre-PR-6c `PageContext::clone()` snapshot.
+            let ctx_page_portions =
+                if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
+                    Some(
+                        page_portions_arc
+                            .get_or_insert_with(|| {
+                                Arc::new(page_portions.clone().into_boxed_slice())
+                            })
+                            .clone(),
+                    )
+                } else {
+                    None
+                };
             // N-9-2 (PR 437 10th-pass): `cross_portion_context` removed.
-            // The field cloned the full `PageContext` value once per
+            // The field cloned the full per-page accumulator once per
             // Portion candidate (O(N²) over N portions per page —
             // clone at portion K copies K `CanonicalAttrs` values, so
             // total cost is 0+1+...+(N-1)). W004 `joint-disunity-
@@ -1200,23 +1238,21 @@ impl Engine {
             //
             // PR 9b (T133): lazy/cached construction for the
             // page-marking projection. Built from
-            // `project_page_marking(&self.scheme, &page_context)`
+            // `project_page_marking(&self.scheme, &page_portions)`
             // (post-PR-4b-D.2 hot-path flip — the helper invokes
-            // `CapcoScheme::project_from_page_context` which drives
-            // the lattice + closure + page-rewrite pipeline, NOT
-            // `PageContext::project` which has been retired from the
-            // hot path) so banner-validation rules see the rolled-up
-            // shape (classification / SCI / SAR / AEA / dissem_us /
-            // dissem_nato / REL TO) without going through
-            // `PageContext::expected_*` accessors. Sharing the Arc
-            // across consecutive banner/CAB candidates on the same
-            // page mirrors the `page_context_arc` discipline.
+            // `CapcoScheme::project_from_attrs_slice` which drives
+            // the lattice + closure + page-rewrite pipeline) so
+            // banner-validation rules see the rolled-up shape
+            // (classification / SCI / SAR / AEA / dissem_us /
+            // dissem_nato / REL TO). Sharing the Arc across
+            // consecutive banner/CAB candidates on the same page
+            // mirrors the `page_portions_arc` discipline.
             let ctx_page_marking =
-                if candidate.kind != MarkingType::Portion && !page_context.is_empty() {
+                if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
                     Some(
                         page_marking_arc
                             .get_or_insert_with(|| {
-                                Arc::new(project_page_marking(&self.scheme, &page_context))
+                                Arc::new(project_page_marking(&self.scheme, &page_portions))
                             })
                             .clone(),
                     )
@@ -1248,17 +1284,7 @@ impl Engine {
             // `RuleContext::new` as `None` defaults and gain a
             // `with_*` setter; the engine's hot-path call site
             // chains the setters here once per candidate dispatch.
-            // PR 6c commit 2 transitional bridge: derive
-            // `Arc<Box<[CanonicalAttrs]>>` from the same Arc'd
-            // `PageContext` snapshot the rules currently read via
-            // `ctx.page_context`. Commit 3 inverts this: the inline
-            // `Vec<CanonicalAttrs>` accumulator becomes the source and
-            // the `PageContext`-derived `ctx_page` path is removed.
-            let ctx_page_portions = ctx_page
-                .as_ref()
-                .map(|pc| Arc::new(pc.portions().to_vec().into_boxed_slice()));
             let ctx = RuleContext::new(candidate.kind, candidate.span)
-                .with_page_context(ctx_page)
                 .with_page_portions(ctx_page_portions)
                 .with_page_marking(ctx_page_marking)
                 .with_corrections(corrections_arc.clone())
@@ -1724,14 +1750,14 @@ impl Engine {
                         candidate.span,
                         marque_capco::CapcoMarking(attrs.clone(), marking.1),
                     ));
-                    page_context.add_portion(attrs);
+                    page_portions.push(attrs);
                 } else {
-                    page_context.add_portion(attrs);
+                    page_portions.push(attrs);
                 }
                 // Invalidate the cached Arc so the next banner/CAB gets a
                 // fresh snapshot. We rebuild it lazily above on the next
                 // iteration when a non-Portion candidate arrives.
-                page_context_arc = None;
+                page_portions_arc = None;
                 // PR 9b (T133): the projected page marking also goes
                 // stale when a new portion arrives.
                 page_marking_arc = None;
@@ -1743,7 +1769,7 @@ impl Engine {
 
         // Issue #461: end-of-document PageFinalization dispatch.
         // After the candidate loop closes, the final page's
-        // PageContext still holds every trailing portion that did
+        // accumulator still holds every trailing portion that did
         // not precede a `MarkingType::PageBreak` boundary. Without
         // this dispatch, banner-first / single-page layouts (no
         // closing page-break, no footer banner) would never see
@@ -1757,15 +1783,15 @@ impl Engine {
         // deadline expiry the dispatch returns `Err(())` and we
         // propagate the truncated `LintResult` the same way the
         // PageBreak branch does.
-        if !page_context.is_empty()
+        if !page_portions.is_empty()
             && dispatch_page_finalization(
                 &self.scheme,
                 &self.rule_sets,
                 &self.pass_finalization_rule_indices,
                 &self.fast_path_severities,
                 &self.emitted_id_overrides,
-                &page_context,
-                &mut page_context_arc,
+                &page_portions,
+                &mut page_portions_arc,
                 &mut page_marking_arc,
                 &corrections_arc,
                 source.len(),
@@ -4182,10 +4208,10 @@ fn partition_rules_by_phase(
 ///
 /// Issue #461. Called by the engine's lint loop at every
 /// scanner-emitted [`marque_ism::MarkingType::PageBreak`] (BEFORE the
-/// PageContext reset, so the dispatched rules see the closing page's
-/// final state) and once at end-of-document (so trailing portions
-/// that never reached a page-break boundary still observe the
-/// fixpoint).
+/// per-page accumulator reset, so the dispatched rules see the
+/// closing page's final state) and once at end-of-document (so
+/// trailing portions that never reached a page-break boundary still
+/// observe the fixpoint).
 ///
 /// This is a free function rather than an `&self` method on `Engine`
 /// because the inputs are decomposed and the helper has no need for
@@ -4198,13 +4224,13 @@ fn partition_rules_by_phase(
 ///
 /// # Invariants
 ///
-/// - `page_context` must be non-empty at call time (the caller
-///   guards on `!page_context.is_empty()`). An empty-page dispatch
-///   produces no useful work and `CapcoScheme::project_from_page_context`
+/// - `page_portions` must be non-empty at call time (the caller
+///   guards on `!page_portions.is_empty()`). An empty-page dispatch
+///   produces no useful work and `CapcoScheme::project_from_attrs_slice`
 ///   would emit a noisy default. The skip is in the caller so the
 ///   cost of the `is_empty()` probe is paid at the boundary, not
 ///   per rule.
-/// - `page_context_arc` / `page_marking_arc` are mutable `Option`
+/// - `page_portions_arc` / `page_marking_arc` are mutable `Option`
 ///   references because the dispatch path force-initializes both
 ///   Arcs (PageFinalization rules expect `Some(_)` for both). The
 ///   caller threads the same Arcs through to a possible subsequent
@@ -4213,15 +4239,16 @@ fn partition_rules_by_phase(
 ///   candidates.
 /// - The synthetic boundary candidate carries a zero-length `Span`
 ///   at the boundary offset. Today this is the only span a
-///   PageFinalization rule can emit on its `Diagnostic`: `PageContext`
-///   stores `Box<[CanonicalAttrs]>` without per-portion spans, so
-///   `ctx.page_context.portions()` cannot recover an offending
-///   portion's own offsets. Rules document this limitation in their
-///   doc comments (W004 from issue #461 and S005 from issue #488 are
-///   the worked examples). A future enhancement
-///   that adds per-portion spans to `PageContext` — or threads a
-///   span-lookup helper into `RuleContext` — would let rules refine
-///   the anchor to the specific offending portion.
+///   PageFinalization rule can emit on its `Diagnostic`: the
+///   per-page accumulator stores `[CanonicalAttrs]` without
+///   per-portion spans, so `ctx.page_portions` cannot recover an
+///   offending portion's own offsets. Rules document this
+///   limitation in their doc comments (W004 from issue #461 and
+///   S005 from issue #488 are the worked examples). A future
+///   enhancement that threads per-portion spans through the
+///   accumulator — or a span-lookup helper into `RuleContext` —
+///   would let rules refine the anchor to the specific offending
+///   portion.
 /// - `candidates_processed` is NOT incremented by this dispatch.
 ///   That counter tracks scanner-emitted candidates; the synthetic
 ///   PageFinalization candidate is engine-internal.
@@ -4241,8 +4268,8 @@ fn dispatch_page_finalization(
     pass_finalization_rule_indices: &PassFinalizationIndices,
     fast_path_severities: &FastPathSeverities,
     emitted_id_overrides: &EmittedIdOverrides,
-    page_context: &marque_ism::PageContext,
-    page_context_arc: &mut Option<Arc<marque_ism::PageContext>>,
+    page_portions: &[marque_ism::CanonicalAttrs],
+    page_portions_arc: &mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
     page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     boundary_offset: usize,
@@ -4263,7 +4290,7 @@ fn dispatch_page_finalization(
 
     // Empty-bucket short-circuit (Copilot review on PR #487 / issue
     // #461). If no rule declared `Phase::PageFinalization` the Arc
-    // force-init below would still clone `page_context` and project
+    // force-init below would still clone the accumulator and project
     // `page_marking` — both non-trivial — without a consumer. This
     // matters for future schemes that may register no PageFinalization
     // rules, and for any future config layer that disables every
@@ -4278,8 +4305,8 @@ fn dispatch_page_finalization(
     // All-Off short-circuit (Copilot round-2 on PR #487). If every
     // PageFinalization rule's registered-id severity resolves to
     // `Off`, the per-rule loop below would skip them all — but only
-    // after the Arc force-init paid `page_context.clone()` +
-    // `CapcoScheme::project_from_page_context`. Pre-scanning the
+    // after the Arc force-init paid the snapshot clone +
+    // `CapcoScheme::project_from_attrs_slice`. Pre-scanning the
     // bucket lets us return BEFORE those costs.
     //
     // Walker rules (those with `additional_emitted_ids()` non-empty)
@@ -4296,25 +4323,25 @@ fn dispatch_page_finalization(
         return Ok(());
     }
 
-    // PageFinalization rules contract: ctx.page_context AND
+    // PageFinalization rules contract: ctx.page_portions AND
     // ctx.page_marking are both populated. Force-init both Arcs
     // here BEFORE building the RuleContext so the rule body can
     // unconditionally read them. Subsequent same-page banner/CAB
     // candidates reuse these Arcs through the normal lazy path.
-    let page_ctx_arc = page_context_arc
-        .get_or_insert_with(|| Arc::new(page_context.clone()))
+    let page_portions_arc = page_portions_arc
+        .get_or_insert_with(|| Arc::new(page_portions.to_vec().into_boxed_slice()))
         .clone();
     let page_mark_arc = page_marking_arc
-        .get_or_insert_with(|| Arc::new(project_page_marking(scheme, page_context)))
+        .get_or_insert_with(|| Arc::new(project_page_marking(scheme, page_portions)))
         .clone();
 
     // Zero-length span at the boundary anchor. Rules use this as
     // the candidate-span anchor; if the rule wants a user-facing
-    // span on a specific portion, it walks `ctx.page_context.portions()`
-    // and refers to that portion's span (when tracked). PageContext
-    // does not store per-portion spans today; rules that need
-    // sub-page precision fall back to this anchor and document the
-    // limitation.
+    // span on a specific portion, it walks `ctx.page_portions` and
+    // refers to that portion's span (when tracked). The per-page
+    // accumulator does not store per-portion spans today; rules
+    // that need sub-page precision fall back to this anchor and
+    // document the limitation.
     let boundary_span = Span::new(boundary_offset, boundary_offset);
 
     // PageFinalization rules don't read `attrs`; they read
@@ -4330,41 +4357,32 @@ fn dispatch_page_finalization(
     // span has no preceding-portion identity in the pre-pass-1
     // attrs cache (the cache is keyed by content-candidate spans;
     // a boundary span at offset N never equals one).
-    // PR #490: clone `page_ctx_arc` for the `RuleContext` so the
+    // PR #490: clone `page_portions_arc` for the `RuleContext` so the
     // original handle stays in scope through the dispatch loop and
     // remains available to the portion-snapshot sentinel below
-    // (which observes `page_ctx_arc.portions()` — the slice the rule
-    // actually reads via `ctx.page_context`). `Arc::clone` is a
-    // refcount bump, no `PageContext` data is copied.
-    // PR 6c commit 2 transitional bridge: derive
-    // `Arc<Box<[CanonicalAttrs]>>` from the same Arc'd `PageContext`
-    // snapshot the PageFinalization rules currently read via
-    // `ctx.page_context`. Commit 3 inverts this: the engine
-    // accumulator becomes the source and the `PageContext`-derived
-    // `page_ctx_arc` path is removed.
-    let page_portions_arc: Arc<Box<[marque_ism::CanonicalAttrs]>> =
-        Arc::new(page_ctx_arc.portions().to_vec().into_boxed_slice());
+    // (which observes the slice the rule actually reads via
+    // `ctx.page_portions`). `Arc::clone` is a refcount bump, no
+    // slice data is copied.
     let ctx = RuleContext::new(MarkingType::PageFinalization, boundary_span)
-        .with_page_context(Some(page_ctx_arc.clone()))
-        .with_page_portions(Some(page_portions_arc))
+        .with_page_portions(Some(page_portions_arc.clone()))
         .with_page_marking(Some(page_mark_arc))
         .with_corrections(corrections_arc.clone())
         .with_pre_pass_1_attrs(None);
 
     // PR #490: portion-snapshot sentinel for the PageRewrite
     // read-only-attrs invariant. `Phase::PageFinalization` rules
-    // read `ctx.page_context.portions()` and re-project per-portion
-    // lattices from that slice (e.g., W004's
-    // `JointSet::from_attrs_iter(page_ctx.portions())` per
+    // read `ctx.page_portions` and re-project per-portion lattices
+    // from that slice (e.g., W004's `JointSet::from_attrs_iter` per
     // §H.3 p57 derivative-use migration trigger). A rule that
     // mutated portions through any future API change — or a future
     // closure-operator rewrite-application site that did so — would
     // silently break that predicate's input invariance. Today
-    // `PageContext::portions()` returns `&[CanonicalAttrs]` with no
-    // `&mut` API, so a conformant rule cannot violate the contract
-    // through the public API; the sentinel is a static guard against
-    // future API changes that would open a mutation path.
-    // See `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
+    // `ctx.page_portions` exposes `&[CanonicalAttrs]` via
+    // `Box<[_]>` with no `&mut` API, so a conformant rule cannot
+    // violate the contract through the public API; the sentinel is
+    // a static guard against future API changes that would open a
+    // mutation path. See
+    // `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
     //
     // **Sibling sentinel (PR 4b-D.2).** The closure-operator's
     // rewrite-application site now lives in `CapcoScheme::project`
@@ -4377,27 +4395,22 @@ fn dispatch_page_finalization(
     // `docs/plans/2026-05-01-lattice-design.md` §3 (e.1). The two
     // sentinels cover different invocation contexts: this one fires
     // around `Phase::PageFinalization` rule dispatch (where rules
-    // read `ctx.page_context.portions()`); the scheme-side sentinel
-    // fires inside the per-projection pipeline that produces
+    // read `ctx.page_portions`); the scheme-side sentinel fires
+    // inside the per-projection pipeline that produces
     // `ctx.page_marking`. Together they pin the read-only contract
     // across both engine-facing surfaces.
     //
     // Snapshot the slice the rule actually observes (via
-    // `page_ctx_arc`), not the original `&PageContext` parameter.
-    // The two are equal today because `page_ctx_arc` is a deep-cloned
-    // `Arc` with strong_count >= 2 (so `Arc::get_mut` returns `None`),
-    // but the sentinel's purpose is to catch FUTURE API loosenings —
-    // e.g., interior mutability on `PageContext` (`RefCell`, `Mutex`),
-    // a `portions_mut()` addition, or an `Arc::get_mut` bypass via a
-    // future debug API. A future mutation reaches the rule through
-    // `page_ctx_arc`; observing the original parameter would silently
-    // miss it and the sentinel would return clean (false negative).
-    // Cost: a clone of `[CanonicalAttrs]` in debug builds only;
-    // `--release` strips the snapshot and the assertion entirely.
-    // Placement is AFTER the empty-bucket / all-Off short-circuits
-    // (they early-return before reaching this point).
+    // `page_portions_arc`). The sentinel's purpose is to catch
+    // FUTURE API loosenings — e.g., a `portions_mut()` addition
+    // on a future newtype wrapper, or an `Arc::get_mut` bypass via
+    // a future debug API. Cost: a clone of `[CanonicalAttrs]` in
+    // debug builds only; `--release` strips the snapshot and the
+    // assertion entirely. Placement is AFTER the empty-bucket /
+    // all-Off short-circuits (they early-return before reaching
+    // this point).
     #[cfg(debug_assertions)]
-    let portions_before: Vec<marque_ism::CanonicalAttrs> = page_ctx_arc.portions().to_vec();
+    let portions_before: Vec<marque_ism::CanonicalAttrs> = page_portions_arc.as_ref().to_vec();
 
     // Mirror the main candidate-loop dispatch shape: fast-path
     // Off-skip via `fast_path_severities[set_idx][rule_idx]`,
@@ -4485,7 +4498,7 @@ fn dispatch_page_finalization(
     #[cfg(debug_assertions)]
     if let Err(msg) = check_portions_unchanged(
         portions_before.as_slice(),
-        page_ctx_arc.portions(),
+        page_portions_arc.as_ref(),
         pass_finalization_rule_indices.len(),
     ) {
         panic!("{msg}");
@@ -4494,7 +4507,7 @@ fn dispatch_page_finalization(
     Ok(())
 }
 
-/// Project the current [`marque_ism::PageContext`] into a
+/// Project the current per-page accumulator slice into a
 /// [`marque_ism::ProjectedMarking`] via the scheme's production
 /// page-projection path.
 ///
@@ -4510,24 +4523,29 @@ fn dispatch_page_finalization(
 /// banner/CAB candidate dispatch) and the secondary
 /// `dispatch_page_finalization` initialization. Both sites need the
 /// scheme handle to drive the lattice path; passing `scheme` and
-/// `page_context` here keeps the closure capture minimal at each call
-/// site and avoids duplicating the per-portion conversion logic.
+/// the accumulator slice here keeps the closure capture minimal at
+/// each call site and avoids duplicating the per-portion conversion
+/// logic.
 ///
-/// PR 4b-D.2 Copilot R1 #5: this helper now lives BELOW
+/// PR 4b-D.2 Copilot R1 #5: this helper lives BELOW
 /// `dispatch_page_finalization` so its doc-comment doesn't run into
 /// the dispatch function's `# Returns` block. The placement is purely
-/// for doc-attribution clarity; the function body is unchanged.
+/// for doc-attribution clarity.
+///
+/// PR 6c (T069) flattened the parameter from `&PageContext` to
+/// `&[CanonicalAttrs]` so the caller no longer needs to construct
+/// the intermediate accumulator type.
 ///
 /// Authority: `docs/plans/2026-05-01-lattice-design.md` §4.7.4
 /// pipeline ordering.
 fn project_page_marking(
     scheme: &CapcoScheme,
-    page_context: &marque_ism::PageContext,
+    page_portions: &[marque_ism::CanonicalAttrs],
 ) -> marque_ism::ProjectedMarking {
     // PR 4b-D.2 Commit 7 perf optimization: route through
-    // `CapcoScheme::project_from_page_context`, the engine fast-path
-    // that consumes the pre-built `&PageContext` directly. This skips
-    // three categories of redundant work the trait-level
+    // `CapcoScheme::project_from_attrs_slice`, the engine fast-path
+    // that consumes the per-page accumulator slice directly. This
+    // skips three categories of redundant work the trait-level
     // `MarkingScheme::project` would pay:
     //
     //   1. Wrapping each portion in a `CapcoMarking::new(p.clone())`
@@ -4537,9 +4555,10 @@ fn project_page_marking(
     //   3. Rebuilding a tmp_ctx via `add_portion(p.clone())` for each
     //      portion inside `join_via_lattice`.
     //
-    // The engine ALREADY owns a `PageContext` accumulating portions
-    // across the document; reusing it here eliminates all three.
-    let projected = scheme.project_from_page_context(page_context);
+    // The engine ALREADY owns a `Vec<CanonicalAttrs>` accumulator
+    // across the document; reusing the slice here eliminates all
+    // three.
+    let projected = scheme.project_from_attrs_slice(page_portions);
     marque_ism::ProjectedMarking::from_canonical(projected)
 }
 
@@ -4584,7 +4603,7 @@ pub(crate) fn check_portions_unchanged(
         Ok(())
     } else {
         Err(format!(
-            "PageFinalization rule dispatch mutated PageContext::portions() \
+            "PageFinalization rule dispatch mutated the per-page portion slice \
              ({} portion(s) before vs {} after, {} rule(s) dispatched). \
              This violates the PageRewrite read-only-attrs invariant in \
              docs/plans/2026-05-01-lattice-design.md section 3 (e.1). \
@@ -5502,13 +5521,13 @@ mod tests {
         assert!(result.is_clean());
     }
 
-    // F.1: PageContext reset semantics are observable.
+    // F.1: per-page accumulator reset semantics are observable.
     //
-    // ContextRecorderRule captures the live `page_context.portion_count()`
+    // ContextRecorderRule captures the live `ctx.page_portions` length
     // every time it's invoked. By running the engine over a multi-page
     // document and inspecting the captured counts at each banner candidate,
-    // we prove that the engine resets PageContext at the page break instead
-    // of accumulating across pages.
+    // we prove that the engine resets the accumulator at the page break
+    // instead of accumulating across pages.
     #[derive(Clone)]
     struct ContextRecorderRule {
         observations: std::sync::Arc<std::sync::Mutex<Vec<(marque_ism::MarkingType, usize)>>>,
@@ -5519,7 +5538,7 @@ mod tests {
             RuleId::new("RECORD")
         }
         fn name(&self) -> &'static str {
-            "page-context-recorder"
+            "page-portions-recorder"
         }
         fn default_severity(&self) -> Severity {
             Severity::Warn
@@ -5530,9 +5549,9 @@ mod tests {
             ctx: &RuleContext,
         ) -> Vec<Diagnostic<CapcoScheme>> {
             let count = ctx
-                .page_context
+                .page_portions
                 .as_ref()
-                .map(|pc| pc.portion_count())
+                .map(|pp| pp.as_ref().len())
                 .unwrap_or(0);
             self.observations
                 .lock()
@@ -5553,7 +5572,7 @@ mod tests {
     }
 
     #[test]
-    fn page_context_resets_observably_across_form_feed() {
+    fn page_portions_reset_observably_across_form_feed() {
         use marque_ism::MarkingType;
         let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let rule = ContextRecorderRule {
@@ -5578,13 +5597,13 @@ mod tests {
         // The recorder fires on every candidate that reaches the rule loop.
         // For the page-1 banner we expect to see 1 accumulated portion.
         // For the page-2 banner we expect to see 1 accumulated portion
-        // (NOT 2) — the form feed must have reset the context.
+        // (NOT 2) — the form feed must have reset the accumulator.
         let src: &[u8] = b"(SECRET//NF) p1 text\nSECRET//NOFORN\n\x0c(CONFIDENTIAL//NF) p2\nCONFIDENTIAL//NOFORN\n";
         let _ = engine.lint(src);
 
         let obs = observations.lock().unwrap();
         // The recorder ran once per non-PageBreak candidate. Filter to
-        // banners and check the page_context count each banner saw.
+        // banners and check the per-page portion count each banner saw.
         let banner_counts: Vec<usize> = obs
             .iter()
             .filter(|(kind, _)| *kind == MarkingType::Banner)
@@ -5607,9 +5626,10 @@ mod tests {
     }
 
     #[test]
-    fn page_context_lint_starts_fresh_on_each_call() {
+    fn page_portions_lint_starts_fresh_on_each_call() {
         // Calling Engine::lint twice on the same engine must produce a
-        // fresh PageContext for the second call — no cross-call accumulation.
+        // fresh per-page accumulator for the second call — no cross-call
+        // accumulation.
         use marque_ism::MarkingType;
         let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let rule = ContextRecorderRule {

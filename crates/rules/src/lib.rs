@@ -289,16 +289,17 @@ pub enum Phase {
     WholeMarking,
     /// Dispatched exactly once per page on the **closed** page-level
     /// fixpoint — at every scanner-emitted page-break boundary (BEFORE
-    /// the `PageContext` reset, see [`marque_ism::MarkingType::PageFinalization`])
-    /// and once at end-of-document. At dispatch time the engine has
-    /// finished accumulating every portion's contribution to the
-    /// `PageContext`, so a rule reading `ctx.page_context` /
+    /// the per-page accumulator reset, see
+    /// [`marque_ism::MarkingType::PageFinalization`]) and once at
+    /// end-of-document. At dispatch time the engine has finished
+    /// accumulating every portion's contribution to the page-level
+    /// state, so a rule reading `ctx.page_portions` /
     /// `ctx.page_marking` sees the Knaster-Tarski fixpoint of the
     /// page-axis lattices (classification, SCI, SAR, AEA, dissem,
     /// REL TO, FGI marker), not an intermediate snapshot. This is the
     /// closure of issue #461.
     ///
-    /// Both `ctx.page_context` and `ctx.page_marking` are always
+    /// Both `ctx.page_portions` and `ctx.page_marking` are always
     /// populated on a PageFinalization dispatch (the engine
     /// force-initializes both Arcs from the live accumulator before
     /// invoking the rule); a defensive `.as_ref()?` early-return is
@@ -307,23 +308,23 @@ pub enum Phase {
     ///
     /// **Triggering surface.** The engine synthesizes a single
     /// dispatch per `MarkingType::PageBreak` candidate (BEFORE the
-    /// PageContext reset, so the dispatched rules see the closing
-    /// page) and one final dispatch at end-of-document covering any
-    /// trailing portions that never reached a page-break. Empty pages
-    /// (no portions) are skipped — there is no page-level fixpoint to
-    /// observe.
+    /// per-page accumulator reset, so the dispatched rules see the
+    /// closing page) and one final dispatch at end-of-document
+    /// covering any trailing portions that never reached a
+    /// page-break. Empty pages (no portions) are skipped — there is
+    /// no page-level fixpoint to observe.
     ///
     /// **`Diagnostic::span`.** The engine provides
     /// `ctx.candidate_span` as a zero-length anchor at the page-break
     /// byte offset (or `source.len()` at end-of-document). Today this
-    /// is the only span a PageFinalization rule can produce:
-    /// `PageContext` stores `Box<[CanonicalAttrs]>` only — no
+    /// is the only span a PageFinalization rule can produce: the
+    /// per-page accumulator stores `[CanonicalAttrs]` only — no
     /// per-portion spans — so there is no way to recover a portion's
-    /// own span from `ctx.page_context.portions()`. Issue #461 chose
-    /// not to extend the hot-path data type for a single Warn-severity
+    /// own span from `ctx.page_portions`. Issue #461 chose not to
+    /// extend the hot-path data type for a single Warn-severity
     /// diagnostic. Rules using the boundary anchor MUST document the
     /// limitation in their doc comment (W004 is the worked example).
-    /// A future enhancement that adds spans to `PageContext` or
+    /// A future enhancement that adds spans to the accumulator or
     /// threads a portion-span lookup into `RuleContext` would let
     /// rules refine the anchor to the specific offending portion.
     ///
@@ -359,7 +360,7 @@ pub enum Phase {
 /// document structural metadata (page count, line numbers, header/footer
 /// detection on extracted documents).
 ///
-/// `page_context` is populated by the engine for every non-portion
+/// `page_portions` is populated by the engine for every non-portion
 /// candidate (Banner, CAB) so banner-validation rules can compare the
 /// observed banner against the composite expected from all preceding
 /// portions. The engine resets it at scanner-emitted `MarkingType::PageBreak`
@@ -375,8 +376,8 @@ pub enum Phase {
 ///
 /// **Note on future cross-portion aggregation rules** (N-9-2, PR 437
 /// 10th-pass): the `cross_portion_context` field was removed because
-/// eager per-portion `PageContext` cloning is O(N²) over portions
-/// per page and had zero active rule consumers. Future cross-portion
+/// eager per-portion accumulator cloning is O(N²) over portions per
+/// page and had zero active rule consumers. Future cross-portion
 /// rules that need the post-add accumulator state should add a
 /// lazy/gated field with explicit capability declaration rather than
 /// restoring the eager-clone shape. Per Constitution Principle I,
@@ -428,28 +429,6 @@ pub struct RuleContext<'a> {
     /// Added in the PR 3c.B engine-prereq commit. Populated by the
     /// engine from `candidate.span` before invoking each rule.
     pub candidate_span: Span,
-    /// Accumulated portion data for the current page, reset at every
-    /// scanner-emitted `MarkingType::PageBreak`.
-    ///
-    /// **PR 9b (T133) migration in progress.** Portion-level rules that
-    /// reason about per-portion membership (e.g., S005
-    /// "uncertain-codes appeared in some-but-not-every portion" —
-    /// post-PR-#488 collapse of the historical S005/S006 pair) still
-    /// read `page_context.portions()`. Banner-validation rules that
-    /// need only the rolled-up shape SHOULD migrate to
-    /// [`Self::page_marking`] (`&ProjectedMarking`). The two fields
-    /// are populated for the same set of `RuleContext`s during the
-    /// migration; rule code chooses which to read.
-    ///
-    /// **Phase::PageFinalization invariant (issue #461).** For
-    /// `Phase::PageFinalization` dispatches the engine force-initializes
-    /// this to `Some` before invoking the rule; see
-    /// [`Phase::PageFinalization`]. PageFinalization rules MAY rely on
-    /// `Some(_)` and a defensive `.as_ref()?` is belt-and-suspenders
-    /// rather than necessary correctness. For other phases the field
-    /// may be `None` (Portion candidates, or banner/CAB candidates on
-    /// an empty page).
-    pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
     /// Per-page accumulated portion attributes — the slice form that
     /// banner / CAB / PageFinalization rules consume when they need
     /// per-portion membership (W004's `JointSet::from_attrs_iter` and
@@ -547,7 +526,7 @@ impl<'a> RuleContext<'a> {
     ///
     /// ```ignore
     /// let ctx = RuleContext::new(MarkingType::Banner, span)
-    ///     .with_page_context(Some(page))
+    ///     .with_page_portions(Some(portions))
     ///     .with_corrections(corrections);
     /// ```
     ///
@@ -555,7 +534,7 @@ impl<'a> RuleContext<'a> {
     ///
     /// ```ignore
     /// let mut ctx = RuleContext::new(MarkingType::Banner, span);
-    /// ctx.page_context = Some(page);
+    /// ctx.page_portions = Some(portions);
     /// ```
     ///
     /// PR 4b-B 9th-pass follow-up: added alongside the
@@ -570,7 +549,6 @@ impl<'a> RuleContext<'a> {
             zone: None,
             position: None,
             candidate_span,
-            page_context: None,
             page_portions: None,
             page_marking: None,
             corrections: None,
@@ -587,12 +565,6 @@ impl<'a> RuleContext<'a> {
     /// Set [`Self::position`] (coarse document position).
     pub fn with_position(mut self, position: Option<DocumentPosition>) -> Self {
         self.position = position;
-        self
-    }
-
-    /// Set [`Self::page_context`] (banner-validation accumulator).
-    pub fn with_page_context(mut self, page_context: Option<Arc<marque_ism::PageContext>>) -> Self {
-        self.page_context = page_context;
         self
     }
 
