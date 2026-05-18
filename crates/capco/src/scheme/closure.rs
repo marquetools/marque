@@ -2,14 +2,24 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! CAPCO closure-rule catalog — `FDR_DOMINATORS` + 7× `CLOSURE_NOFORN_*` +
-//! `CLOSURE_REL_TO_USA_NATO` + the aggregating `CAPCO_CLOSURE_RULES` static.
+//! CAPCO closure-rule catalog — `FDR_DOMINATORS` + `CLOSURE_NOFORN_CAVEATED`
+//! + `CLOSURE_REL_TO_USA_NATO` + the aggregating `CAPCO_CLOSURE_RULES` static.
 //!
 //! Implements the §4.7 implicit-fact propagation catalog from
 //! `docs/plans/2026-05-01-lattice-design.md` §3 (e) and
 //! `marque-applied.md` §4.7. The `MarkingScheme::closure_rules()` impl on
 //! `CapcoScheme` exposes it as the public catalog surface per
 //! `decisions.md` D18.
+//!
+//! Trio 1 was originally split into seven token-grouped rows (SAR / AEA-RD
+//! / UCNI / FGI / ORCON / RSEN-IMCON-DSEN / non-IC-controls) for §-citation
+//! locality. Per D18 rationale 2 ("triggers reduce to n-ary OR over
+//! `TokenRef`s") those rows are algebraically identical — same suppressor
+//! (`FDR_DOMINATORS`), same cone (`{NOFORN}`), same default severity. The
+//! Trio 1 catalog is now a single `CLOSURE_NOFORN_CAVEATED` row whose
+//! `label` cites the universal §B.3 algebraic basis (ICD 403 → caveated
+//! default); per-token Section H subsection authorities live in the row
+//! doc-comment's authority table.
 
 use marque_scheme::{ClosureRule, FactRef, Severity, TokenRef};
 use smallvec::{SmallVec, smallvec};
@@ -125,140 +135,162 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 
 // --- The implicit-default trio (FD&R-suppressed) ---
 
-// Trio 1 triggers: all markings that imply NOFORN when no explicit FD&R
-// decision is present. Per `marque-applied.md` §4.7.1 implicit_NOFORN list.
-// One row per trigger group (grouped by source §-citation for traceability).
-
-/// Trio 1, row 1: SAR programs imply NOFORN unless FD&R-marked.
+/// Trio 1: every trigger marking enumerated in the `triggers` list
+/// below implies NOFORN unless an explicit FD&R decision (NOFORN,
+/// REL TO, RELIDO, DISPLAY ONLY, EYES) is present.
 ///
-/// SAR program identifiers live on `CAT_SAR`. Any SAR marking is a
-/// US-originator-controlled marking for which NOFORN is the implicit
-/// release posture. CAPCO-2016 §H.5 (pp99-102) governs SAR markings;
-/// the NOFORN implication flows from §B.3 Table 2 p21.
-const CLOSURE_NOFORN_SAR: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-sar",
-    label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[TokenRef::AnyInCategory(CAT_SAR)],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// Trio 1, row 2: RD / FRD / TFNI imply NOFORN unless FD&R-marked.
+/// **Universal IC principle.** Any AEA marking, SAP marking, or
+/// dissemination control marking renders information structurally
+/// **caveated** per CAPCO-2016 §B.3 p20 Note: "Caveated means bears no
+/// FD&R markings, but has one or more AEA markings, SAP markings,
+/// and/or dissemination control marking(s)." The §B.3 Table 2 p21 row
+/// "Classified, caveated, on/after 28 Jun 2010 → NOFORN" is the
+/// algebraic anchor for the classified case; for triggers that exist
+/// at UNCLASSIFIED (UCNI/DCNI by §H.6 marking template, non-IC dissem
+/// markings under §H.9 that may be applied at any classification
+/// level), the per-marking template authority carries the NOFORN
+/// implication independently of §B.3 Table 2 p21. The principle is
+/// rooted in ICD 403 (Foreign Disclosure and Release): the IC cannot
+/// presume releasability or RELIDO-suitability of information governed
+/// by policy regimes outside IC marking authority, so implicit NOFORN
+/// is the conservative default absent an explicit FD&R decision.
 ///
-/// Atomic Energy Act markings (Restricted Data, Formerly Restricted Data,
-/// Transclassified Foreign Nuclear Information) carry NOFORN by definition
-/// for the IC marking context. Per CAPCO-2016 §H.6 (pp104-121) and
-/// §B.3 Table 2 p21.
-const CLOSURE_NOFORN_AEA_RD: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-aea",
-    label: "CAPCO-2016 §B.3 Table 2 p21",
+/// **The row is intentionally class-agnostic** — it has no
+/// classification gate. Every trigger marking carries an implicit
+/// NOFORN release posture under its own per-marking authority,
+/// regardless of whether the host information is classified or
+/// unclassified. This is correct for UCNI (constrained to UNCLASSIFIED
+/// per §H.6 pp116-119) and for non-IC dissem markings (which may apply
+/// at any classification level per §H.9 marking templates). The
+/// per-trigger authority table below names the load-bearing
+/// per-marking citation for each arm.
+///
+/// **Trigger-set scope.** The `triggers` list enumerates the caveated
+/// markings *currently in the catalog*. The universal §B.3 p20 Note
+/// definition is broader — it covers every AEA / SAP / dissem marking
+/// — but several caveated markings are intentionally out of scope of
+/// this row:
+/// - **ATOMAL** (NATO AEA) — routed through the AEA axis with its own
+///   per-marking handling; see `marque-ism` AEA layer.
+/// - **FISA / RAWFISA / PROPIN** — class-bivalent (different semantics
+///   at classified vs unclassified) so they cannot be unconditional
+///   triggers of the CAVEATED row; tracked at issue #526.
+/// - Per-compartment SCI implications (HCS-O/P, SI-G, TK-BLFH/KAND/IDIT)
+///   require per-compartment sentinels that do not exist yet; tracked
+///   at issue #524.
+///
+/// New markings registered upstream MUST evaluate against this rule's
+/// universal basis (§B.3 p20 Note + §B.3 Table 2 p21) and be added to
+/// the trigger list unless one of the structural exceptions above
+/// applies.
+///
+/// This row is the algebraic union of seven previously separate Trio 1
+/// rows (SAR / AEA-RD / UCNI / FGI / ORCON / RSEN-IMCON-DSEN /
+/// non-IC-controls). All shared the same suppressor (`FDR_DOMINATORS`),
+/// the same cone (`{NOFORN}`), and the same default severity
+/// (`Severity::Info`); per D18 rationale 2 ("triggers reduce to n-ary
+/// OR over `TokenRef`s") the rows are algebraically identical. The
+/// universal §B.3 citation in `label` reflects the rule's actual
+/// algebraic basis; per-token Section H subsection authorities live in the per-trigger
+/// authority table below (per-token traceability without per-row
+/// duplication of identical operator structure).
+///
+/// **Per-trigger authority (the `triggers` list, in order):**
+///
+/// | Trigger                            | Marking                  | Authority           |
+/// |------------------------------------|--------------------------|---------------------|
+/// | `AnyInCategory(CAT_SAR)`           | any SAR program          | §H.5 pp99-102       |
+/// | `Token(TOK_RD)`                    | RESTRICTED DATA          | §H.6 p104           |
+/// | `Token(TOK_FRD)`                   | FORMERLY RESTRICTED DATA | §H.6 p111           |
+/// | `Token(TOK_TFNI)`                  | TFNI                     | §H.6 p120           |
+/// | `Token(TOK_UCNI)`                  | DOE UCNI                 | §H.6 p118           |
+/// | `Token(TOK_DCNI)`                  | DOD UCNI                 | §H.6 p116 (#407)    |
+/// | `Token(TOK_FGI_MARKER)`            | foreign-classified portion (`//GBR S`, etc.) | §H.7 p122 |
+/// | `AnyInCategory(CAT_FGI_MARKER)`    | explicit `FGI` token     | §H.7 p123           |
+/// | `Token(TOK_ORCON)`                 | ORCON                    | §H.8 p136           |
+/// | `Token(TOK_ORCON_USGOV)`           | ORCON-USGOV              | §H.8 p139           |
+/// | `Token(TOK_RSEN)`                  | RSEN                     | §H.8 p132           |
+/// | `Token(TOK_IMCON)`                 | IMCON                    | §H.8 p142           |
+/// | `Token(TOK_DSEN)`                  | DEA SENSITIVE            | §H.8 p159           |
+/// | `Token(TOK_LIMDIS)`                | LIMDIS                   | §H.9 p170           |
+/// | `Token(TOK_LES)`                   | LES                      | §H.9 p181           |
+/// | `Token(TOK_NNPI)`                  | NNPI                     | ODNI `CVEnumISMNonIC.xml` |
+/// | `Token(TOK_SBU)`                   | SBU                      | §H.9 p176           |
+/// | `Token(TOK_SSI)`                   | SSI                      | §H.9 p189           |
+///
+/// Triggers are evaluated as a logical OR — any single trigger firing
+/// fires the row. Two notes on the trigger list shape:
+/// - **UCNI pair (`TOK_UCNI` + `TOK_DCNI`)** — both sentinels are
+///   required to cover DOE and DOD UCNI as disjoint surfaces.
+///   `TOK_UCNI` resolves only to `AeaMarking::DoeUcni`; the DOD variant
+///   resolves through the distinct `TOK_DCNI` sentinel (issue #407,
+///   `predicates::satisfies::aea_marking_to_token`).
+/// - **FGI pair (`TOK_FGI_MARKER` + `AnyInCategory(CAT_FGI_MARKER)`)**
+///   — kept as both forms for catalog symmetry with the rest of the
+///   `AnyInCategory` triggers, but both `TokenRef`s currently resolve
+///   to the same composite predicate
+///   `attrs.fgi_marker.is_some() || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))`
+///   (see `crates/capco/src/scheme/predicates/satisfies.rs` —
+///   `TOK_FGI_MARKER` arm and `CAT_FGI_MARKER` arm under
+///   `category_has_any`). The pair is therefore *redundant*, not
+///   complementary — the closure operator's idempotence makes the
+///   double-firing harmless. A follow-up could prune one form once
+///   `satisfies_attrs` and `category_has_any` semantics are pinned
+///   against accidental divergence.
+///
+/// **NNPI** is registered in ODNI `CVEnumISMNonIC.xml` but does not
+/// appear in CAPCO-2016 §H.9; its governing authority (10 USC 7314 /
+/// 50 USC 2511 — Naval Nuclear Propulsion Program) lives outside IC
+/// marking policy, and the universal caveated-default principle applies.
+///
+/// **LES-NF / SBU-NF** are intentionally absent from the trigger list,
+/// but the rationale is *not* "the closure operator sees NOFORN first."
+/// The page-projection pipeline is
+/// `join_via_lattice → closure → PageRewrites` per the body of
+/// `CapcoScheme::project_attrs_pipeline_with_context` (the shared
+/// pipeline helper that `MarkingScheme::project`, the engine fast-path
+/// entries, and direct `scheme.project(Scope::Page, ...)` callers all
+/// delegate through — see `crates/capco/src/scheme/marking_scheme_impl.rs`).
+/// When closure runs, the LES-NF / SBU-NF PageRewrites have not yet
+/// added NOFORN. Closure is permitted to over-fire on bare-LES-NF /
+/// bare-SBU-NF — the cone fact it would add (`{NOFORN}`) is
+/// byte-identical to what the downstream PageRewrite would add anyway,
+/// so the over-fire is mathematically harmless. See the maintenance
+/// note on `FDR_DOMINATORS` for the full algebraic justification.
+///
+/// **Row name stability.** `ClosureRule::name` is the documented
+/// public key for `[closure_rules]` severity overrides and future audit
+/// row-name emission. This PR (#522) consolidates seven previously
+/// public row names (`capco/noforn-if-sar`, `…-aea`, `…-ucni`, `…-fgi`,
+/// `…-orcon`, `…-rsen-imcon-dsen`, `…-non-ic-controls`) into the single
+/// new `capco/noforn-if-caveated` key. Marque is pre-users per project
+/// policy (no deprecation phasing, no alias maps), so the previous keys
+/// are not retained as aliases. A config keyed to a retired name will
+/// silently become a no-op; the broader gap that the config layer does
+/// not validate unknown closure-row keys is independent of this
+/// renaming and applies to every closure-rule rename.
+const CLOSURE_NOFORN_CAVEATED: ClosureRule<CapcoScheme> = ClosureRule {
+    name: "capco/noforn-if-caveated",
+    label: "CAPCO-2016 §B.3 Table 2 p21 (rooted in ICD 403)",
     triggers: &[
+        TokenRef::AnyInCategory(CAT_SAR),
         TokenRef::Token(TOK_RD),
         TokenRef::Token(TOK_FRD),
         TokenRef::Token(TOK_TFNI),
-    ],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// Trio 1, row 3: DOD/DOE UCNI implies NOFORN unless FD&R-marked.
-///
-/// Unclassified Controlled Nuclear Information markings carry a NOFORN
-/// treatment in the IC context per §B.3 Table 2 p21. The UCNI marking
-/// itself is constrained to UNCLASSIFIED per §H.6 DCNI pp116-117 (DoD)
-/// and §H.6 UCNI pp118-119 (DoE); the NOFORN closure fires regardless
-/// of class.
-///
-/// Both UCNI sentinels are required in the trigger list: per issue
-/// #407, `TOK_UCNI` resolves to `AeaMarking::DoeUcni` only and the
-/// DOD variant resolves through the distinct `TOK_DCNI` sentinel
-/// (see `predicates::satisfies::aea_marking_to_token` at
-/// `AeaMarking::DodUcni => Some(TOK_DCNI)`). The §B.3 Table 2 p21
-/// caveated→NOFORN algebra is grammar-agnostic over which sentinel
-/// surfaces the UCNI marking, so both rows compose through the same
-/// closure label.
-const CLOSURE_NOFORN_UCNI: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-ucni",
-    label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[TokenRef::Token(TOK_UCNI), TokenRef::Token(TOK_DCNI)],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// Trio 1, row 4: Any FGI atom implies NOFORN unless FD&R-marked.
-///
-/// Foreign Government Information markings carry an implicit NOFORN posture
-/// because the equity belongs to a foreign government and its release requires
-/// FD&R authority. Per CAPCO-2016 §H.7 (pp122-130) and §B.3 Table 2 p21.
-const CLOSURE_NOFORN_FGI: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-fgi",
-    label: "CAPCO-2016 §H.7 p122",
-    // BOTH triggers are required to cover the two FGI sources:
-    //   - `TokenRef::Token(TOK_FGI_MARKER)` is satisfied by
-    //     `MarkingClassification::Fgi` (foreign-classified portions
-    //     like `//GBR SECRET`) because `satisfies_attrs`'s
-    //     classification arm emits `TOK_FGI_MARKER` for that case.
-    //   - `TokenRef::AnyInCategory(CAT_FGI_MARKER)` is satisfied by
-    //     `attrs.fgi_marker` (explicit `FGI` token).
-    // `AnyInCategory` is NOT a superset of the token form — they cover
-    // disjoint FGI surfaces. Both must be present so a foreign-
-    // classified portion like `//GBR SECRET` reaches the
-    // implicit-NOFORN closure.
-    triggers: &[
+        TokenRef::Token(TOK_UCNI),
+        TokenRef::Token(TOK_DCNI),
         TokenRef::Token(TOK_FGI_MARKER),
         TokenRef::AnyInCategory(CAT_FGI_MARKER),
-    ],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// Trio 1, row 5: ORCON / ORCON-USGOV implies NOFORN unless FD&R-marked.
-///
-/// ORCON and ORCON-USGOV require originator approval before further
-/// dissemination; their implicit release posture is NOFORN when no explicit
-/// FD&R decision is present. Per CAPCO-2016 §H.8 p136 (ORCON) and
-/// §H.8 p139 (ORCON-USGOV), cross-referenced with §B.3 Table 2 p21.
-const CLOSURE_NOFORN_ORCON: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-orcon",
-    label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[TokenRef::Token(TOK_ORCON), TokenRef::Token(TOK_ORCON_USGOV)],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// Trio 1, row 6: RSEN / IMCON / DEA SENSITIVE imply NOFORN unless FD&R-marked.
-///
-/// Risk Sensitive (RSEN), Controlled Imagery (IMCON), and DEA Sensitive (DSEN)
-/// are caveat markings per §B.3 p20 Note (the structural caveated/uncaveated
-/// definition: "Caveated means bears no FD&R markings, but has one or more
-/// AEA markings, SAP markings, and/or dissemination control marking(s)").
-/// Their implicit release posture is NOFORN when no explicit FD&R decision
-/// is present.
-///
-/// All three rows ride on the §B.3 Table 2 p21 row "Classified, caveated,
-/// on/after 28 Jun 2010 → NOFORN" — the marking-template pages (§H.8 p132
-/// for RSEN, §H.8 p142 for IMCON, §H.8 p159 for DSEN) are the per-marking
-/// definitions; §B.3 Table 2 p21 is the cross-cutting NOFORN-implication.
-/// RSEN closes a coverage gap noted in the lattice-design follow-up: it is
-/// a caveat by the same §B.3 p20 Note definition that justifies IMCON/DSEN
-/// inclusion.
-const CLOSURE_NOFORN_RSEN_IMCON_DSEN: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-rsen-imcon-dsen",
-    label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[
+        TokenRef::Token(TOK_ORCON),
+        TokenRef::Token(TOK_ORCON_USGOV),
         TokenRef::Token(TOK_RSEN),
         TokenRef::Token(TOK_IMCON),
         TokenRef::Token(TOK_DSEN),
+        TokenRef::Token(TOK_LIMDIS),
+        TokenRef::Token(TOK_LES),
+        TokenRef::Token(TOK_NNPI),
+        TokenRef::Token(TOK_SBU),
+        TokenRef::Token(TOK_SSI),
     ],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_NOFORN)],
@@ -348,44 +380,6 @@ const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
     default_severity: Severity::Info,
 };
 
-/// Trio 1, row 7: Non-IC controls LIMDIS / LES / NNPI / SBU / SSI imply
-/// NOFORN unless FD&R-marked.
-///
-/// The underlying IC principle is uniform across all non-IC dissem
-/// controls: the marking identifies information governed by a policy
-/// regime outside IC marking authority, so the IC cannot presume
-/// releasability or RELIDO-suitability without an explicit FD&R
-/// decision — implicit NOFORN is the conservative default. This is
-/// the §B.3 p20 Note caveated-definition path (any dissem control
-/// marking → caveated) feeding the §B.3 Table 2 p21 row
-/// (classified, caveated, post-28-Jun-2010 → NOFORN), rooted in
-/// ICD 403 (Foreign Disclosure and Release).
-///
-/// Per-token authority:
-/// - LIMDIS: §H.9 p170
-/// - LES: §H.9 p181
-/// - SBU: §H.9 p176
-/// - SSI: §H.9 p189
-/// - NNPI: ODNI `CVEnumISMNonIC.xml` (value `NNPI`). CAPCO-2016
-///   does not enumerate NNPI under §H.9 because its governing
-///   authority (10 USC 7314 / 50 USC 2511; Naval Nuclear Propulsion
-///   Program) lives outside IC marking policy.
-const CLOSURE_NOFORN_NON_IC_DISSEM: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-non-ic-controls",
-    label: "CAPCO-2016 §B.3 Table 2 p21",
-    triggers: &[
-        TokenRef::Token(TOK_LIMDIS),
-        TokenRef::Token(TOK_LES),
-        TokenRef::Token(TOK_NNPI),
-        TokenRef::Token(TOK_SBU),
-        TokenRef::Token(TOK_SSI),
-    ],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
 /// The full static CAPCO closure-rule catalog.
 ///
 /// Rows are grouped by the three-trio framing from `marque-applied.md` §4.7.1:
@@ -411,15 +405,12 @@ const CLOSURE_NOFORN_NON_IC_DISSEM: ClosureRule<CapcoScheme> = ClosureRule {
 /// sentinels land — the broad proxy would fire NOFORN/ORCON on any SCI
 /// marking, not just the specific compartments, which is unsound.
 pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
-    // Trio 1: implicit NOFORN rows — token-level triggers, no proxies,
-    // load-bearing for the closure-operator hot path.
-    CLOSURE_NOFORN_SAR,
-    CLOSURE_NOFORN_AEA_RD,
-    CLOSURE_NOFORN_UCNI,
-    CLOSURE_NOFORN_FGI,
-    CLOSURE_NOFORN_ORCON,
-    CLOSURE_NOFORN_RSEN_IMCON_DSEN,
-    CLOSURE_NOFORN_NON_IC_DISSEM,
+    // Trio 1: implicit NOFORN — single CAVEATED row whose triggers union
+    // every caveat marking per §B.3 p20 Note (SAR / AEA / dissem controls /
+    // non-IC dissem). Same suppressor (FDR_DOMINATORS) and same cone
+    // ({NOFORN}) collapse the seven historical rows into one per D18
+    // rationale 2.
+    CLOSURE_NOFORN_CAVEATED,
     // Trio 3: implicit `REL TO USA, NATO` for bare NATO classification.
     // Fires at `Severity::Info` (silent lattice-layer fact propagation);
     // S007 owns the text-layer `Severity::Suggest` byte-diff per D20.
@@ -438,3 +429,147 @@ pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
     // not catalog-baked). The rows will return once the per-marking
     // sentinels land and the engine consults runtime severity per-row.
 ];
+
+// ---------------------------------------------------------------------------
+// Runtime suppression pin for `FDR_DOMINATORS` × `CLOSURE_NOFORN_CAVEATED`
+// ---------------------------------------------------------------------------
+
+/// Runtime companion to `vocabulary::fdr_dissem_pin`.
+///
+/// `fdr_dissem_pin` walks `FDR_DOMINATORS` at the `Vocabulary::is_fdr_dissem`
+/// predicate layer. This module walks the same slice at the
+/// `MarkingScheme::closure` runtime layer: for each `FDR_DOMINATORS` entry,
+/// build a Trio 1 trigger (classified Secret + ORCON) plus that entry as a
+/// suppressor, and assert `CLOSURE_NOFORN_CAVEATED` does not inject NOFORN.
+/// The two surfaces are independently testable per the issue: the predicate
+/// can resolve correctly while the runtime suppression wiring drifts (or
+/// vice versa), so each gets its own pin.
+///
+/// The fixture-construction `match` is exhaustive against the *patterns*
+/// `FDR_DOMINATORS` uses today (`TokenRef::Token(t)` for the four sentinel
+/// dominators, `TokenRef::AnyInCategory(c)` for `CAT_REL_TO`). A future
+/// addition that fits an existing pattern but a new `TokenId` /
+/// `CategoryId` falls through to the panic arm and fails the test with a
+/// message naming the unmapped entry — the right failure mode for the
+/// source-of-truth drift this pin is supposed to catch.
+///
+/// Authority: §B.3.a p19 (core FD&R enumeration:
+/// NOFORN/REL TO/RELIDO/DISPLAY ONLY); §H.8 p157 (EYES designated FD&R,
+/// deprecated 2017-10-01 but still recognized). The two citations
+/// together cover the full `FDR_DOMINATORS` slice — `§B.3.a p19` alone
+/// would mis-attribute the EYES arm.
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod fdr_dominators_runtime_pin {
+    use super::*;
+    use marque_ism::{
+        CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
+    };
+    use marque_scheme::MarkingScheme;
+
+    /// Build the per-FDR-dominator suppression fixture: classified Secret
+    /// and ORCON (a Trio 1 trigger from `CLOSURE_NOFORN_CAVEATED`) and the
+    /// given suppressor. The fixture mutates `dissem_us` for the four
+    /// `Token(...)` dominators and `rel_to` for `AnyInCategory(CAT_REL_TO)`
+    /// because the runtime `satisfies_attrs` resolution routes each
+    /// `TokenRef` against the matching `CanonicalAttrs` axis.
+    fn fixture_with_suppressor(suppressor: &TokenRef) -> CapcoMarking {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        // ORCON is the Trio 1 trigger — present on every fixture so the
+        // CAVEATED row would fire absent the suppressor.
+        let mut dissem = vec![DissemControl::Oc];
+        match suppressor {
+            // NOTE: The `TOK_NOFORN` arm is a fixture-completeness check,
+            // not a suppression-correctness check. The cone fact `Nf`
+            // would dedup against the fixture-planted `Nf` regardless of
+            // whether the suppressor fires — a broken suppressor here is
+            // observationally identical to a working one. Kept in the
+            // iteration so a future `FDR_DOMINATORS` addition matching
+            // the `Token(...)` pattern is not silently skipped. See the
+            // test-function doc-comment for the full rationale.
+            TokenRef::Token(t) if *t == TOK_NOFORN => dissem.push(DissemControl::Nf),
+            TokenRef::Token(t) if *t == TOK_RELIDO => dissem.push(DissemControl::Relido),
+            TokenRef::Token(t) if *t == TOK_DISPLAY_ONLY => dissem.push(DissemControl::Displayonly),
+            TokenRef::Token(t) if *t == TOK_EYES => dissem.push(DissemControl::Eyes),
+            TokenRef::AnyInCategory(c) if *c == CAT_REL_TO => {
+                // `REL TO USA, GBR` — `AnyInCategory(CAT_REL_TO)` matches
+                // any non-empty `attrs.rel_to`; USA is the required leader
+                // per §H.8 p150 and GBR a representative partner trigraph.
+                a.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
+            }
+            other => panic!(
+                "fdr_dominators_runtime_pin: no fixture mapping for \
+                 FDR_DOMINATORS entry {other:?}. A new dominator was added \
+                 to the slice; extend the match in fixture_with_suppressor \
+                 with a `CanonicalAttrs` mutation that the runtime \
+                 `satisfies_attrs` resolution will recognize as that token \
+                 (or category) being present.",
+            ),
+        }
+        a.dissem_us = dissem.into_boxed_slice();
+        CapcoMarking::new(a)
+    }
+
+    /// Source-of-truth pin: every entry in `FDR_DOMINATORS` must suppress
+    /// `CLOSURE_NOFORN_CAVEATED`. A drift in the slice or in the
+    /// `satisfies_attrs` resolution for any entry fails this test with a
+    /// message naming the failing entry.
+    ///
+    /// The assertion shape is "closure adds no facts" rather than "NOFORN
+    /// is absent from post-closure `dissem_us`". The latter is unworkable
+    /// for the `TOK_NOFORN` case (where the fixture must populate
+    /// `dissem_us` with `Nf` for `satisfies_attrs(TOK_NOFORN)` to resolve
+    /// true, so post-closure `Nf` is unavoidably present). The
+    /// length-stability assertion is uniformly meaningful: if a
+    /// suppressor fails for any non-self-referential dominator, the
+    /// CAVEATED row fires and adds a `Nf` fact, growing `dissem_us` by
+    /// one. The `TOK_NOFORN` arm is a trivial smoke check (the cone fact
+    /// would dedup against the pre-existing fact, so growth would be
+    /// zero even on a broken suppressor) but is included so the iteration
+    /// covers the full slice without a special-case skip.
+    #[test]
+    fn every_fdr_dominator_suppresses_caveated_noforn_injection() {
+        let scheme = CapcoScheme::new();
+        for suppressor in FDR_DOMINATORS {
+            let m = fixture_with_suppressor(suppressor);
+            let dissem_before = m.0.dissem_us.clone();
+            let rel_to_before = m.0.rel_to.clone();
+            let closed = scheme.closure(m);
+            assert_eq!(
+                closed.0.dissem_us.len(),
+                dissem_before.len(),
+                "FDR_DOMINATORS entry {:?} did NOT suppress \
+                 `CLOSURE_NOFORN_CAVEATED`: closure grew `dissem_us` from \
+                 {} to {} despite the explicit FD&R decision being \
+                 present. Either the suppressor wiring drifted or \
+                 `satisfies_attrs(...)` no longer resolves this entry \
+                 against the populated attrs axis. Authority: §B.3.a p19 \
+                 (core FD&R enumeration) + §H.8 p157 (EYES). Pre-closure \
+                 dissem_us = {:?}; post-closure dissem_us = {:?}, \
+                 rel_to = {:?}.",
+                suppressor,
+                dissem_before.len(),
+                closed.0.dissem_us.len(),
+                dissem_before,
+                closed.0.dissem_us,
+                closed.0.rel_to,
+            );
+            assert_eq!(
+                closed.0.rel_to.len(),
+                rel_to_before.len(),
+                "FDR_DOMINATORS entry {:?} did NOT suppress \
+                 `CLOSURE_NOFORN_CAVEATED`: closure grew `rel_to` from \
+                 {} to {}. CAVEATED has cone `{{NOFORN}}` (no rel_to \
+                 facts), so growth here means a different closure row \
+                 fired unexpectedly. Pre-closure rel_to = {:?}; \
+                 post-closure rel_to = {:?}.",
+                suppressor,
+                rel_to_before.len(),
+                closed.0.rel_to.len(),
+                rel_to_before,
+                closed.0.rel_to,
+            );
+        }
+    }
+}

@@ -9,9 +9,9 @@
 //! scheme proptests in `crates/scheme/tests/proptest_closure*.rs`:
 //! the proptests pin the algebraic properties (extensive / idempotent /
 //! monotone) against a bitset `BitMarking`; this file pins the
-//! observable cone effects against `CapcoMarking` — the seven Trio-1
-//! `CLOSURE_NOFORN_*` rows and the NATO row
-//! `capco/rel-to-usa-nato-if-nato-classification`.
+//! observable cone effects against `CapcoMarking` — the single Trio-1
+//! `CLOSURE_NOFORN_CAVEATED` row (union of every caveat trigger) and
+//! the NATO row `capco/rel-to-usa-nato-if-nato-classification`.
 //!
 //! Engine wiring (`Engine::lint` invoking `scheme.closure()` on the
 //! hot path) is deferred to a separate change. These tests exercise
@@ -114,8 +114,8 @@ fn closure_fires_noforn_on_classified_with_orcon() {
     );
 }
 
-/// Trio 1 fires on AEA RD (`capco/noforn-if-aea`): an RD marking
-/// without any FD&R decision implies NOFORN.
+/// Trio 1 fires on AEA RD via the AEA arm of `capco/noforn-if-caveated`:
+/// an RD marking without any FD&R decision implies NOFORN.
 ///
 /// Authority: CAPCO-2016 §H.6 p104 (RD); §B.3 Table 2 p21.
 #[test]
@@ -188,6 +188,116 @@ fn closure_suppressed_by_relido_dominator() {
     // RELIDO and ORCON both must survive the closure (extensive).
     assert!(dissem_us_contains(&closed, DissemControl::Relido));
     assert!(dissem_us_contains(&closed, DissemControl::Oc));
+}
+
+/// FD&R-dominator parity: NOFORN already present suppresses Trio 1.
+/// Trivially correct (the cone fact equals an already-present fact),
+/// but pinned so a future edit to `FDR_DOMINATORS` slice ordering or
+/// `satisfies_attrs(TOK_NOFORN)` resolution cannot silently break it.
+///
+/// Authority: §B.3.a p19 (FD&R-set membership; NOFORN is the most
+/// restrictive FD&R marking); §H.8 p145 (NOFORN supersession overlay).
+#[test]
+fn closure_suppressed_by_noforn_dominator() {
+    let scheme = CapcoScheme::new();
+    // ORCON + NOFORN: closure already sees NOFORN present, so the
+    // FDR_DOMINATORS suppressor fires for the Trio 1 row.
+    let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
+    let mut a = m.0.clone();
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m.clone());
+    // Idempotent — no second NOFORN added; dissem_us unchanged.
+    assert_eq!(
+        closed.0.dissem_us.len(),
+        m.0.dissem_us.len(),
+        "closure must not duplicate or add to dissem_us when NOFORN \
+         dominator is already present; dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(dissem_us_contains(&closed, DissemControl::Nf));
+    assert!(dissem_us_contains(&closed, DissemControl::Oc));
+}
+
+/// FD&R-dominator parity: REL TO already present suppresses Trio 1.
+///
+/// REL TO is an explicit FD&R decision — `AnyInCategory(CAT_REL_TO)`
+/// in `FDR_DOMINATORS` matches any non-empty `attrs.rel_to`. With a
+/// caveat (ORCON) present alongside REL TO, the closure must back off:
+/// the explicit REL TO supersedes the implicit NOFORN default.
+///
+/// Authority: §B.3.a p19 (FD&R-set membership; REL TO is canonical);
+/// §H.8 p150 (REL TO marking template).
+#[test]
+fn closure_suppressed_by_rel_to_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc].into_boxed_slice();
+    a.rel_to = vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN when REL TO is already present \
+         (FDR_DOMINATORS suppresses Trio 1 via AnyInCategory(CAT_REL_TO)); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(rel_to_contains(&closed, CountryCode::USA));
+    assert!(rel_to_contains(&closed, CountryCode::GBR));
+}
+
+/// FD&R-dominator parity: DISPLAY ONLY already present suppresses Trio 1.
+///
+/// Authority: §B.3.a p19 (FD&R-set membership; DISPLAY ONLY is a
+/// viewing-only FD&R marking); §H.8 p163 (DISPLAY ONLY marking
+/// template).
+#[test]
+fn closure_suppressed_by_display_only_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Displayonly].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN when DISPLAY ONLY is already \
+         present (FDR_DOMINATORS suppresses Trio 1); dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(dissem_us_contains(&closed, DissemControl::Displayonly));
+}
+
+/// FD&R-dominator parity: EYES already present suppresses Trio 1.
+///
+/// EYES (USA/[LIST] EYES ONLY) is an FD&R marking per §H.8 p157
+/// (deprecated 2017-10-01 but still recognized for legacy-input
+/// compatibility). `FDR_DOMINATORS` includes `TOK_EYES` so EYES-marked
+/// portions correctly suppress the implicit-NOFORN trio.
+///
+/// Authority: §H.8 p157 (EYES marking template / FD&R designation).
+#[test]
+fn closure_suppressed_by_eyes_dominator() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Eyes].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN when EYES is already present \
+         (FDR_DOMINATORS includes TOK_EYES per §H.8 p157); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(dissem_us_contains(&closed, DissemControl::Eyes));
 }
 
 // ---------------------------------------------------------------------------
@@ -270,8 +380,8 @@ fn closure_rel_to_usa_nato_suppressed_by_noforn() {
 // Trio 1 per-row positive firing
 // ---------------------------------------------------------------------------
 
-/// Trio 1 row `capco/noforn-if-sar`: a SAR program triggers
-/// implicit-NOFORN closure.
+/// Trio 1 SAR arm of `capco/noforn-if-caveated`: a SAR program
+/// triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 (classified + caveated + post-28-Jun-2010
 /// → NOFORN) + §H.5 p101 (SAR is a Special Access Program — a caveat per
@@ -298,15 +408,15 @@ fn closure_fires_noforn_on_sar_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-ucni` (DOD UCNI): a DOD UCNI marking
-/// triggers implicit-NOFORN closure.
+/// Trio 1 DOD-UCNI arm of `capco/noforn-if-caveated`: a DOD UCNI
+/// marking triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 + §H.6 p116 (DOD UNCLASSIFIED CONTROLLED
 /// NUCLEAR INFORMATION). The DOD variant resolves through `TOK_DCNI`
-/// per issue #407; `CLOSURE_NOFORN_UCNI` includes both `TOK_UCNI`
-/// (DOE) and `TOK_DCNI` (DOD) in its trigger list because the §B.3
-/// Table 2 p21 algebra is grammar-agnostic over which sentinel
-/// surfaces the UCNI marking. Closes #518.
+/// per issue #407; the CAVEATED row's trigger list includes both
+/// `TOK_UCNI` (DOE) and `TOK_DCNI` (DOD) because the §B.3 Table 2 p21
+/// algebra is grammar-agnostic over which sentinel surfaces the UCNI
+/// marking. Closes #518.
 #[test]
 fn closure_fires_noforn_on_dod_ucni_marking() {
     let scheme = CapcoScheme::new();
@@ -324,10 +434,10 @@ fn closure_fires_noforn_on_dod_ucni_marking() {
     );
 }
 
-/// FD&R-dominator parity for DOD UCNI: the `capco/noforn-if-ucni`
+/// FD&R-dominator parity for DOD UCNI: the `capco/noforn-if-caveated`
 /// row is suppressed when an FD&R dominator (RELIDO) is already
-/// present, matching the DOE-UCNI / SAR / FGI / LIMDIS rows that
-/// share `FDR_DOMINATORS` as their suppressor set.
+/// present, matching every other arm (DOE-UCNI / SAR / FGI / LIMDIS /
+/// etc.) — they all ride the same `FDR_DOMINATORS` suppressor set.
 ///
 /// Authority: §B.3 Table 2 p21 (classified + uncaveated +
 /// post-28-Jun-2010 → RELIDO is the explicit FD&R decision; the
@@ -353,8 +463,8 @@ fn closure_dod_ucni_suppressed_by_relido_dominator() {
     assert!(dissem_us_contains(&closed, DissemControl::Relido));
 }
 
-/// Trio 1 row `capco/noforn-if-ucni` (DOE UCNI): a DOE UCNI marking
-/// triggers implicit-NOFORN closure.
+/// Trio 1 DOE-UCNI arm of `capco/noforn-if-caveated`: a DOE UCNI
+/// marking triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 + §H.6 p118 (DOE UNCLASSIFIED CONTROLLED
 /// NUCLEAR INFORMATION).
@@ -375,9 +485,9 @@ fn closure_fires_noforn_on_doe_ucni_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-fgi`: an acknowledged FGI marker
-/// triggers implicit-NOFORN closure (covers the
-/// `AnyInCategory(CAT_FGI_MARKER)` trigger arm).
+/// Trio 1 FGI arm of `capco/noforn-if-caveated`: an acknowledged FGI
+/// marker triggers implicit-NOFORN closure (covers the
+/// `AnyInCategory(CAT_FGI_MARKER)` trigger).
 ///
 /// Authority: §B.3 Table 2 p21 + §H.7 p123 (FGI marking template — FGI
 /// information has a foreign-government equity and so carries the
@@ -401,8 +511,8 @@ fn closure_fires_noforn_on_fgi_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-non-ic-controls` (LIMDIS): a LIMDIS
-/// non-IC dissem control triggers implicit-NOFORN closure.
+/// Trio 1 LIMDIS arm of `capco/noforn-if-caveated`: a LIMDIS non-IC
+/// dissem control triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 + §H.9 p170 (LIMITED DISTRIBUTION).
 #[test]
@@ -424,8 +534,8 @@ fn closure_fires_noforn_on_limdis_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-non-ic-controls` (NNPI arm): an NNPI
-/// non-IC dissem control triggers implicit-NOFORN closure.
+/// Trio 1 NNPI arm of `capco/noforn-if-caveated`: an NNPI non-IC
+/// dissem control triggers implicit-NOFORN closure.
 ///
 /// NNPI is an ODNI-registered non-IC dissem control whose governing
 /// authority (10 USC 7314 / 50 USC 2511 — Naval Nuclear Propulsion
@@ -457,11 +567,11 @@ fn closure_fires_noforn_on_nnpi_marking() {
     );
 }
 
-/// FD&R-dominator parity for NNPI: the `capco/noforn-if-non-ic-controls`
+/// FD&R-dominator parity for NNPI: the `capco/noforn-if-caveated`
 /// row is suppressed when an FD&R dominator (RELIDO) is already
-/// present. All seven Trio 1 `CLOSURE_NOFORN_*` rows share
-/// `FDR_DOMINATORS` as their suppressor set, so this parity test
-/// pins the contract for the NNPI arm specifically.
+/// present. The CAVEATED row's `FDR_DOMINATORS` suppressor applies
+/// uniformly to every trigger arm, so this parity test pins the
+/// contract for the NNPI arm specifically.
 ///
 /// Authority: §B.3 Table 2 p21 (RELIDO is the explicit FD&R decision
 /// — the implicit NOFORN closure backs off).
@@ -488,9 +598,9 @@ fn closure_nnpi_suppressed_by_relido_dominator() {
     assert!(dissem_us_contains(&closed, DissemControl::Relido));
 }
 
-/// Trio 1 row `capco/noforn-if-rsen-imcon-dsen` (IMCON arm): an IMCON
-/// dissem triggers implicit-NOFORN closure (separately from the RSEN
-/// arm covered above).
+/// Trio 1 IMCON arm of `capco/noforn-if-caveated`: an IMCON dissem
+/// triggers implicit-NOFORN closure (separately from the RSEN arm
+/// covered above).
 ///
 /// Authority: §B.3 Table 2 p21 + §H.8 p142 (CONTROLLED IMAGERY — IMCON
 /// is a caveat per §B.3 p20 Note).
@@ -512,9 +622,9 @@ fn closure_fires_noforn_on_classified_with_imcon() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-rsen-imcon-dsen` (DSEN arm): a DSEN
-/// dissem triggers implicit-NOFORN closure (separately from the RSEN
-/// and IMCON arms).
+/// Trio 1 DSEN arm of `capco/noforn-if-caveated`: a DSEN dissem
+/// triggers implicit-NOFORN closure (separately from the RSEN and
+/// IMCON arms).
 ///
 /// Authority: §B.3 Table 2 p21 + §H.8 p159 (DEA SENSITIVE — DSEN is a
 /// caveat per §B.3 p20 Note).
@@ -533,6 +643,133 @@ fn closure_fires_noforn_on_classified_with_dsen() {
     assert!(
         dissem_us_contains(&closed, DissemControl::Dsen),
         "closure must not remove existing facts (extensive property)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Per-arm parity — every individual `TokenRef` in the unified
+// CAVEATED row's trigger list fires the closure (issue #522 follow-up).
+//
+// The compact fixtures below close the per-arm coverage gap noted in
+// the PR #529 review: the historical per-row tests skipped FRD, TFNI,
+// ORCON-USGOV, LES, SBU, and SSI even though every one of them is a
+// distinct entry in the CAVEATED row's trigger list. Without these,
+// a future edit that silently drops an arm from the trigger list
+// could pass the existing closure_runtime suite. Each arm pins its
+// per-token §-citation (re-verified against `crates/capco/docs/CAPCO-2016.md`).
+// ---------------------------------------------------------------------------
+
+/// FRD arm — Formerly Restricted Data implies NOFORN.
+/// Authority: §H.6 p111 (FRD marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_frd_marking() {
+    use marque_ism::FrdBlock;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.aea_markings = vec![AeaMarking::Frd(FrdBlock::default())].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on FRD (§H.6 p111 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// TFNI arm — Transclassified Foreign Nuclear Information implies NOFORN.
+/// Authority: §H.6 p120 (TFNI marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_tfni_marking() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.aea_markings = vec![AeaMarking::Tfni].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on TFNI (§H.6 p120 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// ORCON-USGOV arm — distinct from ORCON, must fire its own trigger.
+/// Authority: §H.8 p139 (ORCON-USGOV marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_orcon_usgov_marking() {
+    let scheme = CapcoScheme::new();
+    let m = classified_with_dissem(Classification::Secret, DissemControl::OcUsgov);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on ORCON-USGOV (§H.8 p139 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+    assert!(
+        dissem_us_contains(&closed, DissemControl::OcUsgov),
+        "closure must not remove existing facts (extensive property)"
+    );
+}
+
+/// LES arm — Law Enforcement Sensitive non-IC dissem.
+/// Authority: §H.9 p181 (LES marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_les_marking() {
+    use marque_ism::NonIcDissem;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on LES (§H.9 p181 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// SBU arm — Sensitive But Unclassified non-IC dissem (bare SBU, not
+/// SBU-NF which carries its own PageRewrite).
+/// Authority: §H.9 p176 (SBU marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_sbu_marking() {
+    use marque_ism::NonIcDissem;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on SBU (§H.9 p176 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// SSI arm — Sensitive Security Information non-IC dissem.
+/// Authority: §H.9 p189 (SSI marking template) + §B.3 Table 2 p21.
+#[test]
+fn closure_fires_noforn_on_ssi_marking() {
+    use marque_ism::NonIcDissem;
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Ssi].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on SSI (§H.9 p189 + §B.3 Table 2 p21); \
+         dissem_us = {:?}",
+        closed.0.dissem_us
     );
 }
 

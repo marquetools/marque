@@ -1144,7 +1144,7 @@ pub enum FgiMarker {
     /// compromise the foreign source.
     SourceConcealed,
 
-    /// Source-acknowledged FGI per CAPCO-2016 §H.7 p122.
+    /// Source-acknowledged FGI per CAPCO-2016 §H.7 p123.
     ///
     /// Banner: `FOREIGN GOVERNMENT INFORMATION [LIST]` (abbr
     /// `FGI [LIST]`). The country list is non-empty by construction —
@@ -1290,7 +1290,7 @@ pub enum NonIcDissem {
     /// information governed by policy regimes outside IC marking
     /// authority); the closure-rule wiring lives in
     /// `crates/capco/src/scheme/closure.rs` under the row whose
-    /// `name` field is `"capco/noforn-if-non-ic-controls"`.
+    /// `name` field is `"capco/noforn-if-caveated"`.
     Nnpi,
 }
 

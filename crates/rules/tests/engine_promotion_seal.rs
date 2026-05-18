@@ -27,13 +27,12 @@ use marque_rules::{
     MessageTemplate, RuleId,
 };
 use marque_scheme::{
-    MarkingScheme, ReplacementIntent, Scope,
+    MarkingScheme, ReplacementIntent, Scope, Span,
     ambiguity::Parsed,
     category::Category,
     constraint::Constraint,
     fix_intent::RecanonScope,
     lattice::{BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice},
-    Span,
     template::Template,
 };
 use std::sync::Arc;

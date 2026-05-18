@@ -53,10 +53,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use marque_capco::CapcoScheme;
-use marque_scheme::Span;
 use marque_rules::{
     AuditNote, AuditNoteKind, AuditNoteStructural, Confidence, EnginePromotionToken, RuleId,
 };
+use marque_scheme::Span;
 use marque_scheme::{Scope, TokenId, TokenRef};
 
 /// Smoke test: construct a synthetic `AuditNote` via the sealed

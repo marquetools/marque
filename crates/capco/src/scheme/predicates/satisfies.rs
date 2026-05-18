@@ -161,9 +161,10 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 // Per Copilot PR 3.7 review pass 3: prior to this fix
                 // `satisfies_attrs(TOK_FGI_MARKER)` checked only
                 // `attrs.fgi_marker.is_some()`, missing the
-                // classification-axis case. The closure rule
-                // `capco/noforn-if-fgi` would therefore not fire on
-                // foreign-classified portions even though the trigger
+                // classification-axis case. The implicit-NOFORN closure
+                // row `capco/noforn-if-caveated` (which counts FGI as one
+                // of its triggers) would therefore not fire on foreign-
+                // classified portions even though the trigger list
                 // declares both `TOK_FGI_MARKER` and
                 // `AnyInCategory(CAT_FGI_MARKER)`.
                 attrs.fgi_marker.is_some()

@@ -7,16 +7,18 @@
 //! Exercises [`CapcoScheme::project(Scope::Page, ...)`] post-flip
 //! (PR 4b-D.2 Commit 3). The closure operator now runs between the
 //! per-axis lattice join and the declarative `PageRewrite` catalog;
-//! these tests pin that each of the seven `CLOSURE_NOFORN_*` rules
-//! and `CLOSURE_REL_TO_USA_NATO` fires through the production page
-//! projection, that the operator is idempotent and monotone in the
-//! marking, and that NOFORN-injection at the closure layer
+//! these tests pin that the unified `CLOSURE_NOFORN_CAVEATED` Trio 1
+//! row (post-PR-#522 collapse of the seven historical `CLOSURE_NOFORN_*`
+//! rows) and `CLOSURE_REL_TO_USA_NATO` fire through the production
+//! page projection, that the operator is idempotent and monotone in
+//! the marking, and that NOFORN-injection at the closure layer
 //! correctly composes with the `DissemSet` supersession overlay
 //! (§H.8 p145 NOFORN-dominates).
 //!
 //! Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e) +
-//! §4.7.4 pipeline ordering. Per-row §-citations on the
-//! `CLOSURE_NOFORN_*` constants in `crates/capco/src/scheme/closure.rs`.
+//! §4.7.4 pipeline ordering. Per-trigger §-citations on the
+//! `CLOSURE_NOFORN_CAVEATED` row doc-comment at
+//! `crates/capco/src/scheme/closure.rs`.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{
@@ -57,15 +59,22 @@ fn rel_to_contains(m: &CapcoMarking, target: CountryCode) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Trio 1 — implicit NOFORN closure rules (one fixture each)
+// Trio 1 — implicit NOFORN closure rule (representative fixtures per
+// trigger family)
 //
-// Per `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`. Each
-// CLOSURE_NOFORN_* row fires on `scheme.project(Scope::Page, ...)`
-// when its trigger is observed and no FD&R dominator is present.
+// Per `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`. The
+// single `CLOSURE_NOFORN_CAVEATED` row fires on
+// `scheme.project(Scope::Page, ...)` when any of its 18 triggers is
+// observed and no FD&R dominator is present. The fixtures below
+// exercise one representative arm per trigger family (SAR / AEA / UCNI
+// / FGI / ORCON / RSEN-IMCON-DSEN / non-IC-controls); the per-arm
+// algebraic-firing parity is pinned by `closure_runtime.rs` in
+// `marque-capco` (which exercises every individual `TokenRef` in the
+// trigger list).
 // ---------------------------------------------------------------------------
 
-/// CLOSURE_NOFORN_SAR (§H.5 p101 + §B.3 Table 2 p21): any SAR program
-/// triggers implicit NOFORN through the page projection.
+/// SAR arm of `CLOSURE_NOFORN_CAVEATED` (§H.5 p101 + §B.3 Table 2 p21):
+/// any SAR program triggers implicit NOFORN through the page projection.
 #[test]
 fn closure_noforn_sar_fires_on_hotpath() {
     let program = SarProgram::new("EXP", Box::new([]));
@@ -81,8 +90,8 @@ fn closure_noforn_sar_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_AEA_RD (§H.6 p104 + §B.3 Table 2 p21): RD / FRD /
-/// TFNI trigger implicit NOFORN.
+/// AEA arm of `CLOSURE_NOFORN_CAVEATED` (§H.6 p104 + §B.3 Table 2 p21):
+/// RD / FRD / TFNI trigger implicit NOFORN.
 #[test]
 fn closure_noforn_aea_rd_fires_on_hotpath() {
     let mut portion = classified_us(Classification::Secret);
@@ -96,8 +105,8 @@ fn closure_noforn_aea_rd_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_UCNI (§H.6 p118 + §B.3 Table 2 p21): DOE UCNI
-/// triggers implicit NOFORN through the page projection.
+/// UCNI arm of `CLOSURE_NOFORN_CAVEATED` (§H.6 p118 + §B.3 Table 2 p21):
+/// DOE UCNI triggers implicit NOFORN through the page projection.
 #[test]
 fn closure_noforn_ucni_fires_on_hotpath() {
     let mut portion = classified_us(Classification::Unclassified);
@@ -111,8 +120,8 @@ fn closure_noforn_ucni_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_FGI (§H.7 p122 + §B.3 Table 2 p21): FGI marker
-/// triggers implicit NOFORN.
+/// FGI arm of `CLOSURE_NOFORN_CAVEATED` (§H.7 p122 + §B.3 Table 2 p21):
+/// FGI marker triggers implicit NOFORN.
 #[test]
 fn closure_noforn_fgi_fires_on_hotpath() {
     let gbr = CountryCode::try_new(b"GBR").expect("trigraph");
@@ -127,10 +136,10 @@ fn closure_noforn_fgi_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_ORCON (§H.8 p136 + §B.3 Table 2 p21): ORCON triggers
-/// implicit NOFORN. The post-closure supersession overlay does not
-/// strip ORCON itself (ORCON and NOFORN coexist per §H.8 p145 — only
-/// REL TO / RELIDO / EYES ONLY / DISPLAY ONLY are dominated).
+/// ORCON arm of `CLOSURE_NOFORN_CAVEATED` (§H.8 p136 + §B.3 Table 2 p21):
+/// ORCON triggers implicit NOFORN. The post-closure supersession overlay
+/// does not strip ORCON itself (ORCON and NOFORN coexist per §H.8 p145
+/// — only REL TO / RELIDO / EYES ONLY / DISPLAY ONLY are dominated).
 #[test]
 fn closure_noforn_orcon_fires_on_hotpath() {
     let portion = classified_with_dissem(Classification::Secret, DissemControl::Oc);
@@ -149,9 +158,9 @@ fn closure_noforn_orcon_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_RSEN_IMCON_DSEN (§H.8 p132 + §B.3 Table 2 p21):
-/// RSEN / IMCON / DSEN trigger implicit NOFORN. Test with RSEN —
-/// the same row covers IMCON and DSEN.
+/// RSEN / IMCON / DSEN arms of `CLOSURE_NOFORN_CAVEATED` (§H.8 p132
+/// and §B.3 Table 2 p21): RSEN / IMCON / DSEN trigger implicit NOFORN.
+/// Test with RSEN — the same row covers IMCON and DSEN.
 #[test]
 fn closure_noforn_rsen_fires_on_hotpath() {
     let portion = classified_with_dissem(Classification::Secret, DissemControl::Rs);
@@ -164,9 +173,9 @@ fn closure_noforn_rsen_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_NONICCONTROLS (§H.9 p170 + §B.3 Table 2 p21):
-/// LIMDIS / LES / SBU / SSI trigger implicit NOFORN. Test with
-/// LIMDIS — the same row covers the other three.
+/// Non-IC-controls arm of `CLOSURE_NOFORN_CAVEATED` (§H.9 p170 +
+/// §B.3 Table 2 p21): LIMDIS / LES / SBU / SSI / NNPI trigger implicit
+/// NOFORN. Test with LIMDIS — the same row covers the others.
 #[test]
 fn closure_noforn_nonic_limdis_fires_on_hotpath() {
     let mut portion = classified_us(Classification::Unclassified);
