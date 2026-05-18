@@ -186,11 +186,13 @@ fn example_c_nato_plus_us_fouo_silent() {
 // =========================================================================
 // Solely-NATO carve-out — `ProjectedMarking::is_solely_nato_classified`
 // is read by the rule but the engine's current portion-rule dispatch
-// (`engine.rs::lint` line 851) does NOT supply `page_marking` to
-// portion-level `RuleContext`s — only to banner/CAB candidates. The
-// rule's carve-out branch is therefore load-bearing for a future engine
-// migration that plumbs page_marking to portion rules; today it is
-// preserved as forward-looking code with no current short-circuit.
+// in `Engine::lint` gates `with_page_marking(ctx_page_marking)` on
+// `candidate.kind != MarkingType::Portion && !page_context.is_empty()`
+// — only banner/CAB candidates receive a populated `page_marking`,
+// not per-portion `RuleContext`s. The rule's carve-out branch is
+// therefore load-bearing for a future engine migration that plumbs
+// `page_marking` to portion rules; today it is preserved as
+// forward-looking code with no current short-circuit.
 //
 // Until that migration lands, S007 fires on every bare-NATO portion
 // regardless of solely-NATO document status. Users in solely-NATO

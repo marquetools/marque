@@ -3633,10 +3633,12 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
         // and pass-2 re-evaluation silences solely-NATO docs.
         //
         // PR 4b-D.3 (2026-05-18): migrated from `ctx.page_context` to
-        // `ctx.page_marking`. The PageContext-based predicate silently
-        // returned `false` on post-PR-4b-D.2 pure-NATO pages because
-        // PageContext flattens `Nato(_)` to `Us(_)` (parity divergence
-        // #1); `ProjectedMarking` reads the lattice aggregate directly.
+        // `ctx.page_marking`. Both predicates return identical answers
+        // (the legacy `PageContext::is_solely_nato_classified` walks
+        // `self.portions` with the same `matches!` pattern); the
+        // migration is architectural alignment ahead of PR 4b-E
+        // retiring the `PageContext.expected_*` machinery and
+        // consolidating page-aggregate reads on `ctx.page_marking`.
         if let Some(page) = ctx.page_marking.as_ref()
             && page.is_solely_nato_classified()
         {
