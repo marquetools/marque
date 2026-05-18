@@ -94,12 +94,13 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // hit `apply_closure_fact` → `apply_fact_add`, which is
     // wired (`crates/capco/src/scheme/actions/intent.rs:380`).
     //
-    // Note: the prior comment cited `CLOSURE_NOFORN_SAR` as the
-    // load-bearing trigger; Copilot R2 #3 caught that this is
-    // wrong — DISPLAY ONLY is in `FDR_DOMINATORS` so the closure
-    // rule is SUPPRESSED on portions that carry it. The realistic
-    // trigger is a Pattern-A/C rewrite (UCNI promote, NODIS-implies-
-    // NOFORN, etc.), not a closure rule.
+    // Note: the prior comment cited `CLOSURE_NOFORN_SAR` (the
+    // historical Trio 1 row, now collapsed into
+    // `CLOSURE_NOFORN_CAVEATED`) as the load-bearing trigger;
+    // Copilot R2 #3 caught that this is wrong — DISPLAY ONLY is in
+    // `FDR_DOMINATORS` so the closure rule is SUPPRESSED on portions
+    // that carry it. The realistic trigger is a Pattern-A/C rewrite
+    // (UCNI promote, NODIS-implies-NOFORN, etc.), not a closure rule.
     //
     // Self-edge on CAT_DISPLAY_ONLY_TO is skipped by the scheduler
     // (no other rewrite reads/writes this axis today).

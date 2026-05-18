@@ -416,21 +416,25 @@ impl MarkingScheme for CapcoScheme {
     /// CAPCO implicit-fact propagation catalog (closure operator).
     ///
     /// Returns the static catalog of [`ClosureRule`] rows. The catalog
-    /// contains seven Trio 1 NOFORN rows (covering the implicit-NOFORN
-    /// markings whose default release posture is "no foreign disclosure"
-    /// unless an explicit FD&R decision is present) and one Trio 3 NATO
+    /// contains a single Trio 1 CAVEATED row (covering every caveat
+    /// marking whose default release posture is "no foreign disclosure"
+    /// absent an explicit FD&R decision) and one Trio 3 NATO
     /// `REL TO USA, NATO` row:
     ///
-    /// | Rule key                                            | Triggers                          |
-    /// |-----------------------------------------------------|-----------------------------------|
-    /// | `capco/noforn-if-sar`                               | any SAR program                   |
-    /// | `capco/noforn-if-aea`                               | RD / FRD / TFNI                   |
-    /// | `capco/noforn-if-ucni`                              | UCNI                              |
-    /// | `capco/noforn-if-fgi`                               | any FGI atom                      |
-    /// | `capco/noforn-if-orcon`                             | ORCON / ORCON-USGOV               |
-    /// | `capco/noforn-if-rsen-imcon-dsen`                   | RSEN / IMCON / DSEN               |
-    /// | `capco/noforn-if-non-ic-controls`                   | LIMDIS / LES / SBU / SSI          |
-    /// | `capco/rel-to-usa-nato-if-nato-classification`      | bare NATO classification          |
+    /// | Rule key                                            | Triggers                                                                 |
+    /// |-----------------------------------------------------|--------------------------------------------------------------------------|
+    /// | `capco/noforn-if-caveated`                          | SAR · RD / FRD / TFNI · UCNI (DOE/DOD) · FGI · ORCON / ORCON-USGOV · RSEN / IMCON / DSEN · LIMDIS / LES / NNPI / SBU / SSI |
+    /// | `capco/rel-to-usa-nato-if-nato-classification`      | bare NATO classification                                                 |
+    ///
+    /// The CAVEATED row is the algebraic union of seven previously
+    /// separate Trio 1 rows (one per source §-citation). All shared the
+    /// same suppressor (`FDR_DOMINATORS`), the same cone (`{NOFORN}`),
+    /// and the same default severity (`Severity::Info`); per D18
+    /// rationale 2 the rows are interchangeable with a single n-ary
+    /// trigger. The universal label cites CAPCO-2016 §B.3 Table 2 p21
+    /// (rooted in ICD 403); per-token §H.X authorities live in the row
+    /// doc-comment's per-trigger authority table at
+    /// `crates/capco/src/scheme/closure.rs`.
     ///
     /// Every row is suppressed by `FDR_DOMINATORS` (any present
     /// FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES, DISPLAY ONLY).
@@ -465,8 +469,9 @@ impl MarkingScheme for CapcoScheme {
         CAPCO_CLOSURE_RULES
     }
 
-    /// CAPCO closure operator — Kleene fixpoint over the eight closure
-    /// rows in [`CAPCO_CLOSURE_RULES`].
+    /// CAPCO closure operator — Kleene fixpoint over the two closure
+    /// rows in [`CAPCO_CLOSURE_RULES`] (Trio 1 CAVEATED + Trio 3
+    /// NATO REL TO).
     ///
     /// Implements the §4.7 implicit-fact propagation per
     /// `docs/plans/2026-05-01-lattice-design.md` §3 (e). Walks the

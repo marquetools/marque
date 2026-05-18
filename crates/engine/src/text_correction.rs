@@ -19,8 +19,8 @@
 //! bytes are never copied into a `TextCorrectionProposal`.
 
 use marque_capco::CapcoScheme;
-use marque_scheme::Span;
 use marque_rules::{Confidence, FixIntent, FixSource, RuleId};
+use marque_scheme::Span;
 use smol_str::SmolStr;
 
 /// Engine-internal text-correction proposal — see module-level doc.

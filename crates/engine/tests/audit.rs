@@ -74,10 +74,10 @@
 use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
-use marque_scheme::Span;
 use marque_rules::{
     AppliedFix, AppliedFixProposal, Confidence, EnginePromotionToken, FixSource, RuleId,
 };
+use marque_scheme::Span;
 use marque_test_utils::{invalid_fixtures, load_fixture, prose_fixtures, valid_fixtures};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};

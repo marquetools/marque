@@ -348,7 +348,8 @@ pub const TOK_RAWFISA: TokenId = TokenId(145); // RAWFISA — §H.8 p161 (shares
 // bridge phrase to a citation would constitute citation drift per
 // Constitution VIII. For the closure-rule wiring see
 // `crates/capco/src/scheme/closure.rs` — the row whose `name` field
-// is `"capco/noforn-if-non-ic-controls"`.
+// is `"capco/noforn-if-caveated"` (NNPI is one of its triggers; see
+// the per-trigger authority table on the row's doc-comment).
 // Closes issue #407. verified 2026-05-16.
 pub const TOK_NNPI: TokenId = TokenId(146); // NNPI — non-IC dissem
 

@@ -201,8 +201,8 @@ pub struct FixResult {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_scheme::Span;
     use marque_rules::{Diagnostic, RuleId, Severity};
+    use marque_scheme::Span;
 
     #[test]
     fn is_clean_returns_true_when_no_diagnostics() {
