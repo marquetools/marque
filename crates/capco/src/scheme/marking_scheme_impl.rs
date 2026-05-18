@@ -665,10 +665,11 @@ impl CapcoScheme {
     /// is called once and the resulting slice flows to
     /// `project_attrs_pipeline`. There is no parallel slice the inner
     /// pipeline could drift from, so the earlier debug-assert that
-    /// guarded this in `join_via_lattice_with_context` became vacuous
-    /// in PR 4b-F. Future maintenance that reintroduces a parallel
-    /// derivation path MUST re-add the contract at the new fork — the
-    /// invariant lives in this doc-comment, not in a runtime check.
+    /// PR 4b-D.2 carried at the fold-body boundary became vacuous in
+    /// PR 4b-F and retired with the `_with_context` variant. Future
+    /// maintenance that reintroduces a parallel derivation path MUST
+    /// re-add the contract at the new fork — the invariant lives in
+    /// this doc-comment, not in a runtime check.
     pub fn project_from_page_context(
         &self,
         page_context: &marque_ism::PageContext,
