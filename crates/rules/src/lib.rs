@@ -450,6 +450,27 @@ pub struct RuleContext<'a> {
     /// may be `None` (Portion candidates, or banner/CAB candidates on
     /// an empty page).
     pub page_context: Option<std::sync::Arc<marque_ism::PageContext>>,
+    /// Per-page accumulated portion attributes — the slice form that
+    /// banner / CAB / PageFinalization rules consume when they need
+    /// per-portion membership (W004's `JointSet::from_attrs_iter` and
+    /// S005's `analyze_uncertain_reduction` both walk this slice).
+    ///
+    /// `Some(Arc::new(boxed_slice))` is the same per-page snapshot
+    /// every rule on the same page shares; the engine builds it once
+    /// lazily at the first banner / CAB / PageFinalization dispatch
+    /// and reuses the `Arc` across consecutive dispatches on the page.
+    /// `None` for portion candidates and for banner / CAB candidates
+    /// on an empty page (same `None`-shape as [`Self::page_context`]).
+    ///
+    /// PR 6c retirement plan — this field is the structural successor
+    /// to [`Self::page_context`]. Commit 1 introduces it alongside the
+    /// existing `page_context` so the tree stays green per-commit;
+    /// commit 3 retires `page_context` once every consumer migrates.
+    /// `Box<[CanonicalAttrs]>` (immutable snapshot) is what `Arc`
+    /// wraps because the slice form mirrors Constitution Principle II
+    /// "pivot fields use `Box<[T]>`" and the snapshot is genuinely
+    /// immutable once frozen at the banner/CAB boundary.
+    pub page_portions: Option<std::sync::Arc<Box<[CanonicalAttrs]>>>,
     /// Page-level rolled-up marking — the `Scope::Page` projection of
     /// every portion accumulated since the last
     /// [`marque_ism::MarkingType::PageBreak`]. PR 9b (T133 / FR-006)
@@ -550,6 +571,7 @@ impl<'a> RuleContext<'a> {
             position: None,
             candidate_span,
             page_context: None,
+            page_portions: None,
             page_marking: None,
             corrections: None,
             pre_pass_1_attrs: None,
@@ -571,6 +593,16 @@ impl<'a> RuleContext<'a> {
     /// Set [`Self::page_context`] (banner-validation accumulator).
     pub fn with_page_context(mut self, page_context: Option<Arc<marque_ism::PageContext>>) -> Self {
         self.page_context = page_context;
+        self
+    }
+
+    /// Set [`Self::page_portions`] (per-page snapshot of accumulated
+    /// portion attributes; PR 6c successor to `with_page_context`).
+    pub fn with_page_portions(
+        mut self,
+        page_portions: Option<Arc<Box<[CanonicalAttrs]>>>,
+    ) -> Self {
+        self.page_portions = page_portions;
         self
     }
 
