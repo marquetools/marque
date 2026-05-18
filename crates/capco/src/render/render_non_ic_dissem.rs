@@ -74,11 +74,12 @@ pub(crate) fn render_non_ic_dissem(
 }
 
 fn register_rank(n: &NonIcDissem) -> u8 {
-    // Issue #407: NNPI placed after SSI (rank 8) for register
-    // ordering. Placement is local-policy — CAPCO-2016 §H.9 has no
-    // NNPI Register row — but pairing NNPI with SSI is consistent
-    // with their shared `propagates_to_classified_banner = true`
-    // semantic in `crates/ism/src/attrs.rs:1326`.
+    // NNPI placed after SSI (rank 8) for register ordering.
+    // Placement is local-policy — CAPCO-2016 §H.9 has no NNPI
+    // Register row — but pairing NNPI with SSI is consistent with
+    // their shared `propagates_to_classified_banner = true` semantic
+    // documented on the `NonIcDissem::Nnpi` variant in
+    // `crates/ism/src/attrs.rs`.
     //
     // `NonIcDissem` is `#[non_exhaustive]` (declared upstream in
     // `marque-ism`), so the wildcard arm is required by the

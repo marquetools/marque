@@ -424,6 +424,70 @@ fn closure_fires_noforn_on_limdis_marking() {
     );
 }
 
+/// Trio 1 row `capco/noforn-if-non-ic-controls` (NNPI arm): an NNPI
+/// non-IC dissem control triggers implicit-NOFORN closure.
+///
+/// NNPI is an ODNI-registered non-IC dissem control whose governing
+/// authority (10 USC 7314 / 50 USC 2511 — Naval Nuclear Propulsion
+/// Program) lives outside IC marking policy; CAPCO-2016 §G.1 Table 4
+/// and §H.9 do not enumerate it. The closure fires by the universal
+/// non-IC-dissem principle: the IC cannot presume releasability or
+/// RELIDO-suitability of information governed by policy regimes
+/// outside IC marking authority, so absent an explicit FD&R decision
+/// implicit NOFORN is the conservative default.
+///
+/// Authority: §B.3 Table 2 p21, §B.3 p20 Note (caveated structural
+/// definition), and ODNI `CVEnumISMNonIC.xml` (NNPI registration).
+#[test]
+fn closure_fires_noforn_on_nnpi_marking() {
+    use marque_ism::NonIcDissem;
+
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Nnpi].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure should inject NOFORN on classified + NNPI (§B.3 Table 2 \
+         p21 + ODNI CVEnumISMNonIC); dissem_us = {:?}",
+        closed.0.dissem_us
+    );
+}
+
+/// FD&R-dominator parity for NNPI: the `capco/noforn-if-non-ic-controls`
+/// row is suppressed when an FD&R dominator (RELIDO) is already
+/// present. All seven Trio 1 `CLOSURE_NOFORN_*` rows share
+/// `FDR_DOMINATORS` as their suppressor set, so this parity test
+/// pins the contract for the NNPI arm specifically.
+///
+/// Authority: §B.3 Table 2 p21 (RELIDO is the explicit FD&R decision
+/// — the implicit NOFORN closure backs off).
+#[test]
+fn closure_nnpi_suppressed_by_relido_dominator() {
+    use marque_ism::NonIcDissem;
+
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.non_ic_dissem = vec![NonIcDissem::Nnpi].into_boxed_slice();
+    a.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+
+    let closed = scheme.closure(m);
+    assert!(
+        !dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must NOT inject NOFORN on NNPI when RELIDO is already \
+         present (FDR_DOMINATORS suppresses Trio 1 rows); dissem_us = \
+         {:?}",
+        closed.0.dissem_us
+    );
+    // RELIDO must survive the closure (extensive property).
+    assert!(dissem_us_contains(&closed, DissemControl::Relido));
+}
+
 /// Trio 1 row `capco/noforn-if-rsen-imcon-dsen` (IMCON arm): an IMCON
 /// dissem triggers implicit-NOFORN closure (separately from the RSEN
 /// arm covered above).

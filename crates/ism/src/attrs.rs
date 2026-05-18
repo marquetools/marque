@@ -1283,8 +1283,14 @@ pub enum NonIcDissem {
     /// unclassified-only per §H.9 p178). When NNPI appears in any
     /// portion of a classified document, the banner must surface it
     /// — the marking identifies the information itself, not an
-    /// optional access restriction. NNPI does not carry NOFORN
-    /// treatment.
+    /// optional access restriction. As with all non-IC dissem
+    /// controls, classified+NNPI absent an explicit FD&R decision
+    /// is implicitly NOFORN per the §B.3 p20 Note caveated-default
+    /// (the IC cannot presume releasability or RELIDO-suitability of
+    /// information governed by policy regimes outside IC marking
+    /// authority); the closure-rule wiring lives in
+    /// `crates/capco/src/scheme/closure.rs` under the row whose
+    /// `name` field is `"capco/noforn-if-non-ic-controls"`.
     Nnpi,
 }
 
