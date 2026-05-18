@@ -9,9 +9,9 @@
 //! scheme proptests in `crates/scheme/tests/proptest_closure*.rs`:
 //! the proptests pin the algebraic properties (extensive / idempotent /
 //! monotone) against a bitset `BitMarking`; this file pins the
-//! observable cone effects against `CapcoMarking` — the seven Trio-1
-//! `CLOSURE_NOFORN_*` rows and the NATO row
-//! `capco/rel-to-usa-nato-if-nato-classification`.
+//! observable cone effects against `CapcoMarking` — the single Trio-1
+//! `CLOSURE_NOFORN_CAVEATED` row (union of every caveat trigger) and
+//! the NATO row `capco/rel-to-usa-nato-if-nato-classification`.
 //!
 //! Engine wiring (`Engine::lint` invoking `scheme.closure()` on the
 //! hot path) is deferred to a separate change. These tests exercise
@@ -114,8 +114,8 @@ fn closure_fires_noforn_on_classified_with_orcon() {
     );
 }
 
-/// Trio 1 fires on AEA RD (`capco/noforn-if-aea`): an RD marking
-/// without any FD&R decision implies NOFORN.
+/// Trio 1 fires on AEA RD via the AEA arm of `capco/noforn-if-caveated`:
+/// an RD marking without any FD&R decision implies NOFORN.
 ///
 /// Authority: CAPCO-2016 §H.6 p104 (RD); §B.3 Table 2 p21.
 #[test]
@@ -270,8 +270,8 @@ fn closure_rel_to_usa_nato_suppressed_by_noforn() {
 // Trio 1 per-row positive firing
 // ---------------------------------------------------------------------------
 
-/// Trio 1 row `capco/noforn-if-sar`: a SAR program triggers
-/// implicit-NOFORN closure.
+/// Trio 1 SAR arm of `capco/noforn-if-caveated`: a SAR program
+/// triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 (classified + caveated + post-28-Jun-2010
 /// → NOFORN) + §H.5 p101 (SAR is a Special Access Program — a caveat per
@@ -298,15 +298,15 @@ fn closure_fires_noforn_on_sar_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-ucni` (DOD UCNI): a DOD UCNI marking
-/// triggers implicit-NOFORN closure.
+/// Trio 1 DOD-UCNI arm of `capco/noforn-if-caveated`: a DOD UCNI
+/// marking triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 + §H.6 p116 (DOD UNCLASSIFIED CONTROLLED
 /// NUCLEAR INFORMATION). The DOD variant resolves through `TOK_DCNI`
-/// per issue #407; `CLOSURE_NOFORN_UCNI` includes both `TOK_UCNI`
-/// (DOE) and `TOK_DCNI` (DOD) in its trigger list because the §B.3
-/// Table 2 p21 algebra is grammar-agnostic over which sentinel
-/// surfaces the UCNI marking. Closes #518.
+/// per issue #407; the CAVEATED row's trigger list includes both
+/// `TOK_UCNI` (DOE) and `TOK_DCNI` (DOD) because the §B.3 Table 2 p21
+/// algebra is grammar-agnostic over which sentinel surfaces the UCNI
+/// marking. Closes #518.
 #[test]
 fn closure_fires_noforn_on_dod_ucni_marking() {
     let scheme = CapcoScheme::new();
@@ -324,10 +324,10 @@ fn closure_fires_noforn_on_dod_ucni_marking() {
     );
 }
 
-/// FD&R-dominator parity for DOD UCNI: the `capco/noforn-if-ucni`
+/// FD&R-dominator parity for DOD UCNI: the `capco/noforn-if-caveated`
 /// row is suppressed when an FD&R dominator (RELIDO) is already
-/// present, matching the DOE-UCNI / SAR / FGI / LIMDIS rows that
-/// share `FDR_DOMINATORS` as their suppressor set.
+/// present, matching every other arm (DOE-UCNI / SAR / FGI / LIMDIS /
+/// etc.) — they all ride the same `FDR_DOMINATORS` suppressor set.
 ///
 /// Authority: §B.3 Table 2 p21 (classified + uncaveated +
 /// post-28-Jun-2010 → RELIDO is the explicit FD&R decision; the
@@ -353,8 +353,8 @@ fn closure_dod_ucni_suppressed_by_relido_dominator() {
     assert!(dissem_us_contains(&closed, DissemControl::Relido));
 }
 
-/// Trio 1 row `capco/noforn-if-ucni` (DOE UCNI): a DOE UCNI marking
-/// triggers implicit-NOFORN closure.
+/// Trio 1 DOE-UCNI arm of `capco/noforn-if-caveated`: a DOE UCNI
+/// marking triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 + §H.6 p118 (DOE UNCLASSIFIED CONTROLLED
 /// NUCLEAR INFORMATION).
@@ -375,9 +375,9 @@ fn closure_fires_noforn_on_doe_ucni_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-fgi`: an acknowledged FGI marker
-/// triggers implicit-NOFORN closure (covers the
-/// `AnyInCategory(CAT_FGI_MARKER)` trigger arm).
+/// Trio 1 FGI arm of `capco/noforn-if-caveated`: an acknowledged FGI
+/// marker triggers implicit-NOFORN closure (covers the
+/// `AnyInCategory(CAT_FGI_MARKER)` trigger).
 ///
 /// Authority: §B.3 Table 2 p21 + §H.7 p123 (FGI marking template — FGI
 /// information has a foreign-government equity and so carries the
@@ -401,8 +401,8 @@ fn closure_fires_noforn_on_fgi_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-non-ic-controls` (LIMDIS): a LIMDIS
-/// non-IC dissem control triggers implicit-NOFORN closure.
+/// Trio 1 LIMDIS arm of `capco/noforn-if-caveated`: a LIMDIS non-IC
+/// dissem control triggers implicit-NOFORN closure.
 ///
 /// Authority: §B.3 Table 2 p21 + §H.9 p170 (LIMITED DISTRIBUTION).
 #[test]
@@ -424,8 +424,8 @@ fn closure_fires_noforn_on_limdis_marking() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-non-ic-controls` (NNPI arm): an NNPI
-/// non-IC dissem control triggers implicit-NOFORN closure.
+/// Trio 1 NNPI arm of `capco/noforn-if-caveated`: an NNPI non-IC
+/// dissem control triggers implicit-NOFORN closure.
 ///
 /// NNPI is an ODNI-registered non-IC dissem control whose governing
 /// authority (10 USC 7314 / 50 USC 2511 — Naval Nuclear Propulsion
@@ -457,11 +457,11 @@ fn closure_fires_noforn_on_nnpi_marking() {
     );
 }
 
-/// FD&R-dominator parity for NNPI: the `capco/noforn-if-non-ic-controls`
+/// FD&R-dominator parity for NNPI: the `capco/noforn-if-caveated`
 /// row is suppressed when an FD&R dominator (RELIDO) is already
-/// present. All seven Trio 1 `CLOSURE_NOFORN_*` rows share
-/// `FDR_DOMINATORS` as their suppressor set, so this parity test
-/// pins the contract for the NNPI arm specifically.
+/// present. The CAVEATED row's `FDR_DOMINATORS` suppressor applies
+/// uniformly to every trigger arm, so this parity test pins the
+/// contract for the NNPI arm specifically.
 ///
 /// Authority: §B.3 Table 2 p21 (RELIDO is the explicit FD&R decision
 /// — the implicit NOFORN closure backs off).
@@ -488,9 +488,9 @@ fn closure_nnpi_suppressed_by_relido_dominator() {
     assert!(dissem_us_contains(&closed, DissemControl::Relido));
 }
 
-/// Trio 1 row `capco/noforn-if-rsen-imcon-dsen` (IMCON arm): an IMCON
-/// dissem triggers implicit-NOFORN closure (separately from the RSEN
-/// arm covered above).
+/// Trio 1 IMCON arm of `capco/noforn-if-caveated`: an IMCON dissem
+/// triggers implicit-NOFORN closure (separately from the RSEN arm
+/// covered above).
 ///
 /// Authority: §B.3 Table 2 p21 + §H.8 p142 (CONTROLLED IMAGERY — IMCON
 /// is a caveat per §B.3 p20 Note).
@@ -512,9 +512,9 @@ fn closure_fires_noforn_on_classified_with_imcon() {
     );
 }
 
-/// Trio 1 row `capco/noforn-if-rsen-imcon-dsen` (DSEN arm): a DSEN
-/// dissem triggers implicit-NOFORN closure (separately from the RSEN
-/// and IMCON arms).
+/// Trio 1 DSEN arm of `capco/noforn-if-caveated`: a DSEN dissem
+/// triggers implicit-NOFORN closure (separately from the RSEN and
+/// IMCON arms).
 ///
 /// Authority: §B.3 Table 2 p21 + §H.8 p159 (DEA SENSITIVE — DSEN is a
 /// caveat per §B.3 p20 Note).

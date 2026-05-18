@@ -57,15 +57,17 @@ fn rel_to_contains(m: &CapcoMarking, target: CountryCode) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Trio 1 — implicit NOFORN closure rules (one fixture each)
+// Trio 1 — implicit NOFORN closure rule (one fixture per trigger arm)
 //
-// Per `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`. Each
-// CLOSURE_NOFORN_* row fires on `scheme.project(Scope::Page, ...)`
-// when its trigger is observed and no FD&R dominator is present.
+// Per `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`. The
+// single `CLOSURE_NOFORN_CAVEATED` row fires on
+// `scheme.project(Scope::Page, ...)` when any of its 18 triggers is
+// observed and no FD&R dominator is present. Each test below exercises
+// a distinct trigger arm of the unified row.
 // ---------------------------------------------------------------------------
 
-/// CLOSURE_NOFORN_SAR (§H.5 p101 + §B.3 Table 2 p21): any SAR program
-/// triggers implicit NOFORN through the page projection.
+/// SAR arm of `CLOSURE_NOFORN_CAVEATED` (§H.5 p101 + §B.3 Table 2 p21):
+/// any SAR program triggers implicit NOFORN through the page projection.
 #[test]
 fn closure_noforn_sar_fires_on_hotpath() {
     let program = SarProgram::new("EXP", Box::new([]));
@@ -81,8 +83,8 @@ fn closure_noforn_sar_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_AEA_RD (§H.6 p104 + §B.3 Table 2 p21): RD / FRD /
-/// TFNI trigger implicit NOFORN.
+/// AEA arm of `CLOSURE_NOFORN_CAVEATED` (§H.6 p104 + §B.3 Table 2 p21):
+/// RD / FRD / TFNI trigger implicit NOFORN.
 #[test]
 fn closure_noforn_aea_rd_fires_on_hotpath() {
     let mut portion = classified_us(Classification::Secret);
@@ -96,8 +98,8 @@ fn closure_noforn_aea_rd_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_UCNI (§H.6 p118 + §B.3 Table 2 p21): DOE UCNI
-/// triggers implicit NOFORN through the page projection.
+/// UCNI arm of `CLOSURE_NOFORN_CAVEATED` (§H.6 p118 + §B.3 Table 2 p21):
+/// DOE UCNI triggers implicit NOFORN through the page projection.
 #[test]
 fn closure_noforn_ucni_fires_on_hotpath() {
     let mut portion = classified_us(Classification::Unclassified);
@@ -111,8 +113,8 @@ fn closure_noforn_ucni_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_FGI (§H.7 p122 + §B.3 Table 2 p21): FGI marker
-/// triggers implicit NOFORN.
+/// FGI arm of `CLOSURE_NOFORN_CAVEATED` (§H.7 p122 + §B.3 Table 2 p21):
+/// FGI marker triggers implicit NOFORN.
 #[test]
 fn closure_noforn_fgi_fires_on_hotpath() {
     let gbr = CountryCode::try_new(b"GBR").expect("trigraph");
@@ -127,10 +129,10 @@ fn closure_noforn_fgi_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_ORCON (§H.8 p136 + §B.3 Table 2 p21): ORCON triggers
-/// implicit NOFORN. The post-closure supersession overlay does not
-/// strip ORCON itself (ORCON and NOFORN coexist per §H.8 p145 — only
-/// REL TO / RELIDO / EYES ONLY / DISPLAY ONLY are dominated).
+/// ORCON arm of `CLOSURE_NOFORN_CAVEATED` (§H.8 p136 + §B.3 Table 2 p21):
+/// ORCON triggers implicit NOFORN. The post-closure supersession overlay
+/// does not strip ORCON itself (ORCON and NOFORN coexist per §H.8 p145
+/// — only REL TO / RELIDO / EYES ONLY / DISPLAY ONLY are dominated).
 #[test]
 fn closure_noforn_orcon_fires_on_hotpath() {
     let portion = classified_with_dissem(Classification::Secret, DissemControl::Oc);
@@ -149,9 +151,9 @@ fn closure_noforn_orcon_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_RSEN_IMCON_DSEN (§H.8 p132 + §B.3 Table 2 p21):
-/// RSEN / IMCON / DSEN trigger implicit NOFORN. Test with RSEN —
-/// the same row covers IMCON and DSEN.
+/// RSEN / IMCON / DSEN arms of `CLOSURE_NOFORN_CAVEATED` (§H.8 p132
+/// and §B.3 Table 2 p21): RSEN / IMCON / DSEN trigger implicit NOFORN.
+/// Test with RSEN — the same row covers IMCON and DSEN.
 #[test]
 fn closure_noforn_rsen_fires_on_hotpath() {
     let portion = classified_with_dissem(Classification::Secret, DissemControl::Rs);
@@ -164,9 +166,9 @@ fn closure_noforn_rsen_fires_on_hotpath() {
     );
 }
 
-/// CLOSURE_NOFORN_NONICCONTROLS (§H.9 p170 + §B.3 Table 2 p21):
-/// LIMDIS / LES / SBU / SSI trigger implicit NOFORN. Test with
-/// LIMDIS — the same row covers the other three.
+/// Non-IC-controls arm of `CLOSURE_NOFORN_CAVEATED` (§H.9 p170 +
+/// §B.3 Table 2 p21): LIMDIS / LES / SBU / SSI / NNPI trigger implicit
+/// NOFORN. Test with LIMDIS — the same row covers the others.
 #[test]
 fn closure_noforn_nonic_limdis_fires_on_hotpath() {
     let mut portion = classified_us(Classification::Unclassified);
