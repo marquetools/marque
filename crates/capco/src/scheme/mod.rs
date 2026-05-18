@@ -512,3 +512,35 @@ pub const TOK_TK_KAND: TokenId = TokenId(155);
 // nationals") establish the per-marking ORCON+NOFORN implication
 // for the sub-compartmented form.
 pub const TOK_HCS_P_SUB: TokenId = TokenId(156);
+
+// Issue #524 Phase 3: grammar-shape sentinel matching
+// `MarkingClassification::Us(level)` AND
+// `MarkingClassification::Conflict { us: level, .. }` where
+// `level != Classification::Unclassified` — i.e., US collateral
+// classification (Restricted / Confidential / Secret / TopSecret).
+// Used as the trigger for `CLOSURE_RELIDO_US_CLASS` so the
+// implicit-RELIDO closure is gated at the trigger level (not via
+// an anti-monotone suppressor).
+//
+// CAPCO-2016 §H.8 p154 explicitly states "Explicit foreign
+// disclosure and release markings are not required on unclassified
+// information. Follow internal agency procedures for the use of
+// RELIDO with unclassified information." Embedding the gate in the
+// trigger (rather than a `TOK_US_UNCLASSIFIED` suppressor) keeps
+// the closure rule monotone — `m1 ⊑ m2 ⇒ closure(m1) ⊑ closure(m2)`
+// per the `MarkingScheme::closure` contract — because the trigger
+// is an upward-closed predicate on attrs while a suppressor on
+// "Us is Unclassified" would have made the rule anti-monotone in
+// the same way the broader "no other dissem" qualifier did.
+//
+// Routed to `CAT_CLASSIFICATION` via `capco_token_category`.
+// Resolves via `satisfies_attrs` against
+// `attrs.us_classification().is_some_and(|l| l != Classification::Unclassified)`.
+// Conflict-variant note: the predicate fires on Conflict markings
+// whose US side is collateral classified — same trigger semantic
+// as the pre-Issue-#524-Phase-3-revision design, but no longer
+// reliant on a suppressor list to enforce the Unclassified
+// carve-out. A future opt-in agency-style rule can re-enable
+// U → RELIDO for organizations whose policy requires it (see
+// follow-up issue tracked in the Phase 3 PR description).
+pub const TOK_US_COLLATERAL_CLASSIFIED: TokenId = TokenId(157);

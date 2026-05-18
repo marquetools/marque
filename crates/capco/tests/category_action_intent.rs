@@ -74,16 +74,20 @@ fn page_rewrite_intent_fact_add_mutates_projection() {
     let rewrite = PageRewrite {
         id: "test/intent-fact-add",
         citation: "test fixture",
-        // Fires when the dissem axis is empty — true on the input
-        // portion below, which carries only a classification.
+        // Fires when the rel-to axis is empty — true on the input
+        // portion below (which carries only a classification) and
+        // remains true after the closure operator runs (the closure
+        // adds RELIDO to dissem_us via `CLOSURE_RELIDO_US_CLASS`
+        // per Issue #524 Phase 3 / marque-applied Section 4.7.5,
+        // but does not populate rel_to).
         trigger: CategoryPredicate::Empty {
-            category: CAT_DISSEM,
+            category: CAT_REL_TO,
         },
         action: CategoryAction::Intent(ReplacementIntent::FactAdd {
             token: FactRef::Cve(TOK_NOFORN),
             scope: Scope::Page,
         }),
-        reads: &[CAT_DISSEM],
+        reads: &[CAT_REL_TO],
         writes: &[CAT_DISSEM],
     };
     let scheme = CapcoScheme::with_rewrites(vec![rewrite]);

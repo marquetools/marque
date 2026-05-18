@@ -771,15 +771,19 @@ fn any_closure_trigger_fires_false_on_bottom() {
     assert!(!scheme.any_closure_trigger_fires(&m));
 }
 
-/// The short-circuit predicate returns `false` on `(S)` — classified
-/// but uncaveated, no Trio-1 caveat present, no NATO classification.
+/// The short-circuit predicate returns `true` on `(S)` — uncaveated
+/// US-classified markings became a Trio 2 closure trigger in Issue
+/// #524 Phase 3 (`CLOSURE_RELIDO_US_CLASS`, `marque-applied.md`
+/// Section 4.7.5). Pre-Phase-3 this case returned `false`; the
+/// behavior flipped intentionally with the implicit-RELIDO row.
 #[test]
-fn any_closure_trigger_fires_false_on_uncaveated_classified() {
+fn any_closure_trigger_fires_true_on_uncaveated_us_classified() {
     let scheme = CapcoScheme::new();
     let m = CapcoMarking::new(mk_attrs());
     assert!(
-        !scheme.any_closure_trigger_fires(&m),
-        "uncaveated classified must not trip any catalog trigger"
+        scheme.any_closure_trigger_fires(&m),
+        "uncaveated US-classified should trip the Trio 2 US_CLASS trigger \
+         (`CLOSURE_RELIDO_US_CLASS` per marque-applied Section 4.7.5)"
     );
 }
 

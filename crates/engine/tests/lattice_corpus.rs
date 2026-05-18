@@ -270,16 +270,39 @@ fn closure_relido_unanimity_all_portions() {
 }
 
 #[test]
-fn closure_relido_unanimity_drops_on_disagreement() {
+fn closure_relido_unanimity_drops_then_phase3_reinjects() {
+    // Two-stage interaction:
+    //   1. Lattice layer: non-unanimous RELIDO → DissemSet's
+    //      observed-unanimity overlay drops RELIDO from the joined
+    //      state (§H.8 pp155-156).
+    //   2. Closure layer: the post-join state is "bare US Secret
+    //      with no other dissem" → `CLOSURE_RELIDO_US_CLASS` fires
+    //      and re-injects RELIDO as the implicit FD&R default
+    //      (Issue #524 Phase 3 / `marque-applied.md` Section 4.7.5;
+    //      foundational citation CAPCO-2016 §H.8 p154 + §B.3
+    //      Table 2 p21).
+    //
+    // Net banner state: RELIDO is present. Pre-Phase-3 the closure
+    // layer was inert on this input, so the assertion was simply
+    // "RELIDO absent"; Phase 3 routes through both layers and the
+    // observable behavior flips. This is the intended composition —
+    // the unanimity rule is a lattice-layer property about what
+    // survives the join, the implicit-RELIDO default is a closure-
+    // layer property about post-join recovery; the closure runs
+    // strictly after the join (per `marque-applied.md` Section
+    // 4.7.4 pipeline ordering: parse → join → Cl_supp → rewrites).
     let mut p1 = classified_us(Classification::Secret);
     p1.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
     let p2 = classified_us(Classification::Secret);
     let projected = project_page(&[p1, p2]);
 
     assert!(
-        !dissem_contains(&projected, DissemControl::Relido),
-        "RELIDO non-unanimous (some portion lacks it) must be dropped \
-         at banner roll-up (§H.8 pp155-156); dissem_us = {:?}",
+        dissem_contains(&projected, DissemControl::Relido),
+        "Phase 3 CLOSURE_RELIDO_US_CLASS must re-inject RELIDO on the \
+         post-join bare US classification state (the lattice's \
+         observed-unanimity overlay drops RELIDO during the join; the \
+         closure then re-adds it per §H.8 p154 + marque-applied \
+         Section 4.7.5); dissem_us = {:?}",
         projected.0.dissem_us,
     );
 }
