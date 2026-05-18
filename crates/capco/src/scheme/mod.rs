@@ -428,7 +428,8 @@ pub const TOK_FGI_CLASS: TokenId = TokenId(149);
 //
 // Six closed-CVE compound tokens addressing specific SCI
 // system+compartment pairs that CAPCO-2016 §H.4 registers with their
-// own marking templates and ARH read-in (§B.3 ARH Table 5 pp 904-922).
+// own marking templates and ARH read-in (§G.2 Table 5 p40, the
+// "Conceptual ARH by Registered Marking" row block).
 // The bare `TOK_HCS` sentinel (TokenId(116)) already matches any HCS
 // compound via the structural `attrs.sci_markings` scan; these new
 // sentinels resolve at finer compartment granularity so future

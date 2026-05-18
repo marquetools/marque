@@ -669,6 +669,23 @@ mod sci_compartment_sentinels_pin {
         a
     }
 
+    /// Build a `CanonicalAttrs` carrying a single SciMarking with
+    /// **multiple** compartments under one system anchor. Mirrors a
+    /// real `HCS-O-P` portion (one SciMarking, system=HCS,
+    /// compartments=`["O", "P"]`) per CAPCO-2016 §H.4 p64 commingling
+    /// guidance with HCS-P. Used by the multi-compartment dual-emit
+    /// test below.
+    fn attrs_with_sci_multi_comps(system: SciControlBare, comps: &[&str]) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        let compartments: Box<[SciCompartment]> = comps
+            .iter()
+            .map(|c| SciCompartment::new(SmolStr::from(*c), Box::<[SmolStr]>::from([])))
+            .collect();
+        let marking = SciMarking::new(SciControlSystem::Published(system), compartments, None);
+        a.sci_markings = Box::<[SciMarking]>::from([marking]);
+        a
+    }
+
     /// Each sentinel resolves true on a matching system+compartment.
     /// Compact table-driven form: drift in any of the six pairs
     /// flags the same shared assertion message naming the offending
@@ -739,9 +756,14 @@ mod sci_compartment_sentinels_pin {
             (TOK_HCS_P, SciControlBare::Si, "P"),
             (TOK_HCS_P, SciControlBare::Tk, "P"),
             // TOK_TK_* demands TK; HCS / SI variants must not resolve.
+            // Both wrong-system mirrors enumerated for each sentinel so
+            // the table covers the full sentinel × wrong-system cross
+            // product symmetrically.
             (TOK_TK_BLFH, SciControlBare::Si, "BLFH"),
             (TOK_TK_BLFH, SciControlBare::Hcs, "BLFH"),
             (TOK_TK_IDIT, SciControlBare::Si, "IDIT"),
+            (TOK_TK_IDIT, SciControlBare::Hcs, "IDIT"),
+            (TOK_TK_KAND, SciControlBare::Si, "KAND"),
             (TOK_TK_KAND, SciControlBare::Hcs, "KAND"),
         ];
         for (tok, system, comp) in cases {
@@ -781,12 +803,27 @@ mod sci_compartment_sentinels_pin {
     /// regression that delegates through `canonical_enum` (which is
     /// `None` for sub-compartmented forms per
     /// `marque_ism::SciMarking.canonical_enum` doc) would silently
-    /// under-fire on every real `HCS-P sub`, `TK-BLFH sub`,
+    /// under-fire on every real `SI-G sub`, `HCS-P sub`, `TK-BLFH sub`,
     /// `TK-IDIT sub`, `TK-KAND sub` portion. The structural-shape
     /// witness must survive.
+    ///
+    /// `TOK_SI_G` carries a CAPCO-registered sub-compartment template
+    /// at §H.4 p81 (GAMMA [SUB-COMPARTMENT]); HCS-P / TK-BLFH /
+    /// TK-IDIT / TK-KAND carry one at §H.4 p68 / p89 / p93 / p97
+    /// respectively. `TOK_HCS_O` does NOT have a CAPCO-registered
+    /// sub-compartment template in §H.4 — it is still included here
+    /// with a synthetic sub-compartment because the implementation
+    /// contract (reads structural shape, not `canonical_enum`)
+    /// applies uniformly to all six sentinels. A regression that
+    /// delegated through `canonical_enum` would also break the
+    /// HCS-O case if a future CAPCO revision registers a sub-
+    /// compartment template for it; this test pre-emptively pins the
+    /// contract for the full sentinel set.
     #[test]
     fn sub_compartmented_markings_still_fire_sentinel() {
         let cases: &[(TokenId, SciControlBare, &str, &str)] = &[
+            (TOK_SI_G, SciControlBare::Si, "G", "ABCD"),
+            (TOK_HCS_O, SciControlBare::Hcs, "O", "SYNTH"),
             (TOK_HCS_P, SciControlBare::Hcs, "P", "X1"),
             (TOK_TK_BLFH, SciControlBare::Tk, "BLFH", "Y2"),
             (TOK_TK_IDIT, SciControlBare::Tk, "IDIT", "Z3"),
@@ -801,6 +838,39 @@ mod sci_compartment_sentinels_pin {
                  canonical_enum)",
             );
         }
+    }
+
+    /// Multi-compartment markings emit one per-compartment sentinel
+    /// per matching compartment. **Load-bearing pin** for the
+    /// commingling case: `(S//HCS-O-P)` per CAPCO-2016 §H.4 p64 is
+    /// modeled as ONE `SciMarking` with system=HCS and compartments
+    /// `["O", "P"]`. The `collect_present_tokens` inner loop must
+    /// emit both `TOK_HCS_O` and `TOK_HCS_P` — a regression that
+    /// short-circuited the inner loop after the first sentinel hit
+    /// would silently drop one.
+    #[test]
+    fn multi_compartment_markings_emit_all_per_compartment_sentinels() {
+        // HCS-O-P case — CAPCO §H.4 p64 commingling guidance.
+        let a = attrs_with_sci_multi_comps(SciControlBare::Hcs, &["O", "P"]);
+        let emitted = collect_present_tokens(&a);
+        assert!(
+            emitted.contains(&TokenRef::Token(TOK_HCS_O)),
+            "HCS-O-P should emit TOK_HCS_O; got {emitted:?}",
+        );
+        assert!(
+            emitted.contains(&TokenRef::Token(TOK_HCS_P)),
+            "HCS-O-P should emit TOK_HCS_P; got {emitted:?}",
+        );
+        // Symmetric satisfies_attrs path: both per-compartment
+        // predicates fire on the same marking.
+        assert!(
+            satisfies_attrs(&a, &TokenRef::Token(TOK_HCS_O)),
+            "HCS-O-P should satisfy TOK_HCS_O predicate",
+        );
+        assert!(
+            satisfies_attrs(&a, &TokenRef::Token(TOK_HCS_P)),
+            "HCS-O-P should satisfy TOK_HCS_P predicate",
+        );
     }
 
     /// `collect_present_tokens` emits the per-compartment sentinel
