@@ -3910,7 +3910,7 @@ begin page 159               UNCLASSIFIED
 
 (U)   Example Banner Line:   UNCLASSIFIED//DEA SENSITIVE
 
-(U)   Example Portion Mark:   ( U//DSEN)
+(U)   Example Portion Mark:   (U//DSEN)
 
 (U)   Example Banner Line:   SECRET//NOFORN/DEA SENSITIVE
 
