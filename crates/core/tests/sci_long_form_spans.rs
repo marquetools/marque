@@ -24,8 +24,9 @@
 
 use marque_core::Parser;
 use marque_ism::attrs::{TokenKind, TokenSpan};
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
+use marque_scheme::Span;
 
 /// Parsed-attrs surface needed by the tests. Returned by reference so the
 /// caller doesn't have to manage `ParsedAttrs<'src>` lifetimes; we copy

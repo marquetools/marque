@@ -6163,7 +6163,7 @@ mod tests {
         // slot stays empty. PR 4b-B 9th-pass follow-up: `RuleContext`
         // is `#[non_exhaustive]`; the `new` constructor returns a
         // minimal context with all `Option`-typed fields as `None`.
-        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
+        let ctx = RuleContext::new(MarkingType::Banner, marque_scheme::Span::new(0, 0));
         let rule = super::RelToTrigraphSuggestRule;
         let diags =
             <super::RelToTrigraphSuggestRule as Rule<CapcoScheme>>::check(&rule, &attrs, &ctx);
@@ -7613,7 +7613,7 @@ mod tests {
         // two-pass pipeline. PR 4b-B 9th-pass follow-up:
         // `RuleContext` is `#[non_exhaustive]`; use the `new`
         // minimal-context constructor.
-        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
+        let ctx = RuleContext::new(MarkingType::Banner, marque_scheme::Span::new(0, 0));
 
         let rule = DeclarativeJointHcsRule;
         let diags = rule.check(&attrs, &ctx);
@@ -7678,7 +7678,7 @@ mod tests {
         // two-pass pipeline. PR 4b-B 9th-pass follow-up:
         // `RuleContext` is `#[non_exhaustive]`; use the `new`
         // minimal-context constructor.
-        let ctx = RuleContext::new(MarkingType::Banner, marque_ism::Span::new(0, 0));
+        let ctx = RuleContext::new(MarkingType::Banner, marque_scheme::Span::new(0, 0));
 
         let rule = DeclarativeJointHcsRule;
         let diags = rule.check(&attrs, &ctx);

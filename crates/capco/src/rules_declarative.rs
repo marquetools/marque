@@ -91,12 +91,12 @@
 
 use std::sync::LazyLock;
 
-use marque_ism::{CanonicalAttrs, Span, TokenKind, TokenSpan};
+use marque_ism::{CanonicalAttrs, TokenKind, TokenSpan};
 use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
     Rule, RuleContext, RuleId, Severity,
 };
-use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, TokenId};
+use marque_scheme::{ConstraintViolation, FactRef, ReplacementIntent, Scope, Span, TokenId};
 use smallvec::SmallVec;
 
 use crate::scheme::CapcoScheme;
@@ -2779,7 +2779,7 @@ impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
 /// before shorter ones (already enforced by the catalog ordering).
 fn match_catalog_row(
     text: &str,
-    span: marque_ism::Span,
+    span: marque_scheme::Span,
     rule_id: RuleId,
 ) -> Option<Diagnostic<CapcoScheme>> {
     for row in DEPRECATED_SCI_LONG_FORM_CATALOG {
@@ -2810,7 +2810,7 @@ fn match_catalog_row(
 /// Build the canonical replacement string and emit the diagnostic.
 fn emit_diagnostic(
     row: &'static DeprecatedSciRow,
-    span: marque_ism::Span,
+    span: marque_scheme::Span,
     rule_id: RuleId,
     compartment: Option<&str>,
 ) -> Diagnostic<CapcoScheme> {

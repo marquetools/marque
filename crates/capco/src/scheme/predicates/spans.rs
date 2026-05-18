@@ -18,7 +18,7 @@ use super::super::*;
 /// Find the first SCI-system/SCI-control token span in document order.
 /// Used as the diagnostic anchor when the rule fires on a portion's SCI
 /// block.
-pub(crate) fn first_sci_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_ism::Span> {
+pub(crate) fn first_sci_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_scheme::Span> {
     attrs
         .token_spans
         .iter()
@@ -48,7 +48,7 @@ pub(crate) fn us_level(attrs: &marque_ism::CanonicalAttrs) -> Option<Classificat
 
 /// Last token span of the IC dissem block (anchors zero-width insertions).
 /// Returns `None` when no IC dissem token exists.
-pub(crate) fn last_dissem_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_ism::Span> {
+pub(crate) fn last_dissem_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_scheme::Span> {
     attrs
         .token_spans
         .iter()
@@ -75,7 +75,7 @@ pub(crate) fn last_dissem_span(attrs: &marque_ism::CanonicalAttrs) -> Option<mar
 pub(crate) fn dissem_token_span(
     attrs: &marque_ism::CanonicalAttrs,
     target: marque_ism::DissemControl,
-) -> Option<(marque_ism::Span, &str)> {
+) -> Option<(marque_scheme::Span, &str)> {
     for (dissem_idx, d) in attrs.dissem_iter().enumerate() {
         if *d == target {
             // Walk token_spans to find the Nth DissemControl.

@@ -22,7 +22,6 @@
 //! library, so this file sees only the public API surface — the same
 //! visibility a downstream consumer would see.
 
-use marque_ism::Span;
 use marque_rules::{
     AppliedFix, Confidence, EnginePromotionToken, FixIntent, FixSource, Message, MessageArgs,
     MessageTemplate, RuleId,
@@ -34,6 +33,7 @@ use marque_scheme::{
     constraint::Constraint,
     fix_intent::RecanonScope,
     lattice::{BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice},
+    Span,
     template::Template,
 };
 use std::sync::Arc;

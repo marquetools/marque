@@ -764,8 +764,9 @@ fn display_only_parse_canonical_render_round_trip() {
     // would silently drop the DISPLAY ONLY block. This test pins
     // the byte-identity of the canonical form across the pipeline.
     use marque_core::Parser;
-    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::span::{MarkingCandidate, MarkingType};
     use marque_ism::token_set::CapcoTokenSet;
+    use marque_scheme::Span;
     let src = "SECRET//DISPLAY ONLY AFG, IRQ";
     let tokens = CapcoTokenSet;
     let parser = Parser::new(&tokens);
@@ -798,8 +799,9 @@ fn display_only_h8_p165_commingled_portion_round_trip() {
     // form byte-identical now that the dispatch loop respects
     // the single-slash dissem-family separator.
     use marque_core::Parser;
-    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::span::{MarkingCandidate, MarkingType};
     use marque_ism::token_set::CapcoTokenSet;
+    use marque_scheme::Span;
     let src = "SECRET//REL TO USA, IRQ/DISPLAY ONLY AFG";
     let tokens = CapcoTokenSet;
     let parser = Parser::new(&tokens);

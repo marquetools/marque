@@ -74,7 +74,7 @@
 use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
-use marque_ism::Span;
+use marque_scheme::Span;
 use marque_rules::{
     AppliedFix, AppliedFixProposal, Confidence, EnginePromotionToken, FixSource, RuleId,
 };

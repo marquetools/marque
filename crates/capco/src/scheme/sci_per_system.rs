@@ -118,7 +118,7 @@ pub(crate) enum SciPerSystemKind {
     Custom(
         fn(
             &marque_ism::CanonicalAttrs,
-            marque_ism::Span,
+            marque_scheme::Span,
             marque_scheme::Scope,
             &SciPerSystemRow,
         ) -> Vec<marque_rules::Diagnostic<CapcoScheme>>,

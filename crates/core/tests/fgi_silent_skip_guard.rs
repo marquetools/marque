@@ -62,8 +62,9 @@
 use marque_core::Parser;
 use marque_ism::CanonicalAttrs;
 use marque_ism::attrs::FgiMarker;
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
+use marque_scheme::Span;
 
 /// Drive `Parser::parse` over `text` interpreted as a banner candidate and
 /// return the resulting `CanonicalAttrs`. Mirrors the engine's banner-path

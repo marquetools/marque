@@ -19,7 +19,7 @@
 //! bytes are never copied into a `TextCorrectionProposal`.
 
 use marque_capco::CapcoScheme;
-use marque_ism::Span;
+use marque_scheme::Span;
 use marque_rules::{Confidence, FixIntent, FixSource, RuleId};
 use smol_str::SmolStr;
 

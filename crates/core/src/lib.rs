@@ -17,14 +17,11 @@
 //! Core ISM types (`Span`, `CanonicalAttrs`, `TokenSet`, etc.) are defined in
 //! `marque-ism` and re-exported here for ergonomic access.
 
-pub mod attrs;
 pub mod error;
 pub mod fuzzy;
 pub mod parser;
 pub mod scanner;
-pub mod span;
 
 pub use error::CoreError;
-pub use marque_ism::{CanonicalAttrs, MarkingType, Span};
 pub use parser::Parser;
 pub use scanner::Scanner;

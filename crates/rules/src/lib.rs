@@ -60,8 +60,8 @@ pub mod confidence;
 pub mod fix_intent;
 pub mod message;
 
-use marque_ism::{CanonicalAttrs, Span};
-use marque_scheme::MarkingScheme;
+use marque_ism::CanonicalAttrs;
+use marque_scheme::{MarkingScheme, Span};
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -543,7 +543,7 @@ impl<'a> RuleContext<'a> {
     /// `marque-capco`, the `marque-engine` rule loop) have a stable
     /// construction entrypoint regardless of which optional fields
     /// the engine adds in future PRs.
-    pub fn new(marking_type: MarkingType, candidate_span: marque_ism::Span) -> Self {
+    pub fn new(marking_type: MarkingType, candidate_span: marque_scheme::Span) -> Self {
         Self {
             marking_type,
             zone: None,

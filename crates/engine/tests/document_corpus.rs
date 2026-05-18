@@ -28,9 +28,9 @@
 //! correctly detects).
 
 use marque_capco::CapcoMarking;
-use marque_core::{MarkingType, Parser, Scanner};
+use marque_core::{Parser, Scanner};
 use marque_engine::decoder::is_nontrivial_marking;
-use marque_ism::CapcoTokenSet;
+use marque_ism::{CapcoTokenSet, MarkingType};
 use marque_test_utils::{
     DocumentGroundTruth, load_document_ground_truth, marked_document_fixtures,
 };

@@ -126,7 +126,7 @@ pub(crate) fn sci_per_system_catalog_eval(
     // hypothetical caller threaded it through.
     sci_per_system_emit(
         attrs,
-        marque_ism::Span::new(0, 0),
+        marque_scheme::Span::new(0, 0),
         marque_scheme::Scope::Portion,
         row,
     )

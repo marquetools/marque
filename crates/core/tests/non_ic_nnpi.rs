@@ -27,8 +27,10 @@
 
 use marque_core::Parser;
 use marque_ism::attrs::{NonIcDissem, TokenKind};
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
+use marque_scheme::Span;
+
 
 fn parse_portion(text: &str) -> marque_ism::ParsedAttrs<'_> {
     let source = text.as_bytes();

@@ -53,7 +53,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use marque_capco::CapcoScheme;
-use marque_ism::Span;
+use marque_scheme::Span;
 use marque_rules::{
     AuditNote, AuditNoteKind, AuditNoteStructural, Confidence, EnginePromotionToken, RuleId,
 };

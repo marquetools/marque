@@ -438,7 +438,7 @@ impl CapcoScheme {
     pub fn bridge_sci_per_system_diagnostics(
         &self,
         attrs: &CanonicalAttrs,
-        candidate_span: marque_ism::Span,
+        candidate_span: marque_scheme::Span,
         fix_scope: marque_scheme::Scope,
         severity_override: Option<marque_rules::Severity>,
     ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {

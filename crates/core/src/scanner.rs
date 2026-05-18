@@ -16,7 +16,8 @@
 //!   known classification prefix (UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP SECRET).
 //! - CAB candidates: scan for "Classified By:" label, walk to end of block.
 
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
+use marque_scheme::Span;
 use memchr::memchr_iter;
 use smallvec::SmallVec;
 

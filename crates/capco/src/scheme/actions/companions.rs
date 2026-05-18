@@ -39,10 +39,10 @@ use super::super::*;
 pub(crate) fn emit_companion_insert(
     rule: marque_rules::RuleId,
     severity: marque_rules::Severity,
-    anchor_span: marque_ism::Span,
-    candidate_span: marque_ism::Span,
+    anchor_span: marque_scheme::Span,
+    candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
-    last_dissem: Option<marque_ism::Span>,
+    last_dissem: Option<marque_scheme::Span>,
     token: &str,
     message: String,
     citation: &'static str,
@@ -116,7 +116,7 @@ pub(crate) fn emit_companion_insert(
 /// ORCON-USGOV. §H.4 p64.
 pub(crate) fn emit_hcs_o_companions(
     attrs: &marque_ism::CanonicalAttrs,
-    candidate_span: marque_ism::Span,
+    candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
@@ -186,7 +186,7 @@ pub(crate) fn emit_hcs_o_companions(
 /// it is not duplicated here.
 pub(crate) fn emit_hcs_p_sub_companions(
     attrs: &marque_ism::CanonicalAttrs,
-    candidate_span: marque_ism::Span,
+    candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
@@ -241,7 +241,7 @@ pub(crate) fn emit_hcs_p_sub_companions(
 /// §H.4 p80.
 pub(crate) fn emit_si_g_companions(
     attrs: &marque_ism::CanonicalAttrs,
-    candidate_span: marque_ism::Span,
+    candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
@@ -315,13 +315,13 @@ pub(crate) fn emit_si_g_companions(
 /// per-row exception table.
 pub(crate) fn emit_companion_required(
     attrs: &marque_ism::CanonicalAttrs,
-    candidate_span: marque_ism::Span,
+    candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
     dissem: marque_ism::DissemControl,
     token_name: &'static str,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {
-    use marque_ism::Span;
+    use marque_scheme::Span;
 
     if us_level(attrs).is_none() {
         return Vec::new();

@@ -12,7 +12,7 @@
 //!
 //! `marque-ism` re-exports `Span` from this module, so existing
 //! consumers (`crates/ism/src/span.rs`, `crates/core/`, etc.) continue
-//! to use `marque_ism::Span` unchanged. The single definition lives
+//! to use `marque_scheme::Span` unchanged. The single definition lives
 //! here; the re-export preserves back-compat across the workspace.
 
 /// A byte-offset span into the original source buffer.

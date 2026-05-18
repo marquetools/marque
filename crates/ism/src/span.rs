@@ -9,7 +9,7 @@
 //! other scheme-layer types) can carry source positions without
 //! taking a dependency on `marque-ism`, which would violate
 //! Constitution VII (`marque-scheme` is the only true graph leaf).
-//! The re-export here keeps every existing `marque_ism::Span` import
+//! The re-export here keeps every existing `marque_scheme::Span` import
 //! site unchanged.
 
 pub use marque_scheme::Span;

@@ -317,7 +317,7 @@ pub(crate) fn class_floor_emit(
 #[inline]
 pub(crate) fn sci_per_system_emit(
     attrs: &marque_ism::CanonicalAttrs,
-    candidate_span: marque_ism::Span,
+    candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
     row: &SciPerSystemRow,
 ) -> Vec<marque_rules::Diagnostic<CapcoScheme>> {

@@ -30,8 +30,9 @@
 
 use marque_core::Parser;
 use marque_ism::attrs::{TokenKind, TokenSpan};
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
+use marque_scheme::Span;
 
 // -----------------------------------------------------------------------
 // Test plumbing — mirrors the in-crate test helpers in `parser.rs`.

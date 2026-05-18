@@ -37,8 +37,9 @@ use marque_ism::parsed::{
     ParsedDissem, ParsedFgiMarker, ParsedNonIcDissem, ParsedRelToEntry, ParsedSarMarking,
     ParsedSciMarking, SourceOrigin,
 };
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::TokenSet;
+use marque_scheme::Span;
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 use std::str::FromStr;
@@ -3645,8 +3646,9 @@ fn split_with_offsets(s: &str, delim: char) -> SmallVec<[(usize, &str); 4]> {
 mod tests {
     use super::*;
     use marque_ism::CanonicalAttrs;
-    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::span::{MarkingCandidate, MarkingType};
     use marque_ism::token_set::CapcoTokenSet;
+    use marque_scheme::Span;
 
     /// Test-helper output: a [`ParsedMarking`] post-`from_parsed_unchecked`,
     /// so existing assertions on the typed `attrs.classification` /
@@ -5602,8 +5604,9 @@ mod sar_parse_tests {
 
     use super::tests::CanonicalParsed;
     use super::*;
-    use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+    use marque_ism::span::{MarkingCandidate, MarkingType};
     use marque_ism::token_set::CapcoTokenSet;
+    use marque_scheme::Span;
 
     // ---------------------------------------------------------------------
     // Direct subparser tests

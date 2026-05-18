@@ -219,7 +219,7 @@ fn apply_fix(source: &str, span: Span, replacement: &str) -> String {
 /// goes through `RuleContext::new` (every optional context field
 /// defaults to `None`).
 fn ctx() -> RuleContext<'static> {
-    RuleContext::new(MarkingType::Portion, marque_ism::Span::new(0, 0))
+    RuleContext::new(MarkingType::Portion, marque_scheme::Span::new(0, 0))
 }
 
 // ---------------------------------------------------------------------------

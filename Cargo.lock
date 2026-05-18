@@ -1053,6 +1053,7 @@ version = "0.2.1"
 dependencies = [
  "aho-corasick",
  "marque-ism",
+ "marque-scheme",
  "memchr",
  "serde",
  "smallvec",

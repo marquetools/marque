@@ -30,7 +30,7 @@
 //! [`MessageArgs`] field set is closed. Permitted field types are
 //! restricted to the audit-content-ignorance permitted set per
 //! Constitution V Principle V: [`marque_scheme::TokenId`],
-//! [`marque_scheme::CategoryId`], [`marque_ism::Span`], [`Blake3Hash`],
+//! [`marque_scheme::CategoryId`], [`marque_scheme::Span`], [`Blake3Hash`],
 //! [`crate::Confidence`], [`crate::FeatureId`]. Two convenience-typed
 //! `Option<TokenId>` fields (`expected_token` / `actual_token`) are
 //! permitted because they carry the same type as `token` — the field
@@ -56,8 +56,7 @@
 //!    that [`Message::new`] is the sole public constructor reachable
 //!    from outside `marque-rules`.
 
-use marque_ism::Span;
-use marque_scheme::{CategoryId, TokenId};
+use marque_scheme::{CategoryId, Span, TokenId};
 use smallvec::SmallVec;
 
 use crate::RuleId;

@@ -26,9 +26,8 @@
 //! `&str`, `Vec<u8>`, or `format!`-derived field can land without
 //! a coordinated audit-schema change.
 
-use marque_ism::Span;
 use marque_rules::{Blake3Hash, Confidence, FeatureId, MessageArgs, RuleId};
-use marque_scheme::{CategoryId, TokenId};
+use marque_scheme::{CategoryId, Span, TokenId};
 use smallvec::SmallVec;
 
 #[test]

@@ -44,8 +44,9 @@ chooses to register. Rule crates depend only on `marque-rules` and
 A minimal rule:
 
 ```rust
-use marque_ism::{CanonicalAttrs, Span};
+use marque_ism::CanonicalAttrs;
 use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, Severity};
+use marque_scheme::Span;
 
 struct AlwaysFire;
 

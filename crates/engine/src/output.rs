@@ -201,7 +201,7 @@ pub struct FixResult {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_core::Span;
+    use marque_scheme::Span;
     use marque_rules::{Diagnostic, RuleId, Severity};
 
     #[test]

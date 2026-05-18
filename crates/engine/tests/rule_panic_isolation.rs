@@ -84,7 +84,7 @@ impl Rule<CapcoScheme> for AlwaysFiresRule {
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
-            marque_ism::Span::new(0, 1),
+            marque_scheme::Span::new(0, 1),
             ALWAYS_FIRES_MESSAGE,
             "test-citation",
             None,

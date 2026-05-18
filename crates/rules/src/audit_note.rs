@@ -42,8 +42,7 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use marque_ism::Span;
-use marque_scheme::{MarkingScheme, Scope, TokenId, TokenRef};
+use marque_scheme::{MarkingScheme, Scope, Span, TokenId, TokenRef};
 
 use crate::{Confidence, EnginePromotionToken, RuleId};
 

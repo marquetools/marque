@@ -31,8 +31,9 @@
 
 use marque_core::Parser;
 use marque_ism::attrs::TokenKind;
-use marque_ism::span::{MarkingCandidate, MarkingType, Span};
+use marque_ism::span::{MarkingCandidate, MarkingType};
 use marque_ism::token_set::CapcoTokenSet;
+use marque_scheme::Span;
 
 fn parse_portion(text: &str) -> marque_ism::ParsedAttrs<'_> {
     let source = text.as_bytes();
@@ -710,7 +711,8 @@ fn h8_p165_notional_example_page1() {
     // Engine-level lint should produce zero E008 over this manual
     // example — the byte-position assertions are in the per-form
     // tests above; here we just want the document-level clean pass.
-    use marque_core::{MarkingType, Parser, Scanner};
+    use marque_core::{Parser, Scanner};
+    use marque_ism::span::MarkingType;
     let tokens = CapcoTokenSet;
     let parser = Parser::new(&tokens);
     let candidates = Scanner::scan(src.as_bytes());
