@@ -222,24 +222,28 @@ fn project_banner_noforn_supersedes_rel_to() {
 }
 
 // ---------------------------------------------------------------------------
-// Lattice join equivalence: join(a, b) agrees with project_banner([a, b])
+// Cross-axis fold equivalence: join_via_lattice(a, b) agrees with
+// project_banner([a, b]) on the load-bearing per-axis projections.
+//
+// PR 4b-D.2 D24 dropped `impl JoinSemilattice for CapcoMarking` (the
+// cross-axis fold is a projection, not a lattice op). This test
+// pivoted to exercising the inherent-method equivalent
+// (`CapcoMarking::join_via_lattice`) — the API surface that survives.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn lattice_join_agrees_with_project_banner_pairwise() {
-    use marque_scheme::JoinSemilattice;
-
+fn join_via_lattice_agrees_with_project_banner_pairwise() {
     let mut p1 = portion(Classification::Confidential);
     p1.sci_controls = vec![SciControl::Si].into();
     let mut p2 = portion(Classification::TopSecret);
     p2.sci_controls = vec![SciControl::Tk].into();
 
-    let a = wrap(p1);
-    let b = wrap(p2);
+    let a = wrap(p1.clone());
+    let b = wrap(p2.clone());
 
     let scheme = CapcoScheme::new();
     let projected = scheme.project_banner(&[a.clone(), b.clone()]);
-    let joined = a.join(&b);
+    let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(&[p1, p2]));
 
     assert_eq!(projected.classification(), joined.classification());
     let p_sci: std::collections::BTreeSet<_> = projected.0.sci_controls.iter().copied().collect();
@@ -1039,9 +1043,13 @@ fn scheme_declares_phase3_rewrites() {
     // PR 4b-C Commit 3 added 7 Pattern-C rows between the four
     // Pattern-A `*-implies-noforn` rewrites and `capco/noforn-clears-rel-to`.
     // PR 4b-C Commit 4 added 2 Pattern-B structural rows immediately
-    // after the Pattern-C cohort. Total: 23. Each row carries its own
-    // §-citation.
-    assert_eq!(rewrites.len(), 23);
+    // after the Pattern-C cohort.
+    //
+    // PR 4b-D.2 Copilot R1 #2 added `capco/noforn-clears-display-only-to`
+    // (between the existing two NOFORN-clears entries and the transmutation
+    // rewrites) for the §H.8 p145 + §D.2 Table 3 rows 1-2 country-list
+    // axis clear. Total: 24. Each row carries its own §-citation.
+    assert_eq!(rewrites.len(), 24);
 
     let ids: Vec<&str> = rewrites.iter().map(|r| r.id).collect();
     assert_eq!(
@@ -1069,6 +1077,9 @@ fn scheme_declares_phase3_rewrites() {
             // — end Pattern-B
             "capco/noforn-clears-rel-to",
             "capco/noforn-clears-fdr-family",
+            // PR 4b-D.2 Copilot R1 #2 — DISPLAY ONLY country-list axis
+            // clear, symmetric with `capco/noforn-clears-rel-to`.
+            "capco/noforn-clears-display-only-to",
             "capco/frd-sigma-consolidates-into-rd-sigma",
             "capco/fgi-rollup-on-us-contact",
             "capco/fgi-restricted-rollup-on-us-contact",
@@ -1127,14 +1138,20 @@ fn scheme_declares_phase3_rewrites() {
         rewrites[14].citation,
         "CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157"
     );
-    assert_eq!(rewrites[15].citation, "CAPCO-2016 §H.6 p113");
-    assert_eq!(rewrites[16].citation, "CAPCO-2016 §H.7 p122");
+    // PR 4b-D.2 Copilot R1 #2 — new row inserted at index 15;
+    // pre-existing rows below shift +1.
+    assert_eq!(
+        rewrites[15].citation,
+        "CAPCO-2016 §H.8 p145 + §D.2 Table 3 rows 1-2"
+    );
+    assert_eq!(rewrites[16].citation, "CAPCO-2016 §H.6 p113");
     assert_eq!(rewrites[17].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[18].citation, "CAPCO-2016 §H.3 p57");
-    assert_eq!(rewrites[19].citation, "CAPCO-2016 §H.7 p122");
-    assert_eq!(rewrites[20].citation, "CAPCO-2016 §H.8 p136");
-    assert_eq!(rewrites[21].citation, "CAPCO-2016 §H.9 p178");
-    assert_eq!(rewrites[22].citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rewrites[18].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[19].citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rewrites[20].citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rewrites[21].citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rewrites[22].citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rewrites[23].citation, "CAPCO-2016 §H.9 p185");
 }
 
 #[test]
@@ -1313,42 +1330,19 @@ fn capco_scheme_templates_slice_returns_empty_in_phase_a() {
     assert!(s.templates().is_empty());
 }
 
-#[test]
-fn capco_marking_meet_narrow_components() {
-    use marque_scheme::MeetSemilattice;
-
-    // Exercise the CapcoMarking::meet impl (Phase A narrow
-    // component-wise min on classification, SCI, dissem).
-    let mut a = portion(Classification::Secret);
-    a.sci_controls = vec![SciControl::Si, SciControl::Tk].into();
-    a.dissem_us = vec![DissemControl::Nf].into();
-    let mut b = portion(Classification::TopSecret);
-    b.sci_controls = vec![SciControl::Si].into();
-    b.dissem_us = vec![DissemControl::Nf, DissemControl::Oc].into();
-
-    let m = wrap(a).meet(&wrap(b));
-    // classification = min(S, TS) = S (effective_level).
-    assert_eq!(m.classification(), Some(Classification::Secret));
-    // SCI intersection = {Si}
-    assert_eq!(m.0.sci_controls.as_ref(), &[SciControl::Si]);
-    // Dissem intersection = {Nf}. Both portions are US-classified so
-    // the meet on dissem_us reflects the intersection.
-    assert_eq!(m.0.dissem_us.as_ref(), &[DissemControl::Nf]);
-    assert!(m.0.dissem_nato.is_empty());
-}
-
-#[test]
-fn capco_marking_meet_with_missing_classification_is_none() {
-    use marque_scheme::MeetSemilattice;
-
-    // One side has no classification → meet.classification = None.
-    let a = CanonicalAttrs::default();
-    let mut b = portion(Classification::Secret);
-    b.sci_controls = vec![SciControl::Si].into();
-
-    let m = wrap(a).meet(&wrap(b));
-    assert!(m.0.classification.is_none());
-}
+// PR 4b-D.2 D24: `impl MeetSemilattice for CapcoMarking` was
+// dropped (cross-axis fold cannot keep the meet laws — the impl
+// was a "partial component-wise minimum" per its own doc, which is
+// not the meet operation; structural `Eq` on `CanonicalAttrs` does
+// not coincide with the lattice equivalence on the per-axis types).
+// The two tests that exercised this impl (`capco_marking_meet_narrow_components`
+// + `capco_marking_meet_with_missing_classification_is_none`) were
+// removed because no production code path consumed the trait
+// method. The per-axis meet semantics (on `RelToBlock`, `SciSet`,
+// etc.) continue to be exercised through the per-axis lattice
+// proptests in `crates/capco/tests/proptest_lattice.rs` and the
+// projection equivalence tests above; that's the algebraically-
+// sound site for the meet claim.
 
 #[test]
 fn render_portion_and_render_banner_use_classification() {

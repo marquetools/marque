@@ -9,7 +9,7 @@
 //! larger space of compartment-tree combinations that the fixed samples can't
 //! reach.
 
-use marque_capco::lattice::{FgiSet, SarSet, SciSet};
+use marque_capco::lattice::{FgiSet, RelToBlock, SarSet, SciSet};
 use marque_ism::{
     CountryCode, FgiMarker, SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment,
     SciControlBare, SciControlSystem, SciMarking,
@@ -376,6 +376,103 @@ proptest! {
     // Meet-over-join absorption: a ⊓ (a ⊔ b) = a (holds after P-9-1 fix).
     #[test]
     fn fgi_meet_over_join_absorption(a in arb_fgi_set(), b in arb_fgi_set()) {
+        prop_assert_eq!(a.meet(&a.join(&b)), a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RelToBlock laws (PR 4b-D.2 Copilot R1 / D24)
+//
+// The Copilot R1 review (decisions.md D24) flagged that `CapcoMarking`'s
+// prior `JoinSemilattice` impl violated structural-`Eq` idempotence
+// whenever `RelToBlock`'s tetragraph expansion fired. The lattice
+// consultant verdict: `RelToBlock` IS a sound lattice on its native
+// post-expansion domain (BTreeSet over trigraphs); the unsoundness was
+// the cross-axis fold (`CapcoMarking`) claiming the law on a
+// representation-finer structural `Eq`. PR 4b-D.2 drops the
+// cross-axis claim and pins the per-axis claim with these proptests —
+// which had no `RelToBlock` coverage before this PR.
+//
+// Strategy: build `Lattice { countries }` over a small CountryCode
+// pool, plus `Bottom`, `Empty`, and `NofornSuperseded` as absorbing /
+// identity states. Tetragraph atoms are NOT generated as inputs
+// because `RelToBlock` lives on the expanded domain; tetragraph
+// expansion happens at `from_attrs_iter` time before the lattice
+// state is built. The strategy reflects what the lattice actually
+// sees.
+// ---------------------------------------------------------------------------
+
+fn arb_rel_to_block() -> impl Strategy<Value = RelToBlock> {
+    prop_oneof![
+        Just(RelToBlock::Bottom),
+        Just(RelToBlock::Empty),
+        Just(RelToBlock::NofornSuperseded),
+        proptest::collection::vec(arb_country_code(), 1..=4).prop_map(|countries| {
+            let set: std::collections::BTreeSet<CountryCode> = countries.into_iter().collect();
+            RelToBlock::Lattice { countries: set }
+        }),
+    ]
+}
+
+proptest! {
+    // Join laws.
+    #[test]
+    fn rel_to_join_idempotent(a in arb_rel_to_block()) {
+        prop_assert_eq!(a.join(&a), a);
+    }
+
+    #[test]
+    fn rel_to_join_commutative(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.join(&b), b.join(&a));
+    }
+
+    #[test]
+    fn rel_to_join_associative(
+        a in arb_rel_to_block(),
+        b in arb_rel_to_block(),
+        c in arb_rel_to_block(),
+    ) {
+        prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+    }
+
+    #[test]
+    fn rel_to_join_bottom_identity(a in arb_rel_to_block()) {
+        let bottom = RelToBlock::Bottom;
+        prop_assert_eq!(a.join(&bottom), a.clone());
+        prop_assert_eq!(bottom.join(&a), a);
+    }
+
+    // Meet laws.
+    #[test]
+    fn rel_to_meet_idempotent(a in arb_rel_to_block()) {
+        prop_assert_eq!(a.meet(&a), a);
+    }
+
+    #[test]
+    fn rel_to_meet_commutative(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.meet(&b), b.meet(&a));
+    }
+
+    #[test]
+    fn rel_to_meet_associative(
+        a in arb_rel_to_block(),
+        b in arb_rel_to_block(),
+        c in arb_rel_to_block(),
+    ) {
+        prop_assert_eq!(a.meet(&b).meet(&c), a.meet(&b.meet(&c)));
+    }
+
+    // Absorption laws (both directions hold on the meet-bottom +
+    // join-top setup: `Bottom` is meet-absorbing and join-identity;
+    // `NofornSuperseded` is join-top per the doc comment + 11th-pass
+    // fix at lattice.rs:3095-3125).
+    #[test]
+    fn rel_to_join_over_meet_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
+        prop_assert_eq!(a.join(&a.meet(&b)), a);
+    }
+
+    #[test]
+    fn rel_to_meet_over_join_absorption(a in arb_rel_to_block(), b in arb_rel_to_block()) {
         prop_assert_eq!(a.meet(&a.join(&b)), a);
     }
 }

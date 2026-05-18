@@ -798,10 +798,11 @@ impl Engine {
         // for `RuleContext::page_marking`. Same invalidation
         // semantics as `page_context_arc` — lazy on first banner/CAB
         // consumer, dropped on portion accumulation and on page
-        // break. The projection is built from `PageContext::project`
-        // so banner-validation rules see the same page-rolled view
-        // regardless of whether they read through `PageContext` or
-        // `ProjectedMarking` during the migration window.
+        // break. PR 4b-D.2 flipped the projection driver from
+        // `PageContext::project` to `scheme.project(Scope::Page, ...)`
+        // via the `project_page_marking` helper; the lattice + closure
+        // + PageRewrite pipeline is now the single source of truth
+        // for the page roll-up that banner-validation rules consume.
         let mut page_marking_arc: Option<Arc<marque_ism::ProjectedMarking>> = None;
 
         // FR-011: per-page strict classification floor. Tracks the
@@ -910,6 +911,7 @@ impl Engine {
                 // loop does.
                 if !page_context.is_empty()
                     && dispatch_page_finalization(
+                        &self.scheme,
                         &self.rule_sets,
                         &self.pass_finalization_rule_indices,
                         &self.fast_path_severities,
@@ -1197,9 +1199,14 @@ impl Engine {
             // doc note added in this PR.
             //
             // PR 9b (T133): lazy/cached construction for the
-            // page-marking projection. Built from `PageContext::project`
-            // so banner-validation rules see the rolled-up shape
-            // (classification / SCI / SAR / AEA / dissem_us /
+            // page-marking projection. Built from
+            // `project_page_marking(&self.scheme, &page_context)`
+            // (post-PR-4b-D.2 hot-path flip — the helper invokes
+            // `CapcoScheme::project_from_page_context` which drives
+            // the lattice + closure + page-rewrite pipeline, NOT
+            // `PageContext::project` which has been retired from the
+            // hot path) so banner-validation rules see the rolled-up
+            // shape (classification / SCI / SAR / AEA / dissem_us /
             // dissem_nato / REL TO) without going through
             // `PageContext::expected_*` accessors. Sharing the Arc
             // across consecutive banner/CAB candidates on the same
@@ -1208,7 +1215,9 @@ impl Engine {
                 if candidate.kind != MarkingType::Portion && !page_context.is_empty() {
                     Some(
                         page_marking_arc
-                            .get_or_insert_with(|| Arc::new(page_context.project()))
+                            .get_or_insert_with(|| {
+                                Arc::new(project_page_marking(&self.scheme, &page_context))
+                            })
                             .clone(),
                     )
                 } else {
@@ -1740,6 +1749,7 @@ impl Engine {
         // PageBreak branch does.
         if !page_context.is_empty()
             && dispatch_page_finalization(
+                &self.scheme,
                 &self.rule_sets,
                 &self.pass_finalization_rule_indices,
                 &self.fast_path_severities,
@@ -4215,6 +4225,7 @@ fn partition_rules_by_phase(
 /// invoking any rule.
 #[allow(clippy::too_many_arguments)]
 fn dispatch_page_finalization(
+    scheme: &CapcoScheme,
     rule_sets: &[Box<dyn RuleSet<CapcoScheme>>],
     pass_finalization_rule_indices: &PassFinalizationIndices,
     fast_path_severities: &FastPathSeverities,
@@ -4283,7 +4294,7 @@ fn dispatch_page_finalization(
         .get_or_insert_with(|| Arc::new(page_context.clone()))
         .clone();
     let page_mark_arc = page_marking_arc
-        .get_or_insert_with(|| Arc::new(page_context.project()))
+        .get_or_insert_with(|| Arc::new(project_page_marking(scheme, page_context)))
         .clone();
 
     // Zero-length span at the boundary anchor. Rules use this as
@@ -4335,20 +4346,21 @@ fn dispatch_page_finalization(
     // future API changes that would open a mutation path.
     // See `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1).
     //
-    // **Sibling sentinel pending closure hot-path wiring.**
-    // `docs/plans/2026-05-01-lattice-design.md` section 3 (e.1) flags
-    // that the **closure-operator's rewrite-application site** needs a
-    // parallel sentinel when `Engine::project::closure()` is wired on
-    // the production hot path. `CapcoScheme::closure()` (the operator)
-    // is reachable today through direct `scheme.closure(marking)` calls
-    // (tests + opt-in callers) but is NOT invoked from any per-page
-    // engine call site; the closure operates on `S::Marking` (a
-    // per-portion or composed marking the caller owns), never on
-    // `PageContext::portions()`. When the engine wires `closure()` into
-    // the page-projection hot path, the sibling sentinel must land
-    // alongside the wiring to enforce the same read-only-attrs property
-    // for the closure-application site that this PageFinalization
-    // sentinel enforces for rule dispatch.
+    // **Sibling sentinel (PR 4b-D.2).** The closure-operator's
+    // rewrite-application site now lives in `CapcoScheme::project`
+    // (`crates/capco/src/scheme/marking_scheme_impl.rs`), where it
+    // sits between the `join_via_lattice` composition and the
+    // declarative PageRewrite catalog. That site carries its own
+    // `#[cfg(debug_assertions)]` snapshot-and-compare against the raw
+    // per-portion CanonicalAttrs slice it observes, asserting the
+    // closure's read-only-attrs invariant per
+    // `docs/plans/2026-05-01-lattice-design.md` §3 (e.1). The two
+    // sentinels cover different invocation contexts: this one fires
+    // around `Phase::PageFinalization` rule dispatch (where rules
+    // read `ctx.page_context.portions()`); the scheme-side sentinel
+    // fires inside the per-projection pipeline that produces
+    // `ctx.page_marking`. Together they pin the read-only contract
+    // across both engine-facing surfaces.
     //
     // Snapshot the slice the rule actually observes (via
     // `page_ctx_arc`), not the original `&PageContext` parameter.
@@ -4460,6 +4472,55 @@ fn dispatch_page_finalization(
     }
 
     Ok(())
+}
+
+/// Project the current [`marque_ism::PageContext`] into a
+/// [`marque_ism::ProjectedMarking`] via the scheme's production
+/// page-projection path.
+///
+/// PR 4b-D.2 flipped the hot path from `PageContext::project()` (the
+/// transitional PageContext-driven projection) to
+/// `scheme.project(Scope::Page, ...)` (the lattice + closure +
+/// PageRewrite pipeline). The bridge from `CanonicalAttrs` to
+/// `ProjectedMarking` lives in `marque_ism::ProjectedMarking::from_canonical`
+/// so the scheme crate and the engine crate share one source of truth.
+///
+/// Authorization: this helper centralizes the projection-call shape
+/// shared by the primary lazy-init in `Engine::lint` (around the
+/// banner/CAB candidate dispatch) and the secondary
+/// `dispatch_page_finalization` initialization. Both sites need the
+/// scheme handle to drive the lattice path; passing `scheme` and
+/// `page_context` here keeps the closure capture minimal at each call
+/// site and avoids duplicating the per-portion conversion logic.
+///
+/// PR 4b-D.2 Copilot R1 #5: this helper now lives BELOW
+/// `dispatch_page_finalization` so its doc-comment doesn't run into
+/// the dispatch function's `# Returns` block. The placement is purely
+/// for doc-attribution clarity; the function body is unchanged.
+///
+/// Authority: `docs/plans/2026-05-01-lattice-design.md` §4.7.4
+/// pipeline ordering.
+fn project_page_marking(
+    scheme: &CapcoScheme,
+    page_context: &marque_ism::PageContext,
+) -> marque_ism::ProjectedMarking {
+    // PR 4b-D.2 Commit 7 perf optimization: route through
+    // `CapcoScheme::project_from_page_context`, the engine fast-path
+    // that consumes the pre-built `&PageContext` directly. This skips
+    // three categories of redundant work the trait-level
+    // `MarkingScheme::project` would pay:
+    //
+    //   1. Wrapping each portion in a `CapcoMarking::new(p.clone())`
+    //      at the engine boundary.
+    //   2. Re-extracting `m.0.clone()` for each marking back into a
+    //      `Vec<CanonicalAttrs>` inside the trait body.
+    //   3. Rebuilding a tmp_ctx via `add_portion(p.clone())` for each
+    //      portion inside `join_via_lattice`.
+    //
+    // The engine ALREADY owns a `PageContext` accumulating portions
+    // across the document; reusing it here eliminates all three.
+    let projected = scheme.project_from_page_context(page_context);
+    marque_ism::ProjectedMarking::from_canonical(projected)
 }
 
 /// Compare two `CanonicalAttrs` slices for the PageFinalization

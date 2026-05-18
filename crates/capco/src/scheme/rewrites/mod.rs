@@ -28,11 +28,12 @@ mod transmutation_stubs;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
-/// **23 rewrites, in six groups** (post-PR-4b-C, 006 T112; PR
-/// 4b-A landed group 4; PR 3c.B Sub-PR 8.F / 8.F.2 landed group
-/// 3; PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
-/// declarative rows that own the §H.6 / §H.8 / §H.9 strip-plus-
-/// promote semantics):
+/// **24 rewrites, in six groups** (post-PR-4b-D.2 Copilot R1 #2;
+/// PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
+/// declarative rows owning the §H.6 / §H.8 / §H.9 strip-plus-
+/// promote semantics; PR 4b-A landed group 4; PR 3c.B Sub-PR 8.F /
+/// 8.F.2 landed group 3; PR 4b-D.2 added
+/// `capco/noforn-clears-display-only-to` to group 5):
 ///
 /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
 ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
@@ -61,9 +62,15 @@ mod transmutation_stubs;
 ///    Table 3 + §H.8 p145. First PageRewrite to land in the
 ///    catalog; canonical worked example in
 ///    `crates/capco/README.md`.
-/// 5. **DISPLAY-ONLY / FD&R-family (1):**
-///    `capco/noforn-clears-fdr-family` per DISPLAY ONLY Phase 2
-///    landing at §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157.
+/// 5. **DISPLAY-ONLY / FD&R-family (2):**
+///    `capco/noforn-clears-fdr-family` (strips DISPLAY ONLY /
+///    RELIDO / EYES tokens from `dissem_us`) at §D.2 Table 3
+///    row 2 + §H.8 p154 + §H.8 p157, plus
+///    `capco/noforn-clears-display-only-to` (PR 4b-D.2 Copilot R1
+///    #2 — clears `attrs.display_only_to`, the country-list
+///    sibling of `attrs.rel_to`) at §H.8 p145 + §D.2 Table 3
+///    rows 1-2. The two rows together close the parallel REL TO /
+///    DISPLAY ONLY axes.
 /// 6. **Phase-3 transmutation stubs (8):** the §3.4.1 / §3.4.3
 ///    transmutation roster from `marque-applied.md` (consultant
 ///    Entry 6 split into 6a + 6b for D13 single-citation

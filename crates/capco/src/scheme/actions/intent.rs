@@ -249,6 +249,80 @@ fn apply_fact_add(
             // audit log (Copilot review of PR #372).
             return Err(ApplyIntentError::IntentInapplicable);
         }
+
+        // PR 4b-D.2 Copilot R2 #1 (inverse-case rejection): if NOFORN
+        // is already in `dissem_us`, FactAdd of any §H.8 p145 dominated
+        // token (REL TO / RELIDO / DISPLAY ONLY / EYES ONLY) is a no-op
+        // because NOFORN already supersedes it. Match the existing
+        // idempotency guard above which short-circuits the
+        // double-insertion case: the caller's FactAdd is dominated by
+        // existing state and `IntentInapplicable` is the right
+        // sentinel (no mutation, audit log doesn't see an applied
+        // no-op).
+        //
+        // Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
+        // RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
+        // The supersession table at `crates/capco/src/lattice.rs:2018-2032`
+        // enumerates these four dominated tokens.
+        if matches!(
+            target,
+            DissemControl::Rel
+                | DissemControl::Relido
+                | DissemControl::Displayonly
+                | DissemControl::Eyes
+        ) && attrs.dissem_us.contains(&DissemControl::Nf)
+        {
+            return Err(ApplyIntentError::IntentInapplicable);
+        }
+
+        // PR 4b-D.2 D22 (decisions.md) + Copilot R2 #1 (suppressed):
+        // when NOFORN is being inserted into dissem_us, route through
+        // `DissemSet::with_noforn_injected` so the §H.8 p145
+        // supersession overlay strips dominated FD&R *tokens* (REL TO /
+        // RELIDO / DISPLAY ONLY / EYES ONLY) at the injection site —
+        // AND ALSO clear the parallel country-list fields
+        // (`attrs.rel_to` and `attrs.display_only_to`) so the injection
+        // brings the FULL §H.8 p145 supersession with it, not just
+        // the token-axis eviction.
+        //
+        // Pre-R2 the token-axis eviction was correct but the country-
+        // list axes (`attrs.rel_to`, `attrs.display_only_to`) stayed
+        // populated, which produced a §H.8 p145 violation on the
+        // direct `apply_intent` path used by E021 / E038 (callers that
+        // bypass `scheme.project` and the `capco/noforn-clears-rel-to`
+        // / `capco/noforn-clears-display-only-to` PageRewrites). The
+        // PageRewrites remain as defense-in-depth for the
+        // `scheme.project` hot path; this branch makes
+        // `apply_fact_add` self-sufficient for the full invariant.
+        //
+        // The other FactAdd targets (Relido, Displayonly, Oc, OcUsgov)
+        // do NOT need supersession routing: §H.8 p145 only specifies
+        // NOFORN as a dominator on the FD&R chain. The OC-vs-OC-USGOV
+        // §H.8 p136/p140 supersession runs at join time (where both
+        // tokens can be observed on different portions); FactAdd of
+        // OcUsgov alongside existing Oc is a per-portion config that
+        // the lattice will resolve at the next join.
+        //
+        // Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
+        // RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2
+        // + §H.8 p157 (EYES ONLY: NSA-only, retains DissemControl::Eyes
+        // through lint per scheme.rs:190). All citations re-verified
+        // 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`.
+        if target == DissemControl::Nf {
+            let portion_attrs = [attrs.clone()];
+            let dissem_set =
+                crate::lattice::DissemSet::from_attrs_iter(&portion_attrs).with_noforn_injected();
+            attrs.dissem_us = dissem_set.into_boxed_slice();
+            // Clear the country-list axes that §H.8 p145 dominates
+            // alongside the token-axis eviction.
+            if !attrs.rel_to.is_empty() {
+                attrs.rel_to = Box::new([]);
+            }
+            if !attrs.display_only_to.is_empty() {
+                attrs.display_only_to = Box::new([]);
+            }
+            return Ok(());
+        }
         let mut next: Vec<DissemControl> = attrs.dissem_us.to_vec();
         next.push(target);
         // D9b-1 (decisions.md): FactAdd writes to dissem_us unconditionally;

@@ -681,3 +681,77 @@ fn closure_does_not_overfire_on_uncaveated_classified() {
          (uncaveated classified — no Trio-1 caveat present)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PR 4b-D.2 Commit 6 — cone-trigger short-circuit (behavioral)
+// ---------------------------------------------------------------------------
+//
+// These tests assert the *observable* behavior of the short-circuit
+// (closure is a no-op when no triggers fire; closure still contributes
+// when a trigger fires). The *predicate-direct* tests for
+// `any_closure_trigger_fires` live in
+// `crates/capco/src/scheme/tests.rs` (in-crate so they can call the
+// `pub(crate)` predicate directly without forcing it to `pub`).
+
+/// Closure is a no-op on a bare unclassified portion — no SAR / AEA /
+/// FGI / ORCON / RSEN / IMCON / DSEN / LIMDIS / LES / SBU / SSI /
+/// NATO-class trigger is present. The short-circuit returns the input
+/// unchanged without entering the fixpoint loop.
+///
+/// This is the architect's R-1 mitigation: bench corpus's typical
+/// portion has no closure-rule trigger, so the short-circuit skips
+/// the snapshot-and-fixpoint loop on the common case.
+#[test]
+fn closure_short_circuits_on_bare_unclassified() {
+    let scheme = CapcoScheme::new();
+    let m = CapcoMarking::new(CanonicalAttrs::default());
+    let closed = scheme.closure(m.clone());
+    assert_eq!(m, closed, "closure must be a no-op when no triggers fire");
+}
+
+/// Closure is a no-op on a classified-but-uncaveated portion (`(S)`).
+/// No Trio-1 caveat, no NATO classification, no FGI marker — nothing
+/// for the closure to do.
+#[test]
+fn closure_short_circuits_on_uncaveated_classified() {
+    let scheme = CapcoScheme::new();
+    let m = classified_no_dissem(Classification::Secret);
+    let closed = scheme.closure(m.clone());
+    assert_eq!(m, closed, "closure must be a no-op on uncaveated `(S)`");
+}
+
+/// Closure still contributes when a trigger fires. `(S//OC)` carries
+/// ORCON; the short-circuit does NOT skip; the fixpoint runs and
+/// NOFORN is injected.
+#[test]
+fn closure_does_not_short_circuit_when_trigger_fires() {
+    let scheme = CapcoScheme::new();
+    let m = classified_with_dissem(Classification::Secret, DissemControl::Oc);
+    let closed = scheme.closure(m);
+    assert!(
+        dissem_us_contains(&closed, DissemControl::Nf),
+        "closure must inject NOFORN when ORCON is present (the \
+         short-circuit must not skip a productive fixpoint); \
+         closed.dissem_us = {:?}",
+        closed.0.dissem_us,
+    );
+}
+
+/// When all firing triggers are suppressed (`(S//OC//NF)` carries
+/// ORCON trigger + NOFORN dominator), the short-circuit does NOT skip
+/// — `trigger_fires` is true even when `should_fire` is false. The
+/// fixpoint loop runs, finds nothing to add (suppressed), and converges.
+/// Net effect: closure leaves the marking unchanged.
+#[test]
+fn closure_runs_fixpoint_when_suppressed_but_trigger_fires() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Us(Classification::Secret));
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into_boxed_slice();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m.clone());
+    assert!(dissem_us_contains(&closed, DissemControl::Oc));
+    assert!(dissem_us_contains(&closed, DissemControl::Nf));
+    // Idempotent — no new facts beyond what was present.
+    assert_eq!(closed.0.dissem_us.len(), m.0.dissem_us.len());
+}

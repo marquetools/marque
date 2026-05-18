@@ -756,3 +756,71 @@ fn project_applies_declarative_empty_then_replace() {
     );
     assert!(out.0.dissem_us.contains(&DissemControl::Nf));
 }
+
+// ---------------------------------------------------------------------------
+// PR 4b-D.2 Commit 6 — any_closure_trigger_fires predicate (in-crate
+// pub(crate) reach)
+// ---------------------------------------------------------------------------
+
+/// The short-circuit predicate returns `false` on a bottom marking.
+/// No catalog rule's trigger fires.
+#[test]
+fn any_closure_trigger_fires_false_on_bottom() {
+    let scheme = CapcoScheme::new();
+    let m = CapcoMarking::new(CanonicalAttrs::default());
+    assert!(!scheme.any_closure_trigger_fires(&m));
+}
+
+/// The short-circuit predicate returns `false` on `(S)` — classified
+/// but uncaveated, no Trio-1 caveat present, no NATO classification.
+#[test]
+fn any_closure_trigger_fires_false_on_uncaveated_classified() {
+    let scheme = CapcoScheme::new();
+    let m = CapcoMarking::new(mk_attrs());
+    assert!(
+        !scheme.any_closure_trigger_fires(&m),
+        "uncaveated classified must not trip any catalog trigger"
+    );
+}
+
+/// The short-circuit predicate returns `true` when ORCON is present
+/// (Trio-1 NOFORN trigger).
+#[test]
+fn any_closure_trigger_fires_true_on_orcon() {
+    let scheme = CapcoScheme::new();
+    let mut a = mk_attrs();
+    a.dissem_us = vec![DissemControl::Oc].into();
+    let m = CapcoMarking::new(a);
+    assert!(scheme.any_closure_trigger_fires(&m));
+}
+
+/// The short-circuit predicate returns `true` on bare NATO classification
+/// (CLOSURE_REL_TO_USA_NATO trigger via TOK_NATO_CLASS).
+#[test]
+fn any_closure_trigger_fires_true_on_bare_nato() {
+    let scheme = CapcoScheme::new();
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Nato(
+        marque_ism::NatoClassification::NatoSecret,
+    ));
+    let m = CapcoMarking::new(a);
+    assert!(scheme.any_closure_trigger_fires(&m));
+}
+
+/// The short-circuit predicate consults `trigger_fires` only — NOT
+/// `should_fire` (which also checks suppression). When ORCON + NOFORN
+/// coexist (NOFORN is in FDR_DOMINATORS so it suppresses the closure),
+/// the predicate must return `true`. The fixpoint runs and finds
+/// nothing to add (suppressed), but the short-circuit must not skip.
+#[test]
+fn any_closure_trigger_fires_returns_true_even_when_suppressed() {
+    let scheme = CapcoScheme::new();
+    let mut a = mk_attrs();
+    a.dissem_us = vec![DissemControl::Oc, DissemControl::Nf].into();
+    let m = CapcoMarking::new(a);
+    assert!(
+        scheme.any_closure_trigger_fires(&m),
+        "predicate must consult triggers only, not suppressors — \
+         ORCON trigger is present even though NOFORN suppresses"
+    );
+}

@@ -197,6 +197,18 @@ pub const CAT_DECLASSIFY_ON: CategoryId = CategoryId(10);
 /// instead of silently no-opping (rust-reviewer preflight CRITICAL).
 pub const CAT_NON_IC_DISSEM: CategoryId = CategoryId(11);
 
+/// DISPLAY ONLY country list — backed by
+/// `CanonicalAttrs.display_only_to`. Parallel to `CAT_REL_TO` for
+/// the REL TO country list. Introduced in PR 4b-D.2 Copilot R1 #2
+/// so the `capco/noforn-clears-display-only-to` PageRewrite can
+/// declare `Clear { CAT_DISPLAY_ONLY_TO }` symmetrically with
+/// `capco/noforn-clears-rel-to`'s `Clear { CAT_REL_TO }`.
+///
+/// Authority: §H.8 p163 (DISPLAY ONLY template, country-list axis);
+/// §D.2 Table 3 rows 25-27 (DISPLAY ONLY banner roll-up; country-list
+/// intersection mirrors REL TO).
+pub const CAT_DISPLAY_ONLY_TO: CategoryId = CategoryId(12);
+
 // ---------------------------------------------------------------------------
 // Sentinel token ids for constraint expressions
 // ---------------------------------------------------------------------------

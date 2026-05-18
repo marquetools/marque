@@ -15,7 +15,7 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::{CanonicalAttrs, PageContext};
+use marque_ism::CanonicalAttrs;
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
@@ -213,137 +213,46 @@ impl MarkingScheme for CapcoScheme {
                     .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
             }
             Scope::Page | Scope::Document | Scope::Diff => {
-                // Page / Document rollup: drive through the existing
-                // `PageContext` aggregator (which is already
-                // category-component-wise), then apply page rewrites.
+                // PR 4b-D.2 (this commit) flipped the production page
+                // projection from the PageContext aggregator to the
+                // post-PR-4b-B lattice path. Pipeline ordering per
+                // `docs/plans/2026-05-01-lattice-design.md` §4.7.4:
                 //
-                // Byte-identical equivalence with `PageContext` is the
-                // Phase B verification gate — see the
-                // `scheme_equivalence.rs` tests. When CAPCO's categories
-                // move to individual `impl Lattice` types in their own
-                // right (Phase C continuation), this implementation
-                // swaps in the category-wise composition directly
-                // without changing the outward contract.
-                let mut ctx = PageContext::new();
-                for p in markings {
-                    ctx.add_portion(p.0.clone());
-                }
-                let mut out = CapcoMarking::new(page_context_to_attrs(&ctx));
-                // Apply declarative page rewrites. `PageContext`
-                // already applies NOFORN-clears-REL-TO internally, so
-                // the rewrite is effectively a no-op on today's
-                // storage — but declaring it here makes the semantic
-                // inspectable per §7a.
-                for rw in &self.page_rewrites {
-                    let fires = match &rw.trigger {
-                        CategoryPredicate::Contains { category, token } => {
-                            capco_category_contains(&out, *category, *token)
-                        }
-                        CategoryPredicate::Empty { category } => {
-                            !capco_category_has_values(&out, *category)
-                        }
-                        CategoryPredicate::Custom(f) => f(&out),
-                    };
-                    if fires {
-                        match &rw.action {
-                            CategoryAction::Clear { category } => {
-                                tracing::debug!(
-                                    rewrite_id = rw.id,
-                                    action = "Clear",
-                                    ?category,
-                                    "PageRewrite fired",
-                                );
-                                capco_category_clear(&mut out, *category);
-                            }
-                            CategoryAction::Replace { category, with } => {
-                                tracing::debug!(
-                                    rewrite_id = rw.id,
-                                    action = "Replace",
-                                    ?category,
-                                    "PageRewrite fired",
-                                );
-                                capco_category_replace(&mut out, *category, with);
-                            }
-                            CategoryAction::Promote { from, to, .. } => {
-                                // Phase 3 T034 declares the JOINT-
-                                // promotion and FGI-absorption rewrites
-                                // for the scheduler + catalog surface,
-                                // but runtime dispatch stays with
-                                // [`PageContext`] (engine.lint does not
-                                // drive aggregation through project()
-                                // yet — see the note on
-                                // `build_page_rewrites`). Treat
-                                // `Promote` as a no-op for now; full
-                                // transform-driven dispatch lands in
-                                // Phase D / Phase E when the engine
-                                // switches to scheme-driven roll-up.
-                                tracing::debug!(
-                                    rewrite_id = rw.id,
-                                    action = "Promote",
-                                    ?from,
-                                    ?to,
-                                    "PageRewrite fired (Phase-3 no-op)",
-                                );
-                            }
-                            CategoryAction::Custom(f) => {
-                                tracing::debug!(
-                                    rewrite_id = rw.id,
-                                    action = "Custom",
-                                    "PageRewrite fired",
-                                );
-                                f(&mut out);
-                            }
-                            CategoryAction::Intent(intent) => {
-                                // Bridge to the existing per-intent helper. Errors are handled
-                                // as follows:
-                                // - `Ok(())`: rewrite applied, marking mutated.
-                                // - `IntentInapplicable`: silent no-op for this rewrite (idempotent
-                                //   — the marking was already in the post-rewrite state).
-                                // - `UnknownToken`: pre-validated for callers that go through
-                                //   `Engine::new` (see `validate_intent_rewrites` in
-                                //   marque-engine). Direct callers of `CapcoScheme::project` (e.g.,
-                                //   tests, scheme-exploration tooling) bypass that validation, so
-                                //   this arm IS reachable on the project path; it's also reachable
-                                //   if the scheme is mutated between Engine construction and call.
-                                // - `IntentRejectsLattice`: NOT pre-validated — it's a runtime
-                                //   condition (lattice invariant violation) that
-                                //   `validate_intent_rewrites` cannot detect without simulating
-                                //   the intent application.
-                                // - Future `ReplacementIntent` variants that reach the
-                                //   `apply_intent_to_marking` `_` arm also land here.
-                                // In every error-arm case, log and treat as a silent no-op rather
-                                // than panic; `Engine::lint`'s hot path must not unwind into Tower
-                                // middleware. The corpus-parity tests will surface incorrect
-                                // projection output.
-                                match apply_intent_to_marking(self, &mut out, intent) {
-                                    Ok(()) => {
-                                        tracing::debug!(
-                                            rewrite_id = rw.id,
-                                            action = "Intent",
-                                            "PageRewrite fired (CategoryAction::Intent)",
-                                        );
-                                    }
-                                    Err(ApplyIntentError::IntentInapplicable) => {
-                                        tracing::debug!(
-                                            rewrite_id = rw.id,
-                                            action = "Intent",
-                                            "PageRewrite no-op (intent already satisfied)",
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            rewrite_id = rw.id,
-                                            error = ?e,
-                                            "PageRewrite Intent failed at runtime — expected to be \
-                                             caught at Engine::new validation. Treating as no-op.",
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                out
+                //     parse → join (lattice) → Cl_supp (closure)
+                //                            → PageRewrites
+                //                            → render
+                //
+                // The closure operator is monotone (adds facts only,
+                // never removes; preserves the join order). PageRewrites
+                // are NOT monotone in the FactSet sense — `Clear` /
+                // `FactRemove` actions are anti-monotone, and the
+                // `noforn-clears-*` family explicitly removes tokens
+                // and country-list entries. The pipeline-termination
+                // guarantee on PageRewrites comes from the **topological
+                // ordering** the scheduler imposes on `reads` / `writes`
+                // axes (Kahn's algorithm at `Engine::new`, see
+                // `crates/engine/src/scheduler.rs`) — the rewrite graph
+                // is a DAG, every rewrite fires at most once per
+                // projection, and there is no fixpoint loop at this
+                // layer (unlike `closure`'s Kleene fixpoint). Copilot
+                // R2 #6 caught the previous "both monotone" claim.
+                //
+                // Commit 7 perf: the trait path still pays the
+                // `markings.iter().map(|m| m.0.clone()).collect()`
+                // clone round because the trait's `markings:
+                // &[CapcoMarking]` slice ties us to per-portion
+                // CapcoMarking values. The engine's hot path bypasses
+                // this via `CapcoScheme::project_from_page_context`
+                // (the production fast-path; sibling to
+                // `project_from_attrs_slice` which is `pub(crate)`
+                // post-PR-4b-D.2 Copilot R1 review #5). Both inherent
+                // entries consume their input WITHOUT the trait
+                // wrap-then-unwrap round; only this trait-path body
+                // pays it. Test fixtures and external tooling
+                // continue to use this trait-path entry.
+                let raw: Vec<CanonicalAttrs> = markings.iter().map(|m| m.0.clone()).collect();
+                let out_attrs = self.project_from_attrs_slice(&raw);
+                CapcoMarking::new(out_attrs)
             }
         }
     }
@@ -611,6 +520,24 @@ impl MarkingScheme for CapcoScheme {
     /// guard against unbounded-growth catalog defects that slip past
     /// proptest.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        // PR 4b-D.2 Commit 6: cone-trigger short-circuit (architect's
+        // R-1 mitigation). If no catalog row's trigger fires on the
+        // input marking, no rule can contribute a cone fact — the
+        // closure is a no-op. Skip the snapshot+clone+fixpoint loop
+        // entirely. This is the typical case for the bench corpus
+        // (markings without SAR/RD/UCNI/FGI/ORCON/RSEN/IMCON/DSEN/
+        // LIMDIS/LES/SBU/SSI/NATO-class triggers) where the closure
+        // has nothing to add.
+        //
+        // Correctness: the short-circuit is sound because
+        // `should_fire = trigger_fires && !is_suppressed`, and
+        // `trigger_fires` is the necessary condition for any rule to
+        // contribute a fact. If `trigger_fires` is false for every
+        // rule, no rule fires, no facts are added, and the fixpoint
+        // is the input.
+        if !self.any_closure_trigger_fires(&marking) {
+            return marking;
+        }
         let mut working = marking;
         for _iteration in 0..marque_scheme::MAX_CLOSURE_ITERATIONS {
             let snapshot = working.clone();
@@ -702,5 +629,313 @@ impl MarkingScheme for CapcoScheme {
         marking: &'m Self::Marking,
     ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
         Box::new(collect_present_tokens(&marking.0).into_iter())
+    }
+}
+
+impl CapcoScheme {
+    /// PR 4b-D.2 Commit 7 — engine-side fast-path entry that consumes
+    /// `&[CanonicalAttrs]` directly (the shape
+    /// [`PageContext::portions()`] already returns).
+    ///
+    /// The trait-level [`MarkingScheme::project`] is constrained to
+    /// `&[Self::Marking]` — the engine's call-site at
+    /// `crates/engine/src/engine.rs::project_page_marking` would have
+    /// to wrap each portion in a `CapcoMarking` (one clone per portion)
+    /// and the trait body would then re-extract `.0.clone()` for each
+    /// (a second clone per portion) before calling
+    /// [`Self::project_attrs_pipeline`]. The engine's hot path runs
+    /// this projection ~50× per 10KB document with portion-count
+    /// growing monotonically per call, turning those two clone rounds
+    /// into a quadratic-in-portions cost. This fast-path bypass closes
+    /// both clone rounds and shares the pipeline-step body with the
+    /// trait path.
+    ///
+    /// Authority: PR 4b-D.2 commit 7 perf attribution found 50
+    /// projection invocations on the bench input, each processing the
+    /// monotone-growing portion list (1, 2, 3, … 50). The two
+    /// engine-boundary clone rounds dominated the regression; this
+    /// method eliminates them.
+    ///
+    /// ## Visibility
+    ///
+    /// `pub(crate)` because, post-commit-8, the engine's hot path
+    /// calls [`Self::project_from_page_context`] (which skips a third
+    /// clone round by reusing the engine's existing `PageContext`).
+    /// This method survives as the in-crate trait-path delegate for
+    /// [`MarkingScheme::project`] and as a callable entry for future
+    /// in-crate callers that have an owned `&[CanonicalAttrs]` slice
+    /// but no pre-built PageContext. Promote back to `pub` only when
+    /// an out-of-crate caller's use case requires it.
+    ///
+    /// [`PageContext::portions()`]: marque_ism::PageContext::portions
+    pub(crate) fn project_from_attrs_slice(&self, portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        // Build a one-shot tmp_ctx for residue-axis accessors and
+        // delegate to the borrowed-context pipeline. Callers that
+        // already own a `&PageContext` SHOULD call
+        // `project_from_page_context` directly to skip the n×clone.
+        let mut tmp_ctx = marque_ism::PageContext::new();
+        for p in portions {
+            tmp_ctx.add_portion(p.clone());
+        }
+        self.project_attrs_pipeline_with_context(portions, &tmp_ctx)
+    }
+
+    /// PR 4b-D.2 Commit 7+ — hot-path entry that consumes a pre-built
+    /// [`marque_ism::PageContext`] directly. The engine's
+    /// `project_page_marking` already owns the PageContext that
+    /// accumulates portions across the document via `add_portion`; this
+    /// entry reuses it, skipping the n×clone tmp_ctx rebuild that
+    /// [`Self::project_from_attrs_slice`] pays.
+    ///
+    /// Phase-attribution profiling (`crates/engine/benches/profile_project.rs`)
+    /// found tmp_ctx rebuild at ~2.8µs / n=50 portions; eliminating it
+    /// closes ~60-80µs of the lint_10kb regression on the bench's
+    /// monotone-growing call sequence (sum_i=1^50 of the per-call
+    /// tmp_ctx cost).
+    pub fn project_from_page_context(
+        &self,
+        page_context: &marque_ism::PageContext,
+    ) -> CanonicalAttrs {
+        self.project_attrs_pipeline_with_context(page_context.portions(), page_context)
+    }
+
+    /// Shared body of the page-projection pipeline. Both
+    /// [`MarkingScheme::project`] (trait entry) and
+    /// [`Self::project_from_attrs_slice`] / [`Self::project_from_page_context`]
+    /// (engine fast-path entries) delegate here, so the pipeline-step
+    /// semantics are identical across all surfaces. Per PR 4b-D.2 §4.7.4:
+    ///
+    /// ```text
+    /// join_via_lattice → closure → PageRewrites
+    /// ```
+    ///
+    /// `raw` and `page_ctx.portions()` MUST refer to the same slice
+    /// (caller's contract — debug-asserted by
+    /// `join_via_lattice_with_context`).
+    fn project_attrs_pipeline_with_context(
+        &self,
+        raw: &[CanonicalAttrs],
+        page_ctx: &marque_ism::PageContext,
+    ) -> CanonicalAttrs {
+        // PR 4b-D.2 D23 (decisions.md): closure-rewrite-application
+        // sentinel. Per `docs/plans/2026-05-01-lattice-design.md`
+        // §3 (e.1) read-only-attrs invariant, the closure operator
+        // MUST NOT mutate the per-portion CanonicalAttrs slice it
+        // observes. Snapshot the input pre-closure and assert
+        // byte-identity afterward.
+        //
+        // ## G13 content-ignorance (Constitution V Principle V +
+        // Copilot R2 #4)
+        //
+        // The failure path emits ONLY counts and the §-citation
+        // literal — never `raw` / `raw_snapshot` content. `debug_assert_eq!`'s
+        // default `{:?}` format would dump full `CanonicalAttrs`
+        // (token values, country lists, spans), violating G13. The
+        // explicit `if !=` + `panic!` with a count-only message
+        // mirrors the `check_portions_unchanged` pattern at
+        // `crates/engine/src/engine.rs:4540-4574` (PageFinalization-
+        // rule-dispatch sentinel). Both sentinels enforce the same
+        // §3 (e.1) read-only-attrs invariant; both must keep audit-
+        // content-ignorance on the failure path.
+        #[cfg(debug_assertions)]
+        let raw_snapshot: Vec<CanonicalAttrs> = raw.to_vec();
+
+        let joined = CapcoMarking::new(CapcoMarking::join_via_lattice_with_context(raw, page_ctx));
+        let mut out = self.closure(joined);
+
+        #[cfg(debug_assertions)]
+        {
+            if raw != raw_snapshot.as_slice() {
+                panic!(
+                    "closure() mutated the per-portion CanonicalAttrs slice \
+                     ({} portion(s) before vs {} after) — violates PageRewrite \
+                     read-only-attrs invariant \
+                     (docs/plans/2026-05-01-lattice-design.md §3 (e.1))",
+                    raw_snapshot.len(),
+                    raw.len(),
+                );
+            }
+        }
+
+        // Apply declarative page rewrites. PR 4b-D.2 hot-path flip:
+        // page rewrites run on the post-closure state, so any cone
+        // facts the closure operator added are visible to rewrite
+        // triggers. NOFORN-clears-REL-TO and similar absorbing rewrites
+        // remain inflationary on the closed state (they remove
+        // dominated tokens but the remaining tokens are already members
+        // of the closure's fixed point).
+        for rw in &self.page_rewrites {
+            let fires = match &rw.trigger {
+                CategoryPredicate::Contains { category, token } => {
+                    capco_category_contains(&out, *category, *token)
+                }
+                CategoryPredicate::Empty { category } => {
+                    !capco_category_has_values(&out, *category)
+                }
+                CategoryPredicate::Custom(f) => f(&out),
+            };
+            if fires {
+                match &rw.action {
+                    CategoryAction::Clear { category } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Clear",
+                            ?category,
+                            "PageRewrite fired",
+                        );
+                        capco_category_clear(&mut out, *category);
+                    }
+                    CategoryAction::Replace { category, with } => {
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Replace",
+                            ?category,
+                            "PageRewrite fired",
+                        );
+                        capco_category_replace(&mut out, *category, with);
+                    }
+                    CategoryAction::Promote { from, to, .. } => {
+                        // Phase 3 T034 declares the JOINT-promotion and
+                        // FGI-absorption rewrites for the scheduler +
+                        // catalog surface. Post-PR-4b-D.2 the engine
+                        // drives page-marking aggregation through
+                        // `scheme.project(Scope::Page, ...)`, so this
+                        // arm is reachable at runtime. `Promote` stays
+                        // a no-op here because the JOINT-promotion and
+                        // FGI-absorption rewrites are renderer-canonical
+                        // territory — they restate the same fact set in
+                        // a different surface form, which is
+                        // `render_canonical`'s job, not the projection
+                        // lattice's. The renderer-vs-lattice boundary
+                        // is documented in
+                        // `docs/plans/2026-05-01-lattice-design.md`
+                        // §10 row 4 (SCI per-system canonicalization)
+                        // + §10 row 5 (SAR ordering). PR 5+ Stage 4
+                        // lands the renderer trait surface that picks
+                        // these rewrites up.
+                        tracing::debug!(
+                            rewrite_id = rw.id,
+                            action = "Promote",
+                            ?from,
+                            ?to,
+                            "PageRewrite fired (Promote — renderer-territory no-op)",
+                        );
+                    }
+                    CategoryAction::Custom(f) => {
+                        tracing::debug!(rewrite_id = rw.id, action = "Custom", "PageRewrite fired",);
+                        f(&mut out);
+                    }
+                    CategoryAction::Intent(intent) => {
+                        // Bridge to the existing per-intent helper.
+                        // Errors are handled as follows:
+                        // - `Ok(())`: rewrite applied, marking mutated.
+                        // - `IntentInapplicable`: silent no-op for
+                        //   this rewrite (idempotent — the marking was
+                        //   already in the post-rewrite state).
+                        // - `UnknownToken`: pre-validated for callers
+                        //   that go through `Engine::new` (see
+                        //   `validate_intent_rewrites` in
+                        //   marque-engine). Direct callers of
+                        //   `CapcoScheme::project` (e.g., tests,
+                        //   scheme-exploration tooling) bypass that
+                        //   validation, so this arm IS reachable on
+                        //   the project path; it's also reachable if
+                        //   the scheme is mutated between Engine
+                        //   construction and call.
+                        // - `IntentRejectsLattice`: NOT pre-validated
+                        //   — it's a runtime condition (lattice
+                        //   invariant violation) that
+                        //   `validate_intent_rewrites` cannot detect
+                        //   without simulating the intent application.
+                        // - Future `ReplacementIntent` variants that
+                        //   reach the `apply_intent_to_marking` `_`
+                        //   arm also land here.
+                        // In every error-arm case, log and treat as a
+                        // silent no-op rather than panic; `Engine::lint`'s
+                        // hot path must not unwind into Tower middleware.
+                        // The corpus-parity tests will surface
+                        // incorrect projection output.
+                        match apply_intent_to_marking(self, &mut out, intent) {
+                            Ok(()) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Intent",
+                                    "PageRewrite fired (CategoryAction::Intent)",
+                                );
+                            }
+                            Err(ApplyIntentError::IntentInapplicable) => {
+                                tracing::debug!(
+                                    rewrite_id = rw.id,
+                                    action = "Intent",
+                                    "PageRewrite no-op (intent already satisfied)",
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    rewrite_id = rw.id,
+                                    error = ?e,
+                                    "PageRewrite Intent failed at runtime — expected to be \
+                                     caught at Engine::new validation. Treating as no-op.",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out.0
+    }
+
+    /// PR 4b-D.2 Commit 6 — hot-path short-circuit predicate for
+    /// [`MarkingScheme::closure`].
+    ///
+    /// Returns `true` if ANY catalog row's trigger fires on `marking`.
+    /// If this returns `false`, the closure operator is guaranteed to
+    /// be a no-op (no rule can contribute a cone fact when its trigger
+    /// is unsatisfied), so the caller can skip the snapshot-and-clone
+    /// fixpoint loop entirely. This is the architect's R-1
+    /// optimization referenced in the PR 4b-D.2 brief: bench
+    /// measurement of `lint_10kb` post-hot-path-flip landed at 1.5ms
+    /// (+65% over baseline) because the closure ran on every
+    /// portion-bounded page-marking cache miss (~20 invocations per
+    /// 10KB doc), and the typical bench page has no SAR / RD / UCNI /
+    /// FGI / ORCON / RSEN / IMCON / DSEN / LIMDIS / LES / SBU / SSI /
+    /// NATO-class trigger — so the closure does an unnecessary
+    /// snapshot-and-compare every time. The short-circuit skips that
+    /// per-projection cost for the no-trigger case.
+    ///
+    /// # Correctness
+    ///
+    /// `should_fire = trigger_fires && !is_suppressed`. The closure
+    /// fixpoint only adds facts when `should_fire` is true for at
+    /// least one rule; if `trigger_fires` is false for every rule,
+    /// the fixpoint is the input. The short-circuit checks the
+    /// disjunction over rules — the cheapest possible necessary
+    /// condition.
+    ///
+    /// Suppression is NOT consulted by this predicate. A
+    /// trigger-firing-but-suppressed rule still pays the full
+    /// fixpoint loop's snapshot-and-compare cost — that's correct:
+    /// suppression may flip across iterations if another rule's
+    /// cone adds a suppressor fact, so the loop must run to
+    /// verify the fixpoint. The short-circuit specifically targets
+    /// the "trigger fires for nothing" case which is the bench
+    /// majority.
+    ///
+    /// # Worst-case cost
+    ///
+    /// O(rules × triggers-per-rule) `satisfies` calls. The current
+    /// catalog has 8 rules × ≤3 triggers each = ≤24 satisfies calls
+    /// per projection. Each `satisfies` call walks a tiny constant
+    /// number of category fields (`attrs.sar_markings.is_some()`,
+    /// `attrs.dissem_us.contains(...)`, etc.). The short-circuit
+    /// adds ≤24 bool ops to the closure entry path; the closure
+    /// itself (when not short-circuited) adds `working.clone()` per
+    /// iteration of the fixpoint, which is the cost this exists to
+    /// avoid.
+    pub(crate) fn any_closure_trigger_fires(&self, marking: &CapcoMarking) -> bool {
+        CAPCO_CLOSURE_RULES
+            .iter()
+            .any(|rule| rule.trigger_fires(self, marking))
     }
 }
