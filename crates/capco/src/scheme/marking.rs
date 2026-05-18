@@ -526,60 +526,50 @@ impl CapcoMarking {
     }
 }
 
-// Phase B status note on the `Lattice` impl
-// -----------------------------------------
+// PR 4b-D.2 status note on the `Lattice` impl
+// -------------------------------------------
 //
-// PR 4b-B (006 T112) installs per-category Lattice impls in
+// PR 4b-B (006 T112) installed per-category Lattice impls in
 // `marque-capco::lattice` for every CAPCO axis (Classification,
 // NatoClass, Joint, Dissem, NatoDissem, RelToBlock, DeclassifyOn,
 // plus the PR 4b-A AeaSet / SciSet / SarSet / FgiSet). The
 // component-wise composition is exposed on `CapcoMarking::
-// join_via_lattice()` below — the new code path.
+// join_via_lattice()` above.
 //
-// The trait `Lattice::join` impl below STILL DELEGATES TO
-// `PageContext::add_portion` + `page_context_to_attrs`. This is
-// deliberate per the operative plan
-// `docs/plans/2026-05-15-pr4b-B-lattice-impls-rest-plan.md` §3.2:
-// PR 4b-B installs the joins and the parity gate (Commit 8) proves
-// byte-identity against the PageContext path. PR 4b-D flips the
-// production hot path to use the lattice joins; until then, the
-// PageContext delegation remains authoritative so the corpus +
-// rule-set test surface stays bit-stable.
+// PR 4b-D.2 (this commit) flips the trait `JoinSemilattice::join` impl
+// to delegate to `join_via_lattice` instead of `PageContext::
+// add_portion` + `page_context_to_attrs`. The parity gate at
+// `crates/capco/tests/page_context_lattice_parity.rs` enforces the
+// documented divergence set across both paths; the lattice path was
+// already byte-identical on the 45+ converged fixtures, so the flip
+// is a no-op for those cases and the divergence-bearing fixtures
+// continue to assert the documented §-cited semantic differences.
 //
-// Two residues for the eventual flip are documented inline in
-// `join_via_lattice`:
-//
-// - `non_ic_dissem` axis — cross-axis classification-gated splits
-//   (SBU-NF / LES-NF in classified docs) stay on PageContext for
-//   one more PR. The §3 (b) FOUO eviction matrix migrates via
-//   `Constraint::Custom("capco/fouo-eviction")` in PR 4b-C.
-// - JOINT producer-disunity FGI migration — the `JointSet`
-//   produces `DisunityCollapse` state with the non-US producer set;
-//   the W004 Warn rule (registered Commit 9) surfaces it, but the
-//   FGI-attribution rewrite is renderer-canonical territory
-//   (PR 5+ Stage 4).
-//
-// `meet` keeps its narrow PageContext-free shape — it's used by a
+// `meet` keeps its narrow PageContext-free shape — it is used by a
 // small set of overlap-check call sites that do not need full
-// component-wise coverage. PR 4b-D widens it when `project` flips.
+// component-wise coverage. Widening it is independent work; the
+// `MeetSemilattice` consumers in PR 4b-D scope are exercised only
+// through this `JoinSemilattice` flip plus `CapcoScheme::project`
+// (PR 4b-D.2 Commit 3).
 impl JoinSemilattice for CapcoMarking {
-    /// Join = banner-aggregate both portions via `PageContext`.
+    /// Join = component-wise lattice composition via [`Self::join_via_lattice`].
     ///
-    /// Delegates to [`PageContext`] so the scheme's join is
-    /// definitionally equivalent to the existing hand-written
-    /// aggregation on the inputs exercised by Phase A's tests. Phase B
-    /// inverts this dependency — `PageContext` will be implemented in
-    /// terms of component-wise aggregation, and this method will stop
-    /// applying the projection's non-invertible normalizations.
+    /// PR 4b-D.2 (this commit) flipped the body from the
+    /// PageContext-delegation form to the lattice path. The lattice
+    /// path is the post-PR-4b-B authoritative aggregation surface; see
+    /// the documented divergence list in
+    /// `crates/capco/CAPCO-CONTEXT.md` §3 and the parity-gate fixtures
+    /// in `crates/capco/tests/page_context_lattice_parity.rs` for the
+    /// per-axis §-cited semantics.
     ///
-    /// See the module-level "Phase A caveat" note above for the
-    /// specific laws this impl does not satisfy.
+    /// Authority: per-axis citations live on each
+    /// `marque-capco::lattice` type's doc comment.
     #[inline]
     fn join(&self, other: &Self) -> Self {
-        let mut ctx = PageContext::new();
-        ctx.add_portion(self.0.clone());
-        ctx.add_portion(other.0.clone());
-        CapcoMarking::new(page_context_to_attrs(&ctx))
+        CapcoMarking::new(CapcoMarking::join_via_lattice(&[
+            self.0.clone(),
+            other.0.clone(),
+        ]))
     }
 }
 
