@@ -242,9 +242,10 @@ impl MarkingScheme for CapcoScheme {
                 // clone round because the trait's `markings:
                 // &[CapcoMarking]` slice ties us to per-portion
                 // CapcoMarking values. The engine's hot path bypasses
-                // this via `CapcoScheme::project_from_page_context`,
-                // which derives `&[CanonicalAttrs]` from a pre-built
-                // `&PageContext` and delegates to the same shared
+                // this via `CapcoScheme::project_from_attrs_slice`
+                // (PR 6c successor to `project_from_page_context`),
+                // which consumes the engine accumulator's slice
+                // directly and delegates to the same shared
                 // `project_attrs_pipeline` body — without paying the
                 // trait wrap-then-unwrap round. Test fixtures and
                 // external tooling continue to use this trait-path
@@ -637,15 +638,13 @@ impl MarkingScheme for CapcoScheme {
 }
 
 impl CapcoScheme {
-    /// PR 4b-D.2 Commit 7+ — engine-facing hot-path entry that consumes
-    /// a pre-built [`marque_ism::PageContext`] directly. The engine's
-    /// `project_page_marking` already owns the PageContext that
-    /// accumulates portions across the document via `add_portion`; this
-    /// entry derives `&[CanonicalAttrs]` once at the boundary
-    /// (`page_context.portions()`) and forwards to the shared
-    /// [`Self::project_attrs_pipeline`] body, skipping the trait-path's
-    /// `Vec<CapcoMarking> → Vec<CanonicalAttrs>` wrap-then-unwrap
-    /// round.
+    /// PR 6c successor to `project_from_page_context` — engine-facing
+    /// hot-path entry that consumes a pre-built per-page slice of
+    /// portion attributes directly. The engine owns the accumulator
+    /// that grows portions across the document; this entry forwards
+    /// the slice to the shared [`Self::project_attrs_pipeline`] body,
+    /// skipping the trait-path's `Vec<CapcoMarking> → Vec<CanonicalAttrs>`
+    /// wrap-then-unwrap round.
     ///
     /// The trait-level [`MarkingScheme::project`] entry handles
     /// `&[Self::Marking]` callers — test fixtures and external
@@ -657,29 +656,40 @@ impl CapcoScheme {
     /// portions; eliminating it closed ~60-80µs of the lint_10kb
     /// regression on the bench's monotone-growing call sequence
     /// (sum_i=1^50 of the per-call tmp_ctx cost). PR 4b-F retired the
-    /// last remnant of that tmp_ctx build at every layer.
+    /// last remnant of that tmp_ctx build at every layer. PR 6c
+    /// (T069) flattened the parameter from `&PageContext` to
+    /// `&[CanonicalAttrs]` so the caller no longer needs to construct
+    /// the intermediate accumulator type.
     ///
     /// ## Same-slice property
     ///
-    /// `raw` is derived structurally here: `page_context.portions()`
-    /// is called once and the resulting slice flows to
-    /// `project_attrs_pipeline`. There is no parallel slice the inner
-    /// pipeline could drift from, so the earlier debug-assert that
-    /// PR 4b-D.2 carried at the fold-body boundary became vacuous in
-    /// PR 4b-F and retired with the `_with_context` variant. Future
-    /// maintenance that reintroduces a parallel derivation path MUST
-    /// re-add the contract at the new fork — the invariant lives in
-    /// this doc-comment, not in a runtime check.
+    /// `raw` flows directly to `project_attrs_pipeline`. There is no
+    /// parallel slice the inner pipeline could drift from, so the
+    /// earlier debug-assert that PR 4b-D.2 carried at the fold-body
+    /// boundary became vacuous in PR 4b-F and retired with the
+    /// `_with_context` variant. Future maintenance that reintroduces
+    /// a parallel derivation path MUST re-add the contract at the new
+    /// fork — the invariant lives in this doc-comment, not in a
+    /// runtime check.
+    pub fn project_from_attrs_slice(&self, raw: &[CanonicalAttrs]) -> CanonicalAttrs {
+        self.project_attrs_pipeline(raw)
+    }
+
+    /// Transitional shim — engine-side caller in `dispatch_page_finalization` /
+    /// `project_page_marking` migrates to [`Self::project_from_attrs_slice`]
+    /// in PR 6c commit 3. Retained for one commit so the workspace stays
+    /// green across the rename. Deleted at commit 3 once the engine no
+    /// longer constructs a `PageContext`.
     pub fn project_from_page_context(
         &self,
         page_context: &marque_ism::PageContext,
     ) -> CanonicalAttrs {
-        self.project_attrs_pipeline(page_context.portions())
+        self.project_from_attrs_slice(page_context.portions())
     }
 
     /// Shared body of the page-projection pipeline. Both
     /// [`MarkingScheme::project`] (trait entry, after a per-portion
-    /// `.0.clone()`) and [`Self::project_from_page_context`] (engine
+    /// `.0.clone()`) and [`Self::project_from_attrs_slice`] (engine
     /// fast-path) delegate here, so the pipeline-step semantics are
     /// identical across all surfaces. Per PR 4b-D.2 §4.7.4:
     ///
@@ -688,14 +698,13 @@ impl CapcoScheme {
     /// ```
     ///
     /// PR 4b-F retired the `page_ctx: &PageContext` parameter — the
-    /// pipeline now consumes only `raw: &[CanonicalAttrs]`. The
-    /// same-slice contract that earlier PRs threaded as a debug-assert
-    /// at this layer became vacuous once `join_via_lattice_body` no
-    /// longer reads a PageContext: there is no parallel slice for the
-    /// inner body to drift from. Engine callers that need to bridge
-    /// from a `&PageContext` go through
-    /// [`Self::project_from_page_context`], which derives
-    /// `page_context.portions()` once at the boundary.
+    /// pipeline consumes only `raw: &[CanonicalAttrs]`. The same-slice
+    /// contract that earlier PRs threaded as a debug-assert at this
+    /// layer became vacuous once `join_via_lattice_body` no longer
+    /// reads a `PageContext`: there is no parallel slice for the inner
+    /// body to drift from. PR 6c (T069) retired the `PageContext`
+    /// struct entirely; engine callers reach this pipeline via
+    /// [`Self::project_from_attrs_slice`].
     fn project_attrs_pipeline(&self, raw: &[CanonicalAttrs]) -> CanonicalAttrs {
         // PR 4b-D.2 D23 (decisions.md): closure-rewrite-application
         // sentinel. Per `docs/plans/2026-05-01-lattice-design.md`

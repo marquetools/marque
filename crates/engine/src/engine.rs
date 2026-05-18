@@ -1248,8 +1248,18 @@ impl Engine {
             // `RuleContext::new` as `None` defaults and gain a
             // `with_*` setter; the engine's hot-path call site
             // chains the setters here once per candidate dispatch.
+            // PR 6c commit 2 transitional bridge: derive
+            // `Arc<Box<[CanonicalAttrs]>>` from the same Arc'd
+            // `PageContext` snapshot the rules currently read via
+            // `ctx.page_context`. Commit 3 inverts this: the inline
+            // `Vec<CanonicalAttrs>` accumulator becomes the source and
+            // the `PageContext`-derived `ctx_page` path is removed.
+            let ctx_page_portions = ctx_page
+                .as_ref()
+                .map(|pc| Arc::new(pc.portions().to_vec().into_boxed_slice()));
             let ctx = RuleContext::new(candidate.kind, candidate.span)
                 .with_page_context(ctx_page)
+                .with_page_portions(ctx_page_portions)
                 .with_page_marking(ctx_page_marking)
                 .with_corrections(corrections_arc.clone())
                 .with_pre_pass_1_attrs(pre_pass_1_attrs);
@@ -4326,8 +4336,17 @@ fn dispatch_page_finalization(
     // (which observes `page_ctx_arc.portions()` — the slice the rule
     // actually reads via `ctx.page_context`). `Arc::clone` is a
     // refcount bump, no `PageContext` data is copied.
+    // PR 6c commit 2 transitional bridge: derive
+    // `Arc<Box<[CanonicalAttrs]>>` from the same Arc'd `PageContext`
+    // snapshot the PageFinalization rules currently read via
+    // `ctx.page_context`. Commit 3 inverts this: the engine
+    // accumulator becomes the source and the `PageContext`-derived
+    // `page_ctx_arc` path is removed.
+    let page_portions_arc: Arc<Box<[marque_ism::CanonicalAttrs]>> =
+        Arc::new(page_ctx_arc.portions().to_vec().into_boxed_slice());
     let ctx = RuleContext::new(MarkingType::PageFinalization, boundary_span)
         .with_page_context(Some(page_ctx_arc.clone()))
+        .with_page_portions(Some(page_portions_arc))
         .with_page_marking(Some(page_mark_arc))
         .with_corrections(corrections_arc.clone())
         .with_pre_pass_1_attrs(None);

@@ -22,12 +22,18 @@ use std::sync::Arc;
 use marque_capco::scheme::CapcoMarking;
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_core::{Parser, Scanner};
-use marque_ism::{CapcoTokenSet, MarkingType, PageContext};
+use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingType};
 use marque_rules::{RuleContext, RuleSet};
 use marque_scheme::MarkingScheme;
 use marque_test_utils::{
     ExpectedFixture, invalid_fixtures, load_expected, load_fixture, valid_fixtures,
 };
+
+/// Default per-page portion capacity. Matches the engine's accumulator
+/// pre-size (`crates/engine/src/engine.rs::DEFAULT_PORTIONS_CAPACITY`)
+/// so test fixtures exercise the same Vec-growth schedule the production
+/// engine pays.
+const DEFAULT_PORTIONS_CAPACITY: usize = 8;
 
 fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let token_set = CapcoTokenSet;
@@ -36,11 +42,13 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
     let rule_set = CapcoRuleSet::new();
     let scheme = CapcoScheme::new();
     let mut out = Vec::new();
-    // Mirror the engine's PageContext accumulation so banner-rollup rules
-    // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets at
-    // scanner-emitted PageBreak candidates per the engine's invariant.
-    let mut page_context = PageContext::new();
-    let mut page_context_arc: Option<Arc<PageContext>> = None;
+    // Mirror the engine's per-page accumulator so banner-rollup rules
+    // (E031 SAR, E035 SCI) see portions from earlier candidates. Resets
+    // at scanner-emitted PageBreak candidates per the engine's invariant.
+    // PR 6c (T069): inline Vec<CanonicalAttrs> + Arc<Box<[_]>> snapshot
+    // mirrors the post-retirement engine accumulator shape.
+    let mut page_portions: Vec<CanonicalAttrs> = Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
+    let mut page_portions_arc: Option<Arc<Box<[CanonicalAttrs]>>> = None;
     for candidate in &candidates {
         // PageBreak is scanner-emitted; PageFinalization is engine-
         // synthesized and currently unreachable from `Scanner::scan`,
@@ -52,25 +60,27 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
             candidate.kind,
             MarkingType::PageBreak | MarkingType::PageFinalization
         ) {
-            page_context = PageContext::new();
-            page_context_arc = None;
+            page_portions = Vec::with_capacity(DEFAULT_PORTIONS_CAPACITY);
+            page_portions_arc = None;
             continue;
         }
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
         // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
-        // PageContext / Rule::check consume CanonicalAttrs.
+        // engine accumulator / Rule::check consume CanonicalAttrs.
         // Test-fixture carve-out per Constitution V Principle V.
         let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
-            page_context.add_portion(attrs.clone());
-            page_context_arc = None;
+            page_portions.push(attrs.clone());
+            page_portions_arc = None;
         }
-        let ctx_page = if parsed.kind != MarkingType::Portion && !page_context.is_empty() {
+        let ctx_page = if parsed.kind != MarkingType::Portion && !page_portions.is_empty() {
             Some(
-                page_context_arc
-                    .get_or_insert_with(|| Arc::new(page_context.clone()))
+                page_portions_arc
+                    .get_or_insert_with(|| {
+                        Arc::new(page_portions.clone().into_boxed_slice())
+                    })
                     .clone(),
             )
         } else {
@@ -79,7 +89,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         // PR 4b-B 9th-pass follow-up: `RuleContext` is
         // `#[non_exhaustive]`; cross-crate construction goes through
         // `RuleContext::new` + `with_*` setters.
-        let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_context(ctx_page);
+        let ctx = RuleContext::new(candidate.kind, candidate.span).with_page_portions(ctx_page);
         for rule in rule_set.rules() {
             for d in rule.check(&attrs, &ctx) {
                 out.push((d.rule.as_str().to_owned(), d.span.start, d.span.end));

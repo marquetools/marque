@@ -2427,21 +2427,25 @@ fn analyze_uncertain_reduction(
     use marque_ism::is_decomposable;
 
     // Defensive — `dispatch_page_finalization` force-initializes
-    // `ctx.page_context` to `Some(_)` before invoking PageFinalization
+    // `ctx.page_portions` to `Some(_)` before invoking PageFinalization
     // rules (see `crates/engine/src/engine.rs::dispatch_page_finalization`
     // doc). This belt-and-suspenders early-return keeps the rule
     // safe under future engine refactors that might relax the
     // invariant; it should never fire in production. Same shape as
     // W004's defensive early-return in `JointDisunityCollapseRule`.
-    let Some(page) = ctx.page_context.as_ref() else {
+    //
+    // PR 6c migration (T069): read `ctx.page_portions` (the
+    // `Box<[CanonicalAttrs]>` slice snapshot) instead of the retired
+    // `ctx.page_context` / `PageContext::portions()` accessor pair.
+    let Some(page_portions) = ctx.page_portions.as_ref() else {
         return Vec::new();
     };
+    let portions: &[CanonicalAttrs] = page_portions.as_ref();
 
     // Plan §3.2 requires "at least two portions carrying a
     // non-empty REL TO list." Anything less and there's no
     // intersection to compute.
-    let portions_with_rel_to: Vec<&CanonicalAttrs> = page
-        .portions()
+    let portions_with_rel_to: Vec<&CanonicalAttrs> = portions
         .iter()
         .filter(|p| !p.rel_to.is_empty())
         .collect();
@@ -2483,7 +2487,7 @@ fn analyze_uncertain_reduction(
     // cover triggers 3–4 in PR 3c.B-8F-engine-gap. Page-extension
     // stable post-PR-#488 — the bails fire on the same closed page
     // state PageFinalization observes.
-    let any_portion_noforn = page.portions().iter().any(|p| {
+    let any_portion_noforn = portions.iter().any(|p| {
         p.dissem_iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf))
     });
@@ -2496,7 +2500,7 @@ fn analyze_uncertain_reduction(
     // SBU-NF/LES-NF/NODIS/EXDIS NF-injection semantics
     // (§H.9 p172/p174/p178/p185); the second tuple element
     // `needs_nf` is the same flag.
-    let needs_nf = crate::lattice::NonIcDissemSet::from_attrs_iter(page.portions()).needs_nf();
+    let needs_nf = crate::lattice::NonIcDissemSet::from_attrs_iter(portions).needs_nf();
     if needs_nf {
         return Vec::new();
     }
@@ -2513,7 +2517,7 @@ fn analyze_uncertain_reduction(
     // `RelToBlock`; the per-axis bails above already short-circuit
     // S005 in those cases (so the lattice-side supersession arms
     // produce the same empty result without redundant work).
-    let expected = crate::lattice::RelToBlock::from_attrs_iter(page.portions()).into_boxed_slice();
+    let expected = crate::lattice::RelToBlock::from_attrs_iter(portions).into_boxed_slice();
     let expected_set: std::collections::BTreeSet<&str> =
         expected.iter().map(|c| c.as_str()).collect();
 
@@ -5146,25 +5150,30 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Phase::PageFinalization invariant: the engine's
         // `dispatch_page_finalization` force-initializes
-        // `ctx.page_context` and `ctx.page_marking` before invoking
+        // `ctx.page_portions` and `ctx.page_marking` before invoking
         // the rule. The defensive `.as_ref()?` early-return below is
         // belt-and-suspenders so the rule stays safe under future
         // engine refactors that might relax the invariant; it should
         // never fire in production.
         //
-        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads
-        // `ctx.page_context.portions()` rather than `ctx.page_marking`.
+        // PR 4b-D.3 note (2026-05-18): W004 intentionally reads the
+        // per-portion attrs slice rather than `ctx.page_marking`.
         // `JointSet::from_attrs_iter` requires the per-portion
-        // `CanonicalAttrs` slice that `ProjectedMarking` does not expose
-        // (the JointSet `DisunityCollapse` state is structurally
-        // per-portion). PR 4b-E retains a trimmed PageContext for this
-        // consumer; lifting `JointSet`'s derived state onto
-        // `ProjectedMarking` is the post-4b-E successor.
-        let Some(page_ctx) = ctx.page_context.as_ref() else {
+        // `CanonicalAttrs` slice that `ProjectedMarking` does not
+        // expose (the JointSet `DisunityCollapse` state is structurally
+        // per-portion). Lifting `JointSet`'s derived state onto
+        // `ProjectedMarking` is post-PR-6c future work.
+        //
+        // PR 6c migration (T069): read `ctx.page_portions` (the
+        // `Box<[CanonicalAttrs]>` slice snapshot) instead of the
+        // retired `ctx.page_context` / `PageContext::portions()`
+        // accessor pair.
+        let Some(page_portions) = ctx.page_portions.as_ref() else {
             return vec![];
         };
+        let portions: &[CanonicalAttrs] = page_portions.as_ref();
 
-        let joint_set = crate::lattice::JointSet::from_attrs_iter(page_ctx.portions());
+        let joint_set = crate::lattice::JointSet::from_attrs_iter(portions);
         if !joint_set.is_disunity_collapse() {
             return vec![];
         }
