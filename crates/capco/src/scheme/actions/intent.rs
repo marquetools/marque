@@ -249,6 +249,38 @@ fn apply_fact_add(
             // audit log (Copilot review of PR #372).
             return Err(ApplyIntentError::IntentInapplicable);
         }
+        // PR 4b-D.2 D22 (decisions.md): when NOFORN is being inserted
+        // into dissem_us, route through `DissemSet::with_noforn_injected`
+        // so the §H.8 p145 supersession overlay strips dominated FD&R
+        // controls (REL TO / RELIDO / DISPLAY ONLY / EYES ONLY) at the
+        // injection site. This makes both closure-driven FactAdd
+        // (closure_hotpath path) and direct rule-driven FactAdd
+        // (E038-NODIS, E021-AEA, etc.) correct by construction:
+        // re-insertion of NOFORN is idempotent, and the resulting
+        // marking always satisfies the §H.8 p145 invariant
+        // ("NOFORN: Cannot be used with REL TO / RELIDO / EYES ONLY /
+        // DISPLAY ONLY") + §D.2 Table 3 rows 1-2 + §H.8 p157 (EYES
+        // ONLY).
+        //
+        // The other FactAdd targets (Relido, Displayonly, Oc, OcUsgov)
+        // do NOT need supersession routing: §H.8 p145 only specifies
+        // NOFORN as a dominator on the FD&R chain. The OC-vs-OC-USGOV
+        // §H.8 p136/p140 supersession runs at join time (where both
+        // tokens can be observed on different portions); FactAdd of
+        // OcUsgov alongside existing Oc is a per-portion config that
+        // the lattice will resolve at the next join.
+        //
+        // Authority: §H.8 p145 (NOFORN: "Cannot be used with REL TO,
+        // RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2
+        // + §H.8 p157 (EYES ONLY: NSA-only, retains DissemControl::Eyes
+        // through lint per scheme.rs:190).
+        if target == DissemControl::Nf {
+            let portion_attrs = [attrs.clone()];
+            let dissem_set = crate::lattice::DissemSet::from_attrs_iter(&portion_attrs)
+                .with_noforn_injected();
+            attrs.dissem_us = dissem_set.into_boxed_slice();
+            return Ok(());
+        }
         let mut next: Vec<DissemControl> = attrs.dissem_us.to_vec();
         next.push(target);
         // D9b-1 (decisions.md): FactAdd writes to dissem_us unconditionally;

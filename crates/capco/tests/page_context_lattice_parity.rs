@@ -62,8 +62,19 @@ fn project_via_page_context(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
     out.rel_to = ctx.expected_rel_to().into_boxed_slice();
     out.declassify_on = ctx.expected_declassify_on().cloned();
     out.declass_exemption = ctx.expected_declass_exemption();
-    let (non_ic, _needs_nf) = ctx.expected_non_ic_dissem();
+    let (non_ic, needs_nf) = ctx.expected_non_ic_dissem();
     out.non_ic_dissem = non_ic.into_boxed_slice();
+    // PR 4b-D.2: mirror `page_context_to_attrs`' DISPLAY ONLY wiring
+    // so the parity helper matches the production scheme.project
+    // hot-path output. `expected_display_only` already short-circuits
+    // to empty when `needs_nf` is true; mirror the defensive `.clear()`
+    // from `page_context_to_attrs` for the same belt-and-suspenders
+    // semantics. §H.8 p163 + §D.2 Table 3 rows 25-27.
+    let mut display_only_to = ctx.expected_display_only();
+    if needs_nf {
+        display_only_to.clear();
+    }
+    out.display_only_to = display_only_to.into_boxed_slice();
     out
 }
 

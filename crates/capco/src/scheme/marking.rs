@@ -487,6 +487,30 @@ impl CapcoMarking {
         let (non_ic, needs_nf) = tmp_ctx.expected_non_ic_dissem();
         out.non_ic_dissem = non_ic.into_boxed_slice();
 
+        // DISPLAY ONLY axis (§D.2 Table 3 rows 18-20 + 25-27, §H.8
+        // p163). Cross-axis intersection over (REL TO ∪ DO) with
+        // banner-REL-TO and USA subtraction — see
+        // `PageContext::expected_display_only`. PR 4b-D.2 mirrors the
+        // `page_context_to_attrs` semantic into the lattice path so
+        // the production scheme.project hot-path output preserves the
+        // axis. A dedicated `DisplayOnlyBlock` lattice (parallel to
+        // RelToBlock) is queued for the same PR-cycle as the
+        // PageContext deletion.
+        //
+        // Belt-and-suspenders defense against deferred NOFORN
+        // injection: per §H.8 p154 + §D.2 Table 3 row 2, NOFORN and
+        // DISPLAY ONLY cannot coexist in the projected banner.
+        // `expected_display_only` already short-circuits to empty
+        // when `needs_nf` is true; the defensive `.clear()` mirrors
+        // `page_context_to_attrs` so a future refactor that drops
+        // the PageContext-side short-circuit cannot silently
+        // re-introduce the bug here.
+        let mut display_only_to = tmp_ctx.expected_display_only();
+        if needs_nf {
+            display_only_to.clear();
+        }
+        out.display_only_to = display_only_to.into_boxed_slice();
+
         // NOFORN-clears-REL-TO interaction + cross-axis NOFORN
         // injection.
         //

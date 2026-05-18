@@ -16,7 +16,14 @@ use marque_ism::{CanonicalAttrs, PageContext};
 /// fields exercised by Phase A's equivalence tests. Other fields land
 /// at their defaults, which matches Phase B's goal of handing
 /// everything off to scheme-driven aggregation.
+///
+/// PR 4b-D.2 retired all production call sites. The function survives
+/// as the canonical PageContext-path projection used by parity-gate
+/// fixtures (`tests/page_context_lattice_parity.rs`'s
+/// `project_via_page_context` helper) until PR 4b-E deletes the
+/// PageContext aggregator entirely.
 #[inline]
+#[allow(dead_code)]
 pub(crate) fn page_context_to_attrs(ctx: &PageContext) -> CanonicalAttrs {
     let mut out = CanonicalAttrs::default();
 

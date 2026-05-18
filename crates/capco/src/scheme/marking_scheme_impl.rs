@@ -15,7 +15,7 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::{CanonicalAttrs, PageContext};
+use marque_ism::CanonicalAttrs;
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
@@ -213,27 +213,55 @@ impl MarkingScheme for CapcoScheme {
                     .unwrap_or_else(|| CapcoMarking::new(CanonicalAttrs::default()))
             }
             Scope::Page | Scope::Document | Scope::Diff => {
-                // Page / Document rollup: drive through the existing
-                // `PageContext` aggregator (which is already
-                // category-component-wise), then apply page rewrites.
+                // PR 4b-D.2 (this commit) flipped the production page
+                // projection from the PageContext aggregator to the
+                // post-PR-4b-B lattice path. Pipeline ordering per
+                // `docs/plans/2026-05-01-lattice-design.md` §4.7.4:
                 //
-                // Byte-identical equivalence with `PageContext` is the
-                // Phase B verification gate — see the
-                // `scheme_equivalence.rs` tests. When CAPCO's categories
-                // move to individual `impl Lattice` types in their own
-                // right (Phase C continuation), this implementation
-                // swaps in the category-wise composition directly
-                // without changing the outward contract.
-                let mut ctx = PageContext::new();
-                for p in markings {
-                    ctx.add_portion(p.0.clone());
-                }
-                let mut out = CapcoMarking::new(page_context_to_attrs(&ctx));
-                // Apply declarative page rewrites. `PageContext`
-                // already applies NOFORN-clears-REL-TO internally, so
-                // the rewrite is effectively a no-op on today's
-                // storage — but declaring it here makes the semantic
-                // inspectable per §7a.
+                //     parse → join (lattice) → Cl_supp (closure)
+                //                            → PageRewrites
+                //                            → render
+                //
+                // The closure operator and PageRewrites are both
+                // monotone, and PageRewrites operate on the closed
+                // state's remaining tokens.
+                let raw: Vec<CanonicalAttrs> =
+                    markings.iter().map(|m| m.0.clone()).collect();
+
+                // PR 4b-D.2 D23 (decisions.md): closure-rewrite-application
+                // sentinel. Per `docs/plans/2026-05-01-lattice-design.md`
+                // §3 (e.1) read-only-attrs invariant, the closure
+                // operator MUST NOT mutate the per-portion CanonicalAttrs
+                // slice it observes. Snapshot the input pre-closure and
+                // assert byte-identity afterward. The sibling sentinel
+                // for PageFinalization rule dispatch lives in
+                // `dispatch_page_finalization` (engine.rs); this one
+                // covers the closure-operator's rewrite-application
+                // site. `#[cfg(debug_assertions)]`-gated so the
+                // assertion ships in `cargo test` and unoptimized
+                // builds and costs nothing in `--release`.
+                #[cfg(debug_assertions)]
+                let raw_snapshot = raw.clone();
+
+                let joined = CapcoMarking::new(CapcoMarking::join_via_lattice(&raw));
+
+                let mut out = self.closure(joined);
+
+                #[cfg(debug_assertions)]
+                debug_assert_eq!(
+                    raw, raw_snapshot,
+                    "closure() mutated the per-portion CanonicalAttrs slice — \
+                     violates PageRewrite read-only-attrs invariant \
+                     (docs/plans/2026-05-01-lattice-design.md §3 (e.1))"
+                );
+                // Apply declarative page rewrites. PR 4b-D.2 hot-path
+                // flip: page rewrites run on the post-closure state,
+                // so any cone facts the closure operator added are
+                // visible to rewrite triggers. NOFORN-clears-REL-TO
+                // and similar absorbing rewrites remain inflationary
+                // on the closed state (they remove dominated tokens
+                // but the remaining tokens are already members of the
+                // closure's fixed point).
                 for rw in &self.page_rewrites {
                     let fires = match &rw.trigger {
                         CategoryPredicate::Contains { category, token } => {
