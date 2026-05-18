@@ -211,19 +211,38 @@ impl ProjectedMarking {
         }
     }
 
-    /// Returns `true` iff every portion on the page is NATO-classified
-    /// and no portion contributes Foreign Government Information.
+    /// Returns `true` iff the page-aggregate classification is
+    /// `Some(MarkingClassification::Nato(_))` and no portion contributes
+    /// Foreign Government Information.
     ///
     /// This is the `ProjectedMarking`-side predicate consumed by
     /// `marque-capco`'s S007 rule (`bare-nato-requires-rel-to-usa-nato`)
     /// to silence the bare-NATO → `REL TO USA, NATO` suggestion on
-    /// documents that are wholly NATO-owned. The legacy
-    /// [`crate::PageContext::is_solely_nato_classified`] returns the same
-    /// boolean on every scenario (it walks `self.portions` directly with
-    /// the same `matches!` pattern); this method is the engine-facing
-    /// successor that consumers migrate to ahead of PR 4b-E retiring the
-    /// `PageContext.expected_*` machinery and consolidating page-aggregate
-    /// reads on `RuleContext.page_marking`.
+    /// documents that are wholly NATO-owned. The engine-facing successor
+    /// to [`crate::PageContext::is_solely_nato_classified`], introduced
+    /// ahead of PR 4b-E retiring the `PageContext.expected_*` machinery
+    /// and consolidating page-aggregate reads on
+    /// `RuleContext.page_marking`.
+    ///
+    /// # Equivalence note
+    ///
+    /// This predicate reads the post-lattice page aggregate
+    /// (`self.classification`, `self.fgi_marker`); the legacy
+    /// `PageContext::is_solely_nato_classified` walks `self.portions`
+    /// directly and pattern-matches each portion with the same
+    /// `matches!` template. Both return the same answer on every page
+    /// where every portion contributes a parsed classification (the
+    /// documented and tested scenarios). The two may diverge on pages
+    /// containing portions with `classification = None`:
+    /// `ProjectedMarking` reflects the lattice aggregate (which may
+    /// classify the page as solely-NATO if all classification-bearing
+    /// portions are NATO and the `None` portions surrender to the
+    /// lattice bottom), while `PageContext` requires every portion to
+    /// bear `Some(Nato(_))`. The post-lattice semantic is the forward
+    /// direction. The divergence does not affect current S007 dispatch
+    /// because portion rules do not yet receive a populated
+    /// `page_marking` (see fr048 trip-wire test); revisit when the
+    /// engine plumbs page state to portion-rule dispatch.
     ///
     /// # Predicate truth conditions
     ///
