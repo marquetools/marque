@@ -18,7 +18,7 @@
 //! / `super::predicates::*` / `super::constraints::*` (the same glob
 //! pattern `mod.rs` used pre-split).
 
-use marque_ism::{CanonicalAttrs, Classification, MarkingClassification, PageContext};
+use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
 use marque_scheme::{JoinSemilattice, MeetSemilattice};
 
 use super::actions::*;
@@ -128,6 +128,53 @@ impl CapcoMarking {
     /// Authority (verified 2026-05-15): per-axis citations are on
     /// each `lattice` module type's doc comment.
     pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        // Build a one-shot tmp_ctx for residue-axis accessor calls
+        // and delegate to the borrowed-context variant. Callers that
+        // already own a `&PageContext` (e.g. `Engine::lint`'s hot path)
+        // SHOULD call `join_via_lattice_with_context` directly to skip
+        // this clone round.
+        let mut tmp_ctx = marque_ism::PageContext::new();
+        for p in portions {
+            tmp_ctx.add_portion(p.clone());
+        }
+        Self::join_via_lattice_with_context(portions, &tmp_ctx)
+    }
+
+    /// PR 4b-D.2 Commit 7+ — hot-path fast variant of
+    /// [`Self::join_via_lattice`] that consumes a pre-built
+    /// [`marque_ism::PageContext`] reference instead of cloning the
+    /// per-portion `CanonicalAttrs` into a fresh tmp_ctx.
+    ///
+    /// The engine's `project_page_marking` already owns a
+    /// `&PageContext` (the same one that accumulates portions across
+    /// the document via `add_portion`), so the hot path can route
+    /// through here and skip the n×clone tmp_ctx rebuild that the
+    /// trait-path entry pays.
+    ///
+    /// `portions` and `page_ctx.portions()` MUST refer to the same
+    /// underlying slice — the caller's contract. Mismatched inputs
+    /// would mix per-axis lattice results from one slice with
+    /// residue-axis accessor results from another, which is a
+    /// semantically-corrupt projection. Debug-mode assertion below
+    /// guards this at test time.
+    pub fn join_via_lattice_with_context(
+        portions: &[CanonicalAttrs],
+        page_ctx: &marque_ism::PageContext,
+    ) -> CanonicalAttrs {
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            portions,
+            page_ctx.portions(),
+            "join_via_lattice_with_context: portions slice and page_ctx \
+             portions() must be the same slice — caller's contract."
+        );
+        Self::join_via_lattice_body(portions, page_ctx)
+    }
+
+    fn join_via_lattice_body(
+        portions: &[CanonicalAttrs],
+        tmp_ctx: &marque_ism::PageContext,
+    ) -> CanonicalAttrs {
         use crate::lattice::{
             AeaSet, ClassificationLattice, DeclassifyOnLattice, DissemSet, FgiSet, JointSet,
             NatoDissemSet, RelToBlock, SarSet, SciSet,
@@ -255,13 +302,12 @@ impl CapcoMarking {
             }
         };
 
-        // Build a temporary PageContext for the axes that PR 4b-B
-        // deliberately leaves on the PageContext path (see "two
-        // residues" above) plus for the SCI compatibility view.
-        let mut tmp_ctx = PageContext::new();
-        for p in portions {
-            tmp_ctx.add_portion(p.clone());
-        }
+        // PR 4b-D.2 Commit 7+: tmp_ctx is now received by reference
+        // from the caller (the engine's hot path passes its existing
+        // `&PageContext`, eliminating the inner n×clone tmp_ctx rebuild
+        // round). The trait-path entry point (`join_via_lattice`) still
+        // builds a one-shot tmp_ctx and delegates; the engine path
+        // skips that round via `join_via_lattice_with_context`.
 
         // Axis 2-5: SCI / SAR / AEA / FGI — assemble from per-portion
         // markings via the PR 4b-A precedent constructors. SciSet /

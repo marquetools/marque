@@ -141,15 +141,15 @@ fn phase_attribution(c: &mut Criterion) {
         });
     });
 
-    // Phase E: end-to-end engine-side replay: from page_context.portions()
-    // through the new fast-path (project_from_attrs_slice).
+    // Phase E: end-to-end engine-side replay through the new fast-path
+    // `project_from_page_context`.
     let mut page_context = PageContext::new();
     for p in &portions {
         page_context.add_portion(p.clone());
     }
     c.bench_function("phase_e_engine_project_path", |b| {
         b.iter(|| {
-            let projected = scheme.project_from_attrs_slice(page_context.portions());
+            let projected = scheme.project_from_page_context(&page_context);
             let pm = marque_ism::ProjectedMarking::from_canonical(projected);
             black_box(pm);
         });
@@ -184,7 +184,7 @@ fn phase_attribution(c: &mut Criterion) {
         }
         c.bench_function(&format!("phase_g_project_n{}", n), |b| {
             b.iter(|| {
-                let projected = scheme.project_from_attrs_slice(large_page.portions());
+                let projected = scheme.project_from_page_context(&large_page);
                 let pm = marque_ism::ProjectedMarking::from_canonical(projected);
                 black_box(pm);
             });

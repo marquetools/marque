@@ -4244,14 +4244,21 @@ fn project_page_marking(
     page_context: &marque_ism::PageContext,
 ) -> marque_ism::ProjectedMarking {
     // PR 4b-D.2 Commit 7 perf optimization: route through
-    // `CapcoScheme::project_from_attrs_slice`, which consumes
-    // `&[CanonicalAttrs]` directly (the shape `PageContext::portions()`
-    // already returns). The trait-level `MarkingScheme::project` would
-    // require wrapping each portion in a `CapcoMarking` and the project
-    // body would then re-extract `.0.clone()` — both round-trips are
-    // pure deep-clone allocation cost on the hot path. The
-    // scheme-specific fast-path skips them.
-    let projected = scheme.project_from_attrs_slice(page_context.portions());
+    // `CapcoScheme::project_from_page_context`, the engine fast-path
+    // that consumes the pre-built `&PageContext` directly. This skips
+    // three categories of redundant work the trait-level
+    // `MarkingScheme::project` would pay:
+    //
+    //   1. Wrapping each portion in a `CapcoMarking::new(p.clone())`
+    //      at the engine boundary.
+    //   2. Re-extracting `m.0.clone()` for each marking back into a
+    //      `Vec<CanonicalAttrs>` inside the trait body.
+    //   3. Rebuilding a tmp_ctx via `add_portion(p.clone())` for each
+    //      portion inside `join_via_lattice`.
+    //
+    // The engine ALREADY owns a `PageContext` accumulating portions
+    // across the document; reusing it here eliminates all three.
+    let projected = scheme.project_from_page_context(page_context);
     marque_ism::ProjectedMarking::from_canonical(projected)
 }
 
