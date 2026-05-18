@@ -92,9 +92,12 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // SAR rollup is structural (programs carry
             // compartments, compartments carry sub-compartments per
             // §H.5) and not expressible as a flat token union. Flag
-            // as `Custom` so Phase B leaves
-            // `PageContext::expected_sar_marking` in place rather
-            // than substituting a naive union reducer.
+            // as `Custom` so the engine routes through the lattice
+            // constructor `SarSet::from_markings`
+            // (`crates/capco/src/lattice.rs`) rather than
+            // substituting a naive union reducer. Pre-PR-4b-E this
+            // routed through the retired
+            // `PageContext::expected_sar_marking` accessor.
             aggregation: AggregationOp::Custom,
             intra_ordering: IntraOrdering::NumericThenAlpha,
             expansion: None,
@@ -108,9 +111,11 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // TFNI (RD absorbs FRD when both are present), SIGMA
             // compartments merge numerically across RD blocks, and
             // UCNI drops in classified documents. Flag as `Custom`
-            // so Phase B does not silently replace
-            // `PageContext::expected_aea_markings` with a naive
-            // union reducer.
+            // so the engine routes through the lattice constructor
+            // `AeaSet::from_markings` (`crates/capco/src/lattice.rs`)
+            // rather than substituting a naive union reducer.
+            // Pre-PR-4b-E this routed through the retired
+            // `PageContext::expected_aea_markings` accessor.
             aggregation: AggregationOp::Custom,
             intra_ordering: IntraOrdering::AsWritten,
             expansion: None,
@@ -125,9 +130,12 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // country list would compromise the concealed source),
             // and the marker changes shape when multiple origin
             // countries contribute. `AggregationOp::Custom` flags
-            // this for Phase B so the engine does not silently
-            // replace `PageContext::expected_fgi_marker` with a
-            // plain union.
+            // this so the engine routes through the lattice
+            // constructor `FgiSet::from_attrs_iter`
+            // (`crates/capco/src/lattice.rs`) rather than
+            // substituting a plain union. Pre-PR-4b-E this routed
+            // through the retired `PageContext::expected_fgi_marker`
+            // accessor.
             //
             // When multiple source-acknowledged FGIs combine, they
             // are a space delimited union in alphabetical order.
@@ -153,11 +161,15 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // dissem, REL TO in `rel_to` — and
             // `UnionWithSupersession` is only expressive within a
             // single category's token set. The cross-category
-            // supersession is enforced today by
-            // `PageContext::expected_rel_to()` (which clears REL TO
-            // when any NOFORN is present) and by the
+            // supersession is enforced today by the
+            // `RelToBlock::from_attrs_iter` lattice constructor in
+            // `crates/capco/src/lattice.rs` (which collapses to the
+            // `NofornSuperseded` sentinel variant when any NOFORN is
+            // present) and by the
             // `Constraint::Conflicts(NOFORN, REL_TO)` check below.
-            // Phase C will model cross-category supersession
+            // Pre-PR-4b-E the cross-category supersession was
+            // enforced by the retired `PageContext::expected_rel_to`
+            // accessor. Phase C will model cross-category supersession
             // explicitly (e.g. as a new `Constraint::Supersedes`
             // variant that spans categories).
             aggregation: AggregationOp::Union,

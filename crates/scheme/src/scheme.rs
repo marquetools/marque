@@ -302,9 +302,14 @@ pub trait MarkingScheme {
     ///
     /// - `Scope::Portion` — identity; returns the first marking (or
     ///   the scheme's bottom if empty).
-    /// - `Scope::Page` — per-page banner roll-up. This is the
-    ///   operation CAPCO's `PageContext::expected_*` accessors
-    ///   historically performed. Implementations should apply
+    /// - `Scope::Page` — per-page banner roll-up. Prior to PR 4b-E,
+    ///   `marque-capco` implemented this operation through the
+    ///   `PageContext::expected_*` accessor surface; PR 4b-E retired
+    ///   that surface and migrated callers to per-axis lattice
+    ///   constructors (`SciSet::from_markings`,
+    ///   `RelToBlock::from_attrs_iter`, etc.) composed via
+    ///   `CapcoMarking::join_via_lattice` then run through this
+    ///   `project` trait method. Implementations should apply
     ///   component-wise category joins first, then run
     ///   [`Self::page_rewrites`] in declaration order.
     /// - `Scope::Document` — document-level roll-up. On single-page

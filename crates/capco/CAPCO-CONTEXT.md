@@ -258,27 +258,43 @@ correct post-flip behavior, and the
 `relido_plus_nf_noforn_dominates_parity` row converged in staging
 prior to PR 4b-D.2):
 
-1. **`pure_nato_lattice_vs_pagecontext_diverges`** (G-3): SOLELY-NATO page
-   (no US portion). PageContext flattens to `Us(_)`; the lattice and
-   scheme paths preserve `Nato(_)` per §H.7 pp123-125. Mixed US+NATO
-   pages reciprocal-raise to `Us(level)` on all three paths.
-2. **`joint_unanimous_two_portions`**: pure-JOINT page (no US portion).
-   PageContext returns `Us(_)`; the lattice and scheme paths return
-   `Joint(_)` per §H.3 p56 banner-fidelity. Converges when the
-   renderer lands at PR 5+.
-3. **`joint_single_portion_no_us`**: solo JOINT portion. Same shape as
-   #2 — pure-JOINT page; PageContext returns `Us(_)`, lattice and
-   scheme paths return `Joint(_)` per §H.3 p56.
+**PR 4b-E convergence (2026-05-18).** The three pre-PR-4b-E
+divergences — `pure_nato_both_paths_preserve_nato_variant` (G-3,
+renamed from `pure_nato_lattice_vs_pagecontext_diverges` in PR 4b-E
+review fix-up),
+`joint_unanimous_two_portions_converge_to_joint_variant` (renamed
+from `joint_unanimous_two_portions`),
+`joint_single_portion_no_us_converge_to_joint_variant` (renamed
+from `joint_single_portion_no_us`) — all
+**CONVERGED to byte-identity** post-PR-4b-E (OQ-7 BLOCKING discipline
+satisfied). Both compared sides are now lattice-derived
+(`project_via_lattice` and `project_via_scheme`); the PageContext
+side retired entirely. Each historically-divergent fixture now
+asserts the surviving lattice + scheme paths produce the same
+non-`Us(_)` classification variant per §H.7 pp123-125 (solely-NATO
+preserves `Nato(_)`) and §H.3 p56 (pure-JOINT preserves `Joint(_)`).
 
-**Parity-gate direction inversion (PR 4b-D.2).** Post-flip,
-`project_via_scheme` (the production path) agrees with
-`project_via_lattice` (both compose through `join_via_lattice`);
-`project_via_page_context` is the divergent side until PR 4b-E
-retires the PageContext aggregator entirely. The retargeted
+**New divergence class (PR 4b-E).** A different class of divergence
+emerged in the migrated parity gate: 12 fixtures (OC-USGOV unanimous,
+JOINT + NATO/FGI variants, conflict + NATO) exhibit a `dissem_us`
+asymmetry on the post-PR-4b-E lattice-vs-scheme comparison. The
+scheme path runs `CLOSURE_NOFORN_CAVEATED` (§B.3 Table 2 p21 — the
+caveated-classified post-28-Jun-2010 NOFORN rule); the per-axis
+lattice path does not run closure rules. This is correct CAPCO
+behavior on both paths; the asymmetry is annotated with a uniform
+§B.3 Table 2 p21 citation block per fixture's `expected_divergences`
+array. The parity gate's role post-PR-4b-E is exactly to surface
+such asymmetries — the gate catches future PageRewrite catalog
+edits that would silently change scheme-side semantics without a
+parallel lattice update.
+
+**Parity-gate direction (PR 4b-E).** The post-flip comparison is
+`project_via_lattice` ↔ `project_via_scheme` — the file renamed to
+`crates/capco/tests/lattice_vs_scheme_parity.rs`. The retargeted
 fixtures `fouo_classified_scheme_project_strips_fouo` and
 `aea_ucni_classified_scheme_project_strips_and_promotes_noforn`
-encode the new shape: per-axis helpers (PageContext + lattice) keep
-the to-be-stripped marking; `scheme.project` strips it through the
+encode the same shape: per-axis lattice helper keeps the
+to-be-stripped marking; `scheme.project` strips it through the
 declarative PageRewrite catalog.
 
 G-4..G-9 are parity-RESTORING fixes (each cited inline against its §):
