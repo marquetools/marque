@@ -114,8 +114,6 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // so the engine routes through the lattice constructor
             // `AeaSet::from_markings` (`crates/capco/src/lattice.rs`)
             // rather than substituting a naive union reducer.
-            // Pre-PR-4b-E this routed through the retired
-            // `PageContext::expected_aea_markings` accessor.
             aggregation: AggregationOp::Custom,
             intra_ordering: IntraOrdering::AsWritten,
             expansion: None,
@@ -133,9 +131,7 @@ pub(crate) fn build_categories() -> Vec<Category> {
             // this so the engine routes through the lattice
             // constructor `FgiSet::from_attrs_iter`
             // (`crates/capco/src/lattice.rs`) rather than
-            // substituting a plain union. Pre-PR-4b-E this routed
-            // through the retired `PageContext::expected_fgi_marker`
-            // accessor.
+            // substituting a plain union.
             //
             // When multiple source-acknowledged FGIs combine, they
             // are a space delimited union in alphabetical order.

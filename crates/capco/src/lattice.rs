@@ -2039,60 +2039,58 @@ static DISSEM_SUPERSESSION_TABLE: &[(DissemControl, DissemControl)] = &[
 /// `DissemControl` tokens with three supersession overlays applied
 /// at construction and re-applied on `join`.
 ///
-/// **Overlay set** (PARTIAL parity with `PageContext::expected_dissem_us`
-/// — see divergence list below; PR 4b-B 7th-pass docstring correction):
+/// **Overlay set** (applied at `from_attrs_iter` / `join` time):
 ///
-/// 1. Basic BTreeSet union over per-portion `dissem_us` (matches
-///    PageContext step 1).
+/// 1. Basic BTreeSet union over per-portion `dissem_us`.
 /// 2. **OC-USGOV supersession** per §H.8 p136 + §H.8 p140: drop
-///    `OcUsgov` if `Oc` is present in the joined set (matches
-///    PageContext step 2).
+///    `OcUsgov` if `Oc` is present in the joined set.
 /// 3. **RELIDO observed-unanimity** per §H.8 pp155-156: drop `Relido`
 ///    if some portion lacks it. The constructor tracks this via the
 ///    `relido_observed_unanimous` flag so a subsequent `join` can
 ///    propagate the unanimity bit without re-inspecting the original
-///    portions (matches PageContext step 2b).
+///    portions.
 /// 4. **NOFORN dominates** per §D.2 Table 3 rows 1-2 + §H.8 p145:
 ///    drop `Rel` / `Relido` / `Displayonly` when `Nf` is present.
-///    **This overlay is NOT applied by
-///    `PageContext::expected_dissem_us`** — see the divergence note
-///    below. The lattice path is correct here per §H.8 p145; the
-///    PageContext path is bug-shaped.
+///    Applied via `with_noforn_injected` at the cross-axis NOFORN
+///    rendezvous in `CapcoMarking::join_via_lattice` (G-8 PR 4b-B
+///    follow-up).
 ///
-/// **Documented parity divergences with `PageContext::expected_dissem_us`**
-/// (PR 4b-B 7th-pass docstring correction; matching parity-gate
-/// fixtures in `tests/page_context_lattice_parity.rs`):
+/// **Post-PR-4b-E divergence inventory** (matching parity-gate
+/// fixtures in `crates/capco/tests/lattice_vs_scheme_parity.rs`).
+/// The PR 4b-E `PageContext::expected_*` deletion retired the
+/// PageContext side of the original parity comparison; the surviving
+/// comparison is between the per-axis lattice path
+/// (`project_via_lattice`) and the full scheme pipeline
+/// (`project_via_scheme = scheme.project(Scope::Page, ...)`, which
+/// runs the declarative PageRewrite catalog over the per-axis
+/// composition). The four overlays this `DissemSet` doc-comment
+/// previously inventoried as "PageContext-only" all land on the
+/// scheme path now:
 ///
-/// - **Overlay 4 (NOFORN dominates) is LATTICE-ONLY.** PageContext's
-///   `expected_dissem_us` (page_context.rs:511) does NOT apply this
-///   overlay; it surfaces both `Nf` and the dominated `Rel` /
-///   `Relido` / `Displayonly` in the same banner. Per §H.8 p145 +
-///   §D.2 Table 3 rows 1-2 the lattice path is correct and
-///   PageContext is bug-shaped here. Pinned by
-///   `relido_plus_nf_noforn_dominates_documented_divergence` as a
-///   LATTICE-CORRECTING-PAGE-CONTEXT case.
-/// - **FOUO classification-gate eviction is PAGECONTEXT-ONLY.**
-///   PageContext step 3 (page_context.rs:573-578) drops `Fouo` from
-///   classified pages and on DSEN override per §H.8 p134; the
-///   lattice path's `DissemSet` does NOT apply this — the cross-axis
-///   classification gate stays on PageContext under the
-///   `Constraint::Custom("capco/fouo-eviction", …)` migration target
-///   (PR 4b-C, Pattern B in
-///   `project_noforn_supremacy_composition.md`). Pinned by
-///   `fouo_classified_lattice_vs_pagecontext_diverges` (G-1).
-/// - **UCNI classification-gate strip is PAGECONTEXT-ONLY.** Same
-///   Pattern C migration target (PR 4b-C). Pinned by
-///   `aea_ucni_classified_lattice_vs_pagecontext_diverges` (G-2).
-/// - **Cross-axis NOFORN injection from `non_ic_dissem`** (PageContext
-///   step 4) is mirrored on the lattice path via
-///   `DissemSet::with_noforn_injected` (G-8 PR 4b-B), but the source
-///   data path differs: PageContext reads `expected_non_ic_dissem`'s
-///   `needs_nf` second-tuple element directly; the lattice path
-///   routes through `RelToBlock::is_noforn_superseded` and a
-///   `tmp_ctx.expected_non_ic_dissem()` call at scheme.rs (the G-6
-///   path). Both ultimately surface NOFORN on classified SBU-NF /
-///   LES-NF pages, but the lattice path additionally re-runs overlay
-///   4 to strip dominated controls (which PageContext does not).
+/// - **Overlay 4 (NOFORN dominates)** lives on the lattice path
+///   itself via `DissemSet::with_noforn_injected`. Per §H.8 p145
+///   plus §D.2 Table 3 rows 1-2 the overlay strips `Rel` / `Relido`
+///   / `Displayonly` when `Nf` is present.
+/// - **FOUO classification-gate eviction** lives on
+///   `scheme.project(Scope::Page, ...)` via the
+///   `capco/classification-evicts-fouo` (Pattern B) and
+///   `capco/fouo-evicted-by-classified` (Pattern C) PageRewrites
+///   declared on `CapcoScheme` (CAPCO-2016 §H.8 p134
+///   classified-document sub-clause).
+/// - **UCNI classification-gate strip** lives on
+///   `scheme.project(Scope::Page, ...)` via the
+///   `capco/{dod,doe}-ucni-evicted-by-classified` and
+///   `capco/{dod,doe}-ucni-promotes-noforn-when-classified`
+///   PageRewrites (CAPCO-2016 §H.6 p116 DOD UCNI / §H.6 p118 DOE
+///   UCNI; the NOFORN-promotion clause fires before the strip so
+///   the §H.6 NOFORN-promotion semantic on classified pages is
+///   preserved).
+/// - **Cross-axis NOFORN injection from `non_ic_dissem`** mirrors on
+///   the lattice path via `DissemSet::with_noforn_injected` (G-8
+///   PR 4b-B). `NonIcDissemSet::from_attrs_iter`'s `needs_nf` flag
+///   drives the injection on classified SBU-NF / LES-NF pages
+///   (§H.9 p178 SBU-NF / §H.9 p185 LES-NF), and the supersession
+///   overlay then re-runs Overlay 4 to strip dominated controls.
 ///
 /// **Ordering** at the lattice level is BTreeSet's natural order;
 /// §H.8 prose ordering ("OC/NF" not "NF/OC") is the renderer's
@@ -2264,8 +2262,10 @@ impl DissemSet {
         self.set.into_iter().collect::<Vec<_>>().into_boxed_slice()
     }
 
-    /// Borrow as a `Vec` for compatibility with existing
-    /// `PageContext::expected_dissem_us`-shaped APIs.
+    /// Borrow as a `Vec` for callers that need the post-overlay set
+    /// in `Vec`-shaped form (parity-gate fixtures and similar
+    /// inspection sites; `into_boxed_slice` is the production
+    /// renderer-facing API).
     pub fn to_vec(&self) -> Vec<DissemControl> {
         self.set.iter().copied().collect()
     }
@@ -2278,8 +2278,8 @@ impl DissemSet {
     /// through here so the §H.8 p145 NOFORN-dominates rule strips
     /// `Rel` / `Relido` / `Displayonly` from the set.
     ///
-    /// Pre-G-8 the cross-axis injection at
-    /// `crates/capco/src/scheme.rs:513` added `Nf` directly into
+    /// Pre-G-8 the cross-axis injection at the NOFORN rendezvous
+    /// in the `join_via_lattice` body added `Nf` directly into
     /// `out.dissem_us` after `DissemSet::into_boxed_slice` ran,
     /// which left dominated controls in place — invalid per
     /// §H.8 p145.
@@ -2571,10 +2571,11 @@ impl JointSet {
         // well-formed disagreement → `DisunityCollapse`.
         //
         // The malformed portion is **invisible to the JOINT axis**
-        // (does not count as "non-JOINT" either). PageContext's
-        // `expected_classification` still consumes its
-        // `effective_level()` for the level chain max; this
-        // normalization is JOINT-axis-only.
+        // (does not count as "non-JOINT" either). The classification
+        // axis still consumes the malformed portion's
+        // `effective_level()` for the level-chain max via
+        // `ClassificationLattice`; this normalization is
+        // JOINT-axis-only.
         //
         // Authority: §H.3 p56 (JOINT grammar requires non-empty
         // `[LIST]` AND USA in the producer list). Verified

@@ -21,7 +21,7 @@ mod fgi;
 mod intent;
 // PR 4b-E: `mod page_context` retired alongside the
 // `page_context_to_attrs` helper. The lattice-path residue migration
-// in `crates/capco/src/scheme/marking.rs::join_via_lattice_with_context`
+// in `crates/capco/src/scheme/marking.rs` (the `join_via_lattice` body)
 // retired the helper's last `#[allow(dead_code)]` consumer.
 mod strip;
 

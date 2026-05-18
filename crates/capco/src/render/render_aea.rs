@@ -36,11 +36,12 @@
 //! - `TFNI` / `TFNI`
 //!
 //! Multiple AEA atoms in the same axis are `/`-separated in Register
-//! order. Page-level projection (`PageContext::expected_aea_markings`)
-//! is what enforces RD > FRD > TFNI precedence — a page that sees both
-//! RD and FRD projects to RD only. The renderer assumes the projected
-//! marking is already canonical with respect to precedence and only
-//! handles in-axis sort + form choice.
+//! order. Page-level projection — `AeaSet::from_markings` plus the
+//! `scheme.project(Scope::Page, …)` PageRewrite catalog — is what
+//! enforces RD > FRD > TFNI precedence per §H.6 p104 (a page that
+//! sees both RD and FRD projects to RD only). The renderer assumes
+//! the projected marking is already canonical with respect to
+//! precedence and only handles in-axis sort + form choice.
 
 use core::fmt;
 
