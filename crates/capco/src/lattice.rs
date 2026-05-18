@@ -3126,6 +3126,349 @@ impl MeetSemilattice for RelToBlock {
 }
 
 // ---------------------------------------------------------------------------
+// Open-vocab helpers and lattice helpers added in PR 4b-E for the residue-axis
+// migration off `PageContext::expected_*`.
+// ---------------------------------------------------------------------------
+
+/// Project a slice of `CanonicalAttrs` to the flat CVE-enum
+/// projection `Box<[SciControl]>` consumed by the back-compat
+/// `CanonicalAttrs.sci_controls` field.
+///
+/// Mirrors `PageContext::expected_sci_controls`: unions the
+/// per-portion `sci_controls` field (the flat CVE projection populated
+/// at parse time) across portions. Sorted via `BTreeSet` natural
+/// order; dedup'd by `Ord` on `SciControl`.
+///
+/// Returns a sorted, dedup'd `Box<[SciControl]>` in BTreeSet natural order.
+///
+/// **Why not project from `SciSet::to_markings()` output?** The
+/// structural roll-up at `SciSet::to_markings` sets `canonical_enum:
+/// None` on every output entry (per the `expected_sci_markings`
+/// doc-comment — "`canonical_enum` is always `None` on roll-up
+/// output"); the flat CVE projection MUST come from the per-portion
+/// `sci_controls` field (where parsers populated it at parse time
+/// for portion entries that matched a compound CVE).
+///
+/// §-authority: CAPCO-2016 §H.4 p61 (SCI compartment grammar) — the
+/// flat CVE-enum projection is the back-compat view; the structural
+/// form `SciSet::to_markings` is the authoritative roll-up.
+/// Verified 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`.
+pub fn sci_controls_from_markings(portions: &[CanonicalAttrs]) -> Box<[marque_ism::SciControl]> {
+    let mut seen: BTreeSet<marque_ism::SciControl> = BTreeSet::new();
+    for p in portions {
+        for c in p.sci_controls.iter().copied() {
+            seen.insert(c);
+        }
+    }
+    seen.into_iter().collect::<Vec<_>>().into_boxed_slice()
+}
+
+// ---------------------------------------------------------------------------
+// FgiSet::from_attrs_iter — unions per-portion FgiMarker with
+// classification-derived producers (NATO / JOINT / FGI variants).
+// ---------------------------------------------------------------------------
+
+impl FgiSet {
+    /// Construct an `FgiSet` from a slice of `CanonicalAttrs` —
+    /// unions per-portion `fgi_marker` with the producers implied by
+    /// the per-portion classification axis:
+    ///
+    /// - `MarkingClassification::Fgi(_)` contributes its trigraph list
+    ///   (or `SourceConcealed` if the list is empty).
+    /// - `MarkingClassification::Nato(_)` contributes the `NATO` code.
+    /// - `MarkingClassification::Joint(_)` contributes the non-US
+    ///   producers from its country list.
+    /// - Other classification variants contribute nothing.
+    /// - An explicit `FgiMarker::SourceConcealed` on any portion makes
+    ///   the result source-concealed (`Present { concealed: true, .. }`)
+    ///   regardless of other contributions — concealed is the dominating
+    ///   element per §H.7 p128.
+    ///
+    /// §-authority (verified 2026-05-18 against
+    /// `crates/capco/docs/CAPCO-2016.md`):
+    /// - §H.7 p122 (FGI source-concealed grammar).
+    /// - §H.7 p123 (FGI acknowledged + classification-derived producers).
+    /// - §H.7 p128 (concealed-dominates-acknowledged when mixed).
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        let mut has_any_fgi = false;
+        let mut has_source_concealed = false;
+        let mut countries: BTreeSet<CountryCode> = BTreeSet::new();
+
+        for attrs in portions {
+            // Explicit FGI marker on the portion.
+            if let Some(marker) = &attrs.fgi_marker {
+                has_any_fgi = true;
+                match marker {
+                    FgiMarker::SourceConcealed => {
+                        has_source_concealed = true;
+                    }
+                    FgiMarker::Acknowledged {
+                        countries: marker_countries,
+                        ..
+                    } => {
+                        countries.extend(marker_countries.iter().copied());
+                    }
+                }
+            }
+
+            // Classification-derived producers (NATO / JOINT / FGI variants).
+            match &attrs.classification {
+                Some(MarkingClassification::Fgi(fgi)) => {
+                    has_any_fgi = true;
+                    if fgi.countries.is_empty() {
+                        has_source_concealed = true;
+                    } else {
+                        countries.extend(fgi.countries.iter().copied());
+                    }
+                }
+                Some(MarkingClassification::Nato(_)) => {
+                    has_any_fgi = true;
+                    if let Some(nato) = CountryCode::try_new(b"NATO") {
+                        countries.insert(nato);
+                    }
+                }
+                Some(MarkingClassification::Joint(j)) => {
+                    has_any_fgi = true;
+                    let usa = CountryCode::try_new(b"USA");
+                    for c in j.countries.iter() {
+                        if Some(*c) != usa {
+                            countries.insert(*c);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !has_any_fgi {
+            return Self::None;
+        }
+
+        // §H.7 p128: source-concealed dominates open sources.
+        if has_source_concealed {
+            return Self::Present {
+                concealed: true,
+                countries: BTreeSet::new(),
+            };
+        }
+
+        if countries.is_empty() {
+            // Defensive: an explicit `Acknowledged{}` marker with an
+            // empty country list (which the type-system should
+            // currently prevent — `acknowledged()` returns `None`)
+            // collapses to `None` rather than fabricating an
+            // acknowledged-but-empty `Present`.
+            Self::None
+        } else {
+            Self::Present {
+                concealed: false,
+                countries,
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NonIcDissemSet — lattice over the non-IC dissem axis with
+// classification-gated SBU-NF / LES-NF split + NODIS / EXDIS NF-injection.
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the non-IC dissem axis.
+///
+/// Carries the union of per-portion `non_ic_dissem` tokens after the
+/// classification-gated SBU-NF / LES-NF split (§H.9 p178 / p185) and
+/// the NODIS / EXDIS NF-injection flag (§H.9 p172 / p174).
+///
+/// `needs_nf` is set when:
+/// - The SBU-NF / LES-NF classified-context split fires (the original
+///   token is replaced by its bare form and `needs_nf` is set so the
+///   caller injects NOFORN into the dissem block), OR
+/// - Any portion carries NODIS or EXDIS (classification-independent
+///   per §H.9 p172 / p174 — the manual does not gate the NF injection
+///   on classification level for these tokens).
+///
+/// **`Default`** is the bottom: empty set, `needs_nf = false`.
+///
+/// **Lattice scope.** This type currently exposes only
+/// `from_attrs_iter` + read accessors — `JoinSemilattice` is not
+/// implemented because the SBU-NF / LES-NF split is gated on the
+/// page-level `is_classified` predicate, which depends on the OUTER
+/// classification axis being known. A two-stage join (split then
+/// union) is sound but not yet wired; the from-attrs-iter constructor
+/// is the production entry point used by `join_via_lattice_with_context`.
+///
+/// §-authority (verified 2026-05-18 against
+/// `crates/capco/docs/CAPCO-2016.md`):
+/// - §H.9 p172 (EXDIS — REL TO not authorized in banner; NOFORN
+///   conveys).
+/// - §H.9 p174 (NODIS — same).
+/// - §H.9 p178 (SBU-NF — split on classified pages).
+/// - §H.9 p185 (LES-NF — split on classified pages).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NonIcDissemSet {
+    set: BTreeSet<NonIcDissem>,
+    needs_nf: bool,
+}
+
+impl NonIcDissemSet {
+    /// An empty non-IC dissem set — the lattice bottom.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Construct from a slice of `CanonicalAttrs`. Applies the
+    /// classification-gated SBU-NF / LES-NF split (the page is
+    /// considered classified if any portion's classification is above
+    /// `Unclassified`) and the unconditional NODIS / EXDIS
+    /// NF-injection flag.
+    ///
+    /// Mirrors `PageContext::expected_non_ic_dissem`'s shape exactly,
+    /// returning `(set, needs_nf)` via `into_inner_with_needs_nf`.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        // Classification gate: any portion above Unclassified makes
+        // the page "classified" for the SBU-NF / LES-NF split.
+        let classified = portions.iter().any(|a| {
+            a.classification
+                .as_ref()
+                .is_some_and(|c| c.effective_level() > Classification::Unclassified)
+        });
+
+        let mut set: BTreeSet<NonIcDissem> = BTreeSet::new();
+        for attrs in portions {
+            for d in attrs.non_ic_dissem.iter() {
+                set.insert(*d);
+            }
+        }
+
+        let mut needs_nf = false;
+        if classified {
+            // §H.9 p178: SBU-NF on classified pages → SBU + NF (dissem).
+            if set.remove(&NonIcDissem::SbuNf) {
+                set.insert(NonIcDissem::Sbu);
+                needs_nf = true;
+            }
+            // §H.9 p185: LES-NF on classified pages → LES + NF (dissem).
+            if set.remove(&NonIcDissem::LesNf) {
+                set.insert(NonIcDissem::Les);
+                needs_nf = true;
+            }
+        }
+
+        // §H.9 p172 (EXDIS) / p174 (NODIS): NF must be injected into
+        // the dissem block regardless of classification level. NODIS
+        // / EXDIS themselves stay in the non-IC set.
+        if set.contains(&NonIcDissem::Nodis) || set.contains(&NonIcDissem::Exdis) {
+            needs_nf = true;
+        }
+
+        Self { set, needs_nf }
+    }
+
+    /// Whether NOFORN must be injected into the dissem block at
+    /// banner roll-up.
+    pub fn needs_nf(&self) -> bool {
+        self.needs_nf
+    }
+
+    /// Borrow the underlying set.
+    pub fn as_set(&self) -> &BTreeSet<NonIcDissem> {
+        &self.set
+    }
+
+    /// Render to a `Box<[NonIcDissem]>` in BTreeSet natural order.
+    pub fn into_boxed_slice(self) -> Box<[NonIcDissem]> {
+        self.set.into_iter().collect::<Vec<_>>().into_boxed_slice()
+    }
+
+    /// Consume into `(set, needs_nf)` to match
+    /// `PageContext::expected_non_ic_dissem`'s tuple shape.
+    pub fn into_inner_with_needs_nf(self) -> (Vec<NonIcDissem>, bool) {
+        (self.set.into_iter().collect(), self.needs_nf)
+    }
+
+    /// Render to a `Vec<NonIcDissem>` for compatibility.
+    pub fn to_vec(&self) -> Vec<NonIcDissem> {
+        self.set.iter().copied().collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeclassExemptionLattice — last-observed declass exemption.
+// ---------------------------------------------------------------------------
+
+/// Lattice form of the declass-exemption axis.
+///
+/// Conservative "last-observed" semantics: joins keep the right-hand
+/// (later-observed) value when both are present. Empty input yields
+/// `Bottom` (no exemption observed).
+///
+/// **Phase 3 TODO (carried over from `PageContext::expected_declass_exemption`):**
+/// a correct implementation would return the exemption with the
+/// longest default retention duration (e.g., `50X1-HUM` > `25X1` under
+/// EO 13526 § 3.3(b)). The current implementation returns the last
+/// observed exemption as a conservative placeholder; Phase 3 should
+/// add a duration-aware comparator. See `crates/ism/src/page_context.rs`
+/// (pre-PR-4b-E) `expected_declass_exemption` doc-comment for the
+/// historical statement of the gap.
+///
+/// §-authority (verified 2026-05-18 against
+/// `crates/capco/docs/CAPCO-2016.md`):
+/// - §E.1 p31 (EO 13526 default-duration framing).
+/// - §H.6 p104 (declass exemption interaction with AEA — orthogonal,
+///   not authoritative for this axis but cited for cross-reference).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeclassExemptionLattice(Option<marque_ism::DeclassExemption>);
+
+impl DeclassExemptionLattice {
+    /// An empty exemption — the lattice bottom.
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Construct from a slice of `CanonicalAttrs` — last-observed
+    /// exemption across portions in document order, or `None` if no
+    /// portion carries one.
+    pub fn from_attrs_iter(portions: &[CanonicalAttrs]) -> Self {
+        Self(
+            portions
+                .iter()
+                .filter_map(|a| a.declass_exemption)
+                .next_back(),
+        )
+    }
+
+    /// Consume into the inner `Option<DeclassExemption>`.
+    pub fn into_inner(self) -> Option<marque_ism::DeclassExemption> {
+        self.0
+    }
+
+    /// Borrow the inner `Option<DeclassExemption>`.
+    pub fn as_inner(&self) -> Option<marque_ism::DeclassExemption> {
+        self.0
+    }
+}
+
+impl JoinSemilattice for DeclassExemptionLattice {
+    fn join(&self, other: &Self) -> Self {
+        // Last-observed: right operand wins when both are Some.
+        // Idempotent: x.join(&x) = x (Some(e).join(&Some(e)) → Some(e)).
+        // Commutative? NO — last-observed is order-sensitive by design.
+        // We expose this only as a `JoinSemilattice` because the
+        // operator we need is associative + idempotent over our
+        // construction path (only `from_attrs_iter` builds non-bottom
+        // values, and that path is intrinsically order-preserving).
+        // Production composition routes through `from_attrs_iter`,
+        // never through repeated `join` calls; this impl is here for
+        // type-system symmetry with sibling lattices.
+        match (&self.0, &other.0) {
+            (_, Some(b)) => Self(Some(*b)),
+            (Some(a), None) => Self(Some(*a)),
+            (None, None) => Self(None),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -3824,5 +4167,271 @@ mod tests {
         assert_eq!(FgiSet::None.meet(&a), FgiSet::None);
         assert_eq!(a.meet(&FgiSet::None), FgiSet::None);
         assert_eq!(FgiSet::None.meet(&FgiSet::None), FgiSet::None);
+    }
+
+    // -----------------------------------------------------------------------
+    // PR 4b-E: new lattice helpers — happy-path + lattice-law coverage
+    // -----------------------------------------------------------------------
+
+    use marque_ism::{
+        CanonicalAttrs, Classification, DeclassExemption, MarkingClassification, NatoClassification,
+        NonIcDissem,
+    };
+
+    fn portion_us(level: Classification) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(level));
+        a
+    }
+
+    // sci_controls_from_markings — happy-path and lattice-relevant edge cases.
+
+    #[test]
+    fn sci_controls_from_markings_empty_input_returns_empty_slice() {
+        let out = sci_controls_from_markings(&[]);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn sci_controls_from_markings_deduplicates_repeated_controls() {
+        // Two portions with the same SI control should
+        // project to a single SciControl entry — set-union semantics.
+        let mut p1 = CanonicalAttrs::default();
+        p1.sci_controls = Box::new([marque_ism::SciControl::Si]);
+        let mut p2 = CanonicalAttrs::default();
+        p2.sci_controls = Box::new([marque_ism::SciControl::Si]);
+        let controls = sci_controls_from_markings(&[p1, p2]);
+        let si_count = controls
+            .iter()
+            .filter(|c| **c == marque_ism::SciControl::Si)
+            .count();
+        assert_eq!(si_count, 1, "expected dedup; got {si_count} SI entries");
+    }
+
+    #[test]
+    fn sci_controls_from_markings_unions_distinct_controls() {
+        // Union of distinct SciControls across portions.
+        let mut p1 = CanonicalAttrs::default();
+        p1.sci_controls = Box::new([marque_ism::SciControl::Si]);
+        let mut p2 = CanonicalAttrs::default();
+        p2.sci_controls = Box::new([marque_ism::SciControl::Tk]);
+        let controls = sci_controls_from_markings(&[p1, p2]);
+        assert!(controls.contains(&marque_ism::SciControl::Si));
+        assert!(controls.contains(&marque_ism::SciControl::Tk));
+    }
+
+    // FgiSet::from_attrs_iter — happy-path + concealed-dominates + JOINT
+    // producer extraction + associativity.
+
+    #[test]
+    fn fgi_set_from_attrs_iter_empty_returns_none() {
+        let portions: [CanonicalAttrs; 0] = [];
+        assert_eq!(FgiSet::from_attrs_iter(&portions), FgiSet::None);
+    }
+
+    #[test]
+    fn fgi_set_from_attrs_iter_nato_classification_yields_nato_producer() {
+        let mut p = CanonicalAttrs::default();
+        p.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+        let result = FgiSet::from_attrs_iter(&[p]);
+        match result {
+            FgiSet::Present {
+                concealed: false,
+                countries,
+            } => {
+                let nato = CountryCode::try_new(b"NATO").unwrap();
+                assert!(countries.contains(&nato), "expected NATO producer");
+            }
+            other => panic!("expected Present {{concealed: false}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fgi_set_from_attrs_iter_concealed_dominates_acknowledged() {
+        // §H.7 p128: mixed concealed + acknowledged → concealed wins.
+        let mut concealed_portion = CanonicalAttrs::default();
+        concealed_portion.fgi_marker = Some(FgiMarker::SourceConcealed);
+        let mut acknowledged_portion = CanonicalAttrs::default();
+        acknowledged_portion.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]);
+        let result =
+            FgiSet::from_attrs_iter(&[concealed_portion, acknowledged_portion]);
+        assert!(
+            matches!(
+                result,
+                FgiSet::Present {
+                    concealed: true,
+                    ..
+                }
+            ),
+            "concealed must dominate; got {result:?}"
+        );
+    }
+
+    #[test]
+    fn fgi_set_from_attrs_iter_joint_excludes_usa_producer() {
+        // JOINT producers contribute to FGI minus USA (USA is implicit
+        // owner, not a foreign source).
+        let mut joint_portion = CanonicalAttrs::default();
+        joint_portion.classification = Some(MarkingClassification::Joint(
+            marque_ism::JointClassification {
+                level: Classification::Secret,
+                countries: Box::new([
+                    CountryCode::try_new(b"USA").unwrap(),
+                    CountryCode::try_new(b"GBR").unwrap(),
+                ]),
+            },
+        ));
+        let result = FgiSet::from_attrs_iter(&[joint_portion]);
+        match result {
+            FgiSet::Present {
+                concealed: false,
+                countries,
+            } => {
+                let usa = CountryCode::try_new(b"USA").unwrap();
+                let gbr = CountryCode::try_new(b"GBR").unwrap();
+                assert!(!countries.contains(&usa), "USA must NOT appear");
+                assert!(countries.contains(&gbr), "GBR must appear");
+            }
+            other => panic!("expected Present {{concealed: false}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fgi_set_from_attrs_iter_associative_with_join() {
+        // Lattice law: from_attrs_iter(&a ++ b ++ c) == from_attrs_iter(&a).join(&...)
+        // The construction path is union-based; assembling per-portion
+        // via repeated join must agree with bulk construction.
+        let mut p1 = CanonicalAttrs::default();
+        p1.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"GBR").unwrap()]);
+        let mut p2 = CanonicalAttrs::default();
+        p2.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"DEU").unwrap()]);
+        let mut p3 = CanonicalAttrs::default();
+        p3.fgi_marker = FgiMarker::acknowledged([CountryCode::try_new(b"FRA").unwrap()]);
+
+        let bulk = FgiSet::from_attrs_iter(&[p1.clone(), p2.clone(), p3.clone()]);
+        let step = FgiSet::from_attrs_iter(&[p1])
+            .join(&FgiSet::from_attrs_iter(&[p2]))
+            .join(&FgiSet::from_attrs_iter(&[p3]));
+        assert_eq!(bulk, step, "bulk construction must agree with iterated join");
+    }
+
+    // NonIcDissemSet — classification gate, NF injection, lattice
+    // bottom invariant.
+
+    #[test]
+    fn non_ic_dissem_set_default_is_empty_bottom() {
+        let s = NonIcDissemSet::default();
+        assert!(s.as_set().is_empty());
+        assert!(!s.needs_nf());
+    }
+
+    #[test]
+    fn non_ic_dissem_set_empty_equals_default() {
+        assert_eq!(NonIcDissemSet::empty(), NonIcDissemSet::default());
+    }
+
+    #[test]
+    fn non_ic_dissem_set_sbu_nf_splits_on_classified() {
+        // §H.9 p178: SBU-NF on classified page → SBU + NF (dissem).
+        let mut p = portion_us(Classification::Secret);
+        p.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p]);
+        assert!(s.as_set().contains(&NonIcDissem::Sbu));
+        assert!(!s.as_set().contains(&NonIcDissem::SbuNf));
+        assert!(s.needs_nf());
+    }
+
+    #[test]
+    fn non_ic_dissem_set_sbu_nf_kept_on_unclassified() {
+        // §H.9 p178: SBU-NF on unclassified page → kept as-is.
+        let mut p = portion_us(Classification::Unclassified);
+        p.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p]);
+        assert!(s.as_set().contains(&NonIcDissem::SbuNf));
+        assert!(!s.needs_nf());
+    }
+
+    #[test]
+    fn non_ic_dissem_set_nodis_injects_nf_regardless_of_classification() {
+        // §H.9 p174: NODIS → NF in banner, classification-independent.
+        let mut p = portion_us(Classification::Unclassified);
+        p.non_ic_dissem = Box::new([NonIcDissem::Nodis]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p]);
+        assert!(s.as_set().contains(&NonIcDissem::Nodis));
+        assert!(s.needs_nf());
+    }
+
+    #[test]
+    fn non_ic_dissem_set_exdis_injects_nf() {
+        // §H.9 p172: EXDIS → NF in banner.
+        let mut p = portion_us(Classification::Secret);
+        p.non_ic_dissem = Box::new([NonIcDissem::Exdis]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p]);
+        assert!(s.as_set().contains(&NonIcDissem::Exdis));
+        assert!(s.needs_nf());
+    }
+
+    #[test]
+    fn non_ic_dissem_set_from_empty_input_is_bottom() {
+        let s = NonIcDissemSet::from_attrs_iter(&[]);
+        assert_eq!(s, NonIcDissemSet::empty());
+    }
+
+    // DeclassExemptionLattice — last-observed, idempotence, identity.
+
+    #[test]
+    fn declass_exemption_lattice_default_is_bottom() {
+        let l = DeclassExemptionLattice::default();
+        assert_eq!(l.as_inner(), None);
+    }
+
+    #[test]
+    fn declass_exemption_lattice_empty_equals_default() {
+        assert_eq!(DeclassExemptionLattice::empty(), DeclassExemptionLattice::default());
+    }
+
+    #[test]
+    fn declass_exemption_lattice_idempotent_on_join() {
+        // Lattice law: x.join(&x) = x.
+        let ex = DeclassExemption::X25x1;
+        let l = DeclassExemptionLattice(Some(ex));
+        assert_eq!(l.join(&l), l);
+    }
+
+    #[test]
+    fn declass_exemption_lattice_identity_with_bottom() {
+        // Identity-with-bottom: x.join(bot) = bot.join(x) = x.
+        let ex = DeclassExemption::X25x1;
+        let l = DeclassExemptionLattice(Some(ex));
+        let bot = DeclassExemptionLattice::empty();
+        assert_eq!(l.join(&bot), l);
+        assert_eq!(bot.join(&l), l);
+    }
+
+    #[test]
+    fn declass_exemption_lattice_last_observed_wins() {
+        // Last-observed: right wins when both Some (order-sensitive
+        // by design — see DeclassExemptionLattice doc).
+        let ex_a = DeclassExemption::X25x1;
+        let ex_b = DeclassExemption::X25x2;
+        let a = DeclassExemptionLattice(Some(ex_a));
+        let b = DeclassExemptionLattice(Some(ex_b));
+        assert_eq!(a.join(&b).as_inner(), Some(ex_b));
+    }
+
+    #[test]
+    fn declass_exemption_lattice_from_attrs_iter_picks_last_observed() {
+        let mut p1 = CanonicalAttrs::default();
+        p1.declass_exemption = Some(DeclassExemption::X25x1);
+        let mut p2 = CanonicalAttrs::default();
+        p2.declass_exemption = Some(DeclassExemption::X25x2);
+        let l = DeclassExemptionLattice::from_attrs_iter(&[p1, p2]);
+        assert_eq!(l.as_inner(), Some(DeclassExemption::X25x2));
+    }
+
+    #[test]
+    fn declass_exemption_lattice_from_attrs_iter_empty_is_bottom() {
+        let l = DeclassExemptionLattice::from_attrs_iter(&[]);
+        assert_eq!(l, DeclassExemptionLattice::empty());
     }
 }
