@@ -639,6 +639,24 @@ impl MarkingScheme for CapcoScheme {
     /// guard against unbounded-growth catalog defects that slip past
     /// proptest.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
+        // PR 4b-D.2 Commit 6: cone-trigger short-circuit (architect's
+        // R-1 mitigation). If no catalog row's trigger fires on the
+        // input marking, no rule can contribute a cone fact — the
+        // closure is a no-op. Skip the snapshot+clone+fixpoint loop
+        // entirely. This is the typical case for the bench corpus
+        // (markings without SAR/RD/UCNI/FGI/ORCON/RSEN/IMCON/DSEN/
+        // LIMDIS/LES/SBU/SSI/NATO-class triggers) where the closure
+        // has nothing to add.
+        //
+        // Correctness: the short-circuit is sound because
+        // `should_fire = trigger_fires && !is_suppressed`, and
+        // `trigger_fires` is the necessary condition for any rule to
+        // contribute a fact. If `trigger_fires` is false for every
+        // rule, no rule fires, no facts are added, and the fixpoint
+        // is the input.
+        if !self.any_closure_trigger_fires(&marking) {
+            return marking;
+        }
         let mut working = marking;
         for _iteration in 0..marque_scheme::MAX_CLOSURE_ITERATIONS {
             let snapshot = working.clone();
@@ -730,5 +748,60 @@ impl MarkingScheme for CapcoScheme {
         marking: &'m Self::Marking,
     ) -> Box<dyn Iterator<Item = TokenRef> + 'm> {
         Box::new(collect_present_tokens(&marking.0).into_iter())
+    }
+}
+
+impl CapcoScheme {
+    /// PR 4b-D.2 Commit 6 — hot-path short-circuit predicate for
+    /// [`MarkingScheme::closure`].
+    ///
+    /// Returns `true` if ANY catalog row's trigger fires on `marking`.
+    /// If this returns `false`, the closure operator is guaranteed to
+    /// be a no-op (no rule can contribute a cone fact when its trigger
+    /// is unsatisfied), so the caller can skip the snapshot-and-clone
+    /// fixpoint loop entirely. This is the architect's R-1
+    /// optimization referenced in the PR 4b-D.2 brief: bench
+    /// measurement of `lint_10kb` post-hot-path-flip landed at 1.5ms
+    /// (+65% over baseline) because the closure ran on every
+    /// portion-bounded page-marking cache miss (~20 invocations per
+    /// 10KB doc), and the typical bench page has no SAR / RD / UCNI /
+    /// FGI / ORCON / RSEN / IMCON / DSEN / LIMDIS / LES / SBU / SSI /
+    /// NATO-class trigger — so the closure does an unnecessary
+    /// snapshot-and-compare every time. The short-circuit skips that
+    /// per-projection cost for the no-trigger case.
+    ///
+    /// # Correctness
+    ///
+    /// `should_fire = trigger_fires && !is_suppressed`. The closure
+    /// fixpoint only adds facts when `should_fire` is true for at
+    /// least one rule; if `trigger_fires` is false for every rule,
+    /// the fixpoint is the input. The short-circuit checks the
+    /// disjunction over rules — the cheapest possible necessary
+    /// condition.
+    ///
+    /// Suppression is NOT consulted by this predicate. A
+    /// trigger-firing-but-suppressed rule still pays the full
+    /// fixpoint loop's snapshot-and-compare cost — that's correct:
+    /// suppression may flip across iterations if another rule's
+    /// cone adds a suppressor fact, so the loop must run to
+    /// verify the fixpoint. The short-circuit specifically targets
+    /// the "trigger fires for nothing" case which is the bench
+    /// majority.
+    ///
+    /// # Worst-case cost
+    ///
+    /// O(rules × triggers-per-rule) `satisfies` calls. The current
+    /// catalog has 8 rules × ≤3 triggers each = ≤24 satisfies calls
+    /// per projection. Each `satisfies` call walks a tiny constant
+    /// number of category fields (`attrs.sar_markings.is_some()`,
+    /// `attrs.dissem_us.contains(...)`, etc.). The short-circuit
+    /// adds ≤24 bool ops to the closure entry path; the closure
+    /// itself (when not short-circuited) adds `working.clone()` per
+    /// iteration of the fixpoint, which is the cost this exists to
+    /// avoid.
+    pub(crate) fn any_closure_trigger_fires(&self, marking: &CapcoMarking) -> bool {
+        CAPCO_CLOSURE_RULES
+            .iter()
+            .any(|rule| rule.trigger_fires(self, marking))
     }
 }
