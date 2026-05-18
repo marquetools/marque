@@ -2443,10 +2443,8 @@ fn analyze_uncertain_reduction(
     // Plan §3.2 requires "at least two portions carrying a
     // non-empty REL TO list." Anything less and there's no
     // intersection to compute.
-    let portions_with_rel_to: Vec<&CanonicalAttrs> = portions
-        .iter()
-        .filter(|p| !p.rel_to.is_empty())
-        .collect();
+    let portions_with_rel_to: Vec<&CanonicalAttrs> =
+        portions.iter().filter(|p| !p.rel_to.is_empty()).collect();
     if portions_with_rel_to.len() < 2 {
         return Vec::new();
     }

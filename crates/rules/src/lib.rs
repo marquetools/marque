@@ -568,10 +568,7 @@ impl<'a> RuleContext<'a> {
 
     /// Set [`Self::page_portions`] (per-page snapshot of accumulated
     /// portion attributes; PR 6c successor to `with_page_context`).
-    pub fn with_page_portions(
-        mut self,
-        page_portions: Option<Arc<Box<[CanonicalAttrs]>>>,
-    ) -> Self {
+    pub fn with_page_portions(mut self, page_portions: Option<Arc<Box<[CanonicalAttrs]>>>) -> Self {
         self.page_portions = page_portions;
         self
     }

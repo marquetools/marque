@@ -78,9 +78,7 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         let ctx_page = if parsed.kind != MarkingType::Portion && !page_portions.is_empty() {
             Some(
                 page_portions_arc
-                    .get_or_insert_with(|| {
-                        Arc::new(page_portions.clone().into_boxed_slice())
-                    })
+                    .get_or_insert_with(|| Arc::new(page_portions.clone().into_boxed_slice()))
                     .clone(),
             )
         } else {

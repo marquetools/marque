@@ -1209,18 +1209,17 @@ impl Engine {
             // `into_boxed_slice()` allocation pays once per page on
             // the first banner/CAB use, matching the cadence of the
             // pre-PR-6c `PageContext::clone()` snapshot.
-            let ctx_page_portions =
-                if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
-                    Some(
-                        page_portions_arc
-                            .get_or_insert_with(|| {
-                                Arc::new(page_portions.clone().into_boxed_slice())
-                            })
-                            .clone(),
-                    )
-                } else {
-                    None
-                };
+            let ctx_page_portions = if candidate.kind != MarkingType::Portion
+                && !page_portions.is_empty()
+            {
+                Some(
+                    page_portions_arc
+                        .get_or_insert_with(|| Arc::new(page_portions.clone().into_boxed_slice()))
+                        .clone(),
+                )
+            } else {
+                None
+            };
             // N-9-2 (PR 437 10th-pass): `cross_portion_context` removed.
             // The field cloned the full per-page accumulator once per
             // Portion candidate (O(N²) over N portions per page —
