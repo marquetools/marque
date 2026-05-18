@@ -536,8 +536,8 @@ const CLOSURE_HCS_P_SUB_IMPLIES_NF_OC: ClosureRule<CapcoScheme> = ClosureRule {
 /// per-marking requirement. Per `marque-applied.md` §4.7.5: "If
 /// `SI-G`, then `ORCON` must be present → closure fires `ORCON`."
 /// SI-G's class floor (TS) is a `Constraint::Requires` concern per
-/// §3.4.6, not a closure addition (§H.4 p80 Example Banner Line
-/// starts at TOP SECRET).
+/// `marque-applied.md` Section 3.4.6, not a closure addition (§H.4
+/// p80 Example Banner Line starts at TOP SECRET).
 ///
 /// **Trio 2 RELIDO suppression (stability optimization).** SI-G's
 /// per-marking cone is `{ORCON}` only; NOFORN is not added in
@@ -572,8 +572,8 @@ const CLOSURE_SI_G_IMPLIES_OC: ClosureRule<CapcoScheme> = ClosureRule {
 ///   releasable to foreign nationals."
 ///
 /// TK-BLFH's class floor (TS) is a `Constraint::Requires` concern
-/// per §3.4.6, not a closure addition (§H.4 p87 Example Banner Line
-/// starts at TOP SECRET).
+/// per `marque-applied.md` Section 3.4.6, not a closure addition
+/// (§H.4 p87 Example Banner Line starts at TOP SECRET).
 const CLOSURE_TK_BLFH_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/tk-blfh-implies-noforn",
     label: "CAPCO-2016 §H.4 p87",

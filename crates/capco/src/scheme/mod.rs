@@ -475,7 +475,9 @@ pub const TOK_TK_IDIT: TokenId = TokenId(154);
 pub const TOK_TK_KAND: TokenId = TokenId(155);
 
 // Issue #524 (Phase 2): grammar-shape sentinel distinguishing HCS-P
-// with a registered sub-compartment from bare HCS-P.
+// with at least one sub-compartment from bare HCS-P. Sub-compartments
+// are open-vocabulary alphanumeric strings (up to 6 characters) per
+// §H.4 p68, not a closed/registered set.
 //
 // CAPCO-2016 §H.4 p66 (bare HCS-P) shows the Example Banner Line
 // `SECRET//HCS-P//NOFORN` (NOFORN only) while §H.4 p68 (HCS-P
