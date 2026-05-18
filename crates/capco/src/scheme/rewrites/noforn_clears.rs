@@ -150,22 +150,23 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // When NF and any of these other FD&R tokens end up
         // together in the projected CAT_DISSEM (e.g., one portion
         // carries the other-FD&R token and another carries NF, or
-        // a `*-implies-noforn` rewrite adds NF after
-        // `page_context_to_attrs` unions an FD&R portion in), the
-        // banner roll-up must keep NF and drop the other tokens.
-        // The PageContext-direct path (`expected_dissem_us` Step 6)
-        // handles this for callers that read PageContext accessors
-        // directly; this PageRewrite mirrors the same policy for
-        // `scheme.project(Scope::Page, …)` callers.
+        // a `*-implies-noforn` rewrite adds NF in an upstream
+        // declaration), the banner roll-up must keep NF and drop
+        // the other tokens. The per-axis lattice path enforces this
+        // via `DissemSet::with_noforn_injected` (the NOFORN-
+        // dominates overlay applied inside `CapcoMarking::join_via_lattice`);
+        // this PageRewrite mirrors the same policy for
+        // `scheme.project(Scope::Page, …)` callers that take the
+        // declarative path.
         //
         // The companion `capco/noforn-clears-rel-to` rewrite covers
         // the REL TO country-list axis (CAT_REL_TO); this rewrite
         // covers the CAT_DISSEM tokens. There is no `TOK_REL`
         // constant for the bare `REL` dissem marker (CAPCO uses
         // the country list in CAT_REL_TO as the canonical form),
-        // so the bare-`Rel` case is handled only at the
-        // PageContext layer where the DissemControl enum is
-        // visible.
+        // so the bare-`Rel` case is handled only inside the lattice
+        // path where the `DissemControl` enum is visible to the
+        // overlay.
         //
         // Trigger: `Contains(CAT_DISSEM, TOK_NOFORN)` — fires when
         // NOFORN is in the projected page dissem axis (either via

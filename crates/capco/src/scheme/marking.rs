@@ -327,16 +327,13 @@ impl CapcoMarking {
                             }
                             // G-9 (PR 4b-B follow-up): Conflict always
                             // flattens to its implicit `us` level in
-                            // this non-JOINT branch. PageContext's
-                            // `expected_classification` uses
-                            // `effective_level()` over Conflict, which
-                            // returns the `us` field, and wraps the
-                            // result in `Us(_)`. The lattice path
-                            // matches that semantic: Conflict is the
+                            // this non-JOINT branch. `Conflict` is the
                             // parser's way of recording "I saw two
                             // classification systems; US wins per
                             // §H.7"; the foreign side rides separately
-                            // through the FGI axis. Authority:
+                            // through the FGI axis, so the
+                            // classification axis carries only the US
+                            // level here. Authority:
                             // CAPCO-2016 §H.7 pp123-125.
                             Some(MarkingClassification::Conflict { us, .. }) => {
                                 q.classification = Some(MarkingClassification::Us(*us));
@@ -391,8 +388,10 @@ impl CapcoMarking {
 
         // FGI marker — compose via FgiSet from per-portion markers
         // AND merge with classification-derived producers
-        // (PageContext::expected_fgi_marker unions NATO/JOINT/FGI
-        // classification countries into the same axis).
+        // (`FgiSet::from_attrs_iter` unions per-portion `fgi_marker`
+        // values with classification-derived producers — NATO/JOINT/FGI
+        // classification countries are surfaced onto the FGI axis per
+        // §H.7 p123 + p128).
         //
         // G-4 (PR 4b-B follow-up): when JointSet is
         // `UnanimousProducers`, the producers are already captured in
@@ -412,8 +411,8 @@ impl CapcoMarking {
         let ctx_fgi_marker = if matches!(joint_set, JointSet::UnanimousProducers { .. }) {
             // G-4: JOINT-unanimous page — producers ride on the
             // `Joint(_)` classification, not on the FGI axis. Suppress
-            // the PageContext FGI fallback so we don't double-mark
-            // (§H.3 p56 + §H.7 p123).
+            // the classification-derived FGI fallback so we don't
+            // double-mark (§H.3 p56 + §H.7 p123).
             None
         } else if solely_non_us {
             // G-4b (PR 4b-B 7th-pass follow-up): solely-non-US page
@@ -421,17 +420,11 @@ impl CapcoMarking {
             // classification intact (the §H.7 reciprocal-raise is
             // suppressed earlier in this method when no US portion
             // is present to raise toward). The foreign source is already
-            // recorded on the classification axis itself; calling
-            // `expected_fgi_marker()` here would derive the SAME
+            // recorded on the classification axis itself; running
+            // `FgiSet::from_attrs_iter` here would derive the SAME
             // producers from the classification a second time and
             // surface them on the dissem-axis `fgi_marker`, producing
-            // a doubled marker.
-            //
-            // PageContext doesn't have this problem because its
-            // `expected_classification` ALWAYS wraps in `Us(_)`
-            // regardless of source — the foreign-source info has to
-            // ride on `expected_fgi_marker` since it can't ride on the
-            // classification axis. The lattice path preserves the
+            // a doubled marker. The lattice path preserves the
             // foreign variant on the classification axis (per the
             // `pure_nato_both_paths_preserve_nato_variant` parity
             // fixture — renamed from `pure_nato_lattice_vs_pagecontext_diverges`
@@ -458,8 +451,8 @@ impl CapcoMarking {
             //   ClassificationLattice winner: Fgi(Secret, [CAN])
             //     (OrdMax: Secret > Confidential)
             //   Pre-G-4c: GBR is silently lost from the FGI axis.
-            //   PageContext path preserves both via its
-            //   `expected_fgi_marker` union.
+            //   The correct §H.7 p124 behavior is to surface both
+            //   producers on the FGI axis (source-loss reconstruction).
             //
             // The fix gathers the union of foreign sources from all
             // non-US classification portions, compares against the
@@ -526,13 +519,12 @@ impl CapcoMarking {
                 }
             }
         } else {
-            // PR 4b-E: residue migration. The "non-solely-non-US"
-            // branch unions per-portion `fgi_marker` with
-            // classification-derived producers (NATO / JOINT / FGI
-            // variants), formerly via `PageContext::expected_fgi_marker`.
-            // `FgiSet::from_attrs_iter` carries the same semantics
-            // (§H.7 p122 + p123 + p128); the result is then merged
-            // with the explicit-FGI-marker fold via `merge_fgi_markers`.
+            // The "non-solely-non-US" branch unions per-portion
+            // `fgi_marker` with classification-derived producers (NATO
+            // / JOINT / FGI variants). `FgiSet::from_attrs_iter`
+            // carries the §H.7 p122 + p123 + p128 semantics; the
+            // result is then merged with the explicit-FGI-marker fold
+            // via `merge_fgi_markers`.
             FgiSet::from_attrs_iter(portions).to_marker()
         };
         out.fgi_marker = merge_fgi_markers(fgi_acc.to_marker(), ctx_fgi_marker);

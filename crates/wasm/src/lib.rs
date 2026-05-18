@@ -1153,10 +1153,10 @@ pub fn lint_batch(entries_json: &str, config_json: Option<String>) -> Result<Str
 ///
 /// Returns `"UNCLASSIFIED"` if no portions are found or none parse.
 ///
-/// PR 4b-E: migrated from the retired `PageContext::render_expected_banner`
-/// to the scheme's `render_canonical(Scope::Page, ...)` per the
-/// `MarkingScheme` trait's "single source of truth for canonical form"
-/// contract (`crates/scheme/src/scheme.rs` `render_canonical` doc).
+/// Banner derivation runs through the scheme's
+/// `render_canonical(Scope::Page, ...)` per the `MarkingScheme`
+/// trait's "single source of truth for canonical form" contract
+/// (`crates/scheme/src/scheme.rs` `render_canonical` doc).
 pub fn compute_banner_native(text: &str) -> Result<String, String> {
     use marque_capco::CapcoMarking;
     use marque_capco::scheme::CapcoScheme;

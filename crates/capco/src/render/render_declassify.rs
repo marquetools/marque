@@ -12,28 +12,28 @@
 //!   it carries the declassification date / event / exemption.
 //! - CAPCO-2016 §E.3 (Multiple Sources and the Declassify On Line
 //!   Hierarchy) — only one value per CAB. When multiple sources
-//!   contribute, use the longest-duration value (the existing
-//!   `PageContext::expected_declassify_on` returns the `MaxDate`
-//!   projection per `Category::aggregation = AggregationOp::MaxDate`
-//!   in `CapcoScheme::build_categories`).
+//!   contribute, use the longest-duration value. The lattice form
+//!   `DeclassifyOnLattice` (in `crates/capco/src/lattice.rs`)
+//!   composes per-portion values via the `MaxDate` projection
+//!   declared on `Category::aggregation = AggregationOp::MaxDate`
+//!   in `CapcoScheme::build_categories`.
 //!
 //! # Canonical form (banner / portion line)
 //!
 //! **The CAB is not rendered inline with the banner / portion line.**
-//! Per `PageContext::render_expected_banner` precedent, the banner
-//! line is `CLASSIFICATION//SCI//SAR//AEA//FGI//DISSEM//NON-IC` —
-//! the CAB ("Classified By", "Derived From", "Declassify On") lives
-//! on its own block elsewhere on the page (typically the bottom of
-//! the cover page, per §E.1).
+//! Per CAPCO-2016 §E.1, the banner line is
+//! `CLASSIFICATION//SCI//SAR//AEA//FGI//DISSEM//NON-IC` — the CAB
+//! ("Classified By", "Derived From", "Declassify On") lives on its
+//! own block elsewhere on the page (typically the bottom of the
+//! cover page).
 //!
 //! This renderer therefore emits **nothing** for `Scope::Portion |
 //! Page | Document`. The CAB block's renderer is a separate concern
-//! (and not yet implemented in the workspace; the existing
-//! `PageContext::render_expected_banner` also doesn't render it).
-//! When a future commit adds CAB rendering, it dispatches through a
-//! separate `render_cab` function (potentially via a separate
-//! `Scope::Cab` variant or a parallel `render_canonical_cab` method);
-//! this axis function stays a no-op for the banner axis.
+//! (not yet implemented in the workspace). When a future commit adds
+//! CAB rendering, it dispatches through a separate `render_cab`
+//! function (potentially via a separate `Scope::Cab` variant or a
+//! parallel `render_canonical_cab` method); this axis function stays
+//! a no-op for the banner axis.
 
 use core::fmt;
 
