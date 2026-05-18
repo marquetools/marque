@@ -2002,4 +2002,237 @@ mod phase3_closure_pin {
             "CLOSURE_RELIDO_US_CLASS must be idempotent; once = {once:?}, twice = {twice:?}"
         );
     }
+
+    // -----------------------------------------------------------------
+    // Composition end-state pins — US_CLASS × per-marking SCI rows
+    // -----------------------------------------------------------------
+
+    /// `(US TS, HCS-O)` final state must contain NOFORN and ORCON,
+    /// and must NOT contain RELIDO. HCS-O's per-marking closure row
+    /// adds both NOFORN + ORCON directly (§H.4 p64); the
+    /// `TOK_HCS_O` suppressor on `CLOSURE_RELIDO_US_CLASS` prevents
+    /// premature RELIDO injection, and NOFORN supersedes RELIDO via
+    /// the §H.8 p145 overlay regardless. Companion to
+    /// `us_class_monotone_under_added_si_g` (which covers SI-G
+    /// where ORCON is added but NOFORN comes via the
+    /// CAVEATED→NOFORN→supersession chain).
+    #[test]
+    fn us_class_with_hcs_o_yields_noforn_orcon_no_relido() {
+        let scheme = CapcoScheme::new();
+        let suppressor = TokenRef::Token(TOK_HCS_O);
+        let closed = scheme.closure(us_class_suppression_fixture(&suppressor));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "(US TS, HCS-O) closure must contain NOFORN (§H.4 p64 per-marking row); \
+             dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Oc),
+            "(US TS, HCS-O) closure must contain ORCON (§H.4 p64 per-marking row); \
+             dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "(US TS, HCS-O) closure must NOT contain RELIDO — NOFORN supersedes via \
+             §H.8 p145 overlay; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// `(US TS, TK-BLFH)` final state must contain NOFORN and must
+    /// NOT contain RELIDO. TK-BLFH's per-marking closure row adds
+    /// NOFORN directly (§H.4 p87); the `TOK_TK_BLFH` suppressor on
+    /// `CLOSURE_RELIDO_US_CLASS` prevents premature RELIDO injection,
+    /// and NOFORN supersedes RELIDO via the §H.8 p145 overlay
+    /// regardless.
+    #[test]
+    fn us_class_with_tk_blfh_yields_noforn_no_relido() {
+        let scheme = CapcoScheme::new();
+        let suppressor = TokenRef::Token(TOK_TK_BLFH);
+        let closed = scheme.closure(us_class_suppression_fixture(&suppressor));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "(US TS, TK-BLFH) closure must contain NOFORN (§H.4 p87 per-marking row); \
+             dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "(US TS, TK-BLFH) closure must NOT contain RELIDO — NOFORN supersedes via \
+             §H.8 p145 overlay; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Composition end-state pins — US_CLASS × Trio 1 CAVEATED triggers
+    // -----------------------------------------------------------------
+
+    /// `(US S, ORCON)` final state: CAVEATED (Trio 1) injects NOFORN
+    /// on ORCON, and NOFORN supersedes RELIDO via the §H.8 p145
+    /// overlay. Pins the §B.3 Table 2 p21 "classified + caveated"
+    /// semantic via closure composition rather than via an
+    /// anti-monotone suppressor (per the redesign documented in
+    /// `RELIDO_US_CLASS_SUPPRESSORS`'s doc-comment).
+    #[test]
+    fn us_class_with_orcon_yields_noforn_no_relido_via_caveated() {
+        let scheme = CapcoScheme::new();
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a.dissem_us = Box::new([DissemControl::Oc]);
+        let closed = scheme.closure(CapcoMarking::new(a));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "(US S, ORCON) closure must contain NOFORN via CAVEATED→NOFORN \
+             (§B.3 Table 2 p21 + §B.3 p20 Note); dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "(US S, ORCON) closure must NOT contain RELIDO — NOFORN supersedes \
+             via §H.8 p145 overlay; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// `(US S, RD)` final state: RD triggers CAVEATED (Trio 1) which
+    /// adds NOFORN; NOFORN supersedes RELIDO via §H.8 p145. Pins the
+    /// AEA-side Trio 1 composition that converges with US_CLASS to
+    /// the correct §B.3 Table 2 p21 result.
+    #[test]
+    fn us_class_with_rd_yields_noforn_no_relido_via_caveated_aea() {
+        use marque_ism::{AeaMarking, RdBlock};
+        let scheme = CapcoScheme::new();
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a.aea_markings = Box::new([AeaMarking::Rd(RdBlock::default())]);
+        let closed = scheme.closure(CapcoMarking::new(a));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "(US S, RD) closure must contain NOFORN via CAVEATED→NOFORN \
+             (§B.3 p20 Note: AEA is in CAVEATED's trigger list); dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "(US S, RD) closure must NOT contain RELIDO — NOFORN supersedes \
+             via §H.8 p145 overlay; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    /// `(US S, SAR)` final state: SAR triggers CAVEATED (Trio 1) via
+    /// the `AnyInCategory(CAT_SAR)` arm, which adds NOFORN; NOFORN
+    /// supersedes RELIDO via §H.8 p145. Pins the SAR-side Trio 1
+    /// composition that converges with US_CLASS to the correct
+    /// §B.3 Table 2 p21 result.
+    #[test]
+    fn us_class_with_sar_yields_noforn_no_relido_via_caveated_sar() {
+        use marque_ism::{SarIndicator, SarMarking, SarProgram};
+        use smol_str::SmolStr;
+        let scheme = CapcoScheme::new();
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Secret));
+        let program = SarProgram::new(SmolStr::new("BP"), Box::new([]));
+        a.sar_markings = Some(SarMarking::new(SarIndicator::Abbrev, Box::new([program])));
+        let closed = scheme.closure(CapcoMarking::new(a));
+        assert!(
+            closed.0.dissem_us.contains(&DissemControl::Nf),
+            "(US S, SAR-BP) closure must contain NOFORN via CAVEATED→NOFORN \
+             (§B.3 p20 Note: SAR is in CAVEATED's trigger list); dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+        assert!(
+            !closed.0.dissem_us.contains(&DissemControl::Relido),
+            "(US S, SAR-BP) closure must NOT contain RELIDO — NOFORN supersedes \
+             via §H.8 p145 overlay; dissem_us = {:?}",
+            closed.0.dissem_us
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Monotonicity sanity pins — additional cross-axis scenarios
+    // -----------------------------------------------------------------
+
+    /// Monotonicity at the U→R boundary in the classification ladder.
+    ///
+    /// `x = (U)`. `y = (R)`. In the classification lattice
+    /// `U ⊑ R ⊑ C ⊑ S ⊑ TS`, so `x ⊑ y`. The Phase 3 carve-out
+    /// applies to U at the trigger level (`TOK_US_COLLATERAL_CLASSIFIED`
+    /// does not fire on `Us(Unclassified)`), so `Cl(x).dissem_us`
+    /// does NOT contain RELIDO. At Restricted the trigger fires, so
+    /// `Cl(y).dissem_us` contains RELIDO. The lattice ordering on
+    /// the dissem axis is `{} ⊑ {Relido}`, so the closure preserves
+    /// `x ⊑ y`. This pin closes a Copilot-HIGH-adjacent concern: the
+    /// carve-out at U doesn't break monotonicity precisely because
+    /// `{} ⊑ {Relido}` holds.
+    #[test]
+    fn us_class_monotone_at_u_to_r_carve_out_boundary() {
+        let scheme = CapcoScheme::new();
+        let cl_x = scheme.closure(us_classified(Classification::Unclassified));
+        let cl_y = scheme.closure(us_classified(Classification::Restricted));
+        assert!(
+            !cl_x.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(x = bare U) must NOT contain Relido per §H.8 p154 carve-out; \
+             dissem_us = {:?}",
+            cl_x.0.dissem_us
+        );
+        assert!(
+            cl_y.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(y = bare R) must contain Relido (Restricted is collateral); \
+             dissem_us = {:?}",
+            cl_y.0.dissem_us
+        );
+        // Monotonicity: {} ⊑ {Relido} holds in the SupersessionSet
+        // dissem lattice, so Cl(x) ⊑ Cl(y) at the dissem axis.
+    }
+
+    /// Monotonicity: `(U, FOUO) ⊑ (S, FOUO)`.
+    ///
+    /// At U the US_CLASS trigger doesn't fire (carve-out), so
+    /// `Cl(x).dissem_us` carries `{FOUO}` (no RELIDO). At S the
+    /// US_CLASS trigger fires and FOUO is NOT a US_CLASS suppressor,
+    /// so `Cl(y).dissem_us` carries `{FOUO, RELIDO, ...}`. The
+    /// SupersessionSet dissem lattice ordering preserves the subset
+    /// relation `{FOUO} ⊑ {FOUO, RELIDO}` so monotonicity holds.
+    /// Pins the carve-out × cross-axis interaction Copilot flagged
+    /// in the HIGH review.
+    #[test]
+    fn us_class_monotone_at_u_fouo_to_s_fouo() {
+        let scheme = CapcoScheme::new();
+        let mut a_x = CanonicalAttrs::default();
+        a_x.classification = Some(MarkingClassification::Us(Classification::Unclassified));
+        a_x.dissem_us = Box::new([DissemControl::Fouo]);
+        let cl_x = scheme.closure(CapcoMarking::new(a_x));
+        let mut a_y = CanonicalAttrs::default();
+        a_y.classification = Some(MarkingClassification::Us(Classification::Secret));
+        a_y.dissem_us = Box::new([DissemControl::Fouo]);
+        let cl_y = scheme.closure(CapcoMarking::new(a_y));
+        assert!(
+            !cl_x.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(x = U + FOUO) must NOT contain Relido per §H.8 p154 U-carve-out; \
+             dissem_us = {:?}",
+            cl_x.0.dissem_us
+        );
+        assert!(
+            cl_y.0.dissem_us.contains(&DissemControl::Relido),
+            "Cl(y = S + FOUO) must contain Relido (FOUO is not a US_CLASS \
+             suppressor in the redesigned slice); dissem_us = {:?}",
+            cl_y.0.dissem_us
+        );
+        // Both must contain FOUO (closure does not strip FOUO at
+        // this level).
+        assert!(
+            cl_x.0.dissem_us.contains(&DissemControl::Fouo),
+            "Cl(x = U + FOUO) must still contain FOUO; dissem_us = {:?}",
+            cl_x.0.dissem_us
+        );
+        assert!(
+            cl_y.0.dissem_us.contains(&DissemControl::Fouo),
+            "Cl(y = S + FOUO) must still contain FOUO; dissem_us = {:?}",
+            cl_y.0.dissem_us
+        );
+    }
 }

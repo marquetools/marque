@@ -125,3 +125,66 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
 pub(crate) fn never_fires(_: &CapcoMarking) -> bool {
     false
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod phase3_token_routing_pin {
+    //! Issue #524 Phase 3 — `TOK_US_COLLATERAL_CLASSIFIED` routing pin.
+    //!
+    //! Confirms the new sentinel routes to `CAT_CLASSIFICATION` via
+    //! [`capco_token_category`], alongside the pre-existing
+    //! `TOK_RESTRICTED`. A regression that re-routes one of these
+    //! (e.g., accidentally to `CAT_DISSEM` or to `None`) breaks the
+    //! `FactRef::Cve(TOK_US_COLLATERAL_CLASSIFIED)` apply-fact path
+    //! that `CLOSURE_RELIDO_US_CLASS` walks during the closure's
+    //! Kleene loop. Pinning here is the unit-test counterpart to the
+    //! through-the-closure coverage in
+    //! `closure.rs::phase3_closure_pin`.
+
+    use super::*;
+
+    /// `TOK_US_COLLATERAL_CLASSIFIED` routes to `CAT_CLASSIFICATION`.
+    /// Authority: this is the trigger sentinel for
+    /// `CLOSURE_RELIDO_US_CLASS` per CAPCO-2016 §B.3 Table 2 p21
+    /// (default-RELIDO obligation) and §H.8 p154 (Unclassified
+    /// carve-out — handled at the predicate level, not the routing
+    /// level).
+    #[test]
+    fn tok_us_collateral_classified_routes_to_cat_classification() {
+        assert_eq!(
+            capco_token_category(TOK_US_COLLATERAL_CLASSIFIED),
+            Some(CAT_CLASSIFICATION),
+            "TOK_US_COLLATERAL_CLASSIFIED must route to CAT_CLASSIFICATION; \
+             a regression in `capco_token_category`'s pattern arm would break the \
+             `FactRef::Cve(TOK_US_COLLATERAL_CLASSIFIED)` apply-fact path"
+        );
+    }
+
+    /// `TOK_RESTRICTED` continues to route to `CAT_CLASSIFICATION`
+    /// alongside the new Phase 3 sentinel. Pins the shared-arm
+    /// invariant — a future refactor that splits the arm must
+    /// preserve both routings.
+    #[test]
+    fn tok_restricted_still_routes_to_cat_classification() {
+        assert_eq!(
+            capco_token_category(TOK_RESTRICTED),
+            Some(CAT_CLASSIFICATION),
+            "TOK_RESTRICTED must continue to route to CAT_CLASSIFICATION after the Phase 3 \
+             addition of TOK_US_COLLATERAL_CLASSIFIED to the same match arm"
+        );
+    }
+
+    /// `never_fires` returns false for any marking. Pins the
+    /// invariant relied on by Phase-3 stub `PageRewrite` rows
+    /// (per the function's doc-comment). Cheap, complete, and
+    /// pins the contract one test below the user-facing
+    /// `Engine::lint` path.
+    #[test]
+    fn never_fires_always_returns_false() {
+        let m = CapcoMarking::new(marque_ism::CanonicalAttrs::default());
+        assert!(
+            !never_fires(&m),
+            "never_fires must return false for any marking"
+        );
+    }
+}

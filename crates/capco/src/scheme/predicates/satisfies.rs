@@ -1096,3 +1096,346 @@ mod sci_compartment_sentinels_pin {
         );
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod cat_non_ic_dissem_arm_pin {
+    //! Issue #524 Phase 3 — `AnyInCategory(CAT_NON_IC_DISSEM)`
+    //! reachability + emission pins.
+    //!
+    //! Phase 3 added two new code paths that are not yet exercised
+    //! by any catalog row in production (the `RELIDO_US_CLASS_SUPPRESSORS`
+    //! slice contains only direct token / `CAT_REL_TO` entries, not
+    //! `AnyInCategory(CAT_NON_IC_DISSEM)`). Without these tests, the
+    //! two arms below land in the coverage report as uncovered diff
+    //! lines.
+    //!
+    //!   1. `satisfies_attrs`'s `CAT_NON_IC_DISSEM` arm — was
+    //!      previously falling through to `_ => false` (the "gap fix"
+    //!      in the diff). Pinning both presence and absence cases
+    //!      guards against a regression that drops the arm and
+    //!      re-introduces the silent fall-through.
+    //!   2. `collect_present_tokens`'s `AnyInCategory(CAT_NON_IC_DISSEM)`
+    //!      emission — was silently asymmetric with the `satisfies_attrs`
+    //!      resolution prior to Phase 3.
+    //!
+    //! Authority: CAPCO-2016 §H.9 p169 (Non-IC Dissemination Control
+    //! Markings) — LIMDIS / EXDIS / NODIS / SBU / SBU-NF / LES /
+    //! LES-NF / SSI are the §H.9 catalog entries; `NNPI` is an
+    //! ODNI-registered non-IC dissem token per
+    //! `NonIcDissem::Nnpi` doc-comment (covered under Constitution
+    //! Principle VIII when CAPCO §H.9 is silent on the marking).
+
+    use super::*;
+    use marque_ism::{CanonicalAttrs, NonIcDissem};
+
+    /// Resolution: `AnyInCategory(CAT_NON_IC_DISSEM)` returns false on
+    /// an empty `non_ic_dissem` axis. Pins the negative branch of the
+    /// new arm; a regression that flipped the sense (returning true
+    /// on empty) fails here.
+    #[test]
+    fn cat_non_ic_dissem_resolves_false_on_empty_axis() {
+        let a = CanonicalAttrs::default();
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)),
+            "AnyInCategory(CAT_NON_IC_DISSEM) should be false on empty non_ic_dissem",
+        );
+    }
+
+    /// Resolution: `AnyInCategory(CAT_NON_IC_DISSEM)` returns true on
+    /// each §H.9 p169 catalog entry plus `NNPI` (ODNI-registered per
+    /// Constitution VIII). Table-driven so every variant gets a
+    /// dedicated assertion; drift in the arm (e.g., a regression that
+    /// re-introduces the fall-through, or one that mis-routes the
+    /// match) fails loudly naming the offending variant.
+    #[test]
+    fn cat_non_ic_dissem_resolves_true_on_each_variant() {
+        // The full §H.9 p169 catalog plus NNPI. Each entry exercises
+        // the arm independently; a regression that's variant-specific
+        // (unlikely but possible if the field shape changes) is caught
+        // per-variant.
+        let variants: &[NonIcDissem] = &[
+            NonIcDissem::Limdis,
+            NonIcDissem::Exdis,
+            NonIcDissem::Nodis,
+            NonIcDissem::Sbu,
+            NonIcDissem::SbuNf,
+            NonIcDissem::Les,
+            NonIcDissem::LesNf,
+            NonIcDissem::Ssi,
+            NonIcDissem::Nnpi,
+        ];
+        for v in variants {
+            let mut a = CanonicalAttrs::default();
+            a.non_ic_dissem = Box::new([*v]);
+            assert!(
+                satisfies_attrs(&a, &TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)),
+                "AnyInCategory(CAT_NON_IC_DISSEM) should be true with non_ic_dissem = [{v:?}]",
+            );
+        }
+    }
+
+    /// Resolution: a marking carrying multiple non-IC dissem tokens
+    /// also resolves true. Trivial under the `is_empty()` check but
+    /// pinned in case the implementation tightens to "exactly one"
+    /// or some other narrower predicate.
+    #[test]
+    fn cat_non_ic_dissem_resolves_true_with_multiple_variants() {
+        let mut a = CanonicalAttrs::default();
+        a.non_ic_dissem = Box::new([NonIcDissem::Limdis, NonIcDissem::Sbu]);
+        assert!(
+            satisfies_attrs(&a, &TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)),
+            "AnyInCategory(CAT_NON_IC_DISSEM) should resolve true with multiple non-IC dissem entries"
+        );
+    }
+
+    /// Emission: `collect_present_tokens` does NOT emit
+    /// `AnyInCategory(CAT_NON_IC_DISSEM)` when the axis is empty.
+    /// Pins the gate on the new emission so it doesn't spuriously
+    /// land in every token list (which would break downstream
+    /// catalog-walker consumers expecting the emission to be a real
+    /// presence signal).
+    #[test]
+    fn collect_present_tokens_does_not_emit_non_ic_dissem_when_empty() {
+        let a = CanonicalAttrs::default();
+        let emitted = collect_present_tokens(&a);
+        assert!(
+            !emitted.contains(&TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)),
+            "collect_present_tokens on empty attrs must NOT emit \
+             AnyInCategory(CAT_NON_IC_DISSEM); got {emitted:?}"
+        );
+    }
+
+    /// Emission: `collect_present_tokens` emits
+    /// `AnyInCategory(CAT_NON_IC_DISSEM)` when the axis is non-empty,
+    /// for each §H.9 p169 catalog entry plus NNPI. Mirrors the
+    /// `cat_non_ic_dissem_resolves_true_on_each_variant` resolution
+    /// pin so the two paths stay in lockstep (the same asymmetry
+    /// this Phase 3 emission closes).
+    #[test]
+    fn collect_present_tokens_emits_non_ic_dissem_for_each_variant() {
+        let variants: &[NonIcDissem] = &[
+            NonIcDissem::Limdis,
+            NonIcDissem::Exdis,
+            NonIcDissem::Nodis,
+            NonIcDissem::Sbu,
+            NonIcDissem::SbuNf,
+            NonIcDissem::Les,
+            NonIcDissem::LesNf,
+            NonIcDissem::Ssi,
+            NonIcDissem::Nnpi,
+        ];
+        for v in variants {
+            let mut a = CanonicalAttrs::default();
+            a.non_ic_dissem = Box::new([*v]);
+            let emitted = collect_present_tokens(&a);
+            assert!(
+                emitted.contains(&TokenRef::AnyInCategory(CAT_NON_IC_DISSEM)),
+                "collect_present_tokens with non_ic_dissem = [{v:?}] should \
+                 emit AnyInCategory(CAT_NON_IC_DISSEM); got {emitted:?}",
+            );
+        }
+    }
+
+    /// Emission + resolution round-trip: any token list emitted by
+    /// `collect_present_tokens` for a non-empty `non_ic_dissem` axis
+    /// must resolve true under `satisfies_attrs` on the same attrs.
+    /// This closes the symmetry contract that the Phase 3 diff
+    /// established (the emit-side mirrors the resolve-side; a future
+    /// PR that breaks one without the other gets caught here).
+    #[test]
+    fn cat_non_ic_dissem_emit_resolve_round_trip() {
+        let mut a = CanonicalAttrs::default();
+        a.non_ic_dissem = Box::new([NonIcDissem::Limdis]);
+        let emitted = collect_present_tokens(&a);
+        for token_ref in &emitted {
+            assert!(
+                satisfies_attrs(&a, token_ref),
+                "emit-side / resolve-side asymmetry: collect_present_tokens \
+                 emitted {token_ref:?} but satisfies_attrs returned false on the same attrs",
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod us_collateral_classified_arm_pin {
+    //! Issue #524 Phase 3 — `TOK_US_COLLATERAL_CLASSIFIED` resolution
+    //! edge cases (non-Us / non-Conflict classification systems and
+    //! the Conflict-with-Unclassified-US carve-out).
+    //!
+    //! The existing `closure.rs::phase3_closure_pin` module covers
+    //! the through-the-closure firing on US/Conflict markings; these
+    //! tests pin the negative cases at the
+    //! [`satisfies_attrs`]-arm level so a regression that broadens
+    //! the predicate (e.g., to fire on `Nato(_)` via
+    //! `effective_level()` instead of `us_classification()`) gets
+    //! caught at the unit-test layer rather than only by the
+    //! `proptest_closure_*` harness.
+    //!
+    //! Authority: CAPCO-2016 §H.8 p154 (the Unclassified carve-out
+    //! that gates `CLOSURE_RELIDO_US_CLASS`); the `us_classification()`
+    //! convenience contract is documented at
+    //! `crates/ism/src/canonical.rs::CanonicalAttrs::us_classification`.
+
+    use super::*;
+    use marque_ism::{
+        CanonicalAttrs, Classification, CountryCode, FgiClassification, ForeignClassification,
+        JointClassification, MarkingClassification, NatoClassification,
+    };
+
+    /// Bare NATO classification (`Nato(NatoSecret)`) does NOT satisfy
+    /// `TOK_US_COLLATERAL_CLASSIFIED`. `us_classification()` returns
+    /// `None` on pure-NATO markings, so the
+    /// `is_some_and(|l| l != Unclassified)` predicate is false. Pins
+    /// the §H.8 p154 carve-out's structural premise: only US-side
+    /// collateral content triggers the implicit-RELIDO closure.
+    #[test]
+    fn tok_us_collateral_classified_false_on_pure_nato() {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must NOT fire on pure-NATO marking; \
+             us_classification() returns None for Nato(_) per the canonical.rs contract"
+        );
+    }
+
+    /// Pure JOINT classification (`Joint(_)`) does NOT satisfy
+    /// `TOK_US_COLLATERAL_CLASSIFIED` either: `us_classification()`
+    /// returns `None` on `Joint(_)`. JOINT is structurally a
+    /// US-co-owned foreign-equity marking; the implicit-RELIDO
+    /// default belongs to US-attributed collateral content per
+    /// §H.8 p154.
+    #[test]
+    fn tok_us_collateral_classified_false_on_pure_joint() {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Joint(JointClassification {
+            level: Classification::Secret,
+            countries: vec![CountryCode::USA, CountryCode::GBR].into_boxed_slice(),
+        }));
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must NOT fire on pure-JOINT marking"
+        );
+    }
+
+    /// Pure FGI classification (`Fgi(_)`) does NOT satisfy
+    /// `TOK_US_COLLATERAL_CLASSIFIED`. Same `us_classification() ->
+    /// None` rationale as NATO/JOINT.
+    #[test]
+    fn tok_us_collateral_classified_false_on_pure_fgi() {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Fgi(FgiClassification {
+            countries: vec![CountryCode::GBR].into_boxed_slice(),
+            level: Classification::Secret,
+        }));
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must NOT fire on pure-FGI marking"
+        );
+    }
+
+    /// Marking with no classification at all (`classification: None`)
+    /// does NOT satisfy `TOK_US_COLLATERAL_CLASSIFIED`. Trivial
+    /// under `us_classification().is_some_and(...)` but pinned to
+    /// catch a regression that defaults to `Some(Unclassified)` or
+    /// otherwise eagerly fires.
+    #[test]
+    fn tok_us_collateral_classified_false_on_no_classification() {
+        let a = CanonicalAttrs::default();
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must NOT fire when classification is None"
+        );
+    }
+
+    /// `Conflict { us: Unclassified, foreign: <any> }`: the predicate
+    /// fires the `is_some_and` guard against
+    /// `us_classification() = Some(Unclassified)`, which fails the
+    /// `l != Unclassified` clamp. Pins the Unclassified carve-out
+    /// at the Conflict-variant level — the §H.8 p154 carve-out
+    /// applies to the US side regardless of how the
+    /// `MarkingClassification` enum represents it. This is the
+    /// counterpart to the existing
+    /// `phase3_closure_pin::us_class_conflict_variant_pin` test
+    /// which only covers the Conflict-with-Secret case.
+    #[test]
+    fn tok_us_collateral_classified_false_on_conflict_us_unclassified() {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Conflict {
+            us: Classification::Unclassified,
+            foreign: Box::new(ForeignClassification::Nato(NatoClassification::NatoSecret)),
+        });
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must NOT fire on Conflict with US side \
+             at Unclassified — `is_some_and(|l| l != Unclassified)` blocks it"
+        );
+    }
+
+    /// Positive Conflict-variant resolution at the resolver layer
+    /// (not the closure layer): `Conflict { us: Secret, foreign: ... }`
+    /// satisfies the predicate. Complements the Unclassified-Conflict
+    /// negative case above so the boundary is pinned on both sides.
+    #[test]
+    fn tok_us_collateral_classified_true_on_conflict_us_classified() {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Conflict {
+            us: Classification::Confidential,
+            foreign: Box::new(ForeignClassification::Nato(NatoClassification::NatoSecret)),
+        });
+        assert!(
+            satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must fire on Conflict with US side at \
+             Confidential — `us_classification()` returns Some(Confidential), \
+             which passes the `l != Unclassified` clamp"
+        );
+    }
+
+    /// Positive resolution on each collateral US level. Compact
+    /// table-driven complement to the existing
+    /// `phase3_closure_pin::us_class_fires_on_collateral_levels`
+    /// test, which goes through `scheme.closure(...)`. This pin
+    /// exercises the `satisfies_attrs` arm directly so a regression
+    /// in the trigger predicate is detected before the closure
+    /// machinery is involved.
+    #[test]
+    fn tok_us_collateral_classified_true_on_each_us_collateral_level() {
+        let levels = [
+            Classification::Restricted,
+            Classification::Confidential,
+            Classification::Secret,
+            Classification::TopSecret,
+        ];
+        for level in levels {
+            let mut a = CanonicalAttrs::default();
+            a.classification = Some(MarkingClassification::Us(level));
+            assert!(
+                satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+                "TOK_US_COLLATERAL_CLASSIFIED must fire on Us({level:?})"
+            );
+        }
+    }
+
+    /// `Us(Unclassified)` does NOT satisfy
+    /// `TOK_US_COLLATERAL_CLASSIFIED`. This is the §H.8 p154
+    /// carve-out at the predicate level — gating the closure here
+    /// (vs. via a suppressor) is what makes
+    /// `CLOSURE_RELIDO_US_CLASS` monotone per the
+    /// `MarkingScheme::closure` contract. The existing
+    /// `phase3_closure_pin::us_class_excluded_for_unclassified`
+    /// pins the closure-level result; this pin localizes the
+    /// failure to the predicate arm if the closure test breaks.
+    #[test]
+    fn tok_us_collateral_classified_false_on_us_unclassified() {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(Classification::Unclassified));
+        assert!(
+            !satisfies_attrs(&a, &TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)),
+            "TOK_US_COLLATERAL_CLASSIFIED must NOT fire on Us(Unclassified) \
+             per §H.8 p154 carve-out"
+        );
+    }
+}
