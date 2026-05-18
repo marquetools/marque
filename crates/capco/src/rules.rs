@@ -372,7 +372,7 @@ impl CapcoRuleSet {
                 // citation, no "MUST" prose); users opt up via
                 // `[rules] S007 = "warn"` if their org demands stronger
                 // surfacing. The solely-NATO-document case is carved
-                // out via `PageContext::is_solely_nato_classified`.
+                // out via `ProjectedMarking::is_solely_nato_classified`.
                 Box::new(BareNatoRequiresRelToRule),
                 // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
                 // collapse-to-FGI per CAPCO-2016 §H.3 p57 + §H.7 p123
@@ -2414,8 +2414,8 @@ fn s005_render_set(set: &std::collections::BTreeSet<&str>) -> String {
 /// per-portion REL TO + uncertain-trigraph membership analysis
 /// requires the portion-level `CanonicalAttrs` slice that
 /// `ProjectedMarking` does not expose by design (a projected
-/// marking is an aggregate, not a portion view). PR 4b-E may
-/// retain a trimmed `PageContext` exposing only `portions()` for
+/// marking is an aggregate, not a portion view). PR 4b-E retains
+/// a trimmed `PageContext` exposing only `portions()` for
 /// this consumer and W004; the architecturally-clean successor
 /// is lifting per-portion REL TO membership analysis into the
 /// lattice / scheme layer as derived state on `ProjectedMarking`,
@@ -3425,11 +3425,11 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 ///    portions are not in scope. (ATOMAL companions on the AEA axis
 ///    coexist with `Nato(_)` and do **not** immunize the portion — see
 ///    project memory `project_atomal_is_aea`.)
-/// 3. **Solely-NATO doc carve-out**: when `ctx.page_context` is `Some`
-///    and `PageContext::is_solely_nato_classified()` returns `true`,
+/// 3. **Solely-NATO doc carve-out**: when `ctx.page_marking` is `Some`
+///    and `ProjectedMarking::is_solely_nato_classified()` returns `true`,
 ///    every portion on the page is bare NATO and alliance ownership is
 ///    implicit — `REL TO USA, NATO` is not needed. When
-///    `page_context.is_none()` (no pass-1 evidence yet) fire
+///    `page_marking.is_none()` (no pass-1 evidence yet) fire
 ///    conservatively; pass-2 re-evaluation silences this case in a
 ///    solely-NATO document. Single-portion solely-NATO documents may
 ///    see one false-positive that users can silence via
