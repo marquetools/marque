@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@900f2210b1d28bbbd0bd22d17926b9e224e8f231
 
       - name: Set up environment
-        uses: jdx/mise-action@8d3b0ba20a9cea7b883d922ea958553c941ab082
+        uses: jdx/mise-action@5b3e4e007b276e6bad43f8e745b95a5ffa71aa5e
         with:
           install: true
           experimental: true
