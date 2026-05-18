@@ -8,16 +8,41 @@
 //! provenance side channel), `PartialEq`/`Eq`/`From<CanonicalAttrs>`
 //! impls, the inherent block carrying `new` + the production
 //! `join_via_lattice` lattice-path composer (and its PR 4b-D.2
-//! `_with_context` fast-path variant), the `JoinSemilattice` trait
-//! impl (which delegates to `join_via_lattice` per PR 4b-D.2's flip),
-//! the `CapcoOpenVocabRef` open-vocab enum, and the test-convenience
-//! `classification()` accessor.
+//! `_with_context` fast-path variant), the `CapcoOpenVocabRef`
+//! open-vocab enum, and the test-convenience `classification()`
+//! accessor.
 //!
-//! ## Post-PR-4b-D.2 status
+//! ## CapcoMarking is a projection target, not a lattice element
 //!
-//! The lattice path is the production page-aggregation surface.
-//! `JoinSemilattice::join` delegates to `CapcoMarking::join_via_lattice`,
-//! and `CapcoScheme::project(Scope::Page, ...)` runs the full
+//! `CapcoMarking` is a **bag-of-axes** record over the 10+ CAPCO
+//! categories. The lattice claim — `JoinSemilattice` /
+//! `MeetSemilattice` — lives on the **per-axis** types (`RelToBlock`,
+//! `DissemSet`, `SciSet`, `SarSet`, `AeaSet`, `FgiSet`, `JointSet`,
+//! `NatoDissemSet`, `ClassificationLattice`, `NatoClassLattice`,
+//! `DeclassifyOnLattice`). Each per-axis type satisfies the lattice
+//! laws on its own native domain (e.g. `2^{Trigraph}` for REL TO,
+//! `BTreeSet<DissemControl>` for DissemSet); `CapcoMarking` is the
+//! cross-axis fold that composes those lattice values back into a
+//! `CanonicalAttrs` record for the renderer and the rule layer.
+//!
+//! Cross-axis folding is a **projection**, not a lattice op:
+//! structural `Eq` on `CanonicalAttrs` is finer than the lattice
+//! equivalence on the expanded per-axis domains. PR 4b-D.2 Copilot R1
+//! review surfaced this gap (decisions.md D24): `CapcoMarking`'s
+//! prior `JoinSemilattice` impl violated structural-`Eq` idempotence
+//! whenever a per-axis lattice normalized its input (the load-bearing
+//! case was `RelToBlock`'s tetragraph expansion: `m.rel_to = [NATO]`
+//! → after `m.join(m)` → `m.rel_to = {30 expanded trigraphs}`, so
+//! `m != m.join(m)` under derived `Eq`). The fix was to drop the
+//! false trait claim; the cross-axis fold remains accessible as the
+//! inherent methods `join_via_lattice` and
+//! `join_via_lattice_with_context`. See `marque-applied.md` §3 for
+//! the "per-axis lattices are real; the cross-axis composition is
+//! structural folding, not a lattice operation" framing.
+//!
+//! ## Post-PR-4b-D.2 production pipeline
+//!
+//! `CapcoScheme::project(Scope::Page, ...)` runs the full
 //! `join_via_lattice → closure → page_rewrites` pipeline (see
 //! `docs/plans/2026-05-01-lattice-design.md` §4.7.4).
 //!
@@ -40,7 +65,12 @@
 //! pattern `mod.rs` used pre-split).
 
 use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
-use marque_scheme::{JoinSemilattice, MeetSemilattice};
+// `JoinSemilattice` stays in scope for the per-axis lattice types
+// (`SarSet::join`, `FgiSet::join`) that the cross-axis fold composes.
+// `CapcoMarking` itself no longer implements `JoinSemilattice`
+// (decisions.md D24); the lattice claim lives on the per-axis types,
+// not on the cross-axis fold.
+use marque_scheme::JoinSemilattice;
 
 use super::actions::*;
 
@@ -673,97 +703,69 @@ impl CapcoMarking {
 // component-wise composition is exposed on `CapcoMarking::
 // join_via_lattice()` above.
 //
-// PR 4b-D.2 (this commit) flips the trait `JoinSemilattice::join` impl
-// to delegate to `join_via_lattice` instead of `PageContext::
-// add_portion` + `page_context_to_attrs`. The parity gate at
-// `crates/capco/tests/page_context_lattice_parity.rs` enforces the
-// documented divergence set across both paths; the lattice path was
-// already byte-identical on the 45+ converged fixtures, so the flip
-// is a no-op for those cases and the divergence-bearing fixtures
-// continue to assert the documented §-cited semantic differences.
+// PR 4b-D.2 Copilot R1 / decisions.md D24
+// -----------------------------------------------------------------
 //
-// `meet` keeps its narrow PageContext-free shape — it is used by a
-// small set of overlap-check call sites that do not need full
-// component-wise coverage. Widening it is independent work; the
-// `MeetSemilattice` consumers in PR 4b-D scope are exercised only
-// through this `JoinSemilattice` flip plus `CapcoScheme::project`
-// (PR 4b-D.2 Commit 3).
-impl JoinSemilattice for CapcoMarking {
-    /// Join = component-wise lattice composition via [`Self::join_via_lattice`].
-    ///
-    /// PR 4b-D.2 (this commit) flipped the body from the
-    /// PageContext-delegation form to the lattice path. The lattice
-    /// path is the post-PR-4b-B authoritative aggregation surface; see
-    /// the documented divergence list in
-    /// `crates/capco/CAPCO-CONTEXT.md` §3 and the parity-gate fixtures
-    /// in `crates/capco/tests/page_context_lattice_parity.rs` for the
-    /// per-axis §-cited semantics.
-    ///
-    /// Authority: per-axis citations live on each
-    /// `marque-capco::lattice` type's doc comment.
-    #[inline]
-    fn join(&self, other: &Self) -> Self {
-        CapcoMarking::new(CapcoMarking::join_via_lattice(&[
-            self.0.clone(),
-            other.0.clone(),
-        ]))
-    }
-}
-
-impl MeetSemilattice for CapcoMarking {
-    /// Meet = partial component-wise minimum.
-    ///
-    /// Implemented only on classification, SCI, and dissem — enough to
-    /// satisfy the trait bound and serve Phase A's test inputs. All
-    /// other fields reset to `Default`. This is not a full
-    /// product-lattice meet; see the module-level "Phase A caveat"
-    /// note above. Phase B replaces it with a proper component-wise
-    /// meet across every category.
-    #[inline]
-    fn meet(&self, other: &Self) -> Self {
-        let a = &self.0;
-        let b = &other.0;
-
-        let classification = match (&a.classification, &b.classification) {
-            (Some(x), Some(y)) => {
-                let min = x.effective_level().min(y.effective_level());
-                Some(marque_ism::MarkingClassification::Us(min))
-            }
-            _ => None,
-        };
-
-        let sci: Vec<_> = a
-            .sci_controls
-            .iter()
-            .filter(|t| b.sci_controls.contains(t))
-            .copied()
-            .collect();
-        // PR 9b (T132): meet operates component-wise on each dissem
-        // namespace independently. The two fields share the
-        // `DissemControl` type but live on opposite sides of the
-        // CAPCO-2016 p41 reciprocity boundary; mixing them would
-        // collapse the namespace distinction.
-        let dissem_us: Vec<_> = a
-            .dissem_us
-            .iter()
-            .filter(|t| b.dissem_us.contains(t))
-            .copied()
-            .collect();
-        let dissem_nato: Vec<_> = a
-            .dissem_nato
-            .iter()
-            .filter(|t| b.dissem_nato.contains(t))
-            .copied()
-            .collect();
-
-        let mut out = CanonicalAttrs::default();
-        out.classification = classification;
-        out.sci_controls = sci.into_boxed_slice();
-        out.dissem_us = dissem_us.into_boxed_slice();
-        out.dissem_nato = dissem_nato.into_boxed_slice();
-        CapcoMarking::new(out)
-    }
-}
+// The `impl JoinSemilattice for CapcoMarking` and
+// `impl MeetSemilattice for CapcoMarking` blocks were dropped in
+// PR 4b-D.2 Commit 11. Copilot's R1 review surfaced an idempotence-
+// law violation on `JoinSemilattice::join` driven by tetragraph
+// expansion in `RelToBlock::from_attrs_iter`:
+//
+//   let m = CapcoMarking::new(CanonicalAttrs {
+//       rel_to: [CountryCode::NATO].into(),
+//       ..
+//   });
+//   let joined = m.join(&m);
+//   // Pre-fix: joined.0.rel_to is the 30-trigraph NATO expansion,
+//   // NOT [NATO]. Structural Eq fails: `m != joined`.
+//
+// The lattice consultant ruled (Option D-extended) that:
+//
+//   1. Per-axis lattices (`RelToBlock`, `DissemSet`, `SciSet`,
+//      `SarSet`, etc.) ARE sound lattices on their native domains
+//      (e.g. `2^{Trigraph}` for REL TO). Idempotence holds on the
+//      lattice type's own structural `Eq`, which compares the
+//      expanded representative.
+//   2. `CapcoMarking` is a **cross-axis fold** of those lattice
+//      values back into a `CanonicalAttrs` record. The fold is a
+//      *projection*, not a join. Claiming `JoinSemilattice` on the
+//      record type promised a law (structural-`Eq` idempotence)
+//      that the construction could not keep without either lossy
+//      eager canonicalization at construction (would erase the
+//      `NATO` atom from the renderer's input form) or a
+//      quotient-`Eq` rewrite across all `CanonicalAttrs` fields
+//      (massive blast radius). Both options were rejected.
+//
+// The cross-axis-fold entry remains accessible as the inherent
+// methods `CapcoMarking::join_via_lattice` and
+// `CapcoMarking::join_via_lattice_with_context` above. Engine and
+// scheme call sites that used `<CapcoMarking as JoinSemilattice>::
+// join` previously now call those inherent methods directly. The
+// `MarkingScheme::Marking` trait bound was also relaxed
+// (`crates/scheme/src/scheme.rs:46`) to remove the false claim at
+// the trait surface.
+//
+// `MeetSemilattice for CapcoMarking` was dropped for the same
+// algebraic reason — the implementation was a "partial component-
+// wise minimum" (its own doc comment said so) that did not satisfy
+// the meet laws on the cross-axis record type either. The trait
+// claim was unsound; no production caller depended on it.
+//
+// Per-axis `JoinSemilattice` / `MeetSemilattice` impls on
+// `RelToBlock`, `DissemSet`, `SciSet`, `SarSet`, `AeaSet`,
+// `FgiSet`, `JointSet`, `NatoDissemSet`, `ClassificationLattice`,
+// `NatoClassLattice`, and `DeclassifyOnLattice` remain — they are
+// the algebraically-sound site for the lattice claim.
+//
+// See `marque-applied.md` §3 (PR 3b stall walkthrough) for the
+// "per-axis lattices are real; the cross-axis composition is
+// structural folding, not a lattice operation" framing. The
+// systematic audit of remaining per-axis types for similar
+// structural-vs-lattice-`Eq` mismatches
+// (`DissemSet::relido_observed_unanimous`, `JointSet::Mixed` /
+// `DisunityCollapse`, `SupersessionSet`) is tracked as a follow-up
+// issue, NOT addressed by PR 4b-D.2.
 
 /// CAPCO's open-vocabulary structural reference.
 ///

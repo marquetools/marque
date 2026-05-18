@@ -19,7 +19,6 @@ use crate::category::{Category, CategoryId, TokenId};
 use crate::closure::ClosureRule;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
-use crate::lattice::JoinSemilattice;
 use crate::page_rewrite::PageRewrite;
 use crate::scope::Scope;
 use crate::template::Template;
@@ -38,12 +37,47 @@ pub trait MarkingScheme {
     /// engine's call sites.
     type Token;
 
-    /// The scheme's full-marking type. Must be a join-semilattice: the join
-    /// is the product over the scheme's categories. Doubly-lawful schemes
-    /// (where every category satisfies meet too) automatically satisfy
-    /// [`Lattice`](crate::lattice::Lattice) via the blanket impl in the
-    /// [`crate::lattice`] module.
-    type Marking: JoinSemilattice;
+    /// The scheme's full-marking type — a **projection target**, not a
+    /// lattice element.
+    ///
+    /// PR 4b-D.2 (2026-05-18) relaxed the prior `JoinSemilattice` bound
+    /// after the Copilot R1 review surfaced an idempotence-law
+    /// violation on `CapcoMarking` driven by tetragraph expansion in
+    /// `RelToBlock::from_attrs_iter` (`m.rel_to = [NATO]` → after
+    /// `m.join(m)` → `m.rel_to = {30 expanded trigraphs}`; structural
+    /// `Eq` fails). The lattice consultant verdict was: the per-axis
+    /// lattices (`RelToBlock`, `DissemSet`, `SciSet`, `SarSet`, etc.)
+    /// are sound lattices on their native domain (expanded
+    /// `2^{Trigraph}` for REL TO, etc.); `Marking` is the
+    /// **cross-axis fold** of those lattice values back into a single
+    /// structural record. Cross-axis folding is a *projection*, not a
+    /// lattice operation. Claiming `JoinSemilattice` on the
+    /// cross-axis record-type promised a law (idempotence on
+    /// structural `Eq`) that the construction cannot keep without
+    /// either (a) lossy eager canonicalization at construction or
+    /// (b) replacing derived `Eq` with a quotient-`Eq` on every
+    /// `CanonicalAttrs`-shaped field. Both options were rejected as
+    /// blast-radius-too-large; the trait-bound relaxation here is the
+    /// surgical fix that removes the false claim instead.
+    ///
+    /// The per-axis lattices keep their own `JoinSemilattice` impls
+    /// (sound on their respective domains). Schemes whose
+    /// cross-axis-fold needs a "join-shaped" entry point should expose
+    /// it as an inherent method on the scheme's marking type (e.g.
+    /// `CapcoMarking::join_via_lattice`) rather than via this trait
+    /// bound; the engine's `project_from_page_context` hot path takes
+    /// exactly that shape.
+    ///
+    /// See `marque-applied.md` §3 (PR 3b stall walkthrough) for the
+    /// "per-axis lattices are real; the cross-axis composition is
+    /// structural folding, not a lattice operation" framing.
+    /// PR #456 introduced `JoinSemilattice`/`MeetSemilattice` split;
+    /// PR 4b-D.2 D24 records this further relaxation. The systematic
+    /// audit of per-axis lattices for structural-vs-lattice-`Eq`
+    /// mismatches (`DissemSet::relido_observed_unanimous`,
+    /// `JointSet::Mixed`/`DisunityCollapse`, etc.) is tracked as a
+    /// follow-up issue.
+    type Marking;
 
     /// Parse-level errors produced by `parse`.
     type ParseError;
