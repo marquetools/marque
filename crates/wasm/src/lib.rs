@@ -1140,7 +1140,7 @@ pub fn lint_batch(entries_json: &str, config_json: Option<String>) -> Result<Str
 }
 
 // ---------------------------------------------------------------------------
-// compute_banner — scanner + parser + PageContext only (no rules engine)
+// compute_banner — scanner + parser + scheme.project (no rules engine)
 // ---------------------------------------------------------------------------
 
 /// Compute the expected CAPCO banner string from portion markings in `text`.

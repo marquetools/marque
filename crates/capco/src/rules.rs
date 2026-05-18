@@ -3447,7 +3447,7 @@ const S007_SUGGEST_CONFIDENCE: f32 = 0.85;
 ///    implicit — `REL TO USA, NATO` is not needed. **Today this branch
 ///    is forward-looking**: `Engine::lint` gates
 ///    `with_page_marking(ctx_page_marking)` on
-///    `candidate.kind != MarkingType::Portion && !page_context.is_empty()`,
+///    `candidate.kind != MarkingType::Portion && !page_portions.is_empty()`,
 ///    so portion rules always see `page_marking = None` and the
 ///    carve-out is unreachable. S007 fires on every bare-NATO portion
 ///    regardless of solely-NATO document status until a future engine
@@ -3928,7 +3928,7 @@ pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoSch
 // ===========================================================================
 //
 // Three hand-written rules that can't ride the declarative-constraint
-// path (all three need either page_context access or token-level fix
+// path (all three need either page-portions access or token-level fix
 // proposals):
 //
 //   E039  — REL TO not authorized in banner when any portion has NODIS
@@ -4065,7 +4065,7 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 //
 // The `evaluate_*` fns are verbatim moves of the bodies of the retiring
 // rules' `check` methods; the only structural change is that they take an
-// explicit `&PageContext` parameter (the marking-type and page_context
+// explicit `&ProjectedMarking` parameter (the marking-type and page-portions
 // guards moved up to the walker's `check`).
 
 /// Walker that asserts the banner / CAB candidate matches the page's
@@ -4112,8 +4112,8 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
         // PR 9b (T133 / FR-006): banner-validation rules read the
         // rolled-up shape via `ctx.page_marking` (the
         // `ProjectedMarking` projection) instead of going through
-        // `PageContext::expected_*` accessors. The per-portion view
-        // stays on `ctx.page_context` for rules that need it
+        // the retired `PageContext::expected_*` accessors. The
+        // per-portion view is available via `ctx.page_portions`
         // (e.g. S005 post-PR-#488 — formerly the S005/S006 pair).
         let Some(page) = ctx.page_marking.as_ref() else {
             return vec![];
@@ -8534,14 +8534,14 @@ mod tests {
     // --- E035: SCI banner rollup ---
 
     #[test]
-    fn e035_no_ops_without_page_context() {
-        // The test harness passes `page_context: None`. Until P4 lands and
-        // populates a real PageContext with expected_sci_markings(), E035
-        // must stay silent rather than emit false positives.
+    fn e035_no_ops_without_page_portions() {
+        // The test harness passes `page_portions: None`. Until P4 lands and
+        // populates real page portions producing `expected_sci_markings()`,
+        // E035 must stay silent rather than emit false positives.
         let diags = lint_banner("TOP SECRET//SI-G//NOFORN");
         assert!(
             diags.iter().all(|d| d.rule.as_str() != "E035"),
-            "E035 must no-op without a PageContext: {diags:?}"
+            "E035 must no-op without per-page portions: {diags:?}"
         );
     }
 
@@ -8982,8 +8982,8 @@ mod tests {
     /// is specced and built per
     /// `specs/006-engine-rule-refactor/followups/admonition-channel.md`.
     /// The structural blocker — `MarkingScheme::evaluate_custom` having
-    /// no access to `RuleContext.page_context` (the entire body of
-    /// `analyze_uncertain_reduction` is page-context-dependent) — is
+    /// no access to `RuleContext.page_portions` (the entire body of
+    /// `analyze_uncertain_reduction` is page-portions-dependent) — is
     /// tracked in
     /// `specs/006-engine-rule-refactor/followups/constraint-context-extension.md`.
     /// Until either retirement vehicle lands, the rule emits a diagnostic

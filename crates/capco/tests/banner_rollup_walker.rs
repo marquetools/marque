@@ -344,14 +344,14 @@ fn walker_silent_on_portion_candidates() {
 }
 
 // ---------------------------------------------------------------------------
-// PageContext guard — banner with no preceding portions
+// page-portions guard — banner with no preceding portions
 // ---------------------------------------------------------------------------
 
 #[test]
 fn walker_silent_when_banner_has_no_preceding_portions() {
     // A document with a banner but no portion candidates anywhere.
-    // The engine never builds a PageContext (no portions to
-    // accumulate), so `ctx.page_context` stays `None` and the walker
+    // The engine never populates per-page portions (no portions to
+    // accumulate), so `ctx.page_portions` stays `None` and the walker
     // returns early. No E031 / E035 / E040 emitted.
     let source = "TOP SECRET//SI-G//SAR-BP//NOFORN//NODIS";
     let diags = lint(source);
@@ -359,8 +359,8 @@ fn walker_silent_when_banner_has_no_preceding_portions() {
         let row_diags = diags_for_rule(&diags, rule_id);
         assert!(
             row_diags.is_empty(),
-            "walker fired on a banner with no PageContext — \
-             page-context guard regression. {rule_id} diags: \
+            "walker fired on a banner with no page portions — \
+             page-portions guard regression. {rule_id} diags: \
              {row_diags:?}",
         );
     }

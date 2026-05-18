@@ -4410,6 +4410,14 @@ fn dispatch_page_finalization(
     // assertion entirely. Placement is AFTER the empty-bucket /
     // all-Off short-circuits (they early-return before reaching
     // this point).
+    //
+    // Note on the type chain: `page_portions_arc` at this point is
+    // the locally-rebound `Arc<Box<[CanonicalAttrs]>>` (NOT the outer
+    // `Option<Arc<Box<[CanonicalAttrs]>>>` parameter — see the
+    // `.get_or_insert_with(...).clone()` rebinding earlier in this
+    // function). `Arc::as_ref()` yields `&Box<[CanonicalAttrs]>`
+    // which auto-derefs to `&[CanonicalAttrs]`; `<[T]>::to_vec()`
+    // then produces `Vec<CanonicalAttrs>` directly.
     #[cfg(debug_assertions)]
     let portions_before: Vec<marque_ism::CanonicalAttrs> = page_portions_arc.as_ref().to_vec();
 
