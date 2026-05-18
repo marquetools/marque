@@ -90,8 +90,11 @@ pub(crate) fn capco_token_category(id: TokenId) -> Option<CategoryId> {
         // CAT_SCI category — they address specific compartments under
         // their parent SCI control systems and are addressable in the
         // SCI axis alongside the bare control sentinel `TOK_HCS`.
-        TOK_HCS | TOK_BALK | TOK_BOHEMIA | TOK_SI_G | TOK_HCS_O | TOK_HCS_P | TOK_TK_BLFH
-        | TOK_TK_IDIT | TOK_TK_KAND => Some(CAT_SCI),
+        // Issue #524 Phase 2: `TOK_HCS_P_SUB` is the grammar-shape
+        // sentinel for HCS-P with at least one sub-compartment (§H.4
+        // p68 implication semantics differ from §H.4 p66 bare HCS-P).
+        TOK_HCS | TOK_BALK | TOK_BOHEMIA | TOK_SI_G | TOK_HCS_O | TOK_HCS_P | TOK_HCS_P_SUB
+        | TOK_TK_BLFH | TOK_TK_IDIT | TOK_TK_KAND => Some(CAT_SCI),
         // CAT_JOINT_CLASSIFICATION — JOINT classification marker
         TOK_JOINT => Some(CAT_JOINT_CLASSIFICATION),
         // CAT_CLASSIFICATION — overall classification level surface

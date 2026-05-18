@@ -163,6 +163,18 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
                 super::presence::anchors_on(m, SciControlBare::Hcs)
                     && super::presence::has_compartment(m, "P")
             }),
+            // Issue #524 (Phase 2): grammar-shape sentinel fires only
+            // when HCS-P additionally carries at least one sub-
+            // compartment. §H.4 p66 (bare HCS-P) implies NOFORN only;
+            // §H.4 p68 (HCS-P [SUB]) implies NOFORN + ORCON. See
+            // `TOK_HCS_P_SUB` doc-comment in
+            // `crates/capco/src/scheme/mod.rs`.
+            TOK_HCS_P_SUB => attrs.sci_markings.iter().any(|m| {
+                super::presence::anchors_on(m, SciControlBare::Hcs)
+                    && m.compartments
+                        .iter()
+                        .any(|c| c.identifier.as_str() == "P" && !c.sub_compartments.is_empty())
+            }),
             TOK_TK_BLFH => attrs.sci_markings.iter().any(|m| {
                 super::presence::anchors_on(m, SciControlBare::Tk)
                     && super::presence::has_compartment(m, "BLFH")
@@ -581,6 +593,14 @@ pub(crate) fn collect_present_tokens(attrs: &marque_ism::CanonicalAttrs) -> Vec<
                 _ => continue,
             };
             tokens.push(TokenRef::Token(sentinel));
+            // Issue #524 (Phase 2): HCS-P with at least one sub-
+            // compartment emits the additional grammar-shape sentinel
+            // `TOK_HCS_P_SUB`. §H.4 p68 implies NOFORN + ORCON for the
+            // sub-compartmented form, distinct from the bare HCS-P
+            // semantics at §H.4 p66.
+            if sentinel == TOK_HCS_P && !compartment.sub_compartments.is_empty() {
+                tokens.push(TokenRef::Token(TOK_HCS_P_SUB));
+            }
         }
     }
 
@@ -917,6 +937,10 @@ mod sci_compartment_sentinels_pin {
             (TOK_TK_BLFH, CAT_SCI),
             (TOK_TK_IDIT, CAT_SCI),
             (TOK_TK_KAND, CAT_SCI),
+            // Issue #524 Phase 2: grammar-shape sentinel for HCS-P
+            // with at least one sub-compartment. Same category routing
+            // as the rest of the SCI sentinels.
+            (crate::scheme::TOK_HCS_P_SUB, CAT_SCI),
         ];
         for (tok, expected) in probes {
             assert_eq!(
@@ -925,5 +949,88 @@ mod sci_compartment_sentinels_pin {
                 "sentinel {tok:?} should route to {expected:?}",
             );
         }
+    }
+
+    /// Phase 2: `TOK_HCS_P_SUB` discriminates bare HCS-P from
+    /// HCS-P + at least one sub-compartment.
+    ///
+    /// - Bare HCS-P (no sub) emits TOK_HCS_P but NOT TOK_HCS_P_SUB.
+    /// - HCS-P with sub emits both TOK_HCS_P and TOK_HCS_P_SUB.
+    /// - Non-HCS-P (e.g., HCS-O) does not emit TOK_HCS_P_SUB even if
+    ///   the marking has sub-compartments on a different compartment.
+    ///
+    /// Pinning this discrimination is load-bearing because the Phase
+    /// 2 `CLOSURE_HCS_P_SUB_IMPLIES_NF_OC` row's correctness depends
+    /// on it: bare HCS-P at §H.4 p66 implies NOFORN only, while
+    /// HCS-P [SUB] at §H.4 p68 implies NOFORN + ORCON.
+    #[test]
+    fn tok_hcs_p_sub_discriminates_bare_from_sub() {
+        use crate::scheme::TOK_HCS_P_SUB;
+
+        // Bare HCS-P: no sub-compartments.
+        let bare = attrs_with_sci(SciControlBare::Hcs, "P");
+        let emitted = collect_present_tokens(&bare);
+        assert!(
+            emitted.contains(&TokenRef::Token(TOK_HCS_P)),
+            "bare HCS-P should still emit TOK_HCS_P; got {emitted:?}"
+        );
+        assert!(
+            !emitted.contains(&TokenRef::Token(TOK_HCS_P_SUB)),
+            "bare HCS-P (no sub) must NOT emit TOK_HCS_P_SUB; got {emitted:?}"
+        );
+        assert!(
+            !satisfies_attrs(&bare, &TokenRef::Token(TOK_HCS_P_SUB)),
+            "satisfies_attrs(TOK_HCS_P_SUB) on bare HCS-P should be false"
+        );
+
+        // HCS-P with at least one sub-compartment.
+        let mut sub = CanonicalAttrs::default();
+        let comp = SciCompartment::new(
+            SmolStr::new("P"),
+            vec![SmolStr::new("JJJ")].into_boxed_slice(),
+        );
+        let marking = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Hcs),
+            Box::new([comp]),
+            None,
+        );
+        sub.sci_markings = Box::new([marking]);
+        let emitted_sub = collect_present_tokens(&sub);
+        assert!(
+            emitted_sub.contains(&TokenRef::Token(TOK_HCS_P)),
+            "HCS-P[sub] should still emit TOK_HCS_P; got {emitted_sub:?}"
+        );
+        assert!(
+            emitted_sub.contains(&TokenRef::Token(TOK_HCS_P_SUB)),
+            "HCS-P[sub] must emit TOK_HCS_P_SUB; got {emitted_sub:?}"
+        );
+        assert!(
+            satisfies_attrs(&sub, &TokenRef::Token(TOK_HCS_P_SUB)),
+            "satisfies_attrs(TOK_HCS_P_SUB) on HCS-P[sub] should be true"
+        );
+
+        // Non-HCS-P with sub-compartments on a different compartment
+        // (HCS-O with sub) must NOT emit TOK_HCS_P_SUB.
+        let mut hcs_o_sub = CanonicalAttrs::default();
+        let comp_o = SciCompartment::new(
+            SmolStr::new("O"),
+            vec![SmolStr::new("SYNTH")].into_boxed_slice(),
+        );
+        let marking_o = SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Hcs),
+            Box::new([comp_o]),
+            None,
+        );
+        hcs_o_sub.sci_markings = Box::new([marking_o]);
+        let emitted_o = collect_present_tokens(&hcs_o_sub);
+        assert!(
+            !emitted_o.contains(&TokenRef::Token(TOK_HCS_P_SUB)),
+            "HCS-O with sub must NOT emit TOK_HCS_P_SUB (sub-compartment \
+             is on the O compartment, not P); got {emitted_o:?}"
+        );
+        assert!(
+            !satisfies_attrs(&hcs_o_sub, &TokenRef::Token(TOK_HCS_P_SUB)),
+            "satisfies_attrs(TOK_HCS_P_SUB) on HCS-O[sub] should be false"
+        );
     }
 }
