@@ -55,9 +55,9 @@
 //! PageContext methods. PR 4b-E retires the residue bridge by
 //! refactoring the five accessors into free functions on
 //! `&[CanonicalAttrs]`, at which point this module can drop the
-//! `tmp_ctx` parameter entirely. Constitution VII §IV gates the
-//! refactor; PR 4b-E's authorization basis is identical to
-//! PR 4b-D.2's.
+//! `tmp_ctx` parameter entirely. Constitution VII Principle IV
+//! gates the refactor; PR 4b-E's authorization basis is identical
+//! to PR 4b-D.2's.
 //!
 //! Carved out from `scheme/mod.rs` per the Stage 2 PR B hub-split
 //! (issue #466). Imports reach helpers via `super::actions::*` /
