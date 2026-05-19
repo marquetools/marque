@@ -1,0 +1,5 @@
+{
+  "_note": "PR 4 (006 T118) — FOUO eviction by classification ascent. CAPCO-2016 §H.8 p134 (classified-document sub-clause): 'When a classified document contains portions of FOUO information, the FOUO marking is not used in the banner line.' Driven by the `capco/classification-evicts-fouo` PageRewrite. RELIDO is then injected by `CLOSURE_RELIDO_US_CLASS` per §B.3 Table 2 p21 (classified + uncaveated + on/after 28 June 2010 → mark as RELIDO) — after FOUO strips, the page is uncaveated.",
+  "expected_banner": "SECRET//RELIDO",
+  "diagnostics": []
+}

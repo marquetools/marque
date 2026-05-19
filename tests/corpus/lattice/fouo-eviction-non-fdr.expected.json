@@ -1,0 +1,5 @@
+{
+  "_note": "PR 4 (006 T118) — FOUO eviction by non-FD&R control. CAPCO-2016 §H.8 p134 (UNCLASSIFIED-with-other-control sub-clause): 'FOUO is not conveyed in the banner line if the document is UNCLASSIFIED with FOUO and other dissemination control markings, excluding any FD&R markings.' Driven by the `capco/non-fdr-control-evicts-fouo` PageRewrite. NOFORN is then injected by `CLOSURE_NOFORN_CAVEATED` per §B.3 Table 2 p21 — the universal IC principle that non-IC dissem implies NOFORN absent FD&R; LES is a non-IC dissem control (§H.9 p181) so the caveated-classified trigger fires post-strip. The closure operator's seven token-grouped rows (SAR / AEA-RD / UCNI / FGI / ORCON / RSEN-IMCON-DSEN / non-IC-controls) consolidated into a single `CLOSURE_NOFORN_CAVEATED` row per `crates/capco/src/scheme/closure.rs` (PR #522 / decisions.md D18). LES renders in the non-IC dissem block per §G.1 Table 4 p38 category order.",
+  "expected_banner": "UNCLASSIFIED//NOFORN//LES",
+  "diagnostics": []
+}
