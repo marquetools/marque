@@ -50,6 +50,7 @@ use marque_ism::{
 use marque_scheme::{
     BoundedJoinSemilattice, BoundedMeetSemilattice, JoinSemilattice, MeetSemilattice,
 };
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -214,11 +215,17 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
     /// after the `sar_sort_key` comparison so that two distinct keys whose
     /// sort keys collide (e.g., two numeric identifiers that both map to
     /// `u64::MAX` under overflow) still produce a stable, total order.
+    ///
+    /// Inline-4 covers the typical outer-key count (SCI: SI/TK/HCS/G;
+    /// SAR: ≤4 programs per portion in ordinary documents) so the sorted
+    /// scratch buffer stays on the stack on the hot path (LA-4 fix per
+    /// PR 614 — inline capacity tuning in `to_markings` / `to_marking`).
+    #[allow(clippy::type_complexity)] // Inline-4 SmallVec is load-bearing (LA-4); a type alias would hide the capacity.
     fn sorted_entries(
         &self,
         key_text: impl Fn(&K) -> &str,
-    ) -> Vec<(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>)> {
-        let mut entries: Vec<_> = self.inner.iter().collect();
+    ) -> SmallVec<[(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>); 4]> {
+        let mut entries: SmallVec<[_; 4]> = self.inner.iter().collect();
         entries.sort_by(|a, b| {
             let ta = key_text(a.0);
             let tb = key_text(b.0);
@@ -233,10 +240,23 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
 /// Sort and render a compartment map into a list of
 /// `(identifier, sorted-sub-compartments)` pairs. Shared rendering
 /// helper for [`SciSet::to_markings`] and [`SarSet::to_marking`].
+///
+/// Inline capacities (LA-4 fix per PR 614):
+/// - `comp_keys` scratch: inline-8 covers the typical SCI compartment
+///   count (the `NF/PR/OC/REL/IMCON/RS` shape and similar) plus headroom;
+///   SAR compartment counts are typically ≤4 per program but inline-8 is
+///   a stack-only ceiling, no waste on the heap path.
+/// - per-compartment `subs` scratch: inline-4 covers the typical
+///   sub-compartment count for both SCI and SAR.
+/// - returned vec: inline-8 matches PR 614's `compartments` capacity for
+///   the SCI rendering path; callers consume via `into_iter` so the
+///   inline storage is dropped at the end of the iteration without an
+///   additional Box round-trip.
+#[allow(clippy::type_complexity)] // Inline-8 SmallVec is load-bearing (LA-4); a type alias would hide the capacity.
 fn sorted_compartment_items(
     comp_map: &BTreeMap<SmolStr, BTreeSet<SmolStr>>,
-) -> Vec<(&SmolStr, Box<[SmolStr]>)> {
-    let mut comp_keys: Vec<&SmolStr> = comp_map.keys().collect();
+) -> SmallVec<[(&SmolStr, Box<[SmolStr]>); 8]> {
+    let mut comp_keys: SmallVec<[&SmolStr; 8]> = comp_map.keys().collect();
     sort_smolstrs_by_sar(&mut comp_keys);
     comp_keys
         .into_iter()
@@ -244,13 +264,9 @@ fn sorted_compartment_items(
             let sub_set = comp_map
                 .get(id)
                 .expect("compartment key must exist in map (internal invariant violated)");
-            let mut subs: Vec<&SmolStr> = sub_set.iter().collect();
+            let mut subs: SmallVec<[&SmolStr; 4]> = sub_set.iter().collect();
             sort_smolstrs_by_sar(&mut subs);
-            let sub_boxes: Box<[SmolStr]> = subs
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
+            let sub_boxes: Box<[SmolStr]> = subs.into_iter().cloned().collect();
             (id, sub_boxes)
         })
         .collect()
@@ -359,14 +375,19 @@ impl SciSet {
     /// per-portion only; a rolled-up structural projection has no
     /// single corresponding enum variant.
     pub fn to_markings(&self) -> Box<[SciMarking]> {
+        // The shared `sorted_entries` / `sorted_compartment_items`
+        // helpers (HierarchicalTreeSet, PR 613) carry the SmallVec
+        // inline-capacity sizing from PR 614 — systems/programs at
+        // inline-4, compartments at inline-8, sub-compartments at
+        // inline-4 — so scratch buffers stay on the stack for ordinary
+        // classified documents.
         let entries = self.systems.sorted_entries(|k| k.text());
         let mut out: Vec<SciMarking> = Vec::with_capacity(entries.len());
         for (sys_key, comp_map) in entries {
             let compartments: Box<[SciCompartment]> = sorted_compartment_items(comp_map)
                 .into_iter()
                 .map(|(id, subs)| SciCompartment::new(id.clone(), subs))
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
+                .collect();
             out.push(SciMarking::new(
                 sys_key.clone().into_system(),
                 compartments,
@@ -491,6 +512,10 @@ impl SarSet {
         if self.programs.is_empty() {
             return None;
         }
+        // Helpers carry the LA-4 inline-capacity sizing (see
+        // `SciSet::to_markings` for the rationale): programs at
+        // inline-4, compartments at inline-8, sub-compartments at
+        // inline-4 — all heap-free for ordinary documents.
         let entries = self.programs.sorted_entries(|k| k.as_str());
         let built_programs: Box<[SarProgram]> = entries
             .into_iter()
@@ -498,8 +523,7 @@ impl SarSet {
                 let compartments: Box<[SarCompartment]> = sorted_compartment_items(comp_map)
                     .into_iter()
                     .map(|(cid, subs)| SarCompartment::new(cid.clone(), subs))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice();
+                    .collect();
                 SarProgram::new(pid.clone(), compartments)
             })
             .collect::<Vec<_>>()
@@ -1064,9 +1088,13 @@ impl AeaSet {
     /// post-projection rewrite (see the cross-axis invariant note
     /// on [`AeaSet`]), not a lattice render-time strip.
     pub fn to_markings(&self) -> Box<[AeaMarking]> {
-        let mut out: Vec<AeaMarking> = Vec::new();
+        // Inline-5 covers all AEA variants (Rd/Frd, DodUcni, DoeUcni,
+        // Tfni, Atomal); the output stays heap-free for typical
+        // documents (LA-4).
+        let mut out: SmallVec<[AeaMarking; 5]> = SmallVec::with_capacity(5);
         // Sort SIGMA numbers ascending for §H.6 p108 canonical form.
-        // `BTreeSet` already iterates in sorted order.
+        // `BTreeSet` already iterates in sorted order. Inline-8 covers
+        // the observed SIGMA range (1–99; in practice 1–5); (LA-4).
         let sigmas: Box<[u8]> = self
             .sigmas
             .iter()
@@ -2724,7 +2752,11 @@ impl JointSet {
         // `[LIST]` AND USA in the producer list). Verified
         // 2026-05-16 against CAPCO-2016.md.
         let has_usa = |j: &JointClassification| j.countries.iter().any(|c| c.as_str() == "USA");
-        let mut joint_portions: Vec<&JointClassification> = Vec::new();
+        // Inline-4 covers the typical JOINT portion count per page;
+        // deeply collaborative documents with 5+ JOINT portions spill
+        // to heap cleanly (LA-4).
+        let mut joint_portions: SmallVec<[&JointClassification; 4]> =
+            SmallVec::with_capacity(portions.len().min(4));
         let mut has_non_joint = false;
         for p in portions {
             match &p.classification {
@@ -3105,8 +3137,10 @@ impl RelToBlock {
             }
         }
 
-        // Gather only portions with a non-empty REL TO list.
-        let rel_to_portions: Vec<&CanonicalAttrs> =
+        // Gather only portions with a non-empty REL TO list. Inline-8
+        // covers the typical per-page REL-TO portion count; pages with
+        // 9+ REL TO portions spill to heap cleanly (LA-4).
+        let rel_to_portions: SmallVec<[&CanonicalAttrs; 8]> =
             portions.iter().filter(|a| !a.rel_to.is_empty()).collect();
 
         if rel_to_portions.is_empty() {
@@ -3114,8 +3148,9 @@ impl RelToBlock {
         }
 
         // Expand each portion's REL TO into a set of trigraph
-        // strings, resolving tetragraphs to constituents.
-        let expanded: Vec<BTreeSet<&str>> = rel_to_portions
+        // strings, resolving tetragraphs to constituents. Inline-8
+        // mirrors `rel_to_portions` capacity (LA-4).
+        let expanded: SmallVec<[BTreeSet<&str>; 8]> = rel_to_portions
             .iter()
             .map(|a| {
                 let mut set = BTreeSet::new();
@@ -3873,8 +3908,9 @@ impl DisplayOnlyBlock {
 
         // (4) Per-portion display permission = expand(REL TO) ∪
         // expand(DISPLAY ONLY) — release subsumes disclosure (§D.2
-        // Table 3 row 26 Note).
-        let expanded: Vec<BTreeSet<&str>> = portions
+        // Table 3 row 26 Note). Inline-8 covers the typical per-page
+        // portion count; 9+ portions spill to heap cleanly (LA-4).
+        let expanded: SmallVec<[BTreeSet<&str>; 8]> = portions
             .iter()
             .map(|a| {
                 let mut set = BTreeSet::new();
