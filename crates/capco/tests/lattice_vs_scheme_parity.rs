@@ -2973,7 +2973,7 @@ fn la3_single_nato_portion_is_identity() {
 fn la3_single_unclassified_portion_is_identity() {
     // Fast-path: single unclassified portion.
     let p = CanonicalAttrs::default();
-    let result = CapcoMarking::join_via_lattice(&[p.clone()]);
+    let result = CapcoMarking::join_via_lattice(std::slice::from_ref(&p));
     assert_eq!(
         result, p,
         "LA-3: single unclassified portion must be identity under join_via_lattice"
