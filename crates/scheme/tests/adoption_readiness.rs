@@ -142,6 +142,8 @@ impl StubScheme {
                 // by default rather than collapsing the two fields.
                 name: "stub/conflicts",
                 label: "StubScheme readiness fixture (no real citation)",
+                severity: None,
+                span_anchor: None,
             }],
             // `PageRewrite::declarative` is the const-friendly
             // constructor. The trigger / action arms here are the

@@ -21,6 +21,7 @@ use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
 use crate::page_rewrite::PageRewrite;
 use crate::scope::Scope;
+use crate::span::Span;
 use crate::template::Template;
 
 /// A structured marking scheme — CAPCO, CUI, NATO, or a custom
@@ -147,6 +148,17 @@ pub trait MarkingScheme {
     /// coverage.
     fn satisfies(&self, _marking: &Self::Marking, _token_ref: &TokenRef) -> bool {
         false
+    }
+
+    /// Resolve the source byte span for a given token or category
+    /// presence in `marking`.
+    ///
+    /// The default implementation returns `None`. Schemes that want
+    /// their declarative constraint catalog to produce user-facing
+    /// diagnostics (via the engine bridge) MUST override this method
+    /// to provide a valid span for the triggering token.
+    fn token_span(&self, _marking: &Self::Marking, _token_ref: &TokenRef) -> Option<Span> {
+        None
     }
 
     /// Resolve a [`FactRef`] to its [`CategoryId`].
