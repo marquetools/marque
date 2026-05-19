@@ -89,8 +89,13 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
 /// [`sorted_entries`][Self::sorted_entries] without duplicating the
 /// iteration logic.
 ///
-/// All methods are `#[inline]` to ensure zero overhead compared with
-/// the hand-rolled versions they replace.
+/// Hot-path methods (`join_with`, `meet_with`, and the simple accessors)
+/// are marked `#[inline]`. `sorted_entries` is deliberately not inlined
+/// — it takes an `impl Fn` closure argument whose type is generic at each
+/// call site, so marking it `#[inline]` would produce a distinct
+/// monomorphization per call site (mirroring the `sort_smolstrs_by_sar`
+/// design note above). The single non-inlined definition plus LTO handles
+/// whole-program optimization when profitable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HierarchicalTreeSet<K: Clone + Ord> {
     inner: BTreeMap<K, BTreeMap<SmolStr, BTreeSet<SmolStr>>>,
@@ -185,8 +190,7 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
                 let Some(other_subs) = other_comps.get(cid) else {
                     continue;
                 };
-                let common: BTreeSet<SmolStr> =
-                    subs.intersection(other_subs).cloned().collect();
+                let common: BTreeSet<SmolStr> = subs.intersection(other_subs).cloned().collect();
                 out_comps.insert(cid.clone(), common);
             }
             out.inner.insert(outer_key.clone(), out_comps);
@@ -205,14 +209,22 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
     /// numeric-first ordering over the textual form. Passing the text
     /// projection decouples the storage key ordering from the rendering
     /// order without introducing a separate `OrdText` bound on `K`.
-    fn sorted_entries<'a>(
-        &'a self,
+    ///
+    /// A lexicographic tie-breaker on the raw `key_text` string is applied
+    /// after the `sar_sort_key` comparison so that two distinct keys whose
+    /// sort keys collide (e.g., two numeric identifiers that both map to
+    /// `u64::MAX` under overflow) still produce a stable, total order.
+    fn sorted_entries(
+        &self,
         key_text: impl Fn(&K) -> &str,
-    ) -> Vec<(&'a K, &'a BTreeMap<SmolStr, BTreeSet<SmolStr>>)> {
+    ) -> Vec<(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>)> {
         let mut entries: Vec<_> = self.inner.iter().collect();
         entries.sort_by(|a, b| {
-            marque_ism::sar_sort_key(key_text(a.0))
-                .cmp(&marque_ism::sar_sort_key(key_text(b.0)))
+            let ta = key_text(a.0);
+            let tb = key_text(b.0);
+            marque_ism::sar_sort_key(ta)
+                .cmp(&marque_ism::sar_sort_key(tb))
+                .then_with(|| ta.cmp(tb))
         });
         entries
     }
