@@ -10,8 +10,12 @@
 //! the PR closing #470 — its predicate body and catalog row are gone.
 
 use super::super::actions::emit_companion_required;
-use super::super::predicates::{class_floor_anchor_span, class_floor_satisfied, rel_to_covers};
+use super::super::predicates::{
+    class_floor_anchor_span, class_floor_satisfied, rel_to_covers, token_span_attrs,
+};
 use super::super::*;
+use marque_ism::TokenKind;
+use marque_scheme::{Severity, Span, TokenRef};
 
 // ---------------------------------------------------------------------------
 // T035 Custom-constraint helpers
@@ -54,20 +58,31 @@ pub(crate) fn e012_dual_classification(
                 format!("JOINT {}", countries.join(" "))
             }
         };
+
+        // Second Classification token span — that's the foreign one.
+        let span = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::Classification)
+            .nth(1)
+            .map(|t| t.span)
+            .unwrap_or(Span::new(0, 0));
+
         vec![ConstraintViolation {
             constraint_label: "E012/dual-classification",
-            // The wrapper rebuilds the user-visible message from attrs;
-            // the message here exists for catalog-level inspection and
-            // tests. We surface `us` + `foreign_desc` so a test can
-            // confirm both systems were observed.
+            // The message here matches the retired `DeclarativeDualClassificationRule`.
             message: format!(
-                "marking has both US ({}) and foreign ({}) classification",
+                "marking has both US ({}) and foreign ({}) classification; §H.3 p55 mandates \
+                 these are mutually exclusive. CAPCO's pattern when US and non-US classifications \
+                 are commingled is to express the overall as a US classification with foreign \
+                 provenance in an FGI block (§H.3 p57 JOINT derivative use; §H.3 p59 Example 4 \
+                 note); consult §H.7 for the FGI marking format",
                 us.banner_str(),
                 foreign_desc
             ),
             citation: "CAPCO-2016 §H.3 p55",
-            span: None,
-            severity: None,
+            span: Some(span),
+            severity: Some(Severity::Fix),
         }]
     } else {
         Vec::new()
@@ -101,8 +116,8 @@ pub(crate) fn e014_joint_rel_to_coverage(
             missing.join(", ")
         ),
         citation: "CAPCO-2016 §H.3 p57",
-        span: None,
-        severity: None,
+        span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),
+        severity: Some(Severity::Fix),
     }]
 }
 
@@ -146,41 +161,59 @@ pub(crate) fn e021_aea_requires_noforn(
                   per the Atomic Energy Act"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104 + p111",
-        span: None,
-        severity: None,
+        span: token_span_attrs(attrs, &TokenRef::AnyInCategory(CAT_AEA)),
+        severity: Some(Severity::Fix),
     }]
 }
 
 /// E038 — NODIS / EXDIS require NOFORN. CAPCO-2016 §H.9 p172
-/// (EXDIS: "Requires NOFORN") and p174 (NODIS: "Requires NOFORN").
-/// Emits a single ConstraintViolation when the marking carries NODIS
-/// or EXDIS without NOFORN present.
+/// RELIDO is already cleared by Pattern B (UNCLASSIFIED + other
+/// control).
 pub(crate) fn e038_dos_dissem_requires_noforn(
     attrs: &marque_ism::CanonicalAttrs,
 ) -> Vec<ConstraintViolation> {
-    let has_nodis_or_exdis = attrs.non_ic_dissem.iter().any(|d| {
-        matches!(
-            d,
-            marque_ism::NonIcDissem::Nodis | marque_ism::NonIcDissem::Exdis
-        )
-    });
+    use crate::scheme::predicates::satisfies_attrs;
+    use marque_ism::NonIcDissem;
+
+    let has_nodis_or_exdis = attrs
+        .non_ic_dissem
+        .iter()
+        .any(|d| matches!(d, NonIcDissem::Nodis | NonIcDissem::Exdis));
+
     if !has_nodis_or_exdis {
         return Vec::new();
     }
-    let has_noforn = attrs
-        .dissem_iter()
-        .any(|d| matches!(d, marque_ism::DissemControl::Nf));
+
+    let has_noforn = satisfies_attrs(attrs, &TokenRef::Token(TOK_NOFORN));
     if has_noforn {
         return Vec::new();
     }
+
+    let trigger_token = attrs
+        .non_ic_dissem
+        .iter()
+        .find_map(|d| match d {
+            NonIcDissem::Nodis => Some(TOK_NODIS),
+            NonIcDissem::Exdis => Some(TOK_EXDIS),
+            _ => None,
+        })
+        .unwrap_or(TOK_NODIS);
+
     vec![ConstraintViolation {
         constraint_label: "E038/nodis-or-exdis-requires-noforn",
-        message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
+        message: "NODIS and EXDIS may be used only with NOFORN information".to_string(),
         citation: "CAPCO-2016 §H.9 p172 + p174",
-        span: None,
-        severity: None,
+        span: token_span_attrs(attrs, &TokenRef::Token(trigger_token)),
+        severity: Some(Severity::Error),
     }]
 }
+
+// S004 (REL TO trigraph suggest) is implemented by the
+// `RelToTrigraphSuggestRule` walker in `crates/capco/src/rules.rs`,
+// not by a `Constraint::Custom` row. The walker owns the predicate
+// because its candidate replacement is corpus-derived during
+// evaluation and cannot be reproduced from `(name, attrs)` alone via
+// the bridge's `fix_intent_by_name` shape.
 
 /// E024 — RD takes precedence over FRD/TFNI. Fires when RD AND any of
 /// (FRD, TFNI) are present. The wrapper enumerates per-element to emit one
@@ -209,8 +242,8 @@ pub(crate) fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104",
-        span: None,
-        severity: None,
+        span: token_span_attrs(attrs, &TokenRef::AnyInCategory(CAT_AEA)),
+        severity: Some(Severity::Fix),
     }]
 }
 

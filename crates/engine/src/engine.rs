@@ -212,6 +212,33 @@ pub struct Engine {
     /// against the default catalog). A future PR that makes
     /// `Engine<S>` truly generic over the scheme will replace this
     /// field with the user-supplied `S`.
+    ///
+    /// # Bridge diagnostic population
+    ///
+    /// The engine bridge (Commit 7.3+) uses row names from the
+    /// `Constraint` catalog to populate `Diagnostic.rule`. For CAPCO,
+    /// the bridge applies the following mappings to ensure audit-stream
+    /// continuity with retired hand-written rules:
+    ///
+    /// - `class-floor/<marking>` and `E058/<purpose>` → `RuleId("E058")`
+    /// - `sci-per-system/<row>` → `RuleId("E059")`
+    /// - `E010/HCS-system-constraints` → `RuleId("E010")`
+    /// - `E012/dual-classification` → `RuleId("E012")`
+    /// - `E014/joint-requires-rel-to-coverage` → `RuleId("E014")`
+    /// - `E015/non-us-requires-dissem` → `RuleId("E015")`
+    /// - `E016/joint-conflicts-restricted` → `RuleId("E016")`
+    /// - `E036/joint-conflicts-hcs` → `RuleId("E036")`
+    /// - `E021/aea-requires-noforn` → `RuleId("E021")`
+    /// - `E024/rd-precedence` → `RuleId("E024")`
+    /// - `capco/noforn-conflicts-rel-to` → `RuleId("E053")`
+    /// - `E037/nodis-conflicts-exdis` → `RuleId("E037")`
+    /// - `E038/nodis-or-exdis-requires-noforn` → `RuleId("E038")`
+    /// - `E054/relido-conflicts-noforn` → `RuleId("E054")`
+    /// - `E055/relido-conflicts-display-only` → `RuleId("E055")`
+    /// - `E056/orcon-conflicts-relido` → `RuleId("E056")`
+    /// - `E057/orcon-usgov-conflicts-relido` → `RuleId("E057")`
+    ///
+    /// The bridge logic for these mappings lives in `crates/engine/src/engine.rs`.
     scheme: CapcoScheme,
     clock: Box<dyn Clock>,
     /// Corrections map wrapped in Arc once at construction time so that each
@@ -1540,113 +1567,10 @@ impl Engine {
             // path until there is real catalog work to do.
             if self.scheme.has_diagnostic_constraints() {
                 let marking = marque_capco::CapcoMarking::from(attrs.clone());
-                let violations = self.scheme.validate(&marking);
-                for v in violations {
-                    let (Some(span), Some(severity)) = (v.span, v.severity) else {
-                        // Advisory-only violation: the catalog row
-                        // did not commit to a user-facing diagnostic.
-                        // Trace the discard so a developer running
-                        // with `MARQUE_LOG=marque_engine=trace` can
-                        // see every advisory signal the engine
-                        // swallows. No allocation cost in production
-                        // (trace is off by default).
-                        tracing::trace!(
-                            target: "marque_engine::constraint_bridge",
-                            constraint = v.constraint_label,
-                            "advisory constraint violation (no span / severity); \
-                             not surfaced as Diagnostic"
-                        );
-                        continue;
-                    };
-                    // PR 3c.B Commit 7.3: catalog-row → rule-ID folding.
-                    //
-                    // The retired walker rules (E058 class-floor,
-                    // E059 SCI per-system) emitted every diagnostic
-                    // under their walker-level rule ID with the
-                    // per-row identity carried in the message text.
-                    // Preserving that convention keeps three external
-                    // surfaces stable across the deletion:
-                    //   1. `Diagnostic.rule` strings in audit streams
-                    //      and NDJSON output;
-                    //   2. `[rules] E058 = "off"` / `E059 = "off"`
-                    //      config overrides;
-                    //   3. `class_floor_catalog.rs` /
-                    //      `sci_per_system_catalog.rs` test
-                    //      assertions on `diag.rule.as_str()`.
-                    //
-                    // Inline prefix check (not a scheme-trait method)
-                    // because the fold is a CAPCO-specific transient
-                    // — PR 4 will retire the prefix convention in
-                    // favor of per-row IDs once the audit-stream
-                    // contract is renegotiated. Documented per
-                    // Constitution VII as an engine-edit channel
-                    // sanctioned by the PR 3c.B Commit 7 decision
-                    // record (specs/006-engine-rule-refactor/decisions/
-                    // 06-commit-7-subdivision.md Amendments 2 and 6).
-                    //
-                    // # E058 and E059 active arms
-                    //
-                    // The `E058/` and `class-floor/` arms fold the
-                    // 27 class-floor catalog rows under E058 (PR 7.3
-                    // wired this on through the `ConstraintViolation`
-                    // envelope path). The `E059/` and `sci-per-system/`
-                    // arms fold the 5 SCI per-system catalog rows
-                    // under E059 — though in production these flow
-                    // through the separate
-                    // `bridge_sci_per_system_diagnostics` direct path
-                    // below (decision record Amendment 6), so the
-                    // E059 arms here are reachable only if a future
-                    // PR rewires SCI per-system back through the
-                    // ConstraintViolation envelope. Both prefix arms
-                    // belong here regardless because the canonicalizer
-                    // accepts both `E058` and `E059` via
-                    // `bridge_emitted_rule_ids()`.
-                    let rule_id_str = if v.constraint_label.starts_with("E058/")
-                        || v.constraint_label.starts_with("class-floor/")
-                    {
-                        "E058"
-                    } else if v.constraint_label.starts_with("E059/")
-                        || v.constraint_label.starts_with("sci-per-system/")
-                    {
-                        "E059"
-                    } else {
-                        v.constraint_label
-                    };
-                    let rule_id = RuleId::new(rule_id_str);
-                    let final_severity = self
-                        .emitted_id_overrides
-                        .get(rule_id.as_str())
-                        .copied()
-                        .unwrap_or(severity);
-                    if final_severity == Severity::Off {
-                        continue;
+                for v in self.scheme.validate(&marking) {
+                    if let Some(diag) = self.bridge_constraint_diagnostic(&v, &attrs, candidate) {
+                        diagnostics.push(diag);
                     }
-                    // `fix_intent_by_name` resolves a per-row fix intent
-                    // for the class-floor catalog rows; pass the raw
-                    // `constraint_label` (the catalog row's `name`), NOT
-                    // the folded `rule_id`. The fold above collapses 27
-                    // class-floor rows to `"E058"`; the scheme-side
-                    // helper needs row-level precision to pick the
-                    // correct `FixIntent`. Today (PR 3c.B Commit 7.4
-                    // landed) this returns `None` for every input —
-                    // class-floor violations require human review per
-                    // §H.5 / §H.6, so no fix intent populates. The
-                    // SCI per-system catalog (E059) takes the direct
-                    // `bridge_sci_per_system_diagnostics` path below
-                    // because its fix-flow needs (legacy `FixProposal`
-                    // payload, multiple violations per row with
-                    // distinct fixes) cannot be expressed through this
-                    // single-FixIntent-per-violation interface.
-                    let fix_intent = self.scheme.fix_intent_by_name(v.constraint_label, &attrs);
-                    let diag = Diagnostic::with_fix(
-                        rule_id,
-                        final_severity,
-                        span,
-                        v.message,
-                        v.citation,
-                        fix_intent,
-                    );
-                    diagnostics.push(diag);
                 }
 
                 // PR 3c.B Commit 7.4 — SCI per-system catalog direct path.
@@ -2179,6 +2103,83 @@ impl Engine {
         }
 
         (buf, applied, dropped_diags)
+    }
+
+    /// Construct a new engine for `scheme`.
+    fn bridge_constraint_diagnostic(
+        &self,
+        v: &marque_scheme::ConstraintViolation,
+        attrs: &marque_ism::CanonicalAttrs,
+        candidate: &marque_ism::MarkingCandidate,
+    ) -> Option<marque_rules::Diagnostic<CapcoScheme>> {
+        use marque_rules::{Diagnostic, RuleId, Severity};
+
+        let span = match v.span {
+            Some(s) => s,
+            None => {
+                tracing::trace!(
+                    target: "marque_engine::constraint_bridge",
+                    constraint = v.constraint_label,
+                    "advisory constraint violation (no span); not surfaced as Diagnostic"
+                );
+                return None;
+            }
+        };
+
+        let severity = match v.severity {
+            Some(s) => s,
+            None => {
+                tracing::trace!(
+                    target: "marque_engine::constraint_bridge",
+                    constraint = v.constraint_label,
+                    "advisory constraint violation (no severity); not surfaced as Diagnostic"
+                );
+                return None;
+            }
+        };
+
+        let rule_id = if v.constraint_label.starts_with("class-floor/")
+            || v.constraint_label.starts_with("E058/")
+        {
+            RuleId::new("E058")
+        } else if v.constraint_label.starts_with("sci-per-system/") {
+            RuleId::new("E059")
+        } else if let Some(id_part) = v.constraint_label.split('/').next() {
+            if id_part.starts_with('E') && id_part.len() == 4 {
+                RuleId::new(id_part)
+            } else if v.constraint_label == "capco/noforn-conflicts-rel-to" {
+                RuleId::new("E053")
+            } else {
+                RuleId::new("E008") // Fallback to Unrecognized (should be rare)
+            }
+        } else {
+            RuleId::new("E008")
+        };
+
+        let final_severity = self
+            .emitted_id_overrides
+            .get(rule_id.as_str())
+            .copied()
+            .unwrap_or(severity);
+
+        if final_severity == Severity::Off {
+            return None;
+        }
+
+        let fix_intent = self
+            .scheme
+            .fix_intent_by_name(v.constraint_label, attrs, candidate.kind);
+
+        let mut diag = Diagnostic::with_fix(
+            rule_id,
+            final_severity,
+            span,
+            v.message.clone(),
+            v.citation,
+            fix_intent,
+        );
+        diag.candidate_span = Some(candidate.span);
+        Some(diag)
     }
 }
 

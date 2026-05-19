@@ -103,7 +103,7 @@ mod tests;
 // at `crate::scheme::<name>` before the Stage-1 split. These re-exports
 // preserve the pre-split paths so no external file needs to learn about
 // the sibling-module layout.
-pub(crate) use self::predicates::{capco_token_category, rel_to_covers};
+pub(crate) use self::predicates::capco_token_category;
 // `is_fdr_dominator` and `is_orcon_family` are public crate API per the
 // original `scheme.rs` (pre-split visibility); `pub use` keeps them
 // reachable at `marque_capco::scheme::is_fdr_dominator` for downstream

@@ -448,6 +448,12 @@ pub(crate) fn evaluate_custom_by_attrs(
         // The catalog row + helper are removed in the same commit.
         "capco/joint-requires-usa" => joint_requires_usa(attrs),
         "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs),
+        // S004 is NOT dispatched here — it stays a registered walker
+        // rule (`RelToTrigraphSuggestRule`) because its replacement
+        // string is computed during evaluation and the bridge's
+        // `fix_intent_by_name(name, attrs)` shape cannot return the
+        // candidate without re-running the evaluator. See
+        // `crates/capco/src/rules.rs` S004 registration block.
         _ => Vec::new(),
     }
 }

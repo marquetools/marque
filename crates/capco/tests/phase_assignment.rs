@@ -64,45 +64,35 @@ use std::collections::BTreeMap;
 /// `fn phase(&self) -> Phase`. This table is the audit-controlled
 /// reflection of those per-rule declarations.
 const EXPECTED_PHASES: &[(&str, Phase)] = &[
-    // ----- Phase::Localized (4 rules + E064/E065 in the WholeMarking
-    // group, see PR 9a footnote at their row) -----------------------
+    // ----- Phase::Localized (4 rules + E064/E065/E067 declared inline
+    // below) ----------------------------------------------------------
     // Each fix is a single-token rewrite (typo, migration, suggest).
     ("C001", Phase::Localized),
     ("E006", Phase::Localized),
     ("E007", Phase::Localized),
+    // S004 stays a registered walker after PR #578 (its candidate
+    // replacement is corpus-derived during evaluation and cannot
+    // be reproduced from `(name, attrs)` via the bridge's
+    // `fix_intent_by_name` shape).
     ("S004", Phase::Localized),
-    // ----- Phase::WholeMarking (31 rows, post-#488 S005 retirement to
-    // PageFinalization + S006 collapse) ------------------------------
-    // Note: E064 / E065 appear in their PR 9a / T135a footnoted rows
-    // BELOW with Phase::Localized declarations — they are
-    // numerically in the Localized partition; the listing order
-    // follows registration sequence (PR-of-introduction grouping)
-    // rather than strict phase ordering for review readability.
-    // -----------------------------------------------------------------
+    // ----- Phase::WholeMarking ---------------------------------------
     // Banner roll-up walkers, cross-axis decisions, intent-only
     // FactAdd / FactRemove / Recanonicalize emissions, and no-fix
     // advisories whose span coverage is per-marking.
+    //
+    // PR #578: the following 15 IDs retired as registered `Rule`
+    // impls — they now fire via the engine's constraint-catalog
+    // bridge (`severity` + `span_anchor` live on `Constraint::Conflicts`
+    // / `Constraint::Requires`; `FixIntent` synthesized by
+    // `CapcoScheme::fix_intent_by_name`):
+    //   E010 E012 E014 E015 E016 E021 E024 E036 E037 E038
+    //   E053 E054 E055 E056 E057
     ("E002", Phase::WholeMarking),
     ("E005", Phase::WholeMarking),
     ("E008", Phase::WholeMarking),
-    ("E010", Phase::WholeMarking),
-    ("E012", Phase::WholeMarking),
-    ("E014", Phase::WholeMarking),
-    ("E015", Phase::WholeMarking),
-    ("E016", Phase::WholeMarking),
-    ("E021", Phase::WholeMarking),
-    ("E024", Phase::WholeMarking),
     ("E031", Phase::WholeMarking),
-    ("E036", Phase::WholeMarking),
-    ("E037", Phase::WholeMarking),
-    ("E038", Phase::WholeMarking),
     ("E039", Phase::WholeMarking),
     ("E041", Phase::WholeMarking),
-    ("E053", Phase::WholeMarking),
-    ("E054", Phase::WholeMarking),
-    ("E055", Phase::WholeMarking),
-    ("E056", Phase::WholeMarking),
-    ("E057", Phase::WholeMarking),
     // PR 9a (issue #307): class-specific bare-HCS / bare-RSV rules per
     // CAPCO-2016 §H.4. Phase::WholeMarking because each rule's trigger
     // is a cross-token condition (classification level + SCI marking

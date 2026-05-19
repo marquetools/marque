@@ -21,13 +21,13 @@
 //! over from the new `sci_per_system.rs` / `constraints/helpers.rs`
 //! homes (re-exported through `mod.rs`).
 
-use marque_ism::CanonicalAttrs;
-use marque_scheme::{Category, Constraint, ConstraintViolation, PageRewrite, Template};
-
 use super::constraints::{self, sci_per_system_emit};
-use super::predicates::{collect_present_tokens, evaluate_custom_by_attrs, satisfies_attrs};
-use super::rewrites;
 use super::*;
+use marque_ism::{CanonicalAttrs, MarkingType};
+use marque_rules::{
+    Confidence, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+};
+use marque_scheme::{Category, Constraint, FactRef, ReplacementIntent, Scope, Template};
 
 /// CAPCO's implementation of `MarkingScheme`.
 ///
@@ -139,119 +139,6 @@ pub enum CapcoParseError {
 }
 
 impl CapcoScheme {
-    /// Evaluate a single constraint by `name` against raw
-    /// `CanonicalAttrs`. Fast path for rule wrappers that want "did
-    /// this specific predicate fire?" without the overhead of a
-    /// full `MarkingScheme::validate()` call.
-    ///
-    /// Compared to `scheme.validate(&CapcoMarking::new(attrs.clone()))`:
-    /// - **No `CanonicalAttrs` clone** — works on the borrow directly
-    /// - **No full catalog walk** — linear `find` by `name` over the
-    ///   ~13 catalog entries, then single dispatch. O(1) effectively;
-    ///   the filter step that the wrappers previously did after
-    ///   `validate()` is eliminated.
-    /// - **No `CapcoMarking` wrap** — delegates straight to the
-    ///   free-function predicates (`satisfies_attrs`,
-    ///   `evaluate_custom_by_attrs`), which is also what the trait
-    ///   impls use.
-    ///
-    /// Contract: the emitted `ConstraintViolation.constraint_label`
-    /// and `.citation` are populated from the catalog entry's
-    /// declared `name` and `label`, matching the normalization that
-    /// `marque_scheme::constraint::evaluate` performs in its
-    /// `Custom` arm. Dyadic-variant violations carry a generic
-    /// "conflicting tokens" / "token X requires Y" message — same
-    /// as the generic evaluator — because the wrapper layer is
-    /// responsible for constructing the user-visible diagnostic
-    /// text, not the scheme.
-    pub(crate) fn evaluate_named_constraint(
-        &self,
-        attrs: &marque_ism::CanonicalAttrs,
-        name: &'static str,
-    ) -> Vec<ConstraintViolation> {
-        let Some(c) = self.constraints.iter().find(|c| c.name() == name) else {
-            return Vec::new();
-        };
-        let label = c.label();
-        match c {
-            Constraint::Conflicts { left, right, .. } => {
-                if satisfies_attrs(attrs, left) && satisfies_attrs(attrs, right) {
-                    vec![ConstraintViolation {
-                        constraint_label: name,
-                        message: format!("conflicting tokens: {left:?} and {right:?}"),
-                        citation: label,
-                        span: None,
-                        severity: None,
-                    }]
-                } else {
-                    Vec::new()
-                }
-            }
-            Constraint::Requires { left, right, .. } => {
-                if satisfies_attrs(attrs, left) && !satisfies_attrs(attrs, right) {
-                    vec![ConstraintViolation {
-                        constraint_label: name,
-                        message: format!("token {left:?} requires {right:?} but it is missing"),
-                        citation: label,
-                        span: None,
-                        severity: None,
-                    }]
-                } else {
-                    Vec::new()
-                }
-            }
-            // `Supersedes` is a lattice hint for banner roll-up, not
-            // a violation trigger. No diagnostic emission.
-            // Note: `Constraint::Implies` was retired in PR 3.7 T108g
-            // (decisions.md D19 C) — fact-propagation is handled by
-            // the closure operator (ClosureRule) instead.
-            Constraint::Supersedes { .. } => Vec::new(),
-            // `ConflictsWithFamily` evaluates LHS-presence plus the
-            // distributive expansion: emit one violation per token
-            // present in `attrs` for which `family.0` holds. Mirrors
-            // `marque_scheme::constraint::evaluate`'s
-            // `ConflictsWithFamily` arm so wrapper-layer callers
-            // (`rules_declarative.rs::violations_for`) get identical
-            // diagnostics to the generic walker. Per Copilot PR 3.7
-            // review: prior to this fix the fast path treated
-            // `ConflictsWithFamily` as a no-op, silently dropping
-            // every family-row diagnostic — that was a regression
-            // the moment any wrapper dispatched by a family-row name.
-            Constraint::ConflictsWithFamily { left, family, .. } => {
-                if !satisfies_attrs(attrs, left) {
-                    Vec::new()
-                } else {
-                    collect_present_tokens(attrs)
-                        .into_iter()
-                        .filter(|t| family.0(t))
-                        .map(|present| ConstraintViolation {
-                            // G13: `TokenRef` carries only integer IDs
-                            // (`TokenId`/`CategoryId`), never document
-                            // content bytes. Safe to format into the
-                            // audit-stream message per Constitution V
-                            // Principle V audit-content-ignorance.
-                            constraint_label: name,
-                            message: format!(
-                                "conflicting tokens: {left:?} and {present:?} (family match)"
-                            ),
-                            citation: label,
-                            span: None,
-                            severity: None,
-                        })
-                        .collect()
-                }
-            }
-            Constraint::Custom { .. } => evaluate_custom_by_attrs(attrs, name)
-                .into_iter()
-                .map(|mut v| {
-                    v.constraint_label = name;
-                    v.citation = label;
-                    v
-                })
-                .collect(),
-        }
-    }
-
     /// Look up the [`FixIntent`] a catalog row produces against
     /// `attrs`, when one is defined.
     ///
@@ -304,12 +191,89 @@ impl CapcoScheme {
     /// surface.
     pub fn fix_intent_by_name(
         &self,
-        _name: &str,
-        _attrs: &CanonicalAttrs,
+        name: &str,
+        attrs: &CanonicalAttrs,
+        marking_type: MarkingType,
     ) -> Option<marque_rules::FixIntent<CapcoScheme>> {
-        // No current catalog row fits this side-table shape; see
-        // doc comment above for the routing rationale.
-        None
+        use crate::scheme::{TOK_NOFORN, TOK_RELIDO, TOK_REL_TO};
+
+        match name {
+            "E021/aea-requires-noforn" => Some(FixIntent {
+                replacement: ReplacementIntent::FactAdd {
+                    token: FactRef::Cve(TOK_NOFORN),
+                    scope: Scope::Portion,
+                },
+                confidence: Confidence::strict(0.95),
+                feature_ids: Default::default(),
+                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
+            }),
+            "E038/nodis-or-exdis-requires-noforn" => {
+                let trigger_token = attrs
+                    .non_ic_dissem
+                    .iter()
+                    .find_map(|d| match d {
+                        marque_ism::NonIcDissem::Nodis => Some(crate::scheme::TOK_NODIS),
+                        marque_ism::NonIcDissem::Exdis => Some(crate::scheme::TOK_EXDIS),
+                        _ => None,
+                    })
+                    .unwrap_or(crate::scheme::TOK_NODIS); // Should be unreachable if predicate fired
+
+                let scope = match marking_type {
+                    MarkingType::Portion => Scope::Portion,
+                    MarkingType::Banner => Scope::Page,
+                    _ => return None,
+                };
+                Some(FixIntent {
+                    replacement: ReplacementIntent::FactAdd {
+                        token: FactRef::Cve(TOK_NOFORN),
+                        scope,
+                    },
+                    confidence: Confidence::strict(1.0),
+                    feature_ids: Default::default(),
+                    message: Message::new(
+                        MessageTemplate::RequiredByPresence,
+                        MessageArgs {
+                            token: Some(trigger_token),
+                            expected_token: Some(TOK_NOFORN),
+                            ..MessageArgs::default()
+                        },
+                    ),
+                    source: FixSource::BuiltinRule,
+                    migration_ref: None,
+                })
+            }
+            "capco/noforn-conflicts-rel-to" if marking_type == MarkingType::Portion => {
+                Some(FixIntent {
+                    replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_REL_TO), Scope::Portion),
+                    confidence: Confidence::strict(1.0),
+                    feature_ids: Default::default(),
+                    message: Message::new(
+                        MessageTemplate::ConflictsWith,
+                        MessageArgs {
+                            token: Some(TOK_REL_TO),
+                            expected_token: Some(TOK_NOFORN),
+                            ..MessageArgs::default()
+                        },
+                    ),
+                    source: FixSource::BuiltinRule,
+                    migration_ref: None,
+                })
+            }
+            "E054/relido-conflicts-noforn"
+            | "E055/relido-conflicts-display-only"
+            | "E056/orcon-conflicts-relido"
+            | "E057/orcon-usgov-conflicts-relido" => Some(FixIntent {
+                replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
+                confidence: Confidence::strict(0.95),
+                feature_ids: Default::default(),
+                message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
+                source: FixSource::BuiltinRule,
+                migration_ref: None,
+            }),
+            _ => None,
+        }
     }
 
     /// Reports whether the scheme's `Constraint::Custom` catalog has
@@ -387,10 +351,28 @@ impl CapcoScheme {
     ///     this collapsed ID.
     ///
     /// PR 3c.B Commit 7.4 added `("E059", "sci-per-system-catalog")`.
+    ///
+    /// PR #578 added the remaining declarative catalog IDs.
     pub fn bridge_emitted_rule_ids(&self) -> &'static [(&'static str, &'static str)] {
         &[
             ("E058", "class-floor-catalog"),
             ("E059", "sci-per-system-catalog"),
+            ("E010", "HCS-system-constraints"),
+            ("E012", "dual-classification"),
+            ("E014", "joint-requires-rel-to-coverage"),
+            ("E015", "non-us-requires-dissem"),
+            ("E016", "joint-conflicts-restricted"),
+            ("E036", "joint-conflicts-hcs"),
+            ("E021", "aea-requires-noforn"),
+            ("E024", "rd-precedence"),
+            ("E036", "joint-conflicts-hcs"),
+            ("E037", "nodis-conflicts-exdis"),
+            ("E038", "nodis-or-exdis-requires-noforn"),
+            ("E053", "noforn-conflicts-rel-to"),
+            ("E054", "relido-conflicts-noforn"),
+            ("E055", "relido-conflicts-display-only"),
+            ("E056", "orcon-conflicts-relido"),
+            ("E057", "orcon-usgov-conflicts-relido"),
         ]
     }
 

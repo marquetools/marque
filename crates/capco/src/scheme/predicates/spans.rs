@@ -11,9 +11,117 @@
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::{Classification, TokenKind};
-use marque_scheme::TokenId;
+use marque_scheme::{TokenId, TokenRef};
 
 use super::super::*;
+
+/// Resolve the source byte span for a given token or category
+/// presence in `attrs`.
+pub(crate) fn token_span_attrs(
+    attrs: &marque_ism::CanonicalAttrs,
+    token_ref: &TokenRef,
+) -> Option<marque_scheme::Span> {
+    match token_ref {
+        TokenRef::Token(id) => match *id {
+            TOK_US_CLASSIFIED | TOK_NATO_CLASS | TOK_FGI_CLASS | TOK_JOINT | TOK_RESTRICTED => {
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| t.kind == TokenKind::Classification)
+                    .map(|t| t.span)
+            }
+            TOK_NOFORN | TOK_ORCON | TOK_ORCON_USGOV | TOK_PROPIN | TOK_RELIDO | TOK_IMCON
+            | TOK_FISA | TOK_RAWFISA | TOK_EYES | TOK_SBU | TOK_SBU_NF | TOK_LES | TOK_LES_NF
+            | TOK_DSEN | TOK_SSI | TOK_DISPLAY_ONLY | TOK_NODIS | TOK_EXDIS | TOK_LIMDIS => {
+                let (label, kind) = match *id {
+                    TOK_NOFORN => ("NF", TokenKind::DissemControl),
+                    TOK_ORCON => ("OC", TokenKind::DissemControl),
+                    TOK_ORCON_USGOV => ("OC-USGOV", TokenKind::DissemControl),
+                    TOK_PROPIN => ("PROPIN", TokenKind::DissemControl),
+                    TOK_RELIDO => ("RELIDO", TokenKind::DissemControl),
+                    TOK_IMCON => ("IMCON", TokenKind::DissemControl),
+                    TOK_FISA => ("FISA", TokenKind::DissemControl),
+                    TOK_RAWFISA => ("RAWFISA", TokenKind::DissemControl),
+                    TOK_EYES => ("EYES", TokenKind::DissemControl),
+                    TOK_SBU => ("SBU", TokenKind::NonIcDissem),
+                    TOK_SBU_NF => ("SBU-NF", TokenKind::NonIcDissem),
+                    TOK_LES => ("LES", TokenKind::NonIcDissem),
+                    TOK_LES_NF => ("LES-NF", TokenKind::NonIcDissem),
+                    TOK_DSEN => ("DS", TokenKind::NonIcDissem),
+                    TOK_SSI => ("SSI", TokenKind::NonIcDissem),
+                    TOK_DISPLAY_ONLY => ("DISPLAY ONLY", TokenKind::DissemControl),
+                    TOK_NODIS => ("NODIS", TokenKind::NonIcDissem),
+                    TOK_EXDIS => ("EXDIS", TokenKind::NonIcDissem),
+                    TOK_LIMDIS => ("LIMDIS", TokenKind::NonIcDissem),
+                    _ => return None,
+                };
+                attrs
+                    .token_spans
+                    .iter()
+                    .find(|t| {
+                        t.kind == kind && (t.text.as_str() == label || {
+                            match *id {
+                                TOK_NODIS => {
+                                    t.text.as_str() == "ND" || t.text.as_str() == "NO DISTRIBUTION"
+                                }
+                                TOK_EXDIS => {
+                                    t.text.as_str() == "XD"
+                                        || t.text.as_str() == "EXCLUSIVE DISTRIBUTION"
+                                }
+                                _ => false,
+                            }
+                        })
+                    })
+                    .or_else(|| attrs.token_spans.iter().find(|t| t.kind == kind))
+                    .map(|t| t.span)
+            }
+            TOK_RD | TOK_FRD | TOK_TFNI | TOK_CNWDI | TOK_UCNI | TOK_DCNI | TOK_ATOMAL => attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::AeaMarking)
+                .map(|t| t.span),
+            TOK_HCS | TOK_SI_G | TOK_BALK | TOK_BOHEMIA => first_sci_span(attrs),
+            TOK_USA | TOK_REL_TO => attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::RelToTrigraph || t.kind == TokenKind::RelToBlock)
+                .map(|t| t.span),
+            _ => None,
+        },
+        TokenRef::AnyInCategory(cat) => match *cat {
+            CAT_SCI => first_sci_span(attrs),
+            CAT_SAR => attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::SarIndicator)
+                .map(|t| t.span),
+            CAT_AEA => attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::AeaMarking)
+                .map(|t| t.span),
+            CAT_DISSEM | CAT_NON_IC_DISSEM | CAT_REL_TO => attrs
+                .token_spans
+                .iter()
+                .find(|t| {
+                    matches!(
+                        t.kind,
+                        TokenKind::DissemControl
+                            | TokenKind::RelToTrigraph
+                            | TokenKind::RelToBlock
+                            | TokenKind::NonIcDissem
+                    )
+                })
+                .map(|t| t.span),
+            CAT_NON_US_CLASSIFICATION => attrs
+                .token_spans
+                .iter()
+                .find(|t| t.kind == TokenKind::Classification)
+                .map(|t| t.span),
+            _ => None,
+        },
+    }
+}
 
 /// Find the first SCI-system/SCI-control token span in document order.
 /// Used as the diagnostic anchor when the rule fires on a portion's SCI

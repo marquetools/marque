@@ -143,6 +143,12 @@ pub enum Constraint {
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
+        /// The diagnostic severity to emit when the conflict fires.
+        /// When `None`, the violation is advisory (no diagnostic).
+        severity: Option<Severity>,
+        /// Which side of the conflict to anchor the diagnostic span
+        /// on. When `None`, defaults to the `left` token.
+        span_anchor: Option<TokenRef>,
     },
     /// One token conflicts with an entire family of tokens, expressed
     /// via a [`FamilyPredicate`] over the right-hand side.
@@ -170,6 +176,9 @@ pub enum Constraint {
         left: TokenRef,
         family: FamilyPredicate,
         label: &'static str,
+        /// The diagnostic severity to emit when the conflict fires.
+        /// When `None`, the violation is advisory (no diagnostic).
+        severity: Option<Severity>,
     },
     /// If the left is present, the right must also be present.
     /// Example: HCS requires NOFORN.
@@ -178,6 +187,9 @@ pub enum Constraint {
         left: TokenRef,
         right: TokenRef,
         label: &'static str,
+        /// The diagnostic severity to emit when the requirement is
+        /// not satisfied. When `None`, the violation is advisory.
+        severity: Option<Severity>,
     },
     /// The left supersedes the right during banner roll-up: the right
     /// drops out of the banner if the left is present. Example:
@@ -231,6 +243,19 @@ impl Constraint {
             | Constraint::Requires { label, .. }
             | Constraint::Supersedes { label, .. }
             | Constraint::Custom { label, .. } => label,
+        }
+    }
+
+    /// The fixed diagnostic severity for this constraint, when defined
+    /// in the catalog. Dyadic variants populate this; `Custom`
+    /// variants typically return `None` and let the predicate helper
+    /// decide.
+    pub fn severity(&self) -> Option<Severity> {
+        match self {
+            Constraint::Conflicts { severity, .. }
+            | Constraint::ConflictsWithFamily { severity, .. }
+            | Constraint::Requires { severity, .. } => *severity,
+            Constraint::Supersedes { .. } | Constraint::Custom { .. } => None,
         }
     }
 }
@@ -340,18 +365,17 @@ where
                 left,
                 right,
                 label,
+                severity,
+                span_anchor,
             } => {
                 if scheme.satisfies(marking, left) && scheme.satisfies(marking, right) {
-                    // G13: `TokenRef` variants carry only integer IDs
-                    // (`TokenId` / `CategoryId`), never document content
-                    // bytes. Safe to format into audit-stream messages
-                    // per Constitution V Principle V audit-content-ignorance.
+                    let anchor = span_anchor.as_ref().unwrap_or(left);
                     out.push(ConstraintViolation {
                         constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
                         citation: label,
-                        span: None,
-                        severity: None,
+                        span: scheme.token_span(marking, anchor),
+                        severity: *severity,
                     });
                 }
             }
@@ -360,26 +384,19 @@ where
                 left,
                 family,
                 label,
+                severity,
             } => {
-                // Distributive expansion: if `left` is present, walk
-                // every token that is present in the marking and apply
-                // the family predicate. Each matching token emits one
-                // violation — algebraically equivalent to one
-                // `Conflicts(left, Token(t))` row per matching token.
                 if scheme.satisfies(marking, left) {
                     for present_token in scheme.iter_present_tokens(marking) {
                         if family.0(&present_token) {
-                            // G13: same audit-content-ignorance argument
-                            // as the `Conflicts` arm above — `TokenRef`
-                            // is integer-ID-only.
                             out.push(ConstraintViolation {
                                 constraint_label: name,
                                 message: format!(
                                     "conflicting tokens: {left:?} and {present_token:?} (family match)"
                                 ),
                                 citation: label,
-                                span: None,
-                                severity: None,
+                                span: scheme.token_span(marking, left),
+                                severity: *severity,
                             });
                         }
                     }
@@ -390,49 +407,28 @@ where
                 left,
                 right,
                 label,
+                severity,
             } => {
                 if scheme.satisfies(marking, left) && !scheme.satisfies(marking, right) {
                     out.push(ConstraintViolation {
                         constraint_label: name,
-                        message: format!("token {left:?} requires {right:?} but it is missing"),
+                        message: format!("missing required token: {right:?} (required by {left:?})"),
                         citation: label,
-                        span: None,
-                        severity: None,
+                        span: scheme.token_span(marking, left),
+                        severity: *severity,
                     });
                 }
             }
-            Constraint::Supersedes { .. } => {
-                // `Supersedes` is a rewrite hint for banner roll-up,
-                // not a violation trigger — the rewrite itself is
-                // applied by `project(Scope::Page, ...)`. No diagnostic
-                // emission from the evaluator.
-            }
+            Constraint::Supersedes { .. } => {}
             Constraint::Custom { name, label } => {
-                // The module-level invariant is that
-                // `ConstraintViolation.constraint_label` is the
-                // declared `name` and `.citation` is the `label`
-                // verbatim. `evaluate_custom` is free to build
-                // scheme-specific per-violation messages, but the
-                // identifier surface must resolve uniformly — we
-                // override both fields after the call so the scheme
-                // can't accidentally drift from the catalog.
-                //
-                // Sub-rule information (e.g., HCS's "HCS-legacy-bare"
-                // vs "HCS-O-requires-ORCON" differentiation) belongs
-                // in the violation message, not in `constraint_label`.
-                // Schemes that need per-subcheck surfacing must carry
-                // that signal through `message` or declare distinct
-                // `Constraint::Custom` entries.
-                out.extend(
-                    scheme
-                        .evaluate_custom(name, marking)
-                        .into_iter()
-                        .map(|mut v| {
-                            v.constraint_label = name;
-                            v.citation = label;
-                            v
-                        }),
-                );
+                // Route to the scheme-specific predicate. The returned
+                // violations carry the name and label of the Custom
+                // row.
+                for mut v in scheme.evaluate_custom(name, marking) {
+                    v.constraint_label = name;
+                    v.citation = label;
+                    out.push(v);
+                }
             }
         }
     }

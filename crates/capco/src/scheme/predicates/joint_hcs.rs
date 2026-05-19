@@ -10,8 +10,10 @@
 //! split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::{Classification, CountryCode};
+use marque_scheme::{Severity, TokenRef};
 
 use super::super::*;
+use super::spans::{first_sci_span, token_span_attrs};
 
 /// `capco/joint-requires-usa` — JOINT classifications must list USA in BOTH
 /// `joint.countries` AND `rel_to`. CAPCO §H.3 p55 (USA always included in
@@ -32,8 +34,8 @@ pub(crate) fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
                   classification countries and REL TO"
             .to_owned(),
         citation: "CAPCO-2016 §H.3 pp 55–57",
-        span: None,
-        severity: None,
+        span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),
+        severity: Some(Severity::Error),
     }]
 }
 
@@ -101,8 +103,8 @@ pub(crate) fn hcs_system_constraints(
                      §H.4 p62 (requires document-level analysis)."
                     .to_owned(),
                 citation,
-                span: None,
-                severity: None,
+                span: first_sci_span(attrs),
+                severity: Some(Severity::Error),
             });
             if classification == Some(Classification::Confidential) {
                 out.push(marque_scheme::ConstraintViolation {
@@ -111,8 +113,8 @@ pub(crate) fn hcs_system_constraints(
                               per CAPCO-2016 §H.4 p62."
                         .to_owned(),
                     citation,
-                    span: None,
-                    severity: None,
+                    span: first_sci_span(attrs),
+                    severity: Some(Severity::Error),
                 });
             }
             continue;
@@ -131,8 +133,8 @@ pub(crate) fn hcs_system_constraints(
                                       CAPCO-2016 §H.4 p64."
                                 .to_owned(),
                             citation,
-                            span: None,
-                            severity: None,
+                            span: first_sci_span(attrs),
+                            severity: Some(Severity::Error),
                         });
                     }
                     if !has_orcon {
@@ -140,8 +142,8 @@ pub(crate) fn hcs_system_constraints(
                             constraint_label: "HCS-O-requires-ORCON",
                             message: "HCS-O requires ORCON per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
-                            span: None,
-                            severity: None,
+                            span: first_sci_span(attrs),
+                            severity: Some(Severity::Error),
                         });
                     }
                     if has_orcon_usgov {
@@ -151,8 +153,8 @@ pub(crate) fn hcs_system_constraints(
                                       §H.4 p64."
                                 .to_owned(),
                             citation,
-                            span: None,
-                            severity: None,
+                            span: first_sci_span(attrs),
+                            severity: Some(Severity::Error),
                         });
                     }
                     // HCS-O requires NOFORN per CAPCO-2016 §H.4 p64
@@ -167,8 +169,8 @@ pub(crate) fn hcs_system_constraints(
                             constraint_label: "HCS-O-requires-NOFORN",
                             message: "HCS-O requires NOFORN per CAPCO-2016 §H.4 p64.".to_owned(),
                             citation,
-                            span: None,
-                            severity: None,
+                            span: first_sci_span(attrs),
+                            severity: Some(Severity::Error),
                         });
                     }
                 }
@@ -180,8 +182,8 @@ pub(crate) fn hcs_system_constraints(
                                       CAPCO-2016 §H.4 p66."
                                 .to_owned(),
                             citation,
-                            span: None,
-                            severity: None,
+                            span: first_sci_span(attrs),
+                            severity: Some(Severity::Error),
                         });
                     }
                     // HCS-P requires NOFORN per CAPCO-2016 §H.4 p66
@@ -198,8 +200,8 @@ pub(crate) fn hcs_system_constraints(
                             constraint_label: "HCS-P-requires-NOFORN",
                             message: "HCS-P requires NOFORN per CAPCO-2016 §H.4 p66.".to_owned(),
                             citation,
-                            span: None,
-                            severity: None,
+                            span: first_sci_span(attrs),
+                            severity: Some(Severity::Error),
                         });
                     }
                 }
@@ -234,8 +236,8 @@ pub(crate) fn hcs_system_constraints(
                  per CAPCO-2016 §H.4 p62 (requires document-level analysis)."
                 .to_owned(),
             citation,
-            span: None,
-            severity: None,
+            span: first_sci_span(attrs),
+            severity: Some(Severity::Error),
         });
         if classification == Some(Classification::Confidential) {
             out.push(marque_scheme::ConstraintViolation {
@@ -244,8 +246,8 @@ pub(crate) fn hcs_system_constraints(
                           CAPCO-2016 §H.4 p62."
                     .to_owned(),
                 citation,
-                span: None,
-                severity: None,
+                span: first_sci_span(attrs),
+                severity: Some(Severity::Error),
             });
         }
     }
