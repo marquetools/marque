@@ -239,9 +239,16 @@ fn load_lattice_expected(fixture_path: &Path) -> LatticeExpectedFixture {
 
 /// PR 4 (006 T118) load-bearing test: every fixture under
 /// `tests/corpus/lattice/` MUST round-trip through
-/// `CapcoScheme::project(Scope::Page, ...)` + `scheme.render_banner(...)`
-/// and `Engine::lint(...)` to produce the byte-identical output its
-/// `.expected.json` sidecar pins.
+/// `CapcoScheme::project(Scope::Page, ...)` + `scheme.render_banner(...)`,
+/// with the rendered banner asserted **byte-identical** to the sidecar's
+/// `expected_banner` field. `Engine::lint(...)` diagnostics are matched
+/// against the sidecar's `diagnostics` array by **rule-id occurrence
+/// count only** (spans + messages intentionally not enforced) per the
+/// loose-ground-truth contract established by `tests/corpus/foreign/`.
+/// The two assertion granularities are deliberate: banners are precise
+/// CAPCO §A.6 / §G.1 byte forms (any drift is a renderer bug); per-rule
+/// diagnostic counts are robust to incidental span shifts as the rule
+/// catalog evolves.
 ///
 /// Dispatches on fixture shape per PM doc D-5: portion-line/banner
 /// fixtures get both projection + lint coverage; CAB-only fixtures
