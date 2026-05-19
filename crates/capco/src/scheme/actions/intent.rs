@@ -142,6 +142,22 @@ pub(crate) fn apply_intent_to_marking(
 ///   CAT_JOINT_CLASSIFICATION / CAT_CLASSIFICATION**: no rule
 ///   currently emits `FactAdd` against these axes; the first rule
 ///   that does lands the routing alongside its fixtures.
+///
+/// # Closure-walker invariant: `Ok(()) ⇔ marking mutated`
+///
+/// `CapcoScheme::closure` (HOT-2, issue #594) depends on `Ok(())`
+/// signaling a real mutation and every `Err` variant leaving the
+/// marking byte-identical to its pre-call state. Every existing
+/// match arm satisfies this: dedup guards return
+/// `IntentInapplicable` **before** any `attrs.*` write, and no
+/// path mutates `attrs.*` and then returns `Err(...)`. When adding
+/// a new wired axis or a new sub-branch, preserve this invariant —
+/// move every guard above the first mutation and never combine
+/// partial-mutation with `Err`. The `apply_closure_fact` wrapper's
+/// `#[must_use]` annotation catches *bool drops* at the call site
+/// but cannot catch a partial-mutation-then-`Err` regression here;
+/// the `#[cfg(debug_assertions)] debug_assert_eq!` in the closure
+/// walker is the test-time safety net.
 fn apply_fact_add(
     marking: &mut CapcoMarking,
     category: CategoryId,
@@ -344,6 +360,18 @@ fn apply_fact_add(
 /// per-fact no-op error variants that closure propagation treats as
 /// nominal.
 ///
+/// Returns `true` iff the marking was mutated (the underlying
+/// `apply_fact_add` returned `Ok(())`). All other paths — fact
+/// without a routed category, `IntentInapplicable` (already present
+/// or axis not wired for FactAdd), and `UnknownToken` (sentinel with
+/// no FactAdd semantic) — return `false` because the marking is
+/// byte-unchanged. This `bool` is the load-bearing termination
+/// signal for the Kleene-fixpoint walk in `CapcoScheme::closure`,
+/// which OR-s it across every cone fact per iteration and exits as
+/// soon as a full pass produces no mutation. The pre-HOT-2
+/// `working.clone()` + deep `==` strategy is retired in favor of
+/// this signal (HOT-2, issue #594).
+///
 /// The closure operator is monotone fact propagation. `Ok(())`,
 /// `IntentInapplicable` (already present, or axis not wired for
 /// FactAdd), and `UnknownToken` (a marker sentinel like
@@ -361,21 +389,36 @@ fn apply_fact_add(
 /// regression. Today's CAPCO catalog cannot reach this branch (no
 /// cone fact targets a lattice-rejecting axis); the panic guards
 /// against future cone authors.
+///
+/// # Invariant: `Ok(()) ⇔ marking mutated`
+///
+/// `apply_fact_add` returns `Ok(())` only on a path that mutated
+/// `marking.0` and otherwise leaves the marking byte-identical to
+/// its pre-call state. No partial-mutation-then-`Err` path exists
+/// (verified by audit of every match arm in `apply_fact_add` at
+/// the time of HOT-2). The `#[must_use]` attribute below makes any
+/// future call site that discards the return a compile-time
+/// warning so this invariant cannot silently degrade.
+#[must_use]
 pub(crate) fn apply_closure_fact(
     scheme: &CapcoScheme,
     marking: &mut CapcoMarking,
     fact: &FactRef<CapcoScheme>,
-) {
+) -> bool {
     let Some(category) = scheme.category_of(fact) else {
         // Fact isn't addressable (marker sentinel with no category
-        // mapping). Closure no-op.
-        return;
+        // mapping). Closure no-op; marking unchanged.
+        return false;
     };
     match apply_fact_add(marking, category, fact) {
-        Ok(()) | Err(ApplyIntentError::IntentInapplicable) => {
-            // Ok: fact added.
-            // IntentInapplicable: already-present (idempotence) or axis
-            //   not yet wired for FactAdd — closure no-op.
+        Ok(()) => {
+            // Fact added; marking mutated.
+            true
+        }
+        Err(ApplyIntentError::IntentInapplicable) => {
+            // Already-present (idempotence) or axis not yet wired
+            // for FactAdd — closure no-op; marking unchanged.
+            false
         }
         Err(ApplyIntentError::UnknownToken) => {
             // Token has no FactAdd semantic on its routed category.
@@ -385,7 +428,7 @@ pub(crate) fn apply_closure_fact(
             // fact's `category_of()` succeeded but the specific token
             // isn't dispatched by `apply_fact_add`, this is a real bug;
             // surface it at runtime via tracing rather than crashing
-            // the hot path.
+            // the hot path. Either way, the marking is unchanged.
             tracing::warn!(
                 target: "marque_capco::closure",
                 ?category,
@@ -397,6 +440,7 @@ pub(crate) fn apply_closure_fact(
                  dispatched). Audit the closure rule whose cone references \
                  this token.",
             );
+            false
         }
         Err(ApplyIntentError::IntentRejectsLattice) => {
             // The exhaustive match catches new `ApplyIntentError`
