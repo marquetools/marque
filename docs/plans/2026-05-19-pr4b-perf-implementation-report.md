@@ -74,24 +74,29 @@ Profiling tools attempted but unable to produce attributable output:
 | PM decision | Deliverable in this PR | Notes |
 |---|---|---|
 | D-1 (PR shape: diagnosis-only, multi-PR remediation lane) | `docs/perf/2026-05-19-diagnosis.md` + 4 supporting artifacts; no `crates/*/src/**` edits | Verified via `git diff origin/staging -- 'crates/*/src/**' \| wc -l` (expected: 0) |
-| D-2 (single ranked findings doc, 25-row max, per-candidate fields) | Diagnosis §5 table has 17 rows (10 EXECUTE, 7 INVESTIGATE incl. OTHER infra candidates) | Under cap |
-| D-3 (env-var branch-conditional CI gate skip) | `tools/wasm-size-check.sh` (env override); `.github/workflows/ci.yml` (branch-conditional `MARQUE_BENCH_SKIP_REGRESSION` + `MARQUE_WASM_SKIP_REGRESSION`) | Both env injections use exact-branch match (`refs/heads/refactor-006-pr-4b-perf-closeout`), NOT prefix |
+| D-2 (single ranked findings doc, 25-row max, per-candidate fields) | Diagnosis §5 table has 17 rows (1 EXECUTE, 16 INVESTIGATE incl. OTHER infra candidates — counts updated post-R1 review fixup; original draft had 6 EXECUTE / 10 INVESTIGATE, R1 reviewer flagged D-8 noise-floor violations and savings-vs-bench reconciliation mismatches that moved 5 rows from EXECUTE to INVESTIGATE) | Under cap |
+| D-3 (env-var branch-conditional CI gate skip) | `tools/wasm-size-check.sh` (env override); `.github/workflows/ci.yml` (branch-conditional `MARQUE_BENCH_SKIP_REGRESSION` + `MARQUE_WASM_SKIP_REGRESSION`) | Both env injections use exact-branch match (`refs/heads/refactor-006-pr-4b-perf-closeout`), NOT prefix. Post-R2/R3 fixup the match covers both `github.ref` (push events) and `github.head_ref` (`pull_request` events), mirroring the existing branch-gate pattern at lines 84, 166, 249 of `ci.yml` — without the `head_ref` arm the skip would silently fail to fire on PR-event runs because `github.ref` on those is `refs/pull/N/merge`. |
 | D-4 (WASM measurement basis pinned) | Diagnosis §2.3 + `2026-05-19-diagnosis/twiggy-monos-top20.md` | Both pre-opt and post-opt sizes captured at both checkpoints |
 | D-5 (PR-template bench-delta block) | `.github/PULL_REQUEST_TEMPLATE.md` | 62 lines; bench-delta block fills in `lint_10kb` before/after + hardware |
 | D-6 (profiling artifact home) | `docs/perf/2026-05-19-diagnosis.md` + `docs/perf/2026-05-19-diagnosis/{lint-flamegraph-top15,cargo-bloat-top20,twiggy-monos-top20,criterion-checkpoints}.md` | Text only, 68 KB total committed (under 100 KB budget) |
-| D-7 (three reference points, same hardware) | pre-pr4 / mid-flip / head, all WSL2 dev | Mid-flip captured even though attribution-walkdown only triggered intermediate captures on >1.5x cumulative delta — included for completeness |
-| D-8 (EXECUTE vs INVESTIGATE tier semantics) | Diagnosis §5 table populates `tier` per-row; OTHER-* candidates are pure infra/measurement | 7 EXECUTE-tier with score ≥ 6, total estimated lower-bound savings 325µs |
+| D-7 (three reference points, same hardware) | pre-pr4 / mid-flip / head, all WSL2 dev | Mid-flip captured as part of D-7's unconditional triad; load-bearing for contradiction-2 resolution (see deviations §1). |
+| D-8 (EXECUTE vs INVESTIGATE tier semantics) | Diagnosis §5 table populates `tier` per-row; OTHER-* candidates are pure infra/measurement | 1 EXECUTE-tier candidate (LA-1) post-R1 fixup; passes D-8 via WASM-floor arm (40-60 KB ≥ 30 KB). Total EXECUTE-tier estimated savings: ~5-20µs lint + 40-60 KB WASM. EXECUTE alone does not close the 453µs lint regression — closing it requires elevating INVESTIGATE candidates after flamegraph capture (OTHER-1). |
 | D-9 (no new gated benches) | None added | Existing `profile_project.rs` sufficient |
 | D-10 (PR-description shape) | PR body will be authored at submission with TL;DR pointer to diagnosis | Not in this PR's diff |
 
 ## Deviations from PM contract
 
-None material. Three minor scope notes:
+None material. Three minor scope notes (post-R1/R2/R3 review
+fixup updates also applied below):
 
-1. **Mid-flip checkpoint captured unconditionally.** D-7 made the
-   intermediate checkpoints conditional on >1.5x cumulative delta;
-   the cumulative delta IS >1.5x (1.8x), so the conditional fires
-   either way. Captured the mid-flip data because it resolved
+1. **Mid-flip checkpoint captured.** D-7 lists three reference
+   points (pre-pr4, mid-flip, head) as the unconditional scope and
+   names 4b-B + 6c as conditional fourth/fifth checkpoints. The
+   mid-flip capture is part of D-7's unconditional triad — not a
+   deviation. (R3 review-2026-05-19 caught an earlier version of
+   this note that conflated D-7's three-point scheme with the
+   perf preflight's older four-point scheme; corrected here.)
+   Capturing the mid-flip data was load-bearing for resolving
    contradiction 2 (the PR 4b-E recovery question) — without it,
    the diagnosis could not have demonstrated PageContext retirement
    actually did help.

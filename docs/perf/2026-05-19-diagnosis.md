@@ -23,15 +23,21 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 1. **Native `lint_10kb` cumulative regression: ~+80% mean, +106% p99** from
    `pre-pr4` (`18cef6c9`, 2026-05-15) to `head` (`81694384`, 2026-05-19),
-   measured on the same WSL2 dev host within one calendar day. The user
-   reported "~1.7ms" — this matches the **mid-flip p99** at PR 4b-D.2
-   merge (1691µs), not HEAD (HEAD p99 = 1422µs).
+   measured on the same WSL2 dev host within one calendar day. The
+   production-relevant percentile for interactive keystroke latency is
+   p99 (the +106% p99 delta is the user-facing number); +80% mean is
+   the steady-state throughput number. The user reported "~1.7ms" —
+   this matches the **mid-flip p99** at PR 4b-D.2 merge (1691µs),
+   not HEAD (HEAD p99 = 1422µs).
 2. **PR 4b-E + 4b-F + 6c (PageContext retirement) recovered ~16% headroom**
    from the mid-flip peak. The recovery is real, but did not pay back the
    pre-flip → mid-flip jump in full.
-3. **WASM size: +94 KB / +7.7% pre-opt, +90 KB / +7.9% post-opt.** Not
-   the +400 KB the user reported. Likely measurement-basis drift; this
-   PR pins both bases.
+3. **WASM size: +94 KB / +7.7% pre-opt, +90 KB / +7.9% post-opt** over
+   the PR-4-to-6 cumulative window. Not the +400 KB the user reported
+   over the same window. The user's wider framing — ~600 KB pre-
+   refactor → ~1.6 MB current — anchors pre-006 (pre-engine-rule-
+   refactor), not pre-PR-4; the pre-006 → HEAD slice is unmeasured by
+   this diagnosis and tracked as INVESTIGATE candidate OTHER-3.
 4. **Top native driver: `CapcoMarking::join_via_lattice` (57.9 KiB
    single function) + 5 new quicksort monomorphizations on lattice
    projections (~77 KiB combined).** Pre-pr4's
@@ -43,6 +49,14 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
    `--strip-toolchain-annotations` passes), so WASM-specific
    attribution is downgraded to MED confidence via the native bloat
    proxy.
+6. **Remediation tier distribution (post-R1 review fixups):** 1 EXECUTE
+   candidate (LA-1 — quicksort consolidation; 5-20µs lint, 40-60 KB
+   WASM) and 16 INVESTIGATE candidates. **EXECUTE-tier alone does NOT
+   close the lint regression** — LA-1 plausibly closes ~45-65% of the
+   WASM regression but only ~1-4% of the 453µs lint regression. The
+   remediation strategy depends on elevating INVESTIGATE candidates to
+   EXECUTE after flamegraph capture (candidate OTHER-1) tightens their
+   bench-supported savings estimates.
 
 ## 1. Reference range
 
@@ -251,6 +265,20 @@ documentation. Headline:
 - `marque_capco` jumped **+182.2 KiB / +83.9%** on its own (217.2 →
   399.4 KiB native), the largest single-crate contribution.
 
+**Scope of this WASM attribution.** The reference range used here is
+`pre-pr4` (`18cef6c9`, PR 9c.2, 2026-05-15) → HEAD — i.e., the
+PR-4-to-6 cumulative window. The user's framing of the WASM
+regression was wider than this: **"~600 KB pre-refactor → ~1.6 MB
+current = ~+1 MB regression"** anchors at pre-006 (pre-engine-rule-
+refactor), not pre-PR-4. The +94 KB pre-opt / +90 KB post-opt
+delta this diagnosis measures is the **PR-4-to-6 slice** of that
+wider regression. The gap between pre-006 (which would be a SHA on
+`staging` just before the `006-engine-rule-refactor` branch first
+landed) and PR 9c.2 is **unmeasured** by this diagnosis and tracked
+as INVESTIGATE candidate OTHER-3 (§5). A future reader who wants
+the pre-006 → HEAD WASM picture should treat this section as the
+PR-4-to-6 segment of that path, not the whole path.
+
 ## 5. Ranked remediation table
 
 Per PM contract D-2 (per-candidate fields) and D-8 (EXECUTE /
@@ -261,39 +289,69 @@ WASM-only candidates `expected_savings_us = 0`, score uses
 `(savings_midpoint_kb × confidence_pct) / risk_multiplier` and is
 flagged W-prefix.
 
+> **READ FIRST — savings-estimate caveat (post-R1 reconciliation).**
+> The `expected_savings_us` ranges in the table below are **headroom
+> budgets**, not bench-validated estimates. The actual savings are
+> bounded by the per-stage micro-bench data captured in
+> `./2026-05-19-diagnosis/criterion-checkpoints.md`. Specifically:
+> `phase_a_join_via_lattice` is 478ns per call at HEAD,
+> `phase_b_closure` is 278ns per call, `phase_g_project_n1` is 704ns
+> per call. Aggregate per-stage contribution to `lint_10kb` (1023µs
+> mean) is on the order of single-digit-µs to low-tens-of-µs per
+> stage. EXECUTE-tier candidates that claim savings > 2× the relevant
+> per-stage stage-aggregate must be reconciled with the per-stage
+> data before a follow-up PR claims the candidate. R1 review fixups
+> applied 2026-05-19 reduced several rows below D-8's noise-floor
+> gate (≥30µs lint OR ≥30KB WASM AND risk ≤MED); those rows moved
+> from EXECUTE to INVESTIGATE. The remaining EXECUTE-tier row passes
+> D-8 via the WASM-floor arm. Tighter savings estimates require
+> flamegraph capture (OTHER-1) before any candidate claims a savings
+> commitment in a follow-up PR.
+
 | id | title | axis_touched | evidence | expected_savings_us | expected_savings_wasm_kb | risk_class | complexity | dependencies | correctness_argument | tier | score |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| LA-1 | Replace 5 SciSet/SarSet quicksort closures with `SmolStr::cmp` Ord-based sort | lattice projection / monomorphization | bloat: 5 distinct ~15 KiB monos summing ~77 KiB; one-line closures `\|a, b\| a.cmp(b)` are textually identical and could share a single instantiation. | 5-20 | 40-60 | LOW | S | [] | `SmolStr::cmp` already implements `Ord` and respects CAPCO canonical-order semantics defined in `sar_sort_key` / `sci compartment sort`; no semantic change. Marque-canonicalization invariant unchanged. | EXECUTE | 7.5 |
-| LA-2 | Skip `SciSet::to_markings` when `parsed_markings.iter().all(\|p\| p.sci_markings.is_empty())` | lattice projection | profile_project phase_g_n1 +38.9% vs mid-flip indicates fixed per-call cost grew; the empty-axis fast-path skips lattice ops the page can't need. | 30-80 | 0 | LOW | S | [] | SciSet projection is identity under empty input. Symmetric: applies to SarSet (no SAR portions), FgiSet (no FGI), AeaSet (no AEA). | EXECUTE | 33.0 |
-| LA-3 | Skip `CapcoMarking::join_via_lattice` body when `portions.len() ≤ 1` (single-portion fast path) | lattice composition | profile_project phase_a_join_via_lattice 478ns at HEAD; phase_g_project_n1 704ns total. A single portion has nothing to join — `out = portions[0].clone()` is the identity case. | 40-100 | 5-10 | LOW | S | [] | Lattice identity: `join(x) = x` for any x in a join-semilattice. CAPCO grammar agnostic — applies to any scheme with a singleton page. | EXECUTE | 42.0 |
-| MO-1 | Extract `Engine::with_clock` generic body to a non-generic inner function | monomorphization | bloat: 46.6 KiB at head; `<Engine>::with_clock::<CapcoScheme>` is a per-scheme mono. Single-scheme today (CapcoScheme); generic infrastructure for future multi-scheme is the intent. The inner body can be `#[inline(never)]` non-generic with the generic outer wrapper handling `S: MarkingScheme` dispatch. | 0 | 30-40 | MED | M | [] | Engine construction logic is scheme-parametric only through enumerated trait calls; the body can move behind a `dyn Trait` boundary without semantic change. Devirtualization within a binary with a single concrete S keeps native runtime cost. | EXECUTE | 21.0 |
-| MO-2 | Audit `Arc<dyn Recognizer<S>>` and `Arc<dyn Vocabulary<S>>` for devirtualization | monomorphization / dispatch | bloat: `<DecoderRecognizer>::recognize` 15.6 KiB; baseline.json `_p99_note` documents vtable misses surface at the tail. With one concrete Recognizer impl per binary today, the `dyn` could be replaced by a generic parameter at the engine boundary. | 10-30 (p99 only) | 5-15 | MED | M | [] | If only one concrete recognizer ships in a given binary (`StrictOrDecoderRecognizer` is `Engine::new`'s default; alternative is `StrictRecognizer` for benches), the `dyn` is over-abstraction. Replace with `impl Recognizer<S>` generic at the engine surface; same semantic behavior. | EXECUTE | 6.0 |
-| CO-1 | Replace `synthesize_fixes` per-portion `Box<dyn FactInfo>` with a small enum | monomorphization / redundant composition | bloat: 12.2 KiB. The `Box<dyn>` boxing per-fix in the fix path is observed in `<TwoPassFixer>::run` (39.3 KiB). | 20-60 (fix path; not lint hot path) | 10-20 | MED | M | [] | The closed set of FactInfo variants is finite (~5-7 today). An enum with `match` dispatch beats a vtable for closed sets. No semantic change. | EXECUTE | 6.0 |
-| HOT-1 | Closure operator: early-exit on empty closure-rule-trigger axes | hot-path closure | profile_project phase_b_closure 75ns mid-flip → 278ns head (+270%). Empty-cone short-circuit exists per architect R-1 mitigation; investigate whether more aggressive axis-empty short-circuits reduce the floor further. | 100-200 | 0 | MED | M | [] | Adding more pre-checks to the closure operator's per-call dispatch is correctness-preserving as long as the checks are sound (an axis with no eligible portions has no closure trigger to fire). | INVESTIGATE | 45.0 |
+| LA-1 | Replace 5 SciSet/SarSet quicksort closures with `SmolStr::cmp` Ord-based sort | lattice projection / monomorphization | bloat: 5 distinct ~15 KiB monos summing ~77 KiB; one-line closures `\|a, b\| a.cmp(b)` are textually identical and could share a single instantiation. Consolidating 5 → 1 mono removes 4×~15 KiB = ~60 KiB native; WASM proportional after `wasm-opt --monomorphize`. | 5-20 | 40-60 | LOW | S | [] | `SmolStr::cmp` already implements `Ord` and respects CAPCO canonical-order semantics defined in `sar_sort_key` / `sci compartment sort`; no semantic change. Marque-canonicalization invariant unchanged. | EXECUTE | 7.5 |
+| LA-2 | Skip `SciSet::to_markings` when `parsed_markings.iter().all(\|p\| p.sci_markings.is_empty())` | lattice projection | profile_project phase_g_n1 +38.9% vs mid-flip indicates fixed per-call cost grew; the empty-axis fast-path skips lattice ops the page can't need. Bench-bounded reduction: phase_g_n1 704ns × ~few-calls × empty-axis subset = single-digit µs aggregate. | 3-15 | 0 | LOW | S | [] | SciSet projection is identity under empty input. Symmetric: applies to SarSet (no SAR portions), FgiSet (no FGI), AeaSet (no AEA). | INVESTIGATE (below D-8 noise floor; investigation: flamegraph capture would tighten the savings range and may surface aggregate empty-axis frequency higher than current estimate) | 3.0 |
+| LA-3 | Skip `CapcoMarking::join_via_lattice` body when `portions.len() ≤ 1` (single-portion fast path) | lattice composition | profile_project phase_a_join_via_lattice 478ns at HEAD; phase_g_project_n1 704ns total. A single portion has nothing to join — `out = portions[0].clone()` is the identity case. **Structural reach extends beyond phase_a: short-circuiting `join_via_lattice` also avoids downstream closure-rule firings (phase_b) and post-join lattice composition (phase_c/phase_e) on single-portion pages.** Headroom budget, not bench-validated; reconciliation via flamegraph (OTHER-1) required. | 5-15 | 5-10 | LOW | S | [OTHER-1 for tight savings estimate] | Lattice identity: `join(x) = x` for any x in a join-semilattice. CAPCO grammar agnostic — applies to any scheme with a singleton page. | INVESTIGATE (below D-8 noise floor; investigation: confirm via flamegraph (OTHER-1) the typical-call single-portion subset and quantify aggregate savings) | 4.5 |
+| MO-1 | Extract `Engine::with_clock` generic body to a non-generic inner function | monomorphization | bloat: `<Engine>::with_clock::<CapcoScheme>` 40.4 → 46.6 KiB (+6.2 KiB regression delta). Opportunistic win, not a regression driver — the candidate attacks the broader mono cost surface rather than the +6.2 KiB delta specifically. | 0 | 6-15 | MED | M | [] | Engine construction logic is scheme-parametric only through enumerated trait calls; the body can move behind a `dyn Trait` boundary without semantic change. Devirtualization within a binary with a single concrete S keeps native runtime cost. | INVESTIGATE (below D-8 noise floor on reduced range; investigation: identify additional `<CapcoScheme>` monos beyond `with_clock` whose consolidation gets the cumulative WASM saving above the 30 KB floor) | 3.15 |
+| MO-2 | Audit `Arc<dyn Recognizer<S>>` and `Arc<dyn Vocabulary<S>>` for devirtualization | monomorphization / dispatch | bloat: `<DecoderRecognizer>::recognize` 15.6 KiB; baseline.json `_p99_note` documents vtable misses surface at the tail. With one concrete Recognizer impl per binary today, the `dyn` could be replaced by a generic parameter at the engine boundary. | 10-30 (p99 only) | 5-15 | MED | M | [] | If only one concrete recognizer ships in a given binary (`StrictOrDecoderRecognizer` is `Engine::new`'s default; alternative is `StrictRecognizer` for benches), the `dyn` is over-abstraction. Replace with `impl Recognizer<S>` generic at the engine surface; same semantic behavior. | INVESTIGATE (below D-8 noise floor on both axes; investigation: real flamegraph capture (OTHER-1) would tighten the p99 vtable-miss attribution and might lift this above the 30µs lint floor at tail) | 6.0 |
+| CO-1 | Replace `synthesize_fixes` per-portion `Box<dyn FactInfo>` with a small enum | monomorphization / redundant composition | bloat: 12.2 KiB. The `Box<dyn>` boxing per-fix in the fix path is observed in `<TwoPassFixer>::run` (39.3 KiB). Fix path; not lint hot path. | 20-60 (fix path; not lint hot path) | 10-20 | MED | M | [] | The closed set of FactInfo variants is finite (~5-7 today). An enum with `match` dispatch beats a vtable for closed sets. No semantic change. | INVESTIGATE (off lint hot path; fix-path savings don't count against the load-bearing `lint_10kb` regression. Investigation: add a `fix_10kb` bench to land remediation against a measurable target before claiming the candidate) | 6.0 |
+| HOT-1 | Closure operator: early-exit on empty closure-rule-trigger axes | hot-path closure | profile_project phase_b_closure 75ns mid-flip → 278ns head (+270%). Empty-cone short-circuit exists per architect R-1 mitigation; investigate whether more aggressive axis-empty short-circuits reduce the floor further. **Bench-supported ceiling:** phase_b_closure is 278ns per call; per-`lint_10kb` aggregate is sub-µs to low-µs even at high call frequency. Original 100-200µs claim was off by ~2 orders of magnitude. | 1-5 | 0 | MED | M | [] | Adding more pre-checks to the closure operator's per-call dispatch is correctness-preserving as long as the checks are sound (an axis with no eligible portions has no closure trigger to fire). | INVESTIGATE | 1.5 |
 | LA-4 | `from_attrs_iter` constructors: avoid `SmallVec` spill when input is small (≤ 4) | lattice allocation | bloat: smallvec crate +7.9 KiB / +22.3% across umbrella. Per-axis `*::from_attrs_iter` likely spills `SmallVec` when accumulating beyond inline capacity. | 5-15 | 5-10 | LOW | S | [] | `SmallVec`'s spill threshold is configurable. Inline capacity = 4 (typical max axes per portion); raise to 8 if profiling shows the typical-case spills. | INVESTIGATE | 7.5 |
 | DI-3 | Audit `Engine::with_clock` for per-call construction tax leakage | dispatch indirection | bloat: `Engine::with_clock::<CapcoScheme>` 46.6 KiB at head (was 40.4 KiB at pre-pr4, +6.2 KiB). Synthesized flamegraph rank 7 inclusive-% suggests per-lint cost may include construction work; verify by flamegraph capture. | TBD-instrument: flamegraph capture | TBD | MED | S | OTHER-1 | If construction tax is leaking into per-lint, the fix is moving setup into `Engine::new`'s amortizing path. Semantic-preserving. | INVESTIGATE | 0 |
 | MO-3 | Build profile for names-preserving WASM (for `twiggy monos`) | monomorphization audit infra | twiggy monos returned 0 rows; release-web stripped names. Without WASM mono attribution, candidate MO-1 / MO-2 WASM-side savings are MED-confidence inferred from native bloat. | TBD-instrument: add `release-monoaudit` profile | TBD | LOW | S | [] | Build-system-only edit; no production code change. Affects diagnostic infrastructure only. | INVESTIGATE | 0 |
-| HOT-2 | Closure-rule walker: avoid per-iteration `Vec::clone` on cone state | hot-path closure | phase_b_closure +270% absolute is suspicious — most likely the `cone` rebuild allocates per iteration. Confirm via flamegraph. | 50-150 | 0 | MED | M | OTHER-1 | Closure operator's Kleene-fixpoint cone can be reused across iterations (or amortized via swap rather than clone). Semantics depend on monotonicity, which closure operators by definition satisfy. | INVESTIGATE | 22.5 |
-| CO-2 | Page-rewrite scheduler: pre-compute per-page eligibility mask | redundant composition | 27 PageRewrite rows; many rows have `reads`/`writes` axes that the typical page doesn't touch. The scheduler dispatches all 27; an eligibility mask culls the predicate-eval count. | 30-80 | 0 | MED | M | OTHER-1 | The mask is computed from per-page axis presence (which axes the parsed portions actually touch). Each row's `reads`/`writes` declares its axis dependency; cull at scheduler entry. | INVESTIGATE | 16.5 |
+| HOT-2 | Closure-rule walker: avoid per-iteration `Vec::clone` on cone state | hot-path closure | phase_b_closure +270% absolute is suspicious — most likely the `cone` rebuild allocates per iteration. Confirm via flamegraph. **Bench-supported ceiling:** phase_b_closure aggregate is sub-µs to low-µs; original 50-150µs claim was off by ~2 orders of magnitude. | 1-5 | 0 | MED | M | OTHER-1 | Closure operator's Kleene-fixpoint cone can be reused across iterations (or amortized via swap rather than clone). Semantics depend on monotonicity, which closure operators by definition satisfy. | INVESTIGATE | 0.75 |
+| CO-2 | Page-rewrite scheduler: pre-compute per-page eligibility mask | redundant composition | 27 PageRewrite rows; many rows have `reads`/`writes` axes that the typical page doesn't touch. The scheduler dispatches all 27; an eligibility mask culls the predicate-eval count. **Bench-supported ceiling:** PageRewrite eval is part of phase_c/phase_e (~2µs/page aggregate); culling half = ~1µs aggregate. Original 30-80µs claim assumed wider-than-actual per-rewrite cost. | 1-5 | 0 | MED | M | OTHER-1 | The mask is computed from per-page axis presence (which axes the parsed portions actually touch). Each row's `reads`/`writes` declares its axis dependency; cull at scheduler entry. | INVESTIGATE | 0.75 |
 | CA-1 | Audit `parsed_markings` Vec cache for repeated allocations | caching | bloat unchanged on this axis. profile_project shows the cache has linear scaling at HEAD. Suspicion only; needs flamegraph. | TBD-instrument | 0 | MED | M | OTHER-1 | If the cache is rebuilt per page when it should be reused, the fix is a structural-sharing pattern (Arc<Box<[T]>>). Semantic-preserving. | INVESTIGATE | 0 |
-| OTHER-1 | Install `cargo-flamegraph` (or `samply`) and capture real flamegraphs | profiling infra | This PR's lint-flamegraph-top15.md is synthesized, not measured. ~30 min to install on WSL2 + capture 3 SVGs. | (unblocks others) | 0 | LOW | S | [] | Tooling install. No production code change. Unblocks DI-3, HOT-2, CO-2, CA-1. | INVESTIGATE | 0 |
+| OTHER-1 | Install `cargo-flamegraph` (or `samply`) and capture real flamegraphs | profiling infra | This PR's lint-flamegraph-top15.md is synthesized, not measured. ~30 min to install on WSL2 + capture 3 SVGs. | (unblocks others) | 0 | LOW | S | [] | Tooling install. No production code change. Unblocks DI-3, HOT-2, CO-2, CA-1, and tightens LA-3 / MO-2 estimates so they can be reconsidered for EXECUTE. | INVESTIGATE | 0 |
 | OTHER-2 | GHA-side re-capture (lint_10kb + WASM + decoder_10kb at HEAD on `ubuntu-latest`) | measurement basis | WSL2 dev host doesn't reproduce user-reported ~1.6 MB WASM or ~1.7ms lint mean. GHA may. | (unblocks baseline.json update) | 0 | LOW | S | [] | Runs the existing `scripts/capture-baselines.sh` on GHA. No code change. Recaptures `benches/baseline.json` and `tools/wasm-size-baseline.txt` after remediation lands. | INVESTIGATE | 0 |
+| OTHER-3 | Identify pre-006 WASM measurement anchor and capture pre-refactor baseline | measurement / scope | The user's framing of the WASM regression is "~600 KB pre-refactor → ~1.6 MB current = ~+1 MB regression". This diagnosis measured `pre-pr4` (`18cef6c9`, PR 9c.2 = mid-006) → HEAD = ~+94 KB pre-opt / ~+90 KB post-opt. The gap between PR 9c.2 and a pre-006 anchor (commit on `staging` just before the `006-engine-rule-refactor` branch first landed) is **unmeasured** by this diagnosis. The user's recall of ~+1 MB is plausible against a pre-006 anchor but unverified. | TBD-investigation; not a fix | TBD (investigation surfaces the gap, does not close it) | LOW | S | [] | Measurement-only; no production code change. Investigation: identify the pre-006 SHA on `staging` (last commit before the `006-engine-rule-refactor` branch merged); build `crates/wasm` at that revision via `wasm-pack build --target web --profile release-web` and `wasm-opt -O3` post-process; capture pre-opt + post-opt sizes; compare to current HEAD numbers. Resolves the cross-006 WASM scope gap that this diagnosis (PR 4 → HEAD scope) does not cover. | INVESTIGATE | 0 |
 | W-MO-1 | `wasm-bindgen`/`wasm-opt` profile: keep names for monos audit only (build separate artifact) | WASM build infra | Same as MO-3 but specifically for the WASM mono audit. | 0 | 0 (instrumentation) | LOW | S | [MO-3] | Build-system-only. | INVESTIGATE | 0 |
 
 **Notes on the table:**
-- Score is **rough ranking signal**, not an SLA. EXECUTE-tier
-  candidates with score ≥ 7 are reasonable first picks for a
-  follow-up optimization PR; INVESTIGATE-tier candidates with
-  score > 20 (HOT-1, HOT-2) may unlock larger gains than the
-  EXECUTE candidates but require flamegraph capture first.
-- Total EXECUTE-tier estimated savings (lower bound):
-  **75 + 70 + 30 + 40 + 5 + 105 µs = 325µs on `lint_10kb`** plus
-  **35 KB native binary** plus **30-50 KB WASM** (after MO-1).
-  Total EXECUTE-tier estimated savings (upper bound): ~440 µs + 60 KB native + 95 KB WASM.
-- The aggregate EXECUTE-tier upper bound (440 µs) does **not** close
-  the 453 µs cumulative regression on its own. **A subset of
-  INVESTIGATE candidates (HOT-1, HOT-2) becoming EXECUTE after
-  flamegraph capture is the remaining headroom path.**
+- Score is **rough ranking signal**, not an SLA. After R1 review
+  fixups (savings reconciled against per-stage bench data; rows
+  below D-8 noise floor moved to INVESTIGATE), the EXECUTE tier
+  contains a single candidate (LA-1) passing D-8 via the WASM-floor
+  arm. The remaining 16 candidates are INVESTIGATE — they are
+  parallel work streams the remediation lane can pursue, but each
+  needs additional evidence (flamegraph capture via OTHER-1 most
+  commonly) before claiming an EXECUTE commitment in a follow-up
+  PR.
+- **EXECUTE-tier estimated savings:** LA-1 only — lint **5-20µs**;
+  native binary **~60 KiB** (5 monos → 1); WASM **40-60 KB** after
+  consolidation. The EXECUTE tier alone closes ~1-4% of the 453 µs
+  cumulative lint regression and ~45-65% of the +94 KB cumulative
+  WASM regression.
+- **EXECUTE-tier alone does not close the lint regression.** Closing
+  the ~450µs lint gap requires elevating INVESTIGATE candidates to
+  EXECUTE after flamegraph capture (OTHER-1) tightens the savings
+  estimates. The structural candidates with the largest headroom
+  budget are LA-3 (single-portion fast path, structurally reaches
+  across phase_a/b/c/e), HOT-1/HOT-2 (closure operator floor),
+  CO-2 (PageRewrite scheduler mask). Whether their bench-supported
+  savings clear D-8's 30µs lint floor is the open question
+  OTHER-1's flamegraph capture is designed to answer.
 - No candidate touches CAPCO grammar semantics. Constitution VIII
   citation discipline trivially satisfied (no `§X.Y pNN` citations
   appear in this table because no candidate alters grammar
@@ -304,25 +362,36 @@ flagged W-prefix.
 Mapped to specific INVESTIGATE-tier candidate IDs per PM contract D-8.
 
 1. **Real-flamegraph hot-path attribution** (current: synthesized).
-   Unblocks DI-3, HOT-1, HOT-2, CO-2, CA-1, and demotes their
-   confidence reductions. **→ OTHER-1**.
+   Unblocks DI-3, HOT-1, HOT-2, CO-2, CA-1, and tightens LA-3 / MO-2
+   savings estimates so they can be reconsidered for EXECUTE.
+   **→ OTHER-1**.
 2. **GHA `ubuntu-latest` numerics at HEAD.** WSL2 numerics don't
    match user-reported HEAD state. **→ OTHER-2**.
-3. **WASM monomorphization names.** Without names, WASM-specific
+3. **Pre-006 WASM measurement anchor.** This diagnosis measures
+   the PR-4-to-6 cumulative slice (~+94 KB pre-opt). The user's
+   framing of "~600 KB pre-refactor → ~1.6 MB current = ~+1 MB"
+   anchors pre-006, not pre-PR-4. The gap between pre-006 and PR
+   9c.2 is unmeasured here. **→ OTHER-3**.
+4. **WASM monomorphization names.** Without names, WASM-specific
    savings are inferred from native bloat with MED confidence
    instead of HIGH. **→ MO-3 + W-MO-1**.
-4. **Closure-operator per-iteration allocation pattern.** +270%
+5. **Closure-operator per-iteration allocation pattern.** +270%
    floor growth is suspicious; could be allocator-driven rather
    than catalog-driven. **→ HOT-2** (depends on OTHER-1).
-5. **`Arc<dyn Vocabulary<S>>` p99 cost attribution at HEAD.** The
+6. **`Arc<dyn Vocabulary<S>>` p99 cost attribution at HEAD.** The
    PR-2-era cost is baked in across the umbrella; cannot be cleanly
-   subtracted from cumulative regression math. **→ MO-2** as
-   EXECUTE candidate, but precise p99 attribution requires per-call
-   sample analysis from a flamegraph (OTHER-1 dependency).
-6. **Per-portion lattice setup cost vs per-page roll-up.**
+   subtracted from cumulative regression math. **→ MO-2** —
+   reclassified to INVESTIGATE post-R1 fixup because the bench-
+   supported lint savings are below D-8's 30µs floor; precise p99
+   attribution requires per-call sample analysis from a flamegraph
+   (OTHER-1 dependency).
+7. **Per-portion lattice setup cost vs per-page roll-up.**
    profile_project phase_g sweep gives a rough fit; flamegraph
-   would pin it. **→ LA-3 EXECUTE-tier, but quantifying the savings
-   range tighter than 40-100 µs requires OTHER-1.**
+   would pin it. **→ LA-3** — reclassified to INVESTIGATE post-R1
+   fixup because the bench-supported single-portion savings sit
+   below D-8's 30µs floor on the per-stage data; the structural
+   reach across phase_a/b/c/e suggests a wider headroom budget
+   that OTHER-1's flamegraph can quantify.
 
 ## 7. What is NOT in this PR
 

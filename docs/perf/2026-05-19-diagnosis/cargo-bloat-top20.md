@@ -81,11 +81,13 @@ functions dropped.
 
 **Five distinct `quicksort` monomorphizations in `marque_capco`
 totaling ~77 KiB.** Each per-axis lattice's `to_markings` /
-`to_marking` projection sorts canonically (per CAPCO §H.4 / §H.5 /
-§H.8 ordering rules). Pre-pr4 had only 2 quicksort monomorphizations
-in `marque_capco` (the SAR banner-rollup quicksort, 12.2 KiB, and the
-SCI render quicksort, 9.7 KiB — total 21.9 KiB). The +55 KiB delta is
-new monomorphization, not algorithmic growth.
+`to_marking` projection sorts canonically (per CAPCO §H.4 p61 /
+§H.5 pp99-100 / §H.8 p136 ordering rules — "ascending sort order
+with numbered values first followed by alphabetic values"). Pre-pr4
+had only 2 quicksort monomorphizations in `marque_capco` (the SAR
+banner-rollup quicksort, 12.2 KiB, and the SCI render quicksort,
+9.7 KiB — total 21.9 KiB). The +55 KiB delta is new monomorphization,
+not algorithmic growth.
 
 ## pre-pr4 by-function spot check (marque-relevant entries)
 
