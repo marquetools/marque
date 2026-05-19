@@ -2,11 +2,24 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Pattern-C strip-row triggers (FOUO / LIMDIS / SBU / UCNI on
-//! classified pages) and the UCNI NOFORN-promotion siblings. Lifted
-//! from the monolithic `predicates.rs` per the issue #466 Stage 2
-//! PR A leaf split
-//! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
+//! Classified-page trigger predicates for Pattern-C strip rows
+//! (FOUO / LIMDIS / SBU / UCNI on classified pages), the UCNI
+//! NOFORN-promotion siblings, and (#554) the Pattern-A SBU-NF /
+//! LES-NF NOFORN-promotion rows. Originally lifted from the
+//! monolithic `predicates.rs` per the issue #466 Stage 2 PR A leaf
+//! split (`claudedocs/refactor-466/stage2_leaves_plan.md`); #554
+//! broadened the consumer set when the classification gate was
+//! added to the Pattern-A SBU-NF / LES-NF rows.
+//!
+//! Two of the SBU-NF / LES-NF triggers below (`sbu_nf_classified_trigger`,
+//! `les_nf_classified_trigger`) drive BOTH Pattern-C strip
+//! (`capco/sbu-nf-evicted-by-classified` per §H.9 p178) AND Pattern-A
+//! NF promotion (`capco/{sbu-nf,les-nf}-implies-noforn` per §H.9
+//! p178 / p185) post-#554 — the gate shape (`is_classified ∧
+//! contains compound-NF token in non_ic`) is identical, so a single
+//! predicate body serves both consumers. `les_nf_classified_trigger`
+//! drives Pattern-A only (LES survives classification per §H.9 p185;
+//! no Pattern-C `les-nf-evicted-by-classified` row exists by design).
 
 use super::super::*;
 
@@ -129,8 +142,17 @@ pub(crate) fn sbu_classified_trigger(m: &CapcoMarking) -> bool {
 }
 
 /// Pattern-C trigger: `classification > U ∧ contains SBU-NF in non_ic`.
-/// Drives `capco/sbu-nf-evicted-by-classified` (§H.9 p178 Commingling
-/// Rule(s) Within a Portion).
+///
+/// Drives two scheme rewrites (one Pattern-C strip, one Pattern-A
+/// NOFORN promotion):
+///
+/// - `capco/sbu-nf-evicted-by-classified` (Pattern-C strip,
+///   `FactRemove(TOK_SBU_NF)`) per §H.9 p178 Commingling Rule(s)
+///   Within a Portion (#541).
+/// - `capco/sbu-nf-implies-noforn` (Pattern-A NF promotion,
+///   `FactAdd(TOK_NOFORN)`) per §H.9 p178 Commingling Rule's
+///   `(C//NF)` canonical worked example (#554, classification
+///   gate added to close the pre-#554 unclassified overfire).
 ///
 /// §H.9 p178 (SBU NOFORN Commingling Rule(s) Within a Portion):
 /// *"If the portion is classified, the classification level of the
@@ -157,19 +179,66 @@ pub(crate) fn sbu_classified_trigger(m: &CapcoMarking) -> bool {
 /// See `NonIcDissemSet`'s type-level doc-comment for the full
 /// rationale.
 ///
-/// Co-fires with the existing Pattern-A `capco/sbu-nf-implies-noforn`
-/// rewrite (which adds NOFORN to dissem unconditionally on any
-/// SBU-NF presence per §H.9 p178 banner-form canonical example).
-/// The two touch different axes — Pattern-A writes CAT_DISSEM
-/// (FactAdd NOFORN); this row writes CAT_NON_IC_DISSEM (FactRemove
-/// SBU-NF) — so they compose cleanly without scheduling conflict.
-/// #541.
+/// # Co-fire composition (Pattern-A + Pattern-C on SBU-NF)
+///
+/// Both consumers fire on the same input. They touch different
+/// axes — Pattern-A writes CAT_DISSEM (FactAdd NOFORN);
+/// Pattern-C writes CAT_NON_IC_DISSEM (FactRemove SBU-NF) — so they
+/// compose cleanly without scheduling conflict. The net effect is
+/// `(C//SBU-NF) → (C//NF)`, matching the §H.9 p178 Commingling Rule
+/// canonical worked example.
 pub(crate) fn sbu_nf_classified_trigger(m: &CapcoMarking) -> bool {
     is_classified(m)
         && m.0
             .non_ic_dissem
             .iter()
             .any(|d| matches!(d, marque_ism::NonIcDissem::SbuNf))
+}
+
+/// Pattern-A trigger: `classification > U ∧ contains LES-NF in non_ic`.
+///
+/// Drives `capco/les-nf-implies-noforn` (Pattern-A NF promotion,
+/// `FactAdd(TOK_NOFORN)`) per §H.9 p185 LES NOFORN Precedence
+/// Rules for Banner Line Guidance (#554, classification gate added
+/// to close the pre-#554 unclassified overfire).
+///
+/// §H.9 p185 (LES NOFORN Precedence Rules for Banner Line Guidance):
+/// *"When a classified document contains portions of U//LES- NF,
+/// the 'LES' marking is used in the banner line and the NOFORN
+/// marking is applied as a Dissemination Control Marking. For
+/// example: SECRET//NOFORN//LES."* (Source has whitespace OCR
+/// artifact `LES- NF` rendered with a space; canonical token is
+/// `LES-NF`.)
+///
+/// # Asymmetric with SBU-NF: no Pattern-C strip co-fire
+///
+/// Unlike `sbu_nf_classified_trigger`, this trigger drives ONLY the
+/// Pattern-A NF promotion. There is no `capco/les-nf-evicted-by-classified`
+/// row because §H.9 p185 explicitly retains the LES marking on
+/// classified pages (the canonical form is `SECRET//NOFORN//LES`,
+/// not `SECRET//NOFORN`). The lattice helper's classified branch
+/// transmutes `{LesNf} → {Les}` while setting `needs_nf = true` for
+/// cross-axis NF injection; this trigger keeps the scheme path in
+/// step with that lattice semantic. See the
+/// `parity_classified_les_nf_lattice_and_scheme_both_retain_les`
+/// fixture for the regression gate against accidentally adding a
+/// strip row.
+///
+/// # Unclassified gate (#554)
+///
+/// On unclassified pages the compound `LES-NF` token itself encodes
+/// NOFORN per the §H.9 p185 banner-form heading
+/// (`UNCLASSIFIED//LES NOFORN`) and Notional Example Page 1. A
+/// separate NOFORN segment on the dissem axis would be redundant
+/// and produces a divergence from the lattice helper's
+/// `needs_nf = false` semantic on unclassified `{LesNf}` — the
+/// pre-#554 scheme-path overfire this trigger closes.
+pub(crate) fn les_nf_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m)
+        && m.0
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, marque_ism::NonIcDissem::LesNf))
 }
 
 /// Pattern-C trigger: `classification > U ∧ DOD UCNI on AEA axis`.
