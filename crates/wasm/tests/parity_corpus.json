@@ -347,7 +347,7 @@
       "name": "clean_portion_si_only.txt",
       "category": "valid",
       "input": "(TS//SI)\n",
-      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":8},\"message\":\"RELIDO is implied by the closure (SCI presence or US collateral classification absent FD&R suppressors); per §D.2 Table 3 rule 17 the byte-level marking should carry RELIDO to match\",\"citation\":\"CAPCO-2016 §H.8 p154\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":8},\"message\":\"RELIDO is implied by the closure (SCI presence or US collateral classification absent FD&R suppressors); per §D.2 Table 3 rule 17 the byte-level marking should carry RELIDO to match\",\"citation\":\"CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17 p21\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "clean_portion_top_secret.txt",
@@ -359,7 +359,7 @@
       "name": "clean_portion_ts_si_tk.txt",
       "category": "valid",
       "input": "(TS//SI/TK)",
-      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":11},\"message\":\"RELIDO is implied by the closure (SCI presence or US collateral classification absent FD&R suppressors); per §D.2 Table 3 rule 17 the byte-level marking should carry RELIDO to match\",\"citation\":\"CAPCO-2016 §H.8 p154\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":11},\"message\":\"RELIDO is implied by the closure (SCI presence or US collateral classification absent FD&R suppressors); per §D.2 Table 3 rule 17 the byte-level marking should carry RELIDO to match\",\"citation\":\"CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17 p21\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "clean_portion_unclassified.txt",

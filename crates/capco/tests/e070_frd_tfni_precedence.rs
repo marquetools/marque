@@ -16,8 +16,8 @@
 //! they remain stable through the bridge transition.
 //!
 //! Authority: CAPCO-2016 §H.6 p120 (TFNI subsection precedence rules
-//! + commingling rules). Verified against
-//! `crates/capco/docs/CAPCO-2016.md` at the time of authorship.
+//!   + commingling rules). Verified against
+//!   `crates/capco/docs/CAPCO-2016.md` at the time of authorship.
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingCandidate, MarkingType, Span};

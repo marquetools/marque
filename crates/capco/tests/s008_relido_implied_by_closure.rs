@@ -103,23 +103,26 @@ fn silent_when_rel_to_present() {
     );
 }
 
-// Note on the DISPLAY ONLY suppressor case
-//
-// `TOK_DISPLAY_ONLY` IS in `RELIDO_US_CLASS_SUPPRESSORS` and
-// `FDR_OR_RELIDO_INCOMPAT` at the lattice layer, but `satisfies(
-// TOK_DISPLAY_ONLY)` looks for `DissemControl::Displayonly` in
-// `dissem_iter()`. The parser populates `attrs.display_only_to`
-// (country list) for the `DISPLAY ONLY [LIST]` form, NOT
-// `attrs.dissem_us` with the `Displayonly` variant. The variant is
-// only set programmatically (via `apply_fact_add`); the wire-form
-// suppressor check therefore misses `(S//DISPLAY ONLY GBR)`-shaped
-// inputs.
-//
-// This is a pre-existing closure-suppressor / parser-data-model gap,
-// NOT an S008 bug. S008 faithfully surfaces the closure's behavior.
-// A separate engine-level fix to widen the suppressor predicate to
-// also check `!attrs.display_only_to.is_empty()` is the right
-// remediation; it is out of scope for #559.
+#[test]
+fn silent_when_display_only_present() {
+    // `(S//DISPLAY ONLY GBR)` — DISPLAY ONLY is an FD&R dominator at
+    // the lattice layer. The closure's `satisfies(TOK_DISPLAY_ONLY)`
+    // predicate scans `attrs.dissem_iter()` for
+    // `DissemControl::Displayonly`, which the parser does NOT
+    // populate for the canonical wire form (the country list flows
+    // into `attrs.display_only_to` instead). S008 closes this gap
+    // explicitly via clause 2b — gating on
+    // `!attrs.display_only_to.is_empty()` — until the closure
+    // suppressor predicate is widened at the engine layer (a separate
+    // change not in scope for #559). This test pins the explicit
+    // S008 guard.
+    assert!(
+        !fires_s008(b"(S//DISPLAY ONLY GBR)\n"),
+        "S008 must not fire when DISPLAY ONLY is present (clause 2b: \
+         the canonical-wire-form gate covers what the closure's \
+         dissem-iter suppressor check misses)",
+    );
+}
 
 #[test]
 fn silent_when_rel_to_present_with_relido_already() {

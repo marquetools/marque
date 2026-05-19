@@ -266,8 +266,7 @@ pub(crate) fn e070_frd_tfni_precedence(
     }
     vec![ConstraintViolation {
         constraint_label: "E070/frd-tfni-precedence",
-        message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD"
-            .to_owned(),
+        message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD".to_owned(),
         citation: "CAPCO-2016 §H.6 p120",
         span: None,
         severity: None,
