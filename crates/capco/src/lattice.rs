@@ -186,7 +186,7 @@ impl SciSet {
             marque_ism::sar_sort_key(a.0.text()).cmp(&marque_ism::sar_sort_key(b.0.text()))
         });
 
-        let mut out: SmallVec<[SciMarking; 4]> = SmallVec::new();
+        let mut out: SmallVec<[SciMarking; 4]> = SmallVec::with_capacity(systems.len());
         for (sys_key, comp_map) in systems {
             let mut comp_keys: SmallVec<[&SmolStr; 8]> = comp_map.keys().collect();
             sort_smolstrs_by_sar(&mut comp_keys);
@@ -200,7 +200,7 @@ impl SciSet {
                     let sub_boxes: Box<[SmolStr]> = subs
                         .into_iter()
                         .cloned()
-                        .collect::<SmallVec<[SmolStr; 4]>>()
+                        .collect::<Vec<_>>()
                         .into_boxed_slice();
                     SciCompartment::new(id.clone(), sub_boxes)
                 })
@@ -372,14 +372,14 @@ impl SarSet {
         let mut prog_keys: SmallVec<[&SmolStr; 4]> = self.programs.keys().collect();
         sort_smolstrs_by_sar(&mut prog_keys);
 
-        let built_programs: SmallVec<[SarProgram; 4]> = prog_keys
+        let built_programs: Vec<SarProgram> = prog_keys
             .into_iter()
             .map(|pid| {
                 let comp_map = self.programs.get(pid).expect("key enumerated above");
                 let mut comp_keys: SmallVec<[&SmolStr; 4]> = comp_map.keys().collect();
                 sort_smolstrs_by_sar(&mut comp_keys);
 
-                let built_compartments: SmallVec<[SarCompartment; 4]> = comp_keys
+                let built_compartments: Vec<SarCompartment> = comp_keys
                     .into_iter()
                     .map(|cid| {
                         let subs = comp_map.get(cid).expect("key enumerated above");
@@ -388,7 +388,7 @@ impl SarSet {
                         let boxed: Box<[SmolStr]> = sub_vec
                             .into_iter()
                             .cloned()
-                            .collect::<SmallVec<[SmolStr; 4]>>()
+                            .collect::<Vec<_>>()
                             .into_boxed_slice();
                         SarCompartment::new(cid.clone(), boxed)
                     })
@@ -987,7 +987,7 @@ impl AeaSet {
             .sigmas
             .iter()
             .copied()
-            .collect::<SmallVec<[u8; 8]>>()
+            .collect::<Vec<_>>()
             .into_boxed_slice();
 
         // Emission order matches the §G.1 Table 4 cat-6 register:
