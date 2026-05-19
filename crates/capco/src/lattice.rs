@@ -196,7 +196,15 @@ impl<K: Clone + Ord> HierarchicalTreeSet<K> {
 
     /// Returns entries sorted by `sar_sort_key` applied to the text form of
     /// the outer key. Used by `to_markings` / `to_marking` to produce
-    /// deterministic §A.6 / §H.5 ordering.
+    /// deterministic §A.6 / §H.5 ordering (numeric-prefixed identifiers
+    /// first, then alphabetic).
+    ///
+    /// The `key_text` closure extracts a `&str` from `K` because `K`'s
+    /// natural `Ord` may not match CAPCO sort order — e.g. `SystemKey`
+    /// sorts by an internal discriminant while §A.6 p15 requires
+    /// numeric-first ordering over the textual form. Passing the text
+    /// projection decouples the storage key ordering from the rendering
+    /// order without introducing a separate `OrdText` bound on `K`.
     fn sorted_entries<'a>(
         &'a self,
         key_text: impl Fn(&K) -> &str,
@@ -221,7 +229,9 @@ fn sorted_compartment_items(
     comp_keys
         .into_iter()
         .map(|id| {
-            let sub_set = comp_map.get(id).expect("key enumerated from comp_map");
+            let sub_set = comp_map
+                .get(id)
+                .expect("compartment key must exist in map (internal invariant violated)");
             let mut subs: Vec<&SmolStr> = sub_set.iter().collect();
             sort_smolstrs_by_sar(&mut subs);
             let sub_boxes: Box<[SmolStr]> = subs
