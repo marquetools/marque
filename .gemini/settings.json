@@ -1,7 +1,14 @@
 {
   "hooksConfig": {
     "disabled": [
-      "check-limit"
+      "maestro-session-start",
+      "maestro-before-agent",
+      "maestro-after-agent",
+      "maestro-session-end",
+      "increment-iteration",
+      "reinforce-pickle-persona",
+      "check-limit",
+      "pickle-rick-loop"
     ]
   }
 }
