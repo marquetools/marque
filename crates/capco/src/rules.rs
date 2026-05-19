@@ -2819,6 +2819,21 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
         let mut out = Vec::new();
         for (idx, marking) in attrs.sci_markings.iter().enumerate() {
             if let SciControlSystem::Custom(text) = &marking.system {
+                // Plausible-allocation suppression: 1-3 ASCII-uppercase
+                // identifiers are within the typical CAPCO-2016 §A.6 p15
+                // agency-allocated shape and don't warrant per-marking
+                // audit-visibility noise. W034 still fires on anything
+                // outside this shape (digits, longer identifiers,
+                // unusual casing) where the chance of typo or
+                // unregistered use is materially higher. Citation:
+                // CAPCO-2016 §A.6 p15 (agency-allocated control
+                // identifier shape) + §H.4 p61 (publication channel).
+                let s = text.as_str();
+                let is_plausible_allocation =
+                    (1..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_uppercase());
+                if is_plausible_allocation {
+                    continue;
+                }
                 let span = sys_spans
                     .get(idx)
                     .map(|t| t.span)
@@ -2830,7 +2845,7 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
                     format!(
                         "unpublished SCI control system {:?} present; verify agency \
                          allocation via ODNI/P&S registry",
-                        text.as_str()
+                        s
                     ),
                     "CAPCO-2016 §A.6 p16; §H.4 p61",
                     None,
@@ -4111,8 +4126,12 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
 
-        // Marking-type guard (≤3 branches per D13).
-        if !matches!(ctx.marking_type, MarkingType::Banner | MarkingType::Cab) {
+        // Marking-type guard (≤3 branches per D13). CABs carry only
+        // authority fields (Classified By / Derived From / Declassify
+        // On) — they have no classification, SCI, dissem, or FGI
+        // blocks — so every row evaluator would spuriously fire
+        // "banner missing X block" with a placeholder (0,0) span.
+        if !matches!(ctx.marking_type, MarkingType::Banner) {
             return vec![];
         }
         // PR 9b (T133 / FR-006): banner-validation rules read the
