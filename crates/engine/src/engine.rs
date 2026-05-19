@@ -2105,7 +2105,33 @@ impl Engine {
         (buf, applied, dropped_diags)
     }
 
-    /// Construct a new engine for `scheme`.
+    /// Translate a scheme-emitted [`ConstraintViolation`] into an
+    /// engine-side [`Diagnostic`].
+    ///
+    /// Returns `None` for advisory violations — entries whose `span`
+    /// or `severity` is `None` are tooling-only signals that never
+    /// surface to users. Returns `None` for severity-`Off` overrides
+    /// (FR-008: `Off`-severity diagnostics are unrepresentable).
+    ///
+    /// For qualifying violations the bridge:
+    ///
+    /// 1. Folds the catalog row's `constraint_label` into a stable
+    ///    `RuleId` (e.g. `class-floor/...` / `E058/...` → `E058`,
+    ///    `sci-per-system/...` → `E059`, `E054/...` → `E054`,
+    ///    `capco/noforn-conflicts-rel-to` → `E053`).
+    /// 2. Applies the user-configured severity override
+    ///    (`emitted_id_overrides`) keyed on the resolved `RuleId`.
+    /// 3. Synthesizes the optional [`FixIntent`] via
+    ///    [`CapcoScheme::fix_intent_by_name`] from the row name +
+    ///    `attrs` + candidate `MarkingType`.
+    /// 4. Builds the [`Diagnostic`] with the violation's `message`
+    ///    and `citation` carried through verbatim, and stamps the
+    ///    candidate's outer span as `candidate_span`.
+    ///
+    /// [`ConstraintViolation`]: marque_scheme::ConstraintViolation
+    /// [`Diagnostic`]: marque_rules::Diagnostic
+    /// [`FixIntent`]: marque_rules::FixIntent
+    /// [`CapcoScheme::fix_intent_by_name`]: CapcoScheme::fix_intent_by_name
     fn bridge_constraint_diagnostic(
         &self,
         v: &marque_scheme::ConstraintViolation,

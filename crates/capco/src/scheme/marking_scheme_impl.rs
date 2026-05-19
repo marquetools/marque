@@ -19,7 +19,7 @@ use marque_ism::CanonicalAttrs;
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
-    Template, TokenId, TokenRef, Span,
+    Span, Template, TokenId, TokenRef,
 };
 
 use super::actions::*;

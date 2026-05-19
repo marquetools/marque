@@ -111,7 +111,20 @@ NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
 markings, not the upstream "caveat" trigger. Per-marking templates
 live in §H.8.
 
-**Marque encoding.** `marque-capco` can safely assume a date of production after the cutoff. It was 16 years ago. Planned features will allow Marque to identify dates in some circumstances, or switch to an archival mode for past dates. 
+**Marque encoding.** Default assumption: production date is post-cutoff
+(the FD&R rule changed 28 Jun 2010 — 16 years ago at time of writing).
+Under this default, `marque-capco` does NOT gate RELIDO-or-NOFORN
+defaults behind a CAB-derived `Authority::Originated` date; "uncaveated
+→ RELIDO" applies.
+
+This is a deliberate engine-side simplification, not an authoritative
+re-reading of §B.3. The pivot itself stays normative: a future
+**archival mode** (planned, not yet wired) will switch the default
+back to "uncaveated → NOFORN" for documents whose CAB carries a
+pre-cutoff `Authority::Originated`. CHK041 governs the spec-level
+contract for reading the date when the archival path lands; CHK043
+governs the CI-checkable "apply-with-fix permissible only when date
+pivot is unambiguous" guard.
 
 > Authority: CAPCO-2016 §B.3 Table 2, pp 21–22.
 

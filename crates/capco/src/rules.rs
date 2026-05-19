@@ -1550,7 +1550,6 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Rule: S004 — rel-to-trigraph-suggest (suggest-don't-fix channel)
 // ---------------------------------------------------------------------------
@@ -6204,10 +6203,13 @@ mod tests {
     #[test]
     fn s003_fires_on_joint_list_without_usa_first() {
         let attrs = CanonicalAttrs {
-            classification: Some(MarkingClassification::Joint(vec![
-                CountryCode::try_new("GBR").unwrap(),
-                CountryCode::try_new("USA").unwrap(),
-            ].into_boxed_slice())),
+            classification: Some(MarkingClassification::Joint(
+                vec![
+                    CountryCode::try_new("GBR").unwrap(),
+                    CountryCode::try_new("USA").unwrap(),
+                ]
+                .into_boxed_slice(),
+            )),
             ..CanonicalAttrs::default()
         };
         let ctx = RuleContext::default();
@@ -6310,7 +6312,6 @@ mod tests {
     // the trigger condition S005 cares about. Both categories
     // produce identical runtime semantics; only the `{state}` text
     // in the diagnostic differs (covered by `s005_state_text_for_*`).
-
     #[test]
     fn s005_suggests_when_uncertain_drops_and_banner_has_no_rel_to() {
         // Two portions; RSMA appears in only one. Atom-semantics

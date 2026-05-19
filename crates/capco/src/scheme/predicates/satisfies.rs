@@ -451,9 +451,10 @@ pub(crate) fn evaluate_custom_by_attrs(
         // S004 is NOT dispatched here — it stays a registered walker
         // rule (`RelToTrigraphSuggestRule`) because its replacement
         // string is computed during evaluation and the bridge's
-        // `fix_intent_by_name(name, attrs)` shape cannot return the
-        // candidate without re-running the evaluator. See
-        // `crates/capco/src/rules.rs` S004 registration block.
+        // `fix_intent_by_name(name, attrs, marking_type)` shape
+        // cannot return the candidate without re-running the
+        // evaluator. See `crates/capco/src/rules.rs` S004
+        // registration block.
         _ => Vec::new(),
     }
 }

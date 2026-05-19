@@ -24,9 +24,7 @@
 use super::constraints::{self, sci_per_system_emit};
 use super::*;
 use marque_ism::{CanonicalAttrs, MarkingType};
-use marque_rules::{
-    Confidence, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
-};
+use marque_rules::{Confidence, FixIntent, FixSource, Message, MessageArgs, MessageTemplate};
 use marque_scheme::{Category, Constraint, FactRef, ReplacementIntent, Scope, Template};
 
 /// CAPCO's implementation of `MarkingScheme`.
@@ -171,8 +169,29 @@ impl CapcoScheme {
     ///
     /// # Current contract
     ///
-    /// This method returns `None` for every input today. The two
-    /// catalog families that ride the bridge take different paths:
+    /// PR #578 wired this method to synthesize `FixIntent` values
+    /// for the 15 declarative wrappers it retired into the bridge.
+    /// The method returns `Some(FixIntent { ... })` for the
+    /// following catalog row names and `None` otherwise:
+    ///
+    /// - `"E021/aea-requires-noforn"` — `FactAdd(NOFORN, Portion)`
+    ///   at confidence 0.95 per CAPCO-2016 §H.6.
+    /// - `"E038/nodis-or-exdis-requires-noforn"` — `FactAdd(NOFORN,
+    ///   Portion | Page)` at confidence 1.0 per §H.9 p172 + p174.
+    ///   The scope tracks `marking_type` (portion → `Portion`,
+    ///   banner → `Page`); other marking types return `None`.
+    /// - `"capco/noforn-conflicts-rel-to"` (when `marking_type ==
+    ///   Portion`) — `FactRemove(REL_TO, Portion)` at confidence
+    ///   1.0 per §H.8.
+    /// - `"E054/relido-conflicts-noforn"` /
+    ///   `"E055/relido-conflicts-display-only"` /
+    ///   `"E056/orcon-conflicts-relido"` /
+    ///   `"E057/orcon-usgov-conflicts-relido"` —
+    ///   `FactRemove(RELIDO, Portion)` at confidence 0.95 per
+    ///   §H.8 p140 / p154.
+    ///
+    /// Other catalog families that ride the bridge take different
+    /// paths and remain `None` here:
     ///
     /// - The class-floor catalog (E058 rows) produces no fixes —
     ///   every class-floor violation requires human review — so
@@ -181,21 +200,20 @@ impl CapcoScheme {
     ///   (companion-insertion, `ORCON-USGOV → ORCON` token
     ///   replacement), but those fixes ride the direct bridge path
     ///   via [`Self::bridge_sci_per_system_diagnostics`] rather than
-    ///   the `(name, attrs)` side-table — a single row can emit
-    ///   multiple diagnostics with distinct fixes, which the
-    ///   `(name, attrs)` shape cannot disambiguate.
-    ///
-    /// The method is kept as a stable scheme-side entry point so
-    /// future catalog families that DO fit the `(name, attrs) → fix`
-    /// shape can be wired in without changing the engine bridge
-    /// surface.
+    ///   the `(name, attrs, marking_type)` side-table — a single
+    ///   row can emit multiple diagnostics with distinct fixes,
+    ///   which the side-table shape cannot disambiguate.
+    /// - S004 (`"S004/rel-to-trigraph-suggest"`) is intentionally
+    ///   NOT a catalog row — its replacement string is corpus-derived
+    ///   during evaluation and the side-table cannot reproduce it.
+    ///   S004 stays a registered walker (`RelToTrigraphSuggestRule`).
     pub fn fix_intent_by_name(
         &self,
         name: &str,
         attrs: &CanonicalAttrs,
         marking_type: MarkingType,
     ) -> Option<marque_rules::FixIntent<CapcoScheme>> {
-        use crate::scheme::{TOK_NOFORN, TOK_RELIDO, TOK_REL_TO};
+        use crate::scheme::{TOK_NOFORN, TOK_REL_TO, TOK_RELIDO};
 
         match name {
             "E021/aea-requires-noforn" => Some(FixIntent {
@@ -246,7 +264,10 @@ impl CapcoScheme {
             }
             "capco/noforn-conflicts-rel-to" if marking_type == MarkingType::Portion => {
                 Some(FixIntent {
-                    replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_REL_TO), Scope::Portion),
+                    replacement: ReplacementIntent::fact_remove(
+                        FactRef::Cve(TOK_REL_TO),
+                        Scope::Portion,
+                    ),
                     confidence: Confidence::strict(1.0),
                     feature_ids: Default::default(),
                     message: Message::new(
@@ -265,7 +286,10 @@ impl CapcoScheme {
             | "E055/relido-conflicts-display-only"
             | "E056/orcon-conflicts-relido"
             | "E057/orcon-usgov-conflicts-relido" => Some(FixIntent {
-                replacement: ReplacementIntent::fact_remove(FactRef::Cve(TOK_RELIDO), Scope::Portion),
+                replacement: ReplacementIntent::fact_remove(
+                    FactRef::Cve(TOK_RELIDO),
+                    Scope::Portion,
+                ),
                 confidence: Confidence::strict(0.95),
                 feature_ids: Default::default(),
                 message: Message::new(MessageTemplate::ConflictsWith, MessageArgs::default()),
@@ -365,7 +389,6 @@ impl CapcoScheme {
             ("E036", "joint-conflicts-hcs"),
             ("E021", "aea-requires-noforn"),
             ("E024", "rd-precedence"),
-            ("E036", "joint-conflicts-hcs"),
             ("E037", "nodis-conflicts-exdis"),
             ("E038", "nodis-or-exdis-requires-noforn"),
             ("E053", "noforn-conflicts-rel-to"),

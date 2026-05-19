@@ -412,7 +412,9 @@ where
                 if scheme.satisfies(marking, left) && !scheme.satisfies(marking, right) {
                     out.push(ConstraintViolation {
                         constraint_label: name,
-                        message: format!("missing required token: {right:?} (required by {left:?})"),
+                        message: format!(
+                            "missing required token: {right:?} (required by {left:?})"
+                        ),
                         citation: label,
                         span: scheme.token_span(marking, left),
                         severity: *severity,

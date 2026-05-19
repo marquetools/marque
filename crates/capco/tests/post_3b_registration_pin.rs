@@ -11,8 +11,9 @@
 //! bridge — these IDs are still emittable through the bridge but no
 //! longer correspond to registered `Rule` impls. S004 stays a
 //! registered walker because its replacement is corpus-derived during
-//! evaluation and the bridge's `fix_intent_by_name(name, attrs)`
-//! shape cannot return the candidate without re-running the evaluator.
+//! evaluation and the bridge's `fix_intent_by_name(name, attrs,
+//! marking_type)` shape cannot return the candidate without
+//! re-running the evaluator.
 //!
 //! ## PR 5 PM-Addendum-I.6 deviation
 //!
@@ -113,8 +114,8 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     //   E053 E054 E055 E056 E057
     //
     // S004 stays a registered walker (see top-of-file header).
-    "C001", "E002", "E005", "E006", "E007", "E008", "E031", "E039", "E041",
-    "E061", "E062", "E063", "E064", "E065",
+    "C001", "E002", "E005", "E006", "E007", "E008", "E031", "E039", "E041", "E061", "E062", "E063",
+    "E064", "E065",
     // PR 9c.1 T134: legacy NATO compound text re-marking per
     // CAPCO-2016 §G.2 p40 (Table 5 — ATOMAL/BOHEMIA/BALK as
     // standalone registered control markings) + §H.7 p122 (ATOMAL

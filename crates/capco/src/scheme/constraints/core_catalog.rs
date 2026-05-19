@@ -397,12 +397,13 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // S004 into the constraint-catalog bridge, but S004's
         // replacement string is a corpus-derived candidate computed
         // during evaluation — the bridge's
-        // `fix_intent_by_name(name, attrs)` shape cannot produce that
-        // candidate without re-running the evaluator. The walker rule
-        // `RelToTrigraphSuggestRule` therefore stays registered in
-        // `CapcoRuleSet::new()` and owns both the predicate and the
-        // `text_correction` emission. See `crates/capco/src/rules.rs`
-        // S004 registration block for the rationale.
+        // `fix_intent_by_name(name, attrs, marking_type)` shape
+        // cannot produce that candidate without re-running the
+        // evaluator. The walker rule `RelToTrigraphSuggestRule`
+        // therefore stays registered in `CapcoRuleSet::new()` and
+        // owns both the predicate and the `text_correction` emission.
+        // See `crates/capco/src/rules.rs` S004 registration block for
+        // the rationale.
         //
         // NOTE — ConflictsWithFamily primitive showcase removed in PR 3.7 rev 3.
         //

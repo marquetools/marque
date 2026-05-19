@@ -30,9 +30,7 @@
 //! do not flow through the constraint-catalog bridge.
 
 use marque_ism::{CanonicalAttrs, TokenKind};
-use marque_rules::{
-    Confidence, Diagnostic, FixSource, Phase, Rule, RuleContext, RuleId, Severity,
-};
+use marque_rules::{Confidence, Diagnostic, FixSource, Phase, Rule, RuleContext, RuleId, Severity};
 
 use crate::scheme::CapcoScheme;
 

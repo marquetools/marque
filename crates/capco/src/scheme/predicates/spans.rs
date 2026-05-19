@@ -59,18 +59,20 @@ pub(crate) fn token_span_attrs(
                     .token_spans
                     .iter()
                     .find(|t| {
-                        t.kind == kind && (t.text.as_str() == label || {
-                            match *id {
-                                TOK_NODIS => {
-                                    t.text.as_str() == "ND" || t.text.as_str() == "NO DISTRIBUTION"
+                        t.kind == kind
+                            && (t.text.as_str() == label || {
+                                match *id {
+                                    TOK_NODIS => {
+                                        t.text.as_str() == "ND"
+                                            || t.text.as_str() == "NO DISTRIBUTION"
+                                    }
+                                    TOK_EXDIS => {
+                                        t.text.as_str() == "XD"
+                                            || t.text.as_str() == "EXCLUSIVE DISTRIBUTION"
+                                    }
+                                    _ => false,
                                 }
-                                TOK_EXDIS => {
-                                    t.text.as_str() == "XD"
-                                        || t.text.as_str() == "EXCLUSIVE DISTRIBUTION"
-                                }
-                                _ => false,
-                            }
-                        })
+                            })
                     })
                     .or_else(|| attrs.token_spans.iter().find(|t| t.kind == kind))
                     .map(|t| t.span)
