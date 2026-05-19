@@ -88,7 +88,7 @@ Every §-citation embedded in PR 5 code MUST be re-verified at edit time against
 
 Citations expected:
 - E068: `CAPCO-2016 §H.7 p124` (banner classification roll-up grammar; line 3032 "If a US document has portions with FGI markings ... roll-up the foreign control markings to the applicable marking category in the banner line after any US controls in that category").
-- E069: `CAPCO-2016 §H.7 p127` (worked example line 3131 `TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU`) OR `§H.7 p129` (worked example line 3168 `TOP SECRET//FGI CAN DEU//NOFORN`). Pick one, justify in the row comment.
+- E069: `CAPCO-2016 §H.7 p126` (worked example line 3131 `TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU`) OR `§H.7 p129` (worked example line 3168 `TOP SECRET//FGI CAN DEU//NOFORN`). Pick one, justify in the row comment.
 - C4 (#261): `CAPCO-2016 §H.7 p123` (FGI portion-mark canonical form `[LIST] [Non-US Classification Portion Mark]`).
 
 ### D-5.6 — Test coverage targets

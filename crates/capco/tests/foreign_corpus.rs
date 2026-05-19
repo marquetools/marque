@@ -219,8 +219,11 @@ fn t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069() {
     // Arrange: the fixture documents that E068 + E069 are the
     // expected diagnostics.
     let expected = load_expected(&foreign_fixture("mixed_us_foreign_rollup.txt"));
-    let expected_rules: HashSet<&str> =
-        expected.diagnostics.iter().map(|d| d.rule.as_str()).collect();
+    let expected_rules: HashSet<&str> = expected
+        .diagnostics
+        .iter()
+        .map(|d| d.rule.as_str())
+        .collect();
     assert!(
         expected_rules.contains("E068") && expected_rules.contains("E069"),
         "mixed_us_foreign_rollup.expected.json must list E068 + E069 \

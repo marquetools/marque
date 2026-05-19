@@ -4719,37 +4719,35 @@ fn evaluate_classification_banner_rollup(
         }
     }
 
-    let mismatch_reason: Option<&'static str> = match (
-        attrs.classification.as_ref(),
-        page.classification.as_ref(),
-    ) {
-        (None, None) => None,
-        (None, Some(_)) => Some(
-            "banner is missing a classification block required by the \
+    let mismatch_reason: Option<&'static str> =
+        match (attrs.classification.as_ref(), page.classification.as_ref()) {
+            (None, None) => None,
+            (None, Some(_)) => Some(
+                "banner is missing a classification block required by the \
              portions on this page",
-        ),
-        (Some(_), None) => Some(
-            "banner carries a classification but the projected page \
+            ),
+            (Some(_), None) => Some(
+                "banner carries a classification but the projected page \
              state has no classification (over-classified banner)",
-        ),
-        (Some(observed), Some(projected)) => {
-            if observed.effective_level() != projected.effective_level() {
-                Some(
-                    "banner classification level disagrees with the \
+            ),
+            (Some(observed), Some(projected)) => {
+                if observed.effective_level() != projected.effective_level() {
+                    Some(
+                        "banner classification level disagrees with the \
                      projected page state (§H.7 pp123-125 reciprocal \
                      classification + portion roll-up)",
-                )
-            } else if variant_kind(observed) != variant_kind(projected) {
-                Some(
-                    "banner classification variant disagrees with the \
+                    )
+                } else if variant_kind(observed) != variant_kind(projected) {
+                    Some(
+                        "banner classification variant disagrees with the \
                      projected page state (e.g., US-attributed banner \
                      on a solely-foreign page); §H.7 pp123-125",
-                )
-            } else {
-                None
+                    )
+                } else {
+                    None
+                }
             }
-        }
-    };
+        };
 
     let Some(message) = mismatch_reason else {
         return vec![];
@@ -4835,45 +4833,64 @@ fn evaluate_fgi_marker_banner_rollup(
         }
     }
 
-    let mismatch_reason: Option<&'static str> = match (
-        attrs.fgi_marker.as_ref(),
-        page.fgi_marker.as_ref(),
-    ) {
-        (None, None) => None,
-        (None, Some(_)) => Some(
-            "banner is missing an FGI marker required by portions \
+    let mismatch_reason: Option<&'static str> =
+        match (attrs.fgi_marker.as_ref(), page.fgi_marker.as_ref()) {
+            (None, None) => None,
+            (None, Some(_)) => Some(
+                "banner is missing an FGI marker required by portions \
              that carry foreign government information (§H.7 p124 \
              banner-line FGI roll-up rule)",
-        ),
-        (Some(_), None) => Some(
-            "banner carries an FGI marker but the projected page \
+            ),
+            (Some(_), None) => Some(
+                "banner carries an FGI marker but the projected page \
              state has no foreign government information; banner \
              over-claims foreign provenance (§H.7 p124)",
-        ),
-        (Some(observed), Some(projected)) => {
-            if fgi_variant_kind(observed) != fgi_variant_kind(projected) {
-                // Mixed concealed + acknowledged → bare FGI per
-                // §H.7 p124 source-concealed-dominates rule. The
-                // direction of the mismatch (which side is concealed)
-                // is intentionally not interpolated per Constitution
-                // V G13.
-                Some(
-                    "banner FGI marker variant disagrees with the \
+            ),
+            (Some(observed), Some(projected)) => {
+                if fgi_variant_kind(observed) != fgi_variant_kind(projected) {
+                    // Mixed concealed + acknowledged → bare FGI per
+                    // §H.7 p124 source-concealed-dominates rule. The
+                    // direction of the mismatch (which side is concealed)
+                    // is intentionally not interpolated per Constitution
+                    // V G13.
+                    Some(
+                        "banner FGI marker variant disagrees with the \
                      projected page state (concealed vs acknowledged); \
                      §H.7 p124 source-concealed-dominates rule",
-                )
-            } else if observed.countries() != projected.countries() {
-                Some(
-                    "banner FGI marker country list disagrees with \
-                     the projected page state (union of portion-\
-                     contributed FGI sources); §H.7 p126 worked \
-                     example",
-                )
-            } else {
-                None
+                    )
+                } else {
+                    // Compare country lists as SETS, not slices. The
+                    // observed side comes from the parser in textual
+                    // order (`parse_fgi_marker` pushes tokens left-to-
+                    // right); the projected side comes from
+                    // `FgiSet::to_marker()` which iterates a
+                    // `BTreeSet<CountryCode>` (sorted). Slice equality
+                    // would false-positive on non-canonically-ordered
+                    // (but otherwise-equivalent) banner input — e.g.,
+                    // `FGI NZL GBR` vs projected `[GBR, NZL]`. Ordering
+                    // is the renderer's concern (canonical form); E069
+                    // is supposed to fire on a missing or wrong country,
+                    // not on a valid-but-non-canonically-ordered country
+                    // list. The `BTreeSet` allocation only runs in this
+                    // branch, which is per-banner-candidate (O(pages),
+                    // not O(tokens)).
+                    use std::collections::BTreeSet;
+                    let observed_set: BTreeSet<_> = observed.countries().iter().copied().collect();
+                    let projected_set: BTreeSet<_> =
+                        projected.countries().iter().copied().collect();
+                    if observed_set != projected_set {
+                        Some(
+                            "banner FGI marker country list disagrees with \
+                         the projected page state (union of portion-\
+                         contributed FGI sources); §H.7 p126 worked \
+                         example",
+                        )
+                    } else {
+                        None
+                    }
+                }
             }
-        }
-    };
+        };
 
     let Some(message) = mismatch_reason else {
         return vec![];

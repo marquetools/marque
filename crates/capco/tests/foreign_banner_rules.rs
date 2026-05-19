@@ -274,6 +274,50 @@ fn e069_does_not_fire_on_pure_nato_page() {
 // Combined: E068 + E069 both fire on the load-bearing #276 fixture
 // ---------------------------------------------------------------------------
 
+/// E069 does NOT fire when banner FGI country list is identical to
+/// the projected page state as a SET, but listed in non-canonical
+/// (non-alphabetical) order. The post-fix-up evaluator compares
+/// country lists as `BTreeSet`s, not slices — ordering is the
+/// renderer's concern, not E069's. Pre-fix-up this case would have
+/// false-positive-fired because the parser preserves textual order
+/// (`NZL GBR`) while `FgiSet::to_marker()` iterates a sorted
+/// `BTreeSet` (`GBR, NZL`).
+///
+/// Shape: commingled US + FGI portions (`(S//FGI <CC>//NF)`) so the
+/// page projection populates `fgi_marker` on the dissem axis (the
+/// §H.7 p123 commingled signal). Pure-foreign portions `(//<CC> S)`
+/// would populate `classification = Fgi(...)` instead and leave
+/// `fgi_marker = None` — that exercises the `(Some, None)` branch,
+/// not the country-set branch we're testing here.
+///
+/// Authority: CAPCO-2016 §H.7 p124 banner-line FGI roll-up rule
+/// describes the *required* country set; ordering is governed by
+/// `render_canonical` (post-PR-3b.F E060 retirement, the renderer
+/// owns canonical-form discipline).
+#[test]
+fn e069_does_not_fire_on_non_canonical_country_order() {
+    // Arrange: commingled US + FGI portions contribute FGI GBR and
+    // FGI NZL; banner lists them in non-alphabetical order
+    // (`NZL GBR`). Country sets match; only the order differs.
+    let source = "SECRET//FGI NZL GBR//NOFORN
+(S//FGI GBR//NF)
+(S//FGI NZL//NF)
+SECRET//FGI NZL GBR//NOFORN
+";
+
+    // Act
+    let observed = observed_rule_ids(source);
+
+    // Assert: E069 must NOT fire — the country sets are identical.
+    // Pre-fix-up this assertion would have failed because slice
+    // equality saw `[NZL, GBR] != [GBR, NZL]`.
+    assert!(
+        !observed.contains("E069"),
+        "E069 must not fire on non-canonical country order (sets are \
+         identical); observed = {observed:?}"
+    );
+}
+
 /// The §H.7 p129 line 3168 worked example fires BOTH E068 and E069
 /// in one banner check. Verifies that the two rows are independent —
 /// the engine's dispatch loop visits every catalog row.
