@@ -165,11 +165,13 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
     // (rows on pp 795-803): each compartment publishes a single-word
     // long-form Authorized Banner Line Marking Title (e.g. GAMMA)
     // whose banner abbreviation and portion abbreviation collapse to
-    // the same short form (e.g. G). Banner == portion, so
-    // `title_to_banner` returns `None` for these rows; only
-    // `title_to_portion` is meaningful (it powers SCI long-form
-    // compartment canonicalization in the structural subparser per
-    // §H.4 p61 + p87 + p91 + p95).
+    // the same short form (e.g. G). Because `title != banner` and
+    // `banner == portion`, both `title_to_banner` and
+    // `title_to_portion` resolve to the same short form for these rows.
+    // The meaningful distinction is that there is no separate
+    // banner-vs-portion conversion here; the shared short form powers
+    // SCI long-form compartment canonicalization in the structural
+    // subparser per §H.4 p61 + p87 + p91 + p95).
     MarkingForm {
         title: "GAMMA",
         banner: "G",

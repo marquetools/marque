@@ -516,8 +516,9 @@ struct ExpectedRuleCount {
 ///     embedded-cable-header `00 RUEAIIB` E008 firing).
 ///   - `parse_aea_full_form` recognizes
 ///     `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION` (RD-CNWDI
-///     long form) and `DOE/DOD UNCLASSIFIED CONTROLLED NUCLEAR
-///     INFORMATION` (DOE/DOD UCNI long forms) via
+///     long form), `DOE UNCLASSIFIED CONTROLLED NUCLEAR
+///     INFORMATION`, and `DOD UNCLASSIFIED CONTROLLED NUCLEAR
+///     INFORMATION` (UCNI long forms) via
 ///     `marking_forms::title_to_portion` lookup.
 ///   - `parse_sci_block` accepts SCI control-system and
 ///     compartment long-form titles (`TALENT KEYHOLE` -> `TK`,
