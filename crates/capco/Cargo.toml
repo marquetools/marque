@@ -44,6 +44,10 @@ proptest = { workspace = true }
 # Constitution Principle II — capco integration tests assert against
 # `FixResult.source` (a `SecretBox<[u8]>`) via `expose_secret()`.
 secrecy = { workspace = true }
+# PR 4b umbrella closeout (T143): compile-time lattice impl pin at
+# `crates/capco/tests/lattice_static_assertions.rs`. Mirrors the
+# `crates/ism/tests/send_sync.rs` precedent.
+static_assertions = { workspace = true }
 
 [build-dependencies]
 # Phase-D decoder priors are baked in at compile time from
