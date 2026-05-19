@@ -2908,3 +2908,150 @@ fn pin_pattern_b_row_2_before_noforn_clears_fdr_family() {
          noforn_clears_fdr_pos={noforn_clears_fdr}"
     );
 }
+
+// ===========================================================================
+// LA-3 fast-path correctness pins
+// ===========================================================================
+//
+// These fixtures verify the PR LA-3 single-portion fast-path introduced in
+// `CapcoMarking::join_via_lattice`. The fast-path returns `portions[0].clone()`
+// for non-Conflict single-element slices; the Conflict variant is guarded out
+// so `join_via_lattice_body` still runs it (G-9 flatten to `Us(_)`).
+//
+// §-authority: join-semilattice identity law (`join(x) = x`) per
+// `docs/perf/2026-05-19-diagnosis.md` §5 LA-3.
+
+#[test]
+fn la3_empty_slice_returns_default() {
+    // The empty fast-path must return the lattice bottom (CanonicalAttrs::default()).
+    let result = CapcoMarking::join_via_lattice(&[]);
+    assert_eq!(
+        result,
+        CanonicalAttrs::default(),
+        "LA-3: empty slice must return CanonicalAttrs::default()"
+    );
+}
+
+#[test]
+fn la3_single_us_classified_portion_is_identity() {
+    // Fast-path: single Us(_) portion — join_via_lattice must return a
+    // clone of the input, byte-identical on all axes.
+    let mut p = CanonicalAttrs::default();
+    p.classification = Some(MarkingClassification::Us(Classification::Secret));
+    p.dissem_us = vec![DissemControl::Nf].into();
+
+    let result = CapcoMarking::join_via_lattice(&[p.clone()]);
+    assert_eq!(
+        result, p,
+        "LA-3: single Us(_) portion must be identity under join_via_lattice"
+    );
+}
+
+#[test]
+fn la3_single_nato_portion_is_identity() {
+    // Fast-path: single Nato(_) portion — join_via_lattice must return
+    // a clone of the input. The G-4b solely-non-US FGI suppression in
+    // join_via_lattice_body would also produce fgi_marker=None for a
+    // pure NATO page, so the fast-path is byte-identical.
+    let mut p = CanonicalAttrs::default();
+    p.classification = Some(MarkingClassification::Nato(
+        NatoClassification::NatoSecret,
+    ));
+
+    let result = CapcoMarking::join_via_lattice(&[p.clone()]);
+    assert_eq!(
+        result, p,
+        "LA-3: single Nato(_) portion must be identity under join_via_lattice"
+    );
+    assert!(
+        result.fgi_marker.is_none(),
+        "LA-3: NATO classification must NOT derive an fgi_marker via the fast-path"
+    );
+}
+
+#[test]
+fn la3_single_unclassified_portion_is_identity() {
+    // Fast-path: single unclassified portion.
+    let p = CanonicalAttrs::default();
+    let result = CapcoMarking::join_via_lattice(&[p.clone()]);
+    assert_eq!(
+        result, p,
+        "LA-3: single unclassified portion must be identity under join_via_lattice"
+    );
+}
+
+#[test]
+fn la3_single_conflict_still_flattens_to_us() {
+    // Guard: single Conflict portion must go through join_via_lattice_body
+    // so that G-9 flattens it to Us(_). The fast-path must NOT apply here.
+    // Without the flatten, E031 would compare variant_kind(Us(TS)) == 0
+    // against variant_kind(Conflict) == 4 and fire a false positive.
+    let p = portion_conflict(
+        Classification::TopSecret,
+        ForeignClassification::Nato(NatoClassification::CosmicTopSecret),
+    );
+
+    let result = CapcoMarking::join_via_lattice(&[p]);
+    assert!(
+        matches!(
+            result.classification,
+            Some(MarkingClassification::Us(Classification::TopSecret))
+        ),
+        "LA-3 guard: single Conflict portion must be flattened to Us(_) by the body, \
+         not returned as-is by the fast-path; got {:?}",
+        result.classification
+    );
+}
+
+#[test]
+fn la3_single_malformed_joint_no_usa_still_flattens_to_us() {
+    // Guard: single Joint(j) missing USA must go through join_via_lattice_body
+    // so that G-9b flattens it to Us(j.level). JointSet treats missing-USA as
+    // malformed (Bottom), falling through to the ClassificationLattice path
+    // which produces Us(_). Without this guard, E031 would compare
+    // variant_kind(Us(S)) == 0 against variant_kind(Joint) == 3 (false positive).
+    let p = {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Joint(JointClassification {
+            level: Classification::Secret,
+            countries: Box::new([cc("GBR")]),
+        }));
+        a
+    };
+
+    let result = CapcoMarking::join_via_lattice(&[p]);
+    assert!(
+        matches!(
+            result.classification,
+            Some(MarkingClassification::Us(Classification::Secret))
+        ),
+        "LA-3 guard: single malformed Joint (missing USA) must be flattened to Us(_) \
+         by the body; got {:?}",
+        result.classification
+    );
+}
+
+#[test]
+fn la3_two_portions_always_uses_body() {
+    // The fast-path only fires for len == 1. Two portions must go through
+    // join_via_lattice_body regardless of their classification variant.
+    // Verify that a two-portion page with identical Us(_) entries is still
+    // handled correctly (idempotent join).
+    let mut p = CanonicalAttrs::default();
+    p.classification = Some(MarkingClassification::Us(Classification::Secret));
+    p.dissem_us = vec![DissemControl::Nf].into();
+
+    let result = CapcoMarking::join_via_lattice(&[p.clone(), p.clone()]);
+    assert!(
+        matches!(
+            result.classification,
+            Some(MarkingClassification::Us(Classification::Secret))
+        ),
+        "LA-3: two identical Us(S) portions must still produce Us(S) via the body"
+    );
+    assert_eq!(
+        result.dissem_us.as_ref(),
+        &[DissemControl::Nf] as &[DissemControl],
+        "LA-3: two identical Us(S)+NF portions must preserve NF via the body"
+    );
+}

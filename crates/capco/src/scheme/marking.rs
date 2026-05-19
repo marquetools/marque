@@ -166,7 +166,81 @@ impl CapcoMarking {
     ///
     /// Authority (verified 2026-05-15): per-axis citations are on each
     /// `lattice` module type's doc comment.
+    ///
+    /// ## LA-3 fast-paths
+    ///
+    /// Two short-circuit cases avoid the full `join_via_lattice_body`
+    /// scan when the fold is trivially identity:
+    ///
+    /// **Empty slice** — zero portions → `CanonicalAttrs::default()`
+    /// (the lattice bottom). This is a degenerate page with no markings;
+    /// no rule fires and no banner is produced.
+    ///
+    /// **Single non-Conflict portion** — `join(x) = x` for any `x` in a
+    /// join-semilattice (lattice identity law). The body is O(n) in the
+    /// number of per-axis constructor calls; all constructors reduce to
+    /// identity when `portions.len() == 1` EXCEPT for the G-9
+    /// `Conflict → Us(_)` flatten. The `Conflict` variant is guarded
+    /// out so the body still runs for it.
+    ///
+    /// **Why Conflict and malformed Joint need the body:** the
+    /// banner-comparison rule (E031) checks
+    /// `variant_kind(observed) != variant_kind(projected)`. Two
+    /// classification variants are normalized by the body and must NOT
+    /// be short-circuited:
+    ///
+    /// - `Conflict { us, foreign }` (variant 4): the body flattens it
+    ///   to `Us(us)` (variant 0, G-9). A fast-path returning `Conflict`
+    ///   would cause a false positive when the banner parses as `Us(TS)`
+    ///   (variant 0 ≠ variant 4).
+    ///
+    /// - `Joint(j)` missing USA (§H.3 p56 violation): `JointSet`
+    ///   treats a no-USA JOINT as malformed and returns `Bottom`, so the
+    ///   body flattens it to `Us(j.level)` via the
+    ///   ClassificationLattice path (G-9b). Returning the `Joint`
+    ///   as-is (variant 3) would cause E031 false positives when the
+    ///   banner parses as `Us(_)` (variant 0 ≠ variant 3).
+    ///
+    /// `Nato(_)`, `Fgi(_)`, well-formed `Joint` (with USA), and `Us(_)`
+    /// all project through the renderer with the same variant in both
+    /// the observed banner and the projected page state, so they are
+    /// safe. Cross-axis normalizations (NOFORN+REL-TO clearing,
+    /// NODIS/EXDIS/SBU-NF NOFORN injection, tetragraph expansion) are
+    /// **redundant** with downstream PageRewrites inside
+    /// `CapcoScheme::project_attrs_pipeline`; the final `CanonicalAttrs`
+    /// after the full pipeline is byte-identical whether the fast-path
+    /// or the body feeds the rewrites.
+    ///
+    /// §-authority: join-semilattice identity law (`join(x) = x`).
+    /// Per PR LA-3 (issue marquetools/marque#584).
     pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        use marque_ism::MarkingClassification;
+
+        // Fast-path 1: empty page → lattice bottom.
+        if portions.is_empty() {
+            return CanonicalAttrs::default();
+        }
+
+        // Fast-path 2: single portion, unless the body would normalize
+        // the classification variant.
+        //
+        // Two variants must go through the body:
+        //   - Conflict → flattened to Us(_) (G-9)
+        //   - Joint(j) missing USA → flattened to Us(j.level) (G-9b)
+        // All other variants are identity for a singleton join.
+        if let [p] = portions {
+            let safe = match &p.classification {
+                Some(MarkingClassification::Conflict { .. }) => false,
+                Some(MarkingClassification::Joint(j)) => {
+                    j.countries.iter().any(|c| c.as_str() == "USA")
+                }
+                _ => true,
+            };
+            if safe {
+                return p.clone();
+            }
+        }
+
         Self::join_via_lattice_body(portions)
     }
 
