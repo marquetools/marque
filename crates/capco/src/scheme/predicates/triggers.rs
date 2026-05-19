@@ -11,15 +11,16 @@
 //! broadened the consumer set when the classification gate was
 //! added to the Pattern-A SBU-NF / LES-NF rows.
 //!
-//! Two of the SBU-NF / LES-NF triggers below (`sbu_nf_classified_trigger`,
-//! `les_nf_classified_trigger`) drive BOTH Pattern-C strip
+//! Of the SBU-NF / LES-NF triggers below, `sbu_nf_classified_trigger`
+//! drives BOTH Pattern-C strip
 //! (`capco/sbu-nf-evicted-by-classified` per §H.9 p178) AND Pattern-A
-//! NF promotion (`capco/{sbu-nf,les-nf}-implies-noforn` per §H.9
-//! p178 / p185) post-#554 — the gate shape (`is_classified ∧
-//! contains compound-NF token in non_ic`) is identical, so a single
-//! predicate body serves both consumers. `les_nf_classified_trigger`
-//! drives Pattern-A only (LES survives classification per §H.9 p185;
-//! no Pattern-C `les-nf-evicted-by-classified` row exists by design).
+//! NF promotion (`capco/sbu-nf-implies-noforn` per §H.9 p178) post-#554
+//! — the gate shape (`is_classified ∧ contains compound-NF token in
+//! non_ic`) is identical, so a single predicate body serves both
+//! consumers. `les_nf_classified_trigger` drives Pattern-A only
+//! (`capco/les-nf-implies-noforn` per §H.9 p185); LES survives
+//! classification per §H.9 p185, so no Pattern-C
+//! `les-nf-evicted-by-classified` row exists by design.
 
 use super::super::*;
 
