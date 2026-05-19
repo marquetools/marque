@@ -296,14 +296,21 @@ impl CapcoScheme {
                 })
             }
             // #559 close-out (2026-05-19): E055 / E056 / E057
-            // removed from this arm. The three Constraint::Conflicts
-            // rows they served were retired in favor of PageRewrites
-            // at `crates/capco/src/scheme/rewrites/relido_clears.rs`
-            // (`capco/display-only-clears-relido` /
-            // `capco/orcon-clears-relido` /
-            // `capco/orcon-usgov-clears-relido`). The rewrite-side
-            // intent (FactRemove(RELIDO) at Scope::Page) is embedded
-            // in each PageRewrite row's `action` directly.
+            // removed from this arm. The E056 + E057 Conflicts rows
+            // were retired in favor of PageRewrites at
+            // `crates/capco/src/scheme/rewrites/relido_clears.rs`
+            // (`capco/orcon-clears-relido` per §H.8 p136 and
+            // `capco/orcon-usgov-clears-relido` per §H.8 p140); the
+            // rewrite-side intent (FactRemove(RELIDO) at Scope::Page)
+            // is embedded in each PageRewrite row's `action`
+            // directly, so `fix_intent_by_name` has nothing to
+            // synthesize for those names. The E055 (DISPLAY ONLY ⊥
+            // RELIDO) Conflicts row was also retired but the
+            // corresponding `capco/display-only-clears-relido`
+            // PageRewrite is deferred behind issue #618 — the
+            // intent for E055's pre-#559 behavior is therefore
+            // currently unrepresented in either path; see
+            // `relido_clears.rs` module header for the rationale.
             "E054/relido-conflicts-noforn" => Some(FixIntent {
                 replacement: ReplacementIntent::fact_remove(
                     FactRef::Cve(TOK_RELIDO),

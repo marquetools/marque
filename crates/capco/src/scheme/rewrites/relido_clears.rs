@@ -7,8 +7,16 @@
 //! `Constraint::Conflicts` rows (E056 + E057) from flag-only
 //! diagnostics into subtractive page-level rewrites.
 //!
-//! Per Marque convention dissem-axis conflicts emit subtractive fixes
-//! (see `~/.claude/memory/feedback_dissem_conflicts_emit_subtractive_fix.md`).
+//! Per Marque convention dissem-axis conflicts emit subtractive
+//! fixes: the engine guides the author toward a canonical resolution
+//! (RELIDO removed when a stronger originator decision is on the
+//! page) rather than just flagging the conflict. The pre-#559 path
+//! through `Constraint::Conflicts` + `fix_intent_by_name` carried
+//! the same subtractive shape; this PR moves the shape into the
+//! PageRewrite layer because that's the right scope for
+//! cross-portion supersession (the per-portion Conflicts gate
+//! missed the cross-portion case).
+//!
 //! Pre-#559 these pairs lived as `Constraint::Conflicts` rows
 //! whose `fix_intent_by_name` resolution attached a
 //! `FactRemove(RELIDO, Portion)` repair. The portion-scope intent
