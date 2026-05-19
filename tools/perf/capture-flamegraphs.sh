@@ -94,11 +94,17 @@ CARGO_PROFILE_BENCH_DEBUG_ASSERTIONS=false \
 CARGO_PROFILE_BENCH_OVERFLOW_CHECKS=false \
     cargo bench --bench profile_project --no-run >/dev/null
 
-# Pick the most-recently-built bench binaries (cargo names them with a hash suffix).
-LINT_BIN=$(ls -t target/release/deps/lint_latency-* 2>/dev/null \
-    | grep -vE '\.(d|rlib)$' | head -1)
-PROFILE_BIN=$(ls -t target/release/deps/profile_project-* 2>/dev/null \
-    | grep -vE '\.(d|rlib)$' | head -1)
+# Pick the most-recently-built bench binaries (cargo names them with a
+# hash suffix). Filter for executable files specifically — cargo also
+# emits `.d` depfiles and (under some configurations) `.rmeta` /
+# `.rlib` artifacts that share the bench-binary prefix; `-type f
+# -executable` ignores all of those by construction.
+LINT_BIN=$(find target/release/deps -maxdepth 1 -type f -executable \
+    -name 'lint_latency-*' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -nr | head -1 | cut -f2-)
+PROFILE_BIN=$(find target/release/deps -maxdepth 1 -type f -executable \
+    -name 'profile_project-*' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -nr | head -1 | cut -f2-)
 
 [[ -x "$LINT_BIN" ]] || { echo "ERROR: lint_latency bench binary not found" >&2; exit 1; }
 [[ -x "$PROFILE_BIN" ]] || { echo "ERROR: profile_project bench binary not found" >&2; exit 1; }

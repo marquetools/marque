@@ -28,10 +28,26 @@ from collections import defaultdict
 
 
 def _parse_args(argv: list[str]) -> tuple[int, str, str | None]:
+    usage = "usage: top-n-inclusive.py N [LABEL] [--root SUBSTR]"
     if len(argv) < 2:
-        print("usage: top-n-inclusive.py N [LABEL] [--root SUBSTR]", file=sys.stderr)
+        print(usage, file=sys.stderr)
         raise SystemExit(2)
-    top_n = int(argv[1])
+    try:
+        top_n = int(argv[1])
+    except ValueError:
+        print(
+            f"{usage}\n"
+            f"       (N must be a positive integer; got {argv[1]!r})",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if top_n <= 0:
+        print(
+            f"{usage}\n"
+            f"       (N must be a positive integer; got {top_n})",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     label = ""
     root: str | None = None
     i = 2

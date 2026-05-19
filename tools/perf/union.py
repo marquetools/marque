@@ -45,7 +45,14 @@ def main() -> int:
         print("usage: union.py TARGET1[,TARGET2,...] [ROOT_SUBSTR] < folded.txt",
               file=sys.stderr)
         return 2
-    targets = sys.argv[1].split(",")
+    targets = [t.strip() for t in sys.argv[1].split(",") if t.strip()]
+    if not targets:
+        print(
+            "usage: union.py TARGET1[,TARGET2,...] [ROOT_SUBSTR] < folded.txt\n"
+            "       (no non-empty targets parsed — check for trailing/duplicate commas)",
+            file=sys.stderr,
+        )
+        return 2
     root = sys.argv[2] if len(sys.argv) > 2 else None
 
     total = 0

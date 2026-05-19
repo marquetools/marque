@@ -11,7 +11,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 > at 997 Hz against staging tip
 > [`535d1f48`](https://github.com/marquetools/marque/commit/535d1f48)
 > (PR #600 / LA-1 merged). Supersedes the prior synthesized
-> top-15 (preserved verbatim in §6 below). Closes #583.
+> top-15 (preserved verbatim in §11 below). Closes #583.
 >
 > **Two capture passes were taken.** The first (debug-assertion-on)
 > overstated `CanonicalAttrs` lifecycle cost by including
@@ -19,7 +19,7 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 > builds. The second (debug-assertion-off, release semantics, see
 > methodology §1) is the load-bearing capture for production
 > attribution and powers the tables below. The debug-assert capture
-> is preserved in §7 for methodological comparison and as a
+> is preserved in §10 for methodological comparison and as a
 > contamination case study.
 >
 > Capture and post-processing scripts are committed under
