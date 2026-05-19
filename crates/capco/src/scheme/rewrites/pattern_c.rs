@@ -19,7 +19,7 @@ use super::super::actions::{strip_dod_ucni_action, strip_doe_ucni_action};
 use super::super::predicates::{
     dod_ucni_classified_trigger, dod_ucni_promotes_noforn_trigger, doe_ucni_classified_trigger,
     doe_ucni_promotes_noforn_trigger, fouo_classified_trigger, limdis_classified_trigger,
-    sbu_classified_trigger,
+    sbu_classified_trigger, sbu_nf_classified_trigger,
 };
 use super::super::*;
 
@@ -49,6 +49,14 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
     const PATTERN_C_LIMDIS_WRITES: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
     const PATTERN_C_SBU_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const PATTERN_C_SBU_WRITES: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+    // #541 — SBU-NF classified-strip. Same shape as the SBU row
+    // above (`CAT_CLASSIFICATION` read, `CAT_NON_IC_DISSEM` write);
+    // the SBU-NF-presence scan lives in the
+    // `sbu_nf_classified_trigger` Custom predicate body — same-axis
+    // self-reference avoidance (plan §3.4 risk #4). §H.9 p178
+    // line 4421.
+    const PATTERN_C_SBU_NF_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
+    const PATTERN_C_SBU_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
 
     // UCNI strip: reads classification only; writes AEA (Custom
     // action removing DodUcni / DoeUcni variant only). AEA-presence
@@ -161,6 +169,54 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
             }),
             PATTERN_C_SBU_READS,
             PATTERN_C_SBU_WRITES,
+        ),
+        // Pattern-C row 2b: `capco/sbu-nf-evicted-by-classified` (#541).
+        //
+        // §H.9 p178 line 4421 (SBU NOFORN Commingling Rule(s)
+        // Within a Portion): "If the portion is classified, the
+        // classification level of the portion adequately protects
+        // the SBU information, so SBU is not reflected in the
+        // portion mark; however a NOFORN marking must be added to
+        // the portion mark, e.g., (C//NF)."
+        //
+        // The §3.5 compound-NF guard previously excluded SBU-NF
+        // from Pattern-C strip handling on the (correct) reasoning
+        // that the parallel `capco/sbu-nf-implies-noforn` Pattern-A
+        // row carries NF identity separately. The carve-out for
+        // SBU-NF on classified pages comes from §H.9 p178's
+        // explicit "SBU is not reflected" prescription — the SBU-NF
+        // compound token MUST be stripped to converge to (C//NF)
+        // rather than (C//SBU-NF) or (C//NF//SBU). See
+        // `sbu_nf_classified_trigger` and `apply_fact_remove`'s
+        // CAT_NON_IC_DISSEM arm for the §3.5 invariant's revised
+        // shape.
+        //
+        // The asymmetric LES-NF case (§H.9 p185 line 4557-4558
+        // explicitly retains LES on classified pages) does NOT get a
+        // parallel `capco/les-nf-evicted-by-classified` row — LES
+        // survives classification by regulatory design (see
+        // `NonIcDissemSet`'s type-level doc-comment for the
+        // legal-process / originator-control rationale). The
+        // `pattern_c_les_in_classified_propagates_to_banner` fixture
+        // in `crates/capco/tests/lattice_vs_scheme_parity.rs` is the
+        // regression gate against accidentally adding such a row.
+        //
+        // Co-fires with `capco/sbu-nf-implies-noforn` (Pattern-A):
+        // that row writes CAT_DISSEM (FactAdd NOFORN), this row
+        // writes CAT_NON_IC_DISSEM (FactRemove SBU-NF) — different
+        // axes, no scheduler conflict.
+        //
+        // verified 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`.
+        PageRewrite::custom(
+            "capco/sbu-nf-evicted-by-classified",
+            "CAPCO-2016 §H.9 p178",
+            CategoryPredicate::Custom(sbu_nf_classified_trigger),
+            CategoryAction::Intent(ReplacementIntent::FactRemove {
+                facts: smallvec::smallvec![FactRef::Cve(TOK_SBU_NF)],
+                scope: Scope::Page,
+            }),
+            PATTERN_C_SBU_NF_READS,
+            PATTERN_C_SBU_NF_WRITES,
         ),
         // Pattern-C row 3: `capco/dod-ucni-promotes-noforn-when-classified`.
         //

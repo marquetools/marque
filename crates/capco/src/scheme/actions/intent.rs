@@ -535,12 +535,34 @@ fn apply_fact_remove(
     if category == CAT_NON_IC_DISSEM {
         // PR 4b-C Commit 3 — extended LIMDIS / SBU removal for the
         // Pattern-C `capco/limdis-evicted-by-classified` /
-        // `capco/sbu-evicted-by-classified` rows. SbuNf / LesNf
-        // remain UnknownToken — they are the §H.9 p178 / p185
-        // compound-NF variants and Pattern-C strip rows MUST NOT
-        // touch them (Pattern §3.5 compound-NF guard); the existing
-        // `capco/sbu-nf-implies-noforn` + `capco/les-nf-implies-noforn`
-        // rewrites carry NF identity separately.
+        // `capco/sbu-evicted-by-classified` rows. #541 extended the
+        // dispatch with TOK_SBU_NF for `capco/sbu-nf-evicted-by-
+        // classified` (§H.9 p178 line 4421) — see §3.5 carve-out
+        // note below.
+        //
+        // **§3.5 compound-NF guard (revised #541)**: the original
+        // §3.5 invariant said Pattern-C strip rows MUST NOT touch
+        // SbuNf / LesNf "because the parallel implies-noforn
+        // rewrites carry NF identity separately." That phrasing was
+        // correct for LesNf — §H.9 p185 line 4557-4558 keeps LES on
+        // the banner regardless of classification, so a classified-
+        // strip row would corrupt the output. The phrasing was
+        // **wrong** for SbuNf — §H.9 p178 line 4421 explicitly says
+        // "the classification level of the portion adequately
+        // protects the SBU information, so SBU is not reflected in
+        // the portion mark; however a NOFORN marking must be added
+        // to the portion mark, e.g., (C//NF)." The compound SbuNf
+        // variant therefore MUST be stripped on classified pages.
+        // The asymmetry traces to the regulatory authority each
+        // marking carries (SBU is admin protection; LES carries
+        // independent legal-process discipline classification does
+        // not subsume) — see `NonIcDissemSet`'s type-level
+        // doc-comment in `crates/capco/src/lattice.rs` for the
+        // full rationale.
+        //
+        // **LesNf remains UnknownToken** intentionally: there is no
+        // §H.9 p185 strip row to drive a LES-NF removal — LES
+        // survives classification by design.
         //
         // Per the `ApplyIntentError::UnknownToken` doc-comment
         // (`crates/scheme/src/scheme.rs:454-458`), an emitter that
@@ -561,6 +583,18 @@ fn apply_fact_remove(
             // banner line."
             // verified 2026-05-16 against CAPCO-2016.md §H.9 p176.
             TOK_SBU => NonIcDissem::Sbu,
+            // #541 — §H.9 p178 line 4421 (SBU NOFORN Commingling
+            // Rule(s) Within a Portion): "If the portion is
+            // classified, the classification level of the portion
+            // adequately protects the SBU information, so SBU is not
+            // reflected in the portion mark; however a NOFORN
+            // marking must be added to the portion mark, e.g.,
+            // (C//NF)." Drives `capco/sbu-nf-evicted-by-classified`
+            // in scheme/rewrites/pattern_c.rs. The parallel
+            // `capco/sbu-nf-implies-noforn` Pattern-A row handles
+            // the NOFORN promotion side. Re-verified 2026-05-18
+            // against `crates/capco/docs/CAPCO-2016.md`.
+            TOK_SBU_NF => NonIcDissem::SbuNf,
             _ => return Err(ApplyIntentError::UnknownToken),
         };
         let before = attrs.non_ic_dissem.len();

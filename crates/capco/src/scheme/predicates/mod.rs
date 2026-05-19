@@ -65,5 +65,5 @@ pub(crate) use self::token_routing::{capco_token_category, never_fires};
 pub(crate) use self::triggers::{
     dod_ucni_classified_trigger, dod_ucni_promotes_noforn_trigger, doe_ucni_classified_trigger,
     doe_ucni_promotes_noforn_trigger, fouo_classified_trigger, limdis_classified_trigger,
-    sbu_classified_trigger,
+    sbu_classified_trigger, sbu_nf_classified_trigger,
 };

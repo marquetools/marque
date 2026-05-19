@@ -291,7 +291,11 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
     // PR 4b-D.2 Copilot R1 #2 added capco/noforn-clears-display-only-to
     // (§H.8 p145 + §D.2 Table 3 rows 1-2; 23 → 24) — companion to
     // capco/noforn-clears-rel-to for the DISPLAY ONLY country-list axis.
-    assert_eq!(engine.scheduled_rewrites().len(), 24);
+    // #541 added capco/sbu-nf-evicted-by-classified (§H.9 p178 line 4421;
+    // 24 → 25) — Pattern-C strip row for the compound SbuNf variant on
+    // classified pages; companion to capco/sbu-evicted-by-classified for
+    // the bare-SBU case.
+    assert_eq!(engine.scheduled_rewrites().len(), 25);
 }
 
 #[test]
