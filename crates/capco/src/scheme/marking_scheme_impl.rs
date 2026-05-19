@@ -19,7 +19,7 @@ use marque_ism::CanonicalAttrs;
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
-    Template, TokenId, TokenRef,
+    Span, Template, TokenId, TokenRef,
 };
 
 use super::actions::*;
@@ -107,6 +107,10 @@ impl MarkingScheme for CapcoScheme {
     /// table.
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
         satisfies_attrs(&marking.0, token_ref)
+    }
+
+    fn token_span(&self, marking: &Self::Marking, token_ref: &TokenRef) -> Option<Span> {
+        token_span_attrs(&marking.0, token_ref)
     }
 
     /// Map a [`FactRef`] to its [`CategoryId`].

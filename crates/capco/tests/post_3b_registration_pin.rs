@@ -2,10 +2,18 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-5 registration pin (architecturally consistent with PR 3b.A:
+//! Post-PR-#578 registration pin (architecturally consistent with PR 3b.A:
 //! E068 + E069 are per-row IDs emitted by `BannerMatchesProjectedRule`,
 //! analogous to E035 + E040; they do NOT count as separate registered
-//! `Rule` impls. Registered count stays at 38).
+//! `Rule` impls. Registered count is 23 after PR #578 retires 15
+//! declarative wrappers (E010/E012/E014/E015/E016/E021/E024/E036/E037/
+//! E038/E053/E054/E055/E056/E057) into the engine's constraint-catalog
+//! bridge — these IDs are still emittable through the bridge but no
+//! longer correspond to registered `Rule` impls. S004 stays a
+//! registered walker because its replacement is corpus-derived during
+//! evaluation and the bridge's `fix_intent_by_name(name, attrs,
+//! marking_type)` shape cannot return the candidate without
+//! re-running the evaluator.
 //!
 //! ## PR 5 PM-Addendum-I.6 deviation
 //!
@@ -99,9 +107,15 @@ use std::collections::BTreeSet;
 /// `[rules] E058 = "off"` / `[rules] E059 = "off"` config-override
 /// continuity) but are no longer counted as registered `Rule` impls.
 const EXPECTED_RULE_IDS: &[&str] = &[
-    "C001", "E002", "E005", "E006", "E007", "E008", "E010", "E012", "E014", "E015", "E016", "E021",
-    "E024", "E031", "E036", "E037", "E038", "E039", "E041", "E053", "E054", "E055", "E056", "E057",
-    "E061", "E062", "E063", "E064", "E065",
+    // PR #578 retires the following 15 IDs as registered `Rule` impls
+    // (they remain emittable via the engine's constraint-catalog bridge,
+    // tracked separately in `CapcoScheme::bridge_emitted_rule_ids`):
+    //   E010 E012 E014 E015 E016 E021 E024 E036 E037 E038
+    //   E053 E054 E055 E056 E057
+    //
+    // S004 stays a registered walker (see top-of-file header).
+    "C001", "E002", "E005", "E006", "E007", "E008", "E031", "E039", "E041", "E061", "E062", "E063",
+    "E064", "E065",
     // PR 9c.1 T134: legacy NATO compound text re-marking per
     // CAPCO-2016 §G.2 p40 (Table 5 — ATOMAL/BOHEMIA/BALK as
     // standalone registered control markings) + §H.7 p122 (ATOMAL
@@ -134,27 +148,29 @@ const EXPECTED_RULE_IDS: &[&str] = &[
 ];
 
 #[test]
-fn post_pr_470_registers_exact_38_rule_ids() {
+fn post_pr_578_registers_exact_23_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "38 unique IDs from 38
-    // registrations" from "38 unique IDs from 39 registrations
+    // assertion below cannot distinguish "23 unique IDs from 23
+    // registrations" from "23 unique IDs from 24 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
     // Issue #407 / PR #491: added E067 `BareCanonicalCompoundRule`
     // (39 → 40). PR #488 (issue #488): retired S006 (40 → 39).
-    // PR closing #470: retired W002
-    // `DeclarativeCominglingWarningRule` (39 → 38) — see the rule
-    // module header in `crates/capco/src/rules.rs` for the
-    // citation-driven rationale.
+    // PR closing #470: retired W002 `DeclarativeCominglingWarningRule`
+    // (39 → 38). PR #578: retired 15 declarative wrappers
+    // (E010/E012/E014/E015/E016/E021/E024/E036/E037/E038/E053/E054/
+    // E055/E056/E057) into the engine's constraint-catalog bridge
+    // (38 → 23). S004 stays a registered walker because its
+    // candidate replacement is corpus-derived during evaluation.
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 38,
-        "post-PR-#470 raw rule slice length drifted from 38 \
+        raw_len, 23,
+        "post-PR-#578 raw rule slice length drifted from 23 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -171,16 +187,16 @@ fn post_pr_470_registers_exact_38_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        38,
-        "EXPECTED_RULE_IDS does not contain 38 unique entries: {expected:?}",
+        23,
+        "EXPECTED_RULE_IDS does not contain 23 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        38,
-        "post-PR-#470 registered rule count drifted from 38: actual={actual:?}",
+        23,
+        "post-PR-#578 registered rule count drifted from 23: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -196,7 +212,7 @@ fn post_pr_470_registers_exact_38_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-PR-#470 registered rule-ID set drifted. \
+        "post-PR-#578 registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \

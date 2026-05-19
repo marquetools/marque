@@ -59,7 +59,7 @@ pub(crate) use self::sci_per_system::{
 };
 pub(crate) use self::spans::{
     dissem_token_id_for_form, dissem_token_span, first_sci_span, infer_companion_form,
-    last_dissem_span, us_level,
+    last_dissem_span, token_span_attrs, us_level,
 };
 pub(crate) use self::token_routing::{capco_token_category, never_fires};
 pub(crate) use self::triggers::{
