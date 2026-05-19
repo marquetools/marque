@@ -145,6 +145,15 @@ impl SciSet {
     /// on different systems stays distinct because it's keyed under
     /// the system).
     pub fn from_markings(markings: &[SciMarking]) -> Self {
+        Self::from_markings_iter(markings.iter())
+    }
+
+    /// Construct an `SciSet` from an iterator over `SciMarking` references.
+    ///
+    /// Prefer this over [`Self::from_markings`] when the caller already has an
+    /// iterator, such as a flattened per-portion slice — avoids the intermediate
+    /// `Vec<SciMarking>` allocation. CLONE-1 performance fix (issue #606).
+    pub fn from_markings_iter<'a>(markings: impl Iterator<Item = &'a SciMarking>) -> Self {
         let mut out = Self::empty();
         for m in markings {
             let key = SystemKey::from_system(&m.system);
@@ -875,6 +884,15 @@ impl AeaSet {
     /// Duplicate atoms within `markings` collapse via the per-axis
     /// joins (idempotent in every axis).
     pub fn from_markings(markings: &[AeaMarking]) -> Self {
+        Self::from_markings_iter(markings.iter())
+    }
+
+    /// Construct an `AeaSet` from an iterator over `AeaMarking` references.
+    ///
+    /// Prefer this over [`Self::from_markings`] when the caller already has an
+    /// iterator, such as a flattened per-portion slice — avoids the intermediate
+    /// `Vec<AeaMarking>` allocation. CLONE-1 performance fix (issue #606).
+    pub fn from_markings_iter<'a>(markings: impl Iterator<Item = &'a AeaMarking>) -> Self {
         let mut out = Self::empty();
         for m in markings {
             match m {
@@ -1234,6 +1252,21 @@ impl ClassificationLattice {
         portions
             .iter()
             .map(|p| Self(p.classification.clone()))
+            .fold(Self::empty(), |acc, p| acc.join(&p))
+    }
+
+    /// Construct from an iterator of pre-computed `Option<MarkingClassification>`
+    /// values — joins them by `OrdMax` over `effective_level()`.
+    ///
+    /// Prefer this over [`Self::from_attrs_iter`] when the caller has already
+    /// mapped or transformed each portion's classification, because it avoids
+    /// the need to clone a full `CanonicalAttrs` slice just to modify the
+    /// `classification` field. CLONE-1 performance fix (issue #606): eliminates
+    /// the `filtered: Vec<CanonicalAttrs>` allocation in `join_via_lattice_body`.
+    pub fn from_classification_iter(
+        iter: impl Iterator<Item = Option<MarkingClassification>>,
+    ) -> Self {
+        iter.map(Self)
             .fold(Self::empty(), |acc, p| acc.join(&p))
     }
 
