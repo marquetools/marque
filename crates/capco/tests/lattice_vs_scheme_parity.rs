@@ -2185,26 +2185,151 @@ fn pattern_c_dod_ucni_classified_with_explicit_noforn_no_double_inject() {
 }
 
 #[test]
-fn pattern_c_sbu_nf_in_classified_preserves_noforn_compound_guard() {
-    // §3.5 compound-NF invariant: `NonIcDissem::SbuNf` is a distinct
-    // variant from `NonIcDissem::Sbu`. Pattern-C row
-    // `capco/sbu-evicted-by-classified` triggers on the bare `Sbu`
-    // variant only (TOK_SBU); SBU-NF goes through the existing
-    // `capco/sbu-nf-implies-noforn` row at §H.9 p178 which adds
-    // NOFORN without stripping SBU-NF. This fixture pins the
-    // invariant: SBU-NF + classified page → NOFORN appears on the
-    // banner dissem axis (via either the implies-noforn rewrite or
-    // the SbuNf→Sbu+NF split in `expected_non_ic_dissem` — both
-    // surface NOFORN).
+fn pattern_c_sbu_nf_classified_strip_promotes_noforn() {
+    // #541 — §H.9 p178 line 4421 (SBU NOFORN Commingling Rule(s)
+    // Within a Portion): "If the portion is classified, the
+    // classification level of the portion adequately protects the
+    // SBU information, so SBU is not reflected in the portion mark;
+    // however a NOFORN marking must be added to the portion mark,
+    // e.g., (C//NF)."
+    //
+    // This fixture pins the post-#541 semantic on the scheme path:
+    // SBU-NF + classified page → both `capco/sbu-nf-evicted-by-
+    // classified` (Pattern-C) and `capco/sbu-nf-implies-noforn`
+    // (Pattern-A) fire together, producing `non_ic_dissem = []` +
+    // `dissem_us = [Nf]`. The pre-#541 behavior was wrong: SbuNf
+    // persisted in non_ic_dissem because Pattern-C's bare-Sbu
+    // trigger didn't match the compound variant and the
+    // transmutation_stubs Entry 6a was a `never_fires`/`noop_action`
+    // stub.
     let mut p_sbu_nf = portion_us(Classification::Unclassified);
     p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
     let portions = [p_sbu_nf, portion_us(Classification::Secret)];
     let banner = project_via_scheme(&portions);
     assert!(
+        !banner.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "§H.9 p178 line 4421: Pattern-C row \
+         `capco/sbu-nf-evicted-by-classified` must strip SBU-NF \
+         from the banner non_ic axis. banner.non_ic_dissem = {:?}",
+        banner.non_ic_dissem,
+    );
+    assert!(
+        !banner.non_ic_dissem.contains(&NonIcDissem::Sbu),
+        "§H.9 p178 line 4421: bare SBU must not be introduced \
+         either — the §3.5 carve-out for SBU-NF is a pure removal, \
+         not a transmutation. banner.non_ic_dissem = {:?}",
+        banner.non_ic_dissem,
+    );
+    assert!(
         banner.dissem_us.contains(&DissemControl::Nf),
-        "§3.5 invariant + §H.9 p178: SBU-NF must surface NOFORN on \
+        "§H.9 p178 line 4421: Pattern-A row \
+         `capco/sbu-nf-implies-noforn` must promote NOFORN onto \
          the banner dissem axis. banner.dissem_us = {:?}",
         banner.dissem_us,
+    );
+}
+
+#[test]
+fn parity_classified_sbu_nf_lattice_and_scheme_both_drop_sbu_nf() {
+    // #541 — convergence gate: post-fix the lattice path (via
+    // `NonIcDissemSet::from_attrs_iter`'s classified branch) and
+    // the scheme path (via the new `capco/sbu-nf-evicted-by-
+    // classified` Pattern-C row + the existing `capco/sbu-nf-
+    // implies-noforn` Pattern-A row) MUST produce byte-identical
+    // CanonicalAttrs on every axis. Pre-#541 both paths were wrong
+    // in different ways (lattice kept bare Sbu; scheme kept compound
+    // SbuNf) — divergence was masked because no fixture asserted
+    // byte-identity on this input.
+    //
+    // The `dissem_us` divergence carve-out in the file's hoisted
+    // rationale (§B.3 Table 2 p21 caveated-classified closure)
+    // applies to caveated content; SBU-NF is non-IC dissem, not
+    // ORCON/IMCON/etc., and the input isn't on the caveated
+    // closure path. Expect byte-identity on every axis.
+    let mut p_sbu_nf = portion_us(Classification::Unclassified);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
+    let portions = [p_sbu_nf, portion_us(Classification::Secret)];
+    assert_byte_identity(
+        "parity_classified_sbu_nf_lattice_and_scheme_both_drop_sbu_nf",
+        &project_via_lattice(&portions),
+        &project_via_scheme(&portions),
+        &[],
+    );
+}
+
+#[test]
+fn parity_classified_les_nf_lattice_and_scheme_both_retain_les() {
+    // #541 — LES asymmetry pin: per §H.9 p185 line 4557-4558 LES
+    // survives classification (unlike SBU per §H.9 p178 line 4421).
+    // Both projection paths MUST retain `Les` in `non_ic_dissem`
+    // and inject NOFORN into `dissem_us` — the canonical worked
+    // example from §H.9 p185 is `SECRET//NOFORN//LES`.
+    //
+    // This is the negative-regression gate against a future
+    // change-of-mind that mistakenly treats LES-NF as symmetric
+    // with SBU-NF. The asymmetry traces to LES carrying independent
+    // law-enforcement legal-process discipline (warning statements,
+    // originator-control, prohibition on legal-proceedings use per
+    // §H.9 p184) that classification doesn't subsume; SBU is purely
+    // admin-protection that classification does subsume. See
+    // `NonIcDissemSet`'s type-level doc-comment in
+    // `crates/capco/src/lattice.rs` for the full rationale.
+    let mut p_les_nf = portion_us(Classification::Unclassified);
+    p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into_boxed_slice();
+    let portions = [p_les_nf, portion_us(Classification::Secret)];
+    let lat = project_via_lattice(&portions);
+    let scheme = project_via_scheme(&portions);
+    // Whole-attrs byte-identity: every axis must agree (no expected
+    // divergence). This is the authoritative gate against silent
+    // divergence on axes the LES-specific field checks below do
+    // not inspect (sci_controls, sar_markings, fgi_marker,
+    // declass_exemption, etc.).
+    assert_byte_identity(
+        "parity_classified_les_nf_lattice_and_scheme_both_retain_les",
+        &lat,
+        &scheme,
+        &[],
+    );
+    // Field-level documentation of the load-bearing properties: LES
+    // survives, NOFORN is injected, LES-NF is transformed away.
+    // These assertions also serve as faster failure-mode triage when
+    // the test trips — `assert_byte_identity`'s diff message lists
+    // raw values; these messages cite §H.9 p185 directly.
+    assert!(
+        lat.non_ic_dissem.contains(&NonIcDissem::Les),
+        "§H.9 p185: lattice must retain Les on classified pages. \
+         lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        scheme.non_ic_dissem.contains(&NonIcDissem::Les),
+        "§H.9 p185: scheme must retain Les on classified pages. \
+         scheme.non_ic_dissem = {:?}",
+        scheme.non_ic_dissem,
+    );
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Nf),
+        "§H.9 p185: lattice must inject NOFORN. \
+         lat.dissem_us = {:?}",
+        lat.dissem_us,
+    );
+    assert!(
+        scheme.dissem_us.contains(&DissemControl::Nf),
+        "§H.9 p185: scheme must inject NOFORN. \
+         scheme.dissem_us = {:?}",
+        scheme.dissem_us,
+    );
+    assert!(
+        !lat.non_ic_dissem.contains(&NonIcDissem::LesNf),
+        "LES-NF must be transformed away (Les + NOFORN). \
+         lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        !scheme.non_ic_dissem.contains(&NonIcDissem::LesNf),
+        "LES-NF must be transformed away (Les + NOFORN). \
+         scheme.non_ic_dissem = {:?}",
+        scheme.non_ic_dissem,
     );
 }
 

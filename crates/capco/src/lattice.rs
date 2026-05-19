@@ -3281,16 +3281,49 @@ impl FgiSet {
 /// Lattice form of the non-IC dissem axis.
 ///
 /// Carries the union of per-portion `non_ic_dissem` tokens after the
-/// classification-gated SBU-NF / LES-NF split (§H.9 p178 / p185) and
-/// the NODIS / EXDIS NF-injection flag (§H.9 p172 / p174).
+/// classification-gated SBU-NF / LES-NF transformations (§H.9 p178 /
+/// p185) and the NODIS / EXDIS NF-injection flag (§H.9 p172 / p174).
 ///
 /// `needs_nf` is set when:
-/// - The SBU-NF / LES-NF classified-context split fires (the original
-///   token is replaced by its bare form and `needs_nf` is set so the
-///   caller injects NOFORN into the dissem block), OR
+/// - SBU-NF appears on a classified page (§H.9 p178 — SBU vanishes
+///   from the set; only `needs_nf` is asserted — see asymmetry note
+///   below), OR
+/// - LES-NF appears on a classified page (§H.9 p185 — `Les` is
+///   inserted into the set AND `needs_nf` is asserted), OR
 /// - Any portion carries NODIS or EXDIS (classification-independent
 ///   per §H.9 p172 / p174 — the manual does not gate the NF injection
 ///   on classification level for these tokens).
+///
+/// # SBU-NF / LES-NF classified-context asymmetry (the §H.9 p178 vs
+/// §H.9 p185 difference)
+///
+/// On classified pages the two compound-NF non-IC dissem tokens
+/// behave OPPOSITELY:
+///
+/// - **SBU-NF**: the bare SBU vanishes entirely from the output set;
+///   only NOFORN is injected via `needs_nf`. **§H.9 p178** (SBU NOFORN
+///   Commingling Rule(s) Within a Portion): *"If the portion is
+///   classified, the classification level of the portion adequately
+///   protects the SBU information, so SBU is not reflected in the
+///   portion mark; however a NOFORN marking must be added to the
+///   portion mark, e.g., (C//NF)."* The classification level subsumes
+///   SBU's role as administrative-protection marker.
+///
+/// - **LES-NF**: the bare LES is RETAINED in the output set; NOFORN
+///   is injected via `needs_nf` in parallel. **§H.9 p185** (LES NOFORN
+///   Precedence Rules for Banner Line Guidance): *"The LES marking
+///   always appears in the banner line if LES information (either LES
+///   or LES NOFORN) is contained in the document, regardless of the
+///   document's classification level. When a classified document
+///   contains portions of U//LES-NF, the 'LES' marking is used in the
+///   banner line and the NOFORN marking is applied as a Dissemination
+///   Control Marking. For example: SECRET//NOFORN//LES."* LES carries
+///   independent regulatory discipline (law-enforcement legal-process
+///   restrictions per §H.9 p182 LES Warning Statement, originator-
+///   control discipline per §H.9 p186 Notes — and the
+///   `SECRET//NOFORN//LES` worked example at §H.9 p184 Notional Example
+///   Page 4) that classification does NOT subsume — hence the
+///   asymmetry with SBU.
 ///
 /// **`Default`** is the bottom: empty set, `needs_nf = false`.
 ///
@@ -3298,13 +3331,12 @@ impl FgiSet {
 /// passes flagged the missing trait impl (rust-reviewer H-3); the
 /// lattice-consultant verdict was that the missing impl is the
 /// architecturally correct shape, not a gap. The classified-context
-/// SBU-NF / LES-NF split (`set.remove(&NonIcDissem::SbuNf)` plus
-/// `needs_nf = true`) is gated on the page-level `is_classified`
-/// predicate, which depends on the OUTER classification axis being
-/// known. A pure per-axis `join` cannot read the classification
-/// axis; implementing the trait would silently produce wrong output
-/// on any cross-axis composition path. Production consumers use
-/// [`Self::from_attrs_iter`] directly. See
+/// SBU-NF / LES-NF transformations are gated on the page-level
+/// `is_classified` predicate, which depends on the OUTER
+/// classification axis being known. A pure per-axis `join` cannot
+/// read the classification axis; implementing the trait would
+/// silently produce wrong output on any cross-axis composition path.
+/// Production consumers use [`Self::from_attrs_iter`] directly. See
 /// [`DeclassExemptionAccumulator`] (which retired its
 /// `JoinSemilattice` impl in PR 4b-E review for the dual reason: a
 /// commutativity violation) for the same precedent. The structural
@@ -3315,8 +3347,8 @@ impl FgiSet {
 /// - §H.9 p172 (EXDIS — REL TO not authorized in banner; NOFORN
 ///   conveys).
 /// - §H.9 p174 (NODIS — same).
-/// - §H.9 p178 (SBU-NF — split on classified pages).
-/// - §H.9 p185 (LES-NF — split on classified pages).
+/// - §H.9 p178 (SBU-NF — SBU vanishes on classified; NOFORN added).
+/// - §H.9 p185 (LES-NF — LES retained on classified; NOFORN added).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NonIcDissemSet {
     set: BTreeSet<NonIcDissem>,
@@ -3355,12 +3387,33 @@ impl NonIcDissemSet {
 
         let mut needs_nf = false;
         if classified {
-            // §H.9 p178: SBU-NF on classified pages → SBU + NF (dissem).
+            // §H.9 p178 (SBU NOFORN Commingling Rule(s) Within a
+            // Portion): "If the portion is classified, the
+            // classification level of the portion adequately protects
+            // the SBU information, so SBU is not reflected in the
+            // portion mark; however a NOFORN marking must be added to
+            // the portion mark, e.g., (C//NF)." SBU vanishes entirely;
+            // NOFORN injection happens via `needs_nf`. Asymmetric with
+            // the LES-NF branch immediately below (LES survives) —
+            // see the type-level doc-comment for the regulatory
+            // rationale. #541. Re-verified 2026-05-18 against
+            // `crates/capco/docs/CAPCO-2016.md`.
             if set.remove(&NonIcDissem::SbuNf) {
-                set.insert(NonIcDissem::Sbu);
                 needs_nf = true;
             }
-            // §H.9 p185: LES-NF on classified pages → LES + NF (dissem).
+            // §H.9 p185 (LES NOFORN Precedence Rules for Banner Line
+            // Guidance): "The LES marking always
+            // appears in the banner line if LES information (either
+            // LES or LES NOFORN) is contained in the document,
+            // regardless of the document's classification level. When
+            // a classified document contains portions of U//LES-NF,
+            // the 'LES' marking is used in the banner line and the
+            // NOFORN marking is applied as a Dissemination Control
+            // Marking. For example: SECRET//NOFORN//LES." LES is
+            // RETAINED in the output set (asymmetric with SBU above);
+            // NOFORN injection happens via `needs_nf` in parallel.
+            // Re-verified 2026-05-18 against
+            // `crates/capco/docs/CAPCO-2016.md`.
             if set.remove(&NonIcDissem::LesNf) {
                 set.insert(NonIcDissem::Les);
                 needs_nf = true;
@@ -4596,24 +4649,126 @@ mod tests {
     }
 
     #[test]
-    fn non_ic_dissem_set_sbu_nf_splits_on_classified() {
-        // §H.9 p178: SBU-NF on classified page → SBU + NF (dissem).
+    fn non_ic_dissem_set_sbu_nf_drops_sbu_on_classified() {
+        // §H.9 p178 (Commingling Rule(s) Within a Portion): "If the
+        // portion is classified, the classification level of the
+        // portion adequately protects the SBU information, so SBU is
+        // not reflected in the portion mark; however a NOFORN marking
+        // must be added to the portion mark, e.g., (C//NF)." SBU
+        // vanishes entirely; only NOFORN survives via `needs_nf`.
+        // #541.
         let mut p = portion_us(Classification::Secret);
         p.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
         let s = NonIcDissemSet::from_attrs_iter(&[p]);
-        assert!(s.as_set().contains(&NonIcDissem::Sbu));
-        assert!(!s.as_set().contains(&NonIcDissem::SbuNf));
-        assert!(s.needs_nf());
+        assert!(
+            !s.as_set().contains(&NonIcDissem::Sbu),
+            "§H.9 p178: SBU is not reflected on classified portion; \
+             set must NOT contain Sbu after SBU-NF strip. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.as_set().contains(&NonIcDissem::SbuNf),
+            "SBU-NF must be removed from the set (it's transformed \
+             into NOFORN-via-needs_nf). set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            s.needs_nf(),
+            "§H.9 p178: NOFORN must be added to the portion mark for \
+             classified-context SBU-NF. needs_nf = {}",
+            s.needs_nf(),
+        );
     }
 
     #[test]
     fn non_ic_dissem_set_sbu_nf_kept_on_unclassified() {
-        // §H.9 p178: SBU-NF on unclassified page → kept as-is.
+        // §H.9 p178 (canonical unclassified form): SBU-NF on
+        // unclassified pages survives verbatim — banner
+        // `UNCLASSIFIED//SBU NOFORN`, portion `(U//SBU-NF)`. No
+        // transformation. Symmetric with the LES-NF unclassified
+        // case immediately below.
         let mut p = portion_us(Classification::Unclassified);
         p.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
         let s = NonIcDissemSet::from_attrs_iter(&[p]);
-        assert!(s.as_set().contains(&NonIcDissem::SbuNf));
-        assert!(!s.needs_nf());
+        assert!(
+            s.as_set().contains(&NonIcDissem::SbuNf),
+            "§H.9 p178 (canonical unclassified form): SBU-NF must \
+             survive verbatim on unclassified pages. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.needs_nf(),
+            "§H.9 p178: unclassified SBU-NF does not trigger NOFORN \
+             injection (NF is encoded in the compound token itself). \
+             needs_nf = {}",
+            s.needs_nf(),
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_set_les_nf_splits_on_classified() {
+        // §H.9 p185 (LES NOFORN Precedence Rules for Banner Line
+        // Guidance): "The LES marking always appears in the banner
+        // line if LES information (either LES or LES NOFORN) is
+        // contained in the document, regardless of the document's
+        // classification level. When a classified document contains
+        // portions of U//LES-NF, the 'LES' marking is used in the
+        // banner line and the NOFORN marking is applied as a
+        // Dissemination Control Marking. For example:
+        // SECRET//NOFORN//LES."
+        //
+        // This is the negative-regression gate for #541's asymmetry:
+        // LES MUST survive classification (unlike SBU). LES carries
+        // independent regulatory authority (law-enforcement
+        // legal-process restrictions, originator-control discipline)
+        // that classification does NOT subsume; SBU is purely
+        // admin-protection that classification DOES subsume. A
+        // future "make it symmetric" change-of-mind must trip this
+        // test before it can land.
+        let mut p = portion_us(Classification::Secret);
+        p.non_ic_dissem = Box::new([NonIcDissem::LesNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p]);
+        assert!(
+            s.as_set().contains(&NonIcDissem::Les),
+            "§H.9 p185: LES survives on classified pages; set must \
+             contain Les after LES-NF split. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.as_set().contains(&NonIcDissem::LesNf),
+            "LES-NF must be removed (transformed into Les + NOFORN). \
+             set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            s.needs_nf(),
+            "§H.9 p185: NOFORN must be added at banner roll-up. \
+             needs_nf = {}",
+            s.needs_nf(),
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_set_les_nf_kept_on_unclassified() {
+        // §H.9 p185 (canonical unclassified form): portion form
+        // `(U//LES-NF)` retained as-is on unclassified pages.
+        // Symmetric with the SBU-NF unclassified case.
+        let mut p = portion_us(Classification::Unclassified);
+        p.non_ic_dissem = Box::new([NonIcDissem::LesNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p]);
+        assert!(
+            s.as_set().contains(&NonIcDissem::LesNf),
+            "§H.9 p185 (canonical unclassified form): LES-NF must \
+             survive verbatim on unclassified pages. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.needs_nf(),
+            "§H.9 p185: unclassified LES-NF does not trigger NOFORN \
+             injection (NF is encoded in the compound token itself). \
+             needs_nf = {}",
+            s.needs_nf(),
+        );
     }
 
     #[test]
