@@ -781,8 +781,9 @@ fn closure_fires_noforn_on_ssi_marking() {
 ///
 /// Algebraic obligation per `marque-applied.md` §4.7.3. The Kleene
 /// fixpoint detects convergence and returns; a second call reaches
-/// the same fixed point on its first iteration's snapshot-equality
-/// check.
+/// the same fixed point on its first iteration's change-detection
+/// early-return (no cone fact mutates a marking that is already
+/// at the fixed point).
 #[test]
 fn closure_is_idempotent_on_orcon_marking() {
     let scheme = CapcoScheme::new();
@@ -948,7 +949,7 @@ fn closure_adds_relido_but_not_noforn_on_uncaveated_classified() {
 ///
 /// This is the architect's R-1 mitigation: bench corpus's typical
 /// portion has no closure-rule trigger, so the short-circuit skips
-/// the snapshot-and-fixpoint loop on the common case.
+/// the fixpoint loop on the common case.
 #[test]
 fn closure_short_circuits_on_bare_unclassified() {
     let scheme = CapcoScheme::new();

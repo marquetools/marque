@@ -479,18 +479,37 @@ impl MarkingScheme for CapcoScheme {
     /// `should_fire` contributes both its static `cone` facts (routed
     /// via the `apply_closure_fact` helper in `actions::intent`) and
     /// its `cone_derived` facts (the D21 open-vocab branch — same
-    /// routing). Convergence is
-    /// detected by comparing the marking to a per-pass snapshot;
-    /// monotone catalogs reach the fixed point in at most
-    /// `|fact_universe|` iterations, well within
-    /// [`MAX_CLOSURE_ITERATIONS`]'s `N=16` safety cap.
+    /// routing). Convergence is detected by OR-ing the per-fact
+    /// "mutated?" bool returned by `apply_closure_fact` across every
+    /// rule in the iteration; when an entire pass produces no
+    /// mutation, the fixed point has been reached. Monotone catalogs
+    /// reach the fixed point in at most `|fact_universe|` iterations,
+    /// well within [`MAX_CLOSURE_ITERATIONS`]'s `N=16` safety cap.
+    ///
+    /// **Termination signal (HOT-2, issue #594):** the original
+    /// implementation cloned the marking at the top of every
+    /// iteration and compared it byte-by-byte at the bottom — a
+    /// ~13% inclusive cost on the `lint_10kb` release flamegraph.
+    /// `apply_closure_fact` already knows whether its single fact
+    /// mutated the marking (`Ok(()) ⇔ mutated`, every other arm is
+    /// a no-op), so the walker now OR-s those signals instead of
+    /// re-deriving the same answer from a deep structural compare.
+    /// The `#[cfg(debug_assertions)]` cross-check below holds the
+    /// equivalence honest: in debug builds, a per-iteration snapshot
+    /// is still taken and `debug_assert_eq!`-d against `working`
+    /// when `changed == false`, so any future mutation path that
+    /// forgets to thread the bool through is caught at the next
+    /// `cargo test` run.
     ///
     /// # Invariants preserved
     ///
     /// 1. **Extensive**: `closure(m) ⊒ m` — only facts are added; the
     ///    underlying `apply_fact_add` path rejects removals.
     /// 2. **Idempotent**: `closure(closure(m)) == closure(m)` — the
-    ///    snapshot-equality early-return guarantees stable fixpoints.
+    ///    change-detection early-return guarantees stable fixpoints:
+    ///    when no cone fact in a full iteration produces a mutation,
+    ///    every subsequent iteration would do the same, so the
+    ///    current `working` is the fixed point.
     /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` — relies
     ///    on every catalog row's suppressors being disjoint from every
     ///    cone (the §4.7.3 table-design property). Catalog regressions
@@ -528,11 +547,10 @@ impl MarkingScheme for CapcoScheme {
         // PR 4b-D.2 Commit 6: cone-trigger short-circuit (architect's
         // R-1 mitigation). If no catalog row's trigger fires on the
         // input marking, no rule can contribute a cone fact — the
-        // closure is a no-op. Skip the snapshot+clone+fixpoint loop
-        // entirely. This is the typical case for the bench corpus
-        // (markings without SAR/RD/UCNI/FGI/ORCON/RSEN/IMCON/DSEN/
-        // LIMDIS/LES/SBU/SSI/NATO-class triggers) where the closure
-        // has nothing to add.
+        // closure is a no-op. Skip the fixpoint loop entirely. This
+        // is the typical case for the bench corpus (markings without
+        // SAR/RD/UCNI/FGI/ORCON/RSEN/IMCON/DSEN/LIMDIS/LES/SBU/SSI/
+        // NATO-class triggers) where the closure has nothing to add.
         //
         // Correctness: the short-circuit is sound because
         // `should_fire = trigger_fires && !is_suppressed`, and
@@ -545,7 +563,20 @@ impl MarkingScheme for CapcoScheme {
         }
         let mut working = marking;
         for _iteration in 0..marque_scheme::MAX_CLOSURE_ITERATIONS {
-            let snapshot = working.clone();
+            // HOT-2 (issue #594): in debug builds, snapshot before
+            // the rule pass so we can cross-check the change-tracking
+            // bool against the deep `==` ground truth at iteration
+            // end. The snapshot is `#[cfg(debug_assertions)]`-gated;
+            // release builds carry zero allocation per iteration.
+            #[cfg(debug_assertions)]
+            let working_before = working.clone();
+
+            // Whether any cone fact in this iteration mutated
+            // `working`. Bitwise `|=` on `bool` evaluates every
+            // `apply_closure_fact` call — no short-circuit on the
+            // first mutation; we must attempt every cone fact in
+            // the pass, not just the first one that succeeds.
+            let mut changed = false;
             for rule in CAPCO_CLOSURE_RULES {
                 if !rule.should_fire(self, &working) {
                     continue;
@@ -558,7 +589,7 @@ impl MarkingScheme for CapcoScheme {
                 // contract).
                 for token_id in rule.cone_token_ids() {
                     let fact_ref = FactRef::Cve(token_id);
-                    apply_closure_fact(self, &mut working, &fact_ref);
+                    changed |= apply_closure_fact(self, &mut working, &fact_ref);
                 }
                 // Derived cone (D21 open-vocab path, e.g. NATO partner
                 // list): the function MUST be monotone in the marking
@@ -569,11 +600,29 @@ impl MarkingScheme for CapcoScheme {
                 // chain-depth analysis per the cap's doc comment.
                 if let Some(derived_fn) = rule.cone_derived {
                     for fact_ref in derived_fn(&working) {
-                        apply_closure_fact(self, &mut working, &fact_ref);
+                        changed |= apply_closure_fact(self, &mut working, &fact_ref);
                     }
                 }
             }
-            if working == snapshot {
+            if !changed {
+                // Fixpoint reached: a full iteration produced no
+                // mutation, so every subsequent iteration would too.
+                // Debug-only cross-check: `changed == false` MUST
+                // mean `working` is byte-identical to the snapshot
+                // we took at iteration top — otherwise a mutation
+                // path exists that `apply_closure_fact` did not
+                // report. This is the load-bearing semantic guard
+                // for the HOT-2 optimization; it costs nothing in
+                // release.
+                #[cfg(debug_assertions)]
+                debug_assert_eq!(
+                    working, working_before,
+                    "CapcoScheme::closure: `changed == false` but `working` \
+                     byte-differs from the iteration-start snapshot — a \
+                     mutation path exists that did not return `true` from \
+                     `apply_closure_fact`. Audit every `&mut working` access \
+                     in `CapcoScheme::closure` (issue #594, HOT-2)."
+                );
                 return working;
             }
         }
