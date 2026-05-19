@@ -284,10 +284,11 @@ PR-4-to-6 segment of that path, not the whole path.
 Per PM contract D-2 (per-candidate fields) and D-8 (EXECUTE /
 INVESTIGATE tiers). Scoring: `score = (savings_midpoint_us ×
 confidence_pct) / risk_multiplier` where `confidence` is the
-column-4 value translated to a coefficient (HIGH=1.0, MED=0.6,
-LOW=0.3, N/A=0.0 for infrastructure rows with no own savings
-claim), and the risk multiplier is LOW=1, MED=2, HIGH=4. The
-`confidence` column itself is derived from evidence quality:
+value in the `confidence` column translated to a coefficient
+(HIGH=1.0, MED=0.6, LOW=0.3, N/A=0.0 for infrastructure rows
+with no own savings claim), and the risk multiplier is LOW=1,
+MED=2, HIGH=4. The `confidence` column itself is derived from
+evidence quality:
 HIGH = bench-validated, narrow range, no instrumentation gap;
 MED = structural argument with bench-data scaffolding (e.g.,
 cargo bloat shows the regression delta explicitly, per-stage
@@ -295,10 +296,10 @@ micro-bench data backs the per-call cost); LOW = hypothesis with
 no direct measurement (typically marked by `TBD-instrument`
 evidence or by "needs flamegraph" caveats); N/A = infrastructure
 or measurement-only candidate whose job is to unblock other
-candidates with no savings claim of its own. For WASM-only
-candidates `expected_savings_us = 0`, score uses
-`(savings_midpoint_kb × confidence_pct) / risk_multiplier` and
-is flagged W-prefix. Score is a rough ranking heuristic — scores
+candidates with no savings claim of its own. For candidates
+where `expected_savings_us = 0`, score is computed from
+`savings_midpoint_wasm_kb` instead of `savings_midpoint_us`
+(same coefficient structure). Score is a rough ranking heuristic — scores
 in the table may drift up to ~10-20% from a strict `(midpoint ×
 conf) / risk` reproduction because the original scoring was
 heuristic before the confidence column was made explicit; the
