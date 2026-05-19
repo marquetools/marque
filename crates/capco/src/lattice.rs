@@ -53,6 +53,27 @@ use marque_scheme::{
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Sort a slice of `&SmolStr` by `marque_ism::sar_sort_key` (CAPCO §H.5 p99
+/// numeric-first, alphabetic-after; also serves SCI §A.6 p15 which shares the
+/// same numeric-then-alpha rule).
+///
+/// Single named site so the compiler emits exactly one
+/// `slice::sort::stable::quicksort::quicksort<&SmolStr, _>` instantiation
+/// regardless of how many call sites use it (per PR 4b-perf LA-1 follow-up
+/// — issue #585). Previously each `.sort_by(|a, b| sar_sort_key(a)…)` call
+/// emitted a distinct ~15.6 KiB monomorphization; consolidating the 4
+/// `&SmolStr` sites + 1 tuple site (refactored to sort keys-first) collapses
+/// 5 monos to 1.
+///
+/// Deliberately NOT `#[inline]`: the closure here has a single anonymous type
+/// (`sort_smolstrs_by_sar::{closure#0}`) regardless of inlining decisions, so
+/// the mono guarantee holds either way. Omitting the hint avoids contradicting
+/// the doc comment's "single named site" framing — `lto = "fat"` (workspace
+/// `Cargo.toml`) handles whole-program inlining naturally if profitable.
+fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
+    slice.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
+}
+
 // ---------------------------------------------------------------------------
 // SciSet — lattice over the full SCI category state
 // ---------------------------------------------------------------------------
@@ -124,6 +145,15 @@ impl SciSet {
     /// on different systems stays distinct because it's keyed under
     /// the system).
     pub fn from_markings(markings: &[SciMarking]) -> Self {
+        Self::from_markings_iter(markings.iter())
+    }
+
+    /// Construct an `SciSet` from an iterator over `SciMarking` references.
+    ///
+    /// Prefer this over [`Self::from_markings`] when the caller already has an
+    /// iterator, such as a flattened per-portion slice — avoids the intermediate
+    /// `Vec<SciMarking>` allocation. CLONE-1 performance fix (issue #606).
+    pub fn from_markings_iter<'a>(markings: impl Iterator<Item = &'a SciMarking>) -> Self {
         let mut out = Self::empty();
         for m in markings {
             let key = SystemKey::from_system(&m.system);
@@ -155,16 +185,15 @@ impl SciSet {
 
         let mut out: Vec<SciMarking> = Vec::with_capacity(systems.len());
         for (sys_key, comp_map) in systems {
-            let mut comps: Vec<(&SmolStr, &BTreeSet<SmolStr>)> = comp_map.iter().collect();
-            comps.sort_by(|a, b| marque_ism::sar_sort_key(a.0).cmp(&marque_ism::sar_sort_key(b.0)));
+            let mut comp_keys: Vec<&SmolStr> = comp_map.keys().collect();
+            sort_smolstrs_by_sar(&mut comp_keys);
 
-            let compartments: Vec<SciCompartment> = comps
+            let compartments: Vec<SciCompartment> = comp_keys
                 .into_iter()
-                .map(|(id, sub_set)| {
+                .map(|id| {
+                    let sub_set = comp_map.get(id).expect("key enumerated from comp_map");
                     let mut subs: Vec<&SmolStr> = sub_set.iter().collect();
-                    subs.sort_by(|a, b| {
-                        marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b))
-                    });
+                    sort_smolstrs_by_sar(&mut subs);
                     let sub_boxes: Box<[SmolStr]> = subs
                         .into_iter()
                         .cloned()
@@ -335,24 +364,21 @@ impl SarSet {
         }
 
         let mut prog_keys: Vec<&SmolStr> = self.programs.keys().collect();
-        prog_keys.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
+        sort_smolstrs_by_sar(&mut prog_keys);
 
         let built_programs: Vec<SarProgram> = prog_keys
             .into_iter()
             .map(|pid| {
                 let comp_map = self.programs.get(pid).expect("key enumerated above");
                 let mut comp_keys: Vec<&SmolStr> = comp_map.keys().collect();
-                comp_keys
-                    .sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
+                sort_smolstrs_by_sar(&mut comp_keys);
 
                 let built_compartments: Vec<SarCompartment> = comp_keys
                     .into_iter()
                     .map(|cid| {
                         let subs = comp_map.get(cid).expect("key enumerated above");
                         let mut sub_vec: Vec<&SmolStr> = subs.iter().collect();
-                        sub_vec.sort_by(|a, b| {
-                            marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b))
-                        });
+                        sort_smolstrs_by_sar(&mut sub_vec);
                         let boxed: Box<[SmolStr]> = sub_vec
                             .into_iter()
                             .cloned()
@@ -858,6 +884,15 @@ impl AeaSet {
     /// Duplicate atoms within `markings` collapse via the per-axis
     /// joins (idempotent in every axis).
     pub fn from_markings(markings: &[AeaMarking]) -> Self {
+        Self::from_markings_iter(markings.iter())
+    }
+
+    /// Construct an `AeaSet` from an iterator over `AeaMarking` references.
+    ///
+    /// Prefer this over [`Self::from_markings`] when the caller already has an
+    /// iterator, such as a flattened per-portion slice — avoids the intermediate
+    /// `Vec<AeaMarking>` allocation. CLONE-1 performance fix (issue #606).
+    pub fn from_markings_iter<'a>(markings: impl Iterator<Item = &'a AeaMarking>) -> Self {
         let mut out = Self::empty();
         for m in markings {
             match m {
@@ -1218,6 +1253,20 @@ impl ClassificationLattice {
             .iter()
             .map(|p| Self(p.classification.clone()))
             .fold(Self::empty(), |acc, p| acc.join(&p))
+    }
+
+    /// Construct from an iterator of pre-computed `Option<MarkingClassification>`
+    /// values — joins them by `OrdMax` over `effective_level()`.
+    ///
+    /// Prefer this over [`Self::from_attrs_iter`] when the caller has already
+    /// mapped or transformed each portion's classification, because it avoids
+    /// the need to clone a full `CanonicalAttrs` slice just to modify the
+    /// `classification` field. CLONE-1 performance fix (issue #606): eliminates
+    /// the `filtered: Vec<CanonicalAttrs>` allocation in `join_via_lattice_body`.
+    pub fn from_classification_iter(
+        iter: impl Iterator<Item = Option<MarkingClassification>>,
+    ) -> Self {
+        iter.map(Self).fold(Self::empty(), |acc, p| acc.join(&p))
     }
 
     /// Consume into the inner `Option<MarkingClassification>`.

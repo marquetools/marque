@@ -17,6 +17,11 @@
 !tools/masking-pin-lint/cache/
 !tools/masking-pin-lint/cache/**
 
+# Python bytecode (tools/perf/ utilities are Python; users running
+# them locally create __pycache__/ directories).
+__pycache__/
+*.pyc
+
 # Packages
 node_modules/
 .venv/
