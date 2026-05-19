@@ -97,6 +97,27 @@ assert_impl_all!(
     BoundedMeetSemilattice
 );
 
+// Negative locks for the 10 non-bounded types. Without these,
+// accidentally adding `BoundedJoinSemilattice` (e.g., declaring a
+// `top()` value for `SciSet` that doesn't actually bound the open-
+// vocabulary axis) would compile cleanly and silently weaken the
+// "open-vocab has no lawful finite top" invariant that grounds the
+// observational-state-vs-bounded distinction. Per Copilot R2 finding
+// on PR #557: the positive `assert_impl_all!` block above is
+// asymmetric with the Join-only negative locks below; this block
+// closes the symmetry.
+
+assert_not_impl_any!(SciSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(SarSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(FgiSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(AeaSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(NatoDissemSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(RelToBlock: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(DeclassifyOnLattice: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(DissemSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(JointSet: BoundedJoinSemilattice, BoundedMeetSemilattice);
+assert_not_impl_any!(DisplayOnlyBlock: BoundedJoinSemilattice, BoundedMeetSemilattice);
+
 // --- Join-only observational-state types (PR #456 split + PR #538 audit) ---
 
 assert_impl_all!(DissemSet: JoinSemilattice);

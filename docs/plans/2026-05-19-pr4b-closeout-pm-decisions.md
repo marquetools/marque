@@ -98,7 +98,7 @@ Rationale: compile-time and runtime catch disjoint drift classes (per rust-prefl
 
 **OQ-RUST-4 (SupersessionSet pin location) — DEFER**:
 - `SupersessionSet` lives in `marque-scheme`. A compile-time pin in `crates/scheme/tests/` would constitute an engine-crate edit.
-- Track in `specs/006-engine-rule-refactor/tasks.md` as a deferred follow-up task `T134` (engine-crate pin for `SupersessionSet` Join-only invariant, requires authorized engine-crate touch precedent).
+- Track in `specs/006-engine-rule-refactor/tasks.md` as a deferred follow-up task `T146` (engine-crate pin for `SupersessionSet` Join-only invariant, requires authorized engine-crate touch precedent). Note: an earlier draft referenced T134; corrected per the ERRATA at the top of this file (T130-T134 are taken by PR-8/9; the closeout range is T142-T146 with T146 reserved for this deferral).
 - The 4b closeout focuses on `marque-capco` lattice impls; SupersessionSet's structural claim is already audited via PR #538's proptest.
 
 **OQ-RUST-5 (Coverage discipline)** — not explicitly raised but implicit:
