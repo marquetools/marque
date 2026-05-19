@@ -219,6 +219,89 @@ jobs:
             -p marque-engine -p marque \
             --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
 
+  # T145 / SC-014 — Refactor-006 PR-4b corpus regression sweep ×
+  # {3a + 3b + 4b} subsequence.
+  #
+  # T025 (3a) and T029 (3b) above validate each prior keystone in
+  # isolation: "did 3a regress?" / "did 3b regress?" answerable from
+  # the CI log alone, without re-bisecting through the keystone
+  # window. T145 extends the subsequence to 4b by running the same
+  # corpus-regression suites on every 4b-prefixed branch (the
+  # umbrella + each of the nine sub-PR branches 4b-A / 4b-B / 4b-C /
+  # 4b-D.0 / 4b-D.1 / 4b-D.2 / 4b-D.3 / 4b-E / 4b-F + the closeout
+  # branch). Together, T025 / T029 / T145 are the SC-014 keystone
+  # subsequence verification for the engine-rule-refactor keystone
+  # PRs that have landed so far; PR 5 will land its own equivalent
+  # matrix entry when its keystone branch opens.
+  #
+  # Prefix-match `if:` filter is intentional: the umbrella naming
+  # `refactor-006-pr-4b*` is namespace-clean per the project's
+  # branch-naming convention, and any future 4b-followup branch is
+  # in scope by construction without an explicit ci.yml edit. The
+  # job body is byte-identical to T029 — same toolchain pin, same
+  # cache config, same three corpus suites, same Phase 4 gated
+  # invocation.
+  pr-4b-corpus-regression:
+    name: PR 4b corpus regression (T145)
+    needs: check
+    if: |
+      startsWith(github.ref, 'refs/heads/refactor-006-pr-4b') ||
+      startsWith(github.head_ref, 'refactor-006-pr-4b')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: "nightly"
+
+      - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
+
+      # Corpus regression tests live in `crates/{capco,engine}/tests/`
+      # and `marque/tests/`. `cargo test --test` matches an exact
+      # integration-test target name within ONE package; `--workspace`
+      # combined with `--test` fails when the named target doesn't
+      # exist in every member crate. Invoke each suite per-package
+      # explicitly (Copilot review feedback on PR #315):
+      #   - corpus_parity     in marque-capco
+      #   - corpus_accuracy   in marque-engine
+      #   - corpus_provenance in marque
+      #
+      # When new corpus suites land, add them here in the same shape.
+      # `--features marque-engine/corpus-override` enables the SC-002
+      # decoder accuracy gate that lives behind the same feature flag
+      # as the corpus override audit-trail tests.
+      - name: cargo test corpus regression suites
+        run: |
+          cargo test -p marque-capco --test corpus_parity \
+            --features marque-engine/corpus-override
+          cargo test -p marque-engine --test corpus_accuracy \
+            --features marque-engine/corpus-override
+          cargo test -p marque --test corpus_provenance \
+            --features marque-engine/corpus-override
+
+      # Phase 4 (US2) regression suites are file-level gated on
+      # `decoder-harness` and `corpus-override` features that are NOT
+      # in any default feature set. Without this explicit invocation
+      # the SC-004 always-on regression floor (decoder_accuracy.rs)
+      # and the corpus-override audit-trail invariants
+      # (corpus_override.rs + cli_corpus_override.rs) are dormant.
+      # Enable both features here so those non-ignored gated suites run.
+      # `decoder_diagnostic.rs` is also gated on `decoder-harness`, but
+      # its tests are all `#[ignore]`-marked (issue #133 root-cause
+      # traces) and require an explicit `--run-ignored` invocation;
+      # they intentionally do not run in this step.
+      #
+      # Uses `cargo test` rather than `cargo nextest` so this job does
+      # not require the extra `taiki-e/install-action` step the main
+      # `test` job uses. Functional behavior is the same for these
+      # suites — neither relies on nextest-specific isolation.
+      - name: cargo test (Phase 4 gated suites)
+        run: |
+          cargo test \
+            -p marque-engine -p marque \
+            --features marque-engine/decoder-harness,marque-engine/corpus-override,marque/corpus-override
+
   # FR-039 — masking-pin lint. AST scan over `tests/` and
   # `crates/*/tests/` that locates every `with_recognizer(...StrictRecognizer...)`
   # call site and asserts each carries either a `// MASKING-PIN: tracks #NNN`

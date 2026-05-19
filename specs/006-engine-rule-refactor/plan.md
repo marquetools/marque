@@ -365,6 +365,31 @@ T026a–T026f in `tasks.md`):
   `refactor-006-pr-3b*`. Constitution VII §IV-clean (no edits to
   `crates/{engine,scheme,core,rules,ism}`). See
   `docs/plans/2026-05-08-pr3b-closeout-T027-T028-T029-plan.md`.
+- **4b umbrella — LANDED 2026-05-{15→18}** (T142 + T143 + T144 +
+  T145, closeout aggregating 4b-A #426 / 4b-B #437 / 4b-C #468 /
+  4b-D.0 #514 / 4b-D.1 #517 / 4b-D.2 #527 / 4b-D.3 #535 / 4b-E
+  #539 / 4b-F #542). Closeout bookkeeping only — zero rule-logic
+  edits; zero engine-crate edits (Constitution VII
+  scheme-adoption boundary). T142: umbrella attestation
+  aggregating (a) single-§-citation discipline across 12 lattice
+  types + 27 `PageRewrite` rows + 10 `ClosureRule` rows + W004,
+  (b) engine-crate touch ledger documenting the five within-006
+  precedent breaches (4b-B Commit 2 / 4b-C Commit 5 / 4b-D.2 /
+  4b-D.3 / 4b-E), (c) per-axis net-delta math from pre-4b
+  baseline through post-4b-F terminal state (12 Join + 9 Meet +
+  2 BoundedJoin + 2 BoundedMeet impls; 27 PageRewrite rows; 10
+  ClosureRule rows; 39 `Constraint::Custom` rows; 38 registered
+  rules with W004 added and W002 retired). T143: compile-time
+  pin at `crates/capco/tests/lattice_static_assertions.rs`
+  locking 12 + 9 + 2 + 2 trait impls plus the Join-only invariant
+  for DissemSet / JointSet / DisplayOnlyBlock (PR #456 split +
+  PR #538 audit). T144: runtime triple-pin at
+  `crates/capco/tests/post_4b_lattice_inventory_pin.rs` covering
+  positional 27 `PageRewrite` names + positional 10 `ClosureRule`
+  names + sorted-set 39 `Constraint::Custom` labels. T145:
+  `pr-4b-corpus-regression` CI job branch-filtered to
+  `refactor-006-pr-4b*`, mirroring T029's body. See
+  `docs/plans/2026-05-19-pr4b-closeout-pm-decisions.md`.
 
 **Reviewer attestation requirements** (each sub-PR's PR description
 declares a–c against the sub-move it lands; the umbrella PR-3b
