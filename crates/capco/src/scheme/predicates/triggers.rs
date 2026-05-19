@@ -112,18 +112,64 @@ pub(crate) fn limdis_classified_trigger(m: &CapcoMarking) -> bool {
 }
 
 /// Pattern-C trigger: `classification > U ∧ contains SBU in non_ic`.
-/// Drives `capco/sbu-evicted-by-classified` (§H.9 p176).
+/// Drives `capco/sbu-evicted-by-classified` (§H.9 p176 banner-roll-up
+/// rule for bare SBU portions commingled with classified portions).
 ///
-/// NOTE: This trigger matches the bare `Sbu` variant ONLY; the compound
-/// `SbuNf` variant is a distinct token (TOK_SBU_NF) and is handled by
-/// the existing `capco/sbu-nf-implies-noforn` rewrite at PR 3c.B
-/// Sub-PR 8.F.2. §3.5 compound-NF invariant.
+/// Matches the bare `Sbu` variant only; the compound `SbuNf` variant
+/// is matched by the parallel [`sbu_nf_classified_trigger`] below
+/// (driving the analogous `capco/sbu-nf-evicted-by-classified` strip
+/// per §H.9 p178 Commingling Rule(s) — see that trigger's doc-comment
+/// for the §3.5 carve-out rationale). #541.
 pub(crate) fn sbu_classified_trigger(m: &CapcoMarking) -> bool {
     is_classified(m)
         && m.0
             .non_ic_dissem
             .iter()
             .any(|d| matches!(d, marque_ism::NonIcDissem::Sbu))
+}
+
+/// Pattern-C trigger: `classification > U ∧ contains SBU-NF in non_ic`.
+/// Drives `capco/sbu-nf-evicted-by-classified` (§H.9 p178 Commingling
+/// Rule(s) Within a Portion).
+///
+/// §H.9 p178 (SBU NOFORN Commingling Rule(s) Within a Portion):
+/// *"If the portion is classified, the classification level of the
+/// portion adequately protects the SBU information, so SBU is not
+/// reflected in the portion mark; however a NOFORN marking must be
+/// added to the portion mark, e.g., (C//NF)."*
+///
+/// # §3.5 compound-NF carve-out for SBU-NF (not LES-NF)
+///
+/// The earlier §3.5 compound-NF invariant said "Pattern-C strip rows
+/// MUST NOT touch SbuNf/LesNf because the parallel implies-noforn
+/// rewrites carry NF identity separately." That invariant is correct
+/// for **LES-NF** — §H.9 p185 (LES NOFORN Precedence Rules)
+/// explicitly says the LES marking survives classification. It is
+/// **wrong** for **SBU-NF** — §H.9 p178 (the Commingling Rule above)
+/// explicitly says SBU vanishes on classified portions.
+///
+/// The asymmetry traces to the regulatory authority each marking
+/// carries: SBU is administrative-protection-only and classification
+/// subsumes it; LES carries independent law-enforcement legal-process
+/// discipline (the §H.9 p182 LES Warning Statement, originator-control
+/// per §H.9 p186 Notes, prohibition on legal-proceedings use without
+/// originator authorization) that classification does NOT subsume.
+/// See `NonIcDissemSet`'s type-level doc-comment for the full
+/// rationale.
+///
+/// Co-fires with the existing Pattern-A `capco/sbu-nf-implies-noforn`
+/// rewrite (which adds NOFORN to dissem unconditionally on any
+/// SBU-NF presence per §H.9 p178 banner-form canonical example).
+/// The two touch different axes — Pattern-A writes CAT_DISSEM
+/// (FactAdd NOFORN); this row writes CAT_NON_IC_DISSEM (FactRemove
+/// SBU-NF) — so they compose cleanly without scheduling conflict.
+/// #541.
+pub(crate) fn sbu_nf_classified_trigger(m: &CapcoMarking) -> bool {
+    is_classified(m)
+        && m.0
+            .non_ic_dissem
+            .iter()
+            .any(|d| matches!(d, marque_ism::NonIcDissem::SbuNf))
 }
 
 /// Pattern-C trigger: `classification > U ∧ DOD UCNI on AEA axis`.

@@ -196,8 +196,20 @@ fn aea_ucni_kept_in_unclassified() {
 // =========================================================================
 
 /// XSpec: "NonICRollup Drop SBU-NF classified doc."
+///
+/// #541 — §H.9 p178 line 4421 (SBU NOFORN Commingling Rule(s) Within
+/// a Portion): "If the portion is classified, the classification
+/// level of the portion adequately protects the SBU information, so
+/// SBU is not reflected in the portion mark; however a NOFORN marking
+/// must be added to the portion mark, e.g., (C//NF)."
+///
+/// Pre-#541 the lattice path retained bare `Sbu` after the SBU-NF
+/// split — wrong per the §H.9 p178 passage above. Post-#541 SBU
+/// vanishes entirely; only NOFORN survives via `needs_nf`. The
+/// scheme path's parallel `capco/sbu-nf-evicted-by-classified`
+/// Pattern-C row provides the same semantic on the declarative side.
 #[test]
-fn non_ic_sbu_nf_splits_in_classified() {
+fn non_ic_sbu_nf_drops_sbu_in_classified() {
     let mut p1 = portion(Classification::Unclassified);
     p1.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
     let p2 = portion(Classification::Secret);
@@ -206,15 +218,32 @@ fn non_ic_sbu_nf_splits_in_classified() {
     let non_ic_set = NonIcDissemSet::from_attrs_iter(&portions);
     let needs_nf = non_ic_set.needs_nf();
     let non_ic = non_ic_set.into_boxed_slice();
-    assert!(non_ic.contains(&NonIcDissem::Sbu));
-    assert!(!non_ic.contains(&NonIcDissem::SbuNf));
-    assert!(needs_nf);
+    assert!(
+        !non_ic.contains(&NonIcDissem::Sbu),
+        "§H.9 p178 line 4421: SBU is not reflected on classified \
+         portion. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        !non_ic.contains(&NonIcDissem::SbuNf),
+        "SBU-NF must be removed (transformed away). non_ic = {:?}",
+        non_ic,
+    );
+    assert!(needs_nf, "§H.9 p178 line 4421: NOFORN must be injected");
 
-    // NF injection at the scheme layer.
+    // NF injection at the scheme layer + scheme-path strip of SbuNf
+    // via the new `capco/sbu-nf-evicted-by-classified` row.
     let scheme = CapcoScheme::new();
     let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
     let projected = scheme.project(Scope::Page, &markings);
     assert!(projected.0.dissem_us.contains(&DissemControl::Nf));
+    assert!(
+        !projected.0.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "§H.9 p178 line 4421: Pattern-C row \
+         `capco/sbu-nf-evicted-by-classified` must strip SBU-NF on \
+         the scheme path. projected.non_ic_dissem = {:?}",
+        projected.0.non_ic_dissem,
+    );
 }
 
 /// XSpec: "NonICRollup Keep SBU-NF Unclass doc."
