@@ -1266,8 +1266,7 @@ impl ClassificationLattice {
     pub fn from_classification_iter(
         iter: impl Iterator<Item = Option<MarkingClassification>>,
     ) -> Self {
-        iter.map(Self)
-            .fold(Self::empty(), |acc, p| acc.join(&p))
+        iter.map(Self).fold(Self::empty(), |acc, p| acc.join(&p))
     }
 
     /// Consume into the inner `Option<MarkingClassification>`.

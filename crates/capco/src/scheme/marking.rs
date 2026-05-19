@@ -308,9 +308,15 @@ impl CapcoMarking {
                 // CLONE-1 (issue #606): avoid cloning the full `CanonicalAttrs`
                 // slice just to modify the `classification` field.
                 // `ClassificationLattice::from_classification_iter` folds over
-                // pre-computed `Option<MarkingClassification>` values directly
-                // — no heap allocations beyond the `MarkingClassification`
-                // variants themselves (Copy-sized or small-Clone). The
+                // pre-computed `Option<MarkingClassification>` values directly,
+                // skipping all the non-classification fields that `CanonicalAttrs`
+                // carries (sci_markings, sar_markings, aea_markings, rel_to, etc.).
+                // Country-bearing variants (`Fgi`, `Conflict`) in the
+                // `Some(mc) => Some(mc.clone())` pass-through arm can still
+                // allocate for their country-list payload, but that cost is
+                // incurred only when solely_non_us is true (Nato/Fgi not raised),
+                // compared to the prior code which allocated a full
+                // `CanonicalAttrs` clone for every portion unconditionally. The
                 // per-portion classification adjustments (JOINT flatten,
                 // §H.7 reciprocal-raise, Conflict flatten) are computed inline.
                 ClassificationLattice::from_classification_iter(portions.iter().map(|p| {
@@ -363,9 +369,8 @@ impl CapcoMarking {
         // (`from_markings_iter`) to avoid the intermediate
         // `sci_markings_concat` / `aea_markings_concat` `Vec`
         // allocations that the slice-based APIs required.
-        let sci_set = SciSet::from_markings_iter(
-            portions.iter().flat_map(|p| p.sci_markings.iter()),
-        );
+        let sci_set =
+            SciSet::from_markings_iter(portions.iter().flat_map(|p| p.sci_markings.iter()));
         out.sci_markings = sci_set.to_markings();
 
         // Compatibility view: sci_controls is the flat CVE-enum
