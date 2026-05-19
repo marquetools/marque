@@ -514,19 +514,24 @@ Mapped to specific INVESTIGATE-tier candidate IDs per PM contract D-8.
 6. **`Arc<dyn Vocabulary<S>>` p99 cost attribution at HEAD.** The
    PR-2-era cost is baked in across the umbrella; cannot be cleanly
    subtracted from cumulative regression math. **→ MO-2** —
-   measurement (#583) shows `StrictRecognizer::recognize` at 11.50%
-   on lint; the dyn-dispatch portion of that is some fraction
-   (single-call indirection only). Realistic devirt savings ~5-10µs,
-   below D-8 30µs floor on the lint mean. Stays INVESTIGATE.
+   measurement (#583, release semantics) shows
+   `StrictRecognizer::recognize` at **12.03% on `lint_10kb`** (rooted
+   at `Engine::lint`); the dyn-dispatch portion of that is some
+   fraction (single-call indirection only). Realistic devirt savings
+   ~5-10µs, below D-8 30µs floor on the lint mean. Stays INVESTIGATE.
 7. **Per-portion lattice setup cost vs per-page roll-up.** Measured
-   `join_via_lattice` 26.55% on lint, `project_from_attrs_slice`
-   47.69% on lint — the lattice pipeline IS the dominant cost. The
-   single-portion fast path (**LA-3**) saves the per-page-call
-   portion of that for documents with ≤1 portion per page; the
-   bench has 10-15 portions so doesn't measure single-portion docs.
-   **→ LA-3** stays INVESTIGATE pending a real-corpus
-   portion-distribution capture (would surface whether typical
-   documents are dominated by single-portion or multi-portion pages).
+   (#583, release semantics, rooted at `Engine::lint`):
+   `join_via_lattice` **35.61%** on `lint_10kb`,
+   `project_from_attrs_slice` **39.09%** — the lattice pipeline IS
+   the dominant cost. The single-portion fast path (**LA-3**) saves
+   the per-page-call portion of that for documents with ≤1 portion
+   per page; the bench accumulates **~200 markings into one
+   PageContext** (the `\n\n` separators don't trip the scanner's
+   `\n\n\n+`/`\f` page-break heuristic) so doesn't measure
+   single-portion docs at all. **→ LA-3** stays INVESTIGATE pending
+   a real-corpus portion-distribution capture (would surface whether
+   typical documents are dominated by single-portion or
+   multi-portion pages).
 8. **#579 / #580 reconciliation.** Both issues frame parser/decoder
    as the bottleneck; measurement shows lattice + heap-pressure
    instead. See §5.1 for the full reconciliation and recommended

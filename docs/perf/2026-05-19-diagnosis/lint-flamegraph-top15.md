@@ -71,11 +71,11 @@ tools/perf/samply-to-folded.py /tmp/flamegraph-583/<NAME>.json.gz \
   `drop_in_place::<Vec<...>>` inclusive percentages by ~12-18
   percentage points combined on `lint_10kb` — the gap between the
   debug-assert and release captures is the empirical proof of the
-  contamination (§7).
+  contamination (§10).
 - **Symbolication**: `--unstable-presymbolicate` writes a
   `.syms.json` sidecar with per-library RVA → symbol mappings.
   Resolves ~95% of frames; ~5% remain as `fun_<rva>` placeholders
-  (see §4 for the parent-stack analysis that identifies these as
+  (see §7 for the parent-stack analysis that identifies these as
   allocator-adjacent code, not parser-adjacent as initially
   hypothesized).
 - **Rank 1 is always 100% by methodology** — it's the root frame
@@ -91,8 +91,8 @@ tools/perf/samply-to-folded.py /tmp/flamegraph-583/<NAME>.json.gz \
 > are NOT additive across frames in a parent-child call chain.
 > `Vec::clone` calls `T::clone` per element, so stacks containing
 > the outer `Vec::clone` also contain `T::clone` — adding them
-> double-counts the overlap. The CLONE-1 finding (§3) computes the
-> true union of the CanonicalAttrs lifecycle frames using
+> double-counts the overlap. The CLONE-1 finding (§6.1) computes
+> the true union of the CanonicalAttrs lifecycle frames using
 > `tools/perf/union.py`, NOT the naïve sum of inclusive %s.
 
 ## 2. Top 15 inclusive frames — `lint_10kb` (release; rooted at `Engine::lint`)
