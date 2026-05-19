@@ -260,6 +260,133 @@ fn non_ic_sbu_nf_kept_in_unclassified() {
     assert!(!needs_nf);
 }
 
+/// #552 — §H.9 p178 (SBU NOFORN Precedence Rules for Banner Line
+/// Guidance): "When a document contains both SBU-NF and SBU portions,
+/// SBU NOFORN supersedes SBU in the banner line." Bare SBU dropped on
+/// co-presence with SBU-NF; unclassified net output: `{SbuNf}` only.
+#[test]
+fn non_ic_sbu_nf_supersedes_sbu_in_unclassified() {
+    let mut p_sbu = portion(Classification::Unclassified);
+    p_sbu.non_ic_dissem = vec![NonIcDissem::Sbu].into();
+    let mut p_sbu_nf = portion(Classification::Unclassified);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
+
+    let portions = [p_sbu, p_sbu_nf];
+    let non_ic_set = NonIcDissemSet::from_attrs_iter(&portions);
+    let needs_nf = non_ic_set.needs_nf();
+    let non_ic = non_ic_set.into_boxed_slice();
+    assert!(
+        !non_ic.contains(&NonIcDissem::Sbu),
+        "§H.9 p178: bare Sbu must be dropped on co-presence with \
+         SbuNf. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        non_ic.contains(&NonIcDissem::SbuNf),
+        "§H.9 p178: compound SbuNf must survive. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        !needs_nf,
+        "§H.9 p178: unclassified SBU-NF does not trigger NOFORN \
+         injection (NF encoded in the compound). needs_nf = {needs_nf}",
+    );
+}
+
+/// #552 — §H.9 p185 derivation (banner-form heading + Notional
+/// Example Page 1): `(U//LES-NF)` rolls up to banner
+/// `UNCLASSIFIED//LES NOFORN`; LES-NF compound carries the LES
+/// family marker so bare LES is redundant on co-presence.
+#[test]
+fn non_ic_les_nf_supersedes_les_in_unclassified() {
+    let mut p_les = portion(Classification::Unclassified);
+    p_les.non_ic_dissem = vec![NonIcDissem::Les].into();
+    let mut p_les_nf = portion(Classification::Unclassified);
+    p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into();
+
+    let portions = [p_les, p_les_nf];
+    let non_ic_set = NonIcDissemSet::from_attrs_iter(&portions);
+    let needs_nf = non_ic_set.needs_nf();
+    let non_ic = non_ic_set.into_boxed_slice();
+    assert!(
+        !non_ic.contains(&NonIcDissem::Les),
+        "§H.9 p185: bare Les must be dropped on co-presence with \
+         LesNf. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        non_ic.contains(&NonIcDissem::LesNf),
+        "§H.9 p185: compound LesNf must survive. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        !needs_nf,
+        "§H.9 p185: unclassified LES-NF does not trigger NOFORN \
+         injection (NF encoded in the compound). needs_nf = {needs_nf}",
+    );
+}
+
+/// #552 + #541 interaction: classified `{Sbu, SbuNf}` — #552
+/// supersession drops bare SBU, then #541 classified gate strips
+/// SbuNf leaving empty set + needs_nf. Net banner `SECRET//NOFORN`.
+/// §H.9 p178.
+#[test]
+fn non_ic_sbu_co_present_strips_to_empty_in_classified() {
+    let mut p_sbu = portion(Classification::Secret);
+    p_sbu.non_ic_dissem = vec![NonIcDissem::Sbu].into();
+    let mut p_sbu_nf = portion(Classification::Secret);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
+
+    let portions = [p_sbu, p_sbu_nf];
+    let non_ic_set = NonIcDissemSet::from_attrs_iter(&portions);
+    let needs_nf = non_ic_set.needs_nf();
+    let non_ic = non_ic_set.into_boxed_slice();
+    assert!(
+        non_ic.is_empty(),
+        "§H.9 p178: classified strip after #552 supersession must \
+         leave the non-IC set empty. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        needs_nf,
+        "§H.9 p178: NOFORN must be injected on classified SBU-NF \
+         strip. needs_nf = {needs_nf}",
+    );
+}
+
+/// #552 + #541 interaction: classified `{Les, LesNf}` — #552
+/// supersession drops bare LES, then #541 classified gate splits
+/// LesNf back into `{Les}` + needs_nf. Net banner
+/// `SECRET//NOFORN//LES` per §H.9 p185.
+#[test]
+fn non_ic_les_co_present_splits_to_bare_les_in_classified() {
+    let mut p_les = portion(Classification::Secret);
+    p_les.non_ic_dissem = vec![NonIcDissem::Les].into();
+    let mut p_les_nf = portion(Classification::Secret);
+    p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into();
+
+    let portions = [p_les, p_les_nf];
+    let non_ic_set = NonIcDissemSet::from_attrs_iter(&portions);
+    let needs_nf = non_ic_set.needs_nf();
+    let non_ic = non_ic_set.into_boxed_slice();
+    assert!(
+        non_ic.contains(&NonIcDissem::Les),
+        "§H.9 p185: classified split after #552 supersession must \
+         leave bare Les in the set. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        !non_ic.contains(&NonIcDissem::LesNf),
+        "§H.9 p185: LesNf must be transformed away. non_ic = {:?}",
+        non_ic,
+    );
+    assert!(
+        needs_nf,
+        "§H.9 p185: NOFORN must be injected on classified LES-NF \
+         split. needs_nf = {needs_nf}",
+    );
+}
+
 // =========================================================================
 // Dissem Control Rollup
 // =========================================================================

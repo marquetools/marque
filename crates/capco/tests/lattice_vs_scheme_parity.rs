@@ -2333,6 +2333,212 @@ fn parity_classified_les_nf_lattice_and_scheme_both_retain_les() {
     );
 }
 
+// ===========================================================================
+// #552 — same-axis compound-supersedes-bare supersession (4 cases)
+// ===========================================================================
+//
+// §H.9 p178 (SBU NOFORN Precedence Rules for Banner Line Guidance):
+// "When a document contains both SBU-NF and SBU portions, SBU NOFORN
+// supersedes SBU in the banner line."
+// §H.9 p185 derivation (banner-form heading + Notional Example Page 1):
+// `(U//LES-NF)` rolls up to banner `UNCLASSIFIED//LES NOFORN`; LES-NF
+// compound carries the LES family marker on the unclassified banner so
+// bare LES is redundant on co-presence.
+//
+// Behavior matrix (composed with the existing #541 classified gate):
+// | Input            | Unclassified         | Classified                   |
+// |------------------|----------------------|------------------------------|
+// | {Sbu, SbuNf}     | {SbuNf}              | {} + NF (banner SECRET//NF)  |
+// | {Les, LesNf}     | {LesNf}              | {Les} + NF (S//NF//LES)      |
+//
+// The scheme path's `non_ic_dissem` projection flows through the same
+// `NonIcDissemSet::from_attrs_iter` helper as the lattice path
+// (`marking.rs:587`), so the #552 fix lands on both paths
+// automatically. The four parity fixtures gate against future drift
+// in the shared helper or in the new
+// `capco/{sbu-nf,les-nf}-supersedes-*` scheme-side rewrites.
+
+#[test]
+fn parity_unclassified_sbu_co_present_lattice_and_scheme_both_drop_bare_sbu() {
+    // §H.9 p178: bare SBU dropped on co-presence with SBU-NF.
+    // Unclassified output: `{SbuNf}` only; banner
+    // `UNCLASSIFIED//SBU NOFORN`. #552.
+    //
+    // `dissem_us` documented divergence: the scheme path injects
+    // NF via the Pattern-A `capco/sbu-nf-implies-noforn` row
+    // (`scheme/rewrites/pattern_a.rs`), which is intentionally
+    // classification-agnostic per its doc-comment ("On malformed
+    // classified input `(C//SBU-NF)`, Pattern A still fires
+    // defensively"). The lattice path's `needs_nf` is false on
+    // unclassified `{SbuNf}` (§H.9 p178 — the compound token
+    // encodes NF), so it doesn't inject. Pre-existing scheme-path
+    // overfire on the unclassified quadrant; predates #552.
+    // Tracked at #554.
+    let mut p_sbu = portion_us(Classification::Unclassified);
+    p_sbu.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
+    let mut p_sbu_nf = portion_us(Classification::Unclassified);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
+    let portions = [p_sbu, p_sbu_nf];
+    let lat = project_via_lattice(&portions);
+    let scheme = project_via_scheme(&portions);
+    assert_byte_identity(
+        "parity_unclassified_sbu_co_present_lattice_and_scheme_both_drop_bare_sbu",
+        &lat,
+        &scheme,
+        &["dissem_us"],
+    );
+    // Both paths agree on the load-bearing #552 axis: non_ic_dissem
+    // drops bare Sbu and retains SbuNf.
+    assert!(
+        !lat.non_ic_dissem.contains(&NonIcDissem::Sbu),
+        "§H.9 p178: lattice must drop bare Sbu on co-presence with SbuNf. \
+         lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        !scheme.non_ic_dissem.contains(&NonIcDissem::Sbu),
+        "§H.9 p178: scheme must drop bare Sbu on co-presence with SbuNf. \
+         scheme.non_ic_dissem = {:?}",
+        scheme.non_ic_dissem,
+    );
+    assert!(
+        lat.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "§H.9 p178: compound SbuNf must survive on unclassified pages. \
+         lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        scheme.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "§H.9 p178: scheme must retain compound SbuNf on unclassified pages. \
+         scheme.non_ic_dissem = {:?}",
+        scheme.non_ic_dissem,
+    );
+}
+
+#[test]
+fn parity_unclassified_les_co_present_lattice_and_scheme_both_drop_bare_les() {
+    // §H.9 p185: bare LES dropped on co-presence with LES-NF.
+    // Unclassified output: `{LesNf}` only; banner
+    // `UNCLASSIFIED//LES NOFORN`. #552.
+    //
+    // `dissem_us` documented divergence: parallel to the SBU
+    // unclassified fixture above. The scheme path injects NF via
+    // Pattern-A `capco/les-nf-implies-noforn` regardless of
+    // classification; the lattice path's `needs_nf` is false on
+    // unclassified `{LesNf}` per §H.9 p185 (the LES-NF compound
+    // encodes NF). Pre-existing scheme-path overfire predating
+    // #552. Tracked at #554.
+    let mut p_les = portion_us(Classification::Unclassified);
+    p_les.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
+    let mut p_les_nf = portion_us(Classification::Unclassified);
+    p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into_boxed_slice();
+    let portions = [p_les, p_les_nf];
+    let lat = project_via_lattice(&portions);
+    let scheme = project_via_scheme(&portions);
+    assert_byte_identity(
+        "parity_unclassified_les_co_present_lattice_and_scheme_both_drop_bare_les",
+        &lat,
+        &scheme,
+        &["dissem_us"],
+    );
+    assert!(
+        !lat.non_ic_dissem.contains(&NonIcDissem::Les),
+        "§H.9 p185: lattice must drop bare Les on co-presence with LesNf. \
+         lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        !scheme.non_ic_dissem.contains(&NonIcDissem::Les),
+        "§H.9 p185: scheme must drop bare Les on co-presence with LesNf. \
+         scheme.non_ic_dissem = {:?}",
+        scheme.non_ic_dissem,
+    );
+    assert!(
+        lat.non_ic_dissem.contains(&NonIcDissem::LesNf),
+        "§H.9 p185: compound LesNf must survive on unclassified pages. \
+         lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        scheme.non_ic_dissem.contains(&NonIcDissem::LesNf),
+        "§H.9 p185: scheme must retain compound LesNf on unclassified pages. \
+         scheme.non_ic_dissem = {:?}",
+        scheme.non_ic_dissem,
+    );
+}
+
+#[test]
+fn parity_classified_sbu_co_present_lattice_and_scheme_both_strip_to_empty() {
+    // #552 + #541 interaction on classified pages with both bare SBU
+    // and compound SBU-NF: #552 supersession drops bare SBU →
+    // `{SbuNf}`; #541 classified gate strips SbuNf → `{}` + NOFORN
+    // injection. Net banner `SECRET//NOFORN`. §H.9 p178.
+    let mut p_sbu = portion_us(Classification::Secret);
+    p_sbu.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
+    let mut p_sbu_nf = portion_us(Classification::Secret);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into_boxed_slice();
+    let portions = [p_sbu, p_sbu_nf];
+    let lat = project_via_lattice(&portions);
+    let scheme = project_via_scheme(&portions);
+    assert_byte_identity(
+        "parity_classified_sbu_co_present_lattice_and_scheme_both_strip_to_empty",
+        &lat,
+        &scheme,
+        &[],
+    );
+    assert!(
+        lat.non_ic_dissem.is_empty(),
+        "§H.9 p178: classified strip after #552 supersession must \
+         leave the non-IC set empty. lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Nf),
+        "§H.9 p178: NOFORN must be injected on classified SBU-NF strip. \
+         lat.dissem_us = {:?}",
+        lat.dissem_us,
+    );
+}
+
+#[test]
+fn parity_classified_les_co_present_lattice_and_scheme_both_split_to_bare_les() {
+    // #552 + #541 interaction on classified pages with both bare LES
+    // and compound LES-NF: #552 supersession drops bare LES →
+    // `{LesNf}`; #541 classified gate splits LesNf into bare Les +
+    // NOFORN injection. Net banner `SECRET//NOFORN//LES`. §H.9 p185.
+    let mut p_les = portion_us(Classification::Secret);
+    p_les.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
+    let mut p_les_nf = portion_us(Classification::Secret);
+    p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into_boxed_slice();
+    let portions = [p_les, p_les_nf];
+    let lat = project_via_lattice(&portions);
+    let scheme = project_via_scheme(&portions);
+    assert_byte_identity(
+        "parity_classified_les_co_present_lattice_and_scheme_both_split_to_bare_les",
+        &lat,
+        &scheme,
+        &[],
+    );
+    assert!(
+        lat.non_ic_dissem.contains(&NonIcDissem::Les),
+        "§H.9 p185: classified split after #552 supersession must \
+         leave bare Les in the set. lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        !lat.non_ic_dissem.contains(&NonIcDissem::LesNf),
+        "§H.9 p185: LesNf must be transformed away (Les + NOFORN) on \
+         classified pages. lat.non_ic_dissem = {:?}",
+        lat.non_ic_dissem,
+    );
+    assert!(
+        lat.dissem_us.contains(&DissemControl::Nf),
+        "§H.9 p185: NOFORN must be injected on classified LES-NF split. \
+         lat.dissem_us = {:?}",
+        lat.dissem_us,
+    );
+}
+
 #[test]
 fn pattern_c_les_in_classified_propagates_to_banner() {
     // CAPCO-2016 §H.9 p181 (LAW ENFORCEMENT SENSITIVE, Precedence

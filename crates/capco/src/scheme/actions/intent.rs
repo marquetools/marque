@@ -566,6 +566,17 @@ fn apply_fact_remove(
         // §H.9 p185 strip row to drive a LES-NF removal — LES
         // survives classification by design.
         //
+        // #552 — `TOK_LES` arm added for the
+        // `capco/les-nf-supersedes-les` row (§H.9 p185 banner-form
+        // heading + Notional Example Page 1): on co-presence of
+        // bare `Les` and compound `LesNf`, the LES-NF compound
+        // dominates and bare LES is dropped. Mirror of the TOK_SBU
+        // arm below which #541 reused for the parallel
+        // `capco/sbu-nf-supersedes-sbu` row (§H.9 p178 SBU NOFORN
+        // Precedence Rules — "When a document contains both SBU-NF
+        // and SBU portions, SBU NOFORN supersedes SBU in the
+        // banner line").
+        //
         // Per the `ApplyIntentError::UnknownToken` doc-comment
         // (`crates/scheme/src/scheme.rs:454-458`), an emitter that
         // targets an unsupported token is treated as a programmer-
@@ -585,6 +596,17 @@ fn apply_fact_remove(
             // banner line."
             // verified 2026-05-16 against CAPCO-2016.md §H.9 p176.
             TOK_SBU => NonIcDissem::Sbu,
+            // #552 — §H.9 p185 (LES NOFORN banner-form heading +
+            // Notional Example Page 1): LES-NF compound dominates
+            // bare LES on co-presence; drives
+            // `capco/les-nf-supersedes-les` in
+            // `scheme/rewrites/supersession.rs`. The supersession
+            // rule is a derivation from the §H.9 p185 banner-form
+            // examples (`UNCLASSIFIED//LES NOFORN`), not a verbatim
+            // precedence-rule quote (unlike the §H.9 p178 SBU rule).
+            // Re-verified 2026-05-18 against
+            // `crates/capco/docs/CAPCO-2016.md`.
+            TOK_LES => NonIcDissem::Les,
             // #541 — §H.9 p178 (SBU NOFORN Commingling Rule(s)
             // Within a Portion): "If the portion is classified, the
             // classification level of the portion adequately

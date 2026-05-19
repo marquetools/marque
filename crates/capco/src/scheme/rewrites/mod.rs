@@ -24,16 +24,19 @@ mod noforn_clears;
 mod pattern_a;
 mod pattern_b;
 mod pattern_c;
+mod supersession;
 mod transmutation_stubs;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
-/// **24 rewrites, in six groups** (post-PR-4b-D.2 Copilot R1 #2;
-/// PR 4b-C landed groups 5 + 6 as Pattern-C + Pattern-B
-/// declarative rows owning the §H.6 / §H.8 / §H.9 strip-plus-
-/// promote semantics; PR 4b-A landed group 4; PR 3c.B Sub-PR 8.F /
-/// 8.F.2 landed group 3; PR 4b-D.2 added
-/// `capco/noforn-clears-display-only-to` to group 5):
+/// **27 rewrites, in seven groups** (post-#552; post-PR-4b-D.2
+/// Copilot R1 #2; PR 4b-C landed groups 2 + 3 as Pattern-C +
+/// Pattern-B declarative rows owning the §H.6 / §H.8 / §H.9
+/// strip-plus-promote semantics; PR 4b-A landed group 5; PR 3c.B
+/// Sub-PR 8.F / 8.F.2 landed group 1; PR 4b-D.2 added
+/// `capco/noforn-clears-display-only-to` to group 5; #541 added
+/// `capco/sbu-nf-evicted-by-classified` to group 2; #552 added
+/// the new group 4 same-axis supersession pair):
 ///
 /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
 ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
@@ -57,12 +60,24 @@ mod transmutation_stubs;
 ///    The two rows quote the same §H.8 p134 umbrella passage
 ///    but cite distinct sub-clauses (classified-document vs
 ///    UNCLASSIFIED with other dissemination controls).
-/// 4. **Active wired rows (1):** `capco/noforn-clears-rel-to`
+/// 4. **#552 same-axis supersession (2):**
+///    `capco/sbu-nf-supersedes-sbu` (§H.9 p178 SBU NOFORN
+///    Precedence Rules — "When a document contains both SBU-NF
+///    and SBU portions, SBU NOFORN supersedes SBU in the
+///    banner line") + `capco/les-nf-supersedes-les` (§H.9 p185
+///    LES NOFORN banner-form heading + Notional Example Page 1
+///    — LES-NF compound carries the LES family marker on the
+///    unclassified banner so bare LES is redundant on
+///    co-presence). Both rows: predicate scans
+///    `CAT_NON_IC_DISSEM`, FactRemove writes
+///    `CAT_NON_IC_DISSEM`; predicate-scan kept OUT of `reads`
+///    per the narrow-form rule below.
+/// 5. **Active wired rows (1):** `capco/noforn-clears-rel-to`
 ///    (`Contains` predicate + `Clear` action). Cited at §D.2
 ///    Table 3 + §H.8 p145. First PageRewrite to land in the
 ///    catalog; canonical worked example in
 ///    `crates/capco/README.md`.
-/// 5. **DISPLAY-ONLY / FD&R-family (2):**
+/// 6. **DISPLAY-ONLY / FD&R-family (2):**
 ///    `capco/noforn-clears-fdr-family` (strips DISPLAY ONLY /
 ///    RELIDO / EYES tokens from `dissem_us`) at §D.2 Table 3
 ///    row 2 + §H.8 p154 + §H.8 p157, plus
@@ -71,7 +86,7 @@ mod transmutation_stubs;
 ///    sibling of `attrs.rel_to`) at §H.8 p145 + §D.2 Table 3
 ///    rows 1-2. The two rows together close the parallel REL TO /
 ///    DISPLAY ONLY axes.
-/// 6. **Phase-3 transmutation stubs (8):** the §3.4.1 / §3.4.3
+/// 7. **Phase-3 transmutation stubs (8):** the §3.4.1 / §3.4.3
 ///    transmutation roster from `marque-applied.md` (consultant
 ///    Entry 6 split into 6a + 6b for D13 single-citation
 ///    discipline). Each declares a `Custom(never_fires)` trigger
@@ -143,11 +158,14 @@ mod transmutation_stubs;
 /// helper files; [`build_page_rewrites`] concatenates the helper
 /// outputs in the same order the rows appear in the pre-split
 /// monolithic catalog: Pattern A first (NODIS, EXDIS, SBU-NF,
-/// LES-NF), then Pattern C (LIMDIS, SBU, DOD UCNI promote+strip,
-/// DOE UCNI promote+strip, FOUO), then Pattern B (classification-
-/// evicts-fouo, non-fdr-control-evicts-fouo), then the active
-/// NOFORN clear-rows (noforn-clears-rel-to, noforn-clears-fdr-
-/// family), then the eight Phase-3 transmutation stubs.
+/// LES-NF), then Pattern C (LIMDIS, SBU, SBU-NF, DOD UCNI
+/// promote+strip, DOE UCNI promote+strip, FOUO), then Pattern B
+/// (classification-evicts-fouo, non-fdr-control-evicts-fouo),
+/// then the #552 same-axis supersession pair (sbu-nf-supersedes-
+/// sbu, les-nf-supersedes-les), then the active NOFORN clear-rows
+/// (noforn-clears-rel-to, noforn-clears-fdr-family,
+/// noforn-clears-display-only-to), then the eight Phase-3
+/// transmutation stubs.
 ///
 /// [`CategoryPredicate::Contains`]: marque_scheme::CategoryPredicate::Contains
 /// [`CategoryAction::Clear`]: marque_scheme::CategoryAction::Clear
@@ -156,6 +174,7 @@ pub(crate) fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
     let mut out = pattern_a::pattern_a_rows();
     out.extend(pattern_c::pattern_c_rows());
     out.extend(pattern_b::pattern_b_rows());
+    out.extend(supersession::supersession_rows());
     out.extend(noforn_clears::noforn_clears_rows());
     out.extend(transmutation_stubs::transmutation_stub_rows());
     out
