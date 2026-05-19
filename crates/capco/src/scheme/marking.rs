@@ -305,46 +305,58 @@ impl CapcoMarking {
         out.classification = match joint_set.to_marking_classification() {
             Some(mc) => Some(mc),
             None => {
-                let filtered: Vec<CanonicalAttrs> = portions
-                    .iter()
-                    .map(|p| {
-                        let mut q = p.clone();
-                        match &p.classification {
-                            // Always flatten JOINT to its US level in
-                            // this non-JOINT branch (§H.3 p57).
-                            Some(MarkingClassification::Joint(j)) => {
-                                q.classification = Some(MarkingClassification::Us(j.level));
-                            }
-                            // §H.7 reciprocal-raise: NATO/FGI flatten
-                            // to US level when ANY US portion is in
-                            // scope. The solely-non-US case keeps the
-                            // non-US variant intact.
-                            Some(MarkingClassification::Nato(n)) if !solely_non_us => {
-                                q.classification =
-                                    Some(MarkingClassification::Us(n.us_equivalent()));
-                            }
-                            Some(MarkingClassification::Fgi(f)) if !solely_non_us => {
-                                q.classification = Some(MarkingClassification::Us(f.level));
-                            }
-                            // G-9 (PR 4b-B follow-up): Conflict always
-                            // flattens to its implicit `us` level in
-                            // this non-JOINT branch. `Conflict` is the
-                            // parser's way of recording "I saw two
-                            // classification systems; US wins per
-                            // §H.7"; the foreign side rides separately
-                            // through the FGI axis, so the
-                            // classification axis carries only the US
-                            // level here. Authority:
-                            // CAPCO-2016 §H.7 pp123-125.
-                            Some(MarkingClassification::Conflict { us, .. }) => {
-                                q.classification = Some(MarkingClassification::Us(*us));
-                            }
-                            _ => {}
+                // CLONE-1 (issue #606): avoid cloning the full `CanonicalAttrs`
+                // slice just to modify the `classification` field.
+                // `ClassificationLattice::from_classification_iter` folds over
+                // pre-computed `Option<MarkingClassification>` values directly,
+                // skipping all the non-classification fields that `CanonicalAttrs`
+                // carries (sci_markings, sar_markings, aea_markings, rel_to, etc.).
+                // Country-bearing variants (`Fgi`, `Conflict`) in the
+                // `Some(mc) => Some(mc.clone())` pass-through arm can still
+                // allocate for their country-list payload, but that cost is
+                // incurred only when solely_non_us is true (Nato/Fgi not raised),
+                // compared to the prior code which allocated a full
+                // `CanonicalAttrs` clone for every portion unconditionally. The
+                // per-portion classification adjustments (JOINT flatten,
+                // §H.7 reciprocal-raise, Conflict flatten) are computed inline.
+                ClassificationLattice::from_classification_iter(portions.iter().map(|p| {
+                    match &p.classification {
+                        // Always flatten JOINT to its US level in
+                        // this non-JOINT branch (§H.3 p57).
+                        Some(MarkingClassification::Joint(j)) => {
+                            Some(MarkingClassification::Us(j.level))
                         }
-                        q
-                    })
-                    .collect();
-                ClassificationLattice::from_attrs_iter(&filtered).into_inner()
+                        // §H.7 reciprocal-raise: NATO/FGI flatten
+                        // to US level when ANY US portion is in
+                        // scope. The solely-non-US case keeps the
+                        // non-US variant intact.
+                        Some(MarkingClassification::Nato(n)) if !solely_non_us => {
+                            Some(MarkingClassification::Us(n.us_equivalent()))
+                        }
+                        Some(MarkingClassification::Fgi(f)) if !solely_non_us => {
+                            Some(MarkingClassification::Us(f.level))
+                        }
+                        // G-9 (PR 4b-B follow-up): Conflict always
+                        // flattens to its implicit `us` level in
+                        // this non-JOINT branch. `Conflict` is the
+                        // parser's way of recording "I saw two
+                        // classification systems; US wins per
+                        // §H.7"; the foreign side rides separately
+                        // through the FGI axis, so the
+                        // classification axis carries only the US
+                        // level here. Authority:
+                        // CAPCO-2016 §H.7 pp123-125.
+                        Some(MarkingClassification::Conflict { us, .. }) => {
+                            Some(MarkingClassification::Us(*us))
+                        }
+                        // Remaining variants (None, Us(_), Nato/Fgi when
+                        // solely_non_us) pass through. Split None vs Some to
+                        // avoid cloning when there is no data.
+                        None => None,
+                        Some(mc) => Some(mc.clone()),
+                    }
+                }))
+                .into_inner()
             }
         };
 
@@ -352,11 +364,13 @@ impl CapcoMarking {
         // markings via the PR 4b-A precedent constructors. SciSet /
         // AeaSet take `&[Marking]` (flat per-portion union); SarSet
         // takes `Option<&SarMarking>`.
-        let sci_markings_concat: Vec<marque_ism::SciMarking> = portions
-            .iter()
-            .flat_map(|p| p.sci_markings.iter().cloned())
-            .collect();
-        let sci_set = SciSet::from_markings(&sci_markings_concat);
+        //
+        // CLONE-1 (issue #606): use the iterator-based constructors
+        // (`from_markings_iter`) to avoid the intermediate
+        // `sci_markings_concat` / `aea_markings_concat` `Vec`
+        // allocations that the slice-based APIs required.
+        let sci_set =
+            SciSet::from_markings_iter(portions.iter().flat_map(|p| p.sci_markings.iter()));
         out.sci_markings = sci_set.to_markings();
 
         // Compatibility view: sci_controls is the flat CVE-enum
@@ -381,11 +395,8 @@ impl CapcoMarking {
         }
         out.sar_markings = sar_acc.to_marking();
 
-        let aea_markings_concat: Vec<marque_ism::AeaMarking> = portions
-            .iter()
-            .flat_map(|p| p.aea_markings.iter().cloned())
-            .collect();
-        out.aea_markings = AeaSet::from_markings(&aea_markings_concat).to_markings();
+        let aea_markings_iter = portions.iter().flat_map(|p| p.aea_markings.iter());
+        out.aea_markings = AeaSet::from_markings_iter(aea_markings_iter).to_markings();
 
         // FGI marker — compose via FgiSet from per-portion markers
         // AND merge with classification-derived producers

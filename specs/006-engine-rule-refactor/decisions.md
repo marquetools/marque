@@ -1097,6 +1097,154 @@ fixed first in a separate PR..."
 
 ---
 
+## D25 — PR 3c.2 decomposition: 5-sub-PR series + AppliedFix envelope drop + Citation const-fn + bench-gate informational posture
+
+**Decision**: PR 3c.2 lands the four FR-035a atomic structural
+commitments (Canonical wired into audit emit + BLAKE3 digesting +
+closed `MessageTemplate` JSON + `from_parsed_unchecked` deletion) plus
+the implied prerequisites (`MarkingScheme::canonicalize` trait method,
+`RenderContext` + `EmissionForm` per FR-052, `Citation` struct per
+T043, T055 NDJSON canary scan) as a five-sub-PR series:
+
+| Sub-PR | Schema | Scope |
+|---|---|---|
+| 3c.2.A | `marque-mvp-3` | Scaffolding: `blake3` workspace dep + `canonicalize` trait method + `RenderContext`/`EmissionForm` + `Citation` const-fn struct + `render_canonical` signature update + EmissionForm tests |
+| 3c.2.B | `marque-mvp-3` | ~25 call sites of `from_parsed_unchecked` → `canonicalize`; adapter retained |
+| 3c.2.C | `marque-mvp-3` | `Diagnostic.message: Box<str> → Message`; `Diagnostic.citation: &'static str → Citation`; engine.rs:1389 decoder `format!` closed; ~5–6 `format!`-built `Diagnostic.message` sites in `crates/capco/src/rules*.rs` migrated |
+| 3c.2.D | **`marque-1.0`** atomic cutover | `AppliedFix` v2 (Canonical sub-object + real BLAKE3 + discriminant); `FixIntent \| TextCorrection` envelope dropped; non-marking text corrections become own `{"type":"text_correction", ...}` NDJSON line; T055 canary + #257 masking pin retirement; every `__engine_promote` test fixture migrated; audit-record contract docs updated |
+| 3c.2.E | `marque-1.0` | Delete `from_parsed_unchecked`; drop path-based promote-callsite-lint carve-out; doc-comment cleanups |
+
+Five inter-related sub-decisions land under D25:
+
+- **D25.1 — Five-sub-PR decomposition** (over alternatives: 4 / 3 /
+  monolithic). Constitution US8 revertability is the load-bearing
+  property; PR 4b's 9-sub-PR umbrella is the precedent shape; the
+  schema-bump atomicity only needs D.
+
+- **D25.2 — `Citation` struct is `const fn` constructor, no runtime
+  validation**. Threat model is purely citation drift, which
+  `tools/citation-lint/` already enforces at CI for `&'static str`
+  citations today. WASM size discipline (Constitution III): runtime
+  validation code would ship to WASM module; const-fn construction
+  ships only data layout. Rejected: runtime `Result<Self,
+  CitationError>` (WASM bloat); compile-time macro (harder to express
+  §-range validation in const context, no advantage over CI lint).
+
+- **D25.3 — `Diagnostic.message: Box<str> → Message` is an atomic
+  field-type change in 3c.2.C, no transitional dual-field**. Marque
+  is pre-users; no deprecation phasing per
+  `feedback_pre_users_no_deprecation_phasing.md`. Per-rule migration
+  scope (~5–6 sites) too small to justify a transitional shape.
+  Audit wire format doesn't change in C — Diagnostic flows to
+  CLI/WASM output, not directly to `AppliedFix`; the wire-format
+  bump is atomic at D.
+
+- **D25.4 — `AppliedFix` v2 drops the `FixIntent | TextCorrection`
+  envelope; non-marking text corrections become their own NDJSON
+  line type** (`{"type":"text_correction", ...}` distinct from
+  `{"type":"applied_fix", ...}`). Mirrors the PR 3.7 `AuditNote`
+  precedent at `crates/rules/src/audit_note.rs`. The
+  `discriminant: "strict"|"decoder"` field is about marking
+  provenance, not fix kind — conflating "text correction" as a third
+  discriminant value would semantically misuse the field. Rejected:
+  asymmetric AppliedFix (Canonical sub-object only on FixIntent
+  branch); three-value discriminant.
+
+- **D25.5 — Test-fixture migration at D is atomic via
+  `__engine_promote` sites**. T009a's inventory at
+  `docs/refactor-006/promote-callsite-inventory.md` is the migration
+  target list. Constitution V Principle V carve-out comments
+  preserved at each migrated site. Rejected: test-utility helper
+  crate (additional maintained layer for marginal benefit); codemod
+  (pattern-matching risk).
+
+- **D25.6 — Bench gates are informational only, not blocking**
+  through the 3c.2 series. Per the user's posture: bench-gating
+  "came and went with PR 4"; benchmarks are all well below ceiling
+  (SC-001 16ms, SC-002 18ms not violated); correctness debt
+  outranks perf optimization. Constitution I preserved by the
+  SC-001/SC-002 ceiling — bench-gate enforcement is a PR-to-PR drift
+  discipline mechanism, not a constitutional requirement.
+  Cumulative perf regression analysis deferred to dedicated
+  post-PR-5 perf-analysis pass per
+  `project_perf_baseline_pr5_trigger`.
+
+- **D25.7 — WASM size delta budget ≤5%, measured at 3c.2.D**.
+  Mirrors T058i's PR 3d WASM size budget. `blake3` workspace dep
+  added at A is the dominant size contributor (~50–80 KB compressed
+  estimate). Per-sub-PR measurement overhead exceeds signal for
+  B/C/E (no material WASM change); D measurement captures
+  cumulative delta.
+
+**Rejected alternatives** (cross-cutting):
+
+- **Single mega-PR**: high blast radius, long review cycles, hard to
+  bisect. PR 4b's 9-sub-PR series demonstrated the alternative.
+- **Schema bump deferred further**: leaves G13 content-ignorance as a
+  carve-out instead of a type invariant; `from_parsed_unchecked`
+  adapter remains in production paths indefinitely.
+- **Strict bench-gate enforcement**: would block the 3c.2 series on
+  perf drift the user has already classified as deferred to
+  post-PR-5 perf-analysis. Marque does not produce correct results
+  without this refactor; correctness outranks perf-discipline-as-blocker.
+
+**Why** (cross-cutting):
+
+1. **Atomicity preserved where it matters**. Only D bumps the schema
+   and changes the wire format; A/B/C/E are additive or
+   dead-code removal under the existing `marque-mvp-3` schema.
+2. **G13 content-ignorance becomes a type invariant**. T055 canary
+   at D + `Diagnostic.message: Message` at C + `AppliedFix` v2 at D
+   together close every leak channel `format!`-of-input could
+   open. The masking pin at `core_error_isolation.rs:92` (#257)
+   retires at D.
+3. **Constitution VII boundary respected**. Each sub-PR's touch
+   surface is bounded: A touches `crates/scheme/` + `crates/rules/`
+   (trait surface), B touches consumers (cross-crate but no graph
+   change), C touches `crates/capco/` rule bodies + `crates/rules/`
+   field reshape, D touches `crates/engine/` audit-emit, E touches
+   `crates/ism/` (adapter deletion).
+4. **Constitution VIII citation discipline maintained**. `Citation`
+   struct + citation-lint at CI replaces the per-site `&'static
+   str` discipline with a typed surface that the citation-lint
+   already verifies against `crates/capco/docs/CAPCO-2016.md` at
+   build time. Drift becomes mechanically catchable.
+
+**Authority**: `specs/006-engine-rule-refactor/spec.md` FR-035a (the
+four-commitment list); `contracts/audit-record.md` §0 (active
+`marque-mvp-3`) + §1+ (post-keystone `marque-1.0` target);
+`docs/plans/2026-05-02-engine-refactor-consolidated.md` §10.2
+(cutover composition).
+
+**Decision pass context**: surfaced 2026-05-19 during PR 3c.2
+planning session (post-PR-4-closeout). User selected all four
+recommended options in the AskUserQuestion decision matrix, with
+pushback on the Citation runtime-validation option ("validation at
+build is sufficient ... lint should handle that. My other concern
+is WASM size") that produced D25.2's const-fn outcome; pushback on
+the bench-gate option ("bench gating came and went with PR 4 ... we
+don't have a choice to gate because without this refactor Marque
+does not produce correct results") that produced D25.6's
+informational-only outcome.
+
+**Lands in**:
+
+- `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` (operative
+  PM contract for the 3c.2 series — full plan + risk register +
+  sub-decision rationale + appendices)
+- `specs/006-engine-rule-refactor/tasks.md` (cross-reference table
+  in the plan doc Appendix A maps existing T### tasks to sub-PRs;
+  no new task IDs introduced — existing T041 / T042 / T043 / T046 /
+  T048 / T048a / T048b / T048c / T050 / T052 / T054 / T055 cover the
+  scope)
+- This `decisions.md` D25 entry (above)
+- Future: per-sub-PR preflight + PM decisions + implementation +
+  3-reviewer pass docs at `docs/plans/2026-05-19-pr3c2-*-{preflight,
+  pm-decisions, implementation, review}.md` (created lazily as each
+  sub-PR's cycle starts)
+
+---
+
 ## PR 0 absorption summary
 
 | # | Decision | PR-0 deliverable |
@@ -1126,8 +1274,9 @@ fixed first in a separate PR..."
 | D22 | NOFORN-supersession at FactAdd injection site (PR 4b-D.2 commit 3 + Copilot R2 #1 commit 13): `apply_fact_add` now maintains the COMPLETE §H.8 p145 invariant on the dissem axis. (a) Route NOFORN insertions through `DissemSet::with_noforn_injected` so the supersession overlay strips dominated FD&R *tokens* (REL TO / RELIDO / DISPLAY ONLY / EYES ONLY) from `dissem_us`. (b) Clear the parallel country-list fields `attrs.rel_to` and `attrs.display_only_to` so the injection brings the full §H.8 p145 supersession with it. (c) Inverse-case rejection — if NOFORN is already in `dissem_us`, FactAdd of any dominated token (RELIDO / DISPLAY ONLY / EYES) returns `IntentInapplicable` instead of appending. Pre-PR-4b-D.2 the path appended `Nf` to `dissem_us` without re-applying overlays. The Copilot R2 #1 amendment closed two remaining gaps the original commit 3 had: country-list axes stayed populated, and the inverse case bypassed the inapplicability guard. Post-R2 `apply_fact_add` is self-sufficient for §H.8 p145 — direct `apply_intent` callers (E021 AEA, E038 NODIS/EXDIS) bypass `scheme.project` and the `capco/noforn-clears-*` PageRewrites and get correct output by construction; closure-driven and PageRewrite-driven FactAdd paths get the same self-sufficiency for free. The PageRewrite layer (`capco/noforn-clears-rel-to`, `capco/noforn-clears-fdr-family`, `capco/noforn-clears-display-only-to`) remains as defense-in-depth. Authority: §H.8 p145 + §D.2 Table 3 rows 1-2 + §H.8 p157 (re-verified 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`). | `decisions.md` D22 (above); PR 4b-D.2 commit 3 (initial token-axis fix) + commit 13 (R2 #1 country-axis + inverse-case completion); `crates/capco/src/scheme/actions/intent.rs::apply_fact_add` CAT_DISSEM branch; `crates/capco/tests/category_action_intent.rs` apply_fact_add_* test cluster pins the R2 contract. |
 | D23 | Closure-rewrite-application sentinel placement: the `#[cfg(debug_assertions)]` read-only-attrs sentinel for the closure operator's rewrite-application site lives inside `CapcoScheme::project(Scope::Page \| Document \| Diff, ...)` between the `join_via_lattice` composition and the closure invocation. Snapshots the raw per-portion `CanonicalAttrs` slice; asserts byte-identity after `closure()` returns. Sibling to the existing `dispatch_page_finalization` PageFinalization-rule sentinel (engine.rs); together they pin the §3 (e.1) read-only-attrs invariant across both engine-facing consumer surfaces (scheme-side projection + engine-side rule dispatch). Authority: `docs/plans/2026-05-01-lattice-design.md` §3 (e.1) read-only-attrs invariant. | `decisions.md` D23 (above); PR 4b-D.2 commit 3; `crates/capco/src/scheme/marking_scheme_impl.rs::project` Scope::Page arm. |
 | D24 | `CapcoMarking` is a projection target, not a lattice element (Option D-extended). Copilot R1 review surfaced that `impl JoinSemilattice for CapcoMarking` violated structural-`Eq` idempotence whenever a per-axis lattice normalized its input (load-bearing case: `RelToBlock`'s tetragraph expansion). The lattice consultant verdict: `CapcoMarking` is a **cross-axis fold** of per-axis lattice values back into a `CanonicalAttrs` record; cross-axis folding is a *projection*, not a lattice op. PR 4b-D.2 commit 11 drops `impl JoinSemilattice for CapcoMarking` AND `impl MeetSemilattice for CapcoMarking` AND relaxes the `MarkingScheme::Marking: JoinSemilattice` trait bound (load-bearing constraint at `crates/scheme/src/scheme.rs:46`, established in PR #456) AND relaxes `DiffInput<M: JoinSemilattice>` to `DiffInput<M>` (`crates/scheme/src/scope.rs:62`, the bound was purely declarative — `DiffInput` itself never called `.join`). The cross-axis fold remains accessible as the inherent methods `CapcoMarking::join_via_lattice` and `CapcoMarking::join_via_lattice_with_context` (engine's `project_from_page_context` hot path uses the latter). Per-axis lattice impls (`RelToBlock`, `DissemSet`, `SciSet`, `SarSet`, `AeaSet`, `FgiSet`, `JointSet`, `NatoDissemSet`, `ClassificationLattice`, `NatoClassLattice`, `DeclassifyOnLattice`) remain — they are the algebraically-sound site for the lattice claim, with `RelToBlock` proptests added in PR 4b-D.2 commit 11 to pin idempotence/commutativity/associativity/absorption on `RelToBlock`'s own structural `Eq` (the BTreeSet-of-expanded-trigraphs representative). The lossy-eager-canonicalize-at-construct alternative (Option A) and the quotient-`Eq` rewrite (Option C) were both rejected; the trait-bound relaxation is the surgical fix. Systematic audit of remaining per-axis types for similar structural-vs-lattice-`Eq` mismatches (`DissemSet::relido_observed_unanimous`, `JointSet::Mixed`/`DisunityCollapse`, `SupersessionSet`) is tracked as a follow-up issue. Authority: `marque-applied.md` §3 (PR 3b stall walkthrough); `pure-lattice.md` §7 (quotient lattices) + §11 (powerset Boolean algebra). | `decisions.md` D24 (above); PR 4b-D.2 commit 11; `crates/scheme/src/scheme.rs::MarkingScheme::Marking` bound relaxed; `crates/scheme/src/scope.rs::DiffInput<M>` bound relaxed; `crates/capco/src/scheme/marking.rs` `JoinSemilattice` / `MeetSemilattice` impls dropped; `crates/capco/tests/proptest_lattice.rs` `RelToBlock` laws added. |
+| D25 | PR 3c.2 decomposition into five sub-PRs (3c.2.A scaffolding / 3c.2.B `from_parsed_unchecked` call-site migration / 3c.2.C `Diagnostic` reshape / 3c.2.D atomic `marque-mvp-3 → marque-1.0` cutover / 3c.2.E adapter deletion) lands the four FR-035a structural commitments plus T043 `Citation`, T048a/b/c `RenderContext`/`EmissionForm`, T055 NDJSON canary scan. Sub-decisions: D25.2 `Citation::new` is `const fn`, no runtime validation (WASM size discipline + citation-lint catches drift); D25.3 `Diagnostic.message: Box<str> → Message` is atomic in C, no transitional dual-field; D25.4 `AppliedFix` v2 drops `FixIntent \| TextCorrection` envelope — non-marking text corrections become own `{"type":"text_correction"}` NDJSON line type; D25.5 test fixtures migrate atomically at D via `__engine_promote` sites (T009a inventory); D25.6 bench gates informational only (correctness-first; integration-then-optimize per `project_perf_baseline_pr5_trigger`); D25.7 WASM size ≤5% delta budget measured at D. | `decisions.md` D25 (above); `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` (operative PM contract); no new task IDs (existing T041 / T042 / T043 / T046 / T048 / T048a / T048b / T048c / T050 / T052 / T054 / T055 cover scope). |
 
-D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 / D20 / D21 / D22 / D23 / D24
+D1–D16 lock at PR 0. D17 / D18 / D19 / D9b-1 / D20 / D21 / D22 / D23 / D24 / D25
 are post-PR-0 implementation decisions: D17 is a PR 3b.C scope
 correction amending a consultation verdict projection; D18 is a
 PR 3.7 T108c catalog-shape pivot from the 2026-05-07 trait-shape
@@ -1145,6 +1294,11 @@ existing PageFinalization-rule sentinel); D24 is the PR 4b-D.2
 Copilot-R1 Option-D-extended trait-bound relaxation (drop
 `CapcoMarking: JoinSemilattice` + relax `MarkingScheme::Marking`
 bound + relax `DiffInput<M>` bound, with the lattice claim moved
-to the per-axis types where it is algebraically sound). Subsequent
+to the per-axis types where it is algebraically sound); D25 is the
+PR 3c.2 five-sub-PR decomposition with seven sub-decisions
+(D25.1–D25.7) covering sub-PR shape, Citation const-fn
+constructor, atomic Diagnostic.message field-type change,
+AppliedFix v2 envelope drop, test-fixture migration strategy,
+informational bench-gate posture, and WASM size budget. Subsequent
 PRs execute against this register; amendments require a follow-up
 PR editing this file.
