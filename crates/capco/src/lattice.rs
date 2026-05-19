@@ -3280,9 +3280,35 @@ impl FgiSet {
 
 /// Lattice form of the non-IC dissem axis.
 ///
-/// Carries the union of per-portion `non_ic_dissem` tokens after the
-/// classification-gated SBU-NF / LES-NF transformations (§H.9 p178 /
-/// p185) and the NODIS / EXDIS NF-injection flag (§H.9 p172 / p174).
+/// Carries the union of per-portion `non_ic_dissem` tokens after
+/// the classification-independent compound-supersedes-bare overlay
+/// (§H.9 p178 / p185 — see #552 below), the classification-gated
+/// SBU-NF / LES-NF transformations (§H.9 p178 / p185 — see #541),
+/// and the NODIS / EXDIS NF-injection flag (§H.9 p172 / p174).
+///
+/// # Same-axis compound supersession (#552)
+///
+/// Before any classification gate fires, two co-presence rules apply
+/// regardless of classification level:
+///
+/// - `{Sbu, SbuNf} ⊆ set` → drop `Sbu`. **§H.9 p178** (SBU NOFORN
+///   Precedence Rules for Banner Line Guidance): *"When a document
+///   contains both SBU-NF and SBU portions, SBU NOFORN supersedes
+///   SBU in the banner line."*
+/// - `{Les, LesNf} ⊆ set` → drop `Les`. **§H.9 p185** + canonical
+///   banner-form examples: portion `(U//LES-NF)` rolls up to banner
+///   `UNCLASSIFIED//LES NOFORN`; the LES-NF compound carries the LES
+///   family marker in unclassified banner form, so bare LES is
+///   redundant when LES-NF is also present.
+///
+/// The supersession runs BEFORE the classified gate so the
+/// post-supersession set is what the gate sees. Net result for the
+/// four U/S × SBU/LES quadrants:
+///
+/// | Input | Unclassified | Classified |
+/// |---|---|---|
+/// | `{Sbu, SbuNf}` | `{SbuNf}` | `{}` + `needs_nf` |
+/// | `{Les, LesNf}` | `{LesNf}` | `{Les}` + `needs_nf` |
 ///
 /// `needs_nf` is set when:
 /// - SBU-NF appears on a classified page (§H.9 p178 — SBU vanishes
@@ -3383,6 +3409,35 @@ impl NonIcDissemSet {
             for d in attrs.non_ic_dissem.iter() {
                 set.insert(*d);
             }
+        }
+
+        // #552 — Classification-independent same-axis supersession:
+        // compound NOFORN-bearing token dominates its bare sibling.
+        // Applied BEFORE the classification-gated #541 transformations
+        // so the post-supersession set is what feeds the classified
+        // strip/split below.
+        //
+        // §H.9 p178 (SBU NOFORN Precedence Rules for Banner Line
+        // Guidance): "When a document contains both SBU-NF and SBU
+        // portions, SBU NOFORN supersedes SBU in the banner line."
+        // Drop bare SBU; keep SBU-NF. At classified the existing #541
+        // strip then removes SBU-NF entirely, leaving `{}` + needs_nf
+        // (banner `SECRET//NOFORN`). At unclassified the SBU-NF
+        // survives (banner `UNCLASSIFIED//SBU NOFORN`).
+        if set.contains(&NonIcDissem::SbuNf) {
+            set.remove(&NonIcDissem::Sbu);
+        }
+        // §H.9 p185 (LES NOFORN — banner-form heading + Notional
+        // Example Page 1): the banner for `(U//LES-NF)` portions is
+        // `UNCLASSIFIED//LES NOFORN`, i.e. the LES-NF compound carries
+        // the LES family marker in unclassified banner form. With both
+        // `Les` and `LesNf` portions present, LES-NF dominates bare
+        // LES on the unclassified banner. The existing #541 classified
+        // split then transforms `{LesNf}` → `{Les}` + needs_nf at
+        // classified, yielding `SECRET//NOFORN//LES` per §H.9 p185
+        // (LES NOFORN Precedence Rules for Banner Line Guidance).
+        if set.contains(&NonIcDissem::LesNf) {
+            set.remove(&NonIcDissem::Les);
         }
 
         let mut needs_nf = false;
@@ -4767,6 +4822,136 @@ mod tests {
             "§H.9 p185: unclassified LES-NF does not trigger NOFORN \
              injection (NF is encoded in the compound token itself). \
              needs_nf = {}",
+            s.needs_nf(),
+        );
+    }
+
+    // -----------------------------------------------------------
+    // #552 — same-axis compound-supersedes-bare overlay tests.
+    // -----------------------------------------------------------
+
+    #[test]
+    fn non_ic_dissem_set_sbu_nf_supersedes_sbu_on_unclassified() {
+        // §H.9 p178 (SBU NOFORN Precedence Rules for Banner Line
+        // Guidance): "When a document contains both SBU-NF and SBU
+        // portions, SBU NOFORN supersedes SBU in the banner line."
+        // Net unclassified output: `{SbuNf}` only; banner
+        // `UNCLASSIFIED//SBU NOFORN`. #552.
+        let mut p_sbu = portion_us(Classification::Unclassified);
+        p_sbu.non_ic_dissem = Box::new([NonIcDissem::Sbu]);
+        let mut p_sbu_nf = portion_us(Classification::Unclassified);
+        p_sbu_nf.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p_sbu, p_sbu_nf]);
+        assert!(
+            !s.as_set().contains(&NonIcDissem::Sbu),
+            "§H.9 p178: SBU-NF supersedes SBU; bare Sbu must be \
+             dropped on co-presence. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            s.as_set().contains(&NonIcDissem::SbuNf),
+            "§H.9 p178: compound SBU-NF survives the supersession. \
+             set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.needs_nf(),
+            "§H.9 p178: unclassified SBU-NF does not trigger NOFORN \
+             injection (NF is encoded in the compound token itself). \
+             needs_nf = {}",
+            s.needs_nf(),
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_set_les_nf_supersedes_les_on_unclassified() {
+        // §H.9 p185 (LES NOFORN — banner-form heading + Notional
+        // Example Page 1): banner for `(U//LES-NF)` portions is
+        // `UNCLASSIFIED//LES NOFORN`; LES-NF compound carries the
+        // LES family marker, so bare LES is redundant on
+        // co-presence. Net unclassified output: `{LesNf}` only;
+        // banner `UNCLASSIFIED//LES NOFORN`. #552.
+        let mut p_les = portion_us(Classification::Unclassified);
+        p_les.non_ic_dissem = Box::new([NonIcDissem::Les]);
+        let mut p_les_nf = portion_us(Classification::Unclassified);
+        p_les_nf.non_ic_dissem = Box::new([NonIcDissem::LesNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p_les, p_les_nf]);
+        assert!(
+            !s.as_set().contains(&NonIcDissem::Les),
+            "§H.9 p185: LES-NF supersedes LES on co-presence; bare \
+             Les must be dropped. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            s.as_set().contains(&NonIcDissem::LesNf),
+            "§H.9 p185: compound LES-NF survives the supersession. \
+             set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.needs_nf(),
+            "§H.9 p185: unclassified LES-NF does not trigger NOFORN \
+             injection (NF is encoded in the compound token itself). \
+             needs_nf = {}",
+            s.needs_nf(),
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_set_classified_sbu_and_sbu_nf_strip_to_needs_nf() {
+        // #552 + #541 interaction: both bare SBU and compound SBU-NF
+        // present on a classified page. Step 1 (#552 supersession)
+        // drops bare SBU. Step 2 (#541 classified gate) strips
+        // SBU-NF and asserts `needs_nf`. Net: empty set + `needs_nf`
+        // → banner `SECRET//NOFORN`. §H.9 p178.
+        let mut p_sbu = portion_us(Classification::Secret);
+        p_sbu.non_ic_dissem = Box::new([NonIcDissem::Sbu]);
+        let mut p_sbu_nf = portion_us(Classification::Secret);
+        p_sbu_nf.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p_sbu, p_sbu_nf]);
+        assert!(
+            s.as_set().is_empty(),
+            "§H.9 p178: classified strip after #552 supersession \
+             must leave the non-IC set empty. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            s.needs_nf(),
+            "§H.9 p178: NOFORN must be injected on classified \
+             SBU-NF strip. needs_nf = {}",
+            s.needs_nf(),
+        );
+    }
+
+    #[test]
+    fn non_ic_dissem_set_classified_les_and_les_nf_split_to_les() {
+        // #552 + #541 interaction: both bare LES and compound LES-NF
+        // present on a classified page. Step 1 (#552 supersession)
+        // drops bare LES. Step 2 (#541 classified gate) splits
+        // LES-NF → re-inserts bare Les and asserts `needs_nf`. Net:
+        // `{Les}` + `needs_nf` → banner `SECRET//NOFORN//LES` per
+        // §H.9 p185.
+        let mut p_les = portion_us(Classification::Secret);
+        p_les.non_ic_dissem = Box::new([NonIcDissem::Les]);
+        let mut p_les_nf = portion_us(Classification::Secret);
+        p_les_nf.non_ic_dissem = Box::new([NonIcDissem::LesNf]);
+        let s = NonIcDissemSet::from_attrs_iter(&[p_les, p_les_nf]);
+        assert!(
+            s.as_set().contains(&NonIcDissem::Les),
+            "§H.9 p185: classified split after #552 supersession \
+             must leave bare Les in the set. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            !s.as_set().contains(&NonIcDissem::LesNf),
+            "§H.9 p185: LES-NF must be transformed into Les + \
+             NOFORN on classified pages. set = {:?}",
+            s.as_set(),
+        );
+        assert!(
+            s.needs_nf(),
+            "§H.9 p185: NOFORN must be injected on classified \
+             LES-NF split. needs_nf = {}",
             s.needs_nf(),
         );
     }
