@@ -7,12 +7,15 @@
 //! Asserts the **exact identity** of the post-4b-F terminal-state
 //! catalogs exposed by [`CapcoScheme`]:
 //!
-//!  * 27 [`PageRewrite`] rows returned by
+//!  * 29 [`PageRewrite`] rows returned by
 //!    [`MarkingScheme::page_rewrites`], pinned as a **positional list**
 //!    (row order is load-bearing for the topological scheduler — see
 //!    `crates/capco/src/scheme/rewrites/mod.rs::build_page_rewrites`
 //!    doc-comment; reordering would silently shift Kahn's-algorithm
-//!    cohort ordering);
+//!    cohort ordering). #559 close-out (2026-05-19) added two
+//!    RELIDO-eviction rewrites converting the retired E056 / E057
+//!    Conflicts rows (27 → 29); the third row (E055 DISPLAY ONLY
+//!    > RELIDO) is deferred — see `relido_clears.rs` module header;
 //!  * 10 [`ClosureRule`] rows returned by
 //!    [`MarkingScheme::closure_rules`], pinned as a **positional list**
 //!    (Kleene-fixpoint walk order is load-bearing — see
@@ -166,6 +169,16 @@ const EXPECTED_PAGE_REWRITES: &[&str] = &[
     "capco/noforn-clears-rel-to",
     "capco/noforn-clears-fdr-family",
     "capco/noforn-clears-display-only-to",
+    // relido_clears — #559 close-out (2026-05-19): §H.8 RELIDO
+    // eviction by ORCON / ORCON-USGOV at page scope (2 rows).
+    // Retired the E056 / E057 `Constraint::Conflicts` rows whose
+    // portion-scope intent could not fire on cross-portion
+    // supersession. Authority: §H.8 p136 (ORCON) + §H.8 p140
+    // (ORCON-USGOV). The E055 (DISPLAY ONLY > RELIDO) third row
+    // is deferred — see the `rewrites/relido_clears.rs` module
+    // header for the parser-axis / scheduler-cycle rationale.
+    "capco/orcon-clears-relido",
+    "capco/orcon-usgov-clears-relido",
     // transmutation_stubs — Stage 4+ deferred Phase-3 placeholders (8 rows)
     "capco/frd-sigma-consolidates-into-rd-sigma",
     "capco/fgi-rollup-on-us-contact",
@@ -231,7 +244,7 @@ const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
     "E010/HCS-system-constraints",
     "E012/dual-classification",
     "E014/joint-requires-rel-to-coverage",
-    "E021/aea-requires-noforn",
+    "E021/rd-frd-requires-noforn",
     "E024/rd-precedence",
     "E038/nodis-or-exdis-requires-noforn",
     // #559 close-out (2026-05-19): FRD>TFNI precedence per §H.6 p120.
@@ -276,7 +289,7 @@ const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
 ];
 
 #[test]
-fn post_pr_4b_declares_exact_27_page_rewrites_in_order() {
+fn post_pr_4b_declares_exact_29_page_rewrites_in_order() {
     let scheme = CapcoScheme::new();
     let rewrites = scheme.page_rewrites();
 
@@ -284,8 +297,8 @@ fn post_pr_4b_declares_exact_27_page_rewrites_in_order() {
     // set-equality check would silently collapse.
     let raw_len = rewrites.len();
     assert_eq!(
-        raw_len, 27,
-        "post-4b PageRewrite slice length drifted from 27: raw_len={raw_len}"
+        raw_len, 29,
+        "post-4b PageRewrite slice length drifted from 29: raw_len={raw_len}"
     );
 
     // Positional comparison — load-bearing because the topological
@@ -297,8 +310,8 @@ fn post_pr_4b_declares_exact_27_page_rewrites_in_order() {
 
     assert_eq!(
         expected.len(),
-        27,
-        "EXPECTED_PAGE_REWRITES does not contain 27 entries: \
+        29,
+        "EXPECTED_PAGE_REWRITES does not contain 29 entries: \
          test data drifted, not the catalog"
     );
 

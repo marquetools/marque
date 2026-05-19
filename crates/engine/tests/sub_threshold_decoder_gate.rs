@@ -141,12 +141,17 @@ fn prose_parenthetical_cms_emits_no_diagnostics() {
 
 /// Strict-path parses (no decoder fallback) must continue to drive the
 /// full rule pipeline. Negative control: `SECRET//RD` triggers
-/// `E021 aea-requires-noforn` (CAPCO-2016 §H.6 p104 — RD always
-/// requires NOFORN absent a sharing agreement). E021 carries
-/// `FixSource::BuiltinRule`, distinct from R001's
+/// `E021 rd-frd-requires-noforn` (CAPCO-2016 §H.6 p104 — RD always
+/// requires NOFORN absent a §123/§144 sharing agreement). E021
+/// carries `FixSource::BuiltinRule`, distinct from R001's
 /// `FixSource::DecoderPosterior`, so a wrong inversion of the gate's
 /// `marking.1.is_none()` predicate (which would skip the strict path)
-/// would silently drop E021 here.
+/// would silently drop E021 here. #559 close-out (2026-05-19) renamed
+/// the constraint from `aea-requires-noforn` and dropped severity
+/// from `Fix` to `Warn` (sharing-agreement carve-out is documentary,
+/// not byte-verifiable). The byte-level carve-out: skip when REL TO
+/// or RELIDO is present — `SECRET//RD` has neither, so E021 still
+/// fires here.
 #[test]
 fn strict_path_aea_rd_drives_e021() {
     let engine = build_engine();

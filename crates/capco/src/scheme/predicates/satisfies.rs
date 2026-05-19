@@ -14,7 +14,7 @@ use marque_ism::{Classification, CountryCode};
 use marque_scheme::TokenRef;
 
 use super::super::constraints::{
-    e012_dual_classification, e014_joint_rel_to_coverage, e021_aea_requires_noforn,
+    e012_dual_classification, e014_joint_rel_to_coverage, e021_rd_frd_requires_noforn,
     e024_rd_precedence, e038_dos_dissem_requires_noforn, e070_frd_tfni_precedence,
 };
 use super::super::*;
@@ -442,7 +442,7 @@ pub(crate) fn evaluate_custom_by_attrs(
         "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 pp 62-66"),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
-        "E021/aea-requires-noforn" => e021_aea_requires_noforn(attrs),
+        "E021/rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs),
         "E024/rd-precedence" => e024_rd_precedence(attrs),
         // W002/us-commingled-with-fgi retired in the PR closing #470.
         // The catalog row + helper are removed in the same commit.

@@ -228,7 +228,7 @@ pub struct Engine {
     /// - `E015/non-us-requires-dissem` → `RuleId("E015")`
     /// - `E016/joint-conflicts-restricted` → `RuleId("E016")`
     /// - `E036/joint-conflicts-hcs` → `RuleId("E036")`
-    /// - `E021/aea-requires-noforn` → `RuleId("E021")`
+    /// - `E021/rd-frd-requires-noforn` → `RuleId("E021")`
     /// - `E024/rd-precedence` → `RuleId("E024")`
     /// - `capco/noforn-conflicts-rel-to` → `RuleId("E053")`
     /// - `E037/nodis-conflicts-exdis` → `RuleId("E037")`
