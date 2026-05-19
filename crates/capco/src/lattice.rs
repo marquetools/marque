@@ -53,6 +53,27 @@ use marque_scheme::{
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Sort a slice of `&SmolStr` by `marque_ism::sar_sort_key` (CAPCO §H.5 p99
+/// numeric-first, alphabetic-after; also serves SCI §A.6 p15 which shares the
+/// same numeric-then-alpha rule).
+///
+/// Single named site so the compiler emits exactly one
+/// `slice::sort::stable::quicksort::quicksort<&SmolStr, _>` instantiation
+/// regardless of how many call sites use it (per PR 4b-perf LA-1 follow-up
+/// — issue #585). Previously each `.sort_by(|a, b| sar_sort_key(a)…)` call
+/// emitted a distinct ~15.6 KiB monomorphization; consolidating the 4
+/// `&SmolStr` sites + 1 tuple site (refactored to sort keys-first) collapses
+/// 5 monos to 1.
+///
+/// Deliberately NOT `#[inline]`: the closure here has a single anonymous type
+/// (`sort_smolstrs_by_sar::{closure#0}`) regardless of inlining decisions, so
+/// the mono guarantee holds either way. Omitting the hint avoids contradicting
+/// the doc comment's "single named site" framing — `lto = "fat"` (workspace
+/// `Cargo.toml`) handles whole-program inlining naturally if profitable.
+fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
+    slice.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
+}
+
 // ---------------------------------------------------------------------------
 // SciSet — lattice over the full SCI category state
 // ---------------------------------------------------------------------------
@@ -155,16 +176,15 @@ impl SciSet {
 
         let mut out: Vec<SciMarking> = Vec::with_capacity(systems.len());
         for (sys_key, comp_map) in systems {
-            let mut comps: Vec<(&SmolStr, &BTreeSet<SmolStr>)> = comp_map.iter().collect();
-            comps.sort_by(|a, b| marque_ism::sar_sort_key(a.0).cmp(&marque_ism::sar_sort_key(b.0)));
+            let mut comp_keys: Vec<&SmolStr> = comp_map.keys().collect();
+            sort_smolstrs_by_sar(&mut comp_keys);
 
-            let compartments: Vec<SciCompartment> = comps
+            let compartments: Vec<SciCompartment> = comp_keys
                 .into_iter()
-                .map(|(id, sub_set)| {
+                .map(|id| {
+                    let sub_set = comp_map.get(id).expect("key enumerated from comp_map");
                     let mut subs: Vec<&SmolStr> = sub_set.iter().collect();
-                    subs.sort_by(|a, b| {
-                        marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b))
-                    });
+                    sort_smolstrs_by_sar(&mut subs);
                     let sub_boxes: Box<[SmolStr]> = subs
                         .into_iter()
                         .cloned()
@@ -335,24 +355,21 @@ impl SarSet {
         }
 
         let mut prog_keys: Vec<&SmolStr> = self.programs.keys().collect();
-        prog_keys.sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
+        sort_smolstrs_by_sar(&mut prog_keys);
 
         let built_programs: Vec<SarProgram> = prog_keys
             .into_iter()
             .map(|pid| {
                 let comp_map = self.programs.get(pid).expect("key enumerated above");
                 let mut comp_keys: Vec<&SmolStr> = comp_map.keys().collect();
-                comp_keys
-                    .sort_by(|a, b| marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b)));
+                sort_smolstrs_by_sar(&mut comp_keys);
 
                 let built_compartments: Vec<SarCompartment> = comp_keys
                     .into_iter()
                     .map(|cid| {
                         let subs = comp_map.get(cid).expect("key enumerated above");
                         let mut sub_vec: Vec<&SmolStr> = subs.iter().collect();
-                        sub_vec.sort_by(|a, b| {
-                            marque_ism::sar_sort_key(a).cmp(&marque_ism::sar_sort_key(b))
-                        });
+                        sort_smolstrs_by_sar(&mut sub_vec);
                         let boxed: Box<[SmolStr]> = sub_vec
                             .into_iter()
                             .cloned()
