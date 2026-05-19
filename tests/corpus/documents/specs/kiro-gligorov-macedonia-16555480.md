@@ -11,7 +11,7 @@ cab:
 ---
 
 === page 1 ===
-banner: SECRET//SI//NOFORN/RAWFISA
+banner: SECRET//SI//NOFORN/RAWFISA//EXDIS
 
 (U) (b)(1) (b)(3)
 
@@ -43,7 +43,7 @@ banner: SECRET//SI//NOFORN/RAWFISA
 (S//SI//REL TO USA, FVEY) (cont.) · LDA M 92-15275
 
 === page 2 ===
-banner: SECRET//SI//NOFORN/RAWFISA
+banner: SECRET//SI//NOFORN/RAWFISA//EXDIS
 
 (U//NF//XD) The ethnic Albanian parties, along with social democrats and liberals, are represented in the current coalition government that was formed in August under Prime Minister Branko Crvenkovski (30), who is a relative political novice. We believe that Gligorov's moderating influence is an important factor in keeping this fragile grouping together. Gligorov is the republic's most popular politician,
 

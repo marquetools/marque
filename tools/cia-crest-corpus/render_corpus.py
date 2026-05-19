@@ -239,7 +239,12 @@ def render_marked(spec: ParsedSpec) -> str:
         out.append(page.banner)
         out.append("")
         if i < len(spec.pages) - 1:
+            # Form-feed is the canonical hard page break that
+            # `marque-core`'s scanner picks up via memchr. The `---`
+            # line stays as a human-visible separator in the
+            # rendered markdown.
             out.append("---")
+            out.append("\f")
             out.append("")
     return "\n".join(out).rstrip() + "\n"
 

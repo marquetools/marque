@@ -35,7 +35,7 @@ banner: TOP SECRET//SI-GAMMA ABCD//FGI NATO//ORCON/REL TO USA, NOR//LES
 (U//REL TO USA, AUSTRALIA_GROUP//LES) 3. Representatives of the General Accounting Office regularly seek information or briefings from the CIA on a wide variety of topics. As I will discuss below, the
 
 === page 2 ===
-banner: TOP SECRET//SI-G ABCD//ORCON/REL TO USA, NOR//LES
+banner: TOP SECRET//SI-G ABCD//FGI NATO//ORCON/REL TO USA, NOR//LES
 
 (U//REL TO USA, AUSTRALIA_GROUP//LES) SUBJECT: DCI Affirmation of Policy for Dealing With the General Accounting Office (GAO)
 
