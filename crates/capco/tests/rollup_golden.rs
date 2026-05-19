@@ -388,6 +388,80 @@ fn non_ic_les_co_present_splits_to_bare_les_in_classified() {
 }
 
 // =========================================================================
+// #554 — Pattern-A NF-promotion classification gate
+// =========================================================================
+//
+// `capco/sbu-nf-implies-noforn` and `capco/les-nf-implies-noforn` now
+// gate on `is_classified` per `sbu_nf_classified_trigger` /
+// `les_nf_classified_trigger` (CAPCO-2016 §H.9 p178 / p185). Pre-#554
+// both rows used a classification-agnostic `Contains` trigger and
+// overfired on unclassified compound tokens — the scheme path injected
+// NF onto `dissem_us` while the lattice path's `needs_nf = false`
+// (§H.9 p178 / p185 — the compound encodes NF) produced no injection.
+// These two tests pin the gate against future regression.
+
+/// #554 — `(U//SBU-NF)` alone: scheme path MUST NOT inject NF onto
+/// `dissem_us`. The compound token itself encodes NOFORN per the §H.9
+/// p178 Example Banner Line `UNCLASSIFIED//SBU NOFORN`; a separate
+/// NOFORN segment on the dissem axis would be redundant. Gate
+/// implemented at `crates/capco/src/scheme/predicates/triggers.rs`
+/// (`sbu_nf_classified_trigger`).
+#[test]
+fn pattern_a_sbu_nf_unclassified_alone_does_not_inject_noforn() {
+    let mut p_sbu_nf = portion(Classification::Unclassified);
+    p_sbu_nf.non_ic_dissem = vec![NonIcDissem::SbuNf].into();
+
+    let scheme = CapcoScheme::new();
+    let portions = [p_sbu_nf];
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
+    let projected = scheme.project(Scope::Page, &markings);
+
+    assert!(
+        !projected.0.dissem_us.contains(&DissemControl::Nf),
+        "§H.9 p178: unclassified `(U//SBU-NF)` alone must not inject NF \
+         onto dissem_us — the compound encodes NF on the non_ic axis. \
+         dissem_us = {:?}",
+        projected.0.dissem_us,
+    );
+    assert!(
+        projected.0.non_ic_dissem.contains(&NonIcDissem::SbuNf),
+        "§H.9 p178: unclassified compound SbuNf must survive on the \
+         non_ic axis. non_ic_dissem = {:?}",
+        projected.0.non_ic_dissem,
+    );
+}
+
+/// #554 — `(U//LES-NF)` alone: scheme path MUST NOT inject NF onto
+/// `dissem_us`. Mirrors the SBU-NF test; authority is §H.9 p185
+/// Example Banner Line `UNCLASSIFIED//LES NOFORN` + Notional Example
+/// Page 1. Gate implemented at `crates/capco/src/scheme/predicates/triggers.rs`
+/// (`les_nf_classified_trigger`).
+#[test]
+fn pattern_a_les_nf_unclassified_alone_does_not_inject_noforn() {
+    let mut p_les_nf = portion(Classification::Unclassified);
+    p_les_nf.non_ic_dissem = vec![NonIcDissem::LesNf].into();
+
+    let scheme = CapcoScheme::new();
+    let portions = [p_les_nf];
+    let markings: Vec<CapcoMarking> = portions.iter().cloned().map(CapcoMarking::new).collect();
+    let projected = scheme.project(Scope::Page, &markings);
+
+    assert!(
+        !projected.0.dissem_us.contains(&DissemControl::Nf),
+        "§H.9 p185: unclassified `(U//LES-NF)` alone must not inject NF \
+         onto dissem_us — the compound encodes NF on the non_ic axis. \
+         dissem_us = {:?}",
+        projected.0.dissem_us,
+    );
+    assert!(
+        projected.0.non_ic_dissem.contains(&NonIcDissem::LesNf),
+        "§H.9 p185: unclassified compound LesNf must survive on the \
+         non_ic axis. non_ic_dissem = {:?}",
+        projected.0.non_ic_dissem,
+    );
+}
+
+// =========================================================================
 // Dissem Control Rollup
 // =========================================================================
 

@@ -2364,16 +2364,14 @@ fn parity_unclassified_sbu_co_present_lattice_and_scheme_both_drop_bare_sbu() {
     // Unclassified output: `{SbuNf}` only; banner
     // `UNCLASSIFIED//SBU NOFORN`. #552.
     //
-    // `dissem_us` documented divergence: the scheme path injects
-    // NF via the Pattern-A `capco/sbu-nf-implies-noforn` row
-    // (`scheme/rewrites/pattern_a.rs`), which is intentionally
-    // classification-agnostic per its doc-comment ("On malformed
-    // classified input `(C//SBU-NF)`, Pattern A still fires
-    // defensively"). The lattice path's `needs_nf` is false on
-    // unclassified `{SbuNf}` (§H.9 p178 — the compound token
-    // encodes NF), so it doesn't inject. Pre-existing scheme-path
-    // overfire on the unclassified quadrant; predates #552.
-    // Tracked at #554.
+    // Post-#554: byte-identity on every axis (no `dissem_us`
+    // divergence). The Pattern-A `capco/sbu-nf-implies-noforn` row
+    // now gates on `is_classified` per `sbu_nf_classified_trigger`,
+    // so the unclassified compound's intrinsic NOFORN identity is
+    // not double-counted onto the dissem axis. Both projection
+    // paths agree: `non_ic_dissem = {SbuNf}`, `dissem_us = {}`,
+    // banner `UNCLASSIFIED//SBU NOFORN` per the §H.9 p178 Example
+    // Banner Line.
     let mut p_sbu = portion_us(Classification::Unclassified);
     p_sbu.non_ic_dissem = vec![NonIcDissem::Sbu].into_boxed_slice();
     let mut p_sbu_nf = portion_us(Classification::Unclassified);
@@ -2385,7 +2383,7 @@ fn parity_unclassified_sbu_co_present_lattice_and_scheme_both_drop_bare_sbu() {
         "parity_unclassified_sbu_co_present_lattice_and_scheme_both_drop_bare_sbu",
         &lat,
         &scheme,
-        &["dissem_us"],
+        &[],
     );
     // Both paths agree on the load-bearing #552 axis: non_ic_dissem
     // drops bare Sbu and retains SbuNf.
@@ -2421,13 +2419,14 @@ fn parity_unclassified_les_co_present_lattice_and_scheme_both_drop_bare_les() {
     // Unclassified output: `{LesNf}` only; banner
     // `UNCLASSIFIED//LES NOFORN`. #552.
     //
-    // `dissem_us` documented divergence: parallel to the SBU
-    // unclassified fixture above. The scheme path injects NF via
-    // Pattern-A `capco/les-nf-implies-noforn` regardless of
-    // classification; the lattice path's `needs_nf` is false on
-    // unclassified `{LesNf}` per §H.9 p185 (the LES-NF compound
-    // encodes NF). Pre-existing scheme-path overfire predating
-    // #552. Tracked at #554.
+    // Post-#554: byte-identity on every axis (no `dissem_us`
+    // divergence). The Pattern-A `capco/les-nf-implies-noforn` row
+    // now gates on `is_classified` per `les_nf_classified_trigger`,
+    // so the unclassified compound's intrinsic NOFORN identity is
+    // not double-counted onto the dissem axis. Both projection
+    // paths agree: `non_ic_dissem = {LesNf}`, `dissem_us = {}`,
+    // banner `UNCLASSIFIED//LES NOFORN` per the §H.9 p185 Example
+    // Banner Line + Notional Example Page 1.
     let mut p_les = portion_us(Classification::Unclassified);
     p_les.non_ic_dissem = vec![NonIcDissem::Les].into_boxed_slice();
     let mut p_les_nf = portion_us(Classification::Unclassified);
@@ -2439,7 +2438,7 @@ fn parity_unclassified_les_co_present_lattice_and_scheme_both_drop_bare_les() {
         "parity_unclassified_les_co_present_lattice_and_scheme_both_drop_bare_les",
         &lat,
         &scheme,
-        &["dissem_us"],
+        &[],
     );
     assert!(
         !lat.non_ic_dissem.contains(&NonIcDissem::Les),
