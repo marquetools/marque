@@ -728,7 +728,7 @@ impl<'t> Parser<'t> {
                     span,
                     text: trimmed.into(),
                 });
-            } else if let Some(aea_marking) = AeaMarking::parse(trimmed) {
+            } else if let Some(aea_marking) = parse_aea_full_form(trimmed) {
                 aea.push(ParsedAea::new(aea_marking, trimmed, span));
                 token_spans.push(TokenSpan {
                     kind: TokenKind::AeaMarking,
@@ -968,7 +968,7 @@ impl<'t> Parser<'t> {
                             nic: Some(nic),
                             aea: None,
                         });
-                    } else if let Some(aea_marking) = AeaMarking::parse(sub_tok) {
+                    } else if let Some(aea_marking) = parse_aea_full_form(sub_tok) {
                         results.push(SubResult {
                             kind: SubKind::Aea,
                             tok: sub_tok,
@@ -978,6 +978,115 @@ impl<'t> Parser<'t> {
                             nic: None,
                             aea: Some(aea_marking),
                         });
+                    } else if context == MarkingType::Banner
+                        && let Some(ws_off) = sub_tok.find(char::is_whitespace)
+                        && let Some(recovered) = {
+                            // Banner-context trailing-junk recovery
+                            // (§A.6 p16): bare canonical CAPCO tokens
+                            // never contain internal whitespace, so a
+                            // `/`-separated sub-token whose leading
+                            // whitespace-delimited word IS recognized
+                            // AND whose trailing material is
+                            // *unrecognized* indicates document content
+                            // accidentally captured by the line-scanner
+                            // — e.g. an embedded cable header
+                            // `TOP SECRET//RD//NOFORN/PROPIN 00 RUEAIIB`
+                            // where `00 RUEAIIB` is cable-routing
+                            // metadata, not marking content. Recover
+                            // by committing just the recognized
+                            // leading word; the trailing material is
+                            // dropped (no `SubResult` pushed) so it
+                            // never reaches E008.
+                            //
+                            // **Decoder coexistence**: if any trailing
+                            // whitespace-separated token *does* parse
+                            // as a known CAPCO token, this is a
+                            // missing-delimiter case (e.g.
+                            // `SI/TK NOFORN` where the author forgot
+                            // the `//` between SCI and dissem blocks).
+                            // The decoder's hard-splitter recovery
+                            // handles that case downstream by reading
+                            // `TokenKind::Unknown` spans and re-
+                            // splitting on whitespace; if we
+                            // pre-emptively committed only the leading
+                            // word here we would silently drop the
+                            // recoverable trailing token. Fall through
+                            // to the Unknown emission in that case so
+                            // the decoder can do its work.
+                            //
+                            // This precision recovery is gated to
+                            // Banner candidates because portions are
+                            // bounded by `()` and CABs are line-
+                            // structured key:value pairs — neither
+                            // shape can leak surrounding document
+                            // content into a sub-token the way a
+                            // line-scanner banner can.
+                            let word = &sub_tok[..ws_off];
+                            let trailing = sub_tok[ws_off..].trim();
+                            let trailing_is_all_unrecognized = trailing.is_empty()
+                                || trailing.split_whitespace().all(|t| {
+                                    SciControl::parse(t).is_none()
+                                        && parse_sci_control_full_form(t).is_none()
+                                        && DissemControl::parse(t).is_none()
+                                        && parse_dissem_full_form(t).is_none()
+                                        && parse_non_ic_full_form(t).is_none()
+                                        && parse_aea_full_form(t).is_none()
+                                });
+                            if !trailing_is_all_unrecognized {
+                                None
+                            } else {
+                                let word_span =
+                                    Span::new(sub_abs_start, sub_abs_start + word.len());
+                                SciControl::parse(word)
+                                    .or_else(|| parse_sci_control_full_form(word))
+                                    .map(|ctrl| SubResult {
+                                        kind: SubKind::Sci,
+                                        tok: word,
+                                        span: word_span,
+                                        sci: Some(ctrl),
+                                        dissem: None,
+                                        nic: None,
+                                        aea: None,
+                                    })
+                                    .or_else(|| {
+                                        DissemControl::parse(word)
+                                            .or_else(|| parse_dissem_full_form(word))
+                                            .map(|ctrl| SubResult {
+                                                kind: SubKind::Dissem,
+                                                tok: word,
+                                                span: word_span,
+                                                sci: None,
+                                                dissem: Some(ctrl),
+                                                nic: None,
+                                                aea: None,
+                                            })
+                                    })
+                                    .or_else(|| {
+                                        parse_non_ic_full_form(word).map(|nic| SubResult {
+                                            kind: SubKind::NonIc,
+                                            tok: word,
+                                            span: word_span,
+                                            sci: None,
+                                            dissem: None,
+                                            nic: Some(nic),
+                                            aea: None,
+                                        })
+                                    })
+                                    .or_else(|| {
+                                        parse_aea_full_form(word).map(|aea_marking| SubResult {
+                                            kind: SubKind::Aea,
+                                            tok: word,
+                                            span: word_span,
+                                            sci: None,
+                                            dissem: None,
+                                            nic: None,
+                                            aea: Some(aea_marking),
+                                        })
+                                    })
+                            }
+                        }
+                    {
+                        results.push(recovered);
                     } else {
                         results.push(SubResult {
                             kind: SubKind::Unknown,
@@ -1583,12 +1692,28 @@ fn parse_sci_block(
             return None;
         }
 
-        // Recognize control: bare CVE first, then custom [A-Z0-9]{2,5}.
-        // A custom control must not collide with any other known category
-        // (Dissem / NonIcDissem / Sar / Aea / DeclassExemption) — otherwise
-        // a block like `SI/NF` would be mis-claimed as SCI instead of
-        // flagged as a stray `/` by E004.
+        // Recognize control: bare CVE first, then long-form Authorized
+        // Banner Line Marking Title (e.g. `TALENT KEYHOLE` → `TK`,
+        // `MARVEL` → `MVL`, `KLAMATH` → `KLM`) via MARKING_FORMS, then
+        // custom [A-Z0-9]{2,5}. Long-form acceptance is required so a
+        // chunk like `TALENT KEYHOLE` inside an `SI/TALENT KEYHOLE`
+        // block routes through the structural path and produces a
+        // canonical SciMarking, rather than falling through to the
+        // flat within-block sub-token chain (which populates
+        // `sci_controls` only). A custom control must not collide
+        // with any other known category (Dissem / NonIcDissem / Sar
+        // / Aea / DeclassExemption) — otherwise a block like `SI/NF`
+        // would be mis-claimed as SCI instead of flagged as a stray
+        // `/` by E004.
+        //
+        // Authority: CAPCO-2016 §D.1 p27 (any control marking in the
+        // banner line may be spelled out per the Marking Title);
+        // §H.4 p85 (TALENT KEYHOLE is the registered title for TK).
         let system: SciControlSystem = if let Some(bare) = SciControlBare::parse(ctrl_str) {
+            SciControlSystem::Published(bare)
+        } else if let Some(portion) = marque_ism::marking_forms::title_to_portion(ctrl_str)
+            && let Some(bare) = SciControlBare::parse(portion)
+        {
             SciControlSystem::Published(bare)
         } else if is_valid_custom_control(ctrl_str) && !is_known_non_sci_token(ctrl_str) {
             SciControlSystem::Custom(ctrl_str.into())
@@ -1647,16 +1772,35 @@ fn parse_sci_block(
                 // Each compartment segment = COMP_ID (SPACE SUB_COMP)*
                 // Split on space.
                 let mut parts = seg.split(' ');
-                let comp_id = parts.next().unwrap(); // at least one part
-                if comp_id.is_empty() || !is_alnum_upper(comp_id) {
+                let comp_id_src = parts.next().unwrap(); // at least one part
+                if comp_id_src.is_empty() || !is_alnum_upper(comp_id_src) {
+                    // Long-form compartment fallback: if the segment
+                    // isn't alnum_upper (e.g. `GAMMA ABCD`'s
+                    // `GAMMA` does pass; this branch handles future
+                    // mixed-case input), reject. The canonicalization
+                    // step below picks up alnum-upper long forms
+                    // like `GAMMA`/`BLUEFISH`/`IDITAROD`/`KANDIK`.
                     return None;
                 }
+                // Long-form compartment canonicalization
+                // (CAPCO-2016 §G.1 Table 4 + §H.4 p61, p87, p91, p95).
+                // The MARKING_FORMS table records the long-form title
+                // (GAMMA, BLUEFISH, IDITAROD, KANDIK) → short-form
+                // portion (G, BLFH, IDIT, KAND); when the source token
+                // is the long form, store the canonical short form on
+                // the SciCompartment so page-level equality with
+                // portion-form `SI-G ABCD` succeeds. The TokenSpan
+                // retains the source bytes verbatim so audit-record
+                // anchoring and the byte-identity round-trip stay
+                // accurate.
+                let comp_id =
+                    marque_ism::marking_forms::title_to_portion(comp_id_src).unwrap_or(comp_id_src);
 
                 let comp_abs = rest_abs_base + seg_off;
                 local_tokens.push(TokenSpan {
                     kind: TokenKind::SciCompartment,
-                    span: Span::new(comp_abs, comp_abs + comp_id.len()),
-                    text: comp_id.into(),
+                    span: Span::new(comp_abs, comp_abs + comp_id_src.len()),
+                    text: comp_id_src.into(),
                 });
 
                 // Inline-4: the §A.6 grammar example shows 2 sub-comps
@@ -1664,7 +1808,13 @@ fn parse_sci_block(
                 // markings rarely exceed 4 per compartment.
                 let mut subs: SmallVec<[SmolStr; 4]> = SmallVec::new();
                 // Track cursor within segment for sub-compartment offsets.
-                let mut sub_cursor = comp_id.len() + 1; // +1 skips the space
+                // Use the SOURCE length (`comp_id_src.len()`) — the
+                // cursor walks the source bytes, while `comp_id` may
+                // be the canonicalized short form after long-form
+                // lookup (e.g. `GAMMA` source maps to `G` canonical,
+                // but the sub-compartment span starts after the source
+                // `GAMMA` token, not after a 1-byte `G`).
+                let mut sub_cursor = comp_id_src.len() + 1; // +1 skips the space
                 for sub in parts {
                     if sub.is_empty() || !is_alnum_upper(sub) {
                         return None;
@@ -1689,14 +1839,23 @@ fn parse_sci_block(
         // - One or more compartments → try `{ctrl}-{first_comp}` ONLY when
         //   the first compartment has no sub-compartments. Sub-comps mean
         //   the compound is a structural anchor, not an atomic CVE atom.
+        //
+        // Resolve the control's canonical short form for CVE lookup —
+        // `ctrl_str` may be a long-form title (e.g. `TALENT KEYHOLE`)
+        // after the long-form gate at the system-resolution step above.
+        // `marking_forms::title_to_portion` returns the canonical
+        // portion form when the input is a long form; otherwise the
+        // source token already IS the canonical form.
+        let ctrl_canonical =
+            marque_ism::marking_forms::title_to_portion(ctrl_str).unwrap_or(ctrl_str);
         let canonical_enum = if compartments.is_empty() {
-            SciControl::parse(ctrl_str)
+            SciControl::parse(ctrl_canonical)
         } else {
             compartments
                 .first()
                 .filter(|c| c.sub_compartments.is_empty())
                 .and_then(|c| {
-                    let composite = format!("{}-{}", ctrl_str, c.identifier);
+                    let composite = format!("{}-{}", ctrl_canonical, c.identifier);
                     SciControl::parse(&composite)
                 })
         };
@@ -2646,6 +2805,65 @@ fn parse_sci_control_full_form(s: &str) -> Option<SciControl> {
     let portion = marque_ism::marking_forms::banner_to_portion(s)
         .or_else(|| marque_ism::marking_forms::title_to_portion(s))?;
     SciControl::parse(portion)
+}
+
+/// AEA / nuclear-information marking parser covering the long
+/// "Marking Title" forms per CAPCO-2016 §G.1 Table 4 + §H.6, layered
+/// over [`AeaMarking::parse`].
+///
+/// Handles three classes of long-form input the bare
+/// [`AeaMarking::parse`] does not recognize:
+///
+/// 1. **Standalone titles** — `"DOE UNCLASSIFIED CONTROLLED NUCLEAR
+///    INFORMATION"` / `"DOD UNCLASSIFIED CONTROLLED NUCLEAR
+///    INFORMATION"` map to `DoeUcni` / `DodUcni`. Resolved via the
+///    `MARKING_FORMS` title → portion lookup, then re-parsed through
+///    `AeaMarking::parse` so the resolution stays single-sourced in
+///    `MARKING_FORMS`.
+/// 2. **`RD-{long-form modifier}` compounds** — `RD-CRITICAL NUCLEAR
+///    WEAPON DESIGN INFORMATION` maps to `RD-CNWDI` (`Rd(RdBlock {
+///    cnwdi: true, sigma: [] })`). Strip the `RD-` / `RESTRICTED DATA-`
+///    prefix, look up the trailing long-form title to obtain its
+///    portion abbreviation, recompose with `RD-` and delegate back to
+///    `AeaMarking::parse`.
+/// 3. **`FRD-{long-form modifier}` mirror** — same shape for
+///    Formerly Restricted Data.
+///
+/// Mirror of [`parse_dissem_full_form`] for the §H.6 AEA marking set.
+/// Without this fallback the parser tags `RD-CRITICAL NUCLEAR WEAPON
+/// DESIGN INFORMATION` and `DOE UNCLASSIFIED CONTROLLED NUCLEAR
+/// INFORMATION` as Unknown and E008 fires on legitimate banner-line
+/// content. Authority: CAPCO-2016 §G.1 Table 4 (Marking Title /
+/// Banner Abbreviation / Portion Mark columns; rows on pp36-38) +
+/// §H.6 p106 (CNWDI requires RD), §H.6 p116-117 (DOD UCNI), §H.6
+/// p118-119 (DOE UCNI).
+fn parse_aea_full_form(s: &str) -> Option<AeaMarking> {
+    if let Some(m) = AeaMarking::parse(s) {
+        return Some(m);
+    }
+    if let Some(rest) = s
+        .strip_prefix("RD-")
+        .or_else(|| s.strip_prefix("RESTRICTED DATA-"))
+        && let Some(portion) = marque_ism::marking_forms::title_to_portion(rest)
+    {
+        let mut buf = String::with_capacity(3 + portion.len());
+        buf.push_str("RD-");
+        buf.push_str(portion);
+        return AeaMarking::parse(&buf);
+    }
+    if let Some(rest) = s
+        .strip_prefix("FRD-")
+        .or_else(|| s.strip_prefix("FORMERLY RESTRICTED DATA-"))
+        && let Some(portion) = marque_ism::marking_forms::title_to_portion(rest)
+    {
+        let mut buf = String::with_capacity(4 + portion.len());
+        buf.push_str("FRD-");
+        buf.push_str(portion);
+        return AeaMarking::parse(&buf);
+    }
+    let portion = marque_ism::marking_forms::banner_to_portion(s)
+        .or_else(|| marque_ism::marking_forms::title_to_portion(s))?;
+    AeaMarking::parse(portion)
 }
 
 /// Return type for [`parse_rel_to_with_spans`].

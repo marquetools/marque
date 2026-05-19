@@ -161,6 +161,39 @@ pub static MARKING_FORMS: &[MarkingForm] = &[
         portion: "KLM",
         description_title: None,
     },
+    // §H.4 SCI compartment long-form rows. Per CAPCO §G.1 Table 4
+    // (rows on pp 795-803): each compartment publishes a single-word
+    // long-form Authorized Banner Line Marking Title (e.g. GAMMA)
+    // whose banner abbreviation and portion abbreviation collapse to
+    // the same short form (e.g. G). Banner == portion, so
+    // `title_to_banner` returns `None` for these rows; only
+    // `title_to_portion` is meaningful (it powers SCI long-form
+    // compartment canonicalization in the structural subparser per
+    // §H.4 p61 + p87 + p91 + p95).
+    MarkingForm {
+        title: "GAMMA",
+        banner: "G",
+        portion: "G",
+        description_title: None,
+    },
+    MarkingForm {
+        title: "BLUEFISH",
+        banner: "BLFH",
+        portion: "BLFH",
+        description_title: None,
+    },
+    MarkingForm {
+        title: "IDITAROD",
+        banner: "IDIT",
+        portion: "IDIT",
+        description_title: None,
+    },
+    MarkingForm {
+        title: "KANDIK",
+        banner: "KAND",
+        portion: "KAND",
+        description_title: None,
+    },
     // §H.4 SCI compound forms with distinct banner titles. CAPCO §H.4
     // explicitly publishes a compound (parent control + compartment) as
     // the Authorized Banner Line Marking Title for these two — unlike
