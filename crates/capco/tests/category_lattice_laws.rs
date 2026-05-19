@@ -2355,24 +2355,33 @@ mod fgi_set_concealed_top {
 // ===========================================================================
 // PR-4 test closeout (006 T116) — SciSet lattice laws (proptest)
 //
-// SciSet's open-vocabulary axes — agency-allocated control systems
-// (§A.6 p15 custom-control grammar `[A-Z0-9]{2,5}`), open compartments,
-// and open sub-compartments — mean the brute-force enumeration in
-// `lattice_laws.rs::sci_samples` can never be exhaustive. This module
-// adds a proptest harness over the open-vocab space (capped at ≤3×3×3
-// per PM doc D-2 to keep runtime <5s under default `proptest::Config`).
+// SciSet's vocabulary spans three Published bare control systems (HCS,
+// SI, TK), two registered NATO SAPs (BOHEMIA, BALK per §G.2 p40), and
+// agency-allocated Custom identifiers (§A.6 p15 `[A-Z0-9]{2,5}`). This
+// module's proptest harness exercises the algebraic laws over **the 3
+// Published bare systems only**, with the bounded compartment / sub-
+// compartment strategies below — ≤3 markings per SciSet, ≤3
+// compartments per marking, ≤3 sub-compartments per compartment (cap
+// is per-axis per PM doc D-2 to keep runtime <5s under default
+// `proptest::Config`).
 //
-// Note: `proptest_lattice.rs` already carries SciSet proptest coverage
-// (see `proptest_lattice.rs::sci_join_*` and `sci_meet_*` proptests
-// at L206-256). The duplication is deliberate per PM doc D-2 —
-// consolidating algebraic-law coverage in `category_lattice_laws.rs`
-// makes that file the canonical single-source-of-truth for
-// per-category lattice laws, with smaller proptest cycles and the
-// §-citation discipline applied uniformly.
+// Note: `proptest_lattice.rs` (sci_join_* / sci_meet_* at L206-256)
+// carries parallel SciSet proptest coverage with similar Published-only
+// bounds. The duplication is deliberate per PM doc D-2 — consolidating
+// algebraic-law coverage in `category_lattice_laws.rs` makes that file
+// the canonical single-source-of-truth for per-category lattice laws,
+// with smaller proptest cycles and uniform §-citation discipline.
+//
+// **Pre-existing gap (both harnesses)**: `Custom(...)` and `NatoSap(...)`
+// variants are not exercised in either file. Closing the gap is a
+// straightforward additive follow-up (extend the `prop_oneof!` to sample
+// both variants); architecturally distinct from the bounded `Published`
+// strategy used here.
 //
 // Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
-// authorship 2026-05-19 (§A.6 p15 custom-control grammar; §H.4 p61
-// SCI grammar; `docs/plans/2026-05-01-lattice-design.md` §4).
+// authorship 2026-05-19 (§A.6 p15 custom-control grammar; §G.2 p40
+// NATO SAP registration; §H.4 p61 SCI grammar;
+// `docs/plans/2026-05-01-lattice-design.md` §4).
 // ===========================================================================
 
 mod sci_set {
@@ -2393,8 +2402,10 @@ mod sci_set {
         ]
     }
 
-    /// Compartment identifier strategy: 2-3 chars from a small alpha
-    /// alphabet. Keeps state space bounded.
+    /// Compartment identifier strategy: 1-3 chars from a small alpha
+    /// alphabet `[A-G]`. Keeps state space bounded. CAPCO §A.6 + §H.4
+    /// admit single-letter compartments (`G`, `P`) and longer forms
+    /// (`MMM`); 1-3 covers both shapes.
     fn arb_compartment_id() -> impl Strategy<Value = String> {
         "[A-G]{1,3}"
     }
