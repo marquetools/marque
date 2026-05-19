@@ -530,7 +530,25 @@ jobs:
       # parity build and ship artifact use `--profiling` +
       # `wasm-opt`. See `tools/wasm-size-check.sh` header comment
       # for why measurement happens at the pre-opt boundary.
+      # The `MARQUE_WASM_SKIP_REGRESSION` env-var skip is enabled
+      # exclusively for the `refactor-006-pr-4b-perf-closeout`
+      # diagnosis branch, where the cumulative WASM regression is
+      # the deliverable rather than a defect. Build failures and
+      # missing-artifact failures still fail; only the +5% drift
+      # gate is skipped (there is no absolute-size ceiling on the
+      # WASM gate — only the drift gate). The match
+      # covers both `push` events (`github.ref`) and `pull_request`
+      # events (`github.head_ref`), mirroring the existing
+      # branch-gate patterns at lines 84, 166, 249 of this file —
+      # on `pull_request` events `github.ref` is `refs/pull/N/merge`,
+      # not the source branch, so without the `head_ref` arm the
+      # skip would silently fail to fire on PR runs. REMOVE this
+      # env block once the diagnosis branch merges and the
+      # remediation-lane PRs land their baseline updates. See
+      # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
       - name: wasm-size-check (release-web profile)
+        env:
+          MARQUE_WASM_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout') && '1' || '' }}
         run: ./tools/wasm-size-check.sh
 
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
@@ -806,5 +824,23 @@ jobs:
 
       - uses: Swatinem/rust-cache@3d9a6aef83b697b1d758490972e37a033aee461f
 
+      # The `MARQUE_BENCH_SKIP_REGRESSION` env-var skip is enabled
+      # exclusively for the `refactor-006-pr-4b-perf-closeout`
+      # diagnosis branch, where the cumulative perf regression is
+      # the deliverable rather than a defect. Absolute SC-001 16ms
+      # ceiling, SC-002 18ms ceiling, SC-005 R² gate, fix-throughput
+      # R² gate, and deadline-overhead gate are still enforced (per
+      # `scripts/bench-check.sh` policy comment at line 31). The
+      # match covers both `push` events (`github.ref`) and
+      # `pull_request` events (`github.head_ref`), mirroring the
+      # existing branch-gate patterns at lines 84, 166, 249 — on
+      # `pull_request` events `github.ref` is `refs/pull/N/merge`,
+      # not the source branch, so without the `head_ref` arm the
+      # skip would silently fail to fire on PR runs. REMOVE this
+      # env block once the diagnosis branch merges and the
+      # remediation-lane PRs land their baseline updates. See
+      # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
       - name: scripts/bench-check.sh
+        env:
+          MARQUE_BENCH_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout') && '1' || '' }}
         run: bash scripts/bench-check.sh

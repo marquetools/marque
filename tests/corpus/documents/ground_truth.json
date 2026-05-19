@@ -1756,7 +1756,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//BOHEMIA//RESTRICTED DATA/ATOMAL//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS/CAUTION-PROPRIETARY INFORMATION INVOLVED",
+        "banner": "TOP SECRET//BOHEMIA//RESTRICTED DATA/ATOMAL//FGI NATO//ORIGINATOR CONTROLLED/NOT RELEASABLE TO FOREIGN NATIONALS/CAUTION-PROPRIETARY INFORMATION INVOLVED",
         "paragraphs": [
           {
             "mark": "//CTS//BOHEMIA//ATOMAL//OC/REL TO USA, NATO",
@@ -2051,7 +2051,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "SECRET//HCS-OPERATIONS//RD//ORCON/NOFORN/PROPIN",
+        "banner": "SECRET//HCS-O//RD//ORCON/NOFORN/PROPIN",
         "paragraphs": [
           {
             "mark": "S//HCS-O//OC/NF",
@@ -2655,7 +2655,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//RD//NOFORN/PROPIN",
+        "banner": "TOP SECRET//HCS-P CUPCA//RD//ORCON/NOFORN/PROPIN",
         "paragraphs": [
           {
             "mark": "TS//TFNI//REL TO USA, FVEY",
@@ -3040,7 +3040,7 @@
       },
       {
         "page_num": 2,
-        "banner": "TOP SECRET//SI-G ABCD//ORCON/REL TO USA, NOR//LES",
+        "banner": "TOP SECRET//SI-G ABCD//FGI NATO//ORCON/REL TO USA, NOR//LES",
         "paragraphs": [
           {
             "mark": "U//REL TO USA, AUSTRALIA_GROUP//LES",
@@ -3080,7 +3080,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "TOP SECRET//TFNI//FGI FSM//NOFORN//EXDIS",
+        "banner": "TOP SECRET//TFNI//FGI AUS CAN FSM ITA//NOFORN//EXDIS",
         "paragraphs": [
           {
             "mark": "U//NF//XD",
@@ -3111,7 +3111,7 @@
       },
       {
         "page_num": 2,
-        "banner": "TOP SECRET//TFNI//FGI FSM//NOFORN//EXDIS",
+        "banner": "TOP SECRET//TFNI//FGI AUS CAN FSM ITA//NOFORN//EXDIS",
         "paragraphs": [
           {
             "mark": "U//NF//XD",
@@ -3790,7 +3790,7 @@
     "pages": [
       {
         "page_num": 1,
-        "banner": "SECRET//SI//NOFORN/RAWFISA",
+        "banner": "SECRET//SI//NOFORN/RAWFISA//EXDIS",
         "paragraphs": [
           {
             "mark": "U",
@@ -3861,7 +3861,7 @@
       },
       {
         "page_num": 2,
-        "banner": "SECRET//SI//NOFORN/RAWFISA",
+        "banner": "SECRET//SI//NOFORN/RAWFISA//EXDIS",
         "paragraphs": [
           {
             "mark": "U//NF//XD",

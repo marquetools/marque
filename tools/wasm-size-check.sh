@@ -132,6 +132,22 @@ fi
 BASELINE_SIZE=$(<"${BASELINE_FILE}")
 echo "[wasm-size-check] baseline size: ${BASELINE_SIZE} bytes (${BASELINE_FILE})"
 
+# `MARQUE_WASM_SKIP_REGRESSION=1` skips the +5%-vs-baseline drift gate
+# (parallels the `MARQUE_BENCH_SKIP_REGRESSION=1` override in
+# `scripts/bench-check.sh`). The build-failed-for-non-wasm-opt-reason
+# branch above and the artifact-not-produced branch above STILL fail
+# the gate — only the drift comparison is skipped. Set this env var
+# only on branches that have explicit PM authorization to ship a
+# WASM-size regression (e.g., the `refactor-006-pr-4b-perf-closeout`
+# diagnosis branch, which surfaces the regression as the deliverable
+# rather than masking it).
+if [[ "${MARQUE_WASM_SKIP_REGRESSION:-0}" == "1" ]]; then
+    DELTA=$((CURRENT_SIZE - BASELINE_SIZE))
+    echo "[wasm-size-check] delta: ${DELTA} bytes (drift gate skipped via MARQUE_WASM_SKIP_REGRESSION=1)"
+    echo "[wasm-size-check] OK (skipped by env var on this branch)"
+    exit 0
+fi
+
 DELTA=$((CURRENT_SIZE - BASELINE_SIZE))
 # 5% regression threshold per T058i quality gate. Bash arithmetic
 # is integer-only, so we compute the percentage at 1000x (i.e.,

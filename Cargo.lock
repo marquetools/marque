@@ -1027,6 +1027,7 @@ dependencies = [
  "phf",
  "proptest",
  "secrecy",
+ "serde",
  "serde_json",
  "smallvec",
  "smol_str",

@@ -2292,4 +2292,577 @@ mod fgi_set_concealed_top {
             "overlapping acknowledged sets must produce the intersection"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // PR-4 test closeout (006 T116) — FgiSet join-side extension.
+    //
+    // The existing tests above pin meet-side dominance (concealed acts as
+    // lattice TOP on the meet per §H.7 p128). The 3 tests below pin the
+    // join-side dual: concealed dominates acknowledged under join — i.e.
+    // any source-concealed entry on any portion forces a source-concealed
+    // banner per §H.7 p128 ("the most restrictive form of the marking").
+    //
+    // Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
+    // authorship 2026-05-19 (§H.7 p128: "A document containing portions
+    // of both source-concealed FGI and source-acknowledged FGI must have
+    // only the 'FGI' marking without source trigraph(s)/tetragraph(s) in
+    // the banner line, as it is the most restrictive form of the marking").
+    // -----------------------------------------------------------------------
+
+    /// §H.7 p128 join-side: `Concealed ⊔ Acknowledged{...} = Concealed`.
+    /// A source-concealed portion on the page forces the banner to the
+    /// concealed form regardless of co-occurring acknowledged producers.
+    #[test]
+    fn join_concealed_with_acknowledged_is_concealed() {
+        let c = concealed();
+        let a = acknowledged([gbr(), can()]);
+        assert_eq!(
+            c.join(&a),
+            concealed(),
+            "concealed ⊔ acknowledged should be concealed (§H.7 p128)"
+        );
+        // Commutativity check.
+        assert_eq!(
+            a.join(&c),
+            concealed(),
+            "acknowledged ⊔ concealed should also be concealed (§H.7 p128)"
+        );
+    }
+
+    /// Concealed is idempotent under join (top of the join semilattice
+    /// on the concealment axis).
+    #[test]
+    fn join_concealed_concealed_is_concealed() {
+        let c = concealed();
+        assert_eq!(c.join(&c), concealed());
+    }
+
+    /// `FgiSet::None` is the join identity: `None ⊔ x = x`.
+    #[test]
+    fn join_none_is_identity() {
+        let bottom = FgiSet::None;
+        let c = concealed();
+        let a = acknowledged([gbr()]);
+        assert_eq!(bottom.join(&c), c);
+        assert_eq!(c.join(&bottom), c);
+        assert_eq!(bottom.join(&a), a);
+        assert_eq!(a.join(&bottom), a);
+        // Identity composes with itself.
+        assert_eq!(bottom.join(&bottom), bottom);
+    }
+}
+
+// ===========================================================================
+// PR-4 test closeout (006 T116) — SciSet lattice laws (proptest)
+//
+// SciSet's vocabulary spans three Published bare control systems (HCS,
+// SI, TK), two registered NATO SAPs (BOHEMIA, BALK per §G.2 p40), and
+// agency-allocated Custom identifiers (§A.6 p15 `[A-Z0-9]{2,5}`). This
+// module's proptest harness exercises the algebraic laws over **the 3
+// Published bare systems only**, with the bounded compartment / sub-
+// compartment strategies below — ≤3 markings per SciSet, ≤3
+// compartments per marking, ≤3 sub-compartments per compartment (cap
+// is per-axis per PM doc D-2 to keep runtime <5s under default
+// `proptest::Config`).
+//
+// Note: `proptest_lattice.rs` (sci_join_* / sci_meet_* at L206-256)
+// carries parallel SciSet proptest coverage with similar Published-only
+// bounds. The duplication is deliberate per PM doc D-2 — consolidating
+// algebraic-law coverage in `category_lattice_laws.rs` makes that file
+// the canonical single-source-of-truth for per-category lattice laws,
+// with smaller proptest cycles and uniform §-citation discipline.
+//
+// **Pre-existing gap (both harnesses)**: `Custom(...)` and `NatoSap(...)`
+// variants are not exercised in either file. Closing the gap is a
+// straightforward additive follow-up (extend the `prop_oneof!` to sample
+// both variants); architecturally distinct from the bounded `Published`
+// strategy used here.
+//
+// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
+// authorship 2026-05-19 (§A.6 p15 custom-control grammar; §G.2 p40
+// NATO SAP registration; §H.4 p61 SCI grammar;
+// `docs/plans/2026-05-01-lattice-design.md` §4).
+// ===========================================================================
+
+mod sci_set {
+    use marque_capco::lattice::SciSet;
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+    use marque_scheme::{JoinSemilattice, MeetSemilattice};
+    use proptest::prelude::*;
+    use smol_str::SmolStr;
+
+    /// Open-vocab control-system strategy: 3 published bare systems
+    /// (HCS, SI, TK) so the resulting SciSet has compartment structure
+    /// to exercise.
+    fn arb_system() -> impl Strategy<Value = SciControlSystem> {
+        prop_oneof![
+            Just(SciControlSystem::Published(SciControlBare::Hcs)),
+            Just(SciControlSystem::Published(SciControlBare::Si)),
+            Just(SciControlSystem::Published(SciControlBare::Tk)),
+        ]
+    }
+
+    /// Compartment identifier strategy: 1-3 chars from a small alpha
+    /// alphabet `[A-G]`. Keeps state space bounded. CAPCO §A.6 + §H.4
+    /// admit single-letter compartments (`G`, `P`) and longer forms
+    /// (`MMM`); 1-3 covers both shapes.
+    fn arb_compartment_id() -> impl Strategy<Value = String> {
+        "[A-G]{1,3}"
+    }
+
+    /// Sub-compartment identifier strategy: 4 chars from a small alpha
+    /// alphabet. Per §A.6 + §H.4 sub-compartments are 4-6 alnum; we use
+    /// 4 alpha for proptest stability.
+    fn arb_sub_compartment_id() -> impl Strategy<Value = String> {
+        "[A-Z]{4,4}"
+    }
+
+    /// One `SciCompartment` with 0-3 sub-compartments.
+    fn arb_compartment() -> impl Strategy<Value = SciCompartment> {
+        (
+            arb_compartment_id(),
+            prop::collection::vec(arb_sub_compartment_id(), 0..=3),
+        )
+            .prop_map(|(cid, subs)| {
+                let sub_boxes: Box<[SmolStr]> = subs
+                    .into_iter()
+                    .map(SmolStr::from)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                SciCompartment::new(cid, sub_boxes)
+            })
+    }
+
+    /// One `SciMarking` with 0-3 compartments under a single system.
+    fn arb_marking() -> impl Strategy<Value = SciMarking> {
+        (
+            arb_system(),
+            prop::collection::vec(arb_compartment(), 0..=3),
+        )
+            .prop_map(|(sys, comps)| SciMarking::new(sys, comps.into_boxed_slice(), None))
+    }
+
+    /// One `SciSet` from 0-3 markings (at most 3 systems per the
+    /// PM doc D-2 ≤3×3×3 cap).
+    fn arb_sci_set() -> impl Strategy<Value = SciSet> {
+        prop::collection::vec(arb_marking(), 0..=3)
+            .prop_map(|markings| SciSet::from_markings(&markings))
+    }
+
+    proptest! {
+        /// §-authority: `docs/plans/2026-05-01-lattice-design.md` §4
+        /// (SciSet join is prefix-closed union).
+        #[test]
+        fn sci_set_assoc_comm_idem_proptest(
+            a in arb_sci_set(),
+            b in arb_sci_set(),
+            c in arb_sci_set(),
+        ) {
+            // Commutativity.
+            prop_assert_eq!(a.join(&b), b.join(&a));
+            // Associativity.
+            prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+            // Idempotency.
+            prop_assert_eq!(a.join(&a), a.clone());
+        }
+
+        /// Empty is the join identity. SciSet does NOT implement
+        /// `BoundedJoinSemilattice` — open-vocab `Custom` controls
+        /// have no lawful finite top — so the identity property is
+        /// the strongest claim available.
+        #[test]
+        fn sci_set_identity_with_bottom(a in arb_sci_set()) {
+            let empty = SciSet::empty();
+            prop_assert_eq!(a.join(&empty), a.clone());
+            prop_assert_eq!(empty.join(&a), a);
+        }
+
+        /// Meet idempotency under proptest. §3.3a equal-depth meet
+        /// is commutative + idempotent on the SciSet open-vocab space
+        /// (verified at the brute-force level in `lattice_laws.rs`;
+        /// re-pinned here for proptest cycle coverage).
+        #[test]
+        fn sci_set_meet_idempotent_proptest(a in arb_sci_set()) {
+            prop_assert_eq!(a.meet(&a), a);
+        }
+    }
+}
+
+// ===========================================================================
+// PR-4 test closeout (006 T116) — SarSet lattice laws (proptest)
+//
+// SarSet's program identifiers are agency-assigned codewords with no
+// central registry (CVEnumISMSAR.xml is intentionally empty per ODNI
+// convention). The proptest harness here samples 1-3 programs × 0-2
+// compartments × 0-2 sub-compartments — the same cap as SciSet for
+// runtime parity.
+//
+// SarSet has no `from_attrs_iter` shortcut; constructors use
+// `SarMarking` literals via `SarSet::from_marking`. Per the
+// architect/rust-specialist preflight hazard #7 surfaced in the PM
+// doc.
+//
+// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
+// authorship 2026-05-19 (§H.5 p99 SAR grammar;
+// `docs/plans/2026-05-01-lattice-design.md` §5).
+// ===========================================================================
+
+mod sar_set {
+    use marque_capco::lattice::SarSet;
+    use marque_ism::{SarCompartment, SarIndicator, SarMarking, SarProgram};
+    use marque_scheme::{JoinSemilattice, MeetSemilattice};
+    use proptest::prelude::*;
+    use smol_str::SmolStr;
+
+    /// Program identifier: 2-3 alpha (mirrors §H.5 p99-100 grammar:
+    /// "Program identifier is 2-3 char abbreviation").
+    fn arb_program_id() -> impl Strategy<Value = String> {
+        "[A-Z]{2,3}"
+    }
+
+    /// Compartment identifier: 2-3 alnum.
+    fn arb_compartment_id() -> impl Strategy<Value = String> {
+        "[A-Z][A-Z0-9]{1,2}"
+    }
+
+    /// Sub-compartment identifier: 2-3 alnum.
+    fn arb_sub_compartment_id() -> impl Strategy<Value = String> {
+        "[A-Z][A-Z0-9]{1,2}"
+    }
+
+    fn arb_compartment() -> impl Strategy<Value = SarCompartment> {
+        (
+            arb_compartment_id(),
+            prop::collection::vec(arb_sub_compartment_id(), 0..=2),
+        )
+            .prop_map(|(cid, subs)| {
+                let sub_boxes: Box<[SmolStr]> = subs
+                    .into_iter()
+                    .map(SmolStr::from)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                SarCompartment::new(cid, sub_boxes)
+            })
+    }
+
+    fn arb_program() -> impl Strategy<Value = SarProgram> {
+        (
+            arb_program_id(),
+            prop::collection::vec(arb_compartment(), 0..=2),
+        )
+            .prop_map(|(pid, comps)| SarProgram::new(pid, comps.into_boxed_slice()))
+    }
+
+    fn arb_marking() -> impl Strategy<Value = SarMarking> {
+        prop::collection::vec(arb_program(), 1..=3)
+            .prop_map(|progs| SarMarking::new(SarIndicator::Abbrev, progs.into_boxed_slice()))
+    }
+
+    /// SarSet from at most one `SarMarking` (since `from_marking` takes
+    /// a single marker). The "no SAR" case is `SarSet::empty()`.
+    fn arb_sar_set() -> impl Strategy<Value = SarSet> {
+        prop_oneof![
+            Just(SarSet::empty()),
+            arb_marking().prop_map(|m| SarSet::from_marking(Some(&m))),
+        ]
+    }
+
+    proptest! {
+        /// §-authority: `docs/plans/2026-05-01-lattice-design.md` §5
+        /// (SarSet join is prefix-closed union over program hierarchy).
+        #[test]
+        fn sar_set_assoc_comm_idem_proptest(
+            a in arb_sar_set(),
+            b in arb_sar_set(),
+            c in arb_sar_set(),
+        ) {
+            // Commutativity.
+            prop_assert_eq!(a.join(&b), b.join(&a));
+            // Associativity.
+            prop_assert_eq!(a.join(&b).join(&c), a.join(&b.join(&c)));
+            // Idempotency.
+            prop_assert_eq!(a.join(&a), a.clone());
+        }
+
+        /// Empty is the join identity. SarSet does NOT implement
+        /// `BoundedJoinSemilattice` — open-vocab SAR programs have
+        /// no lawful finite top.
+        #[test]
+        fn sar_set_identity_with_bottom(a in arb_sar_set()) {
+            let empty = SarSet::empty();
+            prop_assert_eq!(a.join(&empty), a.clone());
+            prop_assert_eq!(empty.join(&a), a);
+        }
+
+        /// Meet idempotency under proptest.
+        #[test]
+        fn sar_set_meet_idempotent_proptest(a in arb_sar_set()) {
+            prop_assert_eq!(a.meet(&a), a);
+        }
+    }
+}
+
+// ===========================================================================
+// PR-4 test closeout (006 T116) — NonIcDissemSet compositional invariance
+//
+// `NonIcDissemSet` does NOT implement `JoinSemilattice` — it is an
+// accumulator-style type constructed via
+// `from_attrs_iter(&[CanonicalAttrs])` with classification-gated
+// SBU-NF / LES-NF split and NODIS / EXDIS NF-injection (per §H.9
+// p178 / p185 / p172 / p174). The "lattice law" reframing for this
+// type is **input-order invariance**: `from_attrs_iter(&[a, b])`
+// must equal `from_attrs_iter(&[b, a])`. This is the property the
+// production hot path relies on (page-traversal order must not
+// affect the projected non-IC dissem state).
+//
+// Brute-force enumeration over the closed `NonIcDissem` variants
+// (LIMDIS / EXDIS / NODIS / SBU / SBU-NF / LES / LES-NF / SSI) plus
+// classification gating gives full coverage in a small state space.
+//
+// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
+// authorship 2026-05-19 (§H.9 pp169-191 non-IC dissem family;
+// §H.9 p178 SBU-NF + p185 LES-NF classified split;
+// `docs/plans/2026-05-01-lattice-design.md` §3 non-IC dissem axis).
+// ===========================================================================
+
+mod non_ic_dissem_set {
+    use marque_capco::lattice::NonIcDissemSet;
+    use marque_ism::{CanonicalAttrs, Classification, MarkingClassification, NonIcDissem};
+
+    fn portion_with_non_ic(level: Classification, non_ic: &[NonIcDissem]) -> CanonicalAttrs {
+        let mut a = CanonicalAttrs::default();
+        a.classification = Some(MarkingClassification::Us(level));
+        a.non_ic_dissem = non_ic.to_vec().into_boxed_slice();
+        a
+    }
+
+    /// Empty input → empty `NonIcDissemSet` (identity).
+    #[test]
+    fn non_ic_dissem_set_empty_input_is_bottom() {
+        let s = NonIcDissemSet::from_attrs_iter(&[]);
+        assert_eq!(s, NonIcDissemSet::empty());
+        assert_eq!(s, NonIcDissemSet::default());
+        assert!(s.as_set().is_empty());
+        assert!(!s.needs_nf());
+    }
+
+    /// `from_attrs_iter` is order-invariant: `[a, b]` and `[b, a]`
+    /// yield the same `NonIcDissemSet`. This is the
+    /// compositional-lattice analogue of commutativity for the
+    /// accumulator type. The production hot path
+    /// (`CapcoScheme::project`) relies on this property — page
+    /// traversal order MUST NOT affect the projected non-IC state.
+    #[test]
+    fn non_ic_dissem_set_from_attrs_order_invariant() {
+        let p_limdis = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::Limdis]);
+        let p_exdis = portion_with_non_ic(Classification::Secret, &[NonIcDissem::Exdis]);
+        let p_sbu = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::Sbu]);
+        let p_les = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::Les]);
+
+        let s_forward = NonIcDissemSet::from_attrs_iter(&[
+            p_limdis.clone(),
+            p_exdis.clone(),
+            p_sbu.clone(),
+            p_les.clone(),
+        ]);
+        let s_reversed = NonIcDissemSet::from_attrs_iter(&[p_les, p_sbu, p_exdis, p_limdis]);
+
+        assert_eq!(
+            s_forward, s_reversed,
+            "NonIcDissemSet::from_attrs_iter must be order-invariant"
+        );
+    }
+
+    /// `from_attrs_iter` is idempotent on repeated portions: passing
+    /// the same portion twice produces the same set as passing it
+    /// once. This pins the BTreeSet-dedup semantics + classification-
+    /// gate stability under repetition.
+    #[test]
+    fn non_ic_dissem_set_from_attrs_idempotent_on_repeats() {
+        let p = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::Les]);
+        let single = NonIcDissemSet::from_attrs_iter(std::slice::from_ref(&p));
+        let doubled = NonIcDissemSet::from_attrs_iter(&[p.clone(), p]);
+        assert_eq!(
+            single, doubled,
+            "NonIcDissemSet must dedup repeated portions"
+        );
+    }
+
+    /// Classification gate (§H.9 p185 LES-NF Precedence Rules for
+    /// Banner Line Guidance): "The LES marking always appears in the
+    /// banner line if LES information (either LES or LES NOFORN) is
+    /// contained in the document, regardless of the document's
+    /// classification level. When a classified document contains
+    /// portions of U//LES-NF, the 'LES' marking is used in the banner
+    /// line and the NOFORN marking is applied as a Dissemination
+    /// Control Marking. For example: SECRET//NOFORN//LES."
+    ///
+    /// Pins that the LES-NF → LES + needs-NF classification-gate
+    /// transformation (`crates/capco/src/lattice.rs::NonIcDissemSet::from_attrs_iter`
+    /// LES-NF branch) participates in the order-invariance property —
+    /// adding a classified peer to a U/LES-NF carrier produces the
+    /// same final set whether the classified peer appears first or
+    /// second. Using bare `Les` here would bypass the gate (which
+    /// fires only on `LesNf` / `SbuNf` variants), making this test
+    /// trivially pass without exercising the property it claims to.
+    ///
+    /// Citation re-verified against `crates/capco/docs/CAPCO-2016.md`
+    /// at authorship 2026-05-19 (§H.9 p185 LES-NF banner-precedence).
+    #[test]
+    fn non_ic_dissem_set_classification_gate_order_invariant() {
+        let p_les_nf = portion_with_non_ic(Classification::Unclassified, &[NonIcDissem::LesNf]);
+        let p_class = portion_with_non_ic(Classification::Secret, &[]);
+        let s_forward = NonIcDissemSet::from_attrs_iter(&[p_les_nf.clone(), p_class.clone()]);
+        let s_reverse = NonIcDissemSet::from_attrs_iter(&[p_class, p_les_nf]);
+        assert_eq!(
+            s_forward, s_reverse,
+            "classification gate must participate in order invariance: \
+             LES-NF + classified peer must yield the same set regardless \
+             of portion order"
+        );
+        // The gate produces LES (not LES-NF) post-transform and sets
+        // needs_nf — both sides must agree on both observable axes.
+        assert!(
+            s_forward.as_set().contains(&NonIcDissem::Les),
+            "post-gate set must contain bare LES (LES-NF → LES under classification gate)"
+        );
+        assert!(
+            !s_forward.as_set().contains(&NonIcDissem::LesNf),
+            "post-gate set must NOT contain LES-NF (the gate consumes it)"
+        );
+        assert!(
+            s_forward.needs_nf(),
+            "classification gate must request NOFORN injection per §H.9 p185"
+        );
+    }
+}
+
+// ===========================================================================
+// PR-4 test closeout (006 T116) — DisplayOnlyBlock lattice laws
+//
+// DisplayOnlyBlock implements `JoinSemilattice` with a 4-variant
+// absorbing-element pattern: `NofornSuperseded > Empty > Lattice{·} >
+// Bottom`. The structure mirrors `RelToBlock` (see
+// `category_lattice_laws.rs::rel_to_block` above) — same absorbing-
+// element shape; same proof obligations.
+//
+// Tests use hybrid brute-force enumeration over the 3 enum-only
+// variants (Bottom / Empty / NofornSuperseded) plus a hand-picked
+// suite of `Lattice{countries}` payloads. The `Lattice` payload is
+// open-vocab in `CountryCode`, so a small proptest seam over the
+// 4 enum classes × 3 hand-picked country sets gives 12 sample
+// states for the assoc/comm/idem walk.
+//
+// Citation re-verified against `crates/capco/docs/CAPCO-2016.md` at
+// authorship 2026-05-19 (§H.8 pp149-150 DISPLAY ONLY template;
+// §D.2 Table 3 rows 25-27 DISPLAY ONLY roll-up;
+// `docs/plans/2026-05-01-lattice-design.md` §3 DISPLAY ONLY axis).
+// ===========================================================================
+
+mod display_only_block {
+    use std::collections::BTreeSet;
+
+    use marque_capco::lattice::DisplayOnlyBlock;
+    use marque_ism::CountryCode;
+    use marque_scheme::JoinSemilattice;
+
+    fn cc(s: &str) -> CountryCode {
+        CountryCode::try_new(s.as_bytes()).expect("valid trigraph")
+    }
+
+    fn lattice(codes: &[&str]) -> DisplayOnlyBlock {
+        let countries: BTreeSet<CountryCode> = codes.iter().map(|s| cc(s)).collect();
+        DisplayOnlyBlock::Lattice { countries }
+    }
+
+    /// Six-state representative sample exercising every join transition:
+    ///
+    /// - `Bottom` — identity
+    /// - `Lattice{GBR, CAN}` — partial-intersection input
+    /// - `Lattice{CAN}` — narrowing-intersection input
+    /// - `Lattice{FRA}` — disjoint-intersection input (collapses to Empty)
+    /// - `Empty` — absorbing-empty state
+    /// - `NofornSuperseded` — top absorbing state
+    fn samples() -> Vec<DisplayOnlyBlock> {
+        vec![
+            DisplayOnlyBlock::Bottom,
+            lattice(&["GBR", "CAN"]),
+            lattice(&["CAN"]),
+            lattice(&["FRA"]),
+            DisplayOnlyBlock::Empty,
+            DisplayOnlyBlock::NofornSuperseded,
+        ]
+    }
+
+    /// Brute-force walk over all 6×6×6 = 216 triples confirms join
+    /// laws. State space is small; brute-force gives full coverage
+    /// without proptest cycle overhead.
+    #[test]
+    fn display_only_block_join_laws_assoc_comm_idem() {
+        let states = samples();
+        for a in &states {
+            // Idempotency.
+            assert_eq!(a.join(a), *a, "idem fail: {a:?}");
+            for b in &states {
+                // Commutativity.
+                assert_eq!(a.join(b), b.join(a), "comm fail: {a:?} vs {b:?}");
+                for c in &states {
+                    // Associativity.
+                    assert_eq!(
+                        a.join(b).join(c),
+                        a.join(&b.join(c)),
+                        "assoc fail: ({a:?}, {b:?}, {c:?})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Bottom is the join identity per the 4-variant absorbing-element
+    /// pattern at `crates/capco/src/lattice.rs::DisplayOnlyBlock::join`.
+    #[test]
+    fn display_only_block_bottom_is_join_identity() {
+        let bottom = DisplayOnlyBlock::Bottom;
+        for s in samples() {
+            assert_eq!(bottom.join(&s), s.clone());
+            assert_eq!(s.join(&bottom), s.clone());
+        }
+        // Identity composes with itself.
+        assert_eq!(bottom.join(&bottom), bottom);
+    }
+
+    /// NofornSuperseded is the top absorbing element: `NofornSuperseded
+    /// ⊔ x = NofornSuperseded` for every x. Confirms the 4-variant
+    /// supersession chain `NofornSuperseded > Empty > Lattice{·} >
+    /// Bottom`.
+    #[test]
+    fn display_only_block_noforn_superseded_absorbs() {
+        let top = DisplayOnlyBlock::NofornSuperseded;
+        for s in samples() {
+            assert_eq!(top.join(&s), top);
+            assert_eq!(s.join(&top), top);
+        }
+    }
+
+    /// Empty absorbs every non-NofornSuperseded state — `Empty ⊔
+    /// Lattice{·} = Empty`, `Empty ⊔ Bottom = Empty`. Only
+    /// NofornSuperseded escapes the Empty absorbing trap.
+    #[test]
+    fn display_only_block_empty_absorbs_below_noforn() {
+        let empty = DisplayOnlyBlock::Empty;
+        let bottom_or_lattice = vec![
+            DisplayOnlyBlock::Bottom,
+            lattice(&["GBR"]),
+            DisplayOnlyBlock::Empty,
+        ];
+        for s in bottom_or_lattice {
+            assert_eq!(empty.join(&s), DisplayOnlyBlock::Empty);
+            assert_eq!(s.join(&empty), DisplayOnlyBlock::Empty);
+        }
+        // NofornSuperseded escapes Empty.
+        assert_eq!(
+            empty.join(&DisplayOnlyBlock::NofornSuperseded),
+            DisplayOnlyBlock::NofornSuperseded
+        );
+    }
 }
