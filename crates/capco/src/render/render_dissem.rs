@@ -78,9 +78,11 @@ pub(crate) fn render_dissem(
     // the generated `#[derive]` line in `marque-ism/build.rs`) covers
     // the equality check.
     //
-    // Inline-4 covers the typical dissem set (NF/PR/OC/REL, IMCON, RS);
-    // longer compositions spill to heap cleanly.
-    let mut sorted: SmallVec<[&DissemControl; 4]> =
+    // Inline-8 covers the typical dissem set (RS/FOUO/OC/OCUSGOV/IMC/
+    // NF/PR/REL + RELIDO = 9 variants in extremis; 8 is the typical-
+    // case ceiling; prior inline-4 was insufficient for the common
+    // `NF/PR/OC/REL/IMCON/RS` shape, which is 6 items — LA-4 fix).
+    let mut sorted: SmallVec<[&DissemControl; 8]> =
         m.0.dissem_iter()
             .filter(|d| !(drop_bare_rel && **d == DissemControl::Rel))
             .collect();

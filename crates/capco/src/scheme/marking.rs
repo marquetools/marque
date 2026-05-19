@@ -166,7 +166,112 @@ impl CapcoMarking {
     ///
     /// Authority (verified 2026-05-15): per-axis citations are on each
     /// `lattice` module type's doc comment.
+    ///
+    /// ## LA-3 fast-paths
+    ///
+    /// Two short-circuit cases avoid the full `join_via_lattice_body`
+    /// scan when the fold is trivially identity:
+    ///
+    /// **Empty slice** — zero portions → `CanonicalAttrs::default()`
+    /// (the lattice bottom). This is a degenerate page with no markings;
+    /// no rule fires and no banner is produced.
+    ///
+    /// **Single portion** — `join(x) = x` for any `x` in a
+    /// join-semilattice (lattice identity law). The body is O(n) in the
+    /// number of per-axis constructor calls; all constructors reduce to
+    /// identity when `portions.len() == 1` provided the guards below
+    /// are satisfied.
+    ///
+    /// ### Guards — cases where the body still runs on a single portion
+    ///
+    /// Three categories of body normalization are NOT identity for a
+    /// single portion and require the body to run:
+    ///
+    /// **a) Classification variant normalization (G-9 / G-9b):**
+    ///
+    /// - `Conflict { us, foreign }` (variant 4): the body flattens it
+    ///   to `Us(us)` (variant 0, G-9). A fast-path returning `Conflict`
+    ///   would cause E031 false positives when the banner parses as
+    ///   `Us(TS)` (variant 0 ≠ variant 4).
+    ///
+    /// - `Joint(j)` missing USA (§H.3 p56 violation): `JointSet`
+    ///   treats a no-USA JOINT as malformed and returns `Bottom`, so the
+    ///   body flattens it to `Us(j.level)` via the ClassificationLattice
+    ///   path (G-9b). Same false-positive risk.
+    ///
+    /// **b) Decomposable tetragraph expansion in `rel_to`:**
+    ///
+    /// `RelToBlock::from_attrs_iter` inside `join_via_lattice_body`
+    /// expands decomposable tetragraphs (e.g. FVEY → {AUS, CAN, GBR,
+    /// NZL, USA}) before materializing `out.rel_to`. This expansion
+    /// runs only in the body — there is no equivalent PageRewrite.
+    /// A single portion with `rel_to = [USA, FVEY]` would be returned
+    /// as-is by the fast-path (unexpanded), while the body produces
+    /// `rel_to = [USA, AUS, CAN, GBR, NZL]`. Rules that compare the
+    /// projected `rel_to` against the observed banner text would then
+    /// misfire (e.g. E031/E035 comparing `[USA, FVEY]` against a
+    /// banner that expands FVEY to its constituents).
+    ///
+    /// **c) `display_only_to` processing:**
+    ///
+    /// `DisplayOnlyBlock::from_attrs_iter` inside the body also expands
+    /// decomposable tetragraphs and subtracts REL TO countries (§D.2
+    /// Table 3 row 27) + USA (§H.8 p163) from the display-permission
+    /// set. The fast-path is safe for `display_only_to` only when it is
+    /// empty, OR when it contains no decomposable tetragraphs, does not
+    /// include USA, and `rel_to` is empty (so the row-27 subtraction is
+    /// a no-op). Any other combination requires the body.
+    ///
+    /// Cross-axis normalizations driven by `dissem_us` (NOFORN+REL-TO
+    /// clearing, NODIS/EXDIS/SBU-NF NOFORN injection) are handled by
+    /// downstream PageRewrites inside `CapcoScheme::project_attrs_pipeline`
+    /// and produce byte-identical results whether the fast-path or the
+    /// body feeds the rewrites.
+    ///
+    /// §-authority: join-semilattice identity law (`join(x) = x`).
+    /// Per PR LA-3 (issue marquetools/marque#584).
     pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
+        use marque_ism::CountryCode;
+
+        // Fast-path 1: empty page → lattice bottom.
+        if portions.is_empty() {
+            return CanonicalAttrs::default();
+        }
+
+        // Fast-path 2: single portion, unless the body would normalize it.
+        //
+        // See doc comment §§ a/b/c above for the full rationale.
+        if let [p] = portions {
+            // Guard a: classification variant normalization.
+            let classification_safe = match &p.classification {
+                Some(MarkingClassification::Conflict { .. }) => false,
+                Some(MarkingClassification::Joint(j)) => j.countries.contains(&CountryCode::USA),
+                _ => true,
+            };
+
+            // Guard b: decomposable tetragraphs in rel_to.
+            let rel_to_safe = !p
+                .rel_to
+                .iter()
+                .any(|c| marque_ism::lookup_tetragraph_members(c.as_str()).is_some());
+
+            // Guard c: display_only_to processing.
+            // Safe only when empty, OR all of: no decomposable
+            // tetragraph, no USA (always subtracted by §H.8 p163), and
+            // rel_to is empty (no row-27 subtraction needed).
+            let display_only_safe = p.display_only_to.is_empty()
+                || (p.rel_to.is_empty()
+                    && !p.display_only_to.contains(&CountryCode::USA)
+                    && !p
+                        .display_only_to
+                        .iter()
+                        .any(|c| marque_ism::lookup_tetragraph_members(c.as_str()).is_some()));
+
+            if classification_safe && rel_to_safe && display_only_safe {
+                return p.clone();
+            }
+        }
+
         Self::join_via_lattice_body(portions)
     }
 
