@@ -76,6 +76,203 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
 }
 
 // ---------------------------------------------------------------------------
+// HierarchicalTreeSet — shared 3-level tree storage primitive
+// ---------------------------------------------------------------------------
+
+/// A 3-level hierarchical tree: `K → SmolStr → SmolStr`.
+///
+/// Backed by `BTreeMap<K, BTreeMap<SmolStr, BTreeSet<SmolStr>>>`, this
+/// type captures the repeated "outer key → compartments → sub-compartments"
+/// pattern shared by [`SciSet`] (outer key = [`SystemKey`]) and [`SarSet`]
+/// (outer key = [`SmolStr`]). Both types differ only in their outer key
+/// type; this generic struct lets them share [`join_with`][Self::join_with],
+/// [`meet_with`][Self::meet_with], and the sorted-traversal helper
+/// [`sorted_entries`][Self::sorted_entries] without duplicating the
+/// iteration logic.
+///
+/// Hot-path methods (`join_with`, `meet_with`, and the simple accessors)
+/// are marked `#[inline]`. `sorted_entries` is deliberately not inlined
+/// — it takes an `impl Fn` closure argument whose type is generic at each
+/// call site, so marking it `#[inline]` would produce a distinct
+/// monomorphization per call site (mirroring the `sort_smolstrs_by_sar`
+/// design note above). The single non-inlined definition plus LTO handles
+/// whole-program optimization when profitable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HierarchicalTreeSet<K: Clone + Ord> {
+    inner: BTreeMap<K, BTreeMap<SmolStr, BTreeSet<SmolStr>>>,
+}
+
+/// Manual `Default` impl so that `HierarchicalTreeSet<K>` is `Default`
+/// even when `K: !Default` (matching `BTreeMap`'s own `Default` bound).
+impl<K: Clone + Ord> Default for HierarchicalTreeSet<K> {
+    fn default() -> Self {
+        Self {
+            inner: BTreeMap::new(),
+        }
+    }
+}
+
+impl<K: Clone + Ord> HierarchicalTreeSet<K> {
+    #[inline]
+    fn empty() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Returns a mutable reference to the compartment map for `key`,
+    /// inserting an empty entry if absent. Used by `from_markings*`
+    /// constructors to record bare (no-compartment) entries without a
+    /// separate "ensure entry" step.
+    #[inline]
+    fn entry_outer(&mut self, key: K) -> &mut BTreeMap<SmolStr, BTreeSet<SmolStr>> {
+        self.inner.entry(key).or_default()
+    }
+
+    /// Returns the compartment map for `key`, or `None` if absent.
+    #[inline]
+    fn get(&self, key: &K) -> Option<&BTreeMap<SmolStr, BTreeSet<SmolStr>>> {
+        self.inner.get(key)
+    }
+
+    /// Returns `true` if `key` is present in the outer map.
+    #[inline]
+    fn contains_key(&self, key: &K) -> bool {
+        self.inner.contains_key(key)
+    }
+
+    /// Iterates over outer keys in `BTreeMap` order.
+    #[inline]
+    fn keys(&self) -> impl Iterator<Item = &K> {
+        self.inner.keys()
+    }
+
+    /// Iterates over `(outer_key, compartment_map)` pairs in `BTreeMap`
+    /// order.
+    #[inline]
+    fn iter(&self) -> impl Iterator<Item = (&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>)> {
+        self.inner.iter()
+    }
+
+    /// Component-wise union: for each outer key in either operand, union
+    /// its compartment map; within each compartment, union its
+    /// sub-compartment set. Implements the `join` for both [`SciSet`] and
+    /// [`SarSet`].
+    #[inline]
+    fn join_with(&self, other: &Self) -> Self {
+        let mut out = self.clone();
+        for (outer_key, comp_map) in &other.inner {
+            let out_comps = out.inner.entry(outer_key.clone()).or_default();
+            for (cid, subs) in comp_map {
+                let out_subs = out_comps.entry(cid.clone()).or_default();
+                out_subs.extend(subs.iter().cloned());
+            }
+        }
+        out
+    }
+
+    /// Component-wise equal-depth intersection per §3.3a policy (b): an
+    /// outer key survives only if present in both operands; within a
+    /// surviving key a compartment survives only if present in both; within
+    /// a surviving compartment sub-compartments are intersected. Implements
+    /// the `meet` for both [`SciSet`] and [`SarSet`].
+    #[inline]
+    fn meet_with(&self, other: &Self) -> Self {
+        let mut out = Self::empty();
+        for (outer_key, comp_map) in &self.inner {
+            let Some(other_comps) = other.inner.get(outer_key) else {
+                continue;
+            };
+            let mut out_comps: BTreeMap<SmolStr, BTreeSet<SmolStr>> = BTreeMap::new();
+            for (cid, subs) in comp_map {
+                let Some(other_subs) = other_comps.get(cid) else {
+                    continue;
+                };
+                let common: BTreeSet<SmolStr> = subs.intersection(other_subs).cloned().collect();
+                out_comps.insert(cid.clone(), common);
+            }
+            out.inner.insert(outer_key.clone(), out_comps);
+        }
+        out
+    }
+
+    /// Returns entries sorted by `sar_sort_key` applied to the text form of
+    /// the outer key. Used by `to_markings` / `to_marking` to produce
+    /// deterministic §A.6 / §H.5 ordering (numeric-prefixed identifiers
+    /// first, then alphabetic).
+    ///
+    /// The `key_text` closure extracts a `&str` from `K` because `K`'s
+    /// natural `Ord` may not match CAPCO sort order — e.g. `SystemKey`
+    /// sorts by an internal discriminant while §A.6 p15 requires
+    /// numeric-first ordering over the textual form. Passing the text
+    /// projection decouples the storage key ordering from the rendering
+    /// order without introducing a separate `OrdText` bound on `K`.
+    ///
+    /// A lexicographic tie-breaker on the raw `key_text` string is applied
+    /// after the `sar_sort_key` comparison so that two distinct keys whose
+    /// sort keys collide (e.g., two numeric identifiers that both map to
+    /// `u64::MAX` under overflow) still produce a stable, total order.
+    ///
+    /// Inline-4 covers the typical outer-key count (SCI: SI/TK/HCS/G;
+    /// SAR: ≤4 programs per portion in ordinary documents) so the sorted
+    /// scratch buffer stays on the stack on the hot path (LA-4 fix per
+    /// PR 614 — inline capacity tuning in `to_markings` / `to_marking`).
+    #[allow(clippy::type_complexity)] // Inline-4 SmallVec is load-bearing (LA-4); a type alias would hide the capacity.
+    fn sorted_entries(
+        &self,
+        key_text: impl Fn(&K) -> &str,
+    ) -> SmallVec<[(&K, &BTreeMap<SmolStr, BTreeSet<SmolStr>>); 4]> {
+        let mut entries: SmallVec<[_; 4]> = self.inner.iter().collect();
+        entries.sort_by(|a, b| {
+            let ta = key_text(a.0);
+            let tb = key_text(b.0);
+            marque_ism::sar_sort_key(ta)
+                .cmp(&marque_ism::sar_sort_key(tb))
+                .then_with(|| ta.cmp(tb))
+        });
+        entries
+    }
+}
+
+/// Sort and render a compartment map into a list of
+/// `(identifier, sorted-sub-compartments)` pairs. Shared rendering
+/// helper for [`SciSet::to_markings`] and [`SarSet::to_marking`].
+///
+/// Inline capacities (LA-4 fix per PR 614):
+/// - `comp_keys` scratch: inline-8 covers the typical SCI compartment
+///   count (the `NF/PR/OC/REL/IMCON/RS` shape and similar) plus headroom;
+///   SAR compartment counts are typically ≤4 per program but inline-8 is
+///   a stack-only ceiling, no waste on the heap path.
+/// - per-compartment `subs` scratch: inline-4 covers the typical
+///   sub-compartment count for both SCI and SAR.
+/// - returned vec: inline-8 matches PR 614's `compartments` capacity for
+///   the SCI rendering path; callers consume via `into_iter` so the
+///   inline storage is dropped at the end of the iteration without an
+///   additional Box round-trip.
+#[allow(clippy::type_complexity)] // Inline-8 SmallVec is load-bearing (LA-4); a type alias would hide the capacity.
+fn sorted_compartment_items(
+    comp_map: &BTreeMap<SmolStr, BTreeSet<SmolStr>>,
+) -> SmallVec<[(&SmolStr, Box<[SmolStr]>); 8]> {
+    let mut comp_keys: SmallVec<[&SmolStr; 8]> = comp_map.keys().collect();
+    sort_smolstrs_by_sar(&mut comp_keys);
+    comp_keys
+        .into_iter()
+        .map(|id| {
+            let sub_set = comp_map
+                .get(id)
+                .expect("compartment key must exist in map (internal invariant violated)");
+            let mut subs: SmallVec<[&SmolStr; 4]> = sub_set.iter().collect();
+            sort_smolstrs_by_sar(&mut subs);
+            let sub_boxes: Box<[SmolStr]> = subs.into_iter().cloned().collect();
+            (id, sub_boxes)
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // SciSet — lattice over the full SCI category state
 // ---------------------------------------------------------------------------
 
@@ -95,7 +292,7 @@ fn sort_smolstrs_by_sar(slice: &mut [&SmolStr]) {
 pub struct SciSet {
     /// system → compartment identifier → set of sub-compartment
     /// identifiers.
-    systems: BTreeMap<SystemKey, BTreeMap<SmolStr, BTreeSet<SmolStr>>>,
+    systems: HierarchicalTreeSet<SystemKey>,
 }
 
 /// Stable ordering key for `SciControlSystem`. Published variants and
@@ -158,7 +355,7 @@ impl SciSet {
         let mut out = Self::empty();
         for m in markings {
             let key = SystemKey::from_system(&m.system);
-            let comp_map = out.systems.entry(key).or_default();
+            let comp_map = out.systems.entry_outer(key);
             if m.compartments.is_empty() {
                 // Bare system — ensure the entry exists so a subsequent
                 // rollup preserves the bare form.
@@ -178,37 +375,22 @@ impl SciSet {
     /// per-portion only; a rolled-up structural projection has no
     /// single corresponding enum variant.
     pub fn to_markings(&self) -> Box<[SciMarking]> {
-        // Inline-4 covers the typical SCI system count (SI / TK / HCS /
-        // G); systems, compartments, and sub-compartments all stay
-        // heap-free for ordinary classified documents (LA-4).
-        let mut systems: SmallVec<[_; 4]> = self.systems.iter().collect();
-        systems.sort_by(|a, b| {
-            marque_ism::sar_sort_key(a.0.text()).cmp(&marque_ism::sar_sort_key(b.0.text()))
-        });
-
-        let mut out: SmallVec<[SciMarking; 4]> = SmallVec::with_capacity(systems.len());
-        for (sys_key, comp_map) in systems {
-            let mut comp_keys: SmallVec<[&SmolStr; 8]> = comp_map.keys().collect();
-            sort_smolstrs_by_sar(&mut comp_keys);
-
-            let compartments: SmallVec<[SciCompartment; 8]> = comp_keys
+        // The shared `sorted_entries` / `sorted_compartment_items`
+        // helpers (HierarchicalTreeSet, PR 613) carry the SmallVec
+        // inline-capacity sizing from PR 614 — systems/programs at
+        // inline-4, compartments at inline-8, sub-compartments at
+        // inline-4 — so scratch buffers stay on the stack for ordinary
+        // classified documents.
+        let entries = self.systems.sorted_entries(|k| k.text());
+        let mut out: Vec<SciMarking> = Vec::with_capacity(entries.len());
+        for (sys_key, comp_map) in entries {
+            let compartments: Box<[SciCompartment]> = sorted_compartment_items(comp_map)
                 .into_iter()
-                .map(|id| {
-                    let sub_set = comp_map.get(id).expect("key enumerated from comp_map");
-                    let mut subs: SmallVec<[&SmolStr; 4]> = sub_set.iter().collect();
-                    sort_smolstrs_by_sar(&mut subs);
-                    let sub_boxes: Box<[SmolStr]> = subs
-                        .into_iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice();
-                    SciCompartment::new(id.clone(), sub_boxes)
-                })
+                .map(|(id, subs)| SciCompartment::new(id.clone(), subs))
                 .collect();
-
             out.push(SciMarking::new(
                 sys_key.clone().into_system(),
-                compartments.into_boxed_slice(),
+                compartments,
                 None,
             ));
         }
@@ -226,7 +408,7 @@ impl SciSet {
     /// on both sides. Exposed for Phase-C constraint work.
     pub fn common_compartments(&self, other: &Self) -> Vec<(SmolStr, SmolStr)> {
         let mut out = Vec::new();
-        for (sys, comps) in &self.systems {
+        for (sys, comps) in self.systems.iter() {
             let Some(other_comps) = other.systems.get(sys) else {
                 continue;
             };
@@ -247,64 +429,29 @@ impl SciSet {
 
 impl JoinSemilattice for SciSet {
     /// Component-wise union: merge control systems, compartments, and
-    /// sub-compartments. For each system present in either operand, union
-    /// its compartments; within a compartment, union its sub-compartments.
+    /// sub-compartments. Delegates to [`HierarchicalTreeSet::join_with`].
     fn join(&self, other: &Self) -> Self {
-        let mut out = self.clone();
-        for (sys, comp_map) in &other.systems {
-            let out_comps = match out.systems.get_mut(sys) {
-                Some(c) => c,
-                None => out.systems.entry(sys.clone()).or_default(),
-            };
-            for (cid, subs) in comp_map {
-                let out_subs = match out_comps.get_mut(cid) {
-                    Some(s) => s,
-                    None => out_comps.entry(cid.clone()).or_default(),
-                };
-                out_subs.extend(subs.iter().cloned());
-            }
+        Self {
+            systems: self.systems.join_with(&other.systems),
         }
-        out
     }
 }
 
 impl MeetSemilattice for SciSet {
-    /// Component-wise **equal-depth** intersection per §3.3a policy
-    /// (b). A system survives only if it appears on both sides; within
-    /// a surviving system, a compartment survives only if present on
-    /// both; within a surviving compartment, sub-compartments are
-    /// intersected.
+    /// Component-wise **equal-depth** intersection per §3.3a policy (b).
+    /// A system survives only if it appears on both sides; within a
+    /// surviving system, a compartment survives only if present on both;
+    /// within a surviving compartment, sub-compartments are intersected.
     ///
     /// Note: this is not the only reasonable meet on a compartment
     /// tree. See the module-level docs and [`SciSet::overlaps`] /
     /// [`SciSet::common_compartments`] for alternatives.
+    ///
+    /// Delegates to [`HierarchicalTreeSet::meet_with`].
     fn meet(&self, other: &Self) -> Self {
-        let mut out = Self::empty();
-        for (sys, comp_map) in &self.systems {
-            let Some(other_comps) = other.systems.get(sys) else {
-                // System absent from other operand: drop (§3.3a policy (b) —
-                // system must appear at the shared depth 0).
-                continue;
-            };
-            // Intersect compartments. Missing compartments on either side
-            // are dropped; the system itself survives because it's at the
-            // shared depth (both operands contain it). That gives:
-            //   - `SI ⊓ SI-G = SI`     (non-shared compartments drop)
-            //   - `SI-G ⊓ SI-H = SI`   (both have compartments but they
-            //                           disagree — compartments drop,
-            //                           bare system survives)
-            //   - `SI-G A ⊓ SI-G B = SI-G` (compartment survives, subs drop)
-            let mut out_comps: BTreeMap<SmolStr, BTreeSet<SmolStr>> = BTreeMap::new();
-            for (cid, subs) in comp_map {
-                let Some(other_subs) = other_comps.get(cid) else {
-                    continue;
-                };
-                let common: BTreeSet<SmolStr> = subs.intersection(other_subs).cloned().collect();
-                out_comps.insert(cid.clone(), common);
-            }
-            out.systems.insert(sys.clone(), out_comps);
+        Self {
+            systems: self.systems.meet_with(&other.systems),
         }
-        out
     }
 }
 
@@ -334,7 +481,7 @@ impl MeetSemilattice for SciSet {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SarSet {
     /// program id → compartment id → set of sub-compartment ids.
-    programs: BTreeMap<SmolStr, BTreeMap<SmolStr, BTreeSet<SmolStr>>>,
+    programs: HierarchicalTreeSet<SmolStr>,
 }
 
 impl SarSet {
@@ -348,7 +495,7 @@ impl SarSet {
             return out;
         };
         for prog in sar.programs.iter() {
-            let comps = out.programs.entry(prog.identifier.clone()).or_default();
+            let comps = out.programs.entry_outer(prog.identifier.clone());
             for comp in prog.compartments.iter() {
                 let subs = comps.entry(comp.identifier.clone()).or_default();
                 subs.extend(comp.sub_compartments.iter().cloned());
@@ -365,43 +512,23 @@ impl SarSet {
         if self.programs.is_empty() {
             return None;
         }
-
-        // Inline-4 covers the typical SAR program count; compartments
-        // and sub-compartments similarly stay heap-free for ordinary
-        // documents (LA-4).
-        let mut prog_keys: SmallVec<[&SmolStr; 4]> = self.programs.keys().collect();
-        sort_smolstrs_by_sar(&mut prog_keys);
-
-        let built_programs: Vec<SarProgram> = prog_keys
+        // Helpers carry the LA-4 inline-capacity sizing (see
+        // `SciSet::to_markings` for the rationale): programs at
+        // inline-4, compartments at inline-8, sub-compartments at
+        // inline-4 — all heap-free for ordinary documents.
+        let entries = self.programs.sorted_entries(|k| k.as_str());
+        let built_programs: Box<[SarProgram]> = entries
             .into_iter()
-            .map(|pid| {
-                let comp_map = self.programs.get(pid).expect("key enumerated above");
-                let mut comp_keys: SmallVec<[&SmolStr; 4]> = comp_map.keys().collect();
-                sort_smolstrs_by_sar(&mut comp_keys);
-
-                let built_compartments: Vec<SarCompartment> = comp_keys
+            .map(|(pid, comp_map)| {
+                let compartments: Box<[SarCompartment]> = sorted_compartment_items(comp_map)
                     .into_iter()
-                    .map(|cid| {
-                        let subs = comp_map.get(cid).expect("key enumerated above");
-                        let mut sub_vec: SmallVec<[&SmolStr; 4]> = subs.iter().collect();
-                        sort_smolstrs_by_sar(&mut sub_vec);
-                        let boxed: Box<[SmolStr]> = sub_vec
-                            .into_iter()
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice();
-                        SarCompartment::new(cid.clone(), boxed)
-                    })
+                    .map(|(cid, subs)| SarCompartment::new(cid.clone(), subs))
                     .collect();
-
-                SarProgram::new(pid.clone(), built_compartments.into_boxed_slice())
+                SarProgram::new(pid.clone(), compartments)
             })
-            .collect();
-
-        Some(SarMarking::new(
-            SarIndicator::Abbrev,
-            built_programs.into_boxed_slice(),
-        ))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        Some(SarMarking::new(SarIndicator::Abbrev, built_programs))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -410,37 +537,22 @@ impl SarSet {
 }
 
 impl JoinSemilattice for SarSet {
+    /// Component-wise union: merge programs, compartments, and
+    /// sub-compartments. Delegates to [`HierarchicalTreeSet::join_with`].
     fn join(&self, other: &Self) -> Self {
-        let mut out = self.clone();
-        for (pid, comp_map) in &other.programs {
-            let out_comps = out.programs.entry(pid.clone()).or_default();
-            for (cid, subs) in comp_map {
-                let out_subs = out_comps.entry(cid.clone()).or_default();
-                out_subs.extend(subs.iter().cloned());
-            }
+        Self {
+            programs: self.programs.join_with(&other.programs),
         }
-        out
     }
 }
 
 impl MeetSemilattice for SarSet {
+    /// Component-wise equal-depth intersection per §3.3a policy (b).
+    /// Delegates to [`HierarchicalTreeSet::meet_with`].
     fn meet(&self, other: &Self) -> Self {
-        let mut out = Self::empty();
-        for (pid, comp_map) in &self.programs {
-            let Some(other_comps) = other.programs.get(pid) else {
-                continue;
-            };
-            let mut out_comps: BTreeMap<SmolStr, BTreeSet<SmolStr>> = BTreeMap::new();
-            for (cid, subs) in comp_map {
-                let Some(other_subs) = other_comps.get(cid) else {
-                    continue;
-                };
-                let common: BTreeSet<SmolStr> = subs.intersection(other_subs).cloned().collect();
-                out_comps.insert(cid.clone(), common);
-            }
-            out.programs.insert(pid.clone(), out_comps);
+        Self {
+            programs: self.programs.meet_with(&other.programs),
         }
-        out
     }
 }
 
