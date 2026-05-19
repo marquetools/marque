@@ -214,7 +214,7 @@ impl CapcoMarking {
     /// §-authority: join-semilattice identity law (`join(x) = x`).
     /// Per PR LA-3 (issue marquetools/marque#584).
     pub fn join_via_lattice(portions: &[CanonicalAttrs]) -> CanonicalAttrs {
-        use marque_ism::MarkingClassification;
+        use marque_ism::{CountryCode, MarkingClassification};
 
         // Fast-path 1: empty page → lattice bottom.
         if portions.is_empty() {
@@ -232,7 +232,7 @@ impl CapcoMarking {
             let safe = match &p.classification {
                 Some(MarkingClassification::Conflict { .. }) => false,
                 Some(MarkingClassification::Joint(j)) => {
-                    j.countries.iter().any(|c| c.as_str() == "USA")
+                    j.countries.iter().any(|c| *c == CountryCode::USA)
                 }
                 _ => true,
             };
