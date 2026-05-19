@@ -2829,8 +2829,8 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
                 // CAPCO-2016 §A.6 p15 (agency-allocated control
                 // identifier shape) + §H.4 p61 (publication channel).
                 let s = text.as_str();
-                let is_plausible_allocation = (1..=3).contains(&s.len())
-                    && s.bytes().all(|b| b.is_ascii_uppercase());
+                let is_plausible_allocation =
+                    (1..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_uppercase());
                 if is_plausible_allocation {
                     continue;
                 }
