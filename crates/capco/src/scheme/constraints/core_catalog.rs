@@ -161,23 +161,36 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_HCS)),
         },
-        // ---- E021: AEA requires NOFORN (§H.6 p104) -----------
+        // ---- E021: RD/FRD requires NOFORN (§H.6 p104 + p111) -
         //
         // §H.6 RD entry p104: "Is always used with NOFORN
         // unless a sharing agreement has been established per
         // the Atomic Energy Act. (Ref. Sections 123 and 144 of
         // the Atomic Energy Act, and DoD Instruction 5030.14.)".
-        // The "always used with NOFORN" requirement applies to
-        // RD, FRD (§H.6 p111), and TFNI (§H.6 p120) — not UCNI
-        // (DOD UCNI §H.6 p116, DOE UCNI §H.6 p118 carry no such
-        // requirement) and not to any future AEA entry added to
-        // the category.
+        // §H.6 FRD entry p111: same "always used with NOFORN
+        // unless a sharing agreement" clause. The scope is RD
+        // and FRD ONLY — TFNI (§H.6 p120) and UCNI variants
+        // (DOD UCNI §H.6 p116, DOE UCNI §H.6 p118) carry no
+        // such requirement.
+        //
+        // #559 close-out (PM decision 2026-05-19): row renamed
+        // from `E021/aea-requires-noforn` (misleading "aea-"
+        // prefix; the predicate is and has always been RD/FRD
+        // only). Severity dropped from `Fix` to `Warn` and the
+        // §123/§144 sharing-agreement carve-out is now
+        // byte-observable: a portion that already carries
+        // `REL TO` or `RELIDO` is evidence that the author has
+        // made a release decision under some sharing
+        // instrument, so the warning suppresses. See helper
+        // doc on `e021_rd_frd_requires_noforn` for the
+        // carve-out's pragmatic-substitute rationale.
+        //
         // Custom (not `Requires { left: AnyInCategory(CAT_AEA) }`)
         // because that dyadic shape would sweep UCNI in: a valid
         // `U//UCNI` marking would incorrectly require NOFORN.
         Constraint::Custom {
-            name: "E021/aea-requires-noforn",
-            label: "CAPCO-2016 §H.6 p104",
+            name: "E021/rd-frd-requires-noforn",
+            label: "CAPCO-2016 §H.6 p104 + p111",
         },
         // ---- §H.6 p106 CNWDI subset-of-RD: enforced by data
         //      model, NO Constraint row needed -----------------
@@ -243,6 +256,25 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         Constraint::Custom {
             name: "E024/rd-precedence",
             label: "CAPCO-2016 §H.6 p104",
+        },
+        // ---- E070: FRD precedence over TFNI (§H.6 p120) ------
+        //
+        // §H.6 TFNI subsection p120: "If the TFNI marking is
+        // contained in any portion of a document that contains
+        // portions of RD and/or FRD, the RD or FRD takes
+        // precedence." Same page on commingling: "If TFNI is
+        // commingled with RD or FRD within a portion, the RD or
+        // FRD takes precedence and 'RD' or 'FRD,' as
+        // appropriate, is annotated in the portion mark."
+        //
+        // Sibling of E024: E024 covers RD>FRD and RD>TFNI; this
+        // row carries the FRD>TFNI leg so the policy decision
+        // "FRD supersedes TFNI" has its own audit lineage
+        // independent of RD presence. #559 close-out PM
+        // decision 2026-05-19.
+        Constraint::Custom {
+            name: "E070/frd-tfni-precedence",
+            label: "CAPCO-2016 §H.6 p120",
         },
         // ---- E025 retired in PR 3b.D (T026d) -----------------
         //
@@ -359,39 +391,44 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
-        // ---- E055: RELIDO ⊥ DISPLAY ONLY (§H.8 p154) ------------
+        // ---- E055 / E056 / E057 — retired in #559 close-out (2026-05-19) ----
         //
-        // §H.8 RELIDO entry p154, same Relationship(s) prose.
-        Constraint::Conflicts {
-            name: "E055/relido-conflicts-display-only",
-            left: TokenRef::Token(TOK_RELIDO),
-            right: TokenRef::Token(TOK_DISPLAY_ONLY),
-            label: "CAPCO-2016 §H.8 p154",
-            severity: Some(Severity::Error),
-            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
-        },
-        // ---- E056: ORCON ⊥ RELIDO (§H.8 p136) -------------------
+        // Two of the three RELIDO-exclusion pairs that lived here as
+        // `Constraint::Conflicts` rows moved into
+        // `crates/capco/src/scheme/rewrites/relido_clears.rs` as
+        // subtractive PageRewrites:
         //
-        // §H.8 ORCON entry p136: "May not be used with RELIDO."
-        Constraint::Conflicts {
-            name: "E056/orcon-conflicts-relido",
-            left: TokenRef::Token(TOK_ORCON),
-            right: TokenRef::Token(TOK_RELIDO),
-            label: "CAPCO-2016 §H.8 p136",
-            severity: Some(Severity::Error),
-            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
-        },
-        // ---- E057: ORCON-USGOV ⊥ RELIDO (§H.8 p140) -------------
+        //   `capco/orcon-clears-relido`        (E056, §H.8 p136)
+        //   `capco/orcon-usgov-clears-relido`  (E057, §H.8 p140)
         //
-        // §H.8 ORCON-USGOV entry p140: same exclusion as ORCON.
-        Constraint::Conflicts {
-            name: "E057/orcon-usgov-conflicts-relido",
-            left: TokenRef::Token(TOK_ORCON_USGOV),
-            right: TokenRef::Token(TOK_RELIDO),
-            label: "CAPCO-2016 §H.8 p140",
-            severity: Some(Severity::Fix),
-            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
-        },
+        // Each fires at `Scope::Page` and emits a
+        // `FactRemove(RELIDO)` intent — exactly what the retired
+        // `fix_intent_by_name` arm produced, but at the right scope
+        // for cross-portion supersession (e.g., ORCON on portion A
+        // and RELIDO on portion B was missed by the per-portion
+        // Conflicts gate). Per Marque convention dissem-axis
+        // conflicts emit subtractive fixes (see the
+        // dissem-conflicts-emit-subtractive-fix project
+        // memorandum at `~/.claude/memory/feedback_dissem_conflicts_emit_subtractive_fix.md`).
+        //
+        // The third pair — E055 RELIDO ⊥ DISPLAY ONLY (§H.8 p154) —
+        // is deferred behind issue #618 (`satisfies(TOK_DISPLAY_ONLY)`
+        // misses the canonical wire form): the parser routes
+        // `DISPLAY ONLY [LIST]` into `attrs.display_only_to` instead
+        // of populating `dissem_us`, so the obvious
+        // `Contains(CAT_DISSEM, TOK_DISPLAY_ONLY)` trigger silently
+        // no-ops on the canonical input. See
+        // `crates/capco/src/scheme/rewrites/relido_clears.rs`
+        // module header (\"E.4.4 — deferred\") for the
+        // cycle-graph + predicate-widening rationale; the
+        // `capco/display-only-clears-relido` row lands once #618 is
+        // resolved.
+        //
+        // E054 (RELIDO ⊥ NOFORN) stays a Conflicts row because the
+        // companion `capco/noforn-clears-fdr-family` PageRewrite in
+        // `noforn_clears.rs` already covers the page-scope eviction
+        // — E054 surfaces the per-portion form as an Error for user
+        // visibility on the source line that triggered the conflict.
         // NOTE — S004 (REL TO trigraph suggest) is NOT a catalog row.
         // The retired-rule consolidation in PR #578 attempted to move
         // S004 into the constraint-catalog bridge, but S004's

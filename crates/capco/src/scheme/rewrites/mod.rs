@@ -24,6 +24,7 @@ mod noforn_clears;
 mod pattern_a;
 mod pattern_b;
 mod pattern_c;
+mod relido_clears;
 mod supersession;
 mod transmutation_stubs;
 
@@ -176,6 +177,15 @@ pub(crate) fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
     out.extend(pattern_b::pattern_b_rows());
     out.extend(supersession::supersession_rows());
     out.extend(noforn_clears::noforn_clears_rows());
+    // #559 close-out (PM 2026-05-19): ORCON / ORCON-USGOV → RELIDO
+    // eviction rows (the DISPLAY ONLY > RELIDO sibling is deferred
+    // behind issue #618; see `relido_clears.rs` module header).
+    // Placed after `noforn_clears` because the
+    // `capco/noforn-clears-fdr-family` row strips RELIDO when NOFORN
+    // is present — running it first means our rows are no-ops on
+    // NOFORN-bearing pages and only fire on the non-NOFORN-but-
+    // RELIDO-incompatible cases that motivated #559.
+    out.extend(relido_clears::relido_clears_rows());
     out.extend(transmutation_stubs::transmutation_stub_rows());
     out
 }

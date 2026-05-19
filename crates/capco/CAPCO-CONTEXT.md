@@ -318,16 +318,25 @@ Remaining FD&R rows the lattice path does NOT yet fully model
 
 - Rule 17: RELIDO date-pivot + non-FD&R-caveat ambiguity (depends on
   Table 2 lookup — Layer 2 FD&R inference is post-PR-4b-D territory).
-- Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
-  release-implies-disclosure".
-- Rule 27: dual-channel REL TO/DISPLAY ONLY composition where each
-  channel has its own common-LIST.
 
 PR 4b-B closed:
 
 - Rule 23 tetragraph expansion (FVEY → constituent trigraphs) lives
   in `RelToBlock::from_attrs_iter` via the existing
   `marque_ism::lookup_tetragraph_members` table.
+
+PR 4b-E closed:
+
+- Rule 26: cross-axis "REL TO + DISPLAY ONLY → DISPLAY ONLY when
+  release-implies-disclosure" — folded into
+  `DisplayOnlyBlock::from_attrs_iter` step (4) per §D.2 Table 3 row 26
+  Note (each portion's display-permission set is the union of REL TO
+  and DISPLAY ONLY axes — release subsumes disclosure).
+- Rule 27: dual-channel REL TO/DISPLAY ONLY composition with each
+  channel carrying its own common-LIST — folded into
+  `DisplayOnlyBlock::from_attrs_iter` step (6): subtract banner REL TO
+  countries from the cross-portion DO intersection per §D.2 Table 3
+  row 27.
 
 These are tracked against the lattice / engine refactor at
 `docs/plans/2026-05-01-lattice-design.md` §11.

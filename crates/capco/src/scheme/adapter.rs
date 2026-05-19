@@ -174,8 +174,10 @@ impl CapcoScheme {
     /// The method returns `Some(FixIntent { ... })` for the
     /// following catalog row names and `None` otherwise:
     ///
-    /// - `"E021/aea-requires-noforn"` — `FactAdd(NOFORN, Portion)`
-    ///   at confidence 0.95 per CAPCO-2016 §H.6.
+    /// - `"E021/rd-frd-requires-noforn"` — `FactAdd(NOFORN, Portion)`
+    ///   at confidence 0.95 per CAPCO-2016 §H.6 p104 + p111. Severity
+    ///   is `Warn` per #559 close-out (the §123/§144 sharing-agreement
+    ///   carve-out is documentary and Marque cannot verify it).
     /// - `"E038/nodis-or-exdis-requires-noforn"` — `FactAdd(NOFORN,
     ///   Portion | Page)` at confidence 1.0 per §H.9 p172 + p174.
     ///   The scope tracks `marking_type` (portion → `Portion`,
@@ -183,12 +185,12 @@ impl CapcoScheme {
     /// - `"capco/noforn-conflicts-rel-to"` (when `marking_type ==
     ///   Portion`) — `FactRemove(REL_TO, Portion)` at confidence
     ///   1.0 per §H.8.
-    /// - `"E054/relido-conflicts-noforn"` /
-    ///   `"E055/relido-conflicts-display-only"` /
-    ///   `"E056/orcon-conflicts-relido"` /
-    ///   `"E057/orcon-usgov-conflicts-relido"` —
+    /// - `"E054/relido-conflicts-noforn"` —
     ///   `FactRemove(RELIDO, Portion)` at confidence 0.95 per
-    ///   §H.8 p140 / p154.
+    ///   §H.8 p154. E055 / E056 / E057 retired here in #559 close-out
+    ///   (2026-05-19); see
+    ///   `crates/capco/src/scheme/rewrites/relido_clears.rs` for the
+    ///   PageRewrite forms that replaced them.
     ///
     /// Other catalog families that ride the bridge take different
     /// paths and remain `None` here:
@@ -216,7 +218,18 @@ impl CapcoScheme {
         use crate::scheme::{TOK_NOFORN, TOK_REL_TO, TOK_RELIDO};
 
         match name {
-            "E021/aea-requires-noforn" => Some(FixIntent {
+            // #559 close-out (2026-05-19): renamed from
+            // `E021/aea-requires-noforn`. Severity dropped from `Fix`
+            // to `Warn`, so the FactAdd(NOFORN) intent now ships as
+            // a suggestion the user can accept rather than an
+            // auto-applied repair — §123/§144 sharing-agreement
+            // determinations are documentary and Marque cannot
+            // verify them at byte level. The carve-out (suppress
+            // when REL TO / RELIDO present) lives in the helper
+            // predicate, so any diagnostic that reaches this
+            // intent has already cleared the byte-level carve-out
+            // check.
+            "E021/rd-frd-requires-noforn" => Some(FixIntent {
                 replacement: ReplacementIntent::FactAdd {
                     token: FactRef::Cve(TOK_NOFORN),
                     scope: Scope::Portion,
@@ -282,10 +295,23 @@ impl CapcoScheme {
                     migration_ref: None,
                 })
             }
-            "E054/relido-conflicts-noforn"
-            | "E055/relido-conflicts-display-only"
-            | "E056/orcon-conflicts-relido"
-            | "E057/orcon-usgov-conflicts-relido" => Some(FixIntent {
+            // #559 close-out (2026-05-19): E055 / E056 / E057
+            // removed from this arm. The E056 + E057 Conflicts rows
+            // were retired in favor of PageRewrites at
+            // `crates/capco/src/scheme/rewrites/relido_clears.rs`
+            // (`capco/orcon-clears-relido` per §H.8 p136 and
+            // `capco/orcon-usgov-clears-relido` per §H.8 p140); the
+            // rewrite-side intent (FactRemove(RELIDO) at Scope::Page)
+            // is embedded in each PageRewrite row's `action`
+            // directly, so `fix_intent_by_name` has nothing to
+            // synthesize for those names. The E055 (DISPLAY ONLY ⊥
+            // RELIDO) Conflicts row was also retired but the
+            // corresponding `capco/display-only-clears-relido`
+            // PageRewrite is deferred behind issue #618 — the
+            // intent for E055's pre-#559 behavior is therefore
+            // currently unrepresented in either path; see
+            // `relido_clears.rs` module header for the rationale.
+            "E054/relido-conflicts-noforn" => Some(FixIntent {
                 replacement: ReplacementIntent::fact_remove(
                     FactRef::Cve(TOK_RELIDO),
                     Scope::Portion,
@@ -387,15 +413,22 @@ impl CapcoScheme {
             ("E015", "non-us-requires-dissem"),
             ("E016", "joint-conflicts-restricted"),
             ("E036", "joint-conflicts-hcs"),
-            ("E021", "aea-requires-noforn"),
+            ("E021", "rd-frd-requires-noforn"),
             ("E024", "rd-precedence"),
             ("E037", "nodis-conflicts-exdis"),
             ("E038", "nodis-or-exdis-requires-noforn"),
             ("E053", "noforn-conflicts-rel-to"),
             ("E054", "relido-conflicts-noforn"),
-            ("E055", "relido-conflicts-display-only"),
-            ("E056", "orcon-conflicts-relido"),
-            ("E057", "orcon-usgov-conflicts-relido"),
+            // #559 close-out (2026-05-19): E055 / E056 / E057
+            // retired here. The constraint rows moved to
+            // `relido_clears.rs` as PageRewrites (one per
+            // dominator: DISPLAY ONLY / ORCON / ORCON-USGOV →
+            // FactRemove(RELIDO) at Scope::Page) and emit through
+            // the PageRewrite path, not the constraint-catalog
+            // bridge. Their canonicalize_rule_overrides aliases are
+            // no longer accepted; per project memory
+            // `feedback_pre_users_no_deprecation_phasing.md` marque
+            // is pre-users and we don't carry alias maps.
         ]
     }
 

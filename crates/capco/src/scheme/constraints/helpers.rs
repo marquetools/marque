@@ -125,6 +125,20 @@ pub(crate) fn e014_joint_rel_to_coverage(
 /// Atomic Energy Act section 123 or 144 applies). CAPCO §H.6 p104 (RD)
 /// + p111 (FRD).
 ///
+/// #559 close-out (2026-05-19): renamed from `e021_aea_requires_noforn`
+/// to reflect the actual scope (RD and FRD only; the legacy "aea-"
+/// prefix was misleading because TFNI and UCNI are explicitly
+/// excluded). Severity dropped from `Fix` to `Warn`, and the
+/// §123/§144 sharing-agreement carve-out is now byte-observable: a
+/// portion that already carries `REL TO` (authorized release) or
+/// `RELIDO` (release-by-IDO decision) is evidence that a sharing
+/// agreement applies, and the byte-level marking already encodes a
+/// release path. Marque cannot determine whether a §123/§144
+/// agreement specifically applies to a given country list, but the
+/// presence of any FD&R dominator is sufficient evidence to suppress
+/// the warning at the byte level — the user has already made a
+/// release decision.
+///
 /// Intentionally narrower than `AnyInCategory(CAT_AEA)`:
 /// - **TFNI is excluded.** §H.6 p120 Relationship clause is silent on
 ///   NOFORN ("May only be used with TOP SECRET, SECRET, or
@@ -137,7 +151,7 @@ pub(crate) fn e014_joint_rel_to_coverage(
 ///   TFNI markings — a Constitution VIII fidelity defect.
 /// - **UCNI variants are excluded.** Neither DOE UCNI (§H.6 p116) nor
 ///   DoD UCNI (§H.6 p118) carries the NOFORN requirement.
-pub(crate) fn e021_aea_requires_noforn(
+pub(crate) fn e021_rd_frd_requires_noforn(
     attrs: &marque_ism::CanonicalAttrs,
 ) -> Vec<ConstraintViolation> {
     let has_rd_or_frd = attrs.aea_markings.iter().any(|a| {
@@ -155,14 +169,35 @@ pub(crate) fn e021_aea_requires_noforn(
     if has_noforn {
         return Vec::new();
     }
+    // §123/§144 sharing-agreement carve-out (byte-observable
+    // approximation). §H.6 p104: "Is always used with NOFORN unless
+    // a sharing agreement has been established per the Atomic Energy
+    // Act. (Ref. Sections 123 and 144 of the Atomic Energy Act, and
+    // DoD Instruction 5030.14.)" — the carve-out is documentary, not
+    // detectable from byte form alone. The pragmatic substitute: any
+    // explicit FD&R decision on the portion (REL TO list or RELIDO)
+    // is evidence that the author has chosen a release path under
+    // some sharing instrument, so the byte-level NOFORN warning
+    // should not fire. If the carve-out turns out to over-suppress
+    // in production, narrow it to only count `REL TO` with a
+    // non-empty country list (currently captured the same way since
+    // `attrs.rel_to.is_empty()` reflects parser output).
+    if !attrs.rel_to.is_empty()
+        || attrs
+            .dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Relido))
+    {
+        return Vec::new();
+    }
     vec![ConstraintViolation {
-        constraint_label: "E021/aea-requires-noforn",
-        message: "RD/FRD requires NOFORN unless a sharing agreement exists \
-                  per the Atomic Energy Act"
+        constraint_label: "E021/rd-frd-requires-noforn",
+        message: "RD/FRD typically requires NOFORN unless a §123/§144 \
+                  sharing agreement has been established under the \
+                  Atomic Energy Act"
             .to_owned(),
         citation: "CAPCO-2016 §H.6 p104 + p111",
         span: token_span_attrs(attrs, &TokenRef::AnyInCategory(CAT_AEA)),
-        severity: Some(Severity::Fix),
+        severity: Some(Severity::Warn),
     }]
 }
 
@@ -244,6 +279,65 @@ pub(crate) fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
         citation: "CAPCO-2016 §H.6 p104",
         span: token_span_attrs(attrs, &TokenRef::AnyInCategory(CAT_AEA)),
         severity: Some(Severity::Fix),
+    }]
+}
+
+/// E070 — FRD takes precedence over TFNI. Fires when FRD AND TFNI are
+/// both present in the same portion.
+///
+/// CAPCO §H.6 p120 (TFNI subsection precedence rules): *"If the TFNI
+/// marking is contained in any portion of a document that contains
+/// portions of RD and/or FRD, the RD or FRD takes precedence."* Same
+/// page commingling rule: *"If TFNI is commingled with RD or FRD within
+/// a portion, the RD or FRD takes precedence and 'RD' or 'FRD,' as
+/// appropriate, is annotated in the portion mark."*
+///
+/// Mirror of [`e024_rd_precedence`] for the FRD-side leg per #559
+/// close-out (PM decision 2026-05-19). E024 already covers RD>FRD AND
+/// RD>TFNI; this helper adds the FRD>TFNI leg as a distinct row so a
+/// "remove TFNI" fix can be attributed to the FRD policy decision
+/// independently of RD.
+///
+/// Co-firing with E024 (when RD AND FRD AND TFNI all present in one
+/// portion) is intentional: both relationships hold simultaneously and
+/// either fix drives the marking toward canonical form. Constitution V
+/// Principle V — each row is one policy decision with its own audit
+/// repair lineage.
+///
+/// # Diagnostic surfacing (deferred)
+///
+/// Returns ConstraintViolation with `span: None, severity: None` to
+/// match the current shape of every dyadic helper (`e012`, `e014`,
+/// `e021`, `e024`, `e038`). End-user-visible diagnostic emission lands
+/// in a follow-up commit once the broader engine-bridge generalization
+/// in `specs/006-engine-rule-refactor/` (issue #578 et al.) wires the
+/// catalog-row → `Diagnostic` path. Today the predicate exists and is
+/// addressable via [`CapcoScheme::evaluate_named_constraint`] for
+/// unit-test validation; no wrapper rule is added in this commit per
+/// the parallelization plan at `claudedocs/plans/559-307-closeout.md`.
+pub(crate) fn e070_frd_tfni_precedence(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
+    let has_frd = attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Frd(_)));
+    if !has_frd {
+        return Vec::new();
+    }
+    let has_tfni = attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Tfni));
+    if !has_tfni {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E070/frd-tfni-precedence",
+        message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD".to_owned(),
+        citation: "CAPCO-2016 §H.6 p120",
+        span: None,
+        severity: None,
     }]
 }
 

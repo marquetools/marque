@@ -300,7 +300,15 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
     // compound-supersedes-bare pair — declared as `Contains+Intent`
     // declarative rows with empty `reads` (cycle-avoidance vs the
     // sibling row per `rewrites/mod.rs` narrow-form rule).
-    assert_eq!(engine.scheduled_rewrites().len(), 27);
+    // #559 close-out (2026-05-19) added 2 RELIDO-eviction rows in
+    // `rewrites/relido_clears.rs` (`capco/orcon-clears-relido`,
+    // `capco/orcon-usgov-clears-relido`) per §H.8 p136 / p140. Each
+    // fires at Scope::Page with a FactRemove(RELIDO) intent and
+    // uses empty `reads` (same cycle-avoidance discipline as #552's
+    // supersession rows). The third row (E055 DISPLAY ONLY > RELIDO)
+    // is deferred — see `relido_clears.rs` module header for the
+    // parser-axis / scheduler-cycle rationale. 27 → 29.
+    assert_eq!(engine.scheduled_rewrites().len(), 29);
 }
 
 #[test]
