@@ -34,7 +34,7 @@ discipline was applied here.
 | `AeaSet` | ✓ | ✓ | — | — | **4b-A #426** | §H.6 pp103–121 + §G.2 Table 5 p40 + §H.7 p122 |
 | `ClassificationLattice` | ✓ | ✓ | ✓ | ✓ | **4b-B #437** | §H.1 pp47–54 + §H.2 p55 + §H.7 pp123–125 |
 | `NatoClassLattice` | ✓ | ✓ | ✓ | ✓ | **4b-B #437** | §H.2 p55 |
-| `DeclassifyOnLattice` | ✓ | ✓ | — | — | **4b-B #437** | §H.6 p104 |
+| `DeclassifyOnLattice` | ✓ | ✓ | — | — | **4b-B #437** | §E.3 p32 (Multiple Sources and the Declassify On Line Hierarchy — the code's doc-comment was corrected from the historical §H.6 p104 to §E.3 p32 in 4b-B; §H.6 p104 grounds the AEA *exception* (no date allowed on AEA documents), not the MaxDate aggregation rule itself; the latter is the §E.3 p32 hierarchy + ISOO §3.3 out-of-tree primary) |
 | `NatoDissemSet` | ✓ | ✓ | — | — | **4b-B #437** | §G.2 p41 (NATO reciprocity) |
 | `RelToBlock` | ✓ | ✓ | — | — | **4b-B #437** + 4b-D.2 D24 proptest | §H.8 pp150–151 + §D.2 Table 3 rows 9–13 + §H.9 p172 + p174 |
 | `DissemSet` | ✓ | — | — | — | **4b-B #437** (Join-only per PR #456) | §H.8 p136 + p140 + p145 + pp155–156 + §D.2 Table 3 |
