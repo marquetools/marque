@@ -64,6 +64,15 @@ fn is_registered_pattern(relative: &str) -> bool {
         ("documents/specs/", ".md"),
         ("documents/", "/ground_truth.json"),
         ("documents/", "/README.md"),
+        // foreign/: PR 5 (006 T062/T063/T063a) — foreign-banner
+        // correctness fixtures. Pure-foreign, JOINT, NATO-only,
+        // mixed-US-foreign-rollup, and FGI-concealed worked examples
+        // per CAPCO-2016 §H.7 pp123-129. Loaded by
+        // `crates/capco/tests/foreign_corpus.rs` (the corpus accuracy
+        // harness in `crates/engine/tests/corpus_accuracy.rs` scans
+        // only valid/invalid/prose).
+        ("foreign/", ".txt"),
+        ("foreign/", ".expected.json"),
     ];
 
     // Top-level files

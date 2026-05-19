@@ -1,0 +1,7 @@
+{
+  "_note": "PR 5 (006 T063a + T059b) — load-bearing #276 fixture exercising the §H.7 reciprocal-classification + FGI marker preservation rules. Portion 1 (S//NF) (US Secret + NOFORN); portion 2 (//DEU TS//REL TO USA, DEU) (German Top Secret). Per §H.7 p129 line 3168 worked example, the correct banner is `TOP SECRET//FGI DEU//NOFORN`. The observed banner `SECRET//NOFORN` is wrong on TWO axes: (a) classification — observed Secret, projected TopSecret (max-across-systems via the §H.7 pp123-125 reciprocal raise); (b) FGI marker — observed absent, projected DEU. E068 fires for the classification mismatch; E069 fires for the FGI marker mismatch. Also exercises the §H.8 p145 `capco/noforn-clears-rel-to` PageRewrite: NOFORN survives and REL TO (which the portion carries) is cleared at the banner level — preserving FGI provenance through the cross-axis composition.",
+  "diagnostics": [
+    {"rule": "E068", "span": {"start": 0, "end": 0}},
+    {"rule": "E069", "span": {"start": 0, "end": 0}}
+  ]
+}

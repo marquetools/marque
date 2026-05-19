@@ -1,0 +1,4 @@
+{
+  "_note": "PR 5 (006 T063) — JOINT US+GBR per CAPCO-2016 §H.3 p56 grammar. Banner matches projected page state on classification, JOINT producer list, and REL TO. E068 + E069 do not fire (classification axis preserves Joint variant; FGI marker absent on both observed and projected sides per §H.3 — JOINT is not the FGI axis). No diagnostics expected.",
+  "diagnostics": []
+}

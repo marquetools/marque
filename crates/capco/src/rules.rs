@@ -4151,6 +4151,14 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
             ("E031", "sar-banner-rollup"),
             ("E035", "sci-banner-rollup"),
             ("E040", "nodis-exdis-banner-rollup"),
+            // PR 5 (006 T059a, closes #276): foreign-banner mismatch
+            // rows on the same walker. Per-row IDs travel on emitted
+            // diagnostics for audit traceability; the additional-
+            // emitted-ids list lets `.marque.toml` configure
+            // `E068 = "warn"` / `E069 = "warn"` even though the
+            // walker's `id()` is `E031`.
+            ("E068", "banner-classification-mismatch"),
+            ("E069", "banner-fgi-marker-mismatch"),
         ]
     }
 }
@@ -4217,6 +4225,51 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
         rule_id: RuleId::new("E040"),
         severity: Severity::Error,
         evaluate: evaluate_non_ic_dissem_banner_rollup,
+    },
+    // E068 — Banner classification mismatch (PR 5, closes #276).
+    //
+    // Fires when the observed banner's classification disagrees with
+    // the projected page-level classification (Us/Fgi/Nato/Joint/
+    // Conflict variant or effective level). Severity `Error`, no fix:
+    // cross-axis byte-positioning a missing or wrong classification
+    // block from rule context alone is unsafe; deterministic fix
+    // requires renderer-level coordination not yet wired. The
+    // renderer produces canonical output via `fix`; `lint` surfaces
+    // the mismatch only.
+    //
+    // Authority: CAPCO-2016 §H.7 pp123-125 (reciprocal classification
+    // grammar — `(U) Precedence Rules for Banner Line Guidance` on
+    // p124 covers the FGI / classification ladder roll-up; the
+    // worked examples on pp126-129 anchor the cross-axis
+    // composition).
+    BannerCategoryRow {
+        rule_id: RuleId::new("E068"),
+        severity: Severity::Error,
+        evaluate: evaluate_classification_banner_rollup,
+    },
+    // E069 — Banner FGI marker mismatch (PR 5, closes #276).
+    //
+    // Fires when the observed banner's FGI marker disagrees with the
+    // projected page-level FGI marker (presence/absence; concealed vs
+    // acknowledged variant). Severity `Error`, no fix — same
+    // safety rationale as E068.
+    //
+    // Authority: CAPCO-2016 §H.7 p124 — *"Use FGI + Register, Annex
+    // B trigraph country code(s) and/or Register Annex A tetragraph
+    // code(s) in the banner line, unless the very fact that the
+    // information is foreign government information must be
+    // concealed."* Plus the source-concealed-dominates rule on the
+    // same page: *"If any document contains portions of both
+    // source-concealed FGI ... and source-acknowledged FGI, then
+    // only the 'FGI' marking without the source trigraph(s)/
+    // tetragraph(s) must appear in the banner line."* The §H.7 p127
+    // line 3142 worked example (`TOP SECRET//BOHEMIA//FGI AUS CAN
+    // DEU NATO//NOFORN`) and §H.7 p129 line 3168 worked example
+    // (`TOP SECRET//FGI CAN DEU//NOFORN`) anchor the projection.
+    BannerCategoryRow {
+        rule_id: RuleId::new("E069"),
+        severity: Severity::Error,
+        evaluate: evaluate_fgi_marker_banner_rollup,
     },
 ];
 
@@ -4607,6 +4660,246 @@ fn evaluate_non_ic_dissem_banner_rollup(
             )]
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// E068 — Banner classification mismatch (PR 5 / #276)
+// ---------------------------------------------------------------------------
+
+/// E068 evaluator: banner classification disagrees with the projected
+/// page state. Pure no-fix Error per CAPCO-2016 §H.7 pp123-125
+/// reciprocal classification ladder and the worked examples on
+/// pp126-129.
+///
+/// Detection cases (Constitution V G13: no document values
+/// interpolated into the message; the message describes the axis
+/// only, not the observed or projected values):
+///
+/// 1. Banner has no classification but page projects one
+///    (`(None, Some(_))`). The banner is missing the classification
+///    block required by the portions.
+/// 2. Banner has a classification but page projects none
+///    (`(Some(_), None)`). The banner is over-classified relative to
+///    the (empty) projected page state — an odd but possible shape
+///    when banner-only candidates appear.
+/// 3. Banner classification level disagrees with the projected
+///    effective level (`a.effective_level() != b.effective_level()`).
+///    Covers the §H.7 p129 line 3168 worked example case where
+///    portions roll up to `TopSecret` but banner observes `Secret`.
+/// 4. Banner classification VARIANT disagrees with the projected
+///    variant (e.g. `Us(_)` observed when projection is `Fgi(_)` on
+///    a pure-foreign page). Compared by [`classification_variant_rank`]
+///    via discriminant equality. Covers the §H.7 pp123-125
+///    solely-foreign preservation case.
+///
+/// **Authority**: CAPCO-2016 §H.7 pp123-125 (Precedence Rules for
+/// Banner Line Guidance + reciprocal classification grammar). The
+/// worked examples on pp126-129 anchor the cross-axis composition.
+///
+/// **Constitution VII §IV scope**: this evaluator is scheme-internal
+/// (`marque-capco`). No engine-crate touch.
+fn evaluate_classification_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page: &marque_ism::ProjectedMarking,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    // Discriminator helper: distinguish MarkingClassification variants
+    // without leaking the contained values. Mirrors
+    // `classification_variant_rank` in `marque-capco::lattice` but
+    // local to this evaluator (the lattice helper is `pub(crate)`
+    // there and we re-derive locally to avoid coupling rule emission
+    // to lattice internals).
+    fn variant_kind(c: &MarkingClassification) -> u8 {
+        match c {
+            MarkingClassification::Us(_) => 0,
+            MarkingClassification::Fgi(_) => 1,
+            MarkingClassification::Nato(_) => 2,
+            MarkingClassification::Joint(_) => 3,
+            MarkingClassification::Conflict { .. } => 4,
+        }
+    }
+
+    let mismatch_reason: Option<&'static str> = match (
+        attrs.classification.as_ref(),
+        page.classification.as_ref(),
+    ) {
+        (None, None) => None,
+        (None, Some(_)) => Some(
+            "banner is missing a classification block required by the \
+             portions on this page",
+        ),
+        (Some(_), None) => Some(
+            "banner carries a classification but the projected page \
+             state has no classification (over-classified banner)",
+        ),
+        (Some(observed), Some(projected)) => {
+            if observed.effective_level() != projected.effective_level() {
+                Some(
+                    "banner classification level disagrees with the \
+                     projected page state (§H.7 pp123-125 reciprocal \
+                     classification + portion roll-up)",
+                )
+            } else if variant_kind(observed) != variant_kind(projected) {
+                Some(
+                    "banner classification variant disagrees with the \
+                     projected page state (e.g., US-attributed banner \
+                     on a solely-foreign page); §H.7 pp123-125",
+                )
+            } else {
+                None
+            }
+        }
+    };
+
+    let Some(message) = mismatch_reason else {
+        return vec![];
+    };
+
+    // Span: point at the first token of the banner candidate so the
+    // user can locate the offending line. Per Constitution V G13 the
+    // span is structural metadata, not document content.
+    let span = attrs
+        .token_spans
+        .first()
+        .map(|t| t.span)
+        .unwrap_or(Span::new(0, 0));
+
+    const CITATION: &str = concat!(
+        "CAPCO-2016 §H.7 pp123-125 (Precedence Rules for Banner Line ",
+        "Guidance + reciprocal classification); worked examples §H.7 ",
+        "pp126-129 (Notional Examples 1-4 anchor the cross-axis ",
+        "composition).",
+    );
+
+    vec![Diagnostic::new(
+        row.rule_id.clone(),
+        row.severity,
+        span,
+        message,
+        CITATION,
+        None,
+    )]
+}
+
+// ---------------------------------------------------------------------------
+// E069 — Banner FGI marker mismatch (PR 5 / #276)
+// ---------------------------------------------------------------------------
+
+/// E069 evaluator: banner FGI marker disagrees with the projected
+/// page state. Pure no-fix Error.
+///
+/// Detection cases (Constitution V G13: no country code values
+/// interpolated into the message):
+///
+/// 1. Banner has no FGI marker but page projects one
+///    (`(None, Some(_))`). Covers the §H.7 p129 line 3168 worked
+///    example case (`TOP SECRET//FGI CAN DEU//NOFORN`) where the
+///    portions carry FGI provenance but the banner omits it.
+/// 2. Banner has an FGI marker but page projects none
+///    (`(Some(_), None)`). Banner over-claims foreign provenance.
+/// 3. Banner FGI variant disagrees with projection — concealed vs
+///    acknowledged. Covers the §H.7 p124
+///    source-concealed-dominates rule: if any portion is
+///    source-concealed, the banner MUST use bare `FGI` without a
+///    trigraph list.
+/// 4. Banner is acknowledged and projection is acknowledged but the
+///    country sets differ. Covers the §H.7 p126 line 3131 worked
+///    example (`TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU`)
+///    where the union of portion-contributed FGI countries must
+///    appear in the banner list.
+///
+/// **Authority**: CAPCO-2016 §H.7 p124 — *"Use FGI + Register, Annex
+/// B trigraph country code(s) ... in the banner line, unless the
+/// very fact that the information is foreign government information
+/// must be concealed."* Plus the source-concealed-dominates rule on
+/// the same page. The §H.7 p126 line 3131 (`TOP SECRET//FGI CAN
+/// DEU//REL TO USA, CAN, DEU`) and §H.7 p129 line 3168 (`TOP
+/// SECRET//FGI CAN DEU//NOFORN`) worked examples anchor the
+/// projection.
+///
+/// **Constitution VII §IV scope**: scheme-internal; no engine-crate
+/// touch.
+fn evaluate_fgi_marker_banner_rollup(
+    attrs: &CanonicalAttrs,
+    page: &marque_ism::ProjectedMarking,
+    row: &BannerCategoryRow,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    use marque_ism::FgiMarker;
+
+    // Discriminator helper for FgiMarker variant comparison without
+    // touching the country lists (Constitution V G13).
+    fn fgi_variant_kind(m: &FgiMarker) -> u8 {
+        match m {
+            FgiMarker::SourceConcealed => 0,
+            FgiMarker::Acknowledged { .. } => 1,
+        }
+    }
+
+    let mismatch_reason: Option<&'static str> = match (
+        attrs.fgi_marker.as_ref(),
+        page.fgi_marker.as_ref(),
+    ) {
+        (None, None) => None,
+        (None, Some(_)) => Some(
+            "banner is missing an FGI marker required by portions \
+             that carry foreign government information (§H.7 p124 \
+             banner-line FGI roll-up rule)",
+        ),
+        (Some(_), None) => Some(
+            "banner carries an FGI marker but the projected page \
+             state has no foreign government information; banner \
+             over-claims foreign provenance (§H.7 p124)",
+        ),
+        (Some(observed), Some(projected)) => {
+            if fgi_variant_kind(observed) != fgi_variant_kind(projected) {
+                // Mixed concealed + acknowledged → bare FGI per
+                // §H.7 p124 source-concealed-dominates rule. The
+                // direction of the mismatch (which side is concealed)
+                // is intentionally not interpolated per Constitution
+                // V G13.
+                Some(
+                    "banner FGI marker variant disagrees with the \
+                     projected page state (concealed vs acknowledged); \
+                     §H.7 p124 source-concealed-dominates rule",
+                )
+            } else if observed.countries() != projected.countries() {
+                Some(
+                    "banner FGI marker country list disagrees with \
+                     the projected page state (union of portion-\
+                     contributed FGI sources); §H.7 p126 worked \
+                     example",
+                )
+            } else {
+                None
+            }
+        }
+    };
+
+    let Some(message) = mismatch_reason else {
+        return vec![];
+    };
+
+    let span = attrs
+        .token_spans
+        .first()
+        .map(|t| t.span)
+        .unwrap_or(Span::new(0, 0));
+
+    const CITATION: &str = concat!(
+        "CAPCO-2016 §H.7 p124 (banner-line FGI roll-up rule + ",
+        "source-concealed-dominates clause); worked examples §H.7 ",
+        "p126 line 3131 and §H.7 p129 line 3168 anchor the ",
+        "projection.",
+    );
+
+    vec![Diagnostic::new(
+        row.rule_id.clone(),
+        row.severity,
+        span,
+        message,
+        CITATION,
+        None,
+    )]
 }
 
 // ---------------------------------------------------------------------------

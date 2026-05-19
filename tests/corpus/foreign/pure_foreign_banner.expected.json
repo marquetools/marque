@@ -1,0 +1,4 @@
+{
+  "_note": "PR 5 (006 T062) — pure-foreign FGI DEU page: banner correctly retains FGI DEU marker per CAPCO-2016 §H.7 p124. No diagnostics expected; E068 + E069 do not fire because banner classification + FGI marker match the projected page state.",
+  "diagnostics": []
+}
