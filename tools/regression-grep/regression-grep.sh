@@ -44,8 +44,12 @@ guard() {
     # `|| true` so a zero-match `grep` (the desired clean state) does not
     # trip `set -e` before the violation check runs.
     local matches
+    # `\s` is not portable across ERE implementations (GNU grep treats
+    # it as whitespace; POSIX ERE treats it as the literal 's' char).
+    # Use `[[:space:]]` so the doc-comment exclusion works on both
+    # GNU grep (CI Linux) and BSD grep (macOS dev).
     matches=$(grep -nE "$pattern" "$file" 2>/dev/null \
-        | grep -vE '^\s*[0-9]+:\s*//' || true)
+        | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*//' || true)
 
     if [ -n "$matches" ]; then
         echo
@@ -96,9 +100,14 @@ guard \
 # entry-point file, where a foreign page must project as `Fgi(_)` /
 # `Nato(_)` / `Joint(_)` — never silently `Us`.
 #
-# Pattern semantics. `MarkingClassification::Us\s*[({]` requires the
-# `Us` token to be followed by `(` (tuple construction) or `{`
-# (a malformed struct shape).
+# Pattern semantics. `MarkingClassification::Us[[:space:]]*[({]`
+# requires the `Us` token to be followed by `(` (tuple construction)
+# or `{` (a malformed struct shape), with optional whitespace between
+# them so styles like `Us (Classification::Secret)` are also caught.
+# The `[[:space:]]` POSIX class is used instead of `\s` because GNU
+# grep treats `\s` as whitespace in ERE mode but POSIX ERE treats it
+# as the literal 's' character; the bracket class is portable across
+# both grep flavors (#553 Copilot R2).
 #
 # Scope rationale (narrower than the original PR 5 PM Addendum):
 # `crates/capco/src/scheme/marking.rs::join_via_lattice_body`
@@ -120,7 +129,7 @@ guard \
 # ---------------------------------------------------------------------------
 
 guard \
-    'MarkingClassification::Us\s*[({]' \
+    'MarkingClassification::Us[[:space:]]*[({]' \
     'crates/capco/src/scheme/marking_scheme_impl.rs' \
     'PR-5 / #276' \
     'CHK068' \
