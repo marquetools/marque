@@ -2915,8 +2915,10 @@ fn pin_pattern_b_row_2_before_noforn_clears_fdr_family() {
 //
 // These fixtures verify the PR LA-3 single-portion fast-path introduced in
 // `CapcoMarking::join_via_lattice`. The fast-path returns `portions[0].clone()`
-// for non-Conflict single-element slices; the Conflict variant is guarded out
-// so `join_via_lattice_body` still runs it (G-9 flatten to `Us(_)`).
+// for single-element slices when all three guard conditions pass (no
+// Conflict/malformed-Joint classification, no decomposable tetragraph in
+// `rel_to`, and `display_only_to` is in canonical form). Slices that fail
+// any guard fall through to `join_via_lattice_body`.
 //
 // §-authority: join-semilattice identity law (`join(x) = x`) per
 // `docs/perf/2026-05-19-diagnosis.md` §5 LA-3.
@@ -2954,9 +2956,7 @@ fn la3_single_nato_portion_is_identity() {
     // join_via_lattice_body would also produce fgi_marker=None for a
     // pure NATO page, so the fast-path is byte-identical.
     let mut p = CanonicalAttrs::default();
-    p.classification = Some(MarkingClassification::Nato(
-        NatoClassification::NatoSecret,
-    ));
+    p.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
 
     let result = CapcoMarking::join_via_lattice(&[p.clone()]);
     assert_eq!(
@@ -3054,4 +3054,46 @@ fn la3_two_portions_always_uses_body() {
         &[DissemControl::Nf] as &[DissemControl],
         "LA-3: two identical Us(S)+NF portions must preserve NF via the body"
     );
+}
+
+#[test]
+fn la3_single_rel_to_fvey_tetragraph_expands_via_body() {
+    // Guard b regression: a single portion with rel_to = [USA, FVEY] must
+    // go through join_via_lattice_body so that FVEY is expanded to its
+    // constituent trigraphs (AUS, CAN, GBR, NZL). With the fast-path the
+    // unexpanded result would cause E031/E035 false positives if the
+    // observed banner reads `REL TO USA, AUS, CAN, GBR, NZL` while the
+    // projected page state still holds `[USA, FVEY]`.
+    //
+    // §-authority: LA-3 guard (b) — `RelToBlock::from_attrs_iter`
+    // performs tetragraph expansion; there is no equivalent PageRewrite.
+    let mut p = CanonicalAttrs::default();
+    p.classification = Some(MarkingClassification::Us(Classification::Secret));
+    p.rel_to = vec![
+        CountryCode::USA,
+        CountryCode::try_new(b"FVEY").expect("FVEY"),
+    ]
+    .into();
+
+    let result = CapcoMarking::join_via_lattice(&[p]);
+
+    // FVEY must be expanded — the result must NOT contain the raw FVEY code.
+    let fvey = CountryCode::try_new(b"FVEY").expect("FVEY");
+    assert!(
+        !result.rel_to.contains(&fvey),
+        "LA-3 guard b: FVEY tetragraph must be expanded by the body; \
+         raw FVEY still present in rel_to after join_via_lattice"
+    );
+
+    // The expanded FVEY members (AUS, CAN, GBR, NZL) must all be present.
+    for member in ["AUS", "CAN", "GBR", "NZL"] {
+        let code = CountryCode::try_new(member.as_bytes())
+            .unwrap_or_else(|| panic!("valid trigraph: {member}"));
+        assert!(
+            result.rel_to.contains(&code),
+            "LA-3 guard b: FVEY expansion must include {member}; \
+             got rel_to = {:?}",
+            result.rel_to
+        );
+    }
 }
