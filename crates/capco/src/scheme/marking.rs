@@ -245,9 +245,7 @@ impl CapcoMarking {
             // Guard a: classification variant normalization.
             let classification_safe = match &p.classification {
                 Some(MarkingClassification::Conflict { .. }) => false,
-                Some(MarkingClassification::Joint(j)) => {
-                    j.countries.contains(&CountryCode::USA)
-                }
+                Some(MarkingClassification::Joint(j)) => j.countries.contains(&CountryCode::USA),
                 _ => true,
             };
 
