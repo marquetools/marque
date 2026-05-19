@@ -62,6 +62,45 @@
 //! 7. `portion_without_sbu_nf_or_les_nf_does_not_inject_noforn`
 //! 8. `sbu_nf_portion_with_noforn_already_present_is_idempotent`
 //! 9. `pattern_a_sbu_nf_les_nf_rewrites_emit_no_applied_fix`
+//!
+//! # #554 semantic flip — inventory revisions for the future re-enabler
+//!
+//! This file is currently `#![cfg(any())]`-gated (legacy FixProposal-shape
+//! test, disabled pending rewrite per PR 3c.B Commit 10). When the file
+//! is re-enabled, the following tests need rewriting against the #554
+//! classification-gated `sbu_nf_classified_trigger` /
+//! `les_nf_classified_trigger` semantics:
+//!
+//! - Test 1 (`sbu_nf_portion_projects_noforn_to_page_dissem_unclassified`)
+//!   — INVERT the assertion. Post-#554 the Pattern-A
+//!   `capco/sbu-nf-implies-noforn` row gates on `is_classified`, so
+//!   `(U//SBU-NF)` MUST NOT inject NF onto the page dissem axis. The
+//!   unclassified compound's intrinsic NOFORN identity lives in the
+//!   `non_ic_dissem` axis (`{SbuNf}`) per the §H.9 p178 Example Banner
+//!   Line `UNCLASSIFIED//SBU NOFORN`. Rename to
+//!   `sbu_nf_unclassified_does_not_inject_noforn`.
+//! - Test 2 (`sbu_nf_malformed_classified_still_injects_noforn`)
+//!   — STILL CORRECT semantically (classified gate fires + NF added),
+//!   but the "malformed / defensive fire" wording is obsolete. Rename
+//!   to `sbu_nf_classified_injects_noforn`; revise doc to describe the
+//!   §H.9 p178 Commingling Rule co-fire (Pattern-A NF promotion + the
+//!   Pattern-C `capco/sbu-nf-evicted-by-classified` strip; net effect
+//!   `(C//SBU-NF) → (C//NF)`).
+//! - Test 3 (`les_nf_portion_projects_noforn_to_page_dissem_unclassified`)
+//!   — INVERT. Same shape as test 1. Rename to
+//!   `les_nf_unclassified_does_not_inject_noforn`.
+//! - Tests 4, 5, 6, 8 — STILL CORRECT semantically. Each composition
+//!   produces a classified projected page (test 5 / 6 mix in a Secret
+//!   REL TO portion; test 8 uses Confidential / Secret directly), so
+//!   the new `is_classified` gate fires. Doc-comment wording about
+//!   "malformed pre-transmutation input" should be revised but the
+//!   assertions hold without change.
+//! - Test 7 — STILL CORRECT (plain SBU / plain LES never trigger NF
+//!   regardless of classification).
+//! - Test 9 — STILL CORRECT (execution-deferred audit-emission gate).
+//!
+//! The §H.9 p178 / p185 authority anchors above are unchanged; only the
+//! gating shape moves.
 
 use marque_capco::{CapcoMarking, CapcoRuleSet, CapcoScheme};
 use marque_config::Config;

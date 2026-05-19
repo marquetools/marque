@@ -16,16 +16,36 @@ use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
 };
 
+use super::super::predicates::{les_nf_classified_trigger, sbu_nf_classified_trigger};
 use super::super::*;
 
 /// The four Pattern-A NOFORN-supremacy rows in declaration order.
 ///
-/// Each row reads `CAT_NON_IC_DISSEM` (to detect the NODIS / EXDIS /
-/// SBU-NF / LES-NF trigger) and writes `CAT_DISSEM` (to inject
-/// NOFORN). The Kahn scheduler orders all four BEFORE
-/// `capco/noforn-clears-rel-to` (DISSEM-reader) so the REL TO axis
-/// is correctly cleared in the same projection pass when any of the
-/// triggers is present.
+/// Every row writes `CAT_DISSEM` (FactAdd NOFORN). The Kahn scheduler
+/// orders all four BEFORE `capco/noforn-clears-rel-to` (DISSEM-reader)
+/// so the REL TO axis is correctly cleared in the same projection
+/// pass when any of the triggers is present.
+///
+/// **Reads diverge by classification-gating shape**:
+/// - **NODIS** and **EXDIS** rows read `CAT_NON_IC_DISSEM` only.
+///   They use `Contains(CAT_NON_IC_DISSEM, TOK_*)` triggers and are
+///   classification-agnostic by authority — §H.9 p174 / p172 say both
+///   markings "May be used with TOP SECRET, SECRET, CONFIDENTIAL, or
+///   UNCLASSIFIED" + "Requires NOFORN.", so NF is mandatory at every
+///   classification level.
+/// - **SBU-NF** and **LES-NF** rows read `CAT_CLASSIFICATION` only
+///   (#554). They use `Custom(sbu_nf_classified_trigger)` /
+///   `Custom(les_nf_classified_trigger)` predicates that gate on
+///   `is_classified ∧ contains compound-NF token`. The non_ic_dissem
+///   scan stays in the predicate body per Pattern-C's
+///   predicate-scan-vs-dataflow convention (see
+///   `pattern_c.rs::PATTERN_C_SBU_NF_READS`). The gate exists because
+///   the compound tokens (`SBU-NF`, `LES-NF`) themselves encode
+///   NOFORN per the §H.9 p178 / p185 Example Banner Lines
+///   (`UNCLASSIFIED//SBU NOFORN`, `UNCLASSIFIED//LES NOFORN`); a
+///   separate NF on the dissem axis would be redundant on
+///   unclassified pages and produces a divergence from the lattice
+///   helper's `needs_nf = false` semantic.
 pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // PR 3c.B Sub-PR 8.F — Pattern A NOFORN-supremacy: NODIS and EXDIS.
     //
@@ -39,9 +59,17 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // state before the clearer runs — so the REL TO axis is correctly
     // cleared in the same projection pass.
     //
-    // No existing rewrite writes `CAT_NON_IC_DISSEM`, so the new
-    // rewrites have no upstream producers on that axis and can run
-    // in declaration order relative to each other.
+    // No upstream producer constraint on these two rows: they read
+    // `CAT_NON_IC_DISSEM` for the NODIS / EXDIS token scan, and
+    // Pattern-C + #552 supersession rows now also write
+    // `CAT_NON_IC_DISSEM` (LIMDIS / SBU / SBU-NF strip + the
+    // bare-SBU / bare-LES supersession), so the Kahn scheduler
+    // orders these NODIS / EXDIS readers AFTER those writers. That
+    // ordering is correct for the NODIS / EXDIS case — no portion
+    // contains NODIS or EXDIS as a non-token co-presence side
+    // effect; the upstream Pattern-C / supersession rows only
+    // touch SBU / SBU-NF / LIMDIS, never NODIS / EXDIS, so the
+    // scan still sees the trigger token after upstream rows run.
     //
     // FUTURE (Pattern A SCI follow-on): 5 more `*-implies-noforn`
     // rewrites for SCI systems (HCS-O / HCS-P-sub / TK-IDIT /
@@ -67,16 +95,25 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
     const EXDIS_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
     const EXDIS_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
-    // PR 3c.B Sub-PR 8.F.2 — SBU-NF and LES-NF Pattern A axes.
-    // Same axis-flow as the 8.F NODIS/EXDIS pair: reads
-    // `CAT_NON_IC_DISSEM` (to detect the SBU-NF / LES-NF token)
-    // and writes `CAT_DISSEM` (to add NOFORN). Both new entries
-    // join the same DISSEM-writer cohort and are ordered BEFORE
-    // `capco/noforn-clears-rel-to` (DISSEM-reader) by the Kahn
-    // scheduler.
-    const SBU_NF_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+    // PR 3c.B Sub-PR 8.F.2 — SBU-NF and LES-NF Pattern A axes (axis
+    // annotations revised in #554; classification gate added).
+    //
+    // Reads `CAT_CLASSIFICATION` only — predicate-scan-vs-dataflow
+    // convention from PR 4b-C Pattern-C (see `pattern_c.rs`
+    // `PATTERN_C_FOUO_READS` / `PATTERN_C_LIMDIS_READS`). The
+    // non_ic_dissem scan (SBU-NF / LES-NF presence) lives in the
+    // Custom predicate body (`sbu_nf_classified_trigger` /
+    // `les_nf_classified_trigger`) rather than as a declared read,
+    // so the scheduler doesn't manufacture cross-axis edges from
+    // CAT_NON_IC_DISSEM writers (Pattern-C SBU-NF strip + #552
+    // supersession rows). The data dependency we DO need to express
+    // is the classification gate: this row reads classification to
+    // decide whether to fire at all. Writes `CAT_DISSEM` (FactAdd
+    // NOFORN); both rows remain in the DISSEM-writer cohort ordered
+    // BEFORE `capco/noforn-clears-rel-to` (DISSEM-reader) by Kahn.
+    const SBU_NF_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const SBU_NF_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
-    const LES_NF_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
+    const LES_NF_IMPLIES_NF_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const LES_NF_IMPLIES_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_DISSEM];
 
     vec![
@@ -213,64 +250,60 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
             EXDIS_IMPLIES_NF_READS,
             EXDIS_IMPLIES_NF_WRITES,
         ),
-        // PR 3c.B Sub-PR 8.F.2 — `capco/sbu-nf-implies-noforn`.
+        // PR 3c.B Sub-PR 8.F.2 — `capco/sbu-nf-implies-noforn`
+        // (#554: classification gate added; was classification-agnostic).
         //
         // CAPCO-2016 §H.9 p178 (SBU-NF) does NOT contain a "Requires NOFORN."
         // sentence — unlike NODIS (§H.9 p174) and EXDIS (§H.9 p172). The NF
-        // implication is derived from three structural anchors:
-        //   (a) Banner-form heading at `CAPCO-2016.md:4388-4398`: the marking's
-        //       Authorized Banner Line Marking Title literally names it
-        //       "SENSITIVE BUT UNCLASSIFIED NOFORN"; portion mark is `SBU-NF`.
-        //       NOFORN is a structural component of the marking's identity.
-        //   (b) Commingling Rule at `CAPCO-2016.md:4420-4421`: confirms NOFORN
-        //       persists after transmutation strips the SBU half — even when
-        //       the source token is dropped, the NF must remain in the portion.
-        //       Verbatim: "The SBU-NF marking is conveyed in the portion
-        //       mark only if the commingled portion is unclassified and there
-        //       is no other NOFORN information included in the portion. If
-        //       there is other NOFORN information in the commingled portion,
-        //       the 'SBU' marking is used and a NOFORN marking is added,
-        //       e.g., (U//NF//SBU)." And p4421: "If the portion is
+        // implication on **classified** portions is the Commingling Rule's
+        // `(C//NF)` canonical example. Two structural anchors:
+        //   (a) Commingling Rule at §H.9 p178: "If the portion is
         //       classified, the classification level of the portion
         //       adequately protects the SBU information, so SBU is not
         //       reflected in the portion mark; however a NOFORN marking
-        //       must be added to the portion mark, e.g., (C//NF)."
-        //   (c) §D.2 Table 3 row 3-5 at `CAPCO-2016.md:590-595`: lists NOFORN
-        //       as the FD&R banner consequence for SBU-NF. Back-reference
-        //       confirms the page-level dissem-axis invariant.
+        //       must be added to the portion mark, e.g., (C//NF)." Also:
+        //       "If there is other NOFORN information in the commingled
+        //       portion, the 'SBU' marking is used and a NOFORN marking
+        //       is added, e.g., (U//NF//SBU)."
+        //   (b) §D.2 Table 3 row 3-5 lists NOFORN as the FD&R banner
+        //       consequence for SBU-NF on classified pages.
         //
-        // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_SBU_NF)` — fires
-        // when any portion on the page carries SBU-NF in its
-        // `non_ic_dissem` axis. Resolved by the
-        // `capco_category_contains` extension in PR 3c.B Sub-PR 8.F.2.
+        // # Classification gate (#554)
+        //
+        // On unclassified pages the compound `SBU-NF` token itself
+        // encodes NOFORN per the §H.9 p178 Example Banner Line
+        // `UNCLASSIFIED//SBU NOFORN` and Notional Example Page 1; a
+        // separate NOFORN segment on the dissem axis is redundant and
+        // produces a divergence from the lattice helper's
+        // `needs_nf = false` semantic on unclassified `{SbuNf}`. The
+        // Custom trigger gates on `is_classified` to fire only on
+        // classified pages; the unclassified compound carries its own
+        // NF identity through the non_ic_dissem axis. Pre-#554, this
+        // row used a classification-agnostic `Contains` trigger and
+        // overfired on unclassified compound tokens — the divergence
+        // documented on the #552 `parity_unclassified_sbu_co_present_*`
+        // fixture, closed here.
+        //
+        // Trigger: `Custom(sbu_nf_classified_trigger)` — fires when
+        // `is_classified(m) ∧ contains SBU-NF in non_ic_dissem`. Co-
+        // fires with `capco/sbu-nf-evicted-by-classified` (Pattern-C,
+        // §H.9 p178) on the same input; they touch different axes
+        // (CAT_DISSEM FactAdd vs. CAT_NON_IC_DISSEM FactRemove), so
+        // the net effect is `(C//SBU-NF) → (C//NF)`.
         //
         // Action: `Intent(FactAdd { Cve(TOK_NOFORN), Scope::Page })`
         // — adds NOFORN to the projected page dissem axis. Monotone-
-        // additive: FactAdd with an already-present token is a
-        // per-intent no-op (IntentInapplicable, silent) per the
-        // idempotence policy in `apply_fact_add`'s `CAT_DISSEM` arm
-        // (the `if category == CAT_DISSEM` block; the
-        // `attrs.dissem_iter().any(|d| d == &target)` check returns
-        // `IntentInapplicable`). NOT the unmatched-arm fallthrough at
-        // the bottom of `apply_fact_add`, which is forward-
-        // compatibility only — see the TODO at the CAT_NON_IC_DISSEM
-        // arm of `apply_fact_remove`. Line numbers omitted because
-        // they drift with refactors; grep `apply_fact_add` to find
-        // the current location.
+        // additive: FactAdd of an already-present token is a per-
+        // intent no-op (IntentInapplicable, silent) per
+        // `apply_fact_add`'s CAT_DISSEM arm (grep `apply_fact_add`
+        // to find the current location).
         //
-        // Axis annotations: reads `[CAT_NON_IC_DISSEM]`, writes
-        // `[CAT_DISSEM]`. The Kahn scheduler places this rewrite
-        // BEFORE `capco/noforn-clears-rel-to` (which reads
-        // CAT_DISSEM) so the REL TO axis is correctly cleared in the
-        // same projection pass when SBU-NF is present.
-        //
-        // Classification: §H.9 p178 at `:4410` says SBU-NF "May only
-        // be used with UNCLASSIFIED" — but the trigger predicate is
-        // classification-agnostic (it scans the `non_ic_dissem`
-        // axis only). On malformed classified input `(C//SBU-NF)`,
-        // Pattern A still fires defensively; the eventual Pattern C
-        // `classified-strips-sbu` rewrite will canonicalize the
-        // portion to `(C//NF)` per the §H.9 Commingling Rule.
+        // Axis annotations: reads `[CAT_CLASSIFICATION]`, writes
+        // `[CAT_DISSEM]`. The non_ic_dissem scan lives in the Custom
+        // predicate body per Pattern-C convention. Kahn places this
+        // row BEFORE `capco/noforn-clears-rel-to` (DISSEM-reader)
+        // so the REL TO axis is correctly cleared in the same
+        // projection pass.
         //
         // FUTURE (SCI Pattern A follow-on): see the NODIS entry
         // doc-comment for the SCI follow-on (§H.4 p64/p68/p87/p91/p95).
@@ -278,13 +311,10 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Runtime execution gap: see the NODIS entry doc-comment.
         // Scheduler-validated but execution-deferred; visible through
         // `scheme.project(Scope::Page, …)`.
-        PageRewrite::declarative(
+        PageRewrite::custom(
             "capco/sbu-nf-implies-noforn",
             "CAPCO-2016 §H.9 p178",
-            CategoryPredicate::Contains {
-                category: CAT_NON_IC_DISSEM,
-                token: TOK_SBU_NF,
-            },
+            CategoryPredicate::Custom(sbu_nf_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactAdd {
                 token: FactRef::Cve(TOK_NOFORN),
                 scope: Scope::Page,
@@ -292,79 +322,86 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
             SBU_NF_IMPLIES_NF_READS,
             SBU_NF_IMPLIES_NF_WRITES,
         ),
-        // PR 3c.B Sub-PR 8.F.2 — `capco/les-nf-implies-noforn`.
+        // PR 3c.B Sub-PR 8.F.2 — `capco/les-nf-implies-noforn`
+        // (#554: classification gate added; was classification-agnostic).
         //
         // CAPCO-2016 §H.9 p185 (LES-NF) does NOT contain a "Requires NOFORN."
         // sentence — unlike NODIS (§H.9 p174) and EXDIS (§H.9 p172). The NF
-        // implication is derived from three structural anchors:
-        //   (a) Banner-form heading at `CAPCO-2016.md:4532-4542`: the marking's
-        //       Authorized Banner Line Marking Title literally names it
-        //       "LAW ENFORCEMENT SENSITIVE NOFORN"; portion mark is `LES-NF`.
-        //       NOFORN is a structural component of the marking's identity.
-        //   (b) Precedence Rules for Banner Line Guidance at `CAPCO-2016.md:4558`:
-        //       "When a classified document contains portions of U//LES- NF,
-        //       the 'LES' marking is used in the banner line and the NOFORN
-        //       marking is applied as a Dissemination Control Marking. For
-        //       example: SECRET//NOFORN//LES."
-        //       // note: source has whitespace OCR artifact "LES- NF" rendered
-        //       // with a space; canonical token is LES-NF.
-        //       Confirms NOFORN materializes on the projected page dissem
-        //       axis even when the LES-NF source token is consolidated into
-        //       its LES form by transmutation.
-        //   (c) §D.2 Table 3 rows 6-8 at `CAPCO-2016.md:590-595`: lists NOFORN
-        //       as the FD&R banner consequence for LES-NF. Back-reference
-        //       confirms the page-level dissem-axis invariant.
+        // implication on **classified** portions is derived from the
+        // Precedence Rules for Banner Line Guidance verbatim quote:
+        // "When a classified document contains portions of U//LES- NF,
+        // the 'LES' marking is used in the banner line and the NOFORN
+        // marking is applied as a Dissemination Control Marking. For
+        // example: SECRET//NOFORN//LES." (Source has whitespace OCR
+        // artifact `LES- NF` rendered with a space; canonical token
+        // is `LES-NF`.) §D.2 Table 3 rows 6-8 list NOFORN as the
+        // FD&R banner consequence for LES-NF on classified pages.
         //
-        // Trigger: `Contains(CAT_NON_IC_DISSEM, TOK_LES_NF)` — fires
-        // when any portion on the page carries LES-NF in its
-        // `non_ic_dissem` axis. Resolved by the
-        // `capco_category_contains` extension in PR 3c.B Sub-PR 8.F.2.
+        // # Classification gate (#554)
+        //
+        // On unclassified pages the compound `LES-NF` token itself
+        // encodes NOFORN per the §H.9 p185 Example Banner Line
+        // `UNCLASSIFIED//LES NOFORN` and Notional Example Page 1; a
+        // separate NOFORN segment on the dissem axis is redundant
+        // and produces a divergence from the lattice helper's
+        // `needs_nf = false` semantic on unclassified `{LesNf}`. The
+        // Custom trigger gates on `is_classified` to fire only on
+        // classified pages. Pre-#554, this row used a classification-
+        // agnostic `Contains` trigger and overfired on unclassified
+        // compound tokens — the divergence documented on the #552
+        // `parity_unclassified_les_co_present_*` fixture, closed
+        // here.
+        //
+        // # LES survives classification (asymmetric with SBU)
+        //
+        // Unlike SBU-NF, there is no `capco/les-nf-evicted-by-classified`
+        // Pattern-C row — §H.9 p185 explicitly retains the LES marking on
+        // classified pages (`SECRET//NOFORN//LES`, not `SECRET//NOFORN`).
+        // The lattice helper transmutes `{LesNf} → {Les}` while setting
+        // `needs_nf = true` for cross-axis NF injection; this Pattern-A
+        // row keeps the scheme path in step. See
+        // `les_nf_classified_trigger`'s doc-comment for the full
+        // asymmetry rationale and the
+        // `parity_classified_les_nf_lattice_and_scheme_both_retain_les`
+        // fixture for the regression gate.
+        //
+        // Trigger: `Custom(les_nf_classified_trigger)` — fires when
+        // `is_classified(m) ∧ contains LES-NF in non_ic_dissem`.
         //
         // Action: `Intent(FactAdd { Cve(TOK_NOFORN), Scope::Page })`
         // — adds NOFORN to the projected page dissem axis. Same
         // monotone-additive + idempotence policy as the SBU-NF entry.
         //
-        // Axis annotations: reads `[CAT_NON_IC_DISSEM]`, writes
-        // `[CAT_DISSEM]`. Scheduler ordering: same sibling position
-        // as the other three `*-implies-noforn` entries — all four
-        // are DISSEM-writers ordered before `noforn-clears-rel-to`
-        // (DISSEM-reader). The four entries are DAG siblings (no
-        // ordering dependency between them).
+        // Axis annotations: reads `[CAT_CLASSIFICATION]`, writes
+        // `[CAT_DISSEM]`. The non_ic_dissem scan lives in the
+        // Custom predicate body per Pattern-C convention. Kahn places
+        // this row BEFORE `capco/noforn-clears-rel-to` (DISSEM-reader)
+        // so the REL TO axis is correctly cleared in the same
+        // projection pass.
         //
-        // Classification: §H.9 p185's Relationship(s) field at
-        // `:4554` says LES-NF "May be used with TOP SECRET, SECRET,
-        // CONFIDENTIAL, or UNCLASSIFIED." Unlike SBU-NF, LES-NF is
-        // valid at any classification level. Pattern A fires
-        // regardless.
+        // # Source-doc internal contradiction (preserved note)
         //
-        // Source-doc internal contradiction: the same §H.9 p185 entry
-        // at `:4552` (Additional Marking Instructions field) reads
-        // "Applicable only to unclassified information" — which
-        // appears to conflict with the Relationship(s) enumeration
-        // at `:4554`. The Relationship(s) field governs behavioral
-        // scope (it explicitly enumerates the permitted classification
-        // levels) and is the authority for §H.9 entries. The
-        // `:4552` line appears to be a vestigial paste from the
-        // sibling LES entry (`:4471`, where LES IS unclassified-
-        // only) — it is internally inconsistent with `:4554` AND
-        // with the Precedence Rule at `:4558` which describes the
-        // canonical `SECRET//NOFORN//LES` form for classified docs.
-        // `NonIcDissem`'s implementation at `crates/ism/src/attrs.rs`
-        // (LesNf variant doc-comment) makes the same `:4554`-governs
+        // The §H.9 p185 entry's Additional Marking Instructions field
+        // reads "Applicable only to unclassified information" — which
+        // conflicts with the Relationship(s) enumeration ("May be used
+        // with TOP SECRET, SECRET, CONFIDENTIAL, or UNCLASSIFIED"),
+        // and conflicts with the Precedence Rules quote above
+        // describing the canonical `SECRET//NOFORN//LES` form for
+        // classified docs. The Relationship(s) field + the Precedence
+        // Rule are the operative authorities; `NonIcDissem::LesNf`'s
+        // doc-comment in `crates/ism/src/attrs.rs` makes the same
         // determination. A future ODNI manual revision may resolve
-        // the `:4552` artifact; for now Pattern A defers to `:4554`.
+        // the Additional Marking Instructions artifact; for now this
+        // row defers to the Precedence Rule.
         //
         // FUTURE: see the NODIS entry doc-comment for the SCI
         // Pattern A follow-on note.
         //
         // Runtime execution gap: see the NODIS entry doc-comment.
-        PageRewrite::declarative(
+        PageRewrite::custom(
             "capco/les-nf-implies-noforn",
             "CAPCO-2016 §H.9 p185",
-            CategoryPredicate::Contains {
-                category: CAT_NON_IC_DISSEM,
-                token: TOK_LES_NF,
-            },
+            CategoryPredicate::Custom(les_nf_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactAdd {
                 token: FactRef::Cve(TOK_NOFORN),
                 scope: Scope::Page,
