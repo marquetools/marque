@@ -979,7 +979,7 @@ impl AeaSet {
         // Inline-5 covers all AEA variants (Rd/Frd, DodUcni, DoeUcni,
         // Tfni, Atomal); the output stays heap-free for typical
         // documents (LA-4).
-        let mut out: SmallVec<[AeaMarking; 5]> = SmallVec::new();
+        let mut out: SmallVec<[AeaMarking; 5]> = SmallVec::with_capacity(5);
         // Sort SIGMA numbers ascending for §H.6 p108 canonical form.
         // `BTreeSet` already iterates in sorted order. Inline-8 covers
         // the observed SIGMA range (1–99; in practice 1–5); (LA-4).
@@ -2643,7 +2643,8 @@ impl JointSet {
         // Inline-4 covers the typical JOINT portion count per page;
         // deeply collaborative documents with 5+ JOINT portions spill
         // to heap cleanly (LA-4).
-        let mut joint_portions: SmallVec<[&JointClassification; 4]> = SmallVec::new();
+        let mut joint_portions: SmallVec<[&JointClassification; 4]> =
+            SmallVec::with_capacity(portions.len().min(4));
         let mut has_non_joint = false;
         for p in portions {
             match &p.classification {
