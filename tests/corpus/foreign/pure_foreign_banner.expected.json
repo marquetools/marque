@@ -1,4 +1,4 @@
 {
-  "_note": "PR 5 (006 T062) — pure-foreign FGI DEU page: banner correctly retains FGI DEU marker per CAPCO-2016 §H.7 p124. No diagnostics expected; E068 + E069 do not fire because banner classification + FGI marker match the projected page state.",
+  "_note": "PR 5 (006 T062) — pure-foreign banner per CAPCO-2016 §H.7 p126: portions `(//DEU C//REL TO USA, DEU)` use the FGI classification system (no US axis); projection yields `Fgi(Confidential, [DEU])` on the classification axis, NOT `Us(Confidential)` with an FGI marker. Banner `//DEU CONFIDENTIAL//REL TO USA, DEU` matches the projected page state — this is the true #276 Case 1 pure-foreign shape. E068 + E069 do not fire because banner classification and FGI marker agree with projection (the FGI-classification-system portion populates `classification = Fgi(...)`, not `fgi_marker`; both axes match the banner).",
   "diagnostics": []
 }

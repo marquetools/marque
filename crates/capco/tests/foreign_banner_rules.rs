@@ -28,15 +28,15 @@
 //!
 //! ## Branch coverage (>80% on the two new evaluators)
 //!
-//! E068 has 5 reachable branches in the match:
-//!   1. `(None, None)` — no diagnostic (no portion observed, no class
-//!      in banner). Covered by the engine-level reachability gate
-//!      (banner candidate with no preceding portions, banner has no
-//!      classification — the rule does nothing). Not directly tested
-//!      because it's the unobservable identity case.
+//! E068 has 6 match arms in the `(observed, projected)` evaluator:
+//!   1. `(None, None)` — agreement (identity case; not directly
+//!      tested because no banner candidate emits in this shape under
+//!      current scanner output).
 //!   2. `(None, Some(_))` — banner missing classification.
-//!   3. `(Some(_), None)` — banner has classification but page has
-//!      none.
+//!      Architecturally unreachable today (scanner always emits a
+//!      classification token for banner candidates); retained as a
+//!      defensive guard for future scanner changes.
+//!   3. `(Some(_), None)` — banner over-claims classification.
 //!   4. `(Some(a), Some(b))` with `effective_level()` disagreement.
 //!   5. `(Some(a), Some(b))` with same level but different variant
 //!      kind.
@@ -79,43 +79,30 @@ fn observed_rule_ids(source: &str) -> HashSet<String> {
 // E068 branch coverage
 // ---------------------------------------------------------------------------
 
-/// E068 fires when banner has no classification but page projects
-/// one. Synthetic shape: a page with two US portions and a banner
-/// that lacks any classification token. The projected page state
-/// has `Some(Us(Secret))` but the (malformed) banner has `None`,
-/// triggering the `(None, Some(_))` arm.
+/// E068 fires on a Some-Some `effective_level` mismatch where the
+/// page projection is TopSecret (driven by a US TS portion + a
+/// foreign TS portion) and the banner observes Secret.
 ///
-/// Authority: CAPCO-2016 §H.7 pp123-125 banner roll-up grammar.
+/// **Naming note**: this test was originally named
+/// `e068_fires_when_banner_missing_classification_and_page_has_one`,
+/// implying it exercised the `(None, Some(_))` arm. It does not —
+/// the source string carries a classified banner
+/// (`SECRET//FGI DEU//NOFORN`), so `attrs.classification` is
+/// `Some(Us(Secret))`. The arrangement actually drives the
+/// Some-Some level-mismatch branch (arm 4 of the E068 match), which
+/// uses the same evaluator path as the architecturally unreachable
+/// `(None, Some(_))` arm. The `(None, Some(_))` arm is retained in
+/// the evaluator as a defensive guard for future scanner changes
+/// (today every banner candidate the scanner emits carries a
+/// classification token); there is no reachable test shape for it
+/// via current scanner output.
+///
+/// Authority: CAPCO-2016 §H.7 pp123-125 banner roll-up grammar +
+/// §H.7 p129 worked example.
 #[test]
-fn e068_fires_when_banner_missing_classification_and_page_has_one() {
-    // Arrange: portions produce a Secret-projection banner; the
-    // banner-shaped line carries non-classification text (a `(NF)`
-    // dissem-only candidate is structurally a banner candidate in
-    // some scanner paths, but to keep the test load-bearing on the
-    // mismatch we instead use a sentence that has a banner-shape
-    // but no classification. The closest reachable shape via the
-    // current scanner is a bare dissem banner; if the parser emits
-    // `attrs.classification = None` while page rolls up Secret, E068
-    // fires.
-    //
-    // The cleanest reachable shape is to omit the banner entirely —
-    // a portion-only page — but that means no banner candidate, so
-    // no rule fires. The next-cleanest is a CAB candidate (which is
-    // also banner-typed) that lacks a class token. CAB candidates are
-    // recognized via "Classified By" / "Declassify On" lines.
-    //
-    // For now, this branch is exercised via the foreign_corpus.rs
-    // `t063a_t059b_mixed_us_foreign_rollup_emits_e068_and_e069` test
-    // (Some-Some level mismatch); the (None, Some) branch is
-    // unreachable via typical scanner output today because every
-    // banner candidate the scanner emits has classification context.
-    // The arm is retained in the evaluator as a defensive guard so
-    // future scanner changes that emit class-less banner candidates
-    // are correctly diagnosed.
-    //
-    // We assert the evaluator's behavior on a realistic shape:
-    // mixed US + foreign portions where the banner observes the wrong
-    // class.
+fn e068_fires_on_topsecret_projection_with_secret_banner() {
+    // Arrange: TS US portion + TS FGI DEU portion → projection
+    // TopSecret; banner observes Secret.
     let source = "SECRET//FGI DEU//NOFORN
 (TS//NF)
 (//DEU TS//REL TO USA, DEU)
@@ -127,7 +114,7 @@ SECRET//FGI DEU//NOFORN
 
     // Assert: E068 fires because portions roll up to TopSecret but
     // banner observes Secret (Some-Some effective_level mismatch
-    // branch).
+    // branch — arm 4 of the E068 match).
     assert!(
         observed.contains("E068"),
         "E068 must fire on TopSecret-projected page with Secret \

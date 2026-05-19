@@ -7,8 +7,12 @@
 //! Loads `tests/corpus/foreign/*.txt` fixtures and asserts the
 //! engine-level behavioral invariants tracked under #276:
 //!
-//! - **`pure_foreign_banner.txt`** (T062): pure-foreign FGI DEU page;
-//!   banner correctly retains `FGI DEU`. Zero diagnostics expected.
+//! - **`pure_foreign_banner.txt`** (T062): #276 Case 1 — pure-foreign
+//!   page with `(//DEU C//REL TO USA, DEU)` portions (FGI
+//!   classification system, no US axis); banner
+//!   `//DEU CONFIDENTIAL//REL TO USA, DEU` matches the projected
+//!   `Fgi(Confidential, [DEU])` state per §H.7 p126. Zero
+//!   diagnostics expected.
 //! - **`joint_us_uk.txt`** (T063): JOINT US+GBR page per CAPCO-2016
 //!   §H.3 p56; banner matches projected page state. Zero diagnostics.
 //! - **`nato_only_page.txt`** (T063): solely-NATO page per §H.7
@@ -87,15 +91,24 @@ fn observed_rule_ids(fixture_name: &str) -> HashSet<String> {
 // T062 — pure-foreign banner: zero diagnostics expected.
 // ---------------------------------------------------------------------------
 
-/// Pure-foreign FGI DEU page. Banner retains `FGI DEU`; E068 + E069
-/// do not fire because the observed banner matches the projected page
-/// state on both classification and FGI marker axes.
+/// #276 Case 1 — pure-foreign banner page. Portions
+/// `(//DEU C//REL TO USA, DEU)` use the FGI classification system
+/// (no US axis at all), so the per-portion classification parser
+/// produces `MarkingClassification::Fgi { level: Confidential,
+/// countries: [DEU] }`. The page projection preserves the `Fgi(_)`
+/// variant per §H.7 pp123-125 (solely-foreign preservation). The
+/// banner `//DEU CONFIDENTIAL//REL TO USA, DEU` matches the
+/// projected state on both axes: classification (`Fgi(_)` variant,
+/// effective level Confidential) and FGI marker (`None` on both
+/// observed and projected — the pure-foreign-classification-system
+/// form populates `classification` only, not `fgi_marker`).
 ///
-/// Authority: CAPCO-2016 §H.7 p124 — *"Use FGI + Register, Annex B
-/// trigraph country code(s) ... in the banner line ..."*. Per the
-/// post-PR-6c projection, a page composed entirely of `(C//FGI DEU)`
-/// portions projects classification as `Fgi(Confidential, [DEU])` and
-/// the banner that names the same shape passes both walker rows.
+/// Authority: CAPCO-2016 §H.7 p126 — pure-foreign worked example
+/// `(//GBR S)` portion form rolls up to `//GBR SECRET` banner; this
+/// fixture mirrors the structure with DEU + REL TO USA, DEU.
+/// Distinct from #276 Case 2 (commingled US + FGI), which would
+/// produce `(C//FGI DEU)` portions, `Us(Confidential)`
+/// classification, and an FGI marker on the dissem axis.
 #[test]
 fn t062_pure_foreign_banner_zero_diagnostics() {
     // Arrange: the fixture documents zero expected diagnostics.

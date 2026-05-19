@@ -1,4 +1,5 @@
-CONFIDENTIAL//FGI DEU
-(C//FGI DEU)
-(C//FGI DEU)
-CONFIDENTIAL//FGI DEU
+//DEU CONFIDENTIAL//REL TO USA, DEU
+
+(//DEU C//REL TO USA, DEU) Foreign-owned information from Germany.
+
+(//DEU C//REL TO USA, DEU) Additional German source content.
