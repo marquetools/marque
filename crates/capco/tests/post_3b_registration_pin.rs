@@ -33,9 +33,9 @@
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 39` (post-PR-#488; the count rolls
-//! forward in lock-step with this test as rules land or retire —
-//! see the running-count derivation comment in
+//! `rule_set.rules().len() == 38` (post-PR-closing-#470 + post-PR-5;
+//! the count rolls forward in lock-step with this test as rules land
+//! or retire — see the running-count derivation comment in
 //! `corpus_parity.rs::rule_count_reflects_registration_changes`).
 //! That count pin catches "a rule was added or removed." It does
 //! **not** catch:
@@ -59,7 +59,9 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 39 registered `Rule::id()` strings post-PR-#488.
+/// The closed set of 38 registered `Rule::id()` strings post-PR-closing-#470
+/// (and unchanged under PR 5, which adds E068 + E069 as per-row IDs of the
+/// existing `BannerMatchesProjectedRule` walker — not new `Rule` impls).
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
