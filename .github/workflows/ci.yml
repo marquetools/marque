@@ -263,11 +263,32 @@ jobs:
       # combined with `--test` fails when the named target doesn't
       # exist in every member crate. Invoke each suite per-package
       # explicitly (Copilot review feedback on PR #315):
-      #   - corpus_parity     in marque-capco
-      #   - corpus_accuracy   in marque-engine
-      #   - corpus_provenance in marque
+      #   - corpus_parity     in marque-capco (currently dormant —
+      #     `#![cfg(any())]` disabled by PR 3c.B Commit 10 pending
+      #     FixProposal-shape rewrite; runs 0 tests today but kept
+      #     in the invocation so this job re-activates the moment
+      #     the file is re-enabled)
+      #   - corpus_accuracy   in marque-engine (ACTIVE)
+      #   - corpus_provenance in marque (ACTIVE)
+      #   - post_4b_lattice_inventory_pin in marque-capco (T144 —
+      #     PR 4b structural exact-state pin; rejects rename /
+      #     reorder / swap / duplicate-label drift in PageRewrite /
+      #     ClosureRule / Constraint::Custom catalogs)
+      #   - lattice_static_assertions in marque-capco (T143 —
+      #     compile-time pin via static_assertions; `cargo test
+      #     --test` builds the file and any violated assertion is
+      #     a build error)
+      #   - post_3b_registration_pin in marque-capco (T028 — exact
+      #     38-rule set; pre-existing, re-run alongside the new
+      #     4b pins for the umbrella regression surface)
       #
-      # When new corpus suites land, add them here in the same shape.
+      # The post_4b + lattice_static + post_3b additions close the
+      # Copilot R1 finding on PR #557 that this job otherwise
+      # inherits the corpus_parity dormancy hole. With four active
+      # pins plus corpus_accuracy + corpus_provenance, the job has
+      # real 4b-specific coverage even while corpus_parity stays
+      # dormant.
+      #
       # `--features marque-engine/corpus-override` enables the SC-002
       # decoder accuracy gate that lives behind the same feature flag
       # as the corpus override audit-trail tests.
@@ -279,6 +300,9 @@ jobs:
             --features marque-engine/corpus-override
           cargo test -p marque --test corpus_provenance \
             --features marque-engine/corpus-override
+          cargo test -p marque-capco --test post_4b_lattice_inventory_pin
+          cargo test -p marque-capco --test lattice_static_assertions
+          cargo test -p marque-capco --test post_3b_registration_pin
 
       # Phase 4 (US2) regression suites are file-level gated on
       # `decoder-harness` and `corpus-override` features that are NOT

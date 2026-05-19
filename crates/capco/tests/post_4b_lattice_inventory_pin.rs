@@ -45,8 +45,12 @@
 //!   with both halves) plus `W004` rule (registered count 38 → 39).
 //! - **4b-C #468** adds 9 declarative `PageRewrite` rows in two
 //!   patterns: Pattern B FOUO eviction (2 rows per §H.8 p134); Pattern
-//!   C classified-strip semantics (8 rows per §H.6 / §H.8 / §H.9).
-//!   PageRewrite count 14 → 23 (per the CLAUDE.md "14 → 23" entry).
+//!   C classified-strip semantics (7 rows per §H.6 / §H.8 / §H.9 —
+//!   LIMDIS / SBU / DOD UCNI promote-and-strip / DOE UCNI
+//!   promote-and-strip / FOUO). PageRewrite count 14 → 23 (per the
+//!   landing CLAUDE.md "14 → 23" entry). The 8th Pattern-C row
+//!   `capco/sbu-nf-evicted-by-classified` was added later by #541 in
+//!   the 4b-F window (see below); not counted here.
 //! - **4b-D.0 #514** lands the `ClosureRule` generic + `cone_derived`
 //!   surface in `marque-scheme`. Catalog count unchanged (rows declared
 //!   pre-4b, runtime-activated by 4b-D.1).
@@ -58,7 +62,10 @@
 //!   `MarkingScheme::project(Scope::Page, …)` instead of
 //!   `PageContext::expected_*`. Drops `impl JoinSemilattice for
 //!   CapcoMarking` and relaxes `MarkingScheme::Marking: JoinSemilattice`
-//!   bound per Copilot R1 D24. Zero catalog-row delta.
+//!   bound per Copilot R1 D24. **Adds 1 PageRewrite**:
+//!   `capco/noforn-clears-display-only-to` in `noforn_clears.rs` per
+//!   §H.8 p145 NOFORN-dominates DISPLAY ONLY axis. PageRewrite count
+//!   23 → 24.
 //! - **4b-D.3 #535** migrates S007 to read `ProjectedMarking` instead
 //!   of `PageContext::is_solely_nato_classified`. Zero catalog-row
 //!   delta.
@@ -69,10 +76,14 @@
 //!   `DeclassExemptionAccumulator`, `sci_controls_from_markings`).
 //!   Zero rewrite / closure / constraint-row delta.
 //! - **4b-F #542** retires the last `&PageContext` parameter from the
-//!   lattice-fold chain. Plus #552 / #555 land the 2 same-axis
-//!   supersession PageRewrites (`sbu-nf-supersedes-sbu`,
-//!   `les-nf-supersedes-les`) and #541's `sbu-nf-evicted-by-classified`
-//!   row, bringing PageRewrite count to the final 27.
+//!   lattice-fold chain. Zero direct catalog-row delta in #542
+//!   itself. In the **4b-F window** the following concurrent / fix
+//!   PRs landed PageRewrites: **#541** added the 8th Pattern-C row
+//!   `capco/sbu-nf-evicted-by-classified` (PageRewrite count
+//!   24 → 25 per §H.9 p178); **#552** added
+//!   `capco/sbu-nf-supersedes-sbu` (25 → 26 per §H.9 p178); **#555**
+//!   added `capco/les-nf-supersedes-les` (26 → 27 per §H.9 p185).
+//!   PageRewrite count reaches the final 27.
 //!
 //! Plus the 8 transmutation_stubs.rs Phase-3 stubs declared pre-4b
 //! that remain in `build_page_rewrites()` for declaration ordering
@@ -358,11 +369,22 @@ fn post_pr_4b_declares_exact_39_custom_constraints() {
     // `Requires`, `Supersedes`) are pinned by their own catalog
     // tests in `crates/capco/tests/scheme_constraints_*.rs` and are
     // not in scope here.
-    let actual: BTreeSet<&str> = constraints
+    //
+    // Triple-pin: (1) raw count of filtered `Constraint::Custom`
+    // entries before any deduplication, (2) BTreeSet size after
+    // deduplication, and (3) raw_count == set_size — the equality
+    // assertion catches the duplicate-name drift Copilot R1 flagged:
+    // a duplicate `Constraint::Custom("capco/foo", ...)` row would
+    // dedupe in the BTreeSet and the size-only assertion would pass
+    // silently. Raw-count-equals-set-size is the load-bearing dedup
+    // check.
+    let custom_names: Vec<&str> = constraints
         .iter()
         .filter(|c| matches!(c, Constraint::Custom { .. }))
         .map(|c| c.name())
         .collect();
+    let raw_count = custom_names.len();
+    let actual: BTreeSet<&str> = custom_names.iter().copied().collect();
 
     let expected: BTreeSet<&str> = EXPECTED_CUSTOM_CONSTRAINTS.iter().copied().collect();
 
@@ -374,10 +396,28 @@ fn post_pr_4b_declares_exact_39_custom_constraints() {
     );
 
     assert_eq!(
+        raw_count, 39,
+        "post-4b Constraint::Custom raw catalog count drifted from 39 \
+         (5 SCI-per-system + 27 class-floor + 7 core-catalog): \
+         raw_count={raw_count}, names={custom_names:?}"
+    );
+
+    assert_eq!(
+        raw_count,
+        actual.len(),
+        "post-4b Constraint::Custom catalog contains duplicate label \
+         (raw_count={raw_count} but unique set size={set_size}). \
+         A duplicate label would mask drift under set-only assertions; \
+         the raw-count-equals-set-size invariant rejects it. \
+         names={custom_names:?}",
+        set_size = actual.len()
+    );
+
+    assert_eq!(
         actual.len(),
         39,
-        "post-4b Constraint::Custom count drifted from 39 (5 SCI-per-system \
-         + 27 class-floor + 7 core-catalog): actual={actual:?}"
+        "post-4b Constraint::Custom unique set size drifted from 39: \
+         actual={actual:?}"
     );
 
     let missing: Vec<&str> = expected.difference(&actual).copied().collect();

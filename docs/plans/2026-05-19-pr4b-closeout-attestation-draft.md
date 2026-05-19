@@ -47,7 +47,7 @@ shape; included for inventory completeness):
 | Helper | Role | §-citation |
 |---|---|---|
 | `NonIcDissemSet::from_attrs_iter` | Carries `needs_nf` per non-IC dissem closure → NOFORN | §H.9 p172 + p174 + p178 + p185 |
-| `DeclassExemptionAccumulator` | Last-observed declassification exemption (non-commutative; `JoinSemilattice` impl explicitly dropped per `NonIcDissemSet` precedent) | §H.6 (last-observed exemption convention) |
+| `DeclassExemptionAccumulator` | Last-observed declassification exemption (non-commutative; `JoinSemilattice` impl explicitly dropped per `NonIcDissemSet` precedent) | §E.3 pp32-33 (Multiple Sources hierarchy — "longest period of protection") + §E.1 p31 (exemption-category catalog: 25X#/50X#/75X# values); matches the doc-comment §-authority block at the `DeclassExemptionAccumulator` definition (the historical §H.6 reference grounded the AEA *exception*, not the general MaxDate/exemption-hierarchy rule) |
 
 **Total**: 12 `JoinSemilattice` + 9 `MeetSemilattice` + 2 `BoundedJoinSemilattice`
 + 2 `BoundedMeetSemilattice` = **25 trait impls across 12 lattice types**
@@ -172,16 +172,20 @@ repo-root / specs/ — none of which is an engine-crate touch.
 
 | Step | Sub-PR | Join | Meet | BoundedJoin | BoundedMeet | PageRewrite | ClosureRule | Registered Rules |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| Pre-4b baseline | — | 3 (Sci/Sar/Fgi) | 3 (Sci/Sar/Fgi) | 0 | 0 | ~14 (pre-Pattern-B/C) | 0 (catalog declared, not runtime-activated) | 38 |
+| Pre-4b baseline | — | 3 (Sci/Sar/Fgi) | 3 (Sci/Sar/Fgi) | 0 | 0 | **14** (4 pattern_a + 2 noforn_clears + 8 transmutation_stubs; pattern_b / pattern_c / supersession files did not exist pre-4b) | 0 (catalog declared, not runtime-activated) | 38 |
 | **4b-A #426** | AeaSet | +1 | +1 | 0 | 0 | 0 | 0 | 0 |
 | **4b-B #437** | 7 lattice types + W004 | +7 (Class / NatoClass / Joint / Dissem / NatoDissem / RelToBlock / DeclassifyOn) | +5 (Class / NatoClass / NatoDissem / RelToBlock / DeclassifyOn — Joint + Dissem are Join-only per PR #456) | +2 (Class + NatoClass) | +2 (Class + NatoClass) | 0 | 0 | +1 (W004; 38 → 39) |
-| **4b-C #468** | Pattern-B + Pattern-C declarative rows | 0 | 0 | 0 | 0 | +9 (Pattern-B 2 + Pattern-C 7; CLAUDE.md entry: "14 → 23") | 0 | 0 |
+| **4b-C #468** | Pattern-B + Pattern-C declarative rows | 0 | 0 | 0 | 0 | +9 (Pattern-B 2 + Pattern-C 7; landing CLAUDE.md entry: "14 → 23") | 0 | 0 |
 | **4b-D.0 #514** | `ClosureRule` generic + `cone_derived` | 0 | 0 | 0 | 0 | 0 | 0 (catalog declared, not activated) | 0 |
 | **4b-D.1 #517** | closure operator runtime activation | 0 | 0 | 0 | 0 | 0 | +10 (runtime activation via `CapcoScheme::closure_rules()` override) | 0 |
-| **4b-D.2 #527** | hot-path flip + D24 | 0 (dropped `impl JoinSemilattice for CapcoMarking`) | 0 (also dropped `impl MeetSemilattice for CapcoMarking`) | 0 | 0 | 0 | 0 | 0 |
+| **4b-D.2 #527** | hot-path flip + D24 + 1 PageRewrite | 0 (dropped `impl JoinSemilattice for CapcoMarking`) | 0 (also dropped `impl MeetSemilattice for CapcoMarking`) | 0 | 0 | +1 (`capco/noforn-clears-display-only-to` in `noforn_clears.rs` per §H.8 p145; 23 → 24) | 0 | 0 |
 | **4b-D.3 #535** | S007 consumer migration | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | **4b-E #539** | PageContext deletion + helpers | +1 (DisplayOnlyBlock) | 0 | 0 | 0 | 0 | 0 | 0 |
-| **4b-F #542 + #541 / #552 / #555** | residue cleanup + 3 PageRewrites | 0 | 0 | 0 | 0 | +4 (`sbu-nf-evicted-by-classified` #541 + `sbu-nf-supersedes-sbu` + `les-nf-supersedes-les` #552/#555 — assembling final 27) | 0 | -1 (W002 retired in PR closing #470 landed in 4b-F window; 39 → 38) |
+| **4b-F #542** | residue cleanup | 0 | 0 | 0 | 0 | 0 (no direct catalog delta from #542 itself) | 0 | 0 |
+| **#541 (4b-F window)** | SBU vanishes fix | 0 | 0 | 0 | 0 | +1 (`capco/sbu-nf-evicted-by-classified` in `pattern_c.rs` row 2b per §H.9 p178; 24 → 25) | 0 | 0 |
+| **#552 (post-4b-F)** | SBU-NF supersedes SBU | 0 | 0 | 0 | 0 | +1 (`capco/sbu-nf-supersedes-sbu` in `supersession.rs` per §H.9 p178; 25 → 26) | 0 | 0 |
+| **#555 (post-4b-F)** | LES-NF supersedes LES | 0 | 0 | 0 | 0 | +1 (`capco/les-nf-supersedes-les` in `supersession.rs` per §H.9 p185; 26 → 27) | 0 | 0 |
+| **PR closing #470 (post-PR-3b window)** | W002 retired | 0 | 0 | 0 | 0 | 0 | 0 | -1 (W002 retired per §H.7 p123 — the shape W002 was warning on is now authorized by the manual; 39 → 38; pre-dates the 4b umbrella but accounted here for closeout net-zero math) |
 | **Post-4b-F terminal state** | — | **12** | **9** | **2** | **2** | **27** | **10** | **38** |
 
 **Verification commands** (re-run pre-PR-merge):
