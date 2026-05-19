@@ -4263,9 +4263,9 @@ const BANNER_CATEGORY_CATALOG: &[BannerCategoryRow] = &[
     // source-concealed FGI ... and source-acknowledged FGI, then
     // only the 'FGI' marking without the source trigraph(s)/
     // tetragraph(s) must appear in the banner line."* The §H.7 p127
-    // line 3142 worked example (`TOP SECRET//BOHEMIA//FGI AUS CAN
-    // DEU NATO//NOFORN`) and §H.7 p129 line 3168 worked example
-    // (`TOP SECRET//FGI CAN DEU//NOFORN`) anchor the projection.
+    // worked example (`TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//
+    // NOFORN`) and §H.7 p129 worked example (`TOP SECRET//FGI CAN
+    // DEU//NOFORN`) anchor the projection.
     BannerCategoryRow {
         rule_id: RuleId::new("E069"),
         severity: Severity::Error,
@@ -4684,8 +4684,9 @@ fn evaluate_non_ic_dissem_banner_rollup(
 ///    when banner-only candidates appear.
 /// 3. Banner classification level disagrees with the projected
 ///    effective level (`a.effective_level() != b.effective_level()`).
-///    Covers the §H.7 p129 line 3168 worked example case where
-///    portions roll up to `TopSecret` but banner observes `Secret`.
+///    Covers the §H.7 p129 worked example case (`TOP SECRET//FGI
+///    CAN DEU//NOFORN`) where portions roll up to `TopSecret` but
+///    banner observes `Secret`.
 /// 4. Banner classification VARIANT disagrees with the projected
 ///    variant (e.g. `Us(_)` observed when projection is `Fgi(_)` on
 ///    a pure-foreign page). Compared by [`classification_variant_rank`]
@@ -4696,8 +4697,8 @@ fn evaluate_non_ic_dissem_banner_rollup(
 /// Banner Line Guidance + reciprocal classification grammar). The
 /// worked examples on pp126-129 anchor the cross-axis composition.
 ///
-/// **Constitution VII §IV scope**: this evaluator is scheme-internal
-/// (`marque-capco`). No engine-crate touch.
+/// **Constitution VII (scheme-adoption boundary)**: this evaluator
+/// is scheme-internal (`marque-capco`). No engine-crate touch.
 fn evaluate_classification_banner_rollup(
     attrs: &CanonicalAttrs,
     page: &marque_ism::ProjectedMarking,
@@ -4790,9 +4791,9 @@ fn evaluate_classification_banner_rollup(
 /// interpolated into the message):
 ///
 /// 1. Banner has no FGI marker but page projects one
-///    (`(None, Some(_))`). Covers the §H.7 p129 line 3168 worked
-///    example case (`TOP SECRET//FGI CAN DEU//NOFORN`) where the
-///    portions carry FGI provenance but the banner omits it.
+///    (`(None, Some(_))`). Covers the §H.7 p129 worked example
+///    case (`TOP SECRET//FGI CAN DEU//NOFORN`) where the portions
+///    carry FGI provenance but the banner omits it.
 /// 2. Banner has an FGI marker but page projects none
 ///    (`(Some(_), None)`). Banner over-claims foreign provenance.
 /// 3. Banner FGI variant disagrees with projection — concealed vs
@@ -4801,22 +4802,21 @@ fn evaluate_classification_banner_rollup(
 ///    source-concealed, the banner MUST use bare `FGI` without a
 ///    trigraph list.
 /// 4. Banner is acknowledged and projection is acknowledged but the
-///    country sets differ. Covers the §H.7 p126 line 3131 worked
-///    example (`TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU`)
-///    where the union of portion-contributed FGI countries must
-///    appear in the banner list.
+///    country sets differ. Covers the §H.7 p126 worked example
+///    (`TOP SECRET//FGI CAN DEU//REL TO USA, CAN, DEU`) where the
+///    union of portion-contributed FGI countries must appear in
+///    the banner list.
 ///
 /// **Authority**: CAPCO-2016 §H.7 p124 — *"Use FGI + Register, Annex
 /// B trigraph country code(s) ... in the banner line, unless the
 /// very fact that the information is foreign government information
 /// must be concealed."* Plus the source-concealed-dominates rule on
-/// the same page. The §H.7 p126 line 3131 (`TOP SECRET//FGI CAN
-/// DEU//REL TO USA, CAN, DEU`) and §H.7 p129 line 3168 (`TOP
-/// SECRET//FGI CAN DEU//NOFORN`) worked examples anchor the
-/// projection.
+/// the same page. The §H.7 p126 (`TOP SECRET//FGI CAN DEU//REL TO
+/// USA, CAN, DEU`) and §H.7 p129 (`TOP SECRET//FGI CAN DEU//NOFORN`)
+/// worked examples anchor the projection.
 ///
-/// **Constitution VII §IV scope**: scheme-internal; no engine-crate
-/// touch.
+/// **Constitution VII (scheme-adoption boundary)**: scheme-internal;
+/// no engine-crate touch.
 fn evaluate_fgi_marker_banner_rollup(
     attrs: &CanonicalAttrs,
     page: &marque_ism::ProjectedMarking,
@@ -4905,8 +4905,7 @@ fn evaluate_fgi_marker_banner_rollup(
     const CITATION: &str = concat!(
         "CAPCO-2016 §H.7 p124 (banner-line FGI roll-up rule + ",
         "source-concealed-dominates clause); worked examples §H.7 ",
-        "p126 line 3131 and §H.7 p129 line 3168 anchor the ",
-        "projection.",
+        "p126 and §H.7 p129 anchor the projection.",
     );
 
     vec![Diagnostic::new(
