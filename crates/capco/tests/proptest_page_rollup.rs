@@ -26,7 +26,8 @@
 
 use marque_capco::lattice::{ClassificationLattice, DissemSet, NatoDissemSet, RelToBlock};
 use marque_ism::{
-    CanonicalAttrs, Classification, CountryCode, DissemControl, MarkingClassification,
+    CanonicalAttrs, Classification, CountryCode, DissemControl, FgiClassification,
+    JointClassification, MarkingClassification, NatoClassification,
 };
 use proptest::prelude::*;
 use proptest::sample::subsequence;
@@ -42,6 +43,62 @@ fn arb_classification() -> impl Strategy<Value = Classification> {
         Just(Classification::Confidential),
         Just(Classification::Secret),
         Just(Classification::TopSecret),
+    ]
+}
+
+/// Strategy producing any of the four `MarkingClassification` variants
+/// (Us / Fgi / Nato / Joint).
+///
+/// PR 5 (006 T063a + #276): Pre-PR-5 `arb_ism_attrs` generated only
+/// `Some(MarkingClassification::Us(c))`, so foreign-banner roll-up
+/// regressions were unreachable from proptest. Adding the foreign
+/// variants closes that coverage gap.
+///
+/// Approximate weighting:
+/// - 60% `Us(_)` — preserves the dominant fixture shape.
+/// - 15% `Fgi(_)` — exercises §H.7 reciprocal-classification and the
+///   FgiSet cross-axis fold.
+/// - 10% `Nato(_)` — exercises §G.2 reciprocity + the §H.7 pp123-125
+///   solely-NATO preservation path.
+/// - 15% `Joint(_)` — exercises §H.3 p56 JOINT producer-list grammar.
+///
+/// Each foreign variant uses a small deterministic country-list
+/// shape so the strategy's failure cases are reproducible. Tetragraph
+/// admission (FVEY / ACGU / TEYE) and arbitrary trigraph fuzz are
+/// out of scope for the basic page-rollup invariants this file
+/// exercises.
+fn arb_marking_classification_any_variant() -> impl Strategy<Value = MarkingClassification> {
+    let usa = CountryCode::try_new(b"USA").expect("USA trigraph");
+    let gbr = CountryCode::try_new(b"GBR").expect("GBR trigraph");
+    let deu = CountryCode::try_new(b"DEU").expect("DEU trigraph");
+    prop_oneof![
+        // 60% — Us(_): dominant case.
+        60 => arb_classification().prop_map(MarkingClassification::Us),
+        // 15% — Fgi(_): source-acknowledged FGI with a single
+        // trigraph. Source-concealed (empty country list) is a
+        // separate path covered by the foreign corpus fixtures.
+        15 => arb_classification().prop_map(move |level| {
+            MarkingClassification::Fgi(FgiClassification {
+                countries: Box::new([deu]),
+                level,
+            })
+        }),
+        // 10% — Nato(_): NATO classification ladder.
+        10 => prop_oneof![
+            Just(NatoClassification::NatoUnclassified),
+            Just(NatoClassification::NatoRestricted),
+            Just(NatoClassification::NatoConfidential),
+            Just(NatoClassification::NatoSecret),
+            Just(NatoClassification::CosmicTopSecret),
+        ].prop_map(MarkingClassification::Nato),
+        // 15% — Joint(_): JOINT US + GBR co-ownership. USA-first
+        // alphabetical per §H.3 p56.
+        15 => arb_classification().prop_map(move |level| {
+            MarkingClassification::Joint(JointClassification {
+                level,
+                countries: Box::new([usa, gbr]),
+            })
+        }),
     ]
 }
 
@@ -97,7 +154,12 @@ fn arb_ism_attrs() -> impl Strategy<Value = CanonicalAttrs> {
     (
         prop_oneof![
             Just(None),
-            arb_classification().prop_map(|c| Some(MarkingClassification::Us(c))),
+            // PR 5 (006 T063a + #276): generate Us/Fgi/Nato/Joint
+            // variants so foreign-banner roll-up regressions are
+            // reachable from proptest. The dominant US case is
+            // weighted at 60% inside the strategy; foreign variants
+            // sum to 40%.
+            arb_marking_classification_any_variant().prop_map(Some),
         ],
         arb_dissem_subset(),
         prop_oneof![
@@ -129,7 +191,22 @@ fn arb_portions() -> impl Strategy<Value = Vec<CanonicalAttrs>> {
 
 proptest! {
     // ClassificationLattice::from_attrs_iter must produce the exact max
-    // over portions for US-attributed classifications.
+    // over portions on the effective-level ladder. Pre-PR-5 the
+    // assertion read `us_classification()` (returns None for
+    // FGI/NATO/JOINT), which was equivalent for the prior US-only
+    // proptest strategy. Post-PR-5 the strategy generates foreign
+    // variants too, so the property compares against the cross-system
+    // `effective_level()` max — which is what `OrdMax` over the
+    // classification ladder actually computes.
+    //
+    // The §H.7 pp123-125 reciprocal-raise normalization happens at
+    // `CapcoMarking::join_via_lattice_body`, NOT at the per-axis
+    // `ClassificationLattice`. The lattice composes variants
+    // structurally (variant-rank tiebreaker for equal effective
+    // levels); the reciprocal flatten to `Us(_)` is a
+    // `CapcoMarking`-level projection that runs after the per-axis
+    // joins. So the per-axis lattice's effective-level max is the
+    // load-bearing property here.
     #[test]
     fn classification_monotone(portions in arb_portions()) {
         let rolled = ClassificationLattice::from_attrs_iter(&portions)
@@ -137,13 +214,13 @@ proptest! {
             .map(|c| c.effective_level());
         let portion_max = portions
             .iter()
-            .filter_map(|a| a.us_classification())
+            .filter_map(|a| a.classification.as_ref().map(|c| c.effective_level()))
             .max();
 
         prop_assert_eq!(
             rolled,
             portion_max,
-            "classification roll-up does not equal portion max for portions: {:?}",
+            "classification roll-up does not equal portion effective-level max for portions: {:?}",
             portions,
         );
     }

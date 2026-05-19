@@ -1,0 +1,4 @@
+{
+  "_note": "PR 5 (006 T063) — pure-NATO page per CAPCO-2016 §H.7 pp123-125 (solely-NATO classification preservation). Banner retains the NATO classification variant; closure operator injects USA, NATO into REL TO per §H.7 p127 + §G.2 Table 5 p40 (alliance-reciprocity). E068 + E069 do not fire (banner classification matches projected Nato variant; FGI marker is None on both sides because pure-NATO portions do not populate fgi_marker — NATO is a separate axis from FGI per §G.2 p40 + §H.7 pp123-125). No diagnostics expected.",
+  "diagnostics": []
+}

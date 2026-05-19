@@ -522,51 +522,112 @@ struct ExpectedRuleCount {
 ///   and `DOE UNCLASSIFIED CONTROLLED NUCLEAR INFORMATION`.
 /// - **issue 0** entries (W034 NTN, E008 embedded cable) stay forever —
 ///   they document correct firings on legitimate noise.
+///
+/// `issue: 0` is the sentinel for "correct firing, no blocking follow-up
+/// needed." The existing `issue: 461` pattern (etc.) tracks gaps with
+/// tracked GitHub issues; `issue: 0` is the no-gap equivalent. Match the
+/// existing `reason:` field for each entry to describe what makes the
+/// firing correct (e.g., real-document banner/portion mismatch detected
+/// per §H.7, embedded cable header noise, etc.). A future maintainer
+/// reading `issue: 0` should never interpret it as "issue tracking not
+/// set up yet"; it always means "this firing is expected, by design."
 const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
     (
         "CIA-RDP01M00147R000100350002-7",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 2,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP09T00207R001000100002-2",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 4,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 4,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP09T00207R001000100012-1",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP09T00207R001000100017-6",
-        &[ExpectedRuleCount {
-            rule: "E040",
-            count: 1,
-            issue: 461,
-            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP09T00207R001000100021-1",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP09T00207R001000100022-0",
@@ -583,25 +644,71 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "sci-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
         ],
     ),
     (
-        "CIA-RDP64B00346R000300190014-8",
+        "CIA-RDP63T00245R000100190001-9",
         &[ExpectedRuleCount {
-            rule: "E035",
+            rule: "E068",
             count: 3,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            issue: 0,
+            reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
         }],
     ),
     (
-        "CIA-RDP69B00369R000100130011-9",
+        "CIA-RDP64B00346R000300140008-0",
         &[ExpectedRuleCount {
-            rule: "E040",
+            rule: "E068",
             count: 1,
-            issue: 461,
-            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            issue: 0,
+            reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
         }],
+    ),
+    (
+        "CIA-RDP64B00346R000300190014-8",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP69B00369R000100130011-9",
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP69B00369R000200200020-0",
@@ -618,34 +725,82 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
         ],
     ),
     (
         "CIA-RDP69B00369R000200200028-2",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 3,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP73B00148A000200150009-6",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 3,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP74B00415R000300070018-9",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 3,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP74B00415R000500120103-5",
@@ -662,79 +817,219 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 0,
                 reason: "correct firing: historical CIA codeword `NTN` not in ODNI CVE registry; W034 audit-visibility surface is intended",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
         ],
     ),
     (
         "CIA-RDP75-00149R000500050001-4",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP75-00149R000500420001-3",
         &[ExpectedRuleCount {
-            rule: "E035",
+            rule: "E068",
             count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            issue: 0,
+            reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
         }],
     ),
     (
+        "CIA-RDP75-00149R000500450013-7",
+        &[
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
+    ),
+    (
         "CIA-RDP75-00149R000500450034-4",
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 2,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP75-00149R000500450043-4",
         &[ExpectedRuleCount {
-            rule: "E035",
+            rule: "E068",
             count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            issue: 0,
+            reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
         }],
     ),
     (
         "CIA-RDP75-00149R000500450044-3",
-        &[ExpectedRuleCount {
-            rule: "E008",
-            count: 2,
-            issue: 407,
-            reason: "RD-CNWDI long-form `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION` not in vocabulary",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E008",
+                count: 2,
+                issue: 407,
+                reason: "RD-CNWDI long-form `RD-CRITICAL NUCLEAR WEAPON DESIGN INFORMATION` not in vocabulary",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP75-00149R000500450066-9",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP79B00972A000100570011-7",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 4,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 4,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
+    ),
+    (
+        "CIA-RDP79B01273A000100020017-6",
+        &[
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP80-00809A000500340084-9",
-        &[ExpectedRuleCount {
-            rule: "E040",
-            count: 1,
-            issue: 461,
-            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP80-00809A000500720009-0",
-        &[ExpectedRuleCount {
-            rule: "E040",
-            count: 1,
-            issue: 461,
-            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP80B01139A000400200013-4",
-        &[ExpectedRuleCount {
-            rule: "E040",
-            count: 1,
-            issue: 461,
-            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP80B01676R000200140013-3",
@@ -750,6 +1045,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 count: 1,
                 issue: 461,
                 reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
             },
         ],
     ),
@@ -768,6 +1069,12 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "sci-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
         ],
     ),
     (
@@ -785,43 +1092,99 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "sci-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
         ],
     ),
     (
         "CIA-RDP96-00289R000200030006-9",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIA-RDP96-00289R000200030017-7",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 3,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 3,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "CIAPolicyOnGAOOversight",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 2,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 2,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 3,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "cia-reports_prex-318se-2",
-        &[ExpectedRuleCount {
-            rule: "E040",
-            count: 1,
-            issue: 461,
-            reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E040",
+                count: 1,
+                issue: 461,
+                reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 4,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "implications-of-gligorov-16559483",
@@ -838,16 +1201,42 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
         ],
     ),
     (
         "initial-evidence-indicate-16559481",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "keyplayersinruss00wash",
@@ -864,16 +1253,36 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
         ],
     ),
     (
         "keyplayersofsout00wash",
-        &[ExpectedRuleCount {
-            rule: "E035",
-            count: 1,
-            issue: 461,
-            reason: "sci-banner-rollup gap (Phase::PageFinalization)",
-        }],
+        &[
+            ExpectedRuleCount {
+                rule: "E035",
+                count: 1,
+                issue: 461,
+                reason: "sci-banner-rollup gap (Phase::PageFinalization)",
+            },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
     ),
     (
         "kiro-gligorov-macedonia-16555480",
@@ -890,13 +1299,36 @@ const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
                 issue: 461,
                 reason: "nodis-exdis-banner-rollup gap (Phase::PageFinalization)",
             },
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
         ],
     ),
     // `topofficialsinru00wash` had only a W002 count=3 pin pre-#470;
-    // with W002 retired the fixture emits zero diagnostics and the
-    // entry is dropped entirely (a fixture with no allowlist entry
-    // is required to emit zero diagnostics by the
-    // `unexpected firing` arm of `document_fixtures_lint_against_expected`).
+    // with W002 retired the fixture emitted zero diagnostics. PR 5
+    // (006 T059a, closing #276) added E068 + E069 banner-rollup
+    // catalog rows which correctly fire on this fixture's banner /
+    // portion classification + FGI marker mismatch.
+    (
+        "topofficialsinru00wash",
+        &[
+            ExpectedRuleCount {
+                rule: "E068",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion classification mismatch (§H.7 pp123-125 reciprocal raise — PR 5 #276 closure)",
+            },
+            ExpectedRuleCount {
+                rule: "E069",
+                count: 1,
+                issue: 0,
+                reason: "correct firing: real CIA CREST document has banner/portion FGI marker mismatch (§H.7 p124 banner roll-up rule — PR 5 #276 closure)",
+            },
+        ],
+    ),
 ];
 
 /// Look up the pinned diagnostics for a fixture stem.
