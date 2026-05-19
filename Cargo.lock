@@ -1030,6 +1030,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "smol_str",
+ "static_assertions",
  "thiserror",
  "tracing",
 ]
