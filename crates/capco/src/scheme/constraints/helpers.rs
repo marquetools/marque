@@ -214,6 +214,66 @@ pub(crate) fn e024_rd_precedence(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
     }]
 }
 
+/// E070 — FRD takes precedence over TFNI. Fires when FRD AND TFNI are
+/// both present in the same portion.
+///
+/// CAPCO §H.6 p120 (TFNI subsection precedence rules): *"If the TFNI
+/// marking is contained in any portion of a document that contains
+/// portions of RD and/or FRD, the RD or FRD takes precedence."* Same
+/// page commingling rule: *"If TFNI is commingled with RD or FRD within
+/// a portion, the RD or FRD takes precedence and 'RD' or 'FRD,' as
+/// appropriate, is annotated in the portion mark."*
+///
+/// Mirror of [`e024_rd_precedence`] for the FRD-side leg per #559
+/// close-out (PM decision 2026-05-19). E024 already covers RD>FRD AND
+/// RD>TFNI; this helper adds the FRD>TFNI leg as a distinct row so a
+/// "remove TFNI" fix can be attributed to the FRD policy decision
+/// independently of RD.
+///
+/// Co-firing with E024 (when RD AND FRD AND TFNI all present in one
+/// portion) is intentional: both relationships hold simultaneously and
+/// either fix drives the marking toward canonical form. Constitution V
+/// Principle V — each row is one policy decision with its own audit
+/// repair lineage.
+///
+/// # Diagnostic surfacing (deferred)
+///
+/// Returns ConstraintViolation with `span: None, severity: None` to
+/// match the current shape of every dyadic helper (`e012`, `e014`,
+/// `e021`, `e024`, `e038`). End-user-visible diagnostic emission lands
+/// in a follow-up commit once the broader engine-bridge generalization
+/// in `specs/006-engine-rule-refactor/` (issue #578 et al.) wires the
+/// catalog-row → `Diagnostic` path. Today the predicate exists and is
+/// addressable via [`CapcoScheme::evaluate_named_constraint`] for
+/// unit-test validation; no wrapper rule is added in this commit per
+/// the parallelization plan at `claudedocs/plans/559-307-closeout.md`.
+pub(crate) fn e070_frd_tfni_precedence(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
+    let has_frd = attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Frd(_)));
+    if !has_frd {
+        return Vec::new();
+    }
+    let has_tfni = attrs
+        .aea_markings
+        .iter()
+        .any(|a| matches!(a, marque_ism::AeaMarking::Tfni));
+    if !has_tfni {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "E070/frd-tfni-precedence",
+        message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD"
+            .to_owned(),
+        citation: "CAPCO-2016 §H.6 p120",
+        span: None,
+        severity: None,
+    }]
+}
+
 /// Single source of truth for the class-floor catalog's
 /// presence-check + floor-satisfaction-check + diagnostic message
 /// shape. PR D R3.1 (R3 C2) consolidated the walker hot-path and the

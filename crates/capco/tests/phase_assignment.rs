@@ -140,6 +140,14 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // classification block — crosses a token boundary). Phase::Localized's
     // single-token-span contract would fail the augmentation branch.
     ("S007", Phase::WholeMarking),
+    // #559 close-out C1 (2026-05-19): S008 byte-surfacing twin of
+    // `CLOSURE_RELIDO_SCI` / `CLOSURE_RELIDO_US_CLASS`. Emits a
+    // `FactAdd(RELIDO, Scope::Portion)` intent; the engine re-renders
+    // the full marking from canonical attrs at promotion time, so
+    // the splice spans the candidate. Phase::WholeMarking covers
+    // the marking-scope re-render even though the intent itself is
+    // single-fact.
+    ("S008", Phase::WholeMarking),
     // W002 retired in the PR closing #470 (CAPCO §H.7 p123
     // authorized the shape the rule warned on).
     ("W003", Phase::WholeMarking),

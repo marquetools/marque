@@ -212,9 +212,11 @@ const EXPECTED_CLOSURE_RULES: &[&str] = &[
 /// (the bridge dispatcher routes by name string); only membership
 /// matters, so the sorted-set form is the correct pin shape.
 ///
-///   - core_catalog (7): the original `Custom` rows for the 7 rules
+///   - core_catalog (8): the original `Custom` rows for the rules
 ///     whose predicate body did not fit `Conflicts` / `Requires` /
-///     `Supersedes`.
+///     `Supersedes`. #559 close-out (2026-05-19) added E070 for the
+///     FRD>TFNI leg per §H.6 p120; the prior 7-row count is bumped
+///     to 8 by that addition.
 ///   - class_floor_catalog (27): the PR 3b.D + 3b.E class-floor
 ///     family per §H.4 / §H.6 / §H.7 / §H.8 / §H.9. Includes the
 ///     four `passthrough-*` stubs for tokens not yet wired into a
@@ -222,16 +224,20 @@ const EXPECTED_CLOSURE_RULES: &[&str] = &[
 ///   - sci_per_system_catalog (5): the PR 3b.E SCI per-system family
 ///     per §H.4 (HCS-O / HCS-P-NOFORN / HCS-P-sub / SI-G / TK-comp).
 ///
-/// Total: 7 + 27 + 5 = 39. Note: the four RELIDO E054-E057 rows are
+/// Total: 8 + 27 + 5 = 40. Note: the four RELIDO E054-E057 rows are
 /// `Constraint::Conflicts`, NOT `Custom` — they do not appear here.
 const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
-    // core_catalog (7)
+    // core_catalog (8)
     "E010/HCS-system-constraints",
     "E012/dual-classification",
     "E014/joint-requires-rel-to-coverage",
     "E021/aea-requires-noforn",
     "E024/rd-precedence",
     "E038/nodis-or-exdis-requires-noforn",
+    // #559 close-out (2026-05-19): FRD>TFNI precedence per §H.6 p120.
+    // Sibling of E024 (RD>FRD/TFNI); independent policy decision with
+    // its own audit lineage per Constitution V Principle V.
+    "E070/frd-tfni-precedence",
     "capco/joint-requires-usa",
     // class_floor_catalog (27)
     "E058/CNWDI-classification-floor",
@@ -360,7 +366,7 @@ fn post_pr_4b_declares_exact_10_closure_rules_in_order() {
 }
 
 #[test]
-fn post_pr_4b_declares_exact_39_custom_constraints() {
+fn post_pr_4b_declares_exact_40_custom_constraints() {
     let scheme = CapcoScheme::new();
     let constraints = scheme.constraints();
 
@@ -390,15 +396,15 @@ fn post_pr_4b_declares_exact_39_custom_constraints() {
 
     assert_eq!(
         expected.len(),
-        39,
-        "EXPECTED_CUSTOM_CONSTRAINTS does not contain 39 unique entries: \
+        40,
+        "EXPECTED_CUSTOM_CONSTRAINTS does not contain 40 unique entries: \
          test data drifted, not the catalog"
     );
 
     assert_eq!(
-        raw_count, 39,
-        "post-4b Constraint::Custom raw catalog count drifted from 39 \
-         (5 SCI-per-system + 27 class-floor + 7 core-catalog): \
+        raw_count, 40,
+        "post-4b Constraint::Custom raw catalog count drifted from 40 \
+         (5 SCI-per-system + 27 class-floor + 8 core-catalog): \
          raw_count={raw_count}, names={custom_names:?}"
     );
 
@@ -415,8 +421,8 @@ fn post_pr_4b_declares_exact_39_custom_constraints() {
 
     assert_eq!(
         actual.len(),
-        39,
-        "post-4b Constraint::Custom unique set size drifted from 39: \
+        40,
+        "post-4b Constraint::Custom unique set size drifted from 40: \
          actual={actual:?}"
     );
 

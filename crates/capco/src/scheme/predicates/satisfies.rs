@@ -15,7 +15,7 @@ use marque_scheme::TokenRef;
 
 use super::super::constraints::{
     e012_dual_classification, e014_joint_rel_to_coverage, e021_aea_requires_noforn,
-    e024_rd_precedence, e038_dos_dissem_requires_noforn,
+    e024_rd_precedence, e038_dos_dissem_requires_noforn, e070_frd_tfni_precedence,
 };
 use super::super::*;
 use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
@@ -448,6 +448,7 @@ pub(crate) fn evaluate_custom_by_attrs(
         // The catalog row + helper are removed in the same commit.
         "capco/joint-requires-usa" => joint_requires_usa(attrs),
         "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs),
+        "E070/frd-tfni-precedence" => e070_frd_tfni_precedence(attrs),
         _ => Vec::new(),
     }
 }

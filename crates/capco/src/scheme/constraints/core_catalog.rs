@@ -239,6 +239,25 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E024/rd-precedence",
             label: "CAPCO-2016 §H.6 p104",
         },
+        // ---- E070: FRD precedence over TFNI (§H.6 p120) ------
+        //
+        // §H.6 TFNI subsection p120: "If the TFNI marking is
+        // contained in any portion of a document that contains
+        // portions of RD and/or FRD, the RD or FRD takes
+        // precedence." Same page on commingling: "If TFNI is
+        // commingled with RD or FRD within a portion, the RD or
+        // FRD takes precedence and 'RD' or 'FRD,' as
+        // appropriate, is annotated in the portion mark."
+        //
+        // Sibling of E024: E024 covers RD>FRD and RD>TFNI; this
+        // row carries the FRD>TFNI leg so the policy decision
+        // "FRD supersedes TFNI" has its own audit lineage
+        // independent of RD presence. #559 close-out PM
+        // decision 2026-05-19.
+        Constraint::Custom {
+            name: "E070/frd-tfni-precedence",
+            label: "CAPCO-2016 §H.6 p120",
+        },
         // ---- E025 retired in PR 3b.D (T026d) -----------------
         //
         // The UCNI ceiling invariant moved into the class-floor

@@ -121,6 +121,12 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // document should carry `REL TO USA, NATO` per §H.7 p127 Notional
     // Example 2 worked example `(//CTS//BOHEMIA//REL TO USA, NATO)`.
     "S007",
+    // #559 close-out C1 (2026-05-19): RELIDO byte-surfacing twin of
+    // the `CLOSURE_RELIDO_SCI` / `CLOSURE_RELIDO_US_CLASS` lattice-
+    // layer closures. Severity::Suggest at confidence 0.85 — matches
+    // S007's text-layer pattern. Authority: CAPCO-2016 §H.8 p154 +
+    // §D.2 Table 3 rule 17.
+    "S008",
     // W002 retired in the PR closing #470 — CAPCO §H.7 p123
     // authorized the shape the rule was warning on. See
     // `crates/capco/src/rules.rs` module header for the rationale.
@@ -140,8 +146,8 @@ fn post_pr_470_registers_exact_38_rule_ids() {
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "38 unique IDs from 38
-    // registrations" from "38 unique IDs from 39 registrations
+    // assertion below cannot distinguish "39 unique IDs from 39
+    // registrations" from "39 unique IDs from 40 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
@@ -151,10 +157,13 @@ fn post_pr_470_registers_exact_38_rule_ids() {
     // `DeclarativeCominglingWarningRule` (39 → 38) — see the rule
     // module header in `crates/capco/src/rules.rs` for the
     // citation-driven rationale.
+    // #559 close-out C1 (2026-05-19): added S008
+    // `RelidoImpliedByClosureRule` byte-surfacing twin of the
+    // `CLOSURE_RELIDO_{SCI,US_CLASS}` closures (38 → 39).
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 38,
-        "post-PR-#470 raw rule slice length drifted from 38 \
+        raw_len, 39,
+        "post-#559-C1 raw rule slice length drifted from 39 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -171,16 +180,16 @@ fn post_pr_470_registers_exact_38_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        38,
-        "EXPECTED_RULE_IDS does not contain 38 unique entries: {expected:?}",
+        39,
+        "EXPECTED_RULE_IDS does not contain 39 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        38,
-        "post-PR-#470 registered rule count drifted from 38: actual={actual:?}",
+        39,
+        "post-#559-C1 registered rule count drifted from 39: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
