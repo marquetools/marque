@@ -130,12 +130,15 @@ fn evaluate_is_deterministic() {
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_B),
             label: "TEST §1",
+            severity: None,
+            span_anchor: None,
         },
         Constraint::Requires {
             name: "test/a-requires-foo",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::AnyInCategory(CAT_FOO),
             label: "TEST §2",
+            severity: None,
         },
     ]);
     let marking = StubMarking {
@@ -192,6 +195,8 @@ fn conflict_violation_preserves_citation() {
         left: TokenRef::Token(TOK_A),
         right: TokenRef::Token(TOK_B),
         label: "CAPCO-2016 §H.4",
+        severity: None,
+        span_anchor: None,
     }]);
     let marking = StubMarking {
         tokens: vec![TOK_A, TOK_B],
@@ -233,12 +238,15 @@ fn dyadic_arm_violations_default_to_none_span_and_severity() {
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_B),
             label: "CAPCO-2016 §H.4",
+            severity: None,
+            span_anchor: None,
         },
         Constraint::Requires {
             name: "test/requires",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_C),
             label: "CAPCO-2016 §H.5",
+            severity: None,
         },
     ]);
     let marking = StubMarking {
@@ -277,12 +285,16 @@ fn constraint_label_maps_to_declared_name_per_entry() {
             left: TokenRef::Token(TOK_A),
             right: TokenRef::Token(TOK_B),
             label: "TEST §1",
+            severity: None,
+            span_anchor: None,
         },
         Constraint::Conflicts {
             name: "test/foo-conflict",
             left: TokenRef::Token(TOK_A),
             right: TokenRef::AnyInCategory(CAT_FOO),
             label: "TEST §2",
+            severity: None,
+            span_anchor: None,
         },
     ]);
     let marking = StubMarking {

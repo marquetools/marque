@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        39,
+        24,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -285,15 +285,23 @@ fn rule_count_reflects_registration_changes() {
          was warning on. The §H.7 p124 segregation rule is \
          conditioned on ICD-206 status (a document-level property), \
          so a portion-local warning premised on it produces noise \
-         without a useful action. Net delta: -1. Final: 38. \
-         #559 close-out C1 (2026-05-19) adds \
-         `RelidoImpliedByClosureRule` (S008) — byte-surfacing twin of \
-         the `CLOSURE_RELIDO_SCI` / `CLOSURE_RELIDO_US_CLASS` \
-         lattice-layer closures per CAPCO-2016 §H.8 p154 + §D.2 \
-         Table 3 rule 17; Severity::Suggest at confidence 0.85 \
-         matching S007's text-layer pattern. Net delta: +1. Final: \
-         39. See \
-         `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
+         without a useful action. Net delta: -1. Final: 38. PR #578 \
+         retires 15 declarative wrappers (E010/E012/E014/E015/E016/ \
+         E021/E024/E036/E037/E038/E053/E054/E055/E056/E057) into the \
+         engine's constraint-catalog bridge — `severity` + \
+         `span_anchor` now live on `Constraint::Conflicts` / \
+         `Constraint::Requires` and the engine bridge synthesizes \
+         `FixIntent` via `CapcoScheme::fix_intent_by_name`. S004 \
+         stays a registered walker (`RelToTrigraphSuggestRule`) \
+         because its candidate replacement is corpus-derived during \
+         evaluation. Net delta: -15. Final: 23. #559 close-out C1 \
+         (2026-05-19) adds `RelidoImpliedByClosureRule` (S008) — \
+         byte-surfacing twin of the `CLOSURE_RELIDO_SCI` / \
+         `CLOSURE_RELIDO_US_CLASS` lattice-layer closures per \
+         CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17; \
+         Severity::Suggest at confidence 0.85 matching S007's \
+         text-layer pattern. Net delta: +1. Final: 24. \
+         See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
     );

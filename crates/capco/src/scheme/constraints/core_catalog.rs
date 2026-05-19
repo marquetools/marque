@@ -12,7 +12,7 @@
 //! tiebreakers; the entries below preserve the exact pre-split
 //! ordering.
 
-use marque_scheme::{Constraint, TokenRef};
+use marque_scheme::{Constraint, Severity, TokenRef};
 
 use super::super::*;
 
@@ -116,6 +116,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
             right: TokenRef::AnyInCategory(CAT_DISSEM),
             label: "CAPCO-2016 §H.7 p122 + §B.3 p20",
+            severity: Some(Severity::Error),
         },
         // ---- E016: JOINT conflicts RESTRICTED (§H.3 p56) -----
         //
@@ -128,6 +129,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_JOINT),
             right: TokenRef::Token(TOK_RESTRICTED),
             label: "CAPCO-2016 §H.3 p56",
+            severity: Some(Severity::Error),
+            span_anchor: None,
         },
         // ---- E036: JOINT conflicts HCS markings (§H.3 p57) ---
         //
@@ -155,6 +158,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_JOINT),
             right: TokenRef::Token(TOK_HCS),
             label: "CAPCO-2016 §H.3 p57",
+            severity: Some(Severity::Error),
+            span_anchor: Some(TokenRef::Token(TOK_HCS)),
         },
         // ---- E021: AEA requires NOFORN (§H.6 p104) -----------
         //
@@ -297,6 +302,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_NOFORN),
             right: TokenRef::AnyInCategory(CAT_REL_TO),
             label: "CAPCO-2016 §H.8 p145",
+            severity: Some(Severity::Error),
+            span_anchor: None,
         },
         // ---- capco/joint-requires-usa (§H.3 p55) -------------
         //
@@ -328,6 +335,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_NODIS),
             right: TokenRef::Token(TOK_EXDIS),
             label: "CAPCO-2016 §H.9 p172 + p174",
+            severity: Some(Severity::Error),
+            span_anchor: Some(TokenRef::Token(TOK_NODIS)),
         },
         // ---- E038: NODIS / EXDIS require NOFORN (§H.9) -------
         //
@@ -366,6 +375,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_RELIDO),
             right: TokenRef::Token(TOK_NOFORN),
             label: "CAPCO-2016 §H.8 p154",
+            severity: Some(Severity::Error),
+            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
         // ---- E055: RELIDO ⊥ DISPLAY ONLY (§H.8 p154) ------------
         //
@@ -375,6 +386,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_RELIDO),
             right: TokenRef::Token(TOK_DISPLAY_ONLY),
             label: "CAPCO-2016 §H.8 p154",
+            severity: Some(Severity::Error),
+            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
         // ---- E056: ORCON ⊥ RELIDO (§H.8 p136) -------------------
         //
@@ -384,6 +397,8 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_ORCON),
             right: TokenRef::Token(TOK_RELIDO),
             label: "CAPCO-2016 §H.8 p136",
+            severity: Some(Severity::Error),
+            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
         // ---- E057: ORCON-USGOV ⊥ RELIDO (§H.8 p140) -------------
         //
@@ -393,7 +408,22 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             left: TokenRef::Token(TOK_ORCON_USGOV),
             right: TokenRef::Token(TOK_RELIDO),
             label: "CAPCO-2016 §H.8 p140",
+            severity: Some(Severity::Fix),
+            span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
+        // NOTE — S004 (REL TO trigraph suggest) is NOT a catalog row.
+        // The retired-rule consolidation in PR #578 attempted to move
+        // S004 into the constraint-catalog bridge, but S004's
+        // replacement string is a corpus-derived candidate computed
+        // during evaluation — the bridge's
+        // `fix_intent_by_name(name, attrs, marking_type)` shape
+        // cannot produce that candidate without re-running the
+        // evaluator. The walker rule `RelToTrigraphSuggestRule`
+        // therefore stays registered in `CapcoRuleSet::new()` and
+        // owns both the predicate and the `text_correction` emission.
+        // See `crates/capco/src/rules.rs` S004 registration block for
+        // the rationale.
+        //
         // NOTE — ConflictsWithFamily primitive showcase removed in PR 3.7 rev 3.
         //
         // An earlier rev added two additive `ConflictsWithFamily` rows

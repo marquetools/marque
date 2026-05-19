@@ -89,7 +89,7 @@
       "name": "nodis_exdis_conflict.txt",
       "category": "invalid",
       "input": "SECRET//NOFORN//NODIS/EXDIS\n",
-      "expected_lint": "{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"NODIS and EXDIS must not coexist; each State Department dissem control is mutually exclusive per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"conflicting tokens: Token(TokenId(122)) and Token(TokenId(123))\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":null}\n"
     },
     {
       "name": "nodis_missing_from_banner.txt",
@@ -101,19 +101,19 @@
       "name": "nodis_portion_rel_to_banner.txt",
       "category": "invalid",
       "input": "(S//NF//ND)\nSECRET//NOFORN//REL TO USA, GBR//NODIS\n",
-      "expected_lint": "{\"rule\":\"E039\",\"severity\":\"error\",\"span\":{\"start\":28,\"end\":43},\"message\":\"REL TO is not authorized in the banner line when any portion contains NODIS or EXDIS; NOFORN conveys the foreign-release decision in this case per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS)\",\"fix\":null}\n{\"rule\":\"E053\",\"severity\":\"error\",\"span\":{\"start\":20,\"end\":26},\"message\":\"NOFORN cannot be used with REL TO (§H.8 p145); remove one or the other\",\"citation\":\"CAPCO-2016 §H.8 p145\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E039\",\"severity\":\"error\",\"span\":{\"start\":28,\"end\":43},\"message\":\"REL TO is not authorized in the banner line when any portion contains NODIS or EXDIS; NOFORN conveys the foreign-release decision in this case per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS)\",\"fix\":null}\n{\"rule\":\"E053\",\"severity\":\"error\",\"span\":{\"start\":20,\"end\":26},\"message\":\"conflicting tokens: Token(TokenId(100)) and AnyInCategory(CategoryId(9))\",\"citation\":\"CAPCO-2016 §H.8 p145\",\"fix\":null}\n"
     },
     {
       "name": "nodis_without_noforn.txt",
       "category": "invalid",
       "input": "SECRET//NODIS\n",
-      "expected_lint": "{\"rule\":\"E038\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"NODIS and EXDIS may be used only with NOFORN information; add NOFORN to the dissem controls\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E038\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"NODIS and EXDIS may be used only with NOFORN information\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
     },
     {
       "name": "portion_nodis_exdis_commingled.txt",
       "category": "invalid",
       "input": "(S//NF//ND/XD)\n",
-      "expected_lint": "{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":10},\"message\":\"NODIS and EXDIS must not coexist; each State Department dissem control is mutually exclusive per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":null}\n{\"rule\":\"E041\",\"severity\":\"warn\",\"span\":{\"start\":11,\"end\":13},\"message\":\"portion contains both NODIS and EXDIS; NODIS (ND) supersedes EXDIS (XD) per §H.9 — remove EXDIS from the portion mark\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS): NODIS supersedes EXDIS in the portion mark when both are present\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E041\",\"severity\":\"warn\",\"span\":{\"start\":11,\"end\":13},\"message\":\"portion contains both NODIS and EXDIS; NODIS (ND) supersedes EXDIS (XD) per §H.9 — remove EXDIS from the portion mark\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS): NODIS supersedes EXDIS in the portion mark when both are present\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":10},\"message\":\"conflicting tokens: Token(TokenId(122)) and Token(TokenId(123))\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":null}\n"
     },
     {
       "name": "sar_banner_missing_program.txt",

@@ -100,26 +100,31 @@ rule that proposes the encouraged marking.**
 | Unclassified + caveated **non-IC** info (incl. DoD/DOE UCNI, DSEN, non-IC dissems) | Mark per source's overall classification | Handle as marked if present; else handle per banner |
 | Unclassified, uncaveated | Per internal agency procedures | n/a |
 
-**Pivot date.** 28 Jun 2010 splits "caveated → NOFORN" (older) from
-"uncaveated → RELIDO" (newer). A correct rule MUST read
-`Authority::Originated` from the CAB; it cannot infer the pivot from
-the document text alone.
+**Pivot date.** 28 Jun 2010 splits "uncaveated → NOFORN" (older) from
+"uncaveated → RELIDO" (newer).
 
 **Caveats** (a portion is "caveated" if it bears) per the §B.3 p20
 Note (structural "caveated" definition: bears no FD&R markings but has
-one or more AEA / SAP / dissemination control markings): ORCON /
-ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO, or any
+one or more AEA / SAP / IC or non-IC dissemination control markings): ORCON / ORCON-USGOV, IMCON, PROPIN, FISA, DEA SENSITIVE, RSEN, FOUO, or any
 non-IC dissem (LIMDIS, EXDIS, NODIS, SBU, SBU-NF, LES, LES-NF, SSI).
 NOFORN/REL TO/RELIDO/EYES ONLY/DISPLAY ONLY are themselves FD&R
 markings, not the upstream "caveat" trigger. Per-marking templates
 live in §H.8.
 
-**Marque encoding.** `marque-capco` SHOULD model the seven Table-2
-rows as Warn-level rules with a `confidence` reflecting how
-strongly the source dictates the suggestion. Apply-with-fix is
-permissible only when the date pivot is unambiguous (CAB present and
-parsed) and the caveat status is decidable from the portion text;
-otherwise emit a Warn diagnostic with no fix.
+**Marque encoding.** Default assumption: production date is post-cutoff
+(the FD&R rule changed 28 Jun 2010 — 16 years ago at time of writing).
+Under this default, `marque-capco` does NOT gate RELIDO-or-NOFORN
+defaults behind a CAB-derived `Authority::Originated` date; "uncaveated
+→ RELIDO" applies.
+
+This is a deliberate engine-side simplification, not an authoritative
+re-reading of §B.3. The pivot itself stays normative: a future
+**archival mode** (planned, not yet wired) will switch the default
+back to "uncaveated → NOFORN" for documents whose CAB carries a
+pre-cutoff `Authority::Originated`. CHK041 governs the spec-level
+contract for reading the date when the archival path lands; CHK043
+governs the CI-checkable "apply-with-fix permissible only when date
+pivot is unambiguous" guard.
 
 > Authority: CAPCO-2016 §B.3 Table 2, pp 21–22.
 
