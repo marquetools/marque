@@ -533,9 +533,10 @@ jobs:
       # The `MARQUE_WASM_SKIP_REGRESSION` env-var skip is enabled
       # exclusively for the `refactor-006-pr-4b-perf-closeout`
       # diagnosis branch, where the cumulative WASM regression is
-      # the deliverable rather than a defect. Build failures,
-      # absolute-ceiling violations, and missing-artifact failures
-      # still fail; only the +5% drift gate is skipped. The match
+      # the deliverable rather than a defect. Build failures and
+      # missing-artifact failures still fail; only the +5% drift
+      # gate is skipped (there is no absolute-size ceiling on the
+      # WASM gate — only the drift gate). The match
       # covers both `push` events (`github.ref`) and `pull_request`
       # events (`github.head_ref`), mirroring the existing
       # branch-gate patterns at lines 84, 166, 249 of this file —

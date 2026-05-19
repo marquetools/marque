@@ -8,26 +8,32 @@ SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 > **Status: gap.** Captured 2026-05-19 on WSL2 dev host. `twiggy monos`
 > on the release-web WASM artifact returned zero rows because the
-> WASM name section was stripped during the build, and the
-> `wasm-pack` profiling and dev profiles also stripped names for
-> reasons related to local `wasm-opt`'s pre-process steps.
-> `twiggy top` worked but returned anonymized `code[N]` IDs, not
-> function names.
+> `release-web` profile strips the WASM name section during the
+> build (via `--strip-toolchain-annotations` in `wasm-opt`, at
+> `crates/wasm/Cargo.toml:67`). The `profiling` and `dev` profiles
+> do NOT set `--strip-toolchain-annotations`, but they still lose
+> symbol attribution for `twiggy monos` because
+> `wasm-bindgen`'s `dwarf-debug-info = false` is set explicitly on
+> the `profiling` profile (`Cargo.toml:30`) and defaults to false
+> on `dev`. `twiggy top` worked on the dev build but returned
+> anonymized `code[N]` IDs, not function names.
 
 ## Reproducer
 
 ```bash
-# release-web (production-shape artifact, names stripped):
+# release-web (production-shape artifact, --strip-toolchain-annotations
+# at Cargo.toml:67 strips the name section):
 bash tools/wasm-size-check.sh
 twiggy monos -n 30 crates/wasm/pkg/marque_wasm_bg.wasm
 # returns 0 rows
 
-# profiling (intended to keep names; still strips them):
+# profiling (no --strip-toolchain-annotations, but dwarf-debug-info = false
+# at Cargo.toml:30 still loses symbol attribution for twiggy monos):
 wasm-pack build crates/wasm --target web --profile profiling --no-opt
 twiggy monos -n 30 crates/wasm/pkg/marque_wasm_bg.wasm
 # returns 0 rows
 
-# dev (3.8 MB output; still anonymized for twiggy):
+# dev (3.8 MB output; dwarf-debug-info defaults to false; still anonymized):
 wasm-pack build crates/wasm --target web --dev
 twiggy top -n 30 crates/wasm/pkg/marque_wasm_bg.wasm
 # returns code[0], code[1], ..., code[N] — no function names
@@ -35,15 +41,36 @@ twiggy top -n 30 crates/wasm/pkg/marque_wasm_bg.wasm
 
 ## Cause
 
-`crates/wasm/Cargo.toml` `[package.metadata.wasm-pack.profile.*]`
-blocks all set `--strip-toolchain-annotations` and pass `wasm-opt`
-its default name-section stripping. The `release-web` profile
-additionally runs `--monomorphize` which folds back monomorphizations
-twiggy would otherwise enumerate.
+The size-baseline file (`tools/wasm-size-baseline.txt`) and this
+diagnosis's WASM measurements both come from
+`wasm-pack build crates/wasm --target web --profile release-web`
+(invoked via `tools/wasm-size-check.sh`). The `release-web` profile
+sets `--strip-toolchain-annotations` in its `wasm-opt` flag list
+(`crates/wasm/Cargo.toml:67`), which strips the WASM name section.
+The two other `release-*` profiles (`release-cloud` at
+`Cargo.toml:98`, `release-server` at `Cargo.toml:128`) also set
+that flag. The `profiling` profile (`Cargo.toml:25`) and `dev`
+profile (`Cargo.toml:33`) do NOT set `--strip-toolchain-annotations`
+— their `wasm-opt` flag is `["--all-features"]` only. The
+`release-web` profile additionally runs `--monomorphize` (line 61)
+which folds back monomorphizations twiggy would otherwise
+enumerate.
 
-The `wasm-bindgen` invocation also defaults to `dwarf-debug-info =
-false` (correct for production — DWARF in WASM bloats by 3-5×) but
-this kills the symbol info twiggy needs.
+Switching the diagnostic build to `--profile profiling` or
+`--dev` would preserve the name section's strip status, but those
+profiles still don't surface `twiggy monos` rows because
+`wasm-bindgen`'s `dwarf-debug-info = false` is set explicitly on
+`profiling` (`Cargo.toml:30`) and defaults to false on `dev`. To
+make `twiggy monos` work, the audit build needs both
+(a) no `--strip-toolchain-annotations` AND
+(b) `dwarf-debug-info = true` (or its equivalent symbol-preserving
+wasm-bindgen flag). That is what the MO-3 and W-MO-1 remediation
+candidates (see `../2026-05-19-diagnosis.md` §5) propose adding
+via a new `release-monoaudit` profile, since the audit build is
+necessarily distinct from the production `release-web` artifact
+that ships. (OTHER-1, the related profiling-infra candidate, is
+scoped to flamegraph capture for the lint hot path, not WASM
+monomorphization attribution.)
 
 ## Remediation surface (INVESTIGATE-tier candidate)
 
