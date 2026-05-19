@@ -138,6 +138,7 @@ static FAMILY_CONSTRAINTS: &[Constraint] = &[Constraint::ConflictsWithFamily {
     left: TokenRef::Token(LHS_TOKEN),
     family: FamilyPredicate(is_odd_indexed),
     label: "PropTest §distributive-expansion",
+    severity: None,
 }];
 
 // Static constraints for the enumerated form — one per odd-indexed token.
@@ -147,24 +148,32 @@ static ENUMERATED_CONSTRAINTS: &[Constraint] = &[
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[1]),
         label: "PropTest §distributive-expansion",
+        severity: None,
+        span_anchor: None,
     },
     Constraint::Conflicts {
         name: "test/lhs-conflicts-tok3",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[3]),
         label: "PropTest §distributive-expansion",
+        severity: None,
+        span_anchor: None,
     },
     Constraint::Conflicts {
         name: "test/lhs-conflicts-tok5",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[5]),
         label: "PropTest §distributive-expansion",
+        severity: None,
+        span_anchor: None,
     },
     Constraint::Conflicts {
         name: "test/lhs-conflicts-tok7",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[7]),
         label: "PropTest §distributive-expansion",
+        severity: None,
+        span_anchor: None,
     },
 ];
 

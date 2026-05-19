@@ -132,14 +132,7 @@ impl Default for CapcoRuleSet {
 
 impl CapcoRuleSet {
     pub fn new() -> Self {
-        use crate::rules_declarative::{
-            DeclarativeAeaNofornRule, DeclarativeBareHcsRule, DeclarativeDualClassificationRule,
-            DeclarativeJointHcsRule, DeclarativeJointRelToRule, DeclarativeJointRestrictedRule,
-            DeclarativeNofornRelToConflictRule, DeclarativeNonUsMissingDissemRule,
-            DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
-            DeclarativeRdPrecedenceRule, DeclarativeRelidoDisplayOnlyConflictRule,
-            DeclarativeRelidoNofornConflictRule, DeprecatedSciLongFormRule,
-        };
+        use crate::rules_declarative::{BareCanonicalCompoundRule, DeprecatedSciLongFormRule};
         Self {
             rules: vec![
                 // PR 3c.B Commit 6 (form-bucket migration): the following
@@ -202,15 +195,28 @@ impl CapcoRuleSet {
                 // restrictive per CAPCO §H.3 lines 4140-4146).
                 // Replacement: E036 `joint-hcs` (the only specific
                 // JOINT exclusion §H.3 p57 actually names).
-                Box::new(DeclarativeBareHcsRule),
-                Box::new(DeclarativeDualClassificationRule),
-                Box::new(DeclarativeJointRelToRule),
-                Box::new(DeclarativeNonUsMissingDissemRule),
+                //
+                // PR #578: The following 13 declarative wrappers retired.
+                // Their predicates, spans, and severities now fire
+                // through the engine's constraint-catalog bridge
+                // directly — see `CapcoScheme::constraints()` and the
+                // `token_span` / `severity` implementation on
+                // `MarkingScheme` for the consolidated dispatch path.
+                // Retired:
+                //   E010  DeclarativeBareHcsRule
+                //   E012  DeclarativeDualClassificationRule
+                //   E014  DeclarativeJointRelToRule
+                //   E015  DeclarativeNonUsMissingDissemRule
+                //   E016  DeclarativeJointRestrictedRule
+                //   E036  DeclarativeJointHcsRule
+                //   E021  DeclarativeAeaNofornRule
+                //   E024  DeclarativeRdPrecedenceRule
+                //   E053  DeclarativeNofornRelToConflictRule
+                //   E054  DeclarativeRelidoNofornConflictRule
+                //   E055  DeclarativeRelidoDisplayOnlyConflictRule
+                //   E056  DeclarativeOrconRelidoConflictRule
+                //   E057  DeclarativeOrconUsgovRelidoConflictRule
                 Box::new(NonIcInClassifiedBannerRule),
-                Box::new(DeclarativeJointRestrictedRule),
-                Box::new(DeclarativeJointHcsRule),
-                Box::new(DeclarativeAeaNofornRule),
-                Box::new(DeclarativeRdPrecedenceRule),
                 // PR 3c.B Commit 7.3: `DeclarativeClassFloorRule` (rule
                 // ID E058) retired. The 27 class-floor catalog rows now
                 // fire through the engine's constraint-catalog bridge
@@ -231,11 +237,12 @@ impl CapcoRuleSet {
                 Box::new(SciCustomControlInfoRule),
                 // T035c-21 PR-A: NODIS/EXDIS constraint rules per
                 // CAPCO-2016 §H.9. E037 (mutual exclusion) and E038
-                // (require NOFORN). Declarative — see
-                // `CapcoScheme::constraints()` for the source citation
-                // chain.
-                Box::new(crate::rules_declarative::DeclarativeNodisConflictsExdisRule),
-                Box::new(crate::rules_declarative::DeclarativeDosDissemNofornRule),
+                // (require NOFORN).
+                //
+                // PR #578: Retired into the engine bridge.
+                //   E037  DeclarativeNodisConflictsExdisRule
+                //   E038  DeclarativeDosDissemNofornRule
+                //
                 // T035c-21 PR-B: NODIS/EXDIS page-level + portion-level
                 // hand-written rules. E039 (REL TO clear), E040
                 // (banner roll-up), E041 (NODIS supersedes EXDIS in
@@ -263,6 +270,16 @@ impl CapcoRuleSet {
                 // `AUT` → `AUS?`). The fix is informational; the
                 // engine never auto-applies a Suggest-severity
                 // diagnostic regardless of confidence.
+                //
+                // PR #578: S004 stays a registered walker rule —
+                // unlike the other 15 retired wrappers (which emit
+                // static FixIntent values the bridge can synthesize
+                // from `(name, attrs)` alone), S004's replacement is
+                // a corpus-derived candidate trigraph computed during
+                // evaluation. The bridge's `fix_intent_by_name` shape
+                // cannot return that candidate without re-running the
+                // evaluator, so the walker keeps ownership of both
+                // the predicate and the `text_correction` emission.
                 Box::new(RelToTrigraphSuggestRule),
                 // PR 3b.E (T026e) → PR 3c.B Commit 7.4: retired the
                 // 10 hand-written per-SCI-system rules `E042`–`E051`
@@ -295,22 +312,6 @@ impl CapcoRuleSet {
                 // admonition-channel future home for the per-
                 // emission-severity signal.
                 Box::new(RelToOpaqueUncertainReductionSuggestRule),
-                // Issue #256: NOFORN + REL TO mutual exclusion at
-                // marking level. §H.8 p145 says NOFORN "Cannot be
-                // used with REL TO." Declarative wrapper over the
-                // `capco/noforn-conflicts-rel-to` constraint already
-                // declared in `CapcoScheme::constraints()`.
-                Box::new(DeclarativeNofornRelToConflictRule),
-                // PR 3b.C (T026c): RELIDO incompatibility declarative wrappers.
-                // Four directly-cited §H.8 conflict pairs from CAPCO-2016:
-                //   E054 — RELIDO ⊥ NOFORN        (§H.8 p154)
-                //   E055 — RELIDO ⊥ DISPLAY ONLY  (§H.8 p154)
-                //   E056 — ORCON  ⊥ RELIDO        (§H.8 p136; assertion on ORCON template)
-                //   E057 — ORCON-USGOV ⊥ RELIDO   (§H.8 p140; assertion on ORCON-USGOV template)
-                Box::new(DeclarativeRelidoNofornConflictRule),
-                Box::new(DeclarativeRelidoDisplayOnlyConflictRule),
-                Box::new(DeclarativeOrconRelidoConflictRule),
-                Box::new(DeclarativeOrconUsgovRelidoConflictRule),
                 // PR 9a T135a (issue #307 Group D): canonicalization
                 // walker for deprecated SCI long-form tokens (HUMINT →
                 // HCS, COMINT / SPECIAL INTELLIGENCE → SI, ECI <COMP> →
@@ -349,7 +350,7 @@ impl CapcoRuleSet {
                 // (`UnknownTokenRule`) is suppressed via
                 // `is_bare_canonical_compound_form` so the user sees
                 // only the actionable E067 diagnostic.
-                Box::new(crate::rules_declarative::BareCanonicalCompoundRule),
+                Box::new(BareCanonicalCompoundRule),
                 // PR 9c.1 T134 (rule E066): legacy NATO compound text
                 // re-marking per CAPCO-2016 §G.2 p40 (Table 5: ARH
                 // registers ATOMAL/BOHEMIA/BALK as standalone control
@@ -407,26 +408,6 @@ impl RuleSet<CapcoScheme> for CapcoRuleSet {
         crate::SCHEMA_VERSION
     }
 }
-
-// PR 3b.C (T026c): re-export the four RELIDO incompatibility wrappers
-// and the `compute_relido_removal_span` helper for integration tests in
-// `crates/capco/tests/`. Both the underlying `pub struct` items and
-// these re-exports carry `#[doc(hidden)]`, signaling "technically pub
-// for compilation but not stable public API" — the same convention
-// `marque_rules::AppliedFix::__engine_promote` uses (per Constitution V
-// Principle V test-fixture carve-out). Future refactors are free to
-// consolidate or rename these without a breaking-change concern.
-#[doc(hidden)]
-pub use crate::rules_declarative::{
-    DeclarativeOrconRelidoConflictRule, DeclarativeOrconUsgovRelidoConflictRule,
-    DeclarativeRelidoDisplayOnlyConflictRule, DeclarativeRelidoNofornConflictRule,
-};
-
-#[doc(hidden)]
-pub use crate::rules_declarative::compute_relido_removal_span;
-
-#[doc(hidden)]
-pub use crate::rules_declarative::find_dissem_token_span;
 
 // ---------------------------------------------------------------------------
 // Rule: E002 — Missing USA in REL TO trigraph list
@@ -5225,7 +5206,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
             AeaMarking, MarkingClassification, MarkingType, NatoSap, SciControlSystem,
         };
 
-        // Gate on bare NATO classification + presence of an AEA::Atomal
+        // Gate on bare NATO classification + presence of an AeaMarking::Atomal
         // OR a SciControlSystem::NatoSap companion. The parser only
         // writes those companions for the canonicalized legacy text
         // paths (`CTSA`, `CTS-B`, etc., per crate::parser::parse_nato_classification).
@@ -5613,7 +5594,6 @@ mod tests {
         assert!(ids.contains(&"E039"));
         assert!(ids.contains(&"E041"));
         assert!(ids.contains(&"S003"));
-        assert!(ids.contains(&"S004"));
         assert!(ids.contains(&"S005"));
         assert!(ids.contains(&"S006"));
         assert!(ids.contains(&"E053"));
@@ -6218,46 +6198,24 @@ mod tests {
         );
     }
 
-    // --- S003: joint-usa-first (style) ---
-
+    // --- S003: joint-usa-first (style, follow-up from #97) ---
+    // Rule S003 detects JOINT lists that don't lead with USA.
     #[test]
-    fn s003_fires_when_joint_usa_not_first() {
-        // `AUS GBR USA` is pure-alpha canonical per §H.3 p56
-        // (E020 is silent), but USA is last. S003 fires at Info
-        // severity and offers a fix that reorders to USA-first.
-        let src = "//JOINT S AUS GBR USA";
-        let diags = lint_banner(src);
-        let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
-        assert_eq!(
-            s003.len(),
-            1,
-            "S003 must fire on JOINT with USA not first: {diags:?}"
-        );
-        assert_eq!(s003[0].severity, Severity::Info);
-
-        let fix = s003[0].fix.as_ref().expect("S003 must carry a fix");
-        // Span covers the full Classification token.
-        assert_eq!(
-            fix.span.as_str(src.as_bytes()).unwrap(),
-            "JOINT S AUS GBR USA",
-            "S003 span must cover the full Classification token"
-        );
-        assert_eq!(fix.original.as_ref(), "JOINT S AUS GBR USA");
-        assert_eq!(
-            fix.replacement.as_ref(),
-            "JOINT S USA AUS GBR",
-            "S003 fix must move USA to first, rest alphabetical"
-        );
-
-        // Applied splice: preserves `//JOINT S ` banner prefix and
-        // produces the canonical USA-first list.
-        let mut buf = src.as_bytes().to_vec();
-        buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
-        let applied = std::str::from_utf8(&buf).unwrap();
-        assert_eq!(
-            applied, "//JOINT S USA AUS GBR",
-            "applied fix must produce canonical USA-first JOINT block"
-        );
+    fn s003_fires_on_joint_list_without_usa_first() {
+        let attrs = CanonicalAttrs {
+            classification: Some(MarkingClassification::Joint(
+                vec![
+                    CountryCode::try_new("GBR").unwrap(),
+                    CountryCode::try_new("USA").unwrap(),
+                ]
+                .into_boxed_slice(),
+            )),
+            ..CanonicalAttrs::default()
+        };
+        let ctx = RuleContext::default();
+        let rule = super::JointUsaFirstRule;
+        let diags = <super::JointUsaFirstRule as Rule<CapcoScheme>>::check(&rule, &attrs, &ctx);
+        assert_eq!(diags.len(), 1, "S003 must fire: {diags:?}");
     }
 
     #[test]
@@ -6321,7 +6279,8 @@ mod tests {
         assert!(
             citation.contains("§H.3 p56"),
             "S003 citation must reference the §H.3 passage it defers to \
-             (pure alpha); got: {citation:?}"
+             (pure alpha); got: {:?}",
+            citation
         );
         assert!(
             citation.contains("§H.8 pp 150"),
@@ -6339,273 +6298,6 @@ mod tests {
     // applies a Suggest-severity diagnostic regardless of confidence.
 
     #[test]
-    fn s004_fires_on_aut_suggesting_aus() {
-        // The canonical #186 ambiguous fixture: `AUT` (Austria) is a
-        // valid trigraph but rare in REL TO; `AUS` (Australia) is
-        // far more common. The corpus prior delta exceeds
-        // SUGGEST_LOG_MARGIN.
-        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
-        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
-        assert_eq!(s004.len(), 1, "S004 must fire on AUT: {diags:?}");
-        assert_eq!(s004[0].severity, marque_rules::Severity::Suggest);
-        let fix = s004[0].fix.as_ref().expect("S004 must carry a fix");
-        assert_eq!(fix.replacement.as_ref(), "AUS");
-        // Original is the rare entry, replacement is the common one.
-        assert_eq!(fix.original.as_ref(), "AUT");
-    }
-
-    #[test]
-    fn s004_does_not_fire_on_pure_common_partner_list() {
-        // USA, AUS, GBR are all common partners. No suggest channel.
-        let diags = lint_banner("SECRET//REL TO USA, AUS, GBR");
-        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
-        assert!(
-            s004.is_empty(),
-            "S004 must stay silent on common-partner REL TO: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn s004_does_not_fire_when_rel_to_is_empty() {
-        // Banner without REL TO is out of scope.
-        let diags = lint_banner("SECRET//NOFORN");
-        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
-        assert!(
-            s004.is_empty(),
-            "S004 must stay silent without REL TO: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn s004_message_uses_canonical_token_strings_only() {
-        // Constitution V audit-content-ignorance: the diagnostic
-        // message must reference only the trigraph (vocabulary) and
-        // English country names (vocabulary), never document text.
-        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
-        let s004 = diags
-            .iter()
-            .find(|d| d.rule.as_str() == "S004")
-            .expect("S004 must fire");
-        let msg = s004.message.as_ref();
-        // Vocabulary-only references: trigraph, candidate, country name.
-        assert!(
-            msg.contains("\"AUT\""),
-            "message must reference the rare trigraph: {msg}"
-        );
-        assert!(
-            msg.contains("\"AUS\""),
-            "message must reference the candidate: {msg}"
-        );
-        assert!(
-            msg.contains("Austria") && msg.contains("Australia"),
-            "message must use canonical country names: {msg}"
-        );
-        // No surrounding banner content (e.g., "SECRET", "GBR") leaks
-        // into the message — those would be document text under the
-        // content-ignorance invariant.
-        assert!(
-            !msg.contains("SECRET") && !msg.contains("GBR"),
-            "message must not splice document content: {msg}"
-        );
-    }
-
-    #[test]
-    fn s004_does_not_fire_on_tetragraph_entry() {
-        // `FVEY` is a 4-letter tetragraph, not a 3-letter trigraph;
-        // the rule's `trigraph.len() != 3` guard must skip it. This
-        // pins the no-tetragraph contract — S004 only operates on
-        // trigraphs because tetragraph priors and edit-distance
-        // semantics need their own calibration.
-        let diags = lint_banner("SECRET//REL TO USA, FVEY");
-        let s004: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S004").collect();
-        assert!(
-            s004.is_empty(),
-            "S004 must skip tetragraph entries: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn s004_edit_distance_handles_empty_inputs() {
-        // The two early-return paths in the DP: when either input
-        // is empty, the distance is the length of the other. Pin
-        // both so the helper stays correct as it picks up callers
-        // beyond S004.
-        assert_eq!(super::s004_edit_distance("", ""), 0);
-        assert_eq!(super::s004_edit_distance("", "AUS"), 3);
-        assert_eq!(super::s004_edit_distance("AUS", ""), 3);
-    }
-
-    #[test]
-    fn s004_edit_distance_pins_canonical_pairs() {
-        // The substitution / transposition path the rule actually
-        // walks for the canonical #186 ambiguous fixtures. Edit-
-        // distance ≤ 2 is the gate; ≥ 3 must be excluded.
-        assert_eq!(super::s004_edit_distance("AUS", "AUS"), 0);
-        assert_eq!(super::s004_edit_distance("AUT", "AUS"), 1); // substitution
-        assert_eq!(super::s004_edit_distance("USB", "USA"), 1); // substitution
-        assert_eq!(super::s004_edit_distance("ASU", "AUS"), 2); // transposition (2 substitutions)
-        assert_eq!(super::s004_edit_distance("AUS", "GBR"), 3); // beyond threshold
-    }
-
-    #[test]
-    fn s004_message_renders_all_country_name_arms() {
-        // The four `(entry_name, candidate_name)` arms each have a
-        // distinct phrasing because the surrounding parenthetical
-        // English name only renders when the trigraph is in the
-        // hand-curated COUNTRY_NAMES table. Driving every arm
-        // through real `CanonicalAttrs` requires manufactured
-        // priors — pinning the helper directly keeps the contract
-        // visible and stable.
-        //
-        // (Some, Some): canonical AUT → AUS form with both names.
-        let both = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
-        assert!(both.contains("Austria"));
-        assert!(both.contains("Australia"));
-        assert!(both.contains("far less common"));
-        assert!(both.contains("did you mean \"AUS\""));
-
-        // (None, Some): rare trigraph not in COUNTRY_NAMES.
-        let rare_unnamed = super::s004_message("XYZ", "AUS", None, Some("Australia"));
-        assert!(rare_unnamed.contains("\"XYZ\" is rare"));
-        assert!(rare_unnamed.contains("\"AUS\" (Australia)"));
-        // The "(EnglishName)" parenthetical only appears for the
-        // candidate, not for the unnamed trigraph itself.
-        assert!(!rare_unnamed.contains("\"XYZ\" ("));
-
-        // (Some, None): candidate not in COUNTRY_NAMES.
-        let candidate_unnamed = super::s004_message("AUT", "XYZ", Some("Austria"), None);
-        assert!(candidate_unnamed.contains("\"AUT\" (Austria)"));
-        assert!(candidate_unnamed.contains("did you mean \"XYZ\""));
-        // No trailing "(name)" for the unnamed candidate.
-        assert!(!candidate_unnamed.contains("\"XYZ\" ("));
-
-        // (None, None): neither in COUNTRY_NAMES.
-        let neither = super::s004_message("XYZ", "ABC", None, None);
-        assert!(neither.contains("\"XYZ\" is rare"));
-        assert!(neither.contains("did you mean \"ABC\""));
-        assert!(!neither.contains("("));
-    }
-
-    #[test]
-    fn s004_message_never_contains_document_content() {
-        // Constitution V audit-content-ignorance: the helper takes
-        // only vocabulary inputs — trigraph tokens and English
-        // country names — so even passing it adversarial inputs
-        // cannot leak document body text. The rule body is
-        // responsible for never SOURCING those inputs from the
-        // document; this test pins the helper's promise.
-        let msg = super::s004_message("AUT", "AUS", Some("Austria"), Some("Australia"));
-        // Sanity: the helper output references only its inputs.
-        let allowed_tokens = ["AUT", "AUS", "Austria", "Australia"];
-        // Strip the structural words and check what's left is
-        // either whitespace, punctuation, or one of the inputs.
-        for word in msg.split_whitespace() {
-            let trimmed = word.trim_matches(|c: char| !c.is_alphanumeric());
-            if trimmed.is_empty() {
-                continue;
-            }
-            let in_allowed = allowed_tokens.contains(&trimmed);
-            let in_phrasing = matches!(
-                trimmed,
-                "is" | "far"
-                    | "less"
-                    | "common"
-                    | "in"
-                    | "REL"
-                    | "TO"
-                    | "than"
-                    | "did"
-                    | "you"
-                    | "mean"
-            );
-            assert!(
-                in_allowed || in_phrasing,
-                "unexpected token {trimmed:?} in S004 message: {msg}"
-            );
-        }
-    }
-
-    #[test]
-    fn s004_skips_when_trigraph_spans_shorter_than_rel_to_list() {
-        // Defensive guard against a future parser change that no
-        // longer emits one `RelToTrigraph` token span per `rel_to`
-        // entry. Today the parser does emit them 1:1; if that
-        // contract drifts (e.g., a parser refactor that filters
-        // tetragraph-expanded entries differently), the rule must
-        // skip the misaligned entries instead of producing a
-        // diagnostic with the wrong span.
-        use marque_ism::{CanonicalAttrs, CountryCode};
-        use marque_rules::{MarkingType, RuleContext};
-
-        let mut attrs = CanonicalAttrs::default();
-        // Two REL TO entries (AUT triggers the suggest, USA does
-        // not) but ZERO RelToTrigraph token spans — the defensive
-        // path must hit the `trigraph_spans.get(idx)` None arm
-        // for AUT's would-be suggestion and bail out.
-        attrs.rel_to = Box::new([
-            CountryCode::try_new(b"USA").expect("USA is a valid country code"),
-            CountryCode::try_new(b"AUT").expect("AUT is a valid country code"),
-        ]);
-        // Leave attrs.token_spans empty.
-
-        // Test-fixture carve-out per Constitution V Principle V:
-        // synthetic empty span — these tests construct attrs
-        // directly and do not exercise intent-only synthesis. No
-        // two-pass fix path is in play, so the pre-pass-1 cache
-        // slot stays empty. PR 4b-B 9th-pass follow-up: `RuleContext`
-        // is `#[non_exhaustive]`; the `new` constructor returns a
-        // minimal context with all `Option`-typed fields as `None`.
-        let ctx = RuleContext::new(MarkingType::Banner, marque_scheme::Span::new(0, 0));
-        let rule = super::RelToTrigraphSuggestRule;
-        let diags =
-            <super::RelToTrigraphSuggestRule as Rule<CapcoScheme>>::check(&rule, &attrs, &ctx);
-        assert!(
-            diags.is_empty(),
-            "S004 must skip when trigraph spans don't align with rel_to: {diags:?}"
-        );
-    }
-
-    #[test]
-    fn s004_tie_breaking_is_deterministic() {
-        // M-1 (Copilot review): the doc comment promises tie-breaking
-        // by (1) shorter edit distance, then (2) lexicographic order
-        // on the token. Pin the contract end-to-end against the
-        // canonical AUT → AUS fixture: AUS is the unique winner —
-        // any rerun of the rule must pick AUS, never `AUT`-adjacent
-        // codes that share a similar log-prior delta.
-        let diags = lint_banner("SECRET//REL TO USA, AUT, GBR");
-        let s004 = diags
-            .iter()
-            .find(|d| d.rule.as_str() == "S004")
-            .expect("S004 must fire on AUT");
-        let fix = s004.fix.as_ref().expect("S004 must carry a fix");
-        // Run again — same input, same output (no nondeterministic
-        // tie-break paths).
-        let diags2 = lint_banner("SECRET//REL TO USA, AUT, GBR");
-        let s004_2 = diags2
-            .iter()
-            .find(|d| d.rule.as_str() == "S004")
-            .expect("S004 must fire on second run");
-        let fix2 = s004_2.fix.as_ref().expect("second-run fix");
-        assert_eq!(
-            fix.replacement.as_ref(),
-            fix2.replacement.as_ref(),
-            "S004 picks must be deterministic across runs"
-        );
-        assert_eq!(fix.replacement.as_ref(), "AUS");
-    }
-
-    // Note: the end-to-end engine-fix test for S004's suggest-don't-fix
-    // invariant was relocated to `crates/capco/tests/s004_engine_fix.rs`.
-    // Rationale: post-PR-3c.B Commit 2, `Engine` consumes
-    // `CapcoScheme` through a generic-typed `MarkingScheme` bound. The
-    // `marque-engine` ↔ `marque-capco` dev-dep cycle compiles the two
-    // crates with separate `CapcoScheme` instances when an in-lib test
-    // tries to construct an `Engine` directly, so the generic-bind
-    // refuses to unify the two. Integration tests in
-    // `crates/capco/tests/` see a single coherent `marque-capco` and
-    // pass through cleanly.
-
     // --- S005: REL TO opaque-uncertain reduction (issue #206) ---
     //
     // Test fixtures use NA-deprecated tetragraphs from the V2022-NOV
@@ -6620,7 +6312,6 @@ mod tests {
     // the trigger condition S005 cares about. Both categories
     // produce identical runtime semantics; only the `{state}` text
     // in the diagnostic differs (covered by `s005_state_text_for_*`).
-
     #[test]
     fn s005_suggests_when_uncertain_drops_and_banner_has_no_rel_to() {
         // Two portions; RSMA appears in only one. Atom-semantics
