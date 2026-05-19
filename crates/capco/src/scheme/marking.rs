@@ -343,7 +343,11 @@ impl CapcoMarking {
                         Some(MarkingClassification::Conflict { us, .. }) => {
                             Some(MarkingClassification::Us(*us))
                         }
-                        c => c.clone(),
+                        // Remaining variants (None, Us(_), Nato/Fgi when
+                        // solely_non_us) pass through. Split None vs Some to
+                        // avoid cloning when there is no data.
+                        None => None,
+                        Some(mc) => Some(mc.clone()),
                     }
                 }))
                 .into_inner()
