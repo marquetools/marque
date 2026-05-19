@@ -2,25 +2,40 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Post-PR-#488 registration pin (PR #491 brought count to 40 by adding
-//! E067; PR #488 retires S006, net 39).
+//! Post-PR-5 registration pin (architecturally consistent with PR 3b.A:
+//! E068 + E069 are per-row IDs emitted by `BannerMatchesProjectedRule`,
+//! analogous to E035 + E040; they do NOT count as separate registered
+//! `Rule` impls. Registered count stays at 38).
 //!
-//! Asserts the **exact set** of 39 registered `Rule::id()` values in
-//! `CapcoRuleSet::new()` after PR #488 retires S006 (collapsing the
-//! historical S005/S006 Suggest/Info split into a single
-//! Suggest-severity S005 rule under `Phase::PageFinalization`). Issue
-//! #407 / PR #491 had bumped the count to 40 by adding the
-//! `BareCanonicalCompoundRule` (E067) walker; this PR drops S006 for
-//! net 39. The umbrella's structural commitment: the per-commit tests
-//! pin per-rule behavior; this pins the closed set the workspace
-//! delivers.
+//! ## PR 5 PM-Addendum-I.6 deviation
+//!
+//! PM Addendum I.6 specified `38 → 40` for the registered-rule count
+//! and proposed adding `"E068"`, `"E069"` to `EXPECTED_RULE_IDS`.
+//! Mechanically this is incorrect: `rule_set.rules().len()` counts
+//! `Box<dyn Rule>` entries registered via `CapcoRuleSet::new()`. The
+//! E068 + E069 catalog rows live inside the existing
+//! `BannerMatchesProjectedRule` walker, which is already registered
+//! ONCE under `id() = "E031"` (analogous to E035 + E040 — per-row
+//! emitted IDs, NOT separate walker registrations). Adding them to
+//! `EXPECTED_RULE_IDS` would assert a presence that
+//! `rule_set.rules().iter().map(|r| r.id())` does not produce.
+//!
+//! The intent of PM Addendum I.6 (closing the audit gap for the new
+//! E068 + E069 IDs) is preserved by the `additional_emitted_ids`
+//! contribution on the walker — `.marque.toml` configurations like
+//! `[rules] E068 = "warn"` and `[rules] E069 = "warn"` are
+//! recognized via the canonicalization path. Per-row diagnostics
+//! carry `Diagnostic.rule = "E068"` / `"E069"` for audit-stream
+//! traceability without inflating the registered count.
+//!
+//! Asserts the **exact set** of 38 registered `Rule::id()` values.
 //!
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 39` (post-PR-#488; the count rolls
-//! forward in lock-step with this test as rules land or retire —
-//! see the running-count derivation comment in
+//! `rule_set.rules().len() == 38` (post-PR-closing-#470 + post-PR-5;
+//! the count rolls forward in lock-step with this test as rules land
+//! or retire — see the running-count derivation comment in
 //! `corpus_parity.rs::rule_count_reflects_registration_changes`).
 //! That count pin catches "a rule was added or removed." It does
 //! **not** catch:
@@ -44,7 +59,9 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 39 registered `Rule::id()` strings post-PR-#488.
+/// The closed set of 38 registered `Rule::id()` strings post-PR-closing-#470
+/// (and unchanged under PR 5, which adds E068 + E069 as per-row IDs of the
+/// existing `BannerMatchesProjectedRule` walker — not new `Rule` impls).
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
