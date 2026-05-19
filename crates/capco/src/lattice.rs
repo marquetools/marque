@@ -3302,8 +3302,8 @@ impl FgiSet {
 ///
 /// - **SBU-NF**: the bare SBU vanishes entirely from the output set;
 ///   only NOFORN is injected via `needs_nf`. **§H.9 p178** (SBU NOFORN
-///   Commingling Rule(s) Within a Portion, line 4421): *"If the portion
-///   is classified, the classification level of the portion adequately
+///   Commingling Rule(s) Within a Portion): *"If the portion is
+///   classified, the classification level of the portion adequately
 ///   protects the SBU information, so SBU is not reflected in the
 ///   portion mark; however a NOFORN marking must be added to the
 ///   portion mark, e.g., (C//NF)."* The classification level subsumes
@@ -3311,20 +3311,19 @@ impl FgiSet {
 ///
 /// - **LES-NF**: the bare LES is RETAINED in the output set; NOFORN
 ///   is injected via `needs_nf` in parallel. **§H.9 p185** (LES NOFORN
-///   Precedence Rules for Banner Line Guidance, line 4557-4558):
-///   *"The LES marking always appears in the banner line if LES
-///   information (either LES or LES NOFORN) is contained in the
-///   document, regardless of the document's classification level.
-///   When a classified document contains portions of U//LES-NF, the
-///   'LES' marking is used in the banner line and the NOFORN marking
-///   is applied as a Dissemination Control Marking. For example:
-///   SECRET//NOFORN//LES."* LES carries independent regulatory
-///   discipline (law-enforcement legal-process restrictions per
-///   §H.9 p182 LES Warning Statement, originator-control discipline
-///   per §H.9 p186 Notes — and the `SECRET//NOFORN//LES` worked
-///   example at §H.9 p184 Notional Example Page 4) that classification
-///   does NOT subsume — hence
-///   the asymmetry with SBU.
+///   Precedence Rules for Banner Line Guidance): *"The LES marking
+///   always appears in the banner line if LES information (either LES
+///   or LES NOFORN) is contained in the document, regardless of the
+///   document's classification level. When a classified document
+///   contains portions of U//LES-NF, the 'LES' marking is used in the
+///   banner line and the NOFORN marking is applied as a Dissemination
+///   Control Marking. For example: SECRET//NOFORN//LES."* LES carries
+///   independent regulatory discipline (law-enforcement legal-process
+///   restrictions per §H.9 p182 LES Warning Statement, originator-
+///   control discipline per §H.9 p186 Notes — and the
+///   `SECRET//NOFORN//LES` worked example at §H.9 p184 Notional Example
+///   Page 4) that classification does NOT subsume — hence the
+///   asymmetry with SBU.
 ///
 /// **`Default`** is the bottom: empty set, `needs_nf = false`.
 ///
@@ -3348,10 +3347,8 @@ impl FgiSet {
 /// - §H.9 p172 (EXDIS — REL TO not authorized in banner; NOFORN
 ///   conveys).
 /// - §H.9 p174 (NODIS — same).
-/// - §H.9 p178 line 4421 (SBU-NF — SBU vanishes on classified;
-///   NOFORN added).
-/// - §H.9 p185 line 4557-4558 (LES-NF — LES retained on classified;
-///   NOFORN added).
+/// - §H.9 p178 (SBU-NF — SBU vanishes on classified; NOFORN added).
+/// - §H.9 p185 (LES-NF — LES retained on classified; NOFORN added).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NonIcDissemSet {
     set: BTreeSet<NonIcDissem>,
@@ -3390,8 +3387,8 @@ impl NonIcDissemSet {
 
         let mut needs_nf = false;
         if classified {
-            // §H.9 p178 line 4421 (SBU NOFORN Commingling Rule(s)
-            // Within a Portion): "If the portion is classified, the
+            // §H.9 p178 (SBU NOFORN Commingling Rule(s) Within a
+            // Portion): "If the portion is classified, the
             // classification level of the portion adequately protects
             // the SBU information, so SBU is not reflected in the
             // portion mark; however a NOFORN marking must be added to
@@ -3404,8 +3401,8 @@ impl NonIcDissemSet {
             if set.remove(&NonIcDissem::SbuNf) {
                 needs_nf = true;
             }
-            // §H.9 p185 line 4557-4558 (LES NOFORN Precedence Rules
-            // for Banner Line Guidance): "The LES marking always
+            // §H.9 p185 (LES NOFORN Precedence Rules for Banner Line
+            // Guidance): "The LES marking always
             // appears in the banner line if LES information (either
             // LES or LES NOFORN) is contained in the document,
             // regardless of the document's classification level. When
@@ -4653,20 +4650,20 @@ mod tests {
 
     #[test]
     fn non_ic_dissem_set_sbu_nf_drops_sbu_on_classified() {
-        // §H.9 p178 line 4421: "If the portion is classified, the
-        // classification level of the portion adequately protects
-        // the SBU information, so SBU is not reflected in the
-        // portion mark; however a NOFORN marking must be added to
-        // the portion mark, e.g., (C//NF)." SBU vanishes entirely;
-        // only NOFORN survives via `needs_nf`. #541.
+        // §H.9 p178 (Commingling Rule(s) Within a Portion): "If the
+        // portion is classified, the classification level of the
+        // portion adequately protects the SBU information, so SBU is
+        // not reflected in the portion mark; however a NOFORN marking
+        // must be added to the portion mark, e.g., (C//NF)." SBU
+        // vanishes entirely; only NOFORN survives via `needs_nf`.
+        // #541.
         let mut p = portion_us(Classification::Secret);
         p.non_ic_dissem = Box::new([NonIcDissem::SbuNf]);
         let s = NonIcDissemSet::from_attrs_iter(&[p]);
         assert!(
             !s.as_set().contains(&NonIcDissem::Sbu),
-            "§H.9 p178 line 4421: SBU is not reflected on classified \
-             portion; set must NOT contain Sbu after SBU-NF strip. \
-             set = {:?}",
+            "§H.9 p178: SBU is not reflected on classified portion; \
+             set must NOT contain Sbu after SBU-NF strip. set = {:?}",
             s.as_set(),
         );
         assert!(
@@ -4677,9 +4674,8 @@ mod tests {
         );
         assert!(
             s.needs_nf(),
-            "§H.9 p178 line 4421: NOFORN must be added to the \
-             portion mark for classified-context SBU-NF. \
-             needs_nf = {}",
+            "§H.9 p178: NOFORN must be added to the portion mark for \
+             classified-context SBU-NF. needs_nf = {}",
             s.needs_nf(),
         );
     }
@@ -4711,14 +4707,14 @@ mod tests {
 
     #[test]
     fn non_ic_dissem_set_les_nf_splits_on_classified() {
-        // §H.9 p185 line 4557-4558 (LES NOFORN Precedence Rules for
-        // Banner Line Guidance): "The LES marking always appears in
-        // the banner line if LES information (either LES or LES
-        // NOFORN) is contained in the document, regardless of the
-        // document's classification level. When a classified
-        // document contains portions of U//LES-NF, the 'LES' marking
-        // is used in the banner line and the NOFORN marking is
-        // applied as a Dissemination Control Marking. For example:
+        // §H.9 p185 (LES NOFORN Precedence Rules for Banner Line
+        // Guidance): "The LES marking always appears in the banner
+        // line if LES information (either LES or LES NOFORN) is
+        // contained in the document, regardless of the document's
+        // classification level. When a classified document contains
+        // portions of U//LES-NF, the 'LES' marking is used in the
+        // banner line and the NOFORN marking is applied as a
+        // Dissemination Control Marking. For example:
         // SECRET//NOFORN//LES."
         //
         // This is the negative-regression gate for #541's asymmetry:

@@ -53,8 +53,8 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
     // above (`CAT_CLASSIFICATION` read, `CAT_NON_IC_DISSEM` write);
     // the SBU-NF-presence scan lives in the
     // `sbu_nf_classified_trigger` Custom predicate body — same-axis
-    // self-reference avoidance (plan §3.4 risk #4). §H.9 p178
-    // line 4421.
+    // self-reference avoidance (plan §3.4 risk #4).
+    // §H.9 p178 (Commingling Rule(s) Within a Portion).
     const PATTERN_C_SBU_NF_READS: &[marque_scheme::CategoryId] = &[CAT_CLASSIFICATION];
     const PATTERN_C_SBU_NF_WRITES: &[marque_scheme::CategoryId] = &[CAT_NON_IC_DISSEM];
 
@@ -172,8 +172,8 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         ),
         // Pattern-C row 2b: `capco/sbu-nf-evicted-by-classified` (#541).
         //
-        // §H.9 p178 line 4421 (SBU NOFORN Commingling Rule(s)
-        // Within a Portion): "If the portion is classified, the
+        // §H.9 p178 (SBU NOFORN Commingling Rule(s) Within a
+        // Portion): "If the portion is classified, the
         // classification level of the portion adequately protects
         // the SBU information, so SBU is not reflected in the
         // portion mark; however a NOFORN marking must be added to
@@ -191,8 +191,8 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // CAT_NON_IC_DISSEM arm for the §3.5 invariant's revised
         // shape.
         //
-        // The asymmetric LES-NF case (§H.9 p185 line 4557-4558
-        // explicitly retains LES on classified pages) does NOT get a
+        // The asymmetric LES-NF case (§H.9 p185 explicitly retains
+        // LES on classified pages) does NOT get a
         // parallel `capco/les-nf-evicted-by-classified` row — LES
         // survives classification by regulatory design (see
         // `NonIcDissemSet`'s type-level doc-comment for the
