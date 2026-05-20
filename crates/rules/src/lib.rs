@@ -689,12 +689,12 @@ pub const CORRECTIONS_MAP_CITATION: &str = "CONFIG:[corrections]";
 /// `FixIntent<S>` is significantly larger than `TextCorrection { replacement:
 /// SmolStr }` because it carries `Confidence` + `Message` + `SmallVec`
 /// inline storage. The `large_enum_variant` lint is suppressed here
-/// because the fix path never uses `Vec<AppliedFixProposal>` directly;
-/// `AppliedFix<S>` is always individually heap-allocated (stored in a
-/// `Vec<AppliedFix<S>>`), so the per-element cost is the same whether
-/// the payload is boxed or inline. Storing `FixIntent<S>` inline
-/// eliminates the per-fix `Box::new` heap allocation that the previous
-/// `Box<FixIntent<S>>` incurred (CO-1 perf candidate).
+/// because the size disparity is an intentional tradeoff: storing
+/// `FixIntent<S>` inline eliminates the per-fix `Box::new` heap
+/// allocation that the previous `Box<FixIntent<S>>` incurred (CO-1 perf
+/// candidate), at the cost of every element in `Vec<AppliedFix<S>>`
+/// occupying the larger variant's footprint regardless of which arm is
+/// active.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum AppliedFixProposal<S: MarkingScheme> {
