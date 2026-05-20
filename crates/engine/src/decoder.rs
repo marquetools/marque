@@ -1017,7 +1017,7 @@ fn is_fast_path_candidate_shape(kind: MarkingType, bytes: &[u8]) -> bool {
 /// Decoder-only fast parse for the common US classification + dissem shape.
 ///
 /// This avoids invoking the full strict parser for canonical attempts like
-/// `(SECRET//NF)` / `(SERCET//NF)` where the decoder already knows the shape
+/// `(SECRET//NF)` and typo-shaped attempts like `(SERCET//NF)` where the decoder already knows the shape
 /// is a simple portion/banner with an optional slash-delimited dissem block.
 /// Any non-trivial form (non-US prefix, extra `//` blocks, mixed-category
 /// slash blocks, REL TO/DISPLAY ONLY, etc.) falls back to the full parser.
@@ -6270,6 +6270,18 @@ mod tests {
 
     #[test]
     fn fast_path_parses_simple_us_class_and_dissem_shape() {
+        let canonical = try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(SECRET//NF)")
+            .expect("canonical simple portion should hit decoder fast-path");
+        assert_eq!(
+            canonical.0.classification,
+            Some(MarkingClassification::Us(Classification::Secret))
+        );
+        assert_eq!(canonical.0.dissem_us.as_ref(), &[DissemControl::Nf]);
+        assert!(canonical.0.token_spans.is_empty());
+
+        // Intentional typo: the fast-path preserves strict-parser behavior for
+        // unknown classification tokens by keeping `classification = None`
+        // while still retaining known dissem controls.
         let marking = try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(SERCET//NF)")
             .expect("simple portion should hit decoder fast-path");
         assert_eq!(marking.0.classification, None);
