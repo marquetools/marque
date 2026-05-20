@@ -997,6 +997,28 @@ fn axis_mask_display_only_sets_bit() {
         mask & (1 << CAT_DISPLAY_ONLY_TO.0) != 0,
         "DISPLAY ONLY non-empty → CAT_DISPLAY_ONLY_TO bit set"
     );
+    // `capco_category_contains(CAT_DISSEM, TOK_DISPLAY_ONLY)` returns true
+    // when `display_only_to` is non-empty (canonical parsed form), so the
+    // CAT_DISSEM bit must also be set to keep `Contains(CAT_DISSEM,
+    // TOK_DISPLAY_ONLY)` triggers (e.g. `capco/display-only-clears-relido`)
+    // reachable through the eligibility gate.
+    assert!(
+        mask & (1 << CAT_DISSEM.0) != 0,
+        "DISPLAY ONLY non-empty → CAT_DISSEM bit set (eligibility for Contains(CAT_DISSEM, TOK_DISPLAY_ONLY) triggers)"
+    );
+}
+
+#[test]
+fn axis_mask_declassify_on_sets_bit() {
+    use marque_ism::IsmDate;
+    let mut a = mk_attrs();
+    a.declassify_on = Some(IsmDate::Year(2030));
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_DECLASSIFY_ON.0) != 0,
+        "declassify_on populated → CAT_DECLASSIFY_ON bit set"
+    );
 }
 
 #[test]

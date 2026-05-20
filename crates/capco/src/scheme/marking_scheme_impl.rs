@@ -801,14 +801,18 @@ impl CapcoScheme {
         // we check whether the trigger's required category is present;
         // if not, the trigger can't fire and we skip the row entirely.
         //
-        // The mask is maintained monotonically: bits are OR-ed in for
-        // each rewrite's declared write axes when the rewrite fires, so
-        // downstream rows that depend on newly-written axes are
-        // correctly eligible. Bits are never cleared (conservatively
-        // safe: a later row might see that a prior Clear action removed
-        // a value, but the trigger evaluation on the actual `out` state
-        // catches that correctly — we only skip rows when the category
-        // is definitively absent).
+        // Mask update policy:
+        // - `Contains(X, _)` / `Custom` eligibility: bits are OR-ed in
+        //   for each fired rewrite's declared write axes, so downstream
+        //   rows that depend on newly-written axes are correctly eligible
+        //   even if the category was empty at mask-init time.
+        // - `Empty(X)` eligibility: after a `Clear` action fires on
+        //   category X, the bit for X is cleared if the category is now
+        //   empty per `capco_category_has_values`. Without this step a
+        //   downstream `Empty { category: X }` trigger would be skipped
+        //   because the bit still reads as set (monotone-only policy
+        //   would miss cleared categories), so the trigger could never
+        //   fire even though the category is now empty.
         let mut page_mask = capco_axis_mask(&out);
         for rw in &self.page_rewrites {
             // Eligibility pre-check: skip rows whose trigger category is
@@ -863,6 +867,12 @@ impl CapcoScheme {
                             "PageRewrite fired",
                         );
                         capco_category_clear(&mut out, *category);
+                        // After clearing, update the mask: if the category
+                        // is now empty, clear its bit so that downstream
+                        // `Empty { category }` triggers become eligible.
+                        if !capco_category_has_values(&out, *category) {
+                            page_mask &= !(1u64 << category.0);
+                        }
                     }
                     CategoryAction::Replace { category, with } => {
                         tracing::debug!(

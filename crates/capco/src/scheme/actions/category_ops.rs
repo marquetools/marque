@@ -255,7 +255,20 @@ pub(crate) fn capco_axis_mask(m: &CapcoMarking) -> u64 {
     }
 
     // CAT_DISSEM (8): IC dissemination controls (US or NATO namespace).
-    if !attrs.dissem_us.is_empty() || !attrs.dissem_nato.is_empty() {
+    //
+    // `display_only_to` is included here because
+    // `capco_category_contains(CAT_DISSEM, TOK_DISPLAY_ONLY)` returns
+    // `true` when `attrs.display_only_to` is non-empty — the canonical
+    // parsed form `DISPLAY ONLY [LIST]` routes into `display_only_to`
+    // rather than into a `DissemControl::Displayonly` entry in `dissem_us`.
+    // Without this arm the eligibility gate in `project_attrs_pipeline`
+    // would skip every `Contains(CAT_DISSEM, TOK_DISPLAY_ONLY)` trigger
+    // (e.g. `capco/display-only-clears-relido`) on canonical DISPLAY ONLY
+    // input where `dissem_us` and `dissem_nato` are both empty.
+    if !attrs.dissem_us.is_empty()
+        || !attrs.dissem_nato.is_empty()
+        || !attrs.display_only_to.is_empty()
+    {
         mask |= 1 << CAT_DISSEM.0;
     }
 
