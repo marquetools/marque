@@ -539,6 +539,9 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
         None,
         false,
         None,
+        // Test-fixture carve-out per Constitution V Principle V — the
+        // promotion token mint is part of the same synthetic helper
+        // above; both calls feed `synth_leaky_text_correction` only.
         EnginePromotionToken::__engine_construct(),
     )
 }

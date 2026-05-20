@@ -81,6 +81,10 @@ fn synth_applied_fix(
     // engine uses at promotion). CategoryId::MARKING since the intent
     // is Recanonicalize (whole-marking scope per PR 3c.2.D's
     // CategoryId resolution).
+    //
+    // Test-fixture carve-out per Constitution V Principle V — synthetic
+    // fixture builder for the SC-008 parity test; never reaches an
+    // engine audit stream.
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();
     let canonical: Canonical<CapcoScheme> =
         constructor.build_open_vocab(CategoryId::MARKING, Box::from("(S)"), Scope::Portion);
@@ -336,10 +340,16 @@ fn applied_fix_message_populated_args_round_trip() {
     };
     intent.message = Message::new(MessageTemplate::SupersededToken, args);
 
+    // Test-fixture carve-out per Constitution V Principle V — the
+    // EngineConstructor / EnginePromotionToken / AuditAppliedFix mints
+    // below fabricate the populated-MessageArgs round-trip fixture for
+    // this SC-008 parity test and never reach an engine audit stream.
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();
     let canonical: Canonical<CapcoScheme> =
         constructor.build_open_vocab(CategoryId::MARKING, Box::from("(S)"), Scope::Portion);
+    // Test-fixture carve-out per Constitution V Principle V (continued).
     let token = EnginePromotionToken::__engine_construct();
+    // Test-fixture carve-out per Constitution V Principle V (continued).
     let fix = AuditAppliedFix::<CapcoScheme>::__engine_promote(
         RuleId::new("E006"),
         Severity::Warn,

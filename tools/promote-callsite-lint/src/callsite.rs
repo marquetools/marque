@@ -48,64 +48,92 @@ pub const CARVE_OUT_MARKER: &str = "Test-fixture carve-out per Constitution V";
 /// carve-out comment may appear. Matches the FR-039 masking-pin window.
 pub const COMMENT_LOOKBACK_LINES: usize = 5;
 
-/// Engine functions allowed to call `AppliedFix::__engine_promote` /
-/// `AppliedTextCorrection::__engine_promote_text_correction` /
-/// `EnginePromotionToken::__engine_construct` in production code.
+/// The three reserved-name constructors the lint guards. Threaded
+/// through `classify_and_emit` so each call site is checked against
+/// the allow-list for *that specific name*, not a union of all three.
 ///
-/// Per Constitution V Principle V, only `Engine::fix_inner` may
-/// promote marking `FixIntent` values to `AppliedFix` audit records,
-/// and only `Engine::apply_text_corrections` may promote text-
-/// correction matches to `AppliedTextCorrection` audit records (the
-/// PR 3c.2.D split). The token-mint helper `engine_promotion_token`
-/// (called only by the prior two) is part of the same gate and is
-/// permitted here for the same reason: a future refactor that adds
-/// a fourth production caller has to thread through this list,
-/// making the expansion an explicit decision.
-/// Engine methods on the `Engine` type permitted to call the three
-/// reserved-name constructors in production code. These names match
-/// ONLY when the enclosing `impl` block targets `Engine` — a free
-/// function with one of these names elsewhere in
-/// `crates/engine/src/**` is rejected.
-const ENGINE_METHOD_ALLOW_LIST: &[&str] = &["fix_inner", "apply_text_corrections"];
+/// Per-name discipline closes the Copilot suppressed comment: a
+/// shared allow-list would let `Engine::fix_inner` mint a
+/// text-correction record (which is `Engine::apply_text_corrections`'
+/// job) and vice versa, contradicting the Constitution V Principle V
+/// engine-only contract that pairs each promotion gate with the
+/// specific audit-record type it owns. The three reserved names map
+/// to disjoint promotion gates, so the allow-lists are disjoint too.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum ReservedName {
+    /// `AppliedFix::__engine_promote` — mint a marking-side audit record.
+    Promote,
+    /// `AppliedTextCorrection::__engine_promote_text_correction` — mint
+    /// a text-correction-side audit record (PR 3c.2.D split).
+    PromoteTextCorrection,
+    /// `EngineConstructor::__engine_construct` (mint a `Canonical<S>`
+    /// builder) OR `EnginePromotionToken::__engine_construct` (mint a
+    /// promotion token). Both share the reserved ident.
+    Construct,
+}
 
-/// Methods on `TwoPassFixer` permitted to call
-/// `AppliedFix::__engine_promote` / `EnginePromotionToken::__engine_construct`
-/// in production code (PR 7b). `TwoPassFixer` is the phase-split fix
-/// orchestrator extracted from `Engine::fix_inner`; the two promotion
-/// call sites that used to live directly inside `fix_inner` now live
-/// inside `TwoPassFixer::apply_kept_fixes`. The Constitution V Principle V
-/// engine-only contract still holds — `TwoPassFixer` is a private
-/// struct in `crates/engine/src/engine.rs`, the promotion token is
-/// minted by the same `engine_promotion_token()` free helper as
-/// before, and the threshold gate / FR-016 sort / C-1 overlap guard
-/// run in the same orchestrator.
+/// Per-reserved-name production allow-lists for methods on `impl Engine`.
 ///
-/// This list is matched only when (a) the enclosing `impl` block
-/// targets a type whose last-segment name is `TwoPassFixer` AND (b)
-/// the call site lives in the canonical file
+/// Matched only when (a) the enclosing `impl` block targets the
+/// `Engine` type AND (b) the call site lives in the canonical file
 /// `crates/engine/src/engine.rs` (the [`is_engine_canonical_helper_file`]
-/// check). The path guard closes the Copilot round-3 R3-1 finding:
-/// type-name-only matching against `impl_self_type` would let any
-/// `struct TwoPassFixer` defined elsewhere under `crates/engine/src/**`
-/// inherit the allow-list — same-name shadowing is exactly the
-/// engine-only-contract bypass the FR-040 lint must mechanically
-/// prevent. The pattern mirrors [`ENGINE_FREE_FN_ALLOW_LIST`]'s
-/// `is_engine_canonical_helper_file` companion-check: "one allow-list
-/// entry, one canonical home."
-const TWOPASSFIXER_METHOD_ALLOW_LIST: &[&str] = &["apply_kept_fixes"];
+/// check). The path guard mirrors the existing `TwoPassFixer` /
+/// `ENGINE_FREE_FN_ALLOW_LIST` canonical-file companion-checks: "one
+/// allow-list entry, one canonical home." Without it a shadow
+/// `struct Engine { ... } impl Engine { fn apply_text_corrections() }`
+/// in some other file under `crates/engine/src/**` would inherit the
+/// allow-list — same-name shadowing is exactly the engine-only-
+/// contract bypass the FR-040 lint must mechanically prevent.
+const ENGINE_METHOD_ALLOW_LIST_PROMOTE: &[&str] = &["fix_inner"];
+const ENGINE_METHOD_ALLOW_LIST_PROMOTE_TEXT_CORRECTION: &[&str] = &["apply_text_corrections"];
+const ENGINE_METHOD_ALLOW_LIST_CONSTRUCT: &[&str] = &[];
 
-/// Free helper(s) in `crates/engine/src/engine.rs` (the exact file)
-/// that are permitted to mint an `EnginePromotionToken`. Currently
-/// exactly one — the `engine_promotion_token()` token-mint helper.
-/// The list is matched in conjunction with
-/// [`is_engine_canonical_helper_file`] so a free fn with the same
-/// name in a different file under `crates/engine/src/**` is rejected:
-/// the FR-040 contract centralizes token-mint privilege in ONE
-/// helper, located at one specific path. A separate file-level
-/// matcher (rather than just the ident name) closes the bypass that
-/// any module under `crates/engine/src/**` could otherwise re-declare
-/// the helper and pass PRC002.
-const ENGINE_FREE_FN_ALLOW_LIST: &[&str] = &["engine_promotion_token"];
+/// Per-reserved-name production allow-lists for methods on
+/// `impl TwoPassFixer`. PR 7b moved the marking-promotion path from
+/// `Engine::fix_inner` into `TwoPassFixer::apply_kept_fixes`; the
+/// `EngineConstructor::__engine_construct` (Canonical builder mint)
+/// also lives there. `TwoPassFixer` does NOT mint text-correction
+/// records — that path stays on `Engine::apply_text_corrections`.
+const TWOPASSFIXER_METHOD_ALLOW_LIST_PROMOTE: &[&str] = &["apply_kept_fixes"];
+const TWOPASSFIXER_METHOD_ALLOW_LIST_PROMOTE_TEXT_CORRECTION: &[&str] = &[];
+const TWOPASSFIXER_METHOD_ALLOW_LIST_CONSTRUCT: &[&str] = &["apply_kept_fixes"];
+
+/// Per-reserved-name production allow-lists for free functions
+/// inside `crates/engine/src/engine.rs`. Currently exactly one entry:
+/// `engine_promotion_token()`, the token-mint helper that centralizes
+/// `EnginePromotionToken::__engine_construct` calls in ONE place per
+/// FR-040. No free fn is permitted to call `__engine_promote` or
+/// `__engine_promote_text_correction` directly.
+const ENGINE_FREE_FN_ALLOW_LIST_PROMOTE: &[&str] = &[];
+const ENGINE_FREE_FN_ALLOW_LIST_PROMOTE_TEXT_CORRECTION: &[&str] = &[];
+const ENGINE_FREE_FN_ALLOW_LIST_CONSTRUCT: &[&str] = &["engine_promotion_token"];
+
+/// Resolve the (engine-method, twopassfixer-method, free-fn) allow-list
+/// triple for a given reserved name. Returned slices may be empty,
+/// which represents "no production caller is permitted to mint this
+/// reserved name in this scope" (e.g., no free fn may call
+/// `__engine_promote` directly).
+fn allow_lists_for(
+    name: ReservedName,
+) -> (&'static [&'static str], &'static [&'static str], &'static [&'static str]) {
+    match name {
+        ReservedName::Promote => (
+            ENGINE_METHOD_ALLOW_LIST_PROMOTE,
+            TWOPASSFIXER_METHOD_ALLOW_LIST_PROMOTE,
+            ENGINE_FREE_FN_ALLOW_LIST_PROMOTE,
+        ),
+        ReservedName::PromoteTextCorrection => (
+            ENGINE_METHOD_ALLOW_LIST_PROMOTE_TEXT_CORRECTION,
+            TWOPASSFIXER_METHOD_ALLOW_LIST_PROMOTE_TEXT_CORRECTION,
+            ENGINE_FREE_FN_ALLOW_LIST_PROMOTE_TEXT_CORRECTION,
+        ),
+        ReservedName::Construct => (
+            ENGINE_METHOD_ALLOW_LIST_CONSTRUCT,
+            TWOPASSFIXER_METHOD_ALLOW_LIST_CONSTRUCT,
+            ENGINE_FREE_FN_ALLOW_LIST_CONSTRUCT,
+        ),
+    }
+}
 
 /// Scan `<workspace_dir>` and return any callsite-lint diagnostics.
 ///
@@ -302,12 +330,18 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
             // method call with those names cannot reach the real APIs
             // at all (the receiver type is wrong) and would fail to
             // compile.
-            if path_ends_with(path, &["__engine_promote"])
-                || path_ends_with(path, &["__engine_promote_text_correction"])
-                || path_ends_with(path, &["__engine_construct"])
-            {
+            let matched = if path_ends_with(path, &["__engine_promote"]) {
+                Some(ReservedName::Promote)
+            } else if path_ends_with(path, &["__engine_promote_text_correction"]) {
+                Some(ReservedName::PromoteTextCorrection)
+            } else if path_ends_with(path, &["__engine_construct"]) {
+                Some(ReservedName::Construct)
+            } else {
+                None
+            };
+            if let Some(reserved) = matched {
                 let loc = node.span().start();
-                self.classify_and_emit(loc.line, loc.column);
+                self.classify_and_emit(reserved, loc.line, loc.column);
             }
         }
         syn::visit::visit_expr_call(self, node);
@@ -329,7 +363,7 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
 }
 
 impl CallSiteVisitor<'_> {
-    fn classify_and_emit(&mut self, line: usize, column: usize) {
+    fn classify_and_emit(&mut self, reserved: ReservedName, line: usize, column: usize) {
         let enclosing = enclosing_fn(self.fn_records, line);
         let in_engine_src = self.is_engine_src();
         let in_test_path = self.is_test_path();
@@ -337,52 +371,68 @@ impl CallSiteVisitor<'_> {
         let in_cfg_test_module = enclosing.is_some_and(|r| r.in_cfg_test);
 
         // Classification 1: production-allowed (engine src + allow-listed
-        // fn whose enclosing impl block targets the `Engine` type).
-        // Both checks are required: a free function or a method on some
-        // other type with one of the names below would otherwise pass
-        // even though FR-040 only authorizes the genuine `Engine` gate.
+        // fn whose enclosing impl block targets the `Engine` type or
+        // `TwoPassFixer`, with the allow-list scoped to the *specific*
+        // reserved name being called).
+        //
+        // Per-reserved-name discipline (Copilot suppressed) is what makes
+        // "only `apply_text_corrections` may promote text corrections"
+        // mechanically enforceable: a shared allow-list would let
+        // `Engine::fix_inner` mint a text-correction record and vice
+        // versa.
+        //
         // `engine_promotion_token` is a free helper in
         // `crates/engine/src/engine.rs`, so its `impl_self_type` is
         // `None` and the assertion is "not on a different impl block."
         if in_engine_src {
             if let Some(fr) = enclosing {
-                // The two allow-lists are kept disjoint and matched on
-                // shape, not just name:
+                let (engine_methods, twopass_methods, free_fns) = allow_lists_for(reserved);
+                // The three allow-list slices are matched on shape,
+                // not just name. Each slice is *per-reserved-name*,
+                // so e.g. only `apply_text_corrections` appears in
+                // the `__engine_promote_text_correction` lookup for
+                // the `Some("Engine")` arm.
                 //
-                // - `ENGINE_METHOD_ALLOW_LIST` matches only when the
-                //   enclosing impl targets `Engine`. A method on
-                //   another type or a free function with one of these
-                //   names is rejected.
-                // - `ENGINE_FREE_FN_ALLOW_LIST` matches only when there
-                //   is no enclosing impl (free function). A method on
-                //   any type with the same name is rejected.
+                // - Engine-method match requires (a) the enclosing
+                //   impl targets `Engine` AND (b) the call site is
+                //   in the canonical file `crates/engine/src/engine.rs`.
+                //   The path guard mirrors the existing `TwoPassFixer`
+                //   guard and closes the same shadow-type bypass.
+                // - TwoPassFixer-method match likewise requires the
+                //   canonical-file companion-check.
+                // - Free-fn match requires `impl_self_type == None`
+                //   AND the canonical-file companion-check. A method
+                //   on any type with the same name is rejected.
                 //
-                // Splitting the lists this way closes the bypass that
-                // a single shared list with a permissive None-allowed
-                // self-type check would have left open: a new free
-                // function in `crates/engine/src/**` named `fix_inner`
-                // or `apply_text_corrections` calling `__engine_promote`
-                // is now correctly rejected.
+                // Splitting per-name keeps the contract surface
+                // narrow: a new free function in `crates/engine/src/**`
+                // named `fix_inner` or `apply_text_corrections`
+                // calling `__engine_promote` is correctly rejected,
+                // and so is `Engine::fix_inner` minting a
+                // text-correction record.
                 let allowed = match fr.impl_self_type.as_deref() {
                     None => {
-                        ENGINE_FREE_FN_ALLOW_LIST.contains(&fr.name.as_str())
+                        free_fns.contains(&fr.name.as_str())
                             && self.is_engine_canonical_helper_file()
                     }
-                    Some("Engine") => ENGINE_METHOD_ALLOW_LIST.contains(&fr.name.as_str()),
+                    Some("Engine") => {
+                        engine_methods.contains(&fr.name.as_str())
+                            && self.is_engine_canonical_helper_file()
+                    }
                     // Canonical-path guard (Copilot round-3 R3-1): same-
                     // name shadow types defined elsewhere under
                     // `crates/engine/src/**` MUST NOT inherit the
                     // `TwoPassFixer` allow-list. The path check pins
                     // the allow-list to one home — the canonical file
                     // `crates/engine/src/engine.rs` — mirroring the
-                    // free-fn `ENGINE_FREE_FN_ALLOW_LIST` companion
-                    // check above. Without this guard, a contributor
-                    // who writes `struct TwoPassFixer { ... } impl
-                    // TwoPassFixer { fn apply_kept_fixes(...) }` in
+                    // free-fn companion check above. Without this
+                    // guard, a contributor who writes `struct
+                    // TwoPassFixer { ... } impl TwoPassFixer { fn
+                    // apply_kept_fixes(...) }` in
                     // `crates/engine/src/wherever.rs` gets a free pass
                     // through the FR-040 engine-only contract.
                     Some("TwoPassFixer") => {
-                        TWOPASSFIXER_METHOD_ALLOW_LIST.contains(&fr.name.as_str())
+                        twopass_methods.contains(&fr.name.as_str())
                             && self.is_engine_canonical_helper_file()
                     }
                     Some(_) => false,

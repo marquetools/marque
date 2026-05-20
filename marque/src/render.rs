@@ -1422,6 +1422,10 @@ mod tests {
         let fix = make_intent_fix();
         // Build the v2 Canonical<S> via EngineConstructor (the same
         // sealed open-vocab path the engine uses at promotion time).
+        //
+        // Test-fixture carve-out per Constitution V Principle V —
+        // renderer exercise synthetic fixture; never reaches the
+        // real audit stream.
         let constructor: EngineConstructor<CapcoScheme> =
             EngineConstructor::<CapcoScheme>::__engine_construct();
         // Use the multi-category sentinel — the synthetic fix above

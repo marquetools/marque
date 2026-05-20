@@ -775,9 +775,18 @@ pub async fn fix_handler(
         Ok(result) => {
             let fixed = String::from_utf8(result.source.expose_secret().to_vec())
                 .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+            // `applied_count` must reflect edit-applying records
+            // only. `AuditLine` is `#[non_exhaustive]`; using
+            // `audit_lines.len()` would silently inflate the count
+            // if a non-edit variant is added later. The two iterator
+            // accessors restrict the count to the two known edit
+            // arms (AppliedFix + TextCorrection), so adding a new
+            // variant becomes an explicit decision at this site.
+            let applied_count =
+                result.applied_fixes().count() + result.applied_text_corrections().count();
             Ok(Json(FixResponse {
                 fixed_text: fixed,
-                applied_count: result.audit_lines.len(),
+                applied_count,
                 remaining_diagnostics: result.remaining_diagnostics.len(),
             })
             .into_response())

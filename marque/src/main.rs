@@ -876,21 +876,26 @@ fn run_fix(
                 // `AuditLine` is `#[non_exhaustive]`; the two
                 // current arms (AppliedFix / TextCorrection) clone
                 // through the per-arm `input` field rebind. A
-                // future variant lands as a fallthrough that
-                // `render_audit_line` projects to `Value::Null` —
-                // the T055 G13 canary catches that surface change.
-                let line_with_input = match line {
+                // future variant falls through to the wildcard
+                // arm and is rendered as-is (without the CLI's
+                // `input_label` patched in) so the NDJSON stream
+                // does not silently drop the record. The T055 G13
+                // canary catches the projection surface change at
+                // the same time — together they make the addition
+                // of a new variant a loud failure, not a silent
+                // omission from `--audit-out`.
+                let line_with_input: std::borrow::Cow<'_, _> = match line {
                     marque_rules::AuditLine::AppliedFix(fix) => {
                         let mut cloned = fix.clone();
                         cloned.input = Some(input_label.clone());
-                        marque_rules::AuditLine::AppliedFix(cloned)
+                        std::borrow::Cow::Owned(marque_rules::AuditLine::AppliedFix(cloned))
                     }
                     marque_rules::AuditLine::TextCorrection(tc) => {
                         let mut cloned = tc.clone();
                         cloned.input = Some(input_label.clone());
-                        marque_rules::AuditLine::TextCorrection(cloned)
+                        std::borrow::Cow::Owned(marque_rules::AuditLine::TextCorrection(cloned))
                     }
-                    _ => continue,
+                    _ => std::borrow::Cow::Borrowed(line),
                 };
                 if let Err(e) =
                     render::render_audit_line(&mut stderr_lock, scheme, &line_with_input)

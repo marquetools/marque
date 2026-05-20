@@ -24,6 +24,12 @@ fn write(tmp: &Path, rel: &str, contents: &str) {
 
 #[test]
 fn production_allowed_inside_engine_fix_inner() {
+    // `Engine::fix_inner` is the marking-fix gate. Under the per-
+    // reserved-name allow-list, it MAY call `__engine_promote` but
+    // NOT `__engine_construct` directly — token mints route through
+    // the `engine_promotion_token()` free helper (its own canonical
+    // home). See `production_denied_engine_fix_inner_calling_construct`
+    // for the negative half of this contract.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
@@ -32,14 +38,7 @@ fn production_allowed_inside_engine_fix_inner() {
 struct Engine;
 impl Engine {
     fn fix_inner(&self) {
-        let _ = AppliedFix::__engine_promote(
-            (),
-            (),
-            (),
-            false,
-            None,
-            EnginePromotionToken::__engine_construct(),
-        );
+        let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
     }
 }
 ",
@@ -50,6 +49,37 @@ impl Engine {
 
 #[test]
 fn production_allowed_inside_apply_text_corrections() {
+    // Per-reserved-name allow-list: `apply_text_corrections` is the
+    // text-correction gate and MAY call
+    // `__engine_promote_text_correction`. Calling `__engine_promote`
+    // (the marking-fix promoter) from `apply_text_corrections` is
+    // explicitly denied — see
+    // `production_denied_apply_text_corrections_calling_promote_marking`.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct Engine;
+impl Engine {
+    fn apply_text_corrections(&self) {
+        let _ = AppliedTextCorrection::__engine_promote_text_correction((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
+}
+
+#[test]
+fn production_denied_apply_text_corrections_calling_promote_marking() {
+    // Copilot suppressed: per-reserved-name allow-list. Even though
+    // `apply_text_corrections` is in the `Engine` allow-list for
+    // `__engine_promote_text_correction`, it MUST NOT call
+    // `__engine_promote` (the marking-fix promoter). The two audit-
+    // record types are disjoint per Constitution V Principle V; the
+    // lint reflects that disjointness.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
@@ -64,7 +94,83 @@ impl Engine {
 ",
     );
     let diags = callsite::scan_workspace(tmp.path()).unwrap();
-    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
+    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC002");
+}
+
+#[test]
+fn production_denied_engine_fix_inner_calling_promote_text_correction() {
+    // Symmetric to the test above: `Engine::fix_inner` is the
+    // marking-fix gate and MUST NOT mint a text-correction record.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct Engine;
+impl Engine {
+    fn fix_inner(&self) {
+        let _ = AppliedTextCorrection::__engine_promote_text_correction((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC002");
+}
+
+#[test]
+fn production_denied_engine_fix_inner_calling_construct_directly() {
+    // Per-reserved-name allow-list: `__engine_construct` calls in
+    // `Engine` methods are denied. Token mints route through the
+    // `engine_promotion_token()` free helper (canonical home for
+    // the `EnginePromotionToken::__engine_construct` call); the
+    // `EngineConstructor::__engine_construct` Canonical-builder
+    // mint lives in `TwoPassFixer::apply_kept_fixes`. Neither path
+    // sits inside an `Engine` method.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct Engine;
+impl Engine {
+    fn fix_inner(&self) {
+        let _ = EnginePromotionToken::__engine_construct();
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC002");
+}
+
+#[test]
+fn production_denied_engine_shadow_struct_in_other_file() {
+    // Copilot visible #3: canonical-path guard for the `Engine`
+    // allow-list. A shadow `struct Engine { ... } impl Engine { fn
+    // fix_inner(...) }` defined in a file OTHER than the canonical
+    // `crates/engine/src/engine.rs` MUST NOT inherit the allow-list.
+    // Mirrors the existing `two_pass_fixer_shadow_type_outside_canonical_file_is_denied`
+    // test for the `TwoPassFixer` allow-list.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/elsewhere.rs",
+        r"
+struct Engine;
+impl Engine {
+    fn fix_inner(&self) {
+        let _ = AppliedFix::__engine_promote((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(diags.len(), 1, "expected exactly 1 diagnostic, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC002");
 }
 
 #[test]
@@ -731,6 +837,60 @@ fn not_a_violation_legacy_text_correction() {
         diags.is_empty(),
         "expected no diagnostics on `__engine_promote_text_correction_legacy` \
          (matcher must anchor on exact last-segment equality, not prefix), \
+         got {diags:#?}"
+    );
+}
+
+#[test]
+#[ignore = "documents a known syntactic-lint gap; mitigated at type-system + dep-review layers"]
+fn known_gap_pirate_path_inside_allow_listed_fn_bypasses() {
+    // User scenario (2026-05-20 "thinking out loud"): a fully-qualified
+    // call to a non-marque path whose **last segment** is `__engine_promote`,
+    // called from inside an allow-listed enclosing fn, is currently
+    // NOT flagged by this lint. The lint matches by path-last-segment +
+    // enclosing-fn-classification, both syntactic; it has no name-
+    // resolution stage and cannot tell that the call resolves to a
+    // third-party function rather than the real
+    // `marque_rules::AppliedFix::__engine_promote`.
+    //
+    // Why this is acceptable defense-in-depth:
+    //   1. The real `__engine_promote` takes a sealed
+    //      `EnginePromotionToken` argument — minted only via
+    //      `EnginePromotionToken::__engine_construct`, itself caught by
+    //      the lint. A pirate fn wanting to forge an `AppliedFix`
+    //      would either need to call the real constructor (its own
+    //      call site is then caught) or use `mem::transmute` (a much
+    //      louder Constitution V Principle V violation).
+    //   2. `AppliedFix` is `#[non_exhaustive]` and has no other
+    //      constructor; a pirate path cannot fabricate one from
+    //      scratch.
+    //   3. The `audit_g13_canary` end-to-end NDJSON test scans every
+    //      audit-stream record for content-leak signatures, catching
+    //      a malicious pirate-record at runtime regardless of how the
+    //      pirate fn was named.
+    //   4. New workspace dependencies require deny-list / license
+    //      review (cargo deny) at PR time.
+    //
+    // `#[ignore]` keeps the assertion off the CI critical path while
+    // pinning the behavior — if a future hardening pass adds path-
+    // source restriction, flip the assertion and remove `#[ignore]`.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct Engine;
+impl Engine {
+    fn fix_inner(&self) {
+        let _ = arrrrrrr_pirate::Engine::__engine_promote((), (), (), false, None, ());
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "documented gap: pirate path inside allow-listed fn is not currently flagged, \
          got {diags:#?}"
     );
 }

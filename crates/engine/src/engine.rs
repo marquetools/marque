@@ -7853,6 +7853,10 @@ mod tests {
         // EngineConstructor-minted Canonical carries the same
         // synthetic payload.
         let original_bytes: &[u8] = b"synth";
+        // Test-fixture carve-out per Constitution V Principle V — the
+        // `EngineConstructor` mint here mirrors the `__engine_promote`
+        // mint below; both feed `synth_audit_line` and never reach a
+        // real audit stream.
         let constructor: EngineConstructor<CapcoScheme> =
             EngineConstructor::<CapcoScheme>::__engine_construct();
         let canonical = constructor.build_open_vocab(
