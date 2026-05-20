@@ -702,9 +702,7 @@ impl MarkingScheme for CapcoScheme {
         let mut working = marking;
         apply_closed_bits_to(&mut working.0, closed_bits, input_bits);
 
-        if row7_fired
-            && let Some(derived_fn) = CLOSURE_REL_TO_USA_NATO.cone_derived
-        {
+        if row7_fired && let Some(derived_fn) = CLOSURE_REL_TO_USA_NATO.cone_derived {
             for fact_ref in derived_fn(&working) {
                 // The return value (changed-bit) is consumed by the
                 // fn-pointer walker that retired in PR-D; in the

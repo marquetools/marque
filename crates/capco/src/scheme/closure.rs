@@ -503,8 +503,7 @@ const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
 ///   `marque_engine::scheduler::resolve_closure_severity` (where a
 ///   future `[closure_rules]` config section threads severity
 ///   overrides through) reads rule names from this slice.
-pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] =
-    &[CLOSURE_REL_TO_USA_NATO];
+pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[CLOSURE_REL_TO_USA_NATO];
 
 // ---------------------------------------------------------------------------
 // Runtime suppression pin for `FDR_DOMINATORS` × `CLOSURE_NOFORN_CAVEATED`
