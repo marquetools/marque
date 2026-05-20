@@ -325,13 +325,15 @@ fn applied_fix_message_populated_args_round_trip() {
     // and feature_ids in a single fixture. Per Constitution V Principle V,
     // every populated field belongs to the closed permitted-identifier set.
     let mut intent = make_recanonicalize_intent();
-    let mut args = MessageArgs::default();
     // TokenId(100) → NOFORN, TokenId(111) → RD (both real CAPCO
     // tokens registered in `SENTINEL_TO_CANONICAL` —
     // `qualified_token_label` resolves them to namespaced labels).
-    args.token = Some(marque_scheme::TokenId(100));
-    args.expected_token = Some(marque_scheme::TokenId(111));
-    args.feature_ids = marque_rules::smallvec![FeatureId::EditDistance1];
+    let args = MessageArgs {
+        token: Some(marque_scheme::TokenId(100)),
+        expected_token: Some(marque_scheme::TokenId(111)),
+        feature_ids: marque_rules::smallvec![FeatureId::EditDistance1],
+        ..MessageArgs::default()
+    };
     intent.message = Message::new(MessageTemplate::SupersededToken, args);
 
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();

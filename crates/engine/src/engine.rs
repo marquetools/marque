@@ -7856,6 +7856,17 @@ mod tests {
     // `__engine_promote` under the Constitution V Principle V
     // test-fixture carve-out — the fabricated fixes never flow into a
     // real audit stream; they exist to feed the assembler under test.
+    //
+    // PR 3c.2.D / D6 scope note: this helper intentionally stays on the
+    // v1 [`AppliedFix<CapcoScheme>`] shape because the consumer
+    // signatures it feeds (`contributing_pass1_rule_ids` takes
+    // `&[AppliedFix<CapcoScheme>]`, `assemble_r002_result` takes
+    // `Vec<AppliedFix<CapcoScheme>>`, `Pass1Result.applied` is the v1
+    // storage) are engine-internal production paths that retire
+    // atomically with the schema cutover at D-A5 / D7. Migrating this
+    // synth helper to v2 in isolation would require migrating
+    // `Pass1Result.applied` + the two `TwoPassFixer` methods — engine-
+    // internal storage churn that belongs to D-A5's atomic flip.
 
     fn synth_applied_fix(rule: &'static str, start: usize, end: usize) -> AppliedFix<CapcoScheme> {
         let intent = FixIntent::<CapcoScheme> {

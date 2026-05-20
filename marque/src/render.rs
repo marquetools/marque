@@ -1753,7 +1753,7 @@ mod tests {
         );
 
         // Top-level runtime context.
-        assert_eq!(v["timestamp"].as_str().unwrap().contains('T'), true);
+        assert!(v["timestamp"].as_str().unwrap().contains('T'));
         assert_eq!(v["classifier_id"], "classifier-42");
         assert_eq!(v["dry_run"], false);
         assert_eq!(v["input"], "test.txt");
