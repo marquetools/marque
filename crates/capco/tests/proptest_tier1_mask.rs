@@ -214,10 +214,23 @@ fn oracle_e070(attrs: &CanonicalAttrs) -> bool {
 // Bridge: invoke the production dispatch through the trait surface
 // ---------------------------------------------------------------------
 
+/// Shared scheme instance for every proptest case.
+///
+/// `CapcoScheme::new()` builds the full categories/constraints tables
+/// (the catalog has 38 registered rules + 27 class-floor rows + 5 SCI
+/// per-system rows + 7 core-catalog rows). Per-case construction
+/// across 4 cases × 1024 iterations = 4096 catalog builds and added
+/// noticeable test-suite overhead — caching the instance amortizes
+/// the build to once per test-binary load.
+fn shared_scheme() -> &'static CapcoScheme {
+    use std::sync::OnceLock;
+    static SCHEME: OnceLock<CapcoScheme> = OnceLock::new();
+    SCHEME.get_or_init(CapcoScheme::new)
+}
+
 fn fires(name: &'static str, attrs: &CanonicalAttrs) -> bool {
-    let scheme = CapcoScheme::new();
     let marking = marque_capco::CapcoMarking::new(attrs.clone());
-    let out: Vec<ConstraintViolation> = scheme.evaluate_custom(name, &marking);
+    let out: Vec<ConstraintViolation> = shared_scheme().evaluate_custom(name, &marking);
     !out.is_empty()
 }
 

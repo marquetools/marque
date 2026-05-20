@@ -35,7 +35,8 @@
 //! verbatim.
 //!
 //! The mask shape sets up two follow-on optimizations tracked as the
-//! AC #5 carry-over (filed at PR-D land-time):
+//! AC #5 carry-over (#371 follow-on, filed by PR-F per the refactor
+//! plan §9):
 //!
 //! 1. **`derive_bits` amortization** — `marque_scheme::constraint::evaluate`
 //!    walks the constraint catalog once per marking and dispatches to

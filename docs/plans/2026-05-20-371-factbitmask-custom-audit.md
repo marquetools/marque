@@ -9,7 +9,7 @@ pointer to the structural body each row replaces (or retains).
 The audit table is the AC #5 deliverable. PR-E lands tier 1 only per
 OQ-4 disposition; tier 2 (class-floor catalog, 27 rows) and tier 3
 (SCI per-system catalog, 5 rows + 6 structural) are tracked as the
-#371 carry-over filed at PR-D land-time.
+#371 carry-over issue filed by PR-F per the refactor plan §9.
 
 Last verified against `crates/capco/docs/CAPCO-2016.md` at PR-E
 authorship.
@@ -20,11 +20,11 @@ The §8 audit in the refactor plan partitions the 39 catalog rows
 (7 named-dispatch + 27 class-floor + 5 SCI-per-system) by what shape
 of mask test resolves the predicate:
 
-| Tier | Mask shape | Rows | PR-E status |
-|------|------------|------|-------------|
-| **1** | Pure-presence — `(bits & TRIGGER) == 0 || (bits & SUPPRESSOR) != 0` | 4 named full + 2 named partial | **LANDED (4 full)** |
-| **2** | Numeric chain compare on classification + atom presence | 27 class-floor rows | Deferred (issue #644 follow-on) |
-| **3** | Structural compartment / sub-compartment reads | ~6 SCI-per-system rows | Deferred (issue #644 follow-on) |
+| Tier | Mask shape (firing condition) | Rows | PR-E status |
+|------|--------------------------------|------|-------------|
+| **1** | Pure-presence — `(bits & TRIGGER) != 0 && (bits & SUPPRESSOR) == 0` | 4 named full + 2 named partial | **LANDED (4 full)** |
+| **2** | Numeric chain compare on classification + atom presence | 27 class-floor rows | Deferred (#371 carry-over, filed by PR-F) |
+| **3** | Structural compartment / sub-compartment reads | ~6 SCI-per-system rows | Deferred (#371 carry-over, filed by PR-F) |
 
 PR-E compiles the 4 tier-1-full rows. The 2 tier-1-partial rows
 (`E014/joint-requires-rel-to-coverage` and `capco/joint-requires-usa`)
