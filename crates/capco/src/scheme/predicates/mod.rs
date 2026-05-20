@@ -27,6 +27,12 @@ mod satisfies;
 mod sci_per_system;
 mod spans;
 mod tier1_mask;
+// PR-G (#650 tier-2): class-floor bitmask dispatch helpers.
+// Consumed by `class_floor::class_floor_catalog_eval` via the local path
+// `super::tier2_mask::*`; no re-export at this surface — the mask helpers
+// are an internal optimization detail, not part of the predicates-leaf
+// public-via-`pub(crate)` API.
+mod tier2_mask;
 mod token_routing;
 mod triggers;
 

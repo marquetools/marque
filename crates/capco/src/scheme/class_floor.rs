@@ -14,6 +14,8 @@
 use marque_ism::{Classification, TokenKind};
 use marque_rules::{Citation, SectionLetter, capco};
 
+use crate::fact_bitmask::fact_bit;
+
 use super::predicates::*;
 
 // ===========================================================================
@@ -138,6 +140,35 @@ pub(crate) struct ClassFloorRow {
     /// means "fall back to the classification span" (NATO rows where
     /// the classification token IS the marking surface).
     pub(crate) primary_kind: Option<marque_ism::TokenKind>,
+
+    // ----- Bitmask compilation fields (PR-G / issue #650 tier-2) -----
+    //
+    // These fields compile the per-row structural presence predicate to a
+    // bitmask fast path. The dispatcher in `predicates/class_floor.rs`
+    // (`class_floor_catalog_eval`) reads them as follows:
+    //
+    //   1. FGI/JOINT early-out: their classification levels are absent from
+    //      the bitmask chain fields; the structural path handles them.
+    //   2. Trigger mask gate (O(1)): `(bits & bitmask_trigger) == 0` → no fire.
+    //   3. Presence confirmation: for coarse-gate rows (`bitmask_trigger_exact:
+    //      false`), call `presence(attrs)` to rule out false positives.
+    //   4. Floor/ceiling test via chain extract.
+    //
+    // The four passthrough rows (BUR, HCS-X, KLM, MVL) keep
+    // `bitmask_trigger: None` because their markings are open-vocab ISM-known
+    // tokens outside the closed atom inventory — no dedicated bit exists.
+    /// OR-of-atom-bits; when `(bits & bitmask_trigger) != 0`, the marking
+    /// family this row gates on may be present. `None` for the four
+    /// passthrough rows (open-vocab atoms outside the closed inventory).
+    /// Coarse-gate rows (where the mask over-approximates) carry the coarse
+    /// mask here; `bitmask_trigger_exact: false` signals that `presence()`
+    /// must still confirm.
+    pub(crate) bitmask_trigger: Option<u128>,
+
+    /// `true` when `bitmask_trigger` is precisely equivalent to the row's
+    /// `presence()` predicate — mask hit is the answer; no `presence()`
+    /// call needed. `false` for coarse-grained masks.
+    pub(crate) bitmask_trigger_exact: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +213,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_HCS_P_SUB is the dedicated sentinel for HCS-P with
+        // sub-compartments (bit 42). Exact: `presence_hcs_comp_sub`
+        // fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_HCS_P_SUB),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/SI-comp",
@@ -193,6 +229,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_SI_G (bit 40) gates on SI-G — the registered SI
+        // compartment. Coarse: `presence_si_comp` also fires on
+        // SI-ECRU and SI-NONBOOK which have no dedicated atom bit.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_SI_G),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/TK-BLFH",
@@ -204,6 +245,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_TK_BLFH (bit 43) is the dedicated BLUEFISH sentinel.
+        // Exact: `presence_tk_blfh` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_TK_BLFH),
+        bitmask_trigger_exact: true,
     },
     // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
     // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
@@ -239,6 +284,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         // that carries both the bare-class and the companion semantic);
         // anchoring at the Classification token is the right UX.
         primary_kind: None,
+        // AEA_BALK (bit 50) is the NATO SAP sentinel for BALK.
+        // Exact: `presence_balk` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_BALK),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
@@ -250,6 +299,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::G, 2, 40),
         passthrough: false,
         primary_kind: None,
+        // AEA_BOHEMIA (bit 49) is the NATO SAP sentinel for BOHEMIA.
+        // Exact: `presence_bohemia` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_BOHEMIA),
+        bitmask_trigger_exact: true,
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
@@ -262,6 +315,14 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_PRESENT (bit 37): coarse gate. HCS-O sets SCI_HCS_O (41)
+        // which also sets SCI_PRESENT; bare HCS-P (no sub-compartments)
+        // sets SCI_PRESENT only (SCI_HCS_P_SUB bit 42 requires sub-comps).
+        // Using SCI_HCS_O alone would miss bare HCS-P inputs.
+        // `presence_hcs_comp_only` confirms: rejects non-HCS, HCS-X,
+        // and HCS-P-with-sub-compartments (covered by HCS-comp-sub).
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RSV-comp",
@@ -273,6 +334,13 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_PRESENT (bit 37): coarse gate; no `SCI_RSV` atom exists
+        // in the closed inventory. `presence_rsv_comp` confirms by
+        // checking `sci_markings` for a Published(Rsv) entry with
+        // non-empty compartments. Per Q5: adding a `SCI_RSV` atom
+        // would expand the closure-rule suppressor surface; deferred.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/TK",
@@ -284,6 +352,17 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_PRESENT (bit 37): coarse gate covering all TK forms —
+        // bare TK, TK-IDIT, TK-KAND, and TK-BLFH. Bare TK (no
+        // compartments) sets only SCI_PRESENT; the specific sentinel
+        // bits (SCI_TK_BLFH/IDIT/KAND) are only set when those named
+        // compartments appear. Using SCI_PRESENT ensures bare TK is
+        // not missed. Coarse: `presence_tk_family` confirms (excludes
+        // TK-BLFH and non-TK SCI systems). False-positive rate is
+        // higher than using the specific bits alone, but correctness
+        // requires it for the bare-TK path.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RD-SG",
@@ -295,6 +374,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 113),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_RD (bit 22): coarse gate. Fires when any RD marking is
+        // present. Coarse: `presence_rd_sigma` confirms by checking
+        // `rd.sigma.is_empty() == false` (bare RD has no sigma numbers).
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_RD),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/FRD-SG",
@@ -306,6 +390,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 113),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_FRD (bit 23): coarse gate. Mirror of RD-SG for FRD.
+        // `presence_frd_sigma` confirms by checking sigma non-empty.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_FRD),
+        bitmask_trigger_exact: false,
     },
     // CNWDI — replaces retired E022. Walker-prefixed name per PM
     // directive #5.
@@ -319,6 +407,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_RD (bit 22): coarse gate. CNWDI is a sub-classification
+        // within RD (`rd.cnwdi == true`); any RD marker may carry it.
+        // `presence_rd_cnwdi` confirms by checking `rd.cnwdi`.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_RD),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RSEN",
@@ -330,6 +423,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 149),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        // RSEN (bit 6) is the closed-vocab IC dissem sentinel.
+        // Exact: `presence_rsen` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::RSEN),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/IMCON",
@@ -341,6 +438,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 144),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        // IMCON (bit 7) is the closed-vocab IC dissem sentinel.
+        // Exact: `presence_imcon` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::IMCON),
+        bitmask_trigger_exact: true,
     },
     // ---- §2.3 Floor C (8 rows) -------------------------------------
     ClassFloorRow {
@@ -353,6 +454,12 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        // SCI_PRESENT (bit 37): coarse gate; bare SI (no compartments)
+        // has no dedicated atom bit. `presence_si_bare` confirms by
+        // checking that SI is present with no compartments or
+        // sub-compartments.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
+        bitmask_trigger_exact: false,
     },
     // SAR — replaces retired E027.
     ClassFloorRow {
@@ -368,6 +475,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 5, 99),
         passthrough: false,
         primary_kind: Some(TokenKind::SarIndicator),
+        // SAR_PRESENT (bit 36) is the structural SAR sentinel.
+        // Exact: `presence_sar` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::SAR_PRESENT),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/RD",
@@ -379,6 +490,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_RD (bit 22): coarse gate. Fires when any RD marking is
+        // present. Coarse: `presence_rd_bare` excludes CNWDI (rd.cnwdi)
+        // and SIGMA (rd.sigma non-empty); the mask over-approximates.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_RD),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/FRD",
@@ -390,6 +506,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_FRD (bit 23): coarse gate. Mirror of RD for FRD.
+        // `presence_frd_bare` excludes FRD-SIGMA; the mask
+        // over-approximates.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_FRD),
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/TFNI",
@@ -401,6 +522,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 107),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_TFNI (bit 24) is the closed-vocab TFNI sentinel.
+        // Exact: `presence_tfni` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_TFNI),
+        bitmask_trigger_exact: true,
     },
     // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
     // CAPCO-2016 §H.7 p122 worked example
@@ -428,6 +553,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 7, 122),
         passthrough: false,
         primary_kind: None,
+        // AEA_ATOMAL (bit 48) is the NATO AEA sentinel for ATOMAL.
+        // Exact: `presence_atomal` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_ATOMAL),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/ORCON",
@@ -439,6 +568,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 136),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        // ORCON (bit 3) | ORCON_USGOV (bit 4): covers the ORCON
+        // family per §H.8 p136/p140. Exact: `presence_orcon_family`
+        // is equivalent to `dissem.contains(Oc) || dissem.contains(OcUsgov)`.
+        bitmask_trigger: Some((1u128 << fact_bit::ORCON) | (1u128 << fact_bit::ORCON_USGOV)),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/EYES-ONLY",
@@ -450,6 +584,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 152),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        // EYES (bit 5) is the closed-vocab IC dissem sentinel for
+        // EYES ONLY per §H.8 p157. Exact: `presence_eyes_only` fires
+        // exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::EYES),
+        bitmask_trigger_exact: true,
     },
     // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
     ClassFloorRow {
@@ -462,6 +601,13 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 116),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_DOD_UCNI (bit 26) is the closed-vocab DOD UCNI sentinel.
+        // Exact: `presence_dod_ucni` fires exactly when this bit is set.
+        // EqualsU policy: `extract_us_class_level(bits) == Some(Unclassified)`
+        // (US chain == 1) — UCNI is restricted to US-UNCLASSIFIED portions
+        // per §H.6 p116 (DOD UCNI is US AEA, not NATO-applicable).
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_DOD_UCNI),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "E058/DOE-UCNI-classification-ceiling",
@@ -473,6 +619,12 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 118),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        // AEA_DOE_UCNI (bit 25) is the closed-vocab DOE UCNI sentinel.
+        // Exact: `presence_doe_ucni` fires exactly when this bit is set.
+        // EqualsU policy: mirrors DOD UCNI — DOE UCNI is US AEA,
+        // restricted to US-UNCLASSIFIED portions per §H.6 p118.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_DOE_UCNI),
+        bitmask_trigger_exact: true,
     },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
     //
@@ -512,6 +664,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        // Passthrough rows have no atom bit in the closed inventory;
+        // their markings are open-vocab ISM-known tokens. Structural
+        // fallthrough path only.
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-HCS-X",
@@ -523,6 +680,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        // HCS-X presence requires compartment-string read (`identifier == "X"`);
+        // no SCI_HCS_X atom exists for a pure-bitmask test. Structural only.
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-KLM",
@@ -534,6 +695,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-MVL",
@@ -545,5 +708,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
 ];
