@@ -7,7 +7,7 @@
 
 This plan synthesizes two parallel design passes:
 - Architect plan: full text in this session's transcript (system-architect agent, 2026-05-20)
-- Rust specialist plan: full text at `/tmp/rust_specialist_plan_371.md` (ecc:rust-reviewer agent, 2026-05-20)
+- Rust specialist review: findings from the ecc:rust-reviewer agent (2026-05-20) are incorporated into this document
 
 The plan is **paper design only**. Implementation begins after PM disposition of the open questions at §10.
 
