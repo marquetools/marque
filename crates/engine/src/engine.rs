@@ -5136,24 +5136,22 @@ mod tests {
     /// change the rewrite schedule chosen for the default scheme.
     #[test]
     fn with_clock_uses_default_rewrite_schedule() {
-        let config = Config::default();
-        let ruleset = crate::default_ruleset();
-        let scheme = crate::default_scheme();
-        let validated_rewrites = validate_intent_rewrites(scheme.intent_rewrites())
-            .expect("default CAPCO scheme has valid intent rewrites");
-        let expected_schedule = schedule_rewrites(&validated_rewrites)
-            .expect("default CAPCO scheme has no rewrite cycles");
-
+        let via_new = Engine::new(
+            Config::default(),
+            crate::default_ruleset(),
+            crate::default_scheme(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
         let via_with_clock = Engine::with_clock(
-            config,
-            ruleset,
-            scheme,
+            Config::default(),
+            crate::default_ruleset(),
+            crate::default_scheme(),
             Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(0))),
         )
         .expect("default CAPCO scheme has no rewrite cycles");
 
         assert_eq!(
-            expected_schedule,
+            via_new.scheduled_rewrites(),
             via_with_clock.scheduled_rewrites(),
             "scheduling regression: with_clock no longer preserves the scheduler output for the default scheme"
         );
