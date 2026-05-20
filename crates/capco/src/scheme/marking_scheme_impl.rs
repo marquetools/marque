@@ -17,8 +17,8 @@
 
 use marque_ism::{CanonicalAttrs, ParsedAttrs};
 use marque_scheme::{
-    ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
-    ClosureRuleMetadata, ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
+    ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, ClosureRuleMetadata,
+    Constraint, ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
     ReplacementIntent, Scope, Span, Template, TokenId, TokenRef,
 };
 
