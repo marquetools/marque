@@ -552,6 +552,9 @@ impl MarkingScheme for CapcoScheme {
             } else {
                 inventory.push(ClosureRuleMetadata {
                     name: row.name,
+                    // Bitmask rows currently expose citation text only; until
+                    // they grow an explicit display label, inventory surfaces
+                    // reuse that citation text as the human-facing label.
                     label: row.label,
                     citation: Some(row.label),
                     default_severity: row.default_severity,

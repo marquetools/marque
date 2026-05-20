@@ -317,6 +317,8 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> From<&ClosureRule<S>> for Closure
     fn from(rule: &ClosureRule<S>) -> Self {
         Self {
             name: rule.name,
+            // Inventory metadata uses the dedicated display label for UX, while
+            // carrying the authoritative-source citation separately.
             label: rule.display_label,
             citation: Some(rule.label),
             default_severity: rule.default_severity,
