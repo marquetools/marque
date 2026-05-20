@@ -289,12 +289,15 @@ struct DiagnosticJson<'a> {
 
 /// Structured JSON projection of a [`Message`].
 ///
-/// `template` is the [`MessageTemplate::as_str`] canonical label;
-/// `args` is a flattened object with the populated `MessageArgs`
-/// fields (omitted fields are absent from the JSON to keep the wire
-/// shape compact). Phase 1 of the wire-shape change carries the
-/// template label only; per-template arg expansion lands when audit
-/// renderers need the structured field set.
+/// Phase-1 wire shape (PR 3c.2.C): `{ "template": "..." }` only.
+/// `template` is the [`MessageTemplate::as_str`] canonical label.
+///
+/// `args` is intentionally NOT serialized in phase 1 — the closed
+/// `MessageArgs` payload (typed `TokenId` / `CategoryId` / `Span` /
+/// `Blake3Hash` / `Confidence` / `FeatureId` / `RuleId`) requires a
+/// per-template arg-flattening serializer that downstream consumers
+/// don't yet need. A future PR will add the `args` field when audit
+/// renderers demand the structured field set.
 #[derive(Debug, Serialize)]
 struct MessageJson<'a> {
     template: &'a str,

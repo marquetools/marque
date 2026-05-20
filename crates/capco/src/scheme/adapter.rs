@@ -478,9 +478,11 @@ impl CapcoScheme {
 
     /// Typed [`Citation`](marque_rules::Citation) lookup for known
     /// constraint labels. Bridge layer per PR 3c.2.C C5 / PM-C-1.
-    /// Returns `None` for labels not in the explicit mapping; the
-    /// bridge falls back to a parser-based conversion from
-    /// `ConstraintViolation.citation: &'static str` if needed.
+    /// Returns `None` for labels not in the explicit mapping; in that
+    /// case `Engine::bridge_constraint_diagnostic` falls back to an
+    /// `AuthoritativeSource::EngineInternal` sentinel citation —
+    /// the legacy `ConstraintViolation.citation: &'static str` value
+    /// is dropped (logged only). No parser-based conversion occurs.
     ///
     /// Constitution VIII propagation: each citation re-verified
     /// against `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.C

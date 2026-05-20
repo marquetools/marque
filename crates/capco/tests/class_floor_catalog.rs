@@ -61,20 +61,21 @@ fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
 /// PR 3c.2.C C5 reshape: under the closed-template `Message` shape,
 /// per-row identification via marker text (`"CNWDI"`, `"SI compartments"`,
 /// etc.) is no longer available — the runtime `marking_label` no longer
-/// flows into `Diagnostic.message`. The bridge layer at
-/// `Engine::bridge_constraint_diagnostic` collapses every class-floor
-/// catalog row to a single rule_id `"E058"` and (today) the fallback
-/// `MessageTemplate::ConflictsWith` template per PM-C-5 / PM-C-6
-/// detail-loss acceptance.
+/// flows into `Diagnostic.message`.
 ///
-/// The `marker_text` parameter is kept for call-site documentation
-/// (each test still names the row it intends to exercise), but the
-/// filter only matches on `rule_id`. Tests that previously asserted
-/// per-row identification now assert on aggregate E058 firing.
-/// Tightening this back to per-row precision would require adding
-/// class-floor entries to `CapcoScheme::message_by_name` /
-/// `citation_by_name` — out of scope for PR 3c.2.C T2 (production
-/// `crates/capco/src/scheme/adapter.rs` edits are restricted).
+/// PR 3c.2.C C7 (R-C1) closed the bridge gap: `message_by_name` and
+/// `citation_by_name` in `crates/capco/src/scheme/adapter.rs` now cover
+/// the 27 `class-floor/*` + `E058/*` rows. Each E058 diagnostic carries
+/// its row-native `Citation` (verifiable per-row via `d.citation`) and
+/// a `MessageTemplate::ClassificationFloorViolated` template. Per-row
+/// identification is available at the audit boundary via
+/// `(d.rule, d.citation)` rather than via the retired `marker_text`
+/// substring scan.
+///
+/// The `_marker_text` parameter is kept for call-site documentation
+/// (each test still names the row it intends to exercise) but is not
+/// consumed by the filter. Per-row assertions in this file use the
+/// typed `d.citation` field directly per the C7 strengthening.
 fn e058_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,

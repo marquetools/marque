@@ -1871,11 +1871,14 @@ impl Engine {
                     // Skip if the rule pipeline already produced a C001
                     // diagnostic for this exact span.
                     if !existing_c001_spans.contains(&span) {
-                        // G13: drop the runtime `key`/`value` interpolation.
-                        // The typed `Message` identifies the corrections-map
-                        // class. `CORRECTIONS_MAP_CITATION` is now a typed
-                        // `Citation` with `AuthoritativeSource::Config`.
-                        let _ = (key, value);
+                        // G13: `key` is intentionally not interpolated — the
+                        // typed `Message` identifies the corrections-map class.
+                        // `CORRECTIONS_MAP_CITATION` is now a typed `Citation`
+                        // with `AuthoritativeSource::Config`. `value` IS used
+                        // below as the replacement payload (`.as_ref()` at the
+                        // Diagnostic::text_correction call) — only `key` is
+                        // discarded here.
+                        let _ = key;
                         diagnostics.push(Diagnostic::text_correction(
                             RuleId::new("C001"),
                             c001_severity,

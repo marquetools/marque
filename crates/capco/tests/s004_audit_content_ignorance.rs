@@ -35,7 +35,6 @@
 
 use std::sync::Arc;
 
-use marque_capco::scheme::CapcoMarking;
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_core::{Parser, Scanner};
 use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingType};
@@ -101,16 +100,11 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         for rule in rule_set.rules() {
             out.extend(rule.check(&attrs, &ctx));
         }
-        // Bridge-emitted diagnostics: emulate the engine's lint loop
-        // so fixtures that depend on the constraint-catalog bridge
-        // (E058 class-floor, E059 SCI per-system) are exercised too.
-        if scheme.has_diagnostic_constraints() {
-            let marking = CapcoMarking::from(attrs.clone());
-            let _ = marking;
-            // S004 doesn't fire through the constraint-catalog bridge,
-            // so this is informational only; the test only inspects
-            // S004 diagnostics below.
-        }
+        // S004 fires through the rule pipeline (not the constraint-
+        // catalog bridge), so no bridge invocation is needed here. The
+        // bridge surface is exercised by dedicated tests at
+        // `crates/capco/tests/bridge_message_by_name.rs` and
+        // `class_floor_catalog.rs`.
     }
     out
 }

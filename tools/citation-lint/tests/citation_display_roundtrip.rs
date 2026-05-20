@@ -42,7 +42,7 @@
 //!   description references this canonical SAR citation).
 //! - §H.8 p134 — FOUO eviction per CAPCO-2016 §H.8 p134.
 
-use core::num::{NonZeroU8, NonZeroU16};
+use core::num::NonZeroU16;
 
 use citation_lint::{Citation as LintCitation, CitationFind, find_in_fragment};
 use marque_rules::{
