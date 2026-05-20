@@ -95,6 +95,7 @@ wasm-opt = [
 
 [package.metadata.wasm-pack.profile.release-monoaudit.wasm-bindgen]
 split-linked-modules = true
+# Preserve debug names so `twiggy monos` can attribute monomorphizations.
 dwarf-debug-info = true
 
 [package.metadata.wasm-pack.profile.release-cloud]
