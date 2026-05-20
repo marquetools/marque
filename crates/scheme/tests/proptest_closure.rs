@@ -233,7 +233,12 @@ impl MarkingScheme for ClosureStubScheme {
     fn page_rewrites(&self) -> &[PageRewrite<Self>] {
         &[]
     }
-    fn evaluate_custom(&self, _: &'static str, _: &Self::Marking) -> Vec<ConstraintViolation> {
+    fn evaluate_custom(
+        &self,
+        _: &'static str,
+        _: &Self::Marking,
+        _: marque_scheme::FactBitmask,
+    ) -> Vec<ConstraintViolation> {
         Vec::new()
     }
     fn render_canonical(

@@ -207,9 +207,10 @@ fn class_floor_catalog_all_rows_return_empty_on_empty_attrs() {
     // Every row's presence() predicate returns false → no violations.
     let empty = CanonicalAttrs::default();
     let marking = CapcoMarking::new(empty);
+    let bits = scheme.precompute_bits(&marking);
 
     for name in &class_floor_names {
-        let violations = scheme.evaluate_custom(name, &marking);
+        let violations = scheme.evaluate_custom(name, &marking, bits);
         assert!(
             violations.is_empty(),
             "Row '{name}' fired on empty CanonicalAttrs — presence() predicate \
@@ -304,6 +305,7 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
     ]);
 
     let marking = CapcoMarking::new(attrs);
+    let bits = scheme.precompute_bits(&marking);
 
     // Collect class-floor rows that fire on these all-present attrs.
     let firing_names: Vec<&str> = constraints
@@ -313,7 +315,7 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
             match c {
                 Constraint::Custom { name, .. } => {
                     if (name.starts_with("class-floor/") || name.starts_with("E058/"))
-                        && !scheme.evaluate_custom(name, &marking).is_empty()
+                        && !scheme.evaluate_custom(name, &marking, bits).is_empty()
                     {
                         Some(*name)
                     } else {

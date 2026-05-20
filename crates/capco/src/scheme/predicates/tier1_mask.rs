@@ -34,32 +34,24 @@
 //! an independent oracle re-derived from CAPCO-2016 §H.6 / §H.9
 //! verbatim.
 //!
-//! The mask shape sets up two follow-on optimizations tracked as the
-//! AC #5 carry-over (#371 follow-on, filed by PR-F per the refactor
-//! plan §9):
+//! # Amortized `derive_bits` dispatch (this PR)
 //!
-//! 1. **`derive_bits` amortization** — `marque_scheme::constraint::evaluate`
-//!    walks the constraint catalog once per marking and dispatches to
-//!    `scheme.evaluate_custom` per `Constraint::Custom` row. With four
-//!    tier-1 rows per page that share the same input attrs,
-//!    `derive_bits` is paid four times today (per-row, this module).
-//!    Threading a `bits: FactBitmask` parameter through the dispatch
-//!    surface (a marque-scheme trait change) folds the four calls into
-//!    one — an engine-tier touch that belongs in a separate PR per
-//!    Constitution Principle VII section IV.
-//! 2. **Tier-2 / tier-3 compilation** — the 27 class-floor catalog rows
-//!    (tier 2: numeric chain compare on classification + atom presence)
-//!    and the SCI per-system catalog (tier 3: structural compartment
-//!    reads) are deferred to the same follow-on. They reuse the same
-//!    [`derive_bits`] projection that tier-1 already consumes.
+//! `marque_scheme::constraint::evaluate` calls `scheme.precompute_bits`
+//! once per marking before the constraint loop, then threads the
+//! resulting [`FactBitmask`] into every `scheme.evaluate_custom` call.
+//! The four tier-1 functions here each receive that pre-computed `bits`
+//! argument — `derive_bits` is paid exactly once per marking cycle
+//! regardless of how many `Constraint::Custom` rows fire. The tier-2
+//! (class-floor) and tier-3 (SCI per-system) catalogs share the same
+//! `bits` argument via the same dispatch path.
 //!
-//! # Cheap pre-check before [`derive_bits`]
+//! # Cheap pre-check before bitmask logic
 //!
 //! Each mask predicate runs an O(1) presence check on the dominant
 //! input axis (typically `attrs.aea_markings.is_empty()` or
-//! `attrs.non_ic_dissem.is_empty()`) before calling [`derive_bits`].
+//! `attrs.non_ic_dissem.is_empty()`) before entering the bitmask logic.
 //! On the overwhelmingly common no-trigger path this skips the
-//! bit-derivation work entirely. The structural body's pre-PR-E early
+//! mask-evaluation work entirely. The structural body's pre-PR-E early
 //! returns had a similar shape; the cost of this module is bounded
 //! above by the structural cost the retired helpers were already
 //! paying — corpus parity and `lint_latency` non-regression gate the
@@ -69,7 +61,7 @@ use marque_ism::canonical::CanonicalAttrs;
 use marque_rules::Severity;
 use marque_scheme::{ConstraintViolation, TokenRef};
 
-use crate::fact_bitmask::{derive_bits, fact_bit};
+use crate::fact_bitmask::fact_bit;
 
 use super::super::{CAT_AEA, TOK_EXDIS, TOK_NODIS};
 use super::spans::token_span_attrs;
@@ -115,14 +107,17 @@ const E038_TRIGGER_MASK: u128 = (1u128 << fact_bit::NODIS) | (1u128 << fact_bit:
 /// CAPCO-2016 §H.6 p104 (RD) + p111 (FRD). Severity `Warn` — the
 /// §123/§144 carve-out is documentary, not byte-observable, so a
 /// hard `Error` would over-reach.
-pub(crate) fn e021_rd_frd_requires_noforn(attrs: &CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e021_rd_frd_requires_noforn(
+    attrs: &CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
+) -> Vec<ConstraintViolation> {
     // Cheap pre-check on the dominant axis — AEA atoms are an open-vocab
     // closed slice on `CanonicalAttrs`; if it's empty the trigger mask
-    // cannot fire and `derive_bits` is wasted work.
+    // cannot fire.
     if attrs.aea_markings.is_empty() {
         return Vec::new();
     }
-    let bits = derive_bits(attrs).bits();
+    let bits = bits.bits();
     if (bits & E021_TRIGGER_MASK) == 0 || (bits & E021_SUPPRESSOR_MASK) != 0 {
         return Vec::new();
     }
@@ -143,11 +138,14 @@ pub(crate) fn e021_rd_frd_requires_noforn(attrs: &CanonicalAttrs) -> Vec<Constra
 /// Helper emits ONE `ConstraintViolation`; the wrapper rule in
 /// `crates/capco/src/rules.rs` enumerates per-offending-marking to
 /// produce byte-precise spans.
-pub(crate) fn e024_rd_precedence(attrs: &CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e024_rd_precedence(
+    attrs: &CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
+) -> Vec<ConstraintViolation> {
     if attrs.aea_markings.is_empty() {
         return Vec::new();
     }
-    let bits = derive_bits(attrs).bits();
+    let bits = bits.bits();
     let has_rd = (bits & (1u128 << fact_bit::AEA_RD)) != 0;
     let has_superseded = (bits & E024_SUPERSEDED_MASK) != 0;
     if !has_rd || !has_superseded {
@@ -171,13 +169,16 @@ pub(crate) fn e024_rd_precedence(attrs: &CanonicalAttrs) -> Vec<ConstraintViolat
 /// — the same set the structural call resolves over (post PR 9b /
 /// FR-046, `dissem_iter()` walks both `dissem_us` and `dissem_nato`).
 /// Behavior matches byte-for-byte.
-pub(crate) fn e038_dos_dissem_requires_noforn(attrs: &CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e038_dos_dissem_requires_noforn(
+    attrs: &CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
+) -> Vec<ConstraintViolation> {
     use marque_ism::NonIcDissem;
 
     if attrs.non_ic_dissem.is_empty() {
         return Vec::new();
     }
-    let bits = derive_bits(attrs).bits();
+    let bits = bits.bits();
     if (bits & E038_TRIGGER_MASK) == 0 || (bits & (1u128 << fact_bit::NOFORN)) != 0 {
         return Vec::new();
     }
@@ -212,11 +213,14 @@ pub(crate) fn e038_dos_dissem_requires_noforn(attrs: &CanonicalAttrs) -> Vec<Con
 /// `span: None, severity: None` to match the dyadic-helper shape —
 /// end-user-visible diagnostic emission lands in the broader
 /// engine-bridge generalization tracked at issue #578.
-pub(crate) fn e070_frd_tfni_precedence(attrs: &CanonicalAttrs) -> Vec<ConstraintViolation> {
+pub(crate) fn e070_frd_tfni_precedence(
+    attrs: &CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
+) -> Vec<ConstraintViolation> {
     if attrs.aea_markings.is_empty() {
         return Vec::new();
     }
-    let bits = derive_bits(attrs).bits();
+    let bits = bits.bits();
     let need_mask: u128 = (1u128 << fact_bit::AEA_FRD) | (1u128 << fact_bit::AEA_TFNI);
     if (bits & need_mask) != need_mask {
         return Vec::new();
@@ -237,6 +241,7 @@ pub(crate) fn e070_frd_tfni_precedence(attrs: &CanonicalAttrs) -> Vec<Constraint
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fact_bitmask::derive_bits;
     use marque_ism::{
         AeaMarking, Classification, DissemControl, MarkingClassification, NonIcDissem,
         canonical::CanonicalAttrs,
@@ -253,14 +258,14 @@ mod tests {
     #[test]
     fn e021_no_aea_no_fire() {
         let attrs = classified_us_secret();
-        assert!(e021_rd_frd_requires_noforn(&attrs).is_empty());
+        assert!(e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
     fn e021_rd_no_noforn_fires() {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Rd(Default::default())].into_boxed_slice();
-        let out = e021_rd_frd_requires_noforn(&attrs);
+        let out = e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].constraint_label, "E021/rd-frd-requires-noforn");
     }
@@ -270,7 +275,7 @@ mod tests {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Rd(Default::default())].into_boxed_slice();
         attrs.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
-        assert!(e021_rd_frd_requires_noforn(&attrs).is_empty());
+        assert!(e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
@@ -278,14 +283,17 @@ mod tests {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Rd(Default::default())].into_boxed_slice();
         attrs.dissem_us = vec![DissemControl::Relido].into_boxed_slice();
-        assert!(e021_rd_frd_requires_noforn(&attrs).is_empty());
+        assert!(e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
     fn e021_frd_no_noforn_fires() {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Frd(Default::default())].into_boxed_slice();
-        assert_eq!(e021_rd_frd_requires_noforn(&attrs).len(), 1);
+        assert_eq!(
+            e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).len(),
+            1
+        );
     }
 
     #[test]
@@ -293,7 +301,7 @@ mod tests {
         // §H.6 p120 — TFNI is intentionally excluded from E021.
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Tfni].into_boxed_slice();
-        assert!(e021_rd_frd_requires_noforn(&attrs).is_empty());
+        assert!(e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
@@ -305,11 +313,11 @@ mod tests {
         // the trigger.
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::DoeUcni].into_boxed_slice();
-        assert!(e021_rd_frd_requires_noforn(&attrs).is_empty());
+        assert!(e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
 
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::DodUcni].into_boxed_slice();
-        assert!(e021_rd_frd_requires_noforn(&attrs).is_empty());
+        assert!(e021_rd_frd_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     // --- E024 ---
@@ -318,7 +326,7 @@ mod tests {
     fn e024_rd_alone_no_fire() {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Rd(Default::default())].into_boxed_slice();
-        assert!(e024_rd_precedence(&attrs).is_empty());
+        assert!(e024_rd_precedence(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
@@ -329,7 +337,7 @@ mod tests {
             AeaMarking::Frd(Default::default()),
         ]
         .into_boxed_slice();
-        let out = e024_rd_precedence(&attrs);
+        let out = e024_rd_precedence(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].constraint_label, "E024/rd-precedence");
     }
@@ -339,7 +347,7 @@ mod tests {
         let mut attrs = classified_us_secret();
         attrs.aea_markings =
             vec![AeaMarking::Rd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
-        assert_eq!(e024_rd_precedence(&attrs).len(), 1);
+        assert_eq!(e024_rd_precedence(&attrs, derive_bits(&attrs)).len(), 1);
     }
 
     #[test]
@@ -347,7 +355,7 @@ mod tests {
         let mut attrs = classified_us_secret();
         attrs.aea_markings =
             vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
-        assert!(e024_rd_precedence(&attrs).is_empty());
+        assert!(e024_rd_precedence(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     // --- E038 ---
@@ -355,14 +363,14 @@ mod tests {
     #[test]
     fn e038_no_non_ic_dissem_no_fire() {
         let attrs = classified_us_secret();
-        assert!(e038_dos_dissem_requires_noforn(&attrs).is_empty());
+        assert!(e038_dos_dissem_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
     fn e038_nodis_no_noforn_fires() {
         let mut attrs = classified_us_secret();
         attrs.non_ic_dissem = vec![NonIcDissem::Nodis].into_boxed_slice();
-        let out = e038_dos_dissem_requires_noforn(&attrs);
+        let out = e038_dos_dissem_requires_noforn(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
         assert_eq!(
             out[0].constraint_label,
@@ -374,7 +382,10 @@ mod tests {
     fn e038_exdis_no_noforn_fires() {
         let mut attrs = classified_us_secret();
         attrs.non_ic_dissem = vec![NonIcDissem::Exdis].into_boxed_slice();
-        assert_eq!(e038_dos_dissem_requires_noforn(&attrs).len(), 1);
+        assert_eq!(
+            e038_dos_dissem_requires_noforn(&attrs, derive_bits(&attrs)).len(),
+            1
+        );
     }
 
     #[test]
@@ -382,14 +393,14 @@ mod tests {
         let mut attrs = classified_us_secret();
         attrs.non_ic_dissem = vec![NonIcDissem::Nodis].into_boxed_slice();
         attrs.dissem_us = vec![DissemControl::Nf].into_boxed_slice();
-        assert!(e038_dos_dissem_requires_noforn(&attrs).is_empty());
+        assert!(e038_dos_dissem_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
     fn e038_unrelated_non_ic_no_fire() {
         let mut attrs = classified_us_secret();
         attrs.non_ic_dissem = vec![NonIcDissem::Limdis].into_boxed_slice();
-        assert!(e038_dos_dissem_requires_noforn(&attrs).is_empty());
+        assert!(e038_dos_dissem_requires_noforn(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     // --- E070 ---
@@ -397,21 +408,21 @@ mod tests {
     #[test]
     fn e070_no_aea_no_fire() {
         let attrs = classified_us_secret();
-        assert!(e070_frd_tfni_precedence(&attrs).is_empty());
+        assert!(e070_frd_tfni_precedence(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
     fn e070_frd_alone_no_fire() {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Frd(Default::default())].into_boxed_slice();
-        assert!(e070_frd_tfni_precedence(&attrs).is_empty());
+        assert!(e070_frd_tfni_precedence(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
     fn e070_tfni_alone_no_fire() {
         let mut attrs = classified_us_secret();
         attrs.aea_markings = vec![AeaMarking::Tfni].into_boxed_slice();
-        assert!(e070_frd_tfni_precedence(&attrs).is_empty());
+        assert!(e070_frd_tfni_precedence(&attrs, derive_bits(&attrs)).is_empty());
     }
 
     #[test]
@@ -419,7 +430,7 @@ mod tests {
         let mut attrs = classified_us_secret();
         attrs.aea_markings =
             vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
-        let out = e070_frd_tfni_precedence(&attrs);
+        let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].constraint_label, "E070/frd-tfni-precedence");
         assert!(out[0].span.is_none());
