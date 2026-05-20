@@ -30,31 +30,42 @@ mod transmutation_stubs;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
-/// **27 rewrites, in seven groups** (post-#552; post-PR-4b-D.2
-/// Copilot R1 #2; PR 4b-C landed groups 2 + 3 as Pattern-C +
-/// Pattern-B declarative rows owning the §H.6 / §H.8 / §H.9
-/// strip-plus-promote semantics; PR 4b-A landed group 5; PR 3c.B
+/// **30 rewrites, in seven groups** matching the per-pattern helper
+/// files concatenated by [`build_page_rewrites`]. Group counts
+/// (4 + 8 + 2 + 2 + 3 + 3 + 8 = 30) match the
+/// [`EXPECTED_PAGE_REWRITES`] inventory pin at
+/// `crates/capco/tests/post_4b_lattice_inventory_pin.rs`. PR
+/// lineage: PR 4b-A landed group 5; PR 4b-C landed groups 2 + 3
+/// (Pattern-C + Pattern-B declarative rows owning the
+/// §H.6 / §H.8 / §H.9 strip-plus-promote semantics); PR 3c.B
 /// Sub-PR 8.F / 8.F.2 landed group 1; PR 4b-D.2 added
 /// `capco/noforn-clears-display-only-to` to group 5; #541 added
 /// `capco/sbu-nf-evicted-by-classified` to group 2; #552 added
-/// the new group 4 same-axis supersession pair):
+/// group 4 (same-axis supersession pair); #559 close-out added
+/// the first two rows of group 6 (ORCON / ORCON-USGOV → RELIDO);
+/// #618 added the DISPLAY ONLY sibling to group 6 once the
+/// `satisfies(TOK_DISPLAY_ONLY)` predicate was widened to
+/// recognize the canonical `display_only_to` parser axis.
+///
+/// [`EXPECTED_PAGE_REWRITES`]: ../../../../../crates/capco/tests/post_4b_lattice_inventory_pin.rs
 ///
 /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
 ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
 ///    §H.9 p172) and `capco/{sbu-nf,les-nf}-implies-noforn`
 ///    (§H.9 p178 / §H.9 p185). All four are wired predicates that
 ///    fire today via `scheme.project(Scope::Page, ...)`.
-/// 2. **PR 4b-C Pattern-C strip rows (7):** §H.6 / §H.8 / §H.9
+/// 2. **PR 4b-C Pattern-C strip rows (8):** §H.6 / §H.8 / §H.9
 ///    classification-driven strips of UNCLASSIFIED-only controls
 ///    plus the §H.6 NOFORN-promotion siblings —
 ///    `capco/limdis-evicted-by-classified` (§H.9 p170),
-///    `capco/sbu-evicted-by-classified` (§H.9 p176), four UCNI
-///    rows declared **promote-before-strip** so the NOFORN-
-///    promotion predicate observes UCNI before the strip
-///    removes it (`capco/{dod,doe}-ucni-{promotes-noforn-when-
-///    classified, evicted-by-classified}` at §H.6 p116 / p118),
-///    and `capco/fouo-evicted-by-classified` (§H.8 p134
-///    classified sub-clause).
+///    `capco/sbu-evicted-by-classified` (§H.9 p176),
+///    `capco/sbu-nf-evicted-by-classified` (#541; §H.9 p178), four
+///    UCNI rows declared **promote-before-strip** so the NOFORN-
+///    promotion predicate observes UCNI before the strip removes
+///    it (`capco/{dod,doe}-ucni-{promotes-noforn-when-classified,
+///    evicted-by-classified}` at §H.6 p116 / p118), and
+///    `capco/fouo-evicted-by-classified` (§H.8 p134 classified
+///    sub-clause).
 /// 3. **PR 4b-C Pattern-B structural FOUO-eviction (2):**
 ///    `capco/classification-evicts-fouo` +
 ///    `capco/non-fdr-control-evicts-fouo`, both at §H.8 p134.
@@ -73,20 +84,37 @@ mod transmutation_stubs;
 ///    `CAT_NON_IC_DISSEM`, FactRemove writes
 ///    `CAT_NON_IC_DISSEM`; predicate-scan kept OUT of `reads`
 ///    per the narrow-form rule below.
-/// 5. **Active wired rows (1):** `capco/noforn-clears-rel-to`
-///    (`Contains` predicate + `Clear` action). Cited at §D.2
-///    Table 3 + §H.8 p145. First PageRewrite to land in the
-///    catalog; canonical worked example in
-///    `crates/capco/README.md`.
-/// 6. **DISPLAY-ONLY / FD&R-family (2):**
-///    `capco/noforn-clears-fdr-family` (strips DISPLAY ONLY /
-///    RELIDO / EYES tokens from `dissem_us`) at §D.2 Table 3
-///    row 2 + §H.8 p154 + §H.8 p157, plus
-///    `capco/noforn-clears-display-only-to` (PR 4b-D.2 Copilot R1
-///    #2 — clears `attrs.display_only_to`, the country-list
-///    sibling of `attrs.rel_to`) at §H.8 p145 + §D.2 Table 3
-///    rows 1-2. The two rows together close the parallel REL TO /
-///    DISPLAY ONLY axes.
+/// 5. **`noforn_clears` (3):** NOFORN-supersedes-FD&R rows at
+///    page scope. `capco/noforn-clears-rel-to` (§D.2 Table 3 +
+///    §H.8 p145) — `Contains(CAT_DISSEM, NOFORN)` + `Clear(CAT_REL_TO)`,
+///    the first PageRewrite to land in the catalog (PR 4b-A;
+///    canonical worked example in `crates/capco/README.md`).
+///    `capco/noforn-clears-fdr-family` (§D.2 Table 3 row 2 +
+///    §H.8 p154 + §H.8 p157) — strips DISPLAY ONLY / RELIDO /
+///    EYES tokens from `dissem_us` via FactRemove.
+///    `capco/noforn-clears-display-only-to` (PR 4b-D.2 Copilot
+///    R1 #2; §H.8 p145 + §D.2 Table 3 rows 1-2) clears
+///    `attrs.display_only_to`, the country-list sibling of
+///    `attrs.rel_to`. The three rows together close the
+///    NOFORN-dominates-FD&R surface.
+/// 6. **`relido_clears` (3):** RELIDO eviction by a stronger
+///    dissem axis at page scope — Marque's subtractive resolution
+///    of the §H.8 RELIDO incompatibility clauses (retired E055 /
+///    E056 / E057 Conflicts rows from the constraint catalog).
+///    `capco/display-only-clears-relido` (§H.8 p154 — DISPLAY
+///    ONLY entry's RELIDO-incompatibility clause) added in #618
+///    once `satisfies(TOK_DISPLAY_ONLY)` +
+///    `capco_category_contains(CAT_DISSEM, TOK_DISPLAY_ONLY)`
+///    were widened to recognize the canonical `display_only_to`
+///    parser axis; `capco/orcon-clears-relido` (§H.8 p136 —
+///    *"May not be used with RELIDO"*) and
+///    `capco/orcon-usgov-clears-relido` (§H.8 p140 — same
+///    exclusion) added in PR #615 (#559 close-out). All three
+///    rows use `Contains(CAT_DISSEM, <dominator>)` triggers with
+///    `Intent(FactRemove([TOK_RELIDO], Scope::Page))` actions
+///    and empty `reads` (cycle-avoidance per the narrow-form
+///    rule below — four siblings reading + writing CAT_DISSEM
+///    would form a 3-row cycle with `noforn-clears-fdr-family`).
 /// 7. **Phase-3 transmutation stubs (8):** the §3.4.1 / §3.4.3
 ///    transmutation roster from `marque-applied.md` (consultant
 ///    Entry 6 split into 6a + 6b for D13 single-citation
@@ -163,10 +191,15 @@ mod transmutation_stubs;
 /// promote+strip, DOE UCNI promote+strip, FOUO), then Pattern B
 /// (classification-evicts-fouo, non-fdr-control-evicts-fouo),
 /// then the #552 same-axis supersession pair (sbu-nf-supersedes-
-/// sbu, les-nf-supersedes-les), then the active NOFORN clear-rows
+/// sbu, les-nf-supersedes-les), then the NOFORN clear-rows
 /// (noforn-clears-rel-to, noforn-clears-fdr-family,
-/// noforn-clears-display-only-to), then the eight Phase-3
-/// transmutation stubs.
+/// noforn-clears-display-only-to), then the #559 / #618 RELIDO
+/// clear-rows (display-only-clears-relido, orcon-clears-relido,
+/// orcon-usgov-clears-relido — placed after `noforn_clears` so
+/// `noforn-clears-fdr-family` strips RELIDO first on
+/// NOFORN-bearing pages and these rows only fire on the
+/// non-NOFORN-but-RELIDO-incompatible cases that motivated #559),
+/// then the eight Phase-3 transmutation stubs.
 ///
 /// [`CategoryPredicate::Contains`]: marque_scheme::CategoryPredicate::Contains
 /// [`CategoryAction::Clear`]: marque_scheme::CategoryAction::Clear
@@ -177,14 +210,15 @@ pub(crate) fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
     out.extend(pattern_b::pattern_b_rows());
     out.extend(supersession::supersession_rows());
     out.extend(noforn_clears::noforn_clears_rows());
-    // #559 close-out (PM 2026-05-19): ORCON / ORCON-USGOV → RELIDO
-    // eviction rows (the DISPLAY ONLY > RELIDO sibling is deferred
-    // behind issue #618; see `relido_clears.rs` module header).
-    // Placed after `noforn_clears` because the
-    // `capco/noforn-clears-fdr-family` row strips RELIDO when NOFORN
-    // is present — running it first means our rows are no-ops on
-    // NOFORN-bearing pages and only fire on the non-NOFORN-but-
-    // RELIDO-incompatible cases that motivated #559.
+    // #559 close-out (PM 2026-05-19) + #618: DISPLAY ONLY / ORCON /
+    // ORCON-USGOV → RELIDO eviction rows. Placed after `noforn_clears`
+    // because the `capco/noforn-clears-fdr-family` row strips RELIDO
+    // when NOFORN is present — running it first means our rows are
+    // no-ops on NOFORN-bearing pages and only fire on the non-NOFORN-
+    // but-RELIDO-incompatible cases that motivated #559. The DISPLAY
+    // ONLY row was deferred behind #618 until
+    // `satisfies(TOK_DISPLAY_ONLY)` was widened to recognize the
+    // canonical `display_only_to` parser axis.
     out.extend(relido_clears::relido_clears_rows());
     out.extend(transmutation_stubs::transmutation_stub_rows());
     out
