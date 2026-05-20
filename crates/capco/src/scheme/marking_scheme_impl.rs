@@ -658,9 +658,19 @@ impl MarkingScheme for CapcoScheme {
         // `FactRef::OpenVocab(_)`. The bitmask handles the static `TOK_USA`
         // cone via the `REL_TO_USA` bit; the open-vocab NATO injection
         // happens here, AFTER the Kleene fixpoint, as a single post-pass.
-        // Trigger / suppressor are evaluated against the post-closure
-        // `working` so the same trigger condition (NATO classification +
-        // no FD&R dominator) holds.
+        //
+        // The Row 7 trigger / suppressor decision is NOT re-evaluated
+        // against the fn-pointer rule's predicates here — it was already
+        // made INSIDE [`close`] when CLOSURE_TABLE Row 7's
+        // `trigger_mask` / `suppressor_mask` decided whether to OR the
+        // `REL_TO_USA` cone bit into the accumulator. The post-Kleene
+        // tail observes that decision via the bit-delta gate
+        // `row7_fired` (computed just below) and runs the open-vocab
+        // injection iff Row 7 actually contributed its closed-vocab
+        // cone. See the doc-comment on `row7_fired` for why the delta
+        // (`closed & !input`) is required rather than a naive
+        // re-evaluation of the fn-pointer predicates against post-
+        // closure `working`.
         //
         // # Trait contract
         //

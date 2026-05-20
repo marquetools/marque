@@ -499,10 +499,13 @@ const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
 ///   asserts a closed set of rule names against this slice (now
 ///   1 row); the 10-row bitmask catalog has its own parallel pin
 ///   against `CLOSURE_TABLE`.
-/// - The runtime override map in
-///   `marque_engine::scheduler::resolve_closure_severity` (where a
-///   future `[closure_rules]` config section threads severity
-///   overrides through) reads rule names from this slice.
+/// - A future `[closure_rules]` severity-override config path
+///   (analogous to the existing `[rules]` section in
+///   `crates/config/`) will need a runtime override map keyed by
+///   rule name. No such resolver exists in the repo today; the path
+///   that lands it MUST also handle the post-PR-D discovery-surface
+///   gap tracked in issue #644 (the 9 bitmask rules' names live on
+///   `CLOSURE_TABLE` row `label` fields, not on this slice).
 pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[CLOSURE_REL_TO_USA_NATO];
 
 // ---------------------------------------------------------------------------
