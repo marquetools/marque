@@ -2175,7 +2175,11 @@ impl Engine {
     /// 3. Synthesizes the optional [`FixIntent`] via
     ///    [`CapcoScheme::fix_intent_by_name`] from the row name +
     ///    `attrs` + candidate `MarkingType`.
-    /// 4. Builds the [`Diagnostic`] with the violation's `message`
+    /// 4. Resolves the user-facing message via
+    ///    [`CapcoScheme::message_by_name`]; falls back to the generic
+    ///    evaluator text from `ConstraintViolation.message` when the
+    ///    scheme returns `None` for the row name.
+    /// 5. Builds the [`Diagnostic`] with the resolved `message`
     ///    and `citation` carried through verbatim, and stamps the
     ///    candidate's outer span as `candidate_span`.
     ///
@@ -2183,6 +2187,7 @@ impl Engine {
     /// [`Diagnostic`]: marque_rules::Diagnostic
     /// [`FixIntent`]: marque_rules::FixIntent
     /// [`CapcoScheme::fix_intent_by_name`]: CapcoScheme::fix_intent_by_name
+    /// [`CapcoScheme::message_by_name`]: CapcoScheme::message_by_name
     fn bridge_constraint_diagnostic(
         &self,
         v: &marque_scheme::ConstraintViolation,
@@ -2247,11 +2252,16 @@ impl Engine {
             .scheme
             .fix_intent_by_name(v.constraint_label, attrs, candidate.kind);
 
+        let message = self
+            .scheme
+            .message_by_name(v.constraint_label, attrs, candidate.kind)
+            .unwrap_or_else(|| v.message.clone());
+
         let mut diag = Diagnostic::with_fix(
             rule_id,
             final_severity,
             span,
-            v.message.clone(),
+            message,
             v.citation,
             fix_intent,
         );
