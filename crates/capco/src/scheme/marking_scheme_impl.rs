@@ -558,9 +558,9 @@ impl MarkingScheme for CapcoScheme {
     /// A unified inventory surface across both catalogs — likely a
     /// new `MarkingScheme::closure_inventory()` trait method —
     /// is tracked in issue #644 as a follow-up against `marque-scheme`
-    /// per Constitution VII §IV (engine-trait additions belong in
-    /// their own PR, not bundled into a scheme-implementation perf
-    /// refactor like PR-D).
+    /// per Constitution Principle VII section IV (engine-trait
+    /// additions belong in their own PR, not bundled into a
+    /// scheme-implementation perf refactor like PR-D).
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
     }
