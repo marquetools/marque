@@ -70,9 +70,47 @@ fn merge_exit_code(current: i32, new_code: i32) -> i32 {
     }
 }
 
+/// Extended `--version` string that exposes the active audit-record
+/// schema name alongside the package version.
+///
+/// Per PR 3c.2.D PM-D-15 and `contracts/audit-record.md`
+/// §"Schema discoverability (D3)" (§415-446), the active audit
+/// schema name MUST be discoverable by external consumers without
+/// parsing audit records. The contract names two surfaces:
+///
+/// 1. **Per-record discoverability** — every audit NDJSON line's
+///    first field is `"schema": "marque-1.0"` (FR-035). Streaming
+///    consumers detect schema by reading the first record.
+/// 2. **Per-binary discoverability** — `marque --version` exposes
+///    `audit_schema: <AUDIT_SCHEMA_VERSION>` on its own line so
+///    shell scripts can detect schema-major changes without running
+///    the binary against a real document.
+///
+/// The value is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`
+/// (FR-034 single source of truth — the build.rs accept-list +
+/// the const re-export are the only places the schema name appears
+/// in the binary).
+///
+/// Format: two lines, key/value with a colon separator. Grep
+/// target is `^audit_schema:`. Initialized via `OnceLock` at first
+/// access because clap's `version =` accepts only `&'static str`;
+/// a `String` lifetime extension via `OnceLock` is the standard
+/// pattern for this case.
+fn version_str() -> &'static str {
+    use std::sync::OnceLock;
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        format!(
+            "{}\naudit_schema: {}",
+            env!("CARGO_PKG_VERSION"),
+            marque_engine::AUDIT_SCHEMA_VERSION,
+        )
+    })
+}
+
 #[derive(Parser)]
 #[command(name = "marque", about = "Classification marking linter and fixer")]
-#[command(version, propagate_version = true)]
+#[command(version = version_str(), propagate_version = true)]
 #[command(after_help = ENV_HELP)]
 #[command(after_long_help = ENV_HELP)]
 struct Cli {
@@ -98,8 +136,10 @@ const ENV_HELP: &str = "ENVIRONMENT VARIABLES:
     MARQUE_CLASSIFIER_ID             Identity stamped into audit records.
     MARQUE_CLASSIFICATION_AUTHORITY  Authority string stamped into audit records.
     MARQUE_AUDIT_SCHEMA              Build-time audit schema selector
-                                     (\"marque-mvp-1\" | \"marque-mvp-2\"; default
-                                     \"marque-mvp-2\"). Read at build time only.
+                                     (accept-list: \"marque-1.0\"; default
+                                     \"marque-1.0\"). Read at build time only.
+                                     Run \"marque --version\" to discover the
+                                     active schema in any binary.
     MARQUE_ALLOW_FIXED_CLOCK         Set to \"1\" to permit `--fixed-timestamp`
                                      (off by default; the fixed-clock seam exists
                                      for deterministic snapshot tests, NOT for
