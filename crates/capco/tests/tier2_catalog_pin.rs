@@ -43,9 +43,9 @@ use marque_scheme::MarkingScheme;
 /// Retrieve the class-floor catalog from the scheme's constraint list and
 /// exercise the structural invariants introduced by PR-G (issue #650 tier-2).
 ///
-/// The catalog is accessed via the public `constraints()` trait method and
-/// then the names are cross-referenced against `CLASS_FLOOR_CATALOG` directly
-/// through the capco internal helper `class_floor_catalog()` (pub(crate)).
+/// The catalog is accessed exclusively via the public `constraints()` trait
+/// method on `CapcoScheme`; `CLASS_FLOOR_CATALOG` and its `pub(crate)` fields
+/// are not accessible from an integration test in `tests/`.
 ///
 /// We pin via the public `evaluate_custom` surface: for each expected name the
 /// scheme MUST be able to evaluate it (i.e., the row exists), and the full
@@ -218,16 +218,19 @@ fn class_floor_catalog_all_rows_return_empty_on_empty_attrs() {
     }
 }
 
-/// Pins that exactly 4 rows do NOT fire on attrs that set every
-/// possible class-floor trigger (classification=TS, all SCI/SAR/AEA/dissem
-/// present).  The 4 passthrough rows can only fire if their open-vocab
-/// marking families are present — which requires ISM-known tokens that
-/// aren't in the closed-atom inventory (BUR, HCS-X, KLM, MVL).  With the
-/// closed-atom attrs used here, only the 23 non-passthrough rows will fire
-/// (presence predicate satisfied + floor violated).
+/// Pins that the 4 passthrough rows do NOT fire on attrs that set every
+/// closed-atom class-floor trigger (classification=R, all SCI/SAR/AEA/dissem
+/// present).  The 4 passthrough rows require open-vocab marking families
+/// (BUR, HCS-X, KLM, MVL) that are absent from the closed-atom set.
 ///
-/// This indirectly verifies the 23 / 4 bitmask-trigger split without
-/// accessing the `pub(crate)` field.
+/// Note: not all 23 non-passthrough rows fire on these attrs — some presence()
+/// predicates exclude the constructed input (e.g., `class-floor/HCS-comp`
+/// returns false when the HCS entry has sub-compartments, as in the attrs
+/// below; only `class-floor/HCS-comp-sub` fires for that entry).  The proptest
+/// oracle suite covers per-row firing semantics exhaustively.
+///
+/// This test indirectly verifies the 23 / 4 split without accessing the
+/// `pub(crate)` bitmask fields.
 #[test]
 fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
     use marque_capco::CapcoMarking;
@@ -244,8 +247,7 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
     // Classification = Restricted (below all floors) so every
     // non-passthrough row fires.
     let mut attrs = CanonicalAttrs::default();
-    attrs.classification =
-        Some(MarkingClassification::Us(Classification::Restricted));
+    attrs.classification = Some(MarkingClassification::Us(Classification::Restricted));
 
     // All SCI systems relevant to the catalog.
     attrs.sci_markings = Box::new([
@@ -279,8 +281,13 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
 
     // All AEA families.
     attrs.aea_markings = Box::new([
-        AeaMarking::Rd(RdBlock { sigma: vec![1u8].into_boxed_slice(), cnwdi: true }),
-        AeaMarking::Frd(FrdBlock { sigma: vec![1u8].into_boxed_slice() }),
+        AeaMarking::Rd(RdBlock {
+            sigma: vec![1u8].into_boxed_slice(),
+            cnwdi: true,
+        }),
+        AeaMarking::Frd(FrdBlock {
+            sigma: vec![1u8].into_boxed_slice(),
+        }),
         AeaMarking::Tfni,
         AeaMarking::Atomal(AtomalBlock {}),
         AeaMarking::DodUcni,
@@ -342,10 +349,12 @@ fn class_floor_catalog_passthrough_rows_do_not_fire_on_known_atoms() {
     // distinctions exhaustively.
 
     // None of the 4 passthrough rows should appear.
-    let passthrough_rows = ["class-floor/passthrough-BUR",
+    let passthrough_rows = [
+        "class-floor/passthrough-BUR",
         "class-floor/passthrough-HCS-X",
         "class-floor/passthrough-KLM",
-        "class-floor/passthrough-MVL"];
+        "class-floor/passthrough-MVL",
+    ];
 
     for pt in &passthrough_rows {
         assert!(

@@ -190,9 +190,12 @@ pub(crate) fn class_floor_catalog_eval(
         }
 
         // Fire: diagnostic synthesis is byte-identical to the structural path —
-        // `class_floor_emit` reads row.* fields, not bits. The presence predicate
-        // is re-invoked inside `class_floor_emit`; for exact rows this is
-        // always true (we confirmed above); for coarse rows it's also confirmed.
+        // `class_floor_emit` reads row.* fields, not bits. On this (violation)
+        // path, `class_floor_emit` re-invokes `presence()` and
+        // `class_floor_satisfied()` — both were already computed above.
+        // The duplication is confined to the rare violation path (fast-path
+        // value is in the common non-firing case); a dedicated emitter that
+        // accepts precomputed presence/floor state is a follow-on optimization.
         return class_floor_emit(attrs, row).into_iter().collect();
     }
 

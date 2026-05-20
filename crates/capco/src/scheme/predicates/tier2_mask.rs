@@ -38,8 +38,8 @@
 //!
 //! | Kind | Count | % of 27 |
 //! |---|---|---|
-//! | Exact bitmask (presence + floor) | 17 | 63% |
-//! | Coarse-gate bitmask (gate + structural confirm) | 6 | 22% |
+//! | Exact bitmask (presence + floor) | 13 | 48% |
+//! | Coarse-gate bitmask (gate + structural confirm) | 10 | 37% |
 //! | Structural fallthrough (no bitmask) | 4 | 15% |
 //! | **Bitmask short-circuit total** | **23** | **85%** |
 //!
@@ -130,8 +130,8 @@ pub(crate) fn classification_is_fgi_or_joint(attrs: &CanonicalAttrs) -> bool {
 mod tests {
     use super::*;
     use marque_ism::{
-        Classification, CountryCode, FgiClassification, ForeignClassification,
-        JointClassification, MarkingClassification, NatoClassification, canonical::CanonicalAttrs,
+        Classification, CountryCode, FgiClassification, ForeignClassification, JointClassification,
+        MarkingClassification, NatoClassification, canonical::CanonicalAttrs,
     };
     use marque_scheme::FactBitmask;
 
@@ -168,21 +168,30 @@ mod tests {
     fn effective_level_from_bits_us_confidential() {
         let attrs = attrs_us(Classification::Confidential);
         let bits = derive_bits(&attrs);
-        assert_eq!(effective_level_from_bits(bits), Some(Classification::Confidential));
+        assert_eq!(
+            effective_level_from_bits(bits),
+            Some(Classification::Confidential)
+        );
     }
 
     #[test]
     fn effective_level_from_bits_us_top_secret() {
         let attrs = attrs_us(Classification::TopSecret);
         let bits = derive_bits(&attrs);
-        assert_eq!(effective_level_from_bits(bits), Some(Classification::TopSecret));
+        assert_eq!(
+            effective_level_from_bits(bits),
+            Some(Classification::TopSecret)
+        );
     }
 
     #[test]
     fn effective_level_from_bits_us_unclassified() {
         let attrs = attrs_us(Classification::Unclassified);
         let bits = derive_bits(&attrs);
-        assert_eq!(effective_level_from_bits(bits), Some(Classification::Unclassified));
+        assert_eq!(
+            effective_level_from_bits(bits),
+            Some(Classification::Unclassified)
+        );
     }
 
     #[test]
@@ -211,7 +220,11 @@ mod tests {
     #[test]
     fn effective_level_from_bits_empty_attrs_returns_none() {
         let bits = FactBitmask::EMPTY;
-        assert_eq!(effective_level_from_bits(bits), None, "Empty bitmask should yield None");
+        assert_eq!(
+            effective_level_from_bits(bits),
+            None,
+            "Empty bitmask should yield None"
+        );
     }
 
     #[test]
@@ -238,7 +251,9 @@ mod tests {
         let mut a = CanonicalAttrs::default();
         a.classification = Some(MarkingClassification::Conflict {
             us: Classification::Secret,
-            foreign: Box::new(ForeignClassification::Nato(NatoClassification::CosmicTopSecret)),
+            foreign: Box::new(ForeignClassification::Nato(
+                NatoClassification::CosmicTopSecret,
+            )),
         });
         let bits = derive_bits(&a);
         // Only US chain is populated for Conflict; nato chain = 0.
@@ -282,7 +297,10 @@ mod tests {
     #[test]
     fn us_classification_is_fgi_or_joint_false() {
         let a = attrs_us(Classification::Secret);
-        assert!(!classification_is_fgi_or_joint(&a), "US classification should return false");
+        assert!(
+            !classification_is_fgi_or_joint(&a),
+            "US classification should return false"
+        );
     }
 
     #[test]

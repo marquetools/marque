@@ -7,8 +7,10 @@
 //!
 //! # Scope
 //!
-//! Five proptest blocks covering the four floor-level groups and the
-//! passthrough group of the 27-row `CLASS_FLOOR_CATALOG`:
+//! Four proptest blocks covering the 23 bitmask-compiled rows of the
+//! 27-row `CLASS_FLOOR_CATALOG` (the 4 passthrough rows require open-vocab
+//! markings not representable in a closed proptest strategy; they are
+//! exercised by the catalog pin in `tier2_catalog_pin.rs`):
 //!
 //! - **§2.1 Floor TS** (5 rows): HCS-comp-sub, SI-comp, TK-BLFH, BALK, BOHEMIA
 //! - **§2.2 Floor S** (8 rows): HCS-comp, RSV-comp, TK, RD-SG, FRD-SG,
@@ -78,10 +80,7 @@ fn arb_attrs_floor_ts() -> impl Strategy<Value = CanonicalAttrs> {
                 // HCS-P with sub-compartment — exactly what SCI_HCS_P_SUB (bit 42) gates on.
                 sci.push(SciMarking::new(
                     SciControlSystem::Published(SciControlBare::Hcs),
-                    Box::new([SciCompartment::new(
-                        "P",
-                        Box::new(["ALPHA".into()]),
-                    )]),
+                    Box::new([SciCompartment::new("P", Box::new(["ALPHA".into()]))]),
                     None,
                 ));
             }
@@ -139,71 +138,81 @@ fn arb_attrs_floor_s() -> impl Strategy<Value = CanonicalAttrs> {
         any::<bool>(), // imcon present?
         arb_us_classification(),
     )
-        .prop_map(|(hcs_o, hcs_p_bare, rsv, tk_idit, rd_sg, frd_sg, cnwdi, rsen, imcon, cls)| {
-            let mut a = CanonicalAttrs::default();
-            a.classification = Some(cls);
-            let mut sci: Vec<SciMarking> = Vec::new();
-            if hcs_o {
-                // HCS-O compartment (bare, no sub-compartments, not X) — SCI_HCS_O (bit 41).
-                sci.push(SciMarking::new(
-                    SciControlSystem::Published(SciControlBare::Hcs),
-                    Box::new([SciCompartment::new("O", Box::new([]))]),
-                    None,
-                ));
-            }
-            if hcs_p_bare {
-                // HCS-P bare compartment (no sub-compartments) — sets SCI_PRESENT (bit 37)
-                // only; SCI_HCS_P_SUB (bit 42) is NOT set. This is the case the old trigger
-                // `SCI_HCS_O | SCI_HCS_P_SUB` missed: presence_hcs_comp_only fires on bare
-                // HCS-P, but neither sentinel bit is set, so the coarse gate must use
-                // SCI_PRESENT instead. §H.4 p66 example: `(S//HCS-P//NF)`.
-                sci.push(SciMarking::new(
-                    SciControlSystem::Published(SciControlBare::Hcs),
-                    Box::new([SciCompartment::new("P", Box::new([]))]),
-                    None,
-                ));
-            }
-            if rsv {
-                // RSV with a compartment — SCI_PRESENT (bit 37) coarse gate.
-                sci.push(SciMarking::new(
-                    SciControlSystem::Published(SciControlBare::Rsv),
-                    Box::new([SciCompartment::new("COMP1", Box::new([]))]),
-                    None,
-                ));
-            }
-            if tk_idit {
-                // TK-IDIT — SCI_TK_IDIT (bit 44).
-                sci.push(SciMarking::new(
-                    SciControlSystem::Published(SciControlBare::Tk),
-                    Box::new([SciCompartment::new("IDIT", Box::new([]))]),
-                    None,
-                ));
-            }
-            a.sci_markings = sci.into_boxed_slice();
-            let mut aea: Vec<AeaMarking> = Vec::new();
-            if rd_sg {
-                // RD with sigma — AEA_RD (bit 22) + sigma slice non-empty.
-                aea.push(AeaMarking::Rd(RdBlock { sigma: vec![1u8].into_boxed_slice(), cnwdi: false }));
-            }
-            if frd_sg {
-                // FRD with sigma — AEA_FRD (bit 23) + sigma slice non-empty.
-                aea.push(AeaMarking::Frd(FrdBlock { sigma: vec![1u8].into_boxed_slice() }));
-            }
-            if cnwdi {
-                // RD-CNWDI (distinct from RD-sigma) — AEA_RD (bit 22) + cnwdi=true.
-                aea.push(AeaMarking::Rd(RdBlock { sigma: Box::new([]), cnwdi: true }));
-            }
-            a.aea_markings = aea.into_boxed_slice();
-            let mut dissem: Vec<DissemControl> = Vec::new();
-            if rsen {
-                dissem.push(DissemControl::Rs);
-            }
-            if imcon {
-                dissem.push(DissemControl::Imc);
-            }
-            a.dissem_us = dissem.into_boxed_slice();
-            a
-        })
+        .prop_map(
+            |(hcs_o, hcs_p_bare, rsv, tk_idit, rd_sg, frd_sg, cnwdi, rsen, imcon, cls)| {
+                let mut a = CanonicalAttrs::default();
+                a.classification = Some(cls);
+                let mut sci: Vec<SciMarking> = Vec::new();
+                if hcs_o {
+                    // HCS-O compartment (bare, no sub-compartments, not X) — SCI_HCS_O (bit 41).
+                    sci.push(SciMarking::new(
+                        SciControlSystem::Published(SciControlBare::Hcs),
+                        Box::new([SciCompartment::new("O", Box::new([]))]),
+                        None,
+                    ));
+                }
+                if hcs_p_bare {
+                    // HCS-P bare compartment (no sub-compartments) — sets SCI_PRESENT (bit 37)
+                    // only; SCI_HCS_P_SUB (bit 42) is NOT set. This is the case the old trigger
+                    // `SCI_HCS_O | SCI_HCS_P_SUB` missed: presence_hcs_comp_only fires on bare
+                    // HCS-P, but neither sentinel bit is set, so the coarse gate must use
+                    // SCI_PRESENT instead. §H.4 p66 example: `(S//HCS-P//NF)`.
+                    sci.push(SciMarking::new(
+                        SciControlSystem::Published(SciControlBare::Hcs),
+                        Box::new([SciCompartment::new("P", Box::new([]))]),
+                        None,
+                    ));
+                }
+                if rsv {
+                    // RSV with a compartment — SCI_PRESENT (bit 37) coarse gate.
+                    sci.push(SciMarking::new(
+                        SciControlSystem::Published(SciControlBare::Rsv),
+                        Box::new([SciCompartment::new("COMP1", Box::new([]))]),
+                        None,
+                    ));
+                }
+                if tk_idit {
+                    // TK-IDIT — SCI_TK_IDIT (bit 44).
+                    sci.push(SciMarking::new(
+                        SciControlSystem::Published(SciControlBare::Tk),
+                        Box::new([SciCompartment::new("IDIT", Box::new([]))]),
+                        None,
+                    ));
+                }
+                a.sci_markings = sci.into_boxed_slice();
+                let mut aea: Vec<AeaMarking> = Vec::new();
+                if rd_sg {
+                    // RD with sigma — AEA_RD (bit 22) + sigma slice non-empty.
+                    aea.push(AeaMarking::Rd(RdBlock {
+                        sigma: vec![1u8].into_boxed_slice(),
+                        cnwdi: false,
+                    }));
+                }
+                if frd_sg {
+                    // FRD with sigma — AEA_FRD (bit 23) + sigma slice non-empty.
+                    aea.push(AeaMarking::Frd(FrdBlock {
+                        sigma: vec![1u8].into_boxed_slice(),
+                    }));
+                }
+                if cnwdi {
+                    // RD-CNWDI (distinct from RD-sigma) — AEA_RD (bit 22) + cnwdi=true.
+                    aea.push(AeaMarking::Rd(RdBlock {
+                        sigma: Box::new([]),
+                        cnwdi: true,
+                    }));
+                }
+                a.aea_markings = aea.into_boxed_slice();
+                let mut dissem: Vec<DissemControl> = Vec::new();
+                if rsen {
+                    dissem.push(DissemControl::Rs);
+                }
+                if imcon {
+                    dissem.push(DissemControl::Imc);
+                }
+                a.dissem_us = dissem.into_boxed_slice();
+                a
+            },
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -222,52 +231,59 @@ fn arb_attrs_floor_c() -> impl Strategy<Value = CanonicalAttrs> {
         any::<bool>(), // eyes_only present?
         arb_us_classification(),
     )
-        .prop_map(|(si_bare, sar, rd_bare, frd_bare, tfni, atomal, orcon, eyes, cls)| {
-            let mut a = CanonicalAttrs::default();
-            a.classification = Some(cls);
-            let mut sci: Vec<SciMarking> = Vec::new();
-            if si_bare {
-                // SI bare (no compartments) — SCI_PRESENT (bit 37) coarse gate.
-                sci.push(SciMarking::new(
-                    SciControlSystem::Published(SciControlBare::Si),
-                    Box::new([]),
-                    None,
-                ));
-            }
-            a.sci_markings = sci.into_boxed_slice();
-            if sar {
-                // SAR with one program — SAR_PRESENT (bit 36).
-                a.sar_markings = Some(SarMarking::new(
-                    SarIndicator::Abbrev,
-                    Box::new([SarProgram::new("BP", Box::new([]))]),
-                ));
-            }
-            let mut aea: Vec<AeaMarking> = Vec::new();
-            if rd_bare {
-                // Bare RD (no CNWDI, no sigma) — AEA_RD (bit 22).
-                aea.push(AeaMarking::Rd(RdBlock { sigma: Box::new([]), cnwdi: false }));
-            }
-            if frd_bare {
-                // Bare FRD (no sigma) — AEA_FRD (bit 23).
-                aea.push(AeaMarking::Frd(FrdBlock { sigma: Box::new([]) }));
-            }
-            if tfni {
-                aea.push(AeaMarking::Tfni);
-            }
-            if atomal {
-                aea.push(AeaMarking::Atomal(AtomalBlock {}));
-            }
-            a.aea_markings = aea.into_boxed_slice();
-            let mut dissem: Vec<DissemControl> = Vec::new();
-            if orcon {
-                dissem.push(DissemControl::Oc);
-            }
-            if eyes {
-                dissem.push(DissemControl::Eyes);
-            }
-            a.dissem_us = dissem.into_boxed_slice();
-            a
-        })
+        .prop_map(
+            |(si_bare, sar, rd_bare, frd_bare, tfni, atomal, orcon, eyes, cls)| {
+                let mut a = CanonicalAttrs::default();
+                a.classification = Some(cls);
+                let mut sci: Vec<SciMarking> = Vec::new();
+                if si_bare {
+                    // SI bare (no compartments) — SCI_PRESENT (bit 37) coarse gate.
+                    sci.push(SciMarking::new(
+                        SciControlSystem::Published(SciControlBare::Si),
+                        Box::new([]),
+                        None,
+                    ));
+                }
+                a.sci_markings = sci.into_boxed_slice();
+                if sar {
+                    // SAR with one program — SAR_PRESENT (bit 36).
+                    a.sar_markings = Some(SarMarking::new(
+                        SarIndicator::Abbrev,
+                        Box::new([SarProgram::new("BP", Box::new([]))]),
+                    ));
+                }
+                let mut aea: Vec<AeaMarking> = Vec::new();
+                if rd_bare {
+                    // Bare RD (no CNWDI, no sigma) — AEA_RD (bit 22).
+                    aea.push(AeaMarking::Rd(RdBlock {
+                        sigma: Box::new([]),
+                        cnwdi: false,
+                    }));
+                }
+                if frd_bare {
+                    // Bare FRD (no sigma) — AEA_FRD (bit 23).
+                    aea.push(AeaMarking::Frd(FrdBlock {
+                        sigma: Box::new([]),
+                    }));
+                }
+                if tfni {
+                    aea.push(AeaMarking::Tfni);
+                }
+                if atomal {
+                    aea.push(AeaMarking::Atomal(AtomalBlock {}));
+                }
+                a.aea_markings = aea.into_boxed_slice();
+                let mut dissem: Vec<DissemControl> = Vec::new();
+                if orcon {
+                    dissem.push(DissemControl::Oc);
+                }
+                if eyes {
+                    dissem.push(DissemControl::Eyes);
+                }
+                a.dissem_us = dissem.into_boxed_slice();
+                a
+            },
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +347,9 @@ fn arb_us_classification_for_ucni() -> impl Strategy<Value = MarkingClassificati
 fn oracle_hcs_comp_sub(attrs: &CanonicalAttrs) -> bool {
     let present = attrs.sci_markings.iter().any(|m| {
         matches!(m.system, SciControlSystem::Published(SciControlBare::Hcs))
-            && m.compartments.iter().any(|c| !c.sub_compartments.is_empty())
+            && m.compartments
+                .iter()
+                .any(|c| !c.sub_compartments.is_empty())
     });
     if !present {
         return false;
@@ -357,7 +375,9 @@ fn oracle_si_comp(attrs: &CanonicalAttrs) -> bool {
 fn oracle_tk_blfh(attrs: &CanonicalAttrs) -> bool {
     let present = attrs.sci_markings.iter().any(|m| {
         matches!(m.system, SciControlSystem::Published(SciControlBare::Tk))
-            && m.compartments.iter().any(|c| c.identifier.as_str() == "BLFH")
+            && m.compartments
+                .iter()
+                .any(|c| c.identifier.as_str() == "BLFH")
     });
     if !present {
         return false;

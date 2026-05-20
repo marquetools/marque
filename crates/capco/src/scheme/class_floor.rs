@@ -571,9 +571,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         // ORCON (bit 3) | ORCON_USGOV (bit 4): covers the ORCON
         // family per §H.8 p136/p140. Exact: `presence_orcon_family`
         // is equivalent to `dissem.contains(Oc) || dissem.contains(OcUsgov)`.
-        bitmask_trigger: Some(
-            (1u128 << fact_bit::ORCON) | (1u128 << fact_bit::ORCON_USGOV),
-        ),
+        bitmask_trigger: Some((1u128 << fact_bit::ORCON) | (1u128 << fact_bit::ORCON_USGOV)),
         bitmask_trigger_exact: true,
     },
     ClassFloorRow {
