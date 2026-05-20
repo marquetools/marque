@@ -80,6 +80,23 @@ pub type ConeDerivedFn<S: crate::scheme::MarkingScheme + ?Sized> =
         &<S as crate::scheme::MarkingScheme>::Marking,
     ) -> smallvec::SmallVec<[crate::fix_intent::FactRef<S>; 2]>;
 
+/// Scheme-agnostic closure-rule inventory metadata.
+///
+/// This surface is intended for discovery/config consumers that need stable
+/// row identity + presentation data without executable trigger/suppressor/cone
+/// bodies.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ClosureRuleMetadata {
+    /// Stable scheme-unique row identifier.
+    pub name: &'static str,
+    /// Human-readable row label.
+    pub label: &'static str,
+    /// Optional authoritative citation payload.
+    pub citation: Option<&'static str>,
+    /// Catalog default severity intent.
+    pub default_severity: Severity,
+}
+
 /// A declarative closure rule: when `triggers` are present and `suppressors`
 /// are absent, add `cone` facts to the marking.
 ///
@@ -139,6 +156,9 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     ///
     /// Every `ClosureRule` in a scheme's catalog MUST have a distinct `name`.
     pub name: &'static str,
+
+    /// Human-readable display label for inventory surfaces.
+    pub display_label: &'static str,
 
     /// Authoritative-source citation passage (e.g., `"CAPCO-2016 §H.8 p145"`).
     ///
@@ -267,6 +287,7 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> core::fmt::Debug for ClosureRule<
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ClosureRule")
             .field("name", &self.name)
+            .field("display_label", &self.display_label)
             .field("label", &self.label)
             .field("triggers", &self.triggers)
             .field("suppressors", &self.suppressors)
@@ -281,12 +302,26 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> Clone for ClosureRule<S> {
     fn clone(&self) -> Self {
         Self {
             name: self.name,
+            display_label: self.display_label,
             label: self.label,
             triggers: self.triggers,
             suppressors: self.suppressors,
             cone: self.cone,
             cone_derived: self.cone_derived,
             default_severity: self.default_severity,
+        }
+    }
+}
+
+impl<S: crate::scheme::MarkingScheme + ?Sized> From<&ClosureRule<S>> for ClosureRuleMetadata {
+    fn from(rule: &ClosureRule<S>) -> Self {
+        Self {
+            name: rule.name,
+            // Inventory metadata uses the dedicated display label for UX, while
+            // carrying the authoritative-source citation separately.
+            label: rule.display_label,
+            citation: Some(rule.label),
+            default_severity: rule.default_severity,
         }
     }
 }

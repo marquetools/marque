@@ -42,8 +42,9 @@ fn capco_recognizer_dispatch_is_send_sync_as_trait_object() {
     // zero-candidate case across all CapcoScheme recognizers, so the
     // assertion is stable without depending on parser internals.
     let cx = ParseContext::default();
-    let _ = boxed.recognize(b"", 0, &cx);
-    let _ = arced.recognize(b"", 0, &cx);
+    let scheme = CapcoScheme::new();
+    let _ = boxed.recognize(b"", 0, &scheme, &cx);
+    let _ = arced.recognize(b"", 0, &scheme, &cx);
 }
 
 /// Compile-time `Send + Sync` proof for the rule-emission types

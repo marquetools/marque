@@ -465,12 +465,13 @@ impl Recognizer<CapcoScheme> for EngineRecognizer {
         &self,
         bytes: &[u8],
         offset: usize,
+        scheme: &CapcoScheme,
         cx: &ParseContext,
     ) -> Parsed<marque_capco::CapcoMarking> {
         match self {
-            Self::Strict(r) => r.recognize(bytes, offset, cx),
-            Self::StrictOrDecoder(r) => r.recognize(bytes, offset, cx),
-            Self::Dyn(r) => r.recognize(bytes, offset, cx),
+            Self::Strict(r) => r.recognize(bytes, offset, scheme, cx),
+            Self::StrictOrDecoder(r) => r.recognize(bytes, offset, scheme, cx),
+            Self::Dyn(r) => r.recognize(bytes, offset, scheme, cx),
         }
     }
 }
@@ -1201,7 +1202,9 @@ impl Engine {
                 continue;
             }
             let bytes = &source[start..end];
-            let Parsed::Unambiguous(marking) = self.recognizer.recognize(bytes, start, &parse_cx)
+            let Parsed::Unambiguous(marking) =
+                self.recognizer
+                    .recognize(bytes, start, &self.scheme, &parse_cx)
             else {
                 continue;
             };

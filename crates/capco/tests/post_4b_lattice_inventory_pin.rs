@@ -17,13 +17,18 @@
 //!    Conflicts rows (27 → 29); #618 added the deferred E055 DISPLAY
 //!    ONLY > RELIDO row once `satisfies(TOK_DISPLAY_ONLY)` was widened
 //!    to recognize the canonical `display_only_to` parser axis (29 → 30);
-//!  * 10 [`ClosureRule`] rows returned by
-//!    [`MarkingScheme::closure_rules`], pinned as a **positional list**
-//!    (Kleene-fixpoint walk order is load-bearing — see
-//!    `crates/capco/src/scheme/closure.rs::CAPCO_CLOSURE_RULES`
-//!    doc-comment; the per-marking implication rows precede the
-//!    RELIDO rows so the NOFORN/ORCON cones populate `working`
-//!    before suppressor checks fire);
+//!  * 1 [`ClosureRule`] row returned by
+//!    [`MarkingScheme::closure_rules`] (post-PR-D of the FactBitmask
+//!    refactor, issue #371). The 10-row catalog walk that PR 4b-D.1
+//!    runtime-activated was retired in PR-D: nine rows had cones in
+//!    the closed-vocab atom inventory and migrated to the bitmask
+//!    Kleene fast path (`CLOSURE_TABLE` in `closure_table.rs`); only
+//!    `CLOSURE_REL_TO_USA_NATO` survives in fn-pointer form because
+//!    its `cone_derived` open-vocab NATO tetragraph has no
+//!    closed-vocab bit. The 10-row bitmask catalog gets a parallel
+//!    positional pin against `CLOSURE_TABLE` here — the broader
+//!    drift-catch property that the original 10-row `ClosureRule`
+//!    list provided now lives on the bitmask side;
 //!  * 39 [`Constraint::Custom`] row labels returned by
 //!    [`MarkingScheme::constraints`], pinned as a **sorted set**
 //!    (constraint evaluation order is not engine-observable; only
@@ -132,7 +137,7 @@
 //!   in each catalog declaration's `citation` field.
 
 use marque_capco::CapcoScheme;
-use marque_scheme::{Constraint, MarkingScheme};
+use marque_scheme::{Constraint, MarkingScheme, Severity};
 use std::collections::BTreeSet;
 
 /// Closed list of 27 PageRewrite IDs in positional order, matching
@@ -193,24 +198,42 @@ const EXPECTED_PAGE_REWRITES: &[&str] = &[
     "capco/les-nf-transmutes-on-classified-contact",
 ];
 
-/// Closed list of 10 ClosureRule IDs in the positional order of
-/// `CAPCO_CLOSURE_RULES`. The walk order is load-bearing for the
-/// Kleene-fixpoint pass: per-marking implication rows precede the
-/// Trio-2 RELIDO rows so the NOFORN/ORCON cones populate `working`
-/// before RELIDO's suppressor checks fire in the same Kleene
-/// iteration. The doc-comment in `CAPCO_CLOSURE_RULES` carries the
-/// full rationale.
+/// Closed list of the residual ClosureRule IDs from
+/// `CAPCO_CLOSURE_RULES` after PR-D of the FactBitmask refactor
+/// (issue #371). Nine of the original ten fn-pointer rules retired —
+/// their cones (NOFORN / ORCON / RELIDO / REL_TO_USA) all sit in the
+/// closed-vocab atom inventory and project cleanly to bitmask cone
+/// masks (`CLOSURE_TABLE` Rows 0-6, 8-9 in `closure_table.rs`). Only
+/// `capco/rel-to-usa-nato-if-nato-classification` (Row 7 in the
+/// bitmask catalog) survives the fn-pointer slice because its
+/// `cone_derived` open-vocab NATO tetragraph injection cannot be
+/// projected onto a closed-vocab bit; the production closure body in
+/// `marking_scheme_impl.rs::CapcoScheme::closure` applies the static
+/// USA leg via the bitmask path's `REL_TO_USA` atom and runs the
+/// surviving `cone_derived` as a single post-Kleene tail.
+const EXPECTED_CLOSURE_RULES: &[&str] = &["capco/rel-to-usa-nato-if-nato-classification"];
+
+/// Closed list of 10 `ClosureRow` names in the positional order of
+/// `marque_capco::closure_table::CLOSURE_TABLE`. PR-D moved the
+/// drift-catch property that the retired 9 fn-pointer rows used to
+/// provide onto this parallel pin against the bitmask catalog.
+///
+/// Walk order is load-bearing for the Kleene-fixpoint pass per
+/// `closure_table.rs::CLOSURE_TABLE` doc-comment: per-marking
+/// implication rows precede the Trio-2 RELIDO rows so the
+/// NOFORN/ORCON cones populate the bitmask accumulator before
+/// suppressor checks fire in the same iteration.
 ///
 /// Positional sequence:
 ///
-/// - Row 1 — `noforn-if-caveated` per §B.3 Table 2 p21 (caveated → NOFORN).
-/// - Rows 2 through 7 — per-marking implications per §H.4 SCI per-system
+/// - Row 0 — `noforn-if-caveated` per §B.3 Table 2 p21 (caveated → NOFORN).
+/// - Rows 1 through 6 — per-marking implications per §H.4 SCI per-system
 ///   rows (HCS-O / HCS-P-sub / SI-G / TK-BLFH / TK-IDIT / TK-KAND).
-/// - Row 8 — `rel-to-usa-nato-if-nato-classification` per §H.7 p127
+/// - Row 7 — `rel-to-usa-nato-if-nato-classification` per §H.7 p127
 ///   (NATO REL TO portion-level closure).
-/// - Rows 9 and 10 — RELIDO closure rows per §H.8 pp 155-156
+/// - Rows 8 and 9 — RELIDO closure rows per §H.8 pp 155-156
 ///   (RELIDO observed-unanimity for SCI-portion / US-classified-portion).
-const EXPECTED_CLOSURE_RULES: &[&str] = &[
+const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
     "capco/noforn-if-caveated",
     "capco/hcs-o-implies-noforn-orcon",
     "capco/hcs-p-sub-implies-noforn-orcon",
@@ -340,14 +363,18 @@ fn post_pr_4b_declares_exact_30_page_rewrites_in_order() {
 }
 
 #[test]
-fn post_pr_4b_declares_exact_10_closure_rules_in_order() {
+fn post_pr_d_declares_exact_residual_closure_rules() {
     let scheme = CapcoScheme::new();
     let rules = scheme.closure_rules();
 
     let raw_len = rules.len();
     assert_eq!(
-        raw_len, 10,
-        "post-4b ClosureRule slice length drifted from 10: raw_len={raw_len}"
+        raw_len, 1,
+        "post-PR-D ClosureRule slice length drifted from 1: raw_len={raw_len}. \
+         PR-D of the FactBitmask refactor (issue #371) retired 9 of 10 fn-pointer \
+         closure rules into the bitmask `CLOSURE_TABLE`; only \
+         `capco/rel-to-usa-nato-if-nato-classification` survives because its \
+         `cone_derived` open-vocab NATO tetragraph has no closed-vocab bit."
     );
 
     let actual: Vec<&str> = rules.iter().map(|r| r.name).collect();
@@ -355,8 +382,8 @@ fn post_pr_4b_declares_exact_10_closure_rules_in_order() {
 
     assert_eq!(
         expected.len(),
-        10,
-        "EXPECTED_CLOSURE_RULES does not contain 10 entries: \
+        1,
+        "EXPECTED_CLOSURE_RULES does not contain 1 entry: \
          test data drifted, not the catalog"
     );
 
@@ -366,15 +393,88 @@ fn post_pr_4b_declares_exact_10_closure_rules_in_order() {
         let missing: Vec<&str> = expected_set.difference(&actual_set).copied().collect();
         let unexpected: Vec<&str> = actual_set.difference(&expected_set).copied().collect();
         panic!(
-            "post-4b ClosureRule positional list drifted.\n\
+            "post-PR-D ClosureRule list drifted.\n\
              Missing: {missing:?}.\n\
              Unexpected: {unexpected:?}.\n\
-             If both diffs are empty, the rows were reordered — \
-             the Kleene-fixpoint walk order is load-bearing per \
-             `CAPCO_CLOSURE_RULES` doc-comment (per-marking cones \
-             must populate `working` before RELIDO suppressor \
-             checks). Bumping this test requires intentional \
-             review.\n\n\
+             If both diffs are empty, the rows were reordered. Bumping \
+             this test requires intentional review.\n\n\
+             Actual order:   {actual:?}\n\
+             Expected order: {expected:?}"
+        );
+    }
+}
+
+#[test]
+fn post_pr_d_declares_unified_closure_inventory_in_registry_order() {
+    let scheme = CapcoScheme::new();
+    let inventory: Vec<_> = scheme.closure_inventory().collect();
+
+    let raw_len = inventory.len();
+    assert_eq!(
+        raw_len, 10,
+        "post-PR-D closure inventory length drifted from 10: raw_len={raw_len}. \
+         Unified inventory must include the full 10-row closure catalog."
+    );
+
+    let actual: Vec<&str> = inventory.iter().map(|row| row.name).collect();
+    let expected: Vec<&str> = EXPECTED_BITMASK_CLOSURE_ROWS.to_vec();
+    assert_eq!(
+        actual, expected,
+        "closure inventory row order drifted from registry order"
+    );
+
+    assert!(
+        inventory.iter().all(|row| row.citation.is_some()),
+        "every closure inventory row must expose citation metadata"
+    );
+    assert!(
+        inventory
+            .iter()
+            .all(|row| row.default_severity == Severity::Info),
+        "every current CAPCO closure inventory row must default to Severity::Info"
+    );
+}
+
+/// Post-PR-D parallel pin against the 10-row bitmask `CLOSURE_TABLE`.
+/// The retired fn-pointer `CAPCO_CLOSURE_RULES` 10-row pin's drift-
+/// catch property moves here. Walk order is load-bearing for the
+/// Kleene-fixpoint pass per `closure_table.rs::CLOSURE_TABLE`
+/// doc-comment.
+#[test]
+fn post_pr_d_declares_exact_10_bitmask_closure_rows_in_order() {
+    use marque_capco::closure_table::CLOSURE_TABLE;
+
+    let raw_len = CLOSURE_TABLE.len();
+    assert_eq!(
+        raw_len, 10,
+        "post-PR-D CLOSURE_TABLE row count drifted from 10: raw_len={raw_len}. \
+         The bitmask catalog is the post-PR-D source-of-truth for closure rows; \
+         a count change here means a row was added or removed."
+    );
+
+    let actual: Vec<&str> = CLOSURE_TABLE.iter().map(|r| r.name).collect();
+    let expected: Vec<&str> = EXPECTED_BITMASK_CLOSURE_ROWS.to_vec();
+
+    assert_eq!(
+        expected.len(),
+        10,
+        "EXPECTED_BITMASK_CLOSURE_ROWS does not contain 10 entries: \
+         test data drifted, not the catalog"
+    );
+
+    if actual != expected {
+        let actual_set: BTreeSet<&str> = actual.iter().copied().collect();
+        let expected_set: BTreeSet<&str> = expected.iter().copied().collect();
+        let missing: Vec<&str> = expected_set.difference(&actual_set).copied().collect();
+        let unexpected: Vec<&str> = actual_set.difference(&expected_set).copied().collect();
+        panic!(
+            "post-PR-D CLOSURE_TABLE positional list drifted.\n\
+             Missing: {missing:?}.\n\
+             Unexpected: {unexpected:?}.\n\
+             If both diffs are empty, the rows were reordered — the \
+             Kleene-fixpoint walk order is load-bearing per the \
+             `CLOSURE_TABLE` doc-comment in `closure_table.rs`. \
+             Bumping this test requires intentional review.\n\n\
              Actual order:   {actual:?}\n\
              Expected order: {expected:?}"
         );
