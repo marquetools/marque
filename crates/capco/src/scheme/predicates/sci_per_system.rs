@@ -11,6 +11,7 @@
 use super::super::constraints::sci_per_system_emit;
 use super::super::*;
 use super::presence::{anchors_on, compartment_has_sub, has_compartment, is_tk_noforn_compartment};
+use crate::fact_bitmask::{derive_bits, fact_bit};
 
 // ---------------------------------------------------------------------------
 // Family-presence predicates (one per PR-E catalog row)
@@ -109,6 +110,29 @@ pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSy
 /// path drops the fix (this is the same divergence PR D's class-floor
 /// catalog has). The engine path is the only path that produces
 /// `AppliedFix` records, and the engine path always uses the walker.
+///
+/// # Tier-3 bitmask fast path (PR-H / issue #371)
+///
+/// All 5 SCI per-system rows have `bitmask_trigger: Some(_)`. The
+/// dispatch order is:
+///
+/// 1. **Trigger mask gate**: `(bits & trigger) == 0` → no fire, return
+///    empty in O(1) without calling `presence()`.
+/// 2. **Presence confirmation** (coarse rows only, `trigger_exact: false`):
+///    call `presence(attrs)` to rule out false positives from the
+///    over-approximating `SCI_PRESENT` mask.
+/// 3. **US-class early-out + companion check**: if no US classification
+///    atom is set (`US_COLLATERAL_CLASSIFIED | US_UNCLASSIFIED == 0`),
+///    the emit functions would return empty (all rows are US-only per §H.4);
+///    otherwise check that all `companion_required` bits are set and no
+///    `companion_forbidden` bit is set.
+/// 4. **Structural fallthrough**: reached only when the trigger fires AND
+///    the companion check indicates a possible violation — `sci_per_system_emit`
+///    performs the full structural evaluation and produces `ConstraintViolation`s.
+///
+/// Emission is byte-identical to the pre-PR-H structural form: the fast
+/// path reaches `sci_per_system_emit` on the same inputs (trigger confirmed,
+/// companion not satisfied), and `sci_per_system_emit` is unchanged.
 pub(crate) fn sci_per_system_catalog_eval(
     attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
@@ -116,6 +140,40 @@ pub(crate) fn sci_per_system_catalog_eval(
     let Some(row) = sci_per_system_row_by_name(name) else {
         return Vec::new();
     };
+
+    // ── Tier-3 bitmask fast path (all 5 rows have Some trigger) ─────────────
+    if let Some(trigger_mask) = row.bitmask_trigger {
+        let bits = derive_bits(attrs);
+        let bits_u128 = bits.bits();
+
+        // Step 1: trigger gate — short-circuit if the marking family is absent.
+        if (bits_u128 & trigger_mask) == 0 {
+            return Vec::new();
+        }
+
+        // Step 2: presence confirmation for the one coarse-gate row
+        // (HCS-P-NOFORN uses SCI_PRESENT as trigger; all other rows are exact).
+        if !row.bitmask_trigger_exact && !(row.presence)(attrs) {
+            return Vec::new();
+        }
+
+        // Step 3: US-class early-out + companion check.
+        // All 5 emit functions open with `us_level(attrs).is_none()` → return
+        // empty immediately (rows apply only to US-classified portions per §H.4).
+        // Bitmask equivalent: if neither US_COLLATERAL_CLASSIFIED nor
+        // US_UNCLASSIFIED is set, no US classification is present → no violation.
+        let us_class_mask =
+            (1u128 << fact_bit::US_COLLATERAL_CLASSIFIED) | (1u128 << fact_bit::US_UNCLASSIFIED);
+        let no_us_class = (bits_u128 & us_class_mask) == 0;
+        let companion_satisfied = no_us_class
+            || ((bits_u128 & row.bitmask_companion_required) == row.bitmask_companion_required
+                && (bits_u128 & row.bitmask_companion_forbidden) == 0);
+        if companion_satisfied {
+            return Vec::new();
+        }
+    }
+
+    // ── Structural path (violation path) ────────────────────────────────────
     // Trait-path doesn't have a candidate span (the engine's
     // bridge_sci_per_system_diagnostics direct path does). The
     // emitted Diagnostics are projected to ConstraintViolation
