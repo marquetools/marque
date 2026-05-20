@@ -522,6 +522,48 @@ impl Engine {
         // the first page that triggers the rewrite.
         validate_intent_rewrites(&scheme, scheme.page_rewrites())?;
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
+        // Drop the user-supplied scheme after page-rewrite extraction;
+        // the constraint-catalog bridge in `lint_inner` uses a fresh
+        // `CapcoScheme::new()` (see the `scheme` field doc above for
+        // the design rationale).
+        //
+        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
+        // that passes a configured `CapcoScheme` (custom catalog,
+        // runtime-amended constraint rows, alternative rewrite axis
+        // beyond what we already extracted) loses every customization
+        // here. No compile-time guard — the `S: MarkingScheme` bound
+        // permits any scheme because the scheduler test
+        // (`crates/engine/tests/scheduler.rs:106`) deliberately
+        // exercises that flexibility with a `StubScheme`. Every
+        // production call site today passes `CapcoScheme::new()` (the
+        // default), so the discard is currently lossless; a future
+        // refactor that makes `Engine<S>` truly generic over the
+        // scheme will close this. The `tracing::debug!` below makes
+        // the silent drop observable to a developer running with
+        // `MARQUE_LOG=marque=debug` (off by default in
+        // production).
+        tracing::debug!(
+            target: "marque_engine::scheme_discard",
+            "user-supplied scheme dropped; constraint-catalog bridge uses default \
+             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
+        );
+        drop(scheme);
+        Self::with_clock_prepared(config, rule_sets, clock, bridge_scheme, scheduled_rewrites)
+    }
+
+    /// Non-generic tail of [`Engine::with_clock`].
+    ///
+    /// Keeping the heavy construction path behind a concrete signature
+    /// avoids monomorphizing the full constructor body for every `S`
+    /// used at call sites; only the rewrite-validation/scheduling front
+    /// edge remains generic.
+    fn with_clock_prepared(
+        mut config: Config,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        clock: Box<dyn Clock>,
+        bridge_scheme: CapcoScheme,
+        scheduled_rewrites: Box<[RewriteId]>,
+    ) -> Result<Self, EngineConstructionError> {
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
         let corrections_arc = if config.corrections.is_empty() {
@@ -559,32 +601,6 @@ impl Engine {
             }
         });
 
-        // Drop the user-supplied scheme after page-rewrite extraction;
-        // the constraint-catalog bridge in `lint_inner` uses a fresh
-        // `CapcoScheme::new()` (see the `scheme` field doc above for
-        // the design rationale).
-        //
-        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
-        // that passes a configured `CapcoScheme` (custom catalog,
-        // runtime-amended constraint rows, alternative rewrite axis
-        // beyond what we already extracted) loses every customization
-        // here. No compile-time guard — the `S: MarkingScheme` bound
-        // permits any scheme because the scheduler test
-        // (`crates/engine/tests/scheduler.rs:106`) deliberately
-        // exercises that flexibility with a `StubScheme`. Every
-        // production call site today passes `CapcoScheme::new()` (the
-        // default), so the discard is currently lossless; a future
-        // refactor that makes `Engine<S>` truly generic over the
-        // scheme will close this. The `tracing::debug!` below makes
-        // the silent drop observable to a developer running with
-        // `MARQUE_LOG=marque_engine=debug` (off by default in
-        // production).
-        tracing::debug!(
-            target: "marque_engine::scheme_discard",
-            "user-supplied scheme dropped; constraint-catalog bridge uses default \
-             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
-        );
-        drop(scheme);
         let scheme = bridge_scheme;
 
         // PR 7a phase-partition walk (FR-021). Read every registered
@@ -5115,6 +5131,32 @@ mod tests {
         );
     }
 
+    /// Pins the rewrite scheduling contract for the generic front edge
+    /// of `Engine::with_clock`: extracting a non-generic tail must not
+    /// change the rewrite schedule chosen for the default scheme.
+    #[test]
+    fn with_clock_uses_default_rewrite_schedule() {
+        let via_new = Engine::new(
+            Config::default(),
+            crate::default_ruleset(),
+            crate::default_scheme(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+        let via_with_clock = Engine::with_clock(
+            Config::default(),
+            crate::default_ruleset(),
+            crate::default_scheme(),
+            Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(0))),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        assert_eq!(
+            via_new.scheduled_rewrites(),
+            via_with_clock.scheduled_rewrites(),
+            "scheduling regression: with_clock no longer preserves the scheduler output for the default scheme"
+        );
+    }
+
     /// A pure-test stand-in for the old `FixProposal` shape: the
     /// fields engine tests actually exercise (rule, span, replacement,
     /// confidence). The engine pipeline post Commit 10 takes
@@ -5799,6 +5841,86 @@ mod tests {
             "two lint calls should produce two banner observations"
         );
         assert_eq!(banner_counts, vec![1, 1]);
+    }
+
+    #[test]
+    fn parsed_markings_cache_persists_across_page_breaks() {
+        // CA-1 guard: page-break handling resets the per-page projection
+        // accumulators, but must NOT reset the per-document
+        // `parsed_markings` cache used by fix synthesis.
+        struct ParsedCacheIntentRule;
+        impl Rule<CapcoScheme> for ParsedCacheIntentRule {
+            fn id(&self) -> RuleId {
+                RuleId::new("PARSED_CACHE_TEST")
+            }
+            fn name(&self) -> &'static str {
+                "parsed-cache-test"
+            }
+            fn default_severity(&self) -> Severity {
+                Severity::Fix
+            }
+            fn check(
+                &self,
+                _attrs: &CanonicalAttrs,
+                ctx: &RuleContext,
+            ) -> Vec<Diagnostic<CapcoScheme>> {
+                if ctx.marking_type != marque_ism::MarkingType::Portion {
+                    return vec![];
+                }
+                vec![Diagnostic::with_fix_at_span(
+                    self.id(),
+                    self.default_severity(),
+                    ctx.candidate_span,
+                    ctx.candidate_span,
+                    "test intent",
+                    "TEST",
+                    FixIntent {
+                        replacement: ReplacementIntent::Recanonicalize {
+                            scope: RecanonScope::Portion,
+                        },
+                        confidence: Confidence::strict(0.99),
+                        feature_ids: SmallVec::new(),
+                        message: Message::new(
+                            MessageTemplate::BannerRollupMismatch,
+                            MessageArgs::default(),
+                        ),
+                        source: FixSource::BuiltinRule,
+                        migration_ref: None,
+                    },
+                )]
+            }
+        }
+
+        let set: Box<dyn RuleSet<CapcoScheme>> =
+            Box::new(RecorderSet(vec![Box::new(ParsedCacheIntentRule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+        .with_strict_recognizer();
+
+        // Two portions split by a form-feed page break. The test rule
+        // emits a FixIntent on each portion, so both candidates should
+        // populate `parsed_markings`.
+        let src = b"(S)\n\x0c(S)\n";
+        let (lint, parsed_markings) =
+            engine.lint_with_options_internal(src, &LintOptions::default());
+
+        assert!(!lint.truncated, "test fixture should not hit lint deadline");
+        assert_eq!(
+            parsed_markings.len(),
+            2,
+            "parsed_markings must retain entries from both pages; a page-break reset here would drop the first page entry"
+        );
+        assert!(
+            parsed_markings[0].0.start < parsed_markings[1].0.start,
+            "cache order must stay scanner-order sorted by Span.start"
+        );
     }
 
     // M6: FR-016 tiebreaker — same span, different rule IDs.
