@@ -219,6 +219,30 @@ proptest! {
         prop_assert_eq!(m ^ FactBitmask::EMPTY, m);
     }
 
+    /// `^=` agrees with `^`.
+    #[test]
+    fn bitxor_assign_matches_bitxor(a in arb_bitmask(), b in arb_bitmask()) {
+        let mut working = a;
+        working ^= b;
+        prop_assert_eq!(working, a ^ b);
+    }
+
+    /// `|=` agrees with `|`.
+    #[test]
+    fn bitor_assign_matches_bitor(a in arb_bitmask(), b in arb_bitmask()) {
+        let mut working = a;
+        working |= b;
+        prop_assert_eq!(working, a | b);
+    }
+
+    /// `&=` agrees with `&`.
+    #[test]
+    fn bitand_assign_matches_bitand(a in arb_bitmask(), b in arb_bitmask()) {
+        let mut working = a;
+        working &= b;
+        prop_assert_eq!(working, a & b);
+    }
+
     // ------------------------------------------------------------------
     // Round-trip
     // ------------------------------------------------------------------

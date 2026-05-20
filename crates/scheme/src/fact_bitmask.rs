@@ -43,7 +43,7 @@
 //! `BTreeMap`/`Hash` ergonomics only. Always use `is_subset_of` for
 //! lattice comparisons.
 
-use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not};
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 /// Number of bits in a [`FactBitmask`].
 pub const WIDTH: u32 = 128;
@@ -73,6 +73,7 @@ impl FactBitmask {
     /// it sparingly (typically only in tests and bench drivers); the
     /// preferred construction is `EMPTY.with_bit(...)` chained.
     #[inline]
+    #[must_use]
     pub const fn from_bits(bits: u128) -> Self {
         Self(bits)
     }
@@ -84,16 +85,22 @@ impl FactBitmask {
     /// (e.g., `MASK_X | MASK_Y`) should use the [`BitOr`] impl on
     /// `FactBitmask` itself rather than unwrapping.
     #[inline]
+    #[must_use]
     pub const fn bits(self) -> u128 {
         self.0
     }
 
     /// Returns `true` if the bit at position `bit` is set.
     ///
-    /// In debug builds, panics if `bit >= WIDTH`. Release builds wrap
-    /// to a no-op (the shift on `u128` is implementation-defined for
-    /// out-of-range shifts but compiles to a hardware modulo on
-    /// most targets; the debug assert catches the bug before release).
+    /// In debug builds, panics if `bit >= WIDTH`. In release builds,
+    /// Rust masks the shift amount to `bit % WIDTH` — so an
+    /// out-of-range index silently wraps (e.g., `is_set(128)`
+    /// returns the state of bit 0). Out-of-range indices are a
+    /// caller-contract violation, not a library invariant: domain
+    /// crates MUST enforce `bit < WIDTH` at their atom-layout
+    /// boundary via a `static_assert!` over their atom count. The
+    /// `debug_assert!` here is the development-time guard; the
+    /// static-assert in the consumer is the production guard.
     #[inline]
     pub const fn is_set(self, bit: u32) -> bool {
         debug_assert!(bit < WIDTH, "FactBitmask::is_set: bit index out of range");
@@ -103,7 +110,10 @@ impl FactBitmask {
     /// Returns a new [`FactBitmask`] with the bit at position `bit` set.
     ///
     /// Existing bits are preserved. In debug builds, panics if `bit
-    /// >= WIDTH`.
+    /// >= WIDTH`. Release-build semantics for out-of-range `bit` are
+    /// the same as [`is_set`](Self::is_set) — Rust masks the shift
+    /// amount to `bit % WIDTH`. Same caller-contract: domain crates
+    /// MUST `static_assert!` their atom count fits.
     #[inline]
     #[must_use]
     pub const fn with_bit(self, bit: u32) -> Self {
@@ -212,6 +222,13 @@ impl BitXor for FactBitmask {
     }
 }
 
+impl BitXorAssign for FactBitmask {
+    #[inline]
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.0 ^= rhs.0;
+    }
+}
+
 impl Not for FactBitmask {
     type Output = Self;
     #[inline]
@@ -312,6 +329,14 @@ mod tests {
         let b = FactBitmask::EMPTY.with_bit(2).with_bit(3);
         let c = a ^ b;
         assert_eq!(c, FactBitmask::EMPTY.with_bit(1).with_bit(3));
+    }
+
+    #[test]
+    fn bitxor_assign() {
+        let mut a = FactBitmask::EMPTY.with_bit(1).with_bit(2);
+        let b = FactBitmask::EMPTY.with_bit(2).with_bit(3);
+        a ^= b;
+        assert_eq!(a, FactBitmask::EMPTY.with_bit(1).with_bit(3));
     }
 
     #[test]

@@ -27,6 +27,11 @@
 //! - [`category`] — `Category`, `AggregationOp`, `Cardinality`,
 //!   `IntraOrdering`, and generic reducers keyed by `AggregationOp`.
 //! - [`constraint`] — declarative `Constraint` invariants.
+//! - [`fact_bitmask`] — [`FactBitmask`] + [`FACT_BITMASK_WIDTH`]:
+//!   packed Boolean characteristic-vector primitive (`u128`) for
+//!   closed-vocab atom sets. Domain-neutral storage shape;
+//!   per-scheme atom layouts live in the consuming crate
+//!   (`marque-capco` for CAPCO). (#371 PR-A)
 //! - [`template`] — structural templates for portion / banner / CAB.
 //! - [`projection`] — `Projection` trait and render-order helpers.
 //! - [`ambiguity`] — `Parsed<M>`, `Candidate`, `EvidenceFeature`.
