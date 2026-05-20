@@ -151,12 +151,58 @@ fn arb_rel_to() -> impl Strategy<Value = Vec<CountryCode>> {
     )
 }
 
+/// Optionally generate a single SCI marking exercising the six
+/// compartment sentinels (SI-G, HCS-O, HCS-P[sub], TK-BLFH, TK-IDIT,
+/// TK-KAND) plus a "no SCI" arm. Loaded into `CanonicalAttrs::sci_markings`
+/// so `apply_preserves_non_cone_axes` actually exercises the
+/// preservation property non-vacuously (a Copilot review finding —
+/// the previous default-empty strategy made the sci_markings
+/// assertion trivially true).
+fn arb_sci_markings() -> impl Strategy<Value = Vec<marque_ism::SciMarking>> {
+    use marque_ism::{SciCompartment, SciControlBare, SciControlSystem, SciMarking};
+
+    prop_oneof![
+        Just(vec![]),
+        Just(vec![SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Si),
+            Box::new([SciCompartment::new("G", Box::new([]))]),
+            None,
+        )]),
+        Just(vec![SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Hcs),
+            Box::new([SciCompartment::new("O", Box::new([]))]),
+            None,
+        )]),
+        Just(vec![SciMarking::new(
+            SciControlSystem::Published(SciControlBare::Tk),
+            Box::new([SciCompartment::new("BLFH", Box::new([]))]),
+            None,
+        )]),
+    ]
+}
+
+/// Optionally generate a SAR marking — exercises `SAR_PRESENT` and
+/// keeps `apply_preserves_non_cone_axes`'s `sar_markings` assertion
+/// non-vacuous (Copilot review finding).
+fn arb_sar_markings() -> impl Strategy<Value = Option<marque_ism::SarMarking>> {
+    use marque_ism::{SarIndicator, SarMarking, SarProgram};
+
+    prop_oneof![
+        Just(None),
+        Just(Some(SarMarking::new(
+            SarIndicator::Abbrev,
+            Box::new([SarProgram::new("BP", Box::new([]))]),
+        ))),
+    ]
+}
+
 /// A focused strategy generating realistic `CanonicalAttrs` shapes
-/// from the closed-vocab axes the bitmask reads. Open-vocab axes
-/// (SCI compartments, SAR programs, custom country codes) are not
-/// exercised here — their presence is captured as sentinels
-/// (`SCI_PRESENT`, `SAR_PRESENT`) which PR-C's closure-table tests
-/// will cover end-to-end.
+/// from the closed-vocab axes the bitmask reads. Per the Copilot
+/// PR review, the SCI and SAR axes are now populated some of the
+/// time so `apply_preserves_non_cone_axes`' assertions on
+/// `sci_markings` / `sar_markings` are non-vacuous — the strategies
+/// produce non-empty values in roughly 3/4 of cases for SCI and
+/// 1/2 for SAR.
 fn arb_attrs() -> impl Strategy<Value = CanonicalAttrs> {
     (
         arb_classification(),
@@ -164,14 +210,18 @@ fn arb_attrs() -> impl Strategy<Value = CanonicalAttrs> {
         arb_non_ic_dissem(),
         arb_aea(),
         arb_rel_to(),
+        arb_sci_markings(),
+        arb_sar_markings(),
     )
-        .prop_map(|(cls, dus, nid, aea, rel)| {
+        .prop_map(|(cls, dus, nid, aea, rel, sci, sar)| {
             let mut a = CanonicalAttrs::default();
             a.classification = cls;
             a.dissem_us = dus.into();
             a.non_ic_dissem = nid.into();
             a.aea_markings = aea.into();
             a.rel_to = rel.into();
+            a.sci_markings = sci.into();
+            a.sar_markings = sar;
             a
         })
 }
@@ -321,9 +371,19 @@ proptest! {
     }
 
     /// `derive_bits ∘ apply_closed_bits_to ⊑` is a Galois connection
-    /// fragment: every bit in `(closed & APPLY_ELIGIBLE_MASK)` shows
-    /// up in `derive_bits(apply(...))`, and no eligible bit not in
-    /// `closed` appears that wasn't already in `input`.
+    /// fragment: every eligible bit in `closed` is set in
+    /// `derive_bits(apply(...))`, AND no eligible bit appears that
+    /// was not in `closed` either to start with (in `input`) or as
+    /// part of the `cone_bits & APPLY_ELIGIBLE_MASK` injection.
+    ///
+    /// §H.8 p145 caveat: the NOFORN supersession overlay can EVICT
+    /// `RELIDO` / `Rel` / `Displayonly` / `Eyes` from `dissem_us`
+    /// (the dominated-control strip) AND clear `rel_to` (which
+    /// erases `REL_TO_USA` if `USA` was already in the input list).
+    /// When NOFORN is in the delta, those bits drop from the
+    /// post-apply bitmask. The assertion accounts for that —
+    /// `recovered_eligible` may be a strict subset of
+    /// `expected_eligible` exactly when NOFORN is in `closed`.
     #[test]
     fn apply_then_derive_recovers_eligible_bits(
         attrs in arb_attrs(),
@@ -335,13 +395,81 @@ proptest! {
         apply_closed_bits_to(&mut a, closed, input);
         let after = derive_bits(&a);
 
-        // Every eligible bit in `closed` must be set in `after`.
         let recovered_eligible = after.bits() & APPLY_ELIGIBLE_MASK;
         let expected_eligible = closed.bits() & APPLY_ELIGIBLE_MASK;
+
+        // Forward direction: every eligible bit in `closed` must be
+        // set in `after`, EXCEPT the §H.8 p145 dominated atoms when
+        // NOFORN is in the delta. The dominated tokens (RELIDO,
+        // REL_TO_USA implicitly via rel_to clear) drop out by design.
+        let noforn_in_closed = (closed.bits() & (1u128 << fact_bit::NOFORN)) != 0;
+        let evicted_by_noforn = if noforn_in_closed {
+            (1u128 << fact_bit::RELIDO) | (1u128 << fact_bit::REL_TO_USA)
+        } else {
+            0
+        };
+        let must_be_recovered = expected_eligible & !evicted_by_noforn;
         prop_assert_eq!(
-            recovered_eligible & expected_eligible,
-            expected_eligible,
-            "lost an eligible bit on round-trip",
+            recovered_eligible & must_be_recovered,
+            must_be_recovered,
+            "lost a non-dominated eligible bit on round-trip",
+        );
+
+        // Reverse direction: no eligible bit appears in `after` that
+        // wasn't either in `closed` to begin with. `apply_closed_bits_to`
+        // only adds atoms from `APPLY_ELIGIBLE_MASK`, never creates
+        // ineligible bits, and strips dominated controls (never adds
+        // dominated controls). So the post-apply eligible bits MUST
+        // be a subset of `expected_eligible`.
+        prop_assert_eq!(
+            recovered_eligible & !expected_eligible,
+            0,
+            "post-apply has an eligible bit that wasn't in closed",
+        );
+    }
+
+    /// §H.8 p145 NOFORN-dominates invariant: when NOFORN is in the
+    /// closed bitmask AND the apply path adds it, the resulting
+    /// `attrs` must satisfy the dominance rule — no `Rel`, `Relido`,
+    /// `Displayonly`, `Eyes` in `dissem_us`; empty `rel_to`; empty
+    /// `display_only_to`. Catches the Copilot-flagged hole: PR-C's
+    /// unconditional per-marking NOFORN rows (HCS-O / HCS-P[sub] /
+    /// TK-BLFH/IDIT/KAND) have no suppressors and can fire on
+    /// portions with pre-existing FD&R tokens.
+    ///
+    /// Authority: §H.8 p145 + §D.2 Table 3 rows 1-2.
+    #[test]
+    fn apply_preserves_h8_p145_invariant(attrs in arb_attrs()) {
+        let input = derive_bits(&attrs);
+        // Force NOFORN into the delta (skip if already present).
+        if input.is_set(fact_bit::NOFORN) {
+            return Ok(());
+        }
+        let closed = input.with_bit(fact_bit::NOFORN);
+        let mut a = attrs.clone();
+        apply_closed_bits_to(&mut a, closed, input);
+
+        // §H.8 p145 must hold post-apply.
+        prop_assert!(
+            a.dissem_us.contains(&DissemControl::Nf),
+            "NOFORN delta did not add Nf to dissem_us",
+        );
+        for dominated in [
+            DissemControl::Rel,
+            DissemControl::Relido,
+            DissemControl::Displayonly,
+            DissemControl::Eyes,
+        ] {
+            prop_assert!(
+                !a.dissem_us.contains(&dominated),
+                "§H.8 p145: NOFORN did not evict {} from dissem_us",
+                dominated.as_str(),
+            );
+        }
+        prop_assert!(a.rel_to.is_empty(), "§H.8 p145: rel_to not cleared");
+        prop_assert!(
+            a.display_only_to.is_empty(),
+            "§H.8 p145: display_only_to not cleared",
         );
     }
 

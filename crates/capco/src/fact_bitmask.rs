@@ -491,73 +491,158 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
 /// short-circuit re-adds. This is the round-trip law the PR-B
 /// proptest harness asserts.
 ///
-/// # NOFORN supersession (defense-in-depth note)
+/// # §H.8 p145 NOFORN supersession
 ///
-/// PR-D wires `apply_closed_bits_to` after the bitmask Kleene loop
-/// converges. `MASK_FDR_DOMINATORS` includes `REL_TO_PRESENT`, so
-/// `CLOSURE_NOFORN_CAVEATED` does NOT fire when `attrs.rel_to` is
-/// non-empty — by construction, the NOFORN delta cannot coexist with
-/// a populated `rel_to`. `apply_closed_bits_to` therefore does NOT
-/// run the §H.8 p145 supersession overlay (clearing rel_to / display
-/// only on NOFORN insertion); that path is owned by
-/// `apply_fact_add` in `scheme/actions/intent.rs`.
+/// When the NOFORN bit is in the delta, `apply_closed_bits_to` runs
+/// the full §H.8 p145 dominators overlay alongside the dissem-axis
+/// insertion. NOFORN cannot coexist with `Rel`, `Relido`,
+/// `Displayonly`, `Eyes` in the same axis, nor with a populated
+/// `rel_to` or `display_only_to` country list. The overlay mirrors
+/// the existing `apply_fact_add` NOFORN insertion path in
+/// `scheme/actions/intent.rs:327-340`:
 ///
-/// PR-B's invariant: the bitmask closure is responsible for ensuring
-/// the cone fires only when its suppressor is absent. If a future
-/// catalog change weakens that contract, the proptest
-/// `apply_preserves_h8_p145_invariant` catches the regression.
+/// 1. Strip `Rel` / `Relido` / `Displayonly` / `Eyes` from
+///    `attrs.dissem_us` while inserting `Nf`.
+/// 2. Clear `attrs.rel_to` (the country-list axis §H.8 p145
+///    dominates alongside the token-axis eviction).
+/// 3. Clear `attrs.display_only_to` (mirror of `rel_to` for the
+///    DISPLAY ONLY country-list axis).
+///
+/// **Why this is needed even though `CLOSURE_NOFORN_CAVEATED`
+/// gates on `REL_TO_PRESENT`.** PR-C's closure-table catalog
+/// has five per-marking unconditional rows (HCS-O / HCS-P[sub] /
+/// TK-BLFH / TK-IDIT / TK-KAND) that add NOFORN with NO
+/// suppressors. Without this overlay, those rows could leave the
+/// marking in an invalid mixed state (NOFORN + REL TO) on
+/// portions where the SCI sentinel coexists with a pre-existing
+/// FD&R decision — exactly the bug `apply_fact_add` already
+/// guards against on the manual-FactAdd path.
+///
+/// Authority: §H.8 p145 ("NOFORN: cannot be used with REL TO,
+/// RELIDO, EYES ONLY, or DISPLAY ONLY") + §D.2 Table 3 rows 1-2.
+/// Coverage: `apply_preserves_h8_p145_invariant` proptest +
+/// `apply_noforn_supersedes_dominated_*` unit tests.
 pub fn apply_closed_bits_to(attrs: &mut CanonicalAttrs, closed: FactBitmask, input: FactBitmask) {
     let delta = (closed.bits() & !input.bits()) & APPLY_ELIGIBLE_MASK;
     if delta == 0 {
         return;
     }
 
-    // Phase 1: collect dissem additions in one pass; rebuild
-    // `attrs.dissem_us` with a single allocation iff anything is
-    // actually added. Inline stack buffer sized for the closure-cone
-    // worst case (NOFORN + ORCON + RELIDO).
-    let dissem_delta = delta
-        & ((1u128 << fact_bit::NOFORN) | (1u128 << fact_bit::ORCON) | (1u128 << fact_bit::RELIDO));
-    if dissem_delta != 0 {
+    let noforn_in_delta = (delta & (1u128 << fact_bit::NOFORN)) != 0;
+    let orcon_in_delta = (delta & (1u128 << fact_bit::ORCON)) != 0;
+    let relido_in_delta = (delta & (1u128 << fact_bit::RELIDO)) != 0;
+
+    // Phase 1: rebuild `attrs.dissem_us` in a single allocation.
+    //
+    // If NOFORN is in the delta, the §H.8 p145 supersession overlay
+    // ALSO strips dominated controls (`Rel`, `Relido`, `Displayonly`,
+    // `Eyes`) from the surviving slice — so the rebuild path runs
+    // even when only NOFORN is added (no new ORCON / RELIDO) because
+    // existing dominated tokens still need eviction. The
+    // existing-presence guards on ORCON / RELIDO use
+    // `attrs.dissem_iter()` (both namespaces) for symmetry with
+    // pre-PR-B `apply_fact_add`.
+    //
+    // Eviction precedence: NOFORN evicts RELIDO before the RELIDO
+    // bit's add-guard fires; if both NOFORN and RELIDO are in the
+    // delta in the same call, the result honors §H.8 p145 (NOFORN
+    // wins, RELIDO is NOT added). This matches the existing
+    // `apply_fact_add` behavior at intent.rs:283-292.
+    let dissem_rebuild_needed = noforn_in_delta || orcon_in_delta || relido_in_delta;
+
+    if dissem_rebuild_needed {
+        // Stack buffer sized for the worst case: NOFORN + ORCON +
+        // RELIDO. RELIDO is only ever added when NOFORN is NOT in the
+        // delta, so the buffer is exactly large enough.
         let mut additions: [DissemControl; 3] = [DissemControl::Nf; 3];
         let mut add_count = 0usize;
 
-        if (dissem_delta & (1u128 << fact_bit::NOFORN)) != 0
-            && !attrs.dissem_iter().any(|d| *d == DissemControl::Nf)
-        {
+        if noforn_in_delta && !attrs.dissem_iter().any(|d| *d == DissemControl::Nf) {
             additions[add_count] = DissemControl::Nf;
             add_count += 1;
         }
-        if (dissem_delta & (1u128 << fact_bit::ORCON)) != 0
-            && !attrs.dissem_iter().any(|d| *d == DissemControl::Oc)
-        {
+        if orcon_in_delta && !attrs.dissem_iter().any(|d| *d == DissemControl::Oc) {
             additions[add_count] = DissemControl::Oc;
             add_count += 1;
         }
-        if (dissem_delta & (1u128 << fact_bit::RELIDO)) != 0
+        // §H.8 p145: RELIDO is dominated by NOFORN. Skip the RELIDO
+        // add if NOFORN is in the delta or already present — the
+        // dissem-axis eviction below handles any pre-existing RELIDO.
+        if relido_in_delta
+            && !noforn_in_delta
             && !attrs.dissem_iter().any(|d| *d == DissemControl::Relido)
         {
             additions[add_count] = DissemControl::Relido;
             add_count += 1;
         }
 
-        if add_count > 0 {
-            // Single allocation sized exactly for the final length.
-            let mut next: Vec<DissemControl> =
-                Vec::with_capacity(attrs.dissem_us.len() + add_count);
-            next.extend_from_slice(&attrs.dissem_us);
+        let strip_dominators = noforn_in_delta;
+        let dissem_us_keep_count = if strip_dominators {
+            attrs
+                .dissem_us
+                .iter()
+                .filter(|d| !is_noforn_dominated(d))
+                .count()
+        } else {
+            attrs.dissem_us.len()
+        };
+
+        // Only rebuild if there's something to add OR something to
+        // strip; otherwise the existing slice is byte-identical.
+        let strip_needed = strip_dominators && dissem_us_keep_count != attrs.dissem_us.len();
+        if add_count > 0 || strip_needed {
+            let mut next: Vec<DissemControl> = Vec::with_capacity(dissem_us_keep_count + add_count);
+            for d in attrs.dissem_us.iter() {
+                if !strip_dominators || !is_noforn_dominated(d) {
+                    next.push(*d);
+                }
+            }
             next.extend_from_slice(&additions[..add_count]);
             attrs.dissem_us = next.into_boxed_slice();
         }
     }
 
-    // Phase 2: REL TO rebuild — at most one country (USA) added.
-    if (delta & (1u128 << fact_bit::REL_TO_USA)) != 0 && !attrs.rel_to.contains(&CountryCode::USA) {
+    // Phase 2: §H.8 p145 country-list dominance. NOFORN clears
+    // `rel_to` AND `display_only_to` alongside the token-axis
+    // eviction above. Mirror `apply_fact_add` at intent.rs:334-339.
+    if noforn_in_delta {
+        if !attrs.rel_to.is_empty() {
+            attrs.rel_to = Box::new([]);
+        }
+        if !attrs.display_only_to.is_empty() {
+            attrs.display_only_to = Box::new([]);
+        }
+    }
+
+    // Phase 3: REL TO rebuild — at most one country (USA) added.
+    // Suppressed when NOFORN was in the delta (Phase 2 just cleared
+    // rel_to; adding USA back would re-violate §H.8 p145).
+    if !noforn_in_delta
+        && (delta & (1u128 << fact_bit::REL_TO_USA)) != 0
+        && !attrs.rel_to.contains(&CountryCode::USA)
+    {
         let mut next: Vec<CountryCode> = Vec::with_capacity(attrs.rel_to.len() + 1);
         next.extend_from_slice(&attrs.rel_to);
         next.push(CountryCode::USA);
         attrs.rel_to = next.into_boxed_slice();
     }
+}
+
+/// `true` iff `token` is one of the §H.8 p145 NOFORN dominators
+/// (`Rel`, `Relido`, `Displayonly`, `Eyes`). Used by Phase 1 of
+/// `apply_closed_bits_to` to strip dominated controls from
+/// `attrs.dissem_us` when NOFORN is in the delta.
+///
+/// Authority: CAPCO-2016 §H.8 p145 + §D.2 Table 3 rows 1-2.
+#[inline]
+fn is_noforn_dominated(token: &DissemControl) -> bool {
+    matches!(
+        token,
+        DissemControl::Rel
+            | DissemControl::Relido
+            | DissemControl::Displayonly
+            | DissemControl::Eyes
+    )
 }
 
 /// Extract the 3-bit US classification level from a [`FactBitmask`].
@@ -747,6 +832,116 @@ mod tests {
         apply_closed_bits_to(&mut attrs, closed, input);
         assert!(attrs.rel_to.contains(&CountryCode::USA));
         assert!(attrs.rel_to.contains(&CountryCode::GBR));
+    }
+
+    /// §H.8 p145: adding NOFORN evicts `Rel` / `Relido` /
+    /// `Displayonly` / `Eyes` from `attrs.dissem_us` in the same
+    /// call. Covers the Copilot-flagged hole: PR-C's unconditional
+    /// per-marking NOFORN rows (HCS-O / HCS-P[sub] / TK-BLFH/IDIT/KAND
+    /// at plan §4 rows 1, 2, 4, 5, 6) have no suppressors and can
+    /// fire on portions with pre-existing FD&R tokens.
+    #[test]
+    fn apply_noforn_supersedes_dominated_dissem_tokens() {
+        for dominated in [
+            DissemControl::Rel,
+            DissemControl::Relido,
+            DissemControl::Displayonly,
+            DissemControl::Eyes,
+        ] {
+            let mut attrs = empty();
+            attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+            attrs.dissem_us = vec![dominated].into();
+
+            let input = derive_bits(&attrs);
+            let closed = input.with_bit(fact_bit::NOFORN);
+            apply_closed_bits_to(&mut attrs, closed, input);
+
+            assert!(
+                attrs.dissem_us.contains(&DissemControl::Nf),
+                "NOFORN missing after apply for dominated={dominated:?}",
+            );
+            assert!(
+                !attrs.dissem_us.contains(&dominated),
+                "§H.8 p145: NOFORN did not evict {dominated:?}",
+            );
+        }
+    }
+
+    /// §H.8 p145: adding NOFORN clears `attrs.rel_to`. Closure rows
+    /// without REL_TO_PRESENT in their suppressor mask can fire NOFORN
+    /// onto a portion with a populated REL TO; the country-list axis
+    /// must clear alongside the token-axis eviction.
+    #[test]
+    fn apply_noforn_clears_rel_to_country_list() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        attrs.rel_to = vec![CountryCode::USA, CountryCode::GBR].into();
+
+        let input = derive_bits(&attrs);
+        let closed = input.with_bit(fact_bit::NOFORN);
+        apply_closed_bits_to(&mut attrs, closed, input);
+
+        assert!(attrs.dissem_us.contains(&DissemControl::Nf));
+        assert!(attrs.rel_to.is_empty(), "§H.8 p145: rel_to not cleared");
+    }
+
+    /// §H.8 p145: adding NOFORN clears `attrs.display_only_to` —
+    /// mirror of the rel_to clear above.
+    #[test]
+    fn apply_noforn_clears_display_only_to_country_list() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        attrs.display_only_to = vec![CountryCode::GBR].into();
+
+        let input = derive_bits(&attrs);
+        let closed = input.with_bit(fact_bit::NOFORN);
+        apply_closed_bits_to(&mut attrs, closed, input);
+
+        assert!(
+            attrs.display_only_to.is_empty(),
+            "§H.8 p145: display_only_to not cleared",
+        );
+    }
+
+    /// §H.8 p145: when NOFORN AND RELIDO are both in the delta,
+    /// NOFORN wins — RELIDO is NOT added to the dissem axis. Mirrors
+    /// `apply_fact_add`'s same-call dominance guard at
+    /// `intent.rs:283-292`.
+    #[test]
+    fn apply_noforn_dominates_simultaneous_relido_delta() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+
+        let input = derive_bits(&attrs);
+        let closed = input.with_bit(fact_bit::NOFORN).with_bit(fact_bit::RELIDO);
+        apply_closed_bits_to(&mut attrs, closed, input);
+
+        assert!(attrs.dissem_us.contains(&DissemControl::Nf));
+        assert!(
+            !attrs.dissem_us.contains(&DissemControl::Relido),
+            "§H.8 p145: NOFORN+RELIDO same-call should drop RELIDO",
+        );
+    }
+
+    /// §H.8 p145: REL_TO_USA delta is suppressed when NOFORN is also
+    /// in the delta — Phase 2 just cleared `rel_to`, re-adding USA
+    /// would re-violate the dominance rule.
+    #[test]
+    fn apply_noforn_suppresses_simultaneous_rel_to_usa_delta() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+
+        let input = derive_bits(&attrs);
+        let closed = input
+            .with_bit(fact_bit::NOFORN)
+            .with_bit(fact_bit::REL_TO_USA);
+        apply_closed_bits_to(&mut attrs, closed, input);
+
+        assert!(attrs.dissem_us.contains(&DissemControl::Nf));
+        assert!(
+            attrs.rel_to.is_empty(),
+            "§H.8 p145: NOFORN+REL_TO_USA should leave rel_to empty",
+        );
     }
 
     #[test]
