@@ -353,18 +353,16 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        // SCI_TK_BLFH (43) | SCI_TK_IDIT (44) | SCI_TK_KAND (45):
-        // coarse gate covering TK sub-compartments. Coarse:
-        // `presence_tk_family` excludes TK-BLFH (handled by the
-        // Floor-TS row); bare TK has no dedicated sentinel so the
-        // `SCI_PRESENT` bit is NOT included here — that would falsely
-        // fire on non-TK SCI. `presence()` confirms bare TK via
-        // `sci_markings` structural scan.
-        bitmask_trigger: Some(
-            (1u128 << fact_bit::SCI_TK_BLFH)
-                | (1u128 << fact_bit::SCI_TK_IDIT)
-                | (1u128 << fact_bit::SCI_TK_KAND),
-        ),
+        // SCI_PRESENT (bit 37): coarse gate covering all TK forms —
+        // bare TK, TK-IDIT, TK-KAND, and TK-BLFH. Bare TK (no
+        // compartments) sets only SCI_PRESENT; the specific sentinel
+        // bits (SCI_TK_BLFH/IDIT/KAND) are only set when those named
+        // compartments appear. Using SCI_PRESENT ensures bare TK is
+        // not missed. Coarse: `presence_tk_family` confirms (excludes
+        // TK-BLFH and non-TK SCI systems). False-positive rate is
+        // higher than using the specific bits alone, but correctness
+        // requires it for the bare-TK path.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
         bitmask_trigger_exact: false,
     },
     ClassFloorRow {
