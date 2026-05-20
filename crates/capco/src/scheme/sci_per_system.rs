@@ -16,6 +16,7 @@
 use super::actions::*;
 use super::predicates::*;
 use super::*;
+use crate::fact_bitmask::fact_bit;
 
 // ===========================================================================
 // PR 3b.E (T026e) — SCI per-system catalog (§H.4)
@@ -153,6 +154,30 @@ pub(crate) struct SciPerSystemRow {
     pub(crate) kind: SciPerSystemKind,
     /// Default severity (typically `Warn`).
     pub(crate) severity: marque_rules::Severity,
+    /// Tier-3 bitmask trigger (PR-H / issue #371).
+    ///
+    /// `Some(mask)` when the row has a closed-atom trigger: the
+    /// `sci_per_system_catalog_eval` fast path returns empty immediately
+    /// when `(bits & mask) == 0` without calling `presence()`.
+    ///
+    /// `None` is intentionally unused for all 5 SCI per-system rows
+    /// (all have closed-atom triggers) but kept for forward-compatibility
+    /// parity with [`ClassFloorRow`].
+    pub(crate) bitmask_trigger: Option<u128>,
+    /// When `true`, the trigger mask is exact (no false positives) and
+    /// `presence()` confirmation is skipped. When `false`, the mask is a
+    /// coarse gate and `presence()` must confirm before the companion
+    /// check runs.
+    pub(crate) bitmask_trigger_exact: bool,
+    /// Bitmask of companion bits that MUST all be set (AND-mask) for the
+    /// row to be "violation-free" from a bitmask perspective.
+    /// Zero means no required-companion bits (the row is satisfied by
+    /// absence alone, or the "forbidden" mask does all the work).
+    pub(crate) bitmask_companion_required: u128,
+    /// Bitmask of companion bits where ANY set bit indicates a violation
+    /// (forbidden-bit OR-mask).
+    /// Zero means no forbidden bits.
+    pub(crate) bitmask_companion_forbidden: u128,
     /// Per-row §-citation, matching `Constraint::Custom { label }`.
     /// PR 3c.2.C C5 retired the emission path through this field per
     /// PM-C-1 (catalog row citations stay `&'static str` for
@@ -171,6 +196,13 @@ pub(crate) struct SciPerSystemRow {
 pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // Row #1 — HCS-O companions (ORCON + NOFORN required, ORCON-USGOV
     // forbidden). §H.4 p64.
+    //
+    // Tier-3 bitmask: SCI_HCS_O (bit 41) is the exact trigger — only set
+    // when HCS-O is present. Companion satisfied when: no US class, OR
+    // (ORCON bit set AND NOFORN bit set AND ORCON_USGOV bit clear).
+    // Structural `emit_hcs_o_companions` fires when: !has_orcon ||
+    // !has_noforn || usgov_entry.is_some() — complement is
+    // (Oc || OcUsgov) && Nf && !OcUsgov → Oc && Nf.
     SciPerSystemRow {
         name: "sci-per-system/HCS-O-companions",
         marking_label: "HCS-O",
@@ -179,8 +211,18 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p64",
         citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 64),
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_HCS_O),
+        bitmask_trigger_exact: true,
+        bitmask_companion_required: (1u128 << fact_bit::ORCON) | (1u128 << fact_bit::NOFORN),
+        bitmask_companion_forbidden: 1u128 << fact_bit::ORCON_USGOV,
     },
     // Row #2 — HCS-P NOFORN (NOFORN required). §H.4 p66.
+    //
+    // Tier-3 bitmask: coarse gate on SCI_PRESENT (bit 37) — bare HCS-P
+    // (no sub-compartments) only sets this bit; HCS-P with sub-compartments
+    // also sets SCI_HCS_P_SUB (bit 42). Using SCI_PRESENT as the coarse
+    // gate catches both cases; presence_hcs_p_any confirms HCS-P
+    // specifically. Companion satisfied when: no US class, OR NOFORN set.
     SciPerSystemRow {
         name: "sci-per-system/HCS-P-NOFORN",
         marking_label: "HCS-P",
@@ -192,9 +234,17 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p66",
         citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 66),
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
+        bitmask_trigger_exact: false,
+        bitmask_companion_required: 1u128 << fact_bit::NOFORN,
+        bitmask_companion_forbidden: 0,
     },
     // Row #3 — HCS-P sub-compartment companions (ORCON required,
     // ORCON-USGOV forbidden). §H.4 p68. NOFORN is covered by row #2.
+    //
+    // Tier-3 bitmask: SCI_HCS_P_SUB (bit 42) is exact — only set when
+    // HCS-P has at least one sub-compartment. Companion satisfied when:
+    // no US class, OR (ORCON set AND ORCON_USGOV clear).
     SciPerSystemRow {
         name: "sci-per-system/HCS-P-sub-companions",
         marking_label: "HCS-P sub-compartment",
@@ -203,9 +253,17 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p68",
         citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 68),
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_HCS_P_SUB),
+        bitmask_trigger_exact: true,
+        bitmask_companion_required: 1u128 << fact_bit::ORCON,
+        bitmask_companion_forbidden: 1u128 << fact_bit::ORCON_USGOV,
     },
     // Row #4 — SI-G companions (ORCON required, ORCON-USGOV forbidden).
     // §H.4 p80.
+    //
+    // Tier-3 bitmask: SCI_SI_G (bit 40) is exact — only set when SI-G is
+    // present. Companion satisfied when: no US class, OR (ORCON set AND
+    // ORCON_USGOV clear). Mirrors HCS-P-sub structure (same emit logic).
     SciPerSystemRow {
         name: "sci-per-system/SI-G-companions",
         marking_label: "SI-G",
@@ -214,12 +272,22 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p80",
         citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 80),
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_SI_G),
+        bitmask_trigger_exact: true,
+        bitmask_companion_required: 1u128 << fact_bit::ORCON,
+        bitmask_companion_forbidden: 1u128 << fact_bit::ORCON_USGOV,
     },
     // Row #5 — TK compartment NOFORN (BLFH/IDIT/KAND require NOFORN).
     // §H.4 p87 (TK-BLFH) + p91 (TK-IDIT) + p95 (TK-KAND).
     // Typed Citation anchors at §H.4 p87; the p91 / p95
     // cross-references live in the row's `citation` documentation
     // field above.
+    //
+    // Tier-3 bitmask: three-bit OR trigger (SCI_TK_BLFH | SCI_TK_IDIT |
+    // SCI_TK_KAND, bits 43-45) — exact, since each atom is set only when
+    // its named compartment is present. presence_tk_compartment_noforn
+    // is skipped on the fast path. Companion satisfied when: no US class,
+    // OR NOFORN set.
     SciPerSystemRow {
         name: "sci-per-system/TK-compartment-NOFORN",
         marking_label: "TK-{BLFH|IDIT|KAND}",
@@ -231,5 +299,13 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p87 + p91 + p95",
         citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 87),
+        bitmask_trigger: Some(
+            (1u128 << fact_bit::SCI_TK_BLFH)
+                | (1u128 << fact_bit::SCI_TK_IDIT)
+                | (1u128 << fact_bit::SCI_TK_KAND),
+        ),
+        bitmask_trigger_exact: true,
+        bitmask_companion_required: 1u128 << fact_bit::NOFORN,
+        bitmask_companion_forbidden: 0,
     },
 ];
