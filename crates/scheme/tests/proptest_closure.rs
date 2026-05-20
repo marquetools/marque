@@ -307,6 +307,21 @@ impl MarkingScheme for ClosureStubScheme {
     }
 }
 
+#[test]
+fn default_closure_inventory_forwards_from_closure_rules() {
+    let scheme = ClosureStubScheme;
+    let inventory: Vec<_> = scheme.closure_inventory().collect();
+
+    assert_eq!(inventory.len(), CLOSURE_RULES.len());
+
+    for (metadata, rule) in inventory.iter().zip(CLOSURE_RULES.iter()) {
+        assert_eq!(metadata.name, rule.name);
+        assert_eq!(metadata.label, rule.label);
+        assert_eq!(metadata.citation, Some(rule.label));
+        assert_eq!(metadata.default_severity, rule.default_severity);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Property 1: Monotone.
 //   ∀ m1, m2 with m1 ⊑ m2: closure(m1) ⊑ closure(m2).

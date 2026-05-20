@@ -16,7 +16,7 @@ use core::hash::Hash;
 
 use crate::ambiguity::Parsed;
 use crate::category::{Category, CategoryId, TokenId};
-use crate::closure::ClosureRule;
+use crate::closure::{ClosureRule, ClosureRuleMetadata};
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
 use crate::page_rewrite::PageRewrite;
@@ -450,6 +450,19 @@ pub trait MarkingScheme {
         Self: Sized,
     {
         &[]
+    }
+
+    /// Declared closure-rule inventory metadata for this scheme.
+    ///
+    /// This is the scheme-agnostic discovery/config surface for closure rows.
+    /// The default forwards from [`Self::closure_rules()`], preserving current
+    /// behavior for schemes that still expose closure rules only in fn-pointer
+    /// form.
+    fn closure_inventory(&self) -> Box<dyn Iterator<Item = ClosureRuleMetadata> + '_>
+    where
+        Self: Sized,
+    {
+        Box::new(self.closure_rules().iter().map(ClosureRuleMetadata::from))
     }
 
     /// Returns the host [`CategoryId`] for a given [`TokenId`], used by

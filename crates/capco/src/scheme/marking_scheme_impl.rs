@@ -18,7 +18,7 @@
 use marque_ism::{CanonicalAttrs, ParsedAttrs};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
-    ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
+    ClosureRuleMetadata, ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
     ReplacementIntent, Scope, Span, Template, TokenId, TokenRef,
 };
 
@@ -528,41 +528,46 @@ impl MarkingScheme for CapcoScheme {
     /// `Severity::Suggest` text-layer rules (e.g., S007 for the NATO
     /// row — see `decisions.md` D20).
     ///
-    /// # Discovery-surface gap (issue #644)
-    ///
-    /// Per `specs/006-engine-rule-refactor/decisions.md` D18,
-    /// `MarkingScheme::closure_rules()` is documented as a PUBLIC
-    /// catalog surface — visible to tooling, scheme-exploration UIs,
-    /// docs generators, and (forthcoming) severity-override config via
-    /// a `[closure_rules]` config section. Post-PR-D, CAPCO's trait
-    /// impl returns only the 1-row residual catalog above; the other
-    /// 9 rules (Trio 1 CAVEATED + 6 per-marking SCI implications + 2
-    /// Trio 2 RELIDO rows) are addressable only through
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE), a
-    /// CAPCO-internal accessor.
-    ///
-    /// This is an asymmetric discovery surface: scheme-agnostic
-    /// consumers walking `closure_rules()` see 1 row for CAPCO, not
-    /// 10. Severity-override addressability for the 9 bitmask rules
-    /// is by stable rule name only — the names (`capco/noforn-if-caveated`,
-    /// `capco/hcs-o-implies-noforn-orcon`, `capco/si-g-implies-orcon`,
-    /// `capco/hcs-p-sub-implies-noforn-orcon`,
-    /// `capco/tk-blfh-implies-noforn`, `capco/tk-idit-implies-noforn`,
-    /// `capco/tk-kand-implies-noforn`,
-    /// `capco/relido-if-sci-and-not-incompatible`,
-    /// `capco/relido-if-us-collateral-class`) are preserved verbatim
-    /// on `CLOSURE_TABLE`'s row `label` fields and on each row's
-    /// inline doc-comment in
-    /// [`super::closure_table`](super::closure_table).
-    ///
-    /// A unified inventory surface across both catalogs — likely a
-    /// new `MarkingScheme::closure_inventory()` trait method —
-    /// is tracked in issue #644 as a follow-up against `marque-scheme`
-    /// per Constitution Principle VII section IV (engine-trait
-    /// additions belong in their own PR, not bundled into a
-    /// scheme-implementation perf refactor like PR-D).
+    /// `closure_rules()` intentionally remains the residual executable
+    /// fn-pointer catalog (1 row post-PR-D). Scheme-agnostic discovery
+    /// should use [`Self::closure_inventory()`], which unifies metadata
+    /// across this residual catalog and the 10-row bitmask
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
+    }
+
+    fn closure_inventory(&self) -> Box<dyn Iterator<Item = ClosureRuleMetadata> + '_> {
+        use super::closure_table::CLOSURE_TABLE;
+
+        let residual_rules = self.closure_rules();
+        let mut inventory = Vec::with_capacity(CLOSURE_TABLE.len() + residual_rules.len());
+
+        // Canonical registry order comes from the bitmask table (10 rows).
+        // Prefer fn-pointer metadata when a residual row with the same name
+        // exists, so row 7 keeps the surviving fn-pointer source-of-truth.
+        for row in CLOSURE_TABLE {
+            if let Some(rule) = residual_rules.iter().find(|rule| rule.name == row.name) {
+                inventory.push(ClosureRuleMetadata::from(rule));
+            } else {
+                inventory.push(ClosureRuleMetadata {
+                    name: row.name,
+                    label: row.label,
+                    citation: Some(row.label),
+                    default_severity: row.default_severity,
+                });
+            }
+        }
+
+        // Any fn-pointer rows not represented in the bitmask table are appended
+        // in fn-pointer declaration order.
+        for rule in residual_rules {
+            if !CLOSURE_TABLE.iter().any(|row| row.name == rule.name) {
+                inventory.push(ClosureRuleMetadata::from(rule));
+            }
+        }
+
+        Box::new(inventory.into_iter())
     }
 
     /// CAPCO closure operator — bitwise Kleene fixpoint over

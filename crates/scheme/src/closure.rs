@@ -80,6 +80,23 @@ pub type ConeDerivedFn<S: crate::scheme::MarkingScheme + ?Sized> =
         &<S as crate::scheme::MarkingScheme>::Marking,
     ) -> smallvec::SmallVec<[crate::fix_intent::FactRef<S>; 2]>;
 
+/// Scheme-agnostic closure-rule inventory metadata.
+///
+/// This surface is intended for discovery/config consumers that need stable
+/// row identity + presentation data without executable trigger/suppressor/cone
+/// bodies.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ClosureRuleMetadata {
+    /// Stable scheme-unique row identifier.
+    pub name: &'static str,
+    /// Human-readable row label.
+    pub label: &'static str,
+    /// Optional authoritative citation payload.
+    pub citation: Option<&'static str>,
+    /// Catalog default severity intent.
+    pub default_severity: Severity,
+}
+
 /// A declarative closure rule: when `triggers` are present and `suppressors`
 /// are absent, add `cone` facts to the marking.
 ///
@@ -287,6 +304,19 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> Clone for ClosureRule<S> {
             cone: self.cone,
             cone_derived: self.cone_derived,
             default_severity: self.default_severity,
+        }
+    }
+}
+
+impl<S: crate::scheme::MarkingScheme + ?Sized> From<&ClosureRule<S>> for ClosureRuleMetadata {
+    fn from(rule: &ClosureRule<S>) -> Self {
+        Self {
+            name: rule.name,
+            label: rule.label,
+            // `ClosureRule` currently stores citation text in `label`; carry it
+            // through explicitly for inventory consumers.
+            citation: Some(rule.label),
+            default_severity: rule.default_severity,
         }
     }
 }
