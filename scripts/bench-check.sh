@@ -893,85 +893,6 @@ PY
     return 0
 }
 
-# report_fix_10kb
-#
-# Advisory (non-gating) wrapper for the two-pass fix latency bench
-# (`crates/engine/benches/fix_10kb.rs`). PR 7c (T085) ships the bench
-# file + Cargo.toml entry + baseline.json `target_upper_ci_us` so the
-# absolute SC-001 gate is wired; the `upper_ci_us` / `p99_us` baselines
-# require a same-hardware capture and are intentionally omitted until
-# the operator runs `cargo bench --bench fix_10kb -- \
-# --save-baseline pr7c` on the reference machine. Until then this
-# function prints the timings alongside the other gated benches so a
-# regression is visible in CI logs even without the absolute / drift
-# gates firing.
-#
-# Same parser shape as `report_fix_latency`; the only differences are
-# the bench-file target (`fix_10kb`) and the preferred bench-function
-# names (`fix_10kb_pass2_only`, `fix_10kb_two_pass`).
-report_fix_10kb() {
-    echo "bench-check[fix_10kb]: running benchmark (advisory, gate not wired until baseline captured)..."
-
-    local bench_output
-    if ! bench_output=$(cargo bench -p marque-engine --bench fix_10kb 2>&1); then
-        echo "bench-check[fix_10kb]: WARN — 'cargo bench' invocation failed (advisory; not failing overall status)"
-        if [[ -n "$bench_output" ]]; then
-            printf '%s\n' "$bench_output"
-        fi
-        return 0
-    fi
-
-    local parser_out parser_err py_exit
-    parser_err=$(mktemp)
-    set +e
-    parser_out=$(python3 - "$bench_output" 2>"$parser_err" <<'PY'
-import re, sys
-
-text = sys.argv[1]
-preferred = (
-    "fix_10kb_pass2_only",
-    "fix_10kb_two_pass",
-)
-
-pat = re.compile(
-    r"([A-Za-z0-9_./:-]+)\s+(?:\n\s+)?time:\s+\[\s*"
-    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
-    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)\s+"
-    r"([0-9]+(?:\.[0-9]+)?\s*[µnm]s)"
-)
-
-found = {}
-order = []
-for m in pat.finditer(text):
-    name = m.group(1)
-    if name not in found:
-        order.append(name)
-    found[name] = (m.group(2), m.group(3), m.group(4))
-
-for name in preferred:
-    if name in found:
-        lo, mean, hi = found[name]
-        print(f"bench-check[fix_10kb]: {name}: mean {mean} (CI {lo} .. {hi})")
-    else:
-        print(f"bench-check[fix_10kb]: WARN — could not parse {name} timing")
-PY
-    )
-    py_exit=$?
-    set -e
-    if [[ $py_exit -ne 0 ]]; then
-        echo "bench-check[fix_10kb]: WARN — Python parser exited with status $py_exit (advisory; not failing overall status)"
-        if [[ -s "$parser_err" ]]; then
-            echo "bench-check[fix_10kb]: WARN — Python stderr output follows:"
-            cat "$parser_err"
-        fi
-    fi
-    rm -f "$parser_err"
-    if [[ -n "$parser_out" ]]; then
-        printf '%s\n' "$parser_out"
-    fi
-    return 0
-}
-
 OVERALL_STATUS=0
 check_one_bench "lint_10kb" "lint_latency" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" "lint_latency" || OVERALL_STATUS=1
@@ -980,15 +901,9 @@ check_linear_scaling || OVERALL_STATUS=1
 # check_fix_throughput || OVERALL_STATUS=1
 check_deadline_overhead || OVERALL_STATUS=1
 report_fix_latency
-# PR 7c (T085): fix_10kb bench is wired in advisory mode pending
-# baseline capture on `ubuntu-latest`. The bench file is at
-# `crates/engine/benches/fix_10kb.rs` and the baseline.json entries
-# carry the SC-001 absolute target only (`target_upper_ci_us = 16000`).
-# Once the operator captures `upper_ci_us` and `p99_us` on the same
-# hardware as the existing baselines, the absolute gate activates
-# via `check_one_bench`; until then it runs alongside `report_*`
-# helpers as visible-but-non-gating output.
-report_fix_10kb
+# CO-1 (PR #621): baselines captured for both fix_10kb paths; gates now active.
+check_one_bench "fix_10kb_pass2_only" "fix_10kb" || OVERALL_STATUS=1
+check_one_bench "fix_10kb_two_pass" "fix_10kb" || OVERALL_STATUS=1
 
 if [[ "$OVERALL_STATUS" -ne 0 ]]; then
     echo "bench-check: FAIL — one or more benches failed their regression / absolute gates"
