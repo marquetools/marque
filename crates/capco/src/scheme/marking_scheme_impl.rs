@@ -584,8 +584,8 @@ impl MarkingScheme for CapcoScheme {
         // body continues to dispatch on `ctx.scope` exactly as it did
         // pre-3c.2 — `ctx.emission_form` and `ctx.schema_version` are
         // plumbed through but NOT yet consumed by the per-axis
-        // renderers (the §G.1 Table 4 dispatch body lands at PR
-        // 3c.2.B). T056 corpus regression is the byte-identity gate.
+        // renderers (a future PR will land the §G.1 Table 4 dispatch
+        // body). T056 corpus regression is the byte-identity gate.
         if matches!(ctx.scope, Scope::Diff) {
             return Err(core::fmt::Error);
         }
@@ -671,7 +671,7 @@ impl MarkingScheme for CapcoScheme {
         // `MarkingScheme::render_portion`).
         //
         // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
-        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
+        // a future PR will land the §G.1 Table 4 dispatch body.
         let mut s = String::new();
         let ctx = RenderContext::new(
             Scope::Portion,
