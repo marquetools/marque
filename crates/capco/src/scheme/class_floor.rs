@@ -14,6 +14,8 @@
 use marque_ism::{Classification, TokenKind};
 use marque_rules::{Citation, SectionLetter, capco};
 
+use crate::fact_bitmask::fact_bit;
+
 use super::predicates::*;
 
 // ===========================================================================
@@ -211,8 +213,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        bitmask_trigger: None,
-        bitmask_trigger_exact: false,
+        // SCI_HCS_P_SUB is the dedicated sentinel for HCS-P with
+        // sub-compartments (bit 42). Exact: `presence_hcs_comp_sub`
+        // fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_HCS_P_SUB),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/SI-comp",
@@ -224,7 +229,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        bitmask_trigger: None,
+        // SCI_SI_G (bit 40) gates on SI-G — the registered SI
+        // compartment. Coarse: `presence_si_comp` also fires on
+        // SI-ECRU and SI-NONBOOK which have no dedicated atom bit.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_SI_G),
         bitmask_trigger_exact: false,
     },
     ClassFloorRow {
@@ -237,8 +245,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        bitmask_trigger: None,
-        bitmask_trigger_exact: false,
+        // SCI_TK_BLFH (bit 43) is the dedicated BLUEFISH sentinel.
+        // Exact: `presence_tk_blfh` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_TK_BLFH),
+        bitmask_trigger_exact: true,
     },
     // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
     // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
@@ -274,8 +284,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         // that carries both the bare-class and the companion semantic);
         // anchoring at the Classification token is the right UX.
         primary_kind: None,
-        bitmask_trigger: None,
-        bitmask_trigger_exact: false,
+        // AEA_BALK (bit 50) is the NATO SAP sentinel for BALK.
+        // Exact: `presence_balk` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_BALK),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
@@ -287,8 +299,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::G, 2, 40),
         passthrough: false,
         primary_kind: None,
-        bitmask_trigger: None,
-        bitmask_trigger_exact: false,
+        // AEA_BOHEMIA (bit 49) is the NATO SAP sentinel for BOHEMIA.
+        // Exact: `presence_bohemia` fires exactly when this bit is set.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_BOHEMIA),
+        bitmask_trigger_exact: true,
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {

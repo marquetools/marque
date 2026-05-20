@@ -12,6 +12,8 @@ use marque_ism::{CanonicalAttrs, Classification, Span, TokenKind};
 
 use super::super::constraints::class_floor_emit;
 use super::super::*;
+use super::tier2_mask::{classification_is_fgi_or_joint, effective_level_from_bits};
+use crate::fact_bitmask::{derive_bits, extract_us_class_level};
 
 /// Returns true if `name` is a catalog row name dispatched by
 /// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`
@@ -100,14 +102,104 @@ pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) ->
 /// bridge invokes this function via `evaluate_custom` → here, and
 /// fields are populated in [`class_floor_emit`] so no second emitter
 /// path is needed.
+///
+/// # Tier-2 bitmask fast path (PR-G / issue #650)
+///
+/// 23 of the 27 catalog rows have a `bitmask_trigger: Some(_)` field.
+/// The dispatch order is:
+///
+/// 1. **FGI/JOINT early-out**: FGI and JOINT classification levels are absent
+///    from the bitmask chain fields; the structural path handles them via
+///    `class_floor_satisfied` which calls `effective_level()`. Rare path
+///    (FGI/JOINT-classified portions carrying class-floor-tripping markings).
+/// 2. **Trigger mask gate** (23 rows): `(bits & bitmask_trigger) == 0` → no
+///    fire, return empty in O(1) without calling `presence()`.
+/// 3. **Presence confirmation**: for coarse-gate rows
+///    (`bitmask_trigger_exact: false`), call `presence(attrs)` to rule out
+///    false positives from the over-approximating mask.
+/// 4. **Floor/ceiling test** via chain extract: `effective_level_from_bits`
+///    (AtLeast policy) or `extract_us_class_level == Some(Unclassified)` (EqualsU).
+/// 5. **Structural fallthrough** (4 rows, `bitmask_trigger: None`): the
+///    passthrough rows for BUR/HCS-X/KLM/MVL use the existing `class_floor_emit`
+///    path verbatim.
+///
+/// `ConstraintViolation` emission is byte-identical to the pre-PR-G structural
+/// form: the fast path reaches `class_floor_emit` on the same inputs
+/// (presence confirmed, floor confirmed not satisfied), and `class_floor_emit`
+/// is unchanged.
 pub(crate) fn class_floor_catalog_eval(
     attrs: &marque_ism::CanonicalAttrs,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
-    class_floor_row_by_name(name)
-        .and_then(|row| class_floor_emit(attrs, row))
-        .map(|v| vec![v])
-        .unwrap_or_default()
+    let Some(row) = class_floor_row_by_name(name) else {
+        return Vec::new();
+    };
+
+    // ── Step 1: FGI/JOINT early-out ─────────────────────────────────────────
+    // FGI and JOINT classification levels are absent from the bitmask chain
+    // fields (bits 27-29 US, 32-34 NATO). The structural path has the level
+    // via `effective_level()`. Rare path — most class-floor-tripping markings
+    // appear alongside US or NATO classification.
+    if classification_is_fgi_or_joint(attrs) {
+        return class_floor_emit(attrs, row).into_iter().collect();
+    }
+
+    // ── Step 2: Bitmask fast path (23 rows) ──────────────────────────────────
+    if let Some(trigger_mask) = row.bitmask_trigger {
+        let bits = derive_bits(attrs);
+        let bits_u128 = bits.bits();
+
+        // Trigger short-circuit: bitmask AND must be non-zero.
+        // For exact rows this is the precise presence gate.
+        // For coarse rows it's a cheap no-fire eliminator.
+        if (bits_u128 & trigger_mask) == 0 {
+            return Vec::new();
+        }
+
+        // Presence confirmation: exact rows skip the structural call;
+        // coarse rows must confirm via `presence()` to avoid false positives.
+        if !row.bitmask_trigger_exact && !(row.presence)(attrs) {
+            return Vec::new();
+        }
+
+        // Floor/ceiling test via chain extract.
+        let floor_satisfied = match row.policy {
+            ClassFloorPolicy::AtLeast(floor) => {
+                // `effective_level_from_bits` returns `None` when both US and
+                // NATO chain fields are zero — i.e., no classification at all.
+                // This preserves the structural path's behavior: a marking
+                // without any classification context fails the floor
+                // (mirrors retired-E022 / retired-E027 semantics via
+                // `class_floor_satisfied`'s None arm → false).
+                effective_level_from_bits(bits).is_some_and(|lvl| lvl >= floor)
+            }
+            ClassFloorPolicy::EqualsU => {
+                // EqualsU (UCNI ceiling, §H.6 p116/p118): matches
+                // `class_floor_satisfied`'s EqualsU arm which uses
+                // `attrs.us_classification()`. The US chain (bits 27-29)
+                // is populated from `MarkingClassification::Us` and the US
+                // side of `MarkingClassification::Conflict` — same population
+                // paths as `us_classification()`. NATO/FGI/JOINT zero out the
+                // US chain so `extract_us_class_level` returns `None`, which
+                // correctly fails the EqualsU check (UCNI is US AEA).
+                extract_us_class_level(bits) == Some(Classification::Unclassified)
+            }
+        };
+        if floor_satisfied {
+            return Vec::new();
+        }
+
+        // Fire: diagnostic synthesis is byte-identical to the structural path —
+        // `class_floor_emit` reads row.* fields, not bits. The presence predicate
+        // is re-invoked inside `class_floor_emit`; for exact rows this is
+        // always true (we confirmed above); for coarse rows it's also confirmed.
+        return class_floor_emit(attrs, row).into_iter().collect();
+    }
+
+    // ── Step 3: Structural fallthrough (4 passthrough rows) ──────────────────
+    // BUR / HCS-X / KLM / MVL: open-vocab ISM tokens with no atom bit.
+    // Uses the existing `class_floor_emit` path verbatim.
+    class_floor_emit(attrs, row).into_iter().collect()
 }
 
 /// Returns true when the classification axis satisfies the floor policy.
