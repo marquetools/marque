@@ -77,7 +77,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
-pub use citation::{AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef};
+pub use citation::{
+    AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_table,
+};
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
 // Re-export `SmallVec` + the `smallvec!` macro so external consumers
@@ -673,7 +675,34 @@ pub enum FixSource {
 /// drift between the rule-pipeline emission site in `marque-capco` and the
 /// pre-scanner emission site in `marque-engine`; both paths produce the
 /// same audit-record shape.
+///
+/// **PR 3c.2.C migration in progress**: this `&'static str` form stays
+/// alive until C5; [`CORRECTIONS_MAP_CITATION_TYPED`] below is the
+/// typed [`Citation`] form the C5 atomic flip will rename to
+/// `CORRECTIONS_MAP_CITATION`.
 pub const CORRECTIONS_MAP_CITATION: &str = "CONFIG:[corrections]";
+
+/// Typed-[`Citation`] form of [`CORRECTIONS_MAP_CITATION`].
+/// Uses [`AuthoritativeSource::Config`] — C001 is not a CAPCO rule,
+/// it's a user-config pointer. Display renders as `[config]`.
+///
+/// Defined in C2 of PR 3c.2.C; the C5 atomic
+/// `Diagnostic.citation: &'static str → Citation` flip deletes the
+/// `&'static str` form above and renames this to
+/// `CORRECTIONS_MAP_CITATION`.
+// Public so engine/capco can reference it from C5 onward; the
+// dead-code allow lets it survive between C2 and C5 untouched.
+#[allow(dead_code)] // C2 of PR 3c.2.C — wired in C5.
+pub const CORRECTIONS_MAP_CITATION_TYPED: Citation = Citation::new(
+    AuthoritativeSource::Config,
+    SectionRef::new(SectionLetter::A),
+    // Niche-sentinel page value — never rendered (Display elides
+    // section/page when source is non-CAPCO).
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 // ---------------------------------------------------------------------------
 // AppliedFix (= Audit Record)

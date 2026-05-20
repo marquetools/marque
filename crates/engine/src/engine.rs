@@ -115,7 +115,21 @@ const DECODER_RULE_ID: &str = "R001";
 /// `crates/capco/docs/CAPCO-2016.md` line 49) and contains the
 /// canonical syntax for portion / banner / CAB markings the decoder
 /// canonicalizes input toward.
+///
+/// **PR 3c.2.C migration in progress**: the `&'static str` form
+/// stays alive until C5; [`DECODER_CITATION_TYPED`] below is the
+/// typed [`marque_rules::Citation`] form the C5 atomic flip will
+/// rename to `DECODER_CITATION`.
 const DECODER_CITATION: &str = "CAPCO-2016 §A.6 p15";
+
+/// Typed-[`Citation`](marque_rules::Citation) form of [`DECODER_CITATION`].
+/// Defined in C2 of PR 3c.2.C; the C5 atomic
+/// `Diagnostic.citation: &'static str → Citation` flip deletes the
+/// `&'static str` form above and renames this to `DECODER_CITATION`.
+/// Authority: CAPCO-2016 §A.6 p15 (canonical formatting).
+#[allow(dead_code)] // C2 of PR 3c.2.C — wired in C5.
+const DECODER_CITATION_TYPED: marque_rules::Citation =
+    marque_rules::capco(marque_rules::SectionLetter::A, 6, 15);
 
 /// Synthetic rule identifier for `R002 reparse-failed` diagnostics
 /// (PR 7b, FR-024). Emitted when the post-pass-1 buffer fails to
@@ -141,7 +155,29 @@ pub const R002_RULE_ID: RuleId = RuleId::new("R002");
 /// guidance, not a CAPCO rule). Mirrors [`DECODER_CITATION`]'s
 /// engine-synthetic origin while staying distinct so a renderer
 /// branching on citation strings can tell them apart.
+///
+/// **PR 3c.2.C migration in progress**: the `&'static str` form stays
+/// alive until C5; [`R002_CITATION_TYPED`] below is the typed
+/// [`marque_rules::Citation`] form the C5 atomic flip will rename to
+/// `R002_CITATION`.
 const R002_CITATION: &str = "engine-synthetic";
+
+/// Typed-[`Citation`](marque_rules::Citation) form of [`R002_CITATION`].
+/// Uses [`marque_rules::AuthoritativeSource::EngineInternal`] —
+/// R002 is engine-synthesized, not a CAPCO rule. Display renders as
+/// `[engine-internal]`. The C5 atomic flip deletes the `&'static str`
+/// form above and renames this to `R002_CITATION`.
+#[allow(dead_code)] // C2 of PR 3c.2.C — wired in C5.
+const R002_CITATION_TYPED: marque_rules::Citation = marque_rules::Citation::new(
+    marque_rules::AuthoritativeSource::EngineInternal,
+    marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+    // Niche-sentinel page value — never rendered (Display elides
+    // section/page when source is non-CAPCO).
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 /// Default capacity for the per-page portion accumulator
 /// (`Engine::lint_inner`'s `page_portions: Vec<CanonicalAttrs>`).
