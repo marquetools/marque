@@ -311,4 +311,4 @@ All values well within SC-001 (16 ms p95) and SC-005 linear-scaling envelopes.
 
 ### Follow-on issue
 
-Filed as **GitHub issue #650** tracking tier-2 (27 class-floor `Constraint::Custom` rows) + tier-3 (5 SCI per-system rows) mask compilation as a #371 carry-over. See §15.3 of `2026-05-20-371-factbitmask-custom-audit.md` for the tier breakdown and implementation approach.
+Filed as **GitHub issue #650** tracking tier-2 (27 class-floor `Constraint::Custom` rows) + tier-3 (5 SCI per-system rows) mask compilation as a #371 carry-over. See the "Tier 2 — deferred to follow-on" and "Tier 3 — deferred to follow-on" sections of `docs/plans/2026-05-20-371-factbitmask-custom-audit.md` for the tier breakdown and implementation approach.
