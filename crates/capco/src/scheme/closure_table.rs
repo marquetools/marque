@@ -130,12 +130,21 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 ///   verbatim from the source fn-pointer rule's `label` per
 ///   Constitution VIII.
 /// - `trigger_mask` — fires the row iff
-///   `(input.bits() & trigger_mask) != 0`.
+///   `(working.bits() & trigger_mask) != 0`, where `working` is the
+///   *evolving accumulator within the current Kleene iteration* —
+///   NOT the original input. Earlier rows' cone bits become triggers
+///   for later rows in the same iteration (e.g., SI-G → ORCON in
+///   Row 3 then triggers Row 0's ORCON entry, adding NOFORN in the
+///   same iteration). The intra-iteration mutation pattern matches
+///   the fn-pointer catalog's documented in-pass ordering invariant.
 /// - `suppressor_mask` — suppresses the row iff
-///   `(input.bits() & suppressor_mask) != 0`. A mask of `0` means no
+///   `(working.bits() & suppressor_mask) != 0` (same evolving state
+///   semantic — earlier rows' cones can activate suppressors for
+///   later rows in the same iteration). A mask of `0` means no
 ///   suppressors (unconditional firing).
-/// - `cone_mask` — bits OR-ed into the next-iteration state when the
-///   row fires.
+/// - `cone_mask` — bits OR-ed into `working` when the row fires; the
+///   updated `working` is what subsequent rows in the same iteration
+///   read.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ClosureRow {
     pub name: &'static str,
@@ -257,12 +266,23 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
 
 /// Convergence ceiling for [`close`].
 ///
+/// Re-exports [`marque_scheme::MAX_CLOSURE_ITERATIONS`] (the scheme-
+/// level cap referenced by the `MarkingScheme::closure` trait
+/// contract). Aliasing here — rather than redefining `16` — closes
+/// the drift class where the bitmask path's local cap could fall
+/// out of sync with the trait surface and produce a non-convergence
+/// failure mode the trait contract doesn't anticipate.
+///
 /// The CAPCO catalog's longest causal chain is depth 2 (SI-G → ORCON
-/// → CAVEATED → NOFORN); 16 iterations is a generous ceiling that
-/// survives a future addition of one or two more chain links without
-/// re-tuning. Reaching the ceiling without converging is a programming
-/// bug, asserted in debug builds via [`debug_assert!`].
-pub const MAX_CLOSURE_ITERATIONS: usize = 16;
+/// → CAVEATED → NOFORN); the `N=16` ceiling is calibrated upstream
+/// against that chain depth with 5× safety padding (see
+/// `marque_scheme::closure` doc-comment). Reaching the ceiling
+/// without converging is a programming bug — [`close`] panics
+/// unconditionally in that case to honor the trait contract (§576
+/// in `marque_scheme::scheme::MarkingScheme::closure`: "The override
+/// MUST panic if it exceeds [...] iterations without reaching a
+/// fixed point").
+pub const MAX_CLOSURE_ITERATIONS: usize = marque_scheme::MAX_CLOSURE_ITERATIONS;
 
 // ---------------------------------------------------------------------------
 // Kleene fixpoint
@@ -325,23 +345,25 @@ pub fn close(input: FactBitmask) -> FactBitmask {
         }
         bits = next;
     }
-    // Convergence non-event: the 10-row CAPCO catalog has max causal
-    // depth 2 (per-marking cones add NOFORN/ORCON; CAVEATED promotes
-    // ORCON → NOFORN). Reaching this branch means a future catalog
-    // edit introduced a cycle or extended the chain past the 16-pass
-    // ceiling — both are programming bugs caught here in debug builds.
-    // In release builds the `debug_assert` is elided and we return the
-    // best-effort fixpoint: PR-D's corpus-parity gate would catch a
-    // semantic regression downstream, and the rule engine's `closure`
-    // contract permits non-fixpoint returns as long as the output is
-    // a closure-extension of the input (P2 still holds). The catalog
-    // size at every recent merge has been ≤ 10 rows with chain depth
-    // ≤ 2, so this branch is unreachable for production inputs.
-    debug_assert!(
-        false,
-        "close() did not converge in {MAX_CLOSURE_ITERATIONS} iterations; bits = {bits:#034x}",
+    // Trait contract enforcement (§576 in
+    // `marque_scheme::scheme::MarkingScheme::closure` — "The override
+    // MUST panic if it exceeds [...] iterations without reaching a
+    // fixed point"). The 10-row CAPCO catalog has max causal depth 2
+    // (per-marking cones add NOFORN/ORCON; CAVEATED promotes ORCON →
+    // NOFORN) with the upstream `N=16` cap providing 5× safety
+    // padding, so reaching this branch means a future catalog edit
+    // introduced a cycle or extended the chain past the ceiling —
+    // both are programming bugs. Panicking unconditionally (not just
+    // in debug builds) honors the trait contract and prevents
+    // release-build silent fallthrough that would mask a non-monotone
+    // catalog regression with a wrong cone output.
+    panic!(
+        "close() did not converge in {MAX_CLOSURE_ITERATIONS} iterations; \
+         bits = {bits:#034x}. The CAPCO catalog's max causal depth (2) \
+         + 5× safety padding makes this unreachable for the current \
+         10-row catalog; if this fires, a closure-row edit introduced \
+         a cycle or extended the chain past the upstream cap.",
     );
-    FactBitmask::from_bits(bits)
 }
 
 /// Union of every row's `trigger_mask` in [`CLOSURE_TABLE`].

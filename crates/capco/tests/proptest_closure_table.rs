@@ -55,11 +55,18 @@ fn arb_full_u128() -> impl Strategy<Value = FactBitmask> {
 fn arb_realistic_bitmask() -> impl Strategy<Value = FactBitmask> {
     // Inventory mask = bits `0..CAPCO_ATOM_COUNT` set. Every set bit
     // corresponds to a real atom on `CanonicalAttrs`. The static-assert
-    // below is the load-bearing drift guard: changing `CAPCO_ATOM_COUNT`
-    // without re-thinking the bitmask coverage fails the compile.
-    const INVENTORY_MASK: u128 = (1u128 << CAPCO_ATOM_COUNT) - 1;
+    // below mirrors the `fact_bitmask::CAPCO_ATOM_COUNT` source-of-
+    // truth guard (`<=`, since `CAPCO_ATOM_COUNT == FACT_BITMASK_WIDTH`
+    // = 128 is a valid maximally-utilized inventory). The `if`
+    // special-cases that ceiling so the `1u128 << 128` shift doesn't
+    // overflow when the inventory fully saturates the primitive.
+    const INVENTORY_MASK: u128 = if CAPCO_ATOM_COUNT == marque_scheme::FACT_BITMASK_WIDTH {
+        u128::MAX
+    } else {
+        (1u128 << CAPCO_ATOM_COUNT) - 1
+    };
     const _: () = assert!(
-        CAPCO_ATOM_COUNT < marque_scheme::FACT_BITMASK_WIDTH,
+        CAPCO_ATOM_COUNT <= marque_scheme::FACT_BITMASK_WIDTH,
         "CAPCO_ATOM_COUNT must fit in FactBitmask::WIDTH",
     );
     any::<u128>().prop_map(|raw| FactBitmask::from_bits(raw & INVENTORY_MASK))
