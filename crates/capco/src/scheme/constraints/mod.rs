@@ -31,10 +31,16 @@ mod sci_per_system_catalog;
 // `predicates/class_floor.rs`, `predicates/sci_per_system.rs`)
 // continue to resolve.
 pub(crate) use self::helpers::{
-    class_floor_emit, e012_dual_classification, e014_joint_rel_to_coverage,
-    e021_rd_frd_requires_noforn, e024_rd_precedence, e038_dos_dissem_requires_noforn,
-    e070_frd_tfni_precedence, sci_per_system_emit,
+    class_floor_emit, e012_dual_classification, e014_joint_rel_to_coverage, sci_per_system_emit,
 };
+// PR-E (#371): tier-1 predicates (`e021_rd_frd_requires_noforn`,
+// `e024_rd_precedence`, `e038_dos_dissem_requires_noforn`,
+// `e070_frd_tfni_precedence`) moved to
+// `crates/capco/src/scheme/predicates/tier1_mask.rs` as
+// [`FactBitmask`]-compiled mask-form predicates. The structural slice
+// walks were retired in the same commit per project memory
+// `feedback_pre_users_no_deprecation_phasing.md` (marque is
+// pre-users; alias maps and shim re-exports are not carried).
 
 /// Build the scheme's category table. Lives in
 /// [`categories`](self::categories::build_categories).

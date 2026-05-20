@@ -26,6 +26,7 @@ mod presence;
 mod satisfies;
 mod sci_per_system;
 mod spans;
+mod tier1_mask;
 mod token_routing;
 mod triggers;
 
@@ -61,6 +62,11 @@ pub(crate) use self::spans::{
     dissem_token_id_for_form, dissem_token_span, first_sci_span, infer_companion_form,
     token_span_attrs, us_level,
 };
+// PR-E (#371) tier-1 mask-compiled predicates. Consumed by
+// `super::satisfies::evaluate_custom_by_attrs` via the local path
+// `super::tier1_mask::*`; no re-export at this surface — the mask
+// predicates are an internal optimization detail, not part of the
+// predicates-leaf public-via-`pub(crate)` API.
 pub(crate) use self::token_routing::{capco_token_category, never_fires};
 pub(crate) use self::triggers::{
     dod_ucni_classified_trigger, dod_ucni_promotes_noforn_trigger, doe_ucni_classified_trigger,
