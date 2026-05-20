@@ -135,11 +135,13 @@ pub trait MarkingScheme {
     /// representation.
     ///
     /// This is the **sole post-3c.2.E path** for `Parsed → Canonical`
-    /// per FR-043. PR 3c.2.A defines the trait method with a default
-    /// of `unimplemented!()`; PR 3c.2.B implements the CapcoScheme
-    /// override (lifting the body from `marque_ism::from_parsed_unchecked`);
-    /// PR 3c.2.C / D migrate call sites; PR 3c.2.E deletes the
-    /// adapter.
+    /// per FR-043. PR 3c.2.A defined the trait method with a default
+    /// of `unimplemented!()`; PR 3c.2.B (landed) implemented the
+    /// CapcoScheme override and migrated 25 of 30 call sites — the
+    /// remaining 4 `marque-core` test sites and the 1 `cfg(any())`-
+    /// disabled `s004_audit_content_ignorance.rs` site retire alongside
+    /// the adapter at PR 3c.2.E. PR 3c.2.D bumps the audit schema;
+    /// PR 3c.2.E deletes `marque_ism::from_parsed_unchecked`.
     ///
     /// # Why the default is `unimplemented!()` (not delegation)
     ///
