@@ -375,6 +375,12 @@ impl SciSet {
     /// per-portion only; a rolled-up structural projection has no
     /// single corresponding enum variant.
     pub fn to_markings(&self) -> Box<[SciMarking]> {
+        // LA-2 empty-axis fast-path: skip all sorting / allocation
+        // when no SCI markings were accumulated (the common case on
+        // documents with no SCI portions).
+        if self.is_empty() {
+            return Box::default();
+        }
         // The shared `sorted_entries` / `sorted_compartment_items`
         // helpers (HierarchicalTreeSet, PR 613) carry the SmallVec
         // inline-capacity sizing from PR 614 — systems/programs at
@@ -1088,6 +1094,13 @@ impl AeaSet {
     /// post-projection rewrite (see the cross-axis invariant note
     /// on [`AeaSet`]), not a lattice render-time strip.
     pub fn to_markings(&self) -> Box<[AeaMarking]> {
+        // LA-2 empty-axis fast-path: skip SmallVec / sigmas-box
+        // construction when no AEA markings were accumulated (the
+        // common case on documents with no RD/FRD/TFNI/UCNI/ATOMAL
+        // portions).
+        if self.is_empty() {
+            return Box::default();
+        }
         // Inline-5 covers all AEA variants (Rd/Frd, DodUcni, DoeUcni,
         // Tfni, Atomal); the output stays heap-free for typical
         // documents (LA-4).
