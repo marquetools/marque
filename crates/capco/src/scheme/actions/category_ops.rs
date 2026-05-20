@@ -70,6 +70,21 @@ pub(crate) fn capco_category_contains(
             .dissem_iter()
             .any(|d| matches!(d, marque_ism::DissemControl::Nf));
     }
+    if category == CAT_DISSEM && token == TOK_DISPLAY_ONLY {
+        // #618: DISPLAY ONLY has a parser-axis split. The canonical wire
+        // form `DISPLAY ONLY [LIST]` is routed by the parser into
+        // `attrs.display_only_to` (a country-list axis parallel to
+        // `attrs.rel_to`), NOT into `dissem_us` as a `DissemControl`
+        // variant — the `Displayonly` variant is set only programmatically
+        // via `apply_fact_add`. Mirrors the widening in `satisfies_attrs`:
+        // a PageRewrite trigger such as `capco/display-only-clears-relido`
+        // would silently no-op without this arm because the canonical
+        // wire form populates `display_only_to` instead of `dissem_us`.
+        return attrs
+            .dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Displayonly))
+            || !attrs.display_only_to.is_empty();
+    }
     // PR 3c.B Sub-PR 8.F — CAT_NON_IC_DISSEM arms for NODIS and EXDIS.
     // These enable the `capco/nodis-implies-noforn` and
     // `capco/exdis-implies-noforn` PageRewrite triggers to resolve.
