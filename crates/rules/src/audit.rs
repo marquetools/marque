@@ -49,8 +49,9 @@ use marque_scheme::{Canonical, MarkingScheme, Span};
 use smol_str::SmolStr;
 
 use crate::confidence::Confidence;
+use crate::fix_intent::FixIntent;
 use crate::message::{Blake3Hash, Message};
-use crate::{AppliedFix, EnginePromotionToken, FixSource, RuleId};
+use crate::{EnginePromotionToken, FixSource, RuleId};
 use marque_scheme::Severity;
 
 // ---------------------------------------------------------------------------
@@ -118,6 +119,59 @@ impl Discriminant {
             Self::Strict => "strict",
             Self::Decoder => "decoder",
         }
+    }
+}
+
+/// Map [`FixSource`] to a [`Discriminant`] for audit-record emission.
+///
+/// Per PM-D-7 (`docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`) the
+/// discriminant is derived at audit-emit time from the originating
+/// fix's source, not threaded through promote-call arguments. The
+/// 5-to-2 collapse table:
+///
+/// | `FixSource` variant            | `Discriminant` |
+/// |---|---|
+/// | `BuiltinRule`                  | `Strict`       |
+/// | `MigrationTable`               | `Strict`       |
+/// | `DecoderPosterior`             | `Decoder`      |
+/// | `DecoderClassificationHeuristic` | `Decoder`    |
+/// | `CorrectionsMap`               | **(panic)**    |
+///
+/// # Why panic on `CorrectionsMap`
+///
+/// Per PM-D-4, `FixSource::CorrectionsMap` is structurally outside
+/// the marking-recognition discriminator — it routes to an
+/// [`AppliedTextCorrection`] line, which is a separate NDJSON record
+/// type and never carries a [`Discriminant`]. If a `CorrectionsMap`
+/// source reaches this function the engine has bugged the routing
+/// between `AppliedFix` and `AppliedTextCorrection`; we panic loudly
+/// rather than silently return a default (which would hide the bug
+/// and emit a wrong-shape audit record).
+///
+/// # Stability
+///
+/// Closed mapping. Adding a [`FixSource`] variant requires deciding
+/// which arm it routes to and updating this match — the compiler
+/// will refuse the build until that decision is made (FR-040 lint
+/// + non-exhaustive-match warning).
+///
+/// Pinned by `crates/rules/tests/discriminant_from_source.rs`.
+#[inline]
+#[must_use]
+pub const fn discriminant_from_source(source: FixSource) -> Discriminant {
+    match source {
+        FixSource::BuiltinRule | FixSource::MigrationTable => Discriminant::Strict,
+        FixSource::DecoderPosterior | FixSource::DecoderClassificationHeuristic => {
+            Discriminant::Decoder
+        }
+        FixSource::CorrectionsMap => panic!(
+            "FixSource::CorrectionsMap routes to AppliedTextCorrection (PM-D-4 / D-D-3); \
+             never to an AppliedFix Discriminant. \
+             A CorrectionsMap source reaching discriminant_from_source means the engine \
+             promoted a corrections-map fix through the marking-side AppliedFix path \
+             instead of the AppliedTextCorrection path — bug in the engine's promote \
+             dispatch."
+        ),
     }
 }
 
@@ -234,6 +288,289 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
             original_span: self.original_span,
             original_digest: self.original_digest,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AppliedFix<S> — v2 outer type (marque-1.0 audit-record shape)
+// ---------------------------------------------------------------------------
+
+/// `marque-1.0` audit-record marking-side type (v2 shape).
+///
+/// The marking-side complement of [`AppliedTextCorrection`]: a
+/// promoted [`FixIntent<S>`] with the engine-rendered
+/// [`Canonical<S>`] payload, the BLAKE3 digests of both the pre-fix
+/// and post-fix bytes, and the runtime context the engine snapshots
+/// at promotion time. Serializes to the
+/// `{ "type": "applied_fix", ... }` NDJSON line per
+/// `specs/006-engine-rule-refactor/contracts/audit-record.md` body §.
+///
+/// # Transient module location
+///
+/// This is the v2 reshape of [`crate::AppliedFix`]. During the PR
+/// 3c.2.D window (D2–D7) both v1 (at the crate root) and v2 (here)
+/// coexist; D7 atomically deletes v1 and promotes this type to the
+/// crate root per `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`
+/// PM-D-9. Consumers within `marque-engine` work directly with this
+/// module path during the window; consumers outside the engine
+/// (CLI render, WASM render, test fixtures) migrate in D-A3 / D-A4.
+///
+/// # Field set per PM-D-11
+///
+/// **Added vs v1**:
+/// - `severity: Severity` — top-level snapshot from the originating
+///   [`crate::Diagnostic`]. Contract emits `"severity": "..."` at top
+///   level.
+/// - `message: Message` — top-level snapshot. Contract emits
+///   `{"message": {"template": "...", "args": {...}}}` at top level.
+///
+/// **Removed vs v1**:
+/// - `proposal: AppliedFixProposal<S>` — replaced by `fix:
+///   AppliedFixDetail<S>` (text corrections move to
+///   [`AppliedTextCorrection`] per PM-D-4).
+/// - `confidence: Confidence` — moved into
+///   `fix.replacement.confidence`. Avoids the duplication the JSON
+///   contract would otherwise force (the field already lives inside
+///   the `fix` sub-object).
+/// - `migration_ref: Option<&'static str>` — removed. The
+///   `marque-1.0` contract does not emit a top-level `migration_ref`;
+///   PR 3c.2.C's typed `Citation` on [`crate::Diagnostic`] supersedes
+///   it as the citation-provenance channel.
+///
+/// **Retained**: `rule`, `span`, `source`, `timestamp`,
+/// `classifier_id`, `dry_run`, `input`.
+///
+/// # `#[non_exhaustive]`
+///
+/// Reserves grow-path for future hash-axis additions (e.g., a
+/// canonical-pre-image digest). Combined with the engine-only
+/// [`Self::__engine_promote`] constructor, external code cannot
+/// brace-construct an `AppliedFix` regardless.
+///
+/// # Why manual `Clone`
+///
+/// The derive macro over-constrains to `S: Clone`, which breaks
+/// `S = CapcoScheme` (intentionally non-`Clone`). The manual impl
+/// only requires `S: MarkingScheme`.
+///
+/// # Construction
+///
+/// Engine-only via [`Self::__engine_promote`], sealed by
+/// [`EnginePromotionToken`] (FR-040 lint-enforced).
+///
+/// # Compile-fail invariants (PR 3c.2.D)
+///
+/// **No `Default for AppliedFix<S>` impl** — would defeat the
+/// engine-only seal in `__engine_promote`.
+///
+/// ```compile_fail
+/// # struct StubScheme;
+/// # impl marque_scheme::MarkingScheme for StubScheme {
+/// #     type Token = ();
+/// #     type Marking = ();
+/// #     type ParseError = std::convert::Infallible;
+/// #     type OpenVocabRef = ();
+/// #     fn name(&self) -> &str { "stub" }
+/// #     fn schema_version(&self) -> &str { "v0" }
+/// #     fn categories(&self) -> &[marque_scheme::Category] { &[] }
+/// #     fn constraints(&self) -> &[marque_scheme::Constraint] { &[] }
+/// #     fn templates(&self) -> &[marque_scheme::Template] { &[] }
+/// #     fn parse(&self, _: &str) -> Result<marque_scheme::Parsed<Self::Marking>, Self::ParseError> { Ok(marque_scheme::Parsed::Unambiguous(())) }
+/// #     fn render_canonical(&self, _: &Self::Marking, _: &marque_scheme::RenderContext, _: &mut dyn std::fmt::Write) -> std::fmt::Result { Ok(()) }
+/// #     fn canonicalize<'src>(&self, _: marque_ism::ParsedAttrs<'src>) -> marque_ism::CanonicalAttrs { unimplemented!() }
+/// #     fn apply_intent(&self, _: &mut Self::Marking, _: &marque_scheme::ReplacementIntent<Self>) -> Result<(), marque_scheme::ApplyIntentError> { Ok(()) }
+/// # }
+/// let _: marque_rules::audit::AppliedFix<StubScheme> = Default::default();
+/// ```
+///
+/// **External crates cannot brace-construct** (the
+/// `#[non_exhaustive]` attribute + every field's
+/// engine-promotion-only construction path both block external
+/// brace patterns).
+///
+/// ```compile_fail
+/// # use marque_rules::audit::AppliedFix;
+/// # use marque_rules::RuleId;
+/// # use marque_scheme::{Severity, Span};
+/// let _: AppliedFix<()> = AppliedFix {
+///     rule: RuleId::new("E001"),
+///     severity: Severity::Error,
+///     span: Span::new(0, 0),
+///     // ... other fields omitted; #[non_exhaustive] rejects this
+///     // brace pattern at the doctest crate boundary regardless of
+///     // field-list completeness.
+/// };
+/// ```
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct AppliedFix<S: MarkingScheme> {
+    /// Rule ID. Snapshot at the top level so audit emitters don't
+    /// have to descend into `fix.replacement` for the audit-cardinality
+    /// field.
+    pub rule: RuleId,
+    /// Severity at promotion time (snapshot from
+    /// [`crate::Diagnostic::severity`]; survives the lint-post-pass
+    /// severity rewrite at FR-008 / D-7.6).
+    pub severity: Severity,
+    /// Byte span in the original source buffer.
+    pub span: Span,
+    /// The marking-side fix detail (replacement + digest +
+    /// original_span). v2 replacement for the v1
+    /// `proposal: AppliedFixProposal<S>` envelope's `FixIntent` arm.
+    pub fix: AppliedFixDetail<S>,
+    /// Provenance of the originating rule emission. The renderer
+    /// projects this to the wire-format [`Discriminant`] via
+    /// [`discriminant_from_source`] at audit-emit time (PM-D-7).
+    pub source: FixSource,
+    /// Diagnostic message — closed-template, closed-args. Snapshot
+    /// from [`crate::Diagnostic::message`]. Audit emitters render
+    /// via [`Message::template`] + [`Message::args`].
+    pub message: Message,
+    /// Timestamp of application (clock-injected).
+    pub timestamp: SystemTime,
+    /// Classifier identity from runtime config. `None` if
+    /// not configured.
+    pub classifier_id: Option<Arc<str>>,
+    /// `true` if produced under `--dry-run` (FR-006).
+    pub dry_run: bool,
+    /// Caller-supplied input identifier (file path, `-` for stdin,
+    /// `None` if N/A).
+    pub input: Option<Arc<str>>,
+}
+
+// Manual Clone — see the v1 [`crate::AppliedFix`] impl for the
+// rationale (S: MarkingScheme, not S: Clone). The actual cloned
+// payload (`AppliedFixDetail`, `Message`, `Arc<str>`) all support
+// `Clone` without an `S: Clone` bound.
+impl<S: MarkingScheme> Clone for AppliedFix<S> {
+    fn clone(&self) -> Self {
+        Self {
+            rule: self.rule.clone(),
+            severity: self.severity,
+            span: self.span,
+            fix: self.fix.clone(),
+            source: self.source,
+            message: self.message.clone(),
+            timestamp: self.timestamp,
+            classifier_id: self.classifier_id.clone(),
+            dry_run: self.dry_run,
+            input: self.input.clone(),
+        }
+    }
+}
+
+impl<S: MarkingScheme> AppliedFix<S> {
+    /// Engine-only promotion path for the v2 audit record.
+    ///
+    /// # Reserved name (FR-040 lint contract)
+    ///
+    /// `__engine_promote` is reserved by the marque project — the
+    /// `tools/promote-callsite-lint/` CI lint matches by last
+    /// segment, regardless of receiver type or qualifier form. The
+    /// lint covers both this v2 method on
+    /// [`crate::audit::AppliedFix`] AND the v1 method on
+    /// [`crate::AppliedFix`] (crate-root) with the same matcher
+    /// pattern. See [`crate::AppliedFix::__engine_promote`] for the
+    /// full FR-040 contract definition; the same engine-only
+    /// production carve-out and Constitution V Principle V
+    /// test-fixture carve-out apply verbatim.
+    ///
+    /// # Parameters
+    ///
+    /// The engine wires the v2 audit record by passing in:
+    ///
+    /// - `rule` / `severity` / `span`: snapshotted from the
+    ///   originating [`crate::Diagnostic`].
+    /// - `intent`: the rule-emitted [`FixIntent<S>`] whose `source` +
+    ///   `confidence` + `message` snapshot onto the audit record.
+    /// - `original_bytes`: the pre-fix byte slice (the engine reads
+    ///   `source[span]`). Hashed inline to produce the
+    ///   `original_digest` per Constitution V Principle V — the
+    ///   bytes themselves are never stored.
+    /// - `canonical`: the engine-rendered [`Canonical<S>`] payload
+    ///   produced via [`marque_scheme::canonical::EngineConstructor::build_open_vocab`]
+    ///   (open-vocab path) or [`Canonical::from_cve`] (closed-CVE
+    ///   path). The constructor hashes `canonical.bytes()` inline to
+    ///   produce the `bytes_digest`.
+    /// - `timestamp` / `classifier_id` / `dry_run` / `input`:
+    ///   clock-injected runtime context.
+    ///
+    /// # PM-D-6 digest computation
+    ///
+    /// Both BLAKE3 digests are computed inside this function body
+    /// from the parameters passed in by the engine. Engine never
+    /// materializes them itself — the constructor is the single
+    /// source of truth so the digest and the bytes that produced it
+    /// cannot desync.
+    ///
+    /// # PM-D-7 discriminant derivation
+    ///
+    /// `Discriminant` is NOT a constructor parameter. The renderer
+    /// derives it from `self.source` via
+    /// [`discriminant_from_source`] at audit-emit time (closed
+    /// 5-to-2 mapping).
+    //
+    // `clippy::too_many_arguments` allowed because every parameter
+    // carries engine-only runtime context the seal must capture
+    // atomically. Refactoring into a struct argument would shift the
+    // API surface without reducing the count visible at the engine
+    // call site.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn __engine_promote(
+        rule: RuleId,
+        severity: Severity,
+        span: Span,
+        intent: FixIntent<S>,
+        original_bytes: &[u8],
+        canonical: Canonical<S>,
+        timestamp: SystemTime,
+        classifier_id: Option<Arc<str>>,
+        dry_run: bool,
+        input: Option<Arc<str>>,
+        _token: EnginePromotionToken,
+    ) -> Self {
+        // Constitution V Principle V (G13): hash inline, never store
+        // the bytes. The `&[u8]` view borrows for the duration of
+        // this function body only; the digest survives in
+        // `AppliedFixDetail.original_digest`.
+        let original_digest = blake3::hash(original_bytes);
+        let bytes_digest = blake3::hash(canonical.bytes().as_bytes());
+
+        let replacement = AppliedReplacement {
+            canonical,
+            confidence: intent.confidence,
+            bytes_digest,
+        };
+        let fix = AppliedFixDetail {
+            replacement,
+            original_span: span,
+            original_digest,
+        };
+        Self {
+            rule,
+            severity,
+            span,
+            fix,
+            source: intent.source,
+            message: intent.message,
+            timestamp,
+            classifier_id,
+            dry_run,
+            input,
+        }
+    }
+
+    /// Wire-format [`Discriminant`] for this record.
+    ///
+    /// Derived from [`Self::source`] per
+    /// [`discriminant_from_source`] (PM-D-7). Audit emitters call
+    /// this at NDJSON projection time; the value is not stored on
+    /// the record.
+    #[inline]
+    #[must_use]
+    pub fn discriminant(&self) -> Discriminant {
+        discriminant_from_source(self.source)
     }
 }
 

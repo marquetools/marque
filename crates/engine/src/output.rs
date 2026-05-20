@@ -5,6 +5,7 @@
 //! Output types returned by the engine's synchronous API surface.
 
 use marque_capco::CapcoScheme;
+use marque_rules::audit::AuditLine;
 use marque_rules::{AppliedFix, Diagnostic};
 use secrecy::SecretSlice;
 
@@ -153,6 +154,12 @@ impl LintResult {
 }
 
 /// Result of a fix pass — modified source and audit trail.
+///
+/// `#[non_exhaustive]` so future audit-stream additions (v2
+/// `audit_lines`, etc.) land additively without breaking external
+/// brace constructions. Added in PR 3c.2.D / D3 ahead of the v2
+/// audit-record emit path.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct FixResult {
     /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
@@ -169,7 +176,27 @@ pub struct FixResult {
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
     /// Audit records for every fix that was applied.
+    ///
+    /// **v1 `marque-mvp-3` audit stream.** Retained for the
+    /// PR 3c.2.D / D3–D6 transition window: the CLI / WASM
+    /// renderers (D-A3) still read from this field, and existing
+    /// tests assert against its shape. D-A5 / D7 atomically deletes
+    /// this field and the v1 `AppliedFix<S>` outer type alongside
+    /// the `marque-mvp-3 → marque-1.0` schema flip; consumers
+    /// migrate to [`Self::audit_lines`] at D-A3 / D-A4.
     pub applied: Vec<AppliedFix<CapcoScheme>>,
+    /// **v2 `marque-1.0` audit stream.** Per PR 3c.2.D / PM-D-8 a
+    /// single [`AuditLine<S>`] stream preserves the FR-016
+    /// promotion-order invariant across the marking-fix channel
+    /// (`AuditLine::AppliedFix`) and the text-correction channel
+    /// (`AuditLine::TextCorrection`). The renderer projects each
+    /// line to its NDJSON record type.
+    ///
+    /// Populated alongside [`Self::applied`] during the D3–D6
+    /// transition window: both streams carry every promoted fix in
+    /// promotion order. D-A5 / D7 retires the v1 stream once
+    /// renderers and tests migrate.
+    pub audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
     pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
