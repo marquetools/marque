@@ -133,19 +133,20 @@ impl fmt::Display for Citation {
 ///
 /// The `Option<NonZeroU8>` choice for `subsection` and `table` niche-
 /// saves the `Option<u8>` tail and statically rejects sentinel-zero.
-/// Bare `§H` (no subsection) is representable as `subsection = None`.
+/// Bare `§<L>` (no subsection) is representable as `subsection = None`.
 ///
 /// Construction is builder-style: start with [`SectionRef::new`], then
 /// chain `with_subsection` / `with_table` to add the optional fields.
 ///
 /// # Sub-subsections deliberately omitted
 ///
-/// CAPCO-2016 has no `§X.Y.Z`-style citations in the manual — every
-/// citation is either bare `§X`, subsection `§X.Y`, or subsection +
-/// table `§X.Y Table N`. A `sub_subsection` field would be dead
-/// capability per YAGNI (architect-reviewer F-5 on PR #627). If a
-/// future authoritative source introduces 3-level subsections, this
-/// shape re-extends additively via `#[non_exhaustive]`.
+/// CAPCO-2016 has no `§<L>.<sub>.<sub_sub>`-style citations in the
+/// manual — every citation is either bare `§<L>`, subsection
+/// `§<L>.<sub>`, or subsection + table `§<L>.<sub> Table <N>`. A
+/// `sub_subsection` field would be dead capability per YAGNI
+/// (architect-reviewer F-5 on PR #627). If a future authoritative
+/// source introduces 3-level subsections, this shape re-extends
+/// additively via `#[non_exhaustive]`.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SectionRef {
@@ -153,7 +154,7 @@ pub struct SectionRef {
     /// range; see [`SectionLetter`]).
     pub letter: SectionLetter,
     /// Subsection number — e.g., `§H.5` → `subsection = Some(5)`.
-    /// `None` for a bare `§H`-style reference.
+    /// `None` for a bare `§<L>`-style reference.
     pub subsection: Option<NonZeroU8>,
     /// Table number — e.g., `§B.3 Table 2` → `table = Some(2)`. Always
     /// paired with a populated [`Self::subsection`] in practice (CAPCO
@@ -172,7 +173,7 @@ impl SectionRef {
         }
     }
 
-    /// Add a subsection number (e.g., `§H` → `§H.5` via
+    /// Add a subsection number (e.g., `§<L>` → `§H.5` via
     /// `.with_subsection(NonZeroU8::new(5).unwrap())`).
     pub const fn with_subsection(self, subsection: NonZeroU8) -> Self {
         Self {
@@ -194,10 +195,11 @@ impl SectionRef {
 /// CAPCO-2016 normative section letters.
 ///
 /// Restricted to `A`–`H` per project memory
-/// `project_capco_doc_structure` ("§A–H normative; §I–K
-/// (history/examples/acronyms) NOT valid citation targets"). The
-/// `#[non_exhaustive]` marker reserves grow-path for future grammars
-/// whose section vocabulary differs (CUI, NATO).
+/// `project_capco_doc_structure` (sections `A`–`H` are normative;
+/// sections `I`–`K` cover history / examples / acronyms and are NOT
+/// valid citation targets). The `#[non_exhaustive]` marker reserves
+/// grow-path for future grammars whose section vocabulary differs
+/// (CUI, NATO).
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SectionLetter {
