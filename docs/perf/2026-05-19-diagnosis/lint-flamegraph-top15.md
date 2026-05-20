@@ -171,8 +171,9 @@ _Total samples in stacks containing `phase_attribution`: 31,187 · Truncated fol
    lattice frames was inverted).
 2. **`Engine::with_clock` confirmed NOT on the per-call hot path.**
    Doesn't appear in any of the three top-15 tables. Construction
-   tax is amortized across the bench loop as predicted.
-   **DI-3 resolved as false positive.**
+   tax is amortized across the bench loop as predicted. DI-3 keeps an
+   INVESTIGATE status as low-priority tech debt (no measurable surface
+   on the current captures).
 3. **`Engine::two_pass_fix` confirmed off the lint path.** 0% on
    both lint and decoder benches as predicted.
 
@@ -322,7 +323,7 @@ semantics):
 |---|---|---|
 | **CLONE-1** (new) | n/a | **EXECUTE** — CanonicalAttrs lifecycle union 30.05% measured inclusive on `lint_10kb` release; structural sharing / clone-elimination is the single highest-leverage remediation. Savings estimate **60-180µs lint mean** (was 100-300 in the debug-build draft — corrected against release union). |
 | **HOT-2** (closure `Vec::clone`) | INVESTIGATE | **STAYS INVESTIGATE.** Closure operator is 0% as a discrete frame on `lint_10kb` (inlined into lattice frames); the 20.45% on `profile_project` is a per-call-through-bench-scaffolding measurement, not a lint-time signal. The work is real but its discrete savings is not directly bounded. |
-| **DI-3** (Engine::with_clock leak) | INVESTIGATE | **RESOLVE — false positive** (synthesis prediction was correct). |
+| **DI-3** (Engine::with_clock leak) | INVESTIGATE | **Stay INVESTIGATE** — current captures show no measurable top-15 surface; synthesis prediction that construction is amortized was correct. |
 | **CO-2** (PageRewrite mask) | INVESTIGATE | **Soft-close — no measured surface ≥ 4.25% inclusive.** |
 | **CA-1** (parsed_markings cache) | INVESTIGATE | **Stay open (design-deferred tech debt) — no measured surface ≥ 4.25% inclusive.** |
 | **LA-3** (single-portion fast path) | INVESTIGATE | **Stay INVESTIGATE.** Bench input is ~200 markings in **one** PageContext (the `\n\n` separators don't trip the scanner's `\n\n\n+`/`\f` page-break heuristic), so LA-3's target — single-portion pages — is **unmeasured by this bench**, not just weakly measured. Promotion blocked on a real-corpus portion-distribution capture (separate issue). |
