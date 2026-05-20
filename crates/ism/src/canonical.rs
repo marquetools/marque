@@ -178,4 +178,3 @@ impl CanonicalAttrs {
         self.dissem_us.iter().chain(self.dissem_nato.iter())
     }
 }
-
