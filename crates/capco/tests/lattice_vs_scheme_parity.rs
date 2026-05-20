@@ -1933,6 +1933,14 @@ fn display_only_single_portion_parity() {
     // (Phase-2 deferred). This fixture gates that both paths agree —
     // if Phase 2 wires the axis in one path before the other, this
     // fixture will catch the divergence first.
+    //
+    // #618 CONVERGED the prior `dissem_us` divergence: pre-#618 the
+    // `CLOSURE_RELIDO_US_CLASS` rule on the scheme path missed DISPLAY
+    // ONLY as a suppressor (the `satisfies(TOK_DISPLAY_ONLY)` predicate
+    // only scanned `dissem_iter()`, not the canonical `display_only_to`
+    // axis), so the closure injected RELIDO; #618 widened the predicate
+    // and the closure now correctly suppresses on the canonical wire
+    // form. Both paths produce `dissem_us = []` post-#618.
     let mut p = portion_us(Classification::Secret);
     p.display_only_to = vec![cc("IRQ")].into_boxed_slice();
     let portions = [p];
@@ -1943,11 +1951,7 @@ fn display_only_single_portion_parity() {
         // display_only_to: both paths produce Box<[]> (Phase-2
         // deferred). When Phase 2 lands, add a row checking the
         // non-empty result.
-        // DISSEM_US divergence — pure US classified, no other
-        // dissem; CLOSURE_RELIDO_US_CLASS fires on the scheme path
-        // (Issue #524 Phase 3). See module doc "DISSEM_US divergence
-        // (hoisted rationale)" source 2.
-        &["dissem_us"],
+        &[],
     );
 }
 
@@ -1971,6 +1975,23 @@ fn display_only_two_portions_disjoint_lists_parity() {
     //
     // Citation: §D.2 p28-30 Table 3 row 20 (verified 2026-05-18
     // against CAPCO-2016.md).
+    //
+    // #618 update — the divergence persists post-#618 but for a
+    // different reason. Pre-#618 the per-portion closure missed
+    // DISPLAY ONLY as a suppressor (`satisfies(TOK_DISPLAY_ONLY)`
+    // didn't read the canonical `display_only_to` axis) and injected
+    // RELIDO on each portion. Post-#618 per-portion suppression works,
+    // but the page-level join collapses the disjoint DISPLAY ONLY
+    // lists to `Empty` (§D.2 row 20), the closure then re-runs on the
+    // projected state with no DISPLAY ONLY axis present, and fires
+    // `CLOSURE_RELIDO_US_CLASS` because the projected state is pure
+    // US classified with no FD&R suppressor. The new
+    // `capco/display-only-clears-relido` PageRewrite likewise no-ops
+    // because the post-join state has empty `display_only_to`. This
+    // is the underlying §D.2 row 20 gap — NF should be injected when
+    // DO collapses to Empty — surfacing as a scheme-vs-lattice
+    // asymmetry because the scheme path runs the closure while the
+    // lattice path does not. Tracked as follow-up.
     let mut p1 = portion_us(Classification::Secret);
     p1.display_only_to = vec![cc("IRQ")].into_boxed_slice();
     let mut p2 = portion_us(Classification::Secret);
@@ -1980,13 +2001,9 @@ fn display_only_two_portions_disjoint_lists_parity() {
         "display_only_two_portions_disjoint_lists_parity",
         &project_via_lattice(&portions),
         &project_via_scheme(&portions),
-        // §D.2 row 20 NF-when-DO-collapses-to-Empty injection is a
-        // known follow-up gap (same on both paths).
-        // DISSEM_US divergence — both portions are pure US classified,
-        // no other dissem (display_only_to is a separate axis);
-        // CLOSURE_RELIDO_US_CLASS fires on the scheme path (Issue #524
-        // Phase 3). See module doc "DISSEM_US divergence (hoisted
-        // rationale)" source 2.
+        // DISSEM_US divergence — post-#618 the cause shifted from
+        // per-portion suppressor miss to post-join collapse to Empty
+        // (§D.2 row 20 gap surfacing as scheme-vs-lattice asymmetry).
         &["dissem_us"],
     );
 }
