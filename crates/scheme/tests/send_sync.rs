@@ -59,6 +59,8 @@ impl MarkingScheme for StubScheme {
     type Marking = StubMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "stub"
@@ -93,7 +95,7 @@ impl MarkingScheme for StubScheme {
     fn render_canonical(
         &self,
         _: &Self::Marking,
-        _: Scope,
+        _: &marque_scheme::RenderContext,
         _: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         Ok(())

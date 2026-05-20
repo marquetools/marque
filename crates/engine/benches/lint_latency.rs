@@ -56,9 +56,8 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, StrictRecognizer};
+use marque_engine::{Engine, FixMode};
 use std::hint::black_box;
-use std::sync::Arc;
 
 /// Build a ~10KB representative input by repeating a block of mixed valid and
 /// invalid markings interspersed with prose. This mimics a real document with
@@ -107,7 +106,7 @@ fn lint_latency_benchmark(c: &mut Criterion) {
     )
     .expect("default CAPCO scheme has no rewrite cycles")
     // INTENTIONAL-STRICT: SC-001 interactive-latency bench pins the strict recognizer to measure the latency floor; the dispatcher's decoder fallback is benchmarked separately in decoder_10kb_rel_to_invariant.rs
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_10kb", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -257,7 +256,7 @@ fn lint_default_config_benchmark(c: &mut Criterion) {
     // INTENTIONAL-STRICT: matches lint_10kb's recognizer pin so the
     // severity-hoist delta is measured against a pure strict-path
     // baseline. Same rationale as the SC-001 bench.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_default_config", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -281,7 +280,7 @@ fn lint_off_heavy_config_benchmark(c: &mut Criterion) {
     .expect("default CAPCO scheme has no rewrite cycles")
     // INTENTIONAL-STRICT: same recognizer pin as the baseline so the
     // measured delta isolates the per-rule override resolution cost.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_off_heavy_config", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -354,7 +353,7 @@ fn lint_prose_heavy_benchmark(c: &mut Criterion) {
     // the dispatcher's decoder fallback. The prose input contains no
     // tokens the decoder would fire on, but pinning matches the
     // sibling benches and keeps the measurement deterministic.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_prose_heavy", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -407,7 +406,7 @@ fn lint_portion_dense_benchmark(c: &mut Criterion) {
     // INTENTIONAL-STRICT: portion-dense bench pins the strict
     // recognizer to isolate scanner + PageContext allocator cost
     // from the dispatcher's decoder fallback. Issue #430.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_portion_dense", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -455,7 +454,7 @@ fn lint_high_candidate_count_benchmark(c: &mut Criterion) {
     // INTENTIONAL-STRICT: matches `lint_10kb`'s pin so the per-rule
     // dispatch-loop delta is measured against a pure strict-path
     // baseline. Issue #436.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_high_candidate_count", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -659,7 +658,7 @@ fn lint_intent_heavy_benchmark(c: &mut Criterion) {
     .expect("default CAPCO scheme has no rewrite cycles")
     // INTENTIONAL-STRICT: matches `lint_10kb`'s pin so the intent-heavy
     // cost is measured against a pure strict-path baseline. Issue #433.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_intent_heavy_10kb", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -736,7 +735,7 @@ fn lint_parsed_markings_cache_population_stress_benchmark(c: &mut Criterion) {
     // INTENTIONAL-STRICT: pin strict recognizer so the cache stress
     // measurement isolates the (insert + drop) cost from the
     // dispatcher's decoder fallback. Issue #432.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_parsed_markings_cache_population_stress", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -754,7 +753,7 @@ fn fix_parsed_markings_cache_stress_benchmark(c: &mut Criterion) {
     // INTENTIONAL-STRICT: same recognizer pin as the lint-side variant
     // so the only measured delta between the two benches is the path
     // (lint vs fix), not the recognizer choice. Issue #432.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("fix_parsed_markings_cache_stress", |b| {
         b.iter(|| engine.fix(black_box(&input), FixMode::Apply));
@@ -816,7 +815,7 @@ fn lint_sci_composite_dense_benchmark(c: &mut Criterion) {
     // INTENTIONAL-STRICT: pin strict recognizer so the SCI composite
     // measurement isolates the parser path from the dispatcher's
     // decoder fallback. Issue #435.
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("lint_sci_composite_dense", |b| {
         b.iter(|| engine.lint(black_box(&input)));

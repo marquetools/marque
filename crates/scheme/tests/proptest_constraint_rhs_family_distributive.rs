@@ -182,6 +182,8 @@ impl MarkingScheme for FamilyScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         if self.use_family {
@@ -227,7 +229,7 @@ impl MarkingScheme for FamilyScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &marque_scheme::RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)

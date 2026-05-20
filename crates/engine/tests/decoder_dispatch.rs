@@ -16,7 +16,6 @@ use marque_config::Config;
 use marque_engine::{DecoderRecognizer, Engine, StrictOrDecoderRecognizer, StrictRecognizer};
 use marque_rules::RuleSet;
 use marque_scheme::recognizer::Recognizer;
-use std::sync::Arc;
 
 fn build_engine() -> Engine {
     let config = Config::default();
@@ -27,7 +26,7 @@ fn build_engine() -> Engine {
 
 fn build_strict_engine() -> Engine {
     // INTENTIONAL-STRICT: this helper exists specifically to construct an engine with the decoder suppressed; the test family asserts strict-path behavior in contrast to the default dispatcher
-    build_engine().with_recognizer(Arc::new(StrictRecognizer::new()))
+    build_engine().with_strict_recognizer()
 }
 
 #[test]

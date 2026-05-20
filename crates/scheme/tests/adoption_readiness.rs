@@ -179,6 +179,8 @@ impl MarkingScheme for StubScheme {
     type Marking = StubMarking;
     type ParseError = StubParseError;
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "stub"
@@ -226,13 +228,13 @@ impl MarkingScheme for StubScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        scope: Scope,
+        ctx: &marque_scheme::RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         // Degenerate delegation — preserves byte-identity with the
         // existing `render_portion` / `render_banner` overrides
         // above. `Scope::Diff` rejects per the trait contract.
-        match scope {
+        match ctx.scope {
             Scope::Portion => out.write_str(&self.render_portion(m)),
             Scope::Page | Scope::Document => out.write_str(&self.render_banner(m)),
             Scope::Diff => Err(core::fmt::Error),

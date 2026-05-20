@@ -52,6 +52,12 @@ impl MarkingScheme for StubScheme {
     type Marking = StubMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    // PR 3c.2.A — GAT + plain associated type bindings. This stub
+    // never exercises the canonicalize path, so `()` is the
+    // lowest-information binding (the `unimplemented!()` default is
+    // unreachable from this stub's code paths).
+    type Parsed<'src> = ();
+    type Canonical = ();
     fn name(&self) -> &str {
         "stub"
     }
@@ -106,7 +112,7 @@ impl MarkingScheme for StubScheme {
     fn render_canonical(
         &self,
         _: &Self::Marking,
-        _: Scope,
+        _: &marque_scheme::RenderContext,
         _: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         Ok(())

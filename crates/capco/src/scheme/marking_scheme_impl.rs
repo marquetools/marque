@@ -15,11 +15,11 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::{CanonicalAttrs, DissemControl, MarkingClassification};
+use marque_ism::{CanonicalAttrs, DissemControl, MarkingClassification, ParsedAttrs};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
-    ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
-    Span, Template, TokenId, TokenRef,
+    ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
+    ReplacementIntent, Scope, Span, Template, TokenId, TokenRef,
 };
 
 use super::actions::*;
@@ -293,6 +293,15 @@ impl MarkingScheme for CapcoScheme {
     type ParseError = CapcoParseError;
     type OpenVocabRef = CapcoOpenVocabRef;
 
+    // PR 3c.2.A — GAT + plain associated type bindings introduced
+    // per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1.
+    // The CapcoScheme override of `canonicalize` (lifting the body
+    // from `marque_ism::from_parsed_unchecked`) lands at PR 3c.2.B;
+    // at PR 3c.2.A the trait-default `unimplemented!()` is in scope
+    // but no call site exercises it (call-site migration is 3c.2.B).
+    type Parsed<'src> = ParsedAttrs<'src>;
+    type Canonical = CanonicalAttrs;
+
     fn name(&self) -> &str {
         "CAPCO-ISM"
     }
@@ -539,10 +548,18 @@ impl MarkingScheme for CapcoScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        scope: Scope,
+        ctx: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
-        if matches!(scope, Scope::Diff) {
+        // PR 3c.2.A: signature migrated from bare `scope: Scope` to
+        // `ctx: &RenderContext` per
+        // `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. The
+        // body continues to dispatch on `ctx.scope` exactly as it did
+        // pre-3c.2 — `ctx.emission_form` and `ctx.schema_version` are
+        // plumbed through but NOT yet consumed by the per-axis
+        // renderers (the §G.1 Table 4 dispatch body lands at PR
+        // 3c.2.B). T056 corpus regression is the byte-identity gate.
+        if matches!(ctx.scope, Scope::Diff) {
             return Err(core::fmt::Error);
         }
 
@@ -574,7 +591,10 @@ impl MarkingScheme for CapcoScheme {
         let mut prev_family: Option<DissemFamilyMembership> = None;
         for row in RENDER_TABLE {
             scratch.clear();
-            (row.render)(m, scope, &mut scratch)?;
+            // Per-axis renderers still take a bare `Scope` at PR
+            // 3c.2.A (PM-1 forbids changing row signatures in A; the
+            // emission-form aware row dispatch lands at 3c.2.B).
+            (row.render)(m, ctx.scope, &mut scratch)?;
             if scratch.is_empty() {
                 continue;
             }
@@ -622,8 +642,16 @@ impl MarkingScheme for CapcoScheme {
         // violation produces an empty / partial `String` rather than
         // a panic (matching the trait-default behavior in
         // `MarkingScheme::render_portion`).
+        //
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
+        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
         let mut s = String::new();
-        let result = self.render_canonical(m, Scope::Portion, &mut s);
+        let ctx = RenderContext::new(
+            Scope::Portion,
+            marque_scheme::EmissionForm::Auto,
+            marque_scheme::SchemaVersionId::MarqueMvp3,
+        );
+        let result = self.render_canonical(m, &ctx, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
@@ -638,8 +666,15 @@ impl MarkingScheme for CapcoScheme {
         // contract-violation invariant: `Write for String` is
         // infallible, so `Err` here would be a conforming-impl bug
         // forbidden by the trait doc.
+        //
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext.
         let mut s = String::new();
-        let result = self.render_canonical(m, Scope::Page, &mut s);
+        let ctx = RenderContext::new(
+            Scope::Page,
+            marque_scheme::EmissionForm::Auto,
+            marque_scheme::SchemaVersionId::MarqueMvp3,
+        );
+        let result = self.render_canonical(m, &ctx, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
@@ -1102,7 +1137,54 @@ impl CapcoScheme {
         // remain inflationary on the closed state (they remove
         // dominated tokens but the remaining tokens are already members
         // of the closure's fixed point).
+        //
+        // Per-page eligibility mask (CO-2): `page_mask` is a bitmask
+        // where bit `1 << cat.0` is set when category `cat` has at
+        // least one value in `out`. Before evaluating each row's trigger
+        // we check whether the trigger's required category is present;
+        // if not, the trigger can't fire and we skip the row entirely.
+        //
+        // Mask update policy:
+        // - `Contains(X, _)` / `Custom` eligibility: bits are OR-ed in
+        //   for each fired rewrite's declared write axes, so downstream
+        //   rows that depend on newly-written axes are correctly eligible
+        //   even if the category was empty at mask-init time.
+        // - `Empty(X)` eligibility: after a `Clear` action fires on
+        //   category X, the bit for X is cleared if the category is now
+        //   empty per `capco_category_has_values`. Without this step a
+        //   downstream `Empty { category: X }` trigger would be skipped
+        //   because the bit still reads as set (monotone-only policy
+        //   would miss cleared categories), so the trigger could never
+        //   fire even though the category is now empty.
+        let mut page_mask = capco_axis_mask(&out);
         for rw in &self.page_rewrites {
+            // Eligibility pre-check: skip rows whose trigger category is
+            // absent from the page mask to avoid unnecessary predicate
+            // evaluations.
+            let eligible = match &rw.trigger {
+                // `Contains(X, _)` fires only if X is non-empty.
+                CategoryPredicate::Contains { category, .. } => {
+                    page_mask & (1u64 << category.0) != 0
+                }
+                // `Empty(X)` fires only if X IS empty (bit clear).
+                CategoryPredicate::Empty { category } => page_mask & (1u64 << category.0) == 0,
+                // `Custom(f)` — use the declared reads ∪ writes axes as
+                // a conservative proxy. Skip only when every declared
+                // axis is absent: if all inputs and outputs are empty,
+                // the predicate cannot observe or produce relevant state.
+                // `Custom` rewrites with empty reads ∪ writes are
+                // scheduler-rejected (`UnannotatedCustomAxes`), so the
+                // empty-intersection case always corresponds to a page
+                // where none of the declared axes are present.
+                CategoryPredicate::Custom(_) => rw
+                    .reads
+                    .iter()
+                    .chain(rw.writes.iter())
+                    .any(|c| page_mask & (1u64 << c.0) != 0),
+            };
+            if !eligible {
+                continue;
+            }
             let fires = match &rw.trigger {
                 CategoryPredicate::Contains { category, token } => {
                     capco_category_contains(&out, *category, *token)
@@ -1113,6 +1195,12 @@ impl CapcoScheme {
                 CategoryPredicate::Custom(f) => f(&out),
             };
             if fires {
+                // Update the mask monotonically: OR in declared write axes
+                // so downstream rows that read these axes are correctly
+                // eligible even if the category was empty at mask-init time.
+                for w in rw.writes {
+                    page_mask |= 1u64 << w.0;
+                }
                 match &rw.action {
                     CategoryAction::Clear { category } => {
                         tracing::debug!(
@@ -1122,6 +1210,12 @@ impl CapcoScheme {
                             "PageRewrite fired",
                         );
                         capco_category_clear(&mut out, *category);
+                        // After clearing, update the mask: if the category
+                        // is now empty, clear its bit so that downstream
+                        // `Empty { category }` triggers become eligible.
+                        if !capco_category_has_values(&out, *category) {
+                            page_mask &= !(1u64 << category.0);
+                        }
                     }
                     CategoryAction::Replace { category, with } => {
                         tracing::debug!(

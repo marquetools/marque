@@ -102,6 +102,8 @@ impl MarkingScheme for DerivedOnlyScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "derived-only-stub"
@@ -139,7 +141,7 @@ impl MarkingScheme for DerivedOnlyScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &marque_scheme::RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)
@@ -231,6 +233,8 @@ impl MarkingScheme for StaticParityScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "static-parity-stub"
@@ -268,7 +272,7 @@ impl MarkingScheme for StaticParityScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &marque_scheme::RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)

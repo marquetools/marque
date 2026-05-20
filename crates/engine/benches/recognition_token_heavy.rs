@@ -30,9 +30,8 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, StrictRecognizer};
+use marque_engine::Engine;
 use std::hint::black_box;
-use std::sync::Arc;
 
 /// Build a 10KB input where one portion carries a long REL TO list.
 /// The rest is short benign prose so the scanner has exactly one
@@ -89,7 +88,7 @@ fn recognition_long_rel_to_benchmark(c: &mut Criterion) {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("recognition_long_rel_to", |b| {
         b.iter(|| engine.lint(black_box(&input)));
@@ -104,7 +103,7 @@ fn recognition_sci_heavy_benchmark(c: &mut Criterion) {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     c.bench_function("recognition_sci_heavy", |b| {
         b.iter(|| engine.lint(black_box(&input)));

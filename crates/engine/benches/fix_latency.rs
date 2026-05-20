@@ -42,11 +42,10 @@
 //! alongside the gated benches.
 
 use std::hint::black_box;
-use std::sync::Arc;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use marque_config::Config;
-use marque_engine::{Engine, FixMode, StrictRecognizer};
+use marque_engine::{Engine, FixMode};
 use secrecy::ExposeSecret as _;
 
 /// Single-portion input that produces exactly one E054 fix at confidence
@@ -72,7 +71,7 @@ fn build_engine() -> Engine {
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    .with_recognizer(Arc::new(StrictRecognizer::new()))
+    .with_strict_recognizer()
 }
 
 /// Asserts the bench invariant: `SINGLE_FIX_INPUT` must produce exactly one

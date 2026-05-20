@@ -20,6 +20,7 @@ use crate::closure::ClosureRule;
 use crate::constraint::{Constraint, ConstraintViolation, TokenRef};
 use crate::fix_intent::FactRef;
 use crate::page_rewrite::PageRewrite;
+use crate::render_context::RenderContext;
 use crate::scope::Scope;
 use crate::span::Span;
 use crate::template::Template;
@@ -108,6 +109,64 @@ pub trait MarkingScheme {
     /// makes `FactRef::OpenVocab(...)` statically unreachable for that
     /// scheme.
     type OpenVocabRef: Debug + Clone + Eq + Hash + Send + Sync + 'static;
+
+    /// The scheme's borrowed parsed-attrs type — input to
+    /// [`Self::canonicalize`].
+    ///
+    /// CAPCO binds this to `marque_ism::ParsedAttrs<'src>`; future
+    /// schemes (CUI, NATO) bind to their own borrowed parsed shape.
+    /// Test stubs that do not exercise the canonicalize path bind
+    /// to `()` — the `unimplemented!()` default on
+    /// [`Self::canonicalize`] is unreachable from their code paths.
+    ///
+    /// GAT introduced at PR 3c.2.A per
+    /// `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. GATs
+    /// stabilized in Rust 1.65; workspace MSRV is 1.85.
+    type Parsed<'src>;
+
+    /// The scheme's owned canonical-attrs type — output of
+    /// [`Self::canonicalize`].
+    ///
+    /// CAPCO binds this to `marque_ism::CanonicalAttrs`; future
+    /// schemes bind to their own owned canonical shape.
+    type Canonical;
+
+    /// Convert a parsed-attrs value into the scheme's canonical
+    /// representation.
+    ///
+    /// This is the **sole post-3c.2.E path** for `Parsed → Canonical`
+    /// per FR-043. PR 3c.2.A defines the trait method with a default
+    /// of `unimplemented!()`; PR 3c.2.B implements the CapcoScheme
+    /// override (lifting the body from `marque_ism::from_parsed_unchecked`);
+    /// PR 3c.2.C / D migrate call sites; PR 3c.2.E deletes the
+    /// adapter.
+    ///
+    /// # Why the default is `unimplemented!()` (not delegation)
+    ///
+    /// The predecessor PM contract
+    /// (`docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` §4 R-1)
+    /// originally read "default delegates to `from_parsed_unchecked`",
+    /// but that delegation is incompatible with Constitution VII
+    /// directionality — `marque-scheme` cannot reference
+    /// `marque_ism::from_parsed_unchecked`. The default impl is
+    /// `unimplemented!()`; the CapcoScheme override at 3c.2.B carries
+    /// the body. See PM-1 in `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
+    /// for the erratum.
+    ///
+    /// Test-fixture schemes that bind `type Parsed<'src> = ();` and
+    /// `type Canonical = ();` inherit this default safely — their
+    /// rule paths emit only `FixProposal` and never call
+    /// `canonicalize`, so the panic is unreachable from their code
+    /// paths.
+    fn canonicalize<'src>(&self, _parsed: Self::Parsed<'src>) -> Self::Canonical {
+        unimplemented!(
+            "MarkingScheme::canonicalize not overridden by this scheme. \
+             PR 3c.2.B implements the CapcoScheme override; test stub \
+             schemes that never call canonicalize() inherit the default \
+             safely (the panic is unreachable from their code paths). \
+             See docs/plans/2026-05-19-pr3c2-a-pm-decisions.md PM-1."
+        )
+    }
 
     /// Human-readable name, e.g., "CAPCO-ISM-v2022-DEC".
     fn name(&self) -> &str;
@@ -516,8 +575,8 @@ pub trait MarkingScheme {
         marking
     }
 
-    /// Render a marking in canonical form for the given `scope`,
-    /// writing the bytes through `out`.
+    /// Render a marking in canonical form per the given
+    /// [`RenderContext`], writing the bytes through `out`.
     ///
     /// This is the **single source of truth for canonical form** in
     /// the scheme. Per `specs/006-engine-rule-refactor/architecture.md`
@@ -526,14 +585,35 @@ pub trait MarkingScheme {
     /// > The renderer (`render_canonical`) is the single source of
     /// > canonical form. Form rules retire into it.
     ///
+    /// # `RenderContext` parameter
+    ///
+    /// PR 3c.2.A migrated the trait method from a bare `scope: Scope`
+    /// parameter to a `&RenderContext` carrier per
+    /// `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. The
+    /// `RenderContext` carries the projection scope (the pre-3c.2
+    /// parameter), the emission form
+    /// ([`crate::EmissionForm`] — closes the §G.1 Table 4 four-form
+    /// ambiguity), and the active schema version
+    /// ([`crate::SchemaVersionId`]).
+    ///
+    /// At PR 3c.2.A, only `ctx.scope` is actively consumed by every
+    /// impl body; `ctx.emission_form` is always
+    /// [`crate::EmissionForm::Auto`] (the §G.1 Table 4 dispatch body
+    /// lands at PR 3c.2.B) and `ctx.schema_version` is always
+    /// [`crate::SchemaVersionId::MarqueMvp3`] (the cutover to
+    /// `marque-1.0` lands at PR 3c.2.D). Implementations should read
+    /// `ctx.scope` exactly where they used to read the bare `scope`;
+    /// the other fields are reserved for future expansion.
+    ///
     /// # Lattice-equal-byte-identical property
     ///
     /// Two markings that compare equal under [`Lattice`](crate::lattice::Lattice)
-    /// equality MUST render to byte-identical output for the same `scope`.
-    /// This is what makes `Recanonicalize` a sound fix: the renderer
-    /// is referentially transparent over lattice-equivalent inputs,
-    /// and the engine can therefore re-render a `ProjectedMarking`
-    /// without consulting the input bytes that produced it.
+    /// equality MUST render to byte-identical output for the same
+    /// `RenderContext`. This is what makes `Recanonicalize` a sound
+    /// fix: the renderer is referentially transparent over
+    /// lattice-equivalent inputs, and the engine can therefore
+    /// re-render a `ProjectedMarking` without consulting the input
+    /// bytes that produced it.
     ///
     /// # Writer-passing contract
     ///
@@ -548,8 +628,8 @@ pub trait MarkingScheme {
     ///
     /// # Scope semantics — return-value contract
     ///
-    /// Implementations MUST honor the following per-scope contract.
-    /// The default impls of [`Self::render_portion`] /
+    /// Implementations MUST honor the following per-scope contract on
+    /// `ctx.scope`. The default impls of [`Self::render_portion`] /
     /// [`Self::render_banner`] rely on this contract being upheld;
     /// they `debug_assert!` on contract violation.
     ///
@@ -582,14 +662,14 @@ pub trait MarkingScheme {
     /// in-scope projection (already computed during `lint` per
     /// Constitution VI's dataflow pipeline) for the named
     /// `RecanonScope`, then calls
-    /// `render_canonical(&projection.marking, scope.into(), &mut writer)`.
+    /// `render_canonical(&projection.marking, &RenderContext::new(scope.into(), Auto, schema), &mut writer)`.
     /// Rules NEVER carry the `ProjectedMarking` — the engine is the
     /// authority. See `ReplacementIntent::Recanonicalize` in
     /// `marque-rules` for the intent-side surface.
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        scope: crate::scope::Scope,
+        ctx: &RenderContext,
         out: &mut dyn fmt::Write,
     ) -> fmt::Result;
 
@@ -612,7 +692,15 @@ pub trait MarkingScheme {
         // written before returning so downstream consumers see an
         // empty `String` rather than a partial / subtly-wrong
         // canonical form (the trait-level "empty on Err" guarantee).
-        let result = self.render_canonical(m, crate::scope::Scope::Portion, &mut s);
+        //
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
+        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
+        let ctx = RenderContext::new(
+            crate::scope::Scope::Portion,
+            crate::EmissionForm::Auto,
+            crate::SchemaVersionId::MarqueMvp3,
+        );
+        let result = self.render_canonical(m, &ctx, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
@@ -640,7 +728,14 @@ pub trait MarkingScheme {
     /// override this method MUST honor the same scope semantics.
     fn render_banner(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
-        let result = self.render_canonical(m, crate::scope::Scope::Page, &mut s);
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
+        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
+        let ctx = RenderContext::new(
+            crate::scope::Scope::Page,
+            crate::EmissionForm::Auto,
+            crate::SchemaVersionId::MarqueMvp3,
+        );
+        let result = self.render_canonical(m, &ctx, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \

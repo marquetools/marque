@@ -49,11 +49,10 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use marque_capco::CapcoMarking;
 use marque_capco::scheme::CapcoScheme;
 use marque_config::Config;
-use marque_engine::{Engine, StrictRecognizer};
+use marque_engine::Engine;
 use marque_ism::CanonicalAttrs;
 use marque_scheme::{MarkingScheme, Scope};
 use std::hint::black_box;
-use std::sync::Arc;
 
 fn build_input(target_bytes: usize) -> Vec<u8> {
     let block = concat!(
@@ -102,7 +101,7 @@ fn collect_portions() -> Vec<CanonicalAttrs> {
         marque_engine::default_scheme(),
     )
     .expect("default scheme")
-    .with_recognizer(Arc::new(StrictRecognizer::new()));
+    .with_strict_recognizer();
 
     // Engine::lint doesn't expose the per-portion list, but for
     // measurement purposes we can replay the parse path. The
@@ -197,7 +196,7 @@ fn phase_attribution(c: &mut Criterion) {
             marque_engine::default_scheme(),
         )
         .expect("default scheme")
-        .with_recognizer(Arc::new(StrictRecognizer::new()));
+        .with_strict_recognizer();
         c.bench_function("phase_f_engine_lint_full", |b| {
             b.iter(|| engine.lint(black_box(&input)));
         });
