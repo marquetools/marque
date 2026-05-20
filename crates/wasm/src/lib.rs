@@ -791,6 +791,19 @@ pub fn audit_line_to_json_v1_0(
             serde_json::to_value(text_correction_to_audit_json_v1_0(scheme, tc))
                 .unwrap_or(serde_json::Value::Null)
         }
+        // **Parallel-update requirement** (PR 3c.2.D fixup F-10).
+        // When a new `AuditLine` variant lands in
+        // `marque-rules::audit`, three call sites MUST add a
+        // corresponding arm in lockstep: the CLI renderer at
+        // `marque/src/render.rs::audit_line_to_json_v1_0`, this
+        // WASM renderer, and the canary's
+        // `render_audit_line_to_json` at
+        // `crates/engine/tests/audit_g13_canary.rs`. A silent
+        // `Value::Null` here would defeat both the SC-008 byte-
+        // identity parity test (the CLI and WASM emit shapes would
+        // diverge silently) AND the G13 content-ignorance canary
+        // (a future leak channel would emit nothing for the canary
+        // to scan and pass the sweep vacuously).
         _ => serde_json::Value::Null,
     }
 }

@@ -63,7 +63,9 @@ fn mixed_confidence_applies_only_high_confidence_fix() {
     // form, no-fix on the `(TS//HCS)\n` second line — conscious-defer
     // per §H.4 p62, classifier picks HCS-O vs HCS-P) — verified below
     // in the `remaining_diagnostics` assertion.
-    let applied = result.applied_fixes();
+    // PR 3c.2.D fixup F-3: `applied_fixes()` returns `impl Iterator`;
+    // collect once for index access + Debug formatting.
+    let applied: Vec<_> = result.applied_fixes().collect();
     assert_eq!(applied.len(), 1, "applied: {applied:?}");
     assert_eq!(applied[0].rule.as_str(), "E002");
     assert!((applied[0].fix.replacement.confidence.combined() - 0.97).abs() < 0.001);
@@ -109,16 +111,12 @@ fn dry_run_parity_with_apply() {
 
     // Same number of applied fixes.
     assert_eq!(
-        apply_result.applied_fixes().len(),
-        dry_result.applied_fixes().len()
+        apply_result.applied_fixes().count(),
+        dry_result.applied_fixes().count()
     );
 
     // Same rule IDs and confidences.
-    for (a, d) in apply_result
-        .applied_fixes()
-        .iter()
-        .zip(dry_result.applied_fixes().iter())
-    {
+    for (a, d) in apply_result.applied_fixes().zip(dry_result.applied_fixes()) {
         assert_eq!(a.rule.as_str(), d.rule.as_str());
         assert!(
             (a.fix.replacement.confidence.combined() - d.fix.replacement.confidence.combined())
@@ -166,8 +164,8 @@ fn fixed_clock_produces_deterministic_timestamps() {
     let r1 = engine.fix(&source, FixMode::Apply);
     let r2 = engine.fix(&source, FixMode::Apply);
 
-    assert_eq!(r1.applied_fixes().len(), r2.applied_fixes().len());
-    for (a, b) in r1.applied_fixes().iter().zip(r2.applied_fixes().iter()) {
+    assert_eq!(r1.applied_fixes().count(), r2.applied_fixes().count());
+    for (a, b) in r1.applied_fixes().zip(r2.applied_fixes()) {
         assert_eq!(
             a.timestamp, b.timestamp,
             "timestamps should be deterministic"
@@ -283,7 +281,9 @@ fn e002_fix_rewrites_banner_with_canonical_rel_to_list() {
     let source = b"SECRET//REL TO GBR, AUS\n".to_vec();
     let result = engine.fix(&source, FixMode::Apply);
 
-    let applied = result.applied_fixes();
+    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator`; collect
+    // once for the filter pass + Debug-render in the assertion message.
+    let applied: Vec<_> = result.applied_fixes().collect();
     let e002_applied: Vec<_> = applied
         .iter()
         .filter(|f| f.rule.as_str() == "E002")
@@ -349,7 +349,8 @@ fn e002_does_not_corrupt_source_on_multiple_rel_to_blocks() {
     let result = engine.fix(&source, FixMode::Apply);
 
     // No E002 fix should have been applied — the proposal is None.
-    let applied = result.applied_fixes();
+    // PR 3c.2.D fixup F-3: collect once for filter + Debug.
+    let applied: Vec<_> = result.applied_fixes().collect();
     let e002_applied: Vec<_> = applied
         .iter()
         .filter(|f| f.rule.as_str() == "E002")
@@ -423,7 +424,7 @@ fn r002_fired_false_on_clean_fixture() {
     let result = engine.fix(&source, FixMode::Apply);
     assert!(!result.r002_fired);
     assert_eq!(result.source.expose_secret(), source);
-    assert!(result.applied_fixes().is_empty());
+    assert!(result.applied_fixes().next().is_none());
 }
 
 #[test]
@@ -467,6 +468,6 @@ fn r002_fired_field_independent_of_applied_count() {
     let source = mixed_confidence_source();
     let result = engine.fix(&source, FixMode::Apply);
     // Fixture is mixed_confidence_source -> E002 fires.
-    assert!(!result.applied_fixes().is_empty());
+    assert!(result.applied_fixes().next().is_some());
     assert!(!result.r002_fired);
 }

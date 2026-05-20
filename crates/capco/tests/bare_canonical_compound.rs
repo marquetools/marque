@@ -227,7 +227,9 @@ fn e067_applies_in_fix_pass() {
 
     // E067 promotes through the text-correction channel (canonical
     // hardcoded replacement `RD-CNWDI`).
-    let text_corrections = result.applied_text_corrections();
+    // PR 3c.2.D fixup F-3: `applied_text_corrections()` is `impl Iterator`;
+    // collect once for filter + Debug-render.
+    let text_corrections: Vec<_> = result.applied_text_corrections().collect();
     let e067_text: Vec<_> = text_corrections
         .iter()
         .filter(|tc| tc.rule.as_str() == "E067")
@@ -252,11 +254,9 @@ fn e067_applies_in_fix_pass() {
         tc.replacement
     );
     // No marking-side AppliedFix is emitted by E067.
-    let e067_applied: Vec<_> = result
+    let e067_applied: Vec<&_> = result
         .applied_fixes()
-        .iter()
         .filter(|a| a.rule.as_str() == "E067")
-        .copied()
         .collect();
     assert!(
         e067_applied.is_empty(),

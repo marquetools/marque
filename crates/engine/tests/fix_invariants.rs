@@ -174,7 +174,6 @@ fn i4_suggest_severity_never_appears_in_applied_audit_stream() {
     use std::collections::HashSet;
     let applied_keys: HashSet<(String, usize, usize)> = result
         .applied_fixes()
-        .iter()
         .map(|a| (a.rule.as_str().to_string(), a.span.start, a.span.end))
         .collect();
     for d in &result.remaining_diagnostics {
@@ -200,7 +199,7 @@ fn i4_suggest_severity_never_appears_in_applied_audit_stream() {
 fn i18_applied_fix_spans_are_pairwise_disjoint_on_simple_input() {
     let src = b"SECRET//NOFORN\n(S//NF)\n";
     let result = engine().fix(src, FixMode::Apply);
-    let spans: Vec<_> = result.applied_fixes().iter().map(|a| a.span).collect();
+    let spans: Vec<_> = result.applied_fixes().map(|a| a.span).collect();
     for i in 0..spans.len() {
         for j in (i + 1)..spans.len() {
             let a = spans[i];
@@ -221,7 +220,7 @@ fn i18_applied_fix_spans_disjoint_when_text_correction_present() {
     let eng = engine_with_corrections();
     let src = b"SERCET//NOFORN\n(S//NF)\n";
     let result = eng.fix(src, FixMode::Apply);
-    let spans: Vec<_> = result.applied_fixes().iter().map(|a| a.span).collect();
+    let spans: Vec<_> = result.applied_fixes().map(|a| a.span).collect();
     for i in 0..spans.len() {
         for j in (i + 1)..spans.len() {
             let a = spans[i];
@@ -268,7 +267,6 @@ fn i19_remaining_diagnostics_do_not_duplicate_applied_keys() {
     let result = eng.fix(src, FixMode::Apply);
     let applied_keys: HashSet<(String, usize, usize)> = result
         .applied_fixes()
-        .iter()
         .map(|a| (a.rule.as_str().to_string(), a.span.start, a.span.end))
         .collect();
     for d in &result.remaining_diagnostics {

@@ -884,6 +884,20 @@ pub fn audit_line_to_json_v1_0(
         // `AuditLine` is `#[non_exhaustive]`; a future variant lands
         // as `Null` until the renderer adds an arm. The T055 G13
         // canary catches the emitted-line shape regression in CI.
+        //
+        // **Parallel-update requirement.** When a new `AuditLine`
+        // variant lands in `marque-rules::audit`, three call sites
+        // MUST add a corresponding arm in lockstep: this renderer
+        // (CLI), the WASM renderer at `crates/wasm/src/lib.rs`, and
+        // the canary's `render_audit_line_to_json` at
+        // `crates/engine/tests/audit_g13_canary.rs`. A silent
+        // `Value::Null` from any of the three would defeat the G13
+        // content-ignorance canary's regression detection — the
+        // canary sweeps the corpus and asserts no input substring
+        // appears in the emitted JSON, but a `Null` arm emits
+        // nothing for the canary to scan, so a future variant that
+        // accidentally leaked content would pass the sweep
+        // vacuously. Pre-PR 3c.2.D fixup F-10.
         _ => serde_json::Value::Null,
     }
 }

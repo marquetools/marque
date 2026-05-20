@@ -401,6 +401,28 @@ impl<S: MarkingScheme> Clone for AppliedFixDetail<S> {
 ///     // field-list completeness.
 /// };
 /// ```
+///
+/// **`__engine_promote_text_correction` relocates to
+/// [`AppliedTextCorrection`] at v2** (PM-D-4 marking-vs-text-correction
+/// split). The old method-resolution path
+/// `AppliedFix::__engine_promote_text_correction(...)` is gone — the
+/// marking-side [`AppliedFix`] carries no text-correction
+/// constructor. A future regression that re-adds the method on
+/// `AppliedFix` (collapsing the type-level G13 boundary) is caught
+/// at `cargo test --doc` time, an earlier gate than the FR-040
+/// promote-callsite lint.
+///
+/// Rust preflight §7.7. Defense-in-depth: the FR-040 lint's
+/// exact-equality matcher (PR 3c.2.D fixup F-1) catches calls to the
+/// `AppliedTextCorrection` constructor regardless of receiver; this
+/// doctest catches the type-system relocation directly.
+///
+/// ```compile_fail
+/// # use marque_rules::audit::AppliedFix;
+/// // No `__engine_promote_text_correction` exists on `AppliedFix<()>`
+/// // — the constructor lives on `AppliedTextCorrection`.
+/// let _ = AppliedFix::<()>::__engine_promote_text_correction();
+/// ```
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct AppliedFix<S: MarkingScheme> {

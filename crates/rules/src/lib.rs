@@ -41,10 +41,10 @@
 //!
 //! `FixIntent<S>` is pure data emitted by rules — deterministic,
 //! timestamp-free, classifier-free, safe to snapshot in tests.
-//! `AppliedFix<S>` wraps it (via the `AppliedFixProposal<S>` enum)
-//! with runtime context (timestamp, classifier id, dry-run flag) and
-//! is constructed **only** by `Engine::fix_inner`. This makes
-//! "suggested vs applied" a type-system invariant.
+//! `AppliedFix<S>` wraps it with runtime context (timestamp,
+//! classifier id, dry-run flag) and is constructed **only** by
+//! `Engine::fix_inner`. This makes "suggested vs applied" a
+//! type-system invariant.
 //!
 //! The Commit 2–9 transition through a legacy `FixProposal` shape
 //! retired in PR 3c.B Commit 10 (`mvp-1`/`mvp-2` → `mvp-3`); the
@@ -991,8 +991,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// the CAPCO `CorrectionsMapRule`. The replacement bytes are
     /// carried in [`Self::text_correction`]; the engine's
     /// `apply_text_corrections` reads this field and promotes it
-    /// to an [`AppliedFix`] via
-    /// [`AppliedFix::__engine_promote_text_correction`].
+    /// to an [`AppliedTextCorrection`] via
+    /// [`AppliedTextCorrection::__engine_promote_text_correction`].
     // 9 args is the irreducible carrying capacity of a text-correction
     // diagnostic: id/severity/span/message/citation for the diagnostic
     // surface + replacement/source/confidence/migration_ref for the

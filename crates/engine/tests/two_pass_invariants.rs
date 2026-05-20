@@ -129,7 +129,6 @@ proptest! {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
         let spans: Vec<(usize, usize)> = result
             .applied_fixes()
-            .iter()
             .map(|a| (a.span.start, a.span.end))
             .collect();
         for i in 0..spans.len() {

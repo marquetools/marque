@@ -335,7 +335,7 @@ fn no_document_text_leaks_when_markings_are_embedded_in_prose() {
         let result = run_fix(&engine, &composite);
         let label = format!("wrapped:{}", path.display());
         check_fixes_clean(&result.audit_lines, &label);
-        fixes_examined += result.applied_fixes().len();
+        fixes_examined += result.applied_fixes().count();
     }
 
     assert!(

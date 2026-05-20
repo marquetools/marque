@@ -589,3 +589,148 @@ impl TwoPassFixer {
         diags[0].file,
     );
 }
+
+#[test]
+fn engine_promote_text_correction_proper_name_is_caught() {
+    // PR 3c.2.D fixup F-1 (Security H-001): the new
+    // `AppliedTextCorrection::__engine_promote_text_correction`
+    // reserved name (PM-D-4 text-correction split) MUST be flagged
+    // when called from non-engine, non-test code — same FR-040
+    // engine-only contract as `__engine_promote`. The matcher uses
+    // exact-equality on the last path segment, so this name is
+    // explicitly enumerated alongside `__engine_promote` and
+    // `__engine_construct`.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+fn naughty_text_correction_call() {
+    let _ = AppliedTextCorrection::__engine_promote_text_correction(
+        (), (), (), (), (), (), (), false, None, (),
+    );
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected the text-correction call to be flagged, got {diags:#?}"
+    );
+    assert_eq!(diags[0].code, "PRC002");
+}
+
+#[test]
+fn engine_promote_text_correction_production_allowed_inside_apply_text_corrections() {
+    // PR 3c.2.D fixup F-1: the production carve-out for
+    // `__engine_promote_text_correction` is `Engine::apply_text_corrections`
+    // (PM-D-4 + PM-D-13). The existing `ENGINE_METHOD_ALLOW_LIST`
+    // already lists `apply_text_corrections`, and the matcher now
+    // recognizes the new reserved name. End-to-end the call site
+    // must be allowed.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/engine/src/engine.rs",
+        r"
+struct Engine;
+impl Engine {
+    fn apply_text_corrections(&self) {
+        let _ = AppliedTextCorrection::__engine_promote_text_correction(
+            (), (), (), (), (), (), (), false, None, (),
+        );
+    }
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics for apply_text_corrections, got {diags:#?}",
+    );
+}
+
+#[test]
+fn engine_promote_text_correction_test_fixture_carve_out_honored() {
+    // PR 3c.2.D fixup F-1: the Constitution V Principle V test-
+    // fixture carve-out applies symmetrically to
+    // `__engine_promote_text_correction`. A call site inside a
+    // `tests/` integration file with the marker comment within five
+    // lines above must be silenced (same lookback window as the
+    // marking-side `__engine_promote`).
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/tests/audit_test.rs",
+        r"
+fn fabricate_leaky_text_correction() {
+    // Test-fixture carve-out per Constitution V
+    let _ = AppliedTextCorrection::__engine_promote_text_correction(
+        (), (), (), (), (), (), (), false, None, (),
+    );
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
+}
+
+#[test]
+fn engine_promote_text_correction_test_fixture_denied_without_marker() {
+    // Companion to the carve-out-honored test: without the marker
+    // comment, the lint MUST fire PRC001 just like it does for
+    // `__engine_promote`. Otherwise the new reserved name would
+    // open a silent test-fixture-unmarked bypass of the carve-out.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/tests/audit_test.rs",
+        r"
+fn fabricate_leaky_text_correction() {
+    let _ = AppliedTextCorrection::__engine_promote_text_correction(
+        (), (), (), (), (), (), (), false, None, (),
+    );
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected exactly 1 PRC001 diagnostic, got {diags:#?}"
+    );
+    assert_eq!(diags[0].code, "PRC001");
+}
+
+#[test]
+fn engine_promote_text_correction_legacy_suffix_not_caught() {
+    // Mirrors `engine_promote_legacy_is_not_caught_by_suffix_match`
+    // for the new reserved name. The matcher uses exact-equality on
+    // the last path segment — a back-compat name like
+    // `__engine_promote_text_correction_legacy` is a distinct
+    // identifier and MUST NOT trip the lint, even though it shares
+    // the `__engine_promote_text_correction` prefix. The exact-match
+    // discipline keeps the closed reserved-name list deliberate.
+    let tmp = TempDir::new().unwrap();
+    write(
+        tmp.path(),
+        "crates/foo/src/lib.rs",
+        r"
+fn not_a_violation_legacy_text_correction() {
+    // Hypothetical future legacy back-compat name; distinct from the
+    // reserved suffix and must NOT be flagged.
+    let _ = AppliedTextCorrection::__engine_promote_text_correction_legacy(
+        (), (), (), (), (), (), (), false, None, (),
+    );
+}
+",
+    );
+    let diags = callsite::scan_workspace(tmp.path()).unwrap();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics on `__engine_promote_text_correction_legacy` \
+         (matcher must anchor on exact last-segment equality, not prefix), \
+         got {diags:#?}"
+    );
+}

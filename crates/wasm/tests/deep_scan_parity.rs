@@ -224,8 +224,7 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     let saw_decoder_native =
         native_fix
             .applied_fixes()
-            .iter()
-            .any(|f: &&AppliedFix<marque_capco::CapcoScheme>| {
+            .any(|f: &AppliedFix<marque_capco::CapcoScheme>| {
                 matches!(f.source, marque_rules::FixSource::DecoderPosterior)
             });
     assert!(

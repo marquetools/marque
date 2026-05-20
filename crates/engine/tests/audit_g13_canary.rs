@@ -218,6 +218,18 @@ fn render_audit_line_to_json(
             "classifier_id": tc.classifier_id.as_deref(),
             "dry_run": tc.dry_run,
         }),
+        // **Parallel-update requirement** (PR 3c.2.D fixup F-10).
+        // When a new `AuditLine` variant lands in
+        // `marque-rules::audit`, three call sites MUST add a
+        // corresponding arm in lockstep: the CLI renderer at
+        // `marque/src/render.rs::audit_line_to_json_v1_0`, the WASM
+        // renderer at `crates/wasm/src/lib.rs::audit_line_to_json_v1_0`,
+        // and this canary's `render_audit_line_to_json`. Returning
+        // `None` here without adding the arm would let a future leak
+        // channel slip past the canary's corpus sweep — the canary
+        // scans the bytes the renderers emit, so a `None` arm
+        // produces no bytes to scan and any input substring leaked
+        // through the new variant would pass the sweep vacuously.
         _ => return None,
     };
     serde_json::to_string(&v).ok()
@@ -506,9 +518,9 @@ fn canary_permits_span_integer_overlap() {
 // ---------------------------------------------------------------------------
 //
 // Wrapped in a helper so the carve-out site is greppable. Used by
-// follow-up canary regression-tests that exercise the real
-// promotion path rather than the inline NDJSON projection above.
-#[allow(dead_code)]
+// the TextCorrection-arm canary regression test below, which
+// exercises the real promotion path rather than the inline NDJSON
+// projection used by `canary_fires_on_synthetic_regression`.
 fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
     // Test-fixture carve-out per Constitution V Principle V — the
     // fabricated record is engine-promotion-shaped but never flows
@@ -529,4 +541,66 @@ fn synth_leaky_text_correction(leak: &[u8]) -> AppliedTextCorrection {
         None,
         EnginePromotionToken::__engine_construct(),
     )
+}
+
+#[test]
+fn canary_fires_on_synthetic_text_correction_regression() {
+    // PR 3c.2.D fixup F-11 / Security L-001: exercise the
+    // `AuditLine::TextCorrection` arm symmetrically with the
+    // existing `canary_fires_on_synthetic_regression` (which only
+    // exercises the inline-NDJSON path for the AppliedFix shape).
+    // Two-part regression:
+    //
+    //   1. The `synth_leaky_text_correction` helper must successfully
+    //      construct an `AppliedTextCorrection` via the
+    //      `__engine_promote_text_correction` carve-out. This pins
+    //      that the engine-promotion seal AND its test-fixture
+    //      carve-out (Constitution V Principle V) survive the type-
+    //      level reshape in PR 3c.2.D. A future refactor that breaks
+    //      the carve-out fails this test at compile time, not at
+    //      audit-log diff time.
+    //
+    //   2. A synthetic TextCorrection-shape NDJSON with a leak in a
+    //      non-permitted field (`bogus_text_corr_field`, structurally
+    //      analogous to the AppliedFix-arm test's `leak_field`)
+    //      causes `detect_content_leak` to FIRE. This mirrors
+    //      `canary_fires_on_synthetic_regression`'s shape so a future
+    //      regression on the `text_correction` line type is caught
+    //      symmetrically with the `applied_fix` line type.
+    //
+    // The fabricated record from (1) does NOT flow into the canary's
+    // own renderer — the renderer is structurally safe by construction
+    // (every emitted field is on the permitted-identifier list, so
+    // any leak via the real renderer would be a structural regression
+    // caught upstream when the new offending field landed). Detecting
+    // leak channels through future field additions is the point of
+    // step (2)'s explicit non-permitted-field-name fixture.
+
+    // Part 1: exercise the carve-out helper end-to-end. Constructing
+    // the value (and accepting it as `AppliedTextCorrection`) is the
+    // assertion — any future signature drift fails here.
+    let _leaky_tc = synth_leaky_text_correction(SYNTHETIC_LEAK_BYTES);
+
+    // Part 2: synthetic TextCorrection-shape NDJSON with a leak in a
+    // non-permitted field. Mirrors `canary_fires_on_synthetic_regression`
+    // for the `applied_fix` shape.
+    let synthetic_ndjson = format!(
+        r#"{{"type":"text_correction","schema":"marque-1.0","rule":"R999",
+          "severity":"info","span":{{"start":0,"end":43}},
+          "bogus_text_corr_field":"{leak}",
+          "original_digest":"blake3:abcd","replacement":"SECRET",
+          "source":"corrections_map","message":{{"template":"CorrectionsApplied"}},
+          "timestamp":"2026-05-20T00:00:00Z","classifier_id":null,"dry_run":false}}"#,
+        leak = std::str::from_utf8(SYNTHETIC_LEAK_BYTES).unwrap(),
+    );
+
+    let result = detect_content_leak(SYNTHETIC_LEAK_BYTES, &synthetic_ndjson);
+    assert!(
+        result.is_some(),
+        "self-test (TextCorrection arm): canary failed to detect synthetic leak \
+         in a non-permitted text-correction NDJSON field. detect_content_leak \
+         returned None on input {:?} and NDJSON {:?}",
+        std::str::from_utf8(SYNTHETIC_LEAK_BYTES).unwrap(),
+        synthetic_ndjson,
+    );
 }

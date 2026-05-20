@@ -8,7 +8,8 @@
 //! member's `src/**` and `tests/**` (including the `marque/` binary
 //! crate and any future top-level member, discovered via each
 //! directory's `Cargo.toml`), plus the workspace-root `tests/**` —
-//! and for each call to `AppliedFix::__engine_promote(...)` or
+//! and for each call to `AppliedFix::__engine_promote(...)`,
+//! `AppliedTextCorrection::__engine_promote_text_correction(...)`, or
 //! `EnginePromotionToken::__engine_construct()`, classifies the call
 //! site as one of:
 //!
@@ -48,21 +49,23 @@ pub const CARVE_OUT_MARKER: &str = "Test-fixture carve-out per Constitution V";
 pub const COMMENT_LOOKBACK_LINES: usize = 5;
 
 /// Engine functions allowed to call `AppliedFix::__engine_promote` /
+/// `AppliedTextCorrection::__engine_promote_text_correction` /
 /// `EnginePromotionToken::__engine_construct` in production code.
 ///
 /// Per Constitution V Principle V, only `Engine::fix_inner` may
-/// promote `FixProposal` values to audit records. The two helpers
-/// — `apply_text_corrections` (called only by `fix_inner`) and
-/// `engine_promotion_token` (the token-mint helper called only by
-/// the prior two) — are part of the same gate and are permitted
-/// here for the same reason: a future refactor that adds a fourth
-/// production caller has to thread through this list, making the
-/// expansion an explicit decision.
-/// Engine methods on the `Engine` type permitted to call
-/// `AppliedFix::__engine_promote` / `EnginePromotionToken::__engine_construct`
-/// in production code. These names match ONLY when the enclosing
-/// `impl` block targets `Engine` — a free function with one of these
-/// names elsewhere in `crates/engine/src/**` is rejected.
+/// promote marking `FixIntent` values to `AppliedFix` audit records,
+/// and only `Engine::apply_text_corrections` may promote text-
+/// correction matches to `AppliedTextCorrection` audit records (the
+/// PR 3c.2.D split). The token-mint helper `engine_promotion_token`
+/// (called only by the prior two) is part of the same gate and is
+/// permitted here for the same reason: a future refactor that adds
+/// a fourth production caller has to thread through this list,
+/// making the expansion an explicit decision.
+/// Engine methods on the `Engine` type permitted to call the three
+/// reserved-name constructors in production code. These names match
+/// ONLY when the enclosing `impl` block targets `Engine` — a free
+/// function with one of these names elsewhere in
+/// `crates/engine/src/**` is rejected.
 const ENGINE_METHOD_ALLOW_LIST: &[&str] = &["fix_inner", "apply_text_corrections"];
 
 /// Methods on `TwoPassFixer` permitted to call
@@ -250,14 +253,25 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
     fn visit_expr_call(&mut self, node: &'a ExprCall) {
         if let Expr::Path(ExprPath { path, .. }) = &*node.func {
             // Match on the call path's **last segment** (the function
-            // ident) for the two specifically reserved names
-            // `__engine_promote` / `__engine_construct`. Any path that
-            // ends with one of those names — qualified
-            // (`AppliedFix::__engine_promote`), fully-qualified
+            // ident) for the three specifically reserved names
+            // `__engine_promote` / `__engine_promote_text_correction` /
+            // `__engine_construct`. Any path that ends with one of
+            // those names — qualified (`AppliedFix::__engine_promote`),
+            // fully-qualified
             // (`marque_rules::AppliedFix::__engine_promote`),
             // `Self::__engine_promote` inside `impl AppliedFix`, or
             // an aliased form (`AF::__engine_promote` after
             // `use marque_rules::AppliedFix as AF`) — is a candidate.
+            //
+            // **Exact-equality, NOT prefix-match.** The list is closed
+            // and curated by hand: a new reserved name (e.g., a future
+            // `__engine_promote_v3`) requires an explicit edit here so
+            // the choice is reviewed. Prefix-matching would
+            // accidentally catch back-compat names like
+            // `__engine_promote_legacy` — see
+            // `engine_promote_legacy_is_not_caught_by_suffix_match` in
+            // the test suite (PR 3c.B Commit 2 / Phase D regression
+            // guard).
             //
             // This is a deliberate trade-off identified during the
             // round-8 independent audit: an earlier round required a
@@ -265,10 +279,9 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
             // "__engine_promote"]` only) to avoid false-positive on
             // free functions with the same name. The audit
             // demonstrated that requirement made the lint trivially
-            // bypassable via `use ... as ...` aliases — and the
-            // function names `__engine_promote` and
-            // `__engine_construct` are deliberately RESERVED by the
-            // project (both are `#[doc(hidden)]` engine-only seal
+            // bypassable via `use ... as ...` aliases — and these
+            // reserved names are deliberately RESERVED by the project
+            // (all three are `#[doc(hidden)]` engine-only seal
             // mechanisms; they bear `__` precisely to discourage any
             // re-use). So:
             //
@@ -283,12 +296,14 @@ impl<'a> syn::visit::Visit<'a> for CallSiteVisitor<'a> {
             //   - Method-call form (`x.__engine_promote()`) is still NOT
             //     matched — see `visit_expr_method_call` below.
             //
-            // Method-call form is excluded because `__engine_promote`
-            // and `__engine_construct` are *associated* functions on
-            // `AppliedFix` / `EnginePromotionToken`; a method call
-            // with those names cannot reach the real APIs at all
-            // (the receiver type is wrong) and would fail to compile.
+            // Method-call form is excluded because all three reserved
+            // names are *associated* functions on `AppliedFix` /
+            // `AppliedTextCorrection` / `EnginePromotionToken`; a
+            // method call with those names cannot reach the real APIs
+            // at all (the receiver type is wrong) and would fail to
+            // compile.
             if path_ends_with(path, &["__engine_promote"])
+                || path_ends_with(path, &["__engine_promote_text_correction"])
                 || path_ends_with(path, &["__engine_construct"])
             {
                 let loc = node.span().start();
@@ -403,8 +418,9 @@ impl CallSiteVisitor<'_> {
                 severity: Severity::Error,
                 code: "PRC001",
                 message: format!(
-                    "__engine_promote/__engine_construct test-fixture call lacks \
-                     '{CARVE_OUT_MARKER}' comment within {COMMENT_LOOKBACK_LINES} lines"
+                    "__engine_promote/__engine_promote_text_correction/__engine_construct \
+                     test-fixture call lacks '{CARVE_OUT_MARKER}' comment within \
+                     {COMMENT_LOOKBACK_LINES} lines"
                 ),
             });
             return;
@@ -417,8 +433,9 @@ impl CallSiteVisitor<'_> {
             column: column + 1,
             severity: Severity::Error,
             code: "PRC002",
-            message: "__engine_promote/__engine_construct called from \
-                      non-engine, non-test code (FR-040; Constitution V Principle V)"
+            message: "__engine_promote/__engine_promote_text_correction/\
+                      __engine_construct called from non-engine, non-test code \
+                      (FR-040; Constitution V Principle V)"
                 .to_string(),
         });
     }

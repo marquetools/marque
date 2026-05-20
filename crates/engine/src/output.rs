@@ -193,7 +193,7 @@ pub struct FixResult {
     ///
     /// - [`Self::source`] holds the post-pass-1 buffer ONLY. Pass-2
     ///   never ran, so any pass-2 fixes that would have applied are
-    ///   absent from [`Self::applied`].
+    ///   absent from [`Self::audit_lines`].
     /// - [`Self::remaining_diagnostics`] contains the R002 diagnostic
     ///   (and any other unfixed pass-1 diagnostics).
     /// - WASM / IDE consumers MUST test this field BEFORE applying
@@ -213,7 +213,7 @@ pub struct FixResult {
 }
 
 impl FixResult {
-    /// Filter the marking-side audit lines into a borrowed view.
+    /// Iterate marking-side audit lines (zero-alloc filter view).
     ///
     /// Post PR 3c.2.D (atomic cutover) the sole audit-output channel
     /// is [`Self::audit_lines`]: a sum-type stream
@@ -223,31 +223,41 @@ impl FixResult {
     /// read shape for consumers that only need marking fixes, so
     /// the migration doesn't force every assertion site to pattern-
     /// match the sum type.
+    ///
+    /// # Zero-alloc (PR 3c.2.D fixup F-3)
+    ///
+    /// Returns `impl Iterator<Item = &AppliedFix<CapcoScheme>>` —
+    /// each invocation walks [`Self::audit_lines`] lazily without
+    /// allocating an intermediate `Vec`. Callers that need `.len()`
+    /// or `.is_empty()` use `.count()` / `.next().is_none()`
+    /// respectively (or `Iterator::collect` into a local `Vec` when
+    /// the same fixes need to be visited twice). The pre-fixup
+    /// `Vec<&AppliedFix>` shape allocated on every call, which the
+    /// `crates/engine/benches/fix_latency.rs` hot path called four
+    /// times in one function body — exactly the kind of post-
+    /// stabilization breaking signature change pre-users freedom
+    /// permits.
     #[inline]
-    pub fn applied_fixes(&self) -> Vec<&AppliedFix<CapcoScheme>> {
-        self.audit_lines
-            .iter()
-            .filter_map(|line| match line {
-                AuditLine::AppliedFix(f) => Some(f),
-                _ => None,
-            })
-            .collect()
+    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<CapcoScheme>> {
+        self.audit_lines.iter().filter_map(|line| match line {
+            AuditLine::AppliedFix(f) => Some(f),
+            _ => None,
+        })
     }
 
-    /// Filter the text-correction audit lines into a borrowed view.
+    /// Iterate text-correction audit lines (zero-alloc filter view).
     ///
     /// Mirrors [`Self::applied_fixes`] for the
     /// `AuditLine::TextCorrection` arm — C001 corrections-map fixes
-    /// and the E006-shaped deprecation-migration path.
+    /// and the E006-shaped deprecation-migration path. Same zero-
+    /// alloc property; same `.count()` / `.next().is_none()` idiom
+    /// for length / emptiness checks.
     #[inline]
-    pub fn applied_text_corrections(&self) -> Vec<&AppliedTextCorrection> {
-        self.audit_lines
-            .iter()
-            .filter_map(|line| match line {
-                AuditLine::TextCorrection(tc) => Some(tc),
-                _ => None,
-            })
-            .collect()
+    pub fn applied_text_corrections(&self) -> impl Iterator<Item = &AppliedTextCorrection> {
+        self.audit_lines.iter().filter_map(|line| match line {
+            AuditLine::TextCorrection(tc) => Some(tc),
+            _ => None,
+        })
     }
 }
 

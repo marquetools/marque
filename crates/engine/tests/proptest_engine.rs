@@ -140,10 +140,10 @@ proptest! {
         let dry = e.fix(src.as_bytes(), FixMode::DryRun);
         let apply = e.fix(src.as_bytes(), FixMode::Apply);
         prop_assert!(
-            dry.applied_fixes().len() == apply.applied_fixes().len(),
+            dry.applied_fixes().count() == apply.applied_fixes().count(),
             "dry-run and apply applied counts differ for {:?}", src,
         );
-        for (d, a) in dry.applied_fixes().iter().zip(apply.applied_fixes().iter()) {
+        for (d, a) in dry.applied_fixes().zip(apply.applied_fixes()) {
             prop_assert!(
                 d.rule == a.rule,
                 "dry-run/apply rule ID mismatch for {:?}", src,

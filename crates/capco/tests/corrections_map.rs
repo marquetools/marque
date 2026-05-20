@@ -62,7 +62,9 @@ fn c001_pass1_dispatch_noop_after_pass0() {
     let source = b"(TS//SERCET//NF)";
     let result = engine.fix(source, FixMode::Apply);
 
-    let text_corrections = result.applied_text_corrections();
+    // PR 3c.2.D fixup F-3: `applied_text_corrections()` is `impl Iterator`;
+    // collect once for filter + Debug-render in the assertion message.
+    let text_corrections: Vec<_> = result.applied_text_corrections().collect();
     let c001_count = text_corrections
         .iter()
         .filter(|tc| tc.rule.as_str() == "C001")
@@ -102,7 +104,6 @@ fn c001_self_correction_filtered_at_pass0() {
 
     let c001_count = result
         .applied_text_corrections()
-        .iter()
         .filter(|tc| tc.rule.as_str() == "C001")
         .count();
     assert_eq!(

@@ -253,10 +253,18 @@ not user-facing deprecation).
   (mechanically, not via `#[deprecated]`); adds NEW v2 `__engine_promote`
   alongside. `cargo check --workspace` stays green between D2-D7.
 - D7 deletes `__engine_promote_legacy` atomically with schema flip.
-- FR-040 lint (`tools/promote-callsite-lint/`) already greps both
-  names by last-segment match (the lint's match pattern is
-  `__engine_promote*` so `_legacy` suffix is covered transparently).
-  No lint surface change needed.
+- FR-040 lint (`tools/promote-callsite-lint/`) matches reserved
+  names on **exact-equality of the last path segment**, not on
+  prefix containment. The closed reserved-name list at HEAD is
+  `__engine_promote`, `__engine_promote_text_correction` (added in
+  PR 3c.2.D fixup F-1 for the PM-D-4 text-correction split), and
+  `__engine_construct`. The back-compat name
+  `__engine_promote_legacy` is a distinct identifier and is
+  deliberately NOT covered — see
+  `engine_promote_legacy_is_not_caught_by_suffix_match` in the
+  lint test suite for the pin. Adding a fourth reserved name
+  requires an explicit edit to the matcher AND a corresponding
+  test case (mirror the F-1 pattern).
 
 **Alternative considered (rejected)**: outright deletion of v1
 constructors at D2 (rust preflight's preference). REJECTED because

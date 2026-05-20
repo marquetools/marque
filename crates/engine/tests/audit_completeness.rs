@@ -36,7 +36,7 @@ fn applied_fix_has_all_required_fields() {
     let result = engine.fix(source, FixMode::Apply);
 
     assert!(
-        !result.applied_fixes().is_empty(),
+        result.applied_fixes().next().is_some(),
         "should have at least one applied fix"
     );
 
@@ -147,10 +147,12 @@ fn sub_threshold_proposals_never_in_applied() {
 
     // No fix should be applied at threshold 0.99 — E002's 0.97 is
     // sub-threshold.
+    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator` (not
+    // `Debug`); collect once for the `is_empty` + Debug-render path.
+    let applied: Vec<_> = result.applied_fixes().collect();
     assert!(
-        result.applied_fixes().is_empty(),
-        "no sub-threshold fix may appear in applied; got: {:?}",
-        result.applied_fixes()
+        applied.is_empty(),
+        "no sub-threshold fix may appear in applied; got: {applied:?}",
     );
 
     // Every entry (vacuously none here) would have ≥0.99 confidence.
