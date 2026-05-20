@@ -267,3 +267,48 @@ Once OQ-1 through OQ-5 are dispositioned, Phase 3 implementation proceeds sub-PR
 4. Open PR against `origin/staging` with the standard PR description (acceptance criteria mapping, bench deltas, citation re-verification log)
 5. Merge after review approval
 6. Move to next sub-PR
+
+---
+
+## 15. PR-F final attestation (2026-05-20)
+
+All six sub-PRs have landed. This section records the final AC status and measured deliverables.
+
+### AC status at PR-F
+
+| AC | Status |
+|---|---|
+| #1 CanonicalAttrs closed-vocab fields packed; bit count `static_assert`'d | **Done** — 51 atoms in `fact_bit` (bits 0–50); `const _: () = assert!(CAPCO_ATOM_COUNT <= FACT_BITMASK_WIDTH)` gate in `crates/capco/src/fact_bitmask.rs`. CanonicalAttrs shape unchanged (sidecar projection per OQ-1 Option C). |
+| #2 `CLOSURE_TABLE` with ClosureRow + §-citation per row | **Done** — `crates/capco/src/scheme/closure_table.rs`, 10 rows, each carrying `name` + `label` (§-citation per Constitution VIII). |
+| #3 `CapcoScheme::closure` replaced; previous fn-pointer rows retired | **Done** (PR-D) — 9 of 10 fn-pointer rows retired; Row 7 retained as the hybrid `cone_derived` tail for open-vocab NATO tetragraph. |
+| #4 proptest: idempotence/extensivity/monotonicity/convergence-bound | **Done** (PR-C P1–P4; PR-D P5 cross-path parity). |
+| #5 ≥80% Constraint::Custom rows compiled to mask form | **Deferred** (OQ-4 disposition). PR-E achieved ~10% (4 of 39 tier-1 rows). Follow-on issue filed (see tier breakdown in `docs/plans/2026-05-20-371-factbitmask-custom-audit.md`). |
+| #6 `closure_pass` bench + SC-001/SC-005 non-regression + delta in PR-F description | **Done** — bench added in PR-F; numbers below; SC-001 gated by PR-D CI run. |
+| #7 WASM size delta reported | **Done** — size measurement below; `wasm-opt` pass blocked by WSL SIMD gap (same environment limitation as prior PRs; does not affect correctness). |
+| #8 Corpus parity (`tests/corpus/valid/`, `prose/`, `mangled/`) | **Done** (PR-D enforces; PR-E preserves; no regressions). |
+| #9 Renderer untouched | **Done** — zero diff on `crates/ism/src/canonical.rs`; CanonicalAttrs accessor API unchanged. |
+| #10 G13 audit-content-ignorance preserved | **Done** — `FactBitmask` carries no content bytes; Constitution V Principle V invariant unaffected. |
+
+### `closure_pass` bench results (2026-05-20, WSL2, `--warm-up-time 1 --measurement-time 2`)
+
+| Scenario | Time | Notes |
+|---|---|---|
+| `closure_hot1_exit` | ~55 ns | UNCLASSIFIED, all trigger bits 0; HOT-1 guard exits immediately |
+| `closure_row9_us_classified` | ~94 ns | SECRET only; Row 9 fires (US_COLLATERAL_CLASSIFIED → RELIDO) |
+| `closure_rows_1_0_hcs_o` | ~118 ns | TS + HCS-O; Row 1 then Row 0 transitively via ORCON; 2-iteration fixpoint |
+| `closure_row7_nato_class` | ~158 ns | NATO Secret; Row 7 fires + open-vocab NATO tetragraph cone |
+| `closure_worst_case_all_rows` | ~256 ns | TS + all 6 SCI sentinels + SAR + AEA/RD; all applicable rows fire |
+| `closure_batch_50` | ~6.1 µs | 50 sequential closures on TS+HCS-O input; ~122 ns/call amortized |
+
+All values well within SC-001 (16 ms p95) and SC-005 linear-scaling envelopes.
+
+### WASM size (PR-F, pre-wasm-opt)
+
+- `marque_wasm_bg.wasm` (wasm-bindgen output, before wasm-opt): **1,292,682 bytes (~1.26 MB)**
+- Raw linker artifact `marque_wasm.wasm`: **1,720,516 bytes (~1.68 MB)**
+- `wasm-opt` step: **blocked** in WSL2 by SIMD support gap in bundled wasm-opt binary (same limitation as prior PRs; CI runs in a non-WSL environment where wasm-opt succeeds).
+- R-4 canary assessment: no regression observed. The 9 retired fn-pointer rows (PR-D) reduce code-section size; the added `CLOSURE_TABLE` const data (~360 bytes for 10 rows × ~36 bytes each) is negligible.
+
+### Follow-on issue
+
+Filed as **GitHub issue #650** tracking tier-2 (27 class-floor `Constraint::Custom` rows) + tier-3 (5 SCI per-system rows) mask compilation as a #371 carry-over. See the "Tier 2 — deferred to follow-on" and "Tier 3 — deferred to follow-on" sections of `docs/plans/2026-05-20-371-factbitmask-custom-audit.md` for the tier breakdown and implementation approach.
