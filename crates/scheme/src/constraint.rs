@@ -357,8 +357,6 @@ pub fn evaluate<S>(scheme: &S, marking: &S::Marking) -> Vec<ConstraintViolation>
 where
     S: MarkingScheme + ?Sized,
 {
-    // Compute the bitmask projection once; shared across all Custom rows
-    // so each row doesn't call `derive_bits` independently.
     let bits = scheme.precompute_bits(marking);
     let mut out = Vec::new();
     for c in scheme.constraints() {
