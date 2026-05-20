@@ -39,8 +39,8 @@
 
 use marque_scheme::{
     Category, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
-    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
-    severity::Severity,
+    MeetSemilattice, PageRewrite, Parsed, RenderContext, Scope, Template, TokenId, TokenRef,
+    closure::ClosureRule, severity::Severity,
 };
 use proptest::prelude::*;
 
@@ -119,6 +119,8 @@ impl MarkingScheme for MonotoneScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "monotone-stub"
@@ -156,7 +158,7 @@ impl MarkingScheme for MonotoneScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)
@@ -354,6 +356,8 @@ impl MarkingScheme for NonMonotoneScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "non-monotone-stub"
@@ -391,7 +395,7 @@ impl MarkingScheme for NonMonotoneScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)
@@ -630,6 +634,8 @@ impl MarkingScheme for MonotoneDerivedScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "monotone-derived-stub"
@@ -667,7 +673,7 @@ impl MarkingScheme for MonotoneDerivedScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)
@@ -733,6 +739,8 @@ impl MarkingScheme for NonMonotoneDerivedScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "non-monotone-derived-stub"
@@ -770,7 +778,7 @@ impl MarkingScheme for NonMonotoneDerivedScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         write!(out, "bits={:08b}", m.bits)

@@ -33,6 +33,7 @@ smol_str = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 static_assertions = { workspace = true }
 
 [features]
