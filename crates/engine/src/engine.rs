@@ -428,8 +428,13 @@ pub struct Engine {
 
 #[derive(Clone)]
 enum EngineRecognizer {
+    /// Fully monomorphized strict-only recognizer path.
     Strict(StrictRecognizer),
+    /// Fully monomorphized strict-first/decoder-fallback recognizer path
+    /// used by `Engine::new`.
     StrictOrDecoder(StrictOrDecoderRecognizer),
+    /// Trait-object escape hatch for caller-supplied recognizers that are
+    /// not one of the in-tree concrete variants above.
     Dyn(Arc<dyn Recognizer<CapcoScheme>>),
 }
 
@@ -659,6 +664,15 @@ impl Engine {
 
     /// Override the engine recognizer with the strict parser path
     /// without introducing trait-object dispatch.
+    ///
+    /// Prefer this helper in latency-sensitive strict-only paths (for
+    /// example SC-001 benchmark setups). Use [`Engine::with_recognizer`]
+    /// when installing a custom recognizer implementation.
+    ///
+    /// ```ignore
+    /// let engine = Engine::new(config, rules, scheme)?
+    ///     .with_strict_recognizer();
+    /// ```
     #[must_use = "with_strict_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_strict_recognizer(mut self) -> Self {
         self.recognizer = EngineRecognizer::Strict(StrictRecognizer::new());
