@@ -25,10 +25,10 @@ use super::super::*;
 /// bytes via `apply_intent` + `render_canonical`. Same
 /// diagnostic-vs-fix-scope split used by `SarPortionFormRule` (E026).
 ///
-/// Falls back to `Severity::Error` no-fix when no dissem block exists
-/// — inserting a whole new dissem category from rule context is
-/// unsafe (the structural addition has no existing block to compose
-/// with for canonical re-rendering). Same policy as E040.
+/// When no dissem block exists yet, the same `FactAdd` intent is still
+/// emitted; `apply_intent` mutates the parsed marking and
+/// `render_canonical` synthesizes the `//` dissem block in canonical
+/// form.
 //
 // 8 args is the irreducible carrying capacity: id/severity for the
 // catalog row, anchor_span/candidate_span for the diagnostic-vs-fix
@@ -42,7 +42,7 @@ pub(crate) fn emit_companion_insert(
     anchor_span: marque_scheme::Span,
     candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
-    last_dissem: Option<marque_scheme::Span>,
+    _last_dissem: Option<marque_scheme::Span>,
     token: &str,
     message: String,
     citation: &'static str,
@@ -70,42 +70,34 @@ pub(crate) fn emit_companion_insert(
             return Diagnostic::info(rule, Severity::Error, anchor_span, message, citation);
         }
     };
-    match last_dissem {
-        Some(_dissem_span) => {
-            // Insert the companion token via a `FactAdd` intent.
-            // `fix_scope` is the caller-derived scope: `Scope::Portion`
-            // for portion candidates, `Scope::Page` for banner
-            // candidates (the banner roll-up's per-page projection).
-            // Both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/
-            // `ORCON-USGOV` resolve to the same canonical `TokenId`
-            // per CVE — the engine's `render_canonical` decides
-            // surface form from the inferred companion form.
-            let intent = FixIntent::<CapcoScheme> {
-                replacement: ReplacementIntent::FactAdd {
-                    token: FactRef::Cve(token_id),
-                    scope: fix_scope,
-                },
-                confidence: Confidence::strict(0.9),
-                feature_ids: Default::default(),
-                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
-                source: FixSource::BuiltinRule,
-                migration_ref: None,
-            };
-            Diagnostic::with_fix_at_span(
-                rule,
-                severity,
-                anchor_span,
-                candidate_span,
-                message,
-                citation,
-                intent,
-            )
-        }
-        None => {
-            // No dissem block — escalate to Error with no fix.
-            Diagnostic::info(rule, Severity::Error, anchor_span, message, citation)
-        }
-    }
+    // Insert the companion token via a `FactAdd` intent.
+    // `fix_scope` is the caller-derived scope: `Scope::Portion`
+    // for portion candidates, `Scope::Page` for banner
+    // candidates (the banner roll-up's per-page projection).
+    // Both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/
+    // `ORCON-USGOV` resolve to the same canonical `TokenId`
+    // per CVE — the engine's `render_canonical` decides
+    // surface form from the inferred companion form.
+    let intent = FixIntent::<CapcoScheme> {
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::Cve(token_id),
+            scope: fix_scope,
+        },
+        confidence: Confidence::strict(0.9),
+        feature_ids: Default::default(),
+        message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
+    };
+    Diagnostic::with_fix_at_span(
+        rule,
+        severity,
+        anchor_span,
+        candidate_span,
+        message,
+        citation,
+        intent,
+    )
 }
 
 // ---------------------------------------------------------------------------

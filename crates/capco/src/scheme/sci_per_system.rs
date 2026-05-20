@@ -150,8 +150,7 @@ pub(crate) struct SciPerSystemRow {
     /// Dispatch kind — `CompanionRequired` (single-token) or `Custom`
     /// (multi-branch closure).
     pub(crate) kind: SciPerSystemKind,
-    /// Default severity (typically `Warn`). The emit helper escalates
-    /// per-branch to `Error` no-fix when no IC dissem block exists.
+    /// Default severity (typically `Warn`).
     pub(crate) severity: marque_rules::Severity,
     /// Per-row §-citation, matching `Constraint::Custom { label }`.
     pub(crate) citation: &'static str,
