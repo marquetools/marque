@@ -522,6 +522,48 @@ impl Engine {
         // the first page that triggers the rewrite.
         validate_intent_rewrites(&scheme, scheme.page_rewrites())?;
         let scheduled_rewrites = schedule_rewrites(scheme.page_rewrites())?;
+        // Drop the user-supplied scheme after page-rewrite extraction;
+        // the constraint-catalog bridge in `lint_inner` uses a fresh
+        // `CapcoScheme::new()` (see the `scheme` field doc above for
+        // the design rationale).
+        //
+        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
+        // that passes a configured `CapcoScheme` (custom catalog,
+        // runtime-amended constraint rows, alternative rewrite axis
+        // beyond what we already extracted) loses every customization
+        // here. No compile-time guard — the `S: MarkingScheme` bound
+        // permits any scheme because the scheduler test
+        // (`crates/engine/tests/scheduler.rs:106`) deliberately
+        // exercises that flexibility with a `StubScheme`. Every
+        // production call site today passes `CapcoScheme::new()` (the
+        // default), so the discard is currently lossless; a future
+        // refactor that makes `Engine<S>` truly generic over the
+        // scheme will close this. The `tracing::debug!` below makes
+        // the silent drop observable to a developer running with
+        // `MARQUE_LOG=marque_engine=debug` (off by default in
+        // production).
+        tracing::debug!(
+            target: "marque_engine::scheme_discard",
+            "user-supplied scheme dropped; constraint-catalog bridge uses default \
+             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
+        );
+        drop(scheme);
+        Self::with_clock_prepared(config, rule_sets, clock, bridge_scheme, scheduled_rewrites)
+    }
+
+    /// Non-generic tail of [`Engine::with_clock`].
+    ///
+    /// Keeping the heavy construction path behind a concrete signature
+    /// avoids monomorphizing the full constructor body for every `S`
+    /// used at call sites; only the rewrite-validation/scheduling front
+    /// edge remains generic.
+    fn with_clock_prepared(
+        mut config: Config,
+        rule_sets: Vec<Box<dyn RuleSet<CapcoScheme>>>,
+        clock: Box<dyn Clock>,
+        bridge_scheme: CapcoScheme,
+        scheduled_rewrites: Box<[RewriteId]>,
+    ) -> Result<Self, EngineConstructionError> {
         // Take ownership of the corrections map instead of cloning —
         // nothing reads config.corrections after construction.
         let corrections_arc = if config.corrections.is_empty() {
@@ -559,32 +601,6 @@ impl Engine {
             }
         });
 
-        // Drop the user-supplied scheme after page-rewrite extraction;
-        // the constraint-catalog bridge in `lint_inner` uses a fresh
-        // `CapcoScheme::new()` (see the `scheme` field doc above for
-        // the design rationale).
-        //
-        // CAUTION (review-pass HIGH): this discard is SILENT. A caller
-        // that passes a configured `CapcoScheme` (custom catalog,
-        // runtime-amended constraint rows, alternative rewrite axis
-        // beyond what we already extracted) loses every customization
-        // here. No compile-time guard — the `S: MarkingScheme` bound
-        // permits any scheme because the scheduler test
-        // (`crates/engine/tests/scheduler.rs:106`) deliberately
-        // exercises that flexibility with a `StubScheme`. Every
-        // production call site today passes `CapcoScheme::new()` (the
-        // default), so the discard is currently lossless; a future
-        // refactor that makes `Engine<S>` truly generic over the
-        // scheme will close this. The `tracing::debug!` below makes
-        // the silent drop observable to a developer running with
-        // `MARQUE_LOG=marque_engine=debug` (off by default in
-        // production).
-        tracing::debug!(
-            target: "marque_engine::scheme_discard",
-            "user-supplied scheme dropped; constraint-catalog bridge uses default \
-             CapcoScheme::new() (a future Engine<S> generic-cleanup PR closes this)"
-        );
-        drop(scheme);
         let scheme = bridge_scheme;
 
         // PR 7a phase-partition walk (FR-021). Read every registered
@@ -5112,6 +5128,32 @@ mod tests {
             "fresh accumulator capacity drifted from DEFAULT_PORTIONS_CAPACITY ({}); \
              multi-page perf regression risk per issue #430",
             DEFAULT_PORTIONS_CAPACITY,
+        );
+    }
+
+    /// Pins constructor parity for the generic front edge of
+    /// `Engine::with_clock`: extracting the non-generic tail must not
+    /// change the rewrite schedule chosen for the default scheme.
+    #[test]
+    fn with_clock_matches_new_for_default_rewrite_schedule() {
+        let via_new = Engine::new(
+            Config::default(),
+            crate::default_ruleset(),
+            crate::default_scheme(),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+        let via_with_clock = Engine::with_clock(
+            Config::default(),
+            crate::default_ruleset(),
+            crate::default_scheme(),
+            Box::new(FixedClock::new(UNIX_EPOCH + Duration::from_secs(0))),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles");
+
+        assert_eq!(
+            via_new.scheduled_rewrites(),
+            via_with_clock.scheduled_rewrites(),
+            "constructor parity regression: with_clock and new diverged on scheduled rewrite order"
         );
     }
 
