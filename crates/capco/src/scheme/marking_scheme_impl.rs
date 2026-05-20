@@ -15,7 +15,7 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::{CanonicalAttrs, DissemControl, ParsedAttrs, MarkingClassification};
+use marque_ism::{CanonicalAttrs, DissemControl, MarkingClassification, ParsedAttrs};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
