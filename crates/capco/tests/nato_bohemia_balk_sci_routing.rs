@@ -97,9 +97,9 @@ fn parse_with_kind(
     source: &[u8],
     kind: MarkingType,
 ) -> marque_ism::CanonicalAttrs {
-    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
-    // helper takes `&CapcoScheme` so each #[test] can reuse a single
-    // scheme rather than allocating one per parse.
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // so each #[test] can reuse a single scheme rather than allocating
+    // one per parse.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {

@@ -65,12 +65,12 @@ fn parse_with_kind(
     source: &[u8],
     kind: MarkingType,
 ) -> Option<CanonicalAttrs> {
-    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the helper
-    // takes `&CapcoScheme` as its first parameter so callers that already
-    // construct a scheme for rendering / lattice work can reuse it. Per
-    // PM-B-3: "Where the test helper is module-level and called from
-    // multiple #[test] functions, the helper takes `&CapcoScheme` as a
-    // parameter; each #[test] constructs the scheme inline."
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // as its first parameter so callers that already construct a scheme
+    // for rendering / lattice work can reuse it. Per PM-B-3: "Where the
+    // test helper is module-level and called from multiple #[test]
+    // functions, the helper takes `&CapcoScheme` as a parameter; each
+    // #[test] constructs the scheme inline."
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {

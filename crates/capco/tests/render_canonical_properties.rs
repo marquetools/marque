@@ -41,11 +41,11 @@ fn parse_with_kind(
     source: &[u8],
     kind: MarkingType,
 ) -> Option<CanonicalAttrs> {
-    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
-    // helper takes `&CapcoScheme` so the corpus-loop tests
-    // (`round_trip_idempotent`, `lattice_equal_renders_byte_identical`)
-    // which already construct a scheme for `scheme.render_*` can reuse
-    // that instance instead of allocating fresh per parse.
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // so the corpus-loop tests (`round_trip_idempotent`,
+    // `lattice_equal_renders_byte_identical`) which already construct a
+    // scheme for `scheme.render_*` can reuse that instance instead of
+    // allocating fresh per parse.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {

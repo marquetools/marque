@@ -27,9 +27,9 @@ use marque_scheme::MarkingScheme;
 /// parser path — same shape used by the other CAPCO integration
 /// tests (e.g., `dissem_nato_pure_nato_portion.rs`).
 fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
-    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
-    // helper takes `&CapcoScheme` so each #[test] can reuse the scheme
-    // it already constructs for `fires_e070(&scheme, ...)`.
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // so each #[test] can reuse the scheme it already constructs for
+    // `fires_e070(&scheme, ...)`.
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {
