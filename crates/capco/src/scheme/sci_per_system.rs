@@ -201,8 +201,10 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
     // when HCS-O is present. Companion satisfied when: no US class, OR
     // (ORCON bit set AND NOFORN bit set AND ORCON_USGOV bit clear).
     // Structural `emit_hcs_o_companions` fires when: !has_orcon ||
-    // !has_noforn || usgov_entry.is_some() — complement is
-    // (Oc || OcUsgov) && Nf && !OcUsgov → Oc && Nf.
+    // !has_noforn || usgov_entry.is_some(). Non-firing complement:
+    // (Oc || OcUsgov) && Nf && usgov_entry.is_none(). OcUsgov is in
+    // companion_forbidden so the structural path runs when OcUsgov is
+    // present, preserving the OcUsgov→Oc replacement fix in production.
     SciPerSystemRow {
         name: "sci-per-system/HCS-O-companions",
         marking_label: "HCS-O",
