@@ -106,6 +106,7 @@ impl MarkingScheme for MockScheme {
         &self,
         _name: &'static str,
         _marking: &Self::Marking,
+        _bits: marque_scheme::FactBitmask,
     ) -> Vec<ConstraintViolation> {
         Vec::new()
     }

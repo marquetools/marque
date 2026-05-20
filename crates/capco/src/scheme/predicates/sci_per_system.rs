@@ -11,7 +11,7 @@
 use super::super::constraints::sci_per_system_emit;
 use super::super::*;
 use super::presence::{anchors_on, compartment_has_sub, has_compartment, is_tk_noforn_compartment};
-use crate::fact_bitmask::{derive_bits, fact_bit};
+use crate::fact_bitmask::fact_bit;
 
 // ---------------------------------------------------------------------------
 // Family-presence predicates (one per PR-E catalog row)
@@ -135,6 +135,7 @@ pub(crate) fn sci_per_system_row_by_name(name: &str) -> Option<&'static SciPerSy
 /// companion not satisfied), and `sci_per_system_emit` is unchanged.
 pub(crate) fn sci_per_system_catalog_eval(
     attrs: &marque_ism::CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
     let Some(row) = sci_per_system_row_by_name(name) else {
@@ -143,7 +144,6 @@ pub(crate) fn sci_per_system_catalog_eval(
 
     // ── Tier-3 bitmask fast path (all 5 rows have Some trigger) ─────────────
     if let Some(trigger_mask) = row.bitmask_trigger {
-        let bits = derive_bits(attrs);
         let bits_u128 = bits.bits();
 
         // Step 1: trigger gate — short-circuit if the marking family is absent.
