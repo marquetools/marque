@@ -88,11 +88,13 @@ fn parse_banner_attrs(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&candidate, source)
         .expect("banner candidate parses (lenient parser; shape failures surface as None fields)");
-    // Test-fixture carve-out per Constitution V Principle V — wrap the
-    // parser's borrowed output through the PR-3a transitional adapter
-    // so the test assertions retain the pre-PR-3a `CanonicalAttrs`
-    // shape. PR 3c retires `from_parsed_unchecked` in favor of
-    // `MarkingScheme::canonicalize`; this site migrates then.
+    // TODO(3c.2.E): migrate or rewrite when
+    // `marque_ism::from_parsed_unchecked` adapter retires; Constitution
+    // VII forbids `marque-core ←── marque-capco` dev-dep edge, so the
+    // migration to `MarkingScheme::canonicalize` (the trait route)
+    // cannot happen at PR 3c.2.B per PM-B-2. PR 3c.2.E's adapter
+    // deletion sweep will either rewrite this helper or introduce a
+    // TestScheme stub.
     marque_ism::from_parsed_unchecked(parsed.attrs)
 }
 
@@ -112,8 +114,11 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&candidate, source)
         .expect("portion candidate parses (lenient parser; shape failures surface as None fields)");
-    // Test-fixture carve-out per Constitution V Principle V (see
-    // `parse_banner_attrs`).
+    // TODO(3c.2.E): migrate or rewrite when
+    // `marque_ism::from_parsed_unchecked` adapter retires; Constitution
+    // VII forbids `marque-core ←── marque-capco` dev-dep edge, so the
+    // migration to `MarkingScheme::canonicalize` (the trait route)
+    // cannot happen at PR 3c.2.B per PM-B-2.
     marque_ism::from_parsed_unchecked(parsed.attrs)
 }
 

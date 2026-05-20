@@ -3887,6 +3887,14 @@ mod tests {
     impl<'src> From<ParsedMarking<'src>> for CanonicalParsed {
         fn from(p: ParsedMarking<'src>) -> Self {
             Self {
+                // TODO(3c.2.E): migrate or rewrite when
+                // `marque_ism::from_parsed_unchecked` adapter retires;
+                // Constitution VII forbids `marque-core ←── marque-capco`
+                // dev-dep edge, so the migration to
+                // `MarkingScheme::canonicalize` (the trait route) cannot
+                // happen at PR 3c.2.B per PM-B-2. PR 3c.2.E's adapter
+                // deletion sweep will either inline the body or rewrite
+                // the test to not need canonicalization.
                 attrs: marque_ism::from_parsed_unchecked(p.attrs),
                 source_span: p.source_span,
                 kind: p.kind,

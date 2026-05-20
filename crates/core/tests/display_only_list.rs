@@ -509,6 +509,14 @@ fn display_only_round_trips_through_canonical_attrs() {
     // is invisible to the rule layer.
     let src = "(S//DISPLAY ONLY AFG, IRQ)";
     let attrs = parse_portion(src);
+    // TODO(3c.2.E): migrate or rewrite when
+    // `marque_ism::from_parsed_unchecked` adapter retires; Constitution
+    // VII forbids `marque-core ←── marque-capco` dev-dep edge, so the
+    // migration to `MarkingScheme::canonicalize` (the trait route)
+    // cannot happen at PR 3c.2.B per PM-B-2. PR 3c.2.E's adapter
+    // deletion sweep will either rewrite the test to depend on a
+    // local TestScheme stub or inline the field-rename body at this
+    // helper site.
     let canonical = marque_ism::from_parsed_unchecked(attrs);
     let codes: Vec<String> = canonical
         .display_only_to

@@ -1175,16 +1175,14 @@ pub fn compute_banner_native(text: &str) -> Result<String, String> {
             continue;
         }
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
-            // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
-            // CapcoMarking wraps CanonicalAttrs. This site is a known
-            // exception to the "engine-owned adapter" principle (the
-            // function is documented as "Does NOT run the rules engine"
-            // and predates the keystone window — callers reach for it
-            // when they want banner roll-up without rule dispatch).
-            // PR 3c retires `from_parsed_unchecked` in favor of
-            // `MarkingScheme::canonicalize`; this call migrates then.
-            // FR-040 lint whitelists the call site.
-            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+            // PR 3c.2.B B3 (PM-B-1, PM-B-3): canonicalization seam
+            // migrated to the `MarkingScheme::canonicalize` trait
+            // method. `scheme` was constructed at line 1167 above;
+            // reuse — no new allocation. This function is documented
+            // as "Does NOT run the rules engine" (callers reach for it
+            // when they want banner roll-up without rule dispatch);
+            // the migration preserves that behavior byte-for-byte.
+            let attrs = scheme.canonicalize(parsed.attrs);
             markings.push(CapcoMarking::new(attrs));
         }
     }
@@ -1281,15 +1279,13 @@ pub fn generate_cab_native(
 
     for candidate in &candidates {
         if let Ok(parsed) = parser.parse(candidate, text.as_bytes()) {
-            // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
-            // downstream consumers want CanonicalAttrs. This site is a
-            // known exception to the "engine-owned adapter" principle —
-            // CAB-line generation predates the keystone window and runs
-            // outside the rules engine on purpose. PR 3c retires
-            // `from_parsed_unchecked` in favor of
-            // `MarkingScheme::canonicalize`; this call migrates then.
-            // FR-040 lint whitelists the call site.
-            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+            // PR 3c.2.B B3 (PM-B-1, PM-B-3): canonicalization seam
+            // migrated to the `MarkingScheme::canonicalize` trait
+            // method. `scheme` was constructed at line 1263 above;
+            // reuse — no new allocation. CAB-line generation runs
+            // outside the rules engine by design; the migration
+            // preserves that behavior byte-for-byte.
+            let attrs = scheme.canonicalize(parsed.attrs);
             if found_declass_date.is_none() {
                 if let Some(date) = &attrs.declassify_on {
                     // `to_maxdate_str()` always returns 8-digit YYYYMMDD:

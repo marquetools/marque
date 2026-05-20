@@ -28,9 +28,11 @@
 //! correctly detects).
 
 use marque_capco::CapcoMarking;
+use marque_capco::scheme::CapcoScheme;
 use marque_core::{Parser, Scanner};
 use marque_engine::decoder::is_nontrivial_marking;
 use marque_ism::{CapcoTokenSet, MarkingType};
+use marque_scheme::MarkingScheme as _;
 use marque_test_utils::{
     DocumentGroundTruth, load_document_ground_truth, marked_document_fixtures,
 };
@@ -119,6 +121,11 @@ fn scanner_counts_match_ground_truth() {
     let mut violations: Vec<String> = Vec::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): scheme constructed once per
+    // test-function invocation, reused across all fixtures. Inline
+    // construction stays in the test function (no module-level
+    // LazyLock per PM-B-3 hermeticity).
+    let scheme = CapcoScheme::new();
 
     for marked_path in &fixtures {
         let stem = marked_path
@@ -143,9 +150,10 @@ fn scanner_counts_match_ground_truth() {
             // Route the parse through the engine's own
             // `is_nontrivial_marking` predicate so the test cannot
             // drift from what the engine surfaces to the rule layer.
-            // `from_parsed_unchecked` + `CapcoMarking::new` mirrors
-            // the decoder's `recognize` step 3a/3b flow.
-            let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+            // `MarkingScheme::canonicalize` + `CapcoMarking::new`
+            // mirrors the decoder's `recognize` step 3a/3b flow
+            // post-PR-3c.2.B (B2 + B3).
+            let attrs = scheme.canonicalize(parsed.attrs);
             let marking = CapcoMarking::new(attrs);
             if !is_nontrivial_marking(&marking) {
                 continue;

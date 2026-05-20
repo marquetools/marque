@@ -67,10 +67,10 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
-        // PR-3a transitional adapter: parser produces ParsedAttrs<'src>;
-        // engine accumulator / Rule::check consume CanonicalAttrs.
-        // Test-fixture carve-out per Constitution V Principle V.
-        let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+        // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+        // override; reuse the already-constructed `scheme` at line 43
+        // for zero new allocation cost.
+        let attrs = scheme.canonicalize(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
             page_portions.push(attrs.clone());
             page_portions_arc = None;

@@ -41,14 +41,43 @@
 //! line 609-612). Callers MUST treat that as "no plausible
 //! interpretation," not as a silently-fabricated marking.
 
+use std::sync::LazyLock;
+
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::Parser;
 use marque_ism::{
     CanonicalAttrs, CapcoTokenSet, Classification, MarkingClassification,
     span::{MarkingCandidate, MarkingType, Span},
 };
+use marque_scheme::MarkingScheme;
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
+
+/// Module-scope CAPCO scheme constructed lazily on first use.
+///
+/// Per `docs/plans/2026-05-20-pr3c2-b-pm-decisions.md` PM-B-1 this is
+/// the transitional shape introduced at PR 3c.2.B: the `Recognizer<S>`
+/// trait surface does not thread `&S` through `recognize(...)` today,
+/// so engine hot-path call sites that need to invoke
+/// `<S as MarkingScheme>::canonicalize` cannot reach a scheme via the
+/// trait. The module-scope `LazyLock` carries the scheme until the
+/// follow-up `engine-S-generic-recognizer-cleanup` issue (#634) lands
+/// the cleaner shape (threading `&S` through `Recognizer<S>::recognize`).
+///
+/// `CapcoScheme::new()` is NOT zero-cost — it builds `Vec<Category>`,
+/// `Vec<Constraint>`, and `Vec<PageRewrite>` tables at every call
+/// (see `crates/capco/src/scheme/adapter.rs:67-76`); per-call
+/// construction at this hot-path site would be a measurable
+/// allocation regression and violate Constitution I
+/// (Uncompromising Performance). `LazyLock` amortizes that cost
+/// across the engine's lifetime.
+///
+// TODO(engine-S-generic-recognizer-cleanup, #634): retire this static
+// alongside `crates/engine/src/decoder.rs::SCHEME` and
+// `crates/engine/src/engine.rs::bridge_scheme` once `Recognizer<S>`
+// gains a `&S` argument. Targets post-1.0 cleanup; tracked at GitHub
+// issue #634 (`engine-S-generic-recognizer-cleanup`).
+static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 /// Strict-path recognizer. Zero false positives by construction —
 /// delegates to the existing [`Parser`], which only accepts the
@@ -90,12 +119,16 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
         };
         match parser.parse(&candidate, parse_bytes) {
             Ok(parsed) => {
-                // Run the PR-3a transitional adapter immediately: the
-                // recognizer is the canonicalization seam between the
+                // PR 3c.2.B B2: canonicalization seam migrated from
+                // the `marque_ism::from_parsed_unchecked` adapter to
+                // the `MarkingScheme::canonicalize` trait method per
+                // PM-B-1. The recognizer is the boundary between the
                 // borrowed parser output and the owned form rules
-                // consume. Post-PR-3c this becomes
-                // `MarkingScheme::canonicalize(parsed.attrs)`.
-                let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+                // consume. `SCHEME` (above) carries the transitional
+                // scheme instance until `Recognizer<S>::recognize`
+                // gains a `&S` argument under
+                // `engine-S-generic-recognizer-cleanup` (#634).
+                let mut attrs = SCHEME.canonicalize(parsed.attrs);
                 // Two shifts collapsed into one (issue #431):
                 //   * `leading_ws` — the parser saw `parse_bytes`, which
                 //     begins `leading_ws` bytes after `bytes[0]`, so its

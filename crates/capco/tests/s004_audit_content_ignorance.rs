@@ -60,8 +60,12 @@ fn lint(source: &[u8]) -> Vec<Diagnostic<CapcoScheme>> {
         let Ok(parsed) = parser.parse(candidate, source) else {
             continue;
         };
-        // PR-3a transitional adapter; test-fixture carve-out per
-        // Constitution V Principle V.
+        // TODO(3c.2.C): migrate when test rewrite per Diagnostic-shape
+        // lands. The file is `#![cfg(any())]`-disabled (line 1) pending
+        // the Diagnostic-shape rewrite at PR 3c.2.C; PM-B-7 commits to
+        // migrating this `from_parsed_unchecked` call as part of that
+        // rewrite, not separately in 3c.2.B. Test-fixture carve-out
+        // per Constitution V Principle V.
         let attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
         if parsed.kind == MarkingType::Portion {
             page_portions.push(attrs.clone());
