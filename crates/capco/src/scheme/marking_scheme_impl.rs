@@ -528,11 +528,39 @@ impl MarkingScheme for CapcoScheme {
     /// `Severity::Suggest` text-layer rules (e.g., S007 for the NATO
     /// row — see `decisions.md` D20).
     ///
-    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is
-    /// a PUBLIC catalog surface — visible to tooling,
-    /// scheme-exploration UIs, and docs generators. Consumers that
-    /// want a complete inventory of closure rules MUST also walk
-    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
+    /// # Discovery-surface gap (issue #644)
+    ///
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D18,
+    /// `MarkingScheme::closure_rules()` is documented as a PUBLIC
+    /// catalog surface — visible to tooling, scheme-exploration UIs,
+    /// docs generators, and (forthcoming) severity-override config via
+    /// a `[closure_rules]` config section. Post-PR-D, CAPCO's trait
+    /// impl returns only the 1-row residual catalog above; the other
+    /// 9 rules (Trio 1 CAVEATED + 6 per-marking SCI implications + 2
+    /// Trio 2 RELIDO rows) are addressable only through
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE), a
+    /// CAPCO-internal accessor.
+    ///
+    /// This is an asymmetric discovery surface: scheme-agnostic
+    /// consumers walking `closure_rules()` see 1 row for CAPCO, not
+    /// 10. Severity-override addressability for the 9 bitmask rules
+    /// is by stable rule name only — the names (`capco/noforn-if-caveated`,
+    /// `capco/hcs-o-implies-noforn-orcon`, `capco/si-g-implies-orcon`,
+    /// `capco/hcs-p-sub-implies-noforn-orcon`,
+    /// `capco/tk-blfh-implies-noforn`, `capco/tk-idit-implies-noforn`,
+    /// `capco/tk-kand-implies-noforn`,
+    /// `capco/relido-if-sci-and-not-incompatible`,
+    /// `capco/relido-if-us-collateral-class`) are preserved verbatim
+    /// on `CLOSURE_TABLE`'s row `label` fields and on each row's
+    /// inline doc-comment in
+    /// [`super::closure_table`](super::closure_table).
+    ///
+    /// A unified inventory surface across both catalogs — likely a
+    /// new `MarkingScheme::closure_inventory()` trait method —
+    /// is tracked in issue #644 as a follow-up against `marque-scheme`
+    /// per Constitution VII §IV (engine-trait additions belong in
+    /// their own PR, not bundled into a scheme-implementation perf
+    /// refactor like PR-D).
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
     }
