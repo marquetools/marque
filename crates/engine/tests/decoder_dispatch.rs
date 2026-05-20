@@ -181,7 +181,7 @@ fn default_engine_suppresses_prose_glue_single_letter_portions() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str(), d.message.to_string()))
+                .map(|d| (d.rule.as_str(), d.message.template().as_str()))
                 .collect::<Vec<_>>(),
         );
     }
@@ -240,7 +240,7 @@ fn default_engine_rejects_bare_restricted_portion() {
             result
                 .diagnostics
                 .iter()
-                .map(|d| (d.rule.as_str(), d.message.to_string()))
+                .map(|d| (d.rule.as_str(), d.message.template().as_str()))
                 .collect::<Vec<_>>(),
         );
     }

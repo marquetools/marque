@@ -55,9 +55,14 @@ struct DiagnosticJson<'a> {
     rule: &'a str,
     severity: &'a str,
     span: SpanJson,
-    message: &'a str,
-    citation: &'a str,
+    message: MessageJson<'a>,
+    citation: String,
     fix: Option<FixJson<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct MessageJson<'a> {
+    template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,8 +98,10 @@ fn diagnostic_to_json(d: &Diagnostic<marque_capco::CapcoScheme>) -> DiagnosticJs
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
         fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
             (Some(f), _) => Some(FixJson {
                 source: fix_source_str(f.source),

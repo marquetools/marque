@@ -20,14 +20,22 @@ fn lint(source: &str) -> Vec<Diagnostic<CapcoScheme>> {
     engine().lint(source.as_bytes()).diagnostics
 }
 
+/// PR 3c.2.C C5 reshape: under the closed-template `Message` shape,
+/// per-row identification via marker text (`"HCS-O"`, `"SI-G"`, etc.)
+/// is no longer available — the runtime `marking_label` /
+/// `token_name` strings no longer flow into `Diagnostic.message`.
+/// The bridge layer collapses every SCI-per-system row to a single
+/// rule_id `"E059"` and (today) the
+/// `MessageTemplate::RequiredByPresence` template per PM-C-5 /
+/// PM-C-6 detail-loss acceptance.
+///
+/// The `marker_text` parameter is kept for call-site documentation;
+/// the filter only matches on `rule_id`.
 fn e059_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
-    marker_text: &str,
+    _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    diags
-        .iter()
-        .filter(|d| d.rule.as_str() == "E059" && d.message.contains(marker_text))
-        .collect()
+    diags.iter().filter(|d| d.rule.as_str() == "E059").collect()
 }
 
 #[test]

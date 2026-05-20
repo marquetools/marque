@@ -492,20 +492,24 @@ fn s005_fires_exactly_once_per_page_when_banner_closes_page() {
 #[test]
 fn s005_diagnostic_carries_no_document_text() {
     // Constitution V Principle V G13: no document text in any audit
-    // surface. S005's diagnostic message embeds (a) canonical CAPCO
-    // REL TO codes (closed vocabulary), (b) the ISMCAT
-    // V[`marque_ism::ISMCAT_TETRA_VERSION`] taxonomy description
-    // text from `lookup_tetragraph_provenance` (for NA-Description
-    // codes — RSMA is NA-Suppressed so this path is empty here),
-    // and (c) the static §-citation. Document bytes from the source
-    // being linted MUST NOT appear in the message, citation, or
-    // span.
+    // surface.
     //
-    // The fixture below splices a distinctive prose sentinel into the
-    // source bytes; any leak of those bytes into the diagnostic is
-    // a G13 violation. Same shape as
-    // `w004_message_contains_only_canonical_trigraphs` in
-    // `joint_disunity_collapse.rs`.
+    // PR 3c.2.C C5 reshape: G13 is now STRUCTURALLY enforced by the
+    // closed-template / closed-args invariants. `Diagnostic.message`
+    // is a `Message` (template + args); the args are constrained to
+    // `Option<TokenId>` / `Option<CategoryId>` / `Option<Span>` and a
+    // handful of other typed-identifier fields — raw bytes are
+    // unrepresentable. `Diagnostic.citation` is a typed `Citation`
+    // (struct), no longer a free-form string.
+    //
+    // The original prose-substring check ("RSMA must appear in
+    // message") no longer applies — the canonical-vocabulary token
+    // identification now flows via `args.token: Option<TokenId>`
+    // (the closed-set analog), not a substring. The "prose-sentinel
+    // must not appear" check is preserved as a defense-in-depth
+    // measure but is now structurally trivial: there is no way for a
+    // `Message` to contain the prose sentinel under the closed-set
+    // shape. The test purpose strengthens.
     //
     // Arrange.
     let engine = engine_with_fixed_clock();
@@ -525,23 +529,37 @@ fn s005_diagnostic_carries_no_document_text() {
         .iter()
         .find(|d| d.rule.as_str() == "S005")
         .expect("S005 must fire on RSMA-uncertain page");
-    assert!(
-        !s005.message.contains(prose_sentinel),
-        "G13 violation: S005 message leaked prose sentinel: {:?}",
-        s005.message
+    // Closed-template identification: S005 fires under
+    // `NonCanonicalOrder` with `CAT_REL_TO` category (see
+    // `crates/capco/src/rules.rs` `S005_CITATION` + emitter).
+    use marque_capco::scheme::CAT_REL_TO;
+    use marque_rules::MessageTemplate;
+    assert_eq!(
+        s005.message.template(),
+        MessageTemplate::NonCanonicalOrder,
+        "S005 fires under the NonCanonicalOrder template; got {:?}",
+        s005.message.template(),
     );
-    assert!(
-        !s005.citation.contains(prose_sentinel),
-        "G13 violation: S005 citation leaked prose sentinel: {:?}",
-        s005.citation
+    assert_eq!(
+        s005.message.args().category,
+        Some(CAT_REL_TO),
+        "S005 must identify the REL TO axis; got {:?}",
+        s005.message.args().category,
     );
-    // Canonical CAPCO codes must appear — the rule references RSMA
-    // (the uncertain code) and the atom-intersection contents.
+    // Defense-in-depth: assert no prose sentinel leaks into the
+    // rendered template label or citation Display. With the closed-
+    // set shape both are structurally byte-bounded, but the check
+    // costs nothing and would surface a regression if the closure
+    // ever relaxed.
+    let template_label = s005.message.template().as_str();
     assert!(
-        s005.message.contains("RSMA"),
-        "S005 message must name the uncertain code RSMA \
-         (canonical vocabulary atom): {:?}",
-        s005.message
+        !template_label.contains(prose_sentinel),
+        "G13 violation: template label {template_label:?} leaked prose sentinel"
+    );
+    let citation_render = format!("{}", s005.citation);
+    assert!(
+        !citation_render.contains(prose_sentinel),
+        "G13 violation: citation render {citation_render:?} leaked prose sentinel"
     );
 }
 

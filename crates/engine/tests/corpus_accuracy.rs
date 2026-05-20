@@ -367,7 +367,7 @@ fn precision_prose_zero_diagnostics() {
             hard_diagnostics
                 .iter()
                 .map(|d| format!(
-                    "  {} {:?} at {}..{}: {}",
+                    "  {} {:?} at {}..{}: {:?}",
                     d.rule.as_str(),
                     d.severity,
                     d.span.start,
@@ -506,7 +506,7 @@ fn valid_fixtures_zero_diagnostics() {
             hard_diagnostics
                 .iter()
                 .map(|d| format!(
-                    "  {} {:?} at {}..{}: {}",
+                    "  {} {:?} at {}..{}: {:?}",
                     d.rule.as_str(),
                     d.severity,
                     d.span.start,

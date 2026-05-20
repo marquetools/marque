@@ -9,11 +9,14 @@
 //! `docs/plans/2026-05-02-engine-refactor-consolidated.md` §8.3 and
 //! Constitution V Principle V's audit-content-ignorance invariant).
 //!
-//! PR 3c.1 (this PR) ships the new types **alongside** the existing
-//! `Box<str>` channel. PR 3c.2 migrates `Diagnostic.message` to
-//! `Message` and deletes the `format!` interpolation at
-//! `crates/engine/src/engine.rs:1462` (`format!("decoder-recognized
-//! canonical form: {replacement:?}")`).
+//! PR 3c.1 introduced the new types **alongside** the existing
+//! `Box<str>` channel. PR 3c.2.C C5 (this PR's atomic Diagnostic
+//! field-type migration) replaced `Diagnostic.message: Box<str>` with
+//! `Diagnostic.message: Message` and deleted the `format!`
+//! interpolation in the engine's decoder synthesis site (see
+//! `build_decoder_synthesized_diagnostic` in
+//! `crates/engine/src/engine.rs`, which now constructs
+//! `Message::new(MessageTemplate::DecoderRecognized, ...)`).
 //!
 //! # Closed-template invariant
 //!
@@ -129,17 +132,20 @@ impl Blake3Hash {
 /// (`DecoderRecognized`, `ReparseFailed`, `CorrectionsApplied`) carry
 /// no §-citation — they are not CAPCO-derived.
 ///
-/// PR 3c.1 ships the enum **alongside** the existing `Box<str>`
-/// channel. PR 3c.2 migrates rule emission to construct these
-/// variants and deletes the `format!`-interpolated free-form path.
+/// PR 3c.1 introduced the enum **alongside** the existing `Box<str>`
+/// channel. PR 3c.2.C C5 (atomic Diagnostic field-type migration)
+/// completed the migration: rule emission constructs these variants
+/// and the `format!`-interpolated free-form path is gone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MessageTemplate {
     /// Decoder recognized a canonical form for an input the strict
     /// recognizer rejected. Args: `actual_token` (the canonical the
     /// decoder produced).
     ///
-    /// **Lands**: PR 3c.2 (replaces the `format!` at
-    /// `crates/engine/src/engine.rs:1462`). Engine-synthetic — no
+    /// **Landed**: PR 3c.2.C C5 (replaces the `format!` interpolation
+    /// in the engine's decoder synthesis site —
+    /// `build_decoder_synthesized_diagnostic` in
+    /// `crates/engine/src/engine.rs`). Engine-synthetic — no
     /// §-citation.
     DecoderRecognized,
 
