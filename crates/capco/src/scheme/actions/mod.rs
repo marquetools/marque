@@ -31,7 +31,7 @@ mod strip;
 // `super::actions::NAME` paths from sibling leaves (notably
 // `rewrites.rs` and `constraints.rs`).
 pub(crate) use self::category_ops::{
-    capco_category_clear, capco_category_contains, capco_category_has_values,
+    capco_axis_mask, capco_category_clear, capco_category_contains, capco_category_has_values,
     capco_category_replace,
 };
 pub(crate) use self::companions::{

@@ -828,3 +828,186 @@ fn any_closure_trigger_fires_returns_true_even_when_suppressed() {
          ORCON trigger is present even though NOFORN suppresses"
     );
 }
+
+// capco_axis_mask — per-page bitmask for eligibility gate (CO-2)
+
+#[test]
+fn axis_mask_empty_marking_has_no_bits_set() {
+    let m = CapcoMarking::new(CanonicalAttrs::default());
+    assert_eq!(capco_axis_mask(&m), 0, "default attrs → zero mask");
+}
+
+#[test]
+fn axis_mask_us_classification_sets_cat_classification_bit() {
+    let m = CapcoMarking::new(mk_attrs());
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_CLASSIFICATION.0) != 0,
+        "US classification must set CAT_CLASSIFICATION bit"
+    );
+    assert!(
+        mask & (1 << CAT_NON_US_CLASSIFICATION.0) == 0,
+        "US classification must NOT set CAT_NON_US_CLASSIFICATION bit"
+    );
+    assert!(
+        mask & (1 << CAT_JOINT_CLASSIFICATION.0) == 0,
+        "US classification must NOT set CAT_JOINT_CLASSIFICATION bit"
+    );
+}
+
+#[test]
+fn axis_mask_nato_classification_sets_non_us_bit() {
+    use marque_ism::NatoClassification;
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Nato(NatoClassification::NatoSecret));
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_CLASSIFICATION.0) != 0,
+        "NATO classification must set CAT_CLASSIFICATION bit"
+    );
+    assert!(
+        mask & (1 << CAT_NON_US_CLASSIFICATION.0) != 0,
+        "NATO classification must set CAT_NON_US_CLASSIFICATION bit"
+    );
+    assert!(
+        mask & (1 << CAT_JOINT_CLASSIFICATION.0) == 0,
+        "NATO classification must NOT set CAT_JOINT_CLASSIFICATION bit"
+    );
+}
+
+#[test]
+fn axis_mask_joint_classification_sets_joint_bit() {
+    use marque_ism::{Classification, JointClassification};
+    let mut a = CanonicalAttrs::default();
+    a.classification = Some(MarkingClassification::Joint(JointClassification {
+        level: Classification::Secret,
+        countries: vec![].into(),
+    }));
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_CLASSIFICATION.0) != 0,
+        "JOINT classification must set CAT_CLASSIFICATION bit"
+    );
+    assert!(
+        mask & (1 << CAT_JOINT_CLASSIFICATION.0) != 0,
+        "JOINT classification must set CAT_JOINT_CLASSIFICATION bit"
+    );
+    assert!(
+        mask & (1 << CAT_NON_US_CLASSIFICATION.0) == 0,
+        "JOINT classification must NOT set CAT_NON_US_CLASSIFICATION bit"
+    );
+}
+
+#[test]
+fn axis_mask_dissem_sets_dissem_bit() {
+    let mut a = mk_attrs();
+    a.dissem_us = vec![DissemControl::Nf].into();
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_DISSEM.0) != 0,
+        "NOFORN must set CAT_DISSEM bit"
+    );
+}
+
+#[test]
+fn axis_mask_no_dissem_leaves_dissem_bit_clear() {
+    let m = CapcoMarking::new(mk_attrs());
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_DISSEM.0) == 0,
+        "no dissem controls → CAT_DISSEM bit must be clear"
+    );
+}
+
+#[test]
+fn axis_mask_non_ic_dissem_sets_bit() {
+    let mut a = mk_attrs();
+    a.non_ic_dissem = vec![marque_ism::NonIcDissem::Nodis].into();
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_NON_IC_DISSEM.0) != 0,
+        "NODIS must set CAT_NON_IC_DISSEM bit"
+    );
+}
+
+#[test]
+fn axis_mask_rel_to_sets_bit() {
+    let mut a = mk_attrs();
+    a.rel_to = vec![CountryCode::USA].into();
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_REL_TO.0) != 0,
+        "REL TO non-empty → CAT_REL_TO bit set"
+    );
+}
+
+#[test]
+fn axis_mask_sar_sets_bit() {
+    use marque_ism::{SarIndicator, SarMarking, SarProgram};
+    let mut a = mk_attrs();
+    a.sar_markings = Some(SarMarking::new(
+        SarIndicator::Abbrev,
+        Box::new([SarProgram::new("BP", Box::new([]))]),
+    ));
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_SAR.0) != 0,
+        "SAR present → CAT_SAR bit set"
+    );
+}
+
+#[test]
+fn axis_mask_aea_sets_bit() {
+    use marque_ism::{AeaMarking, RdBlock};
+    let mut a = mk_attrs();
+    a.aea_markings = vec![AeaMarking::Rd(RdBlock::default())].into();
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_AEA.0) != 0,
+        "AEA present → CAT_AEA bit set"
+    );
+}
+
+#[test]
+fn axis_mask_sci_sets_bit_via_controls() {
+    let mut a = mk_attrs();
+    a.sci_controls = vec![marque_ism::SciControl::Si].into();
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_SCI.0) != 0,
+        "SCI controls non-empty → CAT_SCI bit set"
+    );
+}
+
+#[test]
+fn axis_mask_display_only_sets_bit() {
+    let mut a = mk_attrs();
+    a.display_only_to = vec![CountryCode::try_new(b"GBR").unwrap()].into();
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_DISPLAY_ONLY_TO.0) != 0,
+        "DISPLAY ONLY non-empty → CAT_DISPLAY_ONLY_TO bit set"
+    );
+}
+
+#[test]
+fn axis_mask_fgi_marker_sets_bit() {
+    use marque_ism::FgiMarker;
+    let mut a = mk_attrs();
+    a.fgi_marker = Some(FgiMarker::SourceConcealed);
+    let m = CapcoMarking::new(a);
+    let mask = capco_axis_mask(&m);
+    assert!(
+        mask & (1 << CAT_FGI_MARKER.0) != 0,
+        "FGI marker present → CAT_FGI_MARKER bit set"
+    );
+}

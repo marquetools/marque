@@ -794,7 +794,50 @@ impl CapcoScheme {
         // remain inflationary on the closed state (they remove
         // dominated tokens but the remaining tokens are already members
         // of the closure's fixed point).
+        //
+        // Per-page eligibility mask (CO-2): `page_mask` is a bitmask
+        // where bit `1 << cat.0` is set when category `cat` has at
+        // least one value in `out`. Before evaluating each row's trigger
+        // we check whether the trigger's required category is present;
+        // if not, the trigger can't fire and we skip the row entirely.
+        //
+        // The mask is maintained monotonically: bits are OR-ed in for
+        // each rewrite's declared write axes when the rewrite fires, so
+        // downstream rows that depend on newly-written axes are
+        // correctly eligible. Bits are never cleared (conservatively
+        // safe: a later row might see that a prior Clear action removed
+        // a value, but the trigger evaluation on the actual `out` state
+        // catches that correctly — we only skip rows when the category
+        // is definitively absent).
+        let mut page_mask = capco_axis_mask(&out);
         for rw in &self.page_rewrites {
+            // Eligibility pre-check: skip rows whose trigger category is
+            // absent from the page mask to avoid unnecessary predicate
+            // evaluations.
+            let eligible = match &rw.trigger {
+                // `Contains(X, _)` fires only if X is non-empty.
+                CategoryPredicate::Contains { category, .. } => {
+                    page_mask & (1u64 << category.0) != 0
+                }
+                // `Empty(X)` fires only if X IS empty (bit clear).
+                CategoryPredicate::Empty { category } => page_mask & (1u64 << category.0) == 0,
+                // `Custom(f)` — use the declared reads ∪ writes axes as
+                // a conservative proxy. Skip only when every declared
+                // axis is absent: if all inputs and outputs are empty,
+                // the predicate cannot observe or produce relevant state.
+                // `Custom` rewrites with empty reads ∪ writes are
+                // scheduler-rejected (`UnannotatedCustomAxes`), so the
+                // empty-intersection case always corresponds to a page
+                // where none of the declared axes are present.
+                CategoryPredicate::Custom(_) => rw
+                    .reads
+                    .iter()
+                    .chain(rw.writes.iter())
+                    .any(|c| page_mask & (1u64 << c.0) != 0),
+            };
+            if !eligible {
+                continue;
+            }
             let fires = match &rw.trigger {
                 CategoryPredicate::Contains { category, token } => {
                     capco_category_contains(&out, *category, *token)
@@ -805,6 +848,12 @@ impl CapcoScheme {
                 CategoryPredicate::Custom(f) => f(&out),
             };
             if fires {
+                // Update the mask monotonically: OR in declared write axes
+                // so downstream rows that read these axes are correctly
+                // eligible even if the category was empty at mask-init time.
+                for w in rw.writes {
+                    page_mask |= 1u64 << w.0;
+                }
                 match &rw.action {
                     CategoryAction::Clear { category } => {
                         tracing::debug!(

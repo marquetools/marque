@@ -8,6 +8,7 @@
 //! per the issue #466 Stage 2 PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
+use marque_ism::MarkingClassification;
 use marque_scheme::{CategoryId, TokenId};
 
 use super::super::*;
@@ -173,4 +174,95 @@ pub(crate) fn capco_category_replace(
     } else if category == CAT_NON_IC_DISSEM {
         attrs.non_ic_dissem = with.0.non_ic_dissem.clone();
     }
+}
+
+/// Compute a per-page axis-presence bitmask for `m`.
+///
+/// Each bit `1u64 << cat.0` is set when the corresponding CAPCO category
+/// has at least one value in `m`. The bitmask covers all twelve currently
+/// declared `CAT_*` constants (IDs 1–12), so all bits fit comfortably in
+/// a single `u64`.
+///
+/// Used by `project_attrs_pipeline` to build a per-page eligibility mask
+/// that lets the rewrite loop skip rows whose trigger category is
+/// definitively absent from the page, avoiding unnecessary predicate
+/// evaluations on sparse pages (e.g. a pure-US page with only classification
+/// and NOFORN skips every AEA / FGI / SAR / non-IC-dissem rewrite row).
+///
+/// The mask is an *over-approximation*: it may include categories that
+/// become empty after a prior rewrite's `Clear` action, but it never
+/// excludes categories that are actually present. Downstream callers that
+/// maintain the mask monotonically (only ORing in write-axis bits, never
+/// clearing) preserve this invariant throughout the rewrite loop.
+pub(crate) fn capco_axis_mask(m: &CapcoMarking) -> u64 {
+    let attrs = &m.0;
+    let mut mask = 0u64;
+
+    // CAT_CLASSIFICATION (1): any recognized classification system.
+    if attrs.classification.is_some() {
+        mask |= 1 << CAT_CLASSIFICATION.0;
+    }
+
+    // CAT_NON_US_CLASSIFICATION (2): FGI, NATO, or Conflict (which
+    // carries a foreign component alongside the resolved US level).
+    if matches!(
+        attrs.classification,
+        Some(MarkingClassification::Fgi(_))
+            | Some(MarkingClassification::Nato(_))
+            | Some(MarkingClassification::Conflict { .. })
+    ) {
+        mask |= 1 << CAT_NON_US_CLASSIFICATION.0;
+    }
+
+    // CAT_JOINT_CLASSIFICATION (3): JOINT co-owned classification.
+    if matches!(attrs.classification, Some(MarkingClassification::Joint(_))) {
+        mask |= 1 << CAT_JOINT_CLASSIFICATION.0;
+    }
+
+    // CAT_SCI (4): either CVE projection or structural markings.
+    if !attrs.sci_controls.is_empty() || !attrs.sci_markings.is_empty() {
+        mask |= 1 << CAT_SCI.0;
+    }
+
+    // CAT_SAR (5): Special Access Required block.
+    if attrs.sar_markings.is_some() {
+        mask |= 1 << CAT_SAR.0;
+    }
+
+    // CAT_AEA (6): AEA markings (RD, FRD, CNWDI, SIGMA, UCNI, TFNI).
+    if !attrs.aea_markings.is_empty() {
+        mask |= 1 << CAT_AEA.0;
+    }
+
+    // CAT_FGI_MARKER (7): FGI marker in a US-classified marking.
+    if attrs.fgi_marker.is_some() {
+        mask |= 1 << CAT_FGI_MARKER.0;
+    }
+
+    // CAT_DISSEM (8): IC dissemination controls (US or NATO namespace).
+    if !attrs.dissem_us.is_empty() || !attrs.dissem_nato.is_empty() {
+        mask |= 1 << CAT_DISSEM.0;
+    }
+
+    // CAT_REL_TO (9): REL TO country / country-group codes.
+    if !attrs.rel_to.is_empty() {
+        mask |= 1 << CAT_REL_TO.0;
+    }
+
+    // CAT_DECLASSIFY_ON (10): declassification date from CAB.
+    if attrs.declassify_on.is_some() {
+        mask |= 1 << CAT_DECLASSIFY_ON.0;
+    }
+
+    // CAT_NON_IC_DISSEM (11): non-IC dissemination controls.
+    if !attrs.non_ic_dissem.is_empty() {
+        mask |= 1 << CAT_NON_IC_DISSEM.0;
+    }
+
+    // CAT_DISPLAY_ONLY_TO (12): DISPLAY ONLY country list.
+    if !attrs.display_only_to.is_empty() {
+        mask |= 1 << CAT_DISPLAY_ONLY_TO.0;
+    }
+
+    mask
 }
