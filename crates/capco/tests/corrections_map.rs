@@ -62,20 +62,21 @@ fn c001_pass1_dispatch_noop_after_pass0() {
     let source = b"(TS//SERCET//NF)";
     let result = engine.fix(source, FixMode::Apply);
 
-    let c001_count = result
-        .applied
+    // PR 3c.2.D fixup F-3: `applied_text_corrections()` is `impl Iterator`;
+    // collect once for filter + Debug-render in the assertion message.
+    let text_corrections: Vec<_> = result.applied_text_corrections().collect();
+    let c001_count = text_corrections
         .iter()
-        .filter(|f| f.rule.as_str() == "C001")
+        .filter(|tc| tc.rule.as_str() == "C001")
         .count();
     assert_eq!(
         c001_count,
         1,
         "C001 fires exactly once (pass-0 only); pass-1 dispatch \
-         is a no-op after pass-0 rewrote the source. Applied: {:?}",
-        result
-            .applied
+         is a no-op after pass-0 rewrote the source. Text corrections: {:?}",
+        text_corrections
             .iter()
-            .map(|f| f.rule.as_str())
+            .map(|tc| tc.rule.as_str())
             .collect::<Vec<_>>()
     );
     // Sanity: the output buffer contains the corrected token.
@@ -102,9 +103,8 @@ fn c001_self_correction_filtered_at_pass0() {
     let result = engine.fix(source, FixMode::Apply);
 
     let c001_count = result
-        .applied
-        .iter()
-        .filter(|f| f.rule.as_str() == "C001")
+        .applied_text_corrections()
+        .filter(|tc| tc.rule.as_str() == "C001")
         .count();
     assert_eq!(
         c001_count, 0,

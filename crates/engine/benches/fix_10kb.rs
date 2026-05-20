@@ -136,7 +136,7 @@ fn fix_10kb_pass2_only(c: &mut Criterion) {
     // post-pass-0 buffer.
     let result = engine.fix(&input, FixMode::Apply);
     debug_assert!(
-        result.applied.iter().all(|a| a.rule.as_str() != "C001"),
+        result.applied_fixes().all(|a| a.rule.as_str() != "C001"),
         "fix_10kb_pass2_only fixture leaked a C001 trigger"
     );
 
@@ -153,7 +153,7 @@ fn fix_10kb_two_pass(c: &mut Criterion) {
     // re-parse arm and exercising the FR-023 / I-18 codepaths.
     let result = engine.fix(&input, FixMode::Apply);
     debug_assert!(
-        !result.applied.is_empty(),
+        result.applied_fixes().next().is_some(),
         "fix_10kb_two_pass fixture should fire at least one applied fix"
     );
 

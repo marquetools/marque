@@ -1303,6 +1303,46 @@ impl Vocabulary<CapcoScheme> for CapcoScheme {
             _ => false,
         }
     }
+
+    /// Qualified `"category.token"` form for audit-record `token_id`
+    /// emission per `contracts/audit-record.md` `marque-1.0` shape.
+    ///
+    /// Composes two existing accessors:
+    /// - [`Vocabulary::metadata`] → [`TokenMetadataFull::canonical`]
+    ///   for the token's canonical name (e.g. `"SECRET"`).
+    /// - [`capco_token_category`] + a category-name lookup over
+    ///   [`MarkingScheme::categories`] for the category name (e.g.
+    ///   `"classification"`).
+    ///
+    /// Returns `Cow::Owned(String)` because the compose step needs to
+    /// concatenate; a future per-token build-time table can return
+    /// `Cow::Borrowed(&'static str)` once the constituent strings are
+    /// pre-baked in the same row. Audit emit runs off the lint/scan
+    /// hot path so the short owned-string cost (typically ≤32 bytes)
+    /// is acceptable.
+    ///
+    /// Returns `Cow::Borrowed("unknown.<canonical>")` when the token
+    /// does not route through [`capco_token_category`] (defensive —
+    /// shouldn't happen for any registered token; visible signal in
+    /// audit output if it does).
+    ///
+    /// PM-D-10 (PR 3c.2.D) — see
+    /// `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`.
+    fn qualified_token_label(&self, token: &TokenId) -> std::borrow::Cow<'static, str> {
+        use marque_scheme::MarkingScheme;
+        let canonical = self.metadata(token).canonical;
+        let Some(cat_id) = capco_token_category(*token) else {
+            return std::borrow::Cow::Owned(format!("unknown.{canonical}"));
+        };
+        // O(n) scan over ~12 categories — off the lint/scan hot path.
+        let cat_name = self
+            .categories()
+            .iter()
+            .find(|c| c.id == cat_id)
+            .map(|c| c.name)
+            .unwrap_or("unknown");
+        std::borrow::Cow::Owned(format!("{cat_name}.{canonical}"))
+    }
 }
 
 // ---------------------------------------------------------------------------

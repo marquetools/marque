@@ -25,7 +25,8 @@
 
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_rules::Diagnostic;
+use marque_rules::audit::AppliedFix;
 use marque_wasm::{fix_native, lint_native};
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -222,8 +223,7 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     let native_fix = engine.fix(MANGLED_INPUT, FixMode::Apply);
     let saw_decoder_native =
         native_fix
-            .applied
-            .iter()
+            .applied_fixes()
             .any(|f: &AppliedFix<marque_capco::CapcoScheme>| {
                 matches!(f.source, marque_rules::FixSource::DecoderPosterior)
             });
@@ -259,13 +259,25 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
         .get("applied")
         .and_then(|v| v.as_array())
         .expect("fix_native output has an `applied` array");
+    // PR 3c.2.D / D5: marque-1.0 audit records carry the
+    // discriminant ("strict"|"decoder") on the inner
+    // `fix.replacement.discriminant` path, not on a top-level `source`
+    // field. Per PM-D-7 the engine derives `Discriminant` from
+    // `FixSource` at projection time: BuiltinRule / MigrationTable →
+    // "strict"; DecoderPosterior / DecoderClassificationHeuristic →
+    // "decoder".
     let saw_decoder_wasm = applied
         .iter()
-        .filter_map(|rec| rec.get("source").and_then(|v| v.as_str()))
-        .any(|s| s == "DecoderPosterior");
+        .filter_map(|rec| {
+            rec.get("fix")
+                .and_then(|fix| fix.get("replacement"))
+                .and_then(|r| r.get("discriminant"))
+                .and_then(|v| v.as_str())
+        })
+        .any(|s| s == "decoder");
     assert!(
         saw_decoder_wasm,
-        "WASM fix_native produced no DecoderPosterior audit record \
+        "WASM fix_native produced no decoder-discriminant audit record \
          on {:?}; output: {wasm_json}",
         std::str::from_utf8(MANGLED_INPUT).unwrap()
     );

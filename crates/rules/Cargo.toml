@@ -18,6 +18,16 @@ include = [
 ]
 
 [dependencies]
+# PR 3c.2.D (T046) — content-ignorant audit-record digesting per
+# Constitution V Principle V (G13). `AppliedFix.__engine_promote` calls
+# `blake3::hash(original_bytes)` and `Canonical::bytes()` is digested
+# the same way; both digests land in the `marque-1.0` audit envelope
+# via `AppliedFixDetail.original_digest` and
+# `AppliedReplacement.bytes_digest`. `default-features = false` +
+# `features = ["pure"]` selected at the workspace dep to keep the
+# WASM-safe set (Constitution III) buildable for `wasm32-unknown-unknown`
+# without platform intrinsics.
+blake3 = { workspace = true }
 marque-ism = { workspace = true }
 # PR 3c.1 (T040) — direct edge anticipated by Constitution VII §VII Appendix
 # D ("As of PR 3c (FixIntent<S>), marque-rules also depends on marque-scheme

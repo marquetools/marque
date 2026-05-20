@@ -170,7 +170,7 @@ fn sar_lowercase_program_id_emits_r001_fix() {
         "Fix severity must auto-apply; output bytes must differ from input",
     );
     assert!(
-        !fix.applied.is_empty(),
+        fix.applied_fixes().next().is_some(),
         "AppliedFix must land for SAR lowercase under Fix severity",
     );
 }
@@ -195,7 +195,7 @@ fn sar_mixed_case_program_id_emits_r001_fix() {
 
     let fix = engine.fix(input, FixMode::Apply);
     assert_ne!(fix.source.expose_secret(), input);
-    assert!(!fix.applied.is_empty());
+    assert!(fix.applied_fixes().next().is_some());
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn sar_lowercase_compartment_emits_r001_fix() {
 
     let fix = engine.fix(input, FixMode::Apply);
     assert_ne!(fix.source.expose_secret(), input);
-    assert!(!fix.applied.is_empty());
+    assert!(fix.applied_fixes().next().is_some());
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn sar_lowercase_sub_compartment_emits_r001_fix() {
 
     let fix = engine.fix(input, FixMode::Apply);
     assert_ne!(fix.source.expose_secret(), input);
-    assert!(!fix.applied.is_empty());
+    assert!(fix.applied_fixes().next().is_some());
 }
 
 #[test]
@@ -287,8 +287,10 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
     for (input, expected) in cases {
         let display = std::str::from_utf8(input).unwrap_or("<bytes>");
         let fix = engine.fix(input, FixMode::Apply);
-        let r001_decoder_count = fix
-            .applied
+        // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator`; collect
+        // once for filter + Debug-render in the assertion message.
+        let applied: Vec<_> = fix.applied_fixes().collect();
+        let r001_decoder_count = applied
             .iter()
             .filter(|a| {
                 a.rule.as_str() == "R001" && matches!(a.source, FixSource::DecoderPosterior)
@@ -299,7 +301,7 @@ fn sar_lowercase_inputs_canonicalize_to_uppercase_under_zero_threshold() {
             1,
             "input {display:?} must produce exactly one R001 DecoderPosterior \
              AppliedFix under the zero-threshold engine; applied = {:?}",
-            fix.applied
+            applied
                 .iter()
                 .map(|a| (a.rule.as_str(), a.source))
                 .collect::<Vec<_>>(),
@@ -356,13 +358,16 @@ fn fgi_lowercase_trigraph_decodes_and_fixes_to_canonical() {
         "decoder must canonicalize lowercase `deu` to uppercase `DEU` \
          and write the fixed output byte-equal to the canonical form",
     );
+    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator`; collect
+    // once for `.len()` + indexed read.
+    let applied: Vec<_> = fix.applied_fixes().collect();
     assert_eq!(
-        fix.applied.len(),
+        applied.len(),
         1,
         "exactly one AppliedFix should land (the R001 decoder fix)",
     );
-    assert_eq!(fix.applied[0].rule.as_str(), "R001");
-    assert!(matches!(fix.applied[0].source, FixSource::DecoderPosterior));
+    assert_eq!(applied[0].rule.as_str(), "R001");
+    assert!(matches!(applied[0].source, FixSource::DecoderPosterior));
 }
 
 // ============================================================================

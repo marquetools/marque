@@ -21,13 +21,21 @@
 //! Integration tests compile as separate crates that link against the
 //! library, so this file sees only the public API surface — the same
 //! visibility a downstream consumer would see.
+//!
+//! PR 3c.2.D / D6 migration: this test exercises the v2 (`marque-1.0`)
+//! [`marque_rules::audit::AppliedFix`] type via its v2
+//! `__engine_promote` constructor. The v1 path at
+//! [`marque_rules::AppliedFix::__engine_promote`] (crate root) retires
+//! at D-A5 / D7 atomically with the schema cutover.
 
+use marque_rules::audit::AppliedFix as AuditAppliedFix;
 use marque_rules::{
-    AppliedFix, Confidence, EnginePromotionToken, FixIntent, FixSource, Message, MessageArgs,
-    MessageTemplate, RuleId,
+    Confidence, EnginePromotionToken, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    RuleId, Severity,
 };
+use marque_scheme::canonical::Canonical;
 use marque_scheme::{
-    MarkingScheme, ReplacementIntent, Scope, Span,
+    MarkingScheme, ReplacementIntent, Scope, Span, TokenId,
     ambiguity::Parsed,
     category::Category,
     constraint::Constraint,
@@ -122,7 +130,8 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
     // synthetic `AppliedFix` exists only inside `tests/` and is
     // never commingled with engine output. The point of the test is
     // to prove the documented engine-only door is usable across the
-    // crate boundary.
+    // crate boundary. Exercises the v2 (`marque-1.0`) constructor at
+    // [`marque_rules::audit::AppliedFix::__engine_promote`].
     let intent: FixIntent<StubScheme> = FixIntent {
         replacement: ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Portion,
@@ -136,13 +145,23 @@ fn documented_door_can_mint_token_from_outside_marque_rules() {
         source: FixSource::BuiltinRule,
         migration_ref: None,
     };
+    // v2 needs a `Canonical<StubScheme>`. The public `from_cve`
+    // constructor takes a `TokenId` + `Scope` + `Box<str>`; no scheme-
+    // specific token surface is required, so the seal test passes
+    // through here cleanly without depending on `marque-capco`.
+    let canonical: Canonical<StubScheme> =
+        Canonical::from_cve(TokenId(0), Scope::Portion, Box::from("(S)"));
+    let original_bytes: &[u8] = b"(S)";
     // Test-fixture carve-out per Constitution V
     let token = EnginePromotionToken::__engine_construct();
     // Test-fixture carve-out per Constitution V
-    let applied: AppliedFix<StubScheme> = AppliedFix::__engine_promote(
+    let applied: AuditAppliedFix<StubScheme> = AuditAppliedFix::__engine_promote(
         RuleId::new("E001"),
+        Severity::Fix,
         Span::new(0, 4),
         intent,
+        original_bytes,
+        canonical,
         UNIX_EPOCH + Duration::from_secs(0),
         Some(Arc::<str>::from("test")),
         false,

@@ -11,6 +11,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
+use marque_rules::audit::AuditLine;
 use std::time::{Duration, UNIX_EPOCH};
 
 const FIXED_TS: u64 = 1_700_000_000;
@@ -35,25 +36,33 @@ fn applied_fix_has_all_required_fields() {
     let result = engine.fix(source, FixMode::Apply);
 
     assert!(
-        !result.applied.is_empty(),
+        result.applied_fixes().next().is_some(),
         "should have at least one applied fix"
     );
 
-    for fix in &result.applied {
+    // Post-PR-3c.2.D the engine's audit stream is `Vec<AuditLine>`.
+    // Each line is either a marking fix (`AppliedFix`) or a text-
+    // correction (`AppliedTextCorrection`); both carry the audit-
+    // record contract fields. Walk both arms.
+    for line in &result.audit_lines {
+        let (rule, span, source, timestamp) = match line {
+            AuditLine::AppliedFix(f) => (&f.rule, f.span, f.source, f.timestamp),
+            AuditLine::TextCorrection(tc) => (&tc.rule, tc.span, tc.source, tc.timestamp),
+            _ => continue,
+        };
+
         // rule: non-empty string matching E/W/C + 3 digits
-        let rule = fix.rule.as_str();
-        assert!(!rule.is_empty(), "rule ID must not be empty");
+        let rule_s = rule.as_str();
+        assert!(!rule_s.is_empty(), "rule ID must not be empty");
         assert!(
-            rule.len() == 4
-                && (rule.starts_with('E') || rule.starts_with('W') || rule.starts_with('C')),
-            "rule ID must match [EWC]NNN pattern, got: {rule}"
+            rule_s.len() == 4
+                && (rule_s.starts_with('E') || rule_s.starts_with('W') || rule_s.starts_with('C')),
+            "rule ID must match [EWC]NNN pattern, got: {rule_s}"
         );
 
         // source: valid FixSource variant (always passes by type system, but
-        // verify the string form is one of the contract values). Read from
-        // the top-level snapshot per the v2 audit contract (the audit record
-        // is what auditors see; promotion-time adjustments must be visible).
-        let source_str = match fix.source {
+        // verify the string form is one of the contract values).
+        let source_str = match source {
             marque_rules::FixSource::BuiltinRule => "BuiltinRule",
             marque_rules::FixSource::CorrectionsMap => "CorrectionsMap",
             marque_rules::FixSource::MigrationTable => "MigrationTable",
@@ -75,38 +84,36 @@ fn applied_fix_has_all_required_fields() {
         );
 
         // span: non-empty
-        assert!(
-            fix.span.start < fix.span.end,
-            "span must be non-empty: {:?}",
-            fix.span
-        );
+        assert!(span.start < span.end, "span must be non-empty: {span:?}");
 
-        // proposal shape: every applied fix must carry either a
-        // structural FixIntent or a TextCorrection payload (post
-        // Commit 10 the audit envelope is one of these two shapes).
-        match &fix.proposal {
-            marque_rules::AppliedFixProposal::FixIntent(_) => {}
-            marque_rules::AppliedFixProposal::TextCorrection { replacement } => {
-                assert!(
-                    !replacement.is_empty(),
-                    "text-correction replacement must not be empty"
-                );
-            }
+        // text-correction-arm-specific: replacement must not be empty.
+        // The marking-side arm carries a `Canonical<S>` payload sealed
+        // by `EngineConstructor`; the constructor guarantees non-empty
+        // bytes for every promotion.
+        if let AuditLine::TextCorrection(tc) = line {
+            assert!(
+                !tc.replacement.is_empty(),
+                "text-correction replacement must not be empty"
+            );
+            let combined = tc.confidence.combined();
+            assert!(
+                (0.0..=1.0).contains(&combined),
+                "confidence must be in [0.0, 1.0], got: {combined}"
+            );
         }
-
-        // confidence: in [0.0, 1.0]. Read from the top-level snapshot per
-        // the v2 audit contract — the audit record's confidence is what
-        // auditors see; future promotion-time adjustments (e.g.,
-        // region-context calibration) must remain bounded.
-        let combined = fix.confidence.combined();
-        assert!(
-            (0.0..=1.0).contains(&combined),
-            "confidence must be in [0.0, 1.0], got: {combined}"
-        );
+        if let AuditLine::AppliedFix(f) = line {
+            // confidence lives at `fix.replacement.confidence` per
+            // the marque-1.0 audit-record shape.
+            let combined = f.fix.replacement.confidence.combined();
+            assert!(
+                (0.0..=1.0).contains(&combined),
+                "confidence must be in [0.0, 1.0], got: {combined}"
+            );
+        }
 
         // timestamp: must be after UNIX epoch
         assert!(
-            fix.timestamp >= UNIX_EPOCH,
+            timestamp >= UNIX_EPOCH,
             "timestamp must be after UNIX epoch"
         );
 
@@ -140,17 +147,18 @@ fn sub_threshold_proposals_never_in_applied() {
 
     // No fix should be applied at threshold 0.99 — E002's 0.97 is
     // sub-threshold.
+    // PR 3c.2.D fixup F-3: `applied_fixes()` is `impl Iterator` (not
+    // `Debug`); collect once for the `is_empty` + Debug-render path.
+    let applied: Vec<_> = result.applied_fixes().collect();
     assert!(
-        result.applied.is_empty(),
-        "no sub-threshold fix may appear in applied; got: {:?}",
-        result.applied
+        applied.is_empty(),
+        "no sub-threshold fix may appear in applied; got: {applied:?}",
     );
 
-    // Every entry in `applied` (vacuously none here) would have
-    // ≥0.99 confidence. The audit-contract assertion: the gate is
-    // honored.
-    for fix in &result.applied {
-        let combined = fix.confidence.combined();
+    // Every entry (vacuously none here) would have ≥0.99 confidence.
+    // The audit-contract assertion: the gate is honored.
+    for fix in result.applied_fixes() {
+        let combined = fix.fix.replacement.confidence.combined();
         assert!(
             combined >= 0.99,
             "sub-threshold fix (confidence {combined}) must not appear in applied"
@@ -173,11 +181,13 @@ fn dry_run_applied_fixes_have_dry_run_flag() {
     let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::DryRun);
 
-    for fix in &result.applied {
-        assert!(
-            fix.dry_run,
-            "all DryRun applied fixes must have dry_run=true"
-        );
+    for line in &result.audit_lines {
+        let dry_run = match line {
+            AuditLine::AppliedFix(f) => f.dry_run,
+            AuditLine::TextCorrection(tc) => tc.dry_run,
+            _ => continue,
+        };
+        assert!(dry_run, "all DryRun applied fixes must have dry_run=true");
     }
 }
 
@@ -188,9 +198,14 @@ fn applied_fix_timestamp_matches_clock() {
     let source = b"SECRET//REL TO GBR\n";
     let result = engine.fix(source, FixMode::Apply);
 
-    for fix in &result.applied {
+    for line in &result.audit_lines {
+        let timestamp = match line {
+            AuditLine::AppliedFix(f) => f.timestamp,
+            AuditLine::TextCorrection(tc) => tc.timestamp,
+            _ => continue,
+        };
         assert_eq!(
-            fix.timestamp, expected_ts,
+            timestamp, expected_ts,
             "timestamp should match the injected FixedClock"
         );
     }
@@ -230,7 +245,12 @@ fn r002_does_not_mint_applied_fix() {
     let engine = test_engine();
     let source = b"SECRET//REL TO GBR\n(TS//HCS)\n";
     let result = engine.fix(source, FixMode::Apply);
-    for fix in &result.applied {
+    for line in &result.audit_lines {
+        let rule = match line {
+            AuditLine::AppliedFix(f) => &f.rule,
+            AuditLine::TextCorrection(tc) => &tc.rule,
+            _ => continue,
+        };
         // Compare against the typed constant rather than the string
         // literal so a future rename of `R002_RULE_ID` (e.g., to
         // adopt the engine-synthetic namespace
@@ -238,7 +258,7 @@ fn r002_does_not_mint_applied_fix() {
         // `MessageTemplate::ReparseFailed`'s doc) is caught here
         // instead of silently passing on stale identifier drift.
         assert_ne!(
-            fix.rule,
+            *rule,
             marque_engine::R002_RULE_ID,
             "R002 must never appear as an AppliedFix"
         );

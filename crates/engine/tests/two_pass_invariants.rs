@@ -128,8 +128,7 @@ proptest! {
     fn i18_applied_spans_are_pairwise_disjoint(src in arb_doc()) {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
         let spans: Vec<(usize, usize)> = result
-            .applied
-            .iter()
+            .applied_fixes()
             .map(|a| (a.span.start, a.span.end))
             .collect();
         for i in 0..spans.len() {
@@ -159,7 +158,7 @@ proptest! {
     fn i19_no_duplicate_rule_span_pairs(src in arb_doc()) {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
         let mut seen: HashSet<(String, usize, usize)> = HashSet::new();
-        for fix in &result.applied {
+        for fix in result.applied_fixes() {
             let key = (fix.rule.as_str().to_string(), fix.span.start, fix.span.end);
             prop_assert!(
                 seen.insert(key.clone()),
@@ -185,7 +184,7 @@ proptest! {
         let result = engine().fix(src.as_bytes(), FixMode::Apply);
         let mut counts: std::collections::HashMap<(String, usize, usize), usize> =
             std::collections::HashMap::new();
-        for fix in &result.applied {
+        for fix in result.applied_fixes() {
             let key = (fix.rule.as_str().to_string(), fix.span.start, fix.span.end);
             *counts.entry(key).or_insert(0) += 1;
         }

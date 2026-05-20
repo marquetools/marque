@@ -59,76 +59,50 @@ fn assert_fix_results_match_byte_for_byte(
         "{label}: source bytes"
     );
     assert_eq!(
-        actual.applied.len(),
-        expected.applied.len(),
+        actual.audit_lines.len(),
+        expected.audit_lines.len(),
         "{label}: applied count"
     );
-    for (i, (a, e)) in actual
-        .applied
+    // Walk the marque-1.0 audit-line streams: both arms preserve
+    // promotion order across the parity check (PM-D-8 / FR-016).
+    for (i, (a_line, e_line)) in actual
+        .audit_lines
         .iter()
-        .zip(expected.applied.iter())
+        .zip(expected.audit_lines.iter())
         .enumerate()
     {
-        assert_eq!(a.rule, e.rule, "{label}: applied[{i}].rule");
-        assert_eq!(a.span, e.span, "{label}: applied[{i}].span");
-        // Compare the proposal envelope discriminant + carried
-        // replacement bytes (TextCorrection variant only — FixIntent
-        // payloads compare via their replacement intent discriminant).
-        let same = match (&a.proposal, &e.proposal) {
-            (
-                marque_rules::AppliedFixProposal::TextCorrection { replacement: ra },
-                marque_rules::AppliedFixProposal::TextCorrection { replacement: re },
-            ) => ra == re,
-            (
-                marque_rules::AppliedFixProposal::FixIntent(ai),
-                marque_rules::AppliedFixProposal::FixIntent(ei),
-            ) => {
-                // `ReplacementIntent` doesn't derive PartialEq (Confidence
-                // / Message payloads are not equatable). Compare the key
-                // structural fields per variant — discriminant alone
-                // would treat different scopes / fact lists / token IDs
-                // as equal and let real shim/engine mismatches through.
-                use marque_scheme::ReplacementIntent::*;
-                match (&ai.replacement, &ei.replacement) {
-                    (
-                        FactAdd {
-                            token: ta,
-                            scope: sa,
-                        },
-                        FactAdd {
-                            token: tb,
-                            scope: sb,
-                        },
-                    ) => sa == sb && format!("{ta:?}") == format!("{tb:?}"),
-                    (
-                        FactRemove {
-                            facts: fa,
-                            scope: sa,
-                        },
-                        FactRemove {
-                            facts: fb,
-                            scope: sb,
-                        },
-                    ) => {
-                        sa == sb
-                            && fa.len() == fb.len()
-                            && fa.iter().zip(fb.iter()).all(|(a, b)| {
-                                // FactRef doesn't derive PartialEq —
-                                // Debug-format equality is the cheapest
-                                // structural check that catches both
-                                // Cve(TokenId) and OpenVocab divergence.
-                                format!("{a:?}") == format!("{b:?}")
-                            })
-                    }
-                    (Recanonicalize { scope: sa }, Recanonicalize { scope: sb }) => sa == sb,
-                    _ => false,
-                }
+        match (a_line, e_line) {
+            (marque_rules::AuditLine::AppliedFix(a), marque_rules::AuditLine::AppliedFix(e)) => {
+                assert_eq!(a.rule, e.rule, "{label}: applied[{i}].rule");
+                assert_eq!(a.span, e.span, "{label}: applied[{i}].span");
+                assert_eq!(a.source, e.source, "{label}: applied[{i}].source");
+                assert_eq!(a.dry_run, e.dry_run, "{label}: applied[{i}].dry_run");
+                // Compare the rendered canonical bytes — they are the
+                // load-bearing content of a marking fix.
+                assert_eq!(
+                    a.fix.replacement.canonical.bytes(),
+                    e.fix.replacement.canonical.bytes(),
+                    "{label}: applied[{i}].fix.replacement.canonical.bytes",
+                );
             }
-            _ => false,
-        };
-        assert!(same, "{label}: applied[{i}].proposal shape differs");
-        assert_eq!(a.source, e.source, "{label}: applied[{i}].source");
-        assert_eq!(a.dry_run, e.dry_run, "{label}: applied[{i}].dry_run");
+            (
+                marque_rules::AuditLine::TextCorrection(a),
+                marque_rules::AuditLine::TextCorrection(e),
+            ) => {
+                assert_eq!(a.rule, e.rule, "{label}: text_correction[{i}].rule");
+                assert_eq!(a.span, e.span, "{label}: text_correction[{i}].span");
+                assert_eq!(a.source, e.source, "{label}: text_correction[{i}].source");
+                assert_eq!(
+                    a.dry_run, e.dry_run,
+                    "{label}: text_correction[{i}].dry_run"
+                );
+                assert_eq!(
+                    a.replacement, e.replacement,
+                    "{label}: text_correction[{i}].replacement"
+                );
+            }
+            _ => panic!("{label}: audit_lines[{i}] discriminant differs"),
+        }
     }
     assert_eq!(
         actual.remaining_diagnostics.len(),

@@ -64,15 +64,24 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
 
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
+    // PR 3c.2.D fixup F-2: migrate from retired v1
+    // `result.applied: Vec<AppliedFix>` + flat `fix.confidence` to v2
+    // `result.audit_lines: Vec<AuditLine<S>>` with
+    // `Confidence` nested at `fix.fix.replacement.confidence`. The
+    // iteration is by way of `applied_fixes()` (zero-alloc
+    // `impl Iterator`; see PM-D F-3 in
+    // `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`) so we only
+    // walk the marking-side audit lines — text-correction lines
+    // (C001 / E006) don't carry a DecoderPosterior `FixSource`.
     let mut decoder_fixes_examined = 0usize;
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         if fix.source != FixSource::DecoderPosterior {
             continue;
         }
         decoder_fixes_examined += 1;
 
-        let override_features: Vec<_> = fix
-            .confidence
+        let confidence = &fix.fix.replacement.confidence;
+        let override_features: Vec<_> = confidence
             .features
             .iter()
             .filter(|f| f.id == FeatureId::CorpusOverrideInEffect)
@@ -85,7 +94,7 @@ fn decoder_fix_carries_corpus_override_feature_when_active() {
             fix.span.start,
             fix.span.end,
             override_features.len(),
-            fix.confidence.features,
+            confidence.features,
         );
         assert_eq!(
             override_features[0].delta, 0.0,
@@ -123,15 +132,16 @@ fn decoder_fix_omits_corpus_override_feature_without_override() {
 
     let result = engine.fix(MANGLED_PORTION, FixMode::DryRun);
 
+    // PR 3c.2.D fixup F-2: see note above on the v1 → v2 migration.
     let mut decoder_fixes_examined = 0usize;
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         if fix.source != FixSource::DecoderPosterior {
             continue;
         }
         decoder_fixes_examined += 1;
 
-        let has_override_marker = fix
-            .confidence
+        let confidence = &fix.fix.replacement.confidence;
+        let has_override_marker = confidence
             .features
             .iter()
             .any(|f| f.id == FeatureId::CorpusOverrideInEffect);
@@ -140,7 +150,7 @@ fn decoder_fix_omits_corpus_override_feature_without_override() {
             "decoder-path fix at {}..{} carries CorpusOverrideInEffect \
              without an override installed — audit stream would be \
              misleading. Full features: {:?}",
-            fix.span.start, fix.span.end, fix.confidence.features,
+            fix.span.start, fix.span.end, confidence.features,
         );
     }
 

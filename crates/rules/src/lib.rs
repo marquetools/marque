@@ -41,28 +41,36 @@
 //!
 //! `FixIntent<S>` is pure data emitted by rules — deterministic,
 //! timestamp-free, classifier-free, safe to snapshot in tests.
-//! `AppliedFix<S>` wraps it (via the `AppliedFixProposal<S>` enum)
-//! with runtime context (timestamp, classifier id, dry-run flag) and
-//! is constructed **only** by `Engine::fix_inner`. This makes
-//! "suggested vs applied" a type-system invariant.
+//! `AppliedFix<S>` wraps it with runtime context (timestamp,
+//! classifier id, dry-run flag) and is constructed **only** by
+//! `Engine::fix_inner`. This makes "suggested vs applied" a
+//! type-system invariant.
 //!
 //! The Commit 2–9 transition through a legacy `FixProposal` shape
-//! retired in PR 3c.B Commit 10 — atomically with the
-//! `MARQUE_AUDIT_SCHEMA` flip from `"marque-mvp-2"` to `"marque-mvp-3"`.
-//! `AppliedFixProposal<S>` is now a two-variant enum: `FixIntent(_)`
-//! for engine-promoted rule emissions and `TextCorrection { ... }`
-//! for engine-internal C001 text replacements.
+//! retired in PR 3c.B Commit 10 (`mvp-1`/`mvp-2` → `mvp-3`); the
+//! `marque-mvp-3 → marque-1.0` atomic cutover then landed at
+//! PR 3c.2.D, reshaping `AppliedFix<S>` to carry `Canonical<S>` +
+//! `Discriminant` + BLAKE3 digests of pre-fix and canonical bytes,
+//! and splitting non-marking text corrections into a separate
+//! `AppliedTextCorrection` type (the marking-side seal stays on
+//! `AppliedFix<S>`; the text-correction-side seal lives on
+//! `AppliedTextCorrection`).
 //!
 //! # G13 (audit content ignorance)
 //!
-//! `FixIntent<S>` carries only structural references (`FactRef`,
-//! category IDs, `Scope` / `RecanonScope` tags) — no document bytes.
-//! `AppliedFixProposal::TextCorrection` carries the canonical
-//! replacement string (a corpus-derived token canonical on
+//! `AppliedFix<S>` carries a sealed [`marque_scheme::Canonical<S>`]
+//! payload (rendered token canonicals) + BLAKE3 digests of the
+//! pre-fix and canonical bytes — no document content. The
+//! `AppliedTextCorrection` channel carries only canonical
+//! replacement strings (corpus-derived token canonicals on
 //! Constitution V's permitted-identifier list, e.g. `"SECRET"`
-//! replacing a typo); it never carries the document's original bytes.
-//! Audit records emit no `original` field as of `marque-mvp-3`.
+//! replacing a typo). The T055 content-ignorance canary
+//! (`crates/engine/tests/audit_g13_canary.rs`) sweeps the
+//! regression corpora to verify no input substring ≥4 bytes appears
+//! in any emitted NDJSON record outside the permitted-identifier
+//! list.
 
+pub mod audit;
 pub mod audit_note;
 pub mod citation;
 pub mod confidence;
@@ -74,8 +82,11 @@ use marque_scheme::{MarkingScheme, Span};
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::SystemTime;
 
+pub use audit::{
+    AppliedFix, AppliedFixDetail, AppliedReplacement, AppliedTextCorrection, AuditLine,
+    Discriminant,
+};
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
 pub use citation::{
     AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
@@ -97,7 +108,7 @@ pub use smallvec::{SmallVec, smallvec};
 // types must live below us in the dependency graph). Import them
 // directly from `marque_scheme::{FactRef, RecanonScope, ReplacementIntent}`.
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
-pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate};
+pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate, to_audit_string};
 
 // ---------------------------------------------------------------------------
 // RuleId
@@ -695,345 +706,14 @@ pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
 );
 
 // ---------------------------------------------------------------------------
-// AppliedFix (= Audit Record)
+// AppliedFix (= Audit Record) — v2 / marque-1.0
+//
+// Post PR 3c.2.D the canonical `AppliedFix<S>` type is the v2 shape in
+// `marque_rules::audit::AppliedFix` (re-exported through this crate's
+// prelude). The pre-cutover `AppliedFixProposal<S>` envelope retired
+// atomically with the schema flip. See `crates/rules/src/audit.rs`
+// for the active type definition + engine-promotion constructor.
 // ---------------------------------------------------------------------------
-
-/// Engine-promoted proposal payload — the body of an [`AppliedFix`].
-///
-/// Carries either a rule-emitted [`FixIntent<S>`] or an engine-internal
-/// text-correction (C001, the `[corrections]` map). The legacy
-/// `FixProposal` shape retired in PR 3c.B Commit 10 atomically with
-/// the `marque-mvp-3` audit schema flip; no rule emits the legacy
-/// shape post-cutover.
-///
-/// The `TextCorrection` variant carries only the canonical
-/// replacement string (a corpus-derived token canonical, e.g.
-/// `"SECRET"` replacing a typo). The original document bytes are
-/// never copied into the audit record — Constitution V Principle V
-/// (G13). The audit envelope's `proposal.kind` discriminant tells
-/// downstream consumers which arm produced the fix.
-///
-/// # Variant sizing
-///
-/// `FixIntent<S>` is significantly larger than `TextCorrection { replacement:
-/// SmolStr }` because it carries `Confidence` + `Message` + `SmallVec`
-/// inline storage. The `large_enum_variant` lint is suppressed here
-/// because the size disparity is an intentional tradeoff: storing
-/// `FixIntent<S>` inline eliminates the per-fix `Box::new` heap
-/// allocation that the previous `Box<FixIntent<S>>` incurred (CO-1 perf
-/// candidate), at the cost of every element in `Vec<AppliedFix<S>>`
-/// occupying the larger variant's footprint regardless of which arm is
-/// active.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
-pub enum AppliedFixProposal<S: MarkingScheme> {
-    /// Rule-emitted structural fix intent — the sole rule-emission
-    /// channel post Commit 10. Stored inline (not boxed) to eliminate
-    /// the per-fix heap allocation that `Box<FixIntent<S>>` previously
-    /// incurred (CO-1 perf candidate).
-    FixIntent(FixIntent<S>),
-
-    /// Engine-internal text correction — the C001 path
-    /// (`[corrections]` map). Constructed only by
-    /// `Engine::apply_text_corrections`; never by a rule crate. The
-    /// `replacement` field carries the canonical token bytes
-    /// (corpus-derived, on Constitution V's permitted-identifier
-    /// list) — no document content.
-    TextCorrection {
-        /// Canonical replacement bytes (corpus-derived token canonical).
-        replacement: SmolStr,
-    },
-}
-
-// Manual Clone for AppliedFixProposal<S> — see the parallel Clone
-// impl on `AppliedFix<S>` for the rationale. `S` itself is never
-// cloned; only `S::OpenVocabRef` (which is `Clone`-bounded by the
-// `MarkingScheme` trait) flows through.
-impl<S: MarkingScheme> Clone for AppliedFixProposal<S> {
-    fn clone(&self) -> Self {
-        match self {
-            AppliedFixProposal::FixIntent(intent) => AppliedFixProposal::FixIntent(intent.clone()),
-            AppliedFixProposal::TextCorrection { replacement } => {
-                AppliedFixProposal::TextCorrection {
-                    replacement: replacement.clone(),
-                }
-            }
-        }
-    }
-}
-
-/// A promoted `FixIntent<S>` (or engine-internal `TextCorrection`)
-/// with runtime context.
-///
-/// Constructed **only** by `Engine::fix_inner` (or its
-/// `apply_text_corrections` partner) at the moment a fix meets the
-/// confidence threshold. Never constructed by a rule or suggestion
-/// path. Serves as the audit record: the NDJSON schema at
-/// `contracts/audit-record.md` (active version: `marque-mvp-3`)
-/// serializes this type.
-///
-/// `classifier_id` is an `Arc<str>` so promoting many fixes from a
-/// single document only clones an atomic refcount, not the
-/// underlying string.
-///
-/// # Generic over the marking scheme
-///
-/// `AppliedFix<S>` is generic so the `FixIntent(FixIntent<S>)`
-/// variant of [`AppliedFixProposal`] preserves the scheme-typed
-/// payload. `marque-engine` and downstream surfaces (server, WASM,
-/// CLI) instantiate `AppliedFix<CapcoScheme>` at the boundary.
-///
-/// # Top-level audit fields
-///
-/// `rule`, `span`, `confidence`, `source`, and `migration_ref` are
-/// snapshot at the **top level** of `AppliedFix` (rather than
-/// nested under `proposal`) so audit emitters do not have to descend
-/// into the proposal variant for the common audit-shape fields. The
-/// engine snapshots them from the intent (or text-correction
-/// parameters) at promotion time; a future phase may adjust them
-/// for region context before promotion, so they can diverge from
-/// the original `FixIntent.confidence` / `FixIntent.source`.
-#[non_exhaustive]
-#[derive(Debug)]
-pub struct AppliedFix<S: MarkingScheme> {
-    /// The fix's rule ID. Snapshot at the top level so audit
-    /// emitters don't have to peer into the proposal variant.
-    pub rule: RuleId,
-    /// Byte span in the original source the fix targeted.
-    pub span: Span,
-    /// The rule's structural emission (or engine-internal
-    /// `TextCorrection`).
-    pub proposal: AppliedFixProposal<S>,
-    /// Snapshot of the fix's confidence at promotion time.
-    pub confidence: Confidence,
-    /// Snapshot of the fix's provenance at promotion time.
-    pub source: FixSource,
-    /// Reference to the CAPCO rule or migration document
-    /// justifying this fix. Snapshot from the intent (or `None` for
-    /// the C001 text-correction path).
-    pub migration_ref: Option<&'static str>,
-    /// Timestamp of application (clock-injected).
-    pub timestamp: SystemTime,
-    /// Classifier identity from runtime config. `None` if not configured.
-    pub classifier_id: Option<Arc<str>>,
-    /// `true` if produced under `--dry-run` (FR-006).
-    pub dry_run: bool,
-    /// Caller-supplied input identifier (file path, "-" for stdin, `None` if N/A).
-    pub input: Option<Arc<str>>,
-}
-
-// Manual Clone for AppliedFix<S> that does NOT require S: Clone.
-// The scheme `S` itself is never cloned; what matters is that its
-// associated type `S::OpenVocabRef` is `Clone` (which is a trait
-// bound on `MarkingScheme::OpenVocabRef`). The derive macro would
-// over-constrain to `S: Clone`, breaking call sites where
-// `S = CapcoScheme` (stateful, not derived `Clone`).
-impl<S: MarkingScheme> Clone for AppliedFix<S> {
-    fn clone(&self) -> Self {
-        Self {
-            rule: self.rule.clone(),
-            span: self.span,
-            proposal: self.proposal.clone(),
-            confidence: self.confidence.clone(),
-            source: self.source,
-            migration_ref: self.migration_ref,
-            timestamp: self.timestamp,
-            classifier_id: self.classifier_id.clone(),
-            dry_run: self.dry_run,
-            input: self.input.clone(),
-        }
-    }
-}
-
-impl<S: MarkingScheme> AppliedFix<S> {
-    /// Promote a `FixProposal` to an `AppliedFix` with runtime context.
-    ///
-    /// # Reserved name (FR-040 lint contract)
-    ///
-    /// The function name `__engine_promote` is **reserved by the
-    /// marque project**. The `tools/promote-callsite-lint/` CI lint
-    /// (FR-040) flags every call expression whose path's last
-    /// segment is `__engine_promote`, regardless of the leading
-    /// qualifier — qualified, fully-qualified, `Self::`, aliased
-    /// (`use AppliedFix as AF; AF::__engine_promote(...)`), or
-    /// `<AppliedFix as Trait>::` UFCS forms. Defining or calling a
-    /// free function or method with this exact name elsewhere will
-    /// fail the lint. The lint is an external AST-walking tool —
-    /// it does NOT honor `#[allow(...)]` attributes, because Rust
-    /// attribute lints and external CI lints are separate
-    /// mechanisms. The remediation paths are: (a) rename the
-    /// offending function (the simplest answer; the `__` prefix is
-    /// project-reserved precisely so this rename is a normal cost),
-    /// (b) co-locate the fn inside the engine's allow-listed surface
-    /// (`Engine::fix_inner` / `Engine::apply_text_corrections` /
-    /// the `engine_promotion_token` helper at
-    /// `crates/engine/src/engine.rs`), or (c) extend the lint's
-    /// allow-list in `tools/promote-callsite-lint/src/callsite.rs`
-    /// after explicit team-review approval (and add a regression
-    /// test pinning the new shape). The `__` prefix and
-    /// `#[doc(hidden)]` attribute below reinforce that the name is
-    /// project-internal — anyone reading this name in source should
-    /// know they're looking at the engine-only audit-promotion seal.
-    ///
-    /// # Engine-only contract (production code)
-    ///
-    /// This constructor exists in `marque-rules` for type co-location, but
-    /// in **production code** **must only be called from
-    /// `marque-engine::Engine::fix`**. Rule crates and CLI code must never
-    /// construct `AppliedFix` directly — they produce `FixProposal`
-    /// values and let the engine promote them.
-    ///
-    /// The engine snapshots `proposal.confidence` and `proposal.source`
-    /// into the top-level `confidence` / `source` fields at promotion
-    /// time. A future phase may adjust these per region-context before
-    /// snapshotting; Phase 2 copies them unchanged.
-    ///
-    /// # Type-level seal
-    ///
-    /// The `_token: EnginePromotionToken` parameter is the seal: an
-    /// instance can only be obtained via
-    /// [`EnginePromotionToken::__engine_construct`], whose
-    /// engine-only contract mirrors this one. Because
-    /// `EnginePromotionToken`'s sole field is private to
-    /// `marque-rules`, no external crate can brace-construct one — the
-    /// bypass surface collapses to a single named type. A grep for
-    /// `EnginePromotionToken` outside `marque-engine` (or test code
-    /// covered by the carve-out below) flags every Constitution V
-    /// violation in one pass.
-    ///
-    /// The seal is still convention-based at the cross-crate level
-    /// (Rust does not provide a way to scope `pub` to a specific
-    /// downstream crate without `cfg` features that any caller can
-    /// flip), but the convention is now load-bearing at the type
-    /// level: the named token threads the bypass through one
-    /// auditable choke point instead of leaving it as a single
-    /// generically-named function.
-    ///
-    /// # Test-fixture carve-out
-    ///
-    /// Test code MAY call `__engine_promote` directly (and mint a
-    /// token via [`EnginePromotionToken::__engine_construct`]) to
-    /// construct synthetic `AppliedFix` fixtures for unit-testing
-    /// audit-emission machinery (renderers, sentinel checks, NDJSON
-    /// serialization) without spinning up a full `Engine`. The
-    /// carve-out is scoped per Constitution V Principle V:
-    ///
-    /// - Call sites MUST live inside `#[cfg(test)]` modules, `tests/`
-    ///   integration files, or test-utility crates gated as
-    ///   `dev-dependencies`. Production code calling this constructor
-    ///   from `cfg(not(test))` violates the contract.
-    /// - Fabricated `AppliedFix` values MUST NOT be commingled with
-    ///   engine-promoted fixes (spliced into a real audit stream,
-    ///   etc.).
-    /// - The carve-out covers test-fixture *construction* only. CLI
-    ///   helpers, batch tooling, and benchmark drivers that want an
-    ///   `AppliedFix` for non-test purposes are not in scope.
-    ///
-    /// Each test call site SHOULD carry an inline comment naming the
-    /// carve-out so future reviewers don't have to re-derive the
-    /// policy.
-    ///
-    /// Promote a [`FixIntent<S>`] to an [`AppliedFix<S>`] with
-    /// runtime context.
-    ///
-    /// Snapshots `confidence`, `source`, and `migration_ref` from
-    /// `intent` at the top level of the resulting `AppliedFix`. The
-    /// intent itself moves into [`AppliedFixProposal::FixIntent`].
-    ///
-    /// # Reserved name (FR-040 lint contract)
-    ///
-    /// The function name `__engine_promote` is reserved by the
-    /// marque project. The `tools/promote-callsite-lint/` CI lint
-    /// flags every call expression whose path's last segment is
-    /// `__engine_promote` regardless of the leading qualifier
-    /// (qualified, fully-qualified, `Self::`, aliased, UFCS). See
-    /// the top of this file's `EnginePromotionToken` doc for the
-    /// rationale and remediation paths.
-    //
-    // `clippy::too_many_arguments` allowed because every parameter
-    // carries engine-only runtime context that the seal must capture
-    // atomically: the rule_id (audit-record provenance), the span
-    // (where the fix lands), the intent (the rule's emission), the
-    // clock-injected timestamp, the classifier identity, the dry-run
-    // flag, the caller-supplied input identifier, and the
-    // EnginePromotionToken seal proof. Refactoring into a struct
-    // argument would shift the API surface without reducing the
-    // parameter count visible at the engine call site.
-    #[doc(hidden)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn __engine_promote(
-        rule: RuleId,
-        span: Span,
-        intent: FixIntent<S>,
-        timestamp: SystemTime,
-        classifier_id: Option<Arc<str>>,
-        dry_run: bool,
-        input: Option<Arc<str>>,
-        _token: EnginePromotionToken,
-    ) -> Self {
-        let confidence = intent.confidence.clone();
-        let source = intent.source;
-        let migration_ref = intent.migration_ref;
-        Self {
-            rule,
-            span,
-            proposal: AppliedFixProposal::FixIntent(intent),
-            confidence,
-            source,
-            migration_ref,
-            timestamp,
-            classifier_id,
-            dry_run,
-            input,
-        }
-    }
-
-    /// Engine-only promotion path for text corrections (C001 /
-    /// `[corrections]` map).
-    ///
-    /// `Engine::apply_text_corrections` is the sole production
-    /// call site. The C001 path runs pre-scanner, so there is no
-    /// rule-emitted `FixIntent` to promote — the engine carries
-    /// the canonical replacement bytes directly through
-    /// [`AppliedFixProposal::TextCorrection`]. The `replacement`
-    /// payload is the corpus-derived canonical token (e.g.
-    /// `"SECRET"` replacing `"SERCET"`); the original document
-    /// bytes are never copied into the audit record (Constitution
-    /// V Principle V).
-    ///
-    /// The same engine-only contract and test-fixture carve-out
-    /// from [`AppliedFix::__engine_promote`] apply.
-    //
-    // `clippy::too_many_arguments` allowed for the same reason as
-    // `__engine_promote`.
-    #[doc(hidden)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn __engine_promote_text_correction(
-        rule: RuleId,
-        span: Span,
-        replacement: SmolStr,
-        source: FixSource,
-        confidence: Confidence,
-        timestamp: SystemTime,
-        classifier_id: Option<Arc<str>>,
-        dry_run: bool,
-        input: Option<Arc<str>>,
-        _token: EnginePromotionToken,
-    ) -> Self {
-        Self {
-            rule,
-            span,
-            proposal: AppliedFixProposal::TextCorrection { replacement },
-            confidence,
-            source,
-            migration_ref: None,
-            timestamp,
-            classifier_id,
-            dry_run,
-            input,
-        }
-    }
-}
 
 /// Engine-only proof-of-construction token for [`AppliedFix::__engine_promote`].
 ///
@@ -1115,7 +795,10 @@ impl EnginePromotionToken {
 /// `fix` field. The pre-Commit-10 dual-channel shape (legacy
 /// `FixProposal` + structural `FixIntent<S>`) collapsed into a
 /// single `fix: Option<FixIntent<S>>` channel atomically with the
-/// `marque-mvp-3` audit schema flip.
+/// `marque-mvp-3` audit schema bump; the `marque-1.0` cutover at
+/// PR 3c.2.D then reshaped the engine-side `AppliedFix<S>` audit
+/// record but left the rule-side `Diagnostic<S>.fix` channel
+/// unchanged.
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct Diagnostic<S: MarkingScheme> {
@@ -1308,8 +991,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
     /// the CAPCO `CorrectionsMapRule`. The replacement bytes are
     /// carried in [`Self::text_correction`]; the engine's
     /// `apply_text_corrections` reads this field and promotes it
-    /// to an [`AppliedFix`] via
-    /// [`AppliedFix::__engine_promote_text_correction`].
+    /// to an [`AppliedTextCorrection`] via
+    /// [`AppliedTextCorrection::__engine_promote_text_correction`].
     // 9 args is the irreducible carrying capacity of a text-correction
     // diagnostic: id/severity/span/message/citation for the diagnostic
     // surface + replacement/source/confidence/migration_ref for the

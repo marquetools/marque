@@ -290,41 +290,56 @@ pub struct MessageArgs {
 ## `AppliedFix` v2 (PR 3c, FR-002 / FR-004 / FR-005 / FR-026)
 
 Audit record. Reshaped to carry only content-ignorant identifiers.
+Per PM-D-7 / PM-D-11 the v2 shape is flat `AppliedReplacement<S>`
+(no enum discriminator on the struct — the discriminant is derived
+at audit-emit time from `FixSource`), `SystemTime` (not
+`DateTime<Utc>`), `Option<Arc<str>>` for classifier identity (not
+a `ClassifierId` newtype), and includes `source: FixSource` at the
+top level.
 
 ```rust
-pub struct AppliedFix {
-    pub rule: RuleId,                              // (scheme, predicate-id) form per FR-026 / R-3
-    pub severity: Severity,
+pub struct AppliedFix<S: MarkingScheme> {
+    pub rule: RuleId,
+    pub severity: Severity,                         // top-level snapshot from Diagnostic.severity (PM-D-11)
     pub span: Span,
-    pub fix: AppliedFixDetail,
+    pub fix: AppliedFixDetail<S>,
+    pub source: FixSource,                          // recognizer provenance (PM-D-7 emit-time discriminant input)
     pub message: Message,                           // template + args; FR-003
-    pub timestamp: DateTime<Utc>,
-    pub classifier_id: Option<ClassifierId>,
+    pub timestamp: SystemTime,                      // not DateTime<Utc>
+    pub classifier_id: Option<Arc<str>>,            // not a ClassifierId newtype
     pub dry_run: bool,
+    pub input: Option<Arc<str>>,                    // caller-supplied input identifier
 }
 
-pub struct AppliedFixDetail {
-    pub replacement: FixReplacement,                // discriminant Strict | Decoder
+pub struct AppliedFixDetail<S: MarkingScheme> {
+    pub replacement: AppliedReplacement<S>,         // flat struct; no Strict/Decoder enum
     pub original_span: Span,                        // FR-004: span only, no bytes
     pub original_digest: Blake3Hash,                // BLAKE3 of pre-fix bytes
 }
 
-pub enum FixReplacement {
-    Strict { canonical: Canonical<CapcoScheme>, confidence: Confidence },
-    Decoder { canonical: Canonical<CapcoScheme>, confidence: Confidence },
+pub struct AppliedReplacement<S: MarkingScheme> {
+    pub canonical: Canonical<S>,                    // engine-rendered canonical payload
+    pub confidence: Confidence,                     // confidence snapshot
+    pub bytes_digest: Blake3Hash,                   // BLAKE3 of canonical.bytes() (PM-D-6, precomputed at promotion)
 }
 
-pub struct RuleId(pub &'static str /* scheme */, pub &'static str /* predicate_id */);
+/// Derived at audit-emit time from `AppliedFix.source` via the 5-to-2 collapse
+/// in `discriminant_from_source` (PM-D-7). NOT stored on `AppliedReplacement`.
+pub enum Discriminant { Strict, Decoder }
+
+pub struct RuleId(pub &'static str /* predicate_id */);
 ```
 
 **Validation rules**:
 - `AppliedFix::__engine_promote(...)` is `pub #[doc(hidden)]` and reachable only from `Engine::fix_inner` in production code (FR-005). Test-fixture carve-out per Constitution V Principle V remains in effect; promote-callsite lint (FR-040, AST-based) enforces.
-- `AppliedFix.fix.replacement` carries `Canonical<S>` after PR 3c.2 (per FR-035a); `marque-mvp-3` records (PR 3c.B Commit 10 through PR 3c.2 inclusive) carry the `FixIntent | TextCorrection` discriminated `proposal` sub-object instead. The `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed); `FixReplacement::Strict | Decoder` discriminant tracks the recognizer that produced the fix in `marque-1.0` records.
-- `AppliedFix.message` is `Message` (template + args) in `marque-1.0` records (FR-003 fully closed at PR 3c.2); `marque-mvp-3` records emit no `message` field at all (the closed enum exists in code but isn't yet serialized into audit envelopes — see `pr-7c-architect-preflight.md` audit findings).
-- `RuleId` is the 1-tuple `(&'static str)` form through `marque-1.0`; the 2-tuple `(scheme, predicate-id)` migration is post-PR-10 per FR-049 (the stability freeze begins at PR 10 merge; the 2-tuple change requires the freeze to be unfrozen). Legacy `E###`/`W###`/`S###`/`C###` IDs are retired from rule-id surface during PR 3c per FR-026, but the wire-format remains the 1-tuple string through `marque-1.0`.
-- Pre-cutover (`marque-mvp-2`) records are unreadable by `marque-mvp-3` and later binaries; `marque-mvp-3` records are unreadable by `marque-1.0` binaries (FR-037 — clean break at each stage); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034).
+- The FR-040 lint's reserved-name list at HEAD: `__engine_promote`, `__engine_promote_text_correction` (PM-D-4 text-correction split; PR 3c.2.D fixup F-1 added the lint coverage), `__engine_construct`. Exact-equality match on the last path segment — back-compat names like `__engine_promote_legacy` are deliberately NOT covered.
+- `AppliedFix.fix.replacement` carries `Canonical<S>` post-PR-3c.2.D (per FR-035a). The `Canonical<S>` already encodes provenance (CVE-typed vs. open-vocab-typed); `Discriminant::Strict | Decoder` (derived at emit time from `AppliedFix.source` via PM-D-7's 5-to-2 collapse) tracks the recognizer that produced the fix. The discriminant is NOT a struct field on `AppliedReplacement<S>` — it's projected at JSON emit time.
+- `AppliedFix.message` is `Message` (template + args) — FR-003 fully closed at PR 3c.2.D. The template carries the `MessageTemplate` variant name verbatim via `as_str()`; the args object holds the closed-set permitted-identifier types (`token`, `expected_token`, `actual_token`, `category`, `span`, `digest`, `confidence`, `feature_ids`).
+- `RuleId` is the 1-tuple `(&'static str)` form through `marque-1.0`; the 2-tuple `(scheme, predicate-id)` migration is post-PR-10 per FR-049 (the stability freeze begins at PR 10 merge; the 2-tuple change requires the freeze to be unfrozen).
+- Pre-cutover (`marque-mvp-3`) records are not interoperable with `marque-1.0` binaries (FR-037 — clean break, no `marque-audit-reader` crate scheduled); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034). (`marque-mvp-1` / `marque-mvp-2` retired in earlier PRs.)
+- Non-marking text corrections (C001 corrections-map matches, the E006-shaped deprecation path) flow through a separate `AppliedTextCorrection` type carrying a corpus-derived `SmolStr` replacement (PM-D-4). The two types are disjoint by construction; G13 boundary is type-level checkable.
 
-**Serialization**: NDJSON. Schema field is `"schema": "marque-mvp-3"` today (per PR 3c.B Commit 10); `"schema": "marque-1.0"` after PR 3c.2 (FR-035 amended, FR-035a). The exact JSON shape per stage is documented in `contracts/audit-record.md` (§0 = active `marque-mvp-3`; §1+ = `marque-1.0` target shape modulo the 1-tuple-RuleId caveat).
+**Serialization**: NDJSON. Schema field is `"schema": "marque-1.0"` per FR-035 / FR-035a. The exact JSON shape is documented in `contracts/audit-record.md` §"NDJSON record shape".
 
 ---
 
@@ -732,10 +747,10 @@ Vec<Diagnostic { fix: Option<FixIntent<S>> }>       ◀── FR-025: rules emit
    │   - sort + non-overlap (C-1, I-3)
    │   - render FixIntent → Canonical<S> via S::render_canonical
    │   - construct AppliedFix via __engine_promote
-Vec<AppliedFix>       ◀── FR-002: content-ignorant
+Vec<AuditLine>        ◀── FR-002: content-ignorant
    │                     ◀── FR-026: rule-id surface (string form through marque-1.0;
    │                     │           2-tuple post-PR-10 per FR-049)
-   │                     ◀── FR-035: schema "marque-mvp-3" today; "marque-1.0" after PR 3c.2 (FR-035a)
+   │                     ◀── FR-035 / FR-035a: schema "marque-1.0" (active post PR 3c.2.D)
    ▼ NDJSON serializer
 Audit log                                      ◀── SC-001: canary scan finds zero input bytes
 

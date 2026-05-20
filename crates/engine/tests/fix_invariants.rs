@@ -173,8 +173,7 @@ fn i4_suggest_severity_never_appears_in_applied_audit_stream() {
     // has NO corresponding AppliedFix with the same (rule, span).
     use std::collections::HashSet;
     let applied_keys: HashSet<(String, usize, usize)> = result
-        .applied
-        .iter()
+        .applied_fixes()
         .map(|a| (a.rule.as_str().to_string(), a.span.start, a.span.end))
         .collect();
     for d in &result.remaining_diagnostics {
@@ -200,7 +199,7 @@ fn i4_suggest_severity_never_appears_in_applied_audit_stream() {
 fn i18_applied_fix_spans_are_pairwise_disjoint_on_simple_input() {
     let src = b"SECRET//NOFORN\n(S//NF)\n";
     let result = engine().fix(src, FixMode::Apply);
-    let spans: Vec<_> = result.applied.iter().map(|a| a.span).collect();
+    let spans: Vec<_> = result.applied_fixes().map(|a| a.span).collect();
     for i in 0..spans.len() {
         for j in (i + 1)..spans.len() {
             let a = spans[i];
@@ -221,7 +220,7 @@ fn i18_applied_fix_spans_disjoint_when_text_correction_present() {
     let eng = engine_with_corrections();
     let src = b"SERCET//NOFORN\n(S//NF)\n";
     let result = eng.fix(src, FixMode::Apply);
-    let spans: Vec<_> = result.applied.iter().map(|a| a.span).collect();
+    let spans: Vec<_> = result.applied_fixes().map(|a| a.span).collect();
     for i in 0..spans.len() {
         for j in (i + 1)..spans.len() {
             let a = spans[i];
@@ -248,7 +247,7 @@ fn i19_same_rule_and_span_never_repeats_in_audit_stream() {
     let src = b"SERCET//NOFORN\n(S//NF)\n(C//REL TO USA, GBR)\n";
     let result = eng.fix(src, FixMode::Apply);
     let mut seen: HashSet<(String, usize, usize)> = HashSet::new();
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         let key = (fix.rule.as_str().to_string(), fix.span.start, fix.span.end);
         assert!(
             seen.insert(key.clone()),
@@ -267,8 +266,7 @@ fn i19_remaining_diagnostics_do_not_duplicate_applied_keys() {
     let src = b"SERCET//NOFORN\n(S//NF)\n";
     let result = eng.fix(src, FixMode::Apply);
     let applied_keys: HashSet<(String, usize, usize)> = result
-        .applied
-        .iter()
+        .applied_fixes()
         .map(|a| (a.rule.as_str().to_string(), a.span.start, a.span.end))
         .collect();
     for d in &result.remaining_diagnostics {
@@ -298,7 +296,7 @@ fn dry_run_audit_records_carry_dry_run_flag() {
     let eng = engine_with_corrections();
     let src = b"SERCET//NOFORN\n";
     let result = eng.fix(src, FixMode::DryRun);
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         assert!(
             fix.dry_run,
             "DryRun mode should set dry_run=true on every applied record"
@@ -320,7 +318,7 @@ fn apply_mode_audit_records_carry_apply_flag() {
     let eng = engine_with_corrections();
     let src = b"SERCET//NOFORN\n";
     let result = eng.fix(src, FixMode::Apply);
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         assert!(
             !fix.dry_run,
             "Apply mode should set dry_run=false on every applied record"

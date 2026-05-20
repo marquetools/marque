@@ -164,6 +164,15 @@ wasm-opt = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# PR 3c.2.D / D5: `blake3::Hash` is the wire type for the `marque-1.0`
+# audit-record `original_digest` / `bytes_digest` fields. The WASM
+# renderer formats `blake3:<hex>` per `contracts/audit-record.md`
+# §137 / §151, byte-identical to the CLI surface. The workspace pin
+# carries `default-features = false, features = ["pure"]` so the
+# WASM build path is pure-Rust (no SIMD asm); Constitution III
+# WASM-safety preserved. Constitution VII / R-D-1: WASM size delta
+# measured at PR open per PM-D-16.
+blake3 = { workspace = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 humantime = { workspace = true }
 # `marque-config` and `marque-engine` are pinned at the workspace level
