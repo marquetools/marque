@@ -1058,6 +1058,9 @@ fn try_fast_parse_us_class_and_dissem(kind: MarkingType, bytes: &[u8]) -> Option
             if token.is_empty() || token.chars().any(|c| c.is_ascii_whitespace() || c == ',') {
                 return None;
             }
+            let token = marque_ism::marking_forms::banner_to_portion(token)
+                .or_else(|| marque_ism::marking_forms::title_to_portion(token))
+                .unwrap_or(token);
             let control = DissemControl::parse(token)?;
             out.push(control);
         }
