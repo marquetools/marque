@@ -13,14 +13,20 @@
 use marque_ism::{Classification, CountryCode};
 use marque_scheme::TokenRef;
 
-use super::super::constraints::{
-    e012_dual_classification, e014_joint_rel_to_coverage, e021_rd_frd_requires_noforn,
-    e024_rd_precedence, e038_dos_dissem_requires_noforn, e070_frd_tfni_precedence,
-};
+use super::super::constraints::{e012_dual_classification, e014_joint_rel_to_coverage};
 use super::super::*;
 use super::class_floor::{class_floor_catalog_eval, is_class_floor_catalog_name};
 use super::joint_hcs::{hcs_system_constraints, joint_requires_usa};
 use super::sci_per_system::{is_sci_per_system_catalog_name, sci_per_system_catalog_eval};
+// PR-E (#371): tier-1 mask-compiled predicates replace the structural
+// slice walks that lived in `constraints/helpers.rs` pre-PR-E. The
+// helpers were retired in the same commit per project memory
+// `feedback_pre_users_no_deprecation_phasing.md` — marque is
+// pre-users; the alias surface and re-exports go with the helpers.
+use super::tier1_mask::{
+    e021_rd_frd_requires_noforn, e024_rd_precedence, e038_dos_dissem_requires_noforn,
+    e070_frd_tfni_precedence,
+};
 
 // ---------------------------------------------------------------------------
 // Predicate implementations (free functions — trait impls delegate here)
