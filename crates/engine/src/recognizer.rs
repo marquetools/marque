@@ -41,8 +41,6 @@
 //! line 609-612). Callers MUST treat that as "no plausible
 //! interpretation," not as a silently-fabricated marking.
 
-use std::sync::LazyLock;
-
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::Parser;
 use marque_ism::{
@@ -52,32 +50,6 @@ use marque_ism::{
 use marque_scheme::MarkingScheme;
 use marque_scheme::ambiguity::Parsed;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
-
-/// Module-scope CAPCO scheme constructed lazily on first use.
-///
-/// Per `docs/plans/2026-05-20-pr3c2-b-pm-decisions.md` PM-B-1 this is
-/// the transitional shape introduced at PR 3c.2.B: the `Recognizer<S>`
-/// trait surface does not thread `&S` through `recognize(...)` today,
-/// so engine hot-path call sites that need to invoke
-/// `<S as MarkingScheme>::canonicalize` cannot reach a scheme via the
-/// trait. The module-scope `LazyLock` carries the scheme until the
-/// follow-up `engine-S-generic-recognizer-cleanup` issue (#634) lands
-/// the cleaner shape (threading `&S` through `Recognizer<S>::recognize`).
-///
-/// `CapcoScheme::new()` is NOT zero-cost — it builds `Vec<Category>`,
-/// `Vec<Constraint>`, and `Vec<PageRewrite>` tables at every call
-/// (see `crates/capco/src/scheme/adapter.rs:67-76`); per-call
-/// construction at this hot-path site would be a measurable
-/// allocation regression and violate Constitution I
-/// (Uncompromising Performance). `LazyLock` amortizes that cost
-/// across the engine's lifetime.
-///
-// TODO(engine-S-generic-recognizer-cleanup, #634): retire this static
-// alongside `crates/engine/src/decoder.rs::SCHEME` and
-// `crates/engine/src/engine.rs::bridge_scheme` once `Recognizer<S>`
-// gains a `&S` argument. Targets post-1.0 cleanup; tracked at GitHub
-// issue #634 (`engine-S-generic-recognizer-cleanup`).
-static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 /// Strict-path recognizer. Zero false positives by construction —
 /// delegates to the existing [`Parser`], which only accepts the
@@ -96,7 +68,13 @@ impl StrictRecognizer {
 }
 
 impl Recognizer<CapcoScheme> for StrictRecognizer {
-    fn recognize(&self, bytes: &[u8], offset: usize, _cx: &ParseContext) -> Parsed<CapcoMarking> {
+    fn recognize(
+        &self,
+        bytes: &[u8],
+        offset: usize,
+        scheme: &CapcoScheme,
+        _cx: &ParseContext,
+    ) -> Parsed<CapcoMarking> {
         // `_cx.strict_evidence` is always satisfied here — this
         // recognizer only emits candidates that hit the strict grammar.
         // `zone` / `position` are rule-side concerns, not parser input.
@@ -122,13 +100,10 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
                 // PR 3c.2.B B2: canonicalization seam migrated from
                 // the `marque_ism::from_parsed_unchecked` adapter to
                 // the `MarkingScheme::canonicalize` trait method per
-                // PM-B-1. The recognizer is the boundary between the
-                // borrowed parser output and the owned form rules
-                // consume. `SCHEME` (above) carries the transitional
-                // scheme instance until `Recognizer<S>::recognize`
-                // gains a `&S` argument under
-                // `engine-S-generic-recognizer-cleanup` (#634).
-                let mut attrs = SCHEME.canonicalize(parsed.attrs);
+                // PM-B-1. The recognizer receives the scheme via the
+                // `&S` parameter threaded through `recognize()` after
+                // `engine-S-generic-recognizer-cleanup` (#634) landed.
+                let mut attrs = scheme.canonicalize(parsed.attrs);
                 // Two shifts collapsed into one (issue #431):
                 //   * `leading_ws` — the parser saw `parse_bytes`, which
                 //     begins `leading_ws` bytes after `bytes[0]`, so its
@@ -282,7 +257,14 @@ fn is_cab_head(bytes: &[u8]) -> bool {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
+
+    /// Shared scheme instance for the test module. `CapcoScheme::new()`
+    /// builds non-trivial `Vec` tables; borrowing `&*TEST_SCHEME` avoids
+    /// repeated allocation across tests.
+    static TEST_SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
     #[test]
     fn infer_marking_type_portion_on_leading_paren() {
@@ -335,7 +317,7 @@ mod tests {
     fn strict_recognizer_resolves_portion_unambiguously() {
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(S//NF)", 0, &cx) {
+        match rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Unambiguous(_) => {}
             other => panic!("expected Unambiguous, got {other:?}"),
         }
@@ -351,7 +333,7 @@ mod tests {
         // zero-candidate Ambiguous.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(R)", 0, &cx) {
+        match rx.recognize(b"(R)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "bare (R) must be zero-candidate, got {} candidates",
@@ -375,7 +357,7 @@ mod tests {
         // which they are not) is caught here.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(R//NF)", 0, &cx) {
+        match rx.recognize(b"(R//NF)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "(R//NF) must be zero-candidate, got {} candidates",
@@ -396,7 +378,7 @@ mod tests {
         // origin evidence; `R` first is the bug-case `Us(Restricted)`.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"R//USA, GBR", 0, &cx) {
+        match rx.recognize(b"R//USA, GBR", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "R//USA, GBR must be zero-candidate, got {} candidates",
@@ -426,7 +408,7 @@ mod tests {
         // that would silently let `Us(Restricted)` slip through.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", 0, &cx) {
+        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "RESTRICTED//FGI DEU//NOFORN must be zero-candidate, \
@@ -453,7 +435,7 @@ mod tests {
         // never reach the bug path the predicate gates against.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(//FGI R//NF)", 0, &cx) {
+        match rx.recognize(b"(//FGI R//NF)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Unambiguous(m) => {
                 assert!(
                     !is_us_restricted(&m),
@@ -474,7 +456,7 @@ mod tests {
         // that don't require foreign-origin context.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", 0, &cx) else {
+        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", 0, &*TEST_SCHEME, &cx) else {
             panic!("(S) must parse to a SECRET portion");
         };
         assert!(
@@ -489,7 +471,7 @@ mod tests {
         let cx = ParseContext::default();
         // Missing closing paren — parser rejects; recognizer surfaces
         // zero-candidate Ambiguous per the trait contract.
-        match rx.recognize(b"(S//NF", 0, &cx) {
+        match rx.recognize(b"(S//NF", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(candidates.is_empty()),
             other => panic!("expected zero-candidate Ambiguous, got {other:?}"),
         }
@@ -508,7 +490,7 @@ mod tests {
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
         let input: &[u8] = b"(S//NF)";
-        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &cx) else {
+        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &*TEST_SCHEME, &cx) else {
             panic!("strict parse should succeed");
         };
         assert!(
@@ -540,10 +522,10 @@ mod tests {
         // engine relies on for its zero-post-pass behavior.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(at_zero) = rx.recognize(b"(S//NF)", 0, &cx) else {
+        let Parsed::Unambiguous(at_zero) = rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) else {
             panic!("strict parse should succeed at offset=0");
         };
-        let Parsed::Unambiguous(at_100) = rx.recognize(b"(S//NF)", 100, &cx) else {
+        let Parsed::Unambiguous(at_100) = rx.recognize(b"(S//NF)", 100, &*TEST_SCHEME, &cx) else {
             panic!("strict parse should succeed at offset=100");
         };
         assert_eq!(at_zero.0.token_spans.len(), at_100.0.token_spans.len());
@@ -573,12 +555,13 @@ mod tests {
         let cx = ParseContext::default();
         // Reference: zero-offset, zero-leading-whitespace baseline
         // tells us where the parser puts each token without any shift.
-        let Parsed::Unambiguous(baseline) = rx.recognize(b"(S//NF)", 0, &cx) else {
+        let Parsed::Unambiguous(baseline) = rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) else {
             panic!("baseline strict parse should succeed");
         };
         // Now run with leading whitespace AND a non-zero offset; both
         // deltas must be applied.
-        let Parsed::Unambiguous(shifted) = rx.recognize(b"  (S//NF)", 50, &cx) else {
+        let Parsed::Unambiguous(shifted) = rx.recognize(b"  (S//NF)", 50, &*TEST_SCHEME, &cx)
+        else {
             panic!("leading-ws strict parse should succeed");
         };
         assert_eq!(baseline.0.token_spans.len(), shifted.0.token_spans.len());

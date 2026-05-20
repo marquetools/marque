@@ -94,7 +94,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use marque_capco::CapcoMarking;
+use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_engine::{DecoderRecognizer, StrictRecognizer};
 use marque_ism::CanonicalAttrs;
 use marque_scheme::ambiguity::Parsed;
@@ -365,8 +365,12 @@ fn deep_cx() -> ParseContext {
 /// if strict parsing fails — those fixtures are unmarkable as
 /// "expected attrs" and must be flagged separately (see
 /// `expected_form_parses_strictly`).
-fn parse_expected(strict: &StrictRecognizer, expected: &str) -> Option<CapcoMarking> {
-    match strict.recognize(expected.as_bytes(), 0, &deep_cx()) {
+fn parse_expected(
+    strict: &StrictRecognizer,
+    scheme: &CapcoScheme,
+    expected: &str,
+) -> Option<CapcoMarking> {
+    match strict.recognize(expected.as_bytes(), 0, scheme, &deep_cx()) {
         Parsed::Unambiguous(m) => Some(m),
         // The strict recognizer collapses to `Ambiguous { vec![] }`
         // on parse failure; `Unambiguous` is the only form that can
@@ -444,6 +448,11 @@ fn run_sweep() -> AccuracyReport {
         cases.len(),
     );
 
+    // Construct once and reuse across all fixtures: `CapcoScheme::new()`
+    // builds non-trivial `Vec` tables and per-call construction inside
+    // the loop would be a measurable allocation regression on a sweep of
+    // several thousand fixtures.
+    let scheme = CapcoScheme::new();
     let decoder = DecoderRecognizer::new();
     let strict = StrictRecognizer::new();
     let mut per_class: BTreeMap<String, ClassStats> = BTreeMap::new();
@@ -457,7 +466,7 @@ fn run_sweep() -> AccuracyReport {
         stats.total += 1;
         total += 1;
 
-        let expected_marking = match parse_expected(&strict, &case.fixture.expected) {
+        let expected_marking = match parse_expected(&strict, &scheme, &case.fixture.expected) {
             Some(m) => m,
             None => {
                 if unresolved_samples.len() < 5 {
@@ -476,6 +485,7 @@ fn run_sweep() -> AccuracyReport {
         let (verdict, recognition, is_resolved) = match decoder.recognize(
             case.fixture.observed.as_bytes(),
             0,
+            &scheme,
             &deep_cx(),
         ) {
             Parsed::Unambiguous(m) => {
