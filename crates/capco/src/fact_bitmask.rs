@@ -174,7 +174,16 @@ pub mod fact_bit {
 /// Highest assigned bit + 1. Drives the [`FactBitmask::WIDTH`]
 /// fits-in-128 compile-time guard. Whenever a new atom is added,
 /// bump this and re-run the static assert below.
-pub(crate) const CAPCO_ATOM_COUNT: u32 = fact_bit::AEA_BALK + 1;
+///
+/// `pub` visibility (not `pub(crate)`) so the PR-C proptest harness
+/// at `crates/capco/tests/proptest_closure_table.rs` can pin its
+/// local `INVENTORY_MASK` against this single source of truth via
+/// `const _: () = assert!(...)`. Tightening back to `pub(crate)`
+/// after PR-D wires production would break the staleness gate;
+/// the public-but-doc-hidden visibility (`#[doc(hidden)] pub mod
+/// fact_bitmask` in `lib.rs`) keeps this off the documentation
+/// surface while making it reachable for the gate.
+pub const CAPCO_ATOM_COUNT: u32 = fact_bit::AEA_BALK + 1;
 
 // FactBitmask::WIDTH is 128. The atom inventory MUST fit. A future
 // scheme that exceeds 128 atoms requires a wider primitive in
