@@ -4,8 +4,8 @@
 
 //! Span lookups + companion-form inference used by SCI per-system
 //! emit helpers and the action layer ([`first_sci_span`],
-//! [`last_dissem_span`], [`dissem_token_span`], [`us_level`],
-//! [`infer_companion_form`], [`dissem_token_id_for_form`]). Lifted
+//! [`dissem_token_span`], [`us_level`], [`infer_companion_form`],
+//! [`dissem_token_id_for_form`]). Lifted
 //! from the monolithic `predicates.rs` per the issue #466 Stage 2
 //! PR A leaf split
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
@@ -154,17 +154,6 @@ pub(crate) fn us_level(attrs: &marque_ism::CanonicalAttrs) -> Option<Classificat
         Some(MarkingClassification::Conflict { us, .. }) => Some(us),
         _ => None,
     }
-}
-
-/// Last token span of the IC dissem block (anchors zero-width insertions).
-/// Returns `None` when no IC dissem token exists.
-pub(crate) fn last_dissem_span(attrs: &marque_ism::CanonicalAttrs) -> Option<marque_scheme::Span> {
-    attrs
-        .token_spans
-        .iter()
-        .rev()
-        .find(|t| t.kind == TokenKind::DissemControl)
-        .map(|t| t.span)
 }
 
 /// Find the span (and current text) of a specific `DissemControl` token —
