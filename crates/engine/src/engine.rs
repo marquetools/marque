@@ -540,7 +540,7 @@ impl Engine {
         // refactor that makes `Engine<S>` truly generic over the
         // scheme will close this. The `tracing::debug!` below makes
         // the silent drop observable to a developer running with
-        // `MARQUE_LOG=marque_engine=debug` (off by default in
+        // `MARQUE_LOG=marque=debug` (off by default in
         // production).
         tracing::debug!(
             target: "marque_engine::scheme_discard",
