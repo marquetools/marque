@@ -31,10 +31,10 @@ use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingCandidate, MarkingType, S
 use marque_scheme::{MarkingScheme, Scope};
 
 fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
-    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
-    // helper takes `&CapcoScheme` so `project_page` (which already
-    // constructs one for `scheme.project`) reuses that instance instead
-    // of allocating a fresh scheme per parse.
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // so `project_page` (which already constructs one for
+    // `scheme.project`) reuses that instance instead of allocating a
+    // fresh scheme per parse.
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {

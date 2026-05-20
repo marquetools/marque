@@ -33,9 +33,9 @@ use marque_scheme::{MarkingScheme, Scope};
 /// portion via the marque-core parser, exercising the post-parse
 /// `attribute_dissems` pass.
 ///
-/// PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
-/// helper takes `&CapcoScheme` so the page-rollup test that already
-/// constructs a scheme for `scheme.project(...)` can reuse it.
+/// PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+/// so the page-rollup test that already constructs a scheme for
+/// `scheme.project(...)` can reuse it.
 fn parse_pure_nato_portion(scheme: &CapcoScheme) -> CanonicalAttrs {
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);

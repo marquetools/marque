@@ -257,11 +257,14 @@ fn is_cab_head(bytes: &[u8]) -> bool {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
 
-    fn test_scheme() -> CapcoScheme {
-        CapcoScheme::new()
-    }
+    /// Shared scheme instance for the test module. `CapcoScheme::new()`
+    /// builds non-trivial `Vec` tables; borrowing `&*TEST_SCHEME` avoids
+    /// repeated allocation across tests.
+    static TEST_SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
     #[test]
     fn infer_marking_type_portion_on_leading_paren() {
@@ -314,7 +317,7 @@ mod tests {
     fn strict_recognizer_resolves_portion_unambiguously() {
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(S//NF)", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Unambiguous(_) => {}
             other => panic!("expected Unambiguous, got {other:?}"),
         }
@@ -330,7 +333,7 @@ mod tests {
         // zero-candidate Ambiguous.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(R)", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"(R)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "bare (R) must be zero-candidate, got {} candidates",
@@ -354,7 +357,7 @@ mod tests {
         // which they are not) is caught here.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(R//NF)", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"(R//NF)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "(R//NF) must be zero-candidate, got {} candidates",
@@ -375,7 +378,7 @@ mod tests {
         // origin evidence; `R` first is the bug-case `Us(Restricted)`.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"R//USA, GBR", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"R//USA, GBR", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "R//USA, GBR must be zero-candidate, got {} candidates",
@@ -405,7 +408,7 @@ mod tests {
         // that would silently let `Us(Restricted)` slip through.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"RESTRICTED//FGI DEU//NOFORN", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "RESTRICTED//FGI DEU//NOFORN must be zero-candidate, \
@@ -432,7 +435,7 @@ mod tests {
         // never reach the bug path the predicate gates against.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        match rx.recognize(b"(//FGI R//NF)", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"(//FGI R//NF)", 0, &*TEST_SCHEME, &cx) {
             Parsed::Unambiguous(m) => {
                 assert!(
                     !is_us_restricted(&m),
@@ -453,7 +456,7 @@ mod tests {
         // that don't require foreign-origin context.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", 0, &test_scheme(), &cx) else {
+        let Parsed::Unambiguous(m) = rx.recognize(b"(S)", 0, &*TEST_SCHEME, &cx) else {
             panic!("(S) must parse to a SECRET portion");
         };
         assert!(
@@ -468,7 +471,7 @@ mod tests {
         let cx = ParseContext::default();
         // Missing closing paren — parser rejects; recognizer surfaces
         // zero-candidate Ambiguous per the trait contract.
-        match rx.recognize(b"(S//NF", 0, &test_scheme(), &cx) {
+        match rx.recognize(b"(S//NF", 0, &*TEST_SCHEME, &cx) {
             Parsed::Ambiguous { candidates } => assert!(candidates.is_empty()),
             other => panic!("expected zero-candidate Ambiguous, got {other:?}"),
         }
@@ -487,7 +490,7 @@ mod tests {
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
         let input: &[u8] = b"(S//NF)";
-        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &test_scheme(), &cx) else {
+        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &*TEST_SCHEME, &cx) else {
             panic!("strict parse should succeed");
         };
         assert!(
@@ -519,10 +522,10 @@ mod tests {
         // engine relies on for its zero-post-pass behavior.
         let rx = StrictRecognizer::new();
         let cx = ParseContext::default();
-        let Parsed::Unambiguous(at_zero) = rx.recognize(b"(S//NF)", 0, &test_scheme(), &cx) else {
+        let Parsed::Unambiguous(at_zero) = rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) else {
             panic!("strict parse should succeed at offset=0");
         };
-        let Parsed::Unambiguous(at_100) = rx.recognize(b"(S//NF)", 100, &test_scheme(), &cx) else {
+        let Parsed::Unambiguous(at_100) = rx.recognize(b"(S//NF)", 100, &*TEST_SCHEME, &cx) else {
             panic!("strict parse should succeed at offset=100");
         };
         assert_eq!(at_zero.0.token_spans.len(), at_100.0.token_spans.len());
@@ -552,12 +555,12 @@ mod tests {
         let cx = ParseContext::default();
         // Reference: zero-offset, zero-leading-whitespace baseline
         // tells us where the parser puts each token without any shift.
-        let Parsed::Unambiguous(baseline) = rx.recognize(b"(S//NF)", 0, &test_scheme(), &cx) else {
+        let Parsed::Unambiguous(baseline) = rx.recognize(b"(S//NF)", 0, &*TEST_SCHEME, &cx) else {
             panic!("baseline strict parse should succeed");
         };
         // Now run with leading whitespace AND a non-zero offset; both
         // deltas must be applied.
-        let Parsed::Unambiguous(shifted) = rx.recognize(b"  (S//NF)", 50, &test_scheme(), &cx)
+        let Parsed::Unambiguous(shifted) = rx.recognize(b"  (S//NF)", 50, &*TEST_SCHEME, &cx)
         else {
             panic!("leading-ws strict parse should succeed");
         };

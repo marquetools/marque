@@ -132,12 +132,10 @@ fn engine() -> Engine {
 
 /// Parse a single `(...)` portion line into a `CanonicalAttrs`.
 ///
-/// PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
-/// helper takes `&CapcoScheme` so callers (`discover`,
-/// `lattice_corpus_fixtures_match_expected`) that already construct a
-/// scheme for `scheme.project(Scope::Page, ...)` can reuse it. The
-/// pre-B7 per-call construction was the EXACT pattern Copilot's
-/// `lattice_corpus_runner.rs:139` inline review caught.
+/// PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+/// so callers (`discover`, `lattice_corpus_fixtures_match_expected`)
+/// that already construct a scheme for `scheme.project(Scope::Page,
+/// ...)` can reuse it.
 fn parse_portion_line(scheme: &CapcoScheme, line: &str) -> CanonicalAttrs {
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
