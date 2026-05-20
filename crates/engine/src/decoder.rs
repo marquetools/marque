@@ -86,6 +86,7 @@
 //!   `FixProposal` path with `FixSource::DecoderPosterior`.
 
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
@@ -97,11 +98,30 @@ use marque_ism::{
     token_set::TokenSet as _,
 };
 use marque_rules::confidence::{FeatureContribution, FeatureId};
+use marque_scheme::MarkingScheme;
 use marque_scheme::ambiguity::{Candidate, EvidenceFeature, Parsed};
 use marque_scheme::recognizer::{ParseContext, Recognizer};
 use smallvec::SmallVec;
 
 use crate::recognizer::{StrictRecognizer, is_us_restricted};
+
+/// Module-scope CAPCO scheme constructed lazily on first use.
+///
+/// See the matching `SCHEME` static in
+/// `crates/engine/src/recognizer.rs` for the full rationale
+/// (PR 3c.2.B PM-B-1: transitional shape introduced because the
+/// `Recognizer<S>` trait surface does not thread `&S` through
+/// `recognize(...)` today). `CapcoScheme::new()` builds non-trivial
+/// `Vec` tables; `LazyLock` amortizes the cost across the engine's
+/// lifetime, avoiding a hot-path allocation regression
+/// (Constitution I).
+///
+// TODO(engine-S-generic-recognizer-cleanup): retire this static
+// alongside `crates/engine/src/recognizer.rs::SCHEME` and
+// `crates/engine/src/engine.rs::bridge_scheme` once `Recognizer<S>`
+// gains a `&S` argument. Targets post-1.0 cleanup; tracked as a
+// follow-up GitHub issue filed at PR 3c.2.B merge time.
+static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
 ///
@@ -404,11 +424,14 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                     return None;
                 }
 
-                // PR-3a transitional adapter: collapse the borrowed
-                // `ParsedAttrs<'src>` to owned `CanonicalAttrs` before the
-                // marking leaves this scope. Post-PR-3c this becomes
-                // `MarkingScheme::canonicalize(parsed.attrs)`.
-                let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+                // PR 3c.2.B B2 (PM-B-1): canonicalization seam
+                // migrated from the `marque_ism::from_parsed_unchecked`
+                // adapter to the `MarkingScheme::canonicalize` trait
+                // method. `SCHEME` (above) carries the transitional
+                // scheme instance until `Recognizer<S>::recognize`
+                // gains a `&S` argument under
+                // `engine-S-generic-recognizer-cleanup`.
+                let mut attrs = SCHEME.canonicalize(parsed.attrs);
 
                 // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
                 //     returned by the strict parser carry offsets into
