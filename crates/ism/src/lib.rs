@@ -15,8 +15,10 @@
 //! dep-graph diagram. It owns:
 //! - `Span` and scanner candidate types (zero-copy position tracking)
 //! - The pivot type triple ([`ParsedAttrs<'src>`], [`CanonicalAttrs`],
-//!   [`ProjectedMarking`]) and the `from_parsed_unchecked` transitional
-//!   adapter that bridges parser output to rule input. PR 6 wires
+//!   [`ProjectedMarking`]). Conversion is handled by
+//!   `MarkingScheme::canonicalize` in the scheme adapter (the CAPCO
+//!   override lives in `marque_capco::CapcoScheme::canonicalize`); per
+//!   FR-043 that trait method is the sole production path. PR 6 wires
 //!   `ProjectedMarking` into the engine alongside the `Scope::Page`
 //!   projection cutover.
 //! - `TokenSet` trait and `CapcoTokenSet` (Aho-Corasick CVE token matching)
@@ -45,7 +47,7 @@ pub use attrs::{
     SarCompartment, SarIndicator, SarMarking, SarProgram, SciCompartment, SciControl,
     SciControlBare, SciControlSystem, SciMarking, TokenKind, TokenSpan,
 };
-pub use canonical::{CanonicalAttrs, from_parsed_unchecked};
+pub use canonical::CanonicalAttrs;
 pub use companion_dedup::dedup_companions;
 pub use date::{ApproxIsmDate, ApproxQualifier, IsmDate, ParseIsmDateError, UtcOffset};
 pub use dissem_attribution::{DefaultOrigin, attribute_dissems};

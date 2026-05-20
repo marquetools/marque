@@ -13,10 +13,11 @@
 //!   carve-out). Diagnostic codes `PRC001` / `PRC002`.
 //! - [`signature`] — flag any function whose signature shape is
 //!   `fn(...ParsedAttrs<'_>...) -> CanonicalAttrs` (or
-//!   `Result<CanonicalAttrs, _>`) outside the three whitelisted
-//!   sites: `unsafe fn`, `MarkingScheme::canonicalize`, and the
-//!   transitional `from_parsed_unchecked` adapter. Diagnostic
-//!   code `PRC100`.
+//!   `Result<CanonicalAttrs, _>`) outside the two whitelisted
+//!   sites: `unsafe fn` and `MarkingScheme::canonicalize`.
+//!   Diagnostic code `PRC100`. (A third path-based whitelist for
+//!   the transitional `from_parsed_unchecked` adapter retired in
+//!   PR 3c.2.E along with the adapter itself.)
 //!
 //! Both passes share the [`enclosing`] utility for resolving the
 //! enclosing function of an arbitrary span, and the [`diagnostic`]

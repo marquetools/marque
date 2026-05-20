@@ -7,9 +7,9 @@
 //!
 //! `marque-core::parser` produces a `ParsedAttrs<'src>` per scanner
 //! candidate. The engine (via the recognizer) immediately canonicalizes
-//! via `MarkingScheme::canonicalize` (post-PR-3c) or
-//! `marque_ism::from_parsed_unchecked` (PR 3a transitional path).
-//! Rules consume the resulting `CanonicalAttrs`, never `ParsedAttrs`.
+//! via `MarkingScheme::canonicalize` — the trait route, sole production
+//! path per FR-043. Rules consume the resulting `CanonicalAttrs`,
+//! never `ParsedAttrs`.
 //!
 //! # Lifecycle
 //!
@@ -82,7 +82,18 @@ pub enum SourceOrigin {
 /// - `source_bytes_origin` reflects which scanner-emitted candidate
 ///   produced this `ParsedAttrs`. Page-break candidates do not produce
 ///   one; the engine short-circuits before reaching the parser.
-#[non_exhaustive]
+///
+/// **Exhaustive**: the struct intentionally exposes every field for
+/// brace construction and destructure outside `marque-ism`. PR 3c.2.E
+/// lifted the structural rename body (formerly
+/// `marque_ism::from_parsed_unchecked`) into
+/// `CapcoScheme::canonicalize` in `marque-capco`, and into the four
+/// `marque-core` test helpers that Constitution VII forbids from
+/// reaching `MarkingScheme::canonicalize` (the trait route). Those
+/// inline lifts require destructure, so `#[non_exhaustive]` is gone.
+/// Field additions become explicit migrations of the inlined sites;
+/// FR-043 keeps `MarkingScheme::canonicalize` the sole production
+/// `ParsedAttrs → CanonicalAttrs` constructor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedAttrs<'src> {
     /// US/FGI/NATO/JOINT classification. `None` when the parser failed

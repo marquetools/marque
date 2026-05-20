@@ -5,19 +5,17 @@
 //! `CanonicalAttrs` — the owned, post-canonical marking representation
 //! that rules consume.
 //!
-//! Constructed from `ParsedAttrs<'_>` exactly two ways:
+//! Constructed from `ParsedAttrs<'_>` via `MarkingScheme::canonicalize`
+//! — the sole authorized public route per FR-043. A scheme decides
+//! what canonicalization means (case folding, deprecated-token
+//! migration, etc.) and rule crates do not own the choice. The
+//! CAPCO/ISM implementation lives in
+//! `marque_capco::CapcoScheme::canonicalize`.
 //!
-//! 1. **PR 3a transitional**: [`from_parsed_unchecked`] — a `pub
-//!    #[doc(hidden)]` adapter that performs the structural
-//!    rename without applying any canonicalization rules. PR 3a's
-//!    invariant is byte-identical behavior on every fixture; the
-//!    adapter exists to thread the new types through the engine
-//!    without churning rule semantics. PR 3c deletes this function.
-//!
-//! 2. **Post-PR-3c canonical path**: `MarkingScheme::canonicalize`,
-//!    the only authorized public route. A scheme decides what
-//!    canonicalization means (case folding, deprecated-token
-//!    migration, etc.) and rule crates do not own the choice.
+//! FR-040 promote-callsite-lint enforces the sole-path invariant at
+//! signature shape: any other function shaped
+//! `fn(ParsedAttrs<'_>) -> CanonicalAttrs` outside the trait method
+//! is a CI error.
 //!
 //! # Why owned
 //!
@@ -31,29 +29,25 @@
 //!
 //! # Field shape
 //!
-//! Mirrors `IsmAttributes` exactly at PR 3a — same field names, same
-//! types, same semantics. Subsequent PRs reshape:
+//! Mirrors `IsmAttributes` at PR 3a — same field names, same types,
+//! same semantics. Subsequent PRs reshape:
 //!
 //! - **PR 9b (FR-046, T132)** split the prior single `dissem_controls`
 //!   field into `dissem_us` and `dissem_nato`. The attribution is
 //!   performed by [`crate::dissem_attribution::attribute_dissems`] on
-//!   the `ParsedAttrs` side; [`from_parsed_unchecked`] is a pure
+//!   the `ParsedAttrs` side; `MarkingScheme::canonicalize` is a pure
 //!   structural rename and does not re-run attribution.
 //! - **PR 3c** may migrate `sci_controls` (the CVE projection) to a
 //!   `SciSet`-only shape if no rule reads `sci_controls` post-collapse
 //!   (CLAUDE.md "compatibility view scheduled for removal").
 //! - **PR 2 (FR-017)** introduces `FgiMarker::SourceConcealed |
-//!   Acknowledged`. PR 3a uses the existing flat `FgiMarker`.
-//!
-//! Holding the existing field shape at PR 3a is what keeps the change
-//! byte-identical and independently revertable.
+//!   Acknowledged`.
 
 use crate::attrs::{
     AeaMarking, Classification, CountryCode, DeclassExemption, DissemControl, FgiMarker,
     MarkingClassification, NonIcDissem, SarMarking, SciControl, SciMarking, TokenSpan,
 };
 use crate::date::IsmDate;
-use crate::parsed::ParsedAttrs;
 
 /// Owned, canonical-form attributes. The pivot type rules consume.
 ///
@@ -62,7 +56,16 @@ use crate::parsed::ParsedAttrs;
 /// Field order mirrors CAPCO block sequence: classification → SCI →
 /// SAR → AEA → FGI → IC dissem → non-IC dissem → REL TO → CAB. This
 /// is documentation-only; rules dispatch on field name, not order.
-#[non_exhaustive]
+///
+/// **Exhaustive**: the struct intentionally exposes every field for
+/// brace construction outside `marque-ism`. PR 3c.2.E lifted the
+/// structural rename body (formerly `marque_ism::from_parsed_unchecked`)
+/// into `CapcoScheme::canonicalize` and into four `marque-core` test
+/// helpers — both sets need to construct `CanonicalAttrs` literally.
+/// FR-043 keeps `MarkingScheme::canonicalize` the sole production
+/// `ParsedAttrs → CanonicalAttrs` constructor; per FR-040 the
+/// promote-callsite-lint flags any other signature shape outside that
+/// trait method.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanonicalAttrs {
     /// US/FGI/NATO/JOINT classification, or `None` when the parser
@@ -174,130 +177,4 @@ impl CanonicalAttrs {
     pub fn dissem_iter(&self) -> impl Iterator<Item = &DissemControl> + Clone {
         self.dissem_us.iter().chain(self.dissem_nato.iter())
     }
-}
-
-/// Transitional adapter — converts `ParsedAttrs<'_>` into
-/// [`CanonicalAttrs`] by structural rename only.
-///
-/// **`#[doc(hidden)] pub`** because the data-model.md spec (and FR-043)
-/// require it to be cross-crate-callable but visibly project-internal.
-/// The `_unchecked` suffix follows the Rust-stdlib convention: a path
-/// that *exists* but is not the public-API path you should reach for.
-///
-/// # PR-3c lifecycle
-///
-/// This function deletes at PR 3c, when `MarkingScheme::canonicalize`
-/// becomes the sole `ParsedAttrs → CanonicalAttrs` constructor (FR-043).
-/// FR-040's `_unchecked`-shape signature lint (R-11 in `research.md`)
-/// flags any function matching `fn(...ParsedAttrs<'_>...) ->
-/// CanonicalAttrs` outside `MarkingScheme::canonicalize`; the adapter
-/// here is whitelisted via path-based carve-out
-/// (`crates/ism/src/canonical.rs::from_parsed_unchecked`) for the
-/// duration of the keystone window. The carve-out auto-removes when 3c
-/// lands and the function is deleted.
-///
-/// # Semantics
-///
-/// **Byte-identical to PR-3a-pre behavior.** Every field is moved
-/// across without transformation — no case folding, no deprecated-token
-/// migration, no canonicalization. The function name's `_unchecked`
-/// suffix names this exact gap: a real `canonicalize` impl would do
-/// more work; this adapter does none.
-///
-/// # Why it isn't `From<ParsedAttrs<'_>> for CanonicalAttrs`
-///
-/// FR-040's lint targets `fn(...ParsedAttrs<'_>...) -> CanonicalAttrs`
-/// signatures regardless of name. Implementing `From` would generate a
-/// lint-flagging `fn from(_: ParsedAttrs<'_>) -> Self` synthesized
-/// signature; whitelisting it would dilute the lint. A free function
-/// with a deliberately-unwieldy name is the right shape for "yes,
-/// this exists; no, you should not reach for it casually."
-#[doc(hidden)]
-pub fn from_parsed_unchecked(parsed: ParsedAttrs<'_>) -> CanonicalAttrs {
-    let ParsedAttrs {
-        classification,
-        sci_markings,
-        sci_controls,
-        sar_markings,
-        aea_markings,
-        fgi_marker,
-        dissem_us,
-        dissem_nato,
-        non_ic_dissem,
-        rel_to,
-        display_only_to,
-        declassify_on,
-        classified_by,
-        derived_from,
-        declass_exemption,
-        token_spans,
-        source_bytes_origin: _, // discarded; not on CanonicalAttrs
-    } = parsed;
-
-    let out = CanonicalAttrs {
-        classification: classification.map(|c| c.value),
-        sci_controls,
-        sci_markings: Vec::from(sci_markings)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        sar_markings: sar_markings.map(|p| p.value),
-        aea_markings: Vec::from(aea_markings)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        fgi_marker: fgi_marker.map(|p| p.value),
-        // PR 9b (T132): preserve the parser-side attribution. The
-        // attribution function lives on the `ParsedAttrs` side; this
-        // adapter is a pure structural rename and must not re-run it.
-        dissem_us: Vec::from(dissem_us)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        dissem_nato: Vec::from(dissem_nato)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        non_ic_dissem: Vec::from(non_ic_dissem)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        rel_to: Vec::from(rel_to)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        display_only_to: Vec::from(display_only_to)
-            .into_iter()
-            .map(|p| p.value)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        declassify_on: declassify_on.map(|p| p.value),
-        classified_by: classified_by.map(Box::<str>::from),
-        derived_from: derived_from.map(Box::<str>::from),
-        declass_exemption,
-        token_spans,
-    };
-
-    // PR 9b (T132) invariant insurance. `attribute_dissems` is the
-    // single source of truth; this debug-only assertion catches a
-    // future bug where attribution is skipped or the canonical
-    // adapter is fed a hand-built `ParsedAttrs` with both fields
-    // populated.
-    #[cfg(debug_assertions)]
-    {
-        debug_assert!(
-            out.dissem_nato.is_empty() || out.us_classification().is_none(),
-            "dissem_nato populated alongside US classification — \
-             attribute_dissems was skipped or bypassed. CAPCO-2016 p41 \
-             reciprocity rule violated."
-        );
-    }
-
-    out
 }

@@ -501,27 +501,26 @@ fn display_only_does_not_false_positive_on_truncated_keyword() {
 }
 
 #[test]
-fn display_only_round_trips_through_canonical_attrs() {
+fn display_only_populates_parsed_axis() {
     // The `display_only_to` field on `ParsedAttrs` (parser output)
-    // must thread through `from_parsed_unchecked` into the
-    // matching field on `CanonicalAttrs` (the CVE-validated form
-    // consumed by rules). Without this round-trip the new axis
-    // is invisible to the rule layer.
+    // is the data rules consume after canonicalization. Without
+    // it the new axis is invisible to the rule layer.
+    //
+    // Pre PR 3c.2.E this test invoked `marque_ism::from_parsed_unchecked`
+    // to round-trip through `CanonicalAttrs`. PR 3c.2.E retired the
+    // adapter; the corresponding canonicalize path now lives in
+    // `CapcoScheme::canonicalize`, which `marque-core` cannot reach
+    // (Constitution VII forbids `marque-core ←── marque-capco`).
+    // Asserting directly on the `ParsedAttrs` side is sufficient
+    // — the structural rename to `CanonicalAttrs.display_only_to`
+    // is a 1:1 `entry.value` copy exercised by the scheme-level
+    // tests in `crates/capco/tests/`.
     let src = "(S//DISPLAY ONLY AFG, IRQ)";
     let attrs = parse_portion(src);
-    // TODO(3c.2.E): migrate or rewrite when
-    // `marque_ism::from_parsed_unchecked` adapter retires; Constitution
-    // VII forbids `marque-core ←── marque-capco` dev-dep edge, so the
-    // migration to `MarkingScheme::canonicalize` (the trait route)
-    // cannot happen at PR 3c.2.B per PM-B-2. PR 3c.2.E's adapter
-    // deletion sweep will either rewrite the test to depend on a
-    // local TestScheme stub or inline the field-rename body at this
-    // helper site.
-    let canonical = marque_ism::from_parsed_unchecked(attrs);
-    let codes: Vec<String> = canonical
+    let codes: Vec<String> = attrs
         .display_only_to
         .iter()
-        .map(|c| c.as_str().to_string())
+        .map(|e| e.value.as_str().to_string())
         .collect();
     assert_eq!(codes, vec!["AFG", "IRQ"]);
 }
