@@ -809,26 +809,58 @@ fn run_fix(
 
         // Audit emission (T049, FR-005a) — NEVER suppressed by -q.
         // Each record is atomic: serialize to buffer, single write_all.
+        //
+        // PR 3c.2.D / D4: emit reads from `result.audit_lines` (the
+        // marque-1.0 v2 stream) rather than `result.applied` (the v1
+        // stream). The v2 stream preserves cross-record promotion
+        // order across both the marking-fix arm and the text-
+        // correction arm (PM-D-8). The v1 stream stays populated by
+        // the engine through the D2-D7 transition window but is no
+        // longer read; D-A5 / D7 retires `result.applied` atomically
+        // with the schema flip.
         let mut audit_exit_code: Option<i32> = None;
+        let scheme = engine.scheme();
+        let input_label: std::sync::Arc<str> = match path.as_ref() {
+            Some(p) => std::sync::Arc::<str>::from(p.display().to_string()),
+            None => std::sync::Arc::from("-"),
+        };
         {
             let mut stderr_lock = stderr.lock();
-            for applied_fix in &result.applied {
-                // Set the caller-supplied input identifier on the audit record.
-                // The engine leaves `input` as None; the CLI fills it in at the
-                // boundary per the architecture contract. Stdin is represented
-                // as "-" per contracts/audit-record.json.
-                let mut audit_fix = applied_fix.clone();
-                audit_fix.input = Some(match path.as_ref() {
-                    Some(p) => std::sync::Arc::<str>::from(p.display().to_string()),
-                    None => std::sync::Arc::from("-"),
-                });
-                if let Err(e) = render::render_audit_record(&mut stderr_lock, &audit_fix) {
+            for line in &result.audit_lines {
+                // Set the caller-supplied input identifier on the
+                // audit record. The engine leaves `input` as None;
+                // the CLI fills it in at the boundary per the
+                // architecture contract. Stdin is represented as
+                // "-" per contracts/audit-record.json.
+                //
+                // `AuditLine` is `#[non_exhaustive]`; the two
+                // current arms (AppliedFix / TextCorrection) clone
+                // through the per-arm `input` field rebind. A
+                // future variant lands as a fallthrough that
+                // `render_audit_line` projects to `Value::Null` —
+                // the T055 G13 canary catches that surface change.
+                let line_with_input = match line {
+                    marque_rules::AuditLine::AppliedFix(fix) => {
+                        let mut cloned = fix.clone();
+                        cloned.input = Some(input_label.clone());
+                        marque_rules::AuditLine::AppliedFix(cloned)
+                    }
+                    marque_rules::AuditLine::TextCorrection(tc) => {
+                        let mut cloned = tc.clone();
+                        cloned.input = Some(input_label.clone());
+                        marque_rules::AuditLine::TextCorrection(cloned)
+                    }
+                    _ => continue,
+                };
+                if let Err(e) =
+                    render::render_audit_line(&mut stderr_lock, scheme, &line_with_input)
+                {
                     // Do NOT write a plain-text error line here — the audit
                     // stream must contain only valid NDJSON objects (FR-005a).
-                    // render_audit_record already emitted a JSON error frame
+                    // render_audit_line already emitted a JSON error frame
                     // on the serialization-failure path.
                     //
-                    // ErrorKind::Other is set by render_audit_record for
+                    // ErrorKind::Other is set by render_audit_line for
                     // serde_json serialization failures; any other kind is a
                     // true I/O failure (broken pipe, disk full, etc.).
                     let code = if e.kind() == std::io::ErrorKind::Other {

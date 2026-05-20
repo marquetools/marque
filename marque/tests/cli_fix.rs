@@ -137,9 +137,13 @@ fn fix_quiet_does_not_suppress_audit() {
         )),
         "-q must not suppress audit NDJSON, got: {stderr}"
     );
-    // Narration line should be absent.
+    // Narration line should be absent. PR 3c.2.D / D4: the
+    // marque-1.0 audit record carries `"type": "applied_fix"` so a
+    // bare `contains("applied")` would false-positive on the audit
+    // record itself. Match the narration prefix (`<label>: applied N
+    // fix(es)`) instead.
     assert!(
-        !stderr.contains("applied"),
+        !stderr.contains(": applied "),
         "-q should suppress narration lines, got: {stderr}"
     );
 }

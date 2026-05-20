@@ -23,8 +23,35 @@
 
 /// Opaque category identifier. Each scheme assigns stable ids to its
 /// categories; the engine only compares them for equality.
+///
+/// # Reserved sentinel: [`CategoryId::MARKING`]
+///
+/// [`CategoryId::MARKING`] (numeric value `0`) is reserved across all
+/// schemes as the multi-category "whole-marking" sentinel — used by
+/// audit-record emit when a fix's structural payload spans more than one
+/// category (the [`ReplacementIntent::Recanonicalize`](crate::ReplacementIntent::Recanonicalize)
+/// arm re-renders an entire `Scope::Page` / `Scope::Document`, not a
+/// single category's axis). Schemes MUST assign concrete categories
+/// starting at `CategoryId(1)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CategoryId(pub u32);
+
+impl CategoryId {
+    /// Reserved multi-category "whole-marking" sentinel.
+    ///
+    /// Used by the audit-record emit path (PR 3c.2.D / `marque-1.0`
+    /// shape) when a fix's
+    /// [`ReplacementIntent`](crate::ReplacementIntent) re-renders an
+    /// entire `Scope::Page` / `Scope::Document` rather than naming a
+    /// single category. The renderer projects this to the JSON
+    /// `replacement.canonical.category` field as the literal string
+    /// `"Marking"`.
+    ///
+    /// All other [`CategoryId`] values are scheme-allocated (CAPCO
+    /// assigns its categories starting at `CategoryId(1)`; see
+    /// `marque-capco`'s `CAT_CLASSIFICATION` and successors).
+    pub const MARKING: CategoryId = CategoryId(0);
+}
 
 /// Opaque token identifier within a scheme. Used by supersession
 /// relations and constraint predicates to reference specific tokens

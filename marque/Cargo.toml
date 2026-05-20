@@ -23,6 +23,14 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+# PR 3c.2.D / D4: `blake3::Hash` is the wire type for the `marque-1.0`
+# audit-record `original_digest` / `bytes_digest` fields. The renderer
+# formats `blake3:<hex>` per `contracts/audit-record.md` §137 / §151.
+# The same `pure`-feature surface flows through `marque-rules` and
+# `marque-engine` (PM-D-6); the CLI inherits transitively but the
+# direct dep here makes the wire-format formatting explicit at the
+# emit boundary.
+blake3 = { workspace = true }
 clap = { workspace = true }
 humantime = { workspace = true }
 is-terminal = { workspace = true }

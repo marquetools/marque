@@ -762,6 +762,18 @@ impl Engine {
         }
     }
 
+    /// Borrow the engine's active marking scheme.
+    ///
+    /// Used by the CLI / WASM audit-record renderers (PR 3c.2.D / D4)
+    /// to project [`AuditLine<CapcoScheme>`] values through the
+    /// scheme's [`Vocabulary`](marque_scheme::Vocabulary) and
+    /// [`MarkingScheme::categories`](marque_scheme::MarkingScheme::categories)
+    /// surfaces for the `marque-1.0` JSON shape. Off the lint/scan
+    /// hot path — purely a wire-format projection helper.
+    pub fn scheme(&self) -> &CapcoScheme {
+        &self.scheme
+    }
+
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
     ///
     /// Back-compat shim over [`Engine::lint_with_options`] — calling
@@ -3336,14 +3348,47 @@ impl<'engine> TwoPassFixer<'engine> {
             ));
 
             // Build the v2 Canonical<S> via EngineConstructor (the
-            // sealed open-vocab path; D-A3 wires the closed-CVE
-            // `Canonical::from_cve` discriminator from the render
-            // step). `CategoryId(0)` is a transitional sentinel for
-            // D3 — D-A3's renderer migration will route through the
-            // proper category resolution from the intent's
-            // `ReplacementIntent`.
+            // sealed open-vocab path). PM-D / D-A3: derive the
+            // CategoryId from the originating ReplacementIntent so the
+            // audit-record renderer can project the
+            // `replacement.canonical.category` JSON field accurately
+            // per `contracts/audit-record.md` §272:
+            //
+            // - `FactAdd { token, .. }`: route the token through
+            //   `MarkingScheme::category_of`. The scheme resolves both
+            //   closed-CVE [`FactRef::Cve`] and open-vocab
+            //   [`FactRef::OpenVocab`] arms; if the routing table is
+            //   missing the token (e.g., a future variant not yet
+            //   wired) the engine falls back to the multi-category
+            //   sentinel rather than panicking — the audit consumer
+            //   sees `"Marking"` and can investigate, but the audit
+            //   record stays well-formed.
+            // - `FactRemove { facts, .. }`: route the first fact's
+            //   token (all facts in a single intent share an axis per
+            //   FR-???; the multi-fact form is a chained removal on
+            //   one axis like E024's RD/FRD/TFNI cluster).
+            // - `Recanonicalize { .. }`: spans multiple categories by
+            //   construction — re-renders an entire `Scope::Page` or
+            //   `Scope::Document`. Routes to
+            //   [`CategoryId::MARKING`] (the reserved multi-category
+            //   sentinel; projects to `"Marking"` in the JSON).
+            let scheme_ref: &CapcoScheme = &self.engine.scheme;
+            let category_id: CategoryId = match &fix.intent.replacement {
+                marque_scheme::ReplacementIntent::FactAdd { token, .. } => {
+                    scheme_ref.category_of(token).unwrap_or(CategoryId::MARKING)
+                }
+                marque_scheme::ReplacementIntent::FactRemove { facts, .. } => facts
+                    .first()
+                    .and_then(|fact| scheme_ref.category_of(fact))
+                    .unwrap_or(CategoryId::MARKING),
+                marque_scheme::ReplacementIntent::Recanonicalize { .. } => CategoryId::MARKING,
+                // `#[non_exhaustive]` guard — a future variant
+                // routes to the multi-category sentinel until the
+                // scheme's `category_of` mapping is extended.
+                _ => CategoryId::MARKING,
+            };
             let canonical: Canonical<CapcoScheme> = constructor.build_open_vocab(
-                CategoryId(0),
+                category_id,
                 Box::from(fix.replacement.as_ref()),
                 fix.scope,
             );
