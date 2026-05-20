@@ -5,7 +5,8 @@
 //! Engine-internal text-correction proposal.
 //!
 //! The legacy `marque_rules::FixProposal` retired in PR 3c.B Commit
-//! 10 atomically with the `marque-mvp-3` audit schema bump. The
+//! 10; the `marque-mvp-3` envelope then retired at PR 3c.2.D in
+//! turn (atomic `marque-mvp-3 → marque-1.0` cutover). The
 //! engine still needs a four-field carrier `(span, replacement,
 //! confidence, source)` for the C001 / `[corrections]` map path —
 //! a text-level fix-set delta that runs pre-scanner and has no

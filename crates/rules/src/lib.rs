@@ -47,21 +47,28 @@
 //! "suggested vs applied" a type-system invariant.
 //!
 //! The Commit 2–9 transition through a legacy `FixProposal` shape
-//! retired in PR 3c.B Commit 10 — atomically with the
-//! `MARQUE_AUDIT_SCHEMA` flip from `"marque-mvp-2"` to `"marque-mvp-3"`.
-//! `AppliedFixProposal<S>` is now a two-variant enum: `FixIntent(_)`
-//! for engine-promoted rule emissions and `TextCorrection { ... }`
-//! for engine-internal C001 text replacements.
+//! retired in PR 3c.B Commit 10 (`mvp-1`/`mvp-2` → `mvp-3`); the
+//! `marque-mvp-3 → marque-1.0` atomic cutover then landed at
+//! PR 3c.2.D, reshaping `AppliedFix<S>` to carry `Canonical<S>` +
+//! `Discriminant` + BLAKE3 digests of pre-fix and canonical bytes,
+//! and splitting non-marking text corrections into a separate
+//! `AppliedTextCorrection` type (the marking-side seal stays on
+//! `AppliedFix<S>`; the text-correction-side seal lives on
+//! `AppliedTextCorrection`).
 //!
 //! # G13 (audit content ignorance)
 //!
-//! `FixIntent<S>` carries only structural references (`FactRef`,
-//! category IDs, `Scope` / `RecanonScope` tags) — no document bytes.
-//! `AppliedFixProposal::TextCorrection` carries the canonical
-//! replacement string (a corpus-derived token canonical on
+//! `AppliedFix<S>` carries a sealed [`marque_scheme::Canonical<S>`]
+//! payload (rendered token canonicals) + BLAKE3 digests of the
+//! pre-fix and canonical bytes — no document content. The
+//! `AppliedTextCorrection` channel carries only canonical
+//! replacement strings (corpus-derived token canonicals on
 //! Constitution V's permitted-identifier list, e.g. `"SECRET"`
-//! replacing a typo); it never carries the document's original bytes.
-//! Audit records emit no `original` field as of `marque-mvp-3`.
+//! replacing a typo). The T055 content-ignorance canary
+//! (`crates/engine/tests/audit_g13_canary.rs`) sweeps the
+//! regression corpora to verify no input substring ≥4 bytes appears
+//! in any emitted NDJSON record outside the permitted-identifier
+//! list.
 
 pub mod audit;
 pub mod audit_note;
@@ -788,7 +795,10 @@ impl EnginePromotionToken {
 /// `fix` field. The pre-Commit-10 dual-channel shape (legacy
 /// `FixProposal` + structural `FixIntent<S>`) collapsed into a
 /// single `fix: Option<FixIntent<S>>` channel atomically with the
-/// `marque-mvp-3` audit schema flip.
+/// `marque-mvp-3` audit schema bump; the `marque-1.0` cutover at
+/// PR 3c.2.D then reshaped the engine-side `AppliedFix<S>` audit
+/// record but left the rule-side `Diagnostic<S>.fix` channel
+/// unchanged.
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct Diagnostic<S: MarkingScheme> {

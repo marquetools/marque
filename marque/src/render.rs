@@ -942,7 +942,7 @@ pub fn render_audit_line(
 /// Shape: `{"schema":"<AUDIT_SCHEMA_VERSION>","error":"<code>","rule":"<id>"}`
 ///
 /// where `<AUDIT_SCHEMA_VERSION>` is the build-time value of the
-/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-mvp-2`; see
+/// `MARQUE_AUDIT_SCHEMA` env var (default `marque-1.0`; see
 /// `crates/engine/build.rs`). The schema string is emitted dynamically
 /// so an audit consumer can dispatch on the schema version without
 /// the renderer's docs going stale on a schema bump.

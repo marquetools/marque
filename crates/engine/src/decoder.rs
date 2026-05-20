@@ -1205,7 +1205,7 @@ fn generate_candidate_bytes(bytes: &[u8]) -> SmallVec<[CanonicalAttempt; 4]> {
     //      and ensures the audit/provenance trace reflects that the
     //      input required cleanup beyond delimiter/case normalization.
     //      No dedicated `FeatureId` for structural repair exists in
-    //      the audit schema (`marque-mvp-2`); reusing
+    //      the audit schema (`marque-1.0`); reusing
     //      `BaseRateCommonMarking` keeps the schema closed and
     //      composes additively with the other normalization paths
     //      that share the same id.
@@ -3468,7 +3468,7 @@ fn try_rel_to_fuzzy_trigraph_candidates(
 ///   the corpus prior without changing score or double-counting that
 ///   prior in the posterior. Reusing `BaseRateCommonMarking` (vs
 ///   introducing a new variant) keeps the audit schema closed —
-///   `MARQUE_AUDIT_SCHEMA` stays at `marque-mvp-2`.
+///   `MARQUE_AUDIT_SCHEMA` stays at `marque-1.0`.
 fn try_rel_to_usa_injection_candidates(text: &str) -> Vec<(String, FeatureEntry)> {
     let mut out: Vec<(String, FeatureEntry)> = Vec::new();
 

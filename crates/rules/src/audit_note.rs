@@ -57,10 +57,10 @@ use crate::{Confidence, EnginePromotionToken, RuleId};
 /// - The `MARQUE_AUDIT_SCHEMA` env-pinned schema is the wire-level
 ///   contract: the *set* of variants permitted at a given schema
 ///   version is closed by build-time validation. Adding a variant
-///   requires a coordinated schema bump (currently `marque-mvp-3`;
-///   a future precursor PR bumps to `marque-1.0` per the PR 3.7 plan
-///   §1.2 rev 1.1) so that downstream NDJSON consumers can dispatch on
-///   schema version without per-variant introspection.
+///   requires a coordinated schema bump (currently `marque-1.0`,
+///   active as of the PR 3c.2.D atomic cutover) so that downstream
+///   NDJSON consumers can dispatch on schema version without
+///   per-variant introspection.
 ///
 /// Both contracts apply together: `#[non_exhaustive]` covers the
 /// source layer, the schema bump covers the wire layer. They are
@@ -135,13 +135,11 @@ pub struct AuditNoteStructural {
 /// form the audit stream: `AppliedFix` for byte-level fixes,
 /// `AuditNote` for fact-level inferences. The two streams serve
 /// different consumers (compliance reviewers + content authors) and
-/// are not conflated; the NDJSON emission will carry a `"type"`
-/// discriminator to distinguish them (the discriminator + dispatch
-/// renderer land in a future audit-schema-bump precursor PR per
-/// `decisions.md` D-7.18 — PR 7b did NOT perform the marque-mvp-3 →
-/// marque-1.0 bump because the BLAKE3 digesting + closed
-/// `MessageTemplate` JSON + content-ignorant canary tooling
-/// preconditions were not yet in place).
+/// are not conflated; the NDJSON emission carries a `"type"`
+/// discriminator to distinguish them (the `marque-mvp-3 → marque-1.0`
+/// audit-schema cutover at PR 3c.2.D landed the BLAKE3 digesting +
+/// closed `MessageTemplate` JSON + content-ignorant canary tooling
+/// preconditions, so the typed emit path is wired end-to-end).
 #[derive(Debug)]
 pub struct AuditNote<S: MarkingScheme> {
     /// The closure rule's RuleId (e.g., scheme="capco", predicate_id="noforn-if-no-fdr").
