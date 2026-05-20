@@ -408,12 +408,7 @@ pub const fn capco_section(letter: SectionLetter, page: u16) -> Citation {
 /// const CAVEATED_FDR: Citation = capco_table(SectionLetter::B, 3, 2, 21);
 /// assert_eq!(format!("{CAVEATED_FDR}"), "§B.3 Table 2 p21");
 /// ```
-pub const fn capco_table(
-    letter: SectionLetter,
-    subsection: u8,
-    table: u8,
-    page: u16,
-) -> Citation {
+pub const fn capco_table(letter: SectionLetter, subsection: u8, table: u8, page: u16) -> Citation {
     let subsection = match NonZeroU8::new(subsection) {
         Some(n) => n,
         None => panic!("capco_table(): subsection must be non-zero"),

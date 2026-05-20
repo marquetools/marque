@@ -31,10 +31,8 @@
 //!    identification (`MessageTemplate` + `MessageArgs.category`)
 //!    rather than a generic fallback.
 
+use marque_capco::scheme::{CAT_DISSEM, CAT_JOINT_CLASSIFICATION, CAT_NON_IC_DISSEM};
 use marque_capco::{CapcoRuleSet, CapcoScheme};
-use marque_capco::scheme::{
-    CAT_DISSEM, CAT_JOINT_CLASSIFICATION, CAT_NON_IC_DISSEM,
-};
 use marque_config::Config;
 use marque_engine::{Engine, FixedClock};
 use marque_ism::{CanonicalAttrs, MarkingType};
@@ -224,6 +222,9 @@ fn message_by_name_returns_none_for_unknown_name() {
     );
     // Custom-arm constraint names should also return None — they have
     // their own well-formed messages from the predicate body helpers.
+    // (PR 3c.2.C C7 carved out `class-floor/*` + `sci-per-system/*` from
+    // this rule; those are now bridge-resolved via row lookup. E012 stays
+    // a predicate-body Custom row and returns None.)
     assert!(
         scheme
             .message_by_name(
@@ -233,6 +234,164 @@ fn message_by_name_returns_none_for_unknown_name() {
             )
             .is_none(),
         "Custom-arm constraint E012 must return None (message lives in the predicate body)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PR 3c.2.C C7 (R-C1): class-floor + sci-per-system bridge coverage
+// ---------------------------------------------------------------------------
+
+/// Class-floor catalog rows (27 rows; `class-floor/*` and `E058/*`
+/// prefixes) must resolve to `MessageTemplate::ClassificationFloorViolated`
+/// via the bridge's prefix dispatch. The category arg reflects the row's
+/// `primary_kind` — SciSystem rows route to `CAT_SCI`, DissemControl rows
+/// to `CAT_DISSEM`, etc.
+#[test]
+fn message_by_name_class_floor_hcs_comp_sub_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "class-floor/HCS-comp-sub",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("class-floor/HCS-comp-sub must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ClassificationFloorViolated,
+        "class-floor rows map to ClassificationFloorViolated; got {:?}",
+        msg.template(),
+    );
+    // HCS-comp-sub's primary_kind is SciSystem → CAT_SCI.
+    assert_eq!(
+        msg.args().category,
+        Some(marque_capco::scheme::CAT_SCI),
+        "class-floor/HCS-comp-sub must identify the SCI axis (primary_kind=SciSystem); got {:?}",
+        msg.args().category,
+    );
+}
+
+/// E058-prefixed class-floor row (legacy-rule-replacement form) must
+/// resolve identically to the `class-floor/`-prefixed form.
+#[test]
+fn message_by_name_class_floor_e058_cnwdi_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "E058/CNWDI-classification-floor",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("E058/CNWDI-classification-floor must return Some(...)");
+    assert_eq!(msg.template(), MessageTemplate::ClassificationFloorViolated);
+    // CNWDI's primary_kind is AeaMarking → CAT_AEA.
+    assert_eq!(
+        msg.args().category,
+        Some(marque_capco::scheme::CAT_AEA),
+        "E058/CNWDI must identify the AEA axis (primary_kind=AeaMarking); got {:?}",
+        msg.args().category,
+    );
+}
+
+/// SCI per-system catalog rows (5 rows; `sci-per-system/*` prefix)
+/// must resolve to `MessageTemplate::RequiredByPresence` with
+/// `CAT_SCI`.
+#[test]
+fn message_by_name_sci_per_system_hcs_o_returns_some() {
+    let scheme = CapcoScheme::new();
+    let msg = scheme.message_by_name(
+        "sci-per-system/HCS-O-companions",
+        &empty_attrs(),
+        MarkingType::Portion,
+    );
+    let msg = msg.expect("sci-per-system/HCS-O-companions must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::RequiredByPresence,
+        "sci-per-system rows map to RequiredByPresence; got {:?}",
+        msg.template(),
+    );
+    assert_eq!(
+        msg.args().category,
+        Some(marque_capco::scheme::CAT_SCI),
+        "sci-per-system/* must identify the SCI axis; got {:?}",
+        msg.args().category,
+    );
+}
+
+/// Unknown `class-floor/`-prefixed names fall through to `None` (no
+/// catalog row match). The bridge's `message_by_name` only resolves
+/// rows that actually exist in `CLASS_FLOOR_CATALOG`; a typo-class
+/// name doesn't get a free template.
+#[test]
+fn message_by_name_class_floor_unknown_label_returns_none() {
+    let scheme = CapcoScheme::new();
+    assert!(
+        scheme
+            .message_by_name(
+                "class-floor/no-such-row",
+                &empty_attrs(),
+                MarkingType::Portion
+            )
+            .is_none(),
+        "unknown class-floor/* label must return None (no catalog match)"
+    );
+}
+
+/// Class-floor citation_by_name dispatch (parallel to message_by_name)
+/// must return the per-row `citation_typed`, not the
+/// `[engine-internal]` sentinel.
+#[test]
+fn citation_by_name_class_floor_hcs_comp_sub_returns_typed_citation() {
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    let scheme = CapcoScheme::new();
+    let cite = scheme
+        .citation_by_name("class-floor/HCS-comp-sub")
+        .expect("class-floor/HCS-comp-sub must return Some(citation)");
+    // HCS-comp-sub anchors at §H.4 p60 (SCI section start).
+    assert_eq!(
+        cite,
+        capco(SectionLetter::H, 4, 60),
+        "class-floor/HCS-comp-sub citation must be §H.4 p60; got {:?}",
+        cite,
+    );
+    assert_eq!(cite.document, AuthoritativeSource::Capco2016);
+}
+
+/// SCI per-system citation_by_name dispatch must return the per-row
+/// `citation_typed`.
+#[test]
+fn citation_by_name_sci_per_system_hcs_o_returns_typed_citation() {
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    let scheme = CapcoScheme::new();
+    let cite = scheme
+        .citation_by_name("sci-per-system/HCS-O-companions")
+        .expect("sci-per-system/HCS-O-companions must return Some(citation)");
+    // HCS-O companions anchor at §H.4 p64.
+    assert_eq!(
+        cite,
+        capco(SectionLetter::H, 4, 64),
+        "sci-per-system/HCS-O-companions citation must be §H.4 p64; got {:?}",
+        cite,
+    );
+    assert_eq!(cite.document, AuthoritativeSource::Capco2016);
+}
+
+/// Passthrough class-floor rows route to `AuthoritativeSource::EngineInternal`
+/// (they reference marque-applied.md, not CAPCO-2016).
+#[test]
+fn citation_by_name_class_floor_passthrough_routes_to_engine_internal() {
+    use marque_rules::AuthoritativeSource;
+    let scheme = CapcoScheme::new();
+    let cite = scheme
+        .citation_by_name("class-floor/passthrough-BUR")
+        .expect("class-floor/passthrough-BUR must return Some(citation)");
+    // Passthrough rows reference marque-applied.md, not CAPCO. The
+    // citation routes through AuthoritativeSource::EngineInternal so
+    // Display renders `[engine-internal]`.
+    assert_eq!(
+        cite.document,
+        AuthoritativeSource::EngineInternal,
+        "passthrough rows must route to EngineInternal; got {:?}",
+        cite.document,
     );
 }
 

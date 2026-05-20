@@ -35,10 +35,7 @@ fn e059_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    diags
-        .iter()
-        .filter(|d| d.rule.as_str() == "E059")
-        .collect()
+    diags.iter().filter(|d| d.rule.as_str() == "E059").collect()
 }
 
 #[test]

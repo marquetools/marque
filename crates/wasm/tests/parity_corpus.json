@@ -5,7 +5,7 @@
       "name": "banner_abbrev_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//IMC\n",
-      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"[engine-internal]\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.8 p144\",\"fix\":null}\n"
     },
     {
       "name": "classified_banner_limdis.txt",
@@ -125,13 +125,13 @@
       "name": "sar_unclassified.txt",
       "category": "invalid",
       "input": "UNCLASSIFIED//SAR-BP\n",
-      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"[engine-internal]\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.5 p99\",\"fix\":null}\n"
     },
     {
       "name": "sci_banner_missing_compartment.txt",
       "category": "invalid",
       "input": "(TS//SI-G ABCD//OC/NF) portion text\nTOP SECRET//SI-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.4 p62\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.4 p61\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_canonical_subcompartments.txt",

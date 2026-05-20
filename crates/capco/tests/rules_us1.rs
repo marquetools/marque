@@ -251,11 +251,7 @@ fn invalid_corpus_matches_expected_diagnostics() {
         // catches the full `nato_longhand_*` family + any future
         // R001-expecting fixture without per-name listing.
         let expected_peek = load_expected(&path);
-        if expected_peek
-            .diagnostics
-            .iter()
-            .any(|d| d.rule == "R001")
-        {
+        if expected_peek.diagnostics.iter().any(|d| d.rule == "R001") {
             continue;
         }
         // Banner-rollup / page-context walker (E031/E035/E039/E040)
@@ -267,12 +263,11 @@ fn invalid_corpus_matches_expected_diagnostics() {
         // diagnostic until the test wires a projected-marking via
         // `CapcoScheme::project`. Out of scope for PR 3c.2.C — this
         // is the same pipeline-scope gap as R001.
-        if expected_peek.diagnostics.iter().any(|d| {
-            matches!(
-                d.rule.as_str(),
-                "E031" | "E035" | "E039" | "E040" | "W004"
-            )
-        }) {
+        if expected_peek
+            .diagnostics
+            .iter()
+            .any(|d| matches!(d.rule.as_str(), "E031" | "E035" | "E039" | "E040" | "W004"))
+        {
             continue;
         }
         let source = load_fixture(&path);
@@ -296,8 +291,7 @@ fn valid_corpus_produces_no_diagnostics() {
         // behavior. Skip the affected fixtures until they're
         // refreshed (out of scope for PR 3c.2.C — this is an
         // engine-semantic issue, not a Diagnostic-shape issue).
-        if fname.starts_with("clean_portion_si_only")
-            || fname.starts_with("clean_portion_ts_si_tk")
+        if fname.starts_with("clean_portion_si_only") || fname.starts_with("clean_portion_ts_si_tk")
         {
             continue;
         }

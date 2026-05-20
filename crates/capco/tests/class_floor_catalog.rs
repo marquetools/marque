@@ -79,10 +79,7 @@ fn e058_diags_for<'a>(
     diags: &'a [Diagnostic<CapcoScheme>],
     _marker_text: &str,
 ) -> Vec<&'a Diagnostic<CapcoScheme>> {
-    diags
-        .iter()
-        .filter(|d| d.rule.as_str() == "E058")
-        .collect()
+    diags.iter().filter(|d| d.rule.as_str() == "E058").collect()
 }
 
 // ===========================================================================
@@ -247,19 +244,17 @@ fn hcs_p_subcompartment_fires_below_top_secret() {
         "HCS-P [SUB] floor (TS) must fire on SECRET banner: {diags:?}"
     );
     assert_eq!(hcs_sub[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.4`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge now reads per-row `citation_typed`
+    // from `CLASS_FLOOR_CATALOG`; class-floor row `class-floor/HCS-comp-sub`
+    // anchors at §H.4 p60 (SCI section General Information).
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        hcs_sub[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        hcs_sub[0].citation.document,
+        hcs_sub[0].citation,
+        capco(SectionLetter::H, 4, 60),
+        "class-floor/HCS-comp-sub must emit §H.4 p60; got: {:?}",
+        hcs_sub[0].citation,
     );
+    assert_eq!(hcs_sub[0].citation.document, AuthoritativeSource::Capco2016,);
 }
 
 #[test]
@@ -422,19 +417,16 @@ fn cnwdi_fires_below_secret() {
         1,
         "CNWDI floor must fire on CONFIDENTIAL: {diags:?}"
     );
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p104`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // CNWDI anchors at §H.6 p104.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        cnwdi[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        cnwdi[0].citation.document,
+        cnwdi[0].citation,
+        capco(SectionLetter::H, 6, 104),
+        "E058/CNWDI-classification-floor must emit §H.6 p104; got: {:?}",
+        cnwdi[0].citation,
     );
+    assert_eq!(cnwdi[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -454,18 +446,18 @@ fn rd_sigma_fires_below_secret() {
         1,
         "RD-SIGMA floor must fire on C: {diags:?}"
     );
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p113`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // RD-SIGMA anchors at §H.6 p113.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    assert_eq!(
+        rd_sigma[0].citation,
+        capco(SectionLetter::H, 6, 113),
+        "class-floor/RD-SG must emit §H.6 p113; got: {:?}",
+        rd_sigma[0].citation,
+    );
     assert_eq!(
         rd_sigma[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        rd_sigma[0].citation.document,
+        AuthoritativeSource::Capco2016
     );
 }
 
@@ -497,19 +489,16 @@ fn sar_fires_on_unclassified() {
     let diags = lint("UNCLASSIFIED//SAR-BP\n");
     let sar = e058_diags_for(&diags, "SAR requires");
     assert_eq!(sar.len(), 1, "SAR floor must fire on U//SAR-*: {diags:?}");
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.5`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // SAR anchors at §H.5 p99 (SAR section start).
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        sar[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        sar[0].citation.document,
+        sar[0].citation,
+        capco(SectionLetter::H, 5, 99),
+        "E058/SAR-classification-floor must emit §H.5 p99; got: {:?}",
+        sar[0].citation,
     );
+    assert_eq!(sar[0].citation.document, AuthoritativeSource::Capco2016);
     // Pin the no-fix invariant. SAR classification-floor violations
     // require human review per §H.5 — the bridge MUST NOT auto-fix.
     // Migrated from the retired `e027_fires_on_unclassified_banner_with_sar`
@@ -554,19 +543,16 @@ fn dod_ucni_fires_above_unclassified() {
     let diags = lint("SECRET//DOD UCNI\n");
     let ucni = e058_diags_for(&diags, "DOD UCNI may only");
     assert_eq!(ucni.len(), 1, "DOD UCNI ceiling must fire on S: {diags:?}");
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p116`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // DOD UCNI anchors at §H.6 p116.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        ucni[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        ucni[0].citation.document,
+        ucni[0].citation,
+        capco(SectionLetter::H, 6, 116),
+        "E058/DOD-UCNI-classification-ceiling must emit §H.6 p116; got: {:?}",
+        ucni[0].citation,
     );
+    assert_eq!(ucni[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -588,19 +574,16 @@ fn doe_ucni_fires_above_unclassified() {
     let diags = lint("SECRET//DOE UCNI\n");
     let ucni = e058_diags_for(&diags, "DOE UCNI may only");
     assert_eq!(ucni.len(), 1, "DOE UCNI ceiling must fire on S: {diags:?}");
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p118`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // DOE UCNI anchors at §H.6 p118.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        ucni[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        ucni[0].citation.document,
+        ucni[0].citation,
+        capco(SectionLetter::H, 6, 118),
+        "E058/DOE-UCNI-classification-ceiling must emit §H.6 p118; got: {:?}",
+        ucni[0].citation,
     );
+    assert_eq!(ucni[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1128,19 +1111,16 @@ fn tk_family_fires_below_secret_on_bare_tk() {
         "TK family floor must fire on CONFIDENTIAL//TK: {diags:?}"
     );
     assert_eq!(tk[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.4`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // TK family anchors at §H.4 p60.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        tk[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        tk[0].citation.document,
+        tk[0].citation,
+        capco(SectionLetter::H, 4, 60),
+        "class-floor/TK must emit §H.4 p60; got: {:?}",
+        tk[0].citation,
     );
+    assert_eq!(tk[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1191,19 +1171,16 @@ fn frd_sigma_fires_below_secret() {
         "FRD-SIGMA floor must fire on CONFIDENTIAL: {diags:?}"
     );
     assert_eq!(frd_sg[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p113`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // FRD-SIGMA anchors at §H.6 p113.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        frd_sg[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        frd_sg[0].citation.document,
+        frd_sg[0].citation,
+        capco(SectionLetter::H, 6, 113),
+        "class-floor/FRD-SG must emit §H.6 p113; got: {:?}",
+        frd_sg[0].citation,
     );
+    assert_eq!(frd_sg[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1262,19 +1239,26 @@ fn rsen_fires_below_secret() {
     );
     assert_eq!(rsen[0].severity, Severity::Error);
     assert_eq!(rsen[1].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.8 p149`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
-    assert_eq!(
-        rsen[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        rsen[0].citation.document,
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`.
+    // The fixture fires both `class-floor/RSEN` (§H.8 p149) AND
+    // `class-floor/TK` (§H.4 p60) — assert the diagnostic-set
+    // contains both citations rather than asserting a positional
+    // index (sort order is determined by the engine).
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+    let citations: Vec<_> = rsen.iter().map(|d| d.citation).collect();
+    assert!(
+        citations.contains(&capco(SectionLetter::H, 8, 149)),
+        "class-floor/RSEN must contribute §H.8 p149; got: {:?}",
+        citations,
     );
+    assert!(
+        citations.contains(&capco(SectionLetter::H, 4, 60)),
+        "class-floor/TK must contribute §H.4 p60; got: {:?}",
+        citations,
+    );
+    for d in &rsen {
+        assert_eq!(d.citation.document, AuthoritativeSource::Capco2016);
+    }
 }
 
 #[test]
@@ -1312,19 +1296,16 @@ fn imcon_fires_below_secret() {
         "IMCON floor must fire on CONFIDENTIAL: {diags:?}"
     );
     assert_eq!(imcon[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.8 p144`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // IMCON anchors at §H.8 p144.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        imcon[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        imcon[0].citation.document,
+        imcon[0].citation,
+        capco(SectionLetter::H, 8, 144),
+        "class-floor/IMCON must emit §H.8 p144; got: {:?}",
+        imcon[0].citation,
     );
+    assert_eq!(imcon[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1367,19 +1348,16 @@ fn si_bare_fires_when_no_classification() {
         "SI bare floor (C) must fire on UNCLASSIFIED//SI: {diags:?}"
     );
     assert_eq!(si[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.4`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // SI bare anchors at §H.4 p60.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        si[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        si[0].citation.document,
+        si[0].citation,
+        capco(SectionLetter::H, 4, 60),
+        "class-floor/SI must emit §H.4 p60; got: {:?}",
+        si[0].citation,
     );
+    assert_eq!(si[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1436,19 +1414,16 @@ fn rd_bare_fires_when_no_classification_token() {
         "RD bare floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(rd[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p104`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // RD bare anchors at §H.6 p104.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        rd[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        rd[0].citation.document,
+        rd[0].citation,
+        capco(SectionLetter::H, 6, 104),
+        "class-floor/RD must emit §H.6 p104; got: {:?}",
+        rd[0].citation,
     );
+    assert_eq!(rd[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1475,19 +1450,16 @@ fn frd_bare_fires_when_unclassified() {
         "FRD bare floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(frd[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p104`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // FRD bare anchors at §H.6 p104.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        frd[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        frd[0].citation.document,
+        frd[0].citation,
+        capco(SectionLetter::H, 6, 104),
+        "class-floor/FRD must emit §H.6 p104; got: {:?}",
+        frd[0].citation,
     );
+    assert_eq!(frd[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1524,19 +1496,16 @@ fn tfni_fires_when_unclassified() {
         "TFNI floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(tfni[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.6 p107`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // TFNI anchors at §H.6 p107.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        tfni[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        tfni[0].citation.document,
+        tfni[0].citation,
+        capco(SectionLetter::H, 6, 107),
+        "class-floor/TFNI must emit §H.6 p107; got: {:?}",
+        tfni[0].citation,
     );
+    assert_eq!(tfni[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1587,19 +1556,16 @@ fn orcon_family_fires_when_unclassified() {
         "ORCON family floor (C) must fire on UNCLASSIFIED: {diags:?}"
     );
     assert_eq!(orcon[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.8 p136`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // ORCON family anchors at §H.8 p136.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        orcon[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        orcon[0].citation.document,
+        orcon[0].citation,
+        capco(SectionLetter::H, 8, 136),
+        "class-floor/ORCON must emit §H.8 p136; got: {:?}",
+        orcon[0].citation,
     );
+    assert_eq!(orcon[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]
@@ -1636,19 +1602,16 @@ fn eyes_only_fires_when_unclassified() {
         "EYES ONLY floor (C) must fire on (U//EYES): {diags:?}"
     );
     assert_eq!(eyes[0].severity, Severity::Error);
-    // PR 3c.2.C C5: bridge for class-floor rows produces the
-    // `[engine-internal]` sentinel citation, not the row's native
-    // `CAPCO-2016 §H.8 p152`. The per-row `citation_by_name` mapping is not yet
-    // wired (PM-C-1 R-C1: known bridge gap). Authoring citation
-    // anchor is the row's `citation: &'static str` field on
-    // `crates/capco/src/scheme/class_floor.rs::CLASS_FLOOR_CATALOG`.
-    use marque_rules::AuthoritativeSource;
+    // PR 3c.2.C C7 (R-C1): bridge reads per-row `citation_typed`;
+    // EYES ONLY anchors at §H.8 p152.
+    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
     assert_eq!(
-        eyes[0].citation.document,
-        AuthoritativeSource::EngineInternal,
-        "class-floor bridge emits EngineInternal sentinel until\n         `citation_by_name` covers class-floor labels; got: {:?}",
-        eyes[0].citation.document,
+        eyes[0].citation,
+        capco(SectionLetter::H, 8, 152),
+        "class-floor/EYES-ONLY must emit §H.8 p152; got: {:?}",
+        eyes[0].citation,
     );
+    assert_eq!(eyes[0].citation.document, AuthoritativeSource::Capco2016);
 }
 
 #[test]

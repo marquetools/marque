@@ -354,7 +354,22 @@ impl CapcoScheme {
     /// - `"E054/relido-conflicts-noforn"` — RELIDO cannot be used
     ///   with NOFORN per CAPCO-2016 §H.8 p154.
     ///
+    /// # Class-floor and SCI-per-system catalog rows (PR 3c.2.C C7)
+    ///
+    /// PR 3c.2.C C7 (reviewer R-C1) extended the dispatch to cover the
+    /// 27 `class-floor/*` + `E058/*` catalog rows and the 5
+    /// `sci-per-system/*` catalog rows. Both prefixes route through
+    /// [`find_class_floor_row`](Self::find_class_floor_row) /
+    /// [`find_sci_per_system_row`](Self::find_sci_per_system_row)
+    /// label lookups so the per-row [`MessageTemplate`] +
+    /// [`Citation`] are read from the catalog rather than synthesized
+    /// at the bridge. Without this, the bridge fell back to a generic
+    /// `ConflictsWith` template + `[engine-internal]` citation
+    /// sentinel.
+    ///
     /// [`fix_intent_by_name`]: Self::fix_intent_by_name
+    /// [`MessageTemplate`]: marque_rules::MessageTemplate
+    /// [`Citation`]: marque_rules::Citation
     pub fn message_by_name(
         &self,
         name: &str,
@@ -368,6 +383,52 @@ impl CapcoScheme {
         // the narrative descriptions live in the legacy `&str` arms
         // (preserved in git history) and the bridge's renderer
         // re-derives display text from `(template, args, source, span)`.
+
+        // PR 3c.2.C C7 (R-C1): class-floor catalog rows. The 27
+        // rows in CLASS_FLOOR_CATALOG all carry the
+        // ClassificationFloorViolated template; the per-row category
+        // axis is inferred from the row's `primary_kind` so the audit
+        // record carries the right category. Per-row §-citations
+        // resolve via citation_by_name (kept in lockstep with this
+        // function for the same label set).
+        if name.starts_with("class-floor/") || name.starts_with("E058/") {
+            // Row lookup is O(27); cheap. Avoids re-encoding the
+            // dispatch in two places.
+            if let Some(row) = self.find_class_floor_row(name) {
+                let category = match row.primary_kind {
+                    Some(marque_ism::TokenKind::SciSystem) => Some(crate::scheme::CAT_SCI),
+                    Some(marque_ism::TokenKind::SarIndicator) => Some(crate::scheme::CAT_SAR),
+                    Some(marque_ism::TokenKind::AeaMarking) => Some(crate::scheme::CAT_AEA),
+                    Some(marque_ism::TokenKind::DissemControl) => Some(crate::scheme::CAT_DISSEM),
+                    // Classification-anchored rows (BALK/BOHEMIA/ATOMAL legacy compound text).
+                    _ => Some(crate::scheme::CAT_CLASSIFICATION),
+                };
+                return Some(Message::new(
+                    MessageTemplate::ClassificationFloorViolated,
+                    MessageArgs {
+                        category,
+                        ..MessageArgs::default()
+                    },
+                ));
+            }
+            // Unknown class-floor row label — fall through to generic.
+        }
+
+        // PR 3c.2.C C7 (R-C1): sci-per-system catalog rows. The 5
+        // rows in SCI_PER_SYSTEM_CATALOG all carry RequiredByPresence
+        // semantics (CompanionRequired forbids absence of a required
+        // companion; Custom rows enforce companion presence + forbid
+        // conflict). Audit category is CAT_SCI.
+        if name.starts_with("sci-per-system/") && self.find_sci_per_system_row(name).is_some() {
+            return Some(Message::new(
+                MessageTemplate::RequiredByPresence,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_SCI),
+                    ..MessageArgs::default()
+                },
+            ));
+        }
+
         match name {
             "E015/non-us-requires-dissem" => Some(Message::new(
                 MessageTemplate::RequiredByPresence,
@@ -424,8 +485,33 @@ impl CapcoScheme {
     /// Constitution VIII propagation: each citation re-verified
     /// against `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.C
     /// authorship.
+    ///
+    /// # Class-floor and SCI-per-system catalog rows (PR 3c.2.C C7)
+    ///
+    /// PR 3c.2.C C7 (reviewer R-C1) extended this dispatch to cover
+    /// the 27 `class-floor/*` + `E058/*` catalog rows and the 5
+    /// `sci-per-system/*` catalog rows. Both prefixes return the
+    /// row's pre-computed [`Citation`](marque_rules::Citation)
+    /// (the `citation_typed` field on each row) rather than the
+    /// `[engine-internal]` sentinel previously emitted by the
+    /// bridge fallback.
     pub fn citation_by_name(&self, name: &str) -> Option<marque_rules::Citation> {
         use marque_rules::{SectionLetter, capco};
+
+        // PR 3c.2.C C7 (R-C1): class-floor catalog row citations.
+        if (name.starts_with("class-floor/") || name.starts_with("E058/"))
+            && let Some(row) = self.find_class_floor_row(name)
+        {
+            return Some(row.citation_typed);
+        }
+
+        // PR 3c.2.C C7 (R-C1): sci-per-system catalog row citations.
+        if name.starts_with("sci-per-system/")
+            && let Some(row) = self.find_sci_per_system_row(name)
+        {
+            return Some(row.citation_typed);
+        }
+
         match name {
             // E015 §H.7 p122 (FGI grammar) + §B.3 p20 (caveated
             // definition); typed anchor at §H.7 p122.
@@ -443,6 +529,33 @@ impl CapcoScheme {
             "E054/relido-conflicts-noforn" => Some(capco(SectionLetter::H, 8, 154)),
             _ => None,
         }
+    }
+
+    /// O(27) linear lookup for a `ClassFloorRow` by `name`. The
+    /// catalog has 27 rows; the linear scan is faster than a
+    /// `&'static phf::Map` build-time cost for this size. Used by
+    /// [`message_by_name`](Self::message_by_name) and
+    /// [`citation_by_name`](Self::citation_by_name) — the bridge
+    /// hook from `marque-engine`'s `bridge_constraint_diagnostic` —
+    /// to surface per-row [`MessageTemplate`](marque_rules::MessageTemplate)
+    /// + [`Citation`](marque_rules::Citation) on emission.
+    ///
+    /// Returns `None` when `name` doesn't match any row — typically
+    /// indicates a stale label in the engine's constraint catalog
+    /// or a typo in a new row's `name` field. The bridge falls back
+    /// to a generic template + sentinel citation in that case (the
+    /// pre-PR-3c.2.C-C7 behavior).
+    fn find_class_floor_row(&self, name: &str) -> Option<&'static super::ClassFloorRow> {
+        super::CLASS_FLOOR_CATALOG.iter().find(|r| r.name == name)
+    }
+
+    /// O(5) linear lookup for a `SciPerSystemRow` by `name`. The
+    /// SCI per-system catalog has 5 family rows; lookup is O(N=5).
+    /// Mirrors [`find_class_floor_row`](Self::find_class_floor_row).
+    fn find_sci_per_system_row(&self, name: &str) -> Option<&'static super::SciPerSystemRow> {
+        super::SCI_PER_SYSTEM_CATALOG
+            .iter()
+            .find(|r| r.name == name)
     }
 
     /// Reports whether the scheme's `Constraint::Custom` catalog has

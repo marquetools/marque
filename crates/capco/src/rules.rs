@@ -813,10 +813,7 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
             self.id(),
             self.default_severity(),
             span,
-            Message::new(
-                MessageTemplate::WrongTokenForm,
-                MessageArgs::default(),
-            ),
+            Message::new(MessageTemplate::WrongTokenForm, MessageArgs::default()),
             capco(SectionLetter::E, 1, 31),
             None, // Fix requires document-level context (moving a token
                   // from banner/portion into a CAB is multi-span).
@@ -899,10 +896,7 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
                 severity: self.default_severity(),
                 source: FixSource::MigrationTable,
                 span: token.span,
-                message: Message::new(
-                    MessageTemplate::SupersededToken,
-                    MessageArgs::default(),
-                ),
+                message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                 // §F covers all legacy Control Marking deprecations
                 // (E006 dissem migration table). §F has no numbered
                 // subsections in CAPCO-2016 (the citation-index
@@ -1024,10 +1018,7 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                     severity: self.default_severity(),
                     source: FixSource::MigrationTable,
                     span: token.span,
-                    message: Message::new(
-                        MessageTemplate::SupersededToken,
-                        MessageArgs::default(),
-                    ),
+                    message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                     citation: capco(SectionLetter::E, 6, 33),
                     original: text.to_owned(),
                     replacement: entry.replacement.to_owned(),
@@ -1055,10 +1046,7 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                     severity: self.default_severity(),
                     source: FixSource::MigrationTable,
                     span: token.span,
-                    message: Message::new(
-                        MessageTemplate::SupersededToken,
-                        MessageArgs::default(),
-                    ),
+                    message: Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                     citation: capco(SectionLetter::E, 6, 33),
                     original: text.to_owned(),
                     replacement,
@@ -1290,10 +1278,7 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                     self.id(),
                     self.default_severity(),
                     t.span,
-                    Message::new(
-                        MessageTemplate::UnrecognizedToken,
-                        MessageArgs::default(),
-                    ),
+                    Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default()),
                     capco(SectionLetter::G, 1, 36),
                     None, // FR-012: no fix offered
                 )
@@ -1421,10 +1406,7 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
                 severity: self.default_severity(),
                 source: FixSource::CorrectionsMap,
                 span: token_span.span,
-                message: Message::new(
-                    MessageTemplate::CorrectionsApplied,
-                    MessageArgs::default(),
-                ),
+                message: Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
                 citation: marque_rules::CORRECTIONS_MAP_CITATION,
                 original: text.to_owned(),
                 replacement: replacement.clone(),
@@ -2029,10 +2011,7 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
                 self.id(),
                 self.default_severity(),
                 span,
-                Message::new(
-                    MessageTemplate::CorrectionsApplied,
-                    MessageArgs::default(),
-                ),
+                Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
                 capco(SectionLetter::H, 8, 150),
                 candidate.to_owned(),
                 FixSource::BuiltinRule,
@@ -3010,10 +2989,7 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
             self.id(),
             self.default_severity(),
             span,
-            Message::new(
-                MessageTemplate::SupersededToken,
-                MessageArgs::default(),
-            ),
+            Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
             capco(SectionLetter::H, 4, 62),
             None,
         )]
@@ -3122,10 +3098,7 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
                 self.id(),
                 Severity::Suggest,
                 span,
-                Message::new(
-                    MessageTemplate::SupersededToken,
-                    MessageArgs::default(),
-                ),
+                Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                 capco(SectionLetter::H, 4, 62),
                 *candidate,
                 FixSource::BuiltinRule,
@@ -3210,10 +3183,7 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
             self.id(),
             self.default_severity(),
             span,
-            Message::new(
-                MessageTemplate::RequiredByPresence,
-                MessageArgs::default(),
-            ),
+            Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             capco(SectionLetter::H, 4, 70),
             None,
         )]
@@ -3345,10 +3315,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                         self.id(),
                         self.default_severity(),
                         token.span,
-                        Message::new(
-                            MessageTemplate::SupersededToken,
-                            MessageArgs::default(),
-                        ),
+                        Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                         capco(SectionLetter::H, 8, 157),
                         build_rel_to_replacement(&[
                             CountryCode::USA.to_string(),
@@ -3380,10 +3347,7 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                 self.id(),
                 self.default_severity(),
                 token.span,
-                Message::new(
-                    MessageTemplate::SupersededToken,
-                    MessageArgs::default(),
-                ),
+                Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
                 capco(SectionLetter::H, 8, 157),
                 canonical,
                 FixSource::BuiltinRule,
@@ -3861,10 +3825,7 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
             self.id(),
             self.default_severity(),
             span,
-            Message::new(
-                MessageTemplate::RequiredByPresence,
-                MessageArgs::default(),
-            ),
+            Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             capco(SectionLetter::H, 7, 127),
             replacement,
             FixSource::BuiltinRule,
@@ -4075,10 +4036,7 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             self.default_severity(),
             ctx.candidate_span,
             ctx.candidate_span,
-            Message::new(
-                MessageTemplate::RequiredByPresence,
-                MessageArgs::default(),
-            ),
+            Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
             // Typed Citation anchors at §H.8 p154 (RELIDO grammar);
             // the §D.2 Table 3 row-17 cross-reference lives in the
             // rule doc comment.
@@ -4089,31 +4047,28 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
 }
 
 /// Citation string for E035 — shared between the with-fix and no-fix
-/// emission paths so they cannot silently diverge. References the
-/// per-system "Precedence Rules for Banner Line Guidance" template
-/// that appears in every §H.4 entry (HCS p62 is one of 18 identical
-/// instances).
+/// emission paths so they cannot silently diverge.
 ///
-/// Per T026a D13 single-citation discipline, this string carries the
-/// **operative** banner-roll-up rule for SCI only — §H.4 per-system
-/// precedence. §D.2 p28 (CAPCO-2016 lines 577–579) restates the same
-/// banner/portion consistency invariant in general-algorithm prose;
-/// the spec wording in
-/// `specs/006-engine-rule-refactor/tasks.md` T026a explicitly directs
-/// background §-references to row documentation rather than the
-/// citation string ("§D.2 is general-algorithm prose (per-category
-/// citations are tighter and verifiable per Constitution VIII)").
-/// The §D.2 background pointer therefore lives on the SCI evaluator's
-/// doc comment, not here.
-/// E035 (SCI banner roll-up) citation. Per CAPCO-2016 §H.4, every
-/// per-SCI-system subsection carries a "Precedence Rules for Banner
-/// Line Guidance" passage with the same rule: all unique SCI
-/// markings in portions must appear in the banner line; unlike SAR,
-/// SCI has no hierarchy-optional carve-out. The typed `Citation`
-/// anchors at §H.4 p62 (the HCS subsection, first per-system
-/// instance); the cross-system equivalence note lives in the
-/// per-rule doc comment.
-const E035_CITATION: Citation = capco(SectionLetter::H, 4, 62);
+/// E035 fires for EVERY SCI control system (HCS, RSV, SI, TK), not
+/// just HCS. PR 3c.2.C C7 (reviewer R2) corrected the anchor from
+/// `§H.4 p62` (HCS-specific subsection) to `§H.4 p61` (the cross-
+/// system SCI banner-roll-up grammar in the §H.4 General Information
+/// passage):
+///
+/// > "Use the following syntax rules for both portion marks and
+/// > banner lines for all published and unpublished SCI control
+/// > systems: [...] Only unique SCI control system, compartment, or
+/// > sub-compartment markings will be used."
+///
+/// — CAPCO-2016 §H.4 p61 (lines 1339–1347), verified at PR 3c.2.C
+/// C7 authorship per Constitution VIII propagation rule.
+///
+/// Per T026a D13 single-citation discipline, this carries the
+/// **operative** banner-roll-up rule for SCI only — §H.4 grammar.
+/// §D.2 p28 restates the same banner/portion consistency invariant
+/// in general-algorithm prose; the §D.2 background pointer lives on
+/// the SCI evaluator's doc comment, not here.
+const E035_CITATION: Citation = capco(SectionLetter::H, 4, 61);
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -5185,37 +5140,35 @@ fn evaluate_fgi_marker_banner_rollup(
     // `MessageTemplate::BannerRollupMismatch` with category =
     // `CAT_FGI_MARKER`. The narrative distinction lives in the rule
     // doc comment.
-    let has_mismatch =
-        match (attrs.fgi_marker.as_ref(), page.fgi_marker.as_ref()) {
-            (None, None) => false,
-            (None, Some(_)) | (Some(_), None) => true,
-            (Some(observed), Some(projected)) => {
-                if fgi_variant_kind(observed) != fgi_variant_kind(projected) {
-                    true
-                } else {
-                    // Compare country lists as SETS, not slices. The
-                    // observed side comes from the parser in textual
-                    // order (`parse_fgi_marker` pushes tokens left-to-
-                    // right); the projected side comes from
-                    // `FgiSet::to_marker()` which iterates a
-                    // `BTreeSet<CountryCode>` (sorted). Slice equality
-                    // would false-positive on non-canonically-ordered
-                    // (but otherwise-equivalent) banner input — e.g.,
-                    // `FGI NZL GBR` vs projected `[GBR, NZL]`. Ordering
-                    // is the renderer's concern (canonical form); E069
-                    // is supposed to fire on a missing or wrong country,
-                    // not on a valid-but-non-canonically-ordered country
-                    // list. The `BTreeSet` allocation only runs in this
-                    // branch, which is per-banner-candidate (O(pages),
-                    // not O(tokens)).
-                    use std::collections::BTreeSet;
-                    let observed_set: BTreeSet<_> = observed.countries().iter().copied().collect();
-                    let projected_set: BTreeSet<_> =
-                        projected.countries().iter().copied().collect();
-                    observed_set != projected_set
-                }
+    let has_mismatch = match (attrs.fgi_marker.as_ref(), page.fgi_marker.as_ref()) {
+        (None, None) => false,
+        (None, Some(_)) | (Some(_), None) => true,
+        (Some(observed), Some(projected)) => {
+            if fgi_variant_kind(observed) != fgi_variant_kind(projected) {
+                true
+            } else {
+                // Compare country lists as SETS, not slices. The
+                // observed side comes from the parser in textual
+                // order (`parse_fgi_marker` pushes tokens left-to-
+                // right); the projected side comes from
+                // `FgiSet::to_marker()` which iterates a
+                // `BTreeSet<CountryCode>` (sorted). Slice equality
+                // would false-positive on non-canonically-ordered
+                // (but otherwise-equivalent) banner input — e.g.,
+                // `FGI NZL GBR` vs projected `[GBR, NZL]`. Ordering
+                // is the renderer's concern (canonical form); E069
+                // is supposed to fire on a missing or wrong country,
+                // not on a valid-but-non-canonically-ordered country
+                // list. The `BTreeSet` allocation only runs in this
+                // branch, which is per-banner-candidate (O(pages),
+                // not O(tokens)).
+                use std::collections::BTreeSet;
+                let observed_set: BTreeSet<_> = observed.countries().iter().copied().collect();
+                let projected_set: BTreeSet<_> = projected.countries().iter().copied().collect();
+                observed_set != projected_set
             }
-        };
+        }
+    };
 
     if !has_mismatch {
         return vec![];
@@ -5894,6 +5847,14 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
 // check. Per Constitution Principle V (audit-first compliance) the
 // fabricated `FixProposal`-bearing test bodies were already dead at
 // the cfg gate; this is a documentation tombstone, not a semantic claim.
+// NOTE (PR 3c.2.C C7, reviewer R2 LOW): this `cfg(any())`-gated module
+// has been dead since PR 3c.B Commit 10. Its test bodies call the
+// pre-3c.2.C string `Message` API (`.message.contains(...)`, etc.) and
+// would NOT compile under the post-3c.2.C closed-template `Message`
+// shape if the gate were lifted — re-enabling requires a full rewrite
+// of every `.message.contains` site to use `template()` / `args()`
+// accessors against the closed `MessageTemplate` set. Tracked as part
+// of the future inline-test-module re-enablement work.
 #[cfg(any())] // PR 3c.B Commit 10: inline tests reading legacy FixProposal fields disabled pending rewrite.
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

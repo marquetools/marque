@@ -116,6 +116,44 @@ The round-trip test `tools/citation-lint/tests/citation_display_roundtrip.rs::b3
 
 **Action (post-3c.2.C)**: Extend the citation-lint grammar at `tools/citation-lint/src/citation.rs::parse_after_sigil` to optionally consume `' Table ' DIGIT+` between the subsection and the page anchor. The extension is structural: the existing grammar already recognizes both `Table N` (without page) and bare `p<page>` (without table); combining them into `Table N p<page>` is a single production rule. Update the existing in-tree tests at `crates/rules/tests/citation_display_roundtrip.rs::scanner_accepts_known_good_forms` to add `§B.3 Table 2 p21` as a known-good form, and the C6 round-trip test above will flip from "partial" to "full" automatically.
 
+### ~~C-FOLLOWUP-8: `bridge_message_by_name` + `citation_by_name` coverage for class-floor and sci-per-system labels~~ — **CLOSED in PR 3c.2.C C7**
+
+**Severity**: HIGH (bridge gap; class-floor + sci-per-system diagnostics emitted with `[engine-internal]` sentinel citations and generic `ConflictsWith` template instead of per-row CAPCO citations + `ClassificationFloorViolated` / `RequiredByPresence` templates).
+**Source**: 3-reviewer pass on PR 3c.2.C (R-C1, code-reviewer R2 + system-architect R3 convergence).
+
+**Issue**: 27 class-floor catalog rows (`Constraint::Custom("class-floor/...", ...)` / `E058/...`) + 5 sci-per-system catalog rows (`Constraint::Custom("sci-per-system/...", ...)`) declared via `CapcoScheme` did not have entries in the bridge's `message_by_name` / `citation_by_name` dispatch. The bridge therefore fell through to a generic `MessageTemplate::ConflictsWith` + `Citation::new(AuthoritativeSource::EngineInternal, ...)` sentinel. This produced bridge-emitted `Diagnostic`s with the `[engine-internal]` citation rather than the row's native CAPCO anchor — a load-bearing audit-trail correctness issue (Constitution V Principle V + VIII).
+
+**Resolution (PR 3c.2.C C7, 2026-05-20)**:
+
+1. Added `citation_typed: Citation` field to `ClassFloorRow` (mirror of pre-existing field on `SciPerSystemRow`); populated for all 27 rows with re-verified per-row CAPCO anchors (passthrough rows route through `AuthoritativeSource::EngineInternal` since they reference `marque-applied.md`, not CAPCO).
+2. Extended `crates/capco/src/scheme/adapter.rs::message_by_name` to dispatch on `class-floor/` / `E058/` / `sci-per-system/` prefixes via O(N) catalog lookup. Class-floor rows resolve to `MessageTemplate::ClassificationFloorViolated`; sci-per-system rows resolve to `MessageTemplate::RequiredByPresence`.
+3. Extended `citation_by_name` symmetrically: prefix dispatch reads the row's `citation_typed` field directly.
+4. Strengthened 16 weakened assertions in `crates/capco/tests/class_floor_catalog.rs` from `AuthoritativeSource::EngineInternal` sentinel checks to exact per-row CAPCO citation assertions (each `assert_eq!(d.citation, capco(SectionLetter::H, X, YY))` against the row's anchor).
+5. WASM `parity_corpus.json` regenerated via `MARQUE_REGEN_PARITY_CORPUS=1` to reflect the new bridge output (E058 IMCON case in `banner_abbrev_3.txt` now carries `§H.8 p144` + `ClassificationFloorViolated` instead of `[engine-internal]` + `ConflictsWith`).
+
+**Constitution VII boundary observed**: no `marque-scheme` edits. Approach A (extending the per-scheme adapter) keeps the conversion in `marque-capco` per PM-C-1.
+
+### C-FOLLOWUP-9: PM-C-10 grep predicate scope clarification
+
+**Severity**: LOW (PM contract drafting drift; documentation).
+**Source**: 3-reviewer pass on PR 3c.2.C (code-reviewer R2 false-positive on PM-C-10 item 6).
+
+**Issue**: PM-C-10 item 6 reads "post-C, `grep -rn 'message:\s*format!' crates/capco/src/` must return 0 hits." The predicate is too broad: it catches legitimate `ConstraintViolation.message: format!(...)` sites at `crates/capco/src/scheme/constraints/helpers.rs:74, 114` that are PM-C-1-sanctioned (the `ConstraintViolation` struct stays `String`-typed per Constitution VII graph-leaf rule; the `format!` interpolation there is a `String` construction, not a `Diagnostic.message` violation).
+
+A code-reviewer running PM-C-10's checklist verbatim against the merged C7 boundary will see 2 hits and incorrectly conclude C-7-3 violated G13.
+
+**Action**: PM contract drafting drift; the predicate should be re-scoped at the next PM-doc maintenance window. The corrected predicate is:
+
+```bash
+# Only flag format! inside Diagnostic::new / Diagnostic::with_fix* contexts.
+# (G13 closure applies to `Diagnostic.message`, NOT to
+# `ConstraintViolation.message` which stays `String` per PM-C-1.)
+grep -rn 'message:\s*format!' crates/capco/src/ crates/engine/src/ \
+  | grep -v 'ConstraintViolation\|helpers\.rs'
+```
+
+This is a documentation update, not a code change; no PR is required. The maintenance pass should also clarify item 6's intent in the PM contract narrative.
+
 ### C-FOLLOWUP-6: Byte-equivalence test §-citation re-verification at 3c.2.E
 
 **Severity**: LOW (citation discipline at lifecycle boundary).

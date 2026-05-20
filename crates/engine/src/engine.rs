@@ -2346,14 +2346,8 @@ impl Engine {
                 )
             });
 
-        let mut diag = Diagnostic::with_fix(
-            rule_id,
-            final_severity,
-            span,
-            message,
-            citation,
-            fix_intent,
-        );
+        let mut diag =
+            Diagnostic::with_fix(rule_id, final_severity, span, message, citation, fix_intent);
         diag.candidate_span = Some(candidate.span);
         Some(diag)
     }

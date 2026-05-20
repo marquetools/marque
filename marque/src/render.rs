@@ -740,7 +740,10 @@ mod tests {
             RuleId::new(rule),
             Severity::Fix,
             span,
-            Message::new(MessageTemplate::BannerRollupMismatch, MessageArgs::default()),
+            Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs::default(),
+            ),
             marque_rules::capco(marque_rules::SectionLetter::A, 6, 15),
             fix,
         )

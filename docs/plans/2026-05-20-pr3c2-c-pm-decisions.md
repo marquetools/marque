@@ -144,7 +144,17 @@ pub const fn capco_table(
 
 **No `unsafe`**: `NonZeroU8::new_unchecked` would shave a few nanoseconds at compile time at the cost of an unsafe block per construction. The const-fn `match`-based approach is safe, panics at compile time on invalid input, and is just as ergonomic at the call site.
 
-**Bare `§<L>` shape** (no subsection, e.g., a hypothetical `§H pNN`): not currently used in CAPCO citations — every cited site has a subsection. No `capco_bare()` helper in C; add later if a future site needs it.
+**Bare `§<L>` shape addendum (PR 3c.2.C C2)**: When C2 actually landed, a third helper `capco_section()` was added alongside `capco()` and `capco_table()` to cover CAPCO sections that carry no numbered subsection — most importantly §F (Legacy Control Markings), which is bare-section organized (the citation index confirms `section: F` carries no `subsections:` list). The original PM-C-2 text dismissed this shape as "not currently used" but §F citations (e.g., in `rules.rs::DeprecatedControlMarkingRule`) needed a helper that didn't require a sentinel `subsection: 0` (which `NonZeroU8::new(0) → None → panic`). This addendum documents the helper for reviewer-attestation completeness; the helper itself shipped in C2 (`crates/rules/src/citation.rs:386`):
+
+```rust
+/// Const-fn helper for CAPCO citations where the §-letter has NO
+/// numbered subsections (e.g., §F which is bare-section organized).
+/// Used when `capco()` would require a sentinel `subsection: 0`
+/// (which is `NonZeroU8::new(0)` → `None` → panic at const-eval).
+pub const fn capco_section(letter: SectionLetter, page: u16) -> Citation { ... }
+```
+
+The reviewer attestation tracks this addition; PM contract reflects it for the audit trail.
 
 ### PM-C-3 — Lift cfg-gates on `s004_audit_content_ignorance.rs` and `rules_us1.rs` in C
 
