@@ -1,0 +1,885 @@
+// SPDX-FileCopyrightText: 2026 Knitli Inc.
+//
+// SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
+
+//! CAPCO atom inventory + projection over [`FactBitmask`].
+//!
+//! This module owns the *CAPCO-specific* bit assignment for the
+//! domain-neutral [`marque_scheme::FactBitmask`] storage primitive.
+//! Atom names live here; the bitwise storage primitive lives in
+//! `marque-scheme`. Constitution VII placement disposition from the
+//! 2026-05-20 PR-B plan, OQ-1 (resolved Option C).
+//!
+//! # Sub-PR scope (PR-B)
+//!
+//! PR-B lands the projection mathematics ONLY:
+//!
+//! - [`fact_bit`] — the 51-atom CAPCO inventory (bit indices 0..51,
+//!   the remaining 77 bits split between CAPCO future-growth at
+//!   51..96 and foreign-grammar future use at 96..128).
+//! - [`MASK_FDR_DOMINATORS`] / [`MASK_FDR_OR_RELIDO_INCOMPAT`] /
+//!   [`MASK_RELIDO_US_CLASS_SUPPRESSORS`] — precomputed aggregate
+//!   masks consumed by PR-C's `CLOSURE_TABLE` rows.
+//! - [`derive_bits`] — forward projection
+//!   `&CanonicalAttrs → FactBitmask` over the closed-vocab fields.
+//! - [`apply_closed_bits_to`] — inverse projection that writes the
+//!   closure-cone delta back into `CanonicalAttrs`. Only the four
+//!   closure-cone outputs (NOFORN, ORCON, RELIDO, REL_TO_USA) are
+//!   eligible for write-back; every other atom is observation-only.
+//!
+//! PR-B does NOT touch `CapcoScheme::closure` or the `CLOSURE_TABLE`
+//! catalog — those are PR-C / PR-D. PR-B's only consumers are the
+//! co-located unit tests + the round-trip proptests in
+//! `crates/capco/tests/proptest_fact_bitmask_roundtrip.rs`. The
+//! `#[allow(dead_code)]` below silences the per-item warnings every
+//! non-test build emits; PR-C lands the `CLOSURE_TABLE` consumer
+//! and PR-D wires `CapcoScheme::closure` to call `derive_bits` /
+//! `apply_closed_bits_to` on the hot path, at which point this
+//! attribute deletes.
+//!
+//! # Visibility
+//!
+//! The module is declared `#[doc(hidden)] pub mod` in `lib.rs` —
+//! integration tests in `crates/capco/tests/` link against the
+//! crate as an external dependency and need access to the projection
+//! helpers (a `pub(crate)` module would be invisible to them). The
+//! `#[doc(hidden)]` keeps the module out of rustdoc and signals
+//! "internal API, do not consume from outside the crate". PR-C wires
+//! the `CLOSURE_TABLE` consumer; PR-D wires `CapcoScheme::closure`.
+//! Once both land, the visibility tightens back to `pub(crate)` and
+//! `#[doc(hidden)]` deletes.
+//!
+//! # Atom layout (mirrors `docs/plans/2026-05-20-371-factbitmask-refactor.md` §3)
+//!
+//! | Bits | Count | Axis |
+//! |---|---|---|
+//! | 0–12  | 13 | US IC dissem (NOFORN, RELIDO, DISPLAY_ONLY, ORCON, ORCON_USGOV, EYES, RSEN, IMCON, PROPIN, DSEN, FISA, RAWFISA, FOUO) |
+//! | 13–21 | 9  | Non-IC dissem (NODIS, EXDIS, SBU_NF, LES_NF, LIMDIS, LES, SBU, SSI, NNPI) |
+//! | 22–26 | 5  | Closed AEA (RD, FRD, TFNI, DOE_UCNI, DOD_UCNI) |
+//! | 27–29 | 3  | US classification 3-bit OrdMax chain |
+//! | 30    | 1  | `US_COLLATERAL_CLASSIFIED` derived sentinel (US chain ≥ Restricted) |
+//! | 31    | 1  | `US_UNCLASSIFIED` derived sentinel (US chain = U) |
+//! | 32–34 | 3  | NATO classification 3-bit OrdMax chain |
+//! | 35    | 1  | `NATO_CLASS` presence sentinel |
+//! | 36    | 1  | `SAR_PRESENT` |
+//! | 37    | 1  | `SCI_PRESENT` |
+//! | 38    | 1  | `FGI_PRESENT` (FgiMarker OR FGI classification) |
+//! | 39    | 1  | `JOINT_PRESENT` |
+//! | 40–45 | 6  | SCI sentinels (SI_G, HCS_O, HCS_P_SUB, TK_BLFH, TK_IDIT, TK_KAND) |
+//! | 46    | 1  | `REL_TO_PRESENT` |
+//! | 47    | 1  | `REL_TO_USA` |
+//! | 48    | 1  | `AEA_ATOMAL` (NATO AEA) |
+//! | 49    | 1  | `AEA_BOHEMIA` (NATO SAP) |
+//! | 50    | 1  | `AEA_BALK` (NATO SAP) |
+//!
+//! **Classification chains are NOT bitwise-or-joinable.** Bits 27-29
+//! (US) and 32-34 (NATO) encode an `OrdMax` ladder (`000` = absent,
+//! `001` = U, ..., `100` = TS / CTS). Bitwise OR of two ladders does
+//! NOT compute their max — callers MUST extract the 3-bit field and
+//! perform numeric compare. The bits live in the bitmask to give the
+//! `CLOSURE_TABLE` (PR-C) a uniform input shape; the joins live in
+//! the lattice halves on `ClassificationLattice` / `NatoClassLattice`.
+
+#![allow(dead_code)] // PR-B sidecar; PR-C / PR-D wire the production consumers.
+
+use marque_ism::{
+    AeaMarking, Classification, CountryCode, DissemControl, MarkingClassification,
+    NatoClassification, NonIcDissem, SciControlSystem, canonical::CanonicalAttrs,
+};
+use marque_scheme::FactBitmask;
+
+/// Numeric bit indices for every CAPCO atom that participates in
+/// closure-table dispatch.
+///
+/// Bit values are sequential within each axis and grouped by axis
+/// per the layout table in this module's docstring. Each constant is
+/// a `u32` so it composes directly with
+/// [`FactBitmask::with_bit`] / [`FactBitmask::is_set`].
+#[allow(non_upper_case_globals)]
+pub mod fact_bit {
+    // ----- US IC dissem (13 atoms, bits 0..13) -----
+    pub const NOFORN: u32 = 0;
+    pub const RELIDO: u32 = 1;
+    pub const DISPLAY_ONLY: u32 = 2;
+    pub const ORCON: u32 = 3;
+    pub const ORCON_USGOV: u32 = 4;
+    pub const EYES: u32 = 5;
+    pub const RSEN: u32 = 6;
+    pub const IMCON: u32 = 7;
+    pub const PROPIN: u32 = 8;
+    pub const DSEN: u32 = 9;
+    pub const FISA: u32 = 10;
+    pub const RAWFISA: u32 = 11;
+    pub const FOUO: u32 = 12;
+
+    // ----- Non-IC dissem (9 atoms, bits 13..22) -----
+    pub const NODIS: u32 = 13;
+    pub const EXDIS: u32 = 14;
+    pub const SBU_NF: u32 = 15;
+    pub const LES_NF: u32 = 16;
+    pub const LIMDIS: u32 = 17;
+    pub const LES: u32 = 18;
+    pub const SBU: u32 = 19;
+    pub const SSI: u32 = 20;
+    pub const NNPI: u32 = 21;
+
+    // ----- Closed AEA (5 atoms, bits 22..27) -----
+    pub const AEA_RD: u32 = 22;
+    pub const AEA_FRD: u32 = 23;
+    pub const AEA_TFNI: u32 = 24;
+    pub const AEA_DOE_UCNI: u32 = 25;
+    pub const AEA_DOD_UCNI: u32 = 26;
+
+    // ----- US classification 3-bit OrdMax chain (bits 27..30) -----
+    // Encoded as a small integer in the [27, 30) field — NOT bitwise-
+    // OR-joinable. Use `extract_us_class_level` to read back.
+    pub const US_CLASS_BIT0: u32 = 27;
+    pub const US_CLASS_BIT1: u32 = 28;
+    pub const US_CLASS_BIT2: u32 = 29;
+
+    // ----- Derived US sentinels (bits 30..32) -----
+    pub const US_COLLATERAL_CLASSIFIED: u32 = 30;
+    pub const US_UNCLASSIFIED: u32 = 31;
+
+    // ----- NATO classification 3-bit OrdMax chain (bits 32..35) -----
+    pub const NATO_CLASS_BIT0: u32 = 32;
+    pub const NATO_CLASS_BIT1: u32 = 33;
+    pub const NATO_CLASS_BIT2: u32 = 34;
+
+    // ----- Presence sentinels (bits 35..40) -----
+    pub const NATO_CLASS: u32 = 35;
+    pub const SAR_PRESENT: u32 = 36;
+    pub const SCI_PRESENT: u32 = 37;
+    pub const FGI_PRESENT: u32 = 38;
+    pub const JOINT_PRESENT: u32 = 39;
+
+    // ----- SCI compartment sentinels (6 atoms, bits 40..46) -----
+    pub const SCI_SI_G: u32 = 40;
+    pub const SCI_HCS_O: u32 = 41;
+    pub const SCI_HCS_P_SUB: u32 = 42;
+    pub const SCI_TK_BLFH: u32 = 43;
+    pub const SCI_TK_IDIT: u32 = 44;
+    pub const SCI_TK_KAND: u32 = 45;
+
+    // ----- REL TO sentinels (bits 46..48) -----
+    pub const REL_TO_PRESENT: u32 = 46;
+    pub const REL_TO_USA: u32 = 47;
+
+    // ----- NATO AEA + NATO SAP sentinels (bits 48..51) -----
+    pub const AEA_ATOMAL: u32 = 48;
+    pub const AEA_BOHEMIA: u32 = 49;
+    pub const AEA_BALK: u32 = 50;
+}
+
+/// Highest assigned bit + 1. Drives the [`FactBitmask::WIDTH`]
+/// fits-in-128 compile-time guard. Whenever a new atom is added,
+/// bump this and re-run the static assert below.
+pub(crate) const CAPCO_ATOM_COUNT: u32 = fact_bit::AEA_BALK + 1;
+
+// FactBitmask::WIDTH is 128. The atom inventory MUST fit. A future
+// scheme that exceeds 128 atoms requires a wider primitive in
+// `marque-scheme`; that's a planned migration, not a runtime panic.
+const _: () = {
+    assert!(
+        CAPCO_ATOM_COUNT <= marque_scheme::FACT_BITMASK_WIDTH,
+        "CAPCO atom inventory exceeds FactBitmask::WIDTH; widen the \
+         primitive in marque-scheme or split a CAPCO atom out."
+    );
+};
+
+/// FD&R dominators (NOFORN, RELIDO, DISPLAY ONLY, REL_TO_PRESENT,
+/// EYES) per §B.3.a p19 + §H.8 p157 (EYES) + §D.2 Table 3. Used as
+/// the Trio 1 suppressor in `CLOSURE_NOFORN_CAVEATED` (PR-C / Row 0).
+///
+/// Authority: §B.3 Table 2 p21 (caveated-default), §H.8 p155-157
+/// (FD&R chain), §D.2 Table 3 rows 1-2.
+pub(crate) const MASK_FDR_DOMINATORS: u128 = (1u128 << fact_bit::NOFORN)
+    | (1u128 << fact_bit::RELIDO)
+    | (1u128 << fact_bit::DISPLAY_ONLY)
+    | (1u128 << fact_bit::REL_TO_PRESENT)
+    | (1u128 << fact_bit::EYES);
+
+/// `FDR_DOMINATORS` ∪ RELIDO-incompatible (FGI / JOINT / NATO
+/// classification + per-compartment SCI sentinels with NOFORN/ORCON
+/// per-marking implications).
+///
+/// Used as the Trio 2 / Trio 3 suppressor in `CLOSURE_RELIDO_SCI`
+/// and `CLOSURE_REL_TO_USA_NATO` (PR-C / Rows 7 + 8). The SCI
+/// sentinels appear because their per-marking unconditional
+/// implications (§H.4 marking templates) make RELIDO inapplicable by
+/// definition — including them prevents Kleene-fixpoint ordering
+/// dependence on Trio 1 firing first.
+///
+/// Authority: §H.7 p123 (FGI), §H.3 p56 (JOINT), §G.1 Table 4 p38 +
+/// §H.7 p127 (NATO), §H.4 marking templates for the six SCI
+/// sentinels (pp64 / 68 / 80 / 87 / 91 / 95).
+pub(crate) const MASK_FDR_OR_RELIDO_INCOMPAT: u128 = MASK_FDR_DOMINATORS
+    | (1u128 << fact_bit::FGI_PRESENT)
+    | (1u128 << fact_bit::JOINT_PRESENT)
+    | (1u128 << fact_bit::NATO_CLASS)
+    | (1u128 << fact_bit::SCI_SI_G)
+    | (1u128 << fact_bit::SCI_HCS_O)
+    | (1u128 << fact_bit::SCI_HCS_P_SUB)
+    | (1u128 << fact_bit::SCI_TK_BLFH)
+    | (1u128 << fact_bit::SCI_TK_IDIT)
+    | (1u128 << fact_bit::SCI_TK_KAND);
+
+/// `FDR_DOMINATORS` ∪ six per-compartment SCI sentinels. Used as
+/// the suppressor for `CLOSURE_RELIDO_US_CLASS` (PR-C / Row 9 —
+/// "US collateral classification → RELIDO unless dominated /
+/// incompatible").
+///
+/// Drops the FGI / JOINT / NATO inclusion vs
+/// [`MASK_FDR_OR_RELIDO_INCOMPAT`] because the row already gates on
+/// US-collateral classification; an FGI / JOINT / NATO portion is
+/// not US-collateral by definition so the suppressor would be
+/// redundant.
+///
+/// Authority: §B.3 Table 2 p21 + §H.8 p154.
+pub(crate) const MASK_RELIDO_US_CLASS_SUPPRESSORS: u128 = MASK_FDR_DOMINATORS
+    | (1u128 << fact_bit::SCI_SI_G)
+    | (1u128 << fact_bit::SCI_HCS_O)
+    | (1u128 << fact_bit::SCI_HCS_P_SUB)
+    | (1u128 << fact_bit::SCI_TK_BLFH)
+    | (1u128 << fact_bit::SCI_TK_IDIT)
+    | (1u128 << fact_bit::SCI_TK_KAND);
+
+/// Closure-cone outputs that [`apply_closed_bits_to`] is willing to
+/// write back to [`CanonicalAttrs`].
+///
+/// Every CAPCO closure-row cone in §4 of the PR-B plan resolves to
+/// one of these four atoms (NOFORN / ORCON / RELIDO for the dissem
+/// axis; REL_TO_USA for the country-list axis). Other delta bits in
+/// `(closed & !input)` are silently ignored by `apply_closed_bits_to`
+/// — they reflect derived sentinels or input-only atoms that have no
+/// inverse-projection semantics.
+///
+/// Domain crates never call this constant; it's an internal
+/// invariant of the projection layer.
+const APPLY_ELIGIBLE_MASK: u128 = (1u128 << fact_bit::NOFORN)
+    | (1u128 << fact_bit::ORCON)
+    | (1u128 << fact_bit::RELIDO)
+    | (1u128 << fact_bit::REL_TO_USA);
+
+/// Forward projection: project the closed-vocab axes of
+/// [`CanonicalAttrs`] into a [`FactBitmask`].
+///
+/// The mapping is structural — every atom whose presence the
+/// `CLOSURE_TABLE` (PR-C) needs to read flips the corresponding bit.
+/// Atoms outside the closed inventory (open-vocab FGI tetragraphs
+/// beyond `FGI_PRESENT`, open-vocab REL TO country codes beyond
+/// `USA`, custom SCI control-system identifiers, custom SAR program
+/// names) are observed only as presence sentinels; their detail
+/// survives on `CanonicalAttrs` itself (PR-D's `closure()` rewire
+/// runs the bitmask Kleene loop AND a follow-up open-vocab cone pass
+/// for Row 7's `cone_derived` NATO tetragraph emission).
+///
+/// Branchless and single-pass over each input slice. Allocates
+/// nothing. Round-trips with [`apply_closed_bits_to`] on the four
+/// `APPLY_ELIGIBLE_MASK` cone-output atoms.
+///
+/// # Classification-chain encoding
+///
+/// US classification (bits 27-29) and NATO classification (bits 32-34)
+/// are NOT bitwise-OR-joinable atoms — the 3-bit field encodes the
+/// classification level as a small integer (`001 = U`, `010 = R`,
+/// `011 = C`, `100 = S`, `101 = TS / CTS`). Read back with
+/// [`extract_us_class_level`] / [`extract_nato_class_level`]. The
+/// derived sentinels `US_COLLATERAL_CLASSIFIED` (bit 30) and
+/// `US_UNCLASSIFIED` (bit 31) are bitwise-friendly and exist
+/// precisely so the `CLOSURE_TABLE` can use them as triggers without
+/// chain-extract logic.
+pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
+    let mut bits: u128 = 0;
+
+    // --- US IC dissem (bits 0..13) + EYES ---
+    //
+    // `dissem_iter()` walks both `dissem_us` and `dissem_nato`
+    // namespaces. The closure operator does not distinguish IC dissem
+    // by attribution namespace (see `iter_present_tokens`) so the
+    // bitmask follows the same any-of semantic — a NATO portion
+    // carrying ORCON on the NATO side still trips the ORCON bit.
+    for dc in attrs.dissem_iter() {
+        bits |= match dc {
+            DissemControl::Nf => 1u128 << fact_bit::NOFORN,
+            DissemControl::Relido => 1u128 << fact_bit::RELIDO,
+            DissemControl::Displayonly => 1u128 << fact_bit::DISPLAY_ONLY,
+            DissemControl::Oc => 1u128 << fact_bit::ORCON,
+            DissemControl::OcUsgov => 1u128 << fact_bit::ORCON_USGOV,
+            DissemControl::Eyes => 1u128 << fact_bit::EYES,
+            DissemControl::Rs => 1u128 << fact_bit::RSEN,
+            DissemControl::Imc => 1u128 << fact_bit::IMCON,
+            DissemControl::Pr => 1u128 << fact_bit::PROPIN,
+            DissemControl::Dsen => 1u128 << fact_bit::DSEN,
+            DissemControl::Fisa => 1u128 << fact_bit::FISA,
+            DissemControl::Rawfisa => 1u128 << fact_bit::RAWFISA,
+            DissemControl::Fouo => 1u128 << fact_bit::FOUO,
+            // `Rel` is the dissem-axis marker that the parser emits
+            // alongside a populated `rel_to` country list; the
+            // `REL_TO_PRESENT` bit downstream captures that more
+            // robustly. `ExemptFromIcd501Discovery` is a special
+            // marking outside the §H.8 family; no `CLOSURE_TABLE` row
+            // reads it. The wildcard arm catches any future
+            // `#[non_exhaustive]` additions and is the explicit
+            // forward-compat guard — a newly registered dissem token
+            // contributes no bit until its closure semantics land
+            // alongside an atom-inventory bump.
+            DissemControl::Rel | DissemControl::ExemptFromIcd501Discovery => 0,
+            _ => 0,
+        };
+    }
+
+    // --- Non-IC dissem (bits 13..22) ---
+    for nd in attrs.non_ic_dissem.iter() {
+        bits |= match nd {
+            NonIcDissem::Nodis => 1u128 << fact_bit::NODIS,
+            NonIcDissem::Exdis => 1u128 << fact_bit::EXDIS,
+            NonIcDissem::SbuNf => 1u128 << fact_bit::SBU_NF,
+            NonIcDissem::LesNf => 1u128 << fact_bit::LES_NF,
+            NonIcDissem::Limdis => 1u128 << fact_bit::LIMDIS,
+            NonIcDissem::Les => 1u128 << fact_bit::LES,
+            NonIcDissem::Sbu => 1u128 << fact_bit::SBU,
+            NonIcDissem::Ssi => 1u128 << fact_bit::SSI,
+            NonIcDissem::Nnpi => 1u128 << fact_bit::NNPI,
+            // `#[non_exhaustive]` forward-compat: new non-IC dissem
+            // tokens contribute no bit until their closure semantics
+            // land alongside an atom-inventory bump.
+            _ => 0,
+        };
+    }
+
+    // --- AEA (bits 22..27 + 48 ATOMAL) ---
+    for aea in attrs.aea_markings.iter() {
+        bits |= match aea {
+            AeaMarking::Rd(_) => 1u128 << fact_bit::AEA_RD,
+            AeaMarking::Frd(_) => 1u128 << fact_bit::AEA_FRD,
+            AeaMarking::Tfni => 1u128 << fact_bit::AEA_TFNI,
+            AeaMarking::DoeUcni => 1u128 << fact_bit::AEA_DOE_UCNI,
+            AeaMarking::DodUcni => 1u128 << fact_bit::AEA_DOD_UCNI,
+            AeaMarking::Atomal(_) => 1u128 << fact_bit::AEA_ATOMAL,
+            // `#[non_exhaustive]` forward-compat: new AEA tokens
+            // contribute no bit until their closure semantics land.
+            _ => 0,
+        };
+    }
+
+    // --- Classification chains (bits 27..30 US, 32..35 NATO) + presence sentinels ---
+    if let Some(class) = &attrs.classification {
+        match class {
+            MarkingClassification::Us(c) | MarkingClassification::Conflict { us: c, .. } => {
+                bits |= encode_us_class(*c) << fact_bit::US_CLASS_BIT0;
+                if *c >= Classification::Restricted {
+                    bits |= 1u128 << fact_bit::US_COLLATERAL_CLASSIFIED;
+                } else {
+                    // U: Conflict only ever stores Unclassified..TopSecret;
+                    // matches the `attrs.us_classification()` accessor.
+                    bits |= 1u128 << fact_bit::US_UNCLASSIFIED;
+                }
+            }
+            MarkingClassification::Fgi(f) => {
+                bits |= 1u128 << fact_bit::FGI_PRESENT;
+                let _ = f; // FGI level lives on lattice halves, not bitmask
+            }
+            MarkingClassification::Nato(n) => {
+                bits |= encode_nato_class(*n) << fact_bit::NATO_CLASS_BIT0;
+                bits |= 1u128 << fact_bit::NATO_CLASS;
+            }
+            MarkingClassification::Joint(_) => {
+                bits |= 1u128 << fact_bit::JOINT_PRESENT;
+            }
+        }
+    }
+
+    // FGI marker presence (dissem-axis FGI, distinct from
+    // classification-axis FgiClassification). Either path lights
+    // `FGI_PRESENT`; the suppressor masks treat them uniformly per
+    // CAPCO §H.7 p123.
+    if attrs.fgi_marker.is_some() {
+        bits |= 1u128 << fact_bit::FGI_PRESENT;
+    }
+
+    // --- Structural presence sentinels (bits 36, 37, 46) ---
+    if attrs.sar_markings.is_some() {
+        bits |= 1u128 << fact_bit::SAR_PRESENT;
+    }
+    if !attrs.sci_markings.is_empty() || !attrs.sci_controls.is_empty() {
+        bits |= 1u128 << fact_bit::SCI_PRESENT;
+    }
+    if !attrs.rel_to.is_empty() {
+        bits |= 1u128 << fact_bit::REL_TO_PRESENT;
+    }
+    if attrs.rel_to.contains(&CountryCode::USA) {
+        bits |= 1u128 << fact_bit::REL_TO_USA;
+    }
+
+    // --- SCI compartment sentinels (bits 40..46) + NATO SAPs (49, 50) ---
+    //
+    // The structural reads mirror
+    // `crates/capco/src/scheme/predicates/satisfies.rs` exactly so the
+    // bitmask reflects the same any-portion semantic the existing
+    // `TOK_SI_G` / `TOK_HCS_O` etc. predicates use. Branchless single
+    // pass; the hot path lives in PR-D's `closure()` rewire which calls
+    // `derive_bits` once per page.
+    for sci in attrs.sci_markings.iter() {
+        match &sci.system {
+            SciControlSystem::Published(bare) => {
+                use marque_ism::SciControlBare;
+                for comp in sci.compartments.iter() {
+                    let ident = comp.identifier.as_str();
+                    let has_sub = !comp.sub_compartments.is_empty();
+                    match (bare, ident, has_sub) {
+                        (SciControlBare::Si, "G", _) => bits |= 1u128 << fact_bit::SCI_SI_G,
+                        (SciControlBare::Hcs, "O", _) => bits |= 1u128 << fact_bit::SCI_HCS_O,
+                        (SciControlBare::Hcs, "P", true) => {
+                            bits |= 1u128 << fact_bit::SCI_HCS_P_SUB;
+                        }
+                        (SciControlBare::Tk, "BLFH", _) => bits |= 1u128 << fact_bit::SCI_TK_BLFH,
+                        (SciControlBare::Tk, "IDIT", _) => bits |= 1u128 << fact_bit::SCI_TK_IDIT,
+                        (SciControlBare::Tk, "KAND", _) => bits |= 1u128 << fact_bit::SCI_TK_KAND,
+                        _ => {}
+                    }
+                }
+            }
+            SciControlSystem::NatoSap(sap) => {
+                use marque_ism::NatoSap;
+                bits |= match sap {
+                    NatoSap::Bohemia => 1u128 << fact_bit::AEA_BOHEMIA,
+                    NatoSap::Balk => 1u128 << fact_bit::AEA_BALK,
+                    // `#[non_exhaustive]` forward-compat: future
+                    // NATO SAPs contribute no bit until registered.
+                    _ => 0,
+                };
+            }
+            SciControlSystem::Custom(_) => {
+                // Custom agency-allocated SCI control systems carry no
+                // bit; presence is already captured via `SCI_PRESENT`.
+            }
+        }
+    }
+
+    FactBitmask::from_bits(bits)
+}
+
+/// Inverse projection: write the closure-cone delta back into
+/// [`CanonicalAttrs`].
+///
+/// Computes `delta = (closed.bits() & !input.bits()) &
+/// APPLY_ELIGIBLE_MASK` and adds the corresponding atom to the
+/// matching axis on `attrs`. Only the four closure-cone outputs
+/// (NOFORN, ORCON, RELIDO, REL_TO_USA) are eligible — other delta
+/// bits are silently ignored. They reflect derived sentinels or
+/// input-only atoms with no inverse-projection semantic.
+///
+/// # Allocation profile (Constitution Principle II)
+///
+/// At most TWO heap allocations per call — one rebuild of
+/// `attrs.dissem_us` (if any of NOFORN / ORCON / RELIDO is in the
+/// delta), one rebuild of `attrs.rel_to` (if REL_TO_USA is in the
+/// delta). The three cone-output dissem atoms are coalesced into a
+/// single `Vec::with_capacity(...)` + `into_boxed_slice` rebuild
+/// rather than per-bit allocate-push cycles. PR-D calls this
+/// function on the closure hot path; the allocation profile here
+/// is the budget that PR-D's `lint_latency` SC-001 non-regression
+/// gate enforces.
+///
+/// # Idempotence
+///
+/// If `closed == input`, no mutation happens (delta is empty).
+/// Calling the function twice with the same `(closed, input)`
+/// arguments is also a no-op on the second call — the eligible-bit
+/// guards check `attrs.dissem_iter()` / `attrs.rel_to.contains` to
+/// short-circuit re-adds. This is the round-trip law the PR-B
+/// proptest harness asserts.
+///
+/// # NOFORN supersession (defense-in-depth note)
+///
+/// PR-D wires `apply_closed_bits_to` after the bitmask Kleene loop
+/// converges. `MASK_FDR_DOMINATORS` includes `REL_TO_PRESENT`, so
+/// `CLOSURE_NOFORN_CAVEATED` does NOT fire when `attrs.rel_to` is
+/// non-empty — by construction, the NOFORN delta cannot coexist with
+/// a populated `rel_to`. `apply_closed_bits_to` therefore does NOT
+/// run the §H.8 p145 supersession overlay (clearing rel_to / display
+/// only on NOFORN insertion); that path is owned by
+/// `apply_fact_add` in `scheme/actions/intent.rs`.
+///
+/// PR-B's invariant: the bitmask closure is responsible for ensuring
+/// the cone fires only when its suppressor is absent. If a future
+/// catalog change weakens that contract, the proptest
+/// `apply_preserves_h8_p145_invariant` catches the regression.
+pub fn apply_closed_bits_to(attrs: &mut CanonicalAttrs, closed: FactBitmask, input: FactBitmask) {
+    let delta = (closed.bits() & !input.bits()) & APPLY_ELIGIBLE_MASK;
+    if delta == 0 {
+        return;
+    }
+
+    // Phase 1: collect dissem additions in one pass; rebuild
+    // `attrs.dissem_us` with a single allocation iff anything is
+    // actually added. Inline stack buffer sized for the closure-cone
+    // worst case (NOFORN + ORCON + RELIDO).
+    let dissem_delta = delta
+        & ((1u128 << fact_bit::NOFORN) | (1u128 << fact_bit::ORCON) | (1u128 << fact_bit::RELIDO));
+    if dissem_delta != 0 {
+        let mut additions: [DissemControl; 3] = [DissemControl::Nf; 3];
+        let mut add_count = 0usize;
+
+        if (dissem_delta & (1u128 << fact_bit::NOFORN)) != 0
+            && !attrs.dissem_iter().any(|d| *d == DissemControl::Nf)
+        {
+            additions[add_count] = DissemControl::Nf;
+            add_count += 1;
+        }
+        if (dissem_delta & (1u128 << fact_bit::ORCON)) != 0
+            && !attrs.dissem_iter().any(|d| *d == DissemControl::Oc)
+        {
+            additions[add_count] = DissemControl::Oc;
+            add_count += 1;
+        }
+        if (dissem_delta & (1u128 << fact_bit::RELIDO)) != 0
+            && !attrs.dissem_iter().any(|d| *d == DissemControl::Relido)
+        {
+            additions[add_count] = DissemControl::Relido;
+            add_count += 1;
+        }
+
+        if add_count > 0 {
+            // Single allocation sized exactly for the final length.
+            let mut next: Vec<DissemControl> =
+                Vec::with_capacity(attrs.dissem_us.len() + add_count);
+            next.extend_from_slice(&attrs.dissem_us);
+            next.extend_from_slice(&additions[..add_count]);
+            attrs.dissem_us = next.into_boxed_slice();
+        }
+    }
+
+    // Phase 2: REL TO rebuild — at most one country (USA) added.
+    if (delta & (1u128 << fact_bit::REL_TO_USA)) != 0 && !attrs.rel_to.contains(&CountryCode::USA) {
+        let mut next: Vec<CountryCode> = Vec::with_capacity(attrs.rel_to.len() + 1);
+        next.extend_from_slice(&attrs.rel_to);
+        next.push(CountryCode::USA);
+        attrs.rel_to = next.into_boxed_slice();
+    }
+}
+
+/// Extract the 3-bit US classification level from a [`FactBitmask`].
+///
+/// Returns `Some(level)` when bits 27-29 encode a known
+/// `Classification` ladder value; `None` when the field is zero
+/// (absent) or holds a reserved bit pattern. The
+/// classification ladder is `U=1, R=2, C=3, S=4, TS=5` per
+/// [`encode_us_class`].
+#[inline]
+pub(crate) fn extract_us_class_level(bits: FactBitmask) -> Option<Classification> {
+    let field = ((bits.bits() >> fact_bit::US_CLASS_BIT0) & 0b111) as u8;
+    match field {
+        0 => None,
+        1 => Some(Classification::Unclassified),
+        2 => Some(Classification::Restricted),
+        3 => Some(Classification::Confidential),
+        4 => Some(Classification::Secret),
+        5 => Some(Classification::TopSecret),
+        _ => None,
+    }
+}
+
+/// Extract the 3-bit NATO classification level from a [`FactBitmask`].
+///
+/// Returns `Some(level)` when bits 32-34 encode a known
+/// `NatoClassification` ladder value; `None` when the field is zero
+/// or holds a reserved bit pattern. The NATO ladder is
+/// `NU=1, NR=2, NC=3, NS=4, CTS=5` per [`encode_nato_class`].
+#[inline]
+pub(crate) fn extract_nato_class_level(bits: FactBitmask) -> Option<NatoClassification> {
+    let field = ((bits.bits() >> fact_bit::NATO_CLASS_BIT0) & 0b111) as u8;
+    match field {
+        0 => None,
+        1 => Some(NatoClassification::NatoUnclassified),
+        2 => Some(NatoClassification::NatoRestricted),
+        3 => Some(NatoClassification::NatoConfidential),
+        4 => Some(NatoClassification::NatoSecret),
+        5 => Some(NatoClassification::CosmicTopSecret),
+        _ => None,
+    }
+}
+
+// ----------------------------------------------------------------------
+// Internal helpers
+// ----------------------------------------------------------------------
+
+/// Encode a [`Classification`] as a 3-bit ladder value (1..=5; 0 means
+/// absent and is reserved for callers).
+const fn encode_us_class(c: Classification) -> u128 {
+    match c {
+        Classification::Unclassified => 1,
+        Classification::Restricted => 2,
+        Classification::Confidential => 3,
+        Classification::Secret => 4,
+        Classification::TopSecret => 5,
+    }
+}
+
+/// Encode a [`NatoClassification`] as a 3-bit ladder value (1..=5).
+const fn encode_nato_class(n: NatoClassification) -> u128 {
+    match n {
+        NatoClassification::NatoUnclassified => 1,
+        NatoClassification::NatoRestricted => 2,
+        NatoClassification::NatoConfidential => 3,
+        NatoClassification::NatoSecret => 4,
+        NatoClassification::CosmicTopSecret => 5,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marque_ism::{Classification, DissemControl, MarkingClassification};
+
+    fn empty() -> CanonicalAttrs {
+        CanonicalAttrs::default()
+    }
+
+    #[test]
+    fn derive_empty_attrs_is_zero() {
+        let attrs = empty();
+        assert_eq!(derive_bits(&attrs), FactBitmask::EMPTY);
+    }
+
+    #[test]
+    fn derive_us_secret_sets_class_chain_and_collateral() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        let bits = derive_bits(&attrs);
+        assert_eq!(extract_us_class_level(bits), Some(Classification::Secret));
+        assert!(bits.is_set(fact_bit::US_COLLATERAL_CLASSIFIED));
+        assert!(!bits.is_set(fact_bit::US_UNCLASSIFIED));
+    }
+
+    #[test]
+    fn derive_us_unclassified_sets_unclassified_sentinel_only() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Unclassified));
+        let bits = derive_bits(&attrs);
+        assert!(bits.is_set(fact_bit::US_UNCLASSIFIED));
+        assert!(!bits.is_set(fact_bit::US_COLLATERAL_CLASSIFIED));
+        assert_eq!(
+            extract_us_class_level(bits),
+            Some(Classification::Unclassified),
+        );
+    }
+
+    #[test]
+    fn derive_dissem_us_sets_atoms() {
+        let mut attrs = empty();
+        attrs.dissem_us = vec![DissemControl::Nf, DissemControl::Oc].into();
+        let bits = derive_bits(&attrs);
+        assert!(bits.is_set(fact_bit::NOFORN));
+        assert!(bits.is_set(fact_bit::ORCON));
+        assert!(!bits.is_set(fact_bit::RELIDO));
+    }
+
+    #[test]
+    fn derive_dissem_nato_sets_same_bits_as_us() {
+        let mut attrs = empty();
+        attrs.dissem_nato = vec![DissemControl::Oc].into();
+        let bits = derive_bits(&attrs);
+        // `dissem_iter()` walks both namespaces; the closure operator
+        // does not differentiate ORCON-on-NATO from ORCON-on-US.
+        assert!(bits.is_set(fact_bit::ORCON));
+    }
+
+    #[test]
+    fn derive_rel_includes_usa_sentinel() {
+        let mut attrs = empty();
+        attrs.rel_to = vec![CountryCode::USA, CountryCode::GBR].into();
+        let bits = derive_bits(&attrs);
+        assert!(bits.is_set(fact_bit::REL_TO_PRESENT));
+        assert!(bits.is_set(fact_bit::REL_TO_USA));
+    }
+
+    #[test]
+    fn derive_rel_without_usa_sets_present_only() {
+        let mut attrs = empty();
+        attrs.rel_to = vec![CountryCode::GBR].into();
+        let bits = derive_bits(&attrs);
+        assert!(bits.is_set(fact_bit::REL_TO_PRESENT));
+        assert!(!bits.is_set(fact_bit::REL_TO_USA));
+    }
+
+    #[test]
+    fn apply_zero_delta_is_no_op() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        let before = attrs.clone();
+        let bits = derive_bits(&attrs);
+        apply_closed_bits_to(&mut attrs, bits, bits);
+        assert_eq!(attrs, before);
+    }
+
+    #[test]
+    fn apply_noforn_delta_adds_to_dissem_us() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        let input = derive_bits(&attrs);
+        let closed = input.with_bit(fact_bit::NOFORN);
+        apply_closed_bits_to(&mut attrs, closed, input);
+        assert!(attrs.dissem_us.contains(&DissemControl::Nf));
+    }
+
+    #[test]
+    fn apply_is_idempotent_under_repeated_call() {
+        let mut attrs = empty();
+        attrs.classification = Some(MarkingClassification::Us(Classification::Secret));
+        let input = derive_bits(&attrs);
+        let closed = input.with_bit(fact_bit::NOFORN).with_bit(fact_bit::RELIDO);
+        apply_closed_bits_to(&mut attrs, closed, input);
+        let after_first = attrs.clone();
+        // Second call: the input is now `closed`, delta is empty.
+        apply_closed_bits_to(&mut attrs, closed, closed);
+        assert_eq!(attrs, after_first);
+    }
+
+    #[test]
+    fn apply_rel_to_usa_delta_appends_usa() {
+        let mut attrs = empty();
+        // Existing GBR-only REL TO; closure adds USA per Row 7.
+        attrs.rel_to = vec![CountryCode::GBR].into();
+        let input = derive_bits(&attrs);
+        let closed = input.with_bit(fact_bit::REL_TO_USA);
+        apply_closed_bits_to(&mut attrs, closed, input);
+        assert!(attrs.rel_to.contains(&CountryCode::USA));
+        assert!(attrs.rel_to.contains(&CountryCode::GBR));
+    }
+
+    #[test]
+    fn apply_ignores_non_eligible_delta_bits() {
+        // ORCON_USGOV (bit 4) is in the atom inventory but NOT in
+        // `APPLY_ELIGIBLE_MASK`. apply_closed_bits_to must not touch
+        // dissem_us for it.
+        let mut attrs = empty();
+        let input = FactBitmask::EMPTY;
+        let closed = FactBitmask::EMPTY.with_bit(fact_bit::ORCON_USGOV);
+        apply_closed_bits_to(&mut attrs, closed, input);
+        assert!(attrs.dissem_us.is_empty());
+    }
+
+    #[test]
+    fn derive_us_secret_then_apply_noforn_is_byte_identical_to_manual_add() {
+        // Bit-by-bit equivalence with the existing FactAdd path (for
+        // closed-vocab axes only — the supersession overlay only
+        // triggers on REL TO populated, which this fixture does not
+        // exercise).
+        let mut via_bitmask = empty();
+        via_bitmask.classification = Some(MarkingClassification::Us(Classification::Secret));
+        let input = derive_bits(&via_bitmask);
+        let closed = input.with_bit(fact_bit::NOFORN);
+        apply_closed_bits_to(&mut via_bitmask, closed, input);
+
+        let mut via_manual = empty();
+        via_manual.classification = Some(MarkingClassification::Us(Classification::Secret));
+        via_manual.dissem_us = vec![DissemControl::Nf].into();
+
+        assert_eq!(via_bitmask, via_manual);
+    }
+
+    #[test]
+    fn mask_constants_are_disjoint_subsets_of_inventory() {
+        let inventory = (1u128 << CAPCO_ATOM_COUNT) - 1;
+        assert_eq!(
+            MASK_FDR_DOMINATORS & !inventory,
+            0,
+            "FDR_DOMINATORS contains a bit outside the atom inventory",
+        );
+        assert_eq!(
+            MASK_FDR_OR_RELIDO_INCOMPAT & !inventory,
+            0,
+            "FDR_OR_RELIDO_INCOMPAT contains a bit outside the atom inventory",
+        );
+        assert_eq!(
+            MASK_RELIDO_US_CLASS_SUPPRESSORS & !inventory,
+            0,
+            "RELIDO_US_CLASS_SUPPRESSORS contains a bit outside the atom inventory",
+        );
+        assert_eq!(
+            APPLY_ELIGIBLE_MASK & !inventory,
+            0,
+            "APPLY_ELIGIBLE_MASK contains a bit outside the atom inventory",
+        );
+    }
+
+    #[test]
+    fn mask_aggregates_satisfy_documented_supersets() {
+        // FDR_OR_RELIDO_INCOMPAT must be a superset of FDR_DOMINATORS.
+        assert_eq!(
+            MASK_FDR_DOMINATORS & MASK_FDR_OR_RELIDO_INCOMPAT,
+            MASK_FDR_DOMINATORS,
+        );
+        // RELIDO_US_CLASS_SUPPRESSORS must be a superset of
+        // FDR_DOMINATORS.
+        assert_eq!(
+            MASK_FDR_DOMINATORS & MASK_RELIDO_US_CLASS_SUPPRESSORS,
+            MASK_FDR_DOMINATORS,
+        );
+    }
+
+    /// Both FGI projection paths — classification-axis `Fgi(_)` and
+    /// dissem-axis `fgi_marker.is_some()` — must light the
+    /// `FGI_PRESENT` sentinel bit. Catches the drift class where a
+    /// future `FgiMarker` variant or a new `MarkingClassification`
+    /// FGI form is added without an `is_set(FGI_PRESENT)` update.
+    /// `MASK_FDR_OR_RELIDO_INCOMPAT`'s correctness depends on this
+    /// (the bitmask collapses three separate `TokenRef` entries in
+    /// `closure.rs::FDR_OR_RELIDO_INCOMPAT` — `TOK_FGI_MARKER`,
+    /// `AnyInCategory(CAT_FGI_MARKER)`, `TOK_FGI_CLASS` — into the
+    /// single `FGI_PRESENT` bit).
+    #[test]
+    fn fgi_paths_both_set_fgi_present() {
+        use marque_ism::{FgiClassification, FgiMarker};
+
+        // Path 1: dissem-axis FgiMarker::SourceConcealed.
+        let mut attrs1 = empty();
+        attrs1.fgi_marker = Some(FgiMarker::SourceConcealed);
+        assert!(
+            derive_bits(&attrs1).is_set(fact_bit::FGI_PRESENT),
+            "fgi_marker::SourceConcealed must set FGI_PRESENT",
+        );
+
+        // Path 1b: dissem-axis FgiMarker::Acknowledged with a country list.
+        let mut attrs1b = empty();
+        attrs1b.fgi_marker = Some(
+            FgiMarker::acknowledged(vec![CountryCode::GBR])
+                .expect("constructor accepts non-empty country list"),
+        );
+        assert!(
+            derive_bits(&attrs1b).is_set(fact_bit::FGI_PRESENT),
+            "fgi_marker::Acknowledged must set FGI_PRESENT",
+        );
+
+        // Path 2: classification-axis MarkingClassification::Fgi(_)
+        // (source-acknowledged form with a country list).
+        let mut attrs2 = empty();
+        attrs2.classification = Some(MarkingClassification::Fgi(FgiClassification {
+            countries: vec![CountryCode::GBR].into_boxed_slice(),
+            level: Classification::Secret,
+        }));
+        assert!(
+            derive_bits(&attrs2).is_set(fact_bit::FGI_PRESENT),
+            "MarkingClassification::Fgi must set FGI_PRESENT",
+        );
+
+        // Path 2b: classification-axis source-concealed FGI
+        // (empty `countries` per the `//FGI S//...` form).
+        let mut attrs2b = empty();
+        attrs2b.classification = Some(MarkingClassification::Fgi(FgiClassification {
+            countries: Box::new([]),
+            level: Classification::Secret,
+        }));
+        assert!(
+            derive_bits(&attrs2b).is_set(fact_bit::FGI_PRESENT),
+            "source-concealed MarkingClassification::Fgi must set FGI_PRESENT",
+        );
+    }
+
+    #[test]
+    fn atom_inventory_fits_in_bitmask_width() {
+        const _: () = assert!(CAPCO_ATOM_COUNT <= marque_scheme::FACT_BITMASK_WIDTH);
+    }
+}

@@ -21,6 +21,15 @@
 //! revision. Bump in lock-step when ODNI publishes spec updates and
 //! `ism-data` is re-vendored.
 
+// `fact_bitmask` is internal API — `#[doc(hidden)]` keeps it out of
+// rustdoc; `pub` is required because integration tests in `tests/`
+// link against the crate as an external dependency and need access
+// to the projection helpers. PR-C ships the production consumer
+// (`CLOSURE_TABLE`); PR-D wires `CapcoScheme::closure`. At that
+// point this visibility tightens to `pub(crate)` and the doc-hidden
+// attribute is unnecessary.
+#[doc(hidden)]
+pub mod fact_bitmask;
 pub mod lattice;
 pub mod priors;
 pub mod provenance;
