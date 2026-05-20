@@ -84,18 +84,22 @@ use marque_scheme::MarkingScheme as _;
 // routing invariants are testable without engine dispatch noise.
 // ---------------------------------------------------------------------------
 
-fn parse_portion(text: &str) -> marque_ism::CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Portion)
+fn parse_portion(scheme: &CapcoScheme, text: &str) -> marque_ism::CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Portion)
 }
 
-fn parse_banner(text: &str) -> marque_ism::CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Banner)
+fn parse_banner(scheme: &CapcoScheme, text: &str) -> marque_ism::CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Banner)
 }
 
-fn parse_with_kind(source: &[u8], kind: MarkingType) -> marque_ism::CanonicalAttrs {
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-    // override with an inline scheme construction.
-    let scheme = CapcoScheme::new();
+fn parse_with_kind(
+    scheme: &CapcoScheme,
+    source: &[u8],
+    kind: MarkingType,
+) -> marque_ism::CanonicalAttrs {
+    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
+    // helper takes `&CapcoScheme` so each #[test] can reuse a single
+    // scheme rather than allocating one per parse.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -146,7 +150,8 @@ fn has_nato_sap(attrs: &marque_ism::CanonicalAttrs, expected: NatoSap) -> bool {
 /// §H.7 p127 (BOHEMIA worked example in SCI block position).
 #[test]
 fn legacy_cts_b_canonicalizes_to_cts_plus_bohemia() {
-    let attrs = parse_portion("(//CTS-B)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS-B)");
 
     assert_eq!(
         attrs.classification,
@@ -170,7 +175,8 @@ fn legacy_cts_b_canonicalizes_to_cts_plus_bohemia() {
 /// COSMIC TOP SECRET BALK); §G.2 p40 (Table 5 registers BALK).
 #[test]
 fn legacy_cts_balk_canonicalizes_to_cts_plus_balk() {
-    let attrs = parse_portion("(//CTS-BALK)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS-BALK)");
 
     assert_eq!(
         attrs.classification,
@@ -198,7 +204,8 @@ fn legacy_cts_balk_canonicalizes_to_cts_plus_balk() {
 /// COSMIC TOP SECRET BOHEMIA); §G.2 p40.
 #[test]
 fn legacy_banner_cosmic_top_secret_bohemia_canonicalizes() {
-    let attrs = parse_banner("//COSMIC TOP SECRET-BOHEMIA");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_banner(&scheme, "//COSMIC TOP SECRET-BOHEMIA");
 
     assert_eq!(
         attrs.classification,
@@ -222,7 +229,8 @@ fn legacy_banner_cosmic_top_secret_bohemia_canonicalizes() {
 /// COSMIC TOP SECRET BALK); §G.2 p40.
 #[test]
 fn legacy_banner_cosmic_top_secret_balk_canonicalizes() {
-    let attrs = parse_banner("//COSMIC TOP SECRET-BALK");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_banner(&scheme, "//COSMIC TOP SECRET-BALK");
 
     assert_eq!(
         attrs.classification,
@@ -286,7 +294,8 @@ fn balk_before_bohemia_in_sci_render() {
 /// `NatoCompanion::Bare` for bare-class inputs (no companion write).
 #[test]
 fn bare_cts_does_not_manufacture_nato_sap() {
-    let attrs = parse_portion("(//CTS)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS)");
 
     assert_eq!(
         attrs.classification,
@@ -370,7 +379,8 @@ fn e066_does_not_fire_on_bare_cts_portion() {
 /// is the worked-example shape this canonical input mirrors.
 #[test]
 fn canonical_form_bohemia_on_sci_axis() {
-    let attrs = parse_portion("(//CTS//BOHEMIA)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS//BOHEMIA)");
     assert_eq!(
         attrs.classification,
         Some(MarkingClassification::Nato(
@@ -391,7 +401,8 @@ fn canonical_form_bohemia_on_sci_axis() {
 /// Authority: CAPCO-2016 §G.2 p40 (BALK as standalone control marking).
 #[test]
 fn canonical_form_balk_on_sci_axis() {
-    let attrs = parse_portion("(//CTS//BALK)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS//BALK)");
     assert_eq!(
         attrs.classification,
         Some(MarkingClassification::Nato(
@@ -418,7 +429,8 @@ fn canonical_form_balk_on_sci_axis() {
 fn h7_p127_worked_example_round_trip() {
     let source = b"TOP SECRET//BOHEMIA//FGI AUS CAN DEU NATO//NOFORN";
 
-    let attrs = parse_banner(std::str::from_utf8(source).unwrap());
+    let scheme = CapcoScheme::new();
+    let attrs = parse_banner(&scheme, std::str::from_utf8(source).unwrap());
     assert!(
         matches!(
             attrs.classification,
@@ -462,7 +474,8 @@ fn h7_p127_worked_example_round_trip() {
 /// Authority: CAPCO-2016 §H.7 p127.
 #[test]
 fn h7_p127_portion_mark_round_trip() {
-    let attrs = parse_portion("(//CTS//BOHEMIA//REL TO USA, NATO)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS//BOHEMIA//REL TO USA, NATO)");
 
     assert_eq!(
         attrs.classification,
@@ -492,7 +505,8 @@ fn h7_p127_portion_mark_round_trip() {
 /// (numeric-then-alpha ordering within an SCI category).
 #[test]
 fn combined_balk_bohemia_populates_both_nato_saps() {
-    let attrs = parse_portion("(//CTS//BALK/BOHEMIA)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS//BALK/BOHEMIA)");
 
     assert_eq!(
         attrs.classification,

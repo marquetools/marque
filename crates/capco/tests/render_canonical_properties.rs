@@ -36,10 +36,16 @@ use marque_test_utils::{load_fixture, valid_fixtures};
 // Parse helpers — mirror parse_render_roundtrip.rs
 // ---------------------------------------------------------------------------
 
-fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-    // override with an inline scheme construction.
-    let scheme = CapcoScheme::new();
+fn parse_with_kind(
+    scheme: &CapcoScheme,
+    source: &[u8],
+    kind: MarkingType,
+) -> Option<CanonicalAttrs> {
+    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
+    // helper takes `&CapcoScheme` so the corpus-loop tests
+    // (`round_trip_idempotent`, `lattice_equal_renders_byte_identical`)
+    // which already construct a scheme for `scheme.render_*` can reuse
+    // that instance instead of allocating fresh per parse.
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -52,13 +58,13 @@ fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
         .map(|p| scheme.canonicalize(p.attrs))
 }
 
-fn parse_banner(text: &str) -> CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Banner)
+fn parse_banner(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Banner)
         .expect("banner candidate from valid corpus must parse")
 }
 
-fn parse_portion(text: &str) -> CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Portion)
+fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Portion)
         .expect("portion candidate from valid corpus must parse")
 }
 
@@ -129,12 +135,12 @@ fn round_trip_idempotent() {
 
         let first = match kind {
             Kind::Portion => {
-                let attrs = parse_portion(&text);
+                let attrs = parse_portion(&scheme, &text);
                 let inner = scheme.render_portion(&CapcoMarking::from(attrs));
                 format!("({inner})")
             }
             Kind::Banner => {
-                let attrs = parse_banner(&text);
+                let attrs = parse_banner(&scheme, &text);
                 scheme.render_banner(&CapcoMarking::from(attrs))
             }
             Kind::Other => continue,
@@ -142,12 +148,12 @@ fn round_trip_idempotent() {
 
         let second = match kind {
             Kind::Portion => {
-                let attrs = parse_portion(&first);
+                let attrs = parse_portion(&scheme, &first);
                 let inner = scheme.render_portion(&CapcoMarking::from(attrs));
                 format!("({inner})")
             }
             Kind::Banner => {
-                let attrs = parse_banner(&first);
+                let attrs = parse_banner(&scheme, &first);
                 scheme.render_banner(&CapcoMarking::from(attrs))
             }
             Kind::Other => unreachable!(),
@@ -297,8 +303,8 @@ fn lattice_equal_renders_byte_identical() {
     let scheme = CapcoScheme::new();
 
     for pair in BANNER_PAIRS {
-        let attrs_a = parse_banner(pair.a);
-        let attrs_b = parse_banner(pair.b);
+        let attrs_a = parse_banner(&scheme, pair.a);
+        let attrs_b = parse_banner(&scheme, pair.b);
 
         let render_a = scheme.render_banner(&CapcoMarking::from(attrs_a));
         let render_b = scheme.render_banner(&CapcoMarking::from(attrs_b));

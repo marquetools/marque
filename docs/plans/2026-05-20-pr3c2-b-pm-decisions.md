@@ -173,7 +173,7 @@ Three reviewers (rust-specialist, code-reviewer, system-architect) attest each i
 - [ ] PM-B-3 actuated: external test migrations construct CapcoScheme inline per helper / per test; **no `LazyLock` in test code**.
 - [ ] PM-B-4 actuated: 5 doc-comments updated; 8 deferred to 3c.2.E.
 - [ ] PM-B-7 actuated: s004 site carries `// TODO(3c.2.C)` annotation; **site not migrated in B**.
-- [ ] PM-B-8 actuated: 25 sites migrated, 5 carved out; reviewer can recount and confirm.
+- [ ] PM-B-8 actuated: 26 sites migrated, 5 carved out; reviewer can recount and confirm.
 - [ ] PM-B-9 actuated: every commit's PR body has T056 byte-identity attestation matched to CI.
 - [ ] PM-B-10 actuated: behavior-focused tests cover new code; CodeCov ≥80% on changed lines. Recommended explicit byte-equivalence test landed.
 - [ ] Constitution VII directionality preserved: no new dep edges introduced; verified via `cargo metadata` graph diff before/after.
