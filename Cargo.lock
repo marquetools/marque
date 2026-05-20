@@ -1150,6 +1150,7 @@ dependencies = [
  "proptest",
  "serde",
  "smallvec",
+ "static_assertions",
 ]
 
 [[package]]

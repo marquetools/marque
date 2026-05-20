@@ -261,6 +261,16 @@ pub enum AuthoritativeSource {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use static_assertions::assert_impl_all;
+
+    // Send + Sync forward-defense per Constitution VI. Every field is
+    // `Copy` so the properties hold by construction today; any future
+    // field addition that breaks them trips this compile-time guard.
+    // Same posture as `Rule: Send + Sync` (PR 0 T002).
+    assert_impl_all!(Citation: Send, Sync, Copy);
+    assert_impl_all!(SectionRef: Send, Sync, Copy);
+    assert_impl_all!(SectionLetter: Send, Sync, Copy);
+    assert_impl_all!(AuthoritativeSource: Send, Sync, Copy);
 
     // Citation::new MUST be `const fn`. The const evaluation below
     // fails at compile time if any constructor stops being const.

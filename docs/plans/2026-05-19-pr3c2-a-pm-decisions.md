@@ -278,9 +278,13 @@ Plan §1 item 7 ("`Engine::fix_inner` wires `RenderContext` per fix") is satisfi
 - Byte-identity: the default-impl chain is the existing emission path, just with `RenderContext` threaded through internally. T056 corpus regression is the gate.
 - Scope discipline: A's brief is scaffolding, not call-site migration. Keep the engine surface narrow.
 
-### PM-3c.2.A-9 — Test stub migration: 26 sites get `type Parsed<'src> = (); type Canonical = ();`
+### PM-3c.2.A-9 — Test stub migration: ~22 stub sites get `type Parsed<'src> = (); type Canonical = ();`
 
-**Decision**: Every `impl MarkingScheme` in `crates/scheme/src/`, `crates/scheme/tests/`, `crates/engine/tests/`, `crates/rules/src/`, and `crates/rules/tests/` (count: 26 verified via grep at 2026-05-19) gets two new associated-type declarations:
+**Decision**: Every `impl MarkingScheme` in `crates/scheme/src/`, `crates/scheme/tests/`, `crates/engine/{src,tests}/`, `crates/rules/{src,tests}/`, AND the one production impl at `crates/capco/src/scheme/marking_scheme_impl.rs` gets two new associated-type declarations. CapcoScheme binds the real ISM types (`type Parsed<'src> = ParsedAttrs<'src>; type Canonical = CanonicalAttrs;`); every other impl is a test stub binding `()` for both.
+
+> **Site count erratum (post-implementation, 2026-05-19)**: The original "26 verified via grep" count above was inflated by 3 doc-comment occurrences of the literal string `impl MarkingScheme` in `crates/capco/src/scheme/{mod.rs:74,marking_scheme_impl.rs:5,marking_scheme_impl.rs:7}` that don't correspond to actual impl blocks. The actual count is **23 real `impl MarkingScheme for X` blocks** (1 production CapcoScheme + 22 stubs across 19 files; 4 of the 22 stubs are in `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`). 3c.2.B preflight should use 23 as the inventory baseline. Concretely, two stub files have multiple impl blocks: `proptest_closure_rejects_non_monotone.rs` (4 schemes) and `closure_derived_path.rs` (2 schemes).
+
+For posterity, every stub site gets:
 
 ```rust
 type Parsed<'src> = ();

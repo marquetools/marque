@@ -190,6 +190,7 @@ impl SchemaVersionId {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use static_assertions::assert_impl_all;
 
     // RenderContext::new MUST be `const fn` — composes with future
     // const-renderer paths and embedded fixture contexts. The const
@@ -199,6 +200,15 @@ mod tests {
         RenderContext::new(Scope::Portion, EmissionForm::Auto, SchemaVersionId::MarqueMvp3);
     const _PAGE_AUTO: RenderContext =
         RenderContext::new(Scope::Page, EmissionForm::Auto, SchemaVersionId::MarqueMvp3);
+
+    // Send + Sync forward-defense per Constitution VI. Every field is
+    // `Copy` so the properties hold by construction today; any future
+    // field addition that breaks them (e.g., `Arc<Mutex<_>>`) trips this
+    // compile-time guard. Same posture as `Rule: Send + Sync` and
+    // `Recognizer: Send + Sync` pins at PR 0 T002 / T003.
+    assert_impl_all!(RenderContext: Send, Sync, Copy);
+    assert_impl_all!(EmissionForm: Send, Sync, Copy);
+    assert_impl_all!(SchemaVersionId: Send, Sync, Copy);
 
     #[test]
     fn render_context_constructs_via_explicit_new() {
