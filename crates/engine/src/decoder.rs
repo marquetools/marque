@@ -6348,6 +6348,7 @@ mod tests {
         // and verify the (prior, posterior) return tuple: posterior
         // must be prior + Σ feature.delta, and prior must NOT include
         // any of the feature deltas.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidate = MarkingCandidate {
@@ -6357,7 +6358,9 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"SECRET//NOFORN")
             .expect("SECRET//NOFORN must parse");
-        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme construction
+        // per test for hermeticity; routes via the trait override.
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
 
         let features = [
             FeatureEntry {
@@ -6403,6 +6406,9 @@ mod tests {
         // entries must produce a strictly lower (more negative) prior than the
         // same marking with ONE entry, because each country code contributes a
         // negative log-prior term and GBR is a known high-frequency trigraph.
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme construction
+        // per test for hermeticity; both call sites route via the trait override.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
 
@@ -6413,7 +6419,7 @@ mod tests {
         let one_parsed = parser
             .parse(&one_candidate, b"SECRET//REL TO USA")
             .expect("SECRET//REL TO USA must parse");
-        let one_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(one_parsed.attrs));
+        let one_marking = CapcoMarking::new(scheme.canonicalize(one_parsed.attrs));
 
         let two_candidate = MarkingCandidate {
             span: Span::new(0, 23),
@@ -6422,7 +6428,7 @@ mod tests {
         let two_parsed = parser
             .parse(&two_candidate, b"SECRET//REL TO USA, GBR")
             .expect("SECRET//REL TO USA, GBR must parse");
-        let two_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(two_parsed.attrs));
+        let two_marking = CapcoMarking::new(scheme.canonicalize(two_parsed.attrs));
 
         let attempt_one = CanonicalAttempt {
             bytes: SmallVec::from_slice(b"SECRET//REL TO USA"),
@@ -6452,6 +6458,9 @@ mod tests {
         // Issue #233 dedup guard: a duplicate REL TO entry (e.g. "USA, USA")
         // must score identically to the deduplicated form ("USA") because
         // `seen_rel_to_codes` prevents double-counting.
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme construction
+        // per test for hermeticity; both call sites route via the trait override.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
 
@@ -6465,7 +6474,7 @@ mod tests {
         let dup_parsed = parser
             .parse(&dup_candidate, b"SECRET//REL TO USA, USA")
             .expect("SECRET//REL TO USA, USA must parse leniently");
-        let dup_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(dup_parsed.attrs));
+        let dup_marking = CapcoMarking::new(scheme.canonicalize(dup_parsed.attrs));
 
         let once_candidate = MarkingCandidate {
             span: Span::new(0, 18),
@@ -6474,7 +6483,7 @@ mod tests {
         let once_parsed = parser
             .parse(&once_candidate, b"SECRET//REL TO USA")
             .expect("SECRET//REL TO USA must parse");
-        let once_marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(once_parsed.attrs));
+        let once_marking = CapcoMarking::new(scheme.canonicalize(once_parsed.attrs));
 
         let attempt_dup = CanonicalAttempt {
             bytes: SmallVec::from_slice(b"SECRET//REL TO USA, USA"),
@@ -6579,6 +6588,8 @@ mod tests {
         // Without the `strict_parse_is_complete` check, the
         // dispatcher would accept this as a complete strict result
         // and never fall through to the decoder.
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidate = MarkingCandidate {
@@ -6588,7 +6599,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(SERCET//NOFORN)")
             .expect("strict parser should accept (SERCET//NOFORN) leniently");
-        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
         assert!(
             is_nontrivial_marking(&marking),
             "NOFORN survives as a dissem control → marking is nontrivial"
@@ -6603,6 +6614,8 @@ mod tests {
 
     #[test]
     fn strict_parse_is_complete_accepts_clean_marking() {
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidate = MarkingCandidate {
@@ -6612,7 +6625,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//NF)")
             .expect("canonical portion must strict-parse");
-        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
         assert!(
             strict_parse_is_complete(&marking, MarkingType::Portion),
             "canonical (S//NF) must be accepted as complete; attrs = {:?}",
@@ -6626,6 +6639,8 @@ mod tests {
         // tail token `FRBN` lands in an `Unknown` span. The
         // dispatcher must fall back so the decoder can resolve
         // `FRBN` → `NF` (or reject).
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidate = MarkingCandidate {
@@ -6635,7 +6650,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"(S//FRBN)")
             .expect("strict parser accepts (S//FRBN) leniently");
-        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
         // `S` resolved, so classification is Some — but the
         // Unknown-tail check still fires.
         assert!(
@@ -6886,6 +6901,8 @@ mod tests {
         // dissem_controls=[], sci_controls=[]. The decoder must treat
         // that as "no real parse" and drop the candidate — otherwise
         // it would fabricate an empty marking for arbitrary prose.
+        // PR 3c.2.B B3 (PM-B-1, PM-B-3): inline scheme per test.
+        let scheme = CapcoScheme::new();
         let token_set = CapcoTokenSet;
         let parser = Parser::new(&token_set);
         let candidate = MarkingCandidate {
@@ -6895,7 +6912,7 @@ mod tests {
         let parsed = parser
             .parse(&candidate, b"FROBNITZ//WIBBLE")
             .expect("strict parser should accept arbitrary bytes");
-        let marking = CapcoMarking::new(marque_ism::from_parsed_unchecked(parsed.attrs));
+        let marking = CapcoMarking::new(scheme.canonicalize(parsed.attrs));
         assert!(
             !is_nontrivial_marking(&marking),
             "empty marking must be filtered"
