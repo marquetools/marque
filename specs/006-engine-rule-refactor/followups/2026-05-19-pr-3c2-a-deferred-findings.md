@@ -45,7 +45,7 @@ This catches HRTB inference issues at compile time, before they bite at a generi
 
 ## Items tracked for **PR 3c.2.C preflight**
 
-### C-FOLLOWUP-1: citation-lint real-parser round-trip
+### ~~C-FOLLOWUP-1: citation-lint real-parser round-trip~~ — **CLOSED in PR 3c.2.C C6**
 
 **Severity**: LOW (test discipline).
 **Source**: Architect reviewer F-1; rust-idiom reviewer R-3 (Display test scanner gap).
@@ -53,6 +53,8 @@ This catches HRTB inference issues at compile time, before they bite at a generi
 **Issue**: `citation_display_roundtrip.rs::matches_citation_lint_form` is a hand-rolled byte scanner that codifies the **expected** citation-lint shape, NOT a programmatic invocation of `tools/citation-lint/src/citation.rs::find_in_fragment`. If the citation-lint parser ever diverges from the hand-rolled scanner, the round-trip test passes while citation-lint rejects (or vice versa). The hand-rolled scanner also accepts `§H Table 2 p21` (no subsection, table-present), which the type system permits but `tools/citation-lint` likely rejects.
 
 **Action for 3c.2.C**: When `Diagnostic.citation: &'static str → Citation` migrates, add one more test that round-trips a `format!("{citation}")` string THROUGH `tools/citation-lint`'s actual parser, asserting the parsed result matches the original `Citation` fields. This converts the unit-test gate to an integration-test gate against the real consumer.
+
+**Resolution**: PR 3c.2.C C6 added `tools/citation-lint/tests/citation_display_roundtrip.rs` — 8 round-trip tests covering the six in-source CAPCO citation shapes (`§H.4 p61`, `§B.3 Table 2 p21`, `§A.6 p15`, `§H.5 p99`, `§H.8 p134`, `§H p60` bare-section) plus the non-CAPCO sentinel variants (`[config]`, `[engine-internal]`) plus a const-fn helper round-trip. `marque-rules` added as a `path` dev-dep to citation-lint. The partial-round-trip behavior on `§B.3 Table 2 p21` (citation-lint grammar gap) is documented in C-FOLLOWUP-7 below.
 
 ### C-FOLLOWUP-2: `citation!()` macro for construction verbosity (opportunistic)
 
@@ -96,6 +98,23 @@ This catches HRTB inference issues at compile time, before they bite at a generi
 **Issue**: A pre-existing `clippy::question_mark` warning at `/home/knitli/marque/crates/core/src/parser.rs:2199` causes `cargo clippy --workspace --all-targets -- -D warnings` to fail. The warning was present in base commit `861e85e3` (PR 3c.2.A merge to staging); not introduced by 3c.2.B. The fix is mechanical: replace `else if let Some(p) = trimmed.strip_suffix(" EYES") { (p, false) } else { return None; }` with `else { let p = trimmed.strip_suffix(" EYES")?; (p, false) };` — a one-line change.
 
 **Action for 3c.2.C**: Resolve as opening housekeeping commit of 3c.2.C (or a standalone chore PR before C lands). Required before workspace clippy strict mode can re-enable.
+
+### C-FOLLOWUP-7: citation-lint grammar gap — `§<L>.<sub> Table <N> p<page>` not recognized as a single citation
+
+**Severity**: LOW (CI test discipline).
+**Source**: Discovered during PR 3c.2.C C6 round-trip test authorship (2026-05-20).
+
+**Issue**: `tools/citation-lint/src/citation.rs::find_in_fragment` recognizes either:
+- `§<L>.<sub> p<page>` (subsection + page anchor), OR
+- `§<L>.<sub> Table <N>` (subsection + table modifier, `pages: None`)
+
+It does NOT recognize `§<L>.<sub> Table <N> p<page>` as a single citation with a populated page field — the `Table N` modifier shadows the page anchor. `marque_rules::Citation` Display for the table-variant (`§B.3 Table 2 p21`) round-trips section + subsection but drops the page at the citation-lint boundary.
+
+The round-trip test `tools/citation-lint/tests/citation_display_roundtrip.rs::b3_table_2_p21_caveated_fdr_roundtrips_partially` pins this exact partial-round-trip behavior so future drift in either direction (citation-lint extends grammar OR Display drifts) trips the test.
+
+**Impact**: Section + subsection ARE resolvable by citation-lint, which is the resolver's primary validation surface. The page bound is not directly resolvable for table-variant citations.
+
+**Action (post-3c.2.C)**: Extend the citation-lint grammar at `tools/citation-lint/src/citation.rs::parse_after_sigil` to optionally consume `' Table ' DIGIT+` between the subsection and the page anchor. The extension is structural: the existing grammar already recognizes both `Table N` (without page) and bare `p<page>` (without table); combining them into `Table N p<page>` is a single production rule. Update the existing in-tree tests at `crates/rules/tests/citation_display_roundtrip.rs::scanner_accepts_known_good_forms` to add `§B.3 Table 2 p21` as a known-good form, and the C6 round-trip test above will flip from "partial" to "full" automatically.
 
 ### C-FOLLOWUP-6: Byte-equivalence test §-citation re-verification at 3c.2.E
 

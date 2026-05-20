@@ -29,6 +29,14 @@ clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.10"
+# Round-trip dev-dep: pulls in marque-rules so the citation-lint scanner
+# can be exercised against `marque_rules::Citation::Display` output.
+# Dev-deps only — never ships in the citation-lint binary, so the
+# Constitution III WASM-safe-closure rationale for keeping
+# citation-lint out-of-workspace is preserved (dev-deps don't propagate
+# to consumers, and citation-lint has no consumers — it's a CI lint
+# binary). PR 3c.2.C C6 (C-FOLLOWUP-1).
+marque-rules = { path = "../../crates/rules" }
 
 [profile.release]
 lto = "thin"
