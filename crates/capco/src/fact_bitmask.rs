@@ -411,6 +411,23 @@ pub fn derive_bits(attrs: &CanonicalAttrs) -> FactBitmask {
     if attrs.rel_to.contains(&CountryCode::USA) {
         bits |= 1u128 << fact_bit::REL_TO_USA;
     }
+    // DISPLAY ONLY presence: the canonical wire form
+    // `DISPLAY ONLY [LIST]` populates `attrs.display_only_to` (the
+    // country-list axis) rather than `attrs.dissem_us`. Mirror
+    // `satisfies_attrs(TOK_DISPLAY_ONLY)` in
+    // `crates/capco/src/scheme/predicates/satisfies.rs` —
+    // DISPLAY_ONLY fires iff EITHER the `Displayonly` dissem token
+    // is present OR `display_only_to` is non-empty. The dissem-axis
+    // branch is already covered in the `dissem_iter()` loop above
+    // (line 290); this branch closes the country-list axis case so
+    // `MASK_FDR_DOMINATORS` correctly suppresses closure rows on
+    // any §H.8 DISPLAY ONLY portion.
+    //
+    // Authority: §H.8 p163 (DISPLAY ONLY marking template) + the
+    // existing satisfies_attrs(TOK_DISPLAY_ONLY) wiring.
+    if !attrs.display_only_to.is_empty() {
+        bits |= 1u128 << fact_bit::DISPLAY_ONLY;
+    }
 
     // --- SCI compartment sentinels (bits 40..46) + NATO SAPs (49, 50) ---
     //
@@ -1012,6 +1029,48 @@ mod tests {
         assert_eq!(
             MASK_FDR_DOMINATORS & MASK_RELIDO_US_CLASS_SUPPRESSORS,
             MASK_FDR_DOMINATORS,
+        );
+    }
+
+    /// Both DISPLAY ONLY projection paths — dissem-axis
+    /// `DissemControl::Displayonly` and country-list axis non-empty
+    /// `display_only_to` — must light `fact_bit::DISPLAY_ONLY`.
+    /// Mirrors `satisfies_attrs(TOK_DISPLAY_ONLY)` in
+    /// `crates/capco/src/scheme/predicates/satisfies.rs`. Closes the
+    /// Copilot-flagged hole where `MASK_FDR_DOMINATORS` would have
+    /// missed a `DISPLAY ONLY USA GBR` portion (populated
+    /// `display_only_to`, no `Displayonly` dissem variant) and
+    /// allowed PR-C's closure to spuriously imply NOFORN/RELIDO.
+    #[test]
+    fn display_only_paths_both_set_display_only_bit() {
+        // Path 1: dissem-axis Displayonly token.
+        let mut attrs1 = empty();
+        attrs1.dissem_us = vec![DissemControl::Displayonly].into();
+        assert!(
+            derive_bits(&attrs1).is_set(fact_bit::DISPLAY_ONLY),
+            "dissem-axis Displayonly must set DISPLAY_ONLY bit",
+        );
+
+        // Path 2: country-list axis only (canonical `DISPLAY ONLY [LIST]`).
+        let mut attrs2 = empty();
+        attrs2.display_only_to = vec![CountryCode::USA, CountryCode::GBR].into();
+        assert!(
+            derive_bits(&attrs2).is_set(fact_bit::DISPLAY_ONLY),
+            "non-empty display_only_to must set DISPLAY_ONLY bit",
+        );
+
+        // Path 3: both axes populated simultaneously.
+        let mut attrs3 = empty();
+        attrs3.dissem_us = vec![DissemControl::Displayonly].into();
+        attrs3.display_only_to = vec![CountryCode::GBR].into();
+        assert!(derive_bits(&attrs3).is_set(fact_bit::DISPLAY_ONLY));
+
+        // Negative: empty `display_only_to` + no Displayonly token =>
+        // DISPLAY_ONLY bit MUST stay zero.
+        let attrs4 = empty();
+        assert!(
+            !derive_bits(&attrs4).is_set(fact_bit::DISPLAY_ONLY),
+            "empty attrs must not set DISPLAY_ONLY bit",
         );
     }
 
