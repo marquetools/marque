@@ -23,6 +23,8 @@
 
 #![cfg(feature = "decoder-harness")]
 
+use std::sync::LazyLock;
+
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_engine::{DecoderRecognizer, StrictRecognizer};
 use marque_ism::{CapcoTokenSet, TokenKind, token_set::TokenSet as _};
@@ -37,9 +39,9 @@ fn deep_cx() -> ParseContext {
     }
 }
 
-fn test_scheme() -> CapcoScheme {
-    CapcoScheme::new()
-}
+/// Shared scheme instance. `CapcoScheme::new()` builds non-trivial
+/// tables; constructing it once avoids repeated allocation.
+static TEST_SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 fn same_meaning(a: &marque_ism::CanonicalAttrs, b: &marque_ism::CanonicalAttrs) -> bool {
     let mut a = a.clone();
@@ -57,7 +59,7 @@ fn same_meaning(a: &marque_ism::CanonicalAttrs, b: &marque_ism::CanonicalAttrs) 
 /// decoder itself does internally.
 fn parse_strict_attrs(input: &[u8]) -> Option<CapcoMarking> {
     let strict = StrictRecognizer::new();
-    match strict.recognize(input, 0, &test_scheme(), &deep_cx()) {
+    match strict.recognize(input, 0, &*TEST_SCHEME, &deep_cx()) {
         Parsed::Unambiguous(m) => Some(m),
         _ => None,
     }
@@ -156,7 +158,7 @@ fn trace_one(label: &str, observed: &str, expected: &str) {
 
     // 4. Run the actual decoder to see what it produces end-to-end.
     let decoder = DecoderRecognizer::new();
-    let result = decoder.recognize(observed.as_bytes(), 0, &test_scheme(), &deep_cx());
+    let result = decoder.recognize(observed.as_bytes(), 0, &*TEST_SCHEME, &deep_cx());
     match result {
         Parsed::Unambiguous(m) => {
             let r =
