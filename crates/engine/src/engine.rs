@@ -264,7 +264,7 @@ pub struct Engine {
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
     /// a `CanonicalAttrs`. Stored as an enum with concrete variants for
-    /// the in-tree recognizers (`Strict`, `Decoder`, `StrictOrDecoder`)
+    /// the in-tree recognizers (`Strict`, `StrictOrDecoder`)
     /// so default dispatch stays monomorphized; a `Dyn` escape hatch
     /// preserves the existing `with_recognizer(Arc<dyn Recognizer<_>>)`
     /// customization surface for downstream callers.
@@ -277,8 +277,7 @@ pub struct Engine {
     /// per-keystroke latency are expected to debounce their calls into
     /// the engine; surfaces that need to pin strict-only behavior (the
     /// SC-001 interactive-latency benchmark, tests asserting strict
-    /// dispatch) install [`StrictRecognizer`] explicitly via
-    /// [`Engine::with_recognizer`].
+    /// dispatch) should call [`Engine::with_strict_recognizer`].
     recognizer: EngineRecognizer,
 
     /// CLI-supplied corpus override (Phase 4 PR-5 / FR-013 / T069).
@@ -645,16 +644,16 @@ impl Engine {
 
     /// Override the engine's recognizer. The default installed by
     /// [`Engine::new`] is [`StrictOrDecoderRecognizer`] (strict-first,
-    /// decoder fallback). Callers that need to pin a different dispatch
-    /// — most commonly [`StrictRecognizer`] for the SC-001 interactive-
-    /// latency benchmark or tests asserting strict-only behavior —
-    /// install one explicitly here.
+    /// decoder fallback). Callers that need to install a custom
+    /// recognizer implementation can do so here. For strict-only dispatch
+    /// without trait-object dispatch, prefer
+    /// [`Engine::with_strict_recognizer`].
     ///
     /// Returns the engine by value so callers can chain:
     ///
     /// ```ignore
     /// let engine = Engine::new(config, rules, scheme)?
-    ///     .with_recognizer(Arc::new(StrictRecognizer::new()));
+    ///     .with_recognizer(Arc::new(MyCustomRecognizer::new()));
     /// ```
     #[must_use = "with_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_recognizer(mut self, recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
