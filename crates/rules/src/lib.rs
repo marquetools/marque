@@ -683,14 +683,26 @@ pub const CORRECTIONS_MAP_CITATION: &str = "CONFIG:[corrections]";
 /// never copied into the audit record — Constitution V Principle V
 /// (G13). The audit envelope's `proposal.kind` discriminant tells
 /// downstream consumers which arm produced the fix.
+///
+/// # Variant sizing
+///
+/// `FixIntent<S>` is significantly larger than `TextCorrection { replacement:
+/// SmolStr }` because it carries `Confidence` + `Message` + `SmallVec`
+/// inline storage. The `large_enum_variant` lint is suppressed here
+/// because the fix path never uses `Vec<AppliedFixProposal>` directly;
+/// `AppliedFix<S>` is always individually heap-allocated (stored in a
+/// `Vec<AppliedFix<S>>`), so the per-element cost is the same whether
+/// the payload is boxed or inline. Storing `FixIntent<S>` inline
+/// eliminates the per-fix `Box::new` heap allocation that the previous
+/// `Box<FixIntent<S>>` incurred (CO-1 perf candidate).
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum AppliedFixProposal<S: MarkingScheme> {
     /// Rule-emitted structural fix intent — the sole rule-emission
-    /// channel post Commit 10. Boxed because `FixIntent<S>` carries
-    /// `Confidence` + `Message` + `SmallVec` inline storage and the
-    /// enum's other variant is a thin two-field carrier; without the
-    /// box clippy's `large_enum_variant` lint fires.
-    FixIntent(Box<FixIntent<S>>),
+    /// channel post Commit 10. Stored inline (not boxed) to eliminate
+    /// the per-fix heap allocation that `Box<FixIntent<S>>` previously
+    /// incurred (CO-1 perf candidate).
+    FixIntent(FixIntent<S>),
 
     /// Engine-internal text correction — the C001 path
     /// (`[corrections]` map). Constructed only by
@@ -936,7 +948,7 @@ impl<S: MarkingScheme> AppliedFix<S> {
         Self {
             rule,
             span,
-            proposal: AppliedFixProposal::FixIntent(Box::new(intent)),
+            proposal: AppliedFixProposal::FixIntent(intent),
             confidence,
             source,
             migration_ref,
