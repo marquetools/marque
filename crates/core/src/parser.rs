@@ -3879,7 +3879,7 @@ mod tests {
     /// `marque-core` cannot dev-depend on `marque-capco` (Constitution
     /// VII), so the trait route `CapcoScheme::canonicalize` is
     /// unreachable from here. The inlined body mirrors the override's
-    /// field mapping and output semantics — including the §H.7 p41 /
+    /// field mapping and output semantics — including the §G.2 p41 /
     /// PR 9b T132 debug-assert — but is not a literal byte-for-byte
     /// copy (control flow + locals differ, `From::from` returns
     /// `Self` rather than the override's `CanonicalAttrs`).

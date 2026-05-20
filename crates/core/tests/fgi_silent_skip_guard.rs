@@ -95,7 +95,7 @@ fn parse_banner_attrs(text: &str) -> CanonicalAttrs {
     // (Constitution VII), so the trait route
     // `CapcoScheme::canonicalize` is unreachable from here. The helper
     // mirrors the override's field mapping and emits the same
-    // `CanonicalAttrs` output for every input, plus the §H.7 p41 /
+    // `CanonicalAttrs` output for every input, plus the §G.2 p41 /
     // PR 9b T132 debug-assert that the override carries. The helper
     // takes `ParsedMarking` (not `ParsedAttrs`) so FR-040 PRC100's
     // `(ParsedAttrs) -> CanonicalAttrs` signature shape never appears
@@ -127,7 +127,7 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
 /// Structural rename — `ParsedMarking<'_>::attrs` → `CanonicalAttrs`.
 ///
 /// Mirrors the `CapcoScheme::canonicalize` override's field mapping
-/// and output semantics, including the §H.7 p41 / PR 9b T132 debug-
+/// and output semantics, including the §G.2 p41 / PR 9b T132 debug-
 /// assert that no `ParsedAttrs` reaches canonicalization with both
 /// `dissem_nato` populated AND a US classification axis (which would
 /// mean `attribute_dissems` was skipped). The local helper's
