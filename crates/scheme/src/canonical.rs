@@ -214,8 +214,8 @@ impl<S: MarkingScheme + ?Sized> Canonical<S> {
     /// which will use the [`Vocabulary<S>`] accessors
     /// (`portion_form`, `banner_form`, `banner_abbreviation`, plus a
     /// future CVE-Value-by-token accessor) to pick a form based on
-    /// `scope` and any further [`RenderContext`] refinement (e.g.,
-    /// long-title-vs-abbreviation within a `Scope::Page`).
+    /// `scope` and any further [`crate::RenderContext`] refinement
+    /// (e.g., long-title-vs-abbreviation within a `Scope::Page`).
     ///
     /// # Caveat (PR 3c.1 transitional shape — closes in PR 3c.2)
     ///
@@ -518,6 +518,8 @@ mod tests {
         type Marking = TestMarking;
         type ParseError = ();
         type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
 
         fn name(&self) -> &str {
             "TestScheme"
@@ -549,7 +551,7 @@ mod tests {
         fn render_canonical(
             &self,
             _m: &Self::Marking,
-            _scope: Scope,
+            _ctx: &crate::RenderContext,
             _out: &mut dyn core::fmt::Write,
         ) -> core::fmt::Result {
             Ok(())

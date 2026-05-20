@@ -86,6 +86,8 @@ impl MarkingScheme for NoFdrScheme {
     type Marking = NoFdrMarking;
     type ParseError = NoFdrParseError;
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "no-fdr"
@@ -119,7 +121,7 @@ impl MarkingScheme for NoFdrScheme {
     fn render_canonical(
         &self,
         _m: &Self::Marking,
-        _scope: Scope,
+        _ctx: &marque_scheme::RenderContext,
         _out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         Ok(())

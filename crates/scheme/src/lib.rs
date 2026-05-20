@@ -39,6 +39,10 @@
 //!   `MaxDate`, `OptionalSingleton`, `Product` (Phase B).
 //! - [`recognizer`] — `Recognizer<S>` trait + `ParseContext`
 //!   (Phase D / decoder dispatch).
+//! - [`render_context`] — `RenderContext { scope, emission_form,
+//!   schema_version }`, `EmissionForm` (Auto / Portion / BannerTitle /
+//!   BannerAbbreviation), `SchemaVersionId` (PR 3c.2.A scaffolding;
+//!   §G.1 Table 4 dispatch body lands at PR 3c.2.B).
 //! - [`vocabulary`] — `Vocabulary<S>` trait + `TokenMetadataFull`,
 //!   `Authority`, `OwnerProducer`, `PointOfContact`, `Deprecation`
 //!   (Phase E).
@@ -78,6 +82,7 @@ pub mod lattice;
 pub mod page_rewrite;
 pub mod projection;
 pub mod recognizer;
+pub mod render_context;
 pub mod scheme;
 pub mod scope;
 pub mod severity;
@@ -108,6 +113,7 @@ pub use page_rewrite::{
 };
 pub use projection::{Projection, categories_in_render_order};
 pub use recognizer::{DocumentPosition, ParseContext, Recognizer, Zone};
+pub use render_context::{EmissionForm, RenderContext, SchemaVersionId};
 pub use scheme::{ApplyIntentError, MarkingScheme};
 pub use scope::{DiffInput, DiffRelation, Scope};
 pub use severity::Severity;
