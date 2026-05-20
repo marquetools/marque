@@ -64,8 +64,9 @@ use std::hint::black_box;
 // Input constructors
 // ---------------------------------------------------------------------------
 
-/// UNCLASSIFIED, no special markings. All 128 trigger bits are 0;
-/// HOT-1 guard exits without evaluating any table row.
+/// UNCLASSIFIED, no special markings. No closure-trigger bits are set
+/// (`derive_bits(..) & ALL_TRIGGER_MASK == 0`); HOT-1 guard exits without
+/// evaluating any table row.
 fn unclassified_no_markings() -> CapcoMarking {
     let mut a = CanonicalAttrs::default();
     a.classification = Some(MarkingClassification::Us(Classification::Unclassified));
@@ -177,36 +178,53 @@ fn closure_profiles(c: &mut Criterion) {
     // 1. HOT-1 early exit — UNCLASSIFIED, zero rows evaluated.
     let hot1 = unclassified_no_markings();
     c.bench_function("closure_hot1_exit", |b| {
-        b.iter(|| scheme.closure(black_box(hot1.clone())));
+        b.iter(|| {
+            let out = scheme.closure(black_box(hot1.clone()));
+            black_box(out)
+        });
     });
 
     // 2. Single-row (Row 9): US collateral classified → RELIDO.
     let row9 = secret_no_special();
     c.bench_function("closure_row9_us_classified", |b| {
-        b.iter(|| scheme.closure(black_box(row9.clone())));
+        b.iter(|| {
+            let out = scheme.closure(black_box(row9.clone()));
+            black_box(out)
+        });
     });
 
     // 3. Two-step (Rows 1 then 0): HCS-O → NOFORN+ORCON; ORCON triggers Trio 1.
     let hcs_o = top_secret_hcs_o();
     c.bench_function("closure_rows_1_0_hcs_o", |b| {
-        b.iter(|| scheme.closure(black_box(hcs_o.clone())));
+        b.iter(|| {
+            let out = scheme.closure(black_box(hcs_o.clone()));
+            black_box(out)
+        });
     });
 
     // 4. Trio 3: NATO classification → REL_TO_USA + open-vocab NATO cone.
     let nato = nato_secret();
     c.bench_function("closure_row7_nato_class", |b| {
-        b.iter(|| scheme.closure(black_box(nato.clone())));
+        b.iter(|| {
+            let out = scheme.closure(black_box(nato.clone()));
+            black_box(out)
+        });
     });
 
-    // 5. Worst case: all 6 SCI sentinels + SAR + AEA/RD → all rows fire.
+    // 5. Worst case: all 6 SCI sentinels + SAR + AEA/RD → all non-NATO rows fire
+    //    across multiple Kleene iterations (Row 7 requires NATO_CLASS, absent here).
     let worst = worst_case_all_rows();
     c.bench_function("closure_worst_case_all_rows", |b| {
-        b.iter(|| scheme.closure(black_box(worst.clone())));
+        b.iter(|| {
+            let out = scheme.closure(black_box(worst.clone()));
+            black_box(out)
+        });
     });
 
     // 6. Batch throughput: 50 sequential closures on identical TS+HCS-O input.
     //    Measures per-call amortized cost under realistic document-batch load.
-    //    The marking is pre-joined outside the iter loop; only `closure` is timed.
+    //    The marking is pre-joined outside the iter loop; each clone + closure
+    //    call pair is timed (clone overhead is negligible for this input size).
     let batch_input = joined_hcs_o_n(1);
     c.bench_function("closure_batch_50", |b| {
         b.iter(|| {

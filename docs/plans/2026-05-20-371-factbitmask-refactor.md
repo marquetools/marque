@@ -282,7 +282,7 @@ All six sub-PRs have landed. This section records the final AC status and measur
 | #2 `CLOSURE_TABLE` with ClosureRow + §-citation per row | **Done** — `crates/capco/src/scheme/closure_table.rs`, 10 rows, each carrying `name` + `label` (§-citation per Constitution VIII). |
 | #3 `CapcoScheme::closure` replaced; previous fn-pointer rows retired | **Done** (PR-D) — 9 of 10 fn-pointer rows retired; Row 7 retained as the hybrid `cone_derived` tail for open-vocab NATO tetragraph. |
 | #4 proptest: idempotence/extensivity/monotonicity/convergence-bound | **Done** (PR-C P1–P4; PR-D P5 cross-path parity). |
-| #5 ≥80% Constraint::Custom rows compiled to mask form | **Deferred** (OQ-4 disposition). PR-E achieved ~10% (4 of 39 tier-1 rows). Follow-on issue filed per §15.3. |
+| #5 ≥80% Constraint::Custom rows compiled to mask form | **Deferred** (OQ-4 disposition). PR-E achieved ~10% (4 of 39 tier-1 rows). Follow-on issue filed (see tier breakdown in `docs/plans/2026-05-20-371-factbitmask-custom-audit.md`). |
 | #6 `closure_pass` bench + SC-001/SC-005 non-regression + delta in PR-F description | **Done** — bench added in PR-F; numbers below; SC-001 gated by PR-D CI run. |
 | #7 WASM size delta reported | **Done** — size measurement below; `wasm-opt` pass blocked by WSL SIMD gap (same environment limitation as prior PRs; does not affect correctness). |
 | #8 Corpus parity (`tests/corpus/valid/`, `prose/`, `mangled/`) | **Done** (PR-D enforces; PR-E preserves; no regressions). |
