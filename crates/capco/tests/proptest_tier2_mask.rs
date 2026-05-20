@@ -129,6 +129,7 @@ fn arb_attrs_floor_ts() -> impl Strategy<Value = CanonicalAttrs> {
 fn arb_attrs_floor_s() -> impl Strategy<Value = CanonicalAttrs> {
     (
         any::<bool>(), // hcs_o present?
+        any::<bool>(), // hcs_p_bare present? (no sub-compartments — exercises the SCI_PRESENT coarse gate)
         any::<bool>(), // rsv_comp present?
         any::<bool>(), // tk_idit present?
         any::<bool>(), // rd_sigma present?
@@ -138,7 +139,7 @@ fn arb_attrs_floor_s() -> impl Strategy<Value = CanonicalAttrs> {
         any::<bool>(), // imcon present?
         arb_us_classification(),
     )
-        .prop_map(|(hcs_o, rsv, tk_idit, rd_sg, frd_sg, cnwdi, rsen, imcon, cls)| {
+        .prop_map(|(hcs_o, hcs_p_bare, rsv, tk_idit, rd_sg, frd_sg, cnwdi, rsen, imcon, cls)| {
             let mut a = CanonicalAttrs::default();
             a.classification = Some(cls);
             let mut sci: Vec<SciMarking> = Vec::new();
@@ -147,6 +148,18 @@ fn arb_attrs_floor_s() -> impl Strategy<Value = CanonicalAttrs> {
                 sci.push(SciMarking::new(
                     SciControlSystem::Published(SciControlBare::Hcs),
                     Box::new([SciCompartment::new("O", Box::new([]))]),
+                    None,
+                ));
+            }
+            if hcs_p_bare {
+                // HCS-P bare compartment (no sub-compartments) — sets SCI_PRESENT (bit 37)
+                // only; SCI_HCS_P_SUB (bit 42) is NOT set. This is the case the old trigger
+                // `SCI_HCS_O | SCI_HCS_P_SUB` missed: presence_hcs_comp_only fires on bare
+                // HCS-P, but neither sentinel bit is set, so the coarse gate must use
+                // SCI_PRESENT instead. §H.4 p66 example: `(S//HCS-P//NF)`.
+                sci.push(SciMarking::new(
+                    SciControlSystem::Published(SciControlBare::Hcs),
+                    Box::new([SciCompartment::new("P", Box::new([]))]),
                     None,
                 ));
             }

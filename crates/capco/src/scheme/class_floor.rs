@@ -315,14 +315,13 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
-        // SCI_HCS_O (bit 41) | SCI_HCS_P_SUB (bit 42): coarse gate
-        // covering HCS-O and HCS-P-with-sub-compartments. Coarse:
-        // `presence_hcs_comp_only` excludes HCS-X (identifier != "X")
-        // and HCS-P-sub-only (no bare HCS-P compartment); the mask
-        // over-approximates, so `presence()` confirms.
-        bitmask_trigger: Some(
-            (1u128 << fact_bit::SCI_HCS_O) | (1u128 << fact_bit::SCI_HCS_P_SUB),
-        ),
+        // SCI_PRESENT (bit 37): coarse gate. HCS-O sets SCI_HCS_O (41)
+        // which also sets SCI_PRESENT; bare HCS-P (no sub-compartments)
+        // sets SCI_PRESENT only (SCI_HCS_P_SUB bit 42 requires sub-comps).
+        // Using SCI_HCS_O alone would miss bare HCS-P inputs.
+        // `presence_hcs_comp_only` confirms: rejects non-HCS, HCS-X,
+        // and HCS-P-with-sub-compartments (covered by HCS-comp-sub).
+        bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
         bitmask_trigger_exact: false,
     },
     ClassFloorRow {

@@ -230,13 +230,11 @@ mod tests {
         // `class_floor_satisfied`'s `AtLeast` arm, which calls
         // `effective_level()` on the Conflict variant. `effective_level()`
         // for `Conflict { us: Secret, foreign: NATO(CTS) }` returns
-        // `max(Secret, CTS→TS) = TopSecret` structurally, but that
-        // structural divergence is covered by the FGI/JOINT early-out
-        // (for pure-foreign cases) and the US-chain encoding for Conflict
-        // (which correctly surfaces the US component the class-floor cares
-        // about in mixed-attribution portions). The bitmask path is an
-        // optimization that preserves structural semantics on the paths
-        // the bitmask can represent.
+        // `*us = Secret` (see `MarkingClassification::effective_level` in
+        // `crates/ism/src/attrs.rs` — the `Conflict { us, .. }` arm returns
+        // `*us` directly, not `max(us, foreign)`). The bitmask path reading
+        // only the US chain is therefore byte-identical to the structural path
+        // for all Conflict inputs.
         let mut a = CanonicalAttrs::default();
         a.classification = Some(MarkingClassification::Conflict {
             us: Classification::Secret,
