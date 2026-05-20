@@ -77,6 +77,7 @@ pub mod category;
 pub mod closure;
 pub mod codec;
 pub mod constraint;
+pub mod fact_bitmask;
 pub mod fix_intent;
 pub mod lattice;
 pub mod page_rewrite;
@@ -103,6 +104,7 @@ pub use category::{
 pub use closure::{ClosureRule, ConeDerivedFn, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef};
+pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{
     BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
