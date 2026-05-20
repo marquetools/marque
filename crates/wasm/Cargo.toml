@@ -71,6 +71,37 @@ wasm-opt = [  # tool options:
 [package.metadata.wasm-pack.profile.release-web.wasm-bindgen]
 split-linked-modules = true
 
+[package.metadata.wasm-pack.profile.release-monoaudit]
+# Mirrors `release-web` optimization sequencing while preserving
+# symbol attribution for `twiggy monos` by omitting
+# `--strip-toolchain-annotations` and enabling DWARF below.
+wasm-opt = [
+  "--enable-bulk-memory-opt",
+  "--enable-bulk-memory",
+  "--enable-extended-const",
+  "--enable-multivalue",
+  "--enable-nontrapping-float-to-int",
+  "--enable-reference-types",
+  "--enable-sign-ext",
+  "--enable-simd",
+  "--enable-tail-call",
+  "--type-refining-gufa",
+  "--generate-global-effects",
+  "-O3",
+  "--monomorphize",
+  "--precompute-propagate",
+  "--low-memory-unused",
+  "--gufa",
+  "-O3",
+  "--converge",
+  "-O4",
+]
+
+[package.metadata.wasm-pack.profile.release-monoaudit.wasm-bindgen]
+split-linked-modules = true
+# Preserve debug names so `twiggy monos` can attribute monomorphizations.
+dwarf-debug-info = true
+
 [package.metadata.wasm-pack.profile.release-cloud]
 wasm-opt = [
   # tool options:

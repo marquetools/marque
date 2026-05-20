@@ -241,3 +241,6 @@ inherits = "release"
 
 [profile.release-web]
 inherits = "release"
+
+[profile.release-monoaudit]
+inherits = "release"

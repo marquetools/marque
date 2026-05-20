@@ -43,6 +43,9 @@
 # - `tools/wasm-size-check.sh --update-baseline` — re-measure and
 #   overwrite `tools/wasm-size-baseline.txt` with the new size.
 #   Use after intentional binary-size changes.
+# - For monomorphization attribution, use
+#   `tools/wasm-monoaudit.sh`, which builds the names-preserving
+#   `release-monoaudit` profile and runs `twiggy monos`.
 #
 # ## Baseline-measurement environment is CI, not local
 #
