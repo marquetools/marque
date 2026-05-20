@@ -27,6 +27,11 @@
 //! - [`category`] — `Category`, `AggregationOp`, `Cardinality`,
 //!   `IntraOrdering`, and generic reducers keyed by `AggregationOp`.
 //! - [`constraint`] — declarative `Constraint` invariants.
+//! - [`fact_bitmask`] — [`FactBitmask`] + [`FACT_BITMASK_WIDTH`]:
+//!   packed Boolean characteristic-vector primitive (`u128`) for
+//!   closed-vocab atom sets. Domain-neutral storage shape;
+//!   per-scheme atom layouts live in the consuming crate
+//!   (`marque-capco` for CAPCO). (#371 PR-A)
 //! - [`template`] — structural templates for portion / banner / CAB.
 //! - [`projection`] — `Projection` trait and render-order helpers.
 //! - [`ambiguity`] — `Parsed<M>`, `Candidate`, `EvidenceFeature`.
@@ -77,6 +82,7 @@ pub mod category;
 pub mod closure;
 pub mod codec;
 pub mod constraint;
+pub mod fact_bitmask;
 pub mod fix_intent;
 pub mod lattice;
 pub mod page_rewrite;
@@ -103,6 +109,7 @@ pub use category::{
 pub use closure::{ClosureRule, ConeDerivedFn, MAX_CLOSURE_ITERATIONS};
 pub use codec::{Codec, CodecError};
 pub use constraint::{Constraint, ConstraintViolation, FamilyPredicate, TokenRef};
+pub use fact_bitmask::{FactBitmask, WIDTH as FACT_BITMASK_WIDTH};
 pub use fix_intent::{FactRef, RecanonScope, ReplacementIntent};
 pub use lattice::{
     BoundedJoinSemilattice, BoundedLattice, BoundedMeetSemilattice, JoinSemilattice, Lattice,
