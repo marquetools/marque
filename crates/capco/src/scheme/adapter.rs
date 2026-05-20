@@ -326,6 +326,77 @@ impl CapcoScheme {
         }
     }
 
+    /// Return a scheme-specific, user-friendly diagnostic message for a
+    /// catalog constraint row identified by `name`.
+    ///
+    /// This is the engine-bridge counterpart to [`fix_intent_by_name`]:
+    /// the bridge calls this hook after resolving the violation and
+    /// prefers the returned `String` over the generic evaluator message
+    /// (e.g., `"conflicting tokens: Token(TokenId(122)) and …"`) when
+    /// `Some` is returned. `None` falls back to `ConstraintViolation.message`.
+    ///
+    /// Only dyadic `Constraint::Conflicts` and `Constraint::Requires`
+    /// rows need entries here; `Constraint::Custom` helpers already
+    /// produce well-formed messages in their own predicate bodies
+    /// (see `e012_dual_classification`, `e014_joint_rel_to_coverage`,
+    /// `e021_rd_frd_requires_noforn`, `e024_rd_precedence`,
+    /// `e038_dos_dissem_requires_noforn`, `class_floor_emit`, etc.)
+    /// and the generic evaluator never touches their `message` field.
+    ///
+    /// # Rows covered (PR #578 / issue-fix follow-up)
+    ///
+    /// - `"E015/non-us-requires-dissem"` — non-US classification
+    ///   requires an explicit dissemination control marking per
+    ///   CAPCO-2016 §H.7 p122 + §B.3 p20.
+    /// - `"E016/joint-conflicts-restricted"` — JOINT cannot be used
+    ///   with RESTRICTED per CAPCO-2016 §H.3 p56.
+    /// - `"E036/joint-conflicts-hcs"` — JOINT cannot be used with HCS
+    ///   markings per CAPCO-2016 §H.3 p57.
+    /// - `"capco/noforn-conflicts-rel-to"` — NOFORN cannot be used
+    ///   with REL TO per CAPCO-2016 §H.8 p145.
+    /// - `"E037/nodis-conflicts-exdis"` — NODIS and EXDIS must not
+    ///   coexist per CAPCO-2016 §H.9 p172 + p174.
+    /// - `"E054/relido-conflicts-noforn"` — RELIDO cannot be used
+    ///   with NOFORN per CAPCO-2016 §H.8 p154.
+    ///
+    /// [`fix_intent_by_name`]: Self::fix_intent_by_name
+    pub fn message_by_name(
+        &self,
+        name: &str,
+        _attrs: &CanonicalAttrs,
+        _marking_type: MarkingType,
+    ) -> Option<String> {
+        match name {
+            "E015/non-us-requires-dissem" => Some(
+                "non-US classification requires an explicit dissemination control marking \
+                 (e.g., REL TO or NOFORN) per CAPCO-2016 §H.7 p122 + §B.3 p20"
+                    .to_owned(),
+            ),
+            "E016/joint-conflicts-restricted" => Some(
+                "JOINT cannot be used with RESTRICTED; RESTRICTED is not an authorized US \
+                 classification marking per CAPCO-2016 §H.3 p56"
+                    .to_owned(),
+            ),
+            "E036/joint-conflicts-hcs" => {
+                Some("JOINT cannot be used with HCS markings per CAPCO-2016 §H.3 p57".to_owned())
+            }
+            "capco/noforn-conflicts-rel-to" => Some(
+                "NOFORN cannot be used with REL TO; these dissemination controls are mutually \
+                 exclusive per CAPCO-2016 §H.8 p145"
+                    .to_owned(),
+            ),
+            "E037/nodis-conflicts-exdis" => Some(
+                "NODIS and EXDIS must not coexist; each State Department dissem control is \
+                 mutually exclusive per CAPCO-2016 §H.9 p172 + p174"
+                    .to_owned(),
+            ),
+            "E054/relido-conflicts-noforn" => {
+                Some("RELIDO cannot be used with NOFORN per CAPCO-2016 §H.8 p154".to_owned())
+            }
+            _ => None,
+        }
+    }
+
     /// Reports whether the scheme's `Constraint::Custom` catalog has
     /// any rows that *can* produce user-facing diagnostics (i.e., rows
     /// whose `evaluate_custom` arm populates `ConstraintViolation::span`
