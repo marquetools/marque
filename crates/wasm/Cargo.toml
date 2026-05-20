@@ -89,8 +89,6 @@ wasm-opt = [
   "--precompute-propagate",
   "--low-memory-unused",
   "--gufa",
-  # Intentionally mirrors release-web pass ordering.
-  "-O3",
   "--converge",
   "-O4",
 ]
