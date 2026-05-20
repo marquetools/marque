@@ -4145,16 +4145,15 @@ fn build_decoder_diagnostic(
 /// D-7.5 / D-7.17) is plumbed at the type level today — the
 /// closed-set destructure-pin test at
 /// `crates/rules/tests/message_args_closed_set.rs` enforces its
-/// presence. The R002 `Diagnostic` currently embeds the contributing
-/// rule IDs in its `Box<str>` message because the
-/// `Diagnostic.message: Box<str>` → `Message<MessageTemplate>`
-/// migration lands in PR 3c.2. When that migration completes, this
-/// function will construct
+/// presence. The R002 `Diagnostic` carries the contributing rule
+/// IDs as a typed `SmallVec<[RuleId; 4]>` field on `MessageArgs`
+/// — PR 3c.2.C completed the `Diagnostic.message: Box<str>` →
+/// `Message` migration, so this function constructs
 /// `Message::new(MessageTemplate::ReparseFailed,
-/// MessageArgs { contributing_rule_ids, .. })` instead of formatting
-/// the IDs inline. The `contributing_rule_ids` parameter is shipped
-/// in the typed form already (`SmallVec<[RuleId; 4]>`, never a string
-/// list) so PR 3c.2's migration is purely additive.
+/// MessageArgs { contributing_rule_ids, .. })` directly. The
+/// `contributing_rule_ids` parameter is moved into the args struct
+/// (no clone) — `RuleId` is on Constitution V's permitted-identifier
+/// list, not document bytes.
 ///
 /// # Why no `__engine_promote` call
 ///
@@ -4174,10 +4173,12 @@ pub(crate) fn build_r002_diagnostic(
     // Constitution V's permitted-identifier list (enumerated identifier,
     // not document bytes). The contributing list flows into the audit
     // record as a structured field instead of an interpolated string.
+    // The SmallVec is moved into `MessageArgs` (no clone — the function
+    // owns the argument and doesn't use it afterward).
     let message = marque_rules::Message::new(
         marque_rules::MessageTemplate::ReparseFailed,
         marque_rules::MessageArgs {
-            contributing_rule_ids: contributing_rule_ids.clone(),
+            contributing_rule_ids,
             ..marque_rules::MessageArgs::default()
         },
     );

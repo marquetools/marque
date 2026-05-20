@@ -270,8 +270,12 @@ fn current_year() -> u32 {
 ///
 /// PR 3c.2.C C5 changed the `message` and `citation` fields' wire
 /// shape per PM-C-7:
-/// - `message` is now a structured object `{ "template": "...",
-///   "args": { ... } }` (was a free-form string).
+/// - `message` is now a structured object `{ "template": "..." }`
+///   (was a free-form string). Phase-1 carries the template label
+///   only; the closed `MessageArgs` payload is intentionally not
+///   serialized today and will be added when audit renderers need
+///   the structured field set. See [`MessageJson`] below for the
+///   per-shape rationale.
 /// - `citation` is now the [`Display`] form of typed [`Citation`]
 ///   — `§<L>.<sub> p<page>` for CAPCO sources, `[config]` /
 ///   `[engine-internal]` for sentinel sources.
