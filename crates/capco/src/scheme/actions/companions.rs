@@ -150,12 +150,21 @@ pub(crate) fn emit_hcs_o_companions(
         ));
     }
     if let Some((span, text)) = usgov_entry {
+        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // the conflict class; `MessageArgs.category` carries the
+        // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: RULE_E059,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
-            message: "HCS-O forbids ORCON-USGOV (§H.4 p64) — replace with ORCON".to_owned(),
+            message: marque_rules::Message::new(
+                marque_rules::MessageTemplate::ConflictsWith,
+                marque_rules::MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
             citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
@@ -204,13 +213,21 @@ pub(crate) fn emit_hcs_p_sub_companions(
         ));
     }
     if let Some((span, text)) = usgov_entry {
+        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // the conflict class; `MessageArgs.category` carries the
+        // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: RULE_E059,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
-            message: "HCS-P sub-compartment forbids ORCON-USGOV (§H.4 p68) — replace with ORCON"
-                .to_owned(),
+            message: marque_rules::Message::new(
+                marque_rules::MessageTemplate::ConflictsWith,
+                marque_rules::MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
             citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
@@ -257,12 +274,21 @@ pub(crate) fn emit_si_g_companions(
         ));
     }
     if let Some((span, text)) = usgov_entry {
+        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // the conflict class; `MessageArgs.category` carries the
+        // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: RULE_E059,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
-            message: "SI-G forbids ORCON-USGOV (§H.4 p80) — replace with ORCON".to_owned(),
+            message: marque_rules::Message::new(
+                marque_rules::MessageTemplate::ConflictsWith,
+                marque_rules::MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
             citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),

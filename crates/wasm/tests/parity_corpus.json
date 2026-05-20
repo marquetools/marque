@@ -119,7 +119,7 @@
       "name": "sar_banner_missing_program.txt",
       "category": "invalid",
       "input": "(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E031\",\"severity\":\"fix\",\"span\":{\"start\":30,\"end\":30},\"message\":\"banner SAR block is missing programs present in portions: CD\",\"citation\":\"CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion marks must always appear in the banner line; hierarchy depiction optional per §H.5 p101 + p99)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E031\",\"severity\":\"fix\",\"span\":{\"start\":30,\"end\":30},\"message\":\"BannerRollupMismatch\",\"citation\":\"CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion marks must always appear in the banner line; hierarchy depiction optional per §H.5 p101 + p99)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_unclassified.txt",
@@ -131,7 +131,7 @@
       "name": "sci_banner_missing_compartment.txt",
       "category": "invalid",
       "input": "(TS//SI-G ABCD//OC/NF) portion text\nTOP SECRET//SI-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"banner SCI block is missing markings present in the page's portions (systems, compartments, and/or sub-compartments): SI-G ABCD (sub-compartment missing from banner)\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62, SI p74, TK p85). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"BannerRollupMismatch\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62, SI p74, TK p85). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_canonical_subcompartments.txt",
@@ -173,25 +173,25 @@
       "name": "x_shorthand_date.txt",
       "category": "invalid",
       "input": "SECRET//25X1-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"X-shorthand declassification code \\\"25X1-\\\" is deprecated; use \\\"25X1\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//50X1-\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":\"X-shorthand declassification code \\\"50X1-\\\" is deprecated; use \\\"50X1-HUM\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"50X1-HUM\",\"confidence\":0.95,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"50X1-HUM\",\"confidence\":0.95,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI//25X1-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"X-shorthand declassification code \\\"25X1-\\\" is deprecated; use \\\"25X1\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_pattern.txt",
       "category": "invalid",
       "input": "SECRET//25X2-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"X-shorthand declassification code \\\"25X2-\\\" is deprecated; use \\\"25X2\\\"\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X2\",\"confidence\":0.95,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X2\",\"confidence\":0.95,\"migration_ref\":null}}\n"
     },
     {
       "name": "classified_banner_atomal_as_aea.txt",

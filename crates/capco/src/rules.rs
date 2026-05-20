@@ -863,14 +863,24 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
             if is_abbreviation_expansion(token.text.as_ref(), entry.replacement) {
                 continue;
             }
+            // Constitution V Principle V (G13): the original document
+            // bytes (`token.text`) and the canonical replacement
+            // (`entry.replacement`) do NOT flow into the typed
+            // `Message`. The replacement is on the permitted-identifier
+            // list (token canonical from a closed vocabulary), but
+            // `MessageArgs.expected_token` carries a `TokenId`, not a
+            // raw `&str` — and we do not have a guaranteed `TokenId`
+            // projection for every deprecation-table entry. The
+            // bytes ARE still carried by `Diagnostic.text_correction.replacement`
+            // (the canonical replacement is on the permitted list).
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                 rule: self.id(),
                 severity: self.default_severity(),
                 source: FixSource::MigrationTable,
                 span: token.span,
-                message: format!(
-                    "{:?} is a deprecated dissemination control; replace with {:?}",
-                    token.text, entry.replacement
+                message: Message::new(
+                    MessageTemplate::SupersededToken,
+                    MessageArgs::default(),
                 ),
                 citation: "CAPCO-2016 §F",
                 original: token.text.to_string(),
@@ -979,15 +989,17 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                 if is_dissem_replacement(entry.replacement) {
                     continue;
                 }
+                // G13: original `text` and `entry.replacement` do not
+                // flow into the typed `Message`; the canonical
+                // replacement still rides on `Diagnostic.text_correction.replacement`.
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
                     source: FixSource::MigrationTable,
                     span: token.span,
-                    message: format!(
-                        "X-shorthand declassification code {text:?} is deprecated; \
-                         use {:?}",
-                        entry.replacement
+                    message: Message::new(
+                        MessageTemplate::SupersededToken,
+                        MessageArgs::default(),
                     ),
                     citation: "CAPCO-2016 §E.6",
                     original: text.to_owned(),
@@ -1006,14 +1018,19 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                 if replacement.is_empty() {
                     continue;
                 }
+                // G13: pattern-derived `replacement` is on the audit
+                // permitted list (canonical form, deterministic
+                // stripping). The typed `Message` carries no args
+                // for this path — the template label identifies the
+                // migration class.
                 diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                     rule: self.id(),
                     severity: self.default_severity(),
                     source: FixSource::MigrationTable,
                     span: token.span,
-                    message: format!(
-                        "X-shorthand declassification code {text:?} is deprecated; \
-                         use {replacement:?}"
+                    message: Message::new(
+                        MessageTemplate::SupersededToken,
+                        MessageArgs::default(),
                     ),
                     citation: "CAPCO-2016 §E.6",
                     original: text.to_owned(),
@@ -1361,12 +1378,24 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
             if replacement == text {
                 continue;
             }
+            // G13: drop the runtime byte text from the message per
+            // PM-C-5. Original document bytes (`text`) and the
+            // user-config replacement (`replacement`) do not flow into
+            // the typed `Message` — `MessageArgs.token` would need a
+            // `TokenId` projection that does not exist for arbitrary
+            // user-config `String → String` mappings. The closed-template
+            // label identifies the corrections-map class; the canonical
+            // replacement still rides on `Diagnostic.text_correction.replacement`
+            // for the engine's apply path.
             diagnostics.push(make_fix_diagnostic(FixDiagnosticParams {
                 rule: self.id(),
                 severity: self.default_severity(),
                 source: FixSource::CorrectionsMap,
                 span: token_span.span,
-                message: format!("corrections map: {text:?} → {replacement:?}"),
+                message: Message::new(
+                    MessageTemplate::CorrectionsApplied,
+                    MessageArgs::default(),
+                ),
                 citation: marque_rules::CORRECTIONS_MAP_CITATION,
                 original: text.to_owned(),
                 replacement: replacement.clone(),
@@ -4104,12 +4133,18 @@ pub(crate) fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
 
 /// Bundle of all the inputs `make_fix_diagnostic` needs. Replaces a 9-arg
 /// positional helper signature so call sites read top-down by name.
+///
+/// PR 3c.2.C C4 migrated `message: String` → `message: Message`
+/// (closed-template, closed-args). The `original` field is retained on
+/// the struct so existing call sites stay byte-identical, but the
+/// `make_fix_diagnostic` helper discards it per the existing G13
+/// invariant.
 pub(crate) struct FixDiagnosticParams {
     pub rule: RuleId,
     pub severity: Severity,
     pub source: FixSource,
     pub span: Span,
-    pub message: String,
+    pub message: Message,
     pub citation: &'static str,
     pub original: String,
     pub replacement: String,
@@ -4128,13 +4163,27 @@ pub(crate) struct FixDiagnosticParams {
 /// migration, and other [`make_fix_diagnostic`] callers) gets the
 /// correct provenance on its audit record. The `original` field
 /// is discarded (G13 closure on the legacy emission channel).
+///
+/// **PR 3c.2.C transitional rendering**. Between C4 (this commit's
+/// field-type migration) and C5 (the atomic `Diagnostic.message:
+/// Box<str> → Message` flip), `Diagnostic::text_correction` still
+/// accepts `impl Into<Box<str>>`. The helper renders the typed
+/// [`Message`] as `template.as_str()` for the transitional period —
+/// no document bytes, no `format!` arg interpolation, just the
+/// closed-set template label. The closed-template name is on
+/// Constitution V's permitted-identifier list (enumerated identifier).
+/// C5 deletes this rendering step and passes `p.message` through
+/// directly.
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
     let _ = p.original; // G13: never copy document bytes into audit
+    // Transitional render for the C4→C5 window. C5 deletes this and
+    // passes `p.message: Message` directly to `Diagnostic::text_correction`.
+    let transitional_message: String = p.message.template().as_str().to_owned();
     Diagnostic::text_correction(
         p.rule,
         p.severity,
         p.span,
-        p.message,
+        transitional_message,
         p.citation,
         p.replacement,
         p.source,
@@ -4548,9 +4597,16 @@ fn evaluate_sar_banner_rollup(
 
     match attrs.sar_markings.as_ref() {
         Some(_observed) => {
-            let message = format!(
-                "banner SAR block is missing programs present in portions: {}",
-                sorted_missing.join(", "),
+            // PR 3c.2.C C4 / G13: drop the runtime program list from
+            // the typed `Message`. `MessageArgs.category =
+            // Some(CAT_SAR)` identifies the axis. The canonical
+            // replacement still rides on `Diagnostic.text_correction.replacement`.
+            let message = Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_SAR),
+                    ..MessageArgs::default()
+                },
             );
             // Banner has a SAR block. Emit a RIGHT-ALIGNED INSERTION
             // fix at the end of the block so it does not overlap
@@ -4759,15 +4815,24 @@ fn evaluate_sci_banner_rollup(
     let fix_span = Span::new(fix_start, fix_end);
     let replacement = render_sci_block(&expected);
 
+    // G13 (PM-C-6): drop the per-system `missing` list from the typed
+    // `Message`. `MessageArgs.category = Some(CAT_SCI)` identifies the
+    // axis that disagreed; per-system detail does NOT belong on the
+    // audit record (would require a `MessageArgs.feature_ids`
+    // population that needs a coordinated `MARQUE_AUDIT_SCHEMA` bump per
+    // PM-C-6). The canonical replacement still rides on
+    // `Diagnostic.text_correction.replacement` for the engine's apply path.
     vec![make_fix_diagnostic(FixDiagnosticParams {
         rule: row.rule_id.clone(),
         severity: row.severity,
         source: FixSource::BuiltinRule,
         span: fix_span,
-        message: format!(
-            "banner SCI block is missing markings present in the page's \
-             portions (systems, compartments, and/or sub-compartments): {}",
-            missing.join("; ")
+        message: Message::new(
+            MessageTemplate::BannerRollupMismatch,
+            MessageArgs {
+                category: Some(crate::scheme::CAT_SCI),
+                ..MessageArgs::default()
+            },
         ),
         citation: E035_CITATION,
         original,
@@ -4828,7 +4893,13 @@ fn evaluate_non_ic_dissem_banner_rollup(
     }
 
     let required_str = required.banner_str();
-    let message = format!(
+    // PR 3c.2.C C4 / G13: the `Some` arm flows through
+    // `FixDiagnosticParams` (typed `Message`). The `None` arm flows
+    // through `Diagnostic::new` (still `Box<str>` until C5) and
+    // retains the format!-built `String` for now — C5 will migrate
+    // it to a typed `Message`. Both arms get the same template
+    // (BannerRollupMismatch with category=Dissem-non-IC).
+    let message_string = format!(
         "banner is missing {required_str} required by portions \
          (§H.9 roll-up rule: {required_str} in any portion must \
          appear in the banner)"
@@ -4854,7 +4925,13 @@ fn evaluate_non_ic_dissem_banner_rollup(
                 severity: row.severity,
                 source: FixSource::BuiltinRule,
                 span: insertion,
-                message,
+                message: Message::new(
+                    MessageTemplate::BannerRollupMismatch,
+                    MessageArgs {
+                        category: Some(crate::scheme::CAT_NON_IC_DISSEM),
+                        ..MessageArgs::default()
+                    },
+                ),
                 citation: CITATION,
                 original: String::new(),
                 replacement,
@@ -4875,7 +4952,7 @@ fn evaluate_non_ic_dissem_banner_rollup(
                 row.rule_id.clone(),
                 Severity::Error,
                 span,
-                message,
+                message_string,
                 CITATION,
                 None,
             )]
