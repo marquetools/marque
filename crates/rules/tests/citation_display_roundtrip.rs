@@ -183,8 +183,7 @@ fn matches_citation_lint_form(s: &str) -> bool {
     i += 1;
 
     // [. <subsection>]
-    let saw_subsection;
-    if i < bytes.len() && bytes[i] == b'.' {
+    let saw_subsection = if i < bytes.len() && bytes[i] == b'.' {
         i += 1;
         let start = i;
         while i < bytes.len() && bytes[i].is_ascii_digit() {
@@ -193,10 +192,10 @@ fn matches_citation_lint_form(s: &str) -> bool {
         if i == start {
             return false;
         }
-        saw_subsection = true;
+        true
     } else {
-        saw_subsection = false;
-    }
+        false
+    };
 
     // [. <sub_subsection>] — only valid if a subsection was present
     if i < bytes.len() && bytes[i] == b'.' {

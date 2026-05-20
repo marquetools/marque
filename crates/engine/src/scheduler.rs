@@ -450,6 +450,9 @@ mod tests {
         type Marking = StubMarking;
         type ParseError = ();
         type OpenVocabRef = core::convert::Infallible;
+        // PR 3c.2.A — see evaluator.rs for the binding rationale.
+        type Parsed<'src> = ();
+        type Canonical = ();
         fn name(&self) -> &str {
             "stub"
         }
@@ -486,7 +489,7 @@ mod tests {
         fn render_canonical(
             &self,
             _: &Self::Marking,
-            _: Scope,
+            _: &marque_scheme::RenderContext,
             _: &mut dyn core::fmt::Write,
         ) -> core::fmt::Result {
             Ok(())

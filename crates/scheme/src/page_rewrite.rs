@@ -426,6 +426,8 @@ mod tests {
         type Marking = FakeMarking;
         type ParseError = ();
         type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
 
         fn name(&self) -> &str {
             "fake"
@@ -460,7 +462,7 @@ mod tests {
         fn render_canonical(
             &self,
             _: &Self::Marking,
-            _: Scope,
+            _: &crate::RenderContext,
             _: &mut dyn core::fmt::Write,
         ) -> core::fmt::Result {
             Ok(())

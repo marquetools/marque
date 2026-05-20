@@ -518,6 +518,8 @@ mod tests {
         type Marking = TestMarking;
         type ParseError = ();
         type OpenVocabRef = core::convert::Infallible;
+        type Parsed<'src> = ();
+        type Canonical = ();
 
         fn name(&self) -> &str {
             "TestScheme"
@@ -549,7 +551,7 @@ mod tests {
         fn render_canonical(
             &self,
             _m: &Self::Marking,
-            _scope: Scope,
+            _ctx: &crate::RenderContext,
             _out: &mut dyn core::fmt::Write,
         ) -> core::fmt::Result {
             Ok(())

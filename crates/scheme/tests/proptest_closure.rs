@@ -196,6 +196,8 @@ impl MarkingScheme for ClosureStubScheme {
     type Marking = BitMarking;
     type ParseError = ();
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "closure-stub"
@@ -233,7 +235,7 @@ impl MarkingScheme for ClosureStubScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        _: Scope,
+        _: &marque_scheme::RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         // Render as a hex byte: "bits=0x{:02x}". This does NOT include

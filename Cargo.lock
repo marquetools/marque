@@ -1135,6 +1135,7 @@ version = "0.2.1"
 dependencies = [
  "marque-ism",
  "marque-scheme",
+ "proptest",
  "serde",
  "smallvec",
  "smol_str",

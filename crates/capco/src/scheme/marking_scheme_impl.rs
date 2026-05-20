@@ -15,11 +15,11 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::CanonicalAttrs;
+use marque_ism::{CanonicalAttrs, ParsedAttrs};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
-    ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, ReplacementIntent, Scope,
-    Span, Template, TokenId, TokenRef,
+    ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
+    ReplacementIntent, Scope, Span, Template, TokenId, TokenRef,
 };
 
 use super::actions::*;
@@ -44,6 +44,15 @@ impl MarkingScheme for CapcoScheme {
     type Marking = CapcoMarking;
     type ParseError = CapcoParseError;
     type OpenVocabRef = CapcoOpenVocabRef;
+
+    // PR 3c.2.A — GAT + plain associated type bindings introduced
+    // per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1.
+    // The CapcoScheme override of `canonicalize` (lifting the body
+    // from `marque_ism::from_parsed_unchecked`) lands at PR 3c.2.B;
+    // at PR 3c.2.A the trait-default `unimplemented!()` is in scope
+    // but no call site exercises it (call-site migration is 3c.2.B).
+    type Parsed<'src> = ParsedAttrs<'src>;
+    type Canonical = CanonicalAttrs;
 
     fn name(&self) -> &str {
         "CAPCO-ISM"
@@ -291,10 +300,18 @@ impl MarkingScheme for CapcoScheme {
     fn render_canonical(
         &self,
         m: &Self::Marking,
-        scope: Scope,
+        ctx: &RenderContext,
         out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
-        if matches!(scope, Scope::Diff) {
+        // PR 3c.2.A: signature migrated from bare `scope: Scope` to
+        // `ctx: &RenderContext` per
+        // `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1. The
+        // body continues to dispatch on `ctx.scope` exactly as it did
+        // pre-3c.2 — `ctx.emission_form` and `ctx.schema_version` are
+        // plumbed through but NOT yet consumed by the per-axis
+        // renderers (the §G.1 Table 4 dispatch body lands at PR
+        // 3c.2.B). T056 corpus regression is the byte-identity gate.
+        if matches!(ctx.scope, Scope::Diff) {
             return Err(core::fmt::Error);
         }
 
@@ -326,7 +343,10 @@ impl MarkingScheme for CapcoScheme {
         let mut prev_family: Option<DissemFamilyMembership> = None;
         for row in RENDER_TABLE {
             scratch.clear();
-            (row.render)(m, scope, &mut scratch)?;
+            // Per-axis renderers still take a bare `Scope` at PR
+            // 3c.2.A (PM-1 forbids changing row signatures in A; the
+            // emission-form aware row dispatch lands at 3c.2.B).
+            (row.render)(m, ctx.scope, &mut scratch)?;
             if scratch.is_empty() {
                 continue;
             }
@@ -374,8 +394,16 @@ impl MarkingScheme for CapcoScheme {
         // violation produces an empty / partial `String` rather than
         // a panic (matching the trait-default behavior in
         // `MarkingScheme::render_portion`).
+        //
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
+        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
         let mut s = String::new();
-        let result = self.render_canonical(m, Scope::Portion, &mut s);
+        let ctx = RenderContext::new(
+            Scope::Portion,
+            marque_scheme::EmissionForm::Auto,
+            marque_scheme::SchemaVersionId::MarqueMvp3,
+        );
+        let result = self.render_canonical(m, &ctx, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Portion. \
@@ -390,8 +418,15 @@ impl MarkingScheme for CapcoScheme {
         // contract-violation invariant: `Write for String` is
         // infallible, so `Err` here would be a conforming-impl bug
         // forbidden by the trait doc.
+        //
+        // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext.
         let mut s = String::new();
-        let result = self.render_canonical(m, Scope::Page, &mut s);
+        let ctx = RenderContext::new(
+            Scope::Page,
+            marque_scheme::EmissionForm::Auto,
+            marque_scheme::SchemaVersionId::MarqueMvp3,
+        );
+        let result = self.render_canonical(m, &ctx, &mut s);
         debug_assert!(
             result.is_ok(),
             "MarkingScheme::render_canonical contract violation: Err returned for Scope::Page. \
