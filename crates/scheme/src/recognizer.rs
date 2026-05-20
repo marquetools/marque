@@ -364,5 +364,20 @@ pub trait Recognizer<S: MarkingScheme + ?Sized>: Send + Sync {
     /// scheme-neutral *environment* shared across calls inside dispatch
     /// wrappers like the engine's strict-then-decoder recognizer; folding
     /// offset into the environment would corrupt that split.
-    fn recognize(&self, bytes: &[u8], offset: usize, cx: &ParseContext) -> Parsed<S::Marking>;
+    ///
+    /// `scheme` is the marking scheme instance. Recognizers that need to
+    /// call scheme methods (e.g., `MarkingScheme::canonicalize`) receive
+    /// the scheme here rather than keeping a module-scope static
+    /// (`LazyLock<CapcoScheme>`). The engine passes `&self.scheme`;
+    /// direct recognizer callers (test code, WASM embedders) construct
+    /// and pass their own instance. `scheme` is positioned before `cx`
+    /// to group the data parameters (`bytes`, `offset`, `scheme`) before
+    /// the environment parameter (`cx`).
+    fn recognize(
+        &self,
+        bytes: &[u8],
+        offset: usize,
+        scheme: &S,
+        cx: &ParseContext,
+    ) -> Parsed<S::Marking>;
 }
