@@ -297,9 +297,23 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
             TOK_RELIDO => attrs
                 .dissem_iter()
                 .any(|d| matches!(d, DissemControl::Relido)),
-            TOK_DISPLAY_ONLY => attrs
-                .dissem_iter()
-                .any(|d| matches!(d, DissemControl::Displayonly)),
+            // #618: DISPLAY ONLY has a parser-axis split. The canonical wire
+            // form `DISPLAY ONLY [LIST]` is routed by the parser into
+            // `attrs.display_only_to` (a country-list axis parallel to
+            // `attrs.rel_to`), NOT into `dissem_us` as a `DissemControl`
+            // variant — the `Displayonly` variant is set only programmatically
+            // via `apply_fact_add`. A predicate that only scans `dissem_iter()`
+            // would silently miss the canonical form across every consumer
+            // (closure suppressors, PageRewrites, constraint catalog), so we
+            // OR both axes. The lattice path at `DisplayOnlyBlock::from_attrs_iter`
+            // already reads `display_only_to` directly; this aligns the
+            // predicate path with it.
+            TOK_DISPLAY_ONLY => {
+                attrs
+                    .dissem_iter()
+                    .any(|d| matches!(d, DissemControl::Displayonly))
+                    || !attrs.display_only_to.is_empty()
+            }
             TOK_ORCON => attrs.dissem_iter().any(|d| matches!(d, DissemControl::Oc)),
             TOK_ORCON_USGOV => attrs
                 .dissem_iter()
