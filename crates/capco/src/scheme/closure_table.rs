@@ -60,8 +60,6 @@
 //! row-name severity overrides); they are not re-derived from any other
 //! authority here.
 
-#![allow(dead_code)] // PR-C sidecar; PR-D wires production consumer in `CapcoScheme::closure`.
-
 use marque_scheme::FactBitmask;
 
 use crate::fact_bitmask::{
@@ -178,7 +176,7 @@ pub struct ClosureRow {
 const CONE_NOFORN: u128 = 1u128 << fact_bit::NOFORN;
 const CONE_ORCON: u128 = 1u128 << fact_bit::ORCON;
 const CONE_RELIDO: u128 = 1u128 << fact_bit::RELIDO;
-const CONE_REL_TO_USA: u128 = 1u128 << fact_bit::REL_TO_USA;
+pub(crate) const CONE_REL_TO_USA: u128 = 1u128 << fact_bit::REL_TO_USA;
 
 /// The 10-row CAPCO closure-rule catalog in bitmask form.
 ///
