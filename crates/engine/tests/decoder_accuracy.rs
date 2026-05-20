@@ -94,7 +94,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use marque_capco::CapcoMarking;
+use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_engine::{DecoderRecognizer, StrictRecognizer};
 use marque_ism::CanonicalAttrs;
 use marque_scheme::ambiguity::Parsed;
@@ -360,13 +360,17 @@ fn deep_cx() -> ParseContext {
     }
 }
 
+fn test_scheme() -> CapcoScheme {
+    CapcoScheme::new()
+}
+
 /// Parse the canonical `expected` form via the strict recognizer for
 /// equality comparison against the decoder's verdict. Returns `None`
 /// if strict parsing fails — those fixtures are unmarkable as
 /// "expected attrs" and must be flagged separately (see
 /// `expected_form_parses_strictly`).
 fn parse_expected(strict: &StrictRecognizer, expected: &str) -> Option<CapcoMarking> {
-    match strict.recognize(expected.as_bytes(), 0, &deep_cx()) {
+    match strict.recognize(expected.as_bytes(), 0, &test_scheme(), &deep_cx()) {
         Parsed::Unambiguous(m) => Some(m),
         // The strict recognizer collapses to `Ambiguous { vec![] }`
         // on parse failure; `Unambiguous` is the only form that can
@@ -476,6 +480,7 @@ fn run_sweep() -> AccuracyReport {
         let (verdict, recognition, is_resolved) = match decoder.recognize(
             case.fixture.observed.as_bytes(),
             0,
+            &test_scheme(),
             &deep_cx(),
         ) {
             Parsed::Unambiguous(m) => {

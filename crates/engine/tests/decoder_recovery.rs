@@ -32,6 +32,10 @@ fn deep_cx() -> ParseContext {
     }
 }
 
+fn test_scheme() -> CapcoScheme {
+    CapcoScheme::new()
+}
+
 fn effective_level(m: &marque_capco::CapcoMarking) -> Option<Classification> {
     m.0.classification.as_ref().map(|c| c.effective_level())
 }
@@ -43,7 +47,9 @@ fn effective_level(m: &marque_capco::CapcoMarking) -> Option<Classification> {
 #[test]
 fn sercet_decodes_to_secret_via_edit_distance_one() {
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SERCET//NOFORN", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SERCET//NOFORN", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("SERCET//NOFORN should resolve unambiguously to SECRET//NOFORN");
     };
     assert_eq!(
@@ -91,7 +97,7 @@ fn fuzzy_ambiguity_yields_zero_candidate() {
     // covers the distinct "uncorrectable / no candidate close
     // enough" path (e.g., `SECRET//WIBBLE`).
     let rx = DecoderRecognizer::new();
-    match rx.recognize(b"SECRET//RSE", 0, &deep_cx()) {
+    match rx.recognize(b"SECRET//RSE", 0, &test_scheme(), &deep_cx()) {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
             "decoder must not fabricate partial candidates when any \
@@ -117,7 +123,7 @@ fn partial_canonicalization_with_unresolvable_token_returns_zero_candidate() {
     // would have emitted a `SECRET` candidate silently dropping
     // WIBBLE. With the filter in place the candidate is dropped.
     let rx = DecoderRecognizer::new();
-    match rx.recognize(b"SECRET//WIBBLE", 0, &deep_cx()) {
+    match rx.recognize(b"SECRET//WIBBLE", 0, &test_scheme(), &deep_cx()) {
         Parsed::Ambiguous { candidates } => {
             assert!(
                 candidates.is_empty(),
@@ -145,7 +151,7 @@ fn dissem_first_banner_decodes_to_canonical_order() {
     // Canonical order is classification → SCI → SAR → dissem. The
     // decoder's reorder pass should swap dissem-first input.
     let rx = DecoderRecognizer::new();
-    match rx.recognize(b"NOFORN//SECRET", 0, &deep_cx()) {
+    match rx.recognize(b"NOFORN//SECRET", 0, &test_scheme(), &deep_cx()) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(
                 effective_level(&marking),
@@ -192,7 +198,7 @@ fn unclassified_candidate_rejected_below_secret_floor() {
         classification_floor: Some(Classification::Secret as u8),
         ..deep_cx()
     };
-    match rx.recognize(b"UNCLASSIFIED", 0, &floored) {
+    match rx.recognize(b"UNCLASSIFIED", 0, &test_scheme(), &floored) {
         Parsed::Ambiguous { candidates } => assert!(
             candidates.is_empty(),
             "UNCLASSIFIED below SECRET floor must zero-out candidates, got {}",
@@ -217,7 +223,7 @@ fn floor_at_equal_level_accepts_candidate() {
         classification_floor: Some(Classification::Secret as u8),
         ..deep_cx()
     };
-    match rx.recognize(b"SECRET", 0, &floored) {
+    match rx.recognize(b"SECRET", 0, &test_scheme(), &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::Secret));
         }
@@ -236,7 +242,7 @@ fn floor_below_candidate_accepts_higher_level() {
         classification_floor: Some(Classification::Confidential as u8),
         ..deep_cx()
     };
-    match rx.recognize(b"TOP SECRET", 0, &floored) {
+    match rx.recognize(b"TOP SECRET", 0, &test_scheme(), &floored) {
         Parsed::Unambiguous(marking) => {
             assert_eq!(effective_level(&marking), Some(Classification::TopSecret));
         }
@@ -259,7 +265,7 @@ fn no_floor_accepts_any_classification() {
         (b"SECRET".as_slice(), Classification::Secret),
         (b"TOP SECRET".as_slice(), Classification::TopSecret),
     ] {
-        match rx.recognize(input, 0, &deep_cx()) {
+        match rx.recognize(input, 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(marking) => {
                 assert_eq!(
                     effective_level(&marking),
@@ -298,7 +304,9 @@ fn no_floor_accepts_any_classification() {
 #[test]
 fn wrong_case_lowercase_marking_decodes_to_canonical() {
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"secret//noforn", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"secret//noforn", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("lowercase secret//noforn should case-normalize to SECRET//NOFORN");
     };
     assert_eq!(
@@ -328,7 +336,9 @@ fn wrong_case_lowercase_marking_decodes_to_canonical() {
 #[test]
 fn garbled_delimiter_extra_space_decodes_to_canonical() {
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET //NOFORN", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET //NOFORN", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("TOP SECRET //NOFORN (extra space) should normalize to TOP SECRET//NOFORN");
     };
     assert_eq!(
@@ -355,7 +365,8 @@ fn garbled_delimiter_extra_space_decodes_to_canonical() {
 #[test]
 fn superseded_comint_decodes_to_si() {
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//COMINT//NOFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET//COMINT//NOFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("TOP SECRET//COMINT//NOFORN should supersede COMINT to SI");
     };
@@ -411,7 +422,9 @@ fn superseded_comint_decodes_to_si() {
 #[test]
 fn missing_delimiter_secret_noforn_exdis_resolves() {
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN EXDIS", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SECRET//NOFORN EXDIS", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "SECRET//NOFORN EXDIS must resolve unambiguously after issue #133 \
              PR 3 missing-delimiter insertion lands"
@@ -471,8 +484,12 @@ fn missing_delimiter_classification_then_rel_to() {
     // producing `SECRET//REL TO USA, AUS, GBR` which strict-parses
     // to a SECRET marking with USA/AUS/GBR in `rel_to`.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET REL TO USA, AUS, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET REL TO USA, AUS, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("SECRET REL TO USA, AUS, GBR should resolve via delimiter insertion");
     };
     assert_eq!(
@@ -494,9 +511,12 @@ fn missing_delimiter_top_secret_classification_then_dissem() {
     // OPS (SCI sub-compartment) and ORCON (dissem long-form).
     // Hard-splitter rule (Rule 2) fires on ORCON.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) =
-        rx.recognize(b"TOP SECRET//HCS-P INTEL OPS ORCON/NOFORN", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"TOP SECRET//HCS-P INTEL OPS ORCON/NOFORN",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("HCS-P INTEL OPS ORCON/NOFORN should resolve");
     };
     assert_eq!(
@@ -520,7 +540,9 @@ fn missing_delimiter_two_dissems() {
     // covered by the classification-boundary rule (Rule 1); also
     // by the hard-splitter rule on NOFORN.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET NOFORN//EXDIS", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SECRET NOFORN//EXDIS", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("SECRET NOFORN//EXDIS should resolve");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret),);
@@ -533,7 +555,8 @@ fn missing_delimiter_hard_splitter_inside_segment() {
     // `TOP SECRET//SI/TK NOFORN` — NOFORN follows whitespace inside
     // an SCI segment. Hard-splitter rule fires on NOFORN.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SI/TK NOFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET//SI/TK NOFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("TOP SECRET//SI/TK NOFORN should resolve");
     };
@@ -568,7 +591,9 @@ fn missing_delimiter_does_not_split_sbu_noforn() {
     // and the recognizer returns zero-candidate Ambiguous —
     // exactly the case the previous shape silently allowed.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//SBU NOFORN", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SECRET//SBU NOFORN", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("SECRET//SBU NOFORN must resolve unambiguously");
     };
     assert!(
@@ -596,6 +621,7 @@ fn missing_delimiter_sar_block_with_trailing_noforn_resolves() {
     let Parsed::Unambiguous(marking) = rx.recognize(
         b"SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB NOFORN",
         0,
+        &test_scheme(),
         &deep_cx(),
     ) else {
         panic!("SAR with trailing NOFORN must resolve unambiguously");
@@ -627,6 +653,7 @@ fn missing_delimiter_full_sar_with_trailing_noforn_resolves() {
     let Parsed::Unambiguous(marking) = rx.recognize(
         b"TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN",
         0,
+        &test_scheme(),
         &deep_cx(),
     ) else {
         panic!("`Full`-indicator SAR with trailing NOFORN must resolve");
@@ -659,7 +686,9 @@ fn missing_delimiter_no_change_on_already_canonical() {
     // return path through the decoder's normal recovery on a
     // clean input.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN//EXDIS", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SECRET//NOFORN//EXDIS", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("SECRET//NOFORN//EXDIS should resolve directly");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -709,6 +738,7 @@ fn typo_usar_prefix_resolves_via_indicator_repair() {
     let Parsed::Unambiguous(marking) = rx.recognize(
         b"SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
         0,
+        &test_scheme(),
         &deep_cx(),
     ) else {
         panic!("USAR-BP-... must resolve via SAR indicator repair");
@@ -743,7 +773,8 @@ fn typo_sarbp_missing_hyphen_resolves_via_indicator_repair() {
     // (alnum run 2-3 chars before delim) fires and inserts the
     // hyphen.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SARBP//NOFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET//SARBP//NOFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("SARBP must resolve via SAR indicator repair");
     };
@@ -777,6 +808,7 @@ fn typo_spcial_keyword_resolves_via_extended_correction_vocab() {
     let Parsed::Unambiguous(marking) = rx.recognize(
         b"TOP SECRET//SPCIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
         0,
+        &test_scheme(),
         &deep_cx(),
     ) else {
         panic!("SPCIAL must fuzzy-correct to SPECIAL via extended vocab");
@@ -829,7 +861,8 @@ fn typo_drop_stray_r_resolves_via_collapse_stray_char_slash() {
     // (`...//REXDIS`) and left-attach (`...//NOFORNR//EXDIS`)
     // candidates contain Unknown tokens and are filtered by step 3a.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN/R/EXDIS", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SECRET//NOFORN/R/EXDIS", 0, &test_scheme(), &deep_cx())
     else {
         panic!("`/R/` between NOFORN and EXDIS must resolve via drop-X");
     };
@@ -856,7 +889,8 @@ fn typo_right_attach_n_resolves_via_collapse_stray_char_slash() {
     // (`...//SIN//OFORN` — both unknown) candidates are filtered
     // by step 3a.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SI/N/OFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOP SECRET//SI/N/OFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("`/N/` before OFORN must resolve via right-attach");
     };
@@ -888,8 +922,12 @@ fn typo_left_attach_t_resolves_via_collapse_stray_char_slash() {
     // are filtered by step 3a / 3e (Portion/Banner without
     // classification).
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRE/T/REL TO USA, AUS, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRE/T/REL TO USA, AUS, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`/T/` after SECRE must resolve via left-attach");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -943,7 +981,8 @@ fn typo_tpp_resolves_via_top_vocab_addition() {
     // `TPP→TOP`. Strict parser re-joins `TOP SECRET` into the
     // canonical multi-word classification.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TPP SECRET//SI//NOFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TPP SECRET//SI//NOFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("`TPP SECRET//SI//NOFORN` must resolve via TOP-vocab fuzzy path");
     };
@@ -976,7 +1015,8 @@ fn typo_4char_one_extra_letter_resolves_via_top_vocab() {
         b"QTOP SECRET//SI//NOFORN".as_slice(),
         b"TOPW SECRET//SI//NOFORN".as_slice(),
     ] {
-        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &deep_cx()) else {
+        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &test_scheme(), &deep_cx())
+        else {
             panic!(
                 "{:?} must resolve via TOP-vocab fuzzy path",
                 std::str::from_utf8(input).unwrap_or("<non-utf8>")
@@ -999,7 +1039,8 @@ fn typo_otp_resolves_via_3char_heuristic() {
     // `DecoderClassificationHeuristic` (Severity::Warn,
     // Confidence::rule capped at 0.80).
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"OTP SECRET//SI//NOFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"OTP SECRET//SI//NOFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("`OTP SECRET//...` must resolve via 3-char heuristic");
     };
@@ -1027,7 +1068,8 @@ fn typo_tp_and_to_resolve_via_2char_heuristic_extension() {
         b"TP SECRET//SI//NOFORN".as_slice(),
         b"TO SECRET//SI//NOFORN".as_slice(),
     ] {
-        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &deep_cx()) else {
+        let Parsed::Unambiguous(marking) = rx.recognize(input, 0, &test_scheme(), &deep_cx())
+        else {
             panic!(
                 "{:?} must resolve via 2-char TP/TO heuristic",
                 std::str::from_utf8(input).unwrap_or("<non-utf8>")
@@ -1051,7 +1093,8 @@ fn typo_tops_ecret_resolves_via_top_vocab_token_boundary() {
     // leading `S`). The strict parser then re-joins them as
     // `TOP SECRET`.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"TOPS ECRET//SI//NOFORN", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"TOPS ECRET//SI//NOFORN", 0, &test_scheme(), &deep_cx())
     else {
         panic!("`TOPS ECRET//...` must resolve via TOP+SECRET vocab fuzzy");
     };
@@ -1089,8 +1132,12 @@ fn typo_rel_ot_resolves_via_header_normalize() {
     // appears as OT. Preprocessing rewrites `REL OT ` → `REL TO `
     // before fuzzy/strict run.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL OT USA, AUS, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//REL OT USA, AUS, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`REL OT` must resolve via header normalize");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1113,8 +1160,12 @@ fn typo_relt_o_resolves_via_header_normalize() {
     // `REL` token), which would make the strict parser land at
     // [AUS, GBR] with USA dropped.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//RELT O USA, AUS, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//RELT O USA, AUS, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`RELT O` must resolve via header normalize");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1134,8 +1185,12 @@ fn typo_a_us_resolves_via_entry_token_boundary() {
     // the 4-character entry `A US` → `AUS` only when `is_trigraph`
     // confirms the joined 3-letter string is a valid country code.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA,A US, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//REL TO USA,A US, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`A US` inside REL TO must resolve via entry token-boundary");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1158,8 +1213,12 @@ fn typo_au_comma_s_resolves_via_entry_comma_misplacement() {
     // false-positive shapes like `EU,S USA` where the comma is
     // between the valid 2-char EU and a separate entry.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA, AU,S GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//REL TO USA, AU,S GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`AU,S GBR` inside REL TO must resolve via entry comma misplacement");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1182,7 +1241,8 @@ fn rel_to_structural_repair_does_not_corrupt_aut_austria() {
     // patterns and trigraph-joinable tokens. AUT in a valid
     // position must round-trip unchanged.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA, AUT", 0, &deep_cx())
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"SECRET//REL TO USA, AUT", 0, &test_scheme(), &deep_cx())
     else {
         panic!("`REL TO USA, AUT` (AUT = Austria) must round-trip unchanged");
     };
@@ -1218,8 +1278,12 @@ fn typo_usb_resolves_to_usa_via_trigraph_priors() {
     // log-prior dominates UZB's by ~7 nats — far above the
     // ``UNAMBIGUOUS_LOG_MARGIN``.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USB, AUS, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//REL TO USB, AUS, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`USB → USA` recovery must produce an unambiguous decode (issue #233)");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1245,8 +1309,12 @@ fn typo_asu_resolves_to_aus_via_trigraph_priors() {
     // trigraph priors AUS's log-prior dominates ASM's by ~7 nats and
     // overwhelms the 1-edit advantage.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO USA, ASU, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//REL TO USA, ASU, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!("`ASU → AUS` recovery must produce an unambiguous decode (issue #233)");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1288,8 +1356,12 @@ fn recovers_ad2bcfe3ac0b0765_short_first_entry_resolves_to_usa() {
     // `USA`; corpus-weighted log-priors (PR-A's scoring contribution)
     // carry it past the no-recovery baseline at score time.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//REL TO SA, AUS, GBR", 0, &deep_cx())
-    else {
+    let Parsed::Unambiguous(marking) = rx.recognize(
+        b"SECRET//REL TO SA, AUS, GBR",
+        0,
+        &test_scheme(),
+        &deep_cx(),
+    ) else {
         panic!(
             "`SA → USA` recovery must produce an unambiguous decode \
              (issue #234 PR-B fixture ad2bcfe3ac0b0765)"
@@ -1345,7 +1417,8 @@ fn heuristic_2char_ts_decodes_portion() {
     // resolve), making the candidate fail the engine's expected-
     // attrs equality.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(YS//NF)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(YS//NF)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(YS//NF) should resolve to (TS//NF) via the heuristic");
     };
     assert_eq!(
@@ -1364,7 +1437,8 @@ fn heuristic_2char_ts_decodes_portion() {
 fn heuristic_1char_s_decodes_portion() {
     // (W//NF) — `W` is QWERTY-adjacent to S (one key above).
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(W//NF)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(W//NF)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(W//NF) should resolve to (S//NF) via the heuristic");
     };
     assert_eq!(
@@ -1383,7 +1457,8 @@ fn heuristic_1char_s_decodes_portion() {
 fn heuristic_1char_c_decodes_portion() {
     // (V//NF) — V is QWERTY-adjacent to C (one key right).
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(V//NF)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(V//NF)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(V//NF) should resolve to (C//NF) via the heuristic");
     };
     assert_eq!(
@@ -1398,7 +1473,8 @@ fn heuristic_1char_c_decodes_portion() {
 fn heuristic_decodes_banner_form() {
     // Banner form (no parens) — same heuristic applies.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"RS//NOFORN", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"RS//NOFORN", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("RS//NOFORN should heuristic-resolve to TS//NOFORN");
     };
     assert_eq!(
@@ -1422,7 +1498,8 @@ fn heuristic_emits_classification_heuristic_provenance() {
     // fix-and-warn intent.
     use marque_rules::FixSource;
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(YS//NF)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(YS//NF)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(YS//NF) must resolve unambiguously");
     };
     let provenance = marking
@@ -1445,7 +1522,7 @@ fn heuristic_does_not_fire_on_canonical_classification() {
     // all if the strict path picked up the marking.
     use marque_rules::FixSource;
     let rx = DecoderRecognizer::new();
-    if let Parsed::Unambiguous(marking) = rx.recognize(b"(S//NF)", 0, &deep_cx())
+    if let Parsed::Unambiguous(marking) = rx.recognize(b"(S//NF)", 0, &test_scheme(), &deep_cx())
         && let Some(provenance) = marking.1.as_ref()
     {
         assert_ne!(
@@ -1474,7 +1551,8 @@ fn sci_delimiter_repair_recovers_concatenated_compound_hcsp() {
     // rewrites HCSP → HCS-P; the strict parser then accepts HCS-P as
     // a registered control-compartment compound.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//HCSP)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//HCSP)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(S//HCSP) should resolve via SCI delimiter repair");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1491,7 +1569,8 @@ fn sci_delimiter_repair_recovers_missing_slash_sitk() {
     // Preprocessing rewrites SITK → SI/TK; both bare control
     // systems must land in sci_controls.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SITK)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SITK)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(S//SITK) should resolve via SCI delimiter repair");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1509,7 +1588,8 @@ fn sci_delimiter_repair_recovers_wrong_delimiter_si_dash_tk() {
     // Preprocessing rewrites SI-TK → SI/TK. SI-TK is NOT a registered
     // CVE compound, so the rewrite is unambiguous.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SI-TK)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SI-TK)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(S//SI-TK) should resolve via SCI delimiter repair");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1527,7 +1607,8 @@ fn sci_delimiter_repair_leaves_canonical_compound_alone() {
     // must NOT rewrite it (Pattern C short-circuits on registered
     // compounds). Resolves via the normal strict path.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SI-G)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(S//SI-G)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!("(S//SI-G) must resolve as canonical SI-G");
     };
     assert_eq!(effective_level(&marking), Some(Classification::Secret));
@@ -1606,7 +1687,8 @@ fn nato_u_portion_folds_to_nu() {
     //
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO U)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO U)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO U)` must fold to `(//NU)` and decode \
              to NatoUnclassified (T129 — decoder NATO longhand fold)"
@@ -1624,7 +1706,8 @@ fn nato_r_portion_folds_to_nr() {
     // `(NATO R)` — NATO RESTRICTED longhand abbrev → NR
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO R)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO R)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO R)` must fold to `(//NR)` and decode \
              to NatoRestricted (T129 — decoder NATO longhand fold)"
@@ -1642,7 +1725,8 @@ fn nato_c_portion_folds_to_nc() {
     // `(NATO C)` — NATO CONFIDENTIAL longhand abbrev → NC
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO C)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO C)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO C)` must fold to `(//NC)` and decode \
              to NatoConfidential (T129 — decoder NATO longhand fold)"
@@ -1660,7 +1744,8 @@ fn nato_s_portion_folds_to_ns() {
     // `(NATO S)` — NATO SECRET longhand abbrev → NS
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO S)` must fold to `(//NS)` and decode \
              to NatoSecret (T129 — decoder NATO longhand fold)"
@@ -1679,7 +1764,8 @@ fn nato_ts_portion_folds_to_cts() {
     // Per CAPCO-2016 §G.1 Table 4 pp 36-38, NATO TOP SECRET maps to
     // COSMIC TOP SECRET (CTS) in the canonical Register.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TS)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TS)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO TS)` must fold to `(//CTS)` and decode \
              to CosmicTopSecret (T129 — decoder NATO longhand fold)"
@@ -1697,7 +1783,9 @@ fn nato_secret_long_form_folds_to_ns() {
     // `(NATO SECRET//NF)` — NATO SECRET full-word longhand with NOFORN
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO SECRET//NF)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"(NATO SECRET//NF)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO SECRET//NF)` must fold to `(//NS//NF)` \
              and decode to NatoSecret (T129 — decoder NATO longhand fold)"
@@ -1722,7 +1810,9 @@ fn nato_top_secret_long_form_folds_to_cts() {
     // Two-token level requires treating "TOP SECRET" as a compound in the fold.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO TOP SECRET//NF)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) =
+        rx.recognize(b"(NATO TOP SECRET//NF)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO TOP SECRET//NF)` must fold to `(//CTS//NF)` \
              and decode to CosmicTopSecret (T129 — decoder NATO longhand fold)"
@@ -1749,7 +1839,7 @@ fn nato_in_rel_to_list_is_not_folded() {
     // `NATO`.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (fold guard invariant).
     let rx = DecoderRecognizer::new();
-    let result = rx.recognize(b"(S//REL TO USA, NATO)", 0, &deep_cx());
+    let result = rx.recognize(b"(S//REL TO USA, NATO)", 0, &test_scheme(), &deep_cx());
     match result {
         Parsed::Unambiguous(marking) => {
             // Must parse as US Secret, not Nato(NatoSecret)
@@ -1786,7 +1876,7 @@ fn nato_in_fgi_list_is_not_folded() {
     // must not substitute `NATO C` as if it were a classification.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38 (fold guard invariant).
     let rx = DecoderRecognizer::new();
-    let result = rx.recognize(b"(//FGI USA NATO C)", 0, &deep_cx());
+    let result = rx.recognize(b"(//FGI USA NATO C)", 0, &test_scheme(), &deep_cx());
     // The invariant: if any candidate is returned, none should have
     // MarkingClassification::Nato(_) as the primary classification from the fold.
     match result {
@@ -1821,7 +1911,7 @@ fn already_canonical_ns_is_idempotent() {
     // confirm that canonical input doesn't trigger the fold path.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let result = rx.recognize(b"(//NS//NF)", 0, &deep_cx());
+    let result = rx.recognize(b"(//NS//NF)", 0, &test_scheme(), &deep_cx());
     // Canonical input should decode correctly (strict recognizer handles it,
     // but even via decoder the result must be NatoSecret + Noforn).
     match result {
@@ -1861,7 +1951,8 @@ fn nato_fold_emits_superseded_token_feature() {
     //
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"(NATO S)", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "T129 regression: `(NATO S)` must decode unambiguously after T129 fold \
              (T130 audit-feature check)"
@@ -1905,7 +1996,7 @@ fn nato_in_second_segment_yields_decode_miss() {
     //
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38; §A.6 pp 15-17; §H.7 p122.
     let rx = DecoderRecognizer::new();
-    let parsed = rx.recognize(b"(S//NATO C)", 0, &deep_cx());
+    let parsed = rx.recognize(b"(S//NATO C)", 0, &test_scheme(), &deep_cx());
     match parsed {
         Parsed::Ambiguous { ref candidates } if candidates.is_empty() => {
             // Expected: decode-miss. The fold doesn't fire on the second segment,
@@ -1957,7 +2048,7 @@ fn lowercase_nato_secret_atomal_recovers_via_case_normalization() {
     // control marking, the autofix target per project memory
     // `remark-on-derivative-use-is-marque-autofix`).
     let rx = DecoderRecognizer::new();
-    let parsed = rx.recognize(b"(//nato secret atomal//nf)", 0, &deep_cx());
+    let parsed = rx.recognize(b"(//nato secret atomal//nf)", 0, &test_scheme(), &deep_cx());
     match parsed {
         Parsed::Unambiguous(ref marking) => {
             // PR 9c.1 T134: legacy `NATO SECRET ATOMAL` text canonicalizes
@@ -2015,7 +2106,8 @@ fn nato_u_banner_folds_to_nato_unclassified() {
     // prepends `//` (§A.6 p15), giving `//NATO UNCLASSIFIED//NF`.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO U//NF\n", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO U//NF\n", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "FIX-1 regression: `NATO U//NF` must fold to `//NATO UNCLASSIFIED//NF` \
              and decode to NatoUnclassified (banner NATO fold, #260)"
@@ -2038,7 +2130,8 @@ fn nato_r_banner_folds_to_nato_restricted() {
     // `NATO R//NF` — banner abbreviation for NATO RESTRICTED + NOFORN.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO R//NF", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO R//NF", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "FIX-1 regression: `NATO R//NF` must fold to `//NATO RESTRICTED//NF` \
              and decode to NatoRestricted (banner NATO fold, #260)"
@@ -2061,7 +2154,8 @@ fn nato_c_banner_folds_to_nato_confidential() {
     // `NATO C//NF` — banner abbreviation for NATO CONFIDENTIAL + NOFORN.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO C//NF", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO C//NF", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "FIX-1 regression: `NATO C//NF` must fold to `//NATO CONFIDENTIAL//NF` \
              and decode to NatoConfidential (banner NATO fold, #260)"
@@ -2084,7 +2178,8 @@ fn nato_s_banner_folds_to_nato_secret() {
     // `NATO S//NF` — banner abbreviation for NATO SECRET + NOFORN.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO S//NF", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO S//NF", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "FIX-1 regression: `NATO S//NF` must fold to `//NATO SECRET//NF` \
              and decode to NatoSecret (banner NATO fold, #260)"
@@ -2108,7 +2203,8 @@ fn nato_ts_banner_folds_to_cosmic_top_secret() {
     // Per CAPCO-2016 §G.1 Table 4 pp 36-38, NATO TOP SECRET maps to
     // COSMIC TOP SECRET in the canonical Register.
     let rx = DecoderRecognizer::new();
-    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO TS//NF", 0, &deep_cx()) else {
+    let Parsed::Unambiguous(marking) = rx.recognize(b"NATO TS//NF", 0, &test_scheme(), &deep_cx())
+    else {
         panic!(
             "FIX-1 regression: `NATO TS//NF` must fold to `//COSMIC TOP SECRET//NF` \
              and decode to CosmicTopSecret (banner NATO fold, #260)"
@@ -2135,7 +2231,7 @@ fn nato_secret_banner_already_canonical_no_fold() {
     // did not fire.
     // Citation: CAPCO-2016 §G.1 Table 4 pp 36-38.
     let rx = DecoderRecognizer::new();
-    let result = rx.recognize(b"NATO SECRET//NF", 0, &deep_cx());
+    let result = rx.recognize(b"NATO SECRET//NF", 0, &test_scheme(), &deep_cx());
     match result {
         Parsed::Unambiguous(ref marking) => {
             assert_eq!(

@@ -344,7 +344,13 @@ impl Vocabulary<StubScheme> for StubScheme {
 struct StubRecognizer;
 
 impl Recognizer<StubScheme> for StubRecognizer {
-    fn recognize(&self, _bytes: &[u8], _offset: usize, _cx: &ParseContext) -> Parsed<StubMarking> {
+    fn recognize(
+        &self,
+        _bytes: &[u8],
+        _offset: usize,
+        _scheme: &StubScheme,
+        _cx: &ParseContext,
+    ) -> Parsed<StubMarking> {
         Parsed::Ambiguous {
             candidates: Vec::<Candidate<StubMarking>>::new(),
         }
@@ -465,7 +471,7 @@ fn second_scheme_builds_without_engine_edits() {
     // Recognizer surface — through a `dyn` boxed object so the
     // dynamic-dispatch path is exercised too.
     let r: Box<dyn Recognizer<StubScheme>> = Box::new(recognizer);
-    let parsed = r.recognize(b"anything", 0, &ParseContext::default());
+    let parsed = r.recognize(b"anything", 0, &scheme, &ParseContext::default());
     assert!(matches!(parsed, Parsed::Ambiguous { ref candidates } if candidates.is_empty()));
 
     // Codec surface — encode + decode + every CodecError variant.

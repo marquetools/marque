@@ -86,7 +86,6 @@
 //!   `FixProposal` path with `FixSource::DecoderPosterior`.
 
 use std::borrow::Cow;
-use std::sync::LazyLock;
 
 use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
@@ -104,24 +103,6 @@ use marque_scheme::recognizer::{ParseContext, Recognizer};
 use smallvec::SmallVec;
 
 use crate::recognizer::{StrictRecognizer, is_us_restricted};
-
-/// Module-scope CAPCO scheme constructed lazily on first use.
-///
-/// See the matching `SCHEME` static in
-/// `crates/engine/src/recognizer.rs` for the full rationale
-/// (PR 3c.2.B PM-B-1: transitional shape introduced because the
-/// `Recognizer<S>` trait surface does not thread `&S` through
-/// `recognize(...)` today). `CapcoScheme::new()` builds non-trivial
-/// `Vec` tables; `LazyLock` amortizes the cost across the engine's
-/// lifetime, avoiding a hot-path allocation regression
-/// (Constitution I).
-///
-// TODO(engine-S-generic-recognizer-cleanup, #634): retire this static
-// alongside `crates/engine/src/recognizer.rs::SCHEME` and
-// `crates/engine/src/engine.rs::bridge_scheme` once `Recognizer<S>`
-// gains a `&S` argument. Targets post-1.0 cleanup; tracked at GitHub
-// issue #634 (`engine-S-generic-recognizer-cleanup`).
-static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
 ///
@@ -289,7 +270,13 @@ impl DecoderRecognizer {
 }
 
 impl Recognizer<CapcoScheme> for DecoderRecognizer {
-    fn recognize(&self, bytes: &[u8], offset: usize, cx: &ParseContext) -> Parsed<CapcoMarking> {
+    fn recognize(
+        &self,
+        bytes: &[u8],
+        offset: usize,
+        scheme: &CapcoScheme,
+        cx: &ParseContext,
+    ) -> Parsed<CapcoMarking> {
         // Strict-path callers get zero candidates so the engine's
         // strict recognizer remains the authoritative answer under
         // interactive-authoring latency (SC-001). The engine only
@@ -427,11 +414,10 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 // PR 3c.2.B B2 (PM-B-1): canonicalization seam
                 // migrated from the `marque_ism::from_parsed_unchecked`
                 // adapter to the `MarkingScheme::canonicalize` trait
-                // method. `SCHEME` (above) carries the transitional
-                // scheme instance until `Recognizer<S>::recognize`
-                // gains a `&S` argument under
-                // `engine-S-generic-recognizer-cleanup` (#634).
-                let mut attrs = SCHEME.canonicalize(parsed.attrs);
+                // method. The recognizer receives the scheme via the
+                // `&S` parameter threaded through `recognize()` after
+                // `engine-S-generic-recognizer-cleanup` (#634) landed.
+                let mut attrs = scheme.canonicalize(parsed.attrs);
 
                 // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
                 //     returned by the strict parser carry offsets into
@@ -5662,7 +5648,13 @@ impl StrictOrDecoderRecognizer {
 }
 
 impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
-    fn recognize(&self, bytes: &[u8], offset: usize, cx: &ParseContext) -> Parsed<CapcoMarking> {
+    fn recognize(
+        &self,
+        bytes: &[u8],
+        offset: usize,
+        scheme: &CapcoScheme,
+        cx: &ParseContext,
+    ) -> Parsed<CapcoMarking> {
         // Pass `cx` through to the strict recognizer unmodified.
         // `StrictRecognizer::recognize` ignores every field of
         // `ParseContext` (its parameter is `_cx`), so cloning to
@@ -5671,7 +5663,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         // a well-formed document. Forward `offset` verbatim — inner
         // recognizers do the shift, the dispatcher never double-shifts
         // (issue #431).
-        let strict_result = self.strict.recognize(bytes, offset, cx);
+        let strict_result = self.strict.recognize(bytes, offset, scheme, cx);
 
         // When the outer caller asked for strict-only via
         // `strict_evidence = true`, collapse to the strict result —
@@ -5716,7 +5708,7 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
         // Pass `cx` directly: the `cx.strict_evidence` early return
         // above guarantees the flag is already `false`, so the
         // previous clone-with-override was redundant.
-        let decoder_result = self.decoder.recognize(bytes, offset, cx);
+        let decoder_result = self.decoder.recognize(bytes, offset, scheme, cx);
 
         // Only adopt the decoder result when it produced an Unambiguous
         // marking. If the decoder is also uncertain, preserve the strict
@@ -5739,6 +5731,10 @@ impl Recognizer<CapcoScheme> for StrictOrDecoderRecognizer {
 mod tests {
     use super::*;
     use marque_scheme::recognizer::LinePrefix;
+
+    fn test_scheme() -> CapcoScheme {
+        CapcoScheme::new()
+    }
 
     #[test]
     fn decoder_is_send_sync_as_trait_object() {
@@ -6288,7 +6284,7 @@ mod tests {
     fn decoder_defers_to_strict_when_strict_evidence_is_set() {
         let rx = DecoderRecognizer::new();
         let cx = ParseContext::default(); // strict_evidence = true
-        match rx.recognize(b"(S//NF)", 0, &cx) {
+        match rx.recognize(b"(S//NF)", 0, &test_scheme(), &cx) {
             Parsed::Ambiguous { candidates } => assert!(candidates.is_empty()),
             other => panic!("expected zero-candidate Ambiguous, got {other:?}"),
         }
@@ -6332,7 +6328,7 @@ mod tests {
     fn decoder_zero_candidate_on_no_template_fit() {
         let rx = DecoderRecognizer::new();
         // Neither token is in the vocabulary and no fuzzy match.
-        match rx.recognize(b"FROBNITZ//WIBBLE", 0, &deep_cx()) {
+        match rx.recognize(b"FROBNITZ//WIBBLE", 0, &test_scheme(), &deep_cx()) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "unrecognized input must be zero-candidate, got {} candidate(s)",
@@ -6860,7 +6856,7 @@ mod tests {
             "TOP SECRET//SPECIAL ACCESS REQUIRED-BUTTER POPCORN NOFORN",
             "SECRET//SAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB NOFORN",
         ] {
-            let parsed = rx.recognize(input.as_bytes(), 0, &deep_cx());
+            let parsed = rx.recognize(input.as_bytes(), 0, &test_scheme(), &deep_cx());
             match parsed {
                 Parsed::Unambiguous(m) => {
                     assert!(
@@ -6922,7 +6918,7 @@ mod tests {
     #[test]
     fn decoder_recovers_typo_sercet_to_secret() {
         let rx = DecoderRecognizer::new();
-        match rx.recognize(b"SERCET//NOFORN", 0, &deep_cx()) {
+        match rx.recognize(b"SERCET//NOFORN", 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(m) => {
                 assert_eq!(
                     marking_classification(&m),
@@ -6937,7 +6933,7 @@ mod tests {
     #[test]
     fn decoder_recovers_case_mangled_input() {
         let rx = DecoderRecognizer::new();
-        match rx.recognize(b"secret//noforn", 0, &deep_cx()) {
+        match rx.recognize(b"secret//noforn", 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(m) => {
                 assert_eq!(marking_classification(&m), Some(Classification::Secret));
             }
@@ -6959,7 +6955,7 @@ mod tests {
             ..deep_cx()
         };
         for input in &[b"(s)", b"(c)", b"(u)", b"(S)", b"(C)"] {
-            match rx.recognize(*input, 0, &glued) {
+            match rx.recognize(*input, 0, &test_scheme(), &glued) {
                 Parsed::Ambiguous { candidates } => assert!(
                     candidates.is_empty(),
                     "{:?} glued to a word must produce zero candidates, got {}",
@@ -6997,7 +6993,7 @@ mod tests {
 
         // Baseline: not glued, null gate admits, recovers to
         // UNCLASSIFIED.
-        let standalone = rx.recognize(b"(u)", 0, &deep_cx());
+        let standalone = rx.recognize(b"(u)", 0, &test_scheme(), &deep_cx());
         assert!(
             matches!(
                 &standalone,
@@ -7016,7 +7012,7 @@ mod tests {
             preceded_by_whitespace: false,
             ..deep_cx()
         };
-        let glued = rx.recognize(b"(u)", 0, &glued_cx);
+        let glued = rx.recognize(b"(u)", 0, &test_scheme(), &glued_cx);
         match glued {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
@@ -7065,7 +7061,7 @@ mod tests {
         // the decoder doesn't auto-fix prose-shaped single-letter
         // portions to a SECRET portion.
         let rx = DecoderRecognizer::new();
-        match rx.recognize(b"(s)", 0, &deep_cx()) {
+        match rx.recognize(b"(s)", 0, &test_scheme(), &deep_cx()) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "isolated lowercase (s) must be zero-candidate (null wins), \
@@ -7266,7 +7262,7 @@ mod tests {
         //    runner-up ratio and resulting confidence sit well
         //    above the default `confidence_threshold = 0.95`.
         let rx = DecoderRecognizer::new();
-        match rx.recognize(b"(SERCET//NF)", 0, &deep_cx()) {
+        match rx.recognize(b"(SERCET//NF)", 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(m) => {
                 // The strict parse on the canonicalized bytes must
                 // yield `Us(Secret)`.
@@ -7337,7 +7333,7 @@ mod tests {
         // page zone, etc.) and is deferred — see PR description
         // "Deferred (separate work)".
         let rx = DecoderRecognizer::new();
-        match rx.recognize(b"(u)", 0, &deep_cx()) {
+        match rx.recognize(b"(u)", 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(m) => {
                 assert_eq!(
                     m.0.classification,
@@ -7542,7 +7538,7 @@ mod tests {
             line_prefix: Some(LinePrefix::from_slice(b"that's clearly prose ")),
             ..deep_cx()
         };
-        match rx.recognize(b"(C)", 0, &mid_line_cx) {
+        match rx.recognize(b"(C)", 0, &test_scheme(), &mid_line_cx) {
             Parsed::Unambiguous(m) => {
                 // Verify the line position penalty was recorded on
                 // the surviving candidate.
@@ -7592,8 +7588,8 @@ mod tests {
             line_prefix: Some(LinePrefix::from_slice(b"the early prevalence of ")),
             ..deep_cx()
         };
-        let bullet_result = rx.recognize(b"(C)", 0, &bullet_cx);
-        let prose_result = rx.recognize(b"(C)", 0, &prose_cx);
+        let bullet_result = rx.recognize(b"(C)", 0, &test_scheme(), &bullet_cx);
+        let prose_result = rx.recognize(b"(C)", 0, &test_scheme(), &prose_cx);
 
         // Prose context: position penalty recorded on the candidate.
         match &prose_result {
@@ -7653,7 +7649,7 @@ mod tests {
             surrounding_is_lowercase: true,
             ..deep_cx()
         };
-        match rx.recognize(b"(c)", 0, &lowercase_prose) {
+        match rx.recognize(b"(c)", 0, &test_scheme(), &lowercase_prose) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "(c) in lowercase prose must be zero-candidate, got {}",
@@ -7692,7 +7688,7 @@ mod tests {
             surrounding_is_lowercase: true,
             ..deep_cx()
         };
-        match rx.recognize(b"(S//NF)", 0, &cx) {
+        match rx.recognize(b"(S//NF)", 0, &test_scheme(), &cx) {
             Parsed::Unambiguous(m) => {
                 // Verify no lowercase-context feature was emitted —
                 // the candidate is fully uppercase, so the gate
@@ -7854,7 +7850,7 @@ mod tests {
                 ..deep_cx()
             },
         ] {
-            match rx.recognize(b"(r)", 0, cx) {
+            match rx.recognize(b"(r)", 0, &test_scheme(), cx) {
                 Parsed::Ambiguous { candidates } => assert!(
                     candidates.is_empty(),
                     "bare (r) must be zero-candidate (preceded_by_whitespace={}), got {}",
@@ -7873,7 +7869,7 @@ mod tests {
     fn decoder_recovers_superseded_comint_to_si() {
         let rx = DecoderRecognizer::new();
         // SECRET//COMINT//NOFORN — COMINT is CAPCO-2016 §A.6 p16-superseded to SI.
-        match rx.recognize(b"SECRET//COMINT//NOFORN", 0, &deep_cx()) {
+        match rx.recognize(b"SECRET//COMINT//NOFORN", 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(m) => {
                 assert_eq!(marking_classification(&m), Some(Classification::Secret));
                 // Verify SI is in the SCI controls list after correction.
@@ -7894,7 +7890,7 @@ mod tests {
     fn decoder_recovers_reordered_banner() {
         let rx = DecoderRecognizer::new();
         // Dissem-first mangled; canonical is classification-first.
-        match rx.recognize(b"NOFORN//SECRET", 0, &deep_cx()) {
+        match rx.recognize(b"NOFORN//SECRET", 0, &test_scheme(), &deep_cx()) {
             Parsed::Unambiguous(m) => {
                 assert_eq!(marking_classification(&m), Some(Classification::Secret));
             }
@@ -7919,7 +7915,7 @@ mod tests {
             preceded_by_whitespace: true,
             ..ParseContext::default()
         };
-        match rx.recognize(b"(U)", 0, &cx) {
+        match rx.recognize(b"(U)", 0, &test_scheme(), &cx) {
             Parsed::Ambiguous { candidates } => assert!(
                 candidates.is_empty(),
                 "UNCLASSIFIED below SECRET floor must produce zero candidates, got {}",
@@ -7942,7 +7938,7 @@ mod tests {
             preceded_by_whitespace: true,
             ..ParseContext::default()
         };
-        match rx.recognize(b"(S//NF)", 0, &cx) {
+        match rx.recognize(b"(S//NF)", 0, &test_scheme(), &cx) {
             Parsed::Unambiguous(m) => {
                 assert_eq!(marking_classification(&m), Some(Classification::Secret));
             }
@@ -8091,7 +8087,9 @@ mod tests {
         // under test is `meets_classification_floor`, not the decoder
         // dispatch, so the choice of input shape is incidental.
         let rx = DecoderRecognizer::new();
-        let Parsed::Unambiguous(u_marking) = rx.recognize(b"UNCLASSIFIED", 0, &deep_cx()) else {
+        let Parsed::Unambiguous(u_marking) =
+            rx.recognize(b"UNCLASSIFIED", 0, &test_scheme(), &deep_cx())
+        else {
             panic!("UNCLASSIFIED should decode to unambiguous UNCLASSIFIED");
         };
         // U below S floor → rejected.
@@ -8665,7 +8663,8 @@ mod tests {
         // candidates are dropped by step 3a's Unknown-token filter.
         // Pinned per `tests/fixtures/mangled/typo/7885156a2c2c125f.json`.
         let rx = DecoderRecognizer::new();
-        let Parsed::Unambiguous(marking) = rx.recognize(b"SECRET//NOFORN/R/EXDIS", 0, &deep_cx())
+        let Parsed::Unambiguous(marking) =
+            rx.recognize(b"SECRET//NOFORN/R/EXDIS", 0, &test_scheme(), &deep_cx())
         else {
             panic!("`/R/` between NOFORN and EXDIS must resolve via drop-X");
         };
@@ -8706,7 +8705,8 @@ mod tests {
         // step 3a's Unknown-token filter. Pinned per
         // `tests/fixtures/mangled/typo/2cb13fe4682ff31c.json`.
         let rx = DecoderRecognizer::new();
-        let Parsed::Unambiguous(marking) = rx.recognize(b"TOP SECRET//SI/N/OFORN", 0, &deep_cx())
+        let Parsed::Unambiguous(marking) =
+            rx.recognize(b"TOP SECRET//SI/N/OFORN", 0, &test_scheme(), &deep_cx())
         else {
             panic!("`/N/` before OFORN must resolve via right-attach");
         };
@@ -8747,9 +8747,12 @@ mod tests {
         // step 3a. Pinned per
         // `tests/fixtures/mangled/typo/cff1d0ac74e901c3.json`.
         let rx = DecoderRecognizer::new();
-        let Parsed::Unambiguous(marking) =
-            rx.recognize(b"SECRE/T/REL TO USA, AUS, GBR", 0, &deep_cx())
-        else {
+        let Parsed::Unambiguous(marking) = rx.recognize(
+            b"SECRE/T/REL TO USA, AUS, GBR",
+            0,
+            &test_scheme(),
+            &deep_cx(),
+        ) else {
             panic!("`/T/` after SECRE must resolve via left-attach");
         };
         assert_eq!(
@@ -8778,6 +8781,7 @@ mod tests {
         let Parsed::Unambiguous(marking) = rx.recognize(
             b"SECRET//USAR-BP-J12 J54-K15/CD-YYY 456 689/XR-XRA RB//NOFORN",
             0,
+            &test_scheme(),
             &deep_cx(),
         ) else {
             panic!("USAR-BP-... must resolve via SAR indicator repair");
@@ -8812,7 +8816,7 @@ mod tests {
         // `tests/fixtures/mangled/typo/fbf5ed813c109c14.json`.
         let rx = DecoderRecognizer::new();
         let Parsed::Unambiguous(marking) =
-            rx.recognize(b"TOP SECRET//SARBP//NOFORN", 0, &deep_cx())
+            rx.recognize(b"TOP SECRET//SARBP//NOFORN", 0, &test_scheme(), &deep_cx())
         else {
             panic!("SARBP must resolve via SAR indicator repair");
         };
@@ -8848,6 +8852,7 @@ mod tests {
         let Parsed::Unambiguous(marking) = rx.recognize(
             b"TOP SECRET//SPCIAL ACCESS REQUIRED-BUTTER POPCORN//NOFORN",
             0,
+            &test_scheme(),
             &deep_cx(),
         ) else {
             panic!("SPCIAL must fuzzy-correct to SPECIAL");
