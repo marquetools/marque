@@ -1031,6 +1031,8 @@ fn axis_mask_fgi_marker_sets_bit() {
     assert!(
         mask & (1 << CAT_FGI_MARKER.0) != 0,
         "FGI marker present → CAT_FGI_MARKER bit set"
+    );
+}
 // ---------------------------------------------------------------------------
 // HOT-1 (issue #595) — `ClosureAxisFlags` axis-guard correctness
 // ---------------------------------------------------------------------------
@@ -1071,8 +1073,7 @@ fn hot1_closure_noop_on_classified_with_noforn() {
     let after = scheme.closure(before.clone());
     assert_eq!(
         before.0.dissem_us, after.0.dissem_us,
-        "closure must be a no-op when NOFORN already present (both RELIDO \
-         rules suppressed); HOT-1 must not add spurious facts"
+        "closure must be a no-op when NOFORN already present (both RELIDO rules suppressed); HOT-1 must not add spurious facts"
     );
 }
 
