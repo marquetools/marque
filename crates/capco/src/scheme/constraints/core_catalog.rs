@@ -391,13 +391,14 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },
-        // ---- E055 / E056 / E057 — retired in #559 close-out (2026-05-19) ----
+        // ---- E055 / E056 / E057 — retired in #559 close-out (2026-05-19) + #618 ----
         //
-        // Two of the three RELIDO-exclusion pairs that lived here as
+        // All three RELIDO-exclusion pairs that lived here as
         // `Constraint::Conflicts` rows moved into
         // `crates/capco/src/scheme/rewrites/relido_clears.rs` as
         // subtractive PageRewrites:
         //
+        //   `capco/display-only-clears-relido` (E055, §H.8 p154)
         //   `capco/orcon-clears-relido`        (E056, §H.8 p136)
         //   `capco/orcon-usgov-clears-relido`  (E057, §H.8 p140)
         //
@@ -406,23 +407,21 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // `fix_intent_by_name` arm produced, but at the right scope
         // for cross-portion supersession (e.g., ORCON on portion A
         // and RELIDO on portion B was missed by the per-portion
-        // Conflicts gate). Per Marque convention dissem-axis
-        // conflicts emit subtractive fixes (see the
-        // dissem-conflicts-emit-subtractive-fix project
-        // memorandum at `~/.claude/memory/feedback_dissem_conflicts_emit_subtractive_fix.md`).
+        // Conflicts gate). Per Marque convention, dissem-axis
+        // conflicts emit subtractive fixes: the engine guides the
+        // author toward a canonical resolution (RELIDO removed when
+        // a stronger originator decision is on the page) rather
+        // than just flagging the conflict.
         //
-        // The third pair — E055 RELIDO ⊥ DISPLAY ONLY (§H.8 p154) —
-        // is deferred behind issue #618 (`satisfies(TOK_DISPLAY_ONLY)`
-        // misses the canonical wire form): the parser routes
-        // `DISPLAY ONLY [LIST]` into `attrs.display_only_to` instead
-        // of populating `dissem_us`, so the obvious
-        // `Contains(CAT_DISSEM, TOK_DISPLAY_ONLY)` trigger silently
-        // no-ops on the canonical input. See
-        // `crates/capco/src/scheme/rewrites/relido_clears.rs`
-        // module header (\"E.4.4 — deferred\") for the
-        // cycle-graph + predicate-widening rationale; the
-        // `capco/display-only-clears-relido` row lands once #618 is
-        // resolved.
+        // The E055 DISPLAY ONLY row was deferred behind #618 until
+        // `satisfies(TOK_DISPLAY_ONLY)` was widened to recognize the
+        // canonical wire form. Pre-#618 the parser routed
+        // `DISPLAY ONLY [LIST]` into `attrs.display_only_to` (a
+        // country-list axis parallel to `attrs.rel_to`) without
+        // setting the `DissemControl::Displayonly` variant in
+        // `dissem_us`, so a `Contains(CAT_DISSEM, TOK_DISPLAY_ONLY)`
+        // trigger would silently no-op on the canonical input. #618
+        // widened the predicate to OR both axes, unblocking the row.
         //
         // E054 (RELIDO ⊥ NOFORN) stays a Conflicts row because the
         // companion `capco/noforn-clears-fdr-family` PageRewrite in
