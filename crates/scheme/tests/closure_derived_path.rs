@@ -86,6 +86,7 @@ fn derived_cone_emits_y(_m: &BitMarking) -> SmallVec<[FactRef<DerivedOnlyScheme>
 
 static DERIVED_ONLY_RULES: &[ClosureRule<DerivedOnlyScheme>] = &[ClosureRule {
     name: "derived/emits-y",
+    display_label: "Derived cone emits Y",
     label: "derived-only test fixture",
     triggers: &[],
     suppressors: &[],
@@ -217,6 +218,7 @@ fn closure_derived_path_routes_facts() {
 
 static STATIC_PARITY_RULES: &[ClosureRule<StaticParityScheme>] = &[ClosureRule {
     name: "static/emits-y",
+    display_label: "Static cone emits Y",
     label: "static-cone parity fixture",
     triggers: &[],
     suppressors: &[],

@@ -104,6 +104,7 @@ fn bit_index(id: TokenId) -> Option<u8> {
 
 static MONOTONE_RULES: &[ClosureRule<MonotoneScheme>] = &[ClosureRule {
     name: "stub/a-implies-b",
+    display_label: "Monotone fixture A implies B",
     label: "non-monotone test fixture",
     triggers: &[TokenRef::Token(TOK_A)],
     suppressors: &[], // No suppressor — unconditional.
@@ -336,6 +337,7 @@ fn non_monotone_scenario_is_detectable() {
 
 static NON_MONOTONE_RULES: &[ClosureRule<NonMonotoneScheme>] = &[ClosureRule {
     name: "stub/a-implies-b-suppressed-by-c",
+    display_label: "Non-monotone fixture A implies B suppressed by C",
     label: "non-monotone test fixture",
     triggers: &[TokenRef::Token(TOK_A)],
     // SUPPRESSOR shape that creates non-monotonicity: C is a token that
@@ -607,6 +609,7 @@ fn non_monotone_derived_cone(m: &BitMarking) -> SmallVec<[FactRef<NonMonotoneDer
 
 static MONOTONE_DERIVED_RULES: &[ClosureRule<MonotoneDerivedScheme>] = &[ClosureRule {
     name: "stub/derived-monotone",
+    display_label: "Monotone derived-cone fixture",
     label: "derived-cone monotone test fixture",
     // Unconditional firing — the cone_derived fn does the marking-shape work.
     triggers: &[],
@@ -618,6 +621,7 @@ static MONOTONE_DERIVED_RULES: &[ClosureRule<MonotoneDerivedScheme>] = &[Closure
 
 static NON_MONOTONE_DERIVED_RULES: &[ClosureRule<NonMonotoneDerivedScheme>] = &[ClosureRule {
     name: "stub/derived-non-monotone",
+    display_label: "Non-monotone derived-cone fixture",
     label: "derived-cone non-monotone test fixture",
     triggers: &[],
     suppressors: &[],
