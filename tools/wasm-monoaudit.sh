@@ -49,4 +49,4 @@ if [[ ! -f "${WASM_ARTIFACT}" ]]; then
 fi
 
 echo "[wasm-monoaudit] top 50 monomorphizations from ${WASM_ARTIFACT}:"
-twiggy monos "${WASM_ARTIFACT}" | head -50
+twiggy monos -n 50 "${WASM_ARTIFACT}"
