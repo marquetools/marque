@@ -38,9 +38,10 @@ use super::*;
 //      the family pattern is present
 //   - `kind`: dispatch tag — `CompanionRequired` (single dissem-control
 //      insertion) or `Custom` (closure for multi-branch emit logic)
-//   - `severity`: per-row default `Severity` (typically `Warn`; the emit
-//      helper escalates per-branch to `Error` no-fix when no IC dissem
-//      block exists)
+//   - `severity`: per-row default `Severity` (typically `Warn`; missing
+//      companions remain fixable even when no IC dissem block exists,
+//      because the structural `FactAdd` intent is applied to the parsed
+//      marking and canonical re-rendering synthesizes the block)
 //   - `citation`: per-row §-citation matching `Constraint::Custom { label }`
 //
 // Diagnostic-span anchoring is NOT a row field — companion-insertion
@@ -150,8 +151,7 @@ pub(crate) struct SciPerSystemRow {
     /// Dispatch kind — `CompanionRequired` (single-token) or `Custom`
     /// (multi-branch closure).
     pub(crate) kind: SciPerSystemKind,
-    /// Default severity (typically `Warn`). The emit helper escalates
-    /// per-branch to `Error` no-fix when no IC dissem block exists.
+    /// Default severity (typically `Warn`).
     pub(crate) severity: marque_rules::Severity,
     /// Per-row §-citation, matching `Constraint::Custom { label }`.
     pub(crate) citation: &'static str,

@@ -11,8 +11,7 @@
 //! (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use super::super::predicates::{
-    dissem_token_id_for_form, dissem_token_span, first_sci_span, infer_companion_form,
-    last_dissem_span, us_level,
+    dissem_token_id_for_form, dissem_token_span, first_sci_span, infer_companion_form, us_level,
 };
 use super::super::*;
 
@@ -25,15 +24,14 @@ use super::super::*;
 /// bytes via `apply_intent` + `render_canonical`. Same
 /// diagnostic-vs-fix-scope split used by `SarPortionFormRule` (E026).
 ///
-/// Falls back to `Severity::Error` no-fix when no dissem block exists
-/// — inserting a whole new dissem category from rule context is
-/// unsafe (the structural addition has no existing block to compose
-/// with for canonical re-rendering). Same policy as E040.
+/// When no dissem block exists yet, the same `FactAdd` intent is still
+/// emitted; `apply_intent` mutates the parsed marking and
+/// `render_canonical` synthesizes the `//` dissem block in canonical
+/// form.
 //
-// 8 args is the irreducible carrying capacity: id/severity for the
+// 7 args is the irreducible carrying capacity: id/severity for the
 // catalog row, anchor_span/candidate_span for the diagnostic-vs-fix
-// span split, last_dissem for the anchor lookup, token/message/citation
-// for the emission. Folding into a struct would shift the count
+// span split, token/message/citation for the emission. Folding into a struct would shift the count
 // without reducing it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_companion_insert(
@@ -42,7 +40,6 @@ pub(crate) fn emit_companion_insert(
     anchor_span: marque_scheme::Span,
     candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
-    last_dissem: Option<marque_scheme::Span>,
     token: &str,
     message: String,
     citation: &'static str,
@@ -70,42 +67,34 @@ pub(crate) fn emit_companion_insert(
             return Diagnostic::info(rule, Severity::Error, anchor_span, message, citation);
         }
     };
-    match last_dissem {
-        Some(_dissem_span) => {
-            // Insert the companion token via a `FactAdd` intent.
-            // `fix_scope` is the caller-derived scope: `Scope::Portion`
-            // for portion candidates, `Scope::Page` for banner
-            // candidates (the banner roll-up's per-page projection).
-            // Both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/
-            // `ORCON-USGOV` resolve to the same canonical `TokenId`
-            // per CVE — the engine's `render_canonical` decides
-            // surface form from the inferred companion form.
-            let intent = FixIntent::<CapcoScheme> {
-                replacement: ReplacementIntent::FactAdd {
-                    token: FactRef::Cve(token_id),
-                    scope: fix_scope,
-                },
-                confidence: Confidence::strict(0.9),
-                feature_ids: Default::default(),
-                message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
-                source: FixSource::BuiltinRule,
-                migration_ref: None,
-            };
-            Diagnostic::with_fix_at_span(
-                rule,
-                severity,
-                anchor_span,
-                candidate_span,
-                message,
-                citation,
-                intent,
-            )
-        }
-        None => {
-            // No dissem block — escalate to Error with no fix.
-            Diagnostic::info(rule, Severity::Error, anchor_span, message, citation)
-        }
-    }
+    // Insert the companion token via a `FactAdd` intent.
+    // `fix_scope` is the caller-derived scope: `Scope::Portion`
+    // for portion candidates, `Scope::Page` for banner
+    // candidates (the banner roll-up's per-page projection).
+    // Both `NF`/`NOFORN` and `OC`/`ORCON`/`OC-USGOV`/
+    // `ORCON-USGOV` resolve to the same canonical `TokenId`
+    // per CVE — the engine's `render_canonical` decides
+    // surface form from the inferred companion form.
+    let intent = FixIntent::<CapcoScheme> {
+        replacement: ReplacementIntent::FactAdd {
+            token: FactRef::Cve(token_id),
+            scope: fix_scope,
+        },
+        confidence: Confidence::strict(0.9),
+        feature_ids: Default::default(),
+        message: Message::new(MessageTemplate::RequiredByPresence, MessageArgs::default()),
+        source: FixSource::BuiltinRule,
+        migration_ref: None,
+    };
+    Diagnostic::with_fix_at_span(
+        rule,
+        severity,
+        anchor_span,
+        candidate_span,
+        message,
+        citation,
+        intent,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +123,6 @@ pub(crate) fn emit_hcs_o_companions(
 
     let mut out = Vec::new();
     let form = infer_companion_form(attrs);
-    let last_dissem = last_dissem_span(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
     if !has_orcon {
@@ -144,7 +132,6 @@ pub(crate) fn emit_hcs_o_companions(
             sci_span,
             candidate_span,
             fix_scope,
-            last_dissem,
             form.orcon(),
             "HCS-O requires ORCON (§H.4 p64)".to_owned(),
             row.citation,
@@ -157,7 +144,6 @@ pub(crate) fn emit_hcs_o_companions(
             sci_span,
             candidate_span,
             fix_scope,
-            last_dissem,
             form.noforn(),
             "HCS-O requires NOFORN (§H.4 p64)".to_owned(),
             row.citation,
@@ -203,7 +189,6 @@ pub(crate) fn emit_hcs_p_sub_companions(
 
     let mut out = Vec::new();
     let form = infer_companion_form(attrs);
-    let last_dissem = last_dissem_span(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
     if !has_orcon {
@@ -213,7 +198,6 @@ pub(crate) fn emit_hcs_p_sub_companions(
             sci_span,
             candidate_span,
             fix_scope,
-            last_dissem,
             form.orcon(),
             "HCS-P sub-compartment requires ORCON (§H.4 p68)".to_owned(),
             row.citation,
@@ -258,7 +242,6 @@ pub(crate) fn emit_si_g_companions(
 
     let mut out = Vec::new();
     let form = infer_companion_form(attrs);
-    let last_dissem = last_dissem_span(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
     if !has_orcon {
@@ -268,7 +251,6 @@ pub(crate) fn emit_si_g_companions(
             sci_span,
             candidate_span,
             fix_scope,
-            last_dissem,
             form.orcon(),
             "SI-G requires ORCON (§H.4 p80)".to_owned(),
             row.citation,
@@ -344,7 +326,6 @@ pub(crate) fn emit_companion_required(
     }
 
     let form = infer_companion_form(attrs);
-    let last_dissem = last_dissem_span(attrs);
     let sci_span = first_sci_span(attrs).unwrap_or(Span::new(0, 0));
 
     let companion_text = match dissem {
@@ -367,7 +348,6 @@ pub(crate) fn emit_companion_required(
         sci_span,
         candidate_span,
         fix_scope,
-        last_dissem,
         companion_text,
         message,
         row.citation,
