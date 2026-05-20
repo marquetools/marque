@@ -65,21 +65,21 @@ use core::num::{NonZeroU8, NonZeroU16};
 /// **No `From<&str> for Citation` impl.**
 ///
 /// ```compile_fail
-/// use marque_rules::Citation;
+/// use marque_scheme::Citation;
 /// let _: Citation = "CAPCO-2016 §H.4 p61".into();
 /// ```
 ///
 /// **No `From<String> for Citation` impl.**
 ///
 /// ```compile_fail
-/// use marque_rules::Citation;
+/// use marque_scheme::Citation;
 /// let _: Citation = String::from("CAPCO-2016 §H.4 p61").into();
 /// ```
 ///
 /// **No `Citation::from_str` method.**
 ///
 /// ```compile_fail
-/// use marque_rules::Citation;
+/// use marque_scheme::Citation;
 /// let _ = Citation::from_str("CAPCO-2016 §H.4 p61");
 /// ```
 ///
@@ -87,7 +87,7 @@ use core::num::{NonZeroU8, NonZeroU16};
 ///
 /// ```
 /// use core::num::{NonZeroU8, NonZeroU16};
-/// use marque_rules::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
+/// use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 ///
 /// // §H.4 p61 — SCI grammar.
 /// const SCI_GRAMMAR: Citation = Citation::new(
@@ -343,7 +343,7 @@ pub enum AuthoritativeSource {
 /// # Examples
 ///
 /// ```
-/// use marque_rules::{capco, Citation, SectionLetter};
+/// use marque_scheme::{capco, Citation, SectionLetter};
 /// const SCI_GRAMMAR: Citation = capco(SectionLetter::H, 4, 61);
 /// assert_eq!(format!("{SCI_GRAMMAR}"), "§H.4 p61");
 /// ```
@@ -379,7 +379,7 @@ pub const fn capco(letter: SectionLetter, subsection: u8, page: u16) -> Citation
 /// # Examples
 ///
 /// ```
-/// use marque_rules::{capco_section, Citation, SectionLetter};
+/// use marque_scheme::{capco_section, Citation, SectionLetter};
 /// const LEGACY: Citation = capco_section(SectionLetter::F, 35);
 /// assert_eq!(format!("{LEGACY}"), "§F p35");
 /// ```
@@ -404,7 +404,7 @@ pub const fn capco_section(letter: SectionLetter, page: u16) -> Citation {
 /// # Examples
 ///
 /// ```
-/// use marque_rules::{capco_table, Citation, SectionLetter};
+/// use marque_scheme::{capco_table, Citation, SectionLetter};
 /// const CAVEATED_FDR: Citation = capco_table(SectionLetter::B, 3, 2, 21);
 /// assert_eq!(format!("{CAVEATED_FDR}"), "§B.3 Table 2 p21");
 /// ```

@@ -72,7 +72,6 @@
 
 pub mod audit;
 pub mod audit_note;
-pub mod citation;
 pub mod confidence;
 pub mod fix_intent;
 pub mod message;
@@ -88,7 +87,13 @@ pub use audit::{
     Discriminant,
 };
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
-pub use citation::{
+// PR 10.A.1: `Citation` and related types moved to `marque-scheme` so the
+// scheme-level catalog row types (`Constraint.label`, `PageRewrite.citation`,
+// `ClosureRule.label`, `ConstraintViolation.citation`) can carry typed
+// citations without inverting the crate dependency graph. Re-exported here
+// so existing `marque_rules::Citation` imports continue to resolve through
+// the historical path.
+pub use marque_scheme::{
     AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
     capco_table,
 };

@@ -42,7 +42,7 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use marque_scheme::{MarkingScheme, Scope, Span, TokenId, TokenRef};
+use marque_scheme::{Citation, MarkingScheme, Scope, Span, TokenId, TokenRef};
 
 use crate::{Confidence, EnginePromotionToken, RuleId};
 
@@ -144,8 +144,9 @@ pub struct AuditNoteStructural {
 pub struct AuditNote<S: MarkingScheme> {
     /// The closure rule's RuleId (e.g., scheme="capco", predicate_id="noforn-if-no-fdr").
     pub rule: RuleId,
-    /// Authoritative-source citation verbatim from the closure rule's `label`.
-    pub citation: &'static str,
+    /// Authoritative-source citation copied from the closure rule's `label`.
+    /// Migrated from `&'static str` to typed [`Citation`] in PR 10.A.1.
+    pub citation: Citation,
     /// Discriminator (v1: `InferredFact` only).
     pub kind: AuditNoteKind,
     /// Timestamp of emission (clock-injected by the engine).
@@ -222,7 +223,7 @@ impl<S: MarkingScheme> AuditNote<S> {
     #[allow(clippy::too_many_arguments)]
     pub fn __engine_promote(
         rule: RuleId,
-        citation: &'static str,
+        citation: Citation,
         kind: AuditNoteKind,
         timestamp: SystemTime,
         classifier_id: Option<Arc<str>>,

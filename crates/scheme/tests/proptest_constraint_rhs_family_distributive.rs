@@ -34,10 +34,23 @@
 //! per such token.
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, FamilyPredicate, JoinSemilattice, MarkingScheme,
-    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, constraint::evaluate,
+    Category, Citation, Constraint, ConstraintViolation, FamilyPredicate, JoinSemilattice,
+    MarkingScheme, MeetSemilattice, PageRewrite, Parsed, Scope, SectionLetter, Template, TokenId,
+    TokenRef, constraint::evaluate,
 };
 use proptest::prelude::*;
+
+// Sentinel test citation — distributive-expansion proptest fixture; the
+// `AuthoritativeSource::EngineInternal` source renders as `[engine-internal]`
+// so the value carries no false CAPCO §-claim.
+const PROPTEST_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 // ---------------------------------------------------------------------------
 // Bitset marking.
@@ -137,7 +150,7 @@ static FAMILY_CONSTRAINTS: &[Constraint] = &[Constraint::ConflictsWithFamily {
     name: "test/lhs-conflicts-odd-family",
     left: TokenRef::Token(LHS_TOKEN),
     family: FamilyPredicate(is_odd_indexed),
-    label: "PropTest §distributive-expansion",
+    label: PROPTEST_CITATION,
     severity: None,
 }];
 
@@ -147,7 +160,7 @@ static ENUMERATED_CONSTRAINTS: &[Constraint] = &[
         name: "test/lhs-conflicts-tok1",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[1]),
-        label: "PropTest §distributive-expansion",
+        label: PROPTEST_CITATION,
         severity: None,
         span_anchor: None,
     },
@@ -155,7 +168,7 @@ static ENUMERATED_CONSTRAINTS: &[Constraint] = &[
         name: "test/lhs-conflicts-tok3",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[3]),
-        label: "PropTest §distributive-expansion",
+        label: PROPTEST_CITATION,
         severity: None,
         span_anchor: None,
     },
@@ -163,7 +176,7 @@ static ENUMERATED_CONSTRAINTS: &[Constraint] = &[
         name: "test/lhs-conflicts-tok5",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[5]),
-        label: "PropTest §distributive-expansion",
+        label: PROPTEST_CITATION,
         severity: None,
         span_anchor: None,
     },
@@ -171,7 +184,7 @@ static ENUMERATED_CONSTRAINTS: &[Constraint] = &[
         name: "test/lhs-conflicts-tok7",
         left: TokenRef::Token(LHS_TOKEN),
         right: TokenRef::Token(TOK[7]),
-        label: "PropTest §distributive-expansion",
+        label: PROPTEST_CITATION,
         severity: None,
         span_anchor: None,
     },
@@ -381,7 +394,7 @@ proptest! {
             );
             prop_assert_eq!(
                 v.citation,
-                "PropTest §distributive-expansion",
+                PROPTEST_CITATION,
                 "family violation must carry the catalog row's label"
             );
         }

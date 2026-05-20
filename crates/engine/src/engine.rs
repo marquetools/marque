@@ -2338,15 +2338,19 @@ impl Engine {
             .scheme
             .fix_intent_by_name(v.constraint_label, attrs, candidate.kind);
 
-        // PR 3c.2.C C5 / PM-C-1 bridge layer: convert the carrier-
-        // string `ConstraintViolation.message: String` and
-        // `ConstraintViolation.citation: &'static str` to the typed
-        // `Diagnostic.message: Message` + `Diagnostic.citation: Citation`.
+        // PR 3c.2.C C5 / PM-C-1 / PR 10.A.1 bridge layer: convert the
+        // carrier-string `ConstraintViolation.message: String` to a typed
+        // `Diagnostic.message: Message`. The citation channel is no
+        // longer bridged — PR 10.A.1 made `Constraint.label: Citation`
+        // typed at declaration, and `ConstraintViolation.citation:
+        // Citation` flows verbatim through the evaluator. The
+        // `citation_by_name` lookup and `EngineInternal` sentinel
+        // fallback were retired in PR 10.A.1.
         //
-        // Both lookups fall back to a generic sentinel when the
-        // constraint_label is not in the explicit mapping. The fallback
-        // shape preserves audit-content-ignorance (no `v.message` raw
-        // bytes flow through).
+        // The message lookup still falls back to a generic sentinel
+        // when the constraint_label is not in the explicit mapping;
+        // the fallback shape preserves audit-content-ignorance (no
+        // `v.message` raw bytes flow through).
         let message = self
             .scheme
             .message_by_name(v.constraint_label, attrs, candidate.kind)
@@ -2367,29 +2371,13 @@ impl Engine {
                 )
             });
 
-        let citation = self
-            .scheme
-            .citation_by_name(v.constraint_label)
-            .unwrap_or_else(|| {
-                // Unknown constraint label — emit an EngineInternal
-                // sentinel so the audit record carries a structured
-                // citation rather than a parsed string. The original
-                // `v.citation: &'static str` is dropped.
-                tracing::trace!(
-                    target: "marque_engine::constraint_bridge",
-                    constraint = v.constraint_label,
-                    legacy_citation = v.citation,
-                    "no typed Citation mapping for constraint_label; using engine-internal sentinel",
-                );
-                marque_rules::Citation::new(
-                    marque_rules::AuthoritativeSource::EngineInternal,
-                    marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
-                    match core::num::NonZeroU16::new(1) {
-                        Some(p) => p,
-                        None => unreachable!(),
-                    },
-                )
-            });
+        // PR 10.A.1: catalog-row citations are now typed end-to-end. The
+        // `ConstraintViolation.citation: Citation` value flowed verbatim
+        // from the constraint's `label: Citation` declaration via
+        // `marque_scheme::constraint::evaluate`, so the bridge is a direct
+        // copy — the prior `citation_by_name` fallback and
+        // `EngineInternal` sentinel are gone.
+        let citation = v.citation;
 
         let mut diag =
             Diagnostic::with_fix(rule_id, final_severity, span, message, citation, fix_intent);

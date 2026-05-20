@@ -29,11 +29,13 @@
 //!
 //! ## Citations (FR-021, Constitution VIII)
 //!
-//! Every variant carries a `label: &'static str` holding the
-//! authoritative-source passage that defines the constraint
-//! (e.g. `"CAPCO-2016 §H.4"`). When a constraint fires,
-//! [`ConstraintViolation::citation`] is populated verbatim from that
+//! Every variant carries a `label: Citation` holding the typed
+//! authoritative-source passage that defines the constraint (e.g.
+//! `capco(SectionLetter::H, 4, 61)`). When a constraint fires,
+//! [`ConstraintViolation::citation`] is populated by `Copy` from that
 //! field so the triggering passage travels with the diagnostic.
+//! Migrated from `&'static str` in PR 10.A.1 — see
+//! `crates/scheme/src/citation.rs` for the closed-template surface.
 //!
 //! The engine iterates `MarkingScheme::constraints()` after parsing /
 //! joining to display the catalog; a full evaluator calls
@@ -42,6 +44,7 @@
 //! predicate.
 
 use crate::category::{CategoryId, TokenId};
+use crate::citation::Citation;
 use crate::scheme::MarkingScheme;
 use crate::severity::Severity;
 use crate::span::Span;
@@ -97,7 +100,8 @@ impl std::fmt::Debug for FamilyPredicate {
 
 /// A declarative invariant the scheme enforces.
 ///
-/// Every variant carries two `&'static str` identifiers:
+/// Every variant carries a stable `&'static str` `name` identifier
+/// plus a typed [`Citation`] `label`:
 ///
 /// - `name` — a **stable, scheme-unique short identifier** for the
 ///   constraint (e.g. `"capco/joint-conflicts-fgi"`). Surfaced as
@@ -108,9 +112,9 @@ impl std::fmt::Debug for FamilyPredicate {
 ///   enforce uniqueness because the catalog is author-owned, but a
 ///   repeated `name` would collapse two logically distinct rules into
 ///   indistinguishable diagnostics.
-/// - `label` — the authoritative-source citation passage (e.g.
-///   `"CAPCO-2016 §H.4"`). Shared across a catalog is fine — many
-///   distinct rules may share a citation.
+/// - `label` — the typed authoritative-source citation (e.g.
+///   `capco(SectionLetter::H, 4, 61)`). Shared across a catalog is
+///   fine — many distinct rules may share a citation.
 ///
 /// The five active variants are:
 ///
@@ -142,7 +146,7 @@ pub enum Constraint {
         name: &'static str,
         left: TokenRef,
         right: TokenRef,
-        label: &'static str,
+        label: Citation,
         /// The diagnostic severity to emit when the conflict fires.
         /// When `None`, the violation is advisory (no diagnostic).
         severity: Option<Severity>,
@@ -175,7 +179,7 @@ pub enum Constraint {
         name: &'static str,
         left: TokenRef,
         family: FamilyPredicate,
-        label: &'static str,
+        label: Citation,
         /// The diagnostic severity to emit when the conflict fires.
         /// When `None`, the violation is advisory (no diagnostic).
         severity: Option<Severity>,
@@ -186,7 +190,7 @@ pub enum Constraint {
         name: &'static str,
         left: TokenRef,
         right: TokenRef,
-        label: &'static str,
+        label: Citation,
         /// The diagnostic severity to emit when the requirement is
         /// not satisfied. When `None`, the violation is advisory.
         severity: Option<Severity>,
@@ -198,7 +202,7 @@ pub enum Constraint {
         name: &'static str,
         left: TokenRef,
         right: TokenRef,
-        label: &'static str,
+        label: Citation,
     },
     /// A scheme-specific constraint identified by a stable `name`
     /// (what appears in diagnostics and the declared-constraint
@@ -216,7 +220,7 @@ pub enum Constraint {
     /// `'static` and returnable as `&[Constraint]`.
     Custom {
         name: &'static str,
-        label: &'static str,
+        label: Citation,
     },
 }
 
@@ -235,14 +239,16 @@ impl Constraint {
     }
 
     /// The authoritative-source citation for this constraint (e.g.
-    /// `"CAPCO-2016 §H.4"`). Returned unchanged regardless of variant.
-    pub fn label(&self) -> &'static str {
+    /// `capco(SectionLetter::H, 4, 61)`). Returned by [`Copy`] regardless
+    /// of variant. Migrated from `&'static str` to [`Citation`] in
+    /// PR 10.A.1.
+    pub fn label(&self) -> Citation {
         match self {
             Constraint::Conflicts { label, .. }
             | Constraint::ConflictsWithFamily { label, .. }
             | Constraint::Requires { label, .. }
             | Constraint::Supersedes { label, .. }
-            | Constraint::Custom { label, .. } => label,
+            | Constraint::Custom { label, .. } => *label,
         }
     }
 
@@ -298,7 +304,7 @@ impl Constraint {
 pub struct ConstraintViolation {
     pub constraint_label: &'static str,
     pub message: String,
-    pub citation: &'static str,
+    pub citation: Citation,
     /// Source-position anchor for the diagnostic, when the violation
     /// has a natural location in the input bytes. `None` when the
     /// violation is a whole-marking fact-set property with no single
@@ -374,7 +380,7 @@ where
                     out.push(ConstraintViolation {
                         constraint_label: name,
                         message: format!("conflicting tokens: {left:?} and {right:?}"),
-                        citation: label,
+                        citation: *label,
                         span: scheme.token_span(marking, anchor),
                         severity: *severity,
                     });
@@ -395,7 +401,7 @@ where
                                 message: format!(
                                     "conflicting tokens: {left:?} and {present_token:?} (family match)"
                                 ),
-                                citation: label,
+                                citation: *label,
                                 span: scheme.token_span(marking, left),
                                 severity: *severity,
                             });
@@ -416,7 +422,7 @@ where
                         message: format!(
                             "missing required token: {right:?} (required by {left:?})"
                         ),
-                        citation: label,
+                        citation: *label,
                         span: scheme.token_span(marking, left),
                         severity: *severity,
                     });
@@ -429,7 +435,7 @@ where
                 // row.
                 for mut v in scheme.evaluate_custom(name, marking, bits) {
                     v.constraint_label = name;
-                    v.citation = label;
+                    v.citation = *label;
                     out.push(v);
                 }
             }
