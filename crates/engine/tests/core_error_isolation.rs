@@ -64,8 +64,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_core::CoreError;
-use marque_engine::{Engine, FixMode, StrictRecognizer};
-use std::sync::Arc;
+use marque_engine::{Engine, FixMode};
 
 /// A high-entropy ASCII run that cannot occur in any valid CAPCO/ISM
 /// marking: lowercase letters, digits, and hyphens combined into a
@@ -83,14 +82,24 @@ const CANARY: &str = "leak-canary-x9z7q3-content-bytes";
 /// dispatcher (which would also exercise decoder-side leak channels —
 /// real but separately scoped issues, not the one this file gates).
 fn test_engine() -> Engine {
+    // PR 3c.2.D / D8 — the #257 strict-recognizer masking pin
+    // (tracks "decoder canonicalization leaks input bytes into
+    // AppliedFix") retired here. The T055 G13 content-ignorance
+    // canary at `crates/engine/tests/audit_g13_canary.rs`
+    // structurally closes the leak channel: marking-side audit
+    // records carry a sealed `Canonical<S>` payload (no free-form
+    // string surface), text-correction records carry only corpus-
+    // derived `SmolStr` replacements (on Constitution V's permitted-
+    // identifier list), and the audit-emit shape is wire-format-pinned
+    // to a closed JSON projection. Strict-recognizer pin no longer
+    // needed; the dispatcher default (`StrictOrDecoderRecognizer`)
+    // applies.
     Engine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    // MASKING-PIN: tracks #257 — decoder canonicalization leaks input bytes into AppliedFix (#257); strict path isolates the test from that leak channel until PR 3c closes the carve-out
-    .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 
 // ---------------------------------------------------------------------------
@@ -227,20 +236,21 @@ fn fix_does_not_leak_core_error_content() {
     for input in adversarial_inputs() {
         let result = engine.fix(&input, FixMode::Apply);
 
-        // Every applied fix's proposal — the bytes that flow into
-        // the audit record. This is the same surface T056 covers in
+        // Every applied audit line — the bytes that flow into the
+        // audit record. This is the same surface T056 covers in
         // `audit.rs`, but with input designed to trip CoreError
         // rather than to embed prose.
-        for applied in &result.applied {
-            // Post Commit 10 the audit record carries no `original`
-            // byte field; only `TextCorrection.replacement` can hold
-            // string bytes (corpus-derived canonical token).
-            if let marque_rules::AppliedFixProposal::TextCorrection { replacement } =
-                &applied.proposal
-            {
+        //
+        // Post PR 3c.2.D the marking-side `AuditLine::AppliedFix`
+        // arm carries a sealed `Canonical<S>` payload — no free-form
+        // string surface to scan. The `AuditLine::TextCorrection`
+        // arm carries a corpus-derived `replacement: SmolStr`;
+        // that's the channel a leak would surface on.
+        for line in &result.audit_lines {
+            if let marque_rules::AuditLine::TextCorrection(tc) = line {
                 assert!(
-                    !replacement.contains(CANARY),
-                    "AppliedFix TextCorrection.replacement leaked CoreError-bearing input"
+                    !tc.replacement.contains(CANARY),
+                    "AppliedTextCorrection.replacement leaked CoreError-bearing input"
                 );
             }
         }

@@ -88,21 +88,21 @@ fn assert_bench_invariants(engine: &Engine) {
 
     // Exactly one fix applied total — extra fixes would change what the bench
     // is measuring (multiple rewrites, different pipeline branch).
+    // PR 3c.2.D fixup F-3: `applied_fixes()` returns `impl Iterator`; collect
+    // once into a local `Vec` so the indexed read at `applied[0]` is valid
+    // and the same fixes can be inspected for the assertion message.
+    let applied: Vec<_> = fix_result.applied_fixes().collect();
     assert_eq!(
-        fix_result.applied.len(),
+        applied.len(),
         1,
         "fix_latency invariant: expected exactly 1 applied fix on input {:?}; \
          got {}. Applied rules: {:?}",
         std::str::from_utf8(SINGLE_FIX_INPUT).unwrap_or("<non-utf8>"),
-        fix_result.applied.len(),
-        fix_result
-            .applied
-            .iter()
-            .map(|f| f.rule.as_str())
-            .collect::<Vec<_>>(),
+        applied.len(),
+        applied.iter().map(|f| f.rule.as_str()).collect::<Vec<_>>(),
     );
 
-    let e054_fix = &fix_result.applied[0];
+    let e054_fix = applied[0];
     assert_eq!(
         e054_fix.rule.as_str(),
         "E054",
@@ -114,7 +114,7 @@ fn assert_bench_invariants(engine: &Engine) {
     // recognition=1.0 × rule=0.95). A deviation here means the bench is
     // measuring a different code path than the deterministic strict-path
     // FactRemove this benchmark documents.
-    let combined = e054_fix.confidence.combined();
+    let combined = e054_fix.fix.replacement.confidence.combined();
     assert!(
         (combined - EXPECTED_CONFIDENCE).abs() < 1e-6_f32,
         "fix_latency invariant: expected E054 fix confidence {EXPECTED_CONFIDENCE}, got {combined}",

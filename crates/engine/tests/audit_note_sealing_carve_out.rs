@@ -12,13 +12,11 @@
 //! Stage C.5), `AuditNote` lands in PR 3.7 as type + sealing only. The
 //! production engine construct-site is deferred to PR 4 (alongside
 //! `Engine::project::closure()` wiring); the NDJSON renderer dispatch
-//! and `"type"` discriminator are deferred to a future
-//! audit-schema-bump precursor PR (the bump did NOT happen in PR 7b
-//! per `decisions.md` D-7.18; it now lives in a precursor PR that
-//! lands marque-mvp-3 → marque-1.0 alongside BLAKE3 digesting, closed
-//! MessageTemplate JSON, and content-ignorant canary tooling).
-//! PR 3.7 reviewers therefore cannot observe an end-to-end audit_note
-//! line in NDJSON output during review.
+//! and `"type"` discriminator landed in the `marque-mvp-3 → marque-1.0`
+//! audit-schema cutover at PR 3c.2.D alongside BLAKE3 digesting,
+//! closed MessageTemplate JSON, and the T055 content-ignorance
+//! canary. PR 3.7 reviewers therefore cannot observe an end-to-end
+//! audit_note line in NDJSON output during review.
 //!
 //! This test closes the reviewer-blindness gap by exercising the
 //! sealing pattern end-to-end with synthetic fixture data:

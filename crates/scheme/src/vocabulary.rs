@@ -392,6 +392,50 @@ pub trait Vocabulary<S: MarkingScheme + ?Sized>: Send + Sync {
     /// view.
     fn metadata(&self, token: &S::Token) -> &'static TokenMetadataFull<S::Token>;
 
+    /// Qualified namespaced token label for audit-record `token_id` emission.
+    ///
+    /// Produces the namespaced `"Category.Token"` form (e.g.
+    /// `"classification.secret"`) that consumers see in the `marque-1.0`
+    /// audit NDJSON record's `replacement.canonical.token_id` field.
+    /// Required by `contracts/audit-record.md` so audit consumers can
+    /// resolve the canonical token's category without performing a
+    /// separate vocabulary lookup per record (self-describing
+    /// property).
+    ///
+    /// # Default impl
+    ///
+    /// The default returns `Cow::Borrowed("unknown.unknown")` —
+    /// deliberately unhelpful. A scheme that exposes ANY tokens MUST
+    /// override this method to produce the real `Category.Token`
+    /// projection. The default is shaped to allow the trait to compile
+    /// without panicking when called against schemes that have not yet
+    /// migrated; PR 3c.2.D ships the CAPCO override but downstream
+    /// audit consumers reading from a scheme that has not overridden
+    /// this method will see `"unknown.unknown"` as a visible signal to
+    /// open a migration ticket.
+    ///
+    /// # Return type
+    ///
+    /// `Cow<'static, str>` rather than `&'static str` because the
+    /// projection may need to compose at runtime (no per-token baked
+    /// table exists today; a future scheme build-time enhancement may
+    /// pre-bake the namespaced string and return `Cow::Borrowed`).
+    /// Audit emit happens off the lint/scan hot path so the per-call
+    /// allocation of a short owned string (typically ≤32 bytes) is
+    /// acceptable. Track follow-up at the audit-record-contract
+    /// migration table.
+    ///
+    /// # PM-D-10 (PR 3c.2.D)
+    ///
+    /// Added per `docs/plans/2026-05-20-pr3c2-d-pm-decisions.md`.
+    /// Constitution IV / VII preserved — the accessor is a wire-format
+    /// projection helper, NOT a new lattice surface; it does not
+    /// extend [`MarkingScheme`] or [`crate::Lattice`].
+    fn qualified_token_label(&self, token: &S::Token) -> std::borrow::Cow<'static, str> {
+        let _ = token;
+        std::borrow::Cow::Borrowed("unknown.unknown")
+    }
+
     /// Test whether `bytes` is admissible as a token in `category`.
     ///
     /// Admission is the union of two predicates depending on the

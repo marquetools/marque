@@ -70,9 +70,47 @@ fn merge_exit_code(current: i32, new_code: i32) -> i32 {
     }
 }
 
+/// Extended `--version` string that exposes the active audit-record
+/// schema name alongside the package version.
+///
+/// Per PR 3c.2.D PM-D-15 and `contracts/audit-record.md`
+/// §"Schema discoverability (D3)", the active audit schema name
+/// MUST be discoverable by external consumers without parsing
+/// audit records. The contract names two surfaces:
+///
+/// 1. **Per-record discoverability** — every audit NDJSON line's
+///    first field is `"schema": "marque-1.0"` (FR-035). Streaming
+///    consumers detect schema by reading the first record.
+/// 2. **Per-binary discoverability** — `marque --version` exposes
+///    `audit_schema: <AUDIT_SCHEMA_VERSION>` on its own line so
+///    shell scripts can detect schema-major changes without running
+///    the binary against a real document.
+///
+/// The value is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`
+/// (FR-034 single source of truth — the build.rs accept-list +
+/// the const re-export are the only places the schema name appears
+/// in the binary).
+///
+/// Format: two lines, key/value with a colon separator. Grep
+/// target is `^audit_schema:`. Initialized via `OnceLock` at first
+/// access because clap's `version =` accepts only `&'static str`;
+/// a `String` lifetime extension via `OnceLock` is the standard
+/// pattern for this case.
+fn version_str() -> &'static str {
+    use std::sync::OnceLock;
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        format!(
+            "{}\naudit_schema: {}",
+            env!("CARGO_PKG_VERSION"),
+            marque_engine::AUDIT_SCHEMA_VERSION,
+        )
+    })
+}
+
 #[derive(Parser)]
 #[command(name = "marque", about = "Classification marking linter and fixer")]
-#[command(version, propagate_version = true)]
+#[command(version = version_str(), propagate_version = true)]
 #[command(after_help = ENV_HELP)]
 #[command(after_long_help = ENV_HELP)]
 struct Cli {
@@ -98,8 +136,10 @@ const ENV_HELP: &str = "ENVIRONMENT VARIABLES:
     MARQUE_CLASSIFIER_ID             Identity stamped into audit records.
     MARQUE_CLASSIFICATION_AUTHORITY  Authority string stamped into audit records.
     MARQUE_AUDIT_SCHEMA              Build-time audit schema selector
-                                     (\"marque-mvp-1\" | \"marque-mvp-2\"; default
-                                     \"marque-mvp-2\"). Read at build time only.
+                                     (accept-list: \"marque-1.0\"; default
+                                     \"marque-1.0\"). Read at build time only.
+                                     Run \"marque --version\" to discover the
+                                     active schema in any binary.
     MARQUE_ALLOW_FIXED_CLOCK         Set to \"1\" to permit `--fixed-timestamp`
                                      (off by default; the fixed-clock seam exists
                                      for deterministic snapshot tests, NOT for
@@ -809,26 +849,63 @@ fn run_fix(
 
         // Audit emission (T049, FR-005a) — NEVER suppressed by -q.
         // Each record is atomic: serialize to buffer, single write_all.
+        //
+        // PR 3c.2.D / D4: emit reads from `result.audit_lines` (the
+        // marque-1.0 v2 stream) rather than `result.applied` (the v1
+        // stream). The v2 stream preserves cross-record promotion
+        // order across both the marking-fix arm and the text-
+        // correction arm (PM-D-8). The v1 stream stays populated by
+        // the engine through the D2-D7 transition window but is no
+        // longer read; D-A5 / D7 retires `result.applied` atomically
+        // with the schema flip.
         let mut audit_exit_code: Option<i32> = None;
+        let scheme = engine.scheme();
+        let input_label: std::sync::Arc<str> = match path.as_ref() {
+            Some(p) => std::sync::Arc::<str>::from(p.display().to_string()),
+            None => std::sync::Arc::from("-"),
+        };
         {
             let mut stderr_lock = stderr.lock();
-            for applied_fix in &result.applied {
-                // Set the caller-supplied input identifier on the audit record.
-                // The engine leaves `input` as None; the CLI fills it in at the
-                // boundary per the architecture contract. Stdin is represented
-                // as "-" per contracts/audit-record.json.
-                let mut audit_fix = applied_fix.clone();
-                audit_fix.input = Some(match path.as_ref() {
-                    Some(p) => std::sync::Arc::<str>::from(p.display().to_string()),
-                    None => std::sync::Arc::from("-"),
-                });
-                if let Err(e) = render::render_audit_record(&mut stderr_lock, &audit_fix) {
+            for line in &result.audit_lines {
+                // Set the caller-supplied input identifier on the
+                // audit record. The engine leaves `input` as None;
+                // the CLI fills it in at the boundary per the
+                // architecture contract. Stdin is represented as
+                // "-" per contracts/audit-record.json.
+                //
+                // `AuditLine` is `#[non_exhaustive]`; the two
+                // current arms (AppliedFix / TextCorrection) clone
+                // through the per-arm `input` field rebind. A
+                // future variant falls through to the wildcard
+                // arm and is rendered as-is (without the CLI's
+                // `input_label` patched in) so the NDJSON stream
+                // does not silently drop the record. The T055 G13
+                // canary catches the projection surface change at
+                // the same time — together they make the addition
+                // of a new variant a loud failure, not a silent
+                // omission from `--audit-out`.
+                let line_with_input: std::borrow::Cow<'_, _> = match line {
+                    marque_rules::AuditLine::AppliedFix(fix) => {
+                        let mut cloned = fix.clone();
+                        cloned.input = Some(input_label.clone());
+                        std::borrow::Cow::Owned(marque_rules::AuditLine::AppliedFix(cloned))
+                    }
+                    marque_rules::AuditLine::TextCorrection(tc) => {
+                        let mut cloned = tc.clone();
+                        cloned.input = Some(input_label.clone());
+                        std::borrow::Cow::Owned(marque_rules::AuditLine::TextCorrection(cloned))
+                    }
+                    _ => std::borrow::Cow::Borrowed(line),
+                };
+                if let Err(e) =
+                    render::render_audit_line(&mut stderr_lock, scheme, &line_with_input)
+                {
                     // Do NOT write a plain-text error line here — the audit
                     // stream must contain only valid NDJSON objects (FR-005a).
-                    // render_audit_record already emitted a JSON error frame
+                    // render_audit_line already emitted a JSON error frame
                     // on the serialization-failure path.
                     //
-                    // ErrorKind::Other is set by render_audit_record for
+                    // ErrorKind::Other is set by render_audit_line for
                     // serde_json serialization failures; any other kind is a
                     // true I/O failure (broken pipe, disk full, etc.).
                     let code = if e.kind() == std::io::ErrorKind::Other {
@@ -892,7 +969,7 @@ fn run_fix(
         }
 
         // Narration (suppressible with -q) — AFTER audit records.
-        let applied_count = result.applied.len();
+        let applied_count = result.audit_lines.len();
         if !common.quiet && applied_count > 0 {
             if dry_run {
                 eprintln!("{label}: would apply {applied_count} fix(es)");

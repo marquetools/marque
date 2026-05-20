@@ -33,7 +33,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixedClock};
-use marque_rules::{AppliedFixProposal, Severity};
+use marque_rules::Severity;
 use secrecy::ExposeSecret as _;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -225,35 +225,41 @@ fn e067_applies_in_fix_pass() {
     let source = b"(S//CNWDI//NF)";
     let result = engine().fix(source, FixMode::Apply);
 
-    let e067_applied: Vec<_> = result
-        .applied
+    // E067 promotes through the text-correction channel (canonical
+    // hardcoded replacement `RD-CNWDI`).
+    // PR 3c.2.D fixup F-3: `applied_text_corrections()` is `impl Iterator`;
+    // collect once for filter + Debug-render.
+    let text_corrections: Vec<_> = result.applied_text_corrections().collect();
+    let e067_text: Vec<_> = text_corrections
         .iter()
-        .filter(|a| a.rule.as_str() == "E067")
+        .filter(|tc| tc.rule.as_str() == "E067")
         .collect();
     assert_eq!(
-        e067_applied.len(),
+        e067_text.len(),
         1,
-        "expected exactly one E067 AppliedFix audit record; got {} \
+        "expected exactly one E067 AppliedTextCorrection audit record; got {} \
          (full audit set: {:?})",
-        e067_applied.len(),
-        result
-            .applied
+        e067_text.len(),
+        text_corrections
             .iter()
-            .map(|a| a.rule.as_str())
+            .map(|tc| tc.rule.as_str())
             .collect::<Vec<_>>(),
     );
-    let applied = e067_applied[0];
-    match &applied.proposal {
-        AppliedFixProposal::TextCorrection { replacement } => {
-            assert_eq!(
-                replacement.as_str(),
-                "RD-CNWDI",
-                "E067 must promote a TextCorrection whose replacement is the \
-                 hardcoded canonical `RD-CNWDI`; got {replacement:?}"
-            );
-        }
-        AppliedFixProposal::FixIntent(_) => {
-            panic!("E067 must promote a TextCorrection, not a FixIntent");
-        }
-    }
+    let tc = e067_text[0];
+    assert_eq!(
+        tc.replacement.as_str(),
+        "RD-CNWDI",
+        "E067 must promote a TextCorrection whose replacement is the \
+         hardcoded canonical `RD-CNWDI`; got {:?}",
+        tc.replacement
+    );
+    // No marking-side AppliedFix is emitted by E067.
+    let e067_applied: Vec<&_> = result
+        .applied_fixes()
+        .filter(|a| a.rule.as_str() == "E067")
+        .collect();
+    assert!(
+        e067_applied.is_empty(),
+        "E067 must not emit a marking-side AppliedFix"
+    );
 }

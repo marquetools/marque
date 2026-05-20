@@ -3,90 +3,16 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Contract: Audit Record (NDJSON)
+# Contract: Audit Record (NDJSON, schema `marque-1.0`)
 
-**Active schema**: `marque-mvp-3` (PR 3c.B Commit 10 — see §0).
-**Post-keystone target**: `marque-1.0` — lands at PR 3c.2 (see body sections below). The 2-tuple `(scheme, predicate_id)` rule encoding documented in §1+ defers further to its own post-PR-10 PR per FR-049; PR 3c.2 carries the other four structural commitments (Canonical wiring, BLAKE3 digesting, closed MessageTemplate JSON, and `from_parsed_unchecked` deletion) and keeps the 1-tuple `RuleId` form for `marque-1.0`. The `rule` field shape in §1+ is therefore the eventual target, not the shape PR 3c.2 emits.
+**Active schema**: `marque-1.0`.
+**Active as of**: PR 3c.2.D merge (atomic schema cutover, 2026-05-20).
 **Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-037, FR-041
 **Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
 
----
+PR 3c.2.D landed the atomic cutover from `marque-mvp-3` to `marque-1.0`, retiring the pre-cutover `mvp-1` / `mvp-2` / `mvp-3` envelopes. The four structural commitments per FR-035a — `Canonical<S>` provenance wired into audit emit, BLAKE3 digesting of pre-fix and canonical bytes, closed-set `MessageTemplate` JSON serialization, and the `AppliedFix` v2 reshape with the `AppliedTextCorrection` split — all landed atomically. The 2-tuple `(scheme, predicate_id)` `RuleId` encoding documented under "Post-`marque-1.0` RuleId migration" defers to its own post-PR-10 PR per FR-049; `marque-1.0` keeps the 1-tuple string form (`"rule": "E054"`).
 
-## §0. Active schema (`marque-mvp-3`) — PR 3c.B Commit 10
-
-Landed in PR 3c.B Commit 10 atomically with the `FixProposal` cleanup. The
-mvp-3 envelope deletes the legacy top-level `original` / `replacement` byte
-fields and replaces them with a discriminated `proposal` sub-object that
-carries either a structural `FixIntent` (rule-emission) or a
-`TextCorrection` (engine-internal C001 path). The legacy `mvp-1` / `mvp-2`
-shapes retired entirely; the accept-list is `["marque-mvp-3"]`.
-
-```jsonc
-{
-  "schema": "marque-mvp-3",
-  "rule": "E054",
-  "source": "BuiltinRule",
-  "span": { "start": 12, "end": 25 },
-  "proposal": {
-    "kind": "FixIntent",
-    "intent": {
-      "kind": "FactRemove",
-      "scope": "Page",
-      "facts": [{ "kind": "Cve", "token_id": 104 }]
-    }
-  },
-  "confidence": 0.95,
-  "migration_ref": null,
-  "timestamp": "2026-05-13T12:34:56Z",
-  "classifier_id": "12345",
-  "dry_run": false,
-  "input": "/path/file.txt",
-  "recognition": 0.95
-  // `runner_up_ratio` omitted when None (strict-path fix); only
-  // emitted by decoder-path R001 records.
-  // `features` omitted when empty; emitted as an array of
-  // `{"id": "...", "delta": <f32>}` when the decoder contributes
-  // explicit feature deltas.
-}
-```
-
-For C001 text-correction records, `proposal` carries the canonical
-replacement string (corpus-derived token canonical — Constitution V's
-permitted-identifier list):
-
-```jsonc
-"proposal": {
-  "kind": "TextCorrection",
-  "replacement": "SECRET"
-}
-```
-
-**Constitution V Principle V (G13) closure**: the audit envelope carries
-no `original` byte field. The structural FixIntent variants carry no
-document content; the TextCorrection variant carries only corpus-derived
-canonical tokens. Audit records are content-ignorant by construction.
-
-**FR-014 (single schema per build)**: `crates/engine/build.rs` validates
-`MARQUE_AUDIT_SCHEMA` against the closed accept-list `["marque-mvp-3"]`.
-The CLI and WASM emitters compile against the same const so byte-identical
-records flow from both surfaces.
-
-The sections below describe the **post-keystone `marque-1.0` target**,
-which adds `Canonical<S>` provenance, BLAKE3 digesting, closed
-`MessageTemplate` JSON serialization, and content-ignorance canary
-tooling. The 2-tuple `(scheme, predicate_id)` rule encoding defers to
-its own post-PR-10 PR per FR-049; `marque-1.0` keeps the 1-tuple string
-form. The keystone work is scheduled in follow-up 006-refactor PRs;
-this section governs what binaries today emit.
-
----
-
-# Contract: Audit Record (NDJSON, schema `marque-1.0`) — POST-KEYSTONE TARGET
-
-**Lands at**: PR 3c.2 (amended 2026-05-14 — originally planned as a single PR 3c cutover; PR 3c.B Commit 10 landed the conservative half as `marque-mvp-3`, PR 3c.2 lands the rest). Clean break preserved. The 2-tuple `RuleId` form documented below in the `rule` field shape is **NOT** part of PR 3c.2; it defers post-PR-10 per FR-049 — `marque-1.0` ships with the 1-tuple form (`"rule": "E054"` string) and the 2-tuple JSON shape lands at the future RuleId-migration PR.
-**Spec FRs**: FR-002, FR-004, FR-026, FR-034, FR-035, FR-037, FR-041
-**Source-plan refs**: §10 (audit clean break), §10.2.1 (JSON shape sketch)
-**Audience**: compliance auditors, NDJSON consumers (CLI piping, WASM postMessage embedders, log-aggregation pipelines), security/integrity reviewers.
+Per FR-037 the pre-cutover envelopes are not interoperable with post-cutover binaries (clean break, no `marque-audit-reader` crate scheduled).
 
 ---
 
@@ -152,7 +78,7 @@ promotion (I-5).
   },
 
   "message": {
-    "template": "BannerMissingClassification",          // closed enum (FR-003)
+    "template": "BannerRollupMismatch",          // closed enum (FR-003)
     "args": {                                            // closed-set scalar/ID types only
       "token": null,                                     // generic token slot (data-model MessageArgs.token)
       "expected_token": "Classification.Secret",
@@ -296,17 +222,20 @@ NDJSON output — only their BLAKE3 digest does.
 
 `MessageTemplate` (FR-003) is a closed Rust enum bake-extracted from
 the existing diagnostic catalog at PR 3c implementation per R-2. The
-JSON serialization uses the variant identifier as a string:
+JSON wire form is `MessageTemplate::as_str()` returning the Rust
+variant name verbatim (PM-D-12). The examples below are real
+variants shipping in `crates/rules/src/message.rs`:
 
 ```jsonc
-"template": "BannerMissingClassification"
-"template": "PortionUnknownDissem"
-"template": "FouoEvictedByClassification"
-"template": "FouoEvictedByNonFdrDissem"
-"template": "NofornSupersedesRelTo"
+"template": "BannerRollupMismatch"
+"template": "ClassificationFloorViolated"
+"template": "NonCanonicalOrder"
+"template": "ConflictsWith"
+"template": "RequiredByPresence"
+"template": "SupersededToken"
 "template": "ReparseFailed"             // R002 (PR 7)
 "template": "DecoderRecognized"         // R001
-/* ... */
+/* ... see crates/rules/src/message.rs for the full closed catalog */
 ```
 
 Adding a new variant requires a coordinated `MARQUE_AUDIT_SCHEMA` bump

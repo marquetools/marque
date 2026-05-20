@@ -72,7 +72,7 @@ pub use web_time::Instant;
 ///
 /// Set at build time by `crates/engine/build.rs` (see
 /// `MARQUE_AUDIT_SCHEMA`), validated against the closed accept-list
-/// `["marque-mvp-3"]`. Defaults to `"marque-mvp-3"`. Re-exported
+/// `["marque-1.0"]`. Defaults to `"marque-1.0"`. Re-exported
 /// through this crate so CLI and WASM emitters can populate the
 /// `schema` field without each owning a separate copy of the
 /// constant (whitepaper §980 / FR-014).
@@ -80,22 +80,26 @@ pub use web_time::Instant;
 /// Per FR-014 the value is fixed for the lifetime of a build — a
 /// single binary emits exactly one schema, never a mix.
 ///
-/// The legacy `mvp-1` / `mvp-2` shapes retired in PR 3c.B Commit 10
-/// atomically with the `FixProposal` cleanup; their structural
-/// envelope (top-level `original` / `replacement` byte fields) is
-/// no longer representable.
+/// The legacy `mvp-1` / `mvp-2` / `mvp-3` shapes retired in
+/// PR 3c.2.D (atomic cutover) alongside the v2 `AppliedFix`
+/// reshape, BLAKE3 digesting, closed `MessageTemplate` JSON
+/// serialization, and `Canonical<S>` provenance wiring. Per FR-037
+/// no `marque-audit-reader` crate is scheduled — pre-cutover
+/// records are not interoperable with post-cutover binaries
+/// (clean break).
 pub const AUDIT_SCHEMA_VERSION: &str = env!("MARQUE_AUDIT_SCHEMA");
 
-/// `true` when this build emits the post-Commit-10 audit records
-/// (`marque-mvp-3`).
+/// `true` when this build emits the post-cutover audit records
+/// (`marque-1.0`).
 ///
 /// Evaluated at compile time from [`AUDIT_SCHEMA_VERSION`]; folds
 /// to a constant. The accept-list is currently a single value, so
 /// the const is always `true` in any successfully-built binary;
 /// the const exists to give downstream code a stable shape-discriminant
-/// across future schema bumps (a future `mvp-4` would land alongside
-/// an `AUDIT_SCHEMA_IS_V4` and a dispatch branch on each emitter).
-pub const AUDIT_SCHEMA_IS_V3: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-mvp-3");
+/// across future schema bumps (a future `marque-1.1` would land
+/// alongside an `AUDIT_SCHEMA_IS_V1_1` and a dispatch branch on
+/// each emitter).
+pub const AUDIT_SCHEMA_IS_V1_0: bool = const_str_eq(AUDIT_SCHEMA_VERSION, "marque-1.0");
 
 const fn const_str_eq(a: &str, b: &str) -> bool {
     let a = a.as_bytes();

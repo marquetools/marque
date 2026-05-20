@@ -74,10 +74,11 @@
 use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::{Engine, FixMode, FixResult, FixedClock};
+use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    AppliedFix, AppliedFixProposal, Confidence, EnginePromotionToken, FixSource, RuleId,
+    Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate, RuleId,
 };
-use marque_scheme::Span;
+use marque_scheme::{Severity, Span};
 use marque_test_utils::{invalid_fixtures, load_fixture, prose_fixtures, valid_fixtures};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -166,26 +167,6 @@ fn deep_scan_engine_relaxed() -> Engine {
     .expect("default CAPCO scheme has no rewrite cycles")
 }
 
-/// Panic if any prose sentinel appears in the given string.
-///
-/// Panic includes the rule ID and span so a failure points directly at
-/// the offending proposal without requiring test re-runs to find it.
-fn assert_clean(fix: &AppliedFix<CapcoScheme>, field_name: &str, value: &str, context: &str) {
-    for sentinel in PROSE_SENTINELS {
-        if value.contains(sentinel) {
-            panic!(
-                "G13 violation: prose sentinel {sentinel:?} leaked into \
-                 AppliedFix.{field_name} \
-                 (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
-                 field value: {value:?}",
-                rule = fix.rule.as_str(),
-                start = fix.span.start,
-                end = fix.span.end,
-            );
-        }
-    }
-}
-
 /// Check every AppliedFix in `applied` for sentinel leaks.
 ///
 /// Post Commit 10 the only audit field that can carry corpus-derived
@@ -194,11 +175,57 @@ fn assert_clean(fix: &AppliedFix<CapcoScheme>, field_name: &str, value: &str, co
 /// permitted-identifier list. The original byte field that the legacy
 /// `mvp-2` envelope carried (and that this test guarded) is no longer
 /// representable in the audit record.
-fn check_fixes_clean(applied: &[AppliedFix<CapcoScheme>], context: &str) {
-    for fix in applied {
-        if let AppliedFixProposal::TextCorrection { replacement } = &fix.proposal {
-            assert_clean(fix, "proposal.replacement", replacement.as_ref(), context);
+fn check_fixes_clean(audit_lines: &[AuditLine<CapcoScheme>], context: &str) {
+    for line in audit_lines {
+        // Marking-side fixes carry a sealed `Canonical<S>` payload —
+        // no free-form string surface to scan. Text-correction lines
+        // carry a corpus-derived `replacement: SmolStr`; that's where
+        // a regressed channel would leak.
+        if let AuditLine::TextCorrection(tc) = line {
+            assert_text_correction_clean(tc, "replacement", tc.replacement.as_ref(), context);
         }
+    }
+}
+
+/// Panic if any prose sentinel appears in the given string (v2
+/// [`AppliedTextCorrection`] variant).
+///
+/// Mirrors [`assert_clean`] but reads the v2 audit-record type's
+/// fields ([`marque_rules::audit::AppliedTextCorrection::rule`] +
+/// `.span` + `.replacement`). Used by the v2 self-test
+/// [`sentinel_check_panics_on_synthetic_leak`] post PR 3c.2.D / D6.
+fn assert_text_correction_clean(
+    tc: &AppliedTextCorrection,
+    field_name: &str,
+    value: &str,
+    context: &str,
+) {
+    for sentinel in PROSE_SENTINELS {
+        if value.contains(sentinel) {
+            panic!(
+                "G13 violation: prose sentinel {sentinel:?} leaked into \
+                 AppliedTextCorrection.{field_name} \
+                 (rule: {rule}, span: {start}..{end}, context: {context})\n\n\
+                 field value: {value:?}",
+                rule = tc.rule.as_str(),
+                start = tc.span.start,
+                end = tc.span.end,
+            );
+        }
+    }
+}
+
+/// Check every v2 [`AppliedTextCorrection`] in `corrections` for
+/// sentinel leaks.
+///
+/// The v2 type's only corpus-derived field is `replacement: SmolStr`
+/// (the canonical token from the `[corrections]` map). Constitution V
+/// Principle V permits the corpus-derived value here because it must
+/// be on the permitted-identifier list; this checker exists to catch
+/// regressions where prose would leak into that field.
+fn check_text_corrections_clean(corrections: &[AppliedTextCorrection], context: &str) {
+    for tc in corrections {
+        assert_text_correction_clean(tc, "replacement", tc.replacement.as_ref(), context);
     }
 }
 
@@ -217,7 +244,7 @@ fn no_document_text_leaks_from_invalid_corpus() {
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        check_fixes_clean(&result.applied, &path.display().to_string());
+        check_fixes_clean(&result.audit_lines, &path.display().to_string());
     }
 }
 
@@ -232,7 +259,7 @@ fn no_document_text_leaks_from_valid_corpus() {
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        check_fixes_clean(&result.applied, &path.display().to_string());
+        check_fixes_clean(&result.audit_lines, &path.display().to_string());
     }
 }
 
@@ -247,7 +274,7 @@ fn no_document_text_leaks_from_prose_corpus() {
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        check_fixes_clean(&result.applied, &path.display().to_string());
+        check_fixes_clean(&result.audit_lines, &path.display().to_string());
     }
 }
 
@@ -307,8 +334,8 @@ fn no_document_text_leaks_when_markings_are_embedded_in_prose() {
 
         let result = run_fix(&engine, &composite);
         let label = format!("wrapped:{}", path.display());
-        check_fixes_clean(&result.applied, &label);
-        fixes_examined += result.applied.len();
+        check_fixes_clean(&result.audit_lines, &label);
+        fixes_examined += result.applied_fixes().count();
     }
 
     assert!(
@@ -457,31 +484,49 @@ fn no_document_text_leaks_into_fix_remaining_diagnostics() {
 // Self-test — the sentinel check actually catches leaks.
 // ---------------------------------------------------------------------------
 
-/// Fabricate an `AppliedFix` whose `original` contains a known sentinel.
+/// Fabricate an `AppliedTextCorrection` whose `replacement` contains
+/// a known sentinel.
 ///
 /// Test-fixture carve-out per Constitution V Principle V: this
-/// fabricated `AppliedFix` is the input to `check_fixes_clean`'s
-/// G13 sentinel sweep, exists only inside the `tests/` tree, and is
-/// never spliced into a real audit stream. Engine production paths
-/// remain the only route to a real `AppliedFix` in `cfg(not(test))`
-/// code; see the doc comment on `AppliedFix::__engine_promote` for
-/// the three-constraint definition of the carve-out.
-fn fabricate_leaky_fix() -> AppliedFix<CapcoScheme> {
+/// fabricated record is the input to
+/// [`check_text_corrections_clean`]'s G13 sentinel sweep, exists only
+/// inside the `tests/` tree, and is never spliced into a real audit
+/// stream. Engine production paths remain the only route to a real
+/// [`AppliedTextCorrection`] in `cfg(not(test))` code; see the doc
+/// comment on
+/// [`marque_rules::audit::AppliedTextCorrection::__engine_promote_text_correction`]
+/// for the three-constraint definition of the carve-out.
+///
+/// PR 3c.2.D / D6 migration: pre-D6 this fixture returned a v1
+/// [`AppliedFix<CapcoScheme>`] whose `AppliedFixProposal::TextCorrection`
+/// arm carried the leaky bytes. The v2 type split (PM-D-4) moves
+/// text corrections onto the disjoint [`AppliedTextCorrection`] type,
+/// so the fixture now constructs that type directly. The leak
+/// channel (`replacement: SmolStr`) is structurally identical to the
+/// v1 envelope's `replacement` field — the migration is shape-
+/// preserving.
+fn fabricate_leaky_text_correction() -> AppliedTextCorrection {
     // A deliberately leaky text-correction replacement carrying a
-    // literal prose sentinel. Post Commit 10 the only audit field
-    // that can carry corpus-derived bytes is the `TextCorrection`
-    // `replacement` payload; a real corrections-map entry would
-    // never contain prose, but this synthetic fixture proves the
-    // checker can catch a leak if one were to land.
+    // literal prose sentinel. The only audit field that can carry
+    // corpus-derived bytes in the v2 envelope is the
+    // `AppliedTextCorrection.replacement` payload; a real
+    // corrections-map entry would never contain prose, but this
+    // synthetic fixture proves the checker can catch a leak if one
+    // were to land.
     let leaky_replacement = "enlightened statesmen";
+    let original_digest = blake3::hash(leaky_replacement.as_bytes());
     // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
-    AppliedFix::<CapcoScheme>::__engine_promote_text_correction(
+    AppliedTextCorrection::__engine_promote_text_correction(
         RuleId::new("C001"),
+        Severity::Fix,
         Span::new(0, leaky_replacement.len()),
+        original_digest,
         leaky_replacement.into(),
         FixSource::CorrectionsMap,
         Confidence::strict(1.0),
+        /* migration_ref */ None,
+        Message::new(MessageTemplate::CorrectionsApplied, MessageArgs::default()),
         UNIX_EPOCH + Duration::from_secs(FIXED_TS),
         Some(Arc::<str>::from("test-classifier")),
         /* dry_run */ false,
@@ -495,10 +540,10 @@ fn fabricate_leaky_fix() -> AppliedFix<CapcoScheme> {
 fn sentinel_check_panics_on_synthetic_leak() {
     // Guard against future regressions of the checker itself: a
     // refactor that emptied `PROSE_SENTINELS` or disabled
-    // `assert_clean` would cause this `#[should_panic]` test to fail
-    // loudly, not silently weaken the real corpus sweep.
-    let leaky = fabricate_leaky_fix();
-    check_fixes_clean(&[leaky], "synthetic self-test");
+    // `assert_text_correction_clean` would cause this `#[should_panic]`
+    // test to fail loudly, not silently weaken the real corpus sweep.
+    let leaky = fabricate_leaky_text_correction();
+    check_text_corrections_clean(&[leaky], "synthetic self-test");
 }
 
 // ---------------------------------------------------------------------------
@@ -558,47 +603,55 @@ fn audit_v2_strict_path_invariants() {
     for path in &fixtures {
         let source = load_fixture(path);
         let result = run_fix(&engine, &source);
-        for fix in &result.applied {
-            // Top-level fields post Commit 10: `rule`, `span`,
-            // `source`, `confidence`, `migration_ref`.
-            let c = &fix.confidence;
+        for line in &result.audit_lines {
+            // Marking-side audit-record contract per
+            // `contracts/audit-record.md` §107-178: `fix.replacement
+            // .confidence` carries the strict invariants below.
+            // Text-correction lines have their own `confidence` field
+            // at the top level.
+            let (rule, span, source_arm, confidence) = match line {
+                AuditLine::AppliedFix(f) => {
+                    (&f.rule, f.span, f.source, &f.fix.replacement.confidence)
+                }
+                AuditLine::TextCorrection(tc) => (&tc.rule, tc.span, tc.source, &tc.confidence),
+                _ => continue,
+            };
             let context = format!(
                 "rule {} at {}..{} ({})",
-                fix.rule.as_str(),
-                fix.span.start,
-                fix.span.end,
+                rule.as_str(),
+                span.start,
+                span.end,
                 path.display()
             );
 
             assert_eq!(
-                c.recognition, 1.0_f32,
+                confidence.recognition, 1.0_f32,
                 "strict-path Confidence.recognition must be 1.0; got {} for {context}",
-                c.recognition,
+                confidence.recognition,
             );
             assert!(
-                c.runner_up_ratio.is_none(),
+                confidence.runner_up_ratio.is_none(),
                 "strict-path Confidence.runner_up_ratio must be None; \
                  got {:?} for {context}",
-                c.runner_up_ratio,
+                confidence.runner_up_ratio,
             );
             assert!(
-                c.features.is_empty(),
+                confidence.features.is_empty(),
                 "strict-path Confidence.features must be empty; \
                  got {} feature(s) for {context}: {:?}",
-                c.features.len(),
-                c.features,
+                confidence.features.len(),
+                confidence.features,
             );
             assert!(
                 matches!(
-                    fix.source,
+                    source_arm,
                     FixSource::BuiltinRule | FixSource::CorrectionsMap | FixSource::MigrationTable
                 ),
                 "strict-path FixSource must be BuiltinRule | CorrectionsMap | \
-                 MigrationTable; got {:?} for {context}",
-                fix.source,
+                 MigrationTable; got {source_arm:?} for {context}",
             );
         }
-        total_fixes_examined += result.applied.len();
+        total_fixes_examined += result.audit_lines.len();
     }
 
     assert!(
@@ -799,7 +852,7 @@ fn decoder_path_record_shape() {
     let result = run_fix(&engine, source);
 
     let mut decoder_fixes_examined = 0usize;
-    for fix in &result.applied {
+    for fix in result.applied_fixes() {
         // Identify the decoder-path fix and assert its shape. Other
         // fixes (e.g., a strict-path E001 against the canonical attrs)
         // may also appear in the same audit set; they remain
@@ -809,7 +862,9 @@ fn decoder_path_record_shape() {
         }
         decoder_fixes_examined += 1;
 
-        let c = &fix.confidence;
+        // `fix.replacement.confidence` per the marque-1.0 audit-
+        // record shape (contract §123-152).
+        let c = &fix.fix.replacement.confidence;
         assert!(
             c.recognition < 1.0_f32,
             "decoder-path Confidence.recognition must be strictly < 1.0; \

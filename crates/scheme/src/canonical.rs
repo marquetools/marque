@@ -183,12 +183,66 @@ pub enum TokenSource {
 ///     Box::<str>::from("TS").into()
 /// }
 /// ```
-#[derive(Debug, Clone)]
+///
+/// **No `Serialize for Canonical<S>` impl** (PR 3c.2.D).
+///
+/// The audit-emit path projects `Canonical<S>` to a structured JSON
+/// shape with a `bytes_digest` field rather than serializing the raw
+/// bytes. Direct `serde::Serialize` derivation is intentionally
+/// rejected to keep the G13 boundary (Constitution V Principle V) at
+/// compile time — the renderer MUST go through the audit-record JSON
+/// projection that emits the BLAKE3 digest, never the bytes.
+///
+/// The doctest below asserts the property by demanding a
+/// `T: serde::Serialize` bound. The compile failure is specifically
+/// "`Canonical<S>` does not implement `serde::Serialize`", not a
+/// crate-resolution failure: `serde` is declared as a
+/// `[dev-dependencies]` entry so `cargo test --doc` resolves the
+/// trait name. A future commit that derives `Serialize` on
+/// `Canonical<S>` flips this doctest to passing — exactly the
+/// regression signal we want.
+///
+/// ```compile_fail
+/// # use marque_scheme::canonical::Canonical;
+/// # use marque_scheme::MarkingScheme;
+/// fn _require_serialize<T: serde::Serialize>(_: &T) {}
+/// fn _check<S: MarkingScheme>(c: Canonical<S>) {
+///     _require_serialize(&c);
+/// }
+/// ```
+#[derive(Debug)]
 pub struct Canonical<S: MarkingScheme + ?Sized> {
     bytes: Box<str>,
     source: TokenSource,
     scope: Scope,
     _scheme: PhantomData<fn() -> S>,
+}
+
+// Manual `Clone` impl — the derive macro over-constrains to `S: Clone`,
+// breaking `S = CapcoScheme` (CapcoScheme is intentionally non-`Clone`
+// because it carries `Vec<Category>` / `Vec<Constraint>` / `Vec<Template>` /
+// `Vec<PageRewrite<S>>` that the engine owns through `Arc<S>` rather
+// than cloning. See `crates/capco/src/scheme/adapter.rs`).
+//
+// Mirrors the pattern used by `marque_scheme::fix_intent::ReplacementIntent<S>`
+// (`crates/scheme/src/fix_intent.rs`) and `marque_rules::FixIntent<S>`
+// (`crates/rules/src/fix_intent.rs`): cloning a value that is generic
+// over `S: MarkingScheme` should only depend on the actual fields'
+// `Clone` impls, not on whether the scheme itself is `Clone`. The
+// `_scheme: PhantomData<fn() -> S>` field is always `Clone` because
+// `PhantomData<T>: Clone` holds for any `T` regardless of `T: Clone`.
+//
+// Required by `marque_rules::AppliedReplacement<S>` (PR 3c.2.D / D2) to
+// satisfy its own manual `Clone` impl in turn.
+impl<S: MarkingScheme + ?Sized> Clone for Canonical<S> {
+    fn clone(&self) -> Self {
+        Self {
+            bytes: self.bytes.clone(),
+            source: self.source.clone(),
+            scope: self.scope,
+            _scheme: PhantomData,
+        }
+    }
 }
 
 impl<S: MarkingScheme + ?Sized> Canonical<S> {

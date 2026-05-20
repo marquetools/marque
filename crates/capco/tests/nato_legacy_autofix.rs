@@ -127,8 +127,7 @@ fn assert_e066_fires_and_rewrites_to(
         "E066 rewrite mismatch on {input:?}: expected {expected_output:?}, \
          got {actual:?}; applied: {:?}",
         result
-            .applied
-            .iter()
+            .applied_fixes()
             .map(|af| af.rule.as_str())
             .collect::<Vec<_>>(),
     );
@@ -136,11 +135,10 @@ fn assert_e066_fires_and_rewrites_to(
     // E066 must appear in the applied set (sanity check on the
     // promotion path).
     assert!(
-        result.applied.iter().any(|af| af.rule.as_str() == "E066"),
+        result.applied_fixes().any(|af| af.rule.as_str() == "E066"),
         "E066 must appear in applied fixes on {input:?}; applied: {:?}",
         result
-            .applied
-            .iter()
+            .applied_fixes()
             .map(|af| af.rule.as_str())
             .collect::<Vec<_>>(),
     );
@@ -313,11 +311,10 @@ fn e066_does_not_fire_on_bare_cts_portion() {
     // And the fix output is byte-identical (modulo unrelated rules).
     let result = eng.fix(source, FixMode::Apply);
     assert!(
-        result.applied.iter().all(|af| af.rule.as_str() != "E066"),
+        result.applied_fixes().all(|af| af.rule.as_str() != "E066"),
         "E066 must NOT appear in applied fixes for bare (//CTS); applied: {:?}",
         result
-            .applied
-            .iter()
+            .applied_fixes()
             .map(|af| af.rule.as_str())
             .collect::<Vec<_>>(),
     );

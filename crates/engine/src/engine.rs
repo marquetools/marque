@@ -16,13 +16,17 @@ use aho_corasick::AhoCorasick;
 use marque_capco::CapcoScheme;
 use marque_capco::provenance::DecoderProvenance;
 use marque_config::Config;
+use marque_rules::audit::{AppliedTextCorrection, AuditLine};
 use marque_rules::{
-    AppliedFix, CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken, FixIntent,
-    FixSource, Phase, RuleId, RuleSet, Severity, SmallVec,
+    CORRECTIONS_MAP_CITATION, Confidence, Diagnostic, EnginePromotionToken, FixIntent, FixSource,
+    Phase, RuleId, RuleSet, Severity, SmallVec,
 };
 use marque_scheme::Span;
 use marque_scheme::ambiguity::Parsed;
+use marque_scheme::canonical::{Canonical, CanonicalConstructor, EngineConstructor};
+use marque_scheme::category::CategoryId;
 use marque_scheme::recognizer::{ParseContext, Recognizer};
+use marque_scheme::scope::Scope;
 use marque_scheme::{MarkingScheme, RewriteId};
 use secrecy::{SecretBox, SecretSlice};
 use std::collections::{HashMap, HashSet};
@@ -756,6 +760,18 @@ impl Engine {
         {
             false
         }
+    }
+
+    /// Borrow the engine's active marking scheme.
+    ///
+    /// Used by the CLI / WASM audit-record renderers (PR 3c.2.D / D4)
+    /// to project [`AuditLine<CapcoScheme>`] values through the
+    /// scheme's [`Vocabulary`](marque_scheme::Vocabulary) and
+    /// [`MarkingScheme::categories`](marque_scheme::MarkingScheme::categories)
+    /// surfaces for the `marque-1.0` JSON shape. Off the lint/scan
+    /// hot path — purely a wire-format projection helper.
+    pub fn scheme(&self) -> &CapcoScheme {
+        &self.scheme
     }
 
     /// Lint a UTF-8 text buffer. Returns diagnostics without modifying input.
@@ -2084,7 +2100,7 @@ impl Engine {
     }
 
     /// Apply pre-scanner text corrections (C001) from lint diagnostics and
-    /// return the corrected source + applied fixes + dropped diagnostics.
+    /// return the corrected source + applied audit lines + dropped diagnostics.
     /// Used by `fix_inner` to produce an intermediate source the scanner
     /// can detect; the dropped diagnostics surface via
     /// `remaining_diagnostics`.
@@ -2096,8 +2112,8 @@ impl Engine {
         mode: FixMode,
     ) -> (
         Vec<u8>,
-        Vec<AppliedFix<CapcoScheme>>,
         Vec<Diagnostic<CapcoScheme>>,
+        Vec<AuditLine<CapcoScheme>>,
     ) {
         // Mirror `fix_inner`'s suggest-channel exclusion: a C001
         // diagnostic that the lint post-pass rewrote to
@@ -2122,10 +2138,13 @@ impl Engine {
             .filter_map(|d| {
                 d.text_correction.as_ref().map(|tc| TextCorrectionProposal {
                     rule: d.rule.clone(),
+                    severity: d.severity,
                     span: d.span,
                     replacement: tc.replacement.clone(),
                     confidence: tc.confidence.clone(),
                     source: tc.source,
+                    message: d.message.clone(),
+                    migration_ref: tc.migration_ref,
                 })
             })
             .filter(|p| p.confidence.combined() >= threshold)
@@ -2183,24 +2202,44 @@ impl Engine {
         // SERCET→SECRET). The final output for DryRun returns the original
         // source in fix_inner, not this intermediate buffer.
         let mut buf = source.to_vec();
-        let mut applied = Vec::with_capacity(kept.len());
+        let mut audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(kept.len());
         for fix in kept {
+            // PM-D-6 / G13: hash pre-correction bytes BEFORE the
+            // splice. `original_bytes` borrows from `source` for the
+            // hashing call only — never stored in an audit-record
+            // field. Order: hash → splice → audit, so the splice
+            // doesn't invalidate `original_bytes` and the audit
+            // captures the original-bytes digest.
+            let original_bytes = &source[fix.span.start..fix.span.end];
+            let original_digest = blake3::hash(original_bytes);
+
+            // Splice the canonical replacement into the buffer.
             buf.splice(fix.span.start..fix.span.end, fix.replacement.bytes());
-            applied.push(AppliedFix::__engine_promote_text_correction(
+
+            // marque-1.0 promote — AppliedTextCorrection (separate
+            // line type per PM-D-4; CorrectionsMap and text-correction-
+            // shaped rule emissions route here, never to the marking-
+            // side Discriminant).
+            let text_correction = AppliedTextCorrection::__engine_promote_text_correction(
                 fix.rule,
+                fix.severity,
                 fix.span,
+                original_digest,
                 fix.replacement,
                 fix.source,
                 fix.confidence,
+                fix.migration_ref,
+                fix.message,
                 now,
                 classifier_id.clone(),
                 dry_run,
                 None,
                 engine_promotion_token(),
-            ));
+            );
+            audit_lines.push(AuditLine::TextCorrection(text_correction));
         }
 
-        (buf, applied, dropped_diags)
+        (buf, dropped_diags, audit_lines)
     }
 
     /// Translate a scheme-emitted [`ConstraintViolation`] into an
@@ -2399,10 +2438,15 @@ struct TwoPassFixer<'engine> {
 /// post-buffer flows into the public [`FixResult.source`]
 /// [`secrecy::SecretSlice`] via [`into_secret_slice`]. Either way, the
 /// transient `Vec<u8>` never sits in freed memory unwiped.
+/// Tuple returned by [`TwoPassFixer::apply_kept_fixes`].
+///
+/// Carries the post-pass output buffer + the `marque-1.0` audit-line
+/// stream + the `(rule_id, span)` keys of applied fixes. Post-cutover
+/// (PR 3c.2.D) `audit_lines` is the sole audit channel.
 type AppliedTuple = (
     Zeroizing<Vec<u8>>,
-    Vec<AppliedFix<CapcoScheme>>,
     HashSet<(RuleId, Span)>,
+    Vec<AuditLine<CapcoScheme>>,
 );
 
 /// Move a [`Zeroizing<Vec<u8>>`] into a [`SecretSlice<u8>`] without
@@ -2505,8 +2549,10 @@ struct Pass0Result {
     /// Source bytes after pass-0 text corrections have been applied.
     /// Equals `source.to_vec()` when no text corrections fired.
     effective_source: Zeroizing<Vec<u8>>,
-    /// Promoted [`AppliedFix`] records from pass-0.
-    applied: Vec<AppliedFix<CapcoScheme>>,
+    /// Promoted `marque-1.0` audit-line records from pass-0. Each
+    /// entry is an [`AuditLine::TextCorrection`] for the pass-0
+    /// path.
+    audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// Diagnostics whose text-correction fixes were dropped by the
     /// C-1 overlap guard during pass-0. Surfaced via
     /// `FixResult.remaining_diagnostics` because pass-2's re-lint
@@ -2522,8 +2568,10 @@ struct Pass1Result {
     /// Buffer after pass-1 fixes have been spliced into `effective_source`.
     /// Equals `effective_source` when pass-1 produced no fixes.
     post_buffer: Zeroizing<Vec<u8>>,
-    /// Promoted [`AppliedFix`] records from pass-1.
-    applied: Vec<AppliedFix<CapcoScheme>>,
+    /// Promoted `marque-1.0` audit-line records from pass-1. Each
+    /// entry is an [`AuditLine::AppliedFix`] for the pass-1 marking
+    /// path.
+    audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// `(rule_id, span)` keys of pass-1 fixes — feeds the
     /// `remaining_diagnostics` filter so a fixed diagnostic is not
     /// reported again.
@@ -2539,7 +2587,9 @@ struct Pass1Result {
 struct Pass2Result {
     /// Final buffer (Apply mode) or original source (DryRun).
     output: Zeroizing<Vec<u8>>,
-    applied: Vec<AppliedFix<CapcoScheme>>,
+    /// Promoted `marque-1.0` audit-line records from pass-2. Each
+    /// entry is an [`AuditLine::AppliedFix`].
+    audit_lines: Vec<AuditLine<CapcoScheme>>,
     applied_keys: HashSet<(RuleId, Span)>,
 }
 
@@ -2581,7 +2631,7 @@ impl<'engine> TwoPassFixer<'engine> {
         // fires on `NF`). Move ownership of the chosen `(lint,
         // markings)` pair so synthesis can consume `parsed_markings`
         // without an explicit clone.
-        let (lint, parsed_markings) = if !pass0.applied.is_empty() {
+        let (lint, parsed_markings) = if !pass0.audit_lines.is_empty() {
             self.engine
                 .lint_with_options_internal(&pass0.effective_source, &lint_opts)
         } else {
@@ -2637,19 +2687,17 @@ impl<'engine> TwoPassFixer<'engine> {
         // this cache was retired in PR 7c per D-7.22; the cache + the
         // field stay as the architectural two-pass-reshape signal
         // for future rule consumers.
-        let pre_pass_1_cache = self.populate_pre_pass_1_cache(&pass1.applied, &parsed_markings);
+        let pre_pass_1_cache = self.populate_pre_pass_1_cache(&pass1.audit_lines, &parsed_markings);
 
         // Destructure pass0 into owned locals so the re-parse / R002
         // branches can move `effective_source` directly (eliminating
         // the prior `.clone()` of the full document buffer on the
-        // hot path) while `applied` and `dropped_diags` flow through
-        // to the merge step or the R002 assembler without an
+        // hot path) while `audit_lines` and `dropped_diags` flow
+        // through to the merge step or the R002 assembler without an
         // intermediate `&Pass0Result` borrow that forces cloning.
-        // After this point `pass0` is consumed — only the three
-        // locals are live.
         let Pass0Result {
             effective_source: pass0_effective_source,
-            applied: pass0_applied,
+            audit_lines: pass0_audit_lines,
             dropped_diags: pass0_dropped_diags,
         } = pass0;
 
@@ -2702,23 +2750,22 @@ impl<'engine> TwoPassFixer<'engine> {
         // out together, which Rust correctly rejects as a
         // self-referential bundle. Splitting lets `lint` settle to
         // its final owner first, then `pass2_diags` borrows from it.
-        let (pass2_source, pass2_markings, pass1_applied, pass1_applied_keys, lint) =
-            if pass1.applied.is_empty() {
-                // Short-circuit: pass-1 produced no applied fixes, so the
+        let (pass2_source, pass2_markings, pass1_audit_lines, pass1_applied_keys, lint) =
+            if pass1.audit_lines.is_empty() {
+                // Short-circuit: pass-1 produced no audit lines, so the
                 // byte stream is unchanged. Move `pass0_effective_source`
                 // directly into `pass2_source` — no document-buffer clone.
-                // `pass1.applied` is empty so we move it through as-is.
                 // The pre-pass-1 `lint` is still current here (no byte
                 // change → no re-lint needed) and is moved through.
                 let Pass1Result {
                     post_buffer: _,
-                    applied,
+                    audit_lines,
                     applied_keys,
                 } = pass1;
                 (
                     pass0_effective_source,
                     parsed_markings,
-                    applied,
+                    audit_lines,
                     applied_keys,
                     lint,
                 )
@@ -2774,11 +2821,11 @@ impl<'engine> TwoPassFixer<'engine> {
                 let post_pass1_had_no_markings = relint.recognized_marking_count == 0;
                 let pre_pass1_had_markings = lint.recognized_marking_count > 0;
                 if post_pass1_had_no_markings && pre_pass1_had_markings {
-                    let contributing = self.contributing_pass1_rule_ids(&pass1.applied);
+                    let contributing = self.contributing_pass1_rule_ids(&pass1.audit_lines);
                     let failure_span = Span::new(0, pass1.post_buffer.len());
                     let r002 = build_r002_diagnostic(contributing, failure_span);
                     return Ok(self.assemble_r002_result(
-                        pass0_applied,
+                        pass0_audit_lines,
                         pass0_dropped_diags,
                         pass1,
                         lint,
@@ -2795,10 +2842,10 @@ impl<'engine> TwoPassFixer<'engine> {
                 // state.
                 let Pass1Result {
                     post_buffer,
-                    applied,
+                    audit_lines,
                     applied_keys,
                 } = pass1;
-                (post_buffer, new_markings, applied, applied_keys, relint)
+                (post_buffer, new_markings, audit_lines, applied_keys, relint)
             };
 
         // Re-partition the (now post-pass-1, when applicable) lint's
@@ -2836,21 +2883,31 @@ impl<'engine> TwoPassFixer<'engine> {
             )?
         };
 
-        // Merge applied lists: pass-0 corrections, then pass-1, then
-        // pass-2. Order matches the existing audit-stream contract
-        // (D-7.6: "applied-fix records emit in the order c001_applied;
-        // pass1_applied; pass2_applied").
-        let mut all_applied: Vec<AppliedFix<CapcoScheme>> =
-            Vec::with_capacity(pass0_applied.len() + pass1_applied.len() + pass2.applied.len());
-        all_applied.extend(pass0_applied);
-        all_applied.extend(pass1_applied);
-        all_applied.extend(pass2.applied);
+        // Merge audit-line streams (PR 3c.2.D / D7). Order matches the
+        // existing audit-stream contract (D-7.6: "applied-fix records
+        // emit in the order c001; pass1; pass2"). PM-D-8 generalizes
+        // FR-016 to the marking-fix + text-correction sum-type stream.
+        let mut all_audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(
+            pass0_audit_lines.len() + pass1_audit_lines.len() + pass2.audit_lines.len(),
+        );
+        all_audit_lines.extend(pass0_audit_lines);
+        all_audit_lines.extend(pass1_audit_lines);
+        all_audit_lines.extend(pass2.audit_lines);
 
-        // Build the applied-keys set from EVERY applied entry so the
+        // Build the applied-keys set from EVERY audit line so the
         // remaining-diagnostics filter knows what survived each pass.
-        let mut applied_keys: HashSet<(RuleId, Span)> = HashSet::with_capacity(all_applied.len());
-        for a in &all_applied {
-            applied_keys.insert((a.rule.clone(), a.span));
+        let mut applied_keys: HashSet<(RuleId, Span)> =
+            HashSet::with_capacity(all_audit_lines.len());
+        for line in &all_audit_lines {
+            match line {
+                AuditLine::AppliedFix(fix) => {
+                    applied_keys.insert((fix.rule.clone(), fix.span));
+                }
+                AuditLine::TextCorrection(tc) => {
+                    applied_keys.insert((tc.rule.clone(), tc.span));
+                }
+                _ => {}
+            }
         }
         for k in &pass1_applied_keys {
             applied_keys.insert(k.clone());
@@ -2884,7 +2941,7 @@ impl<'engine> TwoPassFixer<'engine> {
 
         Ok(FixResult {
             source: into_secret_slice(pass2.output),
-            applied: all_applied,
+            audit_lines: all_audit_lines,
             remaining_diagnostics,
             r002_fired: false,
         })
@@ -2895,12 +2952,12 @@ impl<'engine> TwoPassFixer<'engine> {
     /// as pass-0"); this method exists to keep the pipeline shape
     /// visible at the `run()` call site.
     fn run_pass0_c001(&self, lint: &LintResult) -> Pass0Result {
-        let (effective_source, applied, dropped_diags) =
+        let (effective_source, dropped_diags, audit_lines) =
             self.engine
                 .apply_text_corrections(self.source, lint, self.threshold, self.mode);
         Pass0Result {
             effective_source: Zeroizing::new(effective_source),
-            applied,
+            audit_lines,
             dropped_diags,
         }
     }
@@ -2938,7 +2995,7 @@ impl<'engine> TwoPassFixer<'engine> {
             // clone; see the function's `post_buffer` invariant above.
             return Ok(Pass1Result {
                 post_buffer: Zeroizing::new(Vec::new()),
-                applied: Vec::new(),
+                audit_lines: Vec::new(),
                 applied_keys: HashSet::new(),
             });
         }
@@ -3007,15 +3064,15 @@ impl<'engine> TwoPassFixer<'engine> {
             // clone per the `post_buffer` invariant above.
             return Ok(Pass1Result {
                 post_buffer: Zeroizing::new(Vec::new()),
-                applied: Vec::new(),
+                audit_lines: Vec::new(),
                 applied_keys: HashSet::new(),
             });
         }
-        let (post_buffer, applied, applied_keys) =
+        let (post_buffer, applied_keys, audit_lines) =
             self.apply_kept_fixes(effective_source, kept_fixes, lint)?;
         Ok(Pass1Result {
             post_buffer,
-            applied,
+            audit_lines,
             applied_keys,
         })
     }
@@ -3070,7 +3127,7 @@ impl<'engine> TwoPassFixer<'engine> {
                     FixMode::Apply => pass2_source.to_vec(),
                     FixMode::DryRun => self.source.to_vec(),
                 }),
-                applied: Vec::new(),
+                audit_lines: Vec::new(),
                 applied_keys: HashSet::new(),
             });
         }
@@ -3092,7 +3149,7 @@ impl<'engine> TwoPassFixer<'engine> {
             self.threshold,
         );
         let kept_fixes = sort_and_c1_dedup(synthesized);
-        let (post_buffer, applied, applied_keys) =
+        let (post_buffer, applied_keys, audit_lines) =
             self.apply_kept_fixes(pass2_source, kept_fixes, lint)?;
 
         let output = match self.mode {
@@ -3104,7 +3161,7 @@ impl<'engine> TwoPassFixer<'engine> {
         };
         Ok(Pass2Result {
             output,
-            applied,
+            audit_lines,
             applied_keys,
         })
     }
@@ -3153,7 +3210,10 @@ impl<'engine> TwoPassFixer<'engine> {
         let now = self.engine.clock.now();
 
         let mut applied_keys: HashSet<(RuleId, Span)> = HashSet::with_capacity(kept_fixes.len());
-        let mut applied: Vec<AppliedFix<CapcoScheme>> = Vec::with_capacity(kept_fixes.len());
+        // `marque-1.0` audit-line stream — the sole audit-output
+        // channel post-cutover. The CLI / WASM renderers project
+        // each line to its NDJSON record type.
+        let mut audit_lines: Vec<AuditLine<CapcoScheme>> = Vec::with_capacity(kept_fixes.len());
 
         if deadline_expired(self.deadline) {
             return Err(EngineError::DeadlineExceeded {
@@ -3166,6 +3226,14 @@ impl<'engine> TwoPassFixer<'engine> {
         // in DryRun. Wrap in `Zeroizing` so the scratch bytes wipe on
         // drop per Constitution Principle II.
         let post_buffer = Zeroizing::new(splice_fixes_forward(source_buf, &kept_fixes));
+
+        // EngineConstructor mints the open-vocab Canonical<S> values
+        // for v2 audit records. The sealed constructor name + the
+        // sealed `CanonicalConstructor` supertrait keep this path
+        // engine-only per `marque-scheme::canonical` doc comment.
+        let constructor: EngineConstructor<CapcoScheme> =
+            EngineConstructor::<CapcoScheme>::__engine_construct();
+
         for fix in kept_fixes {
             if deadline_expired(self.deadline) {
                 return Err(EngineError::DeadlineExceeded {
@@ -3174,18 +3242,77 @@ impl<'engine> TwoPassFixer<'engine> {
             }
             let key = (fix.rule.clone(), fix.span);
             applied_keys.insert(key);
-            applied.push(AppliedFix::__engine_promote(
+
+            // PM-D-6 / G13: hash pre-fix bytes for the
+            // `original_digest`. `original_bytes` borrows from
+            // `source_buf` for the lifetime of the hashing call only.
+            let original_bytes = &source_buf[fix.span.start..fix.span.end];
+
+            // Build the v2 Canonical<S> via EngineConstructor (the
+            // sealed open-vocab path). PM-D / D-A3: derive the
+            // CategoryId from the originating ReplacementIntent so the
+            // audit-record renderer can project the
+            // `replacement.canonical.category` JSON field accurately
+            // per `contracts/audit-record.md` §272:
+            //
+            // - `FactAdd { token, .. }`: route the token through
+            //   `MarkingScheme::category_of`. The scheme resolves both
+            //   closed-CVE [`FactRef::Cve`] and open-vocab
+            //   [`FactRef::OpenVocab`] arms; if the routing table is
+            //   missing the token (e.g., a future variant not yet
+            //   wired) the engine falls back to the multi-category
+            //   sentinel rather than panicking — the audit consumer
+            //   sees `"Marking"` and can investigate, but the audit
+            //   record stays well-formed.
+            // - `FactRemove { facts, .. }`: route the first fact's
+            //   token (all facts in a single intent share an axis per
+            //   FR-???; the multi-fact form is a chained removal on
+            //   one axis like E024's RD/FRD/TFNI cluster).
+            // - `Recanonicalize { .. }`: spans multiple categories by
+            //   construction — re-renders an entire `Scope::Page` or
+            //   `Scope::Document`. Routes to
+            //   [`CategoryId::MARKING`] (the reserved multi-category
+            //   sentinel; projects to `"Marking"` in the JSON).
+            let scheme_ref: &CapcoScheme = &self.engine.scheme;
+            let category_id: CategoryId = match &fix.intent.replacement {
+                marque_scheme::ReplacementIntent::FactAdd { token, .. } => {
+                    scheme_ref.category_of(token).unwrap_or(CategoryId::MARKING)
+                }
+                marque_scheme::ReplacementIntent::FactRemove { facts, .. } => facts
+                    .first()
+                    .and_then(|fact| scheme_ref.category_of(fact))
+                    .unwrap_or(CategoryId::MARKING),
+                marque_scheme::ReplacementIntent::Recanonicalize { .. } => CategoryId::MARKING,
+                // `#[non_exhaustive]` guard — a future variant
+                // routes to the multi-category sentinel until the
+                // scheme's `category_of` mapping is extended.
+                _ => CategoryId::MARKING,
+            };
+            let canonical: Canonical<CapcoScheme> = constructor.build_open_vocab(
+                category_id,
+                Box::from(fix.replacement.as_ref()),
+                fix.scope,
+            );
+
+            // v2 promote — AppliedFix (marque-1.0 shape). The
+            // constructor hashes both `original_bytes` and
+            // `canonical.bytes()` inline per PM-D-6.
+            let v2_applied = marque_rules::audit::AppliedFix::<CapcoScheme>::__engine_promote(
                 fix.rule,
+                fix.severity,
                 fix.span,
                 fix.intent,
+                original_bytes,
+                canonical,
                 now,
                 classifier_id.clone(),
                 dry_run,
                 None,
                 engine_promotion_token(),
-            ));
+            );
+            audit_lines.push(AuditLine::AppliedFix(v2_applied));
         }
-        Ok((post_buffer, applied, applied_keys))
+        Ok((post_buffer, applied_keys, audit_lines))
     }
 
     /// Build the set of `RuleId.as_str()` values that belong to
@@ -3230,40 +3357,45 @@ impl<'engine> TwoPassFixer<'engine> {
     /// (the engine moves the underlying `Vec` into the re-parse arm).
     fn populate_pre_pass_1_cache(
         &self,
-        pass1_applied: &[AppliedFix<CapcoScheme>],
+        pass1_audit_lines: &[AuditLine<CapcoScheme>],
         parsed_markings: &[(Span, marque_capco::CapcoMarking)],
     ) -> PrePass1Cache {
         let mut cache: PrePass1Cache = SmallVec::new();
-        if pass1_applied.is_empty() {
+        if pass1_audit_lines.is_empty() {
             return cache;
         }
         // For each applied pass-1 fix, find the marking whose span
         // contains the fix span and dedupe into the cache. Sub-token
         // span containment is what `find_containing_marking` already
         // checks for the PR 7b first-fire path, so reuse it.
-        for fix in pass1_applied {
-            let Some(marking_span) = find_containing_marking(parsed_markings, fix.span) else {
+        //
+        // Walks both `AppliedFix` and `TextCorrection` arms of
+        // `AuditLine` — pass-1 today only produces marking fixes
+        // (text-corrections run in pass-0), but the cache shape stays
+        // sum-type-safe so a future Phase::Localized text-correction
+        // would still get its marking captured.
+        for line in pass1_audit_lines {
+            let (rule, span) = match line {
+                AuditLine::AppliedFix(fix) => (&fix.rule, fix.span),
+                AuditLine::TextCorrection(tc) => (&tc.rule, tc.span),
+                _ => continue,
+            };
+            let Some(marking_span) = find_containing_marking(parsed_markings, span) else {
                 // A Localized rule whose fix span has no enclosing
                 // marking should already have been dropped by the
                 // PR 7b in_shape filter; if one slips through it
                 // means a violated phase contract elsewhere. Log and
                 // skip — never panic on the audit hot path.
-                // Use explicit byte-offset fields rather than `?fix.span`
-                // so the log line stays G13-clean independent of any
-                // future `Span::Debug` impl change. Other span logging
-                // in this file already follows this pattern (engine.rs
-                // `start = ..., end = ...`); making it consistent here
-                // closes the implicit dependency.
                 tracing::warn!(
-                    rule_id = %fix.rule,
-                    fix_span_start = %fix.span.start,
-                    fix_span_end = %fix.span.end,
+                    rule_id = %rule,
+                    fix_span_start = %span.start,
+                    fix_span_end = %span.end,
                     "pass-1 applied fix has no enclosing parsed marking; \
                      skipping pre-pass-1 cache entry"
                 );
                 continue;
             };
-            if cache.iter().any(|(span, _)| *span == marking_span) {
+            if cache.iter().any(|(s, _)| *s == marking_span) {
                 continue;
             }
             let Some(marking) = lookup_marking(parsed_markings, marking_span) else {
@@ -3282,13 +3414,18 @@ impl<'engine> TwoPassFixer<'engine> {
     /// can lift the cap in lockstep with the inline-N bump.
     fn contributing_pass1_rule_ids(
         &self,
-        pass1_applied: &[AppliedFix<CapcoScheme>],
+        pass1_audit_lines: &[AuditLine<CapcoScheme>],
     ) -> SmallVec<[RuleId; 4]> {
         let mut seen: HashSet<RuleId> = HashSet::new();
         let mut ids: Vec<RuleId> = Vec::new();
-        for fix in pass1_applied {
-            if seen.insert(fix.rule.clone()) {
-                ids.push(fix.rule.clone());
+        for line in pass1_audit_lines {
+            let rule = match line {
+                AuditLine::AppliedFix(fix) => &fix.rule,
+                AuditLine::TextCorrection(tc) => &tc.rule,
+                _ => continue,
+            };
+            if seen.insert(rule.clone()) {
+                ids.push(rule.clone());
             }
         }
         ids.sort();
@@ -3308,20 +3445,33 @@ impl<'engine> TwoPassFixer<'engine> {
     /// caller after destructuring, so move-semantics is appropriate.
     fn assemble_r002_result(
         &self,
-        pass0_applied: Vec<AppliedFix<CapcoScheme>>,
+        pass0_audit_lines: Vec<AuditLine<CapcoScheme>>,
         pass0_dropped_diags: Vec<Diagnostic<CapcoScheme>>,
         pass1: Pass1Result,
         lint: LintResult,
         r002: Diagnostic<CapcoScheme>,
     ) -> FixResult {
-        let mut all_applied: Vec<AppliedFix<CapcoScheme>> =
-            Vec::with_capacity(pass0_applied.len() + pass1.applied.len());
-        all_applied.extend(pass0_applied);
-        all_applied.extend(pass1.applied);
+        // Audit-line merge (PR 3c.2.D / D7). R002 is a remaining-
+        // diagnostic synthetic — it does NOT contribute an
+        // `AuditLine::AppliedFix` entry; only promoted fixes do. The
+        // R002 itself surfaces via `remaining_diagnostics` below.
+        let mut all_audit_lines: Vec<AuditLine<CapcoScheme>> =
+            Vec::with_capacity(pass0_audit_lines.len() + pass1.audit_lines.len());
+        all_audit_lines.extend(pass0_audit_lines);
+        all_audit_lines.extend(pass1.audit_lines);
 
-        let mut applied_keys: HashSet<(RuleId, Span)> = HashSet::with_capacity(all_applied.len());
-        for a in &all_applied {
-            applied_keys.insert((a.rule.clone(), a.span));
+        let mut applied_keys: HashSet<(RuleId, Span)> =
+            HashSet::with_capacity(all_audit_lines.len());
+        for line in &all_audit_lines {
+            match line {
+                AuditLine::AppliedFix(fix) => {
+                    applied_keys.insert((fix.rule.clone(), fix.span));
+                }
+                AuditLine::TextCorrection(tc) => {
+                    applied_keys.insert((tc.rule.clone(), tc.span));
+                }
+                _ => {}
+            }
         }
 
         let mut remaining_diagnostics: Vec<Diagnostic<CapcoScheme>> = lint
@@ -3352,7 +3502,7 @@ impl<'engine> TwoPassFixer<'engine> {
 
         FixResult {
             source: into_secret_slice(output),
-            applied: all_applied,
+            audit_lines: all_audit_lines,
             remaining_diagnostics,
             r002_fired: true,
         }
@@ -3888,10 +4038,16 @@ fn synthesize_fixes(
         let trimmed = &bytes[trimmed_start..trimmed_end];
         // Portion vs banner: inferred from the trimmed candidate
         // bytes — a portion is wrapped in `()` per CAPCO-2016 §A.6.
-        let core: String = if trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')') {
+        let is_portion = trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')');
+        let core: String = if is_portion {
             format!("({})", scheme.render_portion(&modified))
         } else {
             scheme.render_banner(&modified)
+        };
+        let scope = if is_portion {
+            Scope::Portion
+        } else {
+            Scope::Page
         };
 
         let leading_ws =
@@ -3932,8 +4088,10 @@ fn synthesize_fixes(
 
         out.push(SynthesizedFix {
             rule: owning_diag.rule.clone(),
+            severity: owning_diag.severity,
             span: cspan,
             replacement: replacement.into_boxed_str(),
+            scope,
             intent: combined_intent,
         });
     }
@@ -5165,6 +5323,7 @@ mod tests {
     use super::*;
     use crate::clock::FixedClock;
     use marque_ism::CanonicalAttrs;
+    use marque_rules::audit::AppliedFix;
     use marque_rules::{
         AuthoritativeSource, Citation, Diagnostic, FixIntent, FixSource, Message, MessageArgs,
         MessageTemplate, Rule, RuleContext, RuleId, RuleSet, SectionLetter, SectionRef, Severity,
@@ -5185,6 +5344,43 @@ mod tests {
     #[inline]
     fn stub_message() -> Message {
         Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
+    }
+
+    /// Filter the marking-side audit lines from a [`FixResult`] into
+    /// the legacy `Vec<&AppliedFix>` view the pre-cutover tests read.
+    ///
+    /// Post PR 3c.2.D the engine's sole audit-output channel is
+    /// `FixResult.audit_lines: Vec<AuditLine<S>>`. The cutover
+    /// retired the parallel `applied: Vec<AppliedFix<S>>` field;
+    /// this helper preserves the pre-cutover read shape for unit
+    /// tests that consume only the marking side without rewriting
+    /// every assertion site to pattern-match the sum type.
+    /// Text-correction audit lines (`AuditLine::TextCorrection`) are
+    /// surfaced by [`applied_text_corrections`] below.
+    #[inline]
+    fn applied_fixes(result: &FixResult) -> Vec<&AppliedFix<CapcoScheme>> {
+        result
+            .audit_lines
+            .iter()
+            .filter_map(|line| match line {
+                AuditLine::AppliedFix(f) => Some(f),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Filter the text-correction audit lines from a [`FixResult`]
+    /// into a `Vec<&AppliedTextCorrection>` view.
+    #[inline]
+    fn applied_text_corrections(result: &FixResult) -> Vec<&AppliedTextCorrection> {
+        result
+            .audit_lines
+            .iter()
+            .filter_map(|line| match line {
+                AuditLine::TextCorrection(tc) => Some(tc),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Test-fixture `Citation` stub for `Diagnostic` constructors that
@@ -5453,7 +5649,9 @@ mod tests {
         let result = engine.fix(TEST_SRC, FixMode::Apply);
         let out = std::str::from_utf8(result.source.expose_secret()).unwrap();
         assert!(out.starts_with("AA//BB"), "got: {out:?}");
-        assert_eq!(result.applied.len(), 2);
+        // StubRule emits text-correction diagnostics; the marque-1.0
+        // audit stream surfaces them on the `TextCorrection` arm.
+        assert_eq!(applied_text_corrections(&result).len(), 2);
     }
 
     #[test]
@@ -5467,7 +5665,8 @@ mod tests {
         // Exactly one fix should be applied, the other should remain in
         // `remaining_diagnostics` so callers can see it was not silently
         // dropped.
-        assert_eq!(result.applied.len(), 1, "applied: {:?}", result.applied);
+        let applied = applied_text_corrections(&result);
+        assert_eq!(applied.len(), 1, "applied: {applied:?}");
         assert_eq!(
             result.remaining_diagnostics.len(),
             1,
@@ -5485,8 +5684,9 @@ mod tests {
             TEST_SRC,
             "dry-run must not mutate source"
         );
-        assert_eq!(result.applied.len(), 1);
-        assert!(result.applied[0].dry_run, "dry_run flag must be set");
+        let text_corrections = applied_text_corrections(&result);
+        assert_eq!(text_corrections.len(), 1);
+        assert!(text_corrections[0].dry_run, "dry_run flag must be set");
     }
 
     #[test]
@@ -5531,7 +5731,12 @@ mod tests {
         let engine = engine_with(vec![proposal("E001", 0, 6, "AA")]);
         let r1 = engine.fix(TEST_SRC, FixMode::Apply);
         let r2 = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(r1.applied[0].timestamp, r2.applied[0].timestamp);
+        // StubRule emits text-correction diagnostics; timestamps live
+        // on `AppliedTextCorrection`.
+        assert_eq!(
+            applied_text_corrections(&r1)[0].timestamp,
+            applied_text_corrections(&r2)[0].timestamp
+        );
     }
 
     // H-3: fix_with_threshold must reject non-finite overrides in all
@@ -5565,7 +5770,7 @@ mod tests {
         // must not be applied.
         let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.94)]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(result.applied.len(), 0);
+        assert_eq!(applied_fixes(&result).len(), 0);
         // The below-threshold fix is a suggestion — it survives in
         // remaining_diagnostics so the caller can surface it.
         assert_eq!(result.remaining_diagnostics.len(), 1);
@@ -5589,7 +5794,7 @@ mod tests {
         assert_eq!(lint.suggest_count(), 1);
         // Confirm the engine still excludes Suggest from auto-apply.
         let fix_result = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(fix_result.applied.len(), 0);
+        assert_eq!(applied_fixes(&fix_result).len(), 0);
     }
 
     #[test]
@@ -5732,7 +5937,7 @@ mod tests {
         // Even at confidence 1.0, a Suggest-severity fix must not auto-apply.
         let fix_result = engine.fix(TEST_SRC, FixMode::Apply);
         assert_eq!(
-            fix_result.applied.len(),
+            applied_fixes(&fix_result).len(),
             0,
             "explicit Suggest-severity fix must not auto-apply regardless of confidence"
         );
@@ -5743,7 +5948,7 @@ mod tests {
         // A fix at exactly 0.95 must be applied (inclusive threshold).
         let engine = engine_with(vec![proposal_with_confidence("E001", 0, 6, "AA", 0.95)]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(result.applied.len(), 1);
+        assert_eq!(applied_text_corrections(&result).len(), 1);
     }
 
     // M-5: the zero-length-span filter (`!f.span.is_empty()`) in fix_inner
@@ -5754,7 +5959,7 @@ mod tests {
     fn zero_length_span_fix_is_filtered_before_sort() {
         let engine = engine_with(vec![proposal("E001", 5, 5, "X")]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(result.applied.len(), 0);
+        assert_eq!(applied_text_corrections(&result).len(), 0);
         // Source unchanged: no splice was attempted.
         assert_eq!(result.source.expose_secret(), TEST_SRC);
     }
@@ -5775,9 +5980,10 @@ mod tests {
             ],
         );
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        // Only the 0.6 fix is applied.
-        assert_eq!(result.applied.len(), 1);
-        assert_eq!(result.applied[0].rule.as_str(), "E002");
+        // Only the 0.6 fix is applied. StubRule emits text-corrections.
+        let text_corrections = applied_text_corrections(&result);
+        assert_eq!(text_corrections.len(), 1);
+        assert_eq!(text_corrections[0].rule.as_str(), "E002");
         // The 0.4 fix surfaces as a remaining diagnostic.
         assert_eq!(result.remaining_diagnostics.len(), 1);
     }
@@ -6028,7 +6234,6 @@ mod tests {
     // and C-1 drops the second (overlapping) fix.
     #[test]
     fn fr016_same_span_different_rule_ids_picks_lower_rule_id() {
-        use marque_rules::AppliedFixProposal;
         // Two proposals for span 0..6 with different rule IDs.
         // "C001" < "E001" lexicographically, so C001 is kept and E001 dropped.
         let engine = engine_with(vec![
@@ -6036,32 +6241,25 @@ mod tests {
             proposal("C001", 0, 6, "AA"),
         ]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(result.applied.len(), 1);
-        assert_eq!(result.applied[0].rule.as_str(), "C001");
-        match &result.applied[0].proposal {
-            AppliedFixProposal::TextCorrection { replacement } => {
-                assert_eq!(replacement.as_str(), "AA");
-            }
-            other => panic!("expected TextCorrection, got {other:?}"),
-        }
+        // Text-correction fixes flow through `AuditLine::TextCorrection`
+        // post-cutover.
+        let text_corrections = applied_text_corrections(&result);
+        assert_eq!(text_corrections.len(), 1);
+        assert_eq!(text_corrections[0].rule.as_str(), "C001");
+        assert_eq!(text_corrections[0].replacement.as_str(), "AA");
     }
 
     // FR-016 tiebreaker — same span, same rule ID, different replacements.
     #[test]
     fn fr016_same_span_same_rule_picks_lower_replacement() {
-        use marque_rules::AppliedFixProposal;
         let engine = engine_with(vec![
             proposal("E001", 0, 6, "ZZZ"),
             proposal("E001", 0, 6, "AAA"),
         ]);
         let result = engine.fix(TEST_SRC, FixMode::Apply);
-        assert_eq!(result.applied.len(), 1);
-        match &result.applied[0].proposal {
-            AppliedFixProposal::TextCorrection { replacement } => {
-                assert_eq!(replacement.as_str(), "AAA");
-            }
-            other => panic!("expected TextCorrection, got {other:?}"),
-        }
+        let text_corrections = applied_text_corrections(&result);
+        assert_eq!(text_corrections.len(), 1);
+        assert_eq!(text_corrections[0].replacement.as_str(), "AAA");
     }
 
     // -----------------------------------------------------------------------
@@ -7143,13 +7341,13 @@ mod tests {
         );
         // Pass-1's fix was applied — at least one `AppliedFix`
         // carries the stub rule's ID.
-        let saw_stub_fix = result.applied.iter().any(|f| f.rule.as_str() == "E899");
+        let applied_view = applied_fixes(&result);
+        let saw_stub_fix = applied_view.iter().any(|f| f.rule.as_str() == "E899");
         assert!(
             saw_stub_fix,
             "stub localized FixIntent rule's fix must be promoted into AppliedFix; \
              applied: {:?}",
-            result
-                .applied
+            applied_view
                 .iter()
                 .map(|f| f.rule.as_str())
                 .collect::<Vec<_>>(),
@@ -7228,8 +7426,8 @@ mod tests {
             "DryRun must not mutate source"
         );
         assert!(!result.r002_fired);
-        let stub_fix = result
-            .applied
+        let applied_view = applied_fixes(&result);
+        let stub_fix = applied_view
             .iter()
             .find(|f| f.rule.as_str() == "E898")
             .expect("stub fix should appear in applied list");
@@ -7285,15 +7483,17 @@ mod tests {
             threshold: 0.95,
             deadline: None,
         };
-        let (apply_post, apply_applied, _) = apply_fixer
+        let (apply_post, _, apply_audit_lines) = apply_fixer
             .apply_kept_fixes(source, kept_fixes.clone(), &dummy_lint)
             .expect("apply_kept_fixes succeeds in Apply mode");
         assert_eq!(
             &*apply_post, &expected_post_buffer,
             "Apply mode: post_buffer must be the spliced result",
         );
-        for f in &apply_applied {
-            assert!(!f.dry_run, "Apply: dry_run must be false");
+        for line in &apply_audit_lines {
+            if let AuditLine::AppliedFix(f) = line {
+                assert!(!f.dry_run, "Apply: dry_run must be false");
+            }
         }
 
         // DryRun mode — the load-bearing R2-3 assertion. Pre-R2-3,
@@ -7306,7 +7506,7 @@ mod tests {
             threshold: 0.95,
             deadline: None,
         };
-        let (dry_run_post, dry_run_applied, _) = dry_run_fixer
+        let (dry_run_post, _, dry_run_audit_lines) = dry_run_fixer
             .apply_kept_fixes(source, kept_fixes, &dummy_lint)
             .expect("apply_kept_fixes succeeds in DryRun mode");
         assert_eq!(
@@ -7322,13 +7522,35 @@ mod tests {
             "DryRun post_buffer must differ from the unspliced source — \
              returning the unspliced source is the R2-3 regression"
         );
-        for f in &dry_run_applied {
-            assert!(f.dry_run, "DryRun: dry_run must be true");
+        for line in &dry_run_audit_lines {
+            if let AuditLine::AppliedFix(f) = line {
+                assert!(f.dry_run, "DryRun: dry_run must be true");
+            }
         }
 
         // Cross-mode parity at the AppliedFix (rule, span) level:
         // the promotion loop is shared, so the applied set must be
         // identical modulo the dry_run flag.
+        let apply_applied: Vec<&AppliedFix<CapcoScheme>> = apply_audit_lines
+            .iter()
+            .filter_map(|l| {
+                if let AuditLine::AppliedFix(f) = l {
+                    Some(f)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let dry_run_applied: Vec<&AppliedFix<CapcoScheme>> = dry_run_audit_lines
+            .iter()
+            .filter_map(|l| {
+                if let AuditLine::AppliedFix(f) = l {
+                    Some(f)
+                } else {
+                    None
+                }
+            })
+            .collect();
         assert_eq!(
             apply_applied.len(),
             dry_run_applied.len(),
@@ -7361,8 +7583,10 @@ mod tests {
     ) -> SynthesizedFix {
         SynthesizedFix {
             rule: RuleId::new(rule),
+            severity: Severity::Fix,
             span: Span::new(start, end),
             replacement: replacement.into(),
+            scope: Scope::Portion,
             intent: FixIntent::<CapcoScheme> {
                 replacement: ReplacementIntent::Recanonicalize {
                     scope: RecanonScope::Portion,
@@ -7605,12 +7829,11 @@ mod tests {
     // (R002 result carries pass-0 + pass-1 fixes in order, R002
     // diagnostic appended last).
     //
-    // Synthetic `AppliedFix` records here are constructed via
-    // `__engine_promote` under the Constitution V Principle V
+    // Synthetic `AuditLine::AppliedFix` records here are constructed
+    // via `__engine_promote` under the Constitution V Principle V
     // test-fixture carve-out — the fabricated fixes never flow into a
     // real audit stream; they exist to feed the assembler under test.
-
-    fn synth_applied_fix(rule: &'static str, start: usize, end: usize) -> AppliedFix<CapcoScheme> {
+    fn synth_audit_line(rule: &'static str, start: usize, end: usize) -> AuditLine<CapcoScheme> {
         let intent = FixIntent::<CapcoScheme> {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Portion,
@@ -7624,21 +7847,42 @@ mod tests {
             source: FixSource::BuiltinRule,
             migration_ref: None,
         };
+        let span = Span::new(start, end);
+        // Original-bytes slice for the synthetic record; the bytes
+        // hash inline at construction and are never stored. The
+        // EngineConstructor-minted Canonical carries the same
+        // synthetic payload.
+        let original_bytes: &[u8] = b"synth";
+        // Test-fixture carve-out per Constitution V Principle V — the
+        // `EngineConstructor` mint here mirrors the `__engine_promote`
+        // mint below; both feed `synth_audit_line` and never reach a
+        // real audit stream.
+        let constructor: EngineConstructor<CapcoScheme> =
+            EngineConstructor::<CapcoScheme>::__engine_construct();
+        let canonical = constructor.build_open_vocab(
+            CategoryId::MARKING,
+            Box::from("(S)"),
+            marque_scheme::Scope::Portion,
+        );
         // Test-fixture carve-out per Constitution V Principle V — this
         // call sits inside #[cfg(test)] and feeds the
         // `assemble_r002_result` / `contributing_pass1_rule_ids` unit
         // tests; the fabricated record is never commingled with engine
         // output.
-        AppliedFix::__engine_promote(
+        let applied = AppliedFix::__engine_promote(
             RuleId::new(rule),
-            Span::new(start, end),
+            Severity::Fix,
+            span,
             intent,
+            original_bytes,
+            canonical,
             UNIX_EPOCH + Duration::from_secs(1_700_000_000),
             None,
             false,
             None,
             engine_promotion_token(),
-        )
+        );
+        AuditLine::AppliedFix(applied)
     }
 
     #[test]
@@ -7654,9 +7898,9 @@ mod tests {
         // Three fixes: two duplicates of E006, one of C001. The helper
         // dedupes and sorts ASC. Result: [C001, E006].
         let applied = vec![
-            synth_applied_fix("E006", 0, 4),
-            synth_applied_fix("C001", 4, 8),
-            synth_applied_fix("E006", 8, 12),
+            synth_audit_line("E006", 0, 4),
+            synth_audit_line("C001", 4, 8),
+            synth_audit_line("E006", 8, 12),
         ];
         let out = fixer.contributing_pass1_rule_ids(&applied);
         let ids: Vec<&str> = out.iter().map(|id| id.as_str()).collect();
@@ -7676,11 +7920,11 @@ mod tests {
         // Five distinct IDs — only the first 4 (after sort) survive
         // the SmallVec inline cap.
         let applied = vec![
-            synth_applied_fix("E009", 0, 4),
-            synth_applied_fix("E008", 4, 8),
-            synth_applied_fix("E007", 8, 12),
-            synth_applied_fix("E006", 12, 16),
-            synth_applied_fix("C001", 16, 20),
+            synth_audit_line("E009", 0, 4),
+            synth_audit_line("E008", 4, 8),
+            synth_audit_line("E007", 8, 12),
+            synth_audit_line("E006", 12, 16),
+            synth_audit_line("C001", 16, 20),
         ];
         let out = fixer.contributing_pass1_rule_ids(&applied);
         let ids: Vec<&str> = out.iter().map(|id| id.as_str()).collect();
@@ -7716,11 +7960,11 @@ mod tests {
             deadline: None,
         };
 
-        let pass0_applied = vec![synth_applied_fix("C001", 0, 6)];
-        let pass1_applied = vec![synth_applied_fix("E006", 8, 12)];
+        let pass0_audit_lines = vec![synth_audit_line("C001", 0, 6)];
+        let pass1_audit_lines = vec![synth_audit_line("E006", 8, 12)];
         let pass1 = Pass1Result {
             post_buffer: Zeroizing::new(b"POST-PASS-1-BUFFER".to_vec()),
-            applied: pass1_applied,
+            audit_lines: pass1_audit_lines,
             applied_keys: HashSet::new(),
         };
         let lint = LintResult {
@@ -7735,12 +7979,24 @@ mod tests {
             Span::new(0, 18),
         );
         let result =
-            fixer.assemble_r002_result(pass0_applied, Vec::new(), pass1, lint, r002.clone());
+            fixer.assemble_r002_result(pass0_audit_lines, Vec::new(), pass1, lint, r002.clone());
 
-        // Order: pass0 (C001) then pass1 (E006).
-        assert_eq!(result.applied.len(), 2);
-        assert_eq!(result.applied[0].rule.as_str(), "C001");
-        assert_eq!(result.applied[1].rule.as_str(), "E006");
+        // Order: pass0 (C001) then pass1 (E006). Synth records use
+        // the `AuditLine::AppliedFix` arm regardless of rule ID (the
+        // test-fixture path doesn't route by rule).
+        assert_eq!(result.audit_lines.len(), 2);
+        let first_rule = match &result.audit_lines[0] {
+            AuditLine::AppliedFix(f) => f.rule.as_str(),
+            AuditLine::TextCorrection(tc) => tc.rule.as_str(),
+            _ => "unknown",
+        };
+        let second_rule = match &result.audit_lines[1] {
+            AuditLine::AppliedFix(f) => f.rule.as_str(),
+            AuditLine::TextCorrection(tc) => tc.rule.as_str(),
+            _ => "unknown",
+        };
+        assert_eq!(first_rule, "C001");
+        assert_eq!(second_rule, "E006");
         // R002 fired flag set.
         assert!(result.r002_fired);
         // R002 diagnostic is the last entry in remaining_diagnostics.
@@ -7768,7 +8024,7 @@ mod tests {
 
         let pass1 = Pass1Result {
             post_buffer: Zeroizing::new(b"POST-PASS-1-BUFFER".to_vec()),
-            applied: vec![synth_applied_fix("E006", 8, 12)],
+            audit_lines: vec![synth_audit_line("E006", 8, 12)],
             applied_keys: HashSet::new(),
         };
         let lint = LintResult {
@@ -7809,7 +8065,7 @@ mod tests {
         )];
         let pass1 = Pass1Result {
             post_buffer: Zeroizing::new(Vec::new()),
-            applied: Vec::new(),
+            audit_lines: Vec::new(),
             applied_keys: HashSet::new(),
         };
         let lint = LintResult {
@@ -7864,10 +8120,10 @@ mod tests {
             stub_citation(),
             Some(intent),
         );
-        let pass1_applied = vec![synth_applied_fix("E006", 8, 14)];
+        let pass1_audit_lines = vec![synth_audit_line("E006", 8, 14)];
         let pass1 = Pass1Result {
             post_buffer: Zeroizing::new(Vec::new()),
-            applied: pass1_applied,
+            audit_lines: pass1_audit_lines,
             applied_keys: HashSet::new(),
         };
         let lint = LintResult {

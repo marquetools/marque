@@ -9376,9 +9376,9 @@ mod tests {
 
 // PR 4b-E (OQ-2): `marque_capco_test_support` module retired. The
 // only consumers were the `#[cfg(any())]`-disabled `mod tests` block
-// at line 5222 (pending the `marque-mvp-3 → marque-1.0`
-// `FixProposal` migration in PR 3c.2) and the historical retired
-// integration tests at the same gate. The module was dead code at
-// the gate level even before this PR; the deletion clears the last
-// PageContext consumer in the rules layer alongside the residue-axis
-// migration in Commit 2.
+// at line 5222 (covering the legacy `FixProposal` test surface that
+// retired with the PR 3c.2.D atomic `marque-mvp-3 → marque-1.0`
+// cutover) and the historical retired integration tests at the same
+// gate. The module was dead code at the gate level even before this
+// PR; the deletion clears the last PageContext consumer in the rules
+// layer alongside the residue-axis migration in Commit 2.

@@ -139,7 +139,7 @@ compile_error!(
 use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
-use marque_rules::{AppliedFix, Diagnostic, FixSource};
+use marque_rules::{Diagnostic, FixSource};
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -332,73 +332,6 @@ fn fix_source_str(source: FixSource) -> &'static str {
     }
 }
 
-/// Schema-pinned JSON projection of `CapcoOpenVocabRef`. Mirrors the
-/// CLI's `open_vocab_ref_to_json` in `marque/src/render.rs` — CLI and
-/// WASM must emit byte-identical JSON for SC-008 parity.
-fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
-    match r {
-        marque_capco::CapcoOpenVocabRef::Sar(name) => serde_json::json!({
-            "kind": "Sar",
-            "name": name.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::SciCompartment(name) => serde_json::json!({
-            "kind": "SciCompartment",
-            "name": name.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => serde_json::json!({
-            "kind": "SciSubCompartment",
-            "name": name.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => serde_json::json!({
-            "kind": "FgiTetragraph",
-            "code": code.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::CountryCode(c) => serde_json::json!({
-            "kind": "CountryCode",
-            "code": c.as_str(),
-        }),
-    }
-}
-
-/// JSON projection of a `FactRef<CapcoScheme>`. Constitution V
-/// Principle V permits CVE token IDs and open-vocab canonical refs
-/// in audit output (token canonicals + category IDs are on the
-/// permitted-identifier list).
-fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::Value {
-    match fact {
-        marque_scheme::FactRef::Cve(token_id) => serde_json::json!({
-            "kind": "Cve",
-            "token_id": token_id.0,
-        }),
-        marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
-            "kind": "OpenVocab",
-            "ref": open_vocab_ref_to_json(r),
-        }),
-    }
-}
-
-/// Schema-pinned string projection of `Scope`. Used in the audit JSON
-/// `proposal.intent.scope` field — `Debug` would not be a stable wire
-/// format.
-fn scope_str(scope: marque_scheme::Scope) -> &'static str {
-    match scope {
-        marque_scheme::Scope::Portion => "Portion",
-        marque_scheme::Scope::Page => "Page",
-        marque_scheme::Scope::Document => "Document",
-        marque_scheme::Scope::Diff => "Diff",
-    }
-}
-
-/// Schema-pinned string projection of `RecanonScope`. Same rationale
-/// as [`scope_str`].
-fn recanon_scope_str(scope: marque_scheme::fix_intent::RecanonScope) -> &'static str {
-    match scope {
-        marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
-        marque_scheme::fix_intent::RecanonScope::Page => "Page",
-        marque_scheme::fix_intent::RecanonScope::Document => "Document",
-    }
-}
-
 fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
     DiagnosticJson {
         rule: d.rule.as_str(),
@@ -437,104 +370,180 @@ fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// Audit record JSON (marque-mvp-3)
+// `marque-1.0` audit-record JSON projection (PR 3c.2.D / D5)
 //
-// Mirrors the CLI emitter (`marque/src/render.rs`) for SC-008 parity.
-// Single accepted schema post PR 3c.B Commit 10.
+// Mirrors the CLI's `marque/src/render.rs` v1.0 surface — CLI and WASM
+// emit byte-identical NDJSON for SC-008 parity. The struct shapes are
+// duplicated verbatim per architect D-D-1 (shared `marque-audit-render`
+// crate deferred to post-PR-10); `crates/wasm/tests/audit_v1_0_parity.rs`
+// pins the byte-identity at integration-test time (PM-D-16 / R-D-1).
 // ---------------------------------------------------------------------------
 
+/// Mirrors `marque::render::AuditRecordJsonV1_0`. Contract §107-178.
 #[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-enum ProposalJson<'a> {
-    FixIntent { intent: serde_json::Value },
-    TextCorrection { replacement: &'a str },
-}
-
-#[derive(Debug, Serialize)]
-struct AuditRecordJsonV3<'a> {
+struct AuditRecordJsonV1_0<'a> {
+    #[serde(rename = "type")]
+    kind: &'static str,
     schema: &'static str,
     rule: &'a str,
-    source: &'static str,
+    severity: &'static str,
     span: SpanJson,
-    proposal: ProposalJson<'a>,
-    confidence: f32,
-    migration_ref: Option<&'a str>,
+    fix: AuditFixJsonV1_0<'a>,
+    message: AuditMessageJsonV1_0<'a>,
     timestamp: String,
     classifier_id: Option<&'a str>,
     dry_run: bool,
     input: Option<&'a str>,
-    recognition: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    runner_up_ratio: Option<f32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    features: Vec<FeatureJson>,
 }
 
 #[derive(Debug, Serialize)]
-struct FeatureJson {
-    id: &'static str,
+struct AuditFixJsonV1_0<'a> {
+    replacement: AuditReplacementJsonV1_0<'a>,
+    original_span: SpanJson,
+    original_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AuditReplacementJsonV1_0<'a> {
+    discriminant: &'static str,
+    canonical: AuditCanonicalJsonV1_0<'a>,
+    confidence: AuditConfidenceJsonV1_0<'a>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuditCanonicalJsonV1_0<'a> {
+    source: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token_id: Option<std::borrow::Cow<'a, str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    category: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    render_call_site: Option<String>,
+    bytes_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AuditConfidenceJsonV1_0<'a> {
+    recognition: f32,
+    rule: f32,
+    combined: f32,
+    region: Option<f32>,
+    runner_up_ratio: Option<f32>,
+    features: Vec<AuditFeatureJsonV1_0<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuditFeatureJsonV1_0<'a> {
+    id: &'a str,
     delta: f32,
 }
 
-fn proposal_to_json<'a>(
-    proposal: &'a marque_rules::AppliedFixProposal<CapcoScheme>,
-) -> ProposalJson<'a> {
-    match proposal {
-        marque_rules::AppliedFixProposal::FixIntent(intent) => {
-            let inner: serde_json::Value = match &intent.replacement {
-                marque_scheme::ReplacementIntent::FactAdd { token, scope } => serde_json::json!({
-                    "kind": "FactAdd",
-                    "scope": scope_str(*scope),
-                    "token": fact_ref_to_json(token),
-                }),
-                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
-                    let facts_json: Vec<serde_json::Value> =
-                        facts.iter().map(fact_ref_to_json).collect();
-                    serde_json::json!({
-                        "kind": "FactRemove",
-                        "scope": scope_str(*scope),
-                        "facts": facts_json,
-                    })
-                }
-                marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
-                    serde_json::json!({
-                        "kind": "Recanonicalize",
-                        "scope": recanon_scope_str(*scope),
-                    })
-                }
-                _ => serde_json::json!({ "kind": "Unknown" }),
-            };
-            ProposalJson::FixIntent { intent: inner }
+#[derive(Debug, Serialize)]
+struct AuditMessageJsonV1_0<'a> {
+    template: &'static str,
+    args: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip)]
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+/// Mirrors `marque::render::TextCorrectionRecordJsonV1_0`. Contract §388-402.
+#[derive(Debug, Serialize)]
+struct TextCorrectionRecordJsonV1_0<'a> {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    schema: &'static str,
+    rule: &'a str,
+    severity: &'static str,
+    span: SpanJson,
+    original_digest: String,
+    replacement: &'a str,
+    source: &'static str,
+    confidence: AuditConfidenceJsonV1_0<'a>,
+    migration_ref: Option<&'a str>,
+    message: AuditMessageJsonV1_0<'a>,
+    timestamp: String,
+    classifier_id: Option<&'a str>,
+    dry_run: bool,
+    input: Option<&'a str>,
+}
+
+fn blake3_audit_string_v1_0(hash: &blake3::Hash) -> String {
+    format!("blake3:{}", hash.to_hex())
+}
+
+fn format_timestamp_v1_0(ts: SystemTime) -> String {
+    humantime::format_rfc3339(ts).to_string()
+}
+
+/// Resolve a `CategoryId` to its lowercase scheme-name label. Mirrors
+/// the CLI's `category_label`. `CategoryId::MARKING` → `"Marking"`;
+/// scheme-registered categories project through their `Category.name`.
+fn category_label_v1_0(
+    scheme: &CapcoScheme,
+    category_id: marque_scheme::CategoryId,
+) -> &'static str {
+    use marque_scheme::MarkingScheme;
+    if category_id == marque_scheme::CategoryId::MARKING {
+        return "Marking";
+    }
+    scheme
+        .categories()
+        .iter()
+        .find(|c| c.id == category_id)
+        .map(|c| c.name)
+        .unwrap_or("unknown")
+}
+
+fn project_canonical_to_json_v1_0<'a>(
+    scheme: &'a CapcoScheme,
+    canonical: &marque_scheme::Canonical<CapcoScheme>,
+    precomputed_bytes_digest: &blake3::Hash,
+) -> AuditCanonicalJsonV1_0<'a> {
+    use marque_scheme::Vocabulary;
+    use marque_scheme::canonical::TokenSource;
+    let digest = blake3_audit_string_v1_0(precomputed_bytes_digest);
+    match canonical.source() {
+        TokenSource::Cve(token_id) => {
+            let label =
+                <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, token_id);
+            AuditCanonicalJsonV1_0 {
+                source: "cve",
+                token_id: Some(label),
+                category: None,
+                render_call_site: None,
+                bytes_digest: digest,
+            }
         }
-        marque_rules::AppliedFixProposal::TextCorrection { replacement } => {
-            ProposalJson::TextCorrection { replacement }
-        }
+        TokenSource::OpenVocab {
+            category,
+            render_call_site,
+        } => AuditCanonicalJsonV1_0 {
+            source: "open_vocab",
+            token_id: None,
+            category: Some(category_label_v1_0(scheme, *category)),
+            render_call_site: Some(format!(
+                "{}:{}",
+                render_call_site.file(),
+                render_call_site.line(),
+            )),
+            bytes_digest: digest,
+        },
     }
 }
 
-fn applied_fix_to_audit_json_v3(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV3<'_> {
-    let c = &fix.confidence;
-    AuditRecordJsonV3 {
-        schema: marque_engine::AUDIT_SCHEMA_VERSION,
-        rule: fix.rule.as_str(),
-        source: fix_source_str(fix.source),
-        span: SpanJson {
-            start: fix.span.start,
-            end: fix.span.end,
-        },
-        proposal: proposal_to_json(&fix.proposal),
-        confidence: c.combined(),
-        migration_ref: fix.migration_ref,
-        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
-        classifier_id: fix.classifier_id.as_deref(),
-        dry_run: fix.dry_run,
-        input: fix.input.as_deref(),
-        recognition: c.recognition,
-        runner_up_ratio: c.runner_up_ratio,
-        features: c
+fn project_confidence_to_json_v1_0(
+    confidence: &marque_rules::Confidence,
+) -> AuditConfidenceJsonV1_0<'_> {
+    AuditConfidenceJsonV1_0 {
+        recognition: confidence.recognition,
+        rule: confidence.rule,
+        combined: confidence.combined(),
+        region: confidence.region,
+        runner_up_ratio: confidence.runner_up_ratio,
+        features: confidence
             .features
             .iter()
-            .map(|f| FeatureJson {
+            .map(|f| AuditFeatureJsonV1_0 {
                 id: f.id.as_str(),
                 delta: f.delta,
             })
@@ -542,12 +551,212 @@ fn applied_fix_to_audit_json_v3(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJso
     }
 }
 
-fn serialize_applied_fix(
-    fix: &AppliedFix<CapcoScheme>,
+fn project_message_to_json_v1_0<'a>(
+    scheme: &'a CapcoScheme,
+    message: &marque_rules::Message,
+) -> AuditMessageJsonV1_0<'a> {
+    use marque_scheme::Vocabulary;
+    let mut args = serde_json::Map::new();
+    let m = message.args();
+    if let Some(token_id) = m.token {
+        let label =
+            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &token_id);
+        args.insert(
+            "token".to_owned(),
+            serde_json::Value::String(label.into_owned()),
+        );
+    }
+    if let Some(category_id) = m.category {
+        args.insert(
+            "category".to_owned(),
+            serde_json::Value::String(category_label_v1_0(scheme, category_id).to_owned()),
+        );
+    }
+    if let Some(span) = m.span {
+        args.insert(
+            "span".to_owned(),
+            serde_json::json!({ "start": span.start, "end": span.end }),
+        );
+    }
+    if let Some(digest) = m.digest {
+        args.insert(
+            "digest".to_owned(),
+            serde_json::Value::String(blake3_audit_string_v1_0(&digest)),
+        );
+    }
+    if let Some(ref confidence) = m.confidence {
+        args.insert(
+            "confidence".to_owned(),
+            serde_json::to_value(project_confidence_to_json_v1_0(confidence))
+                .unwrap_or(serde_json::Value::Null),
+        );
+    }
+    if let Some(expected_token) = m.expected_token {
+        let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
+            scheme,
+            &expected_token,
+        );
+        args.insert(
+            "expected_token".to_owned(),
+            serde_json::Value::String(label.into_owned()),
+        );
+    }
+    if let Some(actual_token) = m.actual_token {
+        let label =
+            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &actual_token);
+        args.insert(
+            "actual_token".to_owned(),
+            serde_json::Value::String(label.into_owned()),
+        );
+    }
+    if !m.feature_ids.is_empty() {
+        args.insert(
+            "feature_ids".to_owned(),
+            serde_json::Value::Array(
+                m.feature_ids
+                    .iter()
+                    .map(|f| serde_json::Value::String(f.as_str().to_owned()))
+                    .collect(),
+            ),
+        );
+    }
+    if !m.contributing_rule_ids.is_empty() {
+        args.insert(
+            "contributing_rule_ids".to_owned(),
+            serde_json::Value::Array(
+                m.contributing_rule_ids
+                    .iter()
+                    .map(|r| serde_json::Value::String(r.as_str().to_owned()))
+                    .collect(),
+            ),
+        );
+    }
+    AuditMessageJsonV1_0 {
+        template: message.template().as_str(),
+        args,
+        _marker: std::marker::PhantomData,
+    }
+}
+
+fn applied_fix_to_audit_json_v1_0<'a>(
+    scheme: &'a CapcoScheme,
+    fix: &'a marque_rules::audit::AppliedFix<CapcoScheme>,
+) -> AuditRecordJsonV1_0<'a> {
+    use marque_rules::audit::discriminant_from_source;
+    let replacement = AuditReplacementJsonV1_0 {
+        discriminant: discriminant_from_source(fix.source).as_str(),
+        canonical: project_canonical_to_json_v1_0(
+            scheme,
+            &fix.fix.replacement.canonical,
+            &fix.fix.replacement.bytes_digest,
+        ),
+        confidence: project_confidence_to_json_v1_0(&fix.fix.replacement.confidence),
+    };
+    let fix_detail = AuditFixJsonV1_0 {
+        replacement,
+        original_span: SpanJson {
+            start: fix.fix.original_span.start,
+            end: fix.fix.original_span.end,
+        },
+        original_digest: blake3_audit_string_v1_0(&fix.fix.original_digest),
+    };
+    AuditRecordJsonV1_0 {
+        kind: "applied_fix",
+        schema: marque_engine::AUDIT_SCHEMA_VERSION,
+        rule: fix.rule.as_str(),
+        severity: fix.severity.as_str(),
+        span: SpanJson {
+            start: fix.span.start,
+            end: fix.span.end,
+        },
+        fix: fix_detail,
+        message: project_message_to_json_v1_0(scheme, &fix.message),
+        timestamp: format_timestamp_v1_0(fix.timestamp),
+        classifier_id: fix.classifier_id.as_deref(),
+        dry_run: fix.dry_run,
+        input: fix.input.as_deref(),
+    }
+}
+
+fn text_correction_to_audit_json_v1_0<'a>(
+    scheme: &'a CapcoScheme,
+    tc: &'a marque_rules::audit::AppliedTextCorrection,
+) -> TextCorrectionRecordJsonV1_0<'a> {
+    TextCorrectionRecordJsonV1_0 {
+        kind: "text_correction",
+        schema: marque_engine::AUDIT_SCHEMA_VERSION,
+        rule: tc.rule.as_str(),
+        severity: tc.severity.as_str(),
+        span: SpanJson {
+            start: tc.span.start,
+            end: tc.span.end,
+        },
+        original_digest: blake3_audit_string_v1_0(&tc.original_digest),
+        replacement: tc.replacement.as_str(),
+        source: fix_source_str(tc.source),
+        confidence: project_confidence_to_json_v1_0(&tc.confidence),
+        migration_ref: tc.migration_ref,
+        message: project_message_to_json_v1_0(scheme, &tc.message),
+        timestamp: format_timestamp_v1_0(tc.timestamp),
+        classifier_id: tc.classifier_id.as_deref(),
+        dry_run: tc.dry_run,
+        input: tc.input.as_deref(),
+    }
+}
+
+/// Dispatch an [`AuditLine<CapcoScheme>`] to its v1.0 JSON projection.
+/// Mirrors the CLI's `audit_line_to_json_v1_0`.
+///
+/// `pub` so the SC-008 parity test at `tests/audit_v1_0_parity.rs`
+/// can compare byte-identity against the CLI's projection without
+/// reimplementing the helper in the test harness.
+pub fn audit_line_to_json_v1_0(
+    scheme: &CapcoScheme,
+    line: &marque_rules::audit::AuditLine<CapcoScheme>,
+) -> serde_json::Value {
+    use marque_rules::audit::AuditLine;
+    match line {
+        AuditLine::AppliedFix(fix) => {
+            serde_json::to_value(applied_fix_to_audit_json_v1_0(scheme, fix))
+                .unwrap_or(serde_json::Value::Null)
+        }
+        AuditLine::TextCorrection(tc) => {
+            serde_json::to_value(text_correction_to_audit_json_v1_0(scheme, tc))
+                .unwrap_or(serde_json::Value::Null)
+        }
+        // **Parallel-update requirement** (PR 3c.2.D fixup F-10).
+        // When a new `AuditLine` variant lands in
+        // `marque-rules::audit`, three call sites MUST add a
+        // corresponding arm in lockstep: the CLI renderer at
+        // `marque/src/render.rs::audit_line_to_json_v1_0`, this
+        // WASM renderer, and the canary's
+        // `render_audit_line_to_json` at
+        // `crates/engine/tests/audit_g13_canary.rs`. A silent
+        // `Value::Null` here would defeat both the SC-008 byte-
+        // identity parity test (the CLI and WASM emit shapes would
+        // diverge silently) AND the G13 content-ignorance canary
+        // (a future leak channel would emit nothing for the canary
+        // to scan and pass the sweep vacuously).
+        _ => serde_json::Value::Null,
+    }
+}
+
+/// Serialize a single `AuditLine` to the v1.0 NDJSON wire form. WASM
+/// counterpart of the CLI's `render_audit_line`. SC-008 binding
+/// constraint: this function MUST produce byte-identical output to
+/// the CLI's `render_audit_line` (modulo the trailing newline, which
+/// the renderer appends and the in-memory serialization here omits —
+/// the per-line JSON object is the byte-identity unit).
+fn serialize_audit_line_v1_0(
+    scheme: &CapcoScheme,
+    line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V3;
+    // Single accepted schema (`marque-1.0`) so dispatch is a no-op
+    // today; the const lookup is kept so a future schema bump can
+    // land via the same dispatch shape without restructuring callers.
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V1_0;
     let json =
-        serde_json::to_string(&applied_fix_to_audit_json_v3(fix)).map_err(|e| e.to_string())?;
+        serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
 }
 
@@ -931,10 +1140,19 @@ pub fn fix_native(
             let fixed_text = String::from_utf8(result.source.expose_secret().to_vec())
                 .map_err(|e| format!("invalid UTF-8 in fix output: {e}"))?;
 
+            // PR 3c.2.D / D5: emit reads from `result.audit_lines`
+            // (the marque-1.0 v2 stream). SC-008 invariant — must
+            // produce byte-identical NDJSON to the CLI's render path
+            // (`marque/src/render.rs::render_audit_line`). The
+            // parity test at `crates/wasm/tests/audit_v1_0_parity.rs`
+            // pins this. The v1 `result.applied` stream stays
+            // populated by the engine through D7; D-A5 retires it
+            // alongside the schema flip.
+            let scheme = engine.scheme();
             let applied: Vec<Box<serde_json::value::RawValue>> = result
-                .applied
+                .audit_lines
                 .iter()
-                .map(serialize_applied_fix)
+                .map(|line| serialize_audit_line_v1_0(scheme, line))
                 .collect::<Result<_, _>>()?;
 
             // Remaining diagnostics as pre-serialized raw JSON. Each diagnostic

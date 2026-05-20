@@ -5,7 +5,8 @@
 //! Output types returned by the engine's synchronous API surface.
 
 use marque_capco::CapcoScheme;
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_rules::Diagnostic;
+use marque_rules::audit::{AppliedFix, AppliedTextCorrection, AuditLine};
 use secrecy::SecretSlice;
 
 /// Result of a lint pass — diagnostics without source modification.
@@ -153,6 +154,10 @@ impl LintResult {
 }
 
 /// Result of a fix pass — modified source and audit trail.
+///
+/// `#[non_exhaustive]` so future audit-stream additions land
+/// additively without breaking external brace constructions.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct FixResult {
     /// Fixed source bytes. Preserves UTF-8 validity: the input is UTF-8, and every
@@ -168,8 +173,18 @@ pub struct FixResult {
     /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
-    /// Audit records for every fix that was applied.
-    pub applied: Vec<AppliedFix<CapcoScheme>>,
+    /// **`marque-1.0` audit stream.** Per PR 3c.2.D / PM-D-8 a
+    /// single [`AuditLine<S>`] stream preserves the FR-016
+    /// promotion-order invariant across the marking-fix channel
+    /// (`AuditLine::AppliedFix`) and the text-correction channel
+    /// (`AuditLine::TextCorrection`). The renderer projects each
+    /// line to its NDJSON record type.
+    ///
+    /// Post PR 3c.2.D (atomic cutover) this is the sole audit-output
+    /// channel. The pre-cutover `applied: Vec<AppliedFix<S>>` v1
+    /// stream retired with the `marque-mvp-3 → marque-1.0` schema
+    /// flip.
+    pub audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
     pub remaining_diagnostics: Vec<Diagnostic<CapcoScheme>>,
@@ -178,7 +193,7 @@ pub struct FixResult {
     ///
     /// - [`Self::source`] holds the post-pass-1 buffer ONLY. Pass-2
     ///   never ran, so any pass-2 fixes that would have applied are
-    ///   absent from [`Self::applied`].
+    ///   absent from [`Self::audit_lines`].
     /// - [`Self::remaining_diagnostics`] contains the R002 diagnostic
     ///   (and any other unfixed pass-1 diagnostics).
     /// - WASM / IDE consumers MUST test this field BEFORE applying
@@ -195,6 +210,55 @@ pub struct FixResult {
     /// signal would suggest collapsing to a `partial_state:
     /// PartialState` enum.
     pub r002_fired: bool,
+}
+
+impl FixResult {
+    /// Iterate marking-side audit lines (zero-alloc filter view).
+    ///
+    /// Post PR 3c.2.D (atomic cutover) the sole audit-output channel
+    /// is [`Self::audit_lines`]: a sum-type stream
+    /// (`AuditLine::AppliedFix` for marking fixes,
+    /// `AuditLine::TextCorrection` for the C001 / E006 text-
+    /// correction path). This accessor preserves the pre-cutover
+    /// read shape for consumers that only need marking fixes, so
+    /// the migration doesn't force every assertion site to pattern-
+    /// match the sum type.
+    ///
+    /// # Zero-alloc (PR 3c.2.D fixup F-3)
+    ///
+    /// Returns `impl Iterator<Item = &AppliedFix<CapcoScheme>>` —
+    /// each invocation walks [`Self::audit_lines`] lazily without
+    /// allocating an intermediate `Vec`. Callers that need `.len()`
+    /// or `.is_empty()` use `.count()` / `.next().is_none()`
+    /// respectively (or `Iterator::collect` into a local `Vec` when
+    /// the same fixes need to be visited twice). The pre-fixup
+    /// `Vec<&AppliedFix>` shape allocated on every call, which the
+    /// `crates/engine/benches/fix_latency.rs` hot path called four
+    /// times in one function body — exactly the kind of post-
+    /// stabilization breaking signature change pre-users freedom
+    /// permits.
+    #[inline]
+    pub fn applied_fixes(&self) -> impl Iterator<Item = &AppliedFix<CapcoScheme>> {
+        self.audit_lines.iter().filter_map(|line| match line {
+            AuditLine::AppliedFix(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    /// Iterate text-correction audit lines (zero-alloc filter view).
+    ///
+    /// Mirrors [`Self::applied_fixes`] for the
+    /// `AuditLine::TextCorrection` arm — C001 corrections-map fixes
+    /// and the E006-shaped deprecation-migration path. Same zero-
+    /// alloc property; same `.count()` / `.next().is_none()` idiom
+    /// for length / emptiness checks.
+    #[inline]
+    pub fn applied_text_corrections(&self) -> impl Iterator<Item = &AppliedTextCorrection> {
+        self.audit_lines.iter().filter_map(|line| match line {
+            AuditLine::TextCorrection(tc) => Some(tc),
+            _ => None,
+        })
+    }
 }
 
 #[cfg(test)]

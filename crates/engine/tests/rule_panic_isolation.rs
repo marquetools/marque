@@ -239,7 +239,7 @@ fn fix_pipeline_does_not_abort_when_a_rule_panics() {
         "AlwaysFiresRule (Z002) diagnostic must surface in fix pipeline output"
     );
     assert!(
-        result.applied.is_empty(),
+        result.applied_fixes().next().is_none(),
         "no fixes should have been applied — neither test rule emits any"
     );
 }
