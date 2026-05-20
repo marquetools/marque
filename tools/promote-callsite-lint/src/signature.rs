@@ -3,11 +3,13 @@
 
 //! Pass B — D12 / R-11 signature-shape lint.
 //!
-//! Walk every `*.rs` file under `<workspace_dir>/crates/**` and
+//! Walk every `*.rs` file under
+//! `<workspace_dir>/{crates/*/{src,tests},tests,<top-level-members>/{src,tests}}`
+//! (see [`collect_rust_files`] for the exact coverage policy) and
 //! flag every function whose signature shape matches "accepts
 //! `ParsedAttrs` and returns `CanonicalAttrs` (or
-//! `Result<CanonicalAttrs, _>`)" — outside three explicit
-//! whitelisted call sites.
+//! `Result<CanonicalAttrs, _>`)" — outside two explicit whitelisted
+//! call sites.
 //!
 //! Whitelists:
 //!

@@ -58,7 +58,7 @@ function whose signature shape is
 fn(..., ParsedAttrs<'_>, ...) -> CanonicalAttrs
 ```
 
-(or `Result<CanonicalAttrs, _>`) outside the three explicit
+(or `Result<CanonicalAttrs, _>`) outside the two explicit
 whitelisted call sites:
 
 1. **`unsafe fn`**: the Rust standard library uses the `_unchecked`
