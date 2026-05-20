@@ -5845,6 +5845,86 @@ mod tests {
         assert_eq!(banner_counts, vec![1, 1]);
     }
 
+    #[test]
+    fn parsed_markings_cache_persists_across_page_breaks() {
+        // CA-1 guard: page-break handling resets the per-page projection
+        // accumulators, but must NOT reset the per-document
+        // `parsed_markings` cache used by fix synthesis.
+        struct ParsedCacheIntentRule;
+        impl Rule<CapcoScheme> for ParsedCacheIntentRule {
+            fn id(&self) -> RuleId {
+                RuleId::new("PARSED_CACHE_TEST")
+            }
+            fn name(&self) -> &'static str {
+                "parsed-cache-test"
+            }
+            fn default_severity(&self) -> Severity {
+                Severity::Fix
+            }
+            fn check(
+                &self,
+                _attrs: &CanonicalAttrs,
+                ctx: &RuleContext,
+            ) -> Vec<Diagnostic<CapcoScheme>> {
+                if ctx.marking_type != marque_ism::MarkingType::Portion {
+                    return vec![];
+                }
+                vec![Diagnostic::with_fix_at_span(
+                    self.id(),
+                    self.default_severity(),
+                    ctx.candidate_span,
+                    ctx.candidate_span,
+                    "test intent",
+                    "TEST",
+                    FixIntent {
+                        replacement: ReplacementIntent::Recanonicalize {
+                            scope: RecanonScope::Portion,
+                        },
+                        confidence: Confidence::strict(0.99),
+                        feature_ids: SmallVec::new(),
+                        message: Message::new(
+                            MessageTemplate::BannerRollupMismatch,
+                            MessageArgs::default(),
+                        ),
+                        source: FixSource::BuiltinRule,
+                        migration_ref: None,
+                    },
+                )]
+            }
+        }
+
+        let set: Box<dyn RuleSet<CapcoScheme>> =
+            Box::new(RecorderSet(vec![Box::new(ParsedCacheIntentRule)]));
+        let engine = Engine::with_clock(
+            Config::default(),
+            vec![set],
+            marque_capco::scheme::CapcoScheme::new(),
+            Box::new(FixedClock::new(
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )),
+        )
+        .expect("default CAPCO scheme has no rewrite cycles")
+        .with_strict_recognizer();
+
+        // Two portions split by a form-feed page break. The test rule
+        // emits a FixIntent on each portion, so both candidates should
+        // populate `parsed_markings`.
+        let src = b"(S)\n\x0c(S)\n";
+        let (lint, parsed_markings) =
+            engine.lint_with_options_internal(src, &LintOptions::default());
+
+        assert!(!lint.truncated, "test fixture should not hit lint deadline");
+        assert_eq!(
+            parsed_markings.len(),
+            2,
+            "parsed_markings must retain entries from both pages; a page-break reset here would drop the first page entry"
+        );
+        assert!(
+            parsed_markings[0].0.start < parsed_markings[1].0.start,
+            "cache order must stay scanner-order sorted by Span.start"
+        );
+    }
+
     // M6: FR-016 tiebreaker — same span, different rule IDs.
     // The sort is (span.end DESC, span.start DESC, rule_id ASC, replacement ASC).
     // When two fixes target the exact same span, rule_id ASC breaks the tie,
