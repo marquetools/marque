@@ -15,7 +15,7 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::{CanonicalAttrs, ParsedAttrs};
+use marque_ism::{CanonicalAttrs, DissemControl, ParsedAttrs, MarkingClassification};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
@@ -26,6 +26,254 @@ use super::actions::*;
 use super::closure::CAPCO_CLOSURE_RULES;
 use super::predicates::*;
 use super::*;
+
+// ---------------------------------------------------------------------------
+// HOT-1: Closure early-exit axis-presence flags (issue #595)
+//
+// `ClosureAxisFlags` is a cheap snapshot of the INPUT marking's
+// presence state on axes that are NEVER written by any CAPCO closure
+// rule.  Because the closure operator is extensive (only adds facts,
+// never removes them), an axis that is empty at call-time remains
+// empty for all iterations of the Kleene fixpoint.  The flags are
+// therefore valid across all iterations without refresh.
+//
+// **Input-only axes** (never appear in any closure rule's `cone`):
+//   SAR, AEA, FGI, non-IC-dissem, `sci_markings` (structural SCI),
+//   `sci_controls` (legacy CVE SCI), classification variant.
+//
+// **Writable axes** (appear in at least one cone):
+//   `dissem_us` (NOFORN, ORCON, RELIDO are all cone facts) and
+//   `rel_to` (USA, NATO).  These are NOT captured in the flags;
+//   the closure loop reads `working` directly for them.
+//
+// Computed once at the top of `CapcoScheme::closure()` and passed to
+// `capco_rule_axis_present()`.  Zero heap allocation; the struct is
+// eight `bool`s (8 bytes on most targets with no padding).
+// ---------------------------------------------------------------------------
+
+/// Immutable snapshot of input-only axis presence for `closure()`.
+///
+/// See the "HOT-1" block comment above for the invariant guarantees.
+/// Callers MUST construct this from the *input* marking (before any
+/// fixpoint mutation) and MUST NOT reconstruct it after a fixpoint
+/// step — any axis written by a closure rule is not represented here.
+#[derive(Clone, Copy, Debug)]
+struct ClosureAxisFlags {
+    /// `sci_markings` is non-empty — presence-driven guard for the six
+    /// SCI-compartment rules (HCS-O / HCS-P-sub / SI-G / TK-BLFH /
+    /// TK-IDIT / TK-KAND).  All six scan `sci_markings` for a specific
+    /// compartment; if `sci_markings` is empty the scan is vacuously
+    /// false.  `sci_markings` is an input-only axis.
+    sci_markings_present: bool,
+    /// `sci_controls` or `sci_markings` is non-empty — presence-driven
+    /// guard for `CLOSURE_RELIDO_SCI` (`AnyInCategory(CAT_SCI)`).
+    /// Both halves of the SCI axis are input-only.
+    sci_any_present: bool,
+    /// Classification is the `Nato(_)` variant — presence-driven guard
+    /// for `CLOSURE_REL_TO_USA_NATO`.  Classification is an input-only
+    /// axis (no closure rule writes to it).
+    nato_class_present: bool,
+    /// US collateral classified (R/C/S/TS) — presence-driven guard for
+    /// `CLOSURE_RELIDO_US_CLASS`.  Classification is input-only.
+    us_collateral_classified: bool,
+    /// Any SAR program marking present — part of the trigger set for
+    /// `CLOSURE_NOFORN_CAVEATED`.  `sar_markings` is input-only.
+    sar_present: bool,
+    /// Any AEA marking present (RD / FRD / TFNI / UCNI / DCNI) — part
+    /// of the trigger set for `CLOSURE_NOFORN_CAVEATED`.  `aea_markings`
+    /// is input-only.
+    aea_present: bool,
+    /// FGI marker present (explicit `FGI` token or FGI classification
+    /// variant) — part of the trigger set for `CLOSURE_NOFORN_CAVEATED`.
+    /// Both halves are input-only.
+    fgi_present: bool,
+    /// Any non-IC dissem marking present (LIMDIS / LES / NNPI / SBU /
+    /// SSI) — part of the trigger set for `CLOSURE_NOFORN_CAVEATED`.
+    /// `non_ic_dissem` is input-only.
+    non_ic_dissem_present: bool,
+}
+
+impl ClosureAxisFlags {
+    /// Compute flags from the INPUT marking.  Must be called before any
+    /// fixpoint mutation.
+    #[inline]
+    fn from_marking(m: &CapcoMarking) -> Self {
+        use marque_ism::Classification;
+        let a = &m.0;
+        Self {
+            sci_markings_present: !a.sci_markings.is_empty(),
+            sci_any_present: !a.sci_controls.is_empty() || !a.sci_markings.is_empty(),
+            nato_class_present: matches!(&a.classification, Some(MarkingClassification::Nato(_))),
+            us_collateral_classified: a
+                .us_classification()
+                .is_some_and(|l| l != Classification::Unclassified),
+            sar_present: a.sar_markings.is_some(),
+            aea_present: !a.aea_markings.is_empty(),
+            fgi_present: a.fgi_marker.is_some()
+                || matches!(&a.classification, Some(MarkingClassification::Fgi(_))),
+            non_ic_dissem_present: !a.non_ic_dissem.is_empty(),
+        }
+    }
+
+    /// `true` if at least one input-only axis might trigger a closure
+    /// rule.  Does NOT check the writable dissem axis (ORCON / RSEN /
+    /// etc.) — the caller combines this with
+    /// `working_has_caveated_dissem_trigger` for a complete check.
+    #[inline]
+    fn any_input_axis_relevant(self) -> bool {
+        self.sci_any_present
+            || self.nato_class_present
+            || self.us_collateral_classified
+            || self.sar_present
+            || self.aea_present
+            || self.fgi_present
+            || self.non_ic_dissem_present
+    }
+}
+
+/// Returns `true` if `working.0.dissem_us` contains one of the eight
+/// dissem tokens that trigger `CLOSURE_NOFORN_CAVEATED` but are NOT in
+/// the input-only axes captured by `ClosureAxisFlags`:
+/// ORCON, ORCON-USGOV, RSEN, IMCON, PROPIN, DSEN, FISA, RAWFISA.
+///
+/// These tokens ARE potentially writable by prior closure rules (the
+/// HCS-O / HCS-P-sub / SI-G compartment rules add ORCON into
+/// `dissem_us`), so they cannot be snapshotted once in
+/// `ClosureAxisFlags`.  This function reads the current `working`
+/// state and is called inside the per-rule guard check.
+///
+/// The scan is O(|dissem_us|), which is typically ≤ 3 elements.
+#[inline]
+fn working_has_caveated_dissem_trigger(working: &CapcoMarking) -> bool {
+    working.0.dissem_us.iter().any(|d| {
+        matches!(
+            d,
+            DissemControl::Oc
+                | DissemControl::OcUsgov
+                | DissemControl::Rs
+                | DissemControl::Imc
+                | DissemControl::Pr
+                | DissemControl::Dsen
+                | DissemControl::Fisa
+                | DissemControl::Rawfisa
+        )
+    })
+}
+
+/// Returns `true` if the rule at the given index **might** fire, based
+/// on cheap axis-presence checks that avoid the more expensive
+/// `satisfies()` calls in `trigger_fires()` / `should_fire()`.
+///
+/// Only returns `false` when the rule's trigger axis is input-only
+/// (never written by any closure rule) AND the flag for that axis
+/// is `false` — meaning the axis was empty at the start of
+/// `closure()` and remains empty for all subsequent iterations.
+///
+/// The index mapping is pinned to the `CAPCO_CLOSURE_RULES` order
+/// verified by `post_pr_4b_declares_exact_10_closure_rules_in_order`.
+/// A `debug_assert!` in each arm validates the name at the matched
+/// index so catalog reorderings are caught immediately in debug
+/// builds.
+#[inline]
+fn capco_rule_axis_present(
+    idx: usize,
+    rule_name: &str,
+    flags: ClosureAxisFlags,
+    working: &CapcoMarking,
+) -> bool {
+    match idx {
+        // Row 0 — CLOSURE_NOFORN_CAVEATED ("capco/noforn-if-caveated")
+        //
+        // Triggers on SAR (input-only), AEA (input-only), FGI
+        // (input-only), non-IC-dissem (input-only), AND eight specific
+        // dissem tokens (ORCON / ORCON-USGOV / RSEN / IMCON / PROPIN /
+        // DSEN / FISA / RAWFISA) which ARE writable by the compartment
+        // rules.  We use the flags for the input-only groups and read
+        // `working` for the writable group.
+        0 => {
+            debug_assert_eq!(
+                rule_name, "capco/noforn-if-caveated",
+                "capco_rule_axis_present: index 0 rule name mismatch — \
+                 CAPCO_CLOSURE_RULES was reordered without updating the \
+                 HOT-1 guard"
+            );
+            flags.sar_present
+                || flags.aea_present
+                || flags.fgi_present
+                || flags.non_ic_dissem_present
+                || working_has_caveated_dissem_trigger(working)
+        }
+        // Rows 1-6 — per-compartment SCI implications
+        // ("capco/hcs-o-implies-noforn-orcon" / "capco/hcs-p-sub-…" /
+        //  "capco/si-g-implies-orcon" / "capco/tk-blfh-…" /
+        //  "capco/tk-idit-…" / "capco/tk-kand-…")
+        //
+        // Each rule scans `sci_markings` for a specific compartment.
+        // `sci_markings` is input-only.  A single flag check covers all
+        // six rules.
+        1..=6 => {
+            debug_assert!(
+                matches!(
+                    rule_name,
+                    "capco/hcs-o-implies-noforn-orcon"
+                        | "capco/hcs-p-sub-implies-noforn-orcon"
+                        | "capco/si-g-implies-orcon"
+                        | "capco/tk-blfh-implies-noforn"
+                        | "capco/tk-idit-implies-noforn"
+                        | "capco/tk-kand-implies-noforn"
+                ),
+                "capco_rule_axis_present: index {idx} rule name '{rule_name}' \
+                 is not a compartment-SCI rule — CAPCO_CLOSURE_RULES was \
+                 reordered without updating the HOT-1 guard",
+                idx = idx,
+                rule_name = rule_name
+            );
+            flags.sci_markings_present
+        }
+        // Row 7 — CLOSURE_REL_TO_USA_NATO
+        // ("capco/rel-to-usa-nato-if-nato-classification")
+        //
+        // Trigger: NATO classification.  Input-only.
+        7 => {
+            debug_assert_eq!(
+                rule_name, "capco/rel-to-usa-nato-if-nato-classification",
+                "capco_rule_axis_present: index 7 rule name mismatch — \
+                 CAPCO_CLOSURE_RULES was reordered without updating the \
+                 HOT-1 guard"
+            );
+            flags.nato_class_present
+        }
+        // Row 8 — CLOSURE_RELIDO_SCI
+        // ("capco/relido-if-sci-and-not-incompatible")
+        //
+        // Trigger: AnyInCategory(CAT_SCI).  Input-only.
+        8 => {
+            debug_assert_eq!(
+                rule_name, "capco/relido-if-sci-and-not-incompatible",
+                "capco_rule_axis_present: index 8 rule name mismatch — \
+                 CAPCO_CLOSURE_RULES was reordered without updating the \
+                 HOT-1 guard"
+            );
+            flags.sci_any_present
+        }
+        // Row 9 — CLOSURE_RELIDO_US_CLASS
+        // ("capco/relido-if-us-collateral-class")
+        //
+        // Trigger: TOK_US_COLLATERAL_CLASSIFIED.  Input-only.
+        9 => {
+            debug_assert_eq!(
+                rule_name, "capco/relido-if-us-collateral-class",
+                "capco_rule_axis_present: index 9 rule name mismatch — \
+                 CAPCO_CLOSURE_RULES was reordered without updating the \
+                 HOT-1 guard"
+            );
+            flags.us_collateral_classified
+        }
+        // Safety valve: any rule added beyond index 9 is evaluated
+        // without an axis guard until the guard table is extended.
+        _ => true,
+    }
+}
 
 // T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
 // implemented on `CapcoScheme`, so calling
@@ -583,21 +831,38 @@ impl MarkingScheme for CapcoScheme {
     /// guard against unbounded-growth catalog defects that slip past
     /// proptest.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
-        // PR 4b-D.2 Commit 6: cone-trigger short-circuit (architect's
-        // R-1 mitigation). If no catalog row's trigger fires on the
-        // input marking, no rule can contribute a cone fact — the
-        // closure is a no-op. Skip the fixpoint loop entirely. This
-        // is the typical case for the bench corpus (markings without
-        // SAR/RD/UCNI/FGI/ORCON/RSEN/IMCON/DSEN/LIMDIS/LES/SBU/SSI/
-        // NATO-class triggers) where the closure has nothing to add.
+        // HOT-1 (issue #595): compute input-only axis-presence flags
+        // once from the INPUT marking.  These flags are valid for all
+        // fixpoint iterations because the axes they represent are never
+        // written by any CAPCO closure rule (see `ClosureAxisFlags`
+        // doc-comment for the invariant).
         //
-        // Correctness: the short-circuit is sound because
-        // `should_fire = trigger_fires && !is_suppressed`, and
-        // `trigger_fires` is the necessary condition for any rule to
-        // contribute a fact. If `trigger_fires` is false for every
-        // rule, no rule fires, no facts are added, and the fixpoint
-        // is the input.
-        if !self.any_closure_trigger_fires(&marking) {
+        // The flags drive two early-exit layers:
+        //
+        // 1. **Pre-loop short-circuit** (replacing the previous
+        //    `any_closure_trigger_fires` call): if no input-only axis
+        //    is relevant AND `dissem_us` has no caveated trigger token,
+        //    no closure rule can fire — return immediately without
+        //    entering the fixpoint loop.
+        //
+        // 2. **Per-rule axis guard** inside the fixpoint loop
+        //    (`capco_rule_axis_present`): before calling the more
+        //    expensive `rule.should_fire()`, check whether the rule's
+        //    trigger axis is non-empty.  For rules whose triggers lie
+        //    entirely on input-only axes, the guard uses the
+        //    pre-computed flags (O(1) per check).  For rules with a
+        //    writable-axis trigger component (CLOSURE_NOFORN_CAVEATED's
+        //    ORCON/RSEN/etc. dissem triggers), the guard combines the
+        //    input-only flags with a short O(|dissem_us|) scan.
+        //
+        // Correctness: `should_fire = trigger_fires && !is_suppressed`.
+        // `capco_rule_axis_present` is a necessary condition for
+        // `trigger_fires`; returning `false` from the guard is safe
+        // when the trigger axis cannot contain any relevant token.
+        // Monotonicity of the closure operator is preserved: the guard
+        // never suppresses a rule that would have fired.
+        let flags = ClosureAxisFlags::from_marking(&marking);
+        if !flags.any_input_axis_relevant() && !working_has_caveated_dissem_trigger(&marking) {
             return marking;
         }
         let mut working = marking;
@@ -616,7 +881,12 @@ impl MarkingScheme for CapcoScheme {
             // first mutation; we must attempt every cone fact in
             // the pass, not just the first one that succeeds.
             let mut changed = false;
-            for rule in CAPCO_CLOSURE_RULES {
+            for (idx, rule) in CAPCO_CLOSURE_RULES.iter().enumerate() {
+                // HOT-1: per-rule axis guard — skip `should_fire()` when
+                // the rule's trigger axis is provably empty.
+                if !capco_rule_axis_present(idx, rule.name, flags, &working) {
+                    continue;
+                }
                 if !rule.should_fire(self, &working) {
                     continue;
                 }
@@ -726,6 +996,44 @@ impl MarkingScheme for CapcoScheme {
 }
 
 impl CapcoScheme {
+    /// Check whether any closure rule's trigger fires on `marking`,
+    /// using the `ClosureAxisFlags` fast-path to skip rules whose
+    /// trigger axis is provably empty.
+    ///
+    /// This method is retained for test assertions that need to inspect
+    /// trigger-firing without running the full fixpoint.  The production
+    /// `closure()` path no longer calls this — it computes
+    /// `ClosureAxisFlags` inline and uses them both for the pre-loop
+    /// short-circuit and the per-rule guards.
+    ///
+    /// # Correctness
+    ///
+    /// `should_fire = trigger_fires && !is_suppressed`. The closure
+    /// fixpoint only adds facts when `should_fire` is true for at
+    /// least one rule; if `trigger_fires` is false for every rule,
+    /// the fixpoint is the input. The short-circuit checks the
+    /// disjunction over rules — the cheapest possible necessary
+    /// condition.
+    ///
+    /// Suppression is NOT consulted by this predicate. A
+    /// trigger-firing-but-suppressed rule still returns `true`.
+    ///
+    /// # Cost
+    ///
+    /// O(rules × axis-flag-check) in the fast path (when input-only
+    /// axes are empty).  Falls through to O(rules × triggers-per-rule)
+    /// `satisfies` calls when at least one input-only axis is relevant.
+    #[cfg(test)]
+    pub(crate) fn any_closure_trigger_fires(&self, marking: &CapcoMarking) -> bool {
+        let flags = ClosureAxisFlags::from_marking(marking);
+        if !flags.any_input_axis_relevant() && !working_has_caveated_dissem_trigger(marking) {
+            return false;
+        }
+        CAPCO_CLOSURE_RULES.iter().enumerate().any(|(idx, rule)| {
+            capco_rule_axis_present(idx, rule.name, flags, marking)
+                && rule.trigger_fires(self, marking)
+        })
+    }
     /// PR 6c successor to `project_from_page_context` — engine-facing
     /// hot-path entry that consumes a pre-built per-page slice of
     /// portion attributes directly. The engine owns the accumulator
@@ -949,58 +1257,5 @@ impl CapcoScheme {
             }
         }
         out.0
-    }
-
-    /// PR 4b-D.2 Commit 6 — hot-path short-circuit predicate for
-    /// [`MarkingScheme::closure`].
-    ///
-    /// Returns `true` if ANY catalog row's trigger fires on `marking`.
-    /// If this returns `false`, the closure operator is guaranteed to
-    /// be a no-op (no rule can contribute a cone fact when its trigger
-    /// is unsatisfied), so the caller can skip the snapshot-and-clone
-    /// fixpoint loop entirely. This is the architect's R-1
-    /// optimization referenced in the PR 4b-D.2 brief: bench
-    /// measurement of `lint_10kb` post-hot-path-flip landed at 1.5ms
-    /// (+65% over baseline) because the closure ran on every
-    /// portion-bounded page-marking cache miss (~20 invocations per
-    /// 10KB doc), and the typical bench page has no SAR / RD / UCNI /
-    /// FGI / ORCON / RSEN / IMCON / DSEN / LIMDIS / LES / SBU / SSI /
-    /// NATO-class trigger — so the closure does an unnecessary
-    /// snapshot-and-compare every time. The short-circuit skips that
-    /// per-projection cost for the no-trigger case.
-    ///
-    /// # Correctness
-    ///
-    /// `should_fire = trigger_fires && !is_suppressed`. The closure
-    /// fixpoint only adds facts when `should_fire` is true for at
-    /// least one rule; if `trigger_fires` is false for every rule,
-    /// the fixpoint is the input. The short-circuit checks the
-    /// disjunction over rules — the cheapest possible necessary
-    /// condition.
-    ///
-    /// Suppression is NOT consulted by this predicate. A
-    /// trigger-firing-but-suppressed rule still pays the full
-    /// fixpoint loop's snapshot-and-compare cost — that's correct:
-    /// suppression may flip across iterations if another rule's
-    /// cone adds a suppressor fact, so the loop must run to
-    /// verify the fixpoint. The short-circuit specifically targets
-    /// the "trigger fires for nothing" case which is the bench
-    /// majority.
-    ///
-    /// # Worst-case cost
-    ///
-    /// O(rules × triggers-per-rule) `satisfies` calls. The current
-    /// catalog has 8 rules × ≤3 triggers each = ≤24 satisfies calls
-    /// per projection. Each `satisfies` call walks a tiny constant
-    /// number of category fields (`attrs.sar_markings.is_some()`,
-    /// `attrs.dissem_us.contains(...)`, etc.). The short-circuit
-    /// adds ≤24 bool ops to the closure entry path; the closure
-    /// itself (when not short-circuited) adds `working.clone()` per
-    /// iteration of the fixpoint, which is the cost this exists to
-    /// avoid.
-    pub(crate) fn any_closure_trigger_fires(&self, marking: &CapcoMarking) -> bool {
-        CAPCO_CLOSURE_RULES
-            .iter()
-            .any(|rule| rule.trigger_fires(self, marking))
     }
 }
