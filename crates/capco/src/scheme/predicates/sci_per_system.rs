@@ -133,7 +133,14 @@ pub(crate) fn sci_per_system_catalog_eval(
     .into_iter()
     .map(|d| ConstraintViolation {
         constraint_label: row.name,
-        message: String::from(d.message),
+        // Bridge layer per PM-C-1: render the typed `Diagnostic.message:
+        // Message` to a `String` for the ConstraintViolation
+        // (marque-scheme, graph-leaf) carrier. The audit consumer reads
+        // the structured form via the engine's bridge_constraint_diagnostic,
+        // which re-types this String into a typed `Message` at the
+        // Diagnostic emit boundary. This local render uses the closed
+        // template label — no document bytes flow through.
+        message: d.message.template().as_str().to_owned(),
         citation: row.citation,
         span: None,
         severity: None,

@@ -351,14 +351,24 @@ fn no_document_text_leaks_into_diagnostic_messages() {
     for (label, source) in &sources {
         let result = engine.lint(source);
         for d in &result.diagnostics {
+            // PR 3c.2.C C5 migrated `Diagnostic.message` from `Box<str>`
+            // → typed `Message`. Document text is no longer
+            // constructible inside `Diagnostic.message` by type — every
+            // field on `MessageArgs` is a closed-set identifier
+            // (`TokenId`/`CategoryId`/`Span`/`Blake3Hash`/`Confidence`/
+            // `FeatureId`/`RuleId`), and the only string content is the
+            // `MessageTemplate` label (a `&'static str` from the closed
+            // enum). Scan that label as the load-bearing structural
+            // pin: if a future refactor reintroduced a free-form string
+            // channel on `Message`, this scan would still catch it.
+            let template_label = d.message.template().as_str();
             for sentinel in PROSE_SENTINELS {
                 assert!(
-                    !d.message.contains(sentinel),
+                    !template_label.contains(sentinel),
                     "G13 violation: prose sentinel {sentinel:?} leaked into \
-                     Diagnostic.message (rule: {}, fixture: {label})\n\n\
-                     message: {:?}",
+                     Diagnostic.message template (rule: {}, fixture: {label})\n\n\
+                     template: {template_label}",
                     d.rule.as_str(),
-                    d.message
                 );
             }
         }
@@ -415,15 +425,21 @@ fn no_document_text_leaks_into_fix_remaining_diagnostics() {
         let result = engine.fix(source, FixMode::Apply);
         diagnostics_examined += result.remaining_diagnostics.len();
         for d in &result.remaining_diagnostics {
+            // PR 3c.2.C C5: `Diagnostic.message` is closed-template
+            // `Message`, no document text constructible by type. Scan
+            // the template label as the structural-pin equivalent of
+            // the prior `contains()` byte-substring check (see the
+            // companion `no_document_text_leaks_into_diagnostic_messages`
+            // explanation above).
+            let template_label = d.message.template().as_str();
             for sentinel in PROSE_SENTINELS {
                 assert!(
-                    !d.message.contains(sentinel),
+                    !template_label.contains(sentinel),
                     "G13 violation: prose sentinel {sentinel:?} leaked into \
-                     FixResult.remaining_diagnostics[].message \
+                     FixResult.remaining_diagnostics[].message template \
                      (rule: {}, fixture: {label})\n\n\
-                     message: {:?}",
+                     template: {template_label}",
                     d.rule.as_str(),
-                    d.message
                 );
             }
         }

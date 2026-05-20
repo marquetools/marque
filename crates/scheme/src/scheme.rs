@@ -615,10 +615,10 @@ pub trait MarkingScheme {
     /// ambiguity), and the active schema version
     /// ([`crate::SchemaVersionId`]).
     ///
-    /// At PR 3c.2.A, only `ctx.scope` is actively consumed by every
+    /// At PR 3c.2.C, only `ctx.scope` is actively consumed by every
     /// impl body; `ctx.emission_form` is always
-    /// [`crate::EmissionForm::Auto`] (the §G.1 Table 4 dispatch body
-    /// lands at PR 3c.2.B) and `ctx.schema_version` is always
+    /// [`crate::EmissionForm::Auto`] (a future PR will land the §G.1
+    /// Table 4 dispatch body) and `ctx.schema_version` is always
     /// [`crate::SchemaVersionId::MarqueMvp3`] (the cutover to
     /// `marque-1.0` lands at PR 3c.2.D). Implementations should read
     /// `ctx.scope` exactly where they used to read the bare `scope`;
@@ -713,7 +713,7 @@ pub trait MarkingScheme {
         // canonical form (the trait-level "empty on Err" guarantee).
         //
         // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
-        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
+        // a future PR will land the §G.1 Table 4 dispatch body.
         let ctx = RenderContext::new(
             crate::scope::Scope::Portion,
             crate::EmissionForm::Auto,
@@ -748,7 +748,7 @@ pub trait MarkingScheme {
     fn render_banner(&self, m: &Self::Marking) -> String {
         let mut s = String::new();
         // PR 3c.2.A: construct an `Auto + MarqueMvp3` RenderContext;
-        // the §G.1 Table 4 dispatch body lands at PR 3c.2.B.
+        // a future PR will land the §G.1 Table 4 dispatch body.
         let ctx = RenderContext::new(
             crate::scope::Scope::Page,
             crate::EmissionForm::Auto,

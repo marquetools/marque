@@ -209,7 +209,7 @@ fn discover() {
                 d.rule.as_str(),
                 d.span.start,
                 d.span.end,
-                d.message
+                d.message.template().as_str()
             );
         }
         println!();
@@ -332,7 +332,7 @@ fn lattice_corpus_fixtures_match_expected() {
                         d.rule.as_str(),
                         d.span.start,
                         d.span.end,
-                        d.message
+                        d.message.template().as_str()
                     )
                 })
                 .collect::<Vec<_>>()

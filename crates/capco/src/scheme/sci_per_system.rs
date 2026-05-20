@@ -154,7 +154,14 @@ pub(crate) struct SciPerSystemRow {
     /// Default severity (typically `Warn`).
     pub(crate) severity: marque_rules::Severity,
     /// Per-row §-citation, matching `Constraint::Custom { label }`.
+    /// PR 3c.2.C C5 retired the emission path through this field per
+    /// PM-C-1 (catalog row citations stay `&'static str` for
+    /// citation-lint scanning); use [`Self::citation_typed`] at emit
+    /// time.
     pub(crate) citation: &'static str,
+    /// Typed [`marque_rules::Citation`] used at emission time. Must
+    /// agree with [`Self::citation`].
+    pub(crate) citation_typed: marque_rules::Citation,
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +178,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         kind: SciPerSystemKind::Custom(emit_hcs_o_companions),
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p64",
+        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 64),
     },
     // Row #2 — HCS-P NOFORN (NOFORN required). §H.4 p66.
     SciPerSystemRow {
@@ -183,6 +191,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         },
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p66",
+        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 66),
     },
     // Row #3 — HCS-P sub-compartment companions (ORCON required,
     // ORCON-USGOV forbidden). §H.4 p68. NOFORN is covered by row #2.
@@ -193,6 +202,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         kind: SciPerSystemKind::Custom(emit_hcs_p_sub_companions),
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p68",
+        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 68),
     },
     // Row #4 — SI-G companions (ORCON required, ORCON-USGOV forbidden).
     // §H.4 p80.
@@ -203,9 +213,13 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         kind: SciPerSystemKind::Custom(emit_si_g_companions),
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p80",
+        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 80),
     },
     // Row #5 — TK compartment NOFORN (BLFH/IDIT/KAND require NOFORN).
     // §H.4 p87 (TK-BLFH) + p91 (TK-IDIT) + p95 (TK-KAND).
+    // Typed Citation anchors at §H.4 p87; the p91 / p95
+    // cross-references live in the row's `citation` documentation
+    // field above.
     SciPerSystemRow {
         name: "sci-per-system/TK-compartment-NOFORN",
         marking_label: "TK-{BLFH|IDIT|KAND}",
@@ -216,5 +230,6 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         },
         severity: marque_rules::Severity::Warn,
         citation: "CAPCO-2016 §H.4 p87 + p91 + p95",
+        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 87),
     },
 ];

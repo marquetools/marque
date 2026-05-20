@@ -2196,10 +2196,9 @@ fn recognize_eyes_only_block<'a>(
     // marker first to identify the trigraph-list prefix.
     let (prefix, full_form) = if let Some(p) = trimmed.strip_suffix(" EYES ONLY") {
         (p, true)
-    } else if let Some(p) = trimmed.strip_suffix(" EYES") {
-        (p, false)
     } else {
-        return None;
+        let p = trimmed.strip_suffix(" EYES")?;
+        (p, false)
     };
 
     // Prefix is the trigraph list. Must be non-empty (otherwise it's

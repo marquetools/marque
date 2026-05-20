@@ -4,11 +4,14 @@
 
 //! Typed citation surface for diagnostics.
 //!
-//! Lands in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-//! PM-5 / PM-7 as a definition-only scaffolding step. `Diagnostic.citation:
-//! &'static str` migrates to `Diagnostic.citation: Citation` at PR
-//! 3c.2.C; the pre-migration `&'static str` field continues to carry
-//! string literals at PR 3c.2.A.
+//! Landed in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
+//! PM-5 / PM-7 as a definition-only scaffolding step. PR 3c.2.C
+//! (this PR) migrates `Diagnostic.citation: &'static str` to
+//! `Diagnostic.citation: Citation` and adds the [`capco`] /
+//! [`capco_table`] const-fn ergonomic constructors plus
+//! [`AuthoritativeSource::Config`] / [`AuthoritativeSource::EngineInternal`]
+//! sentinel variants for non-CAPCO citations (corrections-map and
+//! engine-synthetic R002).
 //!
 //! # Why a typed citation surface
 //!
@@ -46,10 +49,39 @@ use core::num::{NonZeroU8, NonZeroU16};
 /// A typed citation to an authoritative source passage.
 ///
 /// `Display` emits the canonical citation-lint regex form
-/// (`§<Letter>[.<subsection>] [Table <table>] p<page>`). `document` is
-/// NOT rendered today because CAPCO-2016 is the only
-/// `AuthoritativeSource` variant; add a `[<doc-tag>]`-style prefix when
-/// a second variant lands.
+/// (`§<Letter>[.<subsection>] [Table <table>] p<page>`) for CAPCO
+/// citations and a bare `[<source>]` tag for non-CAPCO sentinels
+/// ([`AuthoritativeSource::Config`], [`AuthoritativeSource::EngineInternal`]).
+///
+/// # No `From<&str> for Citation` impl
+///
+/// `Citation` has no string-coercion constructor by design — the
+/// closed-template / typed-citation discipline of PR 3c.2.C (per
+/// `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-10) requires
+/// every citation to flow through [`Citation::new`] or one of the
+/// ergonomic const-fn helpers ([`capco`], [`capco_table`]) so the
+/// content is statically structured.
+///
+/// **No `From<&str> for Citation` impl.**
+///
+/// ```compile_fail
+/// use marque_rules::Citation;
+/// let _: Citation = "CAPCO-2016 §H.4 p61".into();
+/// ```
+///
+/// **No `From<String> for Citation` impl.**
+///
+/// ```compile_fail
+/// use marque_rules::Citation;
+/// let _: Citation = String::from("CAPCO-2016 §H.4 p61").into();
+/// ```
+///
+/// **No `Citation::from_str` method.**
+///
+/// ```compile_fail
+/// use marque_rules::Citation;
+/// let _ = Citation::from_str("CAPCO-2016 §H.4 p61");
+/// ```
 ///
 /// # Examples
 ///
@@ -101,21 +133,31 @@ impl Citation {
 
 impl fmt::Display for Citation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // `document` is NOT rendered while CAPCO-2016 is the sole
-        // AuthoritativeSource variant. Adding a second variant will
-        // require a `[CAPCO-2016]`-style prefix here so downstream
-        // consumers can disambiguate; the citation-lint regex shape at
-        // `tools/citation-lint/src/scanner.rs` does not currently
-        // accept a document prefix, so the prefix lands alongside the
-        // citation-lint update when the second variant lands.
-        write!(f, "§{}", self.section.letter.as_letter())?;
-        if let Some(sub) = self.section.subsection {
-            write!(f, ".{}", sub.get())?;
+        // CAPCO citations render with the bare `§<L>[.sub] [Table N]
+        // p<page>` shape — the canonical citation-lint regex form.
+        // Non-CAPCO sentinel variants render as `[<source>]` only,
+        // dropping the §/page suffix entirely. That keeps
+        // citation-lint a no-op for sentinel citations (no `§` to
+        // scan) and avoids tripping the resolver with meaningless
+        // section/page values per PR 3c.2.C PM-C-4.
+        match self.document {
+            AuthoritativeSource::Capco2016 => {
+                write!(f, "§{}", self.section.letter.as_letter())?;
+                if let Some(sub) = self.section.subsection {
+                    write!(f, ".{}", sub.get())?;
+                }
+                if let Some(table) = self.section.table {
+                    write!(f, " Table {}", table.get())?;
+                }
+                write!(f, " p{}", self.page.get())?;
+            }
+            AuthoritativeSource::Config => {
+                write!(f, "[config]")?;
+            }
+            AuthoritativeSource::EngineInternal => {
+                write!(f, "[engine-internal]")?;
+            }
         }
-        if let Some(table) = self.section.table {
-            write!(f, " Table {}", table.get())?;
-        }
-        write!(f, " p{}", self.page.get())?;
         Ok(())
     }
 }
@@ -239,6 +281,27 @@ pub type PageNumber = NonZeroU16;
 /// `#[non_exhaustive]` reserves grow-path for future grammars; the
 /// closed-enum shape is Constitution VIII alignment ("Every grammar
 /// has a designated primary source").
+///
+/// # Non-CAPCO sentinel variants
+///
+/// [`Self::Config`] and [`Self::EngineInternal`] are sentinel sources
+/// for citations that do NOT reference an authoritative published
+/// manual. They cover two specific engine-internal citation slots:
+///
+/// - [`Self::Config`] — the user's `.marque.toml` `[corrections]`
+///   table (`CORRECTIONS_MAP_CITATION`); not a CAPCO citation, not
+///   citation-lint-resolvable.
+/// - [`Self::EngineInternal`] — the engine-synthesized R002 re-parse
+///   failure diagnostic (`R002_CITATION`); diagnostic provenance is
+///   the engine itself, not a CAPCO passage.
+///
+/// The [`Citation::Display`] impl renders these sentinels as a bare
+/// `[<source>]` tag with NO `§<L>.<sub> p<page>` suffix — the
+/// section/page fields carry niche-saving sentinel values
+/// (`SectionLetter::A` + page `1`) that are never displayed. This
+/// design choice keeps citation-lint a no-op for sentinel citations:
+/// with no `§` substring to scan, the resolver doesn't try to
+/// validate a meaningless section/page against the CAPCO index.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthoritativeSource {
@@ -246,6 +309,125 @@ pub enum AuthoritativeSource {
     /// `crates/capco/docs/CAPCO-2016.md` (PDF original at
     /// `crates/capco/docs/original-refs/CAPCO-2016.pdf`).
     Capco2016,
+    /// User configuration source — the `.marque.toml` `[corrections]`
+    /// table. Used by the corrections-map sentinel citation
+    /// (`marque_rules::CORRECTIONS_MAP_CITATION`). Not a CAPCO
+    /// citation, so the [`Citation::Display`] impl renders this as
+    /// `[config]` with no §/page suffix.
+    Config,
+    /// Engine-synthesized diagnostic source — used by the R002
+    /// re-parse-failure diagnostic, which is produced by the engine
+    /// itself (no CAPCO passage governs it). The [`Citation::Display`]
+    /// impl renders this as `[engine-internal]` with no §/page suffix.
+    EngineInternal,
+}
+
+// ---------------------------------------------------------------------------
+// Ergonomic const-fn constructors (PR 3c.2.C PM-C-2)
+// ---------------------------------------------------------------------------
+
+/// Const-fn ergonomic constructor for CAPCO-2016 citations.
+///
+/// Use this in catalog rows, `static` constants, and `const fn` bodies
+/// to construct [`Citation`] values without the
+/// `Citation::new(AuthoritativeSource::Capco2016,
+/// SectionRef::new(SectionLetter::H).with_subsection(NonZeroU8::new(4).unwrap()),
+/// NonZeroU16::new(61).unwrap())` boilerplate.
+///
+/// `page` and `subsection` must be non-zero — `0` arguments panic at
+/// const evaluation (compile error). The const-fn `match`-based panic
+/// shape is safe (no `unsafe` block) and gives a compile-time
+/// guarantee that no invalid sentinel-zero `Citation` can be
+/// constructed.
+///
+/// # Examples
+///
+/// ```
+/// use marque_rules::{capco, Citation, SectionLetter};
+/// const SCI_GRAMMAR: Citation = capco(SectionLetter::H, 4, 61);
+/// assert_eq!(format!("{SCI_GRAMMAR}"), "§H.4 p61");
+/// ```
+pub const fn capco(letter: SectionLetter, subsection: u8, page: u16) -> Citation {
+    let subsection = match NonZeroU8::new(subsection) {
+        Some(n) => n,
+        None => panic!("capco(): subsection must be non-zero"),
+    };
+    let page = match NonZeroU16::new(page) {
+        Some(n) => n,
+        None => panic!("capco(): page must be non-zero"),
+    };
+    Citation::new(
+        AuthoritativeSource::Capco2016,
+        SectionRef::new(letter).with_subsection(subsection),
+        page,
+    )
+}
+
+/// Const-fn ergonomic constructor for bare-section CAPCO-2016
+/// citations (no numbered subsection, e.g., `§F p35`).
+///
+/// CAPCO-2016 has at least one section (§F — Legacy Control Markings)
+/// that carries no numbered subsections; the citation-index confirms
+/// `section: F` carries no `subsections:` list. The `Citation`
+/// struct supports this shape via `SectionRef::new(letter)` (the
+/// `subsection` field stays `None`); this helper exposes that
+/// construction as a const-fn ergonomic constructor parallel to
+/// [`capco`] / [`capco_table`].
+///
+/// `page` must be non-zero — a `0` argument panics at const evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use marque_rules::{capco_section, Citation, SectionLetter};
+/// const LEGACY: Citation = capco_section(SectionLetter::F, 35);
+/// assert_eq!(format!("{LEGACY}"), "§F p35");
+/// ```
+pub const fn capco_section(letter: SectionLetter, page: u16) -> Citation {
+    let page = match NonZeroU16::new(page) {
+        Some(n) => n,
+        None => panic!("capco_section(): page must be non-zero"),
+    };
+    Citation::new(
+        AuthoritativeSource::Capco2016,
+        SectionRef::new(letter),
+        page,
+    )
+}
+
+/// Const-fn ergonomic constructor for CAPCO-2016 citations that
+/// include a Table reference (e.g., `§B.3 Table 2 p21`).
+///
+/// All three numeric arguments must be non-zero — `0` arguments panic
+/// at const evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use marque_rules::{capco_table, Citation, SectionLetter};
+/// const CAVEATED_FDR: Citation = capco_table(SectionLetter::B, 3, 2, 21);
+/// assert_eq!(format!("{CAVEATED_FDR}"), "§B.3 Table 2 p21");
+/// ```
+pub const fn capco_table(letter: SectionLetter, subsection: u8, table: u8, page: u16) -> Citation {
+    let subsection = match NonZeroU8::new(subsection) {
+        Some(n) => n,
+        None => panic!("capco_table(): subsection must be non-zero"),
+    };
+    let table = match NonZeroU8::new(table) {
+        Some(n) => n,
+        None => panic!("capco_table(): table must be non-zero"),
+    };
+    let page = match NonZeroU16::new(page) {
+        Some(n) => n,
+        None => panic!("capco_table(): page must be non-zero"),
+    };
+    Citation::new(
+        AuthoritativeSource::Capco2016,
+        SectionRef::new(letter)
+            .with_subsection(subsection)
+            .with_table(table),
+        page,
+    )
 }
 
 #[cfg(test)]
@@ -308,4 +490,54 @@ mod tests {
         assert_eq!(SectionLetter::G.as_letter(), 'G');
         assert_eq!(SectionLetter::H.as_letter(), 'H');
     }
+
+    #[test]
+    fn capco_helper_constructs_subsection_citation() {
+        let c = capco(SectionLetter::H, 4, 61);
+        assert_eq!(c.document, AuthoritativeSource::Capco2016);
+        assert_eq!(c.section.letter, SectionLetter::H);
+        assert_eq!(c.section.subsection.unwrap().get(), 4);
+        assert!(c.section.table.is_none());
+        assert_eq!(c.page.get(), 61);
+        assert_eq!(format!("{c}"), "§H.4 p61");
+    }
+
+    #[test]
+    fn capco_table_helper_constructs_table_citation() {
+        let c = capco_table(SectionLetter::B, 3, 2, 21);
+        assert_eq!(c.document, AuthoritativeSource::Capco2016);
+        assert_eq!(c.section.letter, SectionLetter::B);
+        assert_eq!(c.section.subsection.unwrap().get(), 3);
+        assert_eq!(c.section.table.unwrap().get(), 2);
+        assert_eq!(c.page.get(), 21);
+        assert_eq!(format!("{c}"), "§B.3 Table 2 p21");
+    }
+
+    #[test]
+    fn config_source_renders_as_bracketed_tag() {
+        // [`AuthoritativeSource::Config`] sentinel — the §/page fields
+        // hold niche-sentinel values that Display deliberately omits.
+        let c = Citation::new(
+            AuthoritativeSource::Config,
+            SectionRef::new(SectionLetter::A),
+            NonZeroU16::new(1).unwrap(),
+        );
+        assert_eq!(format!("{c}"), "[config]");
+    }
+
+    #[test]
+    fn engine_internal_source_renders_as_bracketed_tag() {
+        let c = Citation::new(
+            AuthoritativeSource::EngineInternal,
+            SectionRef::new(SectionLetter::A),
+            NonZeroU16::new(1).unwrap(),
+        );
+        assert_eq!(format!("{c}"), "[engine-internal]");
+    }
+
+    // Compile-time pins for the const-fn helpers — both must evaluate
+    // in const context. If a constructor in the call chain stops being
+    // const-fn, these fail at compile time.
+    const _C2_HELPER_SCI: Citation = capco(SectionLetter::H, 4, 61);
+    const _C2_HELPER_TABLE: Citation = capco_table(SectionLetter::B, 3, 2, 21);
 }

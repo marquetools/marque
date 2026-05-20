@@ -65,7 +65,7 @@ fn eyes_only_with_fiveeyes_list_converts_to_rel_to() {
     assert_eq!(diags.len(), 1, "exactly one E064 diagnostic expected");
     assert_eq!(diags[0].severity, Severity::Error);
     assert!(
-        diags[0].citation.contains("§H.8 p157"),
+        format!("{}", diags[0].citation).contains("§H.8 p157"),
         "citation must cite §H.8 p157; got {:?}",
         diags[0].citation
     );
@@ -318,7 +318,7 @@ fn banner_bare_eyes_only_fires_e064_with_fvey() {
     );
     assert_eq!(diags[0].severity, Severity::Error);
     assert!(
-        diags[0].citation.contains("§H.8 p157"),
+        format!("{}", diags[0].citation).contains("§H.8 p157"),
         "citation must cite §H.8 p157; got {:?}",
         diags[0].citation
     );

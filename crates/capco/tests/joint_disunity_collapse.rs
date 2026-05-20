@@ -227,11 +227,16 @@ fn w004_fires_on_joint_disunity_banner() {
     // identified in the JOINT portion(s)" in the Derivative Use
     // bullets) is the precise migration-trigger authority. §H.7 p123
     // grounds the FGI grammar the migrated producers render under.
-    // H-6 (PR 4b-B follow-up) still applies: enforce BOTH substrings
-    // with `&&`, not `||`.
+    //
+    // PR 3c.2.C C5: typed `Citation` carries ONE §-reference per
+    // diagnostic. The rule body anchors at §H.3 p57 (the precise
+    // migration-trigger); the §H.7 p123 FGI grammar reference now
+    // lives in the rule doc comment rather than the diagnostic
+    // citation field (compare `crates/capco/src/rules.rs`
+    // JointDisunityCollapseRule). Assert only the structured anchor.
     assert!(
-        w004.citation.contains("§H.3 p57") && w004.citation.contains("§H.7 p123"),
-        "W004 citation must reference both §H.3 p57 AND §H.7 p123: {:?}",
+        format!("{}", w004.citation).contains("§H.3 p57"),
+        "W004 citation must reference §H.3 p57 (structured anchor): {:?}",
         w004.citation
     );
 }
@@ -239,13 +244,23 @@ fn w004_fires_on_joint_disunity_banner() {
 #[test]
 fn w004_message_contains_only_canonical_trigraphs() {
     // Constitution V Principle V G13: the W004 diagnostic message
-    // MUST NOT contain document bytes. The message interpolates only
-    // canonical CountryCode trigraphs (vocabulary atoms) and the
-    // §-citation literal. Verify by grepping for prose-shape
-    // artifacts that would only appear if input bytes leaked.
+    // MUST NOT contain document bytes.
+    //
+    // PR 3c.2.C C5: G13 is now structurally enforced by the closed
+    // `Message` shape — `MessageArgs` field types are restricted to
+    // `Option<TokenId>` / `Option<CategoryId>` / `Option<Span>` /
+    // `Blake3Hash` / `Confidence` / `FeatureId`; raw bytes are
+    // unrepresentable. The test purpose strengthens: instead of
+    // grepping prose for a sentinel that *could have* leaked, we
+    // verify the template + category identification (the closed-set
+    // analog of "what does the diagnostic say").
     let engine = engine_with_fixed_clock();
     // Use a distinctive surrounding prose sentinel that should NEVER
-    // appear in any diagnostic message regardless of rule.
+    // appear in any diagnostic message regardless of rule. The
+    // sentinel is kept in the source so future regressions
+    // (an accidental free-form channel added back to `Message`)
+    // would still surface via a corpus diff, but the assertion is
+    // now structural.
     let prose_sentinel = "PROSE_SENTINEL_LEAKED_INTO_DIAGNOSTIC";
     let source = format!(
         "{prose_sentinel} (//JOINT TS USA GBR) first portion.\n\
@@ -259,19 +274,24 @@ fn w004_message_contains_only_canonical_trigraphs() {
         .iter()
         .find(|d| d.rule.as_str() == "W004")
         .expect("W004 must fire on disunity page");
-    assert!(
-        !w004.message.contains(prose_sentinel),
-        "G13 violation: W004 message leaked prose sentinel: {:?}",
-        w004.message
+    // Closed-template identification: W004 fires under
+    // `BannerRollupMismatch` with `CAT_JOINT_CLASSIFICATION`. The
+    // per-trigraph identification that the prose previously carried
+    // (CAN / GBR) is dropped per PM-C-5 / PM-C-6 — the renderer
+    // re-derives runtime detail from `(source, span, marking)`.
+    use marque_capco::scheme::CAT_JOINT_CLASSIFICATION;
+    use marque_rules::MessageTemplate;
+    assert_eq!(
+        w004.message.template(),
+        MessageTemplate::BannerRollupMismatch,
+        "W004 fires under the BannerRollupMismatch template; got {:?}",
+        w004.message.template(),
     );
-    // P-9-7 (9th-pass): tightened to AND — the message MUST reference
-    // BOTH non-US producer trigraphs (GBR from portion 1, CAN from
-    // portion 2). An OR assertion would pass even if one side of the
-    // disunity union were silently dropped, masking a regression.
-    assert!(
-        w004.message.contains("CAN") && w004.message.contains("GBR"),
-        "W004 message must reference BOTH non-US producer trigraphs (CAN and GBR): {:?}",
-        w004.message
+    assert_eq!(
+        w004.message.args().category,
+        Some(CAT_JOINT_CLASSIFICATION),
+        "W004 must identify the JOINT classification category; got {:?}",
+        w004.message.args().category,
     );
 }
 
@@ -401,9 +421,12 @@ fn w004_fires_on_banner_first_via_eod_finalization() {
     );
     let w004 = w004.unwrap();
     assert_eq!(w004.severity, marque_rules::Severity::Warn);
+    // PR 3c.2.C C5: typed `Citation` carries one §-reference per
+    // diagnostic. The rule anchors at §H.3 p57; §H.7 p123 lives in
+    // the rule doc comment per PM-C-5/PM-C-6.
     assert!(
-        w004.citation.contains("§H.3 p57") && w004.citation.contains("§H.7 p123"),
-        "W004 citation must reference both §H.3 p57 AND §H.7 p123: {:?}",
+        format!("{}", w004.citation).contains("§H.3 p57"),
+        "W004 citation must reference §H.3 p57 (structured anchor): {:?}",
         w004.citation
     );
 }
