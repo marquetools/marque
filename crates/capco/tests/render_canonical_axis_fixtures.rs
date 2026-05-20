@@ -46,8 +46,16 @@ fn render(attrs: CanonicalAttrs, scope: Scope) -> String {
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(attrs);
     let mut out = String::new();
+    // PR 3c.2.A: construct a RenderContext at every render_canonical
+    // call site per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
+    // PM-9 — Auto + MarqueMvp3 preserves the pre-3c.2 byte-identity.
+    let ctx = marque_scheme::RenderContext::new(
+        scope,
+        marque_scheme::EmissionForm::Auto,
+        marque_scheme::SchemaVersionId::MarqueMvp3,
+    );
     scheme
-        .render_canonical(&marking, scope, &mut out)
+        .render_canonical(&marking, &ctx, &mut out)
         .expect("render_canonical must succeed for Portion / Page / Document");
     out
 }
@@ -781,8 +789,13 @@ fn display_only_parse_canonical_render_round_trip() {
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(canonical);
     let mut out = String::new();
+    let ctx = marque_scheme::RenderContext::new(
+        Scope::Page,
+        marque_scheme::EmissionForm::Auto,
+        marque_scheme::SchemaVersionId::MarqueMvp3,
+    );
     scheme
-        .render_canonical(&marking, Scope::Page, &mut out)
+        .render_canonical(&marking, &ctx, &mut out)
         .expect("render must succeed");
     assert_eq!(
         out, src,
@@ -816,8 +829,13 @@ fn display_only_h8_p165_commingled_portion_round_trip() {
     let scheme = CapcoScheme::new();
     let marking = CapcoMarking::from(canonical);
     let mut out = String::new();
+    let ctx = marque_scheme::RenderContext::new(
+        Scope::Page,
+        marque_scheme::EmissionForm::Auto,
+        marque_scheme::SchemaVersionId::MarqueMvp3,
+    );
     scheme
-        .render_canonical(&marking, Scope::Page, &mut out)
+        .render_canonical(&marking, &ctx, &mut out)
         .expect("render must succeed");
     assert_eq!(
         out, src,

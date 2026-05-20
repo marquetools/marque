@@ -35,7 +35,14 @@
 
 use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{CanonicalAttrs, Classification, MarkingClassification};
-use marque_scheme::{MarkingScheme, Scope};
+use marque_scheme::{EmissionForm, MarkingScheme, RenderContext, SchemaVersionId, Scope};
+
+/// Helper: build a default-mode RenderContext (Auto + MarqueMvp3) at
+/// the given scope. PR 3c.2.A: every render_canonical call site
+/// constructs explicitly per PM-6 (no `Default` impl on RenderContext).
+fn ctx(scope: Scope) -> RenderContext {
+    RenderContext::new(scope, EmissionForm::Auto, SchemaVersionId::MarqueMvp3)
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,7 +75,7 @@ fn render_canonical_portion_matches_render_portion() {
 
     // render_canonical via Scope::Portion.
     let mut canon = String::new();
-    let result = scheme.render_canonical(&marking, Scope::Portion, &mut canon);
+    let result = scheme.render_canonical(&marking, &ctx(Scope::Portion), &mut canon);
     assert!(
         result.is_ok(),
         "render_canonical(Scope::Portion) must succeed; got {result:?}"
@@ -92,7 +99,7 @@ fn render_canonical_page_matches_render_banner() {
     let banner = scheme.render_banner(&marking);
 
     let mut canon = String::new();
-    let result = scheme.render_canonical(&marking, Scope::Page, &mut canon);
+    let result = scheme.render_canonical(&marking, &ctx(Scope::Page), &mut canon);
     assert!(
         result.is_ok(),
         "render_canonical(Scope::Page) must succeed; got {result:?}"
@@ -113,7 +120,7 @@ fn render_canonical_document_matches_render_banner() {
     let banner = scheme.render_banner(&marking);
 
     let mut canon = String::new();
-    let result = scheme.render_canonical(&marking, Scope::Document, &mut canon);
+    let result = scheme.render_canonical(&marking, &ctx(Scope::Document), &mut canon);
     assert!(
         result.is_ok(),
         "render_canonical(Scope::Document) must succeed; got {result:?}"
@@ -135,7 +142,7 @@ fn render_canonical_diff_returns_err() {
     let marking = make_secret();
 
     let mut canon = String::new();
-    let result = scheme.render_canonical(&marking, Scope::Diff, &mut canon);
+    let result = scheme.render_canonical(&marking, &ctx(Scope::Diff), &mut canon);
     assert!(
         result.is_err(),
         "render_canonical(Scope::Diff) must return Err(fmt::Error); got {result:?}"
@@ -156,7 +163,7 @@ fn writer_passing_appends_does_not_clear() {
     let marking = make_secret();
 
     let mut buf = String::from("PREFIX:");
-    let result = scheme.render_canonical(&marking, Scope::Portion, &mut buf);
+    let result = scheme.render_canonical(&marking, &ctx(Scope::Portion), &mut buf);
     assert!(result.is_ok());
 
     assert!(
@@ -177,13 +184,13 @@ fn writer_can_be_reused_across_calls() {
     let mut buf = String::new();
 
     scheme
-        .render_canonical(&marking, Scope::Portion, &mut buf)
+        .render_canonical(&marking, &ctx(Scope::Portion), &mut buf)
         .unwrap();
     assert_eq!(buf, "S");
 
     buf.clear();
     scheme
-        .render_canonical(&marking, Scope::Page, &mut buf)
+        .render_canonical(&marking, &ctx(Scope::Page), &mut buf)
         .unwrap();
     assert_eq!(buf, "SECRET");
 }
@@ -210,7 +217,7 @@ fn fmt_write_into_arbitrary_writer() {
     let marking = make_secret();
 
     let mut w = CountingWriter { bytes: 0 };
-    let result = scheme.render_canonical(&marking, Scope::Page, &mut w);
+    let result = scheme.render_canonical(&marking, &ctx(Scope::Page), &mut w);
     assert!(result.is_ok());
     assert_eq!(w.bytes, "SECRET".len());
 }

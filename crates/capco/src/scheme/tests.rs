@@ -1031,5 +1031,61 @@ fn axis_mask_fgi_marker_sets_bit() {
     assert!(
         mask & (1 << CAT_FGI_MARKER.0) != 0,
         "FGI marker present → CAT_FGI_MARKER bit set"
+// ---------------------------------------------------------------------------
+// HOT-1 (issue #595) — `ClosureAxisFlags` axis-guard correctness
+// ---------------------------------------------------------------------------
+//
+// These tests verify that the HOT-1 per-rule axis guard never
+// incorrectly short-circuits a rule that should fire, and that the
+// pre-loop fast path correctly rejects markings with no triggerable
+// axis.  Semantics must be byte-identical to the pre-HOT-1 closure.
+
+/// HOT-1: `closure()` semantics are unchanged for a marking that triggers
+/// `CLOSURE_NOFORN_CAVEATED` via the ORCON dissem path (writable axis —
+/// ORCON can be added by prior compartment cone rules).  The axis guard
+/// must NOT short-circuit this path.
+#[test]
+fn hot1_closure_semantics_preserved_for_orcon_trigger() {
+    let scheme = CapcoScheme::new();
+    let mut a = mk_attrs();
+    a.dissem_us = vec![DissemControl::Oc].into();
+    let m = CapcoMarking::new(a);
+    let closed = scheme.closure(m);
+    assert!(
+        closed.0.dissem_us.iter().any(|d| d == &DissemControl::Nf),
+        "closure should inject NOFORN on ORCON — HOT-1 guard must not \
+         short-circuit the writable dissem path"
+    );
+}
+
+/// HOT-1: `closure()` is a no-op on a bare US classified marking WITH
+/// NOFORN already present — both RELIDO rules are suppressed.  The
+/// fixpoint exits after one iteration (changed = false); the output
+/// must be identical to the input.
+#[test]
+fn hot1_closure_noop_on_classified_with_noforn() {
+    let scheme = CapcoScheme::new();
+    let mut a = mk_attrs(); // US(Secret)
+    a.dissem_us = vec![DissemControl::Nf].into();
+    let before = CapcoMarking::new(a);
+    let after = scheme.closure(before.clone());
+    assert_eq!(
+        before.0.dissem_us, after.0.dissem_us,
+        "closure must be a no-op when NOFORN already present (both RELIDO \
+         rules suppressed); HOT-1 must not add spurious facts"
+    );
+}
+
+/// HOT-1: `closure()` is a no-op on a bottom marking (all axes empty).
+/// The pre-loop short-circuit from `ClosureAxisFlags` must return the
+/// input without entering the fixpoint loop.
+#[test]
+fn hot1_closure_noop_on_bottom_marking() {
+    let scheme = CapcoScheme::new();
+    let m = CapcoMarking::new(CanonicalAttrs::default());
+    let closed = scheme.closure(m.clone());
+    assert_eq!(
+        m.0, closed.0,
+        "closure on bottom marking must return input unchanged"
     );
 }

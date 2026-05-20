@@ -75,6 +75,8 @@ impl MarkingScheme for MockScheme {
     type Marking = MockMarking;
     type ParseError = MockParseError;
     type OpenVocabRef = core::convert::Infallible;
+    type Parsed<'src> = ();
+    type Canonical = ();
 
     fn name(&self) -> &str {
         "mock"
@@ -119,7 +121,7 @@ impl MarkingScheme for MockScheme {
     fn render_canonical(
         &self,
         _m: &Self::Marking,
-        _scope: Scope,
+        _ctx: &marque_scheme::RenderContext,
         _out: &mut dyn core::fmt::Write,
     ) -> core::fmt::Result {
         Ok(())

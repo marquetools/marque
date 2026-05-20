@@ -179,8 +179,13 @@ fn render_dissem_dedups_same_control_across_namespaces() {
     // Render as a page-scope banner. The dissem axis must emit a
     // single `ORCON`.
     let mut banner = String::new();
+    let page_ctx = marque_scheme::RenderContext::new(
+        Scope::Page,
+        marque_scheme::EmissionForm::Auto,
+        marque_scheme::SchemaVersionId::MarqueMvp3,
+    );
     scheme
-        .render_canonical(&marking, Scope::Page, &mut banner)
+        .render_canonical(&marking, &page_ctx, &mut banner)
         .expect("render_canonical(Scope::Page) must succeed");
 
     let orcon_count = banner.matches("ORCON").count();
@@ -197,8 +202,13 @@ fn render_dissem_dedups_same_control_across_namespaces() {
 
     // Same property at portion scope (portion form uses `OC`).
     let mut portion = String::new();
+    let portion_ctx = marque_scheme::RenderContext::new(
+        Scope::Portion,
+        marque_scheme::EmissionForm::Auto,
+        marque_scheme::SchemaVersionId::MarqueMvp3,
+    );
     scheme
-        .render_canonical(&marking, Scope::Portion, &mut portion)
+        .render_canonical(&marking, &portion_ctx, &mut portion)
         .expect("render_canonical(Scope::Portion) must succeed");
     let oc_count = portion.matches("OC").count();
     assert_eq!(
