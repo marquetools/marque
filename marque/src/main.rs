@@ -924,7 +924,7 @@ fn run_fix(
         }
 
         // Narration (suppressible with -q) — AFTER audit records.
-        let applied_count = result.applied.len();
+        let applied_count = result.audit_lines.len();
         if !common.quiet && applied_count > 0 {
             if dry_run {
                 eprintln!("{label}: would apply {applied_count} fix(es)");

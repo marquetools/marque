@@ -447,14 +447,14 @@ fn fix_explain_config_mutual_exclusion() {
 // ---------------------------------------------------------------------------
 //
 // FR-014 requires that an engine binary emit exactly one audit-record
-// schema for the lifetime of the build — never a mix of v1 and v2
-// records on the same stream. The build-layer half is enforced in
-// `crates/engine/build.rs`, which validates `MARQUE_AUDIT_SCHEMA` to a
-// closed accept-list `["marque-mvp-1", "marque-mvp-2"]` and panics on
-// anything else. This test pins the runtime-emitter half: every audit
-// record on stderr must declare the matching `schema` string, and a
-// downgrade build's records must not contaminate a non-downgrade
-// build's stream.
+// schema for the lifetime of the build — never a mix of pre-cutover
+// and post-cutover records on the same stream. The build-layer half
+// is enforced in `crates/engine/build.rs`, which validates
+// `MARQUE_AUDIT_SCHEMA` to the closed accept-list `["marque-1.0"]`
+// and panics on anything else. This test pins the runtime-emitter
+// half: every audit record on stderr must declare the matching
+// `schema` string, and any pre-cutover label (`marque-mvp-3`, etc.)
+// must not appear anywhere in the stream (FR-037 clean break).
 
 #[test]
 fn audit_stream_uses_only_one_schema_version() {
@@ -473,11 +473,13 @@ fn audit_stream_uses_only_one_schema_version() {
     );
 
     let active_schema = marque_engine::AUDIT_SCHEMA_VERSION;
-    let other_schema = if active_schema == "marque-mvp-2" {
-        "marque-mvp-1"
-    } else {
-        "marque-mvp-2"
-    };
+    // Known-rejected pre-cutover value — FR-037 clean break. If the
+    // active schema ever names this directly the build would have
+    // panicked at `crates/engine/build.rs`, so reaching this test
+    // means no contamination is possible from the build side. This
+    // pin catches a hypothetical emitter that still strings the old
+    // label into a record.
+    let other_schema = "marque-mvp-3";
 
     for line in &audit_lines {
         let parsed: serde_json::Value = serde_json::from_str(line)

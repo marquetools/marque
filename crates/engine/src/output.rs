@@ -5,8 +5,8 @@
 //! Output types returned by the engine's synchronous API surface.
 
 use marque_capco::CapcoScheme;
-use marque_rules::audit::AuditLine;
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_rules::Diagnostic;
+use marque_rules::audit::{AppliedFix, AppliedTextCorrection, AuditLine};
 use secrecy::SecretSlice;
 
 /// Result of a lint pass — diagnostics without source modification.
@@ -155,10 +155,8 @@ impl LintResult {
 
 /// Result of a fix pass — modified source and audit trail.
 ///
-/// `#[non_exhaustive]` so future audit-stream additions (v2
-/// `audit_lines`, etc.) land additively without breaking external
-/// brace constructions. Added in PR 3c.2.D / D3 ahead of the v2
-/// audit-record emit path.
+/// `#[non_exhaustive]` so future audit-stream additions land
+/// additively without breaking external brace constructions.
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct FixResult {
@@ -175,27 +173,17 @@ pub struct FixResult {
     /// (e.g. via `expose_secret().to_vec()` or `String::from_utf8`)
     /// owns the clone's lifecycle.
     pub source: SecretSlice<u8>,
-    /// Audit records for every fix that was applied.
-    ///
-    /// **v1 `marque-mvp-3` audit stream.** Retained for the
-    /// PR 3c.2.D / D3–D6 transition window: the CLI / WASM
-    /// renderers (D-A3) still read from this field, and existing
-    /// tests assert against its shape. D-A5 / D7 atomically deletes
-    /// this field and the v1 `AppliedFix<S>` outer type alongside
-    /// the `marque-mvp-3 → marque-1.0` schema flip; consumers
-    /// migrate to [`Self::audit_lines`] at D-A3 / D-A4.
-    pub applied: Vec<AppliedFix<CapcoScheme>>,
-    /// **v2 `marque-1.0` audit stream.** Per PR 3c.2.D / PM-D-8 a
+    /// **`marque-1.0` audit stream.** Per PR 3c.2.D / PM-D-8 a
     /// single [`AuditLine<S>`] stream preserves the FR-016
     /// promotion-order invariant across the marking-fix channel
     /// (`AuditLine::AppliedFix`) and the text-correction channel
     /// (`AuditLine::TextCorrection`). The renderer projects each
     /// line to its NDJSON record type.
     ///
-    /// Populated alongside [`Self::applied`] during the D3–D6
-    /// transition window: both streams carry every promoted fix in
-    /// promotion order. D-A5 / D7 retires the v1 stream once
-    /// renderers and tests migrate.
+    /// Post PR 3c.2.D (atomic cutover) this is the sole audit-output
+    /// channel. The pre-cutover `applied: Vec<AppliedFix<S>>` v1
+    /// stream retired with the `marque-mvp-3 → marque-1.0` schema
+    /// flip.
     pub audit_lines: Vec<AuditLine<CapcoScheme>>,
     /// Diagnostics that could not be auto-fixed (below confidence threshold,
     /// or require human judgment).
@@ -222,6 +210,45 @@ pub struct FixResult {
     /// signal would suggest collapsing to a `partial_state:
     /// PartialState` enum.
     pub r002_fired: bool,
+}
+
+impl FixResult {
+    /// Filter the marking-side audit lines into a borrowed view.
+    ///
+    /// Post PR 3c.2.D (atomic cutover) the sole audit-output channel
+    /// is [`Self::audit_lines`]: a sum-type stream
+    /// (`AuditLine::AppliedFix` for marking fixes,
+    /// `AuditLine::TextCorrection` for the C001 / E006 text-
+    /// correction path). This accessor preserves the pre-cutover
+    /// read shape for consumers that only need marking fixes, so
+    /// the migration doesn't force every assertion site to pattern-
+    /// match the sum type.
+    #[inline]
+    pub fn applied_fixes(&self) -> Vec<&AppliedFix<CapcoScheme>> {
+        self.audit_lines
+            .iter()
+            .filter_map(|line| match line {
+                AuditLine::AppliedFix(f) => Some(f),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Filter the text-correction audit lines into a borrowed view.
+    ///
+    /// Mirrors [`Self::applied_fixes`] for the
+    /// `AuditLine::TextCorrection` arm — C001 corrections-map fixes
+    /// and the E006-shaped deprecation-migration path.
+    #[inline]
+    pub fn applied_text_corrections(&self) -> Vec<&AppliedTextCorrection> {
+        self.audit_lines
+            .iter()
+            .filter_map(|line| match line {
+                AuditLine::TextCorrection(tc) => Some(tc),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

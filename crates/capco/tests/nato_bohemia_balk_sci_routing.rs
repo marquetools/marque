@@ -450,10 +450,13 @@ fn h7_p127_worked_example_round_trip() {
     let engine = engine_with_fixed_clock();
     let result = engine.fix(source, FixMode::Apply);
     assert!(
-        result.applied.iter().all(|af| af.rule.as_str() != "E066"),
+        result
+            .applied_fixes()
+            .iter()
+            .all(|af| af.rule.as_str() != "E066"),
         "§H.7 p127 canonical banner must NOT trigger E066; applied: {:?}",
         result
-            .applied
+            .applied_fixes()
             .iter()
             .map(|af| af.rule.as_str())
             .collect::<Vec<_>>(),

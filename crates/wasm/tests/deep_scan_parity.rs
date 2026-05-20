@@ -25,7 +25,8 @@
 
 use marque_config::Config;
 use marque_engine::{Engine, FixMode};
-use marque_rules::{AppliedFix, Diagnostic};
+use marque_rules::Diagnostic;
+use marque_rules::audit::AppliedFix;
 use marque_wasm::{fix_native, lint_native};
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -222,9 +223,9 @@ fn wasm_fix_native_emits_decoder_audit_record_on_mangled_input() {
     let native_fix = engine.fix(MANGLED_INPUT, FixMode::Apply);
     let saw_decoder_native =
         native_fix
-            .applied
+            .applied_fixes()
             .iter()
-            .any(|f: &AppliedFix<marque_capco::CapcoScheme>| {
+            .any(|f: &&AppliedFix<marque_capco::CapcoScheme>| {
                 matches!(f.source, marque_rules::FixSource::DecoderPosterior)
             });
     assert!(

@@ -227,20 +227,21 @@ fn fix_does_not_leak_core_error_content() {
     for input in adversarial_inputs() {
         let result = engine.fix(&input, FixMode::Apply);
 
-        // Every applied fix's proposal — the bytes that flow into
-        // the audit record. This is the same surface T056 covers in
+        // Every applied audit line — the bytes that flow into the
+        // audit record. This is the same surface T056 covers in
         // `audit.rs`, but with input designed to trip CoreError
         // rather than to embed prose.
-        for applied in &result.applied {
-            // Post Commit 10 the audit record carries no `original`
-            // byte field; only `TextCorrection.replacement` can hold
-            // string bytes (corpus-derived canonical token).
-            if let marque_rules::AppliedFixProposal::TextCorrection { replacement } =
-                &applied.proposal
-            {
+        //
+        // Post PR 3c.2.D the marking-side `AuditLine::AppliedFix`
+        // arm carries a sealed `Canonical<S>` payload — no free-form
+        // string surface to scan. The `AuditLine::TextCorrection`
+        // arm carries a corpus-derived `replacement: SmolStr`;
+        // that's the channel a leak would surface on.
+        for line in &result.audit_lines {
+            if let marque_rules::AuditLine::TextCorrection(tc) = line {
                 assert!(
-                    !replacement.contains(CANARY),
-                    "AppliedFix TextCorrection.replacement leaked CoreError-bearing input"
+                    !tc.replacement.contains(CANARY),
+                    "AppliedTextCorrection.replacement leaked CoreError-bearing input"
                 );
             }
         }

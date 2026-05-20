@@ -39,9 +39,9 @@
 //! (CAPCO markings are always single-line so this is a corner-case).
 
 use marque_capco::CapcoScheme;
-use marque_engine::{AUDIT_SCHEMA_IS_V3, AUDIT_SCHEMA_VERSION, LintResult};
+use marque_engine::{AUDIT_SCHEMA_IS_V1_0, AUDIT_SCHEMA_VERSION, LintResult};
+use marque_rules::Diagnostic;
 use marque_rules::audit::{AppliedTextCorrection, AuditLine, discriminant_from_source};
-use marque_rules::{AppliedFix, AppliedFixProposal, Diagnostic, FeatureContribution};
 use marque_scheme::{TokenSource, Vocabulary};
 use serde::Serialize;
 use std::path::Path;
@@ -395,76 +395,21 @@ pub fn render_human_result(
 }
 
 // ---------------------------------------------------------------------------
-// Audit record NDJSON (marque-mvp-3)
+// Audit record NDJSON (marque-1.0)
 //
 // The `schema` field is sourced from `marque_engine::AUDIT_SCHEMA_VERSION`,
 // which `crates/engine/build.rs` validates against the closed accept-list
-// `["marque-mvp-3"]`. The pre-Commit-10 `mvp-1` / `mvp-2` shapes (with
-// top-level `original` / `replacement` byte fields) retired alongside
-// `FixProposal` to close the G13 audit-content-ignorance channel.
+// `["marque-1.0"]`. PR 3c.2.D retired the pre-cutover `mvp-1` / `mvp-2` /
+// `mvp-3` shapes atomically with the v2 `AppliedFix` reshape, BLAKE3
+// digesting, closed `MessageTemplate` JSON serialization, and
+// `Canonical<S>` provenance wiring, to close the G13 audit-content-
+// ignorance channel structurally.
 //
 // FR-014 (single-schema-per-build) is upheld at two layers:
 //   1. `crates/engine/build.rs` panics on unknown values — only the
 //      accepted version can reach the emitter.
 //   2. The emitter chooses the matching struct shape from the const.
 // ---------------------------------------------------------------------------
-
-/// JSON projection of the `proposal` sub-object on a `marque-mvp-3`
-/// audit record. Discriminated by `kind`:
-///
-///   - `"kind": "FixIntent"` carries a structural fact-set delta.
-///   - `"kind": "TextCorrection"` carries the canonical replacement
-///     bytes for the C001 / `[corrections]` map path (a Constitution
-///     V Principle V permitted identifier — corpus-derived token
-///     canonical, never document content).
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-pub enum ProposalJson {
-    FixIntent { intent: serde_json::Value },
-    TextCorrection { replacement: String },
-}
-
-/// JSON projection of an `AppliedFix` conforming to the
-/// `marque-mvp-3` audit-record contract.
-///
-/// **PR 3c.2.D / D4 transition**: kept alive through D2-D7; D-A5 /
-/// D7 deletes alongside the v1 stream.
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-pub struct AuditRecordJsonV3 {
-    pub schema: &'static str,
-    pub rule: String,
-    pub source: &'static str,
-    pub span: SpanJson,
-    pub proposal: ProposalJson,
-    pub confidence: f32,
-    pub migration_ref: Option<String>,
-    pub timestamp: String,
-    pub classifier_id: Option<String>,
-    pub dry_run: bool,
-    pub input: Option<String>,
-    /// Recognition posterior. `1.0` for strict-path fixes;
-    /// `<1.0` for decoder-sourced fixes.
-    pub recognition: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub runner_up_ratio: Option<f32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub features: Vec<FeatureJson>,
-}
-
-/// JSON projection of a [`FeatureContribution`] for the audit record.
-#[derive(Debug, Serialize)]
-pub struct FeatureJson {
-    pub id: &'static str,
-    pub delta: f32,
-}
-
-fn feature_to_json(feature: &FeatureContribution) -> FeatureJson {
-    FeatureJson {
-        id: feature.id.as_str(),
-        delta: feature.delta,
-    }
-}
 
 fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
     match source {
@@ -473,58 +418,6 @@ fn fix_source_str(source: marque_rules::FixSource) -> &'static str {
         marque_rules::FixSource::MigrationTable => "MigrationTable",
         marque_rules::FixSource::DecoderPosterior => "DecoderPosterior",
         marque_rules::FixSource::DecoderClassificationHeuristic => "DecoderClassificationHeuristic",
-    }
-}
-
-/// Schema-pinned JSON projection of `CapcoOpenVocabRef`. Each variant
-/// is encoded as a discriminated object so downstream consumers can
-/// parse without Debug-string heuristics — `Debug` would not be a
-/// stable wire format (variant renames or `#[derive(Debug)]`
-/// regenerations would silently change the JSON). The string
-/// payloads are SAR program identifiers, SCI compartment names, FGI
-/// tetragraphs, and structural CountryCodes — all on Constitution V
-/// Principle V's permitted-identifier list (token canonicals from
-/// agency-allocated vocabularies + structural codes).
-fn open_vocab_ref_to_json(r: &marque_capco::CapcoOpenVocabRef) -> serde_json::Value {
-    match r {
-        marque_capco::CapcoOpenVocabRef::Sar(name) => serde_json::json!({
-            "kind": "Sar",
-            "name": name.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::SciCompartment(name) => serde_json::json!({
-            "kind": "SciCompartment",
-            "name": name.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::SciSubCompartment(name) => serde_json::json!({
-            "kind": "SciSubCompartment",
-            "name": name.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::FgiTetragraph(code) => serde_json::json!({
-            "kind": "FgiTetragraph",
-            "code": code.as_ref(),
-        }),
-        marque_capco::CapcoOpenVocabRef::CountryCode(c) => serde_json::json!({
-            "kind": "CountryCode",
-            "code": c.as_str(),
-        }),
-    }
-}
-
-/// JSON projection of a `FactRef<CapcoScheme>`. Discriminated by
-/// `kind`. Constitution V Principle V permits emitting CVE token IDs
-/// and category IDs (closed-vocabulary identifiers) and open-vocab
-/// canonical refs (vocab-canonical, not document bytes) in audit
-/// output — these are explicitly on the permitted-identifier list.
-fn fact_ref_to_json(fact: &marque_scheme::FactRef<CapcoScheme>) -> serde_json::Value {
-    match fact {
-        marque_scheme::FactRef::Cve(token_id) => serde_json::json!({
-            "kind": "Cve",
-            "token_id": token_id.0,
-        }),
-        marque_scheme::FactRef::OpenVocab(r) => serde_json::json!({
-            "kind": "OpenVocab",
-            "ref": open_vocab_ref_to_json(r),
-        }),
     }
 }
 
@@ -549,155 +442,20 @@ fn intent_kind_str(intent: &marque_scheme::ReplacementIntent<CapcoScheme>) -> &'
     }
 }
 
-/// Schema-pinned string projection of `Scope`. Used in the audit JSON
-/// `proposal.intent.scope` field — `Debug` would not be a stable wire
-/// format (small refactors / variant renames would change the JSON
-/// silently).
-fn scope_str(scope: marque_scheme::Scope) -> &'static str {
-    match scope {
-        marque_scheme::Scope::Portion => "Portion",
-        marque_scheme::Scope::Page => "Page",
-        marque_scheme::Scope::Document => "Document",
-        marque_scheme::Scope::Diff => "Diff",
-    }
-}
-
-/// Schema-pinned string projection of `RecanonScope`. Same rationale
-/// as [`scope_str`].
-fn recanon_scope_str(scope: marque_scheme::fix_intent::RecanonScope) -> &'static str {
-    match scope {
-        marque_scheme::fix_intent::RecanonScope::Portion => "Portion",
-        marque_scheme::fix_intent::RecanonScope::Page => "Page",
-        marque_scheme::fix_intent::RecanonScope::Document => "Document",
-    }
-}
-
-#[allow(dead_code)]
-fn proposal_to_json(proposal: &AppliedFixProposal<CapcoScheme>) -> ProposalJson {
-    match proposal {
-        AppliedFixProposal::FixIntent(intent) => {
-            // FixIntent doesn't `derive(Serialize)`; encode the
-            // replacement variant + scope into a structured JSON
-            // object that downstream consumers can match on. The
-            // shape mirrors the `ReplacementIntent` enum
-            // discriminator.
-            let inner: serde_json::Value = match &intent.replacement {
-                marque_scheme::ReplacementIntent::FactAdd { token, scope } => {
-                    serde_json::json!({
-                        "kind": "FactAdd",
-                        "scope": scope_str(*scope),
-                        "token": fact_ref_to_json(token),
-                    })
-                }
-                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
-                    let facts_json: Vec<serde_json::Value> =
-                        facts.iter().map(fact_ref_to_json).collect();
-                    serde_json::json!({
-                        "kind": "FactRemove",
-                        "scope": scope_str(*scope),
-                        "facts": facts_json,
-                    })
-                }
-                marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
-                    serde_json::json!({
-                        "kind": "Recanonicalize",
-                        "scope": recanon_scope_str(*scope),
-                    })
-                }
-                _ => {
-                    tracing::warn!(
-                        target: "marque::render",
-                        "unrecognized ReplacementIntent variant in audit projection; downstream consumers will see kind=\"Unknown\""
-                    );
-                    serde_json::json!({ "kind": "Unknown" })
-                }
-            };
-            ProposalJson::FixIntent { intent: inner }
-        }
-        AppliedFixProposal::TextCorrection { replacement } => ProposalJson::TextCorrection {
-            replacement: replacement.to_string(),
-        },
-    }
-}
-
-/// Convert an `AppliedFix` to the v3 JSON audit record shape.
-///
-/// **PR 3c.2.D / D4 transition**: this function and the surrounding
-/// v3 shape stay alive through the D2-D7 transition window but no
-/// longer feed the CLI's emit path — `main.rs` reads from
-/// `FixResult.audit_lines` via [`render_audit_line`] instead. D-A5 /
-/// D7 deletes this function atomically with the schema flip.
-#[allow(dead_code)]
-pub fn applied_fix_to_audit_json_v3(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV3 {
-    let c = &fix.confidence;
-    AuditRecordJsonV3 {
-        schema: AUDIT_SCHEMA_VERSION,
-        rule: fix.rule.as_str().to_owned(),
-        source: fix_source_str(fix.source),
-        span: SpanJson {
-            start: fix.span.start,
-            end: fix.span.end,
-        },
-        proposal: proposal_to_json(&fix.proposal),
-        confidence: c.combined(),
-        migration_ref: fix.migration_ref.map(|s| s.to_owned()),
-        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
-        classifier_id: fix.classifier_id.as_ref().map(|s| s.to_string()),
-        dry_run: fix.dry_run,
-        input: fix.input.as_ref().map(|s| s.to_string()),
-        recognition: c.recognition,
-        runner_up_ratio: c.runner_up_ratio,
-        features: c.features.iter().map(feature_to_json).collect(),
-    }
-}
-
-/// Emit a single audit record as NDJSON to `stderr`.
-///
-/// Single accepted schema (`marque-mvp-3`) so dispatch is a no-op;
-/// the const lookup is kept so a future schema bump can land via the
-/// same dispatch shape without restructuring callers.
-///
-/// **PR 3c.2.D / D4 transition**: kept alive through D2-D7. The CLI
-/// emits via [`render_audit_line`] now (reads `audit_lines` instead
-/// of `applied`); this function survives so the v1 test fixture in
-/// the same file continues to compile. D-A5 / D7 deletes it.
-#[allow(dead_code)]
-pub fn render_audit_record(
-    stderr: &mut dyn std::io::Write,
-    fix: &AppliedFix<CapcoScheme>,
-) -> std::io::Result<()> {
-    let _ = AUDIT_SCHEMA_IS_V3;
-    let serialized = serde_json::to_vec(&applied_fix_to_audit_json_v3(fix));
-    match serialized {
-        Ok(mut buf) => {
-            buf.push(b'\n');
-            stderr.write_all(&buf)
-        }
-        Err(e) => {
-            render_audit_error_frame(stderr, fix.rule.as_str(), &e.to_string())?;
-            Err(std::io::Error::other(format!(
-                "audit record serialization failed for rule {}: {e}",
-                fix.rule
-            )))
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
-// `marque-1.0` audit-record JSON projection (PR 3c.2.D / D4)
+// `marque-1.0` audit-record JSON projection (PR 3c.2.D)
 //
 // Per `specs/006-engine-rule-refactor/contracts/audit-record.md` body §
-// (post-keystone target). The projection sits parallel to the v3 (mvp-3)
-// shape during the D2-D7 transition window; D7 retires the v3 path
-// atomically with the schema flip.
+// (active spec post-cutover). The CLI emit path reads
+// `FixResult.audit_lines` via `render_audit_line`.
 //
 // SC-008 invariant: byte-identical NDJSON output between the CLI
 // (`marque/src/render.rs`) and WASM (`crates/wasm/src/lib.rs`) emitters.
 // The two crates carry parallel struct definitions deliberately (per
 // architect D-D-1 — shared `marque-audit-render` crate deferred to
 // post-PR-10). The WASM-side mirror in `crates/wasm/src/lib.rs` MUST
-// stay byte-identical; the new `crates/wasm/tests/audit_v1_0_parity.rs`
-// fixture pins this at integration-test time.
+// stay byte-identical; `crates/wasm/tests/audit_v1_0_parity.rs`
+// pins this at integration-test time.
 // ---------------------------------------------------------------------------
 
 /// JSON projection of a `marque-1.0` `AppliedFix<CapcoScheme>` audit
@@ -1149,6 +907,10 @@ pub fn render_audit_line(
     scheme: &CapcoScheme,
     line: &AuditLine<CapcoScheme>,
 ) -> std::io::Result<()> {
+    // Single accepted schema (`marque-1.0`) so dispatch is a no-op
+    // today; the const lookup is kept so a future schema bump can
+    // land via the same dispatch shape without restructuring callers.
+    let _ = AUDIT_SCHEMA_IS_V1_0;
     let rule_id: &str = match line {
         AuditLine::AppliedFix(fix) => fix.rule.as_str(),
         AuditLine::TextCorrection(tc) => tc.rule.as_str(),

@@ -5,12 +5,12 @@
 //! Build script for `marque-engine`.
 //!
 //! Selects the audit-record schema version emitted by `Engine::fix`.
-//! Post PR 3c.B Commit 10 the accept-list is a single value:
-//! `["marque-mvp-3"]`. The legacy `mvp-1` / `mvp-2` shapes retired
-//! atomically with the `FixProposal` cleanup; their structural
-//! envelope (top-level `original` / `replacement` fields) is no
-//! longer representable. A single build emits exactly one schema
-//! version per FR-014 and R4.
+//! Post PR 3c.2.D (atomic cutover) the accept-list is a single value:
+//! `["marque-1.0"]`. The legacy `mvp-1` / `mvp-2` / `mvp-3` shapes
+//! retired atomically with the v2 `AppliedFix` reshape and BLAKE3
+//! digesting; their structural envelopes are no longer representable.
+//! A single build emits exactly one schema version per FR-014 and
+//! FR-037 (clean break, no marque-audit-reader crate).
 //!
 //! The value is surfaced to downstream code via
 //! `env!("MARQUE_AUDIT_SCHEMA")`. Rebuilds are triggered when the
@@ -21,8 +21,8 @@ fn main() {
     // or removing a value MUST coordinate with audit-emit paths.
     // `crates/engine/tests/audit_schema_accept_list.rs` regression-
     // pins this verbatim.
-    const ACCEPTED: &[&str] = &["marque-mvp-3"];
-    const DEFAULT: &str = "marque-mvp-3";
+    const ACCEPTED: &[&str] = &["marque-1.0"];
+    const DEFAULT: &str = "marque-1.0";
 
     let schema = std::env::var("MARQUE_AUDIT_SCHEMA").unwrap_or_else(|_| DEFAULT.to_string());
 

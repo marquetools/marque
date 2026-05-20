@@ -139,7 +139,7 @@ compile_error!(
 use marque_capco::CapcoScheme;
 use marque_config::Config;
 use marque_engine::{Clock, Engine, EngineError, FixMode, FixOptions, Instant, LintOptions};
-use marque_rules::{AppliedFix, Diagnostic, FixSource};
+use marque_rules::{Diagnostic, FixSource};
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -434,121 +434,6 @@ fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
             (None, None) => None,
         },
     }
-}
-
-// ---------------------------------------------------------------------------
-// Audit record JSON (marque-mvp-3)
-//
-// Mirrors the CLI emitter (`marque/src/render.rs`) for SC-008 parity.
-// Single accepted schema post PR 3c.B Commit 10.
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-enum ProposalJson<'a> {
-    FixIntent { intent: serde_json::Value },
-    TextCorrection { replacement: &'a str },
-}
-
-#[derive(Debug, Serialize)]
-struct AuditRecordJsonV3<'a> {
-    schema: &'static str,
-    rule: &'a str,
-    source: &'static str,
-    span: SpanJson,
-    proposal: ProposalJson<'a>,
-    confidence: f32,
-    migration_ref: Option<&'a str>,
-    timestamp: String,
-    classifier_id: Option<&'a str>,
-    dry_run: bool,
-    input: Option<&'a str>,
-    recognition: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    runner_up_ratio: Option<f32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    features: Vec<FeatureJson>,
-}
-
-#[derive(Debug, Serialize)]
-struct FeatureJson {
-    id: &'static str,
-    delta: f32,
-}
-
-fn proposal_to_json<'a>(
-    proposal: &'a marque_rules::AppliedFixProposal<CapcoScheme>,
-) -> ProposalJson<'a> {
-    match proposal {
-        marque_rules::AppliedFixProposal::FixIntent(intent) => {
-            let inner: serde_json::Value = match &intent.replacement {
-                marque_scheme::ReplacementIntent::FactAdd { token, scope } => serde_json::json!({
-                    "kind": "FactAdd",
-                    "scope": scope_str(*scope),
-                    "token": fact_ref_to_json(token),
-                }),
-                marque_scheme::ReplacementIntent::FactRemove { scope, facts } => {
-                    let facts_json: Vec<serde_json::Value> =
-                        facts.iter().map(fact_ref_to_json).collect();
-                    serde_json::json!({
-                        "kind": "FactRemove",
-                        "scope": scope_str(*scope),
-                        "facts": facts_json,
-                    })
-                }
-                marque_scheme::ReplacementIntent::Recanonicalize { scope } => {
-                    serde_json::json!({
-                        "kind": "Recanonicalize",
-                        "scope": recanon_scope_str(*scope),
-                    })
-                }
-                _ => serde_json::json!({ "kind": "Unknown" }),
-            };
-            ProposalJson::FixIntent { intent: inner }
-        }
-        marque_rules::AppliedFixProposal::TextCorrection { replacement } => {
-            ProposalJson::TextCorrection { replacement }
-        }
-    }
-}
-
-fn applied_fix_to_audit_json_v3(fix: &AppliedFix<CapcoScheme>) -> AuditRecordJsonV3<'_> {
-    let c = &fix.confidence;
-    AuditRecordJsonV3 {
-        schema: marque_engine::AUDIT_SCHEMA_VERSION,
-        rule: fix.rule.as_str(),
-        source: fix_source_str(fix.source),
-        span: SpanJson {
-            start: fix.span.start,
-            end: fix.span.end,
-        },
-        proposal: proposal_to_json(&fix.proposal),
-        confidence: c.combined(),
-        migration_ref: fix.migration_ref,
-        timestamp: humantime::format_rfc3339(fix.timestamp).to_string(),
-        classifier_id: fix.classifier_id.as_deref(),
-        dry_run: fix.dry_run,
-        input: fix.input.as_deref(),
-        recognition: c.recognition,
-        runner_up_ratio: c.runner_up_ratio,
-        features: c
-            .features
-            .iter()
-            .map(|f| FeatureJson {
-                id: f.id.as_str(),
-                delta: f.delta,
-            })
-            .collect(),
-    }
-}
-
-fn serialize_applied_fix(
-    fix: &AppliedFix<CapcoScheme>,
-) -> Result<Box<serde_json::value::RawValue>, String> {
-    let _ = marque_engine::AUDIT_SCHEMA_IS_V3;
-    let json =
-        serde_json::to_string(&applied_fix_to_audit_json_v3(fix)).map_err(|e| e.to_string())?;
-    serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +805,10 @@ fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
+    // Single accepted schema (`marque-1.0`) so dispatch is a no-op
+    // today; the const lookup is kept so a future schema bump can
+    // land via the same dispatch shape without restructuring callers.
+    let _ = marque_engine::AUDIT_SCHEMA_IS_V1_0;
     let json =
         serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())

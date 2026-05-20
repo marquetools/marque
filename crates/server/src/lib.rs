@@ -777,7 +777,7 @@ pub async fn fix_handler(
                 .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
             Ok(Json(FixResponse {
                 fixed_text: fixed,
-                applied_count: result.applied.len(),
+                applied_count: result.audit_lines.len(),
                 remaining_diagnostics: result.remaining_diagnostics.len(),
             })
             .into_response())

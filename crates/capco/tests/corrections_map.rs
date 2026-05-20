@@ -62,20 +62,19 @@ fn c001_pass1_dispatch_noop_after_pass0() {
     let source = b"(TS//SERCET//NF)";
     let result = engine.fix(source, FixMode::Apply);
 
-    let c001_count = result
-        .applied
+    let text_corrections = result.applied_text_corrections();
+    let c001_count = text_corrections
         .iter()
-        .filter(|f| f.rule.as_str() == "C001")
+        .filter(|tc| tc.rule.as_str() == "C001")
         .count();
     assert_eq!(
         c001_count,
         1,
         "C001 fires exactly once (pass-0 only); pass-1 dispatch \
-         is a no-op after pass-0 rewrote the source. Applied: {:?}",
-        result
-            .applied
+         is a no-op after pass-0 rewrote the source. Text corrections: {:?}",
+        text_corrections
             .iter()
-            .map(|f| f.rule.as_str())
+            .map(|tc| tc.rule.as_str())
             .collect::<Vec<_>>()
     );
     // Sanity: the output buffer contains the corrected token.
@@ -102,9 +101,9 @@ fn c001_self_correction_filtered_at_pass0() {
     let result = engine.fix(source, FixMode::Apply);
 
     let c001_count = result
-        .applied
+        .applied_text_corrections()
         .iter()
-        .filter(|f| f.rule.as_str() == "C001")
+        .filter(|tc| tc.rule.as_str() == "C001")
         .count();
     assert_eq!(
         c001_count, 0,
