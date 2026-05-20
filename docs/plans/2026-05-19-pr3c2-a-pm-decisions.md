@@ -181,8 +181,6 @@ pub struct SectionRef {
     pub letter: SectionLetter,
     /// Subsection number (`§H.5` → subsection = Some(5)).
     pub subsection: Option<NonZeroU8>,
-    /// Sub-subsection (`§H.5.4` → sub_subsection = Some(4)).
-    pub sub_subsection: Option<NonZeroU8>,
     /// Table number when the citation targets a specific table
     /// (`§B.3 Table 2 p21` → table = Some(2)).
     pub table: Option<NonZeroU8>,
@@ -190,15 +188,11 @@ pub struct SectionRef {
 
 impl SectionRef {
     pub const fn new(letter: SectionLetter) -> Self {
-        Self { letter, subsection: None, sub_subsection: None, table: None }
+        Self { letter, subsection: None, table: None }
     }
 
     pub const fn with_subsection(self, subsection: NonZeroU8) -> Self {
         Self { subsection: Some(subsection), ..self }
-    }
-
-    pub const fn with_sub_subsection(self, sub_subsection: NonZeroU8) -> Self {
-        Self { sub_subsection: Some(sub_subsection), ..self }
     }
 
     pub const fn with_table(self, table: NonZeroU8) -> Self {
@@ -227,7 +221,8 @@ pub enum AuthoritativeSource {
 
 **Rationale**:
 - `§B.3 Table 2 p21` is a real CAPCO citation form per project memory `project_capco_p20_caveated_definition.md`. The `table` field accommodates it losslessly. Bare 2-level `SectionRef { section, subsection }` would force "Table 2" to be encoded out-of-band — drift risk.
-- `NonZeroU8` for subsection/sub_subsection/table niche-saves the `Option<u8>` tail and statically rejects sentinel-zero.
+- `NonZeroU8` for subsection/table niche-saves the `Option<u8>` tail and statically rejects sentinel-zero.
+- **Sub-subsection deliberately omitted at A7** per Copilot inline review on PR #627 + architect F-5: CAPCO-2016 has no `§X.Y.Z`-style citations in the manual; a `sub_subsection` field would be dead capability per YAGNI. If a future authoritative source introduces 3-level subsections, the shape re-extends additively via `#[non_exhaustive]`.
 - `NonZeroU16` for page: CAPCO-2016 has ≤200 pages; the niche saves a byte via `Option<Citation>` and statically rejects page-zero.
 - `SectionLetter` closed to `{A, B, C, D, E, F, G, H}` per Constitution VIII normative range. `#[non_exhaustive]` reserves grow-path for future grammars whose section vocabulary differs (CUI, NATO).
 - `AuthoritativeSource::Capco2016` is the single variant; `#[non_exhaustive]` reserves variants like `NaroNistSp800_171` (future CUI), `NatoSecManual` (future NATO).
@@ -252,12 +247,23 @@ pub enum AuthoritativeSource {
 
 ### PM-3c.2.A-7 — `Citation::Display` lands in A with round-trip property test
 
-**Decision**: `impl Display for Citation` lands in A and emits the canonical citation-lint regex form (`§<Letter>.<subsection>[.<sub_subsection>] [Table <table>] p<page>` — verbatim CAPCO citation strings). Sibling `crates/rules/tests/citation_display_roundtrip.rs` tests Display output against representative CAPCO citation forms.
+**Decision**: `impl Display for Citation` lands in A and emits the citation-lint regex form (`§<Letter>[.<subsection>] [Table <table>] p<page>` — verbatim CAPCO citation strings). Sibling `crates/rules/tests/citation_display_roundtrip.rs` tests Display output against representative CAPCO citation forms.
 
-Concrete Display contract (binding for A):
-- `Citation { document: Capco2016, section: SectionRef { letter: H, subsection: Some(4), sub_subsection: None, table: None }, page: 61 }` → `"§H.4 p61"`.
-- `Citation { document: Capco2016, section: SectionRef { letter: B, subsection: Some(3), sub_subsection: None, table: Some(2) }, page: 21 }` → `"§B.3 Table 2 p21"`.
-- `Citation { document: Capco2016, section: SectionRef { letter: H, subsection: Some(5), sub_subsection: Some(4), table: None }, page: 99 }` → `"§H.5.4 p99"`.
+> **Erratum (A7, post-Copilot)**: The originally-spec'd Display form
+> included `[.<sub_subsection>]` for `§<L>.<sub>.<sub_sub>` shapes;
+> Copilot's inline review on PR #627 surfaced that (a) `tools/citation-
+> lint/src/citation.rs` doesn't structurally parse sub-subsections,
+> (b) CAPCO-2016 has zero 3-level subsections in the citation index,
+> (c) the `sub_subsection` field allowed a malformed-invariant state
+> when constructed without `subsection`. PR 3c.2.A's A7 cleanup
+> retired `sub_subsection` (field + builder + Display branch + tests)
+> as dead capability per YAGNI, matching architect F-5. The Display
+> form below reflects the post-A7 shape.
+
+Concrete Display contract (binding for A, post-A7):
+- `Citation { document: Capco2016, section: SectionRef { letter: H, subsection: Some(4), table: None }, page: 61 }` → `"§H.4 p61"`.
+- `Citation { document: Capco2016, section: SectionRef { letter: B, subsection: Some(3), table: Some(2) }, page: 21 }` → `"§B.3 Table 2 p21"`.
+- `Citation { document: Capco2016, section: SectionRef { letter: H, subsection: None, table: None }, page: 60 }` → `"§H p60"` (bare section letter — representable but uncited in current CAPCO catalog).
 
 `document` is NOT rendered in Display today (CAPCO-2016 is the only authority); add `[CAPCO-2016]`-style prefix when a second `AuthoritativeSource` variant lands.
 
@@ -320,15 +326,17 @@ The ignored tests are the FR-052 acceptance criteria. They flip to enabled in 3c
 
 ## 2. Commit sequence inside PR 3c.2.A
 
-Five logical commits, each compiles standalone, each preserves T056 byte-identity:
+Seven commits land in PR 3c.2.A; A1–A5 are the logical scaffolding commits, A6 is the reviewer-pass cleanup, A7 is the Copilot-review cleanup. Each compiles standalone, each preserves T056 byte-identity:
 
 | Commit | Touches | Surface added |
 |---|---|---|
 | **A1 — blake3 workspace dep** | `Cargo.toml` (workspace) | `blake3 = { version = "1", default-features = false, features = ["pure"] }` |
 | **A2 — type defs in `marque-scheme`** | `crates/scheme/src/render_context.rs` (new), `crates/scheme/src/lib.rs` | `RenderContext`, `EmissionForm`, `SchemaVersionId` |
 | **A3 — `Citation` types in `marque-rules`** | `crates/rules/src/citation.rs` (new), `crates/rules/src/lib.rs`, `crates/rules/tests/citation_display_roundtrip.rs` (new) | `Citation`, `SectionRef`, `SectionLetter`, `PageNumber`, `AuthoritativeSource` + Display + round-trip tests |
-| **A4 — trait surface: `canonicalize` + `render_canonical` signature** | `crates/scheme/src/scheme.rs` + 26 `impl MarkingScheme` sites + 13+ test call sites + CapcoScheme override | `type Parsed<'src>` GAT, `type Canonical`, `canonicalize` method (default `unimplemented!()`), `render_canonical(.., &RenderContext, ..)` signature |
+| **A4 — trait surface: `canonicalize` + `render_canonical` signature** | `crates/scheme/src/scheme.rs` + 23 `impl MarkingScheme` sites + 13+ test call sites + CapcoScheme override | `type Parsed<'src>` GAT, `type Canonical`, `canonicalize` method (default `unimplemented!()`), `render_canonical(.., &RenderContext, ..)` signature |
 | **A5 — EmissionForm tests** | `crates/capco/tests/render_canonical_emission_form.rs` (new) | T048c test file per PM-10 (Auto cases enabled, explicit-form cases `#[ignore]`-gated) |
+| **A6 — Reviewer-pass cleanup** | `crates/scheme/src/canonical.rs` (rustdoc link fix), this PM doc (PM-9 erratum), `crates/scheme/src/render_context.rs` + `crates/rules/src/citation.rs` (assert_impl_all pins), `crates/scheme/Cargo.toml` (static_assertions dev-dep), deferred-findings doc | Forward-defense `Send + Sync + Copy` pins; rustdoc cross-crate link resolution; PM-9 site-count erratum |
+| **A7 — Copilot review cleanup** | `crates/scheme/src/render_context.rs` (cargo fmt --check), `crates/rules/src/citation.rs` + `crates/rules/tests/citation_display_roundtrip.rs` (`sub_subsection` retirement), this PM doc + deferred-findings doc | Stable-rustfmt format fix; `sub_subsection` field + builder + tests retired as dead capability (closes Copilot finding #1, architect F-5, code-reviewer F-3); doc softening re citation-lint compat |
 
 Each commit ends with `cargo check --workspace && cargo nextest run --workspace`. Final A5 also runs the WASM job locally if available (`wasm-pack build crates/wasm --target web --profiling`).
 
@@ -348,9 +356,9 @@ The PM contract reads "default `canonicalize` impl delegates to `from_parsed_unc
 
 `type Parsed<'src>` is the first GAT on this trait. GAT inference rules differ from non-generic associated types in HRTB scenarios; future helpers bounded on `S: MarkingScheme` that consume `S::Parsed<'_>` may need `for<'a>` bounds. **Mitigation**: `cargo check --workspace` at A's CI pass catches HRTB-induced "implementation not general enough" errors at the boundary. If 3c.2.B helpers surface a real HRTB issue, escalate to PM — the fallback is a Q1(b)-style standalone `Canonicalize` trait.
 
-### R-A3: 26 test stubs need synchronous migration
+### R-A3: 23 test stubs need synchronous migration
 
-Adding `type Parsed<'src>` and `type Canonical` to `MarkingScheme` requires all 26 `impl MarkingScheme` sites to declare both associated types. **Mitigation**: Commit A4 batches all 26 sites in one diff; the additions are 2-line `type Parsed<'src> = (); type Canonical = ();` per stub.
+Adding `type Parsed<'src>` and `type Canonical` to `MarkingScheme` requires all 23 `impl MarkingScheme` sites to declare both associated types. **Mitigation**: Commit A4 batches all 23 sites in one diff; the additions are 2-line `type Parsed<'src> = (); type Canonical = ();` per stub.
 
 ### R-A4: `render_canonical` migration scope
 
@@ -373,7 +381,7 @@ For each of the three reviewers (rust-reviewer, code-reviewer, system-architect)
 - [ ] `Citation::new` is `const fn`. No runtime validation.
 - [ ] No `Default` impl on `RenderContext`.
 - [ ] `Citation::Display` round-trips through citation-lint regex form (golden tests passing).
-- [ ] All 26 `impl MarkingScheme` sites declare `type Parsed<'src>` + `type Canonical`.
+- [ ] All 23 `impl MarkingScheme` sites declare `type Parsed<'src>` + `type Canonical`.
 - [ ] T056 corpus regression matrix passes (byte-identity preserved).
 - [ ] WASM CI matrix passes (`wasm-pack build crates/wasm`).
 - [ ] `EmissionForm::Auto + Scope::{Page,Portion}` tests in `render_canonical_emission_form.rs` are ENABLED and pass; explicit-form tests are `#[ignore]`-gated with TODO referencing 3c.2.B.

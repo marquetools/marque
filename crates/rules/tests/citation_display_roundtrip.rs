@@ -31,9 +31,7 @@
 //!   2 p21 (classified + caveated + post-28-Jun-2010 → NOFORN). Project
 //!   memory `project_capco_p20_caveated_definition` anchors this
 //!   citation shape.
-//! - §H.5 p99 — SAR per CAPCO-2016 §H.5 (the §H.5.4 sub-subsection
-//!   shape below is a representative round-trip target; the surviving
-//!   normative anchor in the manual is §H.5 p99).
+//! - §H.5 p99 — SAR per CAPCO-2016 §H.5 (anchor citation).
 //! - §A.6 p15 — formatting category-order rules per CAPCO-2016 §A.6
 //!   p15 (Figure 2 baseline).
 //! - §H.8 p134 — FOUO eviction per CAPCO-2016 §H.8 p134 (FOUO is not
@@ -62,16 +60,6 @@ fn capco_with_table(letter: SectionLetter, sub: u8, table: u8, page: u16) -> Cit
     )
 }
 
-fn capco_with_sub_sub(letter: SectionLetter, sub: u8, sub_sub: u8, page: u16) -> Citation {
-    Citation::new(
-        AuthoritativeSource::Capco2016,
-        SectionRef::new(letter)
-            .with_subsection(NonZeroU8::new(sub).unwrap())
-            .with_sub_subsection(NonZeroU8::new(sub_sub).unwrap()),
-        NonZeroU16::new(page).unwrap(),
-    )
-}
-
 // ---------------------------------------------------------------------------
 // Golden tests — exact citation-lint regex shape
 // ---------------------------------------------------------------------------
@@ -91,17 +79,6 @@ fn display_subsection_plus_table_b3_table_2_p21() {
     // `project_capco_p20_caveated_definition` anchors this exact form.
     let c = capco_with_table(SectionLetter::B, 3, 2, 21);
     assert_eq!(format!("{c}"), "§B.3 Table 2 p21");
-}
-
-#[test]
-fn display_subsection_plus_sub_subsection_h5_4_p99() {
-    // Three-level reference shape — `§H.5.4 p99` per PM-7. CAPCO-2016
-    // §H.5 p99 is the SAR anchor (verified at PR 3c.2.A authorship);
-    // the sub-subsection `.4` here exercises the three-level Display
-    // rendering. Reserved for future sub-subsection citations as the
-    // rule catalog deepens.
-    let c = capco_with_sub_sub(SectionLetter::H, 5, 4, 99);
-    assert_eq!(format!("{c}"), "§H.5.4 p99");
 }
 
 #[test]
@@ -156,7 +133,7 @@ use proptest::prelude::*;
 /// `tools/citation-lint/src/scanner.rs`).
 ///
 /// Matches:
-///   `§<L>[.<sub>][.<sub_sub>][ Table <N>] p<page>`
+///   `§<L>[.<sub>][ Table <N>] p<page>`
 ///
 /// where `<L>` is `A..=H`, every numeric component is `1..=255` (page
 /// is `1..=65535`).
@@ -183,25 +160,7 @@ fn matches_citation_lint_form(s: &str) -> bool {
     i += 1;
 
     // [. <subsection>]
-    let saw_subsection = if i < bytes.len() && bytes[i] == b'.' {
-        i += 1;
-        let start = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == start {
-            return false;
-        }
-        true
-    } else {
-        false
-    };
-
-    // [. <sub_subsection>] — only valid if a subsection was present
     if i < bytes.len() && bytes[i] == b'.' {
-        if !saw_subsection {
-            return false;
-        }
         i += 1;
         let start = i;
         while i < bytes.len() && bytes[i].is_ascii_digit() {
@@ -264,15 +223,11 @@ fn arb_section_ref() -> impl Strategy<Value = SectionRef> {
         arb_section_letter(),
         proptest::option::of(1u8..=255),
         proptest::option::of(1u8..=255),
-        proptest::option::of(1u8..=255),
     )
-        .prop_map(|(letter, sub, sub_sub, table)| {
+        .prop_map(|(letter, sub, table)| {
             let mut r = SectionRef::new(letter);
             if let Some(s) = sub {
                 r = r.with_subsection(NonZeroU8::new(s).unwrap());
-                if let Some(ss) = sub_sub {
-                    r = r.with_sub_subsection(NonZeroU8::new(ss).unwrap());
-                }
             }
             if let Some(t) = table {
                 r = r.with_table(NonZeroU8::new(t).unwrap());
@@ -322,7 +277,6 @@ mod scan_self_tests {
     fn scanner_accepts_known_good_forms() {
         assert!(matches_citation_lint_form("§H.4 p61"));
         assert!(matches_citation_lint_form("§B.3 Table 2 p21"));
-        assert!(matches_citation_lint_form("§H.5.4 p99"));
         assert!(matches_citation_lint_form("§A.6 p15"));
         assert!(matches_citation_lint_form("§H p60"));
     }
@@ -340,10 +294,6 @@ mod scan_self_tests {
         assert!(!matches_citation_lint_form("H.4 p61"));
         // Trailing garbage.
         assert!(!matches_citation_lint_form("§H.4 p61 extra"));
-        // Sub-subsection without subsection (`§H..4 p99` would parse as
-        // a sub-subsection after an empty subsection — that's
-        // ungrammatical).
-        assert!(!matches_citation_lint_form("§H..4 p99"));
     }
 
     #[test]

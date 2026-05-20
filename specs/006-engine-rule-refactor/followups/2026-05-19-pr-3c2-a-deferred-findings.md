@@ -80,43 +80,53 @@ This catches HRTB inference issues at compile time, before they bite at a generi
 
 The issue's resolution lands in a PR titled `Citation::Scheme-genericity` at scheme #2 adoption time (≥18 months out per estimate). Tracking it makes the cost visible so it doesn't ossify into a silent 5-year commitment.
 
-### GH-FOLLOWUP-2: `sub_subsection`-dead-capability
+### ~~GH-FOLLOWUP-2: `sub_subsection`-dead-capability~~ — **CLOSED in A7**
 
 **Severity**: LOW (YAGNI cleanup).
-**Source**: Architect reviewer F-5.
+**Source**: Architect reviewer F-5 + Copilot inline review on PR #627.
 
-**Issue**: `SectionRef::sub_subsection: Option<NonZeroU8>` is dead capability at PR 3c.2.A. CAPCO-2016 has zero subsections deeper than `§H.5` per the citation index — no `§H.5.4`-style reference exists in the source manual. The const fixture `_SAR_SUB_SUB` and the test `display_subsection_plus_sub_subsection_h5_4_p99` use a synthetic shape acknowledged by the test doc comment as a representative round-trip target.
+**Original issue**: `SectionRef::sub_subsection: Option<NonZeroU8>` was dead capability at PR 3c.2.A. CAPCO-2016 has zero subsections deeper than `§H.5` per the citation index. Architect F-5 flagged it for YAGNI retirement; Copilot's PR #627 inline review found the related type-safety hole (`with_sub_subsection` allowed constructing an invalid `subsection: None + sub_subsection: Some` state).
 
-**Action**: File a GitHub issue titled `sub_subsection-dead-capability` linking to:
-- `crates/rules/src/citation.rs:158` (the field declaration).
-- The synthetic test at `crates/rules/tests/citation_display_roundtrip.rs:97-105`.
+**Resolution (A7 commit on PR #627)**: `sub_subsection` field + `with_sub_subsection` builder + `_SAR_SUB_SUB` const fixture + `display_subsection_plus_sub_subsection_h5_4_p99` test + scanner regex sub_subsection branch + proptest generator sub_subsection branch all removed. Display now emits `§<L>[.<sub>] [Table <N>] p<page>` only.
 
-**Resolution path**: After 3c.2.C lands (the `&'static str → Citation` migration), grep `with_sub_subsection` across `crates/`. If zero non-test consumers exist, the field is provable dead capability and can be retired in a follow-up PR. If a future CAPCO revision introduces 3-level subsections, the field's grow-path is justified.
+If a future revision of CAPCO-2016 or a different authoritative source introduces 3-level subsections, the field re-extends additively via `#[non_exhaustive]` on `SectionRef`.
 
-### GH-FOLLOWUP-3: Test name cosmetic rename
+### ~~GH-FOLLOWUP-3: Test name cosmetic rename~~ — **CLOSED in A7**
 
 **Severity**: LOW (cosmetic).
 **Source**: Code-reviewer F-3.
 
-**Issue**: The test name `display_subsection_plus_sub_subsection_h5_4_p99` at `citation_display_roundtrip.rs:97-105` references a synthetic citation form (`§H.5.4 p99`) that doesn't exist in CAPCO-2016. The test doc-comment acknowledges this honestly, but the test name itself implies a real citation.
+**Original issue**: The test name `display_subsection_plus_sub_subsection_h5_4_p99` at `citation_display_roundtrip.rs:97-105` referenced a synthetic citation form not in CAPCO-2016.
 
-**Action**: Either fold into GH-FOLLOWUP-2 (the same test goes away when sub_subsection is retired) OR rename to `display_three_level_form_round_trips` in a future cleanup. Not worth a dedicated PR; opportunistic.
+**Resolution (A7)**: Test retired alongside `sub_subsection` field removal — closed by removal, not rename.
 
 ---
 
-## Items already addressed in PR 3c.2.A cleanup commit
+## Items already addressed in PR 3c.2.A cleanup commits
 
-### Addressed-1: Rustdoc broken link `[RenderContext]`
+### Addressed-1: Rustdoc broken link `[RenderContext]` (A6)
 
 Fixed at `crates/scheme/src/canonical.rs:217` — changed `[`RenderContext`]` to `[`crate::RenderContext`]` so rustdoc resolves through the re-export.
 
-### Addressed-2: PM-9 site count erratum
+### Addressed-2: PM-9 site count erratum (A6 + A7)
 
-`docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-9 updated with the post-implementation erratum noting the actual count is 23, not 26.
+`docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-9 updated with the post-implementation erratum noting the actual count is 23, not 26. A7 swept the remaining "26" references in R-A3 + the A4 commit table row + the reviewer attestation checklist after Copilot's PR #627 inline review surfaced the leftover instances.
 
-### Addressed-3: Send + Sync compile-time pins
+### Addressed-3: Send + Sync compile-time pins (A6)
 
 `assert_impl_all!` pins added to test modules in `render_context.rs` (for `RenderContext`, `EmissionForm`, `SchemaVersionId`) and `citation.rs` (for `Citation`, `SectionRef`, `SectionLetter`, `AuthoritativeSource`). `static_assertions` added to `crates/scheme/Cargo.toml` `[dev-dependencies]`. Forward-defense: future field additions that break Send/Sync/Copy fail compilation.
+
+### Addressed-4: `sub_subsection` retirement (A7)
+
+`sub_subsection` field + `with_sub_subsection` builder + dead test fixtures retired from `Citation` / `SectionRef` per Copilot inline review on PR #627 + architect F-5 / code-reviewer F-3. See GH-FOLLOWUP-2 and GH-FOLLOWUP-3 above (both closed).
+
+### Addressed-5: `cargo fmt --check` failure (A7)
+
+Stable rustfmt wanted multi-line const declarations in `crates/scheme/src/render_context.rs` test module that local nightly rustfmt rendered single-line. `cargo fmt --all` applied to reformat. CI `Format + Lint` job passes post-A7.
+
+### Addressed-6: PM doc commit-count accuracy (A7)
+
+PM doc §2 "Commit sequence inside PR 3c.2.A" extended from 5 commits to 7 to include A6 (reviewer-pass cleanup) and A7 (Copilot-review cleanup) per Copilot inline review on PR #627. The "Five logical commits" framing now reads "Seven commits land in PR 3c.2.A; A1–A5 are the logical scaffolding commits, A6 is the reviewer-pass cleanup, A7 is the Copilot-review cleanup."
 
 ---
 

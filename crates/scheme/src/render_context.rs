@@ -196,8 +196,11 @@ mod tests {
     // const-renderer paths and embedded fixture contexts. The const
     // evaluation below fails at compile time if the constructor stops
     // being const.
-    const _PORTION_AUTO: RenderContext =
-        RenderContext::new(Scope::Portion, EmissionForm::Auto, SchemaVersionId::MarqueMvp3);
+    const _PORTION_AUTO: RenderContext = RenderContext::new(
+        Scope::Portion,
+        EmissionForm::Auto,
+        SchemaVersionId::MarqueMvp3,
+    );
     const _PAGE_AUTO: RenderContext =
         RenderContext::new(Scope::Page, EmissionForm::Auto, SchemaVersionId::MarqueMvp3);
 
