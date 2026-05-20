@@ -30,7 +30,10 @@
 //! do not flow through the constraint-catalog bridge.
 
 use marque_ism::{CanonicalAttrs, TokenKind};
-use marque_rules::{Confidence, Diagnostic, FixSource, Phase, Rule, RuleContext, RuleId, Severity};
+use marque_rules::{
+    Citation, Confidence, Diagnostic, FixSource, Message, MessageArgs, MessageTemplate, Phase,
+    Rule, RuleContext, RuleId, SectionLetter, Severity, capco,
+};
 
 use crate::scheme::CapcoScheme;
 
@@ -70,12 +73,26 @@ struct DeprecatedSciRow {
     severity: Severity,
     /// Canonical replacement strategy.
     replacement: ReplacementKind,
-    /// Diagnostic message — mirror manual wording verbatim where the
-    /// manual carries a direct passage.
+    /// Diagnostic message string — mirror manual wording verbatim where
+    /// the manual carries a direct passage. PR 3c.2.C C5 retired the
+    /// emission path through this field; the field stays alive as
+    /// documentation citation-lint can read at compile time. Audit
+    /// records carry only [`MessageTemplate::SupersededToken`] +
+    /// `MessageArgs::default()` per Constitution V Principle V.
+    #[allow(dead_code)] // Retained for documentation + citation-lint scanning.
     message: &'static str,
     /// Authoritative `§X.Y pNN` citation. Verified against
     /// `crates/capco/docs/CAPCO-2016.md` (Constitution Principle VIII).
+    /// Mirror of [`Self::citation_typed`] in `&'static str` form;
+    /// citation-lint scans this field at compile time and emits
+    /// FR-018 diagnostics if it drifts from the manual. PR 3c.2.C C5
+    /// retired the emission path through this field per PM-C-1
+    /// (catalog row citations stay `&'static str`).
+    #[allow(dead_code)] // Retained for citation-lint scanning.
     citation: &'static str,
+    /// Typed [`Citation`] used at emission time. Must agree with
+    /// [`Self::citation`].
+    citation_typed: Citation,
 }
 
 /// How a catalog row matches a `TokenSpan.text`.
@@ -159,6 +176,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "'HUMINT CONTROL SYSTEM' is the legacy long form per CAPCO-2016 §H.4 p62; \
              re-mark to HCS for derivative use",
         citation: "CAPCO-2016 §H.4 p62",
+        citation_typed: capco(SectionLetter::H, 4, 62),
     },
     DeprecatedSciRow {
         source: "HUMINT",
@@ -168,6 +186,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "'HUMINT' is the legacy form per CAPCO-2016 §H.4 p62; \
                   re-mark to HCS for derivative use",
         citation: "CAPCO-2016 §H.4 p62",
+        citation_typed: capco(SectionLetter::H, 4, 62),
     },
     // -----------------------------------------------------------------
     // SI family (COMINT / SPECIAL INTELLIGENCE) — §H.4 p74
@@ -182,6 +201,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "'SPECIAL INTELLIGENCE' is the legacy long form per CAPCO-2016 §H.4 p74; \
                   use SI",
         citation: "CAPCO-2016 §H.4 p74",
+        citation_typed: capco(SectionLetter::H, 4, 74),
     },
     DeprecatedSciRow {
         source: "COMINT",
@@ -190,6 +210,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         replacement: ReplacementKind::Static("SI"),
         message: "'COMINT' is no longer valid per CAPCO-2016 §H.4 p74; use SI",
         citation: "CAPCO-2016 §H.4 p74",
+        citation_typed: capco(SectionLetter::H, 4, 74),
     },
     // -----------------------------------------------------------------
     // SI family (ECI / EXCEPTIONALLY CONTROLLED INFORMATION) — §H.4 p61 + p76
@@ -205,6 +226,9 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "'EXCEPTIONALLY CONTROLLED INFORMATION' grouping must not be used \
                   per CAPCO-2016 §H.4 p61; mark as SI-<compartment>",
         citation: "CAPCO-2016 §H.4 p61 + p76",
+        // Typed Citation anchors at §H.4 p61 (SCI grammar); p76
+        // cross-referenced in row.message documentation.
+        citation_typed: capco(SectionLetter::H, 4, 61),
     },
     DeprecatedSciRow {
         source: "ECI ",
@@ -214,6 +238,9 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "ECI grouping must not be used per CAPCO-2016 §H.4 p61; \
                   mark as SI-<compartment>",
         citation: "CAPCO-2016 §H.4 p61 + p76",
+        // Typed Citation anchors at §H.4 p61 (SCI grammar); p76
+        // cross-referenced in row.message documentation.
+        citation_typed: capco(SectionLetter::H, 4, 61),
     },
     DeprecatedSciRow {
         source: "EXCEPTIONALLY CONTROLLED INFORMATION",
@@ -232,6 +259,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "Bare 'EXCEPTIONALLY CONTROLLED INFORMATION' is not a control system \
                   per CAPCO-2016 §H.4 p61; contact the originator for the compartment",
         citation: "CAPCO-2016 §H.4 p61",
+        citation_typed: capco(SectionLetter::H, 4, 61),
     },
     DeprecatedSciRow {
         source: "ECI",
@@ -249,6 +277,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "Bare ECI is not a control system per CAPCO-2016 §H.4 p61; \
                   contact the originator for the compartment",
         citation: "CAPCO-2016 §H.4 p61",
+        citation_typed: capco(SectionLetter::H, 4, 61),
     },
     // -----------------------------------------------------------------
     // SI family (EL / ENDSEAL) — §H.4 p78 + p83
@@ -265,6 +294,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "EL/ENDSEAL control system is being retired per CAPCO-2016 §H.4 p78; \
                   mark as SI-<compartment>",
         citation: "CAPCO-2016 §H.4 p78",
+        citation_typed: capco(SectionLetter::H, 4, 78),
     },
     DeprecatedSciRow {
         source: "EL ",
@@ -274,6 +304,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "EL control system is being retired per CAPCO-2016 §H.4 p78; \
                   mark as SI-<compartment>",
         citation: "CAPCO-2016 §H.4 p78",
+        citation_typed: capco(SectionLetter::H, 4, 78),
     },
     DeprecatedSciRow {
         source: "ENDSEAL",
@@ -291,6 +322,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "ENDSEAL is being retired into SI per CAPCO-2016 §H.4 p78; \
                   sub-compartment context required to migrate; contact the originator",
         citation: "CAPCO-2016 §H.4 p78",
+        citation_typed: capco(SectionLetter::H, 4, 78),
     },
     DeprecatedSciRow {
         source: "EL",
@@ -308,6 +340,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "EL control system is being retired into SI per CAPCO-2016 §H.4 p78; \
                   compartment context required to migrate; contact the originator",
         citation: "CAPCO-2016 §H.4 p78",
+        citation_typed: capco(SectionLetter::H, 4, 78),
     },
     // -----------------------------------------------------------------
     // TK family (KDK / KLONDIKE) — §H.4 p85 (NSG PM 3802)
@@ -338,6 +371,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "Per CAPCO-2016 §H.4 p85 (NSG PM 3802 closure), re-mark KLONDIKE \
                   compartments to TK-BLFH / TK-IDIT / TK-KAND",
         citation: "CAPCO-2016 §H.4 p85",
+        citation_typed: capco(SectionLetter::H, 4, 85),
     },
     DeprecatedSciRow {
         source: "KDK-",
@@ -350,6 +384,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "Per CAPCO-2016 §H.4 p85 (NSG PM 3802 closure), re-mark KDK \
                   compartments to TK-BLFH / TK-IDIT / TK-KAND",
         citation: "CAPCO-2016 §H.4 p85",
+        citation_typed: capco(SectionLetter::H, 4, 85),
     },
     DeprecatedSciRow {
         source: "KLONDIKE",
@@ -367,6 +402,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "KLONDIKE closed per NSG PM 3802 (CAPCO-2016 §H.4 p85); \
                   compartment context required to migrate to TK-<compartment>",
         citation: "CAPCO-2016 §H.4 p85",
+        citation_typed: capco(SectionLetter::H, 4, 85),
     },
     DeprecatedSciRow {
         source: "KDK",
@@ -384,6 +420,7 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
         message: "KDK closed per NSG PM 3802 (CAPCO-2016 §H.4 p85); \
                   compartment context required to migrate to TK-<compartment>",
         citation: "CAPCO-2016 §H.4 p85",
+        citation_typed: capco(SectionLetter::H, 4, 85),
     },
 ];
 
@@ -484,13 +521,17 @@ fn emit_diagnostic(
     rule_id: RuleId,
     compartment: Option<&str>,
 ) -> Diagnostic<CapcoScheme> {
+    // PR 3c.2.C C5: all branches emit the typed
+    // `MessageTemplate::SupersededToken` per the deprecation-class.
+    // The narrative `row.message` lives as documentation only.
+    let message = Message::new(MessageTemplate::SupersededToken, MessageArgs::default());
     match row.replacement {
         ReplacementKind::Static(canonical) => Diagnostic::text_correction(
             rule_id,
             row.severity,
             span,
-            row.message,
-            row.citation,
+            message,
+            row.citation_typed,
             canonical,
             FixSource::BuiltinRule,
             // Authoritative migration per §H.4 — full confidence (1.0).
@@ -507,8 +548,8 @@ fn emit_diagnostic(
                 rule_id,
                 row.severity,
                 span,
-                row.message,
-                row.citation,
+                message,
+                row.citation_typed,
                 replacement,
                 FixSource::BuiltinRule,
                 // Compound forms: the canonical form is constructed
@@ -543,8 +584,8 @@ fn emit_diagnostic(
                         rule_id,
                         row.severity,
                         span,
-                        row.message,
-                        row.citation,
+                        message,
+                        row.citation_typed,
                         replacement,
                         FixSource::BuiltinRule,
                         // Authoritative mapping: §H.4 p85 + p87/p91/p95
@@ -555,17 +596,18 @@ fn emit_diagnostic(
                     )
                 }
                 None => {
-                    let message = format!(
-                        "'{comp}' is not a documented KLONDIKE compartment per \
-                         CAPCO-2016 §H.4 p85 (only BLUEFISH / IDITAROD / KANDIK \
-                         have canonical TK- mappings); contact the originator"
-                    );
-                    Diagnostic::info(rule_id, Severity::Warn, span, message, row.citation)
+                    // G13: drop the runtime `comp` interpolation; the
+                    // unrecognized-compartment class is captured by
+                    // MessageTemplate::SupersededToken (the upstream
+                    // form is deprecated regardless of compartment
+                    // recognition).
+                    let _ = comp;
+                    Diagnostic::info(rule_id, Severity::Warn, span, message, row.citation_typed)
                 }
             }
         }
         ReplacementKind::SuggestOnly => {
-            Diagnostic::info(rule_id, row.severity, span, row.message, row.citation)
+            Diagnostic::info(rule_id, row.severity, span, message, row.citation_typed)
         }
     }
 }
@@ -624,8 +666,13 @@ struct BareCanonicalCompoundRow {
     /// Canonical replacement (hardcoded static literal).
     replacement: &'static str,
     /// Authoritative CAPCO citation for the row.
+    #[allow(dead_code)] // Retained for citation-lint scanning.
     citation: &'static str,
+    /// Typed [`Citation`] used at emission time. Must agree with
+    /// [`Self::citation`].
+    citation_typed: Citation,
     /// Diagnostic message text (static string).
+    #[allow(dead_code)] // Retained for documentation; audit uses MessageTemplate.
     message: &'static str,
 }
 
@@ -637,6 +684,7 @@ const BARE_CANONICAL_COMPOUND_CATALOG: &[BareCanonicalCompoundRow] = &[
         source: "CNWDI",
         replacement: "RD-CNWDI",
         citation: "CAPCO-2016 §H.6 p106",
+        citation_typed: capco(SectionLetter::H, 6, 106),
         message: "bare CNWDI is not a registered portion form; \
                   CAPCO-2016 §H.6 p106 specifies the canonical \
                   RD-CNWDI compound portion mark",
@@ -645,6 +693,7 @@ const BARE_CANONICAL_COMPOUND_CATALOG: &[BareCanonicalCompoundRow] = &[
         source: "NK",
         replacement: "SI-NK",
         citation: "CAPCO-2016 §H.4 p83",
+        citation_typed: capco(SectionLetter::H, 4, 83),
         message: "bare NK is not a registered portion form; \
                   CAPCO-2016 §H.4 p83 specifies the canonical \
                   SI-NK portion mark for the NONBOOK SI compartment",
@@ -653,6 +702,7 @@ const BARE_CANONICAL_COMPOUND_CATALOG: &[BareCanonicalCompoundRow] = &[
         source: "EU",
         replacement: "SI-EU",
         citation: "CAPCO-2016 §H.4 p78",
+        citation_typed: capco(SectionLetter::H, 4, 78),
         message: "bare EU is not a registered portion form; \
                   CAPCO-2016 §H.4 p78 specifies the canonical \
                   SI-EU portion mark for the ECRU SI compartment",
@@ -727,8 +777,8 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
                         self.id(),
                         Severity::Fix,
                         token.span,
-                        row.message,
-                        row.citation,
+                        Message::new(MessageTemplate::SupersededToken, MessageArgs::default()),
+                        row.citation_typed,
                         row.replacement,
                         FixSource::BuiltinRule,
                         // Authoritative §-citation per row; the

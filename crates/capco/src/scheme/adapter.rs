@@ -360,34 +360,87 @@ impl CapcoScheme {
         name: &str,
         _attrs: &CanonicalAttrs,
         _marking_type: MarkingType,
-    ) -> Option<String> {
+    ) -> Option<marque_rules::Message> {
+        use marque_rules::{Message, MessageArgs, MessageTemplate};
+        // PR 3c.2.C C5: typed `Message` return per PM-C-1. Each
+        // arm maps the constraint label to a closed-template +
+        // closed-args record. Runtime byte text is dropped per G13;
+        // the narrative descriptions live in the legacy `&str` arms
+        // (preserved in git history) and the bridge's renderer
+        // re-derives display text from `(template, args, source, span)`.
         match name {
-            "E015/non-us-requires-dissem" => Some(
-                "non-US classification requires an explicit dissemination control marking \
-                 (e.g., REL TO or NOFORN) per CAPCO-2016 §H.7 p122 + §B.3 p20"
-                    .to_owned(),
-            ),
-            "E016/joint-conflicts-restricted" => Some(
-                "JOINT cannot be used with RESTRICTED; RESTRICTED is not an authorized US \
-                 classification marking per CAPCO-2016 §H.3 p56"
-                    .to_owned(),
-            ),
-            "E036/joint-conflicts-hcs" => {
-                Some("JOINT cannot be used with HCS markings per CAPCO-2016 §H.3 p57".to_owned())
-            }
-            "capco/noforn-conflicts-rel-to" => Some(
-                "NOFORN cannot be used with REL TO; these dissemination controls are mutually \
-                 exclusive per CAPCO-2016 §H.8 p145"
-                    .to_owned(),
-            ),
-            "E037/nodis-conflicts-exdis" => Some(
-                "NODIS and EXDIS must not coexist; each State Department dissem control is \
-                 mutually exclusive per CAPCO-2016 §H.9 p172 + p174"
-                    .to_owned(),
-            ),
-            "E054/relido-conflicts-noforn" => {
-                Some("RELIDO cannot be used with NOFORN per CAPCO-2016 §H.8 p154".to_owned())
-            }
+            "E015/non-us-requires-dissem" => Some(Message::new(
+                MessageTemplate::RequiredByPresence,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..MessageArgs::default()
+                },
+            )),
+            "E016/joint-conflicts-restricted" => Some(Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_JOINT_CLASSIFICATION),
+                    ..MessageArgs::default()
+                },
+            )),
+            "E036/joint-conflicts-hcs" => Some(Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_JOINT_CLASSIFICATION),
+                    ..MessageArgs::default()
+                },
+            )),
+            "capco/noforn-conflicts-rel-to" => Some(Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..MessageArgs::default()
+                },
+            )),
+            "E037/nodis-conflicts-exdis" => Some(Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_NON_IC_DISSEM),
+                    ..MessageArgs::default()
+                },
+            )),
+            "E054/relido-conflicts-noforn" => Some(Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..MessageArgs::default()
+                },
+            )),
+            _ => None,
+        }
+    }
+
+    /// Typed [`Citation`](marque_rules::Citation) lookup for known
+    /// constraint labels. Bridge layer per PR 3c.2.C C5 / PM-C-1.
+    /// Returns `None` for labels not in the explicit mapping; the
+    /// bridge falls back to a parser-based conversion from
+    /// `ConstraintViolation.citation: &'static str` if needed.
+    ///
+    /// Constitution VIII propagation: each citation re-verified
+    /// against `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.C
+    /// authorship.
+    pub fn citation_by_name(&self, name: &str) -> Option<marque_rules::Citation> {
+        use marque_rules::{SectionLetter, capco};
+        match name {
+            // E015 §H.7 p122 (FGI grammar) + §B.3 p20 (caveated
+            // definition); typed anchor at §H.7 p122.
+            "E015/non-us-requires-dissem" => Some(capco(SectionLetter::H, 7, 122)),
+            // E016 §H.3 p56 (JOINT grammar).
+            "E016/joint-conflicts-restricted" => Some(capco(SectionLetter::H, 3, 56)),
+            // E036 §H.3 p57 (Derivative Use).
+            "E036/joint-conflicts-hcs" => Some(capco(SectionLetter::H, 3, 57)),
+            // §H.8 p145 (NOFORN-dominates rule).
+            "capco/noforn-conflicts-rel-to" => Some(capco(SectionLetter::H, 8, 145)),
+            // E037 §H.9 p172 (EXDIS) + §H.9 p174 (NODIS); typed
+            // anchor at §H.9 p172.
+            "E037/nodis-conflicts-exdis" => Some(capco(SectionLetter::H, 9, 172)),
+            // E054 §H.8 p154 (RELIDO grammar).
+            "E054/relido-conflicts-noforn" => Some(capco(SectionLetter::H, 8, 154)),
             _ => None,
         }
     }

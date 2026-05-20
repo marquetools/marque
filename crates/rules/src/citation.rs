@@ -363,6 +363,38 @@ pub const fn capco(letter: SectionLetter, subsection: u8, page: u16) -> Citation
     )
 }
 
+/// Const-fn ergonomic constructor for bare-section CAPCO-2016
+/// citations (no numbered subsection, e.g., `§F p35`).
+///
+/// CAPCO-2016 has at least one section (§F — Legacy Control Markings)
+/// that carries no numbered subsections; the citation-index confirms
+/// `section: F` carries no `subsections:` list. The `Citation`
+/// struct supports this shape via `SectionRef::new(letter)` (the
+/// `subsection` field stays `None`); this helper exposes that
+/// construction as a const-fn ergonomic constructor parallel to
+/// [`capco`] / [`capco_table`].
+///
+/// `page` must be non-zero — a `0` argument panics at const evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use marque_rules::{capco_section, Citation, SectionLetter};
+/// const LEGACY: Citation = capco_section(SectionLetter::F, 35);
+/// assert_eq!(format!("{LEGACY}"), "§F p35");
+/// ```
+pub const fn capco_section(letter: SectionLetter, page: u16) -> Citation {
+    let page = match NonZeroU16::new(page) {
+        Some(n) => n,
+        None => panic!("capco_section(): page must be non-zero"),
+    };
+    Citation::new(
+        AuthoritativeSource::Capco2016,
+        SectionRef::new(letter),
+        page,
+    )
+}
+
 /// Const-fn ergonomic constructor for CAPCO-2016 citations that
 /// include a Table reference (e.g., `§B.3 Table 2 p21`).
 ///

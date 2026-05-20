@@ -116,18 +116,9 @@ const DECODER_RULE_ID: &str = "R001";
 /// canonical syntax for portion / banner / CAB markings the decoder
 /// canonicalizes input toward.
 ///
-/// **PR 3c.2.C migration in progress**: the `&'static str` form
-/// stays alive until C5; [`DECODER_CITATION_TYPED`] below is the
-/// typed [`marque_rules::Citation`] form the C5 atomic flip will
-/// rename to `DECODER_CITATION`.
-const DECODER_CITATION: &str = "CAPCO-2016 §A.6 p15";
-
-/// Typed-[`Citation`](marque_rules::Citation) form of [`DECODER_CITATION`].
-/// Defined in C2 of PR 3c.2.C; the C5 atomic
-/// `Diagnostic.citation: &'static str → Citation` flip deletes the
-/// `&'static str` form above and renames this to `DECODER_CITATION`.
-/// Authority: CAPCO-2016 §A.6 p15 (canonical formatting).
-#[allow(dead_code)] // C2 of PR 3c.2.C — wired in C5.
+/// PR 3c.2.C C5 migrated this from `&'static str` →
+/// [`marque_rules::Citation`] atomically with the `Diagnostic.citation`
+/// field-type flip.
 const DECODER_CITATION_TYPED: marque_rules::Citation =
     marque_rules::capco(marque_rules::SectionLetter::A, 6, 15);
 
@@ -149,25 +140,15 @@ const DECODER_CITATION_TYPED: marque_rules::Citation =
 /// deferred (D-7.4).
 pub const R002_RULE_ID: RuleId = RuleId::new("R002");
 
-/// Citation attached to `R002` diagnostics — the synthetic
-/// re-parse-failure sentinel has no CAPCO §-citation by construction
-/// (Constitution VIII requires a real passage; R002 is engine-internal
-/// guidance, not a CAPCO rule). Mirrors [`DECODER_CITATION`]'s
-/// engine-synthetic origin while staying distinct so a renderer
-/// branching on citation strings can tell them apart.
+/// Typed [`Citation`](marque_rules::Citation) attached to `R002`
+/// diagnostics — the synthetic re-parse-failure sentinel has no CAPCO
+/// §-citation by construction (Constitution VIII requires a real
+/// passage; R002 is engine-internal guidance, not a CAPCO rule). Uses
+/// [`marque_rules::AuthoritativeSource::EngineInternal`]. Display
+/// renders as `[engine-internal]`.
 ///
-/// **PR 3c.2.C migration in progress**: the `&'static str` form stays
-/// alive until C5; [`R002_CITATION_TYPED`] below is the typed
-/// [`marque_rules::Citation`] form the C5 atomic flip will rename to
-/// `R002_CITATION`.
-const R002_CITATION: &str = "engine-synthetic";
-
-/// Typed-[`Citation`](marque_rules::Citation) form of [`R002_CITATION`].
-/// Uses [`marque_rules::AuthoritativeSource::EngineInternal`] —
-/// R002 is engine-synthesized, not a CAPCO rule. Display renders as
-/// `[engine-internal]`. The C5 atomic flip deletes the `&'static str`
-/// form above and renames this to `R002_CITATION`.
-#[allow(dead_code)] // C2 of PR 3c.2.C — wired in C5.
+/// PR 3c.2.C C5 migrated this from `&'static str` → typed `Citation`
+/// atomically with the `Diagnostic.citation` field-type flip.
 const R002_CITATION_TYPED: marque_rules::Citation = marque_rules::Citation::new(
     marque_rules::AuthoritativeSource::EngineInternal,
     marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
@@ -1887,11 +1868,19 @@ impl Engine {
                     // Skip if the rule pipeline already produced a C001
                     // diagnostic for this exact span.
                     if !existing_c001_spans.contains(&span) {
+                        // G13: drop the runtime `key`/`value` interpolation.
+                        // The typed `Message` identifies the corrections-map
+                        // class. `CORRECTIONS_MAP_CITATION` is now a typed
+                        // `Citation` with `AuthoritativeSource::Config`.
+                        let _ = (key, value);
                         diagnostics.push(Diagnostic::text_correction(
                             RuleId::new("C001"),
                             c001_severity,
                             span,
-                            format!("corrections map: {key:?} → {value:?}"),
+                            marque_rules::Message::new(
+                                marque_rules::MessageTemplate::CorrectionsApplied,
+                                marque_rules::MessageArgs::default(),
+                            ),
                             CORRECTIONS_MAP_CITATION,
                             value.as_ref(),
                             FixSource::CorrectionsMap,
@@ -2304,17 +2293,65 @@ impl Engine {
             .scheme
             .fix_intent_by_name(v.constraint_label, attrs, candidate.kind);
 
+        // PR 3c.2.C C5 / PM-C-1 bridge layer: convert the carrier-
+        // string `ConstraintViolation.message: String` and
+        // `ConstraintViolation.citation: &'static str` to the typed
+        // `Diagnostic.message: Message` + `Diagnostic.citation: Citation`.
+        //
+        // Both lookups fall back to a generic sentinel when the
+        // constraint_label is not in the explicit mapping. The fallback
+        // shape preserves audit-content-ignorance (no `v.message` raw
+        // bytes flow through).
         let message = self
             .scheme
             .message_by_name(v.constraint_label, attrs, candidate.kind)
-            .unwrap_or_else(|| v.message.clone());
+            .unwrap_or_else(|| {
+                // Unknown constraint label — emit a generic
+                // `ConflictsWith` template with no args so the audit
+                // record is still closed-template. The original String
+                // message is dropped (G13). Future labels SHOULD be
+                // added to `message_by_name` explicitly.
+                tracing::trace!(
+                    target: "marque_engine::constraint_bridge",
+                    constraint = v.constraint_label,
+                    "no typed Message mapping for constraint_label; using generic fallback",
+                );
+                marque_rules::Message::new(
+                    marque_rules::MessageTemplate::ConflictsWith,
+                    marque_rules::MessageArgs::default(),
+                )
+            });
+
+        let citation = self
+            .scheme
+            .citation_by_name(v.constraint_label)
+            .unwrap_or_else(|| {
+                // Unknown constraint label — emit an EngineInternal
+                // sentinel so the audit record carries a structured
+                // citation rather than a parsed string. The original
+                // `v.citation: &'static str` is dropped.
+                tracing::trace!(
+                    target: "marque_engine::constraint_bridge",
+                    constraint = v.constraint_label,
+                    legacy_citation = v.citation,
+                    "no typed Citation mapping for constraint_label; using engine-internal sentinel",
+                );
+                marque_rules::Citation::new(
+                    marque_rules::AuthoritativeSource::EngineInternal,
+                    marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+                    match core::num::NonZeroU16::new(1) {
+                        Some(p) => p,
+                        None => unreachable!(),
+                    },
+                )
+            });
 
         let mut diag = Diagnostic::with_fix(
             rule_id,
             final_severity,
             span,
             message,
-            v.citation,
+            citation,
             fix_intent,
         );
         diag.candidate_span = Some(candidate.span);
@@ -4059,11 +4096,14 @@ fn build_decoder_diagnostic(
         severity,
         span,
         span,
-        format!(
-            "decoder-recognized canonical form at bytes {}..{}",
-            span.start, span.end
+        marque_rules::Message::new(
+            marque_rules::MessageTemplate::DecoderRecognized,
+            marque_rules::MessageArgs {
+                span: Some(span),
+                ..marque_rules::MessageArgs::default()
+            },
         ),
-        DECODER_CITATION,
+        DECODER_CITATION_TYPED,
         intent,
     ))
 }
@@ -4128,35 +4168,26 @@ pub(crate) fn build_r002_diagnostic(
     contributing_rule_ids: SmallVec<[RuleId; 4]>,
     failure_span: Span,
 ) -> Diagnostic<CapcoScheme> {
-    // Render the contributing rule IDs as a short comma-separated
-    // list in the message string. Each entry is a CAPCO rule ID
-    // (permitted identifier per Constitution V); no input bytes.
-    // PR 3c.2 will migrate this inline rendering to a
-    // `Message::new(MessageTemplate::ReparseFailed, MessageArgs { .. })`
-    // construction — see the function's "Deferred wire-up" doc section.
-    let mut rule_list = String::new();
-    for (i, id) in contributing_rule_ids.iter().enumerate() {
-        if i > 0 {
-            rule_list.push_str(", ");
-        }
-        rule_list.push_str(id.as_str());
-    }
-
-    let message = if rule_list.is_empty() {
-        "post-pass-1 buffer failed to re-parse; pass-2 skipped".to_string()
-    } else {
-        format!(
-            "post-pass-1 buffer failed to re-parse after applying \
-             pass-1 fixes from {rule_list}; pass-2 skipped"
-        )
-    };
+    // PR 3c.2.C C5: typed `Message` per `MessageTemplate::ReparseFailed`.
+    // `MessageArgs.contributing_rule_ids` carries the closed-list of
+    // pass-1 RuleIds that contributed to the failure — `RuleId` is on
+    // Constitution V's permitted-identifier list (enumerated identifier,
+    // not document bytes). The contributing list flows into the audit
+    // record as a structured field instead of an interpolated string.
+    let message = marque_rules::Message::new(
+        marque_rules::MessageTemplate::ReparseFailed,
+        marque_rules::MessageArgs {
+            contributing_rule_ids: contributing_rule_ids.clone(),
+            ..marque_rules::MessageArgs::default()
+        },
+    );
 
     Diagnostic::new(
         R002_RULE_ID,
         Severity::Error,
         failure_span,
         message,
-        R002_CITATION,
+        R002_CITATION_TYPED,
         None,
     )
 }
@@ -6775,12 +6806,15 @@ mod tests {
             diag.text_correction.is_none(),
             "R002 must carry no TextCorrection"
         );
-        // G13: the message must interpolate only permitted identifiers.
-        // The contributing rule IDs are CAPCO rule canonicals, on
-        // Constitution V's permitted-identifier list. No document bytes.
-        let msg = diag.message.as_ref();
-        assert!(msg.contains("C001"));
-        assert!(msg.contains("E006"));
+        // PR 3c.2.C C5: typed `Message` carries the contributing rule
+        // IDs structurally via `MessageArgs.contributing_rule_ids`
+        // (closed-set permitted type). The args check is stricter than
+        // the legacy substring check because it asserts on a closed
+        // type rather than a string substring.
+        assert_eq!(diag.message.template(), MessageTemplate::ReparseFailed);
+        let contributors = &diag.message.args().contributing_rule_ids;
+        assert!(contributors.iter().any(|id| id.as_str() == "C001"));
+        assert!(contributors.iter().any(|id| id.as_str() == "E006"));
     }
 
     #[test]
@@ -6792,10 +6826,11 @@ mod tests {
         assert_eq!(diag.rule, super::R002_RULE_ID);
         assert!(diag.fix.is_none());
         assert!(diag.text_correction.is_none());
-        // Empty-contributors branch uses the short generic message.
-        let msg = diag.message.as_ref();
-        assert!(msg.contains("post-pass-1 buffer failed to re-parse"));
-        assert!(!msg.contains("from"));
+        // PR 3c.2.C C5: empty-contributors branch identified by
+        // empty `contributing_rule_ids` SmallVec, not by message
+        // substring.
+        assert_eq!(diag.message.template(), MessageTemplate::ReparseFailed);
+        assert!(diag.message.args().contributing_rule_ids.is_empty());
     }
 
     // -------------------------------------------------------------------
@@ -6821,32 +6856,32 @@ mod tests {
             RuleId::new("E006"),
             Severity::Error,
             Span::new(0, 4),
-            "pass-1 candidate",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             None,
         );
         let pass2_id = Diagnostic::<CapcoScheme>::new(
             RuleId::new("E022"),
             Severity::Error,
             Span::new(4, 8),
-            "pass-2 candidate",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             None,
         );
         let unknown_id = Diagnostic::<CapcoScheme>::new(
             RuleId::new("E999"),
             Severity::Error,
             Span::new(8, 12),
-            "unknown id falls to pass-2 by default",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             None,
         );
         let text_corr_no_fix = Diagnostic::text_correction(
             RuleId::new("C001"),
             Severity::Fix,
             Span::new(12, 16),
-            "sub-threshold text correction",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             "REPL",
             FixSource::CorrectionsMap,
             marque_rules::Confidence::strict(0.4),

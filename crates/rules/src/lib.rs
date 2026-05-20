@@ -78,7 +78,8 @@ use std::time::SystemTime;
 
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
 pub use citation::{
-    AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_table,
+    AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
+    capco_table,
 };
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
@@ -667,33 +668,22 @@ pub enum FixSource {
     DecoderClassificationHeuristic,
 }
 
-/// Canonical citation string for diagnostics whose authority is the user's
+/// Canonical [`Citation`] for diagnostics whose authority is the user's
 /// `[corrections]` config entry (C001 and the engine's pre-scanner text-scan
 /// path). C001 is not a CAPCO rule — no CAPCO passage governs user-defined
-/// typo replacements — so the citation is a config pointer rather than a
-/// §/page/line reference. Holding the string in one place prevents silent
-/// drift between the rule-pipeline emission site in `marque-capco` and the
-/// pre-scanner emission site in `marque-engine`; both paths produce the
-/// same audit-record shape.
+/// typo replacements — so the citation uses the
+/// [`AuthoritativeSource::Config`] sentinel and renders as `[config]`.
 ///
-/// **PR 3c.2.C migration in progress**: this `&'static str` form stays
-/// alive until C5; [`CORRECTIONS_MAP_CITATION_TYPED`] below is the
-/// typed [`Citation`] form the C5 atomic flip will rename to
-/// `CORRECTIONS_MAP_CITATION`.
-pub const CORRECTIONS_MAP_CITATION: &str = "CONFIG:[corrections]";
-
-/// Typed-[`Citation`] form of [`CORRECTIONS_MAP_CITATION`].
-/// Uses [`AuthoritativeSource::Config`] — C001 is not a CAPCO rule,
-/// it's a user-config pointer. Display renders as `[config]`.
+/// Holding the value in one place prevents silent drift between the
+/// rule-pipeline emission site in `marque-capco` and the pre-scanner
+/// emission site in `marque-engine`; both paths produce the same
+/// audit-record shape.
 ///
-/// Defined in C2 of PR 3c.2.C; the C5 atomic
-/// `Diagnostic.citation: &'static str → Citation` flip deletes the
-/// `&'static str` form above and renames this to
-/// `CORRECTIONS_MAP_CITATION`.
-// Public so engine/capco can reference it from C5 onward; the
-// dead-code allow lets it survive between C2 and C5 untouched.
-#[allow(dead_code)] // C2 of PR 3c.2.C — wired in C5.
-pub const CORRECTIONS_MAP_CITATION_TYPED: Citation = Citation::new(
+/// PR 3c.2.C C5 migrated the type from `&'static str` → [`Citation`]
+/// per `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-4. The
+/// C2 transitional `CORRECTIONS_MAP_CITATION_TYPED` alias was
+/// consolidated into this canonical name.
+pub const CORRECTIONS_MAP_CITATION: Citation = Citation::new(
     AuthoritativeSource::Config,
     SectionRef::new(SectionLetter::A),
     // Niche-sentinel page value — never rendered (Display elides
@@ -1145,11 +1135,27 @@ pub struct Diagnostic<S: MarkingScheme> {
     /// `None` when the diagnostic's `span` already covers the full
     /// scope.
     pub candidate_span: Option<Span>,
-    /// Human-readable description of the violation.
-    pub message: Box<str>,
-    /// CAPCO section citation, e.g., "CAPCO-2016 §A.6"
-    /// (refers to the CAPCO Register and Manual, 2016).
-    pub citation: &'static str,
+    /// Closed-template description of the violation.
+    ///
+    /// PR 3c.2.C C5 migrated this field from `Box<str>` → [`Message`]
+    /// per `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-5 /
+    /// PM-C-6 — closes the `format!`-into-`Diagnostic.message` leak
+    /// channel called out by Constitution V Principle V / G13. Audit
+    /// emitters render via [`Message::template`] + [`Message::args`]
+    /// accessors; there is no `Display` impl on [`Message`] (the
+    /// compile-fail doctest at `message.rs` pins that absence).
+    pub message: Message,
+    /// Typed citation to the authoritative source passage.
+    ///
+    /// PR 3c.2.C C5 migrated this field from `&'static str` →
+    /// [`Citation`] per
+    /// `docs/plans/2026-05-20-pr3c2-c-pm-decisions.md` PM-C-2 /
+    /// PM-C-4. [`Citation::Display`] emits the canonical citation-lint
+    /// regex form (`§<L>[.<sub>] [Table <N>] p<page>`) for CAPCO
+    /// citations and a bare `[<source>]` tag for non-CAPCO sentinels
+    /// ([`AuthoritativeSource::Config`] /
+    /// [`AuthoritativeSource::EngineInternal`]).
+    pub citation: Citation,
     /// Structural fix intent, if the rule can generate one. `None`
     /// for diagnostics that consciously decline to propose a fix
     /// (e.g. provisional Path-A rules, opaque-uncertain reductions),
@@ -1228,8 +1234,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
         rule: RuleId,
         severity: Severity,
         span: Span,
-        message: impl Into<Box<str>>,
-        citation: &'static str,
+        message: Message,
+        citation: Citation,
         fix: Option<FixIntent<S>>,
     ) -> Self {
         Self::with_fix(rule, severity, span, message, citation, fix)
@@ -1244,8 +1250,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
         rule: RuleId,
         severity: Severity,
         span: Span,
-        message: impl Into<Box<str>>,
-        citation: &'static str,
+        message: Message,
+        citation: Citation,
         fix: Option<FixIntent<S>>,
     ) -> Self {
         Self {
@@ -1253,7 +1259,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             severity,
             span,
             candidate_span: None,
-            message: message.into(),
+            message,
             citation,
             fix,
             text_correction: None,
@@ -1280,8 +1286,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
         severity: Severity,
         span: Span,
         candidate_span: Span,
-        message: impl Into<Box<str>>,
-        citation: &'static str,
+        message: Message,
+        citation: Citation,
         fix: FixIntent<S>,
     ) -> Self {
         Self {
@@ -1289,7 +1295,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             severity,
             span,
             candidate_span: Some(candidate_span),
-            message: message.into(),
+            message,
             citation,
             fix: Some(fix),
             text_correction: None,
@@ -1315,8 +1321,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
         rule: RuleId,
         severity: Severity,
         span: Span,
-        message: impl Into<Box<str>>,
-        citation: &'static str,
+        message: Message,
+        citation: Citation,
         replacement: impl Into<SmolStr>,
         source: FixSource,
         confidence: Confidence,
@@ -1327,7 +1333,7 @@ impl<S: MarkingScheme> Diagnostic<S> {
             severity,
             span,
             candidate_span: None,
-            message: message.into(),
+            message,
             citation,
             fix: None,
             text_correction: Some(TextCorrection {
@@ -1350,8 +1356,8 @@ impl<S: MarkingScheme> Diagnostic<S> {
         rule: RuleId,
         severity: Severity,
         span: Span,
-        message: impl Into<Box<str>>,
-        citation: &'static str,
+        message: Message,
+        citation: Citation,
     ) -> Self {
         Self::with_fix(rule, severity, span, message, citation, None)
     }

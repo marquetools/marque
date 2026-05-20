@@ -129,10 +129,15 @@ pub fn render_human(
     // are consumed by tooling (CI scripts, editor plugins, ABAC consumers)
     // that should not have to strip branding text out of the `message`
     // field.
+    // PR 3c.2.C C5: `diag.message` is now a typed `Message` with no
+    // `Display` impl by design. Render the closed-template label;
+    // future renderer expansion can derive richer human text from
+    // `(template, args, source, span)` per PM-C-5.
     writeln!(
         out,
         "{path_label}:{line}:{col_start} {level_styled}{rule_styled} {} {}",
-        diag.message, BRAND_SUFFIX,
+        diag.message.template().as_str(),
+        BRAND_SUFFIX,
     )?;
 
     // ---- Source snippet ----
@@ -279,13 +284,21 @@ fn paint(color: bool, style: AnsiStyle, text: &str) -> String {
 /// JSON projection of a Diagnostic conforming to `contracts/diagnostic.json`.
 /// Marked `additionalProperties: false` in the schema, so this struct must
 /// not include extra fields.
+///
+/// PR 3c.2.C C5 changed the `message` and `citation` fields' wire
+/// shape per PM-C-7:
+/// - `message` is now a structured object `{ "template": "..." }`
+///   (was a free-form string). Future iterations expand `args`.
+/// - `citation` is now the [`Display`] form of typed [`Citation`]
+///   — `§<L>.<sub> p<page>` for CAPCO sources, `[config]` /
+///   `[engine-internal]` for sentinel sources.
 #[derive(Debug, Serialize)]
 pub struct DiagnosticJson<'a> {
     pub rule: &'a str,
     pub severity: &'a str,
     pub span: SpanJson,
-    pub message: &'a str,
-    pub citation: &'a str,
+    pub message: MessageJson<'a>,
+    pub citation: String,
     pub fix: Option<FixJson<'a>>,
 }
 
@@ -293,6 +306,17 @@ pub struct DiagnosticJson<'a> {
 pub struct SpanJson {
     pub start: usize,
     pub end: usize,
+}
+
+/// Structured JSON projection of a [`Message`].
+///
+/// PR 3c.2.C C5 introduced this wrapper per PM-C-7's structured-JSON
+/// shape requirement. Phase 1 carries the [`MessageTemplate::as_str`]
+/// canonical label; per-template arg expansion lands when consumers
+/// need it.
+#[derive(Debug, Serialize)]
+pub struct MessageJson<'a> {
+    pub template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -320,8 +344,10 @@ pub fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
         fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
             (Some(f), _) => Some(FixJson {
                 source: fix_source_str(f.source),
@@ -704,15 +730,18 @@ mod tests {
     fn make_diagnostic(
         rule: &'static str,
         span: Span,
-        message: &str,
+        _message: &str,
         fix: Option<FixIntent<CapcoScheme>>,
     ) -> Diagnostic<CapcoScheme> {
+        // PR 3c.2.C C5: typed Message + Citation. Test fixtures use a
+        // generic template/citation; the test bodies inspect rule/span/
+        // severity, not message content.
         Diagnostic::new(
             RuleId::new(rule),
             Severity::Fix,
             span,
-            message,
-            "CAPCO-2016 §A.6",
+            Message::new(MessageTemplate::BannerRollupMismatch, MessageArgs::default()),
+            marque_rules::capco(marque_rules::SectionLetter::A, 6, 15),
             fix,
         )
     }

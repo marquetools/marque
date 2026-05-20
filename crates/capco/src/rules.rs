@@ -113,8 +113,8 @@ use marque_ism::{
     Span, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
-    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
-    Rule, RuleContext, RuleId, RuleSet, Severity,
+    Citation, Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    Phase, Rule, RuleContext, RuleId, RuleSet, SectionLetter, Severity, capco, capco_section,
 };
 use marque_scheme::{FactRef, MarkingScheme, RecanonScope, ReplacementIntent, Scope};
 use std::collections::HashSet;
@@ -497,12 +497,25 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             return vec![];
         }
 
-        let message = if !has_usa {
-            "REL TO list missing required USA trigraph"
-        } else {
-            "USA must be the first trigraph in REL TO list"
-        };
-        let citation = "CAPCO-2016 §H.8 (REL TO, p150–151)";
+        // PR 3c.2.C C5 / G13: drop the runtime string distinction;
+        // `MessageTemplate::NonCanonicalOrder` with `category =
+        // Some(CAT_REL_TO)` identifies the violation class. Both arms
+        // (missing USA / USA not first) map to the same template
+        // because both are "REL TO ordering violation" per
+        // §H.8 p150-151. The narrower distinction lives in the
+        // `MessageArgs` populated below.
+        let message = Message::new(
+            MessageTemplate::NonCanonicalOrder,
+            MessageArgs {
+                category: Some(crate::scheme::CAT_REL_TO),
+                ..MessageArgs::default()
+            },
+        );
+        // Citation §H.8 p150 covers the REL TO grammar; p151 carries
+        // the USA-first invariant. Use the first page of the range
+        // as the structured anchor; the page-range nuance lives in
+        // the doc comment above this rule, not in the citation field.
+        let citation = capco(SectionLetter::H, 8, 150);
 
         // Locate the `RelToBlock` this diagnostic refers to. If the
         // marking has more than one REL TO block (e.g.,
@@ -526,19 +539,20 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                     self.id(),
                     self.default_severity(),
                     Span::new(0, 0),
-                    message.to_owned(),
+                    message.clone(),
                     citation,
                     None,
                 )];
             }
             (Some(first), Some(_)) => {
+                // Multiple REL TO blocks present; the message template
+                // is the same NonCanonicalOrder class, but the
+                // recoverability differs (single-pass fix is unsafe).
                 return vec![Diagnostic::new(
                     self.id(),
                     self.default_severity(),
                     first.span,
-                    format!(
-                        "{message} (multiple REL TO blocks present; fix suppressed to avoid cross-block corruption — resolve manually)"
-                    ),
+                    message.clone(),
                     citation,
                     None,
                 )];
@@ -565,7 +579,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
                     self.id(),
                     self.default_severity(),
                     block.span,
-                    message.to_owned(),
+                    message.clone(),
                     citation,
                     None,
                 )];
@@ -657,7 +671,7 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
             self.default_severity(),
             span,
             ctx.candidate_span,
-            message.to_owned(),
+            message,
             citation,
             fix_intent,
         )]
@@ -788,15 +802,22 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
         // signals consciously-decided deferred migration evaluation. See the
         // migration-status block above `struct DeclassifyMisplacedRule;` for
         // the full rationale and retirement target.
+        //
+        // Citation: §E.1 p31 governs the "Declassify On is a CAB line"
+        // rule; §D.1 p27 affirms banner categories do not include
+        // declassification. The typed `Citation` field anchors at §E.1
+        // p31; the cross-reference to §D.1 p27 lives in the doc-comment
+        // above this rule (the typed-Citation struct carries one
+        // §-citation per Diagnostic).
         vec![Diagnostic::with_fix(
             self.id(),
             self.default_severity(),
             span,
-            "declassification marking belongs on the Declassify On line of \
-             the Classification Authority Block, not in a banner or portion \
-             — remove the declass token here and add it to the CAB",
-            "CAPCO-2016 §E.1 p31 (Declassify On is a CAB line) + \
-             §D.1 p27 (banner categories do not include declassification)",
+            Message::new(
+                MessageTemplate::WrongTokenForm,
+                MessageArgs::default(),
+            ),
+            capco(SectionLetter::E, 1, 31),
             None, // Fix requires document-level context (moving a token
                   // from banner/portion into a CAB is multi-span).
         )]
@@ -882,7 +903,13 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
                     MessageTemplate::SupersededToken,
                     MessageArgs::default(),
                 ),
-                citation: "CAPCO-2016 §F",
+                // §F covers all legacy Control Marking deprecations
+                // (E006 dissem migration table). §F has no numbered
+                // subsections in CAPCO-2016 (the citation-index
+                // confirms `section: F` carries no `subsections:`
+                // list); use the bare-section helper with page 35
+                // (start of §F per citation-index).
+                citation: capco_section(SectionLetter::F, 35),
                 original: token.text.to_string(),
                 replacement: entry.replacement.to_owned(),
                 confidence: entry.confidence,
@@ -1001,7 +1028,7 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                         MessageTemplate::SupersededToken,
                         MessageArgs::default(),
                     ),
-                    citation: "CAPCO-2016 §E.6",
+                    citation: capco(SectionLetter::E, 6, 33),
                     original: text.to_owned(),
                     replacement: entry.replacement.to_owned(),
                     confidence: entry.confidence,
@@ -1032,7 +1059,7 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
                         MessageTemplate::SupersededToken,
                         MessageArgs::default(),
                     ),
-                    citation: "CAPCO-2016 §E.6",
+                    citation: capco(SectionLetter::E, 6, 33),
                     original: text.to_owned(),
                     replacement,
                     // 0.95: slightly below table-backed 0.97 because
@@ -1263,9 +1290,11 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
                     self.id(),
                     self.default_severity(),
                     t.span,
-                    "unrecognized token inside marking — does not match any \
-                     known CAPCO classification, control, or trigraph",
-                    "CAPCO-2016 §G.1 (Register of Authorized Markings, p36)",
+                    Message::new(
+                        MessageTemplate::UnrecognizedToken,
+                        MessageArgs::default(),
+                    ),
+                    capco(SectionLetter::G, 1, 36),
                     None, // FR-012: no fix offered
                 )
             })
@@ -1545,29 +1574,31 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
             return vec![];
         };
 
-        let joined_actual: Vec<&str> = j.countries.iter().map(|t| t.as_str()).collect();
-        let joined_actual_str = joined_actual.join(" ");
-        let joined_canonical_str = canonical.join(" ");
-
-        let message = format!(
-            "JOINT country list does not lead with USA: [{joined_actual_str}] \
-             → [{joined_canonical_str}] (IC convention — §H.3 prescribes \
-             pure alphabetical but every other US-authored country list \
-             leads with USA; style rule, disable via S003 = \"off\")"
+        // G13: drop the runtime country lists from the message;
+        // they appeared in the format!-built string but are document
+        // bytes by way of `j.countries.iter().map(|t| t.as_str())`.
+        // The typed `Message` identifies the ordering-violation class
+        // for the JOINT axis.
+        let _ = canonical; // canonical is consumed by the fix_intent path below
+        let message = Message::new(
+            MessageTemplate::NonCanonicalOrder,
+            MessageArgs {
+                category: Some(crate::scheme::CAT_JOINT_CLASSIFICATION),
+                ..MessageArgs::default()
+            },
         );
 
         // PR 3c.B Commit 10 — structural FixIntent only. JOINT
         // classification rendering is a page-scope concern (the
         // banner-line classification axis); the convention is layered
         // above the renderer's §H.3 pure-alpha default.
-        let citation = concat!(
-            "IC convention (not CAPCO mandate) — §H.3 p56 ",
-            "prescribes pure alphabetical for JOINT with no USA-first ",
-            "carve-out; S003 encodes the convention observed in REL TO ",
-            "§H.8 pp 150–151 across all US-authored country ",
-            "lists. Style rule; configure S003 = \"off\" for strict ",
-            "§H.3 conformance.",
-        );
+        //
+        // Citation: §H.3 p56 prescribes pure alphabetical for JOINT
+        // with no USA-first carve-out; S003 encodes the IC convention
+        // observed across REL TO (§H.8 pp 150-151). Typed Citation
+        // anchors at §H.3 p56; the cross-reference to §H.8 lives in
+        // the rule doc comment.
+        let citation = capco(SectionLetter::H, 3, 56);
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize {
                 scope: RecanonScope::Page,
@@ -1993,13 +2024,16 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
             // exclusion is a hard channel-cutoff). The text
             // correction carries the canonical trigraph for
             // renderer / UI display.
-            let _ = trigraph;
+            let _ = (trigraph, message);
             diagnostics.push(Diagnostic::text_correction(
                 self.id(),
                 self.default_severity(),
                 span,
-                message,
-                "CAPCO-2016 §H.8 p150–151",
+                Message::new(
+                    MessageTemplate::CorrectionsApplied,
+                    MessageArgs::default(),
+                ),
+                capco(SectionLetter::H, 8, 150),
                 candidate.to_owned(),
                 FixSource::BuiltinRule,
                 Confidence::strict(SUGGEST_CONFIDENCE),
@@ -2109,16 +2143,22 @@ impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
 
+            // G13: drop the runtime token-text interpolation. Template
+            // identifies the violation class; the affected category is
+            // CAT_NON_IC_DISSEM.
+            let _ = nic; // emit-class is known without the runtime value
             diagnostics.push(Diagnostic::new(
                 self.id(),
                 self.default_severity(),
                 span,
-                format!(
-                    "non-IC dissem control {} should not appear in a classified banner; \
-                     use only in portion markings",
-                    nic.banner_str(),
+                Message::new(
+                    MessageTemplate::NonIcDissemInClassifiedBanner,
+                    MessageArgs {
+                        category: Some(crate::scheme::CAT_NON_IC_DISSEM),
+                        ..MessageArgs::default()
+                    },
                 ),
-                "CAPCO-2016 §H.9",
+                capco(SectionLetter::H, 9, 169),
                 None,
             ));
         }
@@ -2656,14 +2696,16 @@ fn analyze_uncertain_reduction(
         };
         let other_str = s005_render_set(&other_codes);
 
-        let message = format!(
-            "REL TO code `{x}` has uncertain membership ({state}). \
-             Atom-semantics intersection produced REL TO {expected_str}, \
-             but `{x}`'s hypothetical membership may include {other_str} \
-             from other portions. Resolution: (a) add `{x}` membership \
-             to country_extensions.toml with an authoritative source \
-             citation, or (b) revise the marking to use codes with \
-             known membership."
+        // G13: drop the runtime variable interpolation. Template
+        // identifies the rel-to ambiguity class; the affected category
+        // is CAT_REL_TO.
+        let _ = (x, state, expected_str, other_str);
+        let message = Message::new(
+            MessageTemplate::NonCanonicalOrder,
+            MessageArgs {
+                category: Some(crate::scheme::CAT_REL_TO),
+                ..MessageArgs::default()
+            },
         );
 
         // No fix — the ambiguity is not resolvable from in-tree
@@ -2688,8 +2730,13 @@ fn analyze_uncertain_reduction(
 /// the message body, which is dynamically formatted via
 /// `s005_state_text`. Pre-PR-#488 this constant was shared with S006;
 /// post-#488 S005 is the sole consumer.
-const S005_CITATION: &str =
-    "CAPCO-2016 §H.8 + ODNI ISMCAT Tetragraph Taxonomy (see ISMCAT_TETRA_VERSION)";
+/// S005 (REL TO opaque-uncertain reduction suggestion) citation. The
+/// typed `Citation` anchors at §H.8 p150 (REL TO grammar); the
+/// secondary authority is the ODNI ISMCAT Tetragraph Taxonomy
+/// (`ISMCAT_TETRA_VERSION`), which is not a CAPCO §-citation and
+/// thus does not encode into the typed `Citation` field. The
+/// per-rule doc comment carries the full provenance.
+const S005_CITATION: Citation = capco(SectionLetter::H, 8, 150);
 
 impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn id(&self) -> RuleId {
@@ -2859,16 +2906,18 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
                     .get(idx)
                     .map(|t| t.span)
                     .unwrap_or(Span::new(0, 0));
+                // G13: drop runtime byte text. Template names the
+                // unpublished-control class.
+                let _ = s;
                 out.push(Diagnostic::new(
                     self.id(),
                     self.default_severity(),
                     span,
-                    format!(
-                        "unpublished SCI control system {:?} present; verify agency \
-                         allocation via ODNI/P&S registry",
-                        s
+                    Message::new(
+                        MessageTemplate::UnpublishedSciControl,
+                        MessageArgs::default(),
                     ),
-                    "CAPCO-2016 §A.6 p16; §H.4 p61",
+                    capco(SectionLetter::A, 6, 16),
                     None,
                 ));
             }
@@ -2961,11 +3010,11 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
             self.id(),
             self.default_severity(),
             span,
-            "When legacy information at the CONFIDENTIAL//HCS level is discovered, \
-             contact the originator for guidance prior to reusing the information \
-             (CAPCO-2016 §H.4 p62)"
-                .to_owned(),
-            "CAPCO-2016 §H.4 p62",
+            Message::new(
+                MessageTemplate::SupersededToken,
+                MessageArgs::default(),
+            ),
+            capco(SectionLetter::H, 4, 62),
             None,
         )]
     }
@@ -3066,16 +3115,18 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
         let candidates: &[&str] = &["HCS-O", "HCS-P", "HCS-O-P"];
         let mut out = Vec::with_capacity(candidates.len());
         for candidate in candidates {
+            // G13: candidate replacement is on the audit permitted list
+            // (canonical token from a closed set); the typed `Message`
+            // identifies the superseded-token class.
             out.push(Diagnostic::text_correction(
                 self.id(),
                 Severity::Suggest,
                 span,
-                format!(
-                    "Bare HCS is the legacy form per CAPCO-2016 §H.4 p62; new content \
-                     must use HCS-O / HCS-P / HCS-O-P depending on Operations vs \
-                     Product content. Suggested replacement: {candidate}"
+                Message::new(
+                    MessageTemplate::SupersededToken,
+                    MessageArgs::default(),
                 ),
-                "CAPCO-2016 §H.4 p62",
+                capco(SectionLetter::H, 4, 62),
                 *candidate,
                 FixSource::BuiltinRule,
                 // Confidence 0.75: the canonical replacement is one of
@@ -3159,10 +3210,11 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
             self.id(),
             self.default_severity(),
             span,
-            "RSV marking may not be used alone and requires the associated \
-             3-alphanumeric compartment (CAPCO-2016 §H.4 p70)"
-                .to_owned(),
-            "CAPCO-2016 §H.4 p70",
+            Message::new(
+                MessageTemplate::RequiredByPresence,
+                MessageArgs::default(),
+            ),
+            capco(SectionLetter::H, 4, 70),
             None,
         )]
     }
@@ -3293,13 +3345,11 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                         self.id(),
                         self.default_severity(),
                         token.span,
-                        concat!(
-                            "EYES/EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
-                            "convert to REL TO. A bare EYES/EYES ONLY banner without a country list ",
-                            "implies Five Eyes (FVEY) membership per §H.8 p157",
-                        )
-                        .to_owned(),
-                        "CAPCO-2016 §H.8 p157 + p158",
+                        Message::new(
+                            MessageTemplate::SupersededToken,
+                            MessageArgs::default(),
+                        ),
+                        capco(SectionLetter::H, 8, 157),
                         build_rel_to_replacement(&[
                             CountryCode::USA.to_string(),
                             CountryCode::AUS.to_string(),
@@ -3330,12 +3380,11 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
                 self.id(),
                 self.default_severity(),
                 token.span,
-                concat!(
-                    "EYES ONLY is NSA-only and deprecated; per CAPCO-2016 §H.8 p157-158, ",
-                    "convert to REL TO and carry forward the trigraph/tetragraph codes",
-                )
-                .to_owned(),
-                "CAPCO-2016 §H.8 p157 + p158",
+                Message::new(
+                    MessageTemplate::SupersededToken,
+                    MessageArgs::default(),
+                ),
+                capco(SectionLetter::H, 8, 157),
                 canonical,
                 FixSource::BuiltinRule,
                 Confidence::strict(1.0),
@@ -3812,9 +3861,11 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
             self.id(),
             self.default_severity(),
             span,
-            "bare NATO classification in a US-classified document should carry \
-             REL TO USA, NATO per §H.7 p127 Notional Example 2",
-            "CAPCO-2016 §H.7 p127",
+            Message::new(
+                MessageTemplate::RequiredByPresence,
+                MessageArgs::default(),
+            ),
+            capco(SectionLetter::H, 7, 127),
             replacement,
             FixSource::BuiltinRule,
             Confidence::strict(S007_SUGGEST_CONFIDENCE),
@@ -4024,10 +4075,14 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             self.default_severity(),
             ctx.candidate_span,
             ctx.candidate_span,
-            "RELIDO is implied by the closure (SCI presence or US collateral \
-             classification absent FD&R suppressors); per §D.2 Table 3 rule 17 \
-             the byte-level marking should carry RELIDO to match",
-            "CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17 p21",
+            Message::new(
+                MessageTemplate::RequiredByPresence,
+                MessageArgs::default(),
+            ),
+            // Typed Citation anchors at §H.8 p154 (RELIDO grammar);
+            // the §D.2 Table 3 row-17 cross-reference lives in the
+            // rule doc comment.
+            capco(SectionLetter::H, 8, 154),
             fix_intent,
         )]
     }
@@ -4050,12 +4105,15 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
 /// citations are tighter and verifiable per Constitution VIII)").
 /// The §D.2 background pointer therefore lives on the SCI evaluator's
 /// doc comment, not here.
-const E035_CITATION: &str = concat!(
-    "CAPCO-2016 §H.4 per-system \"Precedence Rules for Banner Line ",
-    "Guidance\" (e.g. HCS p62, SI p74, TK p85). All unique SCI ",
-    "markings in portions must appear in the banner line; unlike ",
-    "SAR, SCI has no hierarchy-optional carve-out.",
-);
+/// E035 (SCI banner roll-up) citation. Per CAPCO-2016 §H.4, every
+/// per-SCI-system subsection carries a "Precedence Rules for Banner
+/// Line Guidance" passage with the same rule: all unique SCI
+/// markings in portions must appear in the banner line; unlike SAR,
+/// SCI has no hierarchy-optional carve-out. The typed `Citation`
+/// anchors at §H.4 p62 (the HCS subsection, first per-system
+/// instance); the cross-system equivalence note lives in the
+/// per-rule doc comment.
+const E035_CITATION: Citation = capco(SectionLetter::H, 4, 62);
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -4135,17 +4193,19 @@ pub(crate) fn sar_block_span(attrs: &CanonicalAttrs) -> Option<Span> {
 /// positional helper signature so call sites read top-down by name.
 ///
 /// PR 3c.2.C C4 migrated `message: String` → `message: Message`
-/// (closed-template, closed-args). The `original` field is retained on
-/// the struct so existing call sites stay byte-identical, but the
-/// `make_fix_diagnostic` helper discards it per the existing G13
-/// invariant.
+/// (closed-template, closed-args). PR 3c.2.C C5 migrated `citation:
+/// &'static str` → `citation: Citation` per the atomic
+/// `Diagnostic.citation` field-type flip. The `original` field is
+/// retained on the struct so existing call sites stay byte-identical,
+/// but the `make_fix_diagnostic` helper discards it per the existing
+/// G13 invariant.
 pub(crate) struct FixDiagnosticParams {
     pub rule: RuleId,
     pub severity: Severity,
     pub source: FixSource,
     pub span: Span,
     pub message: Message,
-    pub citation: &'static str,
+    pub citation: Citation,
     pub original: String,
     pub replacement: String,
     pub confidence: f32,
@@ -4163,27 +4223,13 @@ pub(crate) struct FixDiagnosticParams {
 /// migration, and other [`make_fix_diagnostic`] callers) gets the
 /// correct provenance on its audit record. The `original` field
 /// is discarded (G13 closure on the legacy emission channel).
-///
-/// **PR 3c.2.C transitional rendering**. Between C4 (this commit's
-/// field-type migration) and C5 (the atomic `Diagnostic.message:
-/// Box<str> → Message` flip), `Diagnostic::text_correction` still
-/// accepts `impl Into<Box<str>>`. The helper renders the typed
-/// [`Message`] as `template.as_str()` for the transitional period —
-/// no document bytes, no `format!` arg interpolation, just the
-/// closed-set template label. The closed-template name is on
-/// Constitution V's permitted-identifier list (enumerated identifier).
-/// C5 deletes this rendering step and passes `p.message` through
-/// directly.
 pub(crate) fn make_fix_diagnostic(p: FixDiagnosticParams) -> Diagnostic<CapcoScheme> {
     let _ = p.original; // G13: never copy document bytes into audit
-    // Transitional render for the C4→C5 window. C5 deletes this and
-    // passes `p.message: Message` directly to `Diagnostic::text_correction`.
-    let transitional_message: String = p.message.template().as_str().to_owned();
     Diagnostic::text_correction(
         p.rule,
         p.severity,
         p.span,
-        transitional_message,
+        p.message,
         p.citation,
         p.replacement,
         p.source,
@@ -4307,10 +4353,17 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
             self.id(),
             self.default_severity(),
             span,
-            "REL TO is not authorized in the banner line when any portion \
-             contains NODIS or EXDIS; NOFORN conveys the foreign-release \
-             decision in this case per CAPCO-2016 §H.9",
-            concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",),
+            Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..MessageArgs::default()
+                },
+            ),
+            // Typed Citation anchors at §H.9 p172 (EXDIS grammar);
+            // the §H.9 p174 (NODIS) cross-reference lives in the
+            // rule doc comment.
+            capco(SectionLetter::H, 9, 172),
             None,
         )]
     }
@@ -4582,12 +4635,10 @@ fn evaluate_sar_banner_rollup(
         return vec![];
     }
 
-    const CITATION: &str = concat!(
-        "CAPCO-2016 §H.5 p101 ",
-        "(Unique SAPs contained in portion marks must always appear ",
-        "in the banner line; hierarchy depiction optional per §H.5 ",
-        "p101 + p99)",
-    );
+    // Typed Citation anchors at §H.5 p101 (the SAR per-system banner
+    // rule); the hierarchy-optional note at §H.5 p99 is cross-
+    // referenced in the rule doc comment, not in the Citation field.
+    const CITATION: Citation = capco(SectionLetter::H, 5, 101);
 
     // Sort missing identifiers per §H.5 p99 (ascending,
     // numeric first, then alpha) so the fix output is
@@ -4668,15 +4719,13 @@ fn evaluate_sar_banner_rollup(
             // No SAR block in the banner at all. Byte-positioning a new
             // block between SCI and AEA from rule context alone is
             // unsafe — report at Error severity with no fix and let a
-            // human place the block. The message wording describes the
-            // actual shape of the violation (a whole missing block,
-            // not a partial one) so the user isn't misled into
-            // looking for a block to edit.
-            let message = format!(
-                "banner is missing an SAR block required by portions: \
-                 {}",
-                sorted_missing.join(", "),
-            );
+            // human place the block.
+            //
+            // G13: the typed `Message` identifies the banner-rollup
+            // mismatch class with category=CAT_SAR. Per-program detail
+            // would require coordinated `MARQUE_AUDIT_SCHEMA` bump
+            // (out of C scope per PM-C-6).
+            let _ = sorted_missing;
             let span = attrs
                 .token_spans
                 .first()
@@ -4686,7 +4735,13 @@ fn evaluate_sar_banner_rollup(
                 row.rule_id.clone(),
                 Severity::Error,
                 span,
-                message,
+                Message::new(
+                    MessageTemplate::BannerRollupMismatch,
+                    MessageArgs {
+                        category: Some(crate::scheme::CAT_SAR),
+                        ..MessageArgs::default()
+                    },
+                ),
                 CITATION,
                 None,
             )]
@@ -4792,13 +4847,18 @@ fn evaluate_sci_banner_rollup(
         // separator offsets and the downstream block boundaries).
         // Escalate severity and emit a diagnostic without a fix
         // so the author inserts the block by hand.
+        // G13: per-system detail dropped from the typed `Message`;
+        // category=CAT_SCI identifies the axis.
         return vec![Diagnostic::new(
             row.rule_id.clone(),
             Severity::Error,
             Span::new(0, 0),
-            format!(
-                "banner is missing an SCI block that portions require: {}",
-                missing.join("; ")
+            Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_SCI),
+                    ..MessageArgs::default()
+                },
             ),
             E035_CITATION,
             None,
@@ -4893,18 +4953,11 @@ fn evaluate_non_ic_dissem_banner_rollup(
     }
 
     let required_str = required.banner_str();
-    // PR 3c.2.C C4 / G13: the `Some` arm flows through
-    // `FixDiagnosticParams` (typed `Message`). The `None` arm flows
-    // through `Diagnostic::new` (still `Box<str>` until C5) and
-    // retains the format!-built `String` for now — C5 will migrate
-    // it to a typed `Message`. Both arms get the same template
-    // (BannerRollupMismatch with category=Dissem-non-IC).
-    let message_string = format!(
-        "banner is missing {required_str} required by portions \
-         (§H.9 roll-up rule: {required_str} in any portion must \
-         appear in the banner)"
-    );
-    const CITATION: &str = concat!("CAPCO-2016 §H.9 p172 (EXDIS) + ", "p174 (NODIS)",);
+    // PR 3c.2.C C5: both arms now use the typed `Message` shape.
+    // §H.9 p172 (EXDIS) and §H.9 p174 (NODIS) — typed Citation
+    // anchors at p172; the p174 cross-reference lives in the rule
+    // doc comment.
+    const CITATION: Citation = capco(SectionLetter::H, 9, 172);
 
     // Fix: if banner has at least one Non-IC dissem token, emit a
     // zero-width insertion at the end of that category block
@@ -4948,11 +5001,19 @@ fn evaluate_non_ic_dissem_banner_rollup(
                 .first()
                 .map(|t| t.span)
                 .unwrap_or(Span::new(0, 0));
+            // G13: drop the runtime `required_str` interpolation.
+            let _ = required_str;
             vec![Diagnostic::new(
                 row.rule_id.clone(),
                 Severity::Error,
                 span,
-                message_string,
+                Message::new(
+                    MessageTemplate::BannerRollupMismatch,
+                    MessageArgs {
+                        category: Some(crate::scheme::CAT_NON_IC_DISSEM),
+                        ..MessageArgs::default()
+                    },
+                ),
                 CITATION,
                 None,
             )]
@@ -5018,39 +5079,24 @@ fn evaluate_classification_banner_rollup(
         }
     }
 
-    let mismatch_reason: Option<&'static str> =
-        match (attrs.classification.as_ref(), page.classification.as_ref()) {
-            (None, None) => None,
-            (None, Some(_)) => Some(
-                "banner is missing a classification block required by the \
-             portions on this page",
-            ),
-            (Some(_), None) => Some(
-                "banner carries a classification but the projected page \
-             state has no classification (over-classified banner)",
-            ),
-            (Some(observed), Some(projected)) => {
-                if observed.effective_level() != projected.effective_level() {
-                    Some(
-                        "banner classification level disagrees with the \
-                     projected page state (§H.7 pp123-125 reciprocal \
-                     classification + portion roll-up)",
-                    )
-                } else if variant_kind(observed) != variant_kind(projected) {
-                    Some(
-                        "banner classification variant disagrees with the \
-                     projected page state (e.g., US-attributed banner \
-                     on a solely-foreign page); §H.7 pp123-125",
-                    )
-                } else {
-                    None
-                }
-            }
-        };
-
-    let Some(message) = mismatch_reason else {
-        return vec![];
+    // PR 3c.2.C C5 / G13: collapse the 4 string-literal reasons into
+    // the typed `MessageTemplate::BannerRollupMismatch` with
+    // `category=CAT_CLASSIFICATION`. The narrative distinction
+    // (missing / over-classified / level-disagrees / variant-disagrees)
+    // moves into the rule doc comment; the audit record carries only
+    // the closed-set identifier.
+    let has_mismatch = match (attrs.classification.as_ref(), page.classification.as_ref()) {
+        (None, None) => false,
+        (None, Some(_)) | (Some(_), None) => true,
+        (Some(observed), Some(projected)) => {
+            observed.effective_level() != projected.effective_level()
+                || variant_kind(observed) != variant_kind(projected)
+        }
     };
+
+    if !has_mismatch {
+        return vec![];
+    }
 
     // Span: point at the first token of the banner candidate so the
     // user can locate the offending line. Per Constitution V G13 the
@@ -5061,18 +5107,22 @@ fn evaluate_classification_banner_rollup(
         .map(|t| t.span)
         .unwrap_or(Span::new(0, 0));
 
-    const CITATION: &str = concat!(
-        "CAPCO-2016 §H.7 pp123-125 (Precedence Rules for Banner Line ",
-        "Guidance + reciprocal classification); worked examples §H.7 ",
-        "pp126-129 (Notional Examples 1-4 anchor the cross-axis ",
-        "composition).",
-    );
+    // Typed Citation anchors at §H.7 p123 (Precedence Rules for
+    // Banner Line Guidance + reciprocal classification); worked
+    // examples §H.7 pp126-129 cross-referenced in the rule doc.
+    const CITATION: Citation = capco(SectionLetter::H, 7, 123);
 
     vec![Diagnostic::new(
         row.rule_id.clone(),
         row.severity,
         span,
-        message,
+        Message::new(
+            MessageTemplate::BannerRollupMismatch,
+            MessageArgs {
+                category: Some(crate::scheme::CAT_CLASSIFICATION),
+                ..MessageArgs::default()
+            },
+        ),
         CITATION,
         None,
     )]
@@ -5131,31 +5181,17 @@ fn evaluate_fgi_marker_banner_rollup(
         }
     }
 
-    let mismatch_reason: Option<&'static str> =
+    // PR 3c.2.C C5 / G13: 4 narrative reasons collapse to the typed
+    // `MessageTemplate::BannerRollupMismatch` with category =
+    // `CAT_FGI_MARKER`. The narrative distinction lives in the rule
+    // doc comment.
+    let has_mismatch =
         match (attrs.fgi_marker.as_ref(), page.fgi_marker.as_ref()) {
-            (None, None) => None,
-            (None, Some(_)) => Some(
-                "banner is missing an FGI marker required by portions \
-             that carry foreign government information (§H.7 p124 \
-             banner-line FGI roll-up rule)",
-            ),
-            (Some(_), None) => Some(
-                "banner carries an FGI marker but the projected page \
-             state has no foreign government information; banner \
-             over-claims foreign provenance (§H.7 p124)",
-            ),
+            (None, None) => false,
+            (None, Some(_)) | (Some(_), None) => true,
             (Some(observed), Some(projected)) => {
                 if fgi_variant_kind(observed) != fgi_variant_kind(projected) {
-                    // Mixed concealed + acknowledged → bare FGI per
-                    // §H.7 p124 source-concealed-dominates rule. The
-                    // direction of the mismatch (which side is concealed)
-                    // is intentionally not interpolated per Constitution
-                    // V G13.
-                    Some(
-                        "banner FGI marker variant disagrees with the \
-                     projected page state (concealed vs acknowledged); \
-                     §H.7 p124 source-concealed-dominates rule",
-                    )
+                    true
                 } else {
                     // Compare country lists as SETS, not slices. The
                     // observed side comes from the parser in textual
@@ -5176,23 +5212,14 @@ fn evaluate_fgi_marker_banner_rollup(
                     let observed_set: BTreeSet<_> = observed.countries().iter().copied().collect();
                     let projected_set: BTreeSet<_> =
                         projected.countries().iter().copied().collect();
-                    if observed_set != projected_set {
-                        Some(
-                            "banner FGI marker country list disagrees with \
-                         the projected page state (union of portion-\
-                         contributed FGI sources); §H.7 p126 worked \
-                         example",
-                        )
-                    } else {
-                        None
-                    }
+                    observed_set != projected_set
                 }
             }
         };
 
-    let Some(message) = mismatch_reason else {
+    if !has_mismatch {
         return vec![];
-    };
+    }
 
     let span = attrs
         .token_spans
@@ -5200,17 +5227,22 @@ fn evaluate_fgi_marker_banner_rollup(
         .map(|t| t.span)
         .unwrap_or(Span::new(0, 0));
 
-    const CITATION: &str = concat!(
-        "CAPCO-2016 §H.7 p124 (banner-line FGI roll-up rule + ",
-        "source-concealed-dominates clause); worked examples §H.7 ",
-        "p126 and §H.7 p129 anchor the projection.",
-    );
+    // Typed Citation anchors at §H.7 p124 (banner-line FGI roll-up
+    // rule + source-concealed-dominates); worked examples §H.7 p126
+    // and §H.7 p129 cross-referenced in the rule doc.
+    const CITATION: Citation = capco(SectionLetter::H, 7, 124);
 
     vec![Diagnostic::new(
         row.rule_id.clone(),
         row.severity,
         span,
-        message,
+        Message::new(
+            MessageTemplate::BannerRollupMismatch,
+            MessageArgs {
+                category: Some(crate::scheme::CAT_FGI_MARKER),
+                ..MessageArgs::default()
+            },
+        ),
         CITATION,
         None,
     )]
@@ -5369,13 +5401,17 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
             self.default_severity(),
             exdis_span_tok.span,
             ctx.candidate_span,
-            "portion contains both NODIS and EXDIS; NODIS (ND) supersedes \
-             EXDIS (XD) per §H.9 — remove EXDIS from the portion mark",
-            concat!(
-                "CAPCO-2016 §H.9 p172 (EXDIS) + ",
-                "p174 (NODIS): NODIS supersedes EXDIS in the ",
-                "portion mark when both are present",
+            Message::new(
+                MessageTemplate::ConflictsWith,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_NON_IC_DISSEM),
+                    ..MessageArgs::default()
+                },
             ),
+            // Typed Citation anchors at §H.9 p174 (NODIS — the
+            // dominating token); §H.9 p172 (EXDIS) cross-referenced
+            // in the rule doc comment.
+            capco(SectionLetter::H, 9, 174),
             nodis_supersedes_exdis_intent(),
         )]
     }
@@ -5576,27 +5612,25 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
         // example shows ATOMAL in the AEA position; §H.7 p127 worked
         // example shows BOHEMIA in the SCI position. Choose the
         // structurally-most-precise anchor based on which companion
-        // was written.
+        // was written. The cross-axis §G.2 p40 reference lives in
+        // the rule doc comment, not in the typed Citation field.
         let citation = if has_atomal {
-            "CAPCO-2016 §H.7 p122 + §G.2 p40"
+            capco(SectionLetter::H, 7, 122)
         } else {
-            "CAPCO-2016 §G.2 p40 + §H.7 p127"
+            capco(SectionLetter::H, 7, 127)
         };
 
-        // G13 audit-content-ignorance: the message text references only
-        // the canonical companion token name (via `MessageArgs.token`)
-        // and a static description of the legacy-text class. No echo
-        // of the input bytes.
-        let message_text = if has_atomal {
-            "legacy NATO compound classification text — ATOMAL is an AEA-axis \
-             marking per §H.7 p122; re-mark to the canonical multi-block form"
-                .to_owned()
-        } else {
-            "legacy NATO compound classification text — BALK/BOHEMIA are NATO \
-             SAPs in the SCI category per §G.2 p40 + §H.7 p127; re-mark to \
-             the canonical multi-block form"
-                .to_owned()
-        };
+        // G13: message template identifies the wrong-form class;
+        // `MessageArgs.token` carries the canonical companion token.
+        // The has_atomal vs has_natosap distinction is preserved
+        // through `companion_token`.
+        let message = Message::new(
+            MessageTemplate::WrongTokenForm,
+            MessageArgs {
+                token: Some(companion_token),
+                ..MessageArgs::default()
+            },
+        );
 
         let fix_intent = FixIntent {
             replacement: ReplacementIntent::Recanonicalize { scope },
@@ -5618,7 +5652,7 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
             self.default_severity(),
             classification_tok.span,
             ctx.candidate_span,
-            message_text,
+            message,
             citation,
             fix_intent,
         )]
@@ -5818,18 +5852,25 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
         // FGI [LIST] migration trigger) + §H.7 p123 (FGI grammar).
         // Re-verified 2026-05-16 against
         // `crates/capco/docs/CAPCO-2016.md`.
-        let message = format!(
-            "joint-disunity-collapse: portions on this page carry distinct \
-             JOINT producer lists; banner cannot roll up JOINT. Non-US \
-             producers migrate to FGI [{producers_str}] per §H.3 p57 + §H.7 p123."
-        );
-
+        // G13: drop the runtime `producers_str` interpolation. The
+        // typed `MessageTemplate::BannerRollupMismatch` with
+        // `category=CAT_JOINT_CLASSIFICATION` identifies the
+        // collapse-to-FGI class. Typed Citation anchors at §H.3 p57
+        // (Derivative Use FGI [LIST] migration trigger); the §H.7
+        // p123 FGI grammar reference lives in the rule doc comment.
+        let _ = producers_str;
         vec![Diagnostic::new(
             self.id(),
             self.default_severity(),
             ctx.candidate_span,
-            message,
-            "CAPCO-2016 §H.3 p57 + §H.7 p123",
+            Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_JOINT_CLASSIFICATION),
+                    ..MessageArgs::default()
+                },
+            ),
+            capco(SectionLetter::H, 3, 57),
             None,
         )]
     }

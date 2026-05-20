@@ -267,14 +267,37 @@ fn current_year() -> u32 {
 // ---------------------------------------------------------------------------
 
 /// JSON projection of a `Diagnostic` conforming to `contracts/diagnostic.json`.
+///
+/// PR 3c.2.C C5 changed the `message` and `citation` fields' wire
+/// shape per PM-C-7:
+/// - `message` is now a structured object `{ "template": "...",
+///   "args": { ... } }` (was a free-form string).
+/// - `citation` is now the [`Display`] form of typed [`Citation`]
+///   — `§<L>.<sub> p<page>` for CAPCO sources, `[config]` /
+///   `[engine-internal]` for sentinel sources.
+///
+/// Documented in PR 3c.2.C PR description.
 #[derive(Debug, Serialize)]
 struct DiagnosticJson<'a> {
     rule: &'a str,
     severity: &'a str,
     span: SpanJson,
-    message: &'a str,
-    citation: &'a str,
+    message: MessageJson<'a>,
+    citation: String,
     fix: Option<FixJson<'a>>,
+}
+
+/// Structured JSON projection of a [`Message`].
+///
+/// `template` is the [`MessageTemplate::as_str`] canonical label;
+/// `args` is a flattened object with the populated `MessageArgs`
+/// fields (omitted fields are absent from the JSON to keep the wire
+/// shape compact). Phase 1 of the wire-shape change carries the
+/// template label only; per-template arg expansion lands when audit
+/// renderers need the structured field set.
+#[derive(Debug, Serialize)]
+struct MessageJson<'a> {
+    template: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -377,8 +400,10 @@ fn diagnostic_to_json(d: &Diagnostic<CapcoScheme>) -> DiagnosticJson<'_> {
             start: d.span.start,
             end: d.span.end,
         },
-        message: d.message.as_ref(),
-        citation: d.citation,
+        message: MessageJson {
+            template: d.message.template().as_str(),
+        },
+        citation: d.citation.to_string(),
         fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
             (Some(f), _) => Some(FixJson {
                 source: fix_source_str(f.source),

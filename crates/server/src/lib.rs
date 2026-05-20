@@ -630,7 +630,10 @@ fn diagnostics_to_json(result: &marque_engine::LintResult) -> Vec<DiagnosticJson
         .map(|d| DiagnosticJson {
             rule_id: d.rule.to_string(),
             severity: d.severity.to_string(),
-            message: d.message.to_string(),
+            // PR 3c.2.C C5: `Message` has no Display impl by design.
+            // Render the closed-template label; consumers expand args
+            // from the structured form via the public Message API.
+            message: d.message.template().as_str().to_owned(),
             start: d.span.start,
             end: d.span.end,
             fix: match (d.fix.as_ref(), d.text_correction.as_ref()) {
