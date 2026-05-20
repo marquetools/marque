@@ -51,6 +51,10 @@ name = "recognition_token_heavy"
 harness = false
 name = "profile_project"
 
+[[bench]]
+harness = false
+name = "closure_pass"
+
 [dependencies]
 aho-corasick = { workspace = true }
 # PR 3c.2.D (T046) — the engine slices pre-fix bytes at `span` and
