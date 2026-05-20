@@ -32,7 +32,7 @@
 //! rows to presence mask gate + chain-extract numeric compare. The `derive_bits`
 //! call per row is retained (same as tier-1); amortization across the catalog
 //! is deferred to a follow-on that requires a `marque-scheme` trait change
-//! (Constitution VII §IV separate-PR discipline, per plan §1 Q6).
+//! (Constitution VII Principle IV separate-PR discipline, per plan §1 Q6).
 //!
 //! # Bitmask coverage
 //!
@@ -50,7 +50,7 @@
 //!
 //! 1. `derive_bits` amortization — thread `bits: FactBitmask` through
 //!    `MarkingScheme::evaluate_custom`. `marque-scheme` trait change;
-//!    Constitution VII §IV separate-PR discipline.
+//!    Constitution VII Principle IV separate-PR discipline.
 //! 2. Tier-3 SCI per-system catalog compilation — 5 rows in
 //!    `sci_per_system_catalog.rs`. Structurally similar to tier-2 with more
 //!    compartment-string reads; deferred until tier-2 lands.
