@@ -79,7 +79,7 @@ fn bare_cnwdi_rewrites_to_rd_cnwdi() {
     let d = &diags[0];
     assert_eq!(d.severity, Severity::Fix);
     assert!(
-        d.citation.contains("§H.6 p106"),
+        format!("{}", d.citation).contains("§H.6 p106"),
         "citation must cite §H.6 p106; got {:?}",
         d.citation
     );
@@ -125,7 +125,7 @@ fn bare_nk_rewrites_to_si_nk() {
     let d = &diags[0];
     assert_eq!(d.severity, Severity::Fix);
     assert!(
-        d.citation.contains("§H.4 p83"),
+        format!("{}", d.citation).contains("§H.4 p83"),
         "citation must cite §H.4 p83; got {:?}",
         d.citation
     );
@@ -165,7 +165,7 @@ fn bare_eu_in_sci_position_rewrites_to_si_eu() {
     let d = &diags[0];
     assert_eq!(d.severity, Severity::Fix);
     assert!(
-        d.citation.contains("§H.4 p78"),
+        format!("{}", d.citation).contains("§H.4 p78"),
         "citation must cite §H.4 p78; got {:?}",
         d.citation
     );

@@ -41,8 +41,8 @@ pub(crate) fn emit_companion_insert(
     candidate_span: marque_scheme::Span,
     fix_scope: marque_scheme::Scope,
     token: &str,
-    message: String,
-    citation: &'static str,
+    message: marque_rules::Message,
+    citation: marque_rules::Citation,
 ) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_rules::{
         Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
@@ -133,8 +133,11 @@ pub(crate) fn emit_hcs_o_companions(
             candidate_span,
             fix_scope,
             form.orcon(),
-            "HCS-O requires ORCON (§H.4 p64)".to_owned(),
-            row.citation,
+            marque_rules::Message::new(
+                marque_rules::MessageTemplate::RequiredByPresence,
+                marque_rules::MessageArgs::default(),
+            ),
+            row.citation_typed,
         ));
     }
     if !has_noforn {
@@ -145,18 +148,30 @@ pub(crate) fn emit_hcs_o_companions(
             candidate_span,
             fix_scope,
             form.noforn(),
-            "HCS-O requires NOFORN (§H.4 p64)".to_owned(),
-            row.citation,
+            marque_rules::Message::new(
+                marque_rules::MessageTemplate::RequiredByPresence,
+                marque_rules::MessageArgs::default(),
+            ),
+            row.citation_typed,
         ));
     }
     if let Some((span, text)) = usgov_entry {
+        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // the conflict class; `MessageArgs.category` carries the
+        // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: RULE_E059,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
-            message: "HCS-O forbids ORCON-USGOV (§H.4 p64) — replace with ORCON".to_owned(),
-            citation: row.citation,
+            message: marque_rules::Message::new(
+                marque_rules::MessageTemplate::ConflictsWith,
+                marque_rules::MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
+            citation: row.citation_typed,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
             confidence: 0.9,
@@ -199,19 +214,30 @@ pub(crate) fn emit_hcs_p_sub_companions(
             candidate_span,
             fix_scope,
             form.orcon(),
-            "HCS-P sub-compartment requires ORCON (§H.4 p68)".to_owned(),
-            row.citation,
+            marque_rules::Message::new(
+                marque_rules::MessageTemplate::RequiredByPresence,
+                marque_rules::MessageArgs::default(),
+            ),
+            row.citation_typed,
         ));
     }
     if let Some((span, text)) = usgov_entry {
+        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // the conflict class; `MessageArgs.category` carries the
+        // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: RULE_E059,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
-            message: "HCS-P sub-compartment forbids ORCON-USGOV (§H.4 p68) — replace with ORCON"
-                .to_owned(),
-            citation: row.citation,
+            message: marque_rules::Message::new(
+                marque_rules::MessageTemplate::ConflictsWith,
+                marque_rules::MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
+            citation: row.citation_typed,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
             confidence: 0.9,
@@ -252,18 +278,30 @@ pub(crate) fn emit_si_g_companions(
             candidate_span,
             fix_scope,
             form.orcon(),
-            "SI-G requires ORCON (§H.4 p80)".to_owned(),
-            row.citation,
+            marque_rules::Message::new(
+                marque_rules::MessageTemplate::RequiredByPresence,
+                marque_rules::MessageArgs::default(),
+            ),
+            row.citation_typed,
         ));
     }
     if let Some((span, text)) = usgov_entry {
+        // PR 3c.2.C C4 / G13: drop runtime byte text. Template names
+        // the conflict class; `MessageArgs.category` carries the
+        // dissem axis identifier.
         out.push(make_fix_diagnostic(FixDiagnosticParams {
             rule: RULE_E059,
             severity: row.severity,
             source: FixSource::BuiltinRule,
             span,
-            message: "SI-G forbids ORCON-USGOV (§H.4 p80) — replace with ORCON".to_owned(),
-            citation: row.citation,
+            message: marque_rules::Message::new(
+                marque_rules::MessageTemplate::ConflictsWith,
+                marque_rules::MessageArgs {
+                    category: Some(crate::scheme::CAT_DISSEM),
+                    ..marque_rules::MessageArgs::default()
+                },
+            ),
+            citation: row.citation_typed,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
             confidence: 0.9,
@@ -336,10 +374,12 @@ pub(crate) fn emit_companion_required(
         _ => dissem.as_str(),
     };
 
-    let message = format!(
-        "{label} requires {token_name} ({citation})",
-        label = row.marking_label,
-        citation = row.citation,
+    // G13: drop the runtime interpolation; typed Message identifies
+    // the required-by-presence class.
+    let _ = (token_name, &row.marking_label);
+    let message = marque_rules::Message::new(
+        marque_rules::MessageTemplate::RequiredByPresence,
+        marque_rules::MessageArgs::default(),
     );
 
     vec![emit_companion_insert(
@@ -350,6 +390,6 @@ pub(crate) fn emit_companion_required(
         fix_scope,
         companion_text,
         message,
-        row.citation,
+        row.citation_typed,
     )]
 }

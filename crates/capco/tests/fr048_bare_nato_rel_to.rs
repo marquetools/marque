@@ -124,9 +124,14 @@ fn example_a_nato_plus_us_fires_once() {
         diags.iter().map(|d| d.severity).collect::<Vec<_>>(),
     );
     assert!(
-        diags.iter().all(|d| d.citation.contains("§H.7 p127")),
+        diags
+            .iter()
+            .all(|d| format!("{}", d.citation).contains("§H.7 p127")),
         "S007 citation must reference §H.7 p127; got: {:?}",
-        diags.iter().map(|d| d.citation).collect::<Vec<_>>(),
+        diags
+            .iter()
+            .map(|d| format!("{}", d.citation))
+            .collect::<Vec<_>>(),
     );
 }
 

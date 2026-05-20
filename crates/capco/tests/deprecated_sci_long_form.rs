@@ -65,7 +65,7 @@ fn humint_bare_rewrites_to_hcs_at_error_severity() {
     assert_eq!(diags.len(), 1, "exactly one E065 diagnostic expected");
     assert_eq!(diags[0].severity, Severity::Error);
     assert!(
-        diags[0].citation.contains("§H.4 p62"),
+        format!("{}", diags[0].citation).contains("§H.4 p62"),
         "expected §H.4 p62 citation; got {:?}",
         diags[0].citation
     );
@@ -94,7 +94,7 @@ fn comint_rewrites_to_si_at_error_severity() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p74"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p74"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//SI//NOFORN)");
@@ -119,9 +119,12 @@ fn eci_with_compartment_rewrites_to_si_compartment() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
+    // Post PR 3c.2.C: typed `Citation` carries one §-reference per
+    // diagnostic. The catalog row anchors at §H.4 p61 (SCI grammar);
+    // the row.message documentation still cross-references p76.
     assert!(
-        diags[0].citation.contains("§H.4 p61") && diags[0].citation.contains("p76"),
-        "expected combined §H.4 p61 + p76 citation; got {:?}",
+        format!("{}", diags[0].citation).contains("§H.4 p61"),
+        "expected §H.4 p61 citation; got {:?}",
         diags[0].citation
     );
 
@@ -170,7 +173,7 @@ fn el_ecru_rewrites_to_si_ecru() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p78"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p78"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//SI-ECRU//NOFORN)");
@@ -238,7 +241,7 @@ fn kdk_bluefish_rewrites_to_tk_blfh() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p85"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p85"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//TK-BLFH//NOFORN)");
@@ -280,12 +283,19 @@ fn kdk_unknown_compartment_emits_warn_no_fix() {
         diags[0].text_correction.is_none(),
         "unknown KDK compartment must NOT carry a text_correction"
     );
-    assert!(
-        diags[0]
-            .message
-            .contains("not a documented KLONDIKE compartment"),
-        "diagnostic message must explain why no fix was emitted; got {:?}",
-        diags[0].message
+    // PR 3c.2.C C5: `Diagnostic.message` is a closed `Message`
+    // (template + args); the prose explanation that previously lived
+    // in the message body is gone per Constitution V Principle V
+    // (G13). The deprecation class is captured by the
+    // `SupersededToken` template; the no-fix signal is captured by
+    // the `text_correction.is_none()` assertion above and the
+    // unchanged-source assertion below. See PM-C-5 / PM-C-6.
+    use marque_rules::MessageTemplate;
+    assert_eq!(
+        diags[0].message.template(),
+        MessageTemplate::SupersededToken,
+        "deprecated KDK class fires under the SupersededToken template; got {:?}",
+        diags[0].message.template(),
     );
 
     // No-op fix: input unchanged because no text correction was emitted.
@@ -415,7 +425,7 @@ fn multi_system_comint_tk_canonicalizes_to_si_tk() {
         "exactly one E065 diagnostic expected for COMINT chunk in multi-system block"
     );
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p74"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p74"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//SI/TK//NOFORN)");
@@ -432,7 +442,7 @@ fn multi_system_kdk_bluefish_si_canonicalizes_to_tk_blfh_si() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p85"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p85"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//TK-BLFH/SI//NOFORN)");
@@ -447,7 +457,7 @@ fn multi_system_humint_si_canonicalizes_to_hcs_si() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p62"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p62"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//HCS/SI//NOFORN)");
@@ -465,7 +475,7 @@ fn multi_system_klondike_iditarod_tk_canonicalizes() {
     let diags = lint_e065(source);
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
-    assert!(diags[0].citation.contains("§H.4 p85"));
+    assert!(format!("{}", diags[0].citation).contains("§H.4 p85"));
 
     let fixed = fix_once(source);
     assert_eq!(fixed, "(TOP SECRET//TK-IDIT/TK//NOFORN)");
@@ -481,7 +491,7 @@ fn multi_system_eci_abc_si_canonicalizes() {
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Error);
     assert!(
-        diags[0].citation.contains("§H.4 p61"),
+        format!("{}", diags[0].citation).contains("§H.4 p61"),
         "citation must cite §H.4 p61; got {:?}",
         diags[0].citation
     );
