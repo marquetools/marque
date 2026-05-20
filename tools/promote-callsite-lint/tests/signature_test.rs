@@ -143,7 +143,12 @@ pub unsafe fn rough_cast(p: ParsedAttrs) -> CanonicalAttrs {
 }
 
 #[test]
-fn whitelist_transitional_from_parsed_unchecked_is_allowed() {
+fn retired_transitional_path_no_longer_special_cased() {
+    // PR 3c.2.E retired the path-based whitelist 3 along with the
+    // `from_parsed_unchecked` adapter. A function with that exact
+    // name and location now denies like any other site — the
+    // signature shape is what the lint targets, the historical
+    // file path is no longer a carve-out.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),
@@ -158,7 +163,8 @@ pub fn from_parsed_unchecked(p: ParsedAttrs) -> CanonicalAttrs {
 ",
     );
     let diags = signature::scan_workspace(tmp.path()).unwrap();
-    assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
+    assert_eq!(diags.len(), 1, "expected one diagnostic, got {diags:#?}");
+    assert_eq!(diags[0].code, "PRC100");
 }
 
 #[test]
@@ -265,9 +271,11 @@ pub fn just_parses(p: ParsedAttrs) -> u32 {
 }
 
 #[test]
-fn from_parsed_unchecked_outside_whitelist_path_is_denied() {
-    // Function name alone does not unlock the whitelist; it's
-    // path-keyed to `crates/ism/src/canonical.rs`.
+fn from_parsed_unchecked_outside_canonicalize_impl_is_denied() {
+    // Function name alone does not unlock the lint; PR 3c.2.E
+    // retired the path-based carve-out so EVERY occurrence of the
+    // prohibited signature shape outside `MarkingScheme::canonicalize`
+    // or `unsafe fn` is flagged.
     let tmp = TempDir::new().unwrap();
     write(
         tmp.path(),

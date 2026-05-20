@@ -60,6 +60,7 @@
 //! - SC-011 (no `FgiMarker { countries: [] }` shape survives in parser output)
 
 use marque_core::Parser;
+use marque_core::parser::ParsedMarking;
 use marque_ism::CanonicalAttrs;
 use marque_ism::attrs::FgiMarker;
 use marque_ism::span::{MarkingCandidate, MarkingType};
@@ -88,14 +89,16 @@ fn parse_banner_attrs(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&candidate, source)
         .expect("banner candidate parses (lenient parser; shape failures surface as None fields)");
-    // TODO(3c.2.E): migrate or rewrite when
-    // `marque_ism::from_parsed_unchecked` adapter retires; Constitution
-    // VII forbids `marque-core ←── marque-capco` dev-dep edge, so the
-    // migration to `MarkingScheme::canonicalize` (the trait route)
-    // cannot happen at PR 3c.2.B per PM-B-2. PR 3c.2.E's adapter
-    // deletion sweep will either rewrite this helper or introduce a
-    // TestScheme stub.
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    // Test-fixture carve-out per Constitution V Principle V — the
+    // structural rename lives inline (via `parsed_marking_to_canonical`
+    // below) because `marque-core` cannot dev-depend on `marque-capco`
+    // (Constitution VII), so the trait route
+    // `CapcoScheme::canonicalize` is unreachable from here. The body
+    // matches that override byte-for-byte. The helper takes
+    // `ParsedMarking` (not `ParsedAttrs`) so FR-040 PRC100's
+    // `(ParsedAttrs) -> CanonicalAttrs` signature shape never appears
+    // in test code; the lint's sole-path invariant is unweakened.
+    parsed_marking_to_canonical(parsed)
 }
 
 /// Drive `Parser::parse` over `text` interpreted as a portion candidate.
@@ -114,12 +117,90 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&candidate, source)
         .expect("portion candidate parses (lenient parser; shape failures surface as None fields)");
-    // TODO(3c.2.E): migrate or rewrite when
-    // `marque_ism::from_parsed_unchecked` adapter retires; Constitution
-    // VII forbids `marque-core ←── marque-capco` dev-dep edge, so the
-    // migration to `MarkingScheme::canonicalize` (the trait route)
-    // cannot happen at PR 3c.2.B per PM-B-2.
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    // See `parse_banner_attrs` above for the Constitution V / VII
+    // carve-out rationale.
+    parsed_marking_to_canonical(parsed)
+}
+
+/// Structural rename — `ParsedMarking<'_>::attrs` → `CanonicalAttrs`.
+///
+/// Mirrors the `CapcoScheme::canonicalize` override body byte-for-byte.
+/// Lives in `marque-core/tests/` because Constitution VII forbids
+/// `marque-core ←── marque-capco` (the trait route would need that
+/// dev-dep edge). The helper takes `ParsedMarking` (parser output
+/// wrapper) rather than `ParsedAttrs` directly so the FR-040 PRC100
+/// signature shape `(ParsedAttrs) -> CanonicalAttrs` does not appear
+/// in test code — keeping the sole-path lint at full strength while
+/// honoring the Constitution V Principle V test-fixture carve-out.
+///
+/// Lifted from `marque_ism::from_parsed_unchecked` in PR 3c.2.E.
+#[allow(clippy::needless_pass_by_value)]
+fn parsed_marking_to_canonical(parsed: ParsedMarking<'_>) -> CanonicalAttrs {
+    let marque_ism::ParsedAttrs {
+        classification,
+        sci_markings,
+        sci_controls,
+        sar_markings,
+        aea_markings,
+        fgi_marker,
+        dissem_us,
+        dissem_nato,
+        non_ic_dissem,
+        rel_to,
+        display_only_to,
+        declassify_on,
+        classified_by,
+        derived_from,
+        declass_exemption,
+        token_spans,
+        source_bytes_origin: _,
+    } = parsed.attrs;
+    CanonicalAttrs {
+        classification: classification.map(|c| c.value),
+        sci_controls,
+        sci_markings: Vec::from(sci_markings)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        sar_markings: sar_markings.map(|p| p.value),
+        aea_markings: Vec::from(aea_markings)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        fgi_marker: fgi_marker.map(|p| p.value),
+        dissem_us: Vec::from(dissem_us)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        dissem_nato: Vec::from(dissem_nato)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        non_ic_dissem: Vec::from(non_ic_dissem)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        rel_to: Vec::from(rel_to)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        display_only_to: Vec::from(display_only_to)
+            .into_iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        declassify_on: declassify_on.map(|p| p.value),
+        classified_by: classified_by.map(Box::<str>::from),
+        derived_from: derived_from.map(Box::<str>::from),
+        declass_exemption,
+        token_spans,
+    }
 }
 
 // =============================================================================

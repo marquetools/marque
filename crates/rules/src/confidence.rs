@@ -41,19 +41,16 @@
 //! `FeatureId` does not currently require a schema bump.
 //!
 //! **TODO(marque-1.0)**: re-tighten the schema-bump contract
-//! before GA. The atomic cutover lives in PR 3c.2 of the
-//! engine + rule architecture refactor (see CLAUDE.md "PR 3c.2
-//! carved out + `marque-1.0` deferral"); the structural
-//! commitments that land there (Canonical wired into audit
-//! emit, BLAKE3 audit-record digesting, closed
-//! `MessageTemplate` JSON serialization) include the audit-schema
-//! accept-list cutover. PR 3c.2.B (landed) implemented the
-//! `MarkingScheme::canonicalize` trait route; the
-//! `from_parsed_unchecked` adapter deletion remains scheduled for
-//! PR 3c.2.E. After PR 3c.2 closes the accept-list becomes the
-//! single source of truth and the doc comment above MUST be
-//! rewritten to "any new variant requires a coordinated schema
-//! bump."
+//! before GA. The atomic `marque-mvp-3 → marque-1.0` cutover
+//! landed at PR 3c.2.D (Canonical wired into audit emit, BLAKE3
+//! audit-record digesting, closed `MessageTemplate` JSON
+//! serialization, `AppliedFix` v2 + `AppliedTextCorrection` split);
+//! PR 3c.2.E retired the transitional `from_parsed_unchecked`
+//! adapter and lifted the structural rename into the
+//! `MarkingScheme::canonicalize` trait override. The accept-list
+//! is the single source of truth post-cutover; the doc comment
+//! above SHOULD be rewritten to "any new variant requires a
+//! coordinated schema bump" once a new `FeatureId` variant lands.
 //!
 //! ## `features` storage
 //!

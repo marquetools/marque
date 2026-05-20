@@ -6,8 +6,9 @@
 //!
 //! Takes [`MarkingCandidate`] spans from the scanner and produces
 //! [`marque_ism::ParsedAttrs`]. The engine then runs
-//! [`marque_ism::from_parsed_unchecked`] (PR 3a transitional path) or
-//! `MarkingScheme::canonicalize` (post-PR-3c) to land owned
+//! `MarkingScheme::canonicalize` — the trait route, sole production
+//! path per FR-043; for CAPCO that is
+//! `marque_capco::CapcoScheme::canonicalize` — to land owned
 //! [`marque_ism::CanonicalAttrs`] for rule consumption.
 //!
 //! # Phase 2 — Token Extraction
@@ -49,8 +50,8 @@ use std::str::FromStr;
 /// Carries a borrow into the original source bytes via `attrs` (each
 /// `Parsed*<'src>` wrapper retains its source slice). Short-lived: the
 /// engine immediately canonicalizes to `CanonicalAttrs` via
-/// `marque_ism::from_parsed_unchecked` (PR 3a transitional path) or via
-/// `MarkingScheme::canonicalize` (post-PR-3c).
+/// `MarkingScheme::canonicalize` (sole production path per FR-043;
+/// the CAPCO override lives in `CapcoScheme::canonicalize`).
 #[derive(Debug)]
 pub struct ParsedMarking<'src> {
     pub attrs: ParsedAttrs<'src>,
@@ -3867,14 +3868,20 @@ mod tests {
     use marque_ism::token_set::CapcoTokenSet;
     use marque_scheme::Span;
 
-    /// Test-helper output: a [`ParsedMarking`] post-`from_parsed_unchecked`,
+    /// Test-helper output: a [`ParsedMarking`] post-canonicalization,
     /// so existing assertions on the typed `attrs.classification` /
     /// `attrs.dissem_us` / `attrs.dissem_nato` shape continue to work
-    /// without per-test edits during the PR 3a rename.
+    /// without per-test edits.
     ///
     /// Test-fixture carve-out per Constitution V Principle V — the
-    /// adapter is invoked here only to construct test inputs whose
-    /// shape mirrors the engine's post-recognition view.
+    /// structural rename is inlined here only to construct test inputs
+    /// whose shape mirrors the engine's post-recognition view.
+    /// `marque-core` cannot dev-depend on `marque-capco` (Constitution
+    /// VII), so the trait route `CapcoScheme::canonicalize` is
+    /// unreachable from here; the body matches that override
+    /// byte-for-byte. FR-040 PRC100 stays satisfied because the
+    /// enclosing `From::from` signature is `(ParsedMarking) -> Self`,
+    /// not `(ParsedAttrs) -> CanonicalAttrs`.
     pub(super) struct CanonicalParsed {
         pub attrs: CanonicalAttrs,
         #[allow(dead_code)] // tests inspect attrs only; kept for parity
@@ -3885,16 +3892,73 @@ mod tests {
 
     impl<'src> From<ParsedMarking<'src>> for CanonicalParsed {
         fn from(p: ParsedMarking<'src>) -> Self {
+            let marque_ism::ParsedAttrs {
+                classification,
+                sci_markings,
+                sci_controls,
+                sar_markings,
+                aea_markings,
+                fgi_marker,
+                dissem_us,
+                dissem_nato,
+                non_ic_dissem,
+                rel_to,
+                display_only_to,
+                declassify_on,
+                classified_by,
+                derived_from,
+                declass_exemption,
+                token_spans,
+                source_bytes_origin: _,
+            } = p.attrs;
+            let attrs = CanonicalAttrs {
+                classification: classification.map(|c| c.value),
+                sci_controls,
+                sci_markings: Vec::from(sci_markings)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                sar_markings: sar_markings.map(|q| q.value),
+                aea_markings: Vec::from(aea_markings)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                fgi_marker: fgi_marker.map(|q| q.value),
+                dissem_us: Vec::from(dissem_us)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                dissem_nato: Vec::from(dissem_nato)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                non_ic_dissem: Vec::from(non_ic_dissem)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                rel_to: Vec::from(rel_to)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                display_only_to: Vec::from(display_only_to)
+                    .into_iter()
+                    .map(|q| q.value)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                declassify_on: declassify_on.map(|q| q.value),
+                classified_by: classified_by.map(Box::<str>::from),
+                derived_from: derived_from.map(Box::<str>::from),
+                declass_exemption,
+                token_spans,
+            };
             Self {
-                // TODO(3c.2.E): migrate or rewrite when
-                // `marque_ism::from_parsed_unchecked` adapter retires;
-                // Constitution VII forbids `marque-core ←── marque-capco`
-                // dev-dep edge, so the migration to
-                // `MarkingScheme::canonicalize` (the trait route) cannot
-                // happen at PR 3c.2.B per PM-B-2. PR 3c.2.E's adapter
-                // deletion sweep will either inline the body or rewrite
-                // the test to not need canonicalization.
-                attrs: marque_ism::from_parsed_unchecked(p.attrs),
+                attrs,
                 source_span: p.source_span,
                 kind: p.kind,
             }

@@ -134,36 +134,22 @@ pub trait MarkingScheme {
     /// Convert a parsed-attrs value into the scheme's canonical
     /// representation.
     ///
-    /// This is the **sole post-3c.2.E path** for `Parsed → Canonical`
+    /// This is the **sole production path** for `Parsed → Canonical`
     /// per FR-043. PR 3c.2.A defined the trait method with a default
-    /// of `unimplemented!()`; PR 3c.2.B (landed) implemented the
-    /// CapcoScheme override and migrated 26 of 31 call sites. The 5
-    /// carve-outs split by retirement schedule: the 4 `marque-core`
-    /// test sites retire alongside the adapter at PR 3c.2.E (per
-    /// PM-B-2 — Constitution VII forbids the `marque-core ←──
-    /// marque-capco` dev-dep edge); the 1 `cfg(any())`-disabled
-    /// `s004_audit_content_ignorance.rs` site migrates at PR 3c.2.C
-    /// as part of the Diagnostic-shape rewrite (per PM-B-7). PR
-    /// 3c.2.D bumps the audit schema; PR 3c.2.E deletes
-    /// `marque_ism::from_parsed_unchecked`.
+    /// of `unimplemented!()`; PR 3c.2.B implemented the CapcoScheme
+    /// override; PR 3c.2.E retired the transitional
+    /// `marque_ism::from_parsed_unchecked` adapter and lifted the
+    /// structural rename body into the override.
     ///
     /// # Why the default is `unimplemented!()` (not delegation)
     ///
-    /// The predecessor PM contract
-    /// (`docs/plans/2026-05-19-pr3c2-plan-and-decisions.md` §4 R-1)
-    /// originally read "default delegates to `from_parsed_unchecked`",
-    /// but that delegation is incompatible with Constitution VII
-    /// directionality — `marque-scheme` cannot reference
-    /// `marque_ism::from_parsed_unchecked`. The default impl is
-    /// `unimplemented!()`; the CapcoScheme override at 3c.2.B carries
-    /// the body. See PM-1 in `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
-    /// for the erratum.
-    ///
-    /// Test-fixture schemes that bind `type Parsed<'src> = ();` and
-    /// `type Canonical = ();` inherit this default safely — their
-    /// rule paths emit only `FixProposal` and never call
-    /// `canonicalize`, so the panic is unreachable from their code
-    /// paths.
+    /// `marque-scheme` is domain-neutral and cannot reference
+    /// `marque_ism` types in a default body — Constitution VII
+    /// directionality. Schemes that need canonicalization MUST
+    /// override; schemes that don't (test-fixture schemes binding
+    /// `type Parsed<'src> = ();` and `type Canonical = ();`) inherit
+    /// this default safely because their rule paths never call
+    /// `canonicalize`.
     fn canonicalize<'src>(&self, _parsed: Self::Parsed<'src>) -> Self::Canonical {
         unimplemented!(
             "MarkingScheme::canonicalize not overridden by this scheme. \

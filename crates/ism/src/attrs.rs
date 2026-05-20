@@ -28,9 +28,10 @@
 //! - [`crate::ProjectedMarking`] (in `projected.rs`) — page projection
 //!   output. Defined at PR 3a; PR 6 wires the engine to consume it.
 //!
-//! The `from_parsed_unchecked` adapter bridges parser output to
-//! `CanonicalAttrs` during the keystone window; PR 3c's
-//! `MarkingScheme::canonicalize` replaces it.
+//! Parser output ([`crate::ParsedAttrs`]) is converted to
+//! [`crate::CanonicalAttrs`] through `MarkingScheme::canonicalize`
+//! (sole production path per FR-043; the CAPCO override lives in
+//! `marque_capco::CapcoScheme::canonicalize`).
 
 use smallvec::SmallVec;
 use smol_str::SmolStr;

@@ -19,20 +19,16 @@
 //!    *defines* the legitimate `ParsedAttrs → CanonicalAttrs`
 //!    transition. Detected by enclosing `impl <...> MarkingScheme<...> for T`
 //!    plus method ident `canonicalize`.
-//! 3. **Transitional `from_parsed_unchecked`** in
-//!    `crates/ism/src/canonical.rs` — path-based carve-out scoped to
-//!    the PR 3a → PR 3c keystone window. **Auto-expires** when
-//!    PR 3c lands and tasks.md T054 deletes the function: the
-//!    whitelist match becomes a no-op (nothing to whitelist) but
-//!    is harmless dead code that can be removed on the next pass.
 //!
 //! Targeting **shape, not name** is the D12 rationale: a future
 //! contributor renaming `from_parsed_raw` evades a name-suffix
 //! lint without altering the failure pattern.
 //!
-//! At PR 0 land, no functions in the workspace match this shape
-//! (the types `ParsedAttrs` / `CanonicalAttrs` arrive at PR 3a).
-//! The lint is forward-looking; the whitelist is scaffolding.
+//! The PR 3a → PR 3c keystone window also carried a path-based
+//! whitelist 3 for `crates/ism/src/canonical.rs::from_parsed_unchecked`.
+//! That carve-out retired in PR 3c.2.E along with the adapter
+//! itself; the inlined structural rename now lives in
+//! `CapcoScheme::canonicalize` (whitelist 2).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -58,16 +54,6 @@ const CANONICAL_TYPE_NAME: &str = "CanonicalAttrs";
 /// suspicious as the bare one. Adding more wrappers (e.g. `Option`)
 /// requires a deliberate amendment.
 const RESULT_TYPE_NAME: &str = "Result";
-
-/// File-relative path of the transitional whitelist site (whitelist 3).
-/// Components are joined at runtime to stay portable. The function
-/// landed in `crates/ism/src/canonical.rs` (PR 3a) rather than
-/// `attrs.rs` because PR 3a split the pivot type into its own module
-/// per the design's module-placement decision (§2 of pr-3a-design.md).
-const TRANSITIONAL_WHITELIST_PATH: &[&str] = &["crates", "ism", "src", "canonical.rs"];
-
-/// Function ident of the transitional whitelist site (whitelist 3).
-const TRANSITIONAL_WHITELIST_FN: &str = "from_parsed_unchecked";
 
 /// Trait method that defines the legitimate canonical transition
 /// (whitelist 2). The trait path is matched separately — see
@@ -381,12 +367,8 @@ impl SignatureWalker<'_> {
             }
         }
 
-        // Whitelist 3: transitional `crates/ism/src/canonical.rs::from_parsed_unchecked`.
-        // Auto-expires when PR 3c lands and tasks.md T054 deletes the
-        // function — the whitelist becomes a no-op at that point.
-        if self.rel_path_matches_transitional_site() && sig.ident == TRANSITIONAL_WHITELIST_FN {
-            return;
-        }
+        // Whitelist 3 (`crates/ism/src/canonical.rs::from_parsed_unchecked`)
+        // retired in PR 3c.2.E along with the adapter itself.
 
         let loc = sig.ident.span().start();
         self.sink.push(Diagnostic {
@@ -404,16 +386,6 @@ impl SignatureWalker<'_> {
         });
     }
 
-    fn rel_path_matches_transitional_site(&self) -> bool {
-        let comps: Vec<_> = self.rel_path.components().collect();
-        if comps.len() != TRANSITIONAL_WHITELIST_PATH.len() {
-            return false;
-        }
-        comps
-            .iter()
-            .zip(TRANSITIONAL_WHITELIST_PATH.iter())
-            .all(|(c, &want)| c.as_os_str() == want)
-    }
 }
 
 /// Returns `true` when the signature matches the prohibited

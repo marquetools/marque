@@ -87,23 +87,20 @@ whitelisted call sites:
    `canonicalize` signature passes PRC100; a trait merely *named*
    `MarkingScheme` declared anywhere else fails PRC100 unless its
    `impl` blocks satisfy the matchers above.
-3. **Transitional adapter `from_parsed_unchecked`** in
-   `crates/ism/src/canonical.rs`: a path-based carve-out scoped to the
-   PR 3a → PR 3c keystone window. **Auto-expires** when PR 3c
-   lands and tasks.md T054 deletes the function — the lint then
-   has nothing to whitelist (it stays as inert code, removable on
-   the next pass).
-
 Targeting **shape, not name** is the D12 rationale: a future
 contributor renaming `from_parsed_raw` evades a name-suffix lint
 without altering the failure pattern. The shape-based check catches
 **intent**: any `ParsedAttrs → CanonicalAttrs` conversion outside
 the trait method is the failure pattern.
 
-At PR 0 land, no functions in the workspace match this shape (the
-types `ParsedAttrs` / `CanonicalAttrs` arrive at PR 3a). The lint
-is forward-looking; the whitelist is scaffolding for the keystone
-window.
+PR 3a → PR 3c carried a third path-based whitelist for the
+transitional `crates/ism/src/canonical.rs::from_parsed_unchecked`
+adapter. PR 3c.2.E retired both the adapter and the carve-out
+together (T054 / FR-043). The inlined structural rename now lives
+in `CapcoScheme::canonicalize` (whitelist 2); marque-core test
+fixtures that cannot reach the trait route avoid the prohibited
+signature shape by typing their helper against `ParsedMarking`
+rather than `ParsedAttrs` directly.
 
 ## CLI
 
