@@ -82,11 +82,8 @@ fn synth_applied_fix(
     // is Recanonicalize (whole-marking scope per PR 3c.2.D's
     // CategoryId resolution).
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();
-    let canonical: Canonical<CapcoScheme> = constructor.build_open_vocab(
-        CategoryId::MARKING,
-        Box::from("(S)"),
-        Scope::Portion,
-    );
+    let canonical: Canonical<CapcoScheme> =
+        constructor.build_open_vocab(CategoryId::MARKING, Box::from("(S)"), Scope::Portion);
     // Test-fixture carve-out per Constitution V Principle V.
     let token = EnginePromotionToken::__engine_construct();
     AuditAppliedFix::<CapcoScheme>::__engine_promote(
@@ -206,13 +203,7 @@ fn applied_fix_decoder_classification_heuristic_routes_to_decoder() {
 #[test]
 fn applied_fix_migration_table_routes_to_strict() {
     // FixSource::MigrationTable also maps to "strict" per PM-D-7.
-    let fix = synth_applied_fix(
-        "E006",
-        FixSource::MigrationTable,
-        None,
-        false,
-        None,
-    );
+    let fix = synth_applied_fix("E006", FixSource::MigrationTable, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     assert_eq!(v["fix"]["replacement"]["discriminant"], "strict");
@@ -255,13 +246,7 @@ fn applied_fix_input_absent_emits_null() {
 #[test]
 fn applied_fix_dry_run_toggles() {
     for &dry in &[true, false] {
-        let fix = synth_applied_fix(
-            "E002",
-            FixSource::BuiltinRule,
-            None,
-            dry,
-            None,
-        );
+        let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, dry, None);
         let line = AuditLine::AppliedFix(fix);
         let v = project(&line);
         assert_eq!(
@@ -276,13 +261,7 @@ fn applied_fix_strict_path_canonical_open_vocab_shape() {
     // The Recanonicalize fixture routes through CategoryId::MARKING →
     // open_vocab path. Validate the open_vocab arm carries category +
     // render_call_site + bytes_digest (no token_id).
-    let fix = synth_applied_fix(
-        "E002",
-        FixSource::BuiltinRule,
-        None,
-        false,
-        None,
-    );
+    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let canonical = &v["fix"]["replacement"]["canonical"];
@@ -307,13 +286,7 @@ fn applied_fix_strict_path_canonical_open_vocab_shape() {
 
 #[test]
 fn applied_fix_confidence_round_trip() {
-    let fix = synth_applied_fix(
-        "E002",
-        FixSource::BuiltinRule,
-        None,
-        false,
-        None,
-    );
+    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let confidence = &v["fix"]["replacement"]["confidence"];
@@ -334,13 +307,7 @@ fn applied_fix_confidence_round_trip() {
 
 #[test]
 fn applied_fix_message_default_args_emit_empty_map() {
-    let fix = synth_applied_fix(
-        "E002",
-        FixSource::BuiltinRule,
-        None,
-        false,
-        None,
-    );
+    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let message = &v["message"];
@@ -368,11 +335,8 @@ fn applied_fix_message_populated_args_round_trip() {
     intent.message = Message::new(MessageTemplate::SupersededToken, args);
 
     let constructor = EngineConstructor::<CapcoScheme>::__engine_construct();
-    let canonical: Canonical<CapcoScheme> = constructor.build_open_vocab(
-        CategoryId::MARKING,
-        Box::from("(S)"),
-        Scope::Portion,
-    );
+    let canonical: Canonical<CapcoScheme> =
+        constructor.build_open_vocab(CategoryId::MARKING, Box::from("(S)"), Scope::Portion);
     let token = EnginePromotionToken::__engine_construct();
     let fix = AuditAppliedFix::<CapcoScheme>::__engine_promote(
         RuleId::new("E006"),
@@ -481,13 +445,7 @@ fn fix_record_carries_original_digest_blake3_prefix() {
     // Constitution V Principle V — G13 invariant. The audit record's
     // original_digest field MUST be "blake3:<hex>"; bytes themselves
     // never appear in the audit output.
-    let fix = synth_applied_fix(
-        "E002",
-        FixSource::BuiltinRule,
-        None,
-        false,
-        None,
-    );
+    let fix = synth_applied_fix("E002", FixSource::BuiltinRule, None, false, None);
     let line = AuditLine::AppliedFix(fix);
     let v = project(&line);
     let digest = v["fix"]["original_digest"].as_str().unwrap();

@@ -681,14 +681,13 @@ fn project_canonical_to_json_v1_0<'a>(
     canonical: &marque_scheme::Canonical<CapcoScheme>,
     precomputed_bytes_digest: &blake3::Hash,
 ) -> AuditCanonicalJsonV1_0<'a> {
-    use marque_scheme::canonical::TokenSource;
     use marque_scheme::Vocabulary;
+    use marque_scheme::canonical::TokenSource;
     let digest = blake3_audit_string_v1_0(precomputed_bytes_digest);
     match canonical.source() {
         TokenSource::Cve(token_id) => {
-            let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-                scheme, token_id,
-            );
+            let label =
+                <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, token_id);
             AuditCanonicalJsonV1_0 {
                 source: "cve",
                 token_id: Some(label),
@@ -742,9 +741,8 @@ fn project_message_to_json_v1_0<'a>(
     let mut args = serde_json::Map::new();
     let m = message.args();
     if let Some(token_id) = m.token {
-        let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-            scheme, &token_id,
-        );
+        let label =
+            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &token_id);
         args.insert(
             "token".to_owned(),
             serde_json::Value::String(label.into_owned()),
@@ -786,10 +784,8 @@ fn project_message_to_json_v1_0<'a>(
         );
     }
     if let Some(actual_token) = m.actual_token {
-        let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-            scheme,
-            &actual_token,
-        );
+        let label =
+            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &actual_token);
         args.insert(
             "actual_token".to_owned(),
             serde_json::Value::String(label.into_owned()),
@@ -924,8 +920,8 @@ fn serialize_audit_line_v1_0(
     scheme: &CapcoScheme,
     line: &marque_rules::audit::AuditLine<CapcoScheme>,
 ) -> Result<Box<serde_json::value::RawValue>, String> {
-    let json = serde_json::to_string(&audit_line_to_json_v1_0(scheme, line))
-        .map_err(|e| e.to_string())?;
+    let json =
+        serde_json::to_string(&audit_line_to_json_v1_0(scheme, line)).map_err(|e| e.to_string())?;
     serde_json::value::RawValue::from_string(json).map_err(|e| e.to_string())
 }
 

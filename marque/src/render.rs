@@ -40,9 +40,7 @@
 
 use marque_capco::CapcoScheme;
 use marque_engine::{AUDIT_SCHEMA_IS_V3, AUDIT_SCHEMA_VERSION, LintResult};
-use marque_rules::audit::{
-    AppliedTextCorrection, AuditLine, discriminant_from_source,
-};
+use marque_rules::audit::{AppliedTextCorrection, AuditLine, discriminant_from_source};
 use marque_rules::{AppliedFix, AppliedFixProposal, Diagnostic, FeatureContribution};
 use marque_scheme::{TokenSource, Vocabulary};
 use serde::Serialize;
@@ -857,10 +855,7 @@ fn format_timestamp(ts: std::time::SystemTime) -> String {
 /// project through the scheme's [`MarkingScheme::categories`] table.
 /// Unknown ids — should not occur in production — project to
 /// `"unknown"` so the audit record stays well-formed.
-fn category_label(
-    scheme: &CapcoScheme,
-    category_id: marque_scheme::CategoryId,
-) -> &'static str {
+fn category_label(scheme: &CapcoScheme, category_id: marque_scheme::CategoryId) -> &'static str {
     use marque_scheme::MarkingScheme;
     if category_id == marque_scheme::CategoryId::MARKING {
         return "Marking";
@@ -892,9 +887,8 @@ fn project_canonical_to_json<'a>(
             // does not route through `capco_token_category` — the
             // visible signal Constitution VIII calls for when audit
             // emit hits an unrecognized token rather than panicking.
-            let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-                scheme, token_id,
-            );
+            let label =
+                <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, token_id);
             AuditCanonicalJson {
                 source: "cve",
                 token_id: Some(label),
@@ -922,9 +916,7 @@ fn project_canonical_to_json<'a>(
 
 /// Project a [`marque_rules::Confidence`] into the audit-record JSON
 /// shape per contract §140-147.
-fn project_confidence_to_json(
-    confidence: &marque_rules::Confidence,
-) -> AuditConfidenceJson<'_> {
+fn project_confidence_to_json(confidence: &marque_rules::Confidence) -> AuditConfidenceJson<'_> {
     AuditConfidenceJson {
         recognition: confidence.recognition,
         rule: confidence.rule,
@@ -957,9 +949,8 @@ fn project_message_to_json<'a>(
     let mut args = serde_json::Map::new();
     let m = message.args();
     if let Some(token_id) = m.token {
-        let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-            scheme, &token_id,
-        );
+        let label =
+            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &token_id);
         args.insert(
             "token".to_owned(),
             serde_json::Value::String(label.into_owned()),
@@ -1001,10 +992,8 @@ fn project_message_to_json<'a>(
         );
     }
     if let Some(actual_token) = m.actual_token {
-        let label = <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(
-            scheme,
-            &actual_token,
-        );
+        let label =
+            <CapcoScheme as Vocabulary<CapcoScheme>>::qualified_token_label(scheme, &actual_token);
         args.insert(
             "actual_token".to_owned(),
             serde_json::Value::String(label.into_owned()),
@@ -1650,9 +1639,7 @@ mod tests {
         use marque_ism::Span;
         use marque_rules::audit::AppliedFix as AuditAppliedFix;
         use marque_rules::{EnginePromotionToken, RuleId};
-        use marque_scheme::canonical::{
-            Canonical, CanonicalConstructor, EngineConstructor,
-        };
+        use marque_scheme::canonical::{Canonical, CanonicalConstructor, EngineConstructor};
         use std::sync::Arc;
         use std::time::{Duration, UNIX_EPOCH};
 
@@ -1760,7 +1747,10 @@ mod tests {
         // `args` is a partial-emit map; the test fixture uses
         // MessageArgs::default() so every field elides.
         let args = message["args"].as_object().unwrap();
-        assert!(args.is_empty(), "default MessageArgs emits an empty args map; got: {args:?}");
+        assert!(
+            args.is_empty(),
+            "default MessageArgs emits an empty args map; got: {args:?}"
+        );
 
         // Top-level runtime context.
         assert_eq!(v["timestamp"].as_str().unwrap().contains('T'), true);
@@ -1779,8 +1769,8 @@ mod tests {
         use marque_ism::Span;
         use marque_rules::audit::AppliedTextCorrection;
         use marque_rules::{
-            Confidence, EnginePromotionToken, FixSource, Message, MessageArgs,
-            MessageTemplate, RuleId, Severity,
+            Confidence, EnginePromotionToken, FixSource, Message, MessageArgs, MessageTemplate,
+            RuleId, Severity,
         };
         use std::sync::Arc;
         use std::time::{Duration, UNIX_EPOCH};
@@ -1823,10 +1813,12 @@ mod tests {
         assert_eq!(v["span"]["end"], 6);
         assert_eq!(v["replacement"], "SECRET");
         assert_eq!(v["source"], "CorrectionsMap");
-        assert!(v["original_digest"]
-            .as_str()
-            .unwrap()
-            .starts_with("blake3:"));
+        assert!(
+            v["original_digest"]
+                .as_str()
+                .unwrap()
+                .starts_with("blake3:")
+        );
         assert!(
             v["migration_ref"].is_null(),
             "None migration_ref emits as null per audit-consumer stability"
