@@ -141,6 +141,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     // Row 1: A→B (one-hop)
     ClosureRule {
         name: "stub/a-implies-b",
+        display_label: "Stub A implies B",
         label: "StubScheme proptest fixture",
         triggers: &[TokenRef::Token(TOK_A)],
         suppressors: &[],
@@ -154,6 +155,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     // PR 3.7 review pass 3).
     ClosureRule {
         name: "stub/b-implies-c",
+        display_label: "Stub B implies C",
         label: "StubScheme proptest fixture",
         triggers: &[TokenRef::Token(TOK_B)],
         suppressors: &[],
@@ -166,6 +168,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     // marque-applied.md §4.7.3 chain-depth walk).
     ClosureRule {
         name: "stub/c-implies-d",
+        display_label: "Stub C implies D",
         label: "StubScheme proptest fixture",
         triggers: &[TokenRef::Token(TOK_C)],
         suppressors: &[],
@@ -176,6 +179,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     // Row 4: independent F→{G,H} (multi-cone, no chain interaction)
     ClosureRule {
         name: "stub/f-implies-g-h",
+        display_label: "Stub F implies G and H",
         label: "StubScheme proptest fixture",
         triggers: &[TokenRef::Token(TOK_F)],
         suppressors: &[],
@@ -316,7 +320,7 @@ fn default_closure_inventory_forwards_from_closure_rules() {
 
     for (metadata, rule) in inventory.iter().zip(CLOSURE_RULES.iter()) {
         assert_eq!(metadata.name, rule.name);
-        assert_eq!(metadata.label, rule.label);
+        assert_eq!(metadata.label, rule.display_label);
         assert_eq!(metadata.citation, Some(rule.label));
         assert_eq!(metadata.default_severity, rule.default_severity);
     }

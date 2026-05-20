@@ -157,6 +157,9 @@ pub struct ClosureRule<S: crate::scheme::MarkingScheme + ?Sized> {
     /// Every `ClosureRule` in a scheme's catalog MUST have a distinct `name`.
     pub name: &'static str,
 
+    /// Human-readable display label for inventory surfaces.
+    pub display_label: &'static str,
+
     /// Authoritative-source citation passage (e.g., `"CAPCO-2016 §H.8 p145"`).
     ///
     /// Per Constitution VIII, citations MUST refer to a real passage in the
@@ -284,6 +287,7 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> core::fmt::Debug for ClosureRule<
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ClosureRule")
             .field("name", &self.name)
+            .field("display_label", &self.display_label)
             .field("label", &self.label)
             .field("triggers", &self.triggers)
             .field("suppressors", &self.suppressors)
@@ -298,6 +302,7 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> Clone for ClosureRule<S> {
     fn clone(&self) -> Self {
         Self {
             name: self.name,
+            display_label: self.display_label,
             label: self.label,
             triggers: self.triggers,
             suppressors: self.suppressors,
@@ -312,9 +317,7 @@ impl<S: crate::scheme::MarkingScheme + ?Sized> From<&ClosureRule<S>> for Closure
     fn from(rule: &ClosureRule<S>) -> Self {
         Self {
             name: rule.name,
-            label: rule.label,
-            // `ClosureRule` currently stores citation text in `label`; carry it
-            // through explicitly for inventory consumers.
+            label: rule.display_label,
             citation: Some(rule.label),
             default_severity: rule.default_severity,
         }
