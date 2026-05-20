@@ -3952,33 +3952,6 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
             return vec![];
         }
 
-        // Clause 2b: DISPLAY ONLY suppressor (Copilot review fix).
-        //
-        // `TOK_DISPLAY_ONLY` IS in `RELIDO_US_CLASS_SUPPRESSORS` and
-        // `FDR_OR_RELIDO_INCOMPAT` at the lattice layer, but the
-        // closure's `satisfies(TOK_DISPLAY_ONLY)` predicate scans
-        // `attrs.dissem_iter()` for `DissemControl::Displayonly` —
-        // which the parser only populates programmatically. For the
-        // canonical wire form `(S//DISPLAY ONLY GBR)` the parser
-        // routes the country list into `attrs.display_only_to`
-        // (separate axis, parallel to `attrs.rel_to`) without ever
-        // setting the `DissemControl::Displayonly` variant in
-        // `dissem_us`. The closure therefore misses the suppressor
-        // and S008 would otherwise fire a spurious "add RELIDO"
-        // suggestion on portions that already carry an authoritative
-        // DISPLAY ONLY decision.
-        //
-        // The proper fix lives at the closure-suppressor predicate
-        // layer (widen `satisfies(TOK_DISPLAY_ONLY)` to also accept
-        // `!attrs.display_only_to.is_empty()`) and is out of scope
-        // for #559 — that touches engine-adjacent code being
-        // refactored in #578. Until that lands, gate S008 explicitly
-        // on the canonical axis here. This guard is a no-op once
-        // the underlying predicate is widened.
-        if !attrs.display_only_to.is_empty() {
-            return vec![];
-        }
-
         // Clause 3: run the closure and check the post-closure state.
         // `S008_SCHEME.closure(marking)` short-circuits via
         // `any_closure_trigger_fires` when no closure rule's trigger
