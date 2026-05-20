@@ -60,8 +60,6 @@
 //! row-name severity overrides); they are not re-derived from any other
 //! authority here.
 
-#![allow(dead_code)] // PR-C sidecar; PR-D wires production consumer in `CapcoScheme::closure`.
-
 use marque_scheme::FactBitmask;
 
 use crate::fact_bitmask::{

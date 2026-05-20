@@ -2,24 +2,51 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! CAPCO closure-rule catalog — `FDR_DOMINATORS` + `CLOSURE_NOFORN_CAVEATED`
-//! + `CLOSURE_REL_TO_USA_NATO` + the aggregating `CAPCO_CLOSURE_RULES` static.
+//! CAPCO closure-rule catalog (residual) — `FDR_DOMINATORS` +
+//! `CLOSURE_REL_TO_USA_NATO` + the aggregating `CAPCO_CLOSURE_RULES`
+//! static.
 //!
-//! Implements the §4.7 implicit-fact propagation catalog from
-//! `docs/plans/2026-05-01-lattice-design.md` §3 (e) and
-//! `marque-applied.md` §4.7. The `MarkingScheme::closure_rules()` impl on
-//! `CapcoScheme` exposes it as the public catalog surface per
-//! `decisions.md` D18.
+//! # Post-PR-D shape (issue #371)
 //!
-//! Trio 1 was originally split into seven token-grouped rows (SAR / AEA-RD
-//! / UCNI / FGI / ORCON / RSEN-IMCON-DSEN / non-IC-controls) for §-citation
-//! locality. Per D18 rationale 2 ("triggers reduce to n-ary OR over
-//! `TokenRef`s") those rows are algebraically identical — same suppressor
-//! (`FDR_DOMINATORS`), same cone (`{NOFORN}`), same default severity. The
-//! Trio 1 catalog is now a single `CLOSURE_NOFORN_CAVEATED` row whose
-//! `label` cites the universal §B.3 algebraic basis (ICD 403 → caveated
-//! default); per-token Section H subsection authorities live in the row
-//! doc-comment's authority table.
+//! PR-D of the FactBitmask refactor wired `CapcoScheme::closure` to the
+//! bitmask Kleene fast path (`CLOSURE_TABLE` + `close()` in
+//! `closure_table.rs`). Nine of the ten original `ClosureRule` fn-pointer
+//! statics — `CLOSURE_NOFORN_CAVEATED`, the six per-marking SCI
+//! implications (HCS-O / HCS-P[sub] / SI-G / TK-BLFH / TK-IDIT / TK-KAND),
+//! and the two Trio 2 RELIDO rows — were retired in PR-D because their
+//! triggers / suppressors / cones all live in the closed-vocab atom
+//! inventory and compile cleanly to bitmask form.
+//!
+//! Only `CLOSURE_REL_TO_USA_NATO` survives in fn-pointer form. The row's
+//! `cone_derived` injects `CountryCode::NATO` into `rel_to` via an
+//! open-vocab `FactRef::OpenVocab(_)` — there is no closed-vocab `TokenId`
+//! for NATO as a tetragraph, so it cannot be projected onto a bit and
+//! cannot ride the bitmask cone path. The closure body in
+//! `marking_scheme_impl.rs::CapcoScheme::closure` applies the static USA
+//! leg of Row 7 through the bitmask `REL_TO_USA` atom and runs the
+//! surviving `cone_derived` once after the Kleene fixpoint converges.
+//!
+//! The `FDR_DOMINATORS` slice stays in this file as the source-of-truth
+//! enumeration of the FD&R-membership set: it's still consumed by the
+//! `MASK_FDR_DOMINATORS` projection in `fact_bitmask.rs` (as the
+//! corpus-side definition the bitmask suppressor is derived from), by
+//! the `Vocabulary::is_fdr_dissem` override in `vocabulary.rs`, and by
+//! `CLOSURE_REL_TO_USA_NATO` itself as Row 7's suppressor.
+//!
+//! `FDR_OR_RELIDO_INCOMPAT` and `RELIDO_US_CLASS_SUPPRESSORS` remain in
+//! this file because the in-file `#[cfg(test)]` modules (the
+//! `phase2_closure_pin` SCI-suppression iterator, the `phase3_closure_pin`
+//! US-classification suppression iterator) iterate them as fixture
+//! enumerations. The production closure path no longer reads them. A
+//! follow-on PR (when the test fixtures move to a bitmask-driven
+//! iteration over `MASK_*` constants) will retire them.
+//!
+//! # Historical note
+//!
+//! Trio 1 was originally split into seven token-grouped rows for
+//! §-citation locality and consolidated by PR #522 (D18 rationale 2)
+//! into the single `CLOSURE_NOFORN_CAVEATED` row that PR-D then
+//! retired into the `CLOSURE_TABLE` Row 0.
 
 use marque_scheme::{ClosureRule, FactRef, Severity, TokenRef};
 use smallvec::{SmallVec, smallvec};
@@ -168,6 +195,7 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 //
 // `pub(crate)` for symmetry with `FDR_DOMINATORS` and so future
 // runtime-pin modules can walk the slice as a source-of-truth.
+#[allow(dead_code)] // post-PR-D test fixture only; see module doc-header.
 pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
     // FD&R dominators (NOFORN ⊐ RELIDO per §H.8 p145; REL TO / RELIDO
     // / DISPLAY ONLY / EYES are explicit FD&R decisions). Listed
@@ -201,181 +229,17 @@ pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
     TokenRef::Token(TOK_TK_KAND),
 ];
 
-// --- The implicit-default trio (FD&R-suppressed) ---
-
-/// Trio 1: every trigger marking enumerated in the `triggers` list
-/// below implies NOFORN unless an explicit FD&R decision (NOFORN,
-/// REL TO, RELIDO, DISPLAY ONLY, EYES) is present.
-///
-/// **Universal IC principle.** Any AEA marking, SAP marking, or
-/// dissemination control marking renders information structurally
-/// **caveated** per CAPCO-2016 §B.3 p20 Note: "Caveated means bears no
-/// FD&R markings, but has one or more AEA markings, SAP markings,
-/// and/or dissemination control marking(s)." The §B.3 Table 2 p21 row
-/// "Classified, caveated, on/after 28 Jun 2010 → NOFORN" is the
-/// algebraic anchor for the classified case; for triggers that exist
-/// at UNCLASSIFIED (UCNI/DCNI by §H.6 marking template, non-IC dissem
-/// markings under §H.9 that may be applied at any classification
-/// level), the per-marking template authority carries the NOFORN
-/// implication independently of §B.3 Table 2 p21. The principle is
-/// rooted in ICD 403 (Foreign Disclosure and Release): the IC cannot
-/// presume releasability or RELIDO-suitability of information governed
-/// by policy regimes outside IC marking authority, so implicit NOFORN
-/// is the conservative default absent an explicit FD&R decision.
-///
-/// **The row is intentionally class-agnostic** — it has no
-/// classification gate. Every trigger marking carries an implicit
-/// NOFORN release posture under its own per-marking authority,
-/// regardless of whether the host information is classified or
-/// unclassified. This is correct for UCNI (constrained to UNCLASSIFIED
-/// per §H.6 pp116-119) and for non-IC dissem markings (which may apply
-/// at any classification level per §H.9 marking templates). The
-/// per-trigger authority table below names the load-bearing
-/// per-marking citation for each arm.
-///
-/// **Trigger-set scope.** The `triggers` list enumerates the caveated
-/// markings *currently in the catalog*. The universal §B.3 p20 Note
-/// definition is broader — it covers every AEA / SAP / dissem marking
-/// — but one class of caveated marking is intentionally out of scope
-/// of this row:
-/// - **ATOMAL** (NATO AEA) — routed through the AEA axis with its own
-///   per-marking handling; see `marque-ism` AEA layer.
-///
-/// New markings registered upstream MUST evaluate against this rule's
-/// universal basis (§B.3 p20 Note + §B.3 Table 2 p21) and be added to
-/// the trigger list unless one of the structural exceptions above
-/// applies.
-///
-/// This row is the algebraic union of seven previously separate Trio 1
-/// rows (SAR / AEA-RD / UCNI / FGI / ORCON / RSEN-IMCON-DSEN /
-/// non-IC-controls). All shared the same suppressor (`FDR_DOMINATORS`),
-/// the same cone (`{NOFORN}`), and the same default severity
-/// (`Severity::Info`); per D18 rationale 2 ("triggers reduce to n-ary
-/// OR over `TokenRef`s") the rows are algebraically identical. The
-/// universal §B.3 citation in `label` reflects the rule's actual
-/// algebraic basis; per-token Section H subsection authorities live in the per-trigger
-/// authority table below (per-token traceability without per-row
-/// duplication of identical operator structure).
-///
-/// **Per-trigger authority (the `triggers` list, in order):**
-///
-/// | Trigger                            | Marking                  | Authority           |
-/// |------------------------------------|--------------------------|---------------------|
-/// | `AnyInCategory(CAT_SAR)`           | any SAR program          | §H.5 pp99-102       |
-/// | `Token(TOK_RD)`                    | RESTRICTED DATA          | §H.6 p104           |
-/// | `Token(TOK_FRD)`                   | FORMERLY RESTRICTED DATA | §H.6 p111           |
-/// | `Token(TOK_TFNI)`                  | TFNI                     | §H.6 p120           |
-/// | `Token(TOK_UCNI)`                  | DOE UCNI                 | §H.6 p118           |
-/// | `Token(TOK_DCNI)`                  | DOD UCNI                 | §H.6 p116 (#407)    |
-/// | `Token(TOK_FGI_MARKER)`            | foreign-classified portion (`//GBR S`, etc.) | §H.7 p122 |
-/// | `AnyInCategory(CAT_FGI_MARKER)`    | explicit `FGI` token     | §H.7 p123           |
-/// | `Token(TOK_ORCON)`                 | ORCON                    | §H.8 p136           |
-/// | `Token(TOK_ORCON_USGOV)`           | ORCON-USGOV              | §H.8 p139           |
-/// | `Token(TOK_RSEN)`                  | RSEN                     | §H.8 p132           |
-/// | `Token(TOK_IMCON)`                 | IMCON                    | §H.8 p142           |
-/// | `Token(TOK_PROPIN)`                | PROPIN                   | §H.8 p148           |
-/// | `Token(TOK_DSEN)`                  | DEA SENSITIVE            | §H.8 p159           |
-/// | `Token(TOK_FISA)`                  | FISA                     | §H.8 p161           |
-/// | `Token(TOK_RAWFISA)`               | RAWFISA                  | ODNI `CVEnumISMDissem.xml` |
-/// | `Token(TOK_LIMDIS)`                | LIMDIS                   | §H.9 p170           |
-/// | `Token(TOK_LES)`                   | LES                      | §H.9 p181           |
-/// | `Token(TOK_NNPI)`                  | NNPI                     | ODNI `CVEnumISMNonIC.xml` |
-/// | `Token(TOK_SBU)`                   | SBU                      | §H.9 p176           |
-/// | `Token(TOK_SSI)`                   | SSI                      | §H.9 p189           |
-///
-/// Triggers are evaluated as a logical OR — any single trigger firing
-/// fires the row. Two notes on the trigger list shape:
-/// - **UCNI pair (`TOK_UCNI` + `TOK_DCNI`)** — both sentinels are
-///   required to cover DOE and DOD UCNI as disjoint surfaces.
-///   `TOK_UCNI` resolves only to `AeaMarking::DoeUcni`; the DOD variant
-///   resolves through the distinct `TOK_DCNI` sentinel (issue #407,
-///   `predicates::satisfies::aea_marking_to_token`).
-/// - **FGI pair (`TOK_FGI_MARKER` + `AnyInCategory(CAT_FGI_MARKER)`)**
-///   — kept as both forms for catalog symmetry with the rest of the
-///   `AnyInCategory` triggers, but both `TokenRef`s currently resolve
-///   to the same composite predicate
-///   `attrs.fgi_marker.is_some() || matches!(&attrs.classification, Some(MarkingClassification::Fgi(_)))`
-///   (see `crates/capco/src/scheme/predicates/satisfies.rs` —
-///   `TOK_FGI_MARKER` arm and `CAT_FGI_MARKER` arm under
-///   `category_has_any`). The pair is therefore *redundant*, not
-///   complementary — the closure operator's idempotence makes the
-///   double-firing harmless. A follow-up could prune one form once
-///   `satisfies_attrs` and `category_has_any` semantics are pinned
-///   against accidental divergence.
-///
-/// **NNPI** is registered in ODNI `CVEnumISMNonIC.xml` but does not
-/// appear in CAPCO-2016 §H.9; its governing authority (10 USC 7314 /
-/// 50 USC 2511 — Naval Nuclear Propulsion Program) lives outside IC
-/// marking policy, and the universal caveated-default principle applies.
-///
-/// **RAWFISA** is a post-CAPCO-2016 IC dissem control registered in
-/// ODNI `CVEnumISMDissem.xml` only — the vendored
-/// `crates/capco/docs/CAPCO-2016.md` does not contain a RAWFISA
-/// section. Per Constitution VIII the ISM-schema citation is the
-/// authoritative source (the "too new to cite" carve-out applies).
-/// Semantically RAWFISA is the unminimized variant of FISA and shares
-/// the §B.3 p20 Note IC-dissem-control basis for the caveated-default
-/// implication; the trigger entry follows from the same algebraic
-/// reasoning that places FISA and PROPIN in the list, not from a
-/// CAPCO-2016 prose citation.
-///
-/// **LES-NF / SBU-NF** are intentionally absent from the trigger list,
-/// but the rationale is *not* "the closure operator sees NOFORN first."
-/// The page-projection pipeline is
-/// `join_via_lattice → closure → PageRewrites` per the body of
-/// `CapcoScheme::project_attrs_pipeline` (the shared pipeline helper
-/// that `MarkingScheme::project`, the engine fast-path entries, and
-/// direct `scheme.project(Scope::Page, ...)` callers all delegate
-/// through — see `crates/capco/src/scheme/marking_scheme_impl.rs`).
-/// When closure runs, the LES-NF / SBU-NF PageRewrites have not yet
-/// added NOFORN. Closure is permitted to over-fire on bare-LES-NF /
-/// bare-SBU-NF — the cone fact it would add (`{NOFORN}`) is
-/// byte-identical to what the downstream PageRewrite would add anyway,
-/// so the over-fire is mathematically harmless. See the maintenance
-/// note on `FDR_DOMINATORS` for the full algebraic justification.
-///
-/// **Row name stability.** `ClosureRule::name` is the documented
-/// public key for `[closure_rules]` severity overrides and future audit
-/// row-name emission. This PR (#522) consolidates seven previously
-/// public row names (`capco/noforn-if-sar`, `…-aea`, `…-ucni`, `…-fgi`,
-/// `…-orcon`, `…-rsen-imcon-dsen`, `…-non-ic-controls`) into the single
-/// new `capco/noforn-if-caveated` key. Marque is pre-users per project
-/// policy (no deprecation phasing, no alias maps), so the previous keys
-/// are not retained as aliases. A config keyed to a retired name will
-/// silently become a no-op; the broader gap that the config layer does
-/// not validate unknown closure-row keys is independent of this
-/// renaming and applies to every closure-rule rename.
-const CLOSURE_NOFORN_CAVEATED: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/noforn-if-caveated",
-    label: "CAPCO-2016 §B.3 Table 2 p21 (rooted in ICD 403)",
-    triggers: &[
-        TokenRef::AnyInCategory(CAT_SAR),
-        TokenRef::Token(TOK_RD),
-        TokenRef::Token(TOK_FRD),
-        TokenRef::Token(TOK_TFNI),
-        TokenRef::Token(TOK_UCNI),
-        TokenRef::Token(TOK_DCNI),
-        TokenRef::Token(TOK_FGI_MARKER),
-        TokenRef::AnyInCategory(CAT_FGI_MARKER),
-        TokenRef::Token(TOK_ORCON),
-        TokenRef::Token(TOK_ORCON_USGOV),
-        TokenRef::Token(TOK_RSEN),
-        TokenRef::Token(TOK_IMCON),
-        TokenRef::Token(TOK_PROPIN),
-        TokenRef::Token(TOK_DSEN),
-        TokenRef::Token(TOK_FISA),
-        TokenRef::Token(TOK_RAWFISA),
-        TokenRef::Token(TOK_LIMDIS),
-        TokenRef::Token(TOK_LES),
-        TokenRef::Token(TOK_NNPI),
-        TokenRef::Token(TOK_SBU),
-        TokenRef::Token(TOK_SSI),
-    ],
-    suppressors: FDR_DOMINATORS,
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
+// Trio 1 (`CLOSURE_NOFORN_CAVEATED`) was retired in PR-D of the
+// FactBitmask refactor (issue #371). The 20-trigger caveated-NOFORN
+// row was bit-packed into `CLOSURE_TABLE` Row 0 with the
+// `ROW0_NOFORN_IF_CAVEATED_TRIGGERS` mask (21 source `TokenRef`
+// entries collapse to 20 atom bits — the `TOK_FGI_MARKER` +
+// `AnyInCategory(CAT_FGI_MARKER)` redundant pair both project to
+// `fact_bit::FGI_PRESENT`). The §-citation chain — universal §B.3
+// p20 Note + §B.3 Table 2 p21 algebraic anchor + per-trigger Section
+// H authorities — is preserved verbatim on the `CLOSURE_TABLE` Row 0
+// `label` field and on the `ROW0_NOFORN_IF_CAVEATED_TRIGGERS`
+// doc-comment in `closure_table.rs`.
 
 /// `cone_derived` helper for `CLOSURE_REL_TO_USA_NATO` — emits the
 /// open-vocab `CountryCode::NATO` tetragraph fact.
@@ -449,7 +313,7 @@ fn rel_to_usa_nato_derived_cone(_m: &CapcoMarking) -> SmallVec<[FactRef<CapcoSch
 /// via `cone_derived` returning `FactRef::OpenVocab(CountryCode::NATO)`
 /// because `CountryCode::NATO` has no closed-vocab `TokenId`. Both facts
 /// route to CAT_REL_TO via `CapcoScheme::category_of`.
-const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
+pub(super) const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/rel-to-usa-nato-if-nato-classification",
     label: "CAPCO-2016 §H.7 p127 (example-derived) + §G.2 Table 5 p40",
     triggers: &[TokenRef::Token(TOK_NATO_CLASS)],
@@ -459,247 +323,49 @@ const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
     default_severity: Severity::Info,
 };
 
+// The six per-marking unconditional SCI implication rules
+// (CLOSURE_HCS_O_IMPLIES_NF_OC, CLOSURE_HCS_P_SUB_IMPLIES_NF_OC,
+// CLOSURE_SI_G_IMPLIES_OC, CLOSURE_TK_BLFH_IMPLIES_NF,
+// CLOSURE_TK_IDIT_IMPLIES_NF, CLOSURE_TK_KAND_IMPLIES_NF) were
+// retired in PR-D of the FactBitmask refactor (issue #371). The
+// trigger sentinels (TOK_HCS_O / TOK_HCS_P_SUB / TOK_SI_G / TOK_TK_*)
+// and their NOFORN / ORCON cones all live in the closed-vocab atom
+// inventory, so each retired rule became a single positional row in
+// `CLOSURE_TABLE` (Rows 1–6 in `closure_table.rs`). The §H.4
+// per-marking authority chain — §H.4 p64 (HCS-O), §H.4 p68
+// (HCS-P[sub]), §H.4 p80 (SI-G), §H.4 p87 / p91 / p95 (TK-BLFH /
+// TK-IDIT / TK-KAND) — is preserved on the per-row `label` fields
+// in `closure_table.rs`.
+
 // ---------------------------------------------------------------------------
-// Per-marking unconditional implications (Issue #524 Phase 2)
+// Trio 2 — implicit RELIDO suppressor slices (retained for test fixtures)
 // ---------------------------------------------------------------------------
 //
-// Per `marque-applied.md` §4.7.5 "Per-marking unconditional
-// implications": rules that fire regardless of FD&R state. The
-// `suppressors` field is `&[]` for every row — these implications
-// are an unconditional consequence of the trigger marking's
-// per-marking authority (§H.4 marking templates), not a default
-// override-able by FD&R presence. Idempotence preserves
-// correctness when the cone fact is already present (closure
-// re-adding NOFORN to a marking that already carries NOFORN is a
-// no-op).
+// The two Trio 2 closure rules (`CLOSURE_RELIDO_SCI` +
+// `CLOSURE_RELIDO_US_CLASS`) were retired in PR-D of the FactBitmask
+// refactor (issue #371). Both rules' triggers (`AnyInCategory(CAT_SCI)`
+// → `fact_bit::SCI_PRESENT`; `TOK_US_COLLATERAL_CLASSIFIED` →
+// `fact_bit::US_COLLATERAL_CLASSIFIED`) and cone (`TOK_RELIDO` →
+// `fact_bit::RELIDO`) compile to closed-vocab bit form. The suppressors
+// project to `MASK_FDR_OR_RELIDO_INCOMPAT` and
+// `MASK_RELIDO_US_CLASS_SUPPRESSORS` in `fact_bitmask.rs`. See
+// `CLOSURE_TABLE` Rows 8–9 in `closure_table.rs` for the bitmask form
+// + §-citation preservation.
 //
-// Per-marking authority anchored in CAPCO-2016 §H.4 marking
-// templates with the load-bearing Example Banner Line / Notional
-// Example Page citations. Each row's doc-comment names the page
-// and the example whose form establishes the per-marking
-// implication.
+// The `FDR_OR_RELIDO_INCOMPAT` and `RELIDO_US_CLASS_SUPPRESSORS`
+// `TokenRef` slices stay because the in-file `#[cfg(test)]` modules
+// (`phase2_closure_pin::every_relido_incompat_entry_suppresses_trio2_relido`,
+// `phase3_closure_pin::every_us_class_suppressor_entry_suppresses_trio2_relido`)
+// iterate them as fixture enumerations — for each suppressor entry they
+// build a `CapcoMarking` carrying the matching attrs-axis presence and
+// assert `scheme.closure(...)` (now the bitmask path) does not inject
+// RELIDO. The slices remain the source-of-truth list the tests
+// enumerate. A follow-on PR migrating the tests to iterate
+// `MASK_FDR_OR_RELIDO_INCOMPAT` / `MASK_RELIDO_US_CLASS_SUPPRESSORS`
+// bits will retire them.
 
-/// `HCS-O` implies `NOFORN` and `ORCON`.
-///
-/// **Authority.** CAPCO-2016 §H.4 p64 (HCS-OPERATIONS marking
-/// template):
-///
-/// - Example Banner Line: `SECRET//HCS-O//ORCON/NOFORN`
-/// - Example Portion Mark: `(S//HCS-O//OC/NF)`
-/// - Notional Example Page: `SECRET//HCS-O//ORCON/NOFORN` —
-///   "contains HCS-O information that is originator controlled,
-///   and not releasable to foreign nationals."
-///
-/// The Example Banner Line is prescriptive form: HCS-O is conveyed
-/// alongside ORCON/NOFORN in the dissem-control band. Marque
-/// automates the re-marking the manual permits doing by hand (per
-/// project memory `remark-on-derivative-use-is-marque-autofix`).
-const CLOSURE_HCS_O_IMPLIES_NF_OC: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/hcs-o-implies-noforn-orcon",
-    label: "CAPCO-2016 §H.4 p64",
-    triggers: &[TokenRef::Token(TOK_HCS_O)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// `HCS-P` with at least one sub-compartment implies `NOFORN` and
-/// `ORCON`.
-///
-/// **Authority.** CAPCO-2016 §H.4 p68 (HCS-PRODUCT
-/// [SUB-COMPARTMENT] marking template):
-///
-/// - Example Banner Line: `TOP SECRET//HCS-P JJJ//ORCON/NOFORN`
-/// - Example Portion Mark: `(TS//HCS-P JJJ//OC/NF)`
-/// - Notional Example Page: `TOP SECRET//HCS-P EFG//ORCON/NOFORN`
-///   — "contains HCS-PRODUCT EFG information, is originator
-///   controlled, and not releasable to foreign nationals."
-///
-/// The sub-compartmented form's per-marking semantic differs from
-/// bare HCS-P at §H.4 p66 (`SECRET//HCS-P//NOFORN` — NOFORN only,
-/// no ORCON). The grammar-shape sentinel `TOK_HCS_P_SUB` discriminates
-/// the two cases — see its doc-comment in
-/// `crates/capco/src/scheme/mod.rs`.
-const CLOSURE_HCS_P_SUB_IMPLIES_NF_OC: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/hcs-p-sub-implies-noforn-orcon",
-    label: "CAPCO-2016 §H.4 p68",
-    triggers: &[TokenRef::Token(TOK_HCS_P_SUB)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_NOFORN), TokenRef::Token(TOK_ORCON)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// `SI-G` implies `ORCON`.
-///
-/// **Authority.** CAPCO-2016 §H.4 p80 (SI-GAMMA marking template):
-///
-/// - Example Banner Line: `TOP SECRET//SI-G//ORCON`
-/// - Example Portion Mark: `(TS//SI-G//OC)`
-/// - Notional Example Page: `TOP SECRET//SI-G//ORCON/NOFORN` —
-///   "contains SI-GAMMA information, is originator controlled,
-///   and not releasable to foreign nationals."
-///
-/// **NOFORN is NOT in the cone.** The Example Banner Line at
-/// §H.4 p80 is prescriptive ORCON only; the Notional Example Page
-/// adds NOFORN as a use-case-specific FD&R decision, not a
-/// per-marking requirement. Per `marque-applied.md` §4.7.5: "If
-/// `SI-G`, then `ORCON` must be present → closure fires `ORCON`."
-/// SI-G's class floor (TS) is a `Constraint::Requires` concern per
-/// `marque-applied.md` Section 3.4.6, not a closure addition (§H.4
-/// p80 Example Banner Line starts at TOP SECRET).
-///
-/// **Trio 2 RELIDO suppression (stability optimization).** SI-G's
-/// per-marking cone is `{ORCON}` only; NOFORN is not added in
-/// iteration 1. Without `TOK_SI_G` in `FDR_OR_RELIDO_INCOMPAT`,
-/// `CLOSURE_RELIDO_SCI` would fire in iteration 1 (adding RELIDO),
-/// which would then be stripped in iteration 2 when ORCON triggers
-/// `CLOSURE_NOFORN_CAVEATED` → NOFORN → `with_noforn_injected` (the
-/// §H.8 p145 supersession overlay that strips dominated dissem
-/// controls). The fixpoint result is the same either way; including
-/// `TOK_SI_G` directly avoids the transient incorrect intermediate
-/// state and keeps the in-pass invariant "Trio 2 doesn't fire on
-/// SI-G" stable.
-const CLOSURE_SI_G_IMPLIES_OC: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/si-g-implies-orcon",
-    label: "CAPCO-2016 §H.4 p80",
-    triggers: &[TokenRef::Token(TOK_SI_G)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_ORCON)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// `TK-BLFH` implies `NOFORN`.
-///
-/// **Authority.** CAPCO-2016 §H.4 p87 (TK-BLUEFISH marking
-/// template):
-///
-/// - Example Banner Line: `TOP SECRET//TK-BLFH//NOFORN`
-/// - Example Portion Mark: `(TS//TK-BLFH//NF)`
-/// - Notional Example Page: `TOP SECRET//TK-BLFH//NOFORN` —
-///   "contains TALENT KEYHOLE-BLUEFISH information, and is not
-///   releasable to foreign nationals."
-///
-/// TK-BLFH's class floor (TS) is a `Constraint::Requires` concern
-/// per `marque-applied.md` Section 3.4.6, not a closure addition
-/// (§H.4 p87 Example Banner Line starts at TOP SECRET).
-const CLOSURE_TK_BLFH_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/tk-blfh-implies-noforn",
-    label: "CAPCO-2016 §H.4 p87",
-    triggers: &[TokenRef::Token(TOK_TK_BLFH)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// `TK-IDIT` implies `NOFORN`.
-///
-/// **Authority.** CAPCO-2016 §H.4 p91 (TK-IDITAROD marking
-/// template):
-///
-/// - Example Banner Line: `TOP SECRET//TK-IDIT//NOFORN`
-/// - Example Portion Mark: `(TS//TK-IDIT //NF)`
-/// - Notional Example Page: `TOP SECRET//TK-IDIT//NOFORN` —
-///   "contains TALENT KEYHOLE-IDITAROD information, and is not
-///   releasable to foreign nationals."
-const CLOSURE_TK_IDIT_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/tk-idit-implies-noforn",
-    label: "CAPCO-2016 §H.4 p91",
-    triggers: &[TokenRef::Token(TOK_TK_IDIT)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-/// `TK-KAND` implies `NOFORN`.
-///
-/// **Authority.** CAPCO-2016 §H.4 p95 (TK-KANDIK marking template).
-/// The §H.4 p95 marking template mirrors §H.4 p91 (TK-IDIT) and
-/// §H.4 p87 (TK-BLFH) in shape: Example Banner Line at TOP SECRET
-/// with NOFORN, Example Portion Mark in parens, Notional Example
-/// Page reiterating the not-releasable semantic. The structural
-/// uniformity across the three TK sub-compartment families is
-/// itself the authority that TK-KAND's per-marking implication
-/// matches TK-BLFH and TK-IDIT.
-const CLOSURE_TK_KAND_IMPLIES_NF: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/tk-kand-implies-noforn",
-    label: "CAPCO-2016 §H.4 p95",
-    triggers: &[TokenRef::Token(TOK_TK_KAND)],
-    suppressors: &[],
-    cone: &[TokenRef::Token(TOK_NOFORN)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-// ---------------------------------------------------------------------------
-// Trio 2 — implicit RELIDO (FD&R + RELIDO-incompatible-suppressed)
-// ---------------------------------------------------------------------------
-
-/// `CLOSURE_RELIDO_SCI` — bare SCI control implies `RELIDO` unless
-/// FD&R-marked or RELIDO-incompatible.
-///
-/// **Trigger semantic.** `AnyInCategory(CAT_SCI)` fires when any
-/// SCI marking is present in the page-projection. Phase 3
-/// (Issue #524) added `CLOSURE_RELIDO_US_CLASS` for US collateral
-/// classifications. Other Trio 2 trigger cases enumerated in
-/// `marque-applied.md` Section 4.7.5 (Unclassified, FOUO, RSEN)
-/// do not ship — see "Remaining Trio 2 triggers (deferred)" on
-/// `CAPCO_CLOSURE_RULES`.
-///
-/// **Suppressor semantic.** `FDR_OR_RELIDO_INCOMPAT` covers two
-/// disjoint cases:
-///
-/// 1. **FD&R-marked** — explicit FD&R decision present (NOFORN,
-///    REL TO, RELIDO, DISPLAY ONLY, EYES). The implicit-RELIDO
-///    default is superseded by the explicit decision per
-///    `marque-applied.md` §4.7.3.
-/// 2. **RELIDO-incompatible** — foreign-equity / origination
-///    markings (FGI / JOINT / NATO) or per-marking NOFORN/ORCON-
-///    implying SCI compartments (SI-G, HCS-O, HCS-P[sub],
-///    TK-BLFH, TK-IDIT, TK-KAND). RELIDO is structurally
-///    inapplicable to these markings per `marque-applied.md`
-///    §4.7.5 Trio 2 exclusion list.
-///
-/// **Kleene-fixpoint composition with per-marking rows.** The five
-/// per-marking unconditional NOFORN-cone rows (HCS-O, HCS-P[sub],
-/// TK-BLFH, TK-IDIT, TK-KAND) precede this row in the catalog
-/// order, so within a single closure iteration NOFORN is added to
-/// `working` before this row evaluates — NOFORN ∈
-/// `FDR_OR_RELIDO_INCOMPAT` then suppresses the RELIDO cone in
-/// iteration 1. For SI-G (cone = `{ORCON}` only), the in-pass
-/// NOFORN→suppression path does NOT cover iteration 1 because SI-G
-/// doesn't add NOFORN immediately. Across multiple iterations,
-/// SI-G's ORCON would trigger `CLOSURE_NOFORN_CAVEATED` (ORCON is
-/// in its trigger list), adding NOFORN in iteration 2, which would
-/// then strip a previously-injected RELIDO via `with_noforn_injected`
-/// (the §H.8 p145 supersession overlay) in iteration 3 — the
-/// fixpoint is correct without the direct guard. Including
-/// `TOK_SI_G` in `FDR_OR_RELIDO_INCOMPAT` directly is a stability
-/// optimization that avoids the transient intermediate state and
-/// keeps the per-iteration invariant "Trio 2 doesn't fire on SI-G"
-/// stable from iteration 1.
-///
-/// **Severity calibration.** `Severity::Info` matches the other
-/// closure rows (Trio 1, Trio 3, per-marking). The text-layer
-/// surface (which proposes the actual byte-level RELIDO insertion)
-/// is the responsibility of a future rule, not this lattice-layer
-/// row. Per D20 layer-separation principle.
-const CLOSURE_RELIDO_SCI: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/relido-if-sci-and-not-incompatible",
-    label: "CAPCO-2016 §H.8 p154",
-    triggers: &[TokenRef::AnyInCategory(CAT_SCI)],
-    suppressors: FDR_OR_RELIDO_INCOMPAT,
-    cone: &[TokenRef::Token(TOK_RELIDO)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
-
-// `RELIDO_US_CLASS_SUPPRESSORS` — the `CLOSURE_RELIDO_US_CLASS`
-// FD&R-dominator suppressor slice.
+// `RELIDO_US_CLASS_SUPPRESSORS` — the suppressor slice formerly attached
+// to the retired `CLOSURE_RELIDO_US_CLASS` rule.
 //
 // Encodes the FD&R precedence rule from CAPCO-2016 §D.2 Table 3
 // pp.28-30: an explicit FD&R decision (NOFORN, RELIDO, REL TO,
@@ -759,6 +425,7 @@ const CLOSURE_RELIDO_SCI: ClosureRule<CapcoScheme> = ClosureRule {
 // axis) which injects NOFORN and supersedes the RELIDO via the
 // §H.8 p145 overlay. Pinned by
 // `phase3_closure_pin::us_class_conflict_variant_pin`.
+#[allow(dead_code)] // post-PR-D test fixture only; see module doc-header.
 const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
     // FD&R dominators — every entry supersedes RELIDO via the
     // §D.2 Table 3 pp.28-30 / §H.8 p145 precedence overlay,
@@ -798,243 +465,35 @@ const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
     TokenRef::Token(TOK_TK_KAND),
 ];
 
-/// `CLOSURE_RELIDO_US_CLASS` — US collateral classification
-/// (Restricted / Confidential / Secret / TopSecret) implies
-/// `RELIDO` unless an explicit FD&R decision is already present.
-///
-/// **Primary authority.** CAPCO-2016 §B.3 Table 2 p21 (rooted in
-/// ICD 403): "Classified + uncaveated + on/after 28 June 2010 →
-/// Mark as RELIDO." This is the obligation that makes the closure
-/// row load-bearing for compliance.
-///
-/// **Grammar reference.** CAPCO-2016 §H.8 p154 (the RELIDO marking
-/// template), which establishes that RELIDO is applicable to
-/// classified intelligence material and explicitly carves out
-/// unclassified information: "Explicit foreign disclosure and
-/// release markings are not required on unclassified information.
-/// Follow internal agency procedures for the use of RELIDO with
-/// unclassified information." This is why the trigger
-/// (`TOK_US_COLLATERAL_CLASSIFIED`) gates out Unclassified — the
-/// unclassified case follows agency internal procedures, not the
-/// §B.3 Table 2 p21 default.
-///
-/// **Design synthesis.** `marque-applied.md` Section 4.7.5 (Trio 2
-/// trigger list) carries marque's structural rendering of the
-/// catalog combining the §B.3 obligation, the §H.8 carve-out, and
-/// the `has_relido_incompatible` exclusion list.
-///
-/// **Trigger semantic.** `TOK_US_COLLATERAL_CLASSIFIED` fires
-/// when `attrs.us_classification()` returns `Some(level)` with
-/// `level != Unclassified` — i.e., for
-/// `MarkingClassification::Us(Restricted/Confidential/Secret/
-/// TopSecret)` and for `MarkingClassification::Conflict { us,
-/// foreign }` whose US side is collateral classified
-/// (`us_classification()` returns the resolved US side for
-/// Conflict). The trigger is upward-closed in the lattice order
-/// — adding facts to a collateral-classified marking can't make
-/// this predicate stop firing — which keeps closure monotonicity
-/// intact per the `MarkingScheme::closure` contract.
-///
-/// **Restricted note.** `Classification::Restricted` is included
-/// in the trigger because it is a US collateral classification
-/// level (NOT a foreign-equity marking). `marque-applied.md`
-/// Section 4.7.5 enumerates U/C/S/TS without explicitly naming
-/// Restricted; the omission is a documentation gap, not a
-/// semantic exclusion — Restricted satisfies §B.3 Table 2 p21's
-/// "classified" predicate and `attrs.us_classification()` returns
-/// `Some(Restricted)`. A follow-up should align the
-/// marque-applied.md enumeration with the implementation.
-///
-/// **Suppressor semantic.** `RELIDO_US_CLASS_SUPPRESSORS` is the
-/// pure FD&R-dominator set (NOFORN, RELIDO, DISPLAY ONLY, REL TO,
-/// EYES) per §D.2 Table 3 pp.28-30 / §H.8 p145. Every entry
-/// satisfies the `marque-applied.md` Section 4.7.3 case-2
-/// monotonicity property (the suppressor either contains the cone
-/// or supersedes it via the §H.8 p145 overlay). See that slice's
-/// doc-comment for the per-token rationale and the redesign-from-
-/// non-monotone history.
-///
-/// **"No other dissem" via composition.** The
-/// `marque-applied.md` Section 4.7.5 "no other dissem" qualifier
-/// is achieved for **most** caveat markers via closure-rule
-/// composition rather than anti-monotone suppressors: any token in
-/// `CLOSURE_NOFORN_CAVEATED`'s trigger list (Trio 1 — AEA, SAR,
-/// FGI markers, ORCON / ORCON_USGOV, RSEN / IMCON / PROPIN / DSEN /
-/// FISA / RAWFISA / LIMDIS / LES / NNPI / SBU / SSI) drives the
-/// composite to inject NOFORN, and NOFORN then supersedes the
-/// RELIDO injection via the `with_noforn_injected` §H.8 p145
-/// overlay. The fixpoint result on `(S, <Trio-1-trigger>)` is
-/// therefore `(S, <trigger>, NOFORN, no RELIDO)` — the §B.3
-/// Table 2 p21 semantic.
-///
-/// **Coverage gap in the composition path.** FOUO is the one IC
-/// dissem control NOT in `CLOSURE_NOFORN_CAVEATED`'s trigger list.
-/// For FOUO, the closure-layer output of `(S, FOUO)` is `(S,
-/// FOUO, RELIDO)` — this row fires unchecked by Trio 1. FOUO
-/// additionally participates in the §H.8 p134 PageRewrites
-/// (`classification-evicts-fouo` / `non-fdr-control-evicts-fouo`)
-/// that strip FOUO from classified context, so the post-rewrite
-/// scheme output for `(S, FOUO)` is `(S, RELIDO)`. (Issue #525
-/// landed FISA / RAWFISA / PROPIN as CAVEATED triggers per the
-/// §B.3 p20 Note algebraic basis — those three no longer fall
-/// into this gap.)
-///
-/// **Kleene-fixpoint composition.** This row is ordered after
-/// `CLOSURE_RELIDO_SCI` in `CAPCO_CLOSURE_RULES`. The two rows can
-/// both fire on the same input — e.g., a bare-SI marking (no
-/// matching per-compartment sentinel) with US Secret classification
-/// triggers both: SI satisfies `AnyInCategory(CAT_SCI)` for
-/// CLOSURE_RELIDO_SCI's trigger, US Secret satisfies
-/// `TOK_US_COLLATERAL_CLASSIFIED` for this row's trigger. Whichever
-/// fires first adds RELIDO; the second then sees RELIDO in the
-/// dissem axis (FDR_DOMINATORS suppressor matches) and is
-/// suppressed. The cones are identical (`{RELIDO}`), so the
-/// observable result is the same either way.
-///
-/// **SCI per-compartment paths.** The six per-compartment SCI
-/// sentinels (SI-G / HCS-O / HCS-P[sub] / TK-BLFH / TK-IDIT /
-/// TK-KAND) are in BOTH `FDR_OR_RELIDO_INCOMPAT` (suppressing
-/// CLOSURE_RELIDO_SCI) and `RELIDO_US_CLASS_SUPPRESSORS`
-/// (suppressing this row). Neither Trio 2 row fires; the
-/// per-marking compartment rows add NOFORN or ORCON; CAVEATED
-/// promotes ORCON→NOFORN as needed. End state: `(S, <compartment>,
-/// NOFORN, ...)` — no RELIDO.
-///
-/// **Severity calibration.** `Severity::Info` matches the rest of
-/// the Trio 2 catalog (silent lattice-layer propagation; byte-level
-/// surfacing is a future text-layer rule's responsibility per the
-/// D20 layer-separation principle).
-const CLOSURE_RELIDO_US_CLASS: ClosureRule<CapcoScheme> = ClosureRule {
-    name: "capco/relido-if-us-collateral-class",
-    label: "CAPCO-2016 §B.3 Table 2 p21 (grammar: §H.8 p154)",
-    triggers: &[TokenRef::Token(TOK_US_COLLATERAL_CLASSIFIED)],
-    suppressors: RELIDO_US_CLASS_SUPPRESSORS,
-    cone: &[TokenRef::Token(TOK_RELIDO)],
-    cone_derived: None,
-    default_severity: Severity::Info,
-};
+// `CLOSURE_RELIDO_US_CLASS` was retired in PR-D — see `CLOSURE_TABLE`
+// Row 9 in `closure_table.rs` for the bitmask form. Primary authority
+// (CAPCO-2016 §B.3 Table 2 p21, rooted in ICD 403; grammar: §H.8 p154)
+// is preserved on the bitmask row's `label` field.
 
-/// The full static CAPCO closure-rule catalog.
+/// The residual CAPCO closure-rule catalog.
 ///
-/// Rows are grouped by the three-trio framing from `marque-applied.md` §4.7.1:
-///   1. Trio 1 — implicit NOFORN (FD&R-suppressed)
-///   2. Per-marking unconditional implications (unsuppressed; Issue #524 Phase 2)
-///   3. Trio 3 — implicit REL TO USA, NATO (FD&R-suppressed)
-///   4. Trio 2 — implicit RELIDO (FD&R + RELIDO-incompatible-suppressed)
+/// Post-PR-D this slice carries only `CLOSURE_REL_TO_USA_NATO`, the
+/// hybrid bitmask + open-vocab row whose `cone_derived` NATO tetragraph
+/// injection cannot be projected onto a closed-vocab bit. The other 9
+/// rows live in `CLOSURE_TABLE` (`scheme/closure_table.rs`) and run
+/// through the bitmask Kleene fast path in
+/// `CapcoScheme::closure`. Three trait-level concerns still consume this
+/// slice:
 ///
-/// **Catalog order is load-bearing.** The closure operator
-/// (`CapcoScheme::closure`) walks this catalog in order within each
-/// Kleene iteration, mutating the working marking in place between
-/// rules. Per-marking unconditional rows precede the Trio 2 RELIDO
-/// row so that NOFORN added by HCS-O / HCS-P[sub] / TK-BLFH /
-/// TK-IDIT / TK-KAND is visible to Trio 2's suppressor check in
-/// the same iteration. SI-G adds ORCON only (no NOFORN), so its
-/// suppression of Trio 2 routes through `TOK_SI_G ∈
-/// FDR_OR_RELIDO_INCOMPAT` directly rather than via Kleene chain.
-/// See `CLOSURE_RELIDO_SCI`'s doc-comment for the full ordering
-/// rationale.
-///
-/// Per-row monotonicity attestation (§4.7.3 table-design property, case 2):
-/// Every suppressor fact either contains the cone's intent or makes it
-/// redundant. For Trio 1/3 (FDR_DOMINATORS): the suppressor is always a
-/// manifest FD&R decision that supersedes the implicit default. For Trio 2
-/// `CLOSURE_RELIDO_SCI` (FDR_OR_RELIDO_INCOMPAT): same, plus
-/// RELIDO-incompatible tokens make the RELIDO cone inapplicable by
-/// definition. For Trio 2 `CLOSURE_RELIDO_US_CLASS`
-/// (RELIDO_US_CLASS_SUPPRESSORS): five FD&R dominators directly
-/// supersede RELIDO via §H.8 p145, and six per-compartment SCI
-/// sentinels satisfy case-2 by composition (their per-marking rows
-/// add NOFORN or ORCON, CAVEATED promotes ORCON → NOFORN, and the
-/// composite Cl(y) contains NOFORN ⊐ RELIDO). The §H.8 p154
-/// Unclassified carve-out is enforced at the trigger level
-/// (`TOK_US_COLLATERAL_CLASSIFIED` doesn't fire on Unclassified),
-/// not via a suppressor — keeping the trigger predicate upward-
-/// closed. Unconditional rows have no suppressor — monotonicity is
-/// trivial (empty suppressor → no case 2).
-///
-/// # Remaining Trio 2 triggers (deferred)
-///
-/// Per `marque-applied.md` Section 4.7.5, the Trio 2 trigger list
-/// also includes `RSEN` (Restricted External Sources) and `FOUO`,
-/// plus the Unclassified case of US classification. None of those
-/// rows ship in this PR:
-///
-/// - **`Unclassified → RELIDO`** is carved out of
-///   `CLOSURE_RELIDO_US_CLASS` per CAPCO-2016 §H.8 p154 ("Explicit
-///   foreign disclosure and release markings are not required on
-///   unclassified information"). Agencies whose internal policy
-///   mandates U → RELIDO will land as an opt-in agency style rule
-///   (off by default) in a follow-up.
-/// - **`FOUO → RELIDO`** does not ship in this PR. FOUO is itself
-///   a caveated dissem control per §B.3 p20; CAPCO §B.3 Table 2 p21
-///   does not extend the "classified + uncaveated" RELIDO default
-///   to bare FOUO content (which is structurally unclassified).
-///   §H.8 p154's unclassified-information carve-out applies here
-///   for the same reason as the U case. Like the U case, this
-///   may land as an opt-in agency style rule in a follow-up.
-/// - **`RSEN → RELIDO`** is deferred. Note that RSEN is already a
-///   trigger in `CLOSURE_NOFORN_CAVEATED` (Trio 1: implicit NOFORN),
-///   so when RSEN is present Trio 1 fires NOFORN first and
-///   `FDR_OR_RELIDO_INCOMPAT` then suppresses any future Trio 2
-///   RSEN row. The Trio 2 RSEN row would be observably inert on
-///   any input that also triggers Trio 1 — meaning the row's
-///   independent value is limited to RSEN-with-classification-absent
-///   edge cases, which warrants its own design pass.
-pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] = &[
-    // Trio 1: implicit NOFORN — single CAVEATED row whose triggers union
-    // every caveat marking per §B.3 p20 Note (SAR / AEA / dissem controls /
-    // non-IC dissem). Same suppressor (FDR_DOMINATORS) and same cone
-    // ({NOFORN}) collapse the seven historical rows into one per D18
-    // rationale 2.
-    CLOSURE_NOFORN_CAVEATED,
-    // Per-marking unconditional implications (Issue #524 Phase 2). Ordered
-    // before the Trio 2 RELIDO row so the NOFORN/ORCON cones populate
-    // `working` before `CLOSURE_RELIDO_SCI`'s suppressor check runs in the
-    // same Kleene iteration.
-    CLOSURE_HCS_O_IMPLIES_NF_OC,
-    CLOSURE_HCS_P_SUB_IMPLIES_NF_OC,
-    CLOSURE_SI_G_IMPLIES_OC,
-    CLOSURE_TK_BLFH_IMPLIES_NF,
-    CLOSURE_TK_IDIT_IMPLIES_NF,
-    CLOSURE_TK_KAND_IMPLIES_NF,
-    // Trio 3: implicit `REL TO USA, NATO` for bare NATO classification.
-    // Fires at `Severity::Info` (silent lattice-layer fact propagation);
-    // S007 owns the text-layer `Severity::Suggest` byte-diff per D20.
-    // NATO routes via `cone_derived` (open-vocab `CountryCode::NATO`),
-    // USA via the static cone (`TOK_USA` → `CountryCode::USA` through
-    // `apply_fact_add`'s CAT_REL_TO arm).
-    CLOSURE_REL_TO_USA_NATO,
-    // Trio 2: implicit RELIDO (Issue #524). Ordered after the
-    // per-marking and Trio 3 rows so the NOFORN/ORCON cones added
-    // above are visible in `working` for the
-    // FDR_OR_RELIDO_INCOMPAT / RELIDO_US_CLASS_SUPPRESSORS
-    // suppressor checks within the same Kleene iteration.
-    //
-    // Intra-Trio-2 ordering: SCI → US_CLASS. The two rows can
-    // both fire on the same input — e.g., a bare-SI marking (no
-    // matching per-compartment sentinel) with US-collateral
-    // classification satisfies both triggers
-    // (`AnyInCategory(CAT_SCI)` for CLOSURE_RELIDO_SCI; US
-    // collateral for CLOSURE_RELIDO_US_CLASS). The catalog walks
-    // in order; whichever row fires first adds RELIDO to
-    // `working`, and the second then sees RELIDO in the dissem
-    // axis (RELIDO is in FDR_DOMINATORS which is in BOTH rows'
-    // suppressor lists) and is suppressed. Cones are identical
-    // (`{RELIDO}`); the observable result is the same either way.
-    //
-    // For markings carrying one of the six per-compartment SCI
-    // sentinels (SI-G / HCS-O / HCS-P[sub] / TK-BLFH / TK-IDIT /
-    // TK-KAND), BOTH Trio 2 rows are suppressed by direct token
-    // match (those sentinels are in `FDR_OR_RELIDO_INCOMPAT` and
-    // in `RELIDO_US_CLASS_SUPPRESSORS`); the per-marking
-    // compartment rows above this point produce NOFORN/ORCON
-    // directly and that flows through `with_noforn_injected` to
-    // strip RELIDO if it ever appears. See "Remaining Trio 2
-    // triggers (deferred)" below for the FOUO / RSEN / U cases
-    // that do not ship.
-    CLOSURE_RELIDO_SCI,
-    CLOSURE_RELIDO_US_CLASS,
-];
+/// - The `MarkingScheme::closure_rules` trait override exposes the
+///   public catalog surface per `decisions.md` D18 — it advertises
+///   the rules the scheme owns at the trait boundary regardless of
+///   internal dispatch strategy.
+/// - The `post_4b_lattice_inventory_pin.rs` positional-list test
+///   asserts a closed set of rule names against this slice (now
+///   1 row); the 10-row bitmask catalog has its own parallel pin
+///   against `CLOSURE_TABLE`.
+/// - The runtime override map in
+///   `marque_engine::scheduler::resolve_closure_severity` (where a
+///   future `[closure_rules]` config section threads severity
+///   overrides through) reads rule names from this slice.
+pub(super) static CAPCO_CLOSURE_RULES: &[ClosureRule<CapcoScheme>] =
+    &[CLOSURE_REL_TO_USA_NATO];
 
 // ---------------------------------------------------------------------------
 // Runtime suppression pin for `FDR_DOMINATORS` × `CLOSURE_NOFORN_CAVEATED`
@@ -2386,24 +1845,34 @@ mod issue_525_caveated_dissem_pin {
         );
     }
 
-    /// Source-of-truth pin: each of the three new triggers fires
-    /// CAVEATED. If a future refactor renames or removes any of
-    /// `TOK_PROPIN` / `TOK_FISA` / `TOK_RAWFISA`, or drops one of
-    /// them from `CLOSURE_NOFORN_CAVEATED.triggers`, this pin
-    /// surfaces it with a single failure-site naming the missing
-    /// trigger.
+    /// Source-of-truth pin: each of the three new triggers fires the
+    /// CAVEATED bitmask row. Post-PR-D this asserts the
+    /// `CLOSURE_TABLE` Row 0 trigger mask (the bitmask form of the
+    /// retired `CLOSURE_NOFORN_CAVEATED.triggers` slice) contains the
+    /// `fact_bit::PROPIN` / `fact_bit::FISA` / `fact_bit::RAWFISA`
+    /// atom bits per issue #525. The behavioral pins in the
+    /// `caveated_fires_on_*` tests above already prove the end-to-end
+    /// closure path; this one closes the source-of-truth drift channel
+    /// at the catalog level so a row edit dropping a bit is caught
+    /// even if the behavioral pin happens to be observationally
+    /// satisfied by another row.
     #[test]
-    fn each_new_trigger_appears_in_caveated_triggers() {
-        let new_triggers = [TOK_PROPIN, TOK_FISA, TOK_RAWFISA];
-        for tok in new_triggers {
+    fn each_new_trigger_appears_in_caveated_bitmask_row() {
+        use crate::fact_bitmask::fact_bit;
+        use crate::scheme::closure_table::CLOSURE_TABLE;
+        let row0_trigger_mask = CLOSURE_TABLE[0].trigger_mask;
+        let new_trigger_bits = [
+            ("PROPIN", fact_bit::PROPIN),
+            ("FISA", fact_bit::FISA),
+            ("RAWFISA", fact_bit::RAWFISA),
+        ];
+        for (name, bit) in new_trigger_bits {
             assert!(
-                CLOSURE_NOFORN_CAVEATED
-                    .triggers
-                    .iter()
-                    .any(|t| matches!(t, TokenRef::Token(id) if *id == tok)),
-                "TokenId {tok:?} missing from CLOSURE_NOFORN_CAVEATED.triggers. \
-                 Issue #525 requires PROPIN/FISA/RAWFISA in the trigger list \
-                 per §B.3 p20 Note (IC dissem controls are caveated). \
+                (row0_trigger_mask & (1u128 << bit)) != 0,
+                "fact_bit::{name} (bit {bit}) missing from \
+                 CLOSURE_TABLE[0].trigger_mask. Issue #525 requires \
+                 PROPIN/FISA/RAWFISA in the caveated trigger list per \
+                 §B.3 p20 Note (IC dissem controls are caveated). \
                  Authority: §H.8 p148 (PROPIN), §H.8 p161 (FISA + RAWFISA), \
                  §B.3 Table 2 p21 (caveated-default obligation)."
             );

@@ -15,7 +15,7 @@
 //! `CapcoOpenVocabRef` / `CapcoParseError` types) that travel via
 //! the parent module's re-exports.
 
-use marque_ism::{CanonicalAttrs, DissemControl, MarkingClassification, ParsedAttrs};
+use marque_ism::{CanonicalAttrs, ParsedAttrs};
 use marque_scheme::{
     ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
     ConstraintViolation, FactRef, MarkingScheme, PageRewrite, Parsed, RenderContext,
@@ -27,253 +27,14 @@ use super::closure::CAPCO_CLOSURE_RULES;
 use super::predicates::*;
 use super::*;
 
-// ---------------------------------------------------------------------------
-// HOT-1: Closure early-exit axis-presence flags (issue #595)
-//
-// `ClosureAxisFlags` is a cheap snapshot of the INPUT marking's
-// presence state on axes that are NEVER written by any CAPCO closure
-// rule.  Because the closure operator is extensive (only adds facts,
-// never removes them), an axis that is empty at call-time remains
-// empty for all iterations of the Kleene fixpoint.  The flags are
-// therefore valid across all iterations without refresh.
-//
-// **Input-only axes** (never appear in any closure rule's `cone`):
-//   SAR, AEA, FGI, non-IC-dissem, `sci_markings` (structural SCI),
-//   `sci_controls` (legacy CVE SCI), classification variant.
-//
-// **Writable axes** (appear in at least one cone):
-//   `dissem_us` (NOFORN, ORCON, RELIDO are all cone facts) and
-//   `rel_to` (USA, NATO).  These are NOT captured in the flags;
-//   the closure loop reads `working` directly for them.
-//
-// Computed once at the top of `CapcoScheme::closure()` and passed to
-// `capco_rule_axis_present()`.  Zero heap allocation; the struct is
-// eight `bool`s (8 bytes on most targets with no padding).
-// ---------------------------------------------------------------------------
-
-/// Immutable snapshot of input-only axis presence for `closure()`.
-///
-/// See the "HOT-1" block comment above for the invariant guarantees.
-/// Callers MUST construct this from the *input* marking (before any
-/// fixpoint mutation) and MUST NOT reconstruct it after a fixpoint
-/// step — any axis written by a closure rule is not represented here.
-#[derive(Clone, Copy, Debug)]
-struct ClosureAxisFlags {
-    /// `sci_markings` is non-empty — presence-driven guard for the six
-    /// SCI-compartment rules (HCS-O / HCS-P-sub / SI-G / TK-BLFH /
-    /// TK-IDIT / TK-KAND).  All six scan `sci_markings` for a specific
-    /// compartment; if `sci_markings` is empty the scan is vacuously
-    /// false.  `sci_markings` is an input-only axis.
-    sci_markings_present: bool,
-    /// `sci_controls` or `sci_markings` is non-empty — presence-driven
-    /// guard for `CLOSURE_RELIDO_SCI` (`AnyInCategory(CAT_SCI)`).
-    /// Both halves of the SCI axis are input-only.
-    sci_any_present: bool,
-    /// Classification is the `Nato(_)` variant — presence-driven guard
-    /// for `CLOSURE_REL_TO_USA_NATO`.  Classification is an input-only
-    /// axis (no closure rule writes to it).
-    nato_class_present: bool,
-    /// US collateral classified (R/C/S/TS) — presence-driven guard for
-    /// `CLOSURE_RELIDO_US_CLASS`.  Classification is input-only.
-    us_collateral_classified: bool,
-    /// Any SAR program marking present — part of the trigger set for
-    /// `CLOSURE_NOFORN_CAVEATED`.  `sar_markings` is input-only.
-    sar_present: bool,
-    /// Any AEA marking present (RD / FRD / TFNI / UCNI / DCNI) — part
-    /// of the trigger set for `CLOSURE_NOFORN_CAVEATED`.  `aea_markings`
-    /// is input-only.
-    aea_present: bool,
-    /// FGI marker present (explicit `FGI` token or FGI classification
-    /// variant) — part of the trigger set for `CLOSURE_NOFORN_CAVEATED`.
-    /// Both halves are input-only.
-    fgi_present: bool,
-    /// Any non-IC dissem marking present (LIMDIS / LES / NNPI / SBU /
-    /// SSI) — part of the trigger set for `CLOSURE_NOFORN_CAVEATED`.
-    /// `non_ic_dissem` is input-only.
-    non_ic_dissem_present: bool,
-}
-
-impl ClosureAxisFlags {
-    /// Compute flags from the INPUT marking.  Must be called before any
-    /// fixpoint mutation.
-    #[inline]
-    fn from_marking(m: &CapcoMarking) -> Self {
-        use marque_ism::Classification;
-        let a = &m.0;
-        Self {
-            sci_markings_present: !a.sci_markings.is_empty(),
-            sci_any_present: !a.sci_controls.is_empty() || !a.sci_markings.is_empty(),
-            nato_class_present: matches!(&a.classification, Some(MarkingClassification::Nato(_))),
-            us_collateral_classified: a
-                .us_classification()
-                .is_some_and(|l| l != Classification::Unclassified),
-            sar_present: a.sar_markings.is_some(),
-            aea_present: !a.aea_markings.is_empty(),
-            fgi_present: a.fgi_marker.is_some()
-                || matches!(&a.classification, Some(MarkingClassification::Fgi(_))),
-            non_ic_dissem_present: !a.non_ic_dissem.is_empty(),
-        }
-    }
-
-    /// `true` if at least one input-only axis might trigger a closure
-    /// rule.  Does NOT check the writable dissem axis (ORCON / RSEN /
-    /// etc.) — the caller combines this with
-    /// `working_has_caveated_dissem_trigger` for a complete check.
-    #[inline]
-    fn any_input_axis_relevant(self) -> bool {
-        self.sci_any_present
-            || self.nato_class_present
-            || self.us_collateral_classified
-            || self.sar_present
-            || self.aea_present
-            || self.fgi_present
-            || self.non_ic_dissem_present
-    }
-}
-
-/// Returns `true` if `working.0.dissem_us` contains one of the eight
-/// dissem tokens that trigger `CLOSURE_NOFORN_CAVEATED` but are NOT in
-/// the input-only axes captured by `ClosureAxisFlags`:
-/// ORCON, ORCON-USGOV, RSEN, IMCON, PROPIN, DSEN, FISA, RAWFISA.
-///
-/// These tokens ARE potentially writable by prior closure rules (the
-/// HCS-O / HCS-P-sub / SI-G compartment rules add ORCON into
-/// `dissem_us`), so they cannot be snapshotted once in
-/// `ClosureAxisFlags`.  This function reads the current `working`
-/// state and is called inside the per-rule guard check.
-///
-/// The scan is O(|dissem_us|), which is typically ≤ 3 elements.
-#[inline]
-fn working_has_caveated_dissem_trigger(working: &CapcoMarking) -> bool {
-    working.0.dissem_us.iter().any(|d| {
-        matches!(
-            d,
-            DissemControl::Oc
-                | DissemControl::OcUsgov
-                | DissemControl::Rs
-                | DissemControl::Imc
-                | DissemControl::Pr
-                | DissemControl::Dsen
-                | DissemControl::Fisa
-                | DissemControl::Rawfisa
-        )
-    })
-}
-
-/// Returns `true` if the rule at the given index **might** fire, based
-/// on cheap axis-presence checks that avoid the more expensive
-/// `satisfies()` calls in `trigger_fires()` / `should_fire()`.
-///
-/// Only returns `false` when the rule's trigger axis is input-only
-/// (never written by any closure rule) AND the flag for that axis
-/// is `false` — meaning the axis was empty at the start of
-/// `closure()` and remains empty for all subsequent iterations.
-///
-/// The index mapping is pinned to the `CAPCO_CLOSURE_RULES` order
-/// verified by `post_pr_4b_declares_exact_10_closure_rules_in_order`.
-/// A `debug_assert!` in each arm validates the name at the matched
-/// index so catalog reorderings are caught immediately in debug
-/// builds.
-#[inline]
-fn capco_rule_axis_present(
-    idx: usize,
-    rule_name: &str,
-    flags: ClosureAxisFlags,
-    working: &CapcoMarking,
-) -> bool {
-    match idx {
-        // Row 0 — CLOSURE_NOFORN_CAVEATED ("capco/noforn-if-caveated")
-        //
-        // Triggers on SAR (input-only), AEA (input-only), FGI
-        // (input-only), non-IC-dissem (input-only), AND eight specific
-        // dissem tokens (ORCON / ORCON-USGOV / RSEN / IMCON / PROPIN /
-        // DSEN / FISA / RAWFISA) which ARE writable by the compartment
-        // rules.  We use the flags for the input-only groups and read
-        // `working` for the writable group.
-        0 => {
-            debug_assert_eq!(
-                rule_name, "capco/noforn-if-caveated",
-                "capco_rule_axis_present: index 0 rule name mismatch — \
-                 CAPCO_CLOSURE_RULES was reordered without updating the \
-                 HOT-1 guard"
-            );
-            flags.sar_present
-                || flags.aea_present
-                || flags.fgi_present
-                || flags.non_ic_dissem_present
-                || working_has_caveated_dissem_trigger(working)
-        }
-        // Rows 1-6 — per-compartment SCI implications
-        // ("capco/hcs-o-implies-noforn-orcon" / "capco/hcs-p-sub-…" /
-        //  "capco/si-g-implies-orcon" / "capco/tk-blfh-…" /
-        //  "capco/tk-idit-…" / "capco/tk-kand-…")
-        //
-        // Each rule scans `sci_markings` for a specific compartment.
-        // `sci_markings` is input-only.  A single flag check covers all
-        // six rules.
-        1..=6 => {
-            debug_assert!(
-                matches!(
-                    rule_name,
-                    "capco/hcs-o-implies-noforn-orcon"
-                        | "capco/hcs-p-sub-implies-noforn-orcon"
-                        | "capco/si-g-implies-orcon"
-                        | "capco/tk-blfh-implies-noforn"
-                        | "capco/tk-idit-implies-noforn"
-                        | "capco/tk-kand-implies-noforn"
-                ),
-                "capco_rule_axis_present: index {idx} rule name '{rule_name}' \
-                 is not a compartment-SCI rule — CAPCO_CLOSURE_RULES was \
-                 reordered without updating the HOT-1 guard",
-                idx = idx,
-                rule_name = rule_name
-            );
-            flags.sci_markings_present
-        }
-        // Row 7 — CLOSURE_REL_TO_USA_NATO
-        // ("capco/rel-to-usa-nato-if-nato-classification")
-        //
-        // Trigger: NATO classification.  Input-only.
-        7 => {
-            debug_assert_eq!(
-                rule_name, "capco/rel-to-usa-nato-if-nato-classification",
-                "capco_rule_axis_present: index 7 rule name mismatch — \
-                 CAPCO_CLOSURE_RULES was reordered without updating the \
-                 HOT-1 guard"
-            );
-            flags.nato_class_present
-        }
-        // Row 8 — CLOSURE_RELIDO_SCI
-        // ("capco/relido-if-sci-and-not-incompatible")
-        //
-        // Trigger: AnyInCategory(CAT_SCI).  Input-only.
-        8 => {
-            debug_assert_eq!(
-                rule_name, "capco/relido-if-sci-and-not-incompatible",
-                "capco_rule_axis_present: index 8 rule name mismatch — \
-                 CAPCO_CLOSURE_RULES was reordered without updating the \
-                 HOT-1 guard"
-            );
-            flags.sci_any_present
-        }
-        // Row 9 — CLOSURE_RELIDO_US_CLASS
-        // ("capco/relido-if-us-collateral-class")
-        //
-        // Trigger: TOK_US_COLLATERAL_CLASSIFIED.  Input-only.
-        9 => {
-            debug_assert_eq!(
-                rule_name, "capco/relido-if-us-collateral-class",
-                "capco_rule_axis_present: index 9 rule name mismatch — \
-                 CAPCO_CLOSURE_RULES was reordered without updating the \
-                 HOT-1 guard"
-            );
-            flags.us_collateral_classified
-        }
-        // Safety valve: any rule added beyond index 9 is evaluated
-        // without an axis guard until the guard table is extended.
-        _ => true,
-    }
-}
+// HOT-1 axis-flag scaffolding retired in PR-D of the FactBitmask
+// refactor (issue #371). The structural `ClosureAxisFlags` snapshot
+// + `working_has_caveated_dissem_trigger` + `capco_rule_axis_present`
+// per-rule guard were replaced by the single `ALL_TRIGGER_MASK`
+// short-circuit on the bitmask projection at the top of
+// `CapcoScheme::closure` below — branchless, no per-axis fan-out, no
+// per-rule guard table to keep in sync with `CAPCO_CLOSURE_RULES`
+// catalog order.
 
 // T035 (2026-04-21): `satisfies` and `evaluate_custom` are now
 // implemented on `CapcoScheme`, so calling
@@ -858,119 +619,122 @@ impl MarkingScheme for CapcoScheme {
     /// guard against unbounded-growth catalog defects that slip past
     /// proptest.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
-        // HOT-1 (issue #595): compute input-only axis-presence flags
-        // once from the INPUT marking.  These flags are valid for all
-        // fixpoint iterations because the axes they represent are never
-        // written by any CAPCO closure rule (see `ClosureAxisFlags`
-        // doc-comment for the invariant).
+        // Bitmask Kleene fast path (issue #371, PR-D).
         //
-        // The flags drive two early-exit layers:
+        // PR-C landed `CLOSURE_TABLE` + `close()`: a 10-row bitmask catalog
+        // and Kleene fixpoint loop covering the closed-vocab atoms of every
+        // CAPCO closure rule. PR-D wires it into production. The bitmask
+        // path replaces the previous fn-pointer walk of `CAPCO_CLOSURE_RULES`
+        // for every closed-vocab cone — only Row 7's `cone_derived` open-
+        // vocab NATO tetragraph survives outside the bitmask (see below).
         //
-        // 1. **Pre-loop short-circuit** (replacing the previous
-        //    `any_closure_trigger_fires` call): if no input-only axis
-        //    is relevant AND `dissem_us` has no caveated trigger token,
-        //    no closure rule can fire — return immediately without
-        //    entering the fixpoint loop.
+        // # Cost shape
         //
-        // 2. **Per-rule axis guard** inside the fixpoint loop
-        //    (`capco_rule_axis_present`): before calling the more
-        //    expensive `rule.should_fire()`, check whether the rule's
-        //    trigger axis is non-empty.  For rules whose triggers lie
-        //    entirely on input-only axes, the guard uses the
-        //    pre-computed flags (O(1) per check).  For rules with a
-        //    writable-axis trigger component (CLOSURE_NOFORN_CAVEATED's
-        //    ORCON/RSEN/etc. dissem triggers), the guard combines the
-        //    input-only flags with a short O(|dissem_us|) scan.
+        // - HOT-1: `derive_bits` is single-pass + branchless; the
+        //   `ALL_TRIGGER_MASK` short-circuit gates everything else.
+        // - Kleene loop: bitwise AND/OR/cmp on a `u128` per row per
+        //   iteration, capped at `MAX_CLOSURE_ITERATIONS` (= 16). The CAPCO
+        //   catalog's longest causal chain is depth 2; typical inputs
+        //   converge in 1–3 iterations.
+        // - `apply_closed_bits_to`: O(set bits in delta). Most closures
+        //   touch 1–3 atoms.
         //
-        // Correctness: `should_fire = trigger_fires && !is_suppressed`.
-        // `capco_rule_axis_present` is a necessary condition for
-        // `trigger_fires`; returning `false` from the guard is safe
-        // when the trigger axis cannot contain any relevant token.
-        // Monotonicity of the closure operator is preserved: the guard
-        // never suppresses a rule that would have fired.
-        let flags = ClosureAxisFlags::from_marking(&marking);
-        if !flags.any_input_axis_relevant() && !working_has_caveated_dissem_trigger(&marking) {
+        // # Row 7 open-vocab tail
+        //
+        // `CLOSURE_REL_TO_USA_NATO` carries an open-vocab `cone_derived`
+        // that injects `CountryCode::NATO` into `rel_to`. `CountryCode::NATO`
+        // has no closed-vocab `TokenId`, so it routes via
+        // `FactRef::OpenVocab(_)`. The bitmask handles the static `TOK_USA`
+        // cone via the `REL_TO_USA` bit; the open-vocab NATO injection
+        // happens here, AFTER the Kleene fixpoint, as a single post-pass.
+        // Trigger / suppressor are evaluated against the post-closure
+        // `working` so the same trigger condition (NATO classification +
+        // no FD&R dominator) holds.
+        //
+        // # Trait contract
+        //
+        // The bitmask `close()` panics unconditionally on non-convergence
+        // per the `MarkingScheme::closure` trait contract — see
+        // `closure_table::close` doc-comment for the panic semantics.
+
+        use crate::fact_bitmask::{apply_closed_bits_to, derive_bits};
+        use crate::scheme::closure::CLOSURE_REL_TO_USA_NATO;
+        use crate::scheme::closure_table::{ALL_TRIGGER_MASK, close};
+
+        let input_bits = derive_bits(&marking.0);
+
+        // HOT-1: pre-Kleene short-circuit. If no trigger fires on the
+        // input, no row can fire across any iteration (close is extensive,
+        // bits are only added). Return the input verbatim, skipping both
+        // the Kleene loop AND the Row 7 open-vocab tail (which requires
+        // NATO classification — a trigger atom).
+        if (input_bits.bits() & ALL_TRIGGER_MASK) == 0 {
             return marking;
         }
-        let mut working = marking;
-        for _iteration in 0..marque_scheme::MAX_CLOSURE_ITERATIONS {
-            // HOT-2 (issue #594): in debug builds, snapshot before
-            // the rule pass so we can cross-check the change-tracking
-            // bool against the deep `==` ground truth at iteration
-            // end. The snapshot is `#[cfg(debug_assertions)]`-gated;
-            // release builds carry zero allocation per iteration.
-            #[cfg(debug_assertions)]
-            let working_before = working.clone();
 
-            // Whether any cone fact in this iteration mutated
-            // `working`. Bitwise `|=` on `bool` evaluates every
-            // `apply_closure_fact` call — no short-circuit on the
-            // first mutation; we must attempt every cone fact in
-            // the pass, not just the first one that succeeds.
-            let mut changed = false;
-            for (idx, rule) in CAPCO_CLOSURE_RULES.iter().enumerate() {
-                // HOT-1: per-rule axis guard — skip `should_fire()` when
-                // the rule's trigger axis is provably empty.
-                if !capco_rule_axis_present(idx, rule.name, flags, &working) {
-                    continue;
-                }
-                if !rule.should_fire(self, &working) {
-                    continue;
-                }
-                // Static cone: walk closed-vocab `TokenRef::Token(id)`
-                // entries via the rule's helper iterator; the helper
-                // already filters out `TokenRef::AnyInCategory(_)`
-                // (which is a category-wildcard predicate, not a
-                // cone carrier — see the `ClosureRule::cone` doc
-                // contract).
-                for token_id in rule.cone_token_ids() {
-                    let fact_ref = FactRef::Cve(token_id);
-                    changed |= apply_closure_fact(self, &mut working, &fact_ref);
-                }
-                // Derived cone (D21 open-vocab path, e.g. NATO partner
-                // list): the function MUST be monotone in the marking
-                // (per `ClosureRule::cone_derived` doc contract). The
-                // NATO row's derived cone is constant-output (vacuously
-                // monotone); future rows with marking-dependent
-                // derivations (e.g. JOINT) must re-verify the §4.7.3
-                // chain-depth analysis per the cap's doc comment.
-                if let Some(derived_fn) = rule.cone_derived {
-                    for fact_ref in derived_fn(&working) {
-                        changed |= apply_closure_fact(self, &mut working, &fact_ref);
-                    }
-                }
-            }
-            if !changed {
-                // Fixpoint reached: a full iteration produced no
-                // mutation, so every subsequent iteration would too.
-                // Debug-only cross-check: `changed == false` MUST
-                // mean `working` is byte-identical to the snapshot
-                // we took at iteration top — otherwise a mutation
-                // path exists that `apply_closure_fact` did not
-                // report. This is the load-bearing semantic guard
-                // for the HOT-2 optimization; it costs nothing in
-                // release.
-                #[cfg(debug_assertions)]
-                debug_assert_eq!(
-                    working, working_before,
-                    "CapcoScheme::closure: `changed == false` but `working` \
-                     byte-differs from the iteration-start snapshot — a \
-                     mutation path exists that did not return `true` from \
-                     `apply_closure_fact`. Audit every `&mut working` access \
-                     in `CapcoScheme::closure` (issue #594, HOT-2)."
-                );
-                return working;
+        let closed_bits = close(input_bits);
+
+        // Row 7 open-vocab tail decision: did the bitmask Row 7 fire?
+        // Equivalent to `(trigger ∧ ¬suppressor)` over `input_bits` for
+        // Row 7's masks — observable as "the bitmask added the
+        // `REL_TO_USA` cone bit to the accumulator". Computed BEFORE
+        // `apply_closed_bits_to` writes back to `CanonicalAttrs` so
+        // there is no `rel_to` non-empty ambiguity: at this point
+        // `working.0.rel_to` is still the input marking's value, and
+        // the bitmask path's decision is the load-bearing one.
+        //
+        // # Why not re-evaluate against post-`apply_closed_bits_to` state
+        //
+        // The fn-pointer walker that PR-D retired called
+        // `cone_derived(&working)` inside the same row-dispatch
+        // iteration where the static cone (`TOK_USA`, applied via
+        // `apply_fact_add`'s CAT_REL_TO arm) had just run — meaning
+        // `working.rel_to` was already non-empty when `cone_derived`
+        // returned NATO, and the suppressor `AnyInCategory(CAT_REL_TO)`
+        // would have stripped Row 7 in iteration 2 (after USA injection
+        // made `rel_to` non-empty). The fn-pointer fixpoint still
+        // contained NATO because iteration 1 ran the derived-cone pass
+        // before iteration 2 even started.
+        //
+        // The bitmask path collapses every iteration into a single
+        // `close()` call. To preserve the fn-pointer fixpoint, the
+        // open-vocab tail must observe Row 7's "did it ever fire?"
+        // decision — not "does it still fire after the bitmask
+        // converged?". The bitmask's `REL_TO_USA` cone bit IS that
+        // decision: it is set in `closed_bits` iff Row 7 fired in some
+        // Kleene iteration. (The bitmask `MASK_FDR_DOMINATORS` does
+        // NOT contain `REL_TO_USA` — only `REL_TO_PRESENT`, which
+        // remains an input-only sentinel by construction in
+        // `derive_bits` — so adding `REL_TO_USA` mid-Kleene cannot
+        // retroactively suppress Row 7. Match that here by gating on
+        // `closed_bits.is_set(REL_TO_USA)`.)
+        // Use the bit-delta `(closed & !input)`, not the post-state, so
+        // an input marking that already carries USA in `rel_to`
+        // (REL_TO_USA already set, REL_TO_PRESENT also set ⇒ FD&R
+        // dominator suppresses Row 7 in the bitmask Kleene → no cone
+        // delta) is correctly distinguished from one where Row 7's
+        // cone ran and added USA.
+        let row7_fired = (closed_bits.bits() & !input_bits.bits())
+            & (1u128 << crate::fact_bitmask::fact_bit::REL_TO_USA)
+            != 0;
+
+        let mut working = marking;
+        apply_closed_bits_to(&mut working.0, closed_bits, input_bits);
+
+        if row7_fired
+            && let Some(derived_fn) = CLOSURE_REL_TO_USA_NATO.cone_derived
+        {
+            for fact_ref in derived_fn(&working) {
+                // The return value (changed-bit) is consumed by the
+                // fn-pointer walker that retired in PR-D; in the
+                // bitmask path the Row 7 NATO post-pass runs exactly
+                // once after the Kleene fixpoint converges, so we
+                // intentionally discard the bool.
+                let _ = apply_closure_fact(self, &mut working, &fact_ref);
             }
         }
-        // Non-convergence: catalog regression. See doc-comment above.
-        // Per `MarkingScheme::closure` trait contract: MUST panic.
-        panic!(
-            "CapcoScheme::closure did not converge in {} iterations; \
-             this indicates a non-monotone catalog row (see \
-             crates/scheme/tests/proptest_closure_rejects_non_monotone.rs \
-             for the property under test)",
-            marque_scheme::MAX_CLOSURE_ITERATIONS,
-        );
+
+        working
     }
 
     /// Enumerate all tokens present in `marking`.
@@ -1023,43 +787,27 @@ impl MarkingScheme for CapcoScheme {
 }
 
 impl CapcoScheme {
-    /// Check whether any closure rule's trigger fires on `marking`,
-    /// using the `ClosureAxisFlags` fast-path to skip rules whose
-    /// trigger axis is provably empty.
+    /// Check whether any closure rule's trigger fires on `marking`.
     ///
-    /// This method is retained for test assertions that need to inspect
-    /// trigger-firing without running the full fixpoint.  The production
-    /// `closure()` path no longer calls this — it computes
-    /// `ClosureAxisFlags` inline and uses them both for the pre-loop
-    /// short-circuit and the per-rule guards.
+    /// Returns `true` iff the bitmask projection of `marking` intersects
+    /// the union of every `CLOSURE_TABLE` row's `trigger_mask`
+    /// ([`ALL_TRIGGER_MASK`]) — the same short-circuit gate
+    /// [`CapcoScheme::closure`] uses to skip the Kleene fixpoint on
+    /// trigger-free inputs.
     ///
-    /// # Correctness
+    /// Retained as a test-only helper for assertions that need to
+    /// inspect trigger-firing without running the full closure pipeline.
+    /// Suppression is NOT consulted: a trigger-firing-but-suppressed
+    /// row still returns `true` here, matching the pre-PR-D fn-pointer
+    /// walker's behavior.
     ///
-    /// `should_fire = trigger_fires && !is_suppressed`. The closure
-    /// fixpoint only adds facts when `should_fire` is true for at
-    /// least one rule; if `trigger_fires` is false for every rule,
-    /// the fixpoint is the input. The short-circuit checks the
-    /// disjunction over rules — the cheapest possible necessary
-    /// condition.
-    ///
-    /// Suppression is NOT consulted by this predicate. A
-    /// trigger-firing-but-suppressed rule still returns `true`.
-    ///
-    /// # Cost
-    ///
-    /// O(rules × axis-flag-check) in the fast path (when input-only
-    /// axes are empty).  Falls through to O(rules × triggers-per-rule)
-    /// `satisfies` calls when at least one input-only axis is relevant.
+    /// [`ALL_TRIGGER_MASK`]: crate::scheme::closure_table::ALL_TRIGGER_MASK
     #[cfg(test)]
     pub(crate) fn any_closure_trigger_fires(&self, marking: &CapcoMarking) -> bool {
-        let flags = ClosureAxisFlags::from_marking(marking);
-        if !flags.any_input_axis_relevant() && !working_has_caveated_dissem_trigger(marking) {
-            return false;
-        }
-        CAPCO_CLOSURE_RULES.iter().enumerate().any(|(idx, rule)| {
-            capco_rule_axis_present(idx, rule.name, flags, marking)
-                && rule.trigger_fires(self, marking)
-        })
+        use crate::fact_bitmask::derive_bits;
+        use crate::scheme::closure_table::ALL_TRIGGER_MASK;
+        let _ = self;
+        (derive_bits(&marking.0).bits() & ALL_TRIGGER_MASK) != 0
     }
     /// PR 6c successor to `project_from_page_context` — engine-facing
     /// hot-path entry that consumes a pre-built per-page slice of
