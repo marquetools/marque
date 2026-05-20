@@ -67,14 +67,22 @@ fn e061_fires_on_bare_hcs_at_confidential() {
     assert_eq!(diags.len(), 1, "exactly one E061 diagnostic expected");
     assert_eq!(diags[0].severity, Severity::Warn);
     assert!(
-        diags[0].citation.contains("§H.4 p62"),
+        format!("{}", diags[0].citation).contains("§H.4 p62"),
         "citation must cite §H.4 p62; got {:?}",
         diags[0].citation
     );
-    assert!(
-        diags[0].message.contains("contact the originator"),
-        "diagnostic must mirror §H.4 p62 'contact the originator' guidance; got {:?}",
-        diags[0].message
+    // PR 3c.2.C C5: closed `Message` shape — the "contact the
+    // originator" prose that previously lived in the message body is
+    // dropped per Constitution V Principle V (G13) / PM-C-5. The
+    // SupersededToken template captures the deprecation class; the
+    // §H.4 p62 citation pins the authority. The user-facing prose
+    // is renderer responsibility per PM-C-5.
+    use marque_rules::MessageTemplate;
+    assert_eq!(
+        diags[0].message.template(),
+        MessageTemplate::SupersededToken,
+        "E061 fires under the SupersededToken template; got {:?}",
+        diags[0].message.template(),
     );
 }
 
@@ -191,14 +199,20 @@ fn e063_fires_on_bare_rsv() {
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].severity, Severity::Warn);
     assert!(
-        diags[0].citation.contains("§H.4 p70"),
+        format!("{}", diags[0].citation).contains("§H.4 p70"),
         "citation must cite §H.4 p70; got {:?}",
         diags[0].citation
     );
-    assert!(
-        diags[0].message.contains("may not be used alone"),
-        "diagnostic must mirror §H.4 p70 wording; got {:?}",
-        diags[0].message
+    // PR 3c.2.C C5: closed `Message` shape — the "may not be used
+    // alone" prose dropped per Constitution V Principle V (G13) /
+    // PM-C-5. The RequiredByPresence template captures the missing-
+    // companion class; the §H.4 p70 citation pins the authority.
+    use marque_rules::MessageTemplate;
+    assert_eq!(
+        diags[0].message.template(),
+        MessageTemplate::RequiredByPresence,
+        "E063 fires under the RequiredByPresence template; got {:?}",
+        diags[0].message.template(),
     );
     // No fix proposed (compartment identifier is org-private).
     assert!(diags[0].text_correction.is_none());

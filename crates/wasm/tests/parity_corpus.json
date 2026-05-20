@@ -5,19 +5,19 @@
       "name": "banner_abbrev_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//IMC\n",
-      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":\"IMCON requires classification ≥ SECRET (CAPCO-2016 §H.8 p144); current classification is CONFIDENTIAL\",\"citation\":\"CAPCO-2016 §H.8 p144\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":17},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"[engine-internal]\",\"fix\":null}\n"
     },
     {
       "name": "classified_banner_limdis.txt",
       "category": "invalid",
       "input": "SECRET//LIMDIS\n",
-      "expected_lint": "{\"rule\":\"W003\",\"severity\":\"warn\",\"span\":{\"start\":8,\"end\":14},\"message\":\"non-IC dissem control LIMDIS should not appear in a classified banner; use only in portion markings\",\"citation\":\"CAPCO-2016 §H.9\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"W003\",\"severity\":\"warn\",\"span\":{\"start\":8,\"end\":14},\"message\":{\"template\":\"NonIcDissemInClassifiedBanner\"},\"citation\":\"§H.9 p169\",\"fix\":null}\n"
     },
     {
       "name": "classified_banner_sci_limdis.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI//LIMDIS\n",
-      "expected_lint": "{\"rule\":\"W003\",\"severity\":\"warn\",\"span\":{\"start\":16,\"end\":22},\"message\":\"non-IC dissem control LIMDIS should not appear in a classified banner; use only in portion markings\",\"citation\":\"CAPCO-2016 §H.9\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"W003\",\"severity\":\"warn\",\"span\":{\"start\":16,\"end\":22},\"message\":{\"template\":\"NonIcDissemInClassifiedBanner\"},\"citation\":\"§H.9 p169\",\"fix\":null}\n"
     },
     {
       "name": "corrections_map_typo.txt",
@@ -29,169 +29,169 @@
       "name": "corrections_map_typo_2.txt",
       "category": "invalid",
       "input": "TOP SECRET//NOFORM\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":{\"template\":\"DecoderRecognized\"},\"citation\":\"§A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
     },
     {
       "name": "corrections_map_typo_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//ORCON/REL TO USA, GBER\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":36},\"message\":\"decoder-recognized canonical form at bytes 0..36\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.963479,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":36},\"message\":{\"template\":\"DecoderRecognized\"},\"citation\":\"§A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.963479,\"migration_ref\":null}}\n"
     },
     {
       "name": "declass_in_banner.txt",
       "category": "invalid",
       "input": "SECRET//25X1//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":12},\"message\":\"declassification marking belongs on the Declassify On line of the Classification Authority Block, not in a banner or portion — remove the declass token here and add it to the CAB\",\"citation\":\"CAPCO-2016 §E.1 p31 (Declassify On is a CAB line) + §D.1 p27 (banner categories do not include declassification)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§E.1 p31\",\"fix\":null}\n"
     },
     {
       "name": "declass_in_banner_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//20351231//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":22},\"message\":\"declassification marking belongs on the Declassify On line of the Classification Authority Block, not in a banner or portion — remove the declass token here and add it to the CAB\",\"citation\":\"CAPCO-2016 §E.1 p31 (Declassify On is a CAB line) + §D.1 p27 (banner categories do not include declassification)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":22},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§E.1 p31\",\"fix\":null}\n"
     },
     {
       "name": "declass_in_banner_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//50X1-HUM\n",
-      "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":20},\"message\":\"declassification marking belongs on the Declassify On line of the Classification Authority Block, not in a banner or portion — remove the declass token here and add it to the CAB\",\"citation\":\"CAPCO-2016 §E.1 p31 (Declassify On is a CAB line) + §D.1 p27 (banner categories do not include declassification)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":20},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§E.1 p31\",\"fix\":null}\n"
     },
     {
       "name": "missing_usa_trigraph.txt",
       "category": "invalid",
       "input": "SECRET//REL TO GBR, AUS\n",
-      "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":\"REL TO list missing required USA trigraph\",\"citation\":\"CAPCO-2016 §H.8 (REL TO, p150–151)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
       "name": "missing_usa_trigraph_2.txt",
       "category": "invalid",
       "input": "SECRET//REL TO GBR, USA\n",
-      "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":\"USA must be the first trigraph in REL TO list\",\"citation\":\"CAPCO-2016 §H.8 (REL TO, p150–151)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":15,\"end\":23},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
       "name": "missing_usa_trigraph_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//REL TO DEU, FRA\n",
-      "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":21,\"end\":29},\"message\":\"REL TO list missing required USA trigraph\",\"citation\":\"CAPCO-2016 §H.8 (REL TO, p150–151)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":21,\"end\":29},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
     },
     {
       "name": "nato_longhand_banner.txt",
       "category": "invalid",
       "input": "NATO TS//NOFORN\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":15},\"message\":\"decoder-recognized canonical form at bytes 0..15\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":15},\"message\":{\"template\":\"DecoderRecognized\"},\"citation\":\"§A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
     },
     {
       "name": "nato_longhand_portion.txt",
       "category": "invalid",
       "input": "(//NATO S//NOFORN)\n",
-      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":\"decoder-recognized canonical form at bytes 0..18\",\"citation\":\"CAPCO-2016 §A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"R001\",\"severity\":\"fix\",\"span\":{\"start\":0,\"end\":18},\"message\":{\"template\":\"DecoderRecognized\"},\"citation\":\"§A.6 p15\",\"fix\":{\"source\":\"DecoderPosterior\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":0.999999,\"migration_ref\":null}}\n"
     },
     {
       "name": "nodis_exdis_conflict.txt",
       "category": "invalid",
       "input": "SECRET//NOFORN//NODIS/EXDIS\n",
-      "expected_lint": "{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"NODIS and EXDIS must not coexist; each State Department dissem control is mutually exclusive per CAPCO-2016 §H.9 p172 + p174\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.9 p172\",\"fix\":null}\n"
     },
     {
       "name": "nodis_missing_from_banner.txt",
       "category": "invalid",
       "input": "(S//NF//ND)\nSECRET//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E040\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":18},\"message\":\"banner is missing NODIS required by portions (§H.9 roll-up rule: NODIS in any portion must appear in the banner)\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E040\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":18},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.9 p172\",\"fix\":null}\n"
     },
     {
       "name": "nodis_portion_rel_to_banner.txt",
       "category": "invalid",
       "input": "(S//NF//ND)\nSECRET//NOFORN//REL TO USA, GBR//NODIS\n",
-      "expected_lint": "{\"rule\":\"E039\",\"severity\":\"error\",\"span\":{\"start\":28,\"end\":43},\"message\":\"REL TO is not authorized in the banner line when any portion contains NODIS or EXDIS; NOFORN conveys the foreign-release decision in this case per CAPCO-2016 §H.9\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS)\",\"fix\":null}\n{\"rule\":\"E053\",\"severity\":\"error\",\"span\":{\"start\":20,\"end\":26},\"message\":\"NOFORN cannot be used with REL TO; these dissemination controls are mutually exclusive per CAPCO-2016 §H.8 p145\",\"citation\":\"CAPCO-2016 §H.8 p145\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E039\",\"severity\":\"error\",\"span\":{\"start\":28,\"end\":43},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.9 p172\",\"fix\":null}\n{\"rule\":\"E053\",\"severity\":\"error\",\"span\":{\"start\":20,\"end\":26},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.8 p145\",\"fix\":null}\n"
     },
     {
       "name": "nodis_without_noforn.txt",
       "category": "invalid",
       "input": "SECRET//NODIS\n",
-      "expected_lint": "{\"rule\":\"E038\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"NODIS and EXDIS may be used only with NOFORN information\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E038\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"[engine-internal]\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
     },
     {
       "name": "portion_nodis_exdis_commingled.txt",
       "category": "invalid",
       "input": "(S//NF//ND/XD)\n",
-      "expected_lint": "{\"rule\":\"E041\",\"severity\":\"warn\",\"span\":{\"start\":11,\"end\":13},\"message\":\"portion contains both NODIS and EXDIS; NODIS (ND) supersedes EXDIS (XD) per §H.9 — remove EXDIS from the portion mark\",\"citation\":\"CAPCO-2016 §H.9 p172 (EXDIS) + p174 (NODIS): NODIS supersedes EXDIS in the portion mark when both are present\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":10},\"message\":\"NODIS and EXDIS must not coexist; each State Department dissem control is mutually exclusive per CAPCO-2016 §H.9 p172 + p174\",\"citation\":\"CAPCO-2016 §H.9 p172 + p174\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E041\",\"severity\":\"warn\",\"span\":{\"start\":11,\"end\":13},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.9 p174\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E037\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.9 p172\",\"fix\":null}\n"
     },
     {
       "name": "sar_banner_missing_program.txt",
       "category": "invalid",
       "input": "(S//SAR-CD//NF)\nSECRET//SAR-BP//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E031\",\"severity\":\"fix\",\"span\":{\"start\":30,\"end\":30},\"message\":\"BannerRollupMismatch\",\"citation\":\"CAPCO-2016 §H.5 p101 (Unique SAPs contained in portion marks must always appear in the banner line; hierarchy depiction optional per §H.5 p101 + p99)\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E031\",\"severity\":\"fix\",\"span\":{\"start\":30,\"end\":30},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.5 p101\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"/CD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sar_unclassified.txt",
       "category": "invalid",
       "input": "UNCLASSIFIED//SAR-BP\n",
-      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":\"SAR requires classification ≥ CONFIDENTIAL (CAPCO-2016 §H.5); current classification is UNCLASSIFIED\",\"citation\":\"CAPCO-2016 §H.5\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"[engine-internal]\",\"fix\":null}\n"
     },
     {
       "name": "sci_banner_missing_compartment.txt",
       "category": "invalid",
       "input": "(TS//SI-G ABCD//OC/NF) portion text\nTOP SECRET//SI-G//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":\"BannerRollupMismatch\",\"citation\":\"CAPCO-2016 §H.4 per-system \\\"Precedence Rules for Banner Line Guidance\\\" (e.g. HCS p62, SI p74, TK p85). All unique SCI markings in portions must appear in the banner line; unlike SAR, SCI has no hierarchy-optional carve-out.\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.4 p62\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
       "name": "sci_canonical_subcompartments.txt",
       "category": "invalid",
       "input": "TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN\n",
-      "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":15},\"message\":\"unpublished SCI control system \\\"123\\\" present; verify agency allocation via ODNI/P&S registry\",\"citation\":\"CAPCO-2016 §A.6 p16; §H.4 p61\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":15},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
     },
     {
       "name": "sci_custom_control_info.txt",
       "category": "invalid",
       "input": "TOP SECRET//99/SI//NOFORN\n",
-      "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":14},\"message\":\"unpublished SCI control system \\\"99\\\" present; verify agency allocation via ODNI/P&S registry\",\"citation\":\"CAPCO-2016 §A.6 p16; §H.4 p61\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":14},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
     },
     {
       "name": "sci_system_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI/123//NOFORN\n",
-      "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":\"unpublished SCI control system \\\"123\\\" present; verify agency allocation via ODNI/P&S registry\",\"citation\":\"CAPCO-2016 §A.6 p16; §H.4 p61\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
     },
     {
       "name": "unknown_token.txt",
       "category": "invalid",
       "input": "SECRET//XYZZY//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph\",\"citation\":\"CAPCO-2016 §G.1 (Register of Authorized Markings, p36)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"UnrecognizedToken\"},\"citation\":\"§G.1 p36\",\"fix\":null}\n"
     },
     {
       "name": "unknown_token_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//FROBOZZ\n",
-      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":21},\"message\":\"unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph\",\"citation\":\"CAPCO-2016 §G.1 (Register of Authorized Markings, p36)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":21},\"message\":{\"template\":\"UnrecognizedToken\"},\"citation\":\"§G.1 p36\",\"fix\":null}\n"
     },
     {
       "name": "unknown_token_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI//FOOBAR//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":22},\"message\":\"unrecognized token inside marking — does not match any known CAPCO classification, control, or trigraph\",\"citation\":\"CAPCO-2016 §G.1 (Register of Authorized Markings, p36)\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E008\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":22},\"message\":{\"template\":\"UnrecognizedToken\"},\"citation\":\"§G.1 p36\",\"fix\":null}\n"
     },
     {
       "name": "x_shorthand_date.txt",
       "category": "invalid",
       "input": "SECRET//25X1-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§E.6 p33\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_2.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//50X1-\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"50X1-HUM\",\"confidence\":0.95,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§E.6 p33\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"50X1-HUM\",\"confidence\":0.95,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_3.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI//25X1-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":16,\"end\":21},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§E.6 p33\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X1\",\"confidence\":0.97,\"migration_ref\":\"CAPCO-2016 §E.6 p34\"}}\n"
     },
     {
       "name": "x_shorthand_date_pattern.txt",
       "category": "invalid",
       "input": "SECRET//25X2-//NOFORN\n",
-      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":\"SupersededToken\",\"citation\":\"CAPCO-2016 §E.6\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X2\",\"confidence\":0.95,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E007\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§E.6 p33\",\"fix\":{\"source\":\"MigrationTable\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"25X2\",\"confidence\":0.95,\"migration_ref\":null}}\n"
     },
     {
       "name": "classified_banner_atomal_as_aea.txt",
@@ -347,7 +347,7 @@
       "name": "clean_portion_si_only.txt",
       "category": "valid",
       "input": "(TS//SI)\n",
-      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":8},\"message\":\"RELIDO is implied by the closure (SCI presence or US collateral classification absent FD&R suppressors); per §D.2 Table 3 rule 17 the byte-level marking should carry RELIDO to match\",\"citation\":\"CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17 p21\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":8},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.8 p154\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "clean_portion_top_secret.txt",
@@ -359,7 +359,7 @@
       "name": "clean_portion_ts_si_tk.txt",
       "category": "valid",
       "input": "(TS//SI/TK)",
-      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":11},\"message\":\"RELIDO is implied by the closure (SCI presence or US collateral classification absent FD&R suppressors); per §D.2 Table 3 rule 17 the byte-level marking should carry RELIDO to match\",\"citation\":\"CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17 p21\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":11},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.8 p154\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
     },
     {
       "name": "clean_portion_unclassified.txt",

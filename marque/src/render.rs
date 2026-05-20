@@ -810,9 +810,12 @@ mod tests {
         render_human(&mut out, "banner.txt", src, &diag, false).unwrap();
         let rendered = String::from_utf8(out).unwrap();
 
-        // Header line: path:line:col with level + rule + message
+        // Header line: path:line:col with level + rule + template label.
+        // PR 3c.2.C C5: the message column renders the closed-template
+        // label, no longer a free-form sentence; `make_diagnostic`
+        // uses `MessageTemplate::BannerRollupMismatch`.
         assert!(rendered.contains("banner.txt:1:17 fix[E001]"));
-        assert!(rendered.contains("banner uses abbreviated dissem control"));
+        assert!(rendered.contains("BannerRollupMismatch"));
         // Location arrow
         assert!(rendered.contains("--> banner.txt:1:17-19"));
         // Source snippet with line number gutter
@@ -831,8 +834,11 @@ mod tests {
             rendered.contains("auto-fixable; confidence 100%"),
             "expected auto-fixable hint; got:\n{rendered}"
         );
-        // Citation footer
-        assert!(rendered.contains("= citation: CAPCO-2016 §A.6"));
+        // Citation footer. PR 3c.2.C C5: typed `Citation` Display
+        // emits the bare `§<L>.<sub> p<N>` shape (no "CAPCO-2016"
+        // prefix); the prefix lives in the renderer's surrounding
+        // text or in the JSON `document` field for non-CAPCO sources.
+        assert!(rendered.contains("= citation: §A.6 p15"));
     }
 
     #[test]
@@ -869,43 +875,50 @@ mod tests {
     fn render_human_appends_marque_brand_suffix_to_header_line() {
         // Branding invariant: the human-pretty-print path appends "—Marque"
         // to every diagnostic header. Structured outputs (NDJSON / JSON)
-        // MUST NOT carry the suffix — they keep `diag.message` byte-
-        // identical so downstream tooling does not have to strip it.
+        // MUST NOT carry the suffix — they keep the template label
+        // byte-identical so downstream tooling does not have to strip it.
+        //
+        // PR 3c.2.C C5: `Diagnostic.message` is now a closed `Message`
+        // (template + args). The rendered human header shows the
+        // template label (e.g. `BannerRollupMismatch`); the NDJSON
+        // emits the same label under `message.template`.
         let src = b"TOP SECRET//SI//NF\n";
         let span = Span::new(16, 18);
         let diag = make_diagnostic("E001", span, "test message", None);
+        let template_label = diag.message.template().as_str();
 
         let mut human_out = Vec::new();
         render_human(&mut human_out, "x.txt", src, &diag, false).unwrap();
         let human = String::from_utf8(human_out).unwrap();
         assert!(
-            human.contains("test message —Marque"),
+            human.contains(&format!("{template_label} —Marque")),
             "human header must end with \" —Marque\"; got:\n{human}"
         );
 
         // NDJSON path must not carry the brand suffix.
         let json = diagnostic_to_json(&diag);
         assert_eq!(
-            json.message, "test message",
-            "NDJSON `message` field must stay byte-identical to Diagnostic.message"
+            json.message.template, template_label,
+            "NDJSON `message.template` must be the closed-template label"
         );
         assert!(
-            !json.message.contains("Marque"),
-            "NDJSON message field must never be branded"
+            !json.message.template.contains("Marque"),
+            "NDJSON message.template field must never be branded"
         );
     }
 
     #[test]
     fn render_human_diagnostic_without_fix_omits_hint() {
-        // E008-style: no fix proposal, caret only
+        // E008-style: no fix proposal, caret only.
+        // PR 3c.2.C C5: typed Message + Citation via make_diagnostic.
         let src = b"SECRET//XYZZY//NOFORN\n";
         let span = Span::new(8, 13);
         let diag = Diagnostic::new(
             RuleId::new("E008"),
             Severity::Error,
             span,
-            "unrecognized token",
-            "CAPCO-2016 §A.6",
+            Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default()),
+            marque_rules::capco(marque_rules::SectionLetter::A, 6, 15),
             None,
         );
 
@@ -931,9 +944,8 @@ mod tests {
             RuleId::new("S004"),
             Severity::Suggest,
             span,
-            "\"AUT\" (Austria) is far less common in REL TO than \
-             \"AUS\" (Australia); did you mean \"AUS\"?",
-            "CAPCO-2016 §H.8 p150",
+            Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+            marque_rules::capco(marque_rules::SectionLetter::H, 8, 150),
             Some(fix),
         );
 
@@ -946,11 +958,16 @@ mod tests {
             rendered.contains("suggest[S004]"),
             "header must read suggest[S004]; got:\n{rendered}"
         );
-        // Caret hint uses "did you mean" phrasing (Suggest-specific) —
-        // not the imperative "replace with" used by Fix-severity rules.
+        // PR 3c.2.C C5: the fixture uses `make_intent_fix()` (a
+        // `FixIntent` carrying a structural `Recanonicalize` intent),
+        // not a `TextCorrection`. Per the renderer at `render.rs:187-204`,
+        // the "did you mean X" prose only fires when `text_correction`
+        // is set with the candidate bytes; when only a `FixIntent` is
+        // present the Suggest-severity branch renders the generic
+        // "(suggested fix; confidence ...)" hint.
         assert!(
-            rendered.contains("did you mean \"AUS\""),
-            "Suggest hint must read \"did you mean ...\"; got:\n{rendered}"
+            rendered.contains("(suggested fix; confidence"),
+            "Suggest hint must read \"(suggested fix; confidence ...)\"; got:\n{rendered}"
         );
         assert!(
             !rendered.contains("replace with"),
@@ -972,8 +989,8 @@ mod tests {
             RuleId::new("S004"),
             Severity::Suggest,
             span,
-            "did you mean \"AUS\"?",
-            "CAPCO-2016 §H.8 p150",
+            Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+            marque_rules::capco(marque_rules::SectionLetter::H, 8, 150),
             Some(fix),
         );
 
@@ -1008,9 +1025,15 @@ mod tests {
             RuleId::new("S999"),
             Severity::Suggest,
             span,
-            "REL TO list contains an opaque tetragraph; \
-             release decision may be ambiguous",
-            "TEST",
+            Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+            // S999 is a hypothetical test rule with no CAPCO citation;
+            // use the EngineInternal sentinel per PM-C-4 so citation-lint
+            // skips the entry.
+            marque_rules::Citation::new(
+                marque_rules::AuthoritativeSource::EngineInternal,
+                marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+                core::num::NonZeroU16::new(1).unwrap(),
+            ),
             None,
         );
 
@@ -1044,8 +1067,8 @@ mod tests {
             RuleId::new("S004"),
             Severity::Suggest,
             span,
-            "did you mean \"AUS\"?",
-            "CAPCO-2016 §H.8 p150",
+            Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
+            marque_rules::capco(marque_rules::SectionLetter::H, 8, 150),
             Some(fix),
         );
 

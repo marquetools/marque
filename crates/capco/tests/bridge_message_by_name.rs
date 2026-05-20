@@ -3,25 +3,42 @@
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
 //! Tests for `CapcoScheme::message_by_name` — the engine-bridge
-//! message hook that replaces opaque Debug-formatted `TokenId(N)`
-//! strings with user-friendly prose.
+//! message hook.
+//!
+//! PR 3c.2.C C5 reshape: `message_by_name` now returns a closed
+//! `Message` (template + args), not a free-form string. The bridge
+//! invariant that this file pins is structurally enforced by the
+//! closed-args / closed-template invariants in `crates/rules/src/
+//! message.rs`:
+//!
+//! - **No `TokenId` debug leakage** — `MessageArgs` carries
+//!   `Option<TokenId>` and `Option<CategoryId>` only; raw bytes /
+//!   debug strings are unrepresentable by construction.
+//! - **No free-form prose** — `MessageTemplate` is a closed enum;
+//!   the engine emits the variant label, never a `format!`-built
+//!   sentence.
 //!
 //! Two test layers:
 //!
 //! 1. **Unit tests** (`message_by_name_*`) — call the inherent method
 //!    directly on `CapcoScheme` and assert (a) each known dyadic
-//!    constraint name returns `Some(friendly_text)` and (b) unknown
-//!    names return `None`.
+//!    constraint name returns `Some(message)` with the expected
+//!    template + category and (b) unknown names return `None`.
 //!
-//! 2. **Integration tests** (`bridge_emits_friendly_message_*`) — run
-//!    `Engine::lint` on a triggering input and assert that the emitted
-//!    `Diagnostic.message` no longer contains `"TokenId"` (the
-//!    tell-tale sign of the generic evaluator fallback).
+//! 2. **Integration tests** (`bridge_emits_typed_message_*`) — run
+//!    `Engine::lint` on a triggering input and assert that the
+//!    emitted `Diagnostic.message` carries the expected closed-set
+//!    identification (`MessageTemplate` + `MessageArgs.category`)
+//!    rather than a generic fallback.
 
 use marque_capco::{CapcoRuleSet, CapcoScheme};
+use marque_capco::scheme::{
+    CAT_DISSEM, CAT_JOINT_CLASSIFICATION, CAT_NON_IC_DISSEM,
+};
 use marque_config::Config;
 use marque_engine::{Engine, FixedClock};
 use marque_ism::{CanonicalAttrs, MarkingType};
+use marque_rules::MessageTemplate;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,7 +61,7 @@ fn empty_attrs() -> CanonicalAttrs {
 }
 
 // ---------------------------------------------------------------------------
-// Unit tests — message_by_name returns Some for known names
+// Unit tests — message_by_name returns Some(Message) with expected shape
 // ---------------------------------------------------------------------------
 
 /// E015 dyadic Requires row: non-US classification requires a dissem control.
@@ -56,15 +73,18 @@ fn message_by_name_e015_returns_some() {
         &empty_attrs(),
         MarkingType::Portion,
     );
-    assert!(msg.is_some(), "E015 must return Some(...)");
-    let text = msg.unwrap();
-    assert!(
-        !text.contains("TokenId"),
-        "E015 message must not contain 'TokenId'; got: {text:?}"
+    let msg = msg.expect("E015 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::RequiredByPresence,
+        "E015 maps to the RequiredByPresence template; got {:?}",
+        msg.template(),
     );
-    assert!(
-        text.contains("§H.7"),
-        "E015 message must cite §H.7; got: {text:?}"
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_DISSEM),
+        "E015 must identify the dissem axis; got {:?}",
+        msg.args().category,
     );
 }
 
@@ -77,15 +97,18 @@ fn message_by_name_e016_returns_some() {
         &empty_attrs(),
         MarkingType::Portion,
     );
-    assert!(msg.is_some(), "E016 must return Some(...)");
-    let text = msg.unwrap();
-    assert!(
-        !text.contains("TokenId"),
-        "E016 message must not contain 'TokenId'; got: {text:?}"
+    let msg = msg.expect("E016 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E016 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
     );
-    assert!(
-        text.contains("JOINT") && text.contains("RESTRICTED"),
-        "E016 message must mention JOINT and RESTRICTED; got: {text:?}"
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_JOINT_CLASSIFICATION),
+        "E016 must identify the JOINT classification axis; got {:?}",
+        msg.args().category,
     );
 }
 
@@ -98,15 +121,18 @@ fn message_by_name_e036_returns_some() {
         &empty_attrs(),
         MarkingType::Portion,
     );
-    assert!(msg.is_some(), "E036 must return Some(...)");
-    let text = msg.unwrap();
-    assert!(
-        !text.contains("TokenId"),
-        "E036 message must not contain 'TokenId'; got: {text:?}"
+    let msg = msg.expect("E036 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E036 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
     );
-    assert!(
-        text.contains("JOINT") && text.contains("HCS"),
-        "E036 message must mention JOINT and HCS; got: {text:?}"
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_JOINT_CLASSIFICATION),
+        "E036 must identify the JOINT classification axis; got {:?}",
+        msg.args().category,
     );
 }
 
@@ -119,18 +145,18 @@ fn message_by_name_noforn_conflicts_rel_to_returns_some() {
         &empty_attrs(),
         MarkingType::Portion,
     );
-    assert!(
-        msg.is_some(),
-        "capco/noforn-conflicts-rel-to must return Some(...)"
+    let msg = msg.expect("capco/noforn-conflicts-rel-to must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "noforn-conflicts-rel-to maps to the ConflictsWith template; got {:?}",
+        msg.template(),
     );
-    let text = msg.unwrap();
-    assert!(
-        !text.contains("TokenId"),
-        "noforn-conflicts-rel-to message must not contain 'TokenId'; got: {text:?}"
-    );
-    assert!(
-        text.contains("NOFORN") && text.contains("REL TO"),
-        "noforn-conflicts-rel-to message must mention NOFORN and REL TO; got: {text:?}"
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_DISSEM),
+        "noforn-conflicts-rel-to must identify the dissem axis; got {:?}",
+        msg.args().category,
     );
 }
 
@@ -143,15 +169,18 @@ fn message_by_name_e037_returns_some() {
         &empty_attrs(),
         MarkingType::Portion,
     );
-    assert!(msg.is_some(), "E037 must return Some(...)");
-    let text = msg.unwrap();
-    assert!(
-        !text.contains("TokenId"),
-        "E037 message must not contain 'TokenId'; got: {text:?}"
+    let msg = msg.expect("E037 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E037 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
     );
-    assert!(
-        text.contains("NODIS") && text.contains("EXDIS"),
-        "E037 message must mention NODIS and EXDIS; got: {text:?}"
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_NON_IC_DISSEM),
+        "E037 must identify the non-IC dissem axis; got {:?}",
+        msg.args().category,
     );
 }
 
@@ -164,21 +193,26 @@ fn message_by_name_e054_returns_some() {
         &empty_attrs(),
         MarkingType::Portion,
     );
-    assert!(msg.is_some(), "E054 must return Some(...)");
-    let text = msg.unwrap();
-    assert!(
-        !text.contains("TokenId"),
-        "E054 message must not contain 'TokenId'; got: {text:?}"
+    let msg = msg.expect("E054 must return Some(...)");
+    assert_eq!(
+        msg.template(),
+        MessageTemplate::ConflictsWith,
+        "E054 maps to the ConflictsWith template; got {:?}",
+        msg.template(),
     );
-    assert!(
-        text.contains("RELIDO") && text.contains("NOFORN"),
-        "E054 message must mention RELIDO and NOFORN; got: {text:?}"
+    assert_eq!(
+        msg.args().category,
+        Some(CAT_DISSEM),
+        "E054 must identify the dissem axis; got {:?}",
+        msg.args().category,
     );
 }
 
 /// Unknown constraint names must return None so the bridge falls back to the
-/// evaluator-generated message (which at least contains TokenId-free text for
-/// Custom-arm constraints).
+/// engine's generic-template path (which still emits a closed Message —
+/// the engine's fallback uses `MessageTemplate::ConflictsWith` with empty
+/// args per `Engine::bridge_constraint_diagnostic`, but the per-row
+/// identification is lost).
 #[test]
 fn message_by_name_returns_none_for_unknown_name() {
     let scheme = CapcoScheme::new();
@@ -203,16 +237,18 @@ fn message_by_name_returns_none_for_unknown_name() {
 }
 
 // ---------------------------------------------------------------------------
-// Integration tests — engine bridge emits friendly messages
+// Integration tests — engine bridge emits typed Message with expected shape
 // ---------------------------------------------------------------------------
 
-/// E037 (NODIS ⊥ EXDIS): the diagnostic message must not contain `"TokenId"`.
+/// E037 (NODIS ⊥ EXDIS): the diagnostic must carry the
+/// `ConflictsWith` template + `CAT_NON_IC_DISSEM` category from
+/// `message_by_name`.
 ///
 /// Input `(S//NF//ND/XD)` carries both NODIS and EXDIS alongside NOFORN
-/// (so E038 does not also fire for "no NOFORN"). The bridge must emit the
-/// E037 diagnostic with the friendly message supplied by `message_by_name`.
+/// (so E038 does not also fire for "no NOFORN"). The bridge must emit
+/// E037 with the typed message supplied by `message_by_name`.
 #[test]
-fn bridge_emits_friendly_message_for_e037() {
+fn bridge_emits_typed_message_for_e037() {
     let result = engine().lint(b"(S//NF//ND/XD)\n");
     let e037 = result
         .diagnostics
@@ -220,25 +256,29 @@ fn bridge_emits_friendly_message_for_e037() {
         .find(|d| d.rule.as_str() == "E037")
         .expect("E037 must fire on (S//NF//ND/XD)");
 
-    assert!(
-        !e037.message.contains("TokenId"),
-        "E037 message must not contain 'TokenId' after message_by_name hook; \
+    assert_eq!(
+        e037.message.template(),
+        MessageTemplate::ConflictsWith,
+        "E037 must carry the ConflictsWith template after the message_by_name hook; \
          got: {:?}",
-        e037.message
+        e037.message.template(),
     );
-    assert!(
-        e037.message.contains("NODIS") && e037.message.contains("EXDIS"),
-        "E037 message must mention NODIS and EXDIS; got: {:?}",
-        e037.message
+    assert_eq!(
+        e037.message.args().category,
+        Some(CAT_NON_IC_DISSEM),
+        "E037 must identify the non-IC dissem axis; got: {:?}",
+        e037.message.args().category,
     );
 }
 
-/// E054 (RELIDO ⊥ NOFORN): the diagnostic message must not contain `"TokenId"`.
+/// E054 (RELIDO ⊥ NOFORN): the diagnostic must carry the
+/// `ConflictsWith` template + `CAT_DISSEM` category.
 ///
 /// Input `(S//NF/RELIDO)` carries both NOFORN and RELIDO together.
-/// The bridge must emit E054 with the friendly message from `message_by_name`.
+/// The bridge must emit E054 with the typed message from
+/// `message_by_name`.
 #[test]
-fn bridge_emits_friendly_message_for_e054() {
+fn bridge_emits_typed_message_for_e054() {
     let result = engine().lint(b"(S//NF/RELIDO)\n");
     let e054 = result
         .diagnostics
@@ -246,15 +286,17 @@ fn bridge_emits_friendly_message_for_e054() {
         .find(|d| d.rule.as_str() == "E054")
         .expect("E054 must fire on (S//NF/RELIDO)");
 
-    assert!(
-        !e054.message.contains("TokenId"),
-        "E054 message must not contain 'TokenId' after message_by_name hook; \
+    assert_eq!(
+        e054.message.template(),
+        MessageTemplate::ConflictsWith,
+        "E054 must carry the ConflictsWith template after the message_by_name hook; \
          got: {:?}",
-        e054.message
+        e054.message.template(),
     );
-    assert!(
-        e054.message.contains("RELIDO") && e054.message.contains("NOFORN"),
-        "E054 message must mention RELIDO and NOFORN; got: {:?}",
-        e054.message
+    assert_eq!(
+        e054.message.args().category,
+        Some(CAT_DISSEM),
+        "E054 must identify the dissem axis; got: {:?}",
+        e054.message.args().category,
     );
 }
