@@ -106,21 +106,24 @@ fn silent_when_rel_to_present() {
 #[test]
 fn silent_when_display_only_present() {
     // `(S//DISPLAY ONLY GBR)` — DISPLAY ONLY is an FD&R dominator at
-    // the lattice layer. The closure's `satisfies(TOK_DISPLAY_ONLY)`
-    // predicate scans `attrs.dissem_iter()` for
-    // `DissemControl::Displayonly`, which the parser does NOT
-    // populate for the canonical wire form (the country list flows
-    // into `attrs.display_only_to` instead). S008 closes this gap
-    // explicitly via clause 2b — gating on
-    // `!attrs.display_only_to.is_empty()` — until the closure
-    // suppressor predicate is widened at the engine layer (a separate
-    // change not in scope for #559). This test pins the explicit
-    // S008 guard.
+    // the lattice layer. Post-#618 the closure's
+    // `satisfies(TOK_DISPLAY_ONLY)` predicate scans BOTH
+    // `attrs.dissem_iter()` for `DissemControl::Displayonly` AND
+    // `attrs.display_only_to` (the country-list axis the parser
+    // routes the canonical wire form into). Pre-#618 the predicate
+    // only checked `dissem_iter()`, missing the canonical wire
+    // form, which forced a workaround at S008 clause 2b
+    // (`!attrs.display_only_to.is_empty()` early-return). #618
+    // widened the predicate, the workaround was retired, and S008
+    // now reaches the canonical suppressor path through clause 3.
+    // This test stays load-bearing as a regression guard — if the
+    // underlying predicate ever drifts back, the test trips.
     assert!(
         !fires_s008(b"(S//DISPLAY ONLY GBR)\n"),
-        "S008 must not fire when DISPLAY ONLY is present (clause 2b: \
-         the canonical-wire-form gate covers what the closure's \
-         dissem-iter suppressor check misses)",
+        "S008 must not fire when DISPLAY ONLY is present — \
+         post-#618 the closure suppressor correctly recognizes \
+         the `display_only_to` axis, so no RELIDO injection \
+         occurs and S008 has nothing to suggest",
     );
 }
 

@@ -2,15 +2,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! #559 close-out (PM decision 2026-05-19) — RELIDO-eviction
-//! PageRewrites that converted the retired E056 / E057
+//! #559 close-out (PM decision 2026-05-19) + #618 — RELIDO-eviction
+//! PageRewrites that converted the retired E055 / E056 / E057
 //! `Constraint::Conflicts` rows into subtractive page-scope
 //! supersession rewrites. Exercises the cross-portion behavior
-//! (ORCON on one portion, RELIDO on another) that the per-portion
-//! Conflicts rows missed pre-conversion. The third row (E055
-//! DISPLAY ONLY > RELIDO) is deferred — see
-//! `rewrites/relido_clears.rs` module header for the parser-axis /
-//! scheduler-cycle rationale.
+//! (dominator on one portion, RELIDO on another) that the per-portion
+//! Conflicts rows missed pre-conversion. The E055 DISPLAY ONLY row
+//! was deferred behind #618 until `satisfies(TOK_DISPLAY_ONLY)` was
+//! widened to recognize the canonical `display_only_to` parser axis.
 //!
 //! Each row's `action` is `FactRemove(RELIDO, Scope::Page)`, so the
 //! end-to-end signal is: presence of the dominator on any portion +
@@ -59,6 +58,47 @@ fn banner_carries_relido(portions: &[&str]) -> bool {
     attrs
         .dissem_iter()
         .any(|d| matches!(d, marque_ism::DissemControl::Relido))
+}
+
+// ---------------------------------------------------------------------------
+// E.4.4 — DISPLAY ONLY > RELIDO at page scope (#618).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn display_only_clears_relido_within_one_portion() {
+    // Single portion carries both DISPLAY ONLY GBR and RELIDO
+    // (canonical token order — DISPLAY ONLY precedes RELIDO in the
+    // IC dissem category per CAPCO §H.8 sort order). §H.8 p154
+    // marks RELIDO incompatible with DISPLAY ONLY. The canonical
+    // wire form routes the country list to `attrs.display_only_to`;
+    // #618 widened `satisfies(TOK_DISPLAY_ONLY)` and the
+    // PageRewrite category predicate so the
+    // `capco/display-only-clears-relido` trigger fires on that axis.
+    assert!(
+        !banner_carries_relido(&["(S//DISPLAY ONLY GBR/RELIDO)"]),
+        "DISPLAY ONLY on the same portion as RELIDO must evict \
+         RELIDO at page projection (§H.8 p154); same-portion case",
+    );
+}
+
+#[test]
+fn display_only_clears_relido_cross_portion() {
+    // Cross-portion: portion A has REL TO + RELIDO (so it carries
+    // release permission via REL TO and survives the §D.2 row-19
+    // all-or-nothing gate), portion B has DISPLAY ONLY GBR.
+    // Both portions carry release permission, so DisplayOnlyBlock
+    // rolls up to {GBR} (intersection of {USA, GBR} from REL TO
+    // expansion ∩ {GBR} from DISPLAY ONLY). With display_only_to
+    // populated at page scope, the `capco/display-only-clears-relido`
+    // PageRewrite fires and removes RELIDO. §H.8 p154 —
+    // DISPLAY ONLY supersedes RELIDO at page roll-up.
+    assert!(
+        !banner_carries_relido(&["(S//REL TO USA, GBR/RELIDO)", "(S//DISPLAY ONLY GBR)"]),
+        "DISPLAY ONLY on one portion must evict RELIDO from another \
+         portion at page projection (§H.8 p154); cross-portion case \
+         requires both portions to carry release permission so the \
+         §D.2 row-19 gate passes",
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -128,14 +168,14 @@ fn retired_e055_e056_e057_no_longer_fire_as_diagnostics() {
     )
     .expect("default scheme constructs cleanly");
 
-    // The pre-#559 trigger inputs that would have fired E056/E057
-    // as Conflicts diagnostics (E055 the DISPLAY ONLY case is
-    // deferred — see module header). Post-#559 these inputs route
+    // The pre-#559 trigger inputs that would have fired E055/E056/E057
+    // as Conflicts diagnostics. Post-#559 + #618 these inputs route
     // through the PageRewrite path silently — no per-portion
     // diagnostic surface, just canonical output.
     let cases: &[&[u8]] = &[
-        b"(S//OC/RELIDO)",       // E056 trigger
-        b"(S//OC-USGOV/RELIDO)", // E057 trigger
+        b"(S//RELIDO/DISPLAY ONLY GBR)", // E055 trigger
+        b"(S//OC/RELIDO)",               // E056 trigger
+        b"(S//OC-USGOV/RELIDO)",         // E057 trigger
     ];
 
     for input in cases {
