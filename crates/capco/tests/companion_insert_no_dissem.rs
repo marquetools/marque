@@ -10,7 +10,7 @@ use marque_rules::{Diagnostic, RuleSet, Severity};
 fn engine() -> Engine {
     Engine::new(
         Config::default(),
-        vec![Box::new(CapcoRuleSet::new()) as Box<dyn RuleSet<CapcoScheme>>],
+        vec![Box::new(CapcoRuleSet::new())],
         CapcoScheme::new(),
     )
     .expect("default CAPCO scheme must construct without rewrite cycles")
