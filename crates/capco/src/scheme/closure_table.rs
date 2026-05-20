@@ -47,7 +47,10 @@
 //! the CAPCO catalog's longest causal chain is depth 2 (per-marking
 //! cones add NOFORN/ORCON; CAVEATED promotes ORCON → NOFORN), so 16 is
 //! a generous ceiling. Failing to converge under that ceiling is a
-//! programming bug, gated by [`debug_assert!`].
+//! programming bug, and [`close`] **panics unconditionally** (release
+//! builds included) per the `MarkingScheme::closure` trait contract
+//! (§576 of `marque_scheme::scheme`: "The override MUST panic if it
+//! exceeds [...] iterations without reaching a fixed point").
 //!
 //! # Citation discipline (Constitution VIII)
 //!
@@ -71,13 +74,27 @@ use crate::fact_bitmask::{
 
 /// Trigger mask for `capco/noforn-if-caveated` (Row 0).
 ///
-/// Bitmask form of `CLOSURE_NOFORN_CAVEATED.triggers`:
-/// `AnyInCategory(CAT_SAR)` + 5 AEA tokens + 3 FGI predicates +
-/// 11 dissem / non-IC dissem tokens. The three FGI predicate forms
-/// (`TOK_FGI_MARKER` + `AnyInCategory(CAT_FGI_MARKER)` +
-/// `TOK_FGI_CLASS`) collapse to the single [`fact_bit::FGI_PRESENT`]
-/// sentinel — that bit captures *any* FGI presence (marker axis OR
-/// classification axis). Net: 20 distinct atom bits.
+/// Bitmask form of `CLOSURE_NOFORN_CAVEATED.triggers` from
+/// `closure.rs`:
+///
+/// - 1 SAR — `AnyInCategory(CAT_SAR)`
+/// - 5 AEA — `TOK_RD`, `TOK_FRD`, `TOK_TFNI`, `TOK_UCNI`, `TOK_DCNI`
+/// - 2 FGI — `TOK_FGI_MARKER` + `AnyInCategory(CAT_FGI_MARKER)` (per
+///   `closure.rs::CLOSURE_NOFORN_CAVEATED.triggers`; `TOK_FGI_CLASS`
+///   is NOT in the rule's trigger list — `TOK_FGI_MARKER`'s
+///   `satisfies_attrs` resolution already covers both the dissem-
+///   axis `fgi_marker` and the classification-axis
+///   `MarkingClassification::Fgi(_)` paths)
+/// - 8 IC dissem — `TOK_ORCON`, `TOK_ORCON_USGOV`, `TOK_RSEN`,
+///   `TOK_IMCON`, `TOK_PROPIN`, `TOK_DSEN`, `TOK_FISA`, `TOK_RAWFISA`
+/// - 5 non-IC dissem — `TOK_LIMDIS`, `TOK_LES`, `TOK_NNPI`,
+///   `TOK_SBU`, `TOK_SSI`
+///
+/// Total: 21 `TokenRef` entries on the fn-pointer rule. The two FGI
+/// predicate forms collapse to the single [`fact_bit::FGI_PRESENT`]
+/// sentinel in the bitmask projection (the bit lights for *any* FGI
+/// presence — marker axis OR classification axis — via
+/// `derive_bits`). Net bitmask form: **20 distinct atom bits**.
 ///
 /// Authority: see [`CLOSURE_NOFORN_CAVEATED`](super::closure) doc-comment
 /// per-trigger authority table.
