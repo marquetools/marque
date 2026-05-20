@@ -93,9 +93,11 @@ fn parse_banner_attrs(text: &str) -> CanonicalAttrs {
     // structural rename lives inline (via `parsed_marking_to_canonical`
     // below) because `marque-core` cannot dev-depend on `marque-capco`
     // (Constitution VII), so the trait route
-    // `CapcoScheme::canonicalize` is unreachable from here. The body
-    // matches that override byte-for-byte. The helper takes
-    // `ParsedMarking` (not `ParsedAttrs`) so FR-040 PRC100's
+    // `CapcoScheme::canonicalize` is unreachable from here. The helper
+    // mirrors the override's field mapping and emits the same
+    // `CanonicalAttrs` output for every input, plus the §H.7 p41 /
+    // PR 9b T132 debug-assert that the override carries. The helper
+    // takes `ParsedMarking` (not `ParsedAttrs`) so FR-040 PRC100's
     // `(ParsedAttrs) -> CanonicalAttrs` signature shape never appears
     // in test code; the lint's sole-path invariant is unweakened.
     parsed_marking_to_canonical(parsed)
@@ -124,7 +126,16 @@ fn parse_portion_attrs(text: &str) -> CanonicalAttrs {
 
 /// Structural rename — `ParsedMarking<'_>::attrs` → `CanonicalAttrs`.
 ///
-/// Mirrors the `CapcoScheme::canonicalize` override body byte-for-byte.
+/// Mirrors the `CapcoScheme::canonicalize` override's field mapping
+/// and output semantics, including the §H.7 p41 / PR 9b T132 debug-
+/// assert that no `ParsedAttrs` reaches canonicalization with both
+/// `dissem_nato` populated AND a US classification axis (which would
+/// mean `attribute_dissems` was skipped). The local helper's
+/// control flow and locals are not a literal copy of the override —
+/// it returns the assembled `CanonicalAttrs` directly rather than
+/// binding to a `let out = ...;` first — but the input/output
+/// relationship is identical.
+///
 /// Lives in `marque-core/tests/` because Constitution VII forbids
 /// `marque-core ←── marque-capco` (the trait route would need that
 /// dev-dep edge). The helper takes `ParsedMarking` (parser output
@@ -155,7 +166,7 @@ fn parsed_marking_to_canonical(parsed: ParsedMarking<'_>) -> CanonicalAttrs {
         token_spans,
         source_bytes_origin: _,
     } = parsed.attrs;
-    CanonicalAttrs {
+    let out = CanonicalAttrs {
         classification: classification.map(|c| c.value),
         sci_controls,
         sci_markings: Vec::from(sci_markings)
@@ -200,7 +211,24 @@ fn parsed_marking_to_canonical(parsed: ParsedMarking<'_>) -> CanonicalAttrs {
         derived_from: derived_from.map(Box::<str>::from),
         declass_exemption,
         token_spans,
+    };
+
+    // Mirror the PR 9b (T132) invariant guard carried by
+    // `CapcoScheme::canonicalize`. `attribute_dissems` is the single
+    // source of truth; this debug-only assertion catches a future
+    // bug where attribution is skipped or a hand-built `ParsedAttrs`
+    // is fed in with both fields populated.
+    #[cfg(debug_assertions)]
+    {
+        debug_assert!(
+            out.dissem_nato.is_empty() || out.us_classification().is_none(),
+            "dissem_nato populated alongside US classification — \
+             attribute_dissems was skipped or bypassed. CAPCO-2016 p41 \
+             reciprocity rule violated."
+        );
     }
+
+    out
 }
 
 // =============================================================================

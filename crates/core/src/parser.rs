@@ -3878,10 +3878,14 @@ mod tests {
     /// whose shape mirrors the engine's post-recognition view.
     /// `marque-core` cannot dev-depend on `marque-capco` (Constitution
     /// VII), so the trait route `CapcoScheme::canonicalize` is
-    /// unreachable from here; the body matches that override
-    /// byte-for-byte. FR-040 PRC100 stays satisfied because the
-    /// enclosing `From::from` signature is `(ParsedMarking) -> Self`,
-    /// not `(ParsedAttrs) -> CanonicalAttrs`.
+    /// unreachable from here. The inlined body mirrors the override's
+    /// field mapping and output semantics — including the §H.7 p41 /
+    /// PR 9b T132 debug-assert — but is not a literal byte-for-byte
+    /// copy (control flow + locals differ, `From::from` returns
+    /// `Self` rather than the override's `CanonicalAttrs`).
+    /// FR-040 PRC100 stays satisfied because the enclosing
+    /// `From::from` signature is `(ParsedMarking) -> Self`, not
+    /// `(ParsedAttrs) -> CanonicalAttrs`.
     pub(super) struct CanonicalParsed {
         pub attrs: CanonicalAttrs,
         #[allow(dead_code)] // tests inspect attrs only; kept for parity
@@ -3957,6 +3961,22 @@ mod tests {
                 declass_exemption,
                 token_spans,
             };
+
+            // Mirror the PR 9b (T132) invariant guard carried by
+            // `CapcoScheme::canonicalize`. `attribute_dissems` is the
+            // single source of truth; this debug-only assertion catches
+            // a future bug where attribution is skipped or a hand-built
+            // `ParsedAttrs` is fed in with both fields populated.
+            #[cfg(debug_assertions)]
+            {
+                debug_assert!(
+                    attrs.dissem_nato.is_empty() || attrs.us_classification().is_none(),
+                    "dissem_nato populated alongside US classification — \
+                     attribute_dissems was skipped or bypassed. CAPCO-2016 p41 \
+                     reciprocity rule violated."
+                );
+            }
+
             Self {
                 attrs,
                 source_span: p.source_span,
