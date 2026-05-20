@@ -234,6 +234,16 @@ impl MarkingScheme for CapcoScheme {
         }
     }
 
+    /// Pre-compute the [`FactBitmask`] projection of `marking` once per
+    /// constraint-evaluation pass. Forwarded to every
+    /// [`Self::evaluate_custom`] call by
+    /// [`marque_scheme::constraint::evaluate`] so tier-1/2/3 catalog
+    /// rows share a single `derive_bits` call instead of recomputing
+    /// it per row.
+    fn precompute_bits(&self, marking: &Self::Marking) -> marque_scheme::FactBitmask {
+        crate::fact_bitmask::derive_bits(&marking.0)
+    }
+
     /// Dispatch a [`Constraint::Custom`] entry to its scheme-private
     /// predicate body. Delegates to `evaluate_custom_by_attrs`, the
     /// name→helper router that the fast-path
@@ -242,8 +252,9 @@ impl MarkingScheme for CapcoScheme {
         &self,
         name: &'static str,
         marking: &Self::Marking,
+        bits: marque_scheme::FactBitmask,
     ) -> Vec<ConstraintViolation> {
-        evaluate_custom_by_attrs(&marking.0, name)
+        evaluate_custom_by_attrs(&marking.0, bits, name)
     }
 
     fn project(&self, scope: Scope, markings: &[Self::Marking]) -> Self::Marking {

@@ -97,9 +97,10 @@ fn sci_per_system_catalog_all_rows_return_empty_on_empty_attrs() {
     let names = sci_per_system_names(&scheme);
     let empty = CanonicalAttrs::default();
     let marking = CapcoMarking::new(empty);
+    let bits = scheme.precompute_bits(&marking);
 
     for name in &names {
-        let violations = scheme.evaluate_custom(name, &marking);
+        let violations = scheme.evaluate_custom(name, &marking, bits);
         assert!(
             violations.is_empty(),
             "Row '{name}' fired on empty CanonicalAttrs — trigger gate must return \
@@ -145,9 +146,10 @@ fn sci_per_system_coarse_gate_row_fires_on_sci_present_only() {
     attrs.dissem_us = Box::new([]);
 
     let marking = CapcoMarking::new(attrs.clone());
+    let bits = scheme.precompute_bits(&marking);
 
     // HCS-P-NOFORN (coarse gate row) MUST fire — bare HCS-P + no NOFORN.
-    let hcs_p_violations = scheme.evaluate_custom("sci-per-system/HCS-P-NOFORN", &marking);
+    let hcs_p_violations = scheme.evaluate_custom("sci-per-system/HCS-P-NOFORN", &marking, bits);
     assert!(
         !hcs_p_violations.is_empty(),
         "HCS-P-NOFORN must fire on bare HCS-P + US S + no NOFORN (coarse gate row)"
@@ -160,7 +162,7 @@ fn sci_per_system_coarse_gate_row_fires_on_sci_present_only() {
         "sci-per-system/SI-G-companions",
         "sci-per-system/TK-compartment-NOFORN",
     ] {
-        let violations = scheme.evaluate_custom(name, &marking);
+        let violations = scheme.evaluate_custom(name, &marking, bits);
         assert!(
             violations.is_empty(),
             "Row '{name}' fired on bare-HCS-P attrs (SCI_PRESENT only) — \
@@ -213,10 +215,11 @@ fn sci_per_system_all_rows_return_empty_without_us_classification() {
     attrs.dissem_us = Box::new([]);
 
     let marking = CapcoMarking::new(attrs);
+    let bits = scheme.precompute_bits(&marking);
     let names = sci_per_system_names(&scheme);
 
     for name in &names {
-        let violations = scheme.evaluate_custom(name, &marking);
+        let violations = scheme.evaluate_custom(name, &marking, bits);
         assert!(
             violations.is_empty(),
             "Row '{name}' fired on attrs with no US classification — \

@@ -342,6 +342,26 @@ pub trait MarkingScheme {
         )
     }
 
+    /// Pre-compute a [`FactBitmask`] projection of `marking` once per
+    /// `evaluate` call so every [`Constraint::Custom`] row shares the
+    /// same projection rather than each row recomputing it independently.
+    ///
+    /// [`crate::constraint::evaluate`] calls this method once before
+    /// the constraint loop and forwards the returned bitmask to every
+    /// [`Self::evaluate_custom`] call. Schemes that do not use a
+    /// bitmask projection (e.g. schemes that haven't implemented
+    /// [`crate::FactBitmask`] support yet) return
+    /// [`FactBitmask::EMPTY`]; their [`evaluate_custom`] implementations
+    /// can safely ignore the `bits` argument.
+    ///
+    /// Default: [`FactBitmask::EMPTY`] (no-op for schemes without
+    /// bitmask support).
+    ///
+    /// [`FactBitmask::EMPTY`]: crate::FactBitmask::EMPTY
+    fn precompute_bits(&self, _marking: &Self::Marking) -> crate::FactBitmask {
+        crate::FactBitmask::EMPTY
+    }
+
     /// Evaluate a [`Constraint::Custom`] by name. Returns one
     /// [`ConstraintViolation`] per failing check.
     ///
@@ -352,11 +372,18 @@ pub trait MarkingScheme {
     /// predicate body; [`crate::constraint::evaluate`] simply calls
     /// this method and pipes the results through.
     ///
+    /// `bits` is the pre-computed [`FactBitmask`] projection of
+    /// `marking`, obtained once per evaluation pass via
+    /// [`Self::precompute_bits`]. Schemes with bitmask fast-paths use
+    /// it to avoid recomputing the projection per row; schemes without
+    /// bitmask support ignore it.
+    ///
     /// Default: no violations.
     fn evaluate_custom(
         &self,
         _name: &'static str,
         _marking: &Self::Marking,
+        _bits: crate::FactBitmask,
     ) -> Vec<ConstraintViolation> {
         Vec::new()
     }

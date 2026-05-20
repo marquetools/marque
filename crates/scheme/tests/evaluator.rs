@@ -86,6 +86,7 @@ impl MarkingScheme for StubScheme {
         &self,
         name: &'static str,
         _marking: &Self::Marking,
+        _bits: marque_scheme::FactBitmask,
     ) -> Vec<ConstraintViolation> {
         // Return a sentinel violation so the custom dispatch is
         // observable from tests without needing real predicate logic.

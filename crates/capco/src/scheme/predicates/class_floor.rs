@@ -13,7 +13,7 @@ use marque_ism::{CanonicalAttrs, Classification, Span, TokenKind};
 use super::super::constraints::class_floor_emit;
 use super::super::*;
 use super::tier2_mask::{classification_is_fgi_or_joint, effective_level_from_bits};
-use crate::fact_bitmask::{derive_bits, extract_us_class_level};
+use crate::fact_bitmask::extract_us_class_level;
 
 /// Returns true if `name` is a catalog row name dispatched by
 /// [`class_floor_catalog_eval`]. Used by `evaluate_custom_by_attrs`
@@ -129,6 +129,7 @@ pub(crate) fn first_span_of_optional(attrs: &CanonicalAttrs, kind: TokenKind) ->
 /// is unchanged.
 pub(crate) fn class_floor_catalog_eval(
     attrs: &marque_ism::CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
     let Some(row) = class_floor_row_by_name(name) else {
@@ -146,7 +147,6 @@ pub(crate) fn class_floor_catalog_eval(
 
     // ── Step 2: Bitmask fast path (23 rows) ──────────────────────────────────
     if let Some(trigger_mask) = row.bitmask_trigger {
-        let bits = derive_bits(attrs);
         let bits_u128 = bits.bits();
 
         // Trigger short-circuit: bitmask AND must be non-zero.

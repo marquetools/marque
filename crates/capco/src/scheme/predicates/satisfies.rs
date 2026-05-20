@@ -450,30 +450,31 @@ pub(crate) fn satisfies_attrs(attrs: &marque_ism::CanonicalAttrs, token_ref: &To
 /// not preserved; `.marque.toml` keys must use `E058` (walker-level).
 pub(crate) fn evaluate_custom_by_attrs(
     attrs: &marque_ism::CanonicalAttrs,
+    bits: marque_scheme::FactBitmask,
     name: &'static str,
 ) -> Vec<ConstraintViolation> {
     if is_class_floor_catalog_name(name) {
-        return class_floor_catalog_eval(attrs, name);
+        return class_floor_catalog_eval(attrs, bits, name);
     }
     if is_sci_per_system_catalog_name(name) {
-        return sci_per_system_catalog_eval(attrs, name);
+        return sci_per_system_catalog_eval(attrs, bits, name);
     }
     match name {
         "E010/HCS-system-constraints" => hcs_system_constraints(attrs, "CAPCO-2016 §H.4 pp 62-66"),
         "E012/dual-classification" => e012_dual_classification(attrs),
         "E014/joint-requires-rel-to-coverage" => e014_joint_rel_to_coverage(attrs),
-        "E021/rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs),
-        "E024/rd-precedence" => e024_rd_precedence(attrs),
+        "E021/rd-frd-requires-noforn" => e021_rd_frd_requires_noforn(attrs, bits),
+        "E024/rd-precedence" => e024_rd_precedence(attrs, bits),
         // W002/us-commingled-with-fgi retired in the PR closing #470.
         // The catalog row + helper are removed in the same commit.
         "capco/joint-requires-usa" => joint_requires_usa(attrs),
-        "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs),
+        "E038/nodis-or-exdis-requires-noforn" => e038_dos_dissem_requires_noforn(attrs, bits),
         // #559 close-out (2026-05-19): FRD>TFNI precedence per §H.6
         // p120. Sibling of E024 (which covers RD>FRD AND RD>TFNI);
         // E070 adds the FRD>TFNI leg with its own audit lineage per
         // Constitution V Principle V (one policy decision → one
         // audit repair).
-        "E070/frd-tfni-precedence" => e070_frd_tfni_precedence(attrs),
+        "E070/frd-tfni-precedence" => e070_frd_tfni_precedence(attrs, bits),
         // S004 is NOT dispatched here — it stays a registered walker
         // rule (`RelToTrigraphSuggestRule`) because its replacement
         // string is computed during evaluation and the bridge's

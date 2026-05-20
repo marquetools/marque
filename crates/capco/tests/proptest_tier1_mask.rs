@@ -230,7 +230,8 @@ fn shared_scheme() -> &'static CapcoScheme {
 
 fn fires(name: &'static str, attrs: &CanonicalAttrs) -> bool {
     let marking = marque_capco::CapcoMarking::new(attrs.clone());
-    let out: Vec<ConstraintViolation> = shared_scheme().evaluate_custom(name, &marking);
+    let bits = shared_scheme().precompute_bits(&marking);
+    let out: Vec<ConstraintViolation> = shared_scheme().evaluate_custom(name, &marking, bits);
     !out.is_empty()
 }
 
