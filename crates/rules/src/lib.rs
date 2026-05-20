@@ -13,6 +13,14 @@
 //!
 //! # Module layout
 //!
+//! - [`citation`] — `Citation`, `SectionRef`, `SectionLetter`,
+//!   `PageNumber`, `AuthoritativeSource`. Typed citation surface for
+//!   diagnostics; `Display` emits the citation-lint regex form
+//!   (`§<L>.<sub>[.<sub_sub>] [Table <N>] p<page>`). Const-fn
+//!   construction; no runtime validation per D25.2 in
+//!   `docs/plans/2026-05-19-pr3c2-plan-and-decisions.md`. Migration
+//!   from `&'static str` literal citations to `Citation` lands at PR
+//!   3c.2.C.
 //! - [`confidence`] — `Confidence` (recognition × rule axes), `FeatureId`,
 //!   `FeatureContribution`. Phase D audit-provenance payload attached to
 //!   every `FixIntent<S>`.
@@ -56,6 +64,7 @@
 //! Audit records emit no `original` field as of `marque-mvp-3`.
 
 pub mod audit_note;
+pub mod citation;
 pub mod confidence;
 pub mod fix_intent;
 pub mod message;
@@ -68,6 +77,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
+pub use citation::{AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef};
 pub use confidence::{Confidence, FeatureContribution, FeatureId};
 pub use fix_intent::FixIntent;
 // Re-export `SmallVec` + the `smallvec!` macro so external consumers
