@@ -370,7 +370,9 @@ pub trait Recognizer<S: MarkingScheme + ?Sized>: Send + Sync {
     /// the scheme here rather than keeping a module-scope static
     /// (`LazyLock<S>`). The engine passes `&self.scheme`; direct
     /// recognizer callers (test code, WASM embedders) construct and pass
-    /// their own instance.
+    /// their own instance. `scheme` is positioned before `cx` to group
+    /// the data parameters (`bytes`, `offset`, `scheme`) before the
+    /// environment parameter (`cx`).
     fn recognize(
         &self,
         bytes: &[u8],
