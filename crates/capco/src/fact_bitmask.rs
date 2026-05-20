@@ -247,7 +247,7 @@ pub(crate) const MASK_RELIDO_US_CLASS_SUPPRESSORS: u128 = MASK_FDR_DOMINATORS
 /// Closure-cone outputs that [`apply_closed_bits_to`] is willing to
 /// write back to [`CanonicalAttrs`].
 ///
-/// Every CAPCO closure-row cone in §4 of the PR-B plan resolves to
+/// Every CAPCO closure-row cone in section 4 of the PR-B plan resolves to
 /// one of these four atoms (NOFORN / ORCON / RELIDO for the dissem
 /// axis; REL_TO_USA for the country-list axis). Other delta bits in
 /// `(closed & !input)` are silently ignored by `apply_closed_bits_to`
@@ -838,7 +838,7 @@ mod tests {
     /// `Displayonly` / `Eyes` from `attrs.dissem_us` in the same
     /// call. Covers the Copilot-flagged hole: PR-C's unconditional
     /// per-marking NOFORN rows (HCS-O / HCS-P[sub] / TK-BLFH/IDIT/KAND
-    /// at plan §4 rows 1, 2, 4, 5, 6) have no suppressors and can
+    /// at plan section 4 rows 1, 2, 4, 5, 6) have no suppressors and can
     /// fire on portions with pre-existing FD&R tokens.
     #[test]
     fn apply_noforn_supersedes_dominated_dissem_tokens() {
