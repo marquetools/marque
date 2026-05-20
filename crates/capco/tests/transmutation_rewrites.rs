@@ -300,15 +300,16 @@ fn engine_construction_succeeds_with_full_rewrite_table() {
     // compound-supersedes-bare pair — declared as `Contains+Intent`
     // declarative rows with empty `reads` (cycle-avoidance vs the
     // sibling row per `rewrites/mod.rs` narrow-form rule).
-    // #559 close-out (2026-05-19) added 2 RELIDO-eviction rows in
-    // `rewrites/relido_clears.rs` (`capco/orcon-clears-relido`,
-    // `capco/orcon-usgov-clears-relido`) per §H.8 p136 / p140. Each
-    // fires at Scope::Page with a FactRemove(RELIDO) intent and
-    // uses empty `reads` (same cycle-avoidance discipline as #552's
-    // supersession rows). The third row (E055 DISPLAY ONLY > RELIDO)
-    // is deferred — see `relido_clears.rs` module header for the
-    // parser-axis / scheduler-cycle rationale. 27 → 29.
-    assert_eq!(engine.scheduled_rewrites().len(), 29);
+    // #559 close-out (2026-05-19) + #618 added 3 RELIDO-eviction rows
+    // in `rewrites/relido_clears.rs` (`capco/display-only-clears-relido`
+    // per §H.8 p154, `capco/orcon-clears-relido` per §H.8 p136,
+    // `capco/orcon-usgov-clears-relido` per §H.8 p140). Each fires at
+    // Scope::Page with a FactRemove(RELIDO) intent and uses empty
+    // `reads` (same cycle-avoidance discipline as #552's supersession
+    // rows). The DISPLAY ONLY row was deferred behind #618 until
+    // `satisfies(TOK_DISPLAY_ONLY)` was widened to recognize the
+    // canonical `display_only_to` parser axis. 27 → 30.
+    assert_eq!(engine.scheduled_rewrites().len(), 30);
 }
 
 #[test]

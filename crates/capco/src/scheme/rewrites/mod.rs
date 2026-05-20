@@ -30,14 +30,18 @@ mod transmutation_stubs;
 
 /// Construct CAPCO's `PageRewrite` table.
 ///
-/// **27 rewrites, in seven groups** (post-#552; post-PR-4b-D.2
-/// Copilot R1 #2; PR 4b-C landed groups 2 + 3 as Pattern-C +
-/// Pattern-B declarative rows owning the §H.6 / §H.8 / §H.9
-/// strip-plus-promote semantics; PR 4b-A landed group 5; PR 3c.B
-/// Sub-PR 8.F / 8.F.2 landed group 1; PR 4b-D.2 added
-/// `capco/noforn-clears-display-only-to` to group 5; #541 added
-/// `capco/sbu-nf-evicted-by-classified` to group 2; #552 added
-/// the new group 4 same-axis supersession pair):
+/// **30 rewrites, in seven groups** (post-#618; post-#559
+/// close-out added the ORCON pair to group 5b; #618 added the
+/// DISPLAY ONLY sibling once the `satisfies(TOK_DISPLAY_ONLY)`
+/// predicate was widened to recognize the `display_only_to`
+/// parser axis; post-#552; post-PR-4b-D.2 Copilot R1 #2; PR 4b-C
+/// landed groups 2 + 3 as Pattern-C + Pattern-B declarative rows
+/// owning the §H.6 / §H.8 / §H.9 strip-plus-promote semantics;
+/// PR 4b-A landed group 5; PR 3c.B Sub-PR 8.F / 8.F.2 landed
+/// group 1; PR 4b-D.2 added `capco/noforn-clears-display-only-to`
+/// to group 5; #541 added `capco/sbu-nf-evicted-by-classified`
+/// to group 2; #552 added the new group 4 same-axis supersession
+/// pair):
 ///
 /// 1. **Pattern-A NOFORN-supremacy (4):** the §H.9 family (landed by
 ///    PR 3c.B-8.F) — `capco/{nodis,exdis}-implies-noforn` (§H.9 p174 /
@@ -177,14 +181,15 @@ pub(crate) fn build_page_rewrites() -> Vec<PageRewrite<CapcoScheme>> {
     out.extend(pattern_b::pattern_b_rows());
     out.extend(supersession::supersession_rows());
     out.extend(noforn_clears::noforn_clears_rows());
-    // #559 close-out (PM 2026-05-19): ORCON / ORCON-USGOV → RELIDO
-    // eviction rows (the DISPLAY ONLY > RELIDO sibling is deferred
-    // behind issue #618; see `relido_clears.rs` module header).
-    // Placed after `noforn_clears` because the
-    // `capco/noforn-clears-fdr-family` row strips RELIDO when NOFORN
-    // is present — running it first means our rows are no-ops on
-    // NOFORN-bearing pages and only fire on the non-NOFORN-but-
-    // RELIDO-incompatible cases that motivated #559.
+    // #559 close-out (PM 2026-05-19) + #618: DISPLAY ONLY / ORCON /
+    // ORCON-USGOV → RELIDO eviction rows. Placed after `noforn_clears`
+    // because the `capco/noforn-clears-fdr-family` row strips RELIDO
+    // when NOFORN is present — running it first means our rows are
+    // no-ops on NOFORN-bearing pages and only fire on the non-NOFORN-
+    // but-RELIDO-incompatible cases that motivated #559. The DISPLAY
+    // ONLY row was deferred behind #618 until
+    // `satisfies(TOK_DISPLAY_ONLY)` was widened to recognize the
+    // canonical `display_only_to` parser axis.
     out.extend(relido_clears::relido_clears_rows());
     out.extend(transmutation_stubs::transmutation_stub_rows());
     out
