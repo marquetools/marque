@@ -138,6 +138,35 @@ pub(crate) struct ClassFloorRow {
     /// means "fall back to the classification span" (NATO rows where
     /// the classification token IS the marking surface).
     pub(crate) primary_kind: Option<marque_ism::TokenKind>,
+
+    // ----- Bitmask compilation fields (PR-G / issue #650 tier-2) -----
+    //
+    // These fields compile the per-row structural presence predicate to a
+    // bitmask fast path. The dispatcher in `predicates/class_floor.rs`
+    // (`class_floor_catalog_eval`) reads them as follows:
+    //
+    //   1. FGI/JOINT early-out: their classification levels are absent from
+    //      the bitmask chain fields; the structural path handles them.
+    //   2. Trigger mask gate (O(1)): `(bits & bitmask_trigger) == 0` → no fire.
+    //   3. Presence confirmation: for coarse-gate rows (`bitmask_trigger_exact:
+    //      false`), call `presence(attrs)` to rule out false positives.
+    //   4. Floor/ceiling test via chain extract.
+    //
+    // The four passthrough rows (BUR, HCS-X, KLM, MVL) keep
+    // `bitmask_trigger: None` because their markings are open-vocab ISM-known
+    // tokens outside the closed atom inventory — no dedicated bit exists.
+    /// OR-of-atom-bits; when `(bits & bitmask_trigger) != 0`, the marking
+    /// family this row gates on may be present. `None` for the four
+    /// passthrough rows (open-vocab atoms outside the closed inventory).
+    /// Coarse-gate rows (where the mask over-approximates) carry the coarse
+    /// mask here; `bitmask_trigger_exact: false` signals that `presence()`
+    /// must still confirm.
+    pub(crate) bitmask_trigger: Option<u128>,
+
+    /// `true` when `bitmask_trigger` is precisely equivalent to the row's
+    /// `presence()` predicate — mask hit is the answer; no `presence()`
+    /// call needed. `false` for coarse-grained masks.
+    pub(crate) bitmask_trigger_exact: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +211,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/SI-comp",
@@ -193,6 +224,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/TK-BLFH",
@@ -204,6 +237,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // BALK and BOHEMIA: NATO Special Access Programs per CAPCO-2016
     // §G.2 p40 + §H.7 p127. PR 9c.1 T134 corrected the structural
@@ -239,6 +274,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         // that carries both the bare-class and the companion semantic);
         // anchoring at the Classification token is the right UX.
         primary_kind: None,
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/BOHEMIA",
@@ -250,6 +287,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::G, 2, 40),
         passthrough: false,
         primary_kind: None,
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // ---- §2.2 Floor S (8 rows) -------------------------------------
     ClassFloorRow {
@@ -262,6 +301,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RSV-comp",
@@ -273,6 +314,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/TK",
@@ -284,6 +327,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RD-SG",
@@ -295,6 +340,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 113),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/FRD-SG",
@@ -306,6 +353,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 113),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // CNWDI — replaces retired E022. Walker-prefixed name per PM
     // directive #5.
@@ -319,6 +368,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RSEN",
@@ -330,6 +381,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 149),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/IMCON",
@@ -341,6 +394,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 144),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // ---- §2.3 Floor C (8 rows) -------------------------------------
     ClassFloorRow {
@@ -353,6 +408,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // SAR — replaces retired E027.
     ClassFloorRow {
@@ -368,6 +425,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 5, 99),
         passthrough: false,
         primary_kind: Some(TokenKind::SarIndicator),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/RD",
@@ -379,6 +438,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/FRD",
@@ -390,6 +451,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/TFNI",
@@ -401,6 +464,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 107),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // ATOMAL: PR 9c.1 T134 reclassified as AEA-axis marking per
     // CAPCO-2016 §H.7 p122 worked example
@@ -428,6 +493,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 7, 122),
         passthrough: false,
         primary_kind: None,
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/ORCON",
@@ -439,6 +506,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 136),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/EYES-ONLY",
@@ -450,6 +519,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 8, 152),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // ---- §2.4 Floor =U (2 rows; UCNI split per PM decision) ----------
     ClassFloorRow {
@@ -462,6 +533,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 116),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "E058/DOE-UCNI-classification-ceiling",
@@ -473,6 +546,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 118),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
     //
@@ -512,6 +587,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        // Passthrough rows have no atom bit in the closed inventory;
+        // their markings are open-vocab ISM-known tokens. Structural
+        // fallthrough path only.
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-HCS-X",
@@ -523,6 +603,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        // HCS-X presence requires compartment-string read (`identifier == "X"`);
+        // no SCI_HCS_X atom exists for a pure-bitmask test. Structural only.
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-KLM",
@@ -534,6 +618,8 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
     ClassFloorRow {
         name: "class-floor/passthrough-MVL",
@@ -545,5 +631,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
+        bitmask_trigger: None,
+        bitmask_trigger_exact: false,
     },
 ];
