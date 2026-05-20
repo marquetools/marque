@@ -103,14 +103,14 @@ impl ClosureAxisFlags {
         Self {
             sci_markings_present: !a.sci_markings.is_empty(),
             sci_any_present: !a.sci_controls.is_empty() || !a.sci_markings.is_empty(),
-            nato_class_present: matches!(a.classification, Some(MarkingClassification::Nato(_))),
+            nato_class_present: matches!(&a.classification, Some(MarkingClassification::Nato(_))),
             us_collateral_classified: a
                 .us_classification()
                 .is_some_and(|l| l != Classification::Unclassified),
             sar_present: a.sar_markings.is_some(),
             aea_present: !a.aea_markings.is_empty(),
             fgi_present: a.fgi_marker.is_some()
-                || matches!(a.classification, Some(MarkingClassification::Fgi(_))),
+                || matches!(&a.classification, Some(MarkingClassification::Fgi(_))),
             non_ic_dissem_present: !a.non_ic_dissem.is_empty(),
         }
     }
@@ -224,7 +224,9 @@ fn capco_rule_axis_present(
                 ),
                 "capco_rule_axis_present: index {idx} rule name '{rule_name}' \
                  is not a compartment-SCI rule — CAPCO_CLOSURE_RULES was \
-                 reordered without updating the HOT-1 guard"
+                 reordered without updating the HOT-1 guard",
+                idx = idx,
+                rule_name = rule_name
             );
             flags.sci_markings_present
         }
