@@ -91,8 +91,8 @@ use marque_capco::provenance::DecoderProvenance;
 use marque_capco::{CapcoMarking, CapcoScheme};
 use marque_core::{Parser, fuzzy::FuzzyVocabMatcher};
 use marque_ism::{
-    CapcoTokenSet, Classification, MarkingClassification, NatoClassification, SciControl,
-    SciControlBare, SciControlSystem,
+    CanonicalAttrs, CapcoTokenSet, Classification, DissemControl, MarkingClassification,
+    NatoClassification, SciControl, SciControlBare, SciControlSystem,
     span::{MarkingCandidate, MarkingType, Span},
     token_set::TokenSet as _,
 };
@@ -373,64 +373,74 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
         // (ScoredCandidate is ~200 bytes — 4 inline ≈ 800 B).
         let mut scored: SmallVec<[ScoredCandidate; 4]> = SmallVec::new();
         for attempt in canonical_attempts {
-            let candidate = MarkingCandidate {
-                span: Span::new(0, attempt.bytes.len()),
-                ..synthetic_candidate
+            let parse_with_strict = || -> Option<CapcoMarking> {
+                let candidate = MarkingCandidate {
+                    span: Span::new(0, attempt.bytes.len()),
+                    ..synthetic_candidate
+                };
+                let Ok(parsed) = parser.parse(&candidate, &attempt.bytes) else {
+                    return None;
+                };
+
+                // 3a. Reject partial canonicalizations. Any
+                //     `TokenKind::Unknown` span surviving strict parse of
+                //     the canonicalized bytes means the decoder passed an
+                //     uncorrectable token through unchanged (see Case 4
+                //     in `fuzzy_correct_tokens`). Accepting such a
+                //     candidate would silently drop the unknown token
+                //     from `token_spans` in step 3b and fabricate a
+                //     partial marking — e.g., `(SECRET//WIBBLE)` would
+                //     land as `classification: Some(Secret)` with
+                //     WIBBLE simply discarded. The correct behavior is
+                //     to discard the candidate so the decoder's output
+                //     set stays honest: either a token fully resolves or
+                //     the whole candidate goes away.
+                let has_unknown_token = parsed
+                    .attrs
+                    .token_spans
+                    .iter()
+                    .any(|s| matches!(s.kind, marque_ism::TokenKind::Unknown));
+                if has_unknown_token {
+                    return None;
+                }
+
+                // PR-3a transitional adapter: collapse the borrowed
+                // `ParsedAttrs<'src>` to owned `CanonicalAttrs` before the
+                // marking leaves this scope. Post-PR-3c this becomes
+                // `MarkingScheme::canonicalize(parsed.attrs)`.
+                let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
+
+                // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
+                //     returned by the strict parser carry offsets into
+                //     `attempt.bytes` (the canonicalized buffer), NOT the
+                //     original `bytes` slice the caller passed to
+                //     `recognize()`. Propagating those spans would
+                //     violate the [`Recognizer`] contract — "spans are by
+                //     offset into [the input] buffer" — and misplace
+                //     downstream diagnostics/fixes whenever
+                //     canonicalization changed spacing, delimiter form,
+                //     token order, or token length (e.g., `COMINT` → `SI`
+                //     changes a 6-byte token to 2 bytes). Until we have a
+                //     proper source↔canonical span map, decoder-produced
+                //     markings must not carry token spans; downstream
+                //     CAPCO rules that consume `attrs.token_spans` fall
+                //     back to marking-level spans for decoder fixes.
+                //
+                //     Clearing happens AFTER the Unknown-token check
+                //     above — we need the spans to filter partial
+                //     canonicalizations, but must drop them before the
+                //     marking leaves the decoder.
+                attrs.token_spans = Box::new([]);
+                Some(CapcoMarking::new(attrs))
             };
-            let Ok(parsed) = parser.parse(&candidate, &attempt.bytes) else {
+            let marking = if is_fast_path_candidate_shape(kind, &attempt.bytes) {
+                try_fast_parse_us_class_and_dissem(kind, &attempt.bytes).or_else(parse_with_strict)
+            } else {
+                parse_with_strict()
+            };
+            let Some(marking) = marking else {
                 continue;
             };
-
-            // 3a. Reject partial canonicalizations. Any
-            //     `TokenKind::Unknown` span surviving strict parse of
-            //     the canonicalized bytes means the decoder passed an
-            //     uncorrectable token through unchanged (see Case 4
-            //     in `fuzzy_correct_tokens`). Accepting such a
-            //     candidate would silently drop the unknown token
-            //     from `token_spans` in step 3b and fabricate a
-            //     partial marking — e.g., `(SECRET//WIBBLE)` would
-            //     land as `classification: Some(Secret)` with
-            //     WIBBLE simply discarded. The correct behavior is
-            //     to discard the candidate so the decoder's output
-            //     set stays honest: either a token fully resolves or
-            //     the whole candidate goes away.
-            let has_unknown_token = parsed
-                .attrs
-                .token_spans
-                .iter()
-                .any(|s| matches!(s.kind, marque_ism::TokenKind::Unknown));
-            if has_unknown_token {
-                continue;
-            }
-
-            // PR-3a transitional adapter: collapse the borrowed
-            // `ParsedAttrs<'src>` to owned `CanonicalAttrs` before the
-            // marking leaves this scope. Post-PR-3c this becomes
-            // `MarkingScheme::canonicalize(parsed.attrs)`.
-            let mut attrs = marque_ism::from_parsed_unchecked(parsed.attrs);
-
-            // 3b. Span-offset contract: `CanonicalAttrs::token_spans`
-            //     returned by the strict parser carry offsets into
-            //     `attempt.bytes` (the canonicalized buffer), NOT the
-            //     original `bytes` slice the caller passed to
-            //     `recognize()`. Propagating those spans would
-            //     violate the [`Recognizer`] contract — "spans are by
-            //     offset into [the input] buffer" — and misplace
-            //     downstream diagnostics/fixes whenever
-            //     canonicalization changed spacing, delimiter form,
-            //     token order, or token length (e.g., `COMINT` → `SI`
-            //     changes a 6-byte token to 2 bytes). Until we have a
-            //     proper source↔canonical span map, decoder-produced
-            //     markings must not carry token spans; downstream
-            //     CAPCO rules that consume `attrs.token_spans` fall
-            //     back to marking-level spans for decoder fixes.
-            //
-            //     Clearing happens AFTER the Unknown-token check
-            //     above — we need the spans to filter partial
-            //     canonicalizations, but must drop them before the
-            //     marking leaves the decoder.
-            attrs.token_spans = Box::new([]);
-            let marking = CapcoMarking::new(attrs);
 
             // 3c. The strict parser is lenient — it accepts any
             //     `BYTES//BYTES` shape and emits a `CanonicalAttrs`
@@ -959,6 +969,119 @@ fn is_cab_head(bytes: &[u8]) -> bool {
     trimmed.starts_with("Classified By:")
         || trimmed.starts_with("Derived From:")
         || trimmed.starts_with("Declassify On:")
+}
+
+fn is_fast_path_candidate_shape(kind: MarkingType, bytes: &[u8]) -> bool {
+    if !matches!(kind, MarkingType::Portion) {
+        return false;
+    }
+    if bytes.is_empty() {
+        return false;
+    }
+    let mut start = 0usize;
+    let mut end = bytes.len();
+    while start < end && bytes[start].is_ascii_whitespace() {
+        start += 1;
+    }
+    while start < end && bytes[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    if start >= end {
+        return false;
+    }
+    let trimmed = &bytes[start..end];
+    if trimmed.len() > 32 {
+        return false;
+    }
+    if !(trimmed.first() == Some(&b'(') && trimmed.last() == Some(&b')')) {
+        return false;
+    }
+    if trimmed
+        .iter()
+        .any(|b| matches!(b, b',' | b' ' | b'\t' | b'\n' | b'\r'))
+    {
+        return false;
+    }
+    let mut sep_count = 0usize;
+    for w in trimmed.windows(2) {
+        if w == b"//" {
+            sep_count += 1;
+            if sep_count > 1 {
+                return false;
+            }
+        }
+    }
+    sep_count == 1
+}
+
+/// Decoder-only fast parse for the common US classification + dissem shape.
+///
+/// This avoids invoking the full strict parser for canonical attempts like
+/// `(SECRET//NF)` / `(SERCET//NF)` where the decoder already knows the shape
+/// is a simple portion/banner with an optional slash-delimited dissem block.
+/// Any non-trivial form (non-US prefix, extra `//` blocks, mixed-category
+/// slash blocks, REL TO/DISPLAY ONLY, etc.) falls back to the full parser.
+fn try_fast_parse_us_class_and_dissem(kind: MarkingType, bytes: &[u8]) -> Option<CapcoMarking> {
+    if !matches!(kind, MarkingType::Portion | MarkingType::Banner) {
+        return None;
+    }
+    let text = std::str::from_utf8(bytes).ok()?.trim();
+    let body = match kind {
+        MarkingType::Portion => text.strip_prefix('(')?.strip_suffix(')')?,
+        MarkingType::Banner => text,
+        _ => return None,
+    };
+    if body.is_empty() || body.starts_with("//") {
+        return None;
+    }
+
+    let mut blocks = body.split("//");
+    let class_block = blocks.next()?.trim();
+    let dissem_block = blocks.next().map(str::trim);
+    if blocks.next().is_some() || class_block.is_empty() {
+        return None;
+    }
+    if class_block
+        .chars()
+        .any(|c| c.is_ascii_whitespace() || c == '/' || c == ',')
+    {
+        return None;
+    }
+
+    let dissem_us = if let Some(block) = dissem_block {
+        if block.is_empty() {
+            return None;
+        }
+        let mut out: SmallVec<[DissemControl; 4]> = SmallVec::new();
+        for token in block.split('/') {
+            let token = token.trim();
+            if token.is_empty() || token.chars().any(|c| c.is_ascii_whitespace() || c == ',') {
+                return None;
+            }
+            let control = DissemControl::parse(token)?;
+            out.push(control);
+        }
+        out.into_vec().into_boxed_slice()
+    } else {
+        Box::new([])
+    };
+
+    let mut attrs = CanonicalAttrs::default();
+    attrs.classification =
+        parse_simple_us_classification(class_block).map(MarkingClassification::Us);
+    attrs.dissem_us = dissem_us;
+    Some(CapcoMarking::new(attrs))
+}
+
+fn parse_simple_us_classification(token: &str) -> Option<Classification> {
+    match token {
+        "U" | "UNCLASSIFIED" => Some(Classification::Unclassified),
+        "R" | "RESTRICTED" => Some(Classification::Restricted),
+        "C" | "CONFIDENTIAL" => Some(Classification::Confidential),
+        "S" | "SECRET" => Some(Classification::Secret),
+        "TS" => Some(Classification::TopSecret),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -6143,6 +6266,28 @@ mod tests {
             Parsed::Ambiguous { candidates } => assert!(candidates.is_empty()),
             other => panic!("expected zero-candidate Ambiguous, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn fast_path_parses_simple_us_class_and_dissem_shape() {
+        let marking = try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(SERCET//NF)")
+            .expect("simple portion should hit decoder fast-path");
+        assert_eq!(marking.0.classification, None);
+        assert_eq!(marking.0.dissem_us.as_ref(), &[DissemControl::Nf]);
+        assert!(marking.0.token_spans.is_empty());
+    }
+
+    #[test]
+    fn fast_path_rejects_complex_or_mixed_category_shapes() {
+        assert!(
+            try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(S//SI/NF)").is_none(),
+            "mixed SCI/dissem slash block must fall back to full strict parser",
+        );
+        assert!(
+            try_fast_parse_us_class_and_dissem(MarkingType::Portion, b"(S//REL TO USA, GBR)")
+                .is_none(),
+            "REL TO block must fall back to full strict parser",
+        );
     }
 
     #[test]
