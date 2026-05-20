@@ -785,8 +785,11 @@ fn display_only_parse_canonical_render_round_trip() {
     let parsed = parser
         .parse(&candidate, src.as_bytes())
         .expect("parse should succeed");
-    let canonical = marque_ism::from_parsed_unchecked(parsed.attrs);
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): reuse the already-constructed
+    // scheme (moved one line up) for the canonicalize call — zero new
+    // allocation cost.
     let scheme = CapcoScheme::new();
+    let canonical = scheme.canonicalize(parsed.attrs);
     let marking = CapcoMarking::from(canonical);
     let mut out = String::new();
     let ctx = marque_scheme::RenderContext::new(
@@ -825,8 +828,11 @@ fn display_only_h8_p165_commingled_portion_round_trip() {
     let parsed = parser
         .parse(&candidate, src.as_bytes())
         .expect("parse should succeed");
-    let canonical = marque_ism::from_parsed_unchecked(parsed.attrs);
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): reuse the already-constructed
+    // scheme (moved one line up) for the canonicalize call — zero new
+    // allocation cost.
     let scheme = CapcoScheme::new();
+    let canonical = scheme.canonicalize(parsed.attrs);
     let marking = CapcoMarking::from(canonical);
     let mut out = String::new();
     let ctx = marque_scheme::RenderContext::new(

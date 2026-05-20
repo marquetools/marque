@@ -295,12 +295,39 @@ impl MarkingScheme for CapcoScheme {
 
     // PR 3c.2.A — GAT + plain associated type bindings introduced
     // per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md` PM-1.
-    // The CapcoScheme override of `canonicalize` (lifting the body
-    // from `marque_ism::from_parsed_unchecked`) lands at PR 3c.2.B;
-    // at PR 3c.2.A the trait-default `unimplemented!()` is in scope
-    // but no call site exercises it (call-site migration is 3c.2.B).
+    // PR 3c.2.B (landed) implements the CapcoScheme override below;
+    // the adapter `marque_ism::from_parsed_unchecked` is retained as
+    // a wrapper until PR 3c.2.E.
     type Parsed<'src> = ParsedAttrs<'src>;
     type Canonical = CanonicalAttrs;
+
+    /// CAPCO/ISM canonicalization — collapse the borrowed
+    /// `ParsedAttrs<'src>` produced by `marque-core`'s strict parser
+    /// to the owned `CanonicalAttrs` form rules consume.
+    ///
+    /// **PR 3c.2.B**: body is `marque_ism::from_parsed_unchecked(parsed)`
+    /// **verbatim** per `docs/plans/2026-05-20-pr3c2-b-pm-decisions.md`
+    /// PM-B-1 §1. `&self` is unused today (the transformation is a
+    /// pure structural rename), but the trait method signature
+    /// reserves `&self` for stateful future schemes (CUI/NATO) that
+    /// may need it. The adapter `marque_ism::from_parsed_unchecked`
+    /// is retained as a wrapper for PR 3c.2.B–D; PR 3c.2.E deletes
+    /// it once every call site routes through this method.
+    ///
+    /// Both `ParsedAttrs` and `CanonicalAttrs` are `#[non_exhaustive]`
+    /// in `marque-ism`, so the body cannot be lifted out of
+    /// `marque-ism` into this crate without breaking the
+    /// non-exhaustive contract. Delegation through the adapter is
+    /// the only Constitution-VII-compatible shape for the override
+    /// until PR 3c.2.E retires both surfaces together.
+    ///
+    /// **Byte-identity invariant**: T056 corpus regression matrix is
+    /// the structural gate.
+    /// `crates/capco/tests/canonicalize_byte_equivalence.rs` (PM-B-10)
+    /// pins the per-input equivalence at the unit-test level.
+    fn canonicalize<'src>(&self, parsed: Self::Parsed<'src>) -> Self::Canonical {
+        marque_ism::from_parsed_unchecked(parsed)
+    }
 
     fn name(&self) -> &str {
         "CAPCO-ISM"

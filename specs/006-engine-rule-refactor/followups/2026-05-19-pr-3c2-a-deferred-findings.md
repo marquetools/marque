@@ -28,6 +28,8 @@ where
 
 This catches HRTB inference issues at compile time, before they bite at a generic helper site.
 
+**Closure (PR 3c.2.B B1, 2026-05-20)**: ~~CLOSED~~. Landed at `crates/scheme/tests/hrtb_smoke.rs` per PM-B-5 (the PM override of architect's `crates/engine/tests/` recommendation — placement in the GAT-declaring crate minimizes bisect distance when a future scheme implementor destabilizes HRTB inference). Compile-only test; `cargo check -p marque-scheme --tests` is the gate. The smoke test body matches the action snippet above plus a no-op `#[test] fn hrtb_smoke_compiles()` so the file appears in nextest output. System-architect reviewer attestation at PR 3c.2.B confirms the placement decision is defensible against the 5-year bar.
+
 ### B-FOLLOWUP-2: Site count baseline = 23 (not 26)
 
 **Severity**: LOW (documentation accuracy).
@@ -36,6 +38,8 @@ This catches HRTB inference issues at compile time, before they bite at a generi
 **Issue**: The PM-9 contract was authored citing "26 verified via grep at 2026-05-19" but the actual count of `impl MarkingScheme for X` blocks is **23** (1 production CapcoScheme + 22 stubs across 19 files; 4 stubs in `proptest_closure_rejects_non_monotone.rs` and 2 in `closure_derived_path.rs`). The PR 3c.2.A cleanup commit updated PM-9 to clarify this. 3c.2.B's inventory should start from 23.
 
 **Action for 3c.2.B preflight**: When inventorying `from_parsed_unchecked` migration sites, use grep-direct counts (`grep -rn "impl MarkingScheme for " /home/knitli/marque/crates/`) and not the predecessor PM doc count.
+
+**Closure (PR 3c.2.B preflight, 2026-05-20)**: ~~CLOSED~~. Architect preflight Appendix A re-verified the site inventory at 2026-05-20 via the prescribed grep: **30 caller sites** (14 production + 16 external test) — the correct baseline for 3c.2.B's migration accounting. PM contract PM-B-8 records the resulting 25-migrated + 5-carved-out split. Reviewer reconfirmed post-implementation count via `grep -rn "from_parsed_unchecked" crates/ --include='*.rs'`: 5 carve-outs + 2 byte-equivalence-test sites + 1 trait-override-body site + 1 adapter declaration + 1 re-export. Math holds.
 
 ---
 
@@ -58,6 +62,75 @@ This catches HRTB inference issues at compile time, before they bite at a generi
 **Issue**: `Citation::new(AuthoritativeSource::Capco2016, SectionRef::new(SectionLetter::H).with_subsection(NonZeroU8::new(4).unwrap()), NonZeroU16::new(61).unwrap())` is ~120 chars for what was previously a 9-char `&'static str`. The PM intentionally rejected a `citation!()` macro per D25.2 (const-fn surface is the chosen ergonomic floor), but ~41 sites in `crates/capco/src/` will migrate in 3c.2.C.
 
 **Action for 3c.2.C**: If C's diff becomes noisy with verbose `Citation::new(...)` calls, add a declarative `citation!(§H.4 p61)` macro under `marque-rules`. The PM doesn't preclude this — the rejection was specifically of a compile-time-validation macro, not a sugar macro.
+
+### C-FOLLOWUP-3: Stale forward-pointer comments referencing PR 3c.2.B
+
+**Severity**: LOW (documentation drift).
+**Source**: Code-reviewer pass on PR 3c.2.B (2026-05-20).
+
+**Issue**: 5 doc-comments authored at PR 3c.2.A state "the §G.1 Table 4 dispatch body lands at PR 3c.2.B" or equivalent wording. PR 3c.2.B's scope was call-site migration, NOT EmissionForm dispatch (the A-stage authoring agent mis-predicted B's scope). These comments are now stale forward-pointers to a PR identifier that has merged with different content.
+
+**Locations**:
+- `/home/knitli/marque/crates/scheme/src/scheme.rs:604`
+- `/home/knitli/marque/crates/scheme/src/scheme.rs:699`
+- `/home/knitli/marque/crates/scheme/src/scheme.rs:734`
+- `/home/knitli/marque/crates/capco/src/scheme/marking_scheme_impl.rs:587`
+- `/home/knitli/marque/crates/capco/src/scheme/marking_scheme_impl.rs:674`
+
+**Action for 3c.2.C**: Treat as MIGRATE-NOW in C's PM-B-4 analog. Update each to "a future PR will land the §G.1 Table 4 dispatch body" (or to whichever sub-PR actually lands EmissionForm dispatch, if that scope is now scheduled). Confirm at 3c.2.C preflight whether EmissionForm dispatch is scoped into C, D, E, or post-1.0; the comments must reflect the actual landing target.
+
+### C-FOLLOWUP-4: rules_us1.rs migration parallel to s004 cfg-gate lift
+
+**Severity**: LOW (inventory drift).
+**Source**: Architect reviewer pass on PR 3c.2.B (2026-05-20), A8.
+
+**Issue**: `crates/capco/tests/rules_us1.rs` is `#![cfg(any())]`-disabled at line 1 — same gate as `s004_audit_content_ignorance.rs` (both disabled per "PR 3c.B Commit 10: legacy FixProposal-shape test disabled pending rewrite"). PM-B-7 explicitly carved out s004 but did not name rules_us1.rs alongside it; PM-B-3 listed rules_us1.rs in the 12-file external test migration inventory, and the implementation agent migrated it accordingly. The migration is benign (file is cfg-excluded; modified line never compiles), but it is a real inventory drift relative to the carve-out boundary.
+
+**Action for 3c.2.C**: When the `#![cfg(any())]` gate on s004 lifts as part of the Diagnostic-shape rewrite, walk `rules_us1.rs` in lockstep — the pre-migrated `scheme.canonicalize(parsed.attrs)` shape at `rules_us1.rs:73` is already in place, so C's work for that file is purely the Diagnostic-shape rewrite, not the canonicalize migration.
+
+### C-FOLLOWUP-5: Pre-existing `clippy::question_mark` at `crates/core/src/parser.rs:2199`
+
+**Severity**: MEDIUM (CI gate; blocks workspace clippy strict mode).
+**Source**: Rust-reviewer + code-reviewer pass on PR 3c.2.B (2026-05-20).
+
+**Issue**: A pre-existing `clippy::question_mark` warning at `/home/knitli/marque/crates/core/src/parser.rs:2199` causes `cargo clippy --workspace --all-targets -- -D warnings` to fail. The warning was present in base commit `861e85e3` (PR 3c.2.A merge to staging); not introduced by 3c.2.B. The fix is mechanical: replace `else if let Some(p) = trimmed.strip_suffix(" EYES") { (p, false) } else { return None; }` with `else { let p = trimmed.strip_suffix(" EYES")?; (p, false) };` — a one-line change.
+
+**Action for 3c.2.C**: Resolve as opening housekeeping commit of 3c.2.C (or a standalone chore PR before C lands). Required before workspace clippy strict mode can re-enable.
+
+### C-FOLLOWUP-6: Byte-equivalence test §-citation re-verification at 3c.2.E
+
+**Severity**: LOW (citation discipline at lifecycle boundary).
+**Source**: Architect reviewer pass on PR 3c.2.B (2026-05-20), A6.
+
+**Issue**: `crates/capco/tests/canonicalize_byte_equivalence.rs` carries a `§H.4 p80` citation in a doc-comment for the `portion_sci_si_g_with_orcon_noforn` fixture. The citation is correct at PR 3c.2.B authorship; the file's lifetime ends at PR 3c.2.E (the test header documents this at lines 18-23). When 3c.2.E retires the adapter, the file either deletes or refactors to a second oracle. If refactored, the §H.4 p80 citation re-verifies per Constitution VIII (propagation rule: every citation move requires re-verification at point of propagation).
+
+**Action for 3c.2.E**: Treat the §H.4 p80 citation as a propagation event under Constitution VIII when sweeping the byte-equivalence test. Re-verify the citation against `crates/capco/docs/CAPCO-2016.md` at point of propagation; do not let it accrete unchecked.
+
+---
+
+## Items addressed in PR 3c.2.B B6 reviewer-pass closeout (2026-05-20)
+
+### B6-Addressed-1: TODO issue-number citation per architect LOW-1
+
+**Source**: System-architect reviewer pass, LOW-1.
+**Resolution**: 5 TODO references to `engine-S-generic-recognizer-cleanup` updated to also cite GitHub issue `#634`:
+- `crates/engine/src/recognizer.rs:64` — narrative reference updated to include `(#634)`
+- `crates/engine/src/recognizer.rs:75-79` — TODO block updated to `TODO(engine-S-generic-recognizer-cleanup, #634)` with `#634` in body
+- `crates/engine/src/recognizer.rs:131` (was :130 pre-edit) — in-function reference updated to include `(#634)`
+- `crates/engine/src/decoder.rs:119-123` — TODO block updated to `TODO(engine-S-generic-recognizer-cleanup, #634)` with `#634` in body
+- `crates/engine/src/decoder.rs:434` (was :433 pre-edit) — in-function reference updated to include `(#634)`
+
+Both symbolic name (`engine-S-generic-recognizer-cleanup`) AND issue number (`#634`) now present at every TODO site. `git grep "#634" crates/` returns 5 hits; `git grep "engine-S-generic-recognizer-cleanup" crates/` returns 5 hits.
+
+### B6-Addressed-2: PM-B-8 site count reconciliation 25 → 26
+
+**Source**: Code-reviewer pass, LOW finding.
+**Resolution**: `docs/plans/2026-05-20-pr3c2-b-pm-decisions.md` PM-B-8 and §1 updated to reflect actual migration count of 26 (4 production + 9 in-src tests + 13 external sites across 12 files). The architect preflight Appendix A had listed 11 external `crates/capco/tests/` files; `render_canonical_properties.rs:50` was uncovered at implementation-grep time and correctly migrated in B4. The B5 commit message already acknowledged the discrepancy.
+
+### B6-Addressed-3: Missing tactical-plan.md file
+
+**Source**: Rust-reviewer pass, LOW finding.
+**Resolution**: `docs/plans/2026-05-20-pr3c2-b-tactical-plan.md` created as a redirect to the binding PM contract. The Plan-agent preflight pass returned its tactical content inline rather than writing to file; the redirect file documents this drift and lists the load-bearing tactical findings that were folded into the PM contract. Future preflight briefs should explicitly require Write tool calls before agent return.
 
 ---
 

@@ -60,7 +60,17 @@ use std::path::Path;
 // dev-dep cycle would result for the PR-2 scope).
 // =============================================================================
 
-fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
+fn parse_with_kind(
+    scheme: &CapcoScheme,
+    source: &[u8],
+    kind: MarkingType,
+) -> Option<CanonicalAttrs> {
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // as its first parameter so callers that already construct a scheme
+    // for rendering / lattice work can reuse it. Per PM-B-3: "Where the
+    // test helper is module-level and called from multiple #[test]
+    // functions, the helper takes `&CapcoScheme` as a parameter; each
+    // #[test] constructs the scheme inline."
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -70,26 +80,21 @@ fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
     parser
         .parse(&candidate, source)
         .ok()
-        // Test-fixture carve-out per Constitution V Principle V — wrap the
-        // parser's borrowed output through the PR-3a transitional adapter
-        // so tests retain the pre-PR-3a `CanonicalAttrs` shape they assert
-        // against. PR 3c retires `from_parsed_unchecked` in favor of
-        // `MarkingScheme::canonicalize`; this site migrates then.
-        .map(|p| marque_ism::from_parsed_unchecked(p.attrs))
+        .map(|p| scheme.canonicalize(p.attrs))
 }
 
 /// Parse a banner string; panics on parser failure (the strict-path corpus
 /// is, by construction, parseable).
-fn parse_banner(text: &str) -> CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Banner)
+fn parse_banner(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Banner)
         .expect("banner candidate from valid corpus must parse")
 }
 
 /// Parse a portion string; panics on parser failure. The text must include
 /// outer parens — the parser strips them and rejects un-parenthesized
 /// portion text outright.
-fn parse_portion(text: &str) -> CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Portion)
+fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Portion)
         .expect("portion candidate from valid corpus must parse")
 }
 
@@ -175,12 +180,12 @@ fn fixture_text(bytes: &[u8]) -> String {
 // =============================================================================
 
 fn render_and_reparse_classification(
+    scheme: &CapcoScheme,
     fixture: &Path,
     text: &str,
     kind: Kind,
     attrs1: &CanonicalAttrs,
 ) {
-    let scheme = CapcoScheme::new();
     let marking1 = CapcoMarking::from(attrs1.clone());
 
     let (rendered, attrs2) = match kind {
@@ -200,7 +205,7 @@ fn render_and_reparse_classification(
                 return;
             }
             let rendered = format!("({inner})");
-            let attrs2 = parse_portion(&rendered);
+            let attrs2 = parse_portion(scheme, &rendered);
             (rendered, attrs2)
         }
         Kind::Banner => {
@@ -208,7 +213,7 @@ fn render_and_reparse_classification(
             if rendered.is_empty() {
                 return;
             }
-            let attrs2 = parse_banner(&rendered);
+            let attrs2 = parse_banner(scheme, &rendered);
             (rendered, attrs2)
         }
         Kind::Cab | Kind::Other => return,
@@ -249,6 +254,7 @@ fn classification_round_trips_across_strict_corpus() {
     // input set: byte-identical pre/post-PR diagnostics is the SC-008
     // parity gate; classification round-trip is the FR-019 / SC-010
     // closure scoped to the renderer's current coverage.
+    let scheme = CapcoScheme::new();
     let fixtures = valid_fixtures();
     assert!(
         !fixtures.is_empty(),
@@ -263,13 +269,13 @@ fn classification_round_trips_across_strict_corpus() {
 
         match kind {
             Kind::Portion => {
-                let attrs = parse_portion(&text);
-                render_and_reparse_classification(path, &text, kind, &attrs);
+                let attrs = parse_portion(&scheme, &text);
+                render_and_reparse_classification(&scheme, path, &text, kind, &attrs);
                 counts[0] += 1;
             }
             Kind::Banner => {
-                let attrs = parse_banner(&text);
-                render_and_reparse_classification(path, &text, kind, &attrs);
+                let attrs = parse_banner(&scheme, &text);
+                render_and_reparse_classification(&scheme, path, &text, kind, &attrs);
                 counts[1] += 1;
             }
             Kind::Cab => counts[2] += 1,
@@ -311,10 +317,10 @@ fn fr016_bare_fgi_classification_round_trips() {
     // pins this to `Some(SourceConcealed)` rather than the pre-FR-016
     // degraded `Some(FgiMarker { countries: [] })`. The classification
     // axis ("SECRET") round-trips through the renderer.
-    let attrs1 = parse_banner("SECRET//FGI//NOFORN");
     let scheme = CapcoScheme::new();
+    let attrs1 = parse_banner(&scheme, "SECRET//FGI//NOFORN");
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
-    let attrs2 = parse_banner(&rendered);
+    let attrs2 = parse_banner(&scheme, &rendered);
     assert_eq!(
         attrs1
             .classification
@@ -331,10 +337,10 @@ fn fr016_bare_fgi_classification_round_trips() {
 #[test]
 fn fr017_acknowledged_fgi_single_country_classification_round_trips() {
     // §H.7 p122 lawful acknowledged form. Single-country list.
-    let attrs1 = parse_banner("SECRET//FGI DEU//NOFORN");
     let scheme = CapcoScheme::new();
+    let attrs1 = parse_banner(&scheme, "SECRET//FGI DEU//NOFORN");
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
-    let attrs2 = parse_banner(&rendered);
+    let attrs2 = parse_banner(&scheme, &rendered);
     assert_eq!(
         attrs1
             .classification
@@ -351,10 +357,10 @@ fn fr017_acknowledged_fgi_single_country_classification_round_trips() {
 #[test]
 fn fr017_acknowledged_fgi_multi_country_classification_round_trips() {
     // §H.7 p122 + §A.6 p16 multi-trigraph list (sorted).
-    let attrs1 = parse_banner("SECRET//FGI USA GBR JPN//NOFORN");
     let scheme = CapcoScheme::new();
+    let attrs1 = parse_banner(&scheme, "SECRET//FGI USA GBR JPN//NOFORN");
     let rendered = scheme.render_banner(&CapcoMarking::from(attrs1.clone()));
-    let attrs2 = parse_banner(&rendered);
+    let attrs2 = parse_banner(&scheme, &rendered);
     assert_eq!(
         attrs1
             .classification
@@ -373,10 +379,10 @@ fn fr017_acknowledged_fgi_multi_country_classification_round_trips() {
 fn fr015_sar_program_only_classification_round_trips() {
     // §H.5 p101 lawful abbreviation form (program identifier, no
     // compartment). Portion side.
-    let attrs1 = parse_portion("(TS//SAR-BP)");
     let scheme = CapcoScheme::new();
+    let attrs1 = parse_portion(&scheme, "(TS//SAR-BP)");
     let rendered = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
-    let attrs2 = parse_portion(&format!("({rendered})"));
+    let attrs2 = parse_portion(&scheme, &format!("({rendered})"));
     assert_eq!(
         attrs1
             .classification
@@ -394,10 +400,10 @@ fn fr015_sar_program_only_classification_round_trips() {
 fn fr015_sar_program_with_compartment_classification_round_trips() {
     // §H.5 p100 Table 7 canonical form: program + compartment + sub-comp.
     // Portion side.
-    let attrs1 = parse_portion("(TS//SAR-BP-J12)");
     let scheme = CapcoScheme::new();
+    let attrs1 = parse_portion(&scheme, "(TS//SAR-BP-J12)");
     let rendered = scheme.render_portion(&CapcoMarking::from(attrs1.clone()));
-    let attrs2 = parse_portion(&format!("({rendered})"));
+    let attrs2 = parse_portion(&scheme, &format!("({rendered})"));
     assert_eq!(
         attrs1
             .classification
@@ -464,12 +470,12 @@ fn full_attribute_round_trip_across_strict_corpus() {
         // First round — canonicalize the input.
         let (rendered_1, kind_owned) = match kind {
             Kind::Portion => {
-                let attrs = parse_portion(&text);
+                let attrs = parse_portion(&scheme, &text);
                 let inner = scheme.render_portion(&CapcoMarking::from(attrs));
                 (format!("({inner})"), Kind::Portion)
             }
             Kind::Banner => {
-                let attrs = parse_banner(&text);
+                let attrs = parse_banner(&scheme, &text);
                 (
                     scheme.render_banner(&CapcoMarking::from(attrs)),
                     Kind::Banner,
@@ -482,12 +488,12 @@ fn full_attribute_round_trip_across_strict_corpus() {
         // form. The output MUST be byte-identical to the first round.
         let rendered_2 = match kind_owned {
             Kind::Portion => {
-                let attrs = parse_portion(&rendered_1);
+                let attrs = parse_portion(&scheme, &rendered_1);
                 let inner = scheme.render_portion(&CapcoMarking::from(attrs));
                 format!("({inner})")
             }
             Kind::Banner => {
-                let attrs = parse_banner(&rendered_1);
+                let attrs = parse_banner(&scheme, &rendered_1);
                 scheme.render_banner(&CapcoMarking::from(attrs))
             }
             Kind::Cab | Kind::Other => unreachable!(),

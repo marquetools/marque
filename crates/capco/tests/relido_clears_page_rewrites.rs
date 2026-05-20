@@ -30,7 +30,11 @@ use marque_capco::scheme::{CapcoMarking, CapcoScheme};
 use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingCandidate, MarkingType, Span};
 use marque_scheme::{MarkingScheme, Scope};
 
-fn parse_portion(text: &str) -> CanonicalAttrs {
+fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
+    // PR 3c.2.B (PM-B-3 second clause): the helper takes `&CapcoScheme`
+    // so `project_page` (which already constructs one for
+    // `scheme.project`) reuses that instance instead of allocating a
+    // fresh scheme per parse.
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {
@@ -40,21 +44,20 @@ fn parse_portion(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&cand, text.as_bytes())
         .expect("test input must parse cleanly");
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    scheme.canonicalize(parsed.attrs)
 }
 
-fn project_page(portions: &[&str]) -> CanonicalAttrs {
-    let scheme = CapcoScheme::new();
+fn project_page(scheme: &CapcoScheme, portions: &[&str]) -> CanonicalAttrs {
     let markings: Vec<CapcoMarking> = portions
         .iter()
-        .map(|p| CapcoMarking::new(parse_portion(p)))
+        .map(|p| CapcoMarking::new(parse_portion(scheme, p)))
         .collect();
     let projected = scheme.project(Scope::Page, &markings);
     projected.0
 }
 
-fn banner_carries_relido(portions: &[&str]) -> bool {
-    let attrs = project_page(portions);
+fn banner_carries_relido(scheme: &CapcoScheme, portions: &[&str]) -> bool {
+    let attrs = project_page(scheme, portions);
     attrs
         .dissem_iter()
         .any(|d| matches!(d, marque_ism::DissemControl::Relido))
@@ -74,8 +77,9 @@ fn display_only_clears_relido_within_one_portion() {
     // #618 widened `satisfies(TOK_DISPLAY_ONLY)` and the
     // PageRewrite category predicate so the
     // `capco/display-only-clears-relido` trigger fires on that axis.
+    let scheme = CapcoScheme::new();
     assert!(
-        !banner_carries_relido(&["(S//DISPLAY ONLY GBR/RELIDO)"]),
+        !banner_carries_relido(&scheme, &["(S//DISPLAY ONLY GBR/RELIDO)"]),
         "DISPLAY ONLY on the same portion as RELIDO must evict \
          RELIDO at page projection (§H.8 p154); same-portion case",
     );
@@ -92,8 +96,12 @@ fn display_only_clears_relido_cross_portion() {
     // populated at page scope, the `capco/display-only-clears-relido`
     // PageRewrite fires and removes RELIDO. §H.8 p154 —
     // DISPLAY ONLY supersedes RELIDO at page roll-up.
+    let scheme = CapcoScheme::new();
     assert!(
-        !banner_carries_relido(&["(S//REL TO USA, GBR/RELIDO)", "(S//DISPLAY ONLY GBR)"]),
+        !banner_carries_relido(
+            &scheme,
+            &["(S//REL TO USA, GBR/RELIDO)", "(S//DISPLAY ONLY GBR)"]
+        ),
         "DISPLAY ONLY on one portion must evict RELIDO from another \
          portion at page projection (§H.8 p154); cross-portion case \
          requires both portions to carry release permission so the \
@@ -110,8 +118,9 @@ fn orcon_clears_relido_cross_portion() {
     // Cross-portion: portion A has RELIDO, portion B has ORCON.
     // §H.8 p136 ORCON entry: "May not be used with RELIDO." Page
     // projection must drop RELIDO.
+    let scheme = CapcoScheme::new();
     assert!(
-        !banner_carries_relido(&["(S//RELIDO)", "(S//OC)"]),
+        !banner_carries_relido(&scheme, &["(S//RELIDO)", "(S//OC)"]),
         "ORCON on one portion must evict RELIDO from another portion \
          at page projection (§H.8 p136); cross-portion case",
     );
@@ -121,8 +130,9 @@ fn orcon_clears_relido_cross_portion() {
 fn orcon_usgov_clears_relido_cross_portion() {
     // Cross-portion: portion A has RELIDO, portion B has ORCON-USGOV.
     // §H.8 p140 ORCON-USGOV entry: same exclusion as ORCON.
+    let scheme = CapcoScheme::new();
     assert!(
-        !banner_carries_relido(&["(S//RELIDO)", "(S//OC-USGOV)"]),
+        !banner_carries_relido(&scheme, &["(S//RELIDO)", "(S//OC-USGOV)"]),
         "ORCON-USGOV on one portion must evict RELIDO from another \
          portion at page projection (§H.8 p140); cross-portion case",
     );
@@ -137,7 +147,8 @@ fn no_op_when_relido_absent() {
     // Trigger present (ORCON), but RELIDO absent. FactRemove of an
     // absent token is the per-intent no-op (`IntentInapplicable`,
     // silent), so the page projection is unchanged.
-    let attrs = project_page(&["(S//OC)"]);
+    let scheme = CapcoScheme::new();
+    let attrs = project_page(&scheme, &["(S//OC)"]);
     assert!(
         attrs
             .dissem_iter()
