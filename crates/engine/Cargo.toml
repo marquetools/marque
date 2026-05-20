@@ -53,6 +53,13 @@ name = "profile_project"
 
 [dependencies]
 aho-corasick = { workspace = true }
+# PR 3c.2.D (T046) — the engine slices pre-fix bytes at `span` and
+# threads them into `AppliedFix::__engine_promote`, which hashes
+# inline. The `blake3` crate is the digest type owner via
+# `marque-rules`; this entry pulls the same workspace dep so the
+# engine can call `blake3::hash(...)` directly when it needs to
+# digest scratch buffers in the same body (Constitution V Principle V).
+blake3 = { workspace = true }
 futures = { workspace = true, optional = true }
 futures-core = { workspace = true }
 marque-capco = { workspace = true }
