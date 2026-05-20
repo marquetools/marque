@@ -5,7 +5,7 @@
 use marque_capco::{CapcoRuleSet, CapcoScheme};
 use marque_config::Config;
 use marque_engine::Engine;
-use marque_rules::{Diagnostic, RuleSet, Severity};
+use marque_rules::{Diagnostic, Severity};
 
 fn engine() -> Engine {
     Engine::new(
