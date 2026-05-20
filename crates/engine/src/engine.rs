@@ -5,9 +5,11 @@
 //! `Engine` — the configured, ready-to-run pipeline.
 
 use crate::clock::{Clock, SystemClock};
+use crate::decoder::StrictOrDecoderRecognizer;
 use crate::errors::{EngineConstructionError, EngineError};
 use crate::options::{FixOptions, LintOptions};
 use crate::output::{FixResult, LintResult};
+use crate::recognizer::StrictRecognizer;
 use crate::scheduler::{schedule_rewrites, validate_intent_rewrites};
 use crate::text_correction::{SynthesizedFix, TextCorrectionProposal};
 use aho_corasick::AhoCorasick;
@@ -261,11 +263,11 @@ pub struct Engine {
     /// when the scheme declares no rewrites.
     scheduled_rewrites: Box<[RewriteId]>,
     /// Recognizer used by `lint()` to resolve each scanner candidate to
-    /// a `CanonicalAttrs`. Held behind `Arc<dyn Recognizer>` so callers
-    /// can override the default via [`Engine::with_recognizer`] without
-    /// touching the lint loop. Shared across threads unchanged — the
-    /// recognizer trait is `Send + Sync` and `BatchEngine` workers hold
-    /// the same `Arc` reference (Constitution VI, FR-023).
+    /// a `CanonicalAttrs`. Stored as an enum with concrete variants for
+    /// the in-tree recognizers (`Strict`, `StrictOrDecoder`)
+    /// so default dispatch stays monomorphized; a `Dyn` escape hatch
+    /// preserves the existing `with_recognizer(Arc<dyn Recognizer<_>>)`
+    /// customization surface for downstream callers.
     ///
     /// Default: [`StrictOrDecoderRecognizer`] — strict-first dispatch
     /// with a decoder fallback on strict-parse zero-candidate. The
@@ -275,9 +277,8 @@ pub struct Engine {
     /// per-keystroke latency are expected to debounce their calls into
     /// the engine; surfaces that need to pin strict-only behavior (the
     /// SC-001 interactive-latency benchmark, tests asserting strict
-    /// dispatch) install [`StrictRecognizer`] explicitly via
-    /// [`Engine::with_recognizer`].
-    recognizer: Arc<dyn Recognizer<CapcoScheme>>,
+    /// dispatch) should call [`Engine::with_strict_recognizer`].
+    recognizer: EngineRecognizer,
 
     /// CLI-supplied corpus override (Phase 4 PR-5 / FR-013 / T069).
     /// Held only behind the `corpus-override` Cargo feature so the
@@ -422,6 +423,39 @@ pub struct Engine {
     /// `bridge_sci_per_system_diagnostics`, avoiding per-candidate
     /// `HashMap` probes.
     emitted_id_overrides: EmittedIdOverrides,
+}
+
+#[derive(Clone)]
+enum EngineRecognizer {
+    /// Fully monomorphized strict-only recognizer path.
+    Strict(StrictRecognizer),
+    /// Fully monomorphized strict-first/decoder-fallback recognizer path
+    /// used by `Engine::new`.
+    StrictOrDecoder(StrictOrDecoderRecognizer),
+    /// Trait-object escape hatch for caller-supplied recognizers that are
+    /// not one of the in-tree concrete variants above.
+    Dyn(Arc<dyn Recognizer<CapcoScheme>>),
+}
+
+impl Default for EngineRecognizer {
+    fn default() -> Self {
+        Self::StrictOrDecoder(StrictOrDecoderRecognizer::new())
+    }
+}
+
+impl Recognizer<CapcoScheme> for EngineRecognizer {
+    fn recognize(
+        &self,
+        bytes: &[u8],
+        offset: usize,
+        cx: &ParseContext,
+    ) -> Parsed<marque_capco::CapcoMarking> {
+        match self {
+            Self::Strict(r) => r.recognize(bytes, offset, cx),
+            Self::StrictOrDecoder(r) => r.recognize(bytes, offset, cx),
+            Self::Dyn(r) => r.recognize(bytes, offset, cx),
+        }
+    }
 }
 
 /// Cached AhoCorasick automaton + the active (key, value) pairs that
@@ -587,7 +621,7 @@ impl Engine {
             corrections_arc,
             corrections_ac,
             scheduled_rewrites,
-            recognizer: Arc::new(crate::decoder::StrictOrDecoderRecognizer::new()),
+            recognizer: EngineRecognizer::default(),
             #[cfg(feature = "corpus-override")]
             corpus_override: None,
             pass1_rule_indices,
@@ -610,20 +644,37 @@ impl Engine {
 
     /// Override the engine's recognizer. The default installed by
     /// [`Engine::new`] is [`StrictOrDecoderRecognizer`] (strict-first,
-    /// decoder fallback). Callers that need to pin a different dispatch
-    /// — most commonly [`StrictRecognizer`] for the SC-001 interactive-
-    /// latency benchmark or tests asserting strict-only behavior —
-    /// install one explicitly here.
+    /// decoder fallback). Callers that need to install a custom
+    /// recognizer implementation can do so here. For strict-only dispatch
+    /// without trait-object dispatch, prefer
+    /// [`Engine::with_strict_recognizer`].
     ///
     /// Returns the engine by value so callers can chain:
     ///
     /// ```ignore
     /// let engine = Engine::new(config, rules, scheme)?
-    ///     .with_recognizer(Arc::new(StrictRecognizer::new()));
+    ///     .with_recognizer(Arc::new(MyCustomRecognizer::new()));
     /// ```
     #[must_use = "with_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
     pub fn with_recognizer(mut self, recognizer: Arc<dyn Recognizer<CapcoScheme>>) -> Self {
-        self.recognizer = recognizer;
+        self.recognizer = EngineRecognizer::Dyn(recognizer);
+        self
+    }
+
+    /// Override the engine recognizer with the strict parser path
+    /// without introducing trait-object dispatch.
+    ///
+    /// Prefer this helper in latency-sensitive strict-only paths (for
+    /// example SC-001 benchmark setups). Use [`Engine::with_recognizer`]
+    /// when installing a custom recognizer implementation.
+    ///
+    /// ```ignore
+    /// let engine = Engine::new(config, rules, scheme)?
+    ///     .with_strict_recognizer();
+    /// ```
+    #[must_use = "with_strict_recognizer returns a new Engine; the returned value must be bound for the override to take effect"]
+    pub fn with_strict_recognizer(mut self) -> Self {
+        self.recognizer = EngineRecognizer::Strict(StrictRecognizer::new());
         self
     }
 
