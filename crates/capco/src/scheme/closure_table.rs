@@ -60,7 +60,7 @@
 //! row-name severity overrides); they are not re-derived from any other
 //! authority here.
 
-use marque_scheme::FactBitmask;
+use marque_scheme::{FactBitmask, Severity};
 
 use crate::fact_bitmask::{
     MASK_FDR_DOMINATORS, MASK_FDR_OR_RELIDO_INCOMPAT, MASK_RELIDO_US_CLASS_SUPPRESSORS, fact_bit,
@@ -144,6 +144,8 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 /// - `label` — §-citation for the rule's primary authority; preserved
 ///   verbatim from the source fn-pointer rule's `label` per
 ///   Constitution VIII.
+/// - `default_severity` — catalog default severity intent. Mirrors
+///   `ClosureRule::default_severity` for unified inventory/discovery paths.
 /// - `trigger_mask` — fires the row iff
 ///   `(working.bits() & trigger_mask) != 0`, where `working` is the
 ///   *evolving accumulator within the current Kleene iteration* —
@@ -164,6 +166,7 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 pub struct ClosureRow {
     pub name: &'static str,
     pub label: &'static str,
+    pub default_severity: Severity,
     pub trigger_mask: u128,
     pub suppressor_mask: u128,
     pub cone_mask: u128,
@@ -196,6 +199,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/noforn-if-caveated",
         label: "CAPCO-2016 §B.3 Table 2 p21 (rooted in ICD 403)",
+        default_severity: Severity::Info,
         trigger_mask: ROW0_NOFORN_IF_CAVEATED_TRIGGERS,
         suppressor_mask: MASK_FDR_DOMINATORS,
         cone_mask: CONE_NOFORN,
@@ -204,6 +208,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/hcs-o-implies-noforn-orcon",
         label: "CAPCO-2016 §H.4 p64",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_HCS_O,
         suppressor_mask: 0,
         cone_mask: CONE_NOFORN | CONE_ORCON,
@@ -212,6 +217,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/hcs-p-sub-implies-noforn-orcon",
         label: "CAPCO-2016 §H.4 p68",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_HCS_P_SUB,
         suppressor_mask: 0,
         cone_mask: CONE_NOFORN | CONE_ORCON,
@@ -222,6 +228,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/si-g-implies-orcon",
         label: "CAPCO-2016 §H.4 p80",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_SI_G,
         suppressor_mask: 0,
         cone_mask: CONE_ORCON,
@@ -230,6 +237,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/tk-blfh-implies-noforn",
         label: "CAPCO-2016 §H.4 p87",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_BLFH,
         suppressor_mask: 0,
         cone_mask: CONE_NOFORN,
@@ -238,6 +246,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/tk-idit-implies-noforn",
         label: "CAPCO-2016 §H.4 p91",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_IDIT,
         suppressor_mask: 0,
         cone_mask: CONE_NOFORN,
@@ -246,6 +255,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/tk-kand-implies-noforn",
         label: "CAPCO-2016 §H.4 p95",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_KAND,
         suppressor_mask: 0,
         cone_mask: CONE_NOFORN,
@@ -255,6 +265,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/rel-to-usa-nato-if-nato-classification",
         label: "CAPCO-2016 §H.7 p127 (example-derived) + §G.2 Table 5 p40",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::NATO_CLASS,
         suppressor_mask: MASK_FDR_DOMINATORS,
         cone_mask: CONE_REL_TO_USA,
@@ -264,6 +275,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/relido-if-sci-and-not-incompatible",
         label: "CAPCO-2016 §H.8 p154",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_PRESENT,
         suppressor_mask: MASK_FDR_OR_RELIDO_INCOMPAT,
         cone_mask: CONE_RELIDO,
@@ -273,6 +285,7 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     ClosureRow {
         name: "capco/relido-if-us-collateral-class",
         label: "CAPCO-2016 §B.3 Table 2 p21 (grammar: §H.8 p154)",
+        default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::US_COLLATERAL_CLASSIFIED,
         suppressor_mask: MASK_RELIDO_US_CLASS_SUPPRESSORS,
         cone_mask: CONE_RELIDO,

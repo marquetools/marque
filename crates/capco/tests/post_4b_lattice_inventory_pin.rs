@@ -137,7 +137,7 @@
 //!   in each catalog declaration's `citation` field.
 
 use marque_capco::CapcoScheme;
-use marque_scheme::{Constraint, MarkingScheme};
+use marque_scheme::{Constraint, MarkingScheme, Severity};
 use std::collections::BTreeSet;
 
 /// Closed list of 27 PageRewrite IDs in positional order, matching
@@ -402,6 +402,37 @@ fn post_pr_d_declares_exact_residual_closure_rules() {
              Expected order: {expected:?}"
         );
     }
+}
+
+#[test]
+fn post_pr_d_declares_unified_closure_inventory_in_registry_order() {
+    let scheme = CapcoScheme::new();
+    let inventory: Vec<_> = scheme.closure_inventory().collect();
+
+    let raw_len = inventory.len();
+    assert_eq!(
+        raw_len, 10,
+        "post-PR-D closure inventory length drifted from 10: raw_len={raw_len}. \
+         Unified inventory must include the full 10-row closure catalog."
+    );
+
+    let actual: Vec<&str> = inventory.iter().map(|row| row.name).collect();
+    let expected: Vec<&str> = EXPECTED_BITMASK_CLOSURE_ROWS.to_vec();
+    assert_eq!(
+        actual, expected,
+        "closure inventory row order drifted from registry order"
+    );
+
+    assert!(
+        inventory.iter().all(|row| row.citation.is_some()),
+        "every closure inventory row must expose citation metadata"
+    );
+    assert!(
+        inventory
+            .iter()
+            .all(|row| row.default_severity == Severity::Info),
+        "every current CAPCO closure inventory row must default to Severity::Info"
+    );
 }
 
 /// Post-PR-D parallel pin against the 10-row bitmask `CLOSURE_TABLE`.
