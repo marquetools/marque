@@ -606,8 +606,13 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 116),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        bitmask_trigger: None,
-        bitmask_trigger_exact: false,
+        // AEA_DOD_UCNI (bit 26) is the closed-vocab DOD UCNI sentinel.
+        // Exact: `presence_dod_ucni` fires exactly when this bit is set.
+        // EqualsU policy: `extract_us_class_level(bits) == Some(Unclassified)`
+        // (US chain == 1) — UCNI is restricted to US-UNCLASSIFIED portions
+        // per §H.6 p116 (DOD UCNI is US AEA, not NATO-applicable).
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_DOD_UCNI),
+        bitmask_trigger_exact: true,
     },
     ClassFloorRow {
         name: "E058/DOE-UCNI-classification-ceiling",
@@ -619,8 +624,12 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         citation_typed: capco(SectionLetter::H, 6, 118),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
-        bitmask_trigger: None,
-        bitmask_trigger_exact: false,
+        // AEA_DOE_UCNI (bit 25) is the closed-vocab DOE UCNI sentinel.
+        // Exact: `presence_doe_ucni` fires exactly when this bit is set.
+        // EqualsU policy: mirrors DOD UCNI — DOE UCNI is US AEA,
+        // restricted to US-UNCLASSIFIED portions per §H.6 p118.
+        bitmask_trigger: Some(1u128 << fact_bit::AEA_DOE_UCNI),
+        bitmask_trigger_exact: true,
     },
     // ---- §2.6 Unknown-floor passthrough (4 rows; Warn) ---------------
     //
