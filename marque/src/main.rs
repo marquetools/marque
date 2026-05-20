@@ -74,9 +74,9 @@ fn merge_exit_code(current: i32, new_code: i32) -> i32 {
 /// schema name alongside the package version.
 ///
 /// Per PR 3c.2.D PM-D-15 and `contracts/audit-record.md`
-/// §"Schema discoverability (D3)" (§415-446), the active audit
-/// schema name MUST be discoverable by external consumers without
-/// parsing audit records. The contract names two surfaces:
+/// §"Schema discoverability (D3)", the active audit schema name
+/// MUST be discoverable by external consumers without parsing
+/// audit records. The contract names two surfaces:
 ///
 /// 1. **Per-record discoverability** — every audit NDJSON line's
 ///    first field is `"schema": "marque-1.0"` (FR-035). Streaming

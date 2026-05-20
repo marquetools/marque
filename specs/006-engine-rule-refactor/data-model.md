@@ -339,7 +339,7 @@ pub struct RuleId(pub &'static str /* predicate_id */);
 - Pre-cutover (`marque-mvp-3`) records are not interoperable with `marque-1.0` binaries (FR-037 — clean break, no `marque-audit-reader` crate scheduled); single-value `MARQUE_AUDIT_SCHEMA` validation at build time (FR-034). (`marque-mvp-1` / `marque-mvp-2` retired in earlier PRs.)
 - Non-marking text corrections (C001 corrections-map matches, the E006-shaped deprecation path) flow through a separate `AppliedTextCorrection` type carrying a corpus-derived `SmolStr` replacement (PM-D-4). The two types are disjoint by construction; G13 boundary is type-level checkable.
 
-**Serialization**: NDJSON. Schema field is `"schema": "marque-1.0"` per FR-035 / FR-035a. The exact JSON shape is documented in `contracts/audit-record.md` body §.
+**Serialization**: NDJSON. Schema field is `"schema": "marque-1.0"` per FR-035 / FR-035a. The exact JSON shape is documented in `contracts/audit-record.md` §"NDJSON record shape".
 
 ---
 

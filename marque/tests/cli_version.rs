@@ -3,10 +3,10 @@
 
 //! `marque --version` schema-discoverability pin (PR 3c.2.D / D9).
 //!
-//! Per `contracts/audit-record.md` §"Schema discoverability (D3)"
-//! (§415-446), the active audit-record schema name MUST be
-//! discoverable by external consumers without parsing audit
-//! records. The CLI surfaces it via `marque --version`:
+//! Per `contracts/audit-record.md` §"Schema discoverability (D3)",
+//! the active audit-record schema name MUST be discoverable by
+//! external consumers without parsing audit records. The CLI
+//! surfaces it via `marque --version`:
 //!
 //! ```text
 //! marque 0.3.0
@@ -39,7 +39,8 @@ fn version_exposes_audit_schema_name() {
         .unwrap_or_else(|| {
             panic!(
                 "`marque --version` must expose an `audit_schema:` line per \
-                 contract §415-446. Stdout was:\n{stdout}"
+                 contracts/audit-record.md §\"Schema discoverability (D3)\". \
+                 Stdout was:\n{stdout}"
             )
         });
     // The value comes from marque_engine::AUDIT_SCHEMA_VERSION at

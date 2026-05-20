@@ -188,16 +188,26 @@ pub enum TokenSource {
 ///
 /// The audit-emit path projects `Canonical<S>` to a structured JSON
 /// shape with a `bytes_digest` field rather than serializing the raw
-/// bytes. Direct `serde_json::to_vec(&canonical)` is intentionally
+/// bytes. Direct `serde::Serialize` derivation is intentionally
 /// rejected to keep the G13 boundary (Constitution V Principle V) at
 /// compile time — the renderer MUST go through the audit-record JSON
 /// projection that emits the BLAKE3 digest, never the bytes.
 ///
+/// The doctest below asserts the property by demanding a
+/// `T: serde::Serialize` bound. The compile failure is specifically
+/// "`Canonical<S>` does not implement `serde::Serialize`", not a
+/// crate-resolution failure: `serde` is declared as a
+/// `[dev-dependencies]` entry so `cargo test --doc` resolves the
+/// trait name. A future commit that derives `Serialize` on
+/// `Canonical<S>` flips this doctest to passing — exactly the
+/// regression signal we want.
+///
 /// ```compile_fail
 /// # use marque_scheme::canonical::Canonical;
 /// # use marque_scheme::MarkingScheme;
-/// fn _serialize<S: MarkingScheme>(c: Canonical<S>) -> Vec<u8> {
-///     serde_json::to_vec(&c).unwrap()
+/// fn _require_serialize<T: serde::Serialize>(_: &T) {}
+/// fn _check<S: MarkingScheme>(c: Canonical<S>) {
+///     _require_serialize(&c);
 /// }
 /// ```
 #[derive(Debug)]
