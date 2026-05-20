@@ -166,9 +166,15 @@ pub enum EmissionForm {
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaVersionId {
-    /// `marque-mvp-3` — active at PR 3c.2.A landing. The atomic
-    /// cutover to `marque-1.0` lands at PR 3c.2.D per FR-035a.
+    /// `marque-mvp-3` — active at PR 3c.2.A landing.
     MarqueMvp3,
+    /// `marque-1.0` — atomic cutover target landing at PR 3c.2.D per
+    /// FR-035a. Added at the D2 commit boundary (PM-D-10 / additive
+    /// landing); the atomic schema flip at D7 (D-A5's scope) wires
+    /// this variant into the `MARQUE_AUDIT_SCHEMA` accept-list and
+    /// flips [`marque_engine::AUDIT_SCHEMA_VERSION`] default to its
+    /// matching string form.
+    V1_0,
 }
 
 impl SchemaVersionId {
@@ -182,6 +188,7 @@ impl SchemaVersionId {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::MarqueMvp3 => "marque-mvp-3",
+            Self::V1_0 => "marque-1.0",
         }
     }
 }

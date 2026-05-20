@@ -65,50 +65,49 @@ use smallvec::SmallVec;
 use crate::RuleId;
 use crate::confidence::{Confidence, FeatureId};
 
-/// BLAKE3 digest, 32 bytes, fixed-size array.
+/// BLAKE3 digest — a re-export of [`blake3::Hash`].
 ///
-/// Held inline (not `Box<[u8]>` or `String`) to enforce content-
-/// ignorance — the digest is computed *from* content, but the digest
-/// itself is opaque. Consumed by the `AppliedFix.fix.original_digest`
-/// field at PR 3c.2's audit-record reshape (T041 / FR-002 / FR-004).
+/// PR 3c.2.D PM-D-5 replaced the prior `Blake3Hash([u8; 32])` newtype
+/// with this alias. `blake3::Hash` already implements `Debug`, `Clone`,
+/// `Copy`, `PartialEq`, `Eq`, `Hash`, `Display`, `From<[u8; 32]>`, and
+/// `FromStr` — every property the audit-record types need without
+/// re-exporting a thin wrapper that adds no invariants.
+///
+/// # Audit-emit wire form
+///
+/// Serializes as `"blake3:<64-hex>"` via the free function
+/// [`to_audit_string`] at the JSON projection boundary. The
+/// per-record digest itself flows through the audit pipeline as the
+/// `blake3::Hash` value; the string form materializes only at NDJSON
+/// emit (CLI + WASM renderers, the only sanctioned readout sites).
 ///
 /// # Content-ignorance invariant (Constitution V Principle V / G13)
 ///
 /// `Blake3Hash` is one of the closed permitted types for
-/// [`MessageArgs`] fields. The hex string returned by
-/// [`Blake3Hash::to_audit_string`] is the only audit-emit boundary
-/// where the digest leaves the inline byte representation; that
-/// boundary lives in the engine's audit emitter.
+/// [`MessageArgs`] fields. The digest is computed *from* content, but
+/// the digest itself is opaque; no other accessor surfaces document
+/// bytes back out of the digest. PR 3c.2.D wires real digest
+/// computation through `AppliedReplacement::bytes_digest` and
+/// `AppliedFixDetail::original_digest` on the `marque-1.0` audit
+/// envelope.
+pub type Blake3Hash = blake3::Hash;
+
+/// Render a [`Blake3Hash`] as the canonical `"blake3:<64-hex>"` audit-
+/// emit string.
 ///
-/// PR 3c.1 ships the type with a placeholder all-zero `[0; 32]`
-/// constructor pattern; PR 3c.2 wires real `blake3::hash` computation
-/// at the audit-emit boundary alongside the `AppliedFix` reshape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Blake3Hash(pub [u8; 32]);
-
-impl Blake3Hash {
-    /// All-zero sentinel value. PR 3c.1 placeholder; PR 3c.2 replaces
-    /// every construction site with `blake3::hash(...)`-derived values.
-    #[inline]
-    pub const fn zero() -> Self {
-        Self([0u8; 32])
-    }
-
-    /// Render as a `"blake3:..."` hex string for NDJSON serialization.
-    /// Returns owned `String` only at the audit-emit boundary.
-    pub fn to_audit_string(&self) -> String {
-        let mut s = String::with_capacity(7 + 64);
-        s.push_str("blake3:");
-        for byte in &self.0 {
-            // Hex-encode each byte. Manual encode keeps zero non-WASM
-            // dependencies; this method runs only at the audit-emit
-            // boundary, not on the hot path.
-            const HEX: &[u8; 16] = b"0123456789abcdef";
-            s.push(HEX[(byte >> 4) as usize] as char);
-            s.push(HEX[(byte & 0x0f) as usize] as char);
-        }
-        s
-    }
+/// Free function (not an inherent method) because [`Blake3Hash`] is a
+/// type alias to a foreign type. Returns an owned `String` only at
+/// the audit-emit boundary (CLI / WASM NDJSON projection); rules and
+/// engine code carry the [`Blake3Hash`] value (`Copy`-sized) and let
+/// the renderer materialize the string form once per record.
+///
+/// Pinned by `crates/rules/tests/blake3_audit_string.rs`.
+#[must_use]
+pub fn to_audit_string(hash: &Blake3Hash) -> String {
+    let mut s = String::with_capacity(7 + 64);
+    s.push_str("blake3:");
+    s.push_str(&hash.to_hex());
+    s
 }
 
 /// Closed enumeration of stable diagnostic message templates.
@@ -625,10 +624,12 @@ mod tests {
 
     #[test]
     fn blake3_zero_round_trip() {
-        let z = Blake3Hash::zero();
-        assert_eq!(z.0, [0u8; 32]);
+        // Post-PM-D-5: Blake3Hash is `blake3::Hash`; construct via
+        // upstream `From<[u8; 32]>` rather than a project-side `zero()` ctor.
+        let z: Blake3Hash = Blake3Hash::from([0u8; 32]);
+        assert_eq!(*z.as_bytes(), [0u8; 32]);
         // Audit-string form prefixes "blake3:" and emits 64 hex chars.
-        let s = z.to_audit_string();
+        let s = crate::message::to_audit_string(&z);
         assert_eq!(s.len(), 7 + 64);
         assert!(s.starts_with("blake3:"));
         assert!(s[7..].chars().all(|c| c.is_ascii_hexdigit()));
@@ -642,8 +643,8 @@ mod tests {
         bytes[0] = 0x12;
         bytes[1] = 0xab;
         bytes[31] = 0xff;
-        let h = Blake3Hash(bytes);
-        let s = h.to_audit_string();
+        let h: Blake3Hash = Blake3Hash::from(bytes);
+        let s = crate::message::to_audit_string(&h);
         assert!(s.starts_with("blake3:12ab"));
         assert!(s.ends_with("ff"));
     }

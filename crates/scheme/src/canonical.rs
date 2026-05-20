@@ -183,12 +183,56 @@ pub enum TokenSource {
 ///     Box::<str>::from("TS").into()
 /// }
 /// ```
-#[derive(Debug, Clone)]
+///
+/// **No `Serialize for Canonical<S>` impl** (PR 3c.2.D).
+///
+/// The audit-emit path projects `Canonical<S>` to a structured JSON
+/// shape with a `bytes_digest` field rather than serializing the raw
+/// bytes. Direct `serde_json::to_vec(&canonical)` is intentionally
+/// rejected to keep the G13 boundary (Constitution V Principle V) at
+/// compile time — the renderer MUST go through the audit-record JSON
+/// projection that emits the BLAKE3 digest, never the bytes.
+///
+/// ```compile_fail
+/// # use marque_scheme::canonical::Canonical;
+/// # use marque_scheme::MarkingScheme;
+/// fn _serialize<S: MarkingScheme>(c: Canonical<S>) -> Vec<u8> {
+///     serde_json::to_vec(&c).unwrap()
+/// }
+/// ```
+#[derive(Debug)]
 pub struct Canonical<S: MarkingScheme + ?Sized> {
     bytes: Box<str>,
     source: TokenSource,
     scope: Scope,
     _scheme: PhantomData<fn() -> S>,
+}
+
+// Manual `Clone` impl — the derive macro over-constrains to `S: Clone`,
+// breaking `S = CapcoScheme` (CapcoScheme is intentionally non-`Clone`
+// because it carries `Vec<Category>` / `Vec<Constraint>` / `Vec<Template>` /
+// `Vec<PageRewrite<S>>` that the engine owns through `Arc<S>` rather
+// than cloning. See `crates/capco/src/scheme/adapter.rs`).
+//
+// Mirrors the pattern used by `marque_scheme::fix_intent::ReplacementIntent<S>`
+// (`crates/scheme/src/fix_intent.rs`) and `marque_rules::FixIntent<S>`
+// (`crates/rules/src/fix_intent.rs`): cloning a value that is generic
+// over `S: MarkingScheme` should only depend on the actual fields'
+// `Clone` impls, not on whether the scheme itself is `Clone`. The
+// `_scheme: PhantomData<fn() -> S>` field is always `Clone` because
+// `PhantomData<T>: Clone` holds for any `T` regardless of `T: Clone`.
+//
+// Required by `marque_rules::AppliedReplacement<S>` (PR 3c.2.D / D2) to
+// satisfy its own manual `Clone` impl in turn.
+impl<S: MarkingScheme + ?Sized> Clone for Canonical<S> {
+    fn clone(&self) -> Self {
+        Self {
+            bytes: self.bytes.clone(),
+            source: self.source.clone(),
+            scope: self.scope,
+            _scheme: PhantomData,
+        }
+    }
 }
 
 impl<S: MarkingScheme + ?Sized> Canonical<S> {

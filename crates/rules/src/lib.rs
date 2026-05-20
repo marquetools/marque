@@ -63,6 +63,7 @@
 //! replacing a typo); it never carries the document's original bytes.
 //! Audit records emit no `original` field as of `marque-mvp-3`.
 
+pub mod audit;
 pub mod audit_note;
 pub mod citation;
 pub mod confidence;
@@ -76,6 +77,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+pub use audit::{
+    AppliedFixDetail, AppliedReplacement, AppliedTextCorrection, AuditLine, Discriminant,
+};
 pub use audit_note::{AuditNote, AuditNoteKind, AuditNoteStructural};
 pub use citation::{
     AuthoritativeSource, Citation, PageNumber, SectionLetter, SectionRef, capco, capco_section,
@@ -97,7 +101,7 @@ pub use smallvec::{SmallVec, smallvec};
 // types must live below us in the dependency graph). Import them
 // directly from `marque_scheme::{FactRef, RecanonScope, ReplacementIntent}`.
 pub use marque_ism::{DocumentPosition, MarkingType, Zone};
-pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate};
+pub use message::{Blake3Hash, Message, MessageArgs, MessageTemplate, to_audit_string};
 
 // ---------------------------------------------------------------------------
 // RuleId
@@ -793,6 +797,49 @@ impl<S: MarkingScheme> Clone for AppliedFixProposal<S> {
 /// parameters) at promotion time; a future phase may adjust them
 /// for region context before promotion, so they can diverge from
 /// the original `FixIntent.confidence` / `FixIntent.source`.
+///
+/// # Compile-fail invariants (PR 3c.2.D)
+///
+/// **No `Default for AppliedFix<S>` impl.** Engine-promoted construction
+/// only; a `Default` impl would bypass the seal.
+///
+/// ```compile_fail
+/// # // Constructing AppliedFix via Default would defeat the engine-only
+/// # // seal in `__engine_promote`. No such impl exists.
+/// # struct StubScheme;
+/// # impl marque_scheme::MarkingScheme for StubScheme {
+/// #     type Token = ();
+/// #     type Marking = ();
+/// #     type ParseError = std::convert::Infallible;
+/// #     type OpenVocabRef = ();
+/// #     fn name(&self) -> &str { "stub" }
+/// #     fn schema_version(&self) -> &str { "v0" }
+/// #     fn categories(&self) -> &[marque_scheme::Category] { &[] }
+/// #     fn constraints(&self) -> &[marque_scheme::Constraint] { &[] }
+/// #     fn templates(&self) -> &[marque_scheme::Template] { &[] }
+/// #     fn parse(&self, _: &str) -> Result<marque_scheme::Parsed<Self::Marking>, Self::ParseError> { Ok(marque_scheme::Parsed::Unambiguous(())) }
+/// #     fn render_canonical(&self, _: &Self::Marking, _: &marque_scheme::RenderContext, _: &mut dyn std::fmt::Write) -> std::fmt::Result { Ok(()) }
+/// #     fn canonicalize<'src>(&self, _: marque_ism::ParsedAttrs<'src>) -> marque_ism::CanonicalAttrs { unimplemented!() }
+/// #     fn apply_intent(&self, _: &mut Self::Marking, _: &marque_scheme::ReplacementIntent<Self>) -> Result<(), marque_scheme::ApplyIntentError> { Ok(()) }
+/// # }
+/// let _: marque_rules::AppliedFix<StubScheme> = Default::default();
+/// ```
+///
+/// **External crates cannot brace-construct `AppliedFix<S>`.** The
+/// `#[non_exhaustive]` attribute plus the engine-only `__engine_promote`
+/// path are both load-bearing seals.
+///
+/// ```compile_fail
+/// # use marque_rules::{AppliedFix, RuleId};
+/// # use marque_scheme::Span;
+/// let _: AppliedFix<()> = AppliedFix {
+///     rule: RuleId::new("E001"),
+///     span: Span::new(0, 0),
+///     // ... other fields omitted; #[non_exhaustive] rejects this
+///     // brace pattern at the doctest crate boundary regardless of
+///     // field list completeness.
+/// };
+/// ```
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct AppliedFix<S: MarkingScheme> {
