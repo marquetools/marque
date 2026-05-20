@@ -27,6 +27,9 @@ use marque_scheme::MarkingScheme;
 /// parser path — same shape used by the other CAPCO integration
 /// tests (e.g., `dissem_nato_pure_nato_portion.rs`).
 fn parse_portion(text: &str) -> CanonicalAttrs {
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+    // override with an inline scheme construction.
+    let scheme = CapcoScheme::new();
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {
@@ -36,7 +39,7 @@ fn parse_portion(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&cand, text.as_bytes())
         .expect("E070 test inputs must parse cleanly");
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    scheme.canonicalize(parsed.attrs)
 }
 
 /// Did `scheme.validate(marking)` produce a `ConstraintViolation`

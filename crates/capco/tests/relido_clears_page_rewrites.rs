@@ -31,6 +31,9 @@ use marque_ism::{CanonicalAttrs, CapcoTokenSet, MarkingCandidate, MarkingType, S
 use marque_scheme::{MarkingScheme, Scope};
 
 fn parse_portion(text: &str) -> CanonicalAttrs {
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+    // override with an inline scheme construction.
+    let scheme = CapcoScheme::new();
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {
@@ -40,7 +43,7 @@ fn parse_portion(text: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&cand, text.as_bytes())
         .expect("test input must parse cleanly");
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    scheme.canonicalize(parsed.attrs)
 }
 
 fn project_page(portions: &[&str]) -> CanonicalAttrs {

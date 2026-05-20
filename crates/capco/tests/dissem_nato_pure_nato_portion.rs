@@ -33,6 +33,9 @@ use marque_scheme::{MarkingScheme, Scope};
 /// portion via the marque-core parser, exercising the post-parse
 /// `attribute_dissems` pass.
 fn parse_pure_nato_portion() -> CanonicalAttrs {
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+    // override with an inline scheme construction.
+    let scheme = CapcoScheme::new();
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let src = b"(//CTS//OC/REL TO USA, NATO)";
@@ -43,7 +46,7 @@ fn parse_pure_nato_portion() -> CanonicalAttrs {
     let parsed = parser
         .parse(&cand, src)
         .expect("pure-NATO portion must parse cleanly");
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    scheme.canonicalize(parsed.attrs)
 }
 
 #[test]

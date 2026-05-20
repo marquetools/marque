@@ -132,12 +132,11 @@ fn engine() -> Engine {
 
 /// Parse a single `(...)` portion line into a `CanonicalAttrs`.
 ///
-/// Test-fixture carve-out per Constitution V Principle V — wraps the
-/// parser's borrowed output through the PR-3a transitional adapter so
-/// tests can assert against the pre-PR-3a `CanonicalAttrs` shape. PR 3c
-/// retires `from_parsed_unchecked` in favor of `MarkingScheme::canonicalize`;
-/// this site migrates then.
+/// PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalizes via the trait
+/// override with an inline scheme construction. Test hermeticity wins
+/// over the microsecond cost of per-call construction.
 fn parse_portion_line(line: &str) -> CanonicalAttrs {
+    let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let bytes = line.as_bytes();
@@ -148,8 +147,7 @@ fn parse_portion_line(line: &str) -> CanonicalAttrs {
     let parsed = parser
         .parse(&candidate, bytes)
         .unwrap_or_else(|e| panic!("portion `{line}` must parse: {e:?}"));
-    // Test-fixture carve-out per Constitution V Principle V — see fn-doc.
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    scheme.canonicalize(parsed.attrs)
 }
 
 /// Split a fixture's bytes into per-line portion candidates, filtering

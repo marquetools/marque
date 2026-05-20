@@ -41,6 +41,7 @@ use marque_ism::{
     AeaMarking, CapcoTokenSet, MarkingCandidate, MarkingClassification, MarkingType,
     NatoClassification, Span,
 };
+use marque_scheme::MarkingScheme as _;
 
 // ---------------------------------------------------------------------------
 // Helpers — parse a candidate directly (no engine), so the parser-level
@@ -56,6 +57,7 @@ fn parse_banner(text: &str) -> marque_ism::CanonicalAttrs {
 }
 
 fn parse_with_kind(source: &[u8], kind: MarkingType) -> marque_ism::CanonicalAttrs {
+    let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -65,11 +67,12 @@ fn parse_with_kind(source: &[u8], kind: MarkingType) -> marque_ism::CanonicalAtt
     let parsed = parser
         .parse(&candidate, source)
         .expect("legacy / canonical NATO inputs must parse cleanly");
-    // Test-fixture carve-out per Constitution V Principle V — wrap the
-    // parser's borrowed output through the PR-3a transitional adapter
-    // so tests can read the CanonicalAttrs surface that the rules
-    // crate consumes.
-    marque_ism::from_parsed_unchecked(parsed.attrs)
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+    // override with an inline scheme construction. Per PM-B-3 test
+    // hermeticity wins over the microsecond cost of per-call
+    // construction; CapcoScheme::new() is dominated by Vec
+    // allocations that are irrelevant for CI runtime.
+    scheme.canonicalize(parsed.attrs)
 }
 
 fn engine_with_fixed_clock() -> Engine {

@@ -37,6 +37,9 @@ use marque_test_utils::{load_fixture, valid_fixtures};
 // ---------------------------------------------------------------------------
 
 fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+    // override with an inline scheme construction.
+    let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -46,8 +49,7 @@ fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
     parser
         .parse(&candidate, source)
         .ok()
-        // Test-fixture carve-out per Constitution V Principle V.
-        .map(|p| marque_ism::from_parsed_unchecked(p.attrs))
+        .map(|p| scheme.canonicalize(p.attrs))
 }
 
 fn parse_banner(text: &str) -> CanonicalAttrs {

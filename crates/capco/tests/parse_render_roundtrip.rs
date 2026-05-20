@@ -61,6 +61,10 @@ use std::path::Path;
 // =============================================================================
 
 fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
+    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
+    // override with an inline scheme construction. Test hermeticity
+    // wins over the microsecond cost of per-call construction.
+    let scheme = CapcoScheme::new();
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -70,12 +74,7 @@ fn parse_with_kind(source: &[u8], kind: MarkingType) -> Option<CanonicalAttrs> {
     parser
         .parse(&candidate, source)
         .ok()
-        // Test-fixture carve-out per Constitution V Principle V — wrap the
-        // parser's borrowed output through the PR-3a transitional adapter
-        // so tests retain the pre-PR-3a `CanonicalAttrs` shape they assert
-        // against. PR 3c retires `from_parsed_unchecked` in favor of
-        // `MarkingScheme::canonicalize`; this site migrates then.
-        .map(|p| marque_ism::from_parsed_unchecked(p.attrs))
+        .map(|p| scheme.canonicalize(p.attrs))
 }
 
 /// Parse a banner string; panics on parser failure (the strict-path corpus
