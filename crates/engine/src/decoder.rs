@@ -116,11 +116,11 @@ use crate::recognizer::{StrictRecognizer, is_us_restricted};
 /// lifetime, avoiding a hot-path allocation regression
 /// (Constitution I).
 ///
-// TODO(engine-S-generic-recognizer-cleanup): retire this static
+// TODO(engine-S-generic-recognizer-cleanup, #634): retire this static
 // alongside `crates/engine/src/recognizer.rs::SCHEME` and
 // `crates/engine/src/engine.rs::bridge_scheme` once `Recognizer<S>`
-// gains a `&S` argument. Targets post-1.0 cleanup; tracked as a
-// follow-up GitHub issue filed at PR 3c.2.B merge time.
+// gains a `&S` argument. Targets post-1.0 cleanup; tracked at GitHub
+// issue #634 (`engine-S-generic-recognizer-cleanup`).
 static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 /// K=8 candidate bound per foundational-plan §5.2 and research.md R3.
@@ -430,7 +430,7 @@ impl Recognizer<CapcoScheme> for DecoderRecognizer {
                 // method. `SCHEME` (above) carries the transitional
                 // scheme instance until `Recognizer<S>::recognize`
                 // gains a `&S` argument under
-                // `engine-S-generic-recognizer-cleanup`.
+                // `engine-S-generic-recognizer-cleanup` (#634).
                 let mut attrs = SCHEME.canonicalize(parsed.attrs);
 
                 // 3b. Span-offset contract: `CanonicalAttrs::token_spans`

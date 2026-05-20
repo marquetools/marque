@@ -61,8 +61,8 @@ use marque_scheme::recognizer::{ParseContext, Recognizer};
 /// so engine hot-path call sites that need to invoke
 /// `<S as MarkingScheme>::canonicalize` cannot reach a scheme via the
 /// trait. The module-scope `LazyLock` carries the scheme until the
-/// follow-up `engine-S-generic-recognizer-cleanup` issue lands the
-/// cleaner shape (threading `&S` through `Recognizer<S>::recognize`).
+/// follow-up `engine-S-generic-recognizer-cleanup` issue (#634) lands
+/// the cleaner shape (threading `&S` through `Recognizer<S>::recognize`).
 ///
 /// `CapcoScheme::new()` is NOT zero-cost — it builds `Vec<Category>`,
 /// `Vec<Constraint>`, and `Vec<PageRewrite>` tables at every call
@@ -72,11 +72,11 @@ use marque_scheme::recognizer::{ParseContext, Recognizer};
 /// (Uncompromising Performance). `LazyLock` amortizes that cost
 /// across the engine's lifetime.
 ///
-// TODO(engine-S-generic-recognizer-cleanup): retire this static
+// TODO(engine-S-generic-recognizer-cleanup, #634): retire this static
 // alongside `crates/engine/src/decoder.rs::SCHEME` and
 // `crates/engine/src/engine.rs::bridge_scheme` once `Recognizer<S>`
-// gains a `&S` argument. Targets post-1.0 cleanup; tracked as a
-// follow-up GitHub issue filed at PR 3c.2.B merge time.
+// gains a `&S` argument. Targets post-1.0 cleanup; tracked at GitHub
+// issue #634 (`engine-S-generic-recognizer-cleanup`).
 static SCHEME: LazyLock<CapcoScheme> = LazyLock::new(CapcoScheme::new);
 
 /// Strict-path recognizer. Zero false positives by construction —
@@ -127,7 +127,7 @@ impl Recognizer<CapcoScheme> for StrictRecognizer {
                 // consume. `SCHEME` (above) carries the transitional
                 // scheme instance until `Recognizer<S>::recognize`
                 // gains a `&S` argument under
-                // `engine-S-generic-recognizer-cleanup`.
+                // `engine-S-generic-recognizer-cleanup` (#634).
                 let mut attrs = SCHEME.canonicalize(parsed.attrs);
                 // Two shifts collapsed into one (issue #431):
                 //   * `leading_ws` — the parser saw `parse_bytes`, which

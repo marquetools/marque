@@ -17,13 +17,15 @@ This document is the **binding PM contract** for PR 3c.2.B. Implementation agent
 
 Migrates `from_parsed_unchecked` call sites to the `MarkingScheme::canonicalize` trait route, **and** lands the `CapcoScheme` override. Override body is `marque_ism::from_parsed_unchecked(parsed)` **verbatim** — semantic-identical, byte-identity guaranteed by T056 corpus regression matrix.
 
-**In scope** (25 sites migrate):
+**In scope** (26 sites migrate — reconciled from preflight estimate of 25):
 - 2 production engine hot-path sites (`recognizer.rs:98`, `decoder.rs:411`)
 - 9 in-`src/` `#[cfg(test)]` test sites inside `crates/engine/src/decoder.rs`
 - 2 WASM lint/fix sites (`wasm/src/lib.rs:1187, 1292`)
 - 12 external `crates/capco/tests/` sites + 1 `crates/engine/tests/document_corpus.rs:148` = 13 external test sites
 - B1 lands the `CapcoScheme::canonicalize` override body
 - B-FOLLOWUP-1: HRTB compile-time smoke test
+
+**Erratum (added in B6)**: the architect preflight's Appendix A inventory listed 11 `crates/capco/tests/` files; the implementation grep at the start of B uncovered a 12th file (`render_canonical_properties.rs:50`), correctly migrated in B4. Net total is 26 migrated + 5 carved-out = 31 sites of `from_parsed_unchecked(`, not 30. PM-B-8's "25 sites" was off by one; the corrected count is 26.
 
 **Out of scope** (5 sites carved out):
 - 1 site: `crates/capco/tests/s004_audit_content_ignorance.rs:65` — file is `#![cfg(any())]`-disabled pending Diagnostic-shape rewrite at 3c.2.C. Migration is no-op until file is re-enabled. **Decision**: leave site at adapter call; add `// TODO(3c.2.C): migrate when test rewrite per Diagnostic-shape lands` comment (PM-B-7).
@@ -117,12 +119,12 @@ Add inline comment `// TODO(3c.2.C): migrate when test rewrite per Diagnostic-sh
 
 ### PM-B-8 — Total migration count
 
-**Decision baseline**: 25 sites migrated in 3c.2.B; 5 sites carved out.
+**Decision baseline (corrected in B6 reviewer-pass closure)**: 26 sites migrated in 3c.2.B; 5 sites carved out.
 
-- MIGRATE: 4 production + 9 in-src tests + 12 external tests = 25
+- MIGRATE: 4 production + 9 in-src tests + 13 external tests (12 capco + 1 engine) = 26
 - CARVE-OUT: 1 (s004) + 4 (core sites) = 5
 
-PM-B-2 + PM-B-7 explicitly document the carve-outs. Reviewer attestation must not flag "incomplete migration"; the 5-site carve-out is the contract.
+The architect preflight's Appendix A listed 11 `crates/capco/tests/` files; a 12th (`render_canonical_properties.rs:50`) surfaced at the implementation grep and was correctly migrated in B4 — see the erratum in §1 above. PM-B-2 + PM-B-7 explicitly document the carve-outs. Reviewer attestation must not flag "incomplete migration"; the 5-site carve-out is the contract.
 
 ### PM-B-9 — T056 byte-identity gate
 
