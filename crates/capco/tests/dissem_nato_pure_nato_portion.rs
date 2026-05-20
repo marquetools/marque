@@ -32,10 +32,11 @@ use marque_scheme::{MarkingScheme, Scope};
 /// Construct the canonical-attrs form of a `(//CTS//OC/REL TO USA, NATO)`
 /// portion via the marque-core parser, exercising the post-parse
 /// `attribute_dissems` pass.
-fn parse_pure_nato_portion() -> CanonicalAttrs {
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-    // override with an inline scheme construction.
-    let scheme = CapcoScheme::new();
+///
+/// PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
+/// helper takes `&CapcoScheme` so the page-rollup test that already
+/// constructs a scheme for `scheme.project(...)` can reuse it.
+fn parse_pure_nato_portion(scheme: &CapcoScheme) -> CanonicalAttrs {
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let src = b"(//CTS//OC/REL TO USA, NATO)";
@@ -51,7 +52,8 @@ fn parse_pure_nato_portion() -> CanonicalAttrs {
 
 #[test]
 fn pure_nato_portion_attributes_dissem_to_dissem_nato() {
-    let attrs = parse_pure_nato_portion();
+    let scheme = CapcoScheme::new();
+    let attrs = parse_pure_nato_portion(&scheme);
 
     // The portion's classification is NATO with no US axis — confirm
     // before asserting on dissem.
@@ -93,7 +95,8 @@ fn pure_nato_portion_attributes_dissem_to_dissem_nato() {
 
 #[test]
 fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
-    let attrs = parse_pure_nato_portion();
+    let scheme = CapcoScheme::new();
+    let attrs = parse_pure_nato_portion(&scheme);
 
     if !matches!(
         attrs.classification,
@@ -110,7 +113,6 @@ fn pure_nato_portion_projects_dissem_nato_through_page_rollup() {
     }
 
     let portion = CapcoMarking::new(attrs);
-    let scheme = CapcoScheme::new();
     let projected = scheme.project(Scope::Page, &[portion]);
 
     // Page rollup composes namespaces independently. A pure-NATO

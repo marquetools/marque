@@ -48,16 +48,25 @@ use marque_scheme::MarkingScheme as _;
 // routing invariants are testable without engine dispatch noise.
 // ---------------------------------------------------------------------------
 
-fn parse_portion(text: &str) -> marque_ism::CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Portion)
+fn parse_portion(scheme: &CapcoScheme, text: &str) -> marque_ism::CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Portion)
 }
 
-fn parse_banner(text: &str) -> marque_ism::CanonicalAttrs {
-    parse_with_kind(text.as_bytes(), MarkingType::Banner)
+fn parse_banner(scheme: &CapcoScheme, text: &str) -> marque_ism::CanonicalAttrs {
+    parse_with_kind(scheme, text.as_bytes(), MarkingType::Banner)
 }
 
-fn parse_with_kind(source: &[u8], kind: MarkingType) -> marque_ism::CanonicalAttrs {
-    let scheme = CapcoScheme::new();
+fn parse_with_kind(
+    scheme: &CapcoScheme,
+    source: &[u8],
+    kind: MarkingType,
+) -> marque_ism::CanonicalAttrs {
+    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
+    // helper takes `&CapcoScheme` so each #[test] can reuse a single
+    // scheme rather than allocating one per parse. Per PM-B-3:
+    // "Where the test helper is module-level and called from multiple
+    // #[test] functions, the helper takes `&CapcoScheme` as a parameter;
+    // each #[test] constructs the scheme inline."
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let candidate = MarkingCandidate {
@@ -67,11 +76,6 @@ fn parse_with_kind(source: &[u8], kind: MarkingType) -> marque_ism::CanonicalAtt
     let parsed = parser
         .parse(&candidate, source)
         .expect("legacy / canonical NATO inputs must parse cleanly");
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-    // override with an inline scheme construction. Per PM-B-3 test
-    // hermeticity wins over the microsecond cost of per-call
-    // construction; CapcoScheme::new() is dominated by Vec
-    // allocations that are irrelevant for CI runtime.
     scheme.canonicalize(parsed.attrs)
 }
 
@@ -98,7 +102,8 @@ fn engine_with_fixed_clock() -> Engine {
 /// registers ATOMAL as a standalone marking).
 #[test]
 fn atomal_on_aea_axis_not_nato_classification() {
-    let attrs = parse_portion("(//CTS//ATOMAL)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTS//ATOMAL)");
 
     assert_eq!(
         attrs.classification,
@@ -134,7 +139,8 @@ fn atomal_on_aea_axis_not_nato_classification() {
 /// control marking).
 #[test]
 fn legacy_ctsa_canonicalizes_to_cts_plus_atomal() {
-    let attrs = parse_portion("(//CTSA)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//CTSA)");
 
     assert_eq!(
         attrs.classification,
@@ -160,7 +166,8 @@ fn legacy_ctsa_canonicalizes_to_cts_plus_atomal() {
 /// NATO SECRET ATOMAL); §G.2 p40.
 #[test]
 fn legacy_nsat_canonicalizes_to_ns_plus_atomal() {
-    let attrs = parse_portion("(//NSAT)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//NSAT)");
 
     assert_eq!(
         attrs.classification,
@@ -184,7 +191,8 @@ fn legacy_nsat_canonicalizes_to_ns_plus_atomal() {
 /// NATO CONFIDENTIAL ATOMAL); §G.2 p40.
 #[test]
 fn legacy_nca_canonicalizes_to_nc_plus_atomal() {
-    let attrs = parse_portion("(//NCA)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(//NCA)");
 
     assert_eq!(
         attrs.classification,
@@ -212,7 +220,8 @@ fn legacy_nca_canonicalizes_to_nc_plus_atomal() {
 /// with FGI NATO ownership.
 #[test]
 fn atomal_renders_after_rd_in_aea_block() {
-    let attrs = parse_portion("(S//RD/ATOMAL//FGI NATO//NF)");
+    let scheme = CapcoScheme::new();
+    let attrs = parse_portion(&scheme, "(S//RD/ATOMAL//FGI NATO//NF)");
 
     // US classification, NOT NATO. The §H.7 p122 example is a US
     // document.
@@ -259,7 +268,8 @@ fn atomal_banner_h7_p122_example_end_to_end_round_trip() {
     let source = b"TOP SECRET//RD/ATOMAL//FGI NATO//NOFORN";
 
     // Parser-level: classification = US Top Secret, AEA = [RD, ATOMAL].
-    let attrs = parse_banner(std::str::from_utf8(source).unwrap());
+    let scheme = CapcoScheme::new();
+    let attrs = parse_banner(&scheme, std::str::from_utf8(source).unwrap());
     assert!(
         matches!(
             attrs.classification,

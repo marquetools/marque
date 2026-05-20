@@ -26,10 +26,10 @@ use marque_scheme::MarkingScheme;
 /// Parse a portion text into `CanonicalAttrs` via the canonical
 /// parser path — same shape used by the other CAPCO integration
 /// tests (e.g., `dissem_nato_pure_nato_portion.rs`).
-fn parse_portion(text: &str) -> CanonicalAttrs {
-    // PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalize via the trait
-    // override with an inline scheme construction.
-    let scheme = CapcoScheme::new();
+fn parse_portion(scheme: &CapcoScheme, text: &str) -> CanonicalAttrs {
+    // PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
+    // helper takes `&CapcoScheme` so each #[test] can reuse the scheme
+    // it already constructs for `fires_e070(&scheme, ...)`.
     let tokens = CapcoTokenSet;
     let parser = marque_core::Parser::new(&tokens);
     let cand = MarkingCandidate {
@@ -58,7 +58,7 @@ fn fires_on_frd_and_tfni_together() {
     // §H.6 p120 ("If TFNI is commingled with RD or FRD within a
     // portion, the RD or FRD takes precedence").
     let scheme = CapcoScheme::new();
-    let attrs = parse_portion("(TS//FRD//TFNI//NF)");
+    let attrs = parse_portion(&scheme, "(TS//FRD//TFNI//NF)");
 
     // Sanity: parser must have placed BOTH FRD and TFNI in the AEA
     // axis. If this fires, the parser dropped one and the test no
@@ -89,7 +89,7 @@ fn fires_on_frd_and_tfni_together() {
 fn silent_on_frd_alone() {
     // `(TS//FRD//NF)` — FRD only, no TFNI. E070 must NOT fire.
     let scheme = CapcoScheme::new();
-    let attrs = parse_portion("(TS//FRD//NF)");
+    let attrs = parse_portion(&scheme, "(TS//FRD//NF)");
 
     assert!(
         !fires_e070(&scheme, attrs),
@@ -101,7 +101,7 @@ fn silent_on_frd_alone() {
 fn silent_on_tfni_alone() {
     // `(TS//TFNI//NF)` — TFNI only, no FRD. E070 must NOT fire.
     let scheme = CapcoScheme::new();
-    let attrs = parse_portion("(TS//TFNI//NF)");
+    let attrs = parse_portion(&scheme, "(TS//TFNI//NF)");
 
     assert!(
         !fires_e070(&scheme, attrs),
@@ -117,7 +117,7 @@ fn fires_when_rd_also_present() {
     // Constitution V Principle V; E070 must fire regardless of RD
     // presence.
     let scheme = CapcoScheme::new();
-    let attrs = parse_portion("(TS//RD//FRD//TFNI//NF)");
+    let attrs = parse_portion(&scheme, "(TS//RD//FRD//TFNI//NF)");
 
     assert!(
         fires_e070(&scheme, attrs),
@@ -132,7 +132,7 @@ fn fires_when_rd_also_present() {
 fn silent_when_no_aea() {
     // `(TS//NF)` — no AEA markings at all. E070 must NOT fire.
     let scheme = CapcoScheme::new();
-    let attrs = parse_portion("(TS//NF)");
+    let attrs = parse_portion(&scheme, "(TS//NF)");
 
     assert!(
         !fires_e070(&scheme, attrs),

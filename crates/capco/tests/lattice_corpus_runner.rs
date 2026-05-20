@@ -132,11 +132,13 @@ fn engine() -> Engine {
 
 /// Parse a single `(...)` portion line into a `CanonicalAttrs`.
 ///
-/// PR 3c.2.B B4 (PM-B-1, PM-B-3): canonicalizes via the trait
-/// override with an inline scheme construction. Test hermeticity wins
-/// over the microsecond cost of per-call construction.
-fn parse_portion_line(line: &str) -> CanonicalAttrs {
-    let scheme = CapcoScheme::new();
+/// PR 3c.2.B B7 (PM-B-3 second clause + Copilot review #635): the
+/// helper takes `&CapcoScheme` so callers (`discover`,
+/// `lattice_corpus_fixtures_match_expected`) that already construct a
+/// scheme for `scheme.project(Scope::Page, ...)` can reuse it. The
+/// pre-B7 per-call construction was the EXACT pattern Copilot's
+/// `lattice_corpus_runner.rs:139` inline review caught.
+fn parse_portion_line(scheme: &CapcoScheme, line: &str) -> CanonicalAttrs {
     let token_set = CapcoTokenSet;
     let parser = Parser::new(&token_set);
     let bytes = line.as_bytes();
@@ -192,7 +194,7 @@ fn discover() {
             let portion_lines = extract_portion_lines(&source);
             let portions: Vec<CanonicalAttrs> = portion_lines
                 .iter()
-                .map(|s| parse_portion_line(s))
+                .map(|s| parse_portion_line(&scheme, s))
                 .collect();
             let markings: Vec<CapcoMarking> =
                 portions.iter().cloned().map(CapcoMarking::new).collect();
@@ -276,7 +278,7 @@ fn lattice_corpus_fixtures_match_expected() {
             );
             let portions: Vec<CanonicalAttrs> = portion_lines
                 .iter()
-                .map(|s| parse_portion_line(s))
+                .map(|s| parse_portion_line(&scheme, s))
                 .collect();
             let markings: Vec<CapcoMarking> =
                 portions.iter().cloned().map(CapcoMarking::new).collect();
