@@ -72,6 +72,9 @@ wasm-opt = [  # tool options:
 split-linked-modules = true
 
 [package.metadata.wasm-pack.profile.release-monoaudit]
+# Mirrors `release-web` optimization sequencing while preserving
+# symbol attribution for `twiggy monos` by omitting
+# `--strip-toolchain-annotations` and enabling DWARF below.
 wasm-opt = [
   "--enable-bulk-memory-opt",
   "--enable-bulk-memory",

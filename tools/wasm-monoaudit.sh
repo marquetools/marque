@@ -27,7 +27,7 @@ cd "${REPO_ROOT}"
 rm -f "${WASM_ARTIFACT}"
 
 echo "[wasm-monoaudit] building crates/wasm (release-monoaudit profile)..."
-BUILD_LOG=$(mktemp -t wasm-monoaudit.XXXXXX)
+BUILD_LOG=$(mktemp "${TMPDIR:-/tmp}/wasm-monoaudit.XXXXXX")
 trap 'rm -f "${BUILD_LOG}"' EXIT
 set +e
 wasm-pack build crates/wasm --target web --profile release-monoaudit >"${BUILD_LOG}" 2>&1
