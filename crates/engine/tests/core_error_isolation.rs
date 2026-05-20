@@ -64,8 +64,7 @@
 use marque_capco::capco_rules;
 use marque_config::Config;
 use marque_core::CoreError;
-use marque_engine::{Engine, FixMode, StrictRecognizer};
-use std::sync::Arc;
+use marque_engine::{Engine, FixMode};
 
 /// A high-entropy ASCII run that cannot occur in any valid CAPCO/ISM
 /// marking: lowercase letters, digits, and hyphens combined into a
@@ -83,14 +82,24 @@ const CANARY: &str = "leak-canary-x9z7q3-content-bytes";
 /// dispatcher (which would also exercise decoder-side leak channels —
 /// real but separately scoped issues, not the one this file gates).
 fn test_engine() -> Engine {
+    // PR 3c.2.D / D8 — the #257 strict-recognizer masking pin
+    // (tracks "decoder canonicalization leaks input bytes into
+    // AppliedFix") retired here. The T055 G13 content-ignorance
+    // canary at `crates/engine/tests/audit_g13_canary.rs`
+    // structurally closes the leak channel: marking-side audit
+    // records carry a sealed `Canonical<S>` payload (no free-form
+    // string surface), text-correction records carry only corpus-
+    // derived `SmolStr` replacements (on Constitution V's permitted-
+    // identifier list), and the audit-emit shape is wire-format-pinned
+    // to a closed JSON projection. Strict-recognizer pin no longer
+    // needed; the dispatcher default (`StrictOrDecoderRecognizer`)
+    // applies.
     Engine::new(
         Config::default(),
         vec![Box::new(capco_rules())],
         marque_engine::default_scheme(),
     )
     .expect("default CAPCO scheme has no rewrite cycles")
-    // MASKING-PIN: tracks #257 — decoder canonicalization leaks input bytes into AppliedFix (#257); strict path isolates the test from that leak channel until PR 3c closes the carve-out
-    .with_recognizer(Arc::new(StrictRecognizer::new()))
 }
 
 // ---------------------------------------------------------------------------
