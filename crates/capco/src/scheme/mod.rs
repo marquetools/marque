@@ -85,6 +85,18 @@ pub(crate) mod actions;
 pub(crate) mod adapter;
 pub(crate) mod class_floor;
 pub(crate) mod closure;
+// `closure_table` is `#[doc(hidden)] pub mod` (not `pub(crate)`)
+// because integration tests in `crates/capco/tests/` need to reach
+// `CLOSURE_TABLE` + `close` via the `marque_capco::closure_table::*`
+// re-export at `lib.rs` — which requires the module be `pub` at this
+// level for the re-export to compile. The `#[doc(hidden)]` keeps it
+// out of rustdoc; signals "internal API, do not consume from outside
+// the crate". PR-D wires the production consumer in
+// `CapcoScheme::closure`; PR-F tightens visibility back to
+// `pub(crate)` once integration tests migrate to observing through
+// `MarkingScheme::closure`.
+#[doc(hidden)]
+pub mod closure_table;
 pub(crate) mod constraints;
 pub(crate) mod marking;
 pub(crate) mod marking_scheme_impl;
