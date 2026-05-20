@@ -5165,13 +5165,44 @@ mod tests {
     use crate::clock::FixedClock;
     use marque_ism::CanonicalAttrs;
     use marque_rules::{
-        Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Rule, RuleContext,
-        RuleId, RuleSet, Severity,
+        AuthoritativeSource, Citation, Diagnostic, FixIntent, FixSource, Message, MessageArgs,
+        MessageTemplate, Rule, RuleContext, RuleId, RuleSet, SectionLetter, SectionRef, Severity,
     };
     use marque_scheme::ReplacementIntent;
     use marque_scheme::fix_intent::RecanonScope;
     use secrecy::ExposeSecret as _;
     use std::time::{Duration, UNIX_EPOCH};
+
+    /// Test-fixture `Message` stub for `Diagnostic` constructors that
+    /// don't exercise message content.
+    ///
+    /// Uses `UnrecognizedToken` (a generic closed-set template variant)
+    /// with default args — no `TokenId` lookup needed, no axis-specific
+    /// payload required. The engine tests that consume this helper
+    /// assert against `Diagnostic.rule`, `.span`, `.severity`, and
+    /// fix-attachment shape, never against message content.
+    #[inline]
+    fn stub_message() -> Message {
+        Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
+    }
+
+    /// Test-fixture `Citation` stub for `Diagnostic` constructors that
+    /// don't exercise citation content.
+    ///
+    /// Uses `AuthoritativeSource::EngineInternal` (a non-CAPCO sentinel
+    /// source per PM-C-4) so the citation-lint scanner skips this entry
+    /// — these stubs are test fixtures, not real CAPCO citations, and
+    /// must not trip the §-citation resolver. The `SectionRef` /
+    /// `PageNumber` carry niche-sentinel values the Display impl
+    /// deliberately elides for non-CAPCO sources.
+    #[inline]
+    fn stub_citation() -> Citation {
+        Citation::new(
+            AuthoritativeSource::EngineInternal,
+            SectionRef::new(SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        )
+    }
 
     /// Pins the issue #430 pre-size contract on the per-page portion
     /// accumulator. If `fresh_page_portions_accumulator` ever drifts
@@ -5326,8 +5357,8 @@ mod tests {
                         p.rule.clone(),
                         Severity::Fix,
                         p.span,
-                        "stub",
-                        "TEST",
+                        stub_message(),
+                        stub_citation(),
                         p.replacement.clone(),
                         p.source,
                         p.confidence.clone(),
@@ -5605,8 +5636,8 @@ mod tests {
                     RuleId::new("E997"),
                     Severity::Fix,
                     Span::new(0, 6),
-                    "fix-severity diagnostic with no proposal",
-                    "TEST",
+                    stub_message(),
+                    stub_citation(),
                 )]
             }
         }
@@ -5675,8 +5706,8 @@ mod tests {
                     RuleId::new("S999"),
                     Severity::Suggest,
                     Span::new(0, 6),
-                    "explicit suggest with high confidence",
-                    "TEST",
+                    stub_message(),
+                    stub_citation(),
                     Some(intent),
                 )]
             }
@@ -5939,8 +5970,8 @@ mod tests {
                     self.default_severity(),
                     ctx.candidate_span,
                     ctx.candidate_span,
-                    "test intent",
-                    "TEST",
+                    stub_message(),
+                    stub_citation(),
                     FixIntent {
                         replacement: ReplacementIntent::Recanonicalize {
                             scope: RecanonScope::Portion,
@@ -6939,16 +6970,16 @@ mod tests {
                 RuleId::new("E006"),
                 Severity::Error,
                 Span::new(0, 4),
-                "pass-1",
-                "TEST",
+                stub_message(),
+                stub_citation(),
                 None,
             ),
             Diagnostic::<CapcoScheme>::new(
                 RuleId::new("E022"),
                 Severity::Error,
                 Span::new(4, 8),
-                "pass-2",
-                "TEST",
+                stub_message(),
+                stub_citation(),
                 None,
             ),
         ];
@@ -6977,8 +7008,8 @@ mod tests {
             RuleId::new("C001"),
             Severity::Fix,
             Span::new(0, 6),
-            "sub-threshold with structural fix",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             "SECRET",
             FixSource::CorrectionsMap,
             marque_rules::Confidence::strict(0.4),
@@ -7076,8 +7107,8 @@ mod tests {
                     Severity::Fix,
                     Span::new(8, 14),
                     ctx.candidate_span,
-                    "stub localized fix",
-                    "TEST",
+                    stub_message(),
+                    stub_citation(),
                     intent,
                 )]
             }
@@ -7170,8 +7201,8 @@ mod tests {
                     Severity::Fix,
                     Span::new(8, 14),
                     ctx.candidate_span,
-                    "stub localized fix (dry-run)",
-                    "TEST",
+                    stub_message(),
+                    stub_citation(),
                     intent,
                 )]
             }
@@ -7771,8 +7802,8 @@ mod tests {
             RuleId::new("C001"),
             Severity::Fix,
             Span::new(20, 24),
-            "dropped pass-0 text correction",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             None,
         )];
         let pass1 = Pass1Result {
@@ -7828,8 +7859,8 @@ mod tests {
             RuleId::new("E006"),
             Severity::Error,
             Span::new(8, 14),
-            "had a fix",
-            "TEST",
+            stub_message(),
+            stub_citation(),
             Some(intent),
         );
         let pass1_applied = vec![synth_applied_fix("E006", 8, 14)];

@@ -25,7 +25,10 @@ use marque_capco::{CapcoScheme, capco_rules};
 use marque_config::Config;
 use marque_engine::Engine;
 use marque_ism::CanonicalAttrs;
-use marque_rules::{Diagnostic, Rule, RuleContext, RuleId, RuleSet, Severity};
+use marque_rules::{
+    AuthoritativeSource, Citation, Diagnostic, Message, MessageArgs, MessageTemplate, Rule,
+    RuleContext, RuleId, RuleSet, SectionLetter, SectionRef, Severity,
+};
 
 /// A rule that always panics in `check()`.
 ///
@@ -62,7 +65,29 @@ impl Rule<CapcoScheme> for AlwaysPanicsRule {
 /// other rules after one has panicked.
 struct AlwaysFiresRule;
 
-const ALWAYS_FIRES_MESSAGE: &str = "always-fires-test-rule sibling diagnostic";
+/// Test-fixture `Message` stub mirroring the helpers in
+/// `engine.rs::tests` and `output.rs::tests`. The rule body only needs
+/// to emit *some* diagnostic; the closed-set `Message` shape (per
+/// PR 3c.2.C C5) means no free-form sentinel text is constructible
+/// here. `UnrecognizedToken` is the generic template; default args
+/// keep the payload empty.
+#[inline]
+fn stub_message() -> Message {
+    Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
+}
+
+/// Test-fixture `Citation` stub mirroring the helpers in
+/// `engine.rs::tests` and `output.rs::tests`. Uses
+/// `AuthoritativeSource::EngineInternal` (non-CAPCO sentinel) so
+/// citation-lint skips the entry.
+#[inline]
+fn stub_citation() -> Citation {
+    Citation::new(
+        AuthoritativeSource::EngineInternal,
+        SectionRef::new(SectionLetter::A),
+        core::num::NonZeroU16::new(1).unwrap(),
+    )
+}
 
 impl Rule<CapcoScheme> for AlwaysFiresRule {
     fn id(&self) -> RuleId {
@@ -85,8 +110,8 @@ impl Rule<CapcoScheme> for AlwaysFiresRule {
             self.id(),
             self.default_severity(),
             marque_scheme::Span::new(0, 1),
-            ALWAYS_FIRES_MESSAGE,
-            "test-citation",
+            stub_message(),
+            stub_citation(),
             None,
         )]
     }

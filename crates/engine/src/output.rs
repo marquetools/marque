@@ -201,8 +201,32 @@ pub struct FixResult {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_rules::{Diagnostic, RuleId, Severity};
+    use marque_rules::{
+        AuthoritativeSource, Citation, Diagnostic, Message, MessageArgs, MessageTemplate, RuleId,
+        SectionLetter, SectionRef, Severity,
+    };
     use marque_scheme::Span;
+
+    /// Test-fixture `Message` stub mirroring the helper in
+    /// `engine.rs::tests`. Used by `LintResult` shape tests that do
+    /// not exercise message content.
+    #[inline]
+    fn stub_message() -> Message {
+        Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default())
+    }
+
+    /// Test-fixture `Citation` stub mirroring the helper in
+    /// `engine.rs::tests`. Uses `AuthoritativeSource::EngineInternal`
+    /// (non-CAPCO sentinel per PM-C-4) so citation-lint skips this
+    /// entry — these stubs are test fixtures, not real CAPCO citations.
+    #[inline]
+    fn stub_citation() -> Citation {
+        Citation::new(
+            AuthoritativeSource::EngineInternal,
+            SectionRef::new(SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        )
+    }
 
     #[test]
     fn is_clean_returns_true_when_no_diagnostics() {
@@ -220,8 +244,8 @@ mod tests {
                 RuleId::new("E001"),
                 Severity::Error,
                 Span::new(0, 0),
-                "test",
-                "test",
+                stub_message(),
+                stub_citation(),
                 None,
             )],
             ..Default::default()
@@ -246,32 +270,32 @@ mod tests {
                     RuleId::new("W034"),
                     Severity::Info,
                     Span::new(0, 0),
-                    "info one",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
                 Diagnostic::new(
                     RuleId::new("W034"),
                     Severity::Info,
                     Span::new(0, 0),
-                    "info two",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
                 Diagnostic::new(
                     RuleId::new("W003"),
                     Severity::Warn,
                     Span::new(0, 0),
-                    "warn",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
                 Diagnostic::new(
                     RuleId::new("E001"),
                     Severity::Error,
                     Span::new(0, 0),
-                    "err",
-                    "test",
+                    stub_message(),
+                    stub_citation(),
                     None,
                 ),
             ],
