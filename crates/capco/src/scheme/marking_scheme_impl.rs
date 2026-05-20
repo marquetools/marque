@@ -142,14 +142,9 @@ impl MarkingScheme for CapcoScheme {
     /// E018/E019 catalog entries are added back with corrected
     /// predicates. Categories not listed (none today) likewise fall
     /// through.
-    /// Resolve a [`TokenRef`] against a `CapcoMarking`'s concrete
-    /// storage. Drives the dyadic-variant arms of
-    /// [`marque_scheme::constraint::evaluate`] when callers go through
-    /// the trait path; the free-function `satisfies_attrs` below is
-    /// the authoritative implementation.
     ///
-    /// See `satisfies_attrs` for the full sentinel-to-predicate
-    /// table.
+    /// The free-function `satisfies_attrs` below is the authoritative
+    /// implementation; this trait method is a thin forwarder.
     fn satisfies(&self, marking: &Self::Marking, token_ref: &TokenRef) -> bool {
         satisfies_attrs(&marking.0, token_ref)
     }
@@ -488,136 +483,124 @@ impl MarkingScheme for CapcoScheme {
         capco_token_category(id)
     }
 
-    /// CAPCO implicit-fact propagation catalog (closure operator).
+    /// Residual fn-pointer closure-rule catalog (PR-D — issue #371).
     ///
-    /// Returns the static catalog of [`ClosureRule`] rows. The catalog
-    /// contains a single Trio 1 CAVEATED row (covering every caveat
-    /// marking whose default release posture is "no foreign disclosure"
-    /// absent an explicit FD&R decision) and one Trio 3 NATO
-    /// `REL TO USA, NATO` row:
+    /// Post-PR-D of the FactBitmask refactor, CAPCO's closure operator
+    /// executes as a bitwise Kleene fixpoint over
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) — a 10-row
+    /// `(trigger_mask, suppressor_mask, cone_mask)` catalog over a
+    /// `u128` atom bitmask. The fn-pointer slice this trait method
+    /// returns is the **residual** catalog: rows whose cone cannot be
+    /// expressed as a static closed-vocab bit and therefore retain
+    /// fn-pointer form. Today that is exactly one row:
     ///
-    /// | Rule key                                            | Triggers                                                                 |
-    /// |-----------------------------------------------------|--------------------------------------------------------------------------|
-    /// | `capco/noforn-if-caveated`                          | SAR · RD / FRD / TFNI · UCNI (DOE/DOD) · FGI · ORCON / ORCON-USGOV · RSEN / IMCON / DSEN · LIMDIS / LES / NNPI / SBU / SSI |
-    /// | `capco/rel-to-usa-nato-if-nato-classification`      | bare NATO classification                                                 |
+    /// | Rule key                                            | Why fn-pointer                                                                                                       |
+    /// |-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+    /// | `capco/rel-to-usa-nato-if-nato-classification`      | Open-vocab `cone_derived` injects `CountryCode::NATO`, which has no closed-vocab `TokenId`. Bitmask cannot represent it. |
     ///
-    /// The CAVEATED row is the algebraic union of seven previously
-    /// separate Trio 1 rows (one per source §-citation). All shared the
-    /// same suppressor (`FDR_DOMINATORS`), the same cone (`{NOFORN}`),
-    /// and the same default severity (`Severity::Info`); per D18
-    /// rationale 2 the rows are interchangeable with a single n-ary
-    /// trigger. The universal label cites CAPCO-2016 §B.3 Table 2 p21
-    /// (rooted in ICD 403); per-token Section H subsection authorities live in the row
-    /// doc-comment's per-trigger authority table at
-    /// `crates/capco/src/scheme/closure.rs`.
+    /// The static `cone` half of this row (`TOK_USA`) IS in the
+    /// bitmask (`closure_table::CONE_REL_TO_USA`); only the open-vocab
+    /// NATO leg rides this fn-pointer surface, as a single post-Kleene
+    /// tail invoked from [`Self::closure`] when the bitmask Row 7 has
+    /// fired (i.e., the `REL_TO_USA` cone bit appears in the
+    /// closed_bits delta).
     ///
-    /// Every row is suppressed by `FDR_DOMINATORS` (any present
-    /// FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES, DISPLAY ONLY).
-    /// All rows ship at [`Severity::Info`] per `decisions.md` D19 B
-    /// (closure firings are silent lattice-layer fact propagation,
-    /// not byte-level fixes); user-visible byte diffs ride on
-    /// independent `Severity::Suggest` text-layer rules (e.g., S007
-    /// for the NATO row — see `decisions.md` D20).
+    /// All other pre-PR-D rows — Trio 1 CAVEATED (the 20-trigger
+    /// algebraic union covering SAR · RD/FRD/TFNI · UCNI · FGI · ORCON
+    /// / ORCON-USGOV · RSEN / IMCON / PROPIN / DSEN / FISA / RAWFISA ·
+    /// LIMDIS / LES / NNPI / SBU / SSI), the per-marking SCI
+    /// implications (HCS-O / HCS-P[sub] ⇒ {NOFORN, ORCON}; SI-G ⇒
+    /// {ORCON} with NOFORN supplied transitively via Trio 1;
+    /// TK-{BLFH, IDIT, KAND} ⇒ {NOFORN}), and the two Trio 2 RELIDO
+    /// rows — live exclusively in [`CLOSURE_TABLE`] now. Their
+    /// §-citations are preserved verbatim on the bitmask row `label`
+    /// fields and the per-row doc-comments in
+    /// [`super::closure_table`](super::closure_table).
     ///
-    /// The Trio 2 (implicit RELIDO) and per-marking SCI implication
-    /// rows (HCS-O/P[sub] ⇒ {NOFORN, ORCON}; TK-BLFH/KAND/IDIT ⇒
-    /// {NOFORN}; SI-G ⇒ {ORCON}) are intentionally absent — they
-    /// require per-compartment sentinels (`TOK_HCS_O`, `TOK_SI_G`, etc.)
-    /// that do not yet exist; the alternative proxy triggers via
-    /// `AnyInCategory(CAT_SCI)` / `AnyInCategory(CAT_CLASSIFICATION)`
-    /// would over-fire on any SCI marking, not just the specific
-    /// compartments.
+    /// Every surviving row is suppressed by `FDR_DOMINATORS` (any
+    /// present FD&R-axis fact: NOFORN, RELIDO, REL TO, EYES,
+    /// DISPLAY ONLY) — see [`super::closure::FDR_DOMINATORS`] and
+    /// its bitmask projection
+    /// [`crate::fact_bitmask::MASK_FDR_DOMINATORS`]. All rows ship at
+    /// [`Severity::Info`] per `decisions.md` D19 B (closure firings
+    /// are silent lattice-layer fact propagation, not byte-level
+    /// fixes); user-visible byte diffs ride on independent
+    /// `Severity::Suggest` text-layer rules (e.g., S007 for the NATO
+    /// row — see `decisions.md` D20).
     ///
-    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is a
-    /// PUBLIC catalog surface — visible to tooling, scheme-exploration
-    /// UIs, and docs generators.
-    ///
-    /// # Engine wiring
-    ///
-    /// `CapcoScheme::closure()` (below) makes the catalog data reachable
-    /// through the operator. Wiring `Engine::lint` to invoke
-    /// `scheme.closure()` on the hot path before banner-validation runs
-    /// is a separate change; today the operator runs through direct
-    /// `scheme.closure(marking)` calls (tests + `scheme.project(Scope::Page,
-    /// ...)` for callers that opt in).
+    /// Per `specs/006-engine-rule-refactor/decisions.md` D18, this is
+    /// a PUBLIC catalog surface — visible to tooling,
+    /// scheme-exploration UIs, and docs generators. Consumers that
+    /// want a complete inventory of closure rules MUST also walk
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE).
     fn closure_rules(&self) -> &[marque_scheme::ClosureRule<CapcoScheme>] {
         CAPCO_CLOSURE_RULES
     }
 
-    /// CAPCO closure operator — Kleene fixpoint over the two closure
-    /// rows in [`CAPCO_CLOSURE_RULES`] (Trio 1 CAVEATED + Trio 3
-    /// NATO REL TO).
+    /// CAPCO closure operator — bitwise Kleene fixpoint over
+    /// [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE) +
+    /// post-Kleene Row 7 NATO open-vocab tail.
     ///
-    /// Implements the §4.7 implicit-fact propagation per
-    /// `docs/plans/2026-05-01-lattice-design.md` §3 (e). Walks the
-    /// catalog repeatedly; on each pass, every rule that satisfies
-    /// `should_fire` contributes both its static `cone` facts (routed
-    /// via the `apply_closure_fact` helper in `actions::intent`) and
-    /// its `cone_derived` facts (the D21 open-vocab branch — same
-    /// routing). Convergence is detected by OR-ing the per-fact
-    /// "mutated?" bool returned by `apply_closure_fact` across every
-    /// rule in the iteration; when an entire pass produces no
-    /// mutation, the fixed point has been reached. Monotone catalogs
-    /// reach the fixed point in at most `|fact_universe|` iterations,
-    /// well within [`MAX_CLOSURE_ITERATIONS`]'s `N=16` safety cap.
+    /// Implements the section 4.7 implicit-fact propagation per
+    /// `docs/plans/2026-05-01-lattice-design.md` section 3 (e).
     ///
-    /// **Termination signal (HOT-2, issue #594):** the original
-    /// implementation cloned the marking at the top of every
-    /// iteration and compared it byte-by-byte at the bottom — a
-    /// ~13% inclusive cost on the `lint_10kb` release flamegraph.
-    /// `apply_closure_fact` already knows whether its single fact
-    /// mutated the marking (`Ok(()) ⇔ mutated`, every other arm is
-    /// a no-op), so the walker now OR-s those signals instead of
-    /// re-deriving the same answer from a deep structural compare.
-    /// The `#[cfg(debug_assertions)]` cross-check below holds the
-    /// equivalence honest: in debug builds, a per-iteration snapshot
-    /// is still taken and `debug_assert_eq!`-d against `working`
-    /// when `changed == false`, so any future mutation path that
-    /// forgets to thread the bool through is caught at the next
-    /// `cargo test` run.
+    /// # Algorithm (post-PR-D, issue #371)
+    ///
+    /// 1. **Project** the input `CanonicalAttrs` to a `u128`
+    ///    `FactBitmask` via [`derive_bits`]. Closed-vocab atoms (SAR
+    ///    presence, AEA family bits, FGI marker, IC/non-IC dissem
+    ///    tokens, SCI compartments, NATO classification, US collateral
+    ///    classification, REL_TO_USA / REL_TO_PRESENT sentinels)
+    ///    project to one bit each; open-vocab axes are NOT in the
+    ///    bitmask.
+    /// 2. **HOT-1 short-circuit**: if no trigger atom is set, return
+    ///    the input verbatim. `close` is extensive (bits are only
+    ///    added) — no row can fire across any iteration if no trigger
+    ///    is set at iteration 0.
+    /// 3. **Kleene fixpoint**: [`close`] runs a bitwise loop over
+    ///    [`CLOSURE_TABLE`] — for each row, if
+    ///    `(next & trigger_mask) != 0 && (next & suppressor_mask) == 0`,
+    ///    OR `cone_mask` into `next`. Iterate until stable or panic at
+    ///    [`MAX_CLOSURE_ITERATIONS`] (= 16). The CAPCO catalog's
+    ///    longest causal chain is depth 2; typical inputs converge in
+    ///    1–3 iterations.
+    /// 4. **Write-back**: [`apply_closed_bits_to`] materializes every
+    ///    new bit in `closed_bits & !input_bits` to the corresponding
+    ///    `CanonicalAttrs` axis (`dissem_us` push, `rel_to` insert,
+    ///    etc.).
+    /// 5. **Row 7 open-vocab tail**: `CountryCode::NATO` has no
+    ///    closed-vocab `TokenId`, so it cannot ride the bitmask. If
+    ///    the bitmask Row 7 fired (observable as
+    ///    `(closed_bits & !input_bits) & CONE_REL_TO_USA != 0`), call
+    ///    [`super::closure::CLOSURE_REL_TO_USA_NATO`]'s `cone_derived`
+    ///    once and route the resulting `FactRef::OpenVocab(NATO)`
+    ///    through `apply_closure_fact`.
     ///
     /// # Invariants preserved
     ///
-    /// 1. **Extensive**: `closure(m) ⊒ m` — only facts are added; the
-    ///    underlying `apply_fact_add` path rejects removals.
+    /// 1. **Extensive**: `closure(m) ⊒ m` — `close` only OR-s cone
+    ///    bits; `apply_closed_bits_to` is a pure-additive projector.
     /// 2. **Idempotent**: `closure(closure(m)) == closure(m)` — the
-    ///    change-detection early-return guarantees stable fixpoints:
-    ///    when no cone fact in a full iteration produces a mutation,
-    ///    every subsequent iteration would do the same, so the
-    ///    current `working` is the fixed point.
-    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` — relies
-    ///    on every catalog row's suppressors being disjoint from every
-    ///    cone (the §4.7.3 table-design property). Catalog regressions
-    ///    are pinned by
-    ///    `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`.
-    ///
-    /// # Routing
-    ///
-    /// Each cone fact (`TokenRef::Token(id)` from the static `cone`,
-    /// or `FactRef` from `cone_derived`) is routed through
-    /// [`CapcoScheme::category_of`] to its host category and applied
-    /// via the same per-axis [`apply_fact_add`] helper that
-    /// [`MarkingScheme::apply_intent`]'s `FactAdd` path uses. Per-fact
-    /// `IntentInapplicable` (already-present, idempotence) and
-    /// `UnknownToken` (sentinel that doesn't address a category — e.g.,
-    /// `TokenRef::AnyInCategory(_)` entries in `cone`) are silent
-    /// no-ops at the closure layer: the operator is monotone fact
-    /// propagation, so a fact the scheme can't route is, by definition,
-    /// not in the closure.
+    ///    bitmask Kleene loop runs to fixpoint, and `apply_closed_bits_to`
+    ///    is a no-op for bits already present in the input.
+    /// 3. **Monotone**: `m1 ⊑ m2 ⟹ closure(m1) ⊑ closure(m2)` — every
+    ///    catalog row's suppressors are disjoint from every cone (the
+    ///    section 4.7.3 table-design property). Bitmask regressions
+    ///    are pinned by `proptest_closure_table.rs` (P1–P4 algebraic
+    ///    properties) and the
+    ///    [`CLOSURE_TABLE`](super::closure_table::CLOSURE_TABLE)
+    ///    positional pin in `post_4b_lattice_inventory_pin.rs`.
     ///
     /// # Non-convergence
     ///
     /// Per the [`MarkingScheme::closure`] trait contract, exceeding
     /// `MAX_CLOSURE_ITERATIONS` panics. A monotone catalog cannot
-    /// reach this branch (the fact universe is bounded by the union of
-    /// every category's value set); non-convergence here indicates a
-    /// catalog regression — a non-monotone rule whose suppressor
-    /// depends on a fact in another rule's cone. The companion
-    /// proptest at
-    /// `crates/scheme/tests/proptest_closure_rejects_non_monotone.rs`
-    /// pins the monotonicity property; this panic is the runtime
-    /// guard against unbounded-growth catalog defects that slip past
-    /// proptest.
+    /// reach this branch (the fact universe is bounded by the union
+    /// of every category's value set); non-convergence here indicates
+    /// a catalog regression — a non-monotone row whose suppressor
+    /// depends on a bit in another row's cone. [`close`] panics
+    /// unconditionally on non-convergence (release builds included)
+    /// per the documented contract.
     fn closure(&self, marking: Self::Marking) -> Self::Marking {
         // Bitmask Kleene fast path (issue #371, PR-D).
         //
@@ -659,7 +642,7 @@ impl MarkingScheme for CapcoScheme {
 
         use crate::fact_bitmask::{apply_closed_bits_to, derive_bits};
         use crate::scheme::closure::CLOSURE_REL_TO_USA_NATO;
-        use crate::scheme::closure_table::{ALL_TRIGGER_MASK, close};
+        use crate::scheme::closure_table::{ALL_TRIGGER_MASK, CONE_REL_TO_USA, close};
 
         let input_bits = derive_bits(&marking.0);
 
@@ -714,9 +697,7 @@ impl MarkingScheme for CapcoScheme {
         // dominator suppresses Row 7 in the bitmask Kleene → no cone
         // delta) is correctly distinguished from one where Row 7's
         // cone ran and added USA.
-        let row7_fired = (closed_bits.bits() & !input_bits.bits())
-            & (1u128 << crate::fact_bitmask::fact_bit::REL_TO_USA)
-            != 0;
+        let row7_fired = (closed_bits.bits() & !input_bits.bits()) & CONE_REL_TO_USA != 0;
 
         let mut working = marking;
         apply_closed_bits_to(&mut working.0, closed_bits, input_bits);

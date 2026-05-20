@@ -193,9 +193,14 @@ pub(crate) static FDR_DOMINATORS: &[TokenRef] = &[
 // | `TOK_TK_IDIT`               | §H.4 p91                   |
 // | `TOK_TK_KAND`               | §H.4 p95                   |
 //
-// `pub(crate)` for symmetry with `FDR_DOMINATORS` and so future
-// runtime-pin modules can walk the slice as a source-of-truth.
-#[allow(dead_code)] // post-PR-D test fixture only; see module doc-header.
+// `pub(crate)` so the in-file `phase2_closure_pin` test module — the
+// sole consumer post-PR-D — can iterate the slice as the TokenRef
+// source-of-truth that backstops the bitmask `MASK_FDR_OR_RELIDO_INCOMPAT`
+// projection.  `#[cfg(test)]` (rather than `#[allow(dead_code)]`)
+// enforces the test-only contract: any future production caller is a
+// compile error in a `cfg(not(test))` build, not a silently-pinged
+// dead-code warning.
+#[cfg(test)]
 pub(crate) static FDR_OR_RELIDO_INCOMPAT: &[TokenRef] = &[
     // FD&R dominators (NOFORN ⊐ RELIDO per §H.8 p145; REL TO / RELIDO
     // / DISPLAY ONLY / EYES are explicit FD&R decisions). Listed
@@ -425,7 +430,13 @@ pub(super) const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule
 // axis) which injects NOFORN and supersedes the RELIDO via the
 // §H.8 p145 overlay. Pinned by
 // `phase3_closure_pin::us_class_conflict_variant_pin`.
-#[allow(dead_code)] // post-PR-D test fixture only; see module doc-header.
+// `#[cfg(test)]` enforces the test-only contract: the
+// `phase3_closure_pin` test module — the sole consumer post-PR-D —
+// iterates this slice as the TokenRef source-of-truth that backstops
+// the bitmask `MASK_RELIDO_US_CLASS_SUPPRESSORS` projection.  Any
+// future production caller is a compile error in a `cfg(not(test))`
+// build, not a silently-pinged dead-code warning.
+#[cfg(test)]
 const RELIDO_US_CLASS_SUPPRESSORS: &[TokenRef] = &[
     // FD&R dominators — every entry supersedes RELIDO via the
     // §D.2 Table 3 pp.28-30 / §H.8 p145 precedence overlay,
