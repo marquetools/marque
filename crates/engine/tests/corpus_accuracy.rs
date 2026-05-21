@@ -597,7 +597,27 @@ struct ExpectedRuleCount {
 /// New entries here should only land with an open-issue or
 /// permanent-expected-firing reason; the corresponding pin must
 /// retire when the underlying defect closes.
-const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[];
+const EXPECTED_DOCUMENT_DIAGNOSTICS: &[(&str, &[ExpectedRuleCount])] = &[
+    // #388 (2026-05-21): W005 fires correctly on the three JOINT
+    // portion banners `(//JOINT TS AUS CAN ITA USA//REL TO USA, AUS,
+    // CAN, ITA, EU)` — EU is in REL TO but NOT in the JOINT
+    // participant list (AUS, CAN, ITA, USA). CAPCO-2016 §H.3 p57
+    // "[LIST]" superset semantics permit this expansion (the EU is
+    // an authorized release destination beyond the JOINT co-owners),
+    // so W005 is Warn-only and the firing is by design. `issue = 0`
+    // marks this as a correct firing per the doc-comment convention.
+    (
+        "cia-reports_prex-318se-2",
+        &[ExpectedRuleCount {
+            rule: "W005",
+            count: 3,
+            issue: 0,
+            reason: "JOINT portions list AUS CAN ITA USA but REL TO expands to include EU \
+                     (legitimate §H.3 p57 [LIST] superset expansion); W005 correctly surfaces \
+                     for classifier review without auto-fix",
+        }],
+    ),
+];
 
 /// Look up the pinned diagnostics for a fixture stem.
 ///
