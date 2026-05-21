@@ -33,6 +33,12 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+# PR 10.A.2 T103: BLAKE3 defense-in-depth pin verification at test
+# time. `build_input_pin_test.rs` re-hashes `docs/CAPCO-2016.md` and
+# compares to `build_inputs::CAPCO_2016_MD_BLAKE3`. Protects against
+# `--offline` runs or cached `OUT_DIR` skipping the build.rs digest
+# recheck.
+blake3 = { workspace = true }
 marque-config = { workspace = true }
 marque-core = { workspace = true }
 # path-only (no version) so `cargo publish` strips these dev-deps from the
@@ -60,6 +66,13 @@ static_assertions = { workspace = true }
 # `corpus/priors.json`. `serde_json` is a build-dep only — no runtime
 # JSON parsing on the decoder hot path (Constitution II, SC-008).
 serde_json = { workspace = true }
+# BLAKE3 verification of `docs/CAPCO-2016.md` at compile time per
+# Constitution VIII / Authoritative Source Fidelity (PR 10.A.2).
+# Build-only on the build.rs side; the runtime hash check at
+# `tests/build_input_pin_test.rs` declares its own `dev-dependencies`
+# entry below so both surfaces resolve their dependency
+# independently.
+blake3 = { workspace = true }
 
 [features]
 # Phase-C–E feature gates.
