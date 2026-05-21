@@ -897,8 +897,7 @@ OVERALL_STATUS=0
 check_one_bench "lint_10kb" "lint_latency" || OVERALL_STATUS=1
 check_one_bench "decoder_10kb_one_mangled_region" "lint_latency" || OVERALL_STATUS=1
 check_linear_scaling || OVERALL_STATUS=1
-# fix_throughput disabled while we work out the scaling bug
-# check_fix_throughput || OVERALL_STATUS=1
+check_fix_throughput || OVERALL_STATUS=1
 check_deadline_overhead || OVERALL_STATUS=1
 report_fix_latency
 # CO-1 (PR #621): baselines captured for both fix_10kb paths; gates now active.
