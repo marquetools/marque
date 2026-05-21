@@ -414,6 +414,16 @@ jobs:
   # passage-text fidelity). From this commit forward the job is
   # hard-blocking on the structural lint: any new citation defect
   # fails CI immediately.
+  #
+  # PR 10.A.2 T102: this job ships pinned as the hard structural
+  # gate. The complementary semantic gate is the F.1 corpus-
+  # fidelity test at `crates/capco/tests/citation_fidelity.rs`
+  # (declared ⊆ harvested ∪ whitelist ⊆ declared), which runs
+  # under the regular `cargo test --workspace` invocation in the
+  # `test` job below — no separate workflow step needed. The
+  # BLAKE3 pin on `docs/CAPCO-2016.md` (PR 10.A.2 T103) runs at
+  # `build.rs` evaluation under any `cargo check` / `cargo build`
+  # invocation, also without a dedicated workflow step.
   citation-lint:
     name: Citation lint (FR-018)
     needs: check
