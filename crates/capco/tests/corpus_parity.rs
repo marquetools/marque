@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        24,
+        25,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -301,6 +301,10 @@ fn rule_count_reflects_registration_changes() {
          CAPCO-2016 §H.8 p154 + §D.2 Table 3 rule 17; \
          Severity::Suggest at confidence 0.85 matching S007's \
          text-layer pattern. Net delta: +1. Final: 24. \
+         Issue #261 adds `FgiExplicitWithTrigraphRule` (E071) — \
+         FGI with explicit trigraph when concealment intended or \
+         acknowledgment contradicted per CAPCO-2016 §H.7 p124; \
+         four-case behavioral spec. Net delta: +1. Final: 25. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."
