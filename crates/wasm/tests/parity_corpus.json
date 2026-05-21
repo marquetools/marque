@@ -122,6 +122,30 @@
       "expected_lint": "{\"rule\":\"E012\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p55\",\"fix\":null}\n"
     },
     {
+      "name": "e066_legacy_atomal_banner.txt",
+      "category": "invalid",
+      "input": "//COSMIC TOP SECRET ATOMAL\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":2,\"end\":26},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p122\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":2,\"end\":26},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e066_legacy_atomal_portion.txt",
+      "category": "invalid",
+      "input": "(//CTSA)\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":7},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p122\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":7},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"CTS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":7},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e066_legacy_balk_portion.txt",
+      "category": "invalid",
+      "input": "(//CTS-BALK)\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":11},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":11},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"CTS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":11},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "e066_legacy_bohemia_portion.txt",
+      "category": "invalid",
+      "input": "(//CTS-B)\n",
+      "expected_lint": "{\"rule\":\"E066\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":8},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"Recanonicalize\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":8},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"CTS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":8},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
       "name": "e070_frd_tfni_precedence.txt",
       "category": "invalid",
       "input": "(S//FRD/TFNI//NOFORN)\n",
