@@ -301,11 +301,11 @@ keyed by `TokenId` rather than baked into the `FormSet` const.
 
 ### PR 10 — F.1 corpus gate maturation
 
-- [ ] T099 [US5] Extend F.1 corpus fixture coverage at `crates/capco/tests/citation_fidelity.rs` to require ≥1 fixture per cited authority (not just per existing rule); audit every `Constraint`/`PageRewrite`/`Rule` citation (FR-019, SC-006; PR-10)
-- [ ] T100 [US5] Add corpus fixtures for cited authorities lacking one (the set is unknown until Phase 7 audit runs; expect a long tail) (FR-019; PR-10)
-- [ ] T101 [US5] Land 8C vendored-source registry declarative — formalize the `AuthoritativeSource::Capco2016` mapping table; pin `crates/capco/docs/CAPCO-2016.md` BLAKE3 digest at build time; CI fails on digest mismatch (FR-018; PR-10)
-- [ ] T102 [P] [US5] Verify citation-lint clean across the post-refactor codebase (every PR-introduced citation passes); `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 (the crate is out-of-workspace per Constitution III; `-p citation-lint` does NOT work from the repo root) (SC-005; PR-10)
-- [ ] T103 [P] [US5] Verify F.1 100% coverage; document any remaining gaps in `docs/refactor-006/citation-coverage-report.md` (SC-006; PR-10)
+- [X] T099 [US5] Extend F.1 corpus fixture coverage at `crates/capco/tests/citation_fidelity.rs` to require ≥1 fixture per cited authority (not just per existing rule); audit every `Constraint`/`PageRewrite`/`Rule` citation (FR-019, SC-006; PR-10)
+- [X] T100 [US5] Add corpus fixtures for cited authorities lacking one (the set is unknown until Phase 7 audit runs; expect a long tail) (FR-019; PR-10)
+- [X] T101 [US5] Land 8C vendored-source registry declarative — formalize the `AuthoritativeSource::Capco2016` mapping table; pin `crates/capco/docs/CAPCO-2016.md` BLAKE3 digest at build time; CI fails on digest mismatch (FR-018; PR-10)
+- [X] T102 [P] [US5] Verify citation-lint clean across the post-refactor codebase (every PR-introduced citation passes); `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 (the crate is out-of-workspace per Constitution III; `-p citation-lint` does NOT work from the repo root) (SC-005; PR-10)
+- [X] T103 [P] [US5] Verify F.1 100% coverage; document any remaining gaps in `docs/refactor-006/citation-coverage-report.md` (SC-006; PR-10)
 
 **Checkpoint**: 100% citation-lint pass, 100% F.1 coverage; vendored-source pinning enforced.
 
