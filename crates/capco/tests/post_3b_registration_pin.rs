@@ -36,7 +36,7 @@
 //! carry `Diagnostic.rule = "E068"` / `"E069"` for audit-stream
 //! traceability without inflating the registered count.
 //!
-//! Asserts the **exact set** of 26 registered `Rule::id()` values.
+//! Asserts the **exact set** of 28 registered `Rule::id()` values.
 //!
 //! # Why a separate test from the count pin
 //!
@@ -67,9 +67,7 @@ use marque_capco::CapcoRuleSet;
 use marque_rules::RuleSet;
 use std::collections::BTreeSet;
 
-/// The closed set of 38 registered `Rule::id()` strings post-PR-closing-#470
-/// (and unchanged under PR 5, which adds E068 + E069 as per-row IDs of the
-/// existing `BannerMatchesProjectedRule` walker — not new `Rule` impls).
+/// The closed set of 28 registered `Rule::id()` strings post-issue-#251.
 ///
 /// Derivation: PR 3b umbrella closed at 47. PR 3c.B Commit 6 retired 13
 /// form rules + the E060 walker (47 → 33). PR 3c.B Commit 7.3 retires
@@ -111,7 +109,10 @@ use std::collections::BTreeSet;
 /// contradicted per §H.7 p124 (24 → 25). Issue #250 adds
 /// `PreferTetragraphCollapseRule` (S009) — suggest replacing explicit
 /// member trigraph lists with a compact tetragraph when all members are
-/// present per §H.8 p150 (25 → 26).
+/// present per §H.8 p150 (25 → 26). Issue #251 adds
+/// `CollapseUniformRelPortionsRule` (S010) and
+/// `BareRelPortionDivergenceRule` (E072) — REL TO / bare-REL portion
+/// consistency rules per §H.8 p150-151 (26 → 28).
 const EXPECTED_RULE_IDS: &[&str] = &[
     // PR #578 retires the following 15 IDs as registered `Rule` impls
     // (they remain emittable via the engine's constraint-catalog bridge,
@@ -152,6 +153,12 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // tetragraph vs. explicit-member form is an org style choice.
     // Authority: CAPCO-2016 §H.8 p150.
     "S009",
+    // Issue #251: suggest bare REL when all portions carry the same
+    // REL TO list as the banner. Default Off. Authority: §H.8 p150.
+    "S010",
+    // Issue #251: warn when bare-REL and explicit-REL-TO portions with
+    // a divergent list coexist. Default Warn. Authority: §H.8 p150-151.
+    "E072",
     // W002 retired in the PR closing #470 — CAPCO §H.7 p123
     // authorized the shape the rule was warning on. See
     // `crates/capco/src/rules.rs` module header for the rationale.
@@ -169,14 +176,14 @@ const EXPECTED_RULE_IDS: &[&str] = &[
 ];
 
 #[test]
-fn post_pr_578_registers_exact_26_rule_ids() {
+fn post_pr_578_registers_exact_28_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "26 unique IDs from 26
-    // registrations" from "26 unique IDs from 27 registrations
+    // assertion below cannot distinguish "28 unique IDs from 28
+    // registrations" from "28 unique IDs from 29 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
@@ -193,11 +200,11 @@ fn post_pr_578_registers_exact_26_rule_ids() {
     // `CLOSURE_RELIDO_{SCI,US_CLASS}` lattice-layer closures
     // (23 → 24). Issue #261: added E071 `FgiExplicitWithTrigraphRule`
     // (24 → 25). Issue #250: added S009 `PreferTetragraphCollapseRule`
-    // (25 → 26).
+    // (25 → 26). Issue #251: added S010 + E072 (26 → 28).
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 26,
-        "post-#250 raw rule slice length drifted from 26 \
+        raw_len, 28,
+        "post-#251 raw rule slice length drifted from 28 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -214,16 +221,16 @@ fn post_pr_578_registers_exact_26_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        26,
-        "EXPECTED_RULE_IDS does not contain 26 unique entries: {expected:?}",
+        28,
+        "EXPECTED_RULE_IDS does not contain 28 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        26,
-        "post-#250 registered rule count drifted from 26: actual={actual:?}",
+        28,
+        "post-#251 registered rule count drifted from 28: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
@@ -239,7 +246,7 @@ fn post_pr_578_registers_exact_26_rule_ids() {
         .collect();
     assert!(
         missing.is_empty() && unexpected.is_empty(),
-        "post-PR-#578 registered rule-ID set drifted. \
+        "post-issue-#251 registered rule-ID set drifted. \
          Missing (expected but not registered): {missing:?}. \
          Unexpected (registered but not expected): {unexpected:?}. \
          Bumping this test requires intentional review; do not \

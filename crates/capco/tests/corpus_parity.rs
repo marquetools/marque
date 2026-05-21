@@ -239,7 +239,7 @@ fn rule_count_reflects_registration_changes() {
     let rule_set = CapcoRuleSet::new();
     assert_eq!(
         rule_set.rules().len(),
-        26,
+        28,
         "rule count: PR 3b umbrella closed at 47. PR 3c.B Commit 6 \
          (form-bucket migration) reduced to 33. PR 3c.B Commit 7.3 \
          + 7.4 retire `DeclarativeClassFloorRule` (E058) and \
@@ -308,7 +308,11 @@ fn rule_count_reflects_registration_changes() {
          Issue #250 adds `PreferTetragraphCollapseRule` (S009) — \
          suggest replacing explicit member trigraph lists with a \
          compact tetragraph per CAPCO-2016 §H.8 p150; default Off. \
-         Net delta: +1. Final: 26. \
+         Net delta: +1. Final: 26. Issue #251 adds \
+         `CollapseUniformRelPortionsRule` (S010) + \
+         `BareRelPortionDivergenceRule` (E072) — REL TO / bare-REL \
+         consistency per CAPCO-2016 §H.8 p150-151. Net delta: +2. \
+         Final: 28. \
          See `specs/006-engine-rule-refactor/decisions/06-commit-7-subdivision.md` \
          for the architectural rationale. Adjust this assertion only \
          when rule registration actually changes."

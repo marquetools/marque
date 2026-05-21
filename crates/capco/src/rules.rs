@@ -111,6 +111,12 @@
 //!   S009 = prefer-tetragraph-collapse — suggest replacing explicit member
 //!           trigraph lists with a compact tetragraph when all members are
 //!           present (issue #250, §H.8 p150). Default: Off.
+//!   S010 = collapse-uniform-rel-portions — suggest bare REL when all
+//!           portions carry the same REL TO list as the banner
+//!           (issue #251, §H.8 p150). Default: Off.
+//!   E072 = bare-rel-portion-divergence — error when bare-REL and explicit-
+//!           REL-TO portions coexist with an inconsistent list
+//!           (issue #251, §H.8 p150-151). Default: Warn.
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use crate::scheme::CapcoScheme;
@@ -406,6 +412,16 @@ impl CapcoRuleSet {
                 // authority style choice. Enable via `[rules] S009 = "suggest"`.
                 // Authority: CAPCO-2016 §H.8 p150.
                 Box::new(PreferTetragraphCollapseRule),
+                // Issue #251: S010 collapse-uniform-rel-portions. Default Off.
+                // When all portions with explicit REL TO carry the same list
+                // as the banner, suggest the compact authorized form `REL`.
+                // Phase::PageFinalization. Authority: CAPCO-2016 §H.8 p150.
+                Box::new(CollapseUniformRelPortionsRule),
+                // Issue #251: E072 bare-rel-portion-divergence. Default Warn.
+                // When bare-REL portions and explicit-REL-TO portions with a
+                // divergent list coexist on the same page.
+                // Phase::PageFinalization. Authority: CAPCO-2016 §H.8 p150-151.
+                Box::new(BareRelPortionDivergenceRule),
                 // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
                 // collapse-to-FGI per CAPCO-2016 §H.3 p57 + §H.7 p123
                 // (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the
@@ -4491,6 +4507,231 @@ impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rule: S010 — collapse-uniform-rel-portions
+// ---------------------------------------------------------------------------
+//
+// Phase: PageFinalization. Off by default.
+//
+// CAPCO-2016 §H.8 p150: "Authorized Portion Mark (when the portion's
+// country trigraphs and/or tetragraph list is the SAME as the banner line
+// REL TO marking): REL". When ALL portions with an explicit REL TO list
+// carry the same list as the projected banner REL TO, the compact `REL`
+// form is equally valid. S010 suggests this compaction. Gate: only fires
+// when EVERY explicit-REL-TO portion matches, so the suggested
+// transformation replaces all of them uniformly.
+
+/// Confidence scalar for S010.
+const S010_SUGGEST_CONFIDENCE: f32 = 0.85;
+const S010_CITATION: Citation = capco(SectionLetter::H, 8, 150);
+
+/// Rule **S010** — `collapse-uniform-rel-portions`.
+///
+/// Off by default. Enable via `[rules] S010 = "suggest"`.
+/// Authority: CAPCO-2016 §H.8 p150.
+struct CollapseUniformRelPortionsRule;
+
+impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S010")
+    }
+    fn name(&self) -> &'static str {
+        "collapse-uniform-rel-portions"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Off
+    }
+    fn phase(&self) -> Phase {
+        Phase::PageFinalization
+    }
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        check_collapse_uniform_rel_portions(attrs, ctx)
+    }
+}
+
+fn check_collapse_uniform_rel_portions(
+    _attrs: &CanonicalAttrs,
+    ctx: &RuleContext,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    let Some(page_portions) = ctx.page_portions.as_ref() else {
+        return Vec::new();
+    };
+    let portions: &[CanonicalAttrs] = page_portions.as_ref();
+    let Some(page_mark) = ctx.page_marking.as_ref() else {
+        return Vec::new();
+    };
+    // No banner REL TO list projected — nothing to match against.
+    if page_mark.rel_to.is_empty() {
+        return Vec::new();
+    }
+    // NOFORN guard: REL TO superseded by NOFORN (mirrors S005).
+    let any_noforn = portions.iter().any(|p| {
+        p.dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+    });
+    if any_noforn {
+        return Vec::new();
+    }
+    let banner_set: std::collections::BTreeSet<&str> =
+        page_mark.rel_to.iter().map(|c| c.as_str()).collect();
+    let explicit_portions: Vec<&CanonicalAttrs> =
+        portions.iter().filter(|p| !p.rel_to.is_empty()).collect();
+    if explicit_portions.is_empty() {
+        return Vec::new();
+    }
+    // Gate: EVERY explicit-REL-TO portion must match the banner list.
+    let all_match = explicit_portions.iter().all(|p| {
+        let portion_set: std::collections::BTreeSet<&str> =
+            p.rel_to.iter().map(|c| c.as_str()).collect();
+        portion_set == banner_set
+    });
+    if !all_match {
+        return Vec::new();
+    }
+    let mut diagnostics = Vec::new();
+    for portion in explicit_portions {
+        let Some(block) = portion
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+        else {
+            continue;
+        };
+        diagnostics.push(Diagnostic::text_correction(
+            RuleId::new("S010"),
+            Severity::Suggest,
+            block.span,
+            Message::new(
+                MessageTemplate::NonCanonicalOrder,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..Default::default()
+                },
+            ),
+            S010_CITATION,
+            "REL",
+            FixSource::BuiltinRule,
+            Confidence::strict(S010_SUGGEST_CONFIDENCE),
+            None,
+        ));
+    }
+    diagnostics
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E072 — bare-rel-portion-divergence
+// ---------------------------------------------------------------------------
+//
+// Phase: PageFinalization. Warn by default.
+//
+// CAPCO-2016 §H.8 p150-151: bare `REL` in a portion means "my releasability
+// = the banner's REL TO list." When bare-REL portions and explicit-REL-TO
+// portions with a different list coexist on the same page, extraction is
+// ambiguous: bare-REL portions implicitly carry the banner list while the
+// divergent explicit portions carry a different list. E072 warns on each
+// divergent explicit portion.
+
+const E072_CITATION: Citation = capco(SectionLetter::H, 8, 151);
+
+/// Rule **E072** — `bare-rel-portion-divergence`.
+///
+/// Default severity: [`Severity::Warn`]. Authority: CAPCO-2016 §H.8 p150-151.
+struct BareRelPortionDivergenceRule;
+
+impl Rule<CapcoScheme> for BareRelPortionDivergenceRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E072")
+    }
+    fn name(&self) -> &'static str {
+        "bare-rel-portion-divergence"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    fn phase(&self) -> Phase {
+        Phase::PageFinalization
+    }
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        check_bare_rel_portion_divergence(attrs, ctx)
+    }
+}
+
+fn check_bare_rel_portion_divergence(
+    _attrs: &CanonicalAttrs,
+    ctx: &RuleContext,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    let Some(page_portions) = ctx.page_portions.as_ref() else {
+        return Vec::new();
+    };
+    let portions: &[CanonicalAttrs] = page_portions.as_ref();
+    let Some(page_mark) = ctx.page_marking.as_ref() else {
+        return Vec::new();
+    };
+    // NOFORN guard: REL TO superseded by NOFORN (mirrors S005).
+    let any_noforn = portions.iter().any(|p| {
+        p.dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+    });
+    if any_noforn {
+        return Vec::new();
+    }
+    // No projected banner REL TO — nothing to compare against.
+    if page_mark.rel_to.is_empty() {
+        return Vec::new();
+    }
+    // E072 only applies when at least one bare-REL portion exists.
+    let has_bare_rel = portions.iter().any(|p| {
+        p.rel_to.is_empty()
+            && p.dissem_iter()
+                .any(|d| matches!(d, marque_ism::DissemControl::Rel))
+    });
+    if !has_bare_rel {
+        return Vec::new();
+    }
+    let banner_set: std::collections::BTreeSet<&str> =
+        page_mark.rel_to.iter().map(|c| c.as_str()).collect();
+    let mut diagnostics = Vec::new();
+    for portion in portions {
+        if portion.rel_to.is_empty() {
+            continue;
+        }
+        let portion_set: std::collections::BTreeSet<&str> =
+            portion.rel_to.iter().map(|c| c.as_str()).collect();
+        if portion_set == banner_set {
+            continue;
+        }
+        // Portion's explicit list diverges from what bare-REL portions imply.
+        let span = portion
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+            .map(|t| t.span)
+            .unwrap_or(ctx.candidate_span);
+        diagnostics.push(Diagnostic::new(
+            RuleId::new("E072"),
+            Severity::Warn,
+            span,
+            Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..Default::default()
+                },
+            ),
+            E072_CITATION,
+            None,
+        ));
+    }
+    diagnostics
+}
+
+// ---------------------------------------------------------------------------
 /// Citation string for E035 — shared between the with-fix and no-fix
 /// emission paths so they cannot silently diverge.
 ///

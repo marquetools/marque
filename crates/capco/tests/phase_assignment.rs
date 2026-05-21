@@ -154,7 +154,7 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // Default Off — tetragraph vs. explicit-member form is an org style
     // choice. Authority: CAPCO-2016 §H.8 p150.
     ("S009", Phase::WholeMarking),
-    // ----- Phase::PageFinalization (2 rules, issues #461 + #488) ----
+    // ----- Phase::PageFinalization (4 rules, issues #461 + #488 + #251) ----
     // PR #488 (issue #488): S005 rel-to-opaque-uncertain-reduction
     // migrated from `Phase::WholeMarking` (Banner/CAB-gated firing)
     // to `Phase::PageFinalization`. Same dispatch shape as W004 —
@@ -186,6 +186,21 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // bullets) + §H.7 p123 (FGI grammar). Re-verified 2026-05-16
     // against `crates/capco/docs/CAPCO-2016.md`.
     ("W004", Phase::PageFinalization),
+    // Issue #251: S010 collapse-uniform-rel-portions. Phase::PageFinalization
+    // because the rule reads `ctx.page_portions` to compare each portion's
+    // explicit REL TO list against the projected page-level banner list —
+    // the cross-portion comparison requires a page-level snapshot, not
+    // per-marking dispatch. Default Off — compact `REL` vs. explicit
+    // `REL TO <list>` is a style choice when all portions agree.
+    // Authority: CAPCO-2016 §H.8 p150.
+    ("S010", Phase::PageFinalization),
+    // Issue #251: E072 bare-rel-portion-divergence. Phase::PageFinalization
+    // because detecting the coexistence of bare-REL portions and explicit
+    // REL TO portions with a divergent list requires a page-level snapshot
+    // of all portions — per-marking dispatch cannot observe the cross-
+    // portion relationship. Default Warn.
+    // Authority: CAPCO-2016 §H.8 p150-151.
+    ("E072", Phase::PageFinalization),
 ];
 
 #[test]
