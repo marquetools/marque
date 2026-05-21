@@ -613,6 +613,13 @@ impl CapcoScheme {
             ("E036", "joint-conflicts-hcs"),
             ("E021", "rd-frd-requires-noforn"),
             ("E024", "rd-precedence"),
+            // #661 — E070 now emits user-visible diagnostics (mirror of
+            // E024; FRD>TFNI leg of the §H.6 p120 precedence rule).
+            // Listed here so `.marque.toml [rules] E070 = "off"` (and
+            // the descriptive `frd-tfni-precedence` alias) resolve
+            // through `canonicalize_rule_overrides` without an
+            // `UnknownRuleOverride` failure.
+            ("E070", "frd-tfni-precedence"),
             ("E037", "nodis-conflicts-exdis"),
             ("E038", "nodis-or-exdis-requires-noforn"),
             ("E053", "noforn-conflicts-rel-to"),

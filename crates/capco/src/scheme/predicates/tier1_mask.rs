@@ -62,7 +62,7 @@ use marque_scheme::{ConstraintViolation, SectionLetter, Severity, TokenRef, capc
 
 use crate::fact_bitmask::fact_bit;
 
-use super::super::{CAT_AEA, TOK_EXDIS, TOK_NODIS};
+use super::super::{CAT_AEA, TOK_EXDIS, TOK_NODIS, TOK_TFNI};
 use super::spans::token_span_attrs;
 
 // ---------------------------------------------------------------------------
@@ -208,16 +208,36 @@ pub(crate) fn e038_dos_dissem_requires_noforn(
 /// E070 — FRD takes precedence over TFNI. CAPCO-2016 §H.6 p120.
 ///
 /// Mirror of [`e024_rd_precedence`] for the FRD-side leg per #559
-/// close-out (PM decision 2026-05-19). Returns
-/// `span: None, severity: None` to match the dyadic-helper shape —
-/// end-user-visible diagnostic emission lands in the broader
-/// engine-bridge generalization tracked at issue #661 (filed
-/// during PR 10.A.2 reviewer fix-pass; supersedes the earlier
-/// closed-and-unrelated #578 pointer).
+/// close-out (PM decision 2026-05-19). Issue #661 wired `span` and
+/// `severity` through so the predicate's firing surfaces as a user-
+/// visible `Diagnostic` — the original `span: None, severity: None`
+/// shape was structurally suppressed by
+/// `bridge_constraint_diagnostic` (`crates/engine/src/engine.rs:1640-1663`),
+/// which requires both fields `Some` before producing a `Diagnostic`
+/// (advisory violations log via `tracing::trace!` only).
+///
+/// Span anchors on TFNI — the dominated token per §H.6 p120's
+/// "the 'TFNI' marking does not appear in the banner line" wording.
+/// The shared [`token_span_attrs`] arm for `TOK_TFNI` returns the
+/// first AEA-kind token in source order (the same arm covers RD /
+/// FRD / TFNI / CNWDI / UCNI / DCNI / ATOMAL), so when FRD precedes
+/// TFNI in document order it would anchor on FRD instead of TFNI.
+/// The inline walk below dedicates a `text == "TFNI"` filter so the
+/// span lands on the dominated token. Falls back to the shared arm
+/// when the parser hasn't surfaced a literal "TFNI" text (e.g.,
+/// future schema vocabulary variant) — the bridge still emits with
+/// the AEA-kind span rather than dropping the diagnostic, which is
+/// the post-#661 contract.
+///
+/// Severity `Fix` mirrors `e024_rd_precedence`: the resolution
+/// ("drop TFNI when FRD is present in the same portion") is
+/// unambiguous and matches the established sibling shape.
 pub(crate) fn e070_frd_tfni_precedence(
     attrs: &CanonicalAttrs,
     bits: marque_scheme::FactBitmask,
 ) -> Vec<ConstraintViolation> {
+    use marque_ism::TokenKind;
+
     if attrs.aea_markings.is_empty() {
         return Vec::new();
     }
@@ -226,12 +246,24 @@ pub(crate) fn e070_frd_tfni_precedence(
     if (bits & need_mask) != need_mask {
         return Vec::new();
     }
+    // Walk token_spans directly so the span anchors on the TFNI
+    // text occurrence rather than the first AEA marking in source
+    // order (which would be FRD when both are present). Falls back
+    // to `token_span_attrs(TOK_TFNI)` if no literal `"TFNI"` text
+    // was preserved — that helper returns the first AEA-kind span
+    // and keeps the diagnostic emitting rather than dropping it.
+    let span = attrs
+        .token_spans
+        .iter()
+        .find(|t| t.kind == TokenKind::AeaMarking && t.text.as_str() == "TFNI")
+        .map(|t| t.span)
+        .or_else(|| token_span_attrs(attrs, &TokenRef::Token(TOK_TFNI)));
     vec![ConstraintViolation {
         constraint_label: "E070/frd-tfni-precedence",
         message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD".to_owned(),
         citation: capco(SectionLetter::H, 6, 120),
-        span: None,
-        severity: None,
+        span,
+        severity: Some(Severity::Fix),
     }]
 }
 
@@ -428,13 +460,71 @@ mod tests {
 
     #[test]
     fn e070_frd_with_tfni_fires() {
+        // #661 — predicate fires with one ConstraintViolation carrying
+        // populated `span` and `severity` (was `None, None` until #661
+        // wired the bridge fields through). Token-span resolution is
+        // exercised by the dedicated `_span_pinned_at_tfni` /
+        // `_severity_is_fix` tests below; this one only pins the
+        // multiplicity + label.
         let mut attrs = classified_us_secret();
         attrs.aea_markings =
             vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
         let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].constraint_label, "E070/frd-tfni-precedence");
-        assert!(out[0].span.is_none());
-        assert!(out[0].severity.is_none());
+    }
+
+    #[test]
+    fn e070_frd_tfni_precedence_severity_is_fix() {
+        // #661 — severity mirrors e024_rd_precedence (resolution is
+        // unambiguous: drop TFNI when FRD is present).
+        let mut attrs = classified_us_secret();
+        attrs.aea_markings =
+            vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
+        let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].severity, Some(Severity::Fix));
+    }
+
+    #[test]
+    fn e070_frd_tfni_precedence_span_resolves_when_token_spans_populated() {
+        // #661 — span resolution flows through `token_span_attrs`'s
+        // `TOK_TFNI` arm, which walks `attrs.token_spans` for an
+        // `AeaMarking`-kind entry. Bare `CanonicalAttrs` constructed
+        // without the parser carries empty `token_spans`, so the
+        // helper returns `None` — that path is exercised by the
+        // sibling `_severity_is_fix` test (severity populated even
+        // when span resolution lands on `None`). This test injects a
+        // synthetic `AeaMarking`-kind `TokenSpan` to verify the lookup
+        // arm itself resolves; byte-precise span verification against
+        // real input bytes lives in the corpus fixture at
+        // `tests/corpus/invalid/e070_frd_tfni_precedence.txt`.
+        use marque_ism::{Span, TokenSpan};
+
+        let mut attrs = classified_us_secret();
+        attrs.aea_markings =
+            vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
+        // Two AEA-kind spans in source order — FRD precedes TFNI.
+        // The shared `token_span_attrs(TOK_TFNI)` arm would resolve
+        // to the first AEA span (FRD at 3..6). The inline TFNI-text
+        // filter in `e070_frd_tfni_precedence` walks past FRD and
+        // anchors on the TFNI span at 7..11 — verifying the
+        // dominated-token anchor PR #661 wired in.
+        attrs.token_spans = vec![
+            TokenSpan {
+                kind: marque_ism::TokenKind::AeaMarking,
+                span: Span::new(3, 6),
+                text: "FRD".into(),
+            },
+            TokenSpan {
+                kind: marque_ism::TokenKind::AeaMarking,
+                span: Span::new(7, 11),
+                text: "TFNI".into(),
+            },
+        ]
+        .into_boxed_slice();
+        let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].span, Some(Span::new(7, 11)));
     }
 }
