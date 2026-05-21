@@ -162,15 +162,29 @@ fn nato_program_tokens_use_bare_display_forms() {
 /// canonicalization references). This catches a future regression that
 /// might route the sentinel through a different CVE file (e.g., a
 /// hypothetical `CVE_NATO_PROGRAMS`).
+///
+/// The exact-URN match is load-bearing: the previously-used
+/// `starts_with("urn:us:gov:ic:cvenum:")` prefix matches every active
+/// ODNI CVE file (Dissem, AEA, SCI, NonIC, Classification, ...) and
+/// therefore could not catch a wrong-CVE-file routing regression. The
+/// specific URN `urn:us:gov:ic:cvenum:ism:nonuscontrols` is the
+/// authoritative match for `CVE_NON_US_CONTROLS` per the
+/// build-generated `CveFileMetadata` at
+/// `crates/ism/build.rs` -> `OUT_DIR/vocabulary.rs`. Hardcoded here
+/// rather than imported because `CveFileMetadata` is not re-exported
+/// from `marque-ism`'s public API.
 #[test]
 fn nato_program_tokens_route_through_odni_non_us_controls() {
+    const CVE_NON_US_CONTROLS_URN: &str = "urn:us:gov:ic:cvenum:ism:nonuscontrols";
     let scheme = CapcoScheme::new();
     for (tok, _, _) in nato_program_sentinels() {
         let authority = scheme.authority(tok);
-        assert!(
-            authority.urn.starts_with("urn:us:gov:ic:cvenum:"),
-            "{tok:?}: authority.urn = {:?} does not start with the ODNI prefix \
-             (expected via CVE_NON_US_CONTROLS)",
+        assert_eq!(
+            authority.urn, CVE_NON_US_CONTROLS_URN,
+            "{tok:?}: authority.urn = {:?}, expected the \
+             CVE_NON_US_CONTROLS URN ({CVE_NON_US_CONTROLS_URN:?}). \
+             A NATO program sentinel routing through a different \
+             CVE file is a vocabulary regression.",
             authority.urn,
         );
     }

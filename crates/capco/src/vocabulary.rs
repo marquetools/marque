@@ -22,10 +22,12 @@
 //! `CapcoScheme::Token = TokenId` — opaque numeric ids assigned
 //! per-sentinel in `crate::scheme`. The active sentinel set today
 //! is the small hand-curated list of TokenIds the catalog actually
-//! references (18 ids post-#660; see [`SENTINEL_TO_CANONICAL`] below
-//! for the authoritative count — the doc reflects the table). Each
-//! is mapped to its canonical CVE value
-//! by [`SENTINEL_TO_CANONICAL`]. Aggregate sentinels (`TOK_*` that
+//! references — see [`SENTINEL_TO_CANONICAL`] below for the
+//! authoritative table. Use [`active_sentinel_count()`] when a
+//! count is needed at runtime; hardcoded counts in doc-comments
+//! drift silently as the table grows. Each TokenId is mapped to
+//! its canonical CVE value by [`SENTINEL_TO_CANONICAL`].
+//! Aggregate sentinels (`TOK_*` that
 //! span multiple tokens — `TOK_US_CLASSIFIED`,
 //! `TOK_NON_US_CLASSIFICATION`), trigraph sentinels (`TOK_USA` —
 //! trigraphs come from XSD, not the JSON-derived `TOKEN_METADATA`),
@@ -198,8 +200,9 @@ const SENTINEL_TO_CANONICAL: &[(TokenId, &str)] = &[
 /// with a clear message if the id is outside the supported set.
 ///
 /// **Phase C scaling note (L1 in `docs/reviews/phase5-review.md`).**
-/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` (18
-/// entries post-#660) on every accessor call. At this size the linear
+/// The current `.iter().find()` walks `SENTINEL_TO_CANONICAL` on
+/// every accessor call. At the active sentinel-set size (see
+/// [`active_sentinel_count()`] for the live count) the linear
 /// scan is dominated by accessor-call overhead and is not a real
 /// concern — Constitution I (perceptual instantaneity) is not
 /// observably violated. Phase C extends the sentinel set to the full
@@ -541,9 +544,9 @@ fn classification_form_set(canonical: &'static str) -> Option<FormSet> {
 /// canonical, falling through to the canonical-collapse arm and
 /// emitting `portion="NATO-ATOMAL"` — wrong per §G.1 Table 4 p37).
 ///
-/// `MARKING_FORMS` already carries bare rows
-/// (`portion=banner=title="ATOMAL"` etc.) at lines 283-303 of
-/// `crates/ism/src/marking_forms.rs` per §G.1 Table 4 p37; this helper
+/// `crates/ism/src/marking_forms.rs` already carries bare rows
+/// (`portion=banner=title="ATOMAL"` etc.) in the "NATO programs"
+/// section of `MARKING_FORMS` per §G.1 Table 4 p37; this helper
 /// is the bridge that lets a `NATO-`-prefixed canonical reach the
 /// authorized bare display form without depending on those rows
 /// (decoupling: a future MARKING_FORMS reorganization that removes the
@@ -632,8 +635,8 @@ fn nato_program_form_set(canonical: &'static str) -> Option<FormSet> {
 ///
 /// ## Active sentinel coverage
 ///
-/// `SENTINEL_TO_CANONICAL` (18 entries post-#660) intersects the
-/// divergent `MARKING_FORMS` rows at six canonicals: `"UCNI"` (DOE),
+/// `SENTINEL_TO_CANONICAL` intersects the divergent
+/// `MARKING_FORMS` rows at six canonicals: `"UCNI"` (DOE),
 /// `"DCNI"` (DOD UCNI), `"OC-USGOV"` (ORCON-USGOV), `"FISA"`, `"SSI"`,
 /// `"NNPI"`. `TOK_CNWDI` maps to canonical `"RD-CNWDI"`, not the bare
 /// `"CNWDI"` that the MARKING_FORMS row keys on — so its description

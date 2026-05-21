@@ -173,7 +173,7 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     //
     // The CVE canonical is reachable through `metadata().canonical`
     // (verified separately in
-    // `crates/capco/tests/vocabulary.rs::nato_program_tokens_use_bare_display_forms`).
+    // `crates/capco/tests/vocabulary_nato_programs.rs::nato_program_tokens_use_bare_display_forms`).
     //
     // Authority:
     //   - TOK_ATOMAL: §G.1 Table 4 p37 (registration); §H.7 p122

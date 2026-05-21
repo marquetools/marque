@@ -42,9 +42,11 @@
 //! no global allocator side effect.
 
 use marque_capco::CapcoScheme;
+use marque_capco::active_sentinel_count;
 use marque_capco::scheme::{
-    TOK_ATOMAL, TOK_BALK, TOK_BOHEMIA, TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS,
-    TOK_NOFORN, TOK_RD, TOK_RESTRICTED, TOK_TFNI, TOK_UCNI,
+    TOK_ATOMAL, TOK_BALK, TOK_BOHEMIA, TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS,
+    TOK_HCS_O, TOK_HCS_P, TOK_NNPI, TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED,
+    TOK_SI_G, TOK_SSI, TOK_TFNI, TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI,
 };
 use marque_scheme::{TokenId, Vocabulary};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -82,31 +84,73 @@ fn allocs_now() -> usize {
     ALLOCATIONS.load(Ordering::Relaxed)
 }
 
-/// All sentinels mapped to canonical CVE values in
-/// `crates/capco/src/vocabulary.rs::SENTINEL_TO_CANONICAL`. Kept in
-/// sync with the production list — adding a sentinel there means
-/// adding it here, otherwise the gate stops covering the new entry.
+/// Every sentinel mapped to a canonical CVE value in
+/// `crates/capco/src/vocabulary.rs::SENTINEL_TO_CANONICAL`. The slice
+/// MUST equal the full production set so the zero-alloc gate exercises
+/// every accessor path; the
+/// `active_sentinels_matches_active_sentinel_count` test below pins
+/// `active_sentinels().len() == active_sentinel_count()` so a
+/// production-side addition without a matching entry here fails the
+/// gate immediately rather than weakening the regression coverage.
 fn active_sentinels() -> &'static [TokenId] {
     &[
+        // Dissem
         TOK_NOFORN,
+        // AEA
         TOK_RD,
         TOK_FRD,
         TOK_TFNI,
         TOK_CNWDI,
         TOK_UCNI,
+        // SCI — bare control + per-compartment compounds (#524 Phase 1).
         TOK_HCS,
+        TOK_HCS_O,
+        TOK_HCS_P,
+        TOK_SI_G,
+        TOK_TK_BLFH,
+        TOK_TK_IDIT,
+        TOK_TK_KAND,
+        // Classification
         TOK_RESTRICTED,
+        // Non-IC dissem
         TOK_NODIS,
         TOK_EXDIS,
-        // Issue #660 — NATO program markings. These exercise the
-        // `nato_program_form_set` arm in `build_form_set` (the CVE
-        // canonical is `NATO-`-prefixed; the bare display form is
-        // hand-built). The static-slice projection still returns
-        // `&'static` data, so the zero-alloc invariant holds.
+        // #407 — IC dissem + non-IC dissem additions.
+        TOK_ORCON_USGOV,
+        TOK_FISA,
+        TOK_SSI,
+        TOK_NNPI,
+        TOK_DCNI,
+        // Issue #660 — NATO program markings (CVE canonical
+        // `NATO-`-prefixed; `nato_program_form_set` projects to the
+        // bare §G.1 Table 4 p37 display form). Static-slice projection
+        // still returns `&'static` data, so the zero-alloc invariant
+        // holds.
         TOK_ATOMAL,
         TOK_BALK,
         TOK_BOHEMIA,
     ]
+}
+
+/// Pin: `active_sentinels()` must enumerate every entry in
+/// `SENTINEL_TO_CANONICAL`. Without this, a production-side addition
+/// could land without a corresponding probe entry here, silently
+/// shrinking the zero-alloc gate's coverage. The runtime check ties
+/// the two sources to the same number — drift trips the test on the
+/// next CI run.
+#[test]
+fn active_sentinels_matches_active_sentinel_count() {
+    assert_eq!(
+        active_sentinels().len(),
+        active_sentinel_count(),
+        "active_sentinels() length ({}) drifted from \
+         SENTINEL_TO_CANONICAL length ({}). When you add a sentinel to \
+         crates/capco/src/vocabulary.rs::SENTINEL_TO_CANONICAL you MUST \
+         add the matching TokenId to active_sentinels() here so the \
+         zero-alloc regression gate keeps exercising every accessor.",
+        active_sentinels().len(),
+        active_sentinel_count(),
+    );
 }
 
 #[test]
