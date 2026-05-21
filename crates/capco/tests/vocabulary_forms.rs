@@ -163,23 +163,23 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     // ----- Issue #660 NATO program sentinel additions -----
     //
     // ODNI publishes the CVE canonicals as `NATO-ATOMAL`/`NATO-BALK`/
-    // `NATO-BOHEMIA` in `CVE_NON_US_CONTROLS`; CAPCO §G.1 Table 4 p36
+    // `NATO-BOHEMIA` in `CVE_NON_US_CONTROLS`; CAPCO §G.1 Table 4 p37
     // registers them bare (`ATOMAL`/`BALK`/`BOHEMIA`) with no banner
     // abbreviation (col 2 empty → `banner_abbreviation = None`).
     // `nato_program_form_set` in `crates/capco/src/vocabulary.rs`
     // projects the CVE canonical onto the bare display form so the
     // `expected_portion` / `expected_banner` columns below carry the
-    // §G.1 Table 4 p36 user-visible bare form, not the CVE canonical.
+    // §G.1 Table 4 p37 user-visible bare form, not the CVE canonical.
     //
     // The CVE canonical is reachable through `metadata().canonical`
     // (verified separately in
     // `crates/capco/tests/vocabulary.rs::nato_program_tokens_use_bare_display_forms`).
     //
     // Authority:
-    //   - TOK_ATOMAL: §G.1 Table 4 p36 (registration); §H.7 p122
+    //   - TOK_ATOMAL: §G.1 Table 4 p37 (registration); §H.7 p122
     //     (AEA-axis worked example).
-    //   - TOK_BALK: §G.1 Table 4 p36; §G.2 p40 (Table 5 NATO SAP ARH).
-    //   - TOK_BOHEMIA: §G.1 Table 4 p36; §G.2 p40; §H.7 p127
+    //   - TOK_BALK: §G.1 Table 4 p37; §G.2 p40 (Table 5 NATO SAP ARH).
+    //   - TOK_BOHEMIA: §G.1 Table 4 p37; §G.2 p40; §H.7 p127
     //     (SCI-axis worked example).
     (TOK_ATOMAL, "ATOMAL", "ATOMAL", None),
     (TOK_BALK, "BALK", "BALK", None),
