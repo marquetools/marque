@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.4 p78 — ENDSEAL → SI compartment migration. Fires E065 deprecated-sci-long-form (PrefixSpace match).",
+  "diagnostics": [
+    {"rule": "E065", "span": {"start": 12, "end": 21}}
+  ]
+}

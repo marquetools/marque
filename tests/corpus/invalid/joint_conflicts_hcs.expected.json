@@ -1,0 +1,7 @@
+{
+  "_note": "CAPCO-2016 §H.3 p57 — JOINT may not be used with HCS markings. Fires E036 joint-conflicts-hcs + E010 §H.4 p62 (HCS family).",
+  "diagnostics": [
+    {"rule": "E010", "span": {"start": 29, "end": 32}},
+    {"rule": "E036", "span": {"start": 29, "end": 32}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.6 p104 — RD is always used with NOFORN unless a §123/§144 sharing agreement is in place. Fires E021 rd-frd-requires-noforn.",
+  "diagnostics": [
+    {"rule": "E021", "span": {"start": 14, "end": 16}}
+  ]
+}
