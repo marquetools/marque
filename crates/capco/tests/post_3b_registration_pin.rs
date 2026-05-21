@@ -36,12 +36,12 @@
 //! carry `Diagnostic.rule = "E068"` / `"E069"` for audit-stream
 //! traceability without inflating the registered count.
 //!
-//! Asserts the **exact set** of 38 registered `Rule::id()` values.
+//! Asserts the **exact set** of 25 registered `Rule::id()` values.
 //!
 //! # Why a separate test from the count pin
 //!
 //! `crates/capco/tests/corpus_parity.rs` already pins
-//! `rule_set.rules().len() == 38` (post-PR-closing-#470 + post-PR-5;
+//! `rule_set.rules().len() == 25` (post-issue-#261 + post-PR-5;
 //! the count rolls forward in lock-step with this test as rules land
 //! or retire — see the running-count derivation comment in
 //! `corpus_parity.rs::rule_count_reflects_registration_changes`).
@@ -106,6 +106,9 @@ use std::collections::BTreeSet;
 /// `Diagnostic.rule = "E059"` respectively (audit-stream +
 /// `[rules] E058 = "off"` / `[rules] E059 = "off"` config-override
 /// continuity) but are no longer counted as registered `Rule` impls.
+/// Issue #261 adds `FgiExplicitWithTrigraphRule` (E071) — FGI with
+/// explicit trigraph when concealment is intended or acknowledgment is
+/// contradicted per §H.7 p124 (24 → 25).
 const EXPECTED_RULE_IDS: &[&str] = &[
     // PR #578 retires the following 15 IDs as registered `Rule` impls
     // (they remain emittable via the engine's constraint-catalog bridge,
@@ -151,17 +154,21 @@ const EXPECTED_RULE_IDS: &[&str] = &[
     // all-JOINT portions disagree on producer lists and
     // JointSet::DisunityCollapse fires.
     "W004", "W034",
+    // Issue #261: FGI with explicit trigraph when concealment intended
+    // or acknowledgment contradicted per CAPCO-2016 §H.7 p124. Four-case
+    // behavioral spec (Full/Empty/Partial REL TO overlap + Case B valid).
+    "E071",
 ];
 
 #[test]
-fn post_pr_578_registers_exact_24_rule_ids() {
+fn post_pr_578_registers_exact_25_rule_ids() {
     let rule_set = CapcoRuleSet::new();
 
     // Raw-slice cardinality — independently catches duplicate
     // registration (`Box::new(SomeRule)` appearing twice). The
     // BTreeSet collapses duplicates by ID, so the deduplicated
-    // assertion below cannot distinguish "24 unique IDs from 24
-    // registrations" from "24 unique IDs from 25 registrations
+    // assertion below cannot distinguish "25 unique IDs from 25
+    // registrations" from "25 unique IDs from 26 registrations
     // where one ID is duplicated." Belt-and-suspenders with
     // `corpus_parity.rs::rule_count_reflects_registration_changes`.
     //
@@ -176,11 +183,12 @@ fn post_pr_578_registers_exact_24_rule_ids() {
     // #559 close-out C1 (2026-05-19): added S008
     // `RelidoImpliedByClosureRule` byte-surfacing twin of the
     // `CLOSURE_RELIDO_{SCI,US_CLASS}` lattice-layer closures
-    // (23 → 24).
+    // (23 → 24). Issue #261: added E071 `FgiExplicitWithTrigraphRule`
+    // (24 → 25).
     let raw_len = rule_set.rules().len();
     assert_eq!(
-        raw_len, 24,
-        "post-#559-C1 raw rule slice length drifted from 24 \
+        raw_len, 25,
+        "post-#261 raw rule slice length drifted from 25 \
          (duplicate or missing registration in CapcoRuleSet::new()): \
          raw_len={raw_len}",
     );
@@ -197,16 +205,16 @@ fn post_pr_578_registers_exact_24_rule_ids() {
     // ruleset.
     assert_eq!(
         expected.len(),
-        24,
-        "EXPECTED_RULE_IDS does not contain 24 unique entries: {expected:?}",
+        25,
+        "EXPECTED_RULE_IDS does not contain 25 unique entries: {expected:?}",
     );
 
     // Cardinality check — fast-fails before the more expensive set
     // diff, and matches the existing count pin in corpus_parity.rs.
     assert_eq!(
         actual.len(),
-        24,
-        "post-#559-C1 registered rule count drifted from 24: actual={actual:?}",
+        25,
+        "post-#261 registered rule count drifted from 25: actual={actual:?}",
     );
 
     // Exact-set check — the load-bearing assertion.
