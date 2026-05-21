@@ -251,11 +251,14 @@ const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
 /// (the bridge dispatcher routes by name string); only membership
 /// matters, so the sorted-set form is the correct pin shape.
 ///
-///   - core_catalog (8): the original `Custom` rows for the rules
+///   - core_catalog (9): the original `Custom` rows for the rules
 ///     whose predicate body did not fit `Conflicts` / `Requires` /
 ///     `Supersedes`. #559 close-out (2026-05-19) added E070 for the
 ///     FRD>TFNI leg per §H.6 p120; the prior 7-row count is bumped
-///     to 8 by that addition.
+///     to 8 by that addition. #388 (2026-05-21) added W005 for the
+///     reverse-direction E014 check (REL TO entries not in JOINT)
+///     per §H.3 p57 "[LIST]" superset semantics; the count rises
+///     from 8 to 9.
 ///   - class_floor_catalog (27): the PR 3b.D + 3b.E class-floor
 ///     family per §H.4 / §H.6 / §H.7 / §H.8 / §H.9. Includes the
 ///     four `passthrough-*` stubs for tokens not yet wired into a
@@ -263,10 +266,10 @@ const EXPECTED_BITMASK_CLOSURE_ROWS: &[&str] = &[
 ///   - sci_per_system_catalog (5): the PR 3b.E SCI per-system family
 ///     per §H.4 (HCS-O / HCS-P-NOFORN / HCS-P-sub / SI-G / TK-comp).
 ///
-/// Total: 8 + 27 + 5 = 40. Note: the four RELIDO E054-E057 rows are
+/// Total: 9 + 27 + 5 = 41. Note: the four RELIDO E054-E057 rows are
 /// `Constraint::Conflicts`, NOT `Custom` — they do not appear here.
 const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
-    // core_catalog (8)
+    // core_catalog (9)
     "E010/HCS-system-constraints",
     "E012/dual-classification",
     "E014/joint-requires-rel-to-coverage",
@@ -277,6 +280,14 @@ const EXPECTED_CUSTOM_CONSTRAINTS: &[&str] = &[
     // Sibling of E024 (RD>FRD/TFNI); independent policy decision with
     // its own audit lineage per Constitution V Principle V.
     "E070/frd-tfni-precedence",
+    // #388 (2026-05-21): W005 reverse-direction E014. Flags REL TO
+    // entries not in the JOINT participant list per §H.3 p57
+    // "[LIST]" superset semantics. Warn-only (no auto-fix): cannot
+    // distinguish intentional expansion from authoring error without
+    // classifier input. Position: BTreeSet uses lex order, so
+    // "W005/..." (0x57) sorts after the "E"-prefixed entries and
+    // before the "c"-prefixed "capco/..." entries (0x63).
+    "W005/rel-to-not-in-joint-coverage",
     "capco/joint-requires-usa",
     // class_floor_catalog (27)
     "E058/CNWDI-classification-floor",
@@ -482,7 +493,7 @@ fn post_pr_d_declares_exact_10_bitmask_closure_rows_in_order() {
 }
 
 #[test]
-fn post_pr_4b_declares_exact_40_custom_constraints() {
+fn post_pr_4b_declares_exact_41_custom_constraints() {
     let scheme = CapcoScheme::new();
     let constraints = scheme.constraints();
 
@@ -512,15 +523,15 @@ fn post_pr_4b_declares_exact_40_custom_constraints() {
 
     assert_eq!(
         expected.len(),
-        40,
-        "EXPECTED_CUSTOM_CONSTRAINTS does not contain 40 unique entries: \
+        41,
+        "EXPECTED_CUSTOM_CONSTRAINTS does not contain 41 unique entries: \
          test data drifted, not the catalog"
     );
 
     assert_eq!(
-        raw_count, 40,
-        "post-4b Constraint::Custom raw catalog count drifted from 40 \
-         (5 SCI-per-system + 27 class-floor + 8 core-catalog): \
+        raw_count, 41,
+        "post-4b Constraint::Custom raw catalog count drifted from 41 \
+         (5 SCI-per-system + 27 class-floor + 9 core-catalog): \
          raw_count={raw_count}, names={custom_names:?}"
     );
 
@@ -537,8 +548,8 @@ fn post_pr_4b_declares_exact_40_custom_constraints() {
 
     assert_eq!(
         actual.len(),
-        40,
-        "post-4b Constraint::Custom unique set size drifted from 40: \
+        41,
+        "post-4b Constraint::Custom unique set size drifted from 41: \
          actual={actual:?}"
     );
 

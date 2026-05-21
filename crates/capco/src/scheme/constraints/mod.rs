@@ -32,6 +32,7 @@ mod sci_per_system_catalog;
 // continue to resolve.
 pub(crate) use self::helpers::{
     class_floor_emit, e012_dual_classification, e014_joint_rel_to_coverage, sci_per_system_emit,
+    w005_rel_to_not_in_joint_coverage,
 };
 // PR-E (#371): tier-1 predicates (`e021_rd_frd_requires_noforn`,
 // `e024_rd_precedence`, `e038_dos_dissem_requires_noforn`,

@@ -99,6 +99,24 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E014/joint-requires-rel-to-coverage",
             label: capco(SectionLetter::H, 3, 57),
         },
+        // ---- W005: REL TO expands beyond JOINT participants (§H.3 p57) --
+        //
+        // §H.3 p57 ("[LIST]" superset semantics): a classifier may expand
+        // REL TO beyond JOINT co-owners. Marque cannot distinguish intentional
+        // expansion from authoring error — surfaces as Warn (no auto-fix).
+        // Reverse of E014: E014 flags JOINT participants missing from REL TO
+        // (auto-fix); W005 flags REL TO entries beyond JOINT (advisory only).
+        //
+        // MessageTemplate deferred: W005 currently falls through to the
+        // bridge's `ConflictsWith` fallback template because adding a typed
+        // `MessageTemplate::RelToExpandsBeyondJoint` variant requires an
+        // audit-schema bump that belongs in PR 3c.2 alongside the
+        // `MARQUE_AUDIT_SCHEMA` cutover (per closed-template invariant in
+        // `crates/rules/src/message.rs`). Tracked as follow-up.
+        Constraint::Custom {
+            name: "W005/rel-to-not-in-joint-coverage",
+            label: capco(SectionLetter::H, 3, 57),
+        },
         // ---- E015: non-US requires dissem (§H.7 + §B.3) ------
         //
         // FGI markings require explicit foreign release per

@@ -129,6 +129,66 @@ pub(crate) fn e014_joint_rel_to_coverage(
     }]
 }
 
+/// W005 — REL TO list contains entries not in the JOINT participant list.
+/// §H.3 p57 permits expanding REL TO beyond co-owners via "[LIST]" superset
+/// semantics; this Warn surfaces unexpected expansions for classifier review.
+/// USA is excluded (implicit US co-ownership). Tetragraphs in REL TO expand
+/// before the check.
+///
+/// This is the reverse direction of [`e014_joint_rel_to_coverage`]: E014
+/// flags JOINT participants missing from REL TO (auto-fixable — policy
+/// mandates coverage). W005 flags REL TO entries beyond JOINT (advisory
+/// only — §H.3 p57 "[LIST]" superset semantics permit intentional expansion,
+/// so Marque cannot distinguish intentional from accidental without
+/// classifier input).
+pub(crate) fn w005_rel_to_not_in_joint_coverage(
+    attrs: &marque_ism::CanonicalAttrs,
+) -> Vec<ConstraintViolation> {
+    let joint = match &attrs.classification {
+        Some(marque_ism::MarkingClassification::Joint(j)) => j,
+        _ => return Vec::new(),
+    };
+    if attrs.rel_to.is_empty() {
+        return Vec::new();
+    }
+    let joint_set: std::collections::HashSet<&str> =
+        joint.countries.iter().map(|c| c.as_str()).collect();
+    let mut not_in_joint: Vec<&str> = Vec::new();
+    for rel_entry in &attrs.rel_to {
+        let code = rel_entry.as_str();
+        if let Some(members) = crate::vocab::expand_tetragraph(code) {
+            for member in members {
+                if *member != "USA"
+                    && !joint_set.contains(member)
+                    && !not_in_joint.contains(member)
+                {
+                    not_in_joint.push(member);
+                }
+            }
+        } else if code != "USA" && !joint_set.contains(code) && !not_in_joint.contains(&code) {
+            not_in_joint.push(code);
+        }
+    }
+    if not_in_joint.is_empty() {
+        return Vec::new();
+    }
+    vec![ConstraintViolation {
+        constraint_label: "W005/rel-to-not-in-joint-coverage",
+        message: format!(
+            "{} REL TO {} not in JOINT participant list",
+            not_in_joint.len(),
+            if not_in_joint.len() == 1 {
+                "entry is"
+            } else {
+                "entries are"
+            }
+        ),
+        citation: capco(SectionLetter::H, 3, 57),
+        span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),
+        severity: Some(Severity::Warn),
+    }]
+}
+
 /// Single source of truth for the class-floor catalog's
 /// presence-check + floor-satisfaction-check + diagnostic message
 /// shape. PR D R3.1 (R3 C2) consolidated the walker hot-path and the
