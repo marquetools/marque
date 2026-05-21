@@ -26,7 +26,8 @@
 /// BLAKE3 digest (lowercase hex) of
 /// `crates/capco/docs/CAPCO-2016.md` at PR 10.A.2 authorship.
 ///
-/// Computed via `b3sum docs/CAPCO-2016.md` from the workspace root.
+/// Computed via `b3sum crates/capco/docs/CAPCO-2016.md` from the workspace root
+/// (or `b3sum docs/CAPCO-2016.md` from `crates/capco/`).
 /// Bumping this constant is a deliberate, reviewed action — see the
 /// build.rs failure message for the propagation checklist.
 pub const CAPCO_2016_MD_BLAKE3: &str =

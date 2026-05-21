@@ -1143,7 +1143,7 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
         false
     }
 
-    /// Authoritative-source citations this rule may emit on its diagnostics.
+    /// Authoritative-source citations this rule relies on and/or may emit.
     ///
     /// Used by the PR 10.A.2 F.1 corpus-fidelity gate
     /// (`crates/capco/tests/citation_fidelity.rs`) to cross-check the

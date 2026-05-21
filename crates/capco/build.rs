@@ -625,7 +625,8 @@ fn verify_capco_2016_md() {
                 to the new digest. Regenerate via:\n     \
                 cargo run --manifest-path tools/citation-lint/Cargo.toml -- \\\n        \
                 --print-capco-blake3 .\n     \
-                (or compute manually with `b3sum docs/CAPCO-2016.md`).\n  \
+                (or: `b3sum crates/capco/docs/CAPCO-2016.md` from the workspace root,\n        \
+                or: `b3sum docs/CAPCO-2016.md` from `crates/capco/`).\n  \
              3. Re-verify every affected §-citation against the new revision \
                 per the Principle VIII propagation rule.",
             path.display(),
