@@ -92,6 +92,20 @@ async fn baseline_lint_without_override_is_ok() {
         Some("DENY"),
         "200 response must contain X-Frame-Options: DENY"
     );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::CONTENT_SECURITY_POLICY)
+            .map(|v| v.to_str().unwrap()),
+        Some("default-src 'none'; frame-ancestors 'none';"),
+        "200 response must contain Content-Security-Policy"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::STRICT_TRANSPORT_SECURITY)
+            .map(|v| v.to_str().unwrap()),
+        Some("max-age=63072000; includeSubDomains"),
+        "200 response must contain Strict-Transport-Security"
+    );
 }
 
 #[tokio::test]
@@ -397,6 +411,20 @@ async fn body_above_explicit_limit_is_rejected_with_413() {
             .map(|v| v.to_str().unwrap()),
         Some("DENY"),
         "413 response must contain X-Frame-Options: DENY"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::CONTENT_SECURITY_POLICY)
+            .map(|v| v.to_str().unwrap()),
+        Some("default-src 'none'; frame-ancestors 'none';"),
+        "413 response must contain Content-Security-Policy"
+    );
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::STRICT_TRANSPORT_SECURITY)
+            .map(|v| v.to_str().unwrap()),
+        Some("max-age=63072000; includeSubDomains"),
+        "413 response must contain Strict-Transport-Security"
     );
 }
 
