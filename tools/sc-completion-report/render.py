@@ -9,16 +9,20 @@ Closes the data-driven half of T123 + T136 + T137 in
 truth; this script renders the cold-storage markdown form that
 reviewers see without running the script.
 
-Shell over Rust because:
+Python (stdlib only) over Rust because:
 
   1. Zero new workspace-member contamination (Constitution III: WASM-
      safe crate closure stays clean; the script is out-of-workspace
      in the same shape `tools/citation-lint/` / `tools/masking-pin-lint/`
      are out-of-workspace, except with no Rust crate at all).
-  2. CI already has Python via the standard `ubuntu-latest` runner;
-     no new toolchain pin required.
+  2. CI already has Python 3.11+ via the standard `ubuntu-latest`
+     runner; no new toolchain pin required.
   3. The TOML schema is closed; tomllib (stdlib since Python 3.11)
      parses it with no third-party dependency.
+
+Requires Python 3.11+ for the stdlib `tomllib` module. Older
+interpreters fail with a helpful error message rather than an
+opaque ImportError.
 
 Usage:
 
@@ -28,6 +32,18 @@ Usage:
 from __future__ import annotations
 
 import sys
+
+if sys.version_info < (3, 11):
+    sys.exit(
+        "ERROR: tools/sc-completion-report/render.py requires Python 3.11+ "
+        "for the stdlib `tomllib` module. "
+        f"Current interpreter is {sys.version_info.major}."
+        f"{sys.version_info.minor}.{sys.version_info.micro}. "
+        "CI's ubuntu-latest runner provides 3.11+; if you hit this "
+        "locally, run via `python3.11 tools/sc-completion-report/render.py` "
+        "or upgrade your default `python3`."
+    )
+
 import tomllib
 from pathlib import Path
 

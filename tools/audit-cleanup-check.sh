@@ -98,14 +98,25 @@ fi
 # marque-engine crate source tree.
 #
 # `pub mod reader` declares a public submodule named `reader`;
-# `pub use ...::reader` re-exports a `reader` path. Either would expose
-# `marque_engine::reader::*` from the engine crate. Anchor on those
-# two forms specifically (not free-text `reader`) so the check stays
-# structurally targeted and ignores e.g. an unrelated `reader: Reader`
-# field on a local type.
+# `pub use ...::reader` re-exports a `reader` path. Either would
+# expose `marque_engine::reader::*` from the engine crate.
+#
+# The detector covers four `pub use` shapes that all expose the same
+# `marque_engine::reader::*` surface:
+#
+#   1. `pub use crate::reader`           — direct path
+#   2. `pub use crate::a::b::reader`     — nested path
+#   3. `pub use crate::{reader, ...}`    — brace-list with `reader`
+#   4. `pub use crate::something as reader` — alias-renamed export
+#
+# Plus `pub mod reader` for the submodule-declaration form.
+# Anchored on the structural forms above (not free-text `reader`) so
+# unrelated `reader: Reader` fields or local-scope items are out of
+# scope by construction.
 # ---------------------------------------------------------------------------
 if [ -d "crates/engine/src" ]; then
-    READER_HITS="$(grep -RnE '^\s*pub\s+(mod|use)\s+([A-Za-z0-9_:]+::)?reader\b' \
+    READER_HITS="$(grep -RnE \
+        '^\s*pub\s+mod\s+reader\b|^\s*pub\s+use\s+[A-Za-z0-9_:]*(::|[[:space:]])?reader\b|^\s*pub\s+use\s+[A-Za-z0-9_:]+\s*\{[^}]*\breader\b[^}]*\}|^\s*pub\s+use\s+[A-Za-z0-9_:]+\s+as\s+reader\b' \
         crates/engine/src/ 2>/dev/null || true)"
     if [ -n "${READER_HITS}" ]; then
         print_fail \

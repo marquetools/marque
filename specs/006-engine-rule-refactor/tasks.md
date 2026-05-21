@@ -571,7 +571,7 @@ PR 10 (Phase 7 maturation) lands last as a single integration step after PR 4, P
 
 ## PR 10.B (Final Polish) Status — 2026-05-21
 
-PR `#TBD` (filed against `refactor/006-pr10-B-polish`). Bookkeeping
+PR `#668` (filed against `refactor/006-pr10-B-polish`). Bookkeeping
 plus three new artifacts; zero rule-logic edits; zero engine-crate
 edits.
 
