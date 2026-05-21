@@ -16,10 +16,14 @@
 //! helpers ([`capco`], [`capco_section`], [`capco_table`]) works from
 //! outside the `marque-scheme` crate. The test stays in the
 //! `marque-rules` integration tests directory because `marque-rules`
-//! is the load-bearing public consumer (every `Diagnostic.citation` is
-//! a `marque_scheme::Citation` re-imported through `marque-rules`),
-//! so verifying constructibility through this crate's transitive
-//! surface covers the real-world consumer pattern.
+//! is the load-bearing public consumer — `Diagnostic.citation` is
+//! a `marque_scheme::Citation` carried verbatim through this crate's
+//! public type surface (the `Citation` type itself moved to
+//! `marque-scheme` in PR 10.A.1 so the scheme-level catalog rows
+//! could carry typed citations without inverting the crate dependency
+//! graph; there is no `marque-rules` re-export). Verifying
+//! constructibility through this crate's transitive surface still
+//! covers the real-world consumer pattern.
 //!
 //! Companion to `crates/rules/tests/message_no_freeform_ctor.rs`
 //! (PR 3c.1 T033 — the [`Message`] equivalent). Together the two
