@@ -72,9 +72,20 @@ fi
 # The `--include='Cargo.toml'` filter restricts the scan to manifest
 # files — prose mentions of the absence in markdown / source comments
 # are out of scope by construction.
+#
+# Scope: workspace-member roots only. `.worktrees/`, `.claude/`, and
+# `target/` are deliberately excluded — a sibling worktree at
+# `.worktrees/some-branch/` may legitimately reference experimental
+# crate names without that work having merged to the active branch.
+# The FR-037 invariant applies to the live workspace surface, not to
+# every checked-out parallel branch.
 # ---------------------------------------------------------------------------
 CARGO_HITS="$(grep -RnE '\b(audit[-_]reader|marque[-_]audit[-_]reader)\b' \
-    --include='Cargo.toml' . 2>/dev/null || true)"
+    --include='Cargo.toml' \
+    --exclude-dir='.worktrees' \
+    --exclude-dir='.claude' \
+    --exclude-dir='target' \
+    . 2>/dev/null || true)"
 if [ -n "${CARGO_HITS}" ]; then
     print_fail \
         "audit-reader identifier present in Cargo.toml" \
