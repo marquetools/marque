@@ -2318,7 +2318,20 @@ impl Engine {
         } else if v.constraint_label.starts_with("sci-per-system/") {
             RuleId::new("E059")
         } else if let Some(id_part) = v.constraint_label.split('/').next() {
-            if id_part.starts_with('E') && id_part.len() == 4 {
+            // PR for #388 (W005 rel-to-not-in-joint-coverage): extend the
+            // bridge's structural ID prefix recognition from `E` only to
+            // `E | W`. The bridge previously routed every Warn-class
+            // constraint-catalog row to the `E008` fallback, which both
+            // misattributed the diagnostic and prevented severity-config
+            // resolution via the rule's own ID.
+            //
+            // Constitution VII precedent (engine-crate edit in a scheme-
+            // adoption PR): structural bridge gap revealed by the W005
+            // adoption — analogous to the PR 4b-B Commit 2 PageContext
+            // bugfixes (OC-USGOV / RELIDO supersession). Bugfix-class
+            // change confined to the bridge's ID-recognition predicate;
+            // the engine's rule-execution semantics are unchanged.
+            if matches!(id_part.as_bytes(), [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9']) {
                 RuleId::new(id_part)
             } else if v.constraint_label == "capco/noforn-conflicts-rel-to" {
                 RuleId::new("E053")

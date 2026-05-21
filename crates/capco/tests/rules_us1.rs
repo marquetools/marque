@@ -154,7 +154,14 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                 } else if v.constraint_label == "capco/noforn-conflicts-rel-to" {
                     "E053".to_owned()
                 } else if let Some(id_part) = v.constraint_label.split('/').next() {
-                    if id_part.starts_with('E') && id_part.len() == 4 {
+                    // Issue #388: mirror the engine bridge's extension of
+                    // the structural ID prefix recognition from `E` to
+                    // `E | W`. The W005 row in the constraint catalog
+                    // (added in #388) needs the same prefix relaxation
+                    // here to fold to "W005" instead of falling through
+                    // to the full constraint label.
+                    if matches!(id_part.as_bytes(), [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9'])
+                    {
                         id_part.to_owned()
                     } else {
                         v.constraint_label.to_owned()
