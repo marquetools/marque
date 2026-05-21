@@ -9576,12 +9576,6 @@ mod citation_cross_refs_tests {
             "E005_CROSS_REFS must include §D.1 p27; got: {:?}",
             E005_CROSS_REFS,
         );
-        assert!(
-            !E005_CROSS_REFS.is_empty(),
-            "E005_CROSS_REFS must not be empty (it pins §D.1 p27 by \
-             construction); got: {:?}",
-            E005_CROSS_REFS,
-        );
     }
 
     /// S003: secondary §H.8 p150 (REL TO USA-first convention — the
@@ -9594,11 +9588,6 @@ mod citation_cross_refs_tests {
         assert!(
             S003_CROSS_REFS.contains(&expected),
             "S003_CROSS_REFS must include §H.8 p150; got: {:?}",
-            S003_CROSS_REFS,
-        );
-        assert!(
-            !S003_CROSS_REFS.is_empty(),
-            "S003_CROSS_REFS must not be empty; got: {:?}",
             S003_CROSS_REFS,
         );
     }
