@@ -148,6 +148,12 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // marking candidate span — a single-token splice at the classification
     // position cannot also add NOFORN to the dissem axis.
     ("E071", Phase::WholeMarking),
+    // Issue #250: S009 prefer-tetragraph-collapse. Phase::WholeMarking
+    // because the rule rewrites the entire RelToBlock span (multi-token
+    // replacement: explicit member trigraphs → compact tetragraph form).
+    // Default Off — tetragraph vs. explicit-member form is an org style
+    // choice. Authority: CAPCO-2016 §H.8 p150.
+    ("S009", Phase::WholeMarking),
     // ----- Phase::PageFinalization (2 rules, issues #461 + #488) ----
     // PR #488 (issue #488): S005 rel-to-opaque-uncertain-reduction
     // migrated from `Phase::WholeMarking` (Banner/CAB-gated firing)
