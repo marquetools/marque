@@ -18,11 +18,11 @@
 //!
 //! - Case C (countries ∩ REL TO = ∅): Warn (drop trigraphs)
 //!   + Suggest (drop FGI prefix) + optional NF Suggest.
-//!   `(//FGI DEU R)` → primary fix `(//FGI R)`, alt Suggest `(//DEU R)`.
+//!     `(//FGI DEU R)` → primary fix `(//FGI R)`, alt Suggest `(//DEU R)`.
 //!
 //! - Case D (partial REL TO overlap): Error (no fix) + Suggest ack-all
 //!   + Suggest conceal-all + optional NF Suggest.
-//!   `(//FGI DEU GBR R//REL TO USA, DEU)` — DEU acknowledged, GBR not.
+//!     `(//FGI DEU GBR R//REL TO USA, DEU)` — DEU acknowledged, GBR not.
 //!
 //! Authority: CAPCO-2016 §H.7 p124. Verified against
 //! `crates/capco/docs/CAPCO-2016.md` at the time of authorship.
