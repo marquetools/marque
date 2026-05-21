@@ -125,7 +125,7 @@
       "name": "e070_frd_tfni_precedence.txt",
       "category": "invalid",
       "input": "(S//FRD/TFNI//NOFORN)\n",
-      "expected_lint": "{\"rule\":\"E070\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p120\",\"fix\":null}\n"
+      "expected_lint": "{\"rule\":\"E070\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":12},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p120\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactRemove\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
     },
     {
       "name": "joint_conflicts_hcs.txt",

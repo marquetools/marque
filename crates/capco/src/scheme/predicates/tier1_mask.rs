@@ -229,9 +229,17 @@ pub(crate) fn e038_dos_dissem_requires_noforn(
 /// the AEA-kind span rather than dropping the diagnostic, which is
 /// the post-#661 contract.
 ///
-/// Severity `Fix` mirrors `e024_rd_precedence`: the resolution
-/// ("drop TFNI when FRD is present in the same portion") is
-/// unambiguous and matches the established sibling shape.
+/// Severity `Fix` reflects the auto-applicable resolution: drop
+/// TFNI when FRD is present in the same portion. The matching
+/// `FixIntent::FactRemove(TOK_TFNI)` wire-up lives in
+/// [`fix_intent_by_name`](crate::scheme::adapter::CapcoScheme::fix_intent_by_name)
+/// per #661 review-fix. Without that wire-up the diagnostic would
+/// surface `Severity::Fix` with `fix: None` — a contradiction the
+/// engine tolerates (see `engine.rs:5825`
+/// `fix_without_proposal_rule_keeps_fix_severity`) but which
+/// confuses consumers reading the audit stream. `e024_rd_precedence`
+/// (the FRD-leg sibling) currently has the same gap; tracked
+/// separately for parallel wiring.
 pub(crate) fn e070_frd_tfni_precedence(
     attrs: &CanonicalAttrs,
     bits: marque_scheme::FactBitmask,
@@ -463,8 +471,9 @@ mod tests {
         // #661 — predicate fires with one ConstraintViolation carrying
         // populated `span` and `severity` (was `None, None` until #661
         // wired the bridge fields through). Token-span resolution is
-        // exercised by the dedicated `_span_pinned_at_tfni` /
-        // `_severity_is_fix` tests below; this one only pins the
+        // exercised by the dedicated
+        // `e070_frd_tfni_precedence_span_resolves_when_token_spans_populated`
+        // / `_severity_is_fix` tests below; this one only pins the
         // multiplicity + label.
         let mut attrs = classified_us_secret();
         attrs.aea_markings =
@@ -526,5 +535,50 @@ mod tests {
         let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].span, Some(Span::new(7, 11)));
+    }
+
+    #[test]
+    fn e070_frd_tfni_precedence_falls_back_when_no_tfni_text_in_token_spans() {
+        // #661 review-fix (LOW) — dedicated coverage for the fallback
+        // arm: AEA-kind token spans are present but none carry literal
+        // `"TFNI"` text (e.g., decoder-recovered attrs where the text
+        // field was dropped or canonicalized differently). The inline
+        // text-filter walk returns None; `or_else(token_span_attrs)`
+        // then resolves to the first AEA-kind span. This pins the
+        // graceful degradation path so a future refactor of the
+        // shared `TOK_TFNI` arm in `spans.rs` can't silently drop the
+        // fallback span without failing this test.
+        use marque_ism::{Span, TokenSpan};
+
+        let mut attrs = classified_us_secret();
+        attrs.aea_markings =
+            vec![AeaMarking::Frd(Default::default()), AeaMarking::Tfni].into_boxed_slice();
+        // Two AEA-kind spans but neither carries literal "TFNI" text.
+        // The shared `token_span_attrs(TOK_TFNI)` arm at spans.rs:80
+        // returns the first AEA-kind span regardless of text, so the
+        // fallback resolves to 3..6 (the FRD-textual span). Less
+        // precise than the inline TFNI anchor, but better than `None`
+        // — the bridge still emits a Diagnostic with a span anchored
+        // somewhere in the AEA token cluster.
+        attrs.token_spans = vec![
+            TokenSpan {
+                kind: marque_ism::TokenKind::AeaMarking,
+                span: Span::new(3, 6),
+                text: "FRD".into(),
+            },
+            TokenSpan {
+                kind: marque_ism::TokenKind::AeaMarking,
+                span: Span::new(7, 11),
+                text: "OTHER".into(),
+            },
+        ]
+        .into_boxed_slice();
+        let out = e070_frd_tfni_precedence(&attrs, derive_bits(&attrs));
+        assert_eq!(out.len(), 1);
+        // Fallback resolves to the first AEA-kind span (FRD at 3..6),
+        // NOT None — that's the load-bearing property of the
+        // `or_else(token_span_attrs)` chain.
+        assert_eq!(out[0].span, Some(Span::new(3, 6)));
+        assert_eq!(out[0].severity, Some(Severity::Fix));
     }
 }
