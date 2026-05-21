@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.4 p74 — 'COMINT title for the Special Intelligence (SI) control system is no longer valid'. Fires E065 deprecated-sci-long-form.",
+  "diagnostics": [
+    {"rule": "E065", "span": {"start": 12, "end": 32}}
+  ]
+}

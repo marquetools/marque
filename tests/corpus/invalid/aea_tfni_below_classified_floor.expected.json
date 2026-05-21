@@ -1,0 +1,6 @@
+{
+  "_note": "CAPCO-2016 §H.6 p107 — TFNI requires minimum CONFIDENTIAL classification. Fires E058 class-floor/TFNI.",
+  "diagnostics": [
+    {"rule": "E058", "span": {"start": 14, "end": 18}}
+  ]
+}

@@ -31,6 +31,19 @@
 #[doc(hidden)]
 pub mod fact_bitmask;
 
+// `build_inputs` is imported by `build.rs` via
+// `#[path = "src/build_inputs.rs"] mod build_inputs;` (a module
+// import that pulls the .rs file in directly, bypassing
+// `src/lib.rs`'s module graph) AND exposed here as a regular `pub
+// mod` so the `build_input_pin_test` integration test can re-verify
+// the same digest at test time. The two surfaces share the constant
+// declaration; bumping the pin is a single-site edit.
+//
+// `pub(crate)` would suffice for runtime use, but the integration
+// test under `crates/capco/tests/` needs `pub` reach.
+#[doc(hidden)]
+pub mod build_inputs;
+
 // `closure_table` lives under `scheme/` but is re-exported here at
 // `#[doc(hidden)] pub` so integration tests in `tests/` can reach
 // `CLOSURE_TABLE` / `close` / `ALL_TRIGGER_MASK` /

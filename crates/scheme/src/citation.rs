@@ -108,7 +108,7 @@ use core::num::{NonZeroU8, NonZeroU16};
 /// assert_eq!(format!("{CAVEATED}"), "§B.3 Table 2 p21");
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Citation {
     /// The authoritative document.
     pub document: AuthoritativeSource,
@@ -190,7 +190,7 @@ impl fmt::Display for Citation {
 /// source introduces 3-level subsections, this shape re-extends
 /// additively via `#[non_exhaustive]`.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SectionRef {
     /// The top-level section letter (`A`–`H` per CAPCO-2016 normative
     /// range; see [`SectionLetter`]).
@@ -243,7 +243,7 @@ impl SectionRef {
 /// grow-path for future grammars whose section vocabulary differs
 /// (CUI, NATO).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SectionLetter {
     A,
     B,
@@ -303,7 +303,7 @@ pub type PageNumber = NonZeroU16;
 /// with no `§` substring to scan, the resolver doesn't try to
 /// validate a meaningless section/page against the CAPCO index.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AuthoritativeSource {
     /// CAPCO-2016 Implementation Guide — the marque-vendored manual at
     /// `crates/capco/docs/CAPCO-2016.md` (PDF original at
@@ -440,10 +440,20 @@ mod tests {
     // `Copy` so the properties hold by construction today; any future
     // field addition that breaks them trips this compile-time guard.
     // Same posture as `Rule: Send + Sync` (PR 0 T002).
-    assert_impl_all!(Citation: Send, Sync, Copy);
-    assert_impl_all!(SectionRef: Send, Sync, Copy);
-    assert_impl_all!(SectionLetter: Send, Sync, Copy);
-    assert_impl_all!(AuthoritativeSource: Send, Sync, Copy);
+    //
+    // `Ord` was added in PR 10.A.2 review-fix Commit 8 so the F.1
+    // citation_coverage_probe (and any future tooling that needs to
+    // sort declared citations into a stable display order) can use
+    // native ordering instead of a `sort_by_key(|c| format!("{c}"))`
+    // string-form workaround. Every field — `AuthoritativeSource`,
+    // `SectionRef` (which has `SectionLetter` + `Option<NonZeroU8>`
+    // pair fields), and `PageNumber` (= `NonZeroU16`) — supports
+    // `Ord` by derive or by primitive, so the derive composes
+    // cleanly.
+    assert_impl_all!(Citation: Send, Sync, Copy, Ord, PartialOrd);
+    assert_impl_all!(SectionRef: Send, Sync, Copy, Ord, PartialOrd);
+    assert_impl_all!(SectionLetter: Send, Sync, Copy, Ord, PartialOrd);
+    assert_impl_all!(AuthoritativeSource: Send, Sync, Copy, Ord, PartialOrd);
 
     // Citation::new MUST be `const fn`. The const evaluation below
     // fails at compile time if any constructor stops being const.

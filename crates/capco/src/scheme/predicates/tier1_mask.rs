@@ -211,7 +211,9 @@ pub(crate) fn e038_dos_dissem_requires_noforn(
 /// close-out (PM decision 2026-05-19). Returns
 /// `span: None, severity: None` to match the dyadic-helper shape —
 /// end-user-visible diagnostic emission lands in the broader
-/// engine-bridge generalization tracked at issue #578.
+/// engine-bridge generalization tracked at issue #661 (filed
+/// during PR 10.A.2 reviewer fix-pass; supersedes the earlier
+/// closed-and-unrelated #578 pointer).
 pub(crate) fn e070_frd_tfni_precedence(
     attrs: &CanonicalAttrs,
     bits: marque_scheme::FactBitmask,

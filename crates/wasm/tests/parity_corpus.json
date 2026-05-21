@@ -2,6 +2,48 @@
   "schema": "marque-wasm-parity-1",
   "entries": [
     {
+      "name": "aea_atomal_below_classified_floor.txt",
+      "category": "invalid",
+      "input": "(U//ATOMAL)\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":1,\"end\":2},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n"
+    },
+    {
+      "name": "aea_bare_cnwdi_portion.txt",
+      "category": "invalid",
+      "input": "(S//CNWDI)\n",
+      "expected_lint": "{\"rule\":\"E067\",\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":9},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§H.6 p106\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"RD-CNWDI\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":10},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.8 p154\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "aea_dod_ucni_classified.txt",
+      "category": "invalid",
+      "input": "SECRET//DOD UCNI\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":16},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.6 p116\",\"fix\":null}\n"
+    },
+    {
+      "name": "aea_doe_ucni_classified.txt",
+      "category": "invalid",
+      "input": "SECRET//DOE UCNI\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":16},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.6 p118\",\"fix\":null}\n"
+    },
+    {
+      "name": "aea_rd_requires_noforn.txt",
+      "category": "invalid",
+      "input": "CONFIDENTIAL//RD\n",
+      "expected_lint": "{\"rule\":\"E021\",\"severity\":\"warn\",\"span\":{\"start\":14,\"end\":16},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p104\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.95,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "aea_rd_sg_below_secret_floor.txt",
+      "category": "invalid",
+      "input": "CONFIDENTIAL//RD-SG 14\n",
+      "expected_lint": "{\"rule\":\"E021\",\"severity\":\"warn\",\"span\":{\"start\":14,\"end\":22},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.6 p104\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.95,\"migration_ref\":null}}\n{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":22},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.6 p113\",\"fix\":null}\n"
+    },
+    {
+      "name": "aea_tfni_below_classified_floor.txt",
+      "category": "invalid",
+      "input": "UNCLASSIFIED//TFNI\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.6 p107\",\"fix\":null}\n"
+    },
+    {
       "name": "banner_abbrev_3.txt",
       "category": "invalid",
       "input": "CONFIDENTIAL//IMC\n",
@@ -56,6 +98,48 @@
       "expected_lint": "{\"rule\":\"E005\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":20},\"message\":{\"template\":\"WrongTokenForm\"},\"citation\":\"§E.1 p31\",\"fix\":null}\n"
     },
     {
+      "name": "dissem_eyes_only_low_class.txt",
+      "category": "invalid",
+      "input": "UNCLASSIFIED//USA EYES ONLY\n",
+      "expected_lint": "{\"rule\":\"E064\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":27},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§H.8 p157\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"REL TO USA\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":27},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.8 p152\",\"fix\":null}\n"
+    },
+    {
+      "name": "dissem_orcon_unclassified.txt",
+      "category": "invalid",
+      "input": "UNCLASSIFIED//ORCON\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":19},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.8 p136\",\"fix\":null}\n"
+    },
+    {
+      "name": "dissem_rsen_below_secret.txt",
+      "category": "invalid",
+      "input": "UNCLASSIFIED//RSEN\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":18},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.8 p149\",\"fix\":null}\n"
+    },
+    {
+      "name": "dual_classification_secret_ns.txt",
+      "category": "invalid",
+      "input": "SECRET//NS\n",
+      "expected_lint": "{\"rule\":\"E012\",\"severity\":\"fix\",\"span\":{\"start\":8,\"end\":10},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p55\",\"fix\":null}\n"
+    },
+    {
+      "name": "joint_conflicts_hcs.txt",
+      "category": "invalid",
+      "input": "(//JOINT TOP SECRET USA GBR//HCS//REL TO USA, GBR)\n",
+      "expected_lint": "{\"rule\":\"E010\",\"severity\":\"error\",\"span\":{\"start\":29,\"end\":32},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.4 p62\",\"fix\":null}\n{\"rule\":\"E036\",\"severity\":\"error\",\"span\":{\"start\":29,\"end\":32},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p57\",\"fix\":null}\n"
+    },
+    {
+      "name": "joint_disunity_page.txt",
+      "category": "invalid",
+      "input": "(//JOINT SECRET USA GBR//REL TO USA, GBR)\n(//JOINT SECRET USA DEU//REL TO USA, DEU)\n",
+      "expected_lint": "{\"rule\":\"W004\",\"severity\":\"warn\",\"span\":{\"start\":84,\"end\":84},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.3 p57\",\"fix\":null}\n"
+    },
+    {
+      "name": "joint_missing_rel_to.txt",
+      "category": "invalid",
+      "input": "(//JOINT S USA GBR//REL TO USA)\n",
+      "expected_lint": "{\"rule\":\"E014\",\"severity\":\"fix\",\"span\":{\"start\":3,\"end\":18},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.3 p57\",\"fix\":null}\n"
+    },
+    {
       "name": "missing_usa_trigraph.txt",
       "category": "invalid",
       "input": "SECRET//REL TO GBR, AUS\n",
@@ -72,6 +156,12 @@
       "category": "invalid",
       "input": "CONFIDENTIAL//REL TO DEU, FRA\n",
       "expected_lint": "{\"rule\":\"E002\",\"severity\":\"fix\",\"span\":{\"start\":21,\"end\":29},\"message\":{\"template\":\"NonCanonicalOrder\"},\"citation\":\"§H.8 p150\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.97,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "nato_bohemia_low_class.txt",
+      "category": "invalid",
+      "input": "(//NS//BOHEMIA)\n",
+      "expected_lint": "{\"rule\":\"S007\",\"severity\":\"suggest\",\"span\":{\"start\":3,\"end\":5},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p127\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"NS//REL TO USA, NATO\",\"confidence\":0.85,\"migration_ref\":null}}\n{\"rule\":\"E015\",\"severity\":\"error\",\"span\":{\"start\":3,\"end\":5},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.7 p122\",\"fix\":null}\n{\"rule\":\"E058\",\"severity\":\"warn\",\"span\":{\"start\":3,\"end\":5},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§G.2 p40\",\"fix\":null}\n"
     },
     {
       "name": "nato_longhand_banner.txt",
@@ -134,6 +224,12 @@
       "expected_lint": "{\"rule\":\"E035\",\"severity\":\"error\",\"span\":{\"start\":48,\"end\":52},\"message\":{\"template\":\"BannerRollupMismatch\"},\"citation\":\"§H.4 p61\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-G ABCD\",\"confidence\":0.9,\"migration_ref\":null}}\n"
     },
     {
+      "name": "sci_bare_nk_portion.txt",
+      "category": "invalid",
+      "input": "(S//NK)\n",
+      "expected_lint": "{\"rule\":\"E067\",\"severity\":\"fix\",\"span\":{\"start\":4,\"end\":6},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§H.4 p83\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-NK\",\"confidence\":1.0,\"migration_ref\":null}}\n{\"rule\":\"S008\",\"severity\":\"suggest\",\"span\":{\"start\":0,\"end\":7},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.8 p154\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.85,\"migration_ref\":null}}\n"
+    },
+    {
       "name": "sci_canonical_subcompartments.txt",
       "category": "invalid",
       "input": "TOP SECRET//123/SI-G ABCD DEFG-MMM AACD//ORCON/NOFORN\n",
@@ -146,10 +242,58 @@
       "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":14},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
     },
     {
+      "name": "sci_deprecated_endseal.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//ENDSEAL X\n",
+      "expected_lint": "{\"rule\":\"E065\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":21},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§H.4 p78\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI-X\",\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "sci_deprecated_kdk.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//KDK-AAA\n",
+      "expected_lint": "{\"rule\":\"E065\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":19},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§H.4 p85\",\"fix\":null}\n"
+    },
+    {
+      "name": "sci_deprecated_special_intelligence.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//SPECIAL INTELLIGENCE\n",
+      "expected_lint": "{\"rule\":\"E065\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":32},\"message\":{\"template\":\"SupersededToken\"},\"citation\":\"§H.4 p74\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"TextCorrection\",\"replacement\":\"SI\",\"confidence\":1.0,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "sci_hcs_o_missing_companions.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//HCS-O\n",
+      "expected_lint": "{\"rule\":\"E010\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":17},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.4 p62\",\"fix\":null}\n{\"rule\":\"E010\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":17},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.4 p62\",\"fix\":null}\n{\"rule\":\"E059\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":17},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.4 p64\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.9,\"migration_ref\":null}}\n{\"rule\":\"E059\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":17},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.4 p64\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.9,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "sci_hcs_p_missing_noforn.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//HCS-P//ORCON\n",
+      "expected_lint": "{\"rule\":\"E010\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":17},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.4 p62\",\"fix\":null}\n{\"rule\":\"E059\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":17},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.4 p66\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.9,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "sci_hcs_p_sub_missing_orcon.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//HCS-P AAA\n",
+      "expected_lint": "{\"rule\":\"E010\",\"severity\":\"error\",\"span\":{\"start\":12,\"end\":21},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.4 p62\",\"fix\":null}\n{\"rule\":\"E059\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":21},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.4 p66\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.9,\"migration_ref\":null}}\n{\"rule\":\"E059\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":21},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.4 p68\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":0.9,\"migration_ref\":null}}\n"
+    },
+    {
+      "name": "sci_rsv_bare.txt",
+      "category": "invalid",
+      "input": "TOP SECRET//RSV\n",
+      "expected_lint": "{\"rule\":\"E063\",\"severity\":\"warn\",\"span\":{\"start\":12,\"end\":15},\"message\":{\"template\":\"RequiredByPresence\"},\"citation\":\"§H.4 p70\",\"fix\":null}\n"
+    },
+    {
       "name": "sci_system_order.txt",
       "category": "invalid",
       "input": "TOP SECRET//SI/123//NOFORN\n",
       "expected_lint": "{\"rule\":\"W034\",\"severity\":\"warn\",\"span\":{\"start\":15,\"end\":18},\"message\":{\"template\":\"UnpublishedSciControl\"},\"citation\":\"§A.6 p16\",\"fix\":null}\n"
+    },
+    {
+      "name": "sci_unclassified_si.txt",
+      "category": "invalid",
+      "input": "UNCLASSIFIED//SI\n",
+      "expected_lint": "{\"rule\":\"E058\",\"severity\":\"error\",\"span\":{\"start\":14,\"end\":16},\"message\":{\"template\":\"ClassificationFloorViolated\"},\"citation\":\"§H.4 p60\",\"fix\":null}\n"
     },
     {
       "name": "unknown_token.txt",
