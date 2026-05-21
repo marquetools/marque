@@ -47,9 +47,9 @@
 use marque_capco::CapcoScheme;
 use marque_capco::active_sentinel_count;
 use marque_capco::scheme::{
-    TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS, TOK_HCS_O, TOK_HCS_P, TOK_NNPI,
-    TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED, TOK_SI_G, TOK_SSI, TOK_TFNI,
-    TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI,
+    TOK_ATOMAL, TOK_BALK, TOK_BOHEMIA, TOK_CNWDI, TOK_DCNI, TOK_EXDIS, TOK_FISA, TOK_FRD, TOK_HCS,
+    TOK_HCS_O, TOK_HCS_P, TOK_NNPI, TOK_NODIS, TOK_NOFORN, TOK_ORCON_USGOV, TOK_RD, TOK_RESTRICTED,
+    TOK_SI_G, TOK_SSI, TOK_TFNI, TOK_TK_BLFH, TOK_TK_IDIT, TOK_TK_KAND, TOK_UCNI,
 };
 use marque_scheme::{FormKind, TokenId, Vocabulary};
 
@@ -160,6 +160,30 @@ const EXPECTED_FORMS: &[(TokenId, &str, &str, Option<&str>)] = &[
     (TOK_TK_BLFH, "TK-BLFH", "TK-BLFH", None),
     (TOK_TK_IDIT, "TK-IDIT", "TK-IDIT", None),
     (TOK_TK_KAND, "TK-KAND", "TK-KAND", None),
+    // ----- Issue #660 NATO program sentinel additions -----
+    //
+    // ODNI publishes the CVE canonicals as `NATO-ATOMAL`/`NATO-BALK`/
+    // `NATO-BOHEMIA` in `CVE_NON_US_CONTROLS`; CAPCO §G.1 Table 4 p36
+    // registers them bare (`ATOMAL`/`BALK`/`BOHEMIA`) with no banner
+    // abbreviation (col 2 empty → `banner_abbreviation = None`).
+    // `nato_program_form_set` in `crates/capco/src/vocabulary.rs`
+    // projects the CVE canonical onto the bare display form so the
+    // `expected_portion` / `expected_banner` columns below carry the
+    // §G.1 Table 4 p36 user-visible bare form, not the CVE canonical.
+    //
+    // The CVE canonical is reachable through `metadata().canonical`
+    // (verified separately in
+    // `crates/capco/tests/vocabulary.rs::nato_program_tokens_use_bare_display_forms`).
+    //
+    // Authority:
+    //   - TOK_ATOMAL: §G.1 Table 4 p36 (registration); §H.7 p122
+    //     (AEA-axis worked example).
+    //   - TOK_BALK: §G.1 Table 4 p36; §G.2 p40 (Table 5 NATO SAP ARH).
+    //   - TOK_BOHEMIA: §G.1 Table 4 p36; §G.2 p40; §H.7 p127
+    //     (SCI-axis worked example).
+    (TOK_ATOMAL, "ATOMAL", "ATOMAL", None),
+    (TOK_BALK, "BALK", "BALK", None),
+    (TOK_BOHEMIA, "BOHEMIA", "BOHEMIA", None),
 ];
 
 #[test]

@@ -1,0 +1,8 @@
+{
+  "_note": "Issue #660: legacy CTS-B portion form canonicalizes to bare CTS class + BOHEMIA companion (SCI axis) per CAPCO-2016 §G.1 Table 4 p36 (registration) + §G.2 p40 (Table 5 ARH — NATO SAP) + §H.7 p127 (worked example (//CTS//BOHEMIA//REL TO USA, NATO)). E066 emits Recanonicalize → `(//CTS//BOHEMIA)`. Co-fires S007 §H.7 p127 (bare NATO requires REL TO USA, NATO) and E015 §H.7 p122 (non-US classification requires dissem control).",
+  "diagnostics": [
+    {"rule": "E066", "span": {"start": 3, "end": 8}},
+    {"rule": "S007", "span": {"start": 3, "end": 8}},
+    {"rule": "E015", "span": {"start": 3, "end": 8}}
+  ]
+}

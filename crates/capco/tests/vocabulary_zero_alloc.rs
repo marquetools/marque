@@ -43,8 +43,8 @@
 
 use marque_capco::CapcoScheme;
 use marque_capco::scheme::{
-    TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS, TOK_NOFORN, TOK_RD, TOK_RESTRICTED,
-    TOK_TFNI, TOK_UCNI,
+    TOK_ATOMAL, TOK_BALK, TOK_BOHEMIA, TOK_CNWDI, TOK_EXDIS, TOK_FRD, TOK_HCS, TOK_NODIS,
+    TOK_NOFORN, TOK_RD, TOK_RESTRICTED, TOK_TFNI, TOK_UCNI,
 };
 use marque_scheme::{TokenId, Vocabulary};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -98,6 +98,14 @@ fn active_sentinels() -> &'static [TokenId] {
         TOK_RESTRICTED,
         TOK_NODIS,
         TOK_EXDIS,
+        // Issue #660 — NATO program markings. These exercise the
+        // `nato_program_form_set` arm in `build_form_set` (the CVE
+        // canonical is `NATO-`-prefixed; the bare display form is
+        // hand-built). The static-slice projection still returns
+        // `&'static` data, so the zero-alloc invariant holds.
+        TOK_ATOMAL,
+        TOK_BALK,
+        TOK_BOHEMIA,
     ]
 }
 
