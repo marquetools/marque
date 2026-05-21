@@ -108,13 +108,22 @@
 //!           §D.2 Table 3 rule 17)
 //!   E071 = FGI with explicit trigraph when concealment intended
 //!           (issue #261, §H.7 p124)
+//!   S009 = prefer-tetragraph-collapse — suggest replacing explicit member
+//!           trigraph lists with a compact tetragraph when all members are
+//!           present (issue #250, §H.8 p150). Default: Off.
+//!   S010 = collapse-uniform-rel-portions — suggest bare REL when all
+//!           portions carry the same REL TO list as the banner
+//!           (issue #251, §H.8 p150). Default: Off.
+//!   E072 = bare-rel-portion-divergence — warns when bare-REL and explicit-
+//!           REL-TO portions coexist with an inconsistent list
+//!           (issue #251, §H.8 p150-151). Default: Warn.
 //!   C001 = corrections-map typo (T058, Phase 5)
 
 use crate::scheme::CapcoScheme;
 use marque_ism::generated::migrations::find_migration;
 use marque_ism::{
     CanonicalAttrs, CountryCode, MarkingClassification, MarkingType, SciControlSystem, SciMarking,
-    Span, TokenKind, TokenSpan, sar_sort_key,
+    Span, TETRAGRAPH_MEMBERS, TokenKind, TokenSpan, sar_sort_key,
 };
 use marque_rules::{
     Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate, Phase,
@@ -398,6 +407,21 @@ impl CapcoRuleSet {
                 // contradicts the acknowledged REL TO countries.
                 // Authority: CAPCO-2016 §H.7 p124.
                 Box::new(FgiExplicitWithTrigraphRule),
+                // Issue #250: S009 prefer-tetragraph-collapse. Default Off
+                // — tetragraph vs. explicit-member form is a classification-
+                // authority style choice. Enable via `[rules] S009 = "suggest"`.
+                // Authority: CAPCO-2016 §H.8 p150.
+                Box::new(PreferTetragraphCollapseRule),
+                // Issue #251: S010 collapse-uniform-rel-portions. Default Off.
+                // When all portions with explicit REL TO carry the same list
+                // as the banner, suggest the compact authorized form `REL`.
+                // Phase::PageFinalization. Authority: CAPCO-2016 §H.8 p150.
+                Box::new(CollapseUniformRelPortionsRule),
+                // Issue #251: E072 bare-rel-portion-divergence. Default Warn.
+                // When bare-REL portions and explicit-REL-TO portions with a
+                // divergent list coexist on the same page.
+                // Phase::PageFinalization. Authority: CAPCO-2016 §H.8 p150-151.
+                Box::new(BareRelPortionDivergenceRule),
                 // PR 4b-B Commit 9 (006 T112): W004 joint-disunity-
                 // collapse-to-FGI per CAPCO-2016 §H.3 p57 + §H.7 p123
                 // (CV-4 PR 4b-B 8th-pass updated from §H.3 p56 — the
@@ -4268,6 +4292,462 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rule: S009 — prefer-tetragraph-collapse.
+//
+// Issue #250. Authority: CAPCO-2016 §H.8 p150 (canonical REL TO form;
+// worked examples consistently use the compact tetragraph form when all
+// members are present). ISMCAT Tetragraph Taxonomy
+// V[`marque_ism::ISMCAT_TETRA_VERSION`] (membership tables).
+//
+// Default severity is `Off` — tetragraph vs. explicit-member form is a
+// classification-authority / org style choice; neither form violates
+// CAPCO-2016 §H.8. Users opt in via `[rules] S009 = "suggest"`.
+// ---------------------------------------------------------------------------
+
+/// Confidence scalar for S009 (`prefer-tetragraph-collapse`).
+///
+/// Mirrors `S007_SUGGEST_CONFIDENCE = 0.85` — sufficient for the
+/// suggestion channel. The collapse is purely additive (no
+/// information loss: tetragraphs are decomposable), so 0.85 is
+/// conservative; users who set `[rules] S009 = "fix"` will need
+/// `confidence_threshold ≤ 0.84` to auto-apply.
+const S009_SUGGEST_CONFIDENCE: f32 = 0.85;
+
+/// Rule **S009** — `prefer-tetragraph-collapse`.
+///
+/// When a REL TO list enumerates all individual members of a known
+/// decomposable tetragraph (e.g., `AUS, CAN, GBR, NZL` for `FVEY`),
+/// suggests replacing the explicit list with the compact tetragraph form.
+///
+/// Example: `REL TO USA, AUS, CAN, GBR, NZL` → `REL TO USA, FVEY`.
+///
+/// **Default severity: `Off`** — tetragraph vs. explicit-member form is
+/// an org/classification-authority style choice, not a CAPCO mandate.
+/// Enable via `[rules] S009 = "suggest"` (or `"warn"`) in `.marque.toml`.
+///
+/// **Algorithm**: Greedy set cover over decomposable tetragraphs —
+/// tetragraphs with a non-empty member slice in the ISMCAT taxonomy
+/// (opaque tetragraphs with no published membership, such as `EU`, are
+/// skipped). Candidates are sorted by member-count descending, then alpha,
+/// so larger groups (FVEY 5 members) are preferred over overlapping
+/// sub-groups (ACGU 4 members). USA is **never** absorbed — §H.8 p150
+/// worked examples always emit `USA` explicitly even when `FVEY` is the
+/// tetragraph.
+///
+/// A no-op gate suppresses emission when every selected tetragraph is
+/// already present in the REL TO list (input is already compact).
+///
+/// Authority: CAPCO-2016 §H.8 p150 (canonical REL TO form; USA-first,
+/// trigraphs alpha, tetragraphs alpha — worked examples use compact
+/// tetragraph form throughout).
+struct PreferTetragraphCollapseRule;
+
+impl Rule<CapcoScheme> for PreferTetragraphCollapseRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S009")
+    }
+    fn name(&self) -> &'static str {
+        "prefer-tetragraph-collapse"
+    }
+    /// `Severity::Off` — disabled by default.
+    fn default_severity(&self) -> Severity {
+        Severity::Off
+    }
+    fn phase(&self) -> Phase {
+        Phase::WholeMarking
+    }
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        // Gate 1: nothing to collapse with an empty REL TO.
+        if attrs.rel_to.is_empty() {
+            return vec![];
+        }
+
+        // O(1)-lookup set for membership tests.
+        let rel_to_codes: HashSet<&str> = attrs.rel_to.iter().map(|c| c.as_str()).collect();
+
+        // Find decomposable tetragraphs (non-empty member slice per ISMCAT)
+        // whose full member set is covered by the current REL TO list.
+        // Opaque tetragraphs (empty member slice — e.g. EU) are skipped;
+        // S005 handles opaque-tetragraph uncertainty separately.
+        let mut candidates: Vec<(&str, &'static [&'static str])> = TETRAGRAPH_MEMBERS
+            .iter()
+            .filter_map(|(code, members)| {
+                if members.is_empty() {
+                    return None;
+                }
+                if members.iter().all(|m| rel_to_codes.contains(*m)) {
+                    Some((*code, *members))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if candidates.is_empty() {
+            return vec![];
+        }
+
+        // Greedy set cover: largest-member-set first, alpha tie-break.
+        // Larger groups preferred (FVEY 5-member over ACGU 4-member).
+        candidates.sort_unstable_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(b.0)));
+
+        // `collapsed` tracks non-USA trigraphs absorbed into a selected
+        // tetragraph. USA is intentionally excluded — §H.8 p150 worked
+        // examples always emit USA explicitly even when FVEY is selected.
+        let mut collapsed: HashSet<&str> = HashSet::new();
+        let mut selected: Vec<&str> = Vec::new();
+        for (code, members) in &candidates {
+            let overlaps = members
+                .iter()
+                .any(|m| *m != "USA" && collapsed.contains(*m));
+            if overlaps {
+                continue;
+            }
+            selected.push(code);
+            for m in *members {
+                if *m != "USA" {
+                    collapsed.insert(m);
+                }
+            }
+        }
+
+        if selected.is_empty() {
+            return vec![];
+        }
+
+        // No-op gate: every selected tetragraph already in the REL TO list
+        // means the input is already in compact form — nothing to suggest.
+        if selected.iter().all(|code| rel_to_codes.contains(*code)) {
+            return vec![];
+        }
+
+        // Build the replacement using the canonical §H.8 p150 / §A.6 p16
+        // sort: USA first, remaining trigraphs ascending alpha, tetragraphs
+        // ascending alpha.
+        let has_usa = rel_to_codes.contains("USA");
+        let mut remaining_trigraphs: Vec<&str> = rel_to_codes
+            .iter()
+            .copied()
+            .filter(|&c| c != "USA" && c.len() == 3 && !collapsed.contains(c))
+            .collect();
+        remaining_trigraphs.sort_unstable();
+        let mut tetragraph_bucket: Vec<&str> = rel_to_codes
+            .iter()
+            .copied()
+            .filter(|&c| c.len() != 3 && !collapsed.contains(c))
+            .collect();
+        tetragraph_bucket.extend_from_slice(&selected);
+        tetragraph_bucket.sort_unstable();
+        tetragraph_bucket.dedup();
+
+        let mut replacement =
+            String::with_capacity(7 + 5 * (remaining_trigraphs.len() + tetragraph_bucket.len()));
+        replacement.push_str("REL TO");
+        let mut first_code = true;
+        let emit_code = |code: &str, out: &mut String, first: &mut bool| {
+            if *first {
+                out.push(' ');
+                *first = false;
+            } else {
+                out.push_str(", ");
+            }
+            out.push_str(code);
+        };
+        if has_usa {
+            emit_code("USA", &mut replacement, &mut first_code);
+        }
+        for code in &remaining_trigraphs {
+            emit_code(code, &mut replacement, &mut first_code);
+        }
+        for code in &tetragraph_bucket {
+            emit_code(code, &mut replacement, &mut first_code);
+        }
+
+        // Single RelToBlock span — same splice pattern as S007.
+        let mut blocks = attrs
+            .token_spans
+            .iter()
+            .filter(|t| t.kind == TokenKind::RelToBlock);
+        let block = match (blocks.next(), blocks.next()) {
+            (Some(b), None) => b,
+            // Multiple RelToBlock tokens is a malformed shape; E002 /
+            // parser-shape diagnostics own that case. Skip to avoid
+            // cross-block splice damage.
+            (Some(_), Some(_)) | (None, _) => return vec![],
+        };
+
+        if block.text.as_str() == replacement {
+            return vec![];
+        }
+
+        vec![Diagnostic::text_correction(
+            self.id(),
+            Severity::Suggest,
+            block.span,
+            Message::new(
+                MessageTemplate::NonCanonicalOrder,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..Default::default()
+                },
+            ),
+            capco(SectionLetter::H, 8, 150),
+            replacement,
+            FixSource::BuiltinRule,
+            Confidence::strict(S009_SUGGEST_CONFIDENCE),
+            None,
+        )]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rule: S010 — collapse-uniform-rel-portions
+// ---------------------------------------------------------------------------
+//
+// Phase: PageFinalization. Off by default.
+//
+// CAPCO-2016 §H.8 p150: "Authorized Portion Mark (when the portion's
+// country trigraphs and/or tetragraph list is the SAME as the banner line
+// REL TO marking): REL". When ALL portions with an explicit REL TO list
+// carry the same list as the projected banner REL TO, the compact `REL`
+// form is equally valid. S010 suggests this compaction. Gate: only fires
+// when EVERY explicit-REL-TO portion matches, so the suggested
+// transformation replaces all of them uniformly.
+
+/// Confidence scalar for S010.
+const S010_SUGGEST_CONFIDENCE: f32 = 0.85;
+const S010_CITATION: Citation = capco(SectionLetter::H, 8, 150);
+
+/// Rule **S010** — `collapse-uniform-rel-portions`.
+///
+/// Off by default. Enable via `[rules] S010 = "suggest"`.
+/// Authority: CAPCO-2016 §H.8 p150.
+struct CollapseUniformRelPortionsRule;
+
+impl Rule<CapcoScheme> for CollapseUniformRelPortionsRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("S010")
+    }
+    fn name(&self) -> &'static str {
+        "collapse-uniform-rel-portions"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Off
+    }
+    fn phase(&self) -> Phase {
+        Phase::PageFinalization
+    }
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        check_collapse_uniform_rel_portions(attrs, ctx)
+    }
+}
+
+/// Expand a REL TO list into an atomic set of trigraphs.
+///
+/// Tetragraph codes in `rel_to` (e.g. `FVEY`, `NATO`) are replaced by their
+/// member trigraphs. Opaque tetragraphs with no published membership (e.g.
+/// `EU`) pass through unchanged. This normalises both the banner-projected
+/// set and per-portion sets to a common representation before comparison, so
+/// `(S//REL TO USA, FVEY)` and `(S//REL TO USA, AUS, CAN, GBR, NZL)` are
+/// treated as equivalent.
+fn expand_rel_to_atomic(codes: &[marque_ism::CountryCode]) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for code in codes {
+        let s = code.as_str();
+        if let Some(members) = crate::vocab::expand_tetragraph(s) {
+            for m in members {
+                out.insert((*m).to_owned());
+            }
+        } else {
+            out.insert(s.to_owned());
+        }
+    }
+    out
+}
+
+fn check_collapse_uniform_rel_portions(
+    _attrs: &CanonicalAttrs,
+    ctx: &RuleContext,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    let Some(page_portions) = ctx.page_portions.as_ref() else {
+        return Vec::new();
+    };
+    let portions: &[CanonicalAttrs] = page_portions.as_ref();
+    let Some(page_mark) = ctx.page_marking.as_ref() else {
+        return Vec::new();
+    };
+    // No banner REL TO list projected — nothing to match against.
+    if page_mark.rel_to.is_empty() {
+        return Vec::new();
+    }
+    // NOFORN guard: REL TO superseded by NOFORN (mirrors S005).
+    let any_noforn = portions.iter().any(|p| {
+        p.dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+    });
+    if any_noforn {
+        return Vec::new();
+    }
+    let banner_set = expand_rel_to_atomic(&page_mark.rel_to);
+    let explicit_portions: Vec<&CanonicalAttrs> =
+        portions.iter().filter(|p| !p.rel_to.is_empty()).collect();
+    if explicit_portions.is_empty() {
+        return Vec::new();
+    }
+    // Gate: EVERY explicit-REL-TO portion must match the banner list.
+    let all_match = explicit_portions.iter().all(|p| {
+        let portion_set = expand_rel_to_atomic(&p.rel_to);
+        portion_set == banner_set
+    });
+    if !all_match {
+        return Vec::new();
+    }
+    let mut diagnostics = Vec::new();
+    for portion in explicit_portions {
+        let Some(block) = portion
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+        else {
+            continue;
+        };
+        diagnostics.push(Diagnostic::text_correction(
+            RuleId::new("S010"),
+            Severity::Suggest,
+            block.span,
+            Message::new(
+                MessageTemplate::NonCanonicalOrder,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..Default::default()
+                },
+            ),
+            S010_CITATION,
+            "REL",
+            FixSource::BuiltinRule,
+            Confidence::strict(S010_SUGGEST_CONFIDENCE),
+            None,
+        ));
+    }
+    diagnostics
+}
+
+// ---------------------------------------------------------------------------
+// Rule: E072 — bare-rel-portion-divergence
+// ---------------------------------------------------------------------------
+//
+// Phase: PageFinalization. Warn by default.
+//
+// CAPCO-2016 §H.8 p150-151: bare `REL` in a portion means "my releasability
+// = the banner's REL TO list." When bare-REL portions and explicit-REL-TO
+// portions with a different list coexist on the same page, extraction is
+// ambiguous: bare-REL portions implicitly carry the banner list while the
+// divergent explicit portions carry a different list. E072 warns on each
+// divergent explicit portion.
+
+const E072_CITATION: Citation = capco(SectionLetter::H, 8, 151);
+
+/// Rule **E072** — `bare-rel-portion-divergence`.
+///
+/// Default severity: [`Severity::Warn`]. Authority: CAPCO-2016 §H.8 p150-151.
+struct BareRelPortionDivergenceRule;
+
+impl Rule<CapcoScheme> for BareRelPortionDivergenceRule {
+    fn id(&self) -> RuleId {
+        RuleId::new("E072")
+    }
+    fn name(&self) -> &'static str {
+        "bare-rel-portion-divergence"
+    }
+    fn default_severity(&self) -> Severity {
+        Severity::Warn
+    }
+    fn phase(&self) -> Phase {
+        Phase::PageFinalization
+    }
+    fn trusted(&self) -> bool {
+        true
+    }
+    fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
+        check_bare_rel_portion_divergence(attrs, ctx)
+    }
+}
+
+fn check_bare_rel_portion_divergence(
+    _attrs: &CanonicalAttrs,
+    ctx: &RuleContext,
+) -> Vec<Diagnostic<CapcoScheme>> {
+    let Some(page_portions) = ctx.page_portions.as_ref() else {
+        return Vec::new();
+    };
+    let portions: &[CanonicalAttrs] = page_portions.as_ref();
+    let Some(page_mark) = ctx.page_marking.as_ref() else {
+        return Vec::new();
+    };
+    // NOFORN guard: REL TO superseded by NOFORN (mirrors S005).
+    let any_noforn = portions.iter().any(|p| {
+        p.dissem_iter()
+            .any(|d| matches!(d, marque_ism::DissemControl::Nf))
+    });
+    if any_noforn {
+        return Vec::new();
+    }
+    // No projected banner REL TO — nothing to compare against.
+    if page_mark.rel_to.is_empty() {
+        return Vec::new();
+    }
+    // E072 only applies when at least one bare-REL portion exists.
+    let has_bare_rel = portions.iter().any(|p| {
+        p.rel_to.is_empty()
+            && p.dissem_iter()
+                .any(|d| matches!(d, marque_ism::DissemControl::Rel))
+    });
+    if !has_bare_rel {
+        return Vec::new();
+    }
+    let banner_set = expand_rel_to_atomic(&page_mark.rel_to);
+    let mut diagnostics = Vec::new();
+    for portion in portions {
+        if portion.rel_to.is_empty() {
+            continue;
+        }
+        let portion_set = expand_rel_to_atomic(&portion.rel_to);
+        if portion_set == banner_set {
+            continue;
+        }
+        // Portion's explicit list diverges from what bare-REL portions imply.
+        let span = portion
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::RelToBlock)
+            .map(|t| t.span)
+            .unwrap_or(ctx.candidate_span);
+        diagnostics.push(Diagnostic::new(
+            RuleId::new("E072"),
+            Severity::Warn,
+            span,
+            Message::new(
+                MessageTemplate::BannerRollupMismatch,
+                MessageArgs {
+                    category: Some(crate::scheme::CAT_REL_TO),
+                    ..Default::default()
+                },
+            ),
+            E072_CITATION,
+            None,
+        ));
+    }
+    diagnostics
+}
+
+// ---------------------------------------------------------------------------
 /// Citation string for E035 — shared between the with-fix and no-fix
 /// emission paths so they cannot silently diverge.
 ///
