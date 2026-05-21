@@ -6,10 +6,13 @@
 //! must scale linearly in input size when fix density is proportional to
 //! document size.
 //!
-//! Input shape: mixed prose + valid markings with one `SECRET//NF` (E001
-//! NOFORN-abbreviation violation) per ~10.9 KB section, so the number of
-//! fixes tracks input size. This is the "real document with a known violation
-//! rate" shape a batch user would feed in.
+//! Input shape: mixed prose + valid markings with one `SECRET//NF` per ~10.9 KB
+//! section. `SECRET//NF` is a valid banner (E001, the NOFORN-abbreviation rule,
+//! was retired in PR 3c.B Commit 6; `NF` is a valid abbreviated dissem form).
+//! Zero fixes fire — the bench measures the fix-path overhead (recognition,
+//! page-context accumulation, fix-apply scaffolding) without actual splice work.
+//! Fix density proportional to document size is the shape that exposed the
+//! O(N²) page-context blowup fixed in issue #306.
 //!
 //! The benchmark sweeps from 1 MB to 100 MB and reports throughput (MB/s) at
 //! each size. Linearity is enforced by `scripts/bench-check.sh` via the
@@ -39,8 +42,10 @@ use std::hint::black_box;
 /// therefore scales linearly with document size — exactly the shape that
 /// exposed the quadratic blowup.
 fn build_fix_input(target_bytes: usize) -> Vec<u8> {
-    // Each block is ~10.9 KB: one E001 violation (SECRET//NF — abbreviated
-    // NOFORN in a banner) followed by ~10.9 KB of valid markings and prose.
+    // Each block is ~10.9 KB: one `SECRET//NF` banner (valid — E001 was
+    // retired in PR 3c.B Commit 6) followed by ~10.9 KB of valid markings
+    // and prose. Zero fixes fire; the scaling signal comes from the page-
+    // context accumulation path, which was O(N²) before issue #306.
     let violation = "SECRET//NF\n\n";
 
     // ~220-byte prose + marking block repeated to fill the section.
