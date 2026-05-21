@@ -407,6 +407,25 @@ const DEPRECATED_SCI_LONG_FORM_CATALOG: &[DeprecatedSciRow] = &[
 /// rationale.
 pub(crate) struct DeprecatedSciLongFormRule;
 
+/// Citations the [`DeprecatedSciLongFormRule`] walker may emit on
+/// diagnostics — the union of `citation` fields across every row in
+/// [`DEPRECATED_SCI_LONG_FORM_CATALOG`]. The walker registers under
+/// `E065` and per-row IDs travel on emitted diagnostics via the row
+/// metadata. See [`Rule::cited_authorities`] for the F.1 corpus-
+/// fidelity gate contract.
+const E065_AUTHORITIES: &[Citation] = &[
+    // HUMINT / HUMINT CONTROL SYSTEM → HCS (§H.4 p62).
+    capco(SectionLetter::H, 4, 62),
+    // COMINT / SPECIAL INTELLIGENCE → SI (§H.4 p74).
+    capco(SectionLetter::H, 4, 74),
+    // ECI / EXCEPTIONALLY CONTROLLED INFORMATION → SI-<comp> (§H.4 p61).
+    capco(SectionLetter::H, 4, 61),
+    // ENDSEAL / EL → SI (§H.4 p78).
+    capco(SectionLetter::H, 4, 78),
+    // KLONDIKE / KDK → TK (§H.4 p85).
+    capco(SectionLetter::H, 4, 85),
+];
+
 impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
     fn id(&self) -> RuleId {
         RuleId::new("E065")
@@ -433,6 +452,10 @@ impl Rule<CapcoScheme> for DeprecatedSciLongFormRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E065_AUTHORITIES
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
@@ -699,6 +722,20 @@ pub(crate) fn is_bare_canonical_compound_form(text: &str) -> bool {
 /// See the section header above for the design rationale.
 pub(crate) struct BareCanonicalCompoundRule;
 
+/// Citations the [`BareCanonicalCompoundRule`] walker may emit on
+/// diagnostics — the union of `citation` fields across every row in
+/// [`BARE_CANONICAL_COMPOUND_CATALOG`]. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E067_AUTHORITIES: &[Citation] = &[
+    // CNWDI → RD-CNWDI (§H.6 p106).
+    capco(SectionLetter::H, 6, 106),
+    // NK → SI-NK (§H.4 p83).
+    capco(SectionLetter::H, 4, 83),
+    // EU → SI-EU (§H.4 p78).
+    capco(SectionLetter::H, 4, 78),
+];
+
 impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
     fn id(&self) -> RuleId {
         RuleId::new("E067")
@@ -730,6 +767,10 @@ impl Rule<CapcoScheme> for BareCanonicalCompoundRule {
 
     fn trusted(&self) -> bool {
         true
+    }
+
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E067_AUTHORITIES
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {

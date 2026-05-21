@@ -466,6 +466,11 @@ impl RuleSet<CapcoScheme> for CapcoRuleSet {
 ///   USA is present and first; a separate rule is needed for that case.
 struct MissingUsaTrigraphRule;
 
+/// Citations E002 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E002_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+
 impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     fn id(&self) -> RuleId {
         RuleId::new("E002")
@@ -484,6 +489,9 @@ impl Rule<CapcoScheme> for MissingUsaTrigraphRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E002_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         if attrs.rel_to.is_empty() {
@@ -792,8 +800,18 @@ struct DeclassifyMisplacedRule;
 /// (consts in Rust are inlined; an unused `pub(crate) const` does not
 /// add to the production binary footprint, including the WASM-shipped
 /// crate surface).
-#[allow(dead_code)] // see [`Rule::cited_authorities`] follow-up
+#[allow(dead_code)] // used by `citation_cross_refs_tests` at end of file
 pub(crate) const E005_CROSS_REFS: &[Citation] = &[capco(SectionLetter::D, 1, 27)];
+
+/// Citations E005 may emit on diagnostics. Combines the primary
+/// `Diagnostic.citation` value (§E.1 p31) with the
+/// [`E005_CROSS_REFS`] cross-references. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E005_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::E, 1, 31),
+    capco(SectionLetter::D, 1, 27),
+];
 
 impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     fn id(&self) -> RuleId {
@@ -813,6 +831,9 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E005_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -873,6 +894,13 @@ impl Rule<CapcoScheme> for DeclassifyMisplacedRule {
 /// `is_dissem_replacement` filter below.
 struct DeprecatedDissemRule;
 
+/// Citations E006 may emit on diagnostics. §F has no numbered
+/// subsections; the bare-section page anchor at p35 marks the
+/// start of the §F "Legacy Control Markings" passage. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E006_AUTHORITIES: &[Citation] = &[capco_section(SectionLetter::F, 35)];
+
 impl Rule<CapcoScheme> for DeprecatedDissemRule {
     fn id(&self) -> RuleId {
         RuleId::new("E006")
@@ -892,6 +920,9 @@ impl Rule<CapcoScheme> for DeprecatedDissemRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E006_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
@@ -1011,6 +1042,11 @@ fn is_dissem_replacement(replacement: &str) -> bool {
 ///    replacement mapping).
 struct XShorthandDateRule;
 
+/// Citations E007 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E007_AUTHORITIES: &[Citation] = &[capco(SectionLetter::E, 6, 33)];
+
 impl Rule<CapcoScheme> for XShorthandDateRule {
     fn id(&self) -> RuleId {
         RuleId::new("E007")
@@ -1030,6 +1066,9 @@ impl Rule<CapcoScheme> for XShorthandDateRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E007_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut diagnostics = Vec::new();
@@ -1244,6 +1283,11 @@ fn is_repeated_sar_owned_by_e030(text: &str, has_first_sar: bool) -> bool {
 /// not a silent fallback.
 struct UnknownTokenRule;
 
+/// Citations E008 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::G, 1, 36)];
+
 impl Rule<CapcoScheme> for UnknownTokenRule {
     fn id(&self) -> RuleId {
         RuleId::new("E008")
@@ -1264,6 +1308,9 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E008_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Precompute whether a first SAR block parsed successfully. The
@@ -1381,6 +1428,14 @@ impl Rule<CapcoScheme> for UnknownTokenRule {
 ///    is identical.
 struct CorrectionsMapRule;
 
+/// Citations C001 may emit on diagnostics. C001 is **not** a CAPCO
+/// rule — it surfaces user-defined `[corrections]` map entries, so
+/// its citation is the [`AuthoritativeSource::Config`] sentinel
+/// (`[config]`) rather than a §/page reference. See
+/// [`marque_rules::CORRECTIONS_MAP_CITATION`] and
+/// [`Rule::cited_authorities`] for the F.1 gate contract.
+const C001_AUTHORITIES: &[Citation] = &[marque_rules::CORRECTIONS_MAP_CITATION];
+
 impl Rule<CapcoScheme> for CorrectionsMapRule {
     fn id(&self) -> RuleId {
         RuleId::new("C001")
@@ -1406,6 +1461,9 @@ impl Rule<CapcoScheme> for CorrectionsMapRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        C001_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Engine guarantees corrections is Some only when the map is non-empty
@@ -1557,10 +1615,21 @@ struct JointUsaFirstRule;
 ///
 /// `#[allow(dead_code)]`: see [`E005_CROSS_REFS`] for the rationale —
 /// this is rule-authoritative metadata read by
-/// `citation_cross_refs_tests` (bottom of this file) and intended for a future
-/// `Rule::cited_authorities()` runtime introspection surface.
+/// `citation_cross_refs_tests` (bottom of this file). The runtime
+/// `Rule::cited_authorities()` surface reads [`S003_AUTHORITIES`]
+/// instead, which combines the primary `§H.3 p56` anchor with the
+/// `S003_CROSS_REFS` cross-references in one slice.
 #[allow(dead_code)]
 pub(crate) const S003_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+
+/// Citations S003 may emit on diagnostics. Primary anchor §H.3 p56
+/// (the JOINT pure-alpha rule the IC convention layers above) plus
+/// the §H.8 p150 REL TO precedent S003 ports forward. See
+/// [`Rule::cited_authorities`] for the F.1 gate contract.
+const S003_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::H, 3, 56),
+    capco(SectionLetter::H, 8, 150),
+];
 
 impl Rule<CapcoScheme> for JointUsaFirstRule {
     fn id(&self) -> RuleId {
@@ -1580,6 +1649,9 @@ impl Rule<CapcoScheme> for JointUsaFirstRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        S003_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{CountryCode, MarkingType};
@@ -1913,6 +1985,11 @@ fn s004_message(
     }
 }
 
+/// Citations S004 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const S004_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+
 impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     fn id(&self) -> RuleId {
         RuleId::new("S004")
@@ -1934,6 +2011,9 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        S004_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::priors::{COUNTRY_CODE_BASE_RATES, country_code_log_prior};
@@ -2117,6 +2197,11 @@ impl Rule<CapcoScheme> for RelToTrigraphSuggestRule {
 /// `NF` attribute *does*.
 struct NonIcInClassifiedBannerRule;
 
+/// Citations W003 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const W003_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 9, 169)];
+
 impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     fn id(&self) -> RuleId {
         RuleId::new("W003")
@@ -2135,6 +2220,9 @@ impl Rule<CapcoScheme> for NonIcInClassifiedBannerRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        W003_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -2779,6 +2867,10 @@ fn analyze_uncertain_reduction(
 /// per-rule doc comment carries the full provenance.
 const S005_CITATION: Citation = capco(SectionLetter::H, 8, 150);
 
+/// Citations S005 may emit on diagnostics. Wraps [`S005_CITATION`]
+/// for the [`Rule::cited_authorities`] surface.
+const S005_AUTHORITIES: &[Citation] = &[S005_CITATION];
+
 impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     fn id(&self) -> RuleId {
         RuleId::new("S005")
@@ -2813,6 +2905,9 @@ impl Rule<CapcoScheme> for RelToOpaqueUncertainReductionSuggestRule {
     /// skip `catch_unwind` per PR #448.
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        S005_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         analyze_uncertain_reduction(attrs, ctx)
@@ -2897,6 +2992,11 @@ fn sar_missing_programs<'a>(
 /// users who want it silent can configure `W034 = "off"`.
 struct SciCustomControlInfoRule;
 
+/// Citations W034 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const W034_AUTHORITIES: &[Citation] = &[capco(SectionLetter::A, 6, 16)];
+
 impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     fn id(&self) -> RuleId {
         RuleId::new("W034")
@@ -2916,6 +3016,9 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        W034_AUTHORITIES
     }
 
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
@@ -2994,6 +3097,11 @@ impl Rule<CapcoScheme> for SciCustomControlInfoRule {
 /// Rule E061 — bare HCS at CONFIDENTIAL: legacy guidance per §H.4 p62.
 struct HcsBareAtConfidentialLegacyRemarkRule;
 
+/// Citations E061 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E061_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
+
 impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     fn id(&self) -> RuleId {
         RuleId::new("E061")
@@ -3013,6 +3121,9 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E061_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
@@ -3085,6 +3196,11 @@ impl Rule<CapcoScheme> for HcsBareAtConfidentialLegacyRemarkRule {
 /// templates per §H.4 p62.
 struct HcsBareSuggestSubcompartmentRule;
 
+/// Citations E062 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E062_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 62)];
+
 impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
     fn id(&self) -> RuleId {
         RuleId::new("E062")
@@ -3104,6 +3220,9 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E062_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{Classification, SciControlBare, SciControlSystem};
@@ -3201,6 +3320,11 @@ impl Rule<CapcoScheme> for HcsBareSuggestSubcompartmentRule {
 /// Rule E063 — bare RSV requires compartment per §H.4 p70.
 struct RsvBareRequiresCompartmentRule;
 
+/// Citations E063 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E063_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 4, 70)];
+
 impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
     fn id(&self) -> RuleId {
         RuleId::new("E063")
@@ -3219,6 +3343,9 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E063_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, _ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{SciControlBare, SciControlSystem};
@@ -3300,6 +3427,11 @@ impl Rule<CapcoScheme> for RsvBareRequiresCompartmentRule {
 /// Rule E064 — convert EYES / EYES ONLY portions to REL TO per §H.8 p157.
 struct EyesOnlyConvertToRelToRule;
 
+/// Citations E064 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E064_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 157)];
+
 impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("E064")
@@ -3321,6 +3453,9 @@ impl Rule<CapcoScheme> for EyesOnlyConvertToRelToRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E064_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         let mut out = Vec::new();
@@ -3720,6 +3855,11 @@ fn build_bare_nato_rel_to_augmentation(existing: &[CountryCode]) -> String {
     build_rel_to_replacement(&codes)
 }
 
+/// Citations S007 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const S007_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 7, 127)];
+
 impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("S007")
@@ -3743,6 +3883,9 @@ impl Rule<CapcoScheme> for BareNatoRequiresRelToRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        S007_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -4019,6 +4162,11 @@ static S008_SCHEME: std::sync::LazyLock<CapcoScheme> = std::sync::LazyLock::new(
 /// V Principle V (G13).
 struct RelidoImpliedByClosureRule;
 
+/// Citations S008 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const S008_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 154)];
+
 impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     fn id(&self) -> RuleId {
         RuleId::new("S008")
@@ -4036,6 +4184,9 @@ impl Rule<CapcoScheme> for RelidoImpliedByClosureRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        S008_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use crate::scheme::{CapcoMarking, TOK_RELIDO};
@@ -4363,6 +4514,16 @@ pub(crate) const E038_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174
 #[allow(dead_code)]
 pub(crate) const E039_CROSS_REFS: &[Citation] = &[capco(SectionLetter::H, 9, 174)];
 
+/// Citations E039 may emit on diagnostics. Combines the primary
+/// `Diagnostic.citation` value (§H.9 p172 — EXDIS) with the
+/// [`E039_CROSS_REFS`] cross-references (§H.9 p174 — NODIS). See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E039_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::H, 9, 172),
+    capco(SectionLetter::H, 9, 174),
+];
+
 impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     fn id(&self) -> RuleId {
         RuleId::new("E039")
@@ -4382,6 +4543,9 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E039_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
@@ -4477,6 +4641,32 @@ impl Rule<CapcoScheme> for NodisExdisClearsBannerRelToRule {
 /// above for the design rationale.
 pub(crate) struct BannerMatchesProjectedRule;
 
+/// Citations the [`BannerMatchesProjectedRule`] walker may emit on
+/// diagnostics, one per catalog row in [`BANNER_CATEGORY_CATALOG`].
+/// The walker registers under `E031` (bookkeeping ID); emitted
+/// diagnostics carry per-row IDs and per-row citations from this
+/// list. See [`Rule::cited_authorities`] for the F.1
+/// corpus-fidelity gate contract.
+const BANNER_MATCHES_PROJECTED_AUTHORITIES: &[Citation] = &[
+    // SAR roll-up (E031) — §H.5 p101 "All unique SAPs contained in
+    // portion marks must always appear in the banner line."
+    capco(SectionLetter::H, 5, 101),
+    // SCI roll-up (E035) — §H.4 p61 "Use the following syntax rules
+    // for both portion marks and banner lines for all published and
+    // unpublished SCI control systems."
+    capco(SectionLetter::H, 4, 61),
+    // Non-IC dissem roll-up (E040) — §H.9 p172 (EXDIS) with §H.9
+    // p174 (NODIS) cross-reference; the typed Citation anchors at
+    // p172. Both are operative per the walker's evaluator doc.
+    capco(SectionLetter::H, 9, 172),
+    // E068 banner classification mismatch — §H.7 p123 (Precedence
+    // Rules for Banner Line Guidance + reciprocal classification).
+    capco(SectionLetter::H, 7, 123),
+    // E069 banner FGI marker mismatch — §H.7 p124 (FGI banner-line
+    // roll-up + source-concealed-dominates rule).
+    capco(SectionLetter::H, 7, 124),
+];
+
 impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     fn id(&self) -> RuleId {
         // Bookkeeping ID. Per-row IDs travel on emitted diagnostics for
@@ -4505,6 +4695,9 @@ impl Rule<CapcoScheme> for BannerMatchesProjectedRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        BANNER_MATCHES_PROJECTED_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::MarkingType;
@@ -5404,6 +5597,16 @@ fn evaluate_fgi_marker_banner_rollup(
 /// blocks on it.
 struct NodisSupersedesExdisInPortionRule;
 
+/// Citations E041 may emit on diagnostics. Primary anchor §H.9 p174
+/// (NODIS — the dominating token); the §H.9 p172 (EXDIS) cross-
+/// reference is also operative because both passages state the
+/// supersession rule verbatim. See [`Rule::cited_authorities`] for
+/// the F.1 corpus-fidelity gate contract.
+const E041_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::H, 9, 174),
+    capco(SectionLetter::H, 9, 172),
+];
+
 impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     fn id(&self) -> RuleId {
         RuleId::new("E041")
@@ -5422,6 +5625,9 @@ impl Rule<CapcoScheme> for NodisSupersedesExdisInPortionRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E041_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{MarkingType, NonIcDissem};
@@ -5588,6 +5794,16 @@ fn nodis_supersedes_exdis_intent() -> FixIntent<CapcoScheme> {
 /// §H.7 p127 (BALK/BOHEMIA → SCI).
 struct LegacyNatoCompoundRemarkRule;
 
+/// Citations E066 may emit on diagnostics. Two branches:
+/// §H.7 p122 (ATOMAL → AEA position) and §H.7 p127 (BALK/BOHEMIA →
+/// SCI position); the rule's `check()` selects per companion type.
+/// See [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const E066_AUTHORITIES: &[Citation] = &[
+    capco(SectionLetter::H, 7, 122),
+    capco(SectionLetter::H, 7, 127),
+];
+
 impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
     fn id(&self) -> RuleId {
         RuleId::new("E066")
@@ -5611,6 +5827,9 @@ impl Rule<CapcoScheme> for LegacyNatoCompoundRemarkRule {
     }
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        E066_AUTHORITIES
     }
     fn check(&self, attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         use marque_ism::{
@@ -5836,6 +6055,11 @@ fn is_legacy_nato_compound_text(text: &str) -> bool {
 /// end-of-document path and Mixed-page false-positives don't recur.
 struct JointDisunityCollapseRule;
 
+/// Citations W004 may emit on diagnostics. See
+/// [`Rule::cited_authorities`] for the F.1 corpus-fidelity gate
+/// contract.
+const W004_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 3, 57)];
+
 impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     fn id(&self) -> RuleId {
         RuleId::new("W004")
@@ -5868,6 +6092,9 @@ impl Rule<CapcoScheme> for JointDisunityCollapseRule {
     /// safe to skip `catch_unwind` per PR #448.
     fn trusted(&self) -> bool {
         true
+    }
+    fn cited_authorities(&self) -> &'static [Citation] {
+        W004_AUTHORITIES
     }
     fn check(&self, _attrs: &CanonicalAttrs, ctx: &RuleContext) -> Vec<Diagnostic<CapcoScheme>> {
         // Phase::PageFinalization invariant: the engine's

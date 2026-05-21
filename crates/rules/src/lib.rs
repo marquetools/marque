@@ -1142,6 +1142,42 @@ pub trait Rule<S: MarkingScheme>: Send + Sync {
     fn trusted(&self) -> bool {
         false
     }
+
+    /// Authoritative-source citations this rule may emit on its diagnostics.
+    ///
+    /// Used by the PR 10.A.2 F.1 corpus-fidelity gate
+    /// (`crates/capco/tests/citation_fidelity.rs`) to cross-check the
+    /// declared catalog against what the engine actually emits over the
+    /// corpus:
+    ///
+    /// 1. The harvested set (`union(Diagnostic.citation)` across every
+    ///    fixture's `Engine::lint()` output) MUST be a subset of the
+    ///    declared set (catalog rows ∪ rule declarations). Catches rules
+    ///    that emit citations they didn't declare.
+    /// 2. The declared set MUST be a subset of the harvested set (modulo
+    ///    a documented `EXPECTED_UNCOVERED` whitelist). Catches rules
+    ///    whose declared citations are dead — no fixture exercises them.
+    ///
+    /// The default `&[]` is forward-compatible: rules that emit at most
+    /// one `Diagnostic.citation` value matching their primary catalog
+    /// row don't need to override, because their citation flows through
+    /// the `Constraint`/`PageRewrite`/`ClosureRule` catalog declaration
+    /// the bridge synthesizes. Override on every rule whose `check()`
+    /// constructs a `Citation` value directly (the typical hand-written
+    /// rule shape under `crates/capco/src/rules.rs`).
+    ///
+    /// Walker-style rules (e.g. `BannerMatchesProjectedRule`) MUST list
+    /// the union of per-row citations emitted under any per-row
+    /// `rule_id`, because the F.1 gate harvests by
+    /// `Diagnostic.citation` not by `Rule::id()`.
+    ///
+    /// Constitution VIII (Authoritative Source Fidelity): every entry
+    /// MUST trace to a real CAPCO-2016 passage (or the appropriate
+    /// authoritative source for the rule's scheme) re-verified against
+    /// the primary source at the point of declaration.
+    fn cited_authorities(&self) -> &'static [marque_scheme::Citation] {
+        &[]
+    }
 }
 
 /// A collection of rules provided by a rule crate.
