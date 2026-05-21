@@ -142,6 +142,12 @@ const EXPECTED_PHASES: &[(&str, Phase)] = &[
     // authorized the shape the rule warned on).
     ("W003", Phase::WholeMarking),
     ("W034", Phase::WholeMarking),
+    // Issue #261: FGI with explicit trigraph (concealment contradiction).
+    // Phase::WholeMarking because the optional NF companion emits a
+    // `FactAdd(NOFORN, Scope::Portion)` intent that targets the whole
+    // marking candidate span — a single-token splice at the classification
+    // position cannot also add NOFORN to the dissem axis.
+    ("E071", Phase::WholeMarking),
     // ----- Phase::PageFinalization (2 rules, issues #461 + #488) ----
     // PR #488 (issue #488): S005 rel-to-opaque-uncertain-reduction
     // migrated from `Phase::WholeMarking` (Banner/CAB-gated firing)
