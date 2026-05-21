@@ -148,13 +148,24 @@ fn fix_10kb_pass2_only(c: &mut Criterion) {
 fn fix_10kb_two_pass(c: &mut Criterion) {
     let input = build_two_pass_input(10_000);
     let engine = build_engine_with_corrections();
-    // Sanity-check: pass-0 / pass-1 produces ≥1 applied fix (a C001
-    // text correction), driving the engine through the post-pass-1
-    // re-parse arm and exercising the FR-023 / I-18 codepaths.
+    // Sanity-check: pass-0 / pass-1 produces ≥1 applied C001 text
+    // correction (the `SERCET → SECRET` typo splice), driving the
+    // engine through the post-pass-1 re-parse arm and exercising the
+    // FR-023 / I-18 codepaths.
+    //
+    // PR 3c.2.D's `marque-mvp-3 → marque-1.0` audit-schema cutover
+    // split non-marking text corrections off `applied_fixes()` into
+    // the dedicated `applied_text_corrections()` channel; the C001
+    // fix lands there, not in `applied_fixes()`. Check both channels
+    // so this sanity assertion reflects "the fixture exercises at
+    // least one fix path," not "the fixture exercises the
+    // marking-fix channel specifically."
     let result = engine.fix(&input, FixMode::Apply);
     debug_assert!(
-        result.applied_fixes().next().is_some(),
-        "fix_10kb_two_pass fixture should fire at least one applied fix"
+        result.applied_fixes().next().is_some()
+            || result.applied_text_corrections().next().is_some(),
+        "fix_10kb_two_pass fixture should fire at least one applied fix \
+         (marking-fix or text-correction channel)"
     );
 
     c.bench_function("fix_10kb_two_pass", |b| {

@@ -41,11 +41,23 @@
 //! The bitset ordering is componentwise: `m1 ⊑ m2` iff `m1.bits & m2.bits == m1.bits`.
 
 use marque_scheme::{
-    Category, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
-    MeetSemilattice, PageRewrite, Parsed, Scope, Template, TokenId, TokenRef, closure::ClosureRule,
-    severity::Severity,
+    Category, Citation, Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme,
+    MeetSemilattice, PageRewrite, Parsed, Scope, SectionLetter, Template, TokenId, TokenRef,
+    closure::ClosureRule, severity::Severity,
 };
 use proptest::prelude::*;
+
+// Sentinel test citation — closure-rule proptest fixture; the
+// `AuthoritativeSource::EngineInternal` source renders as `[engine-internal]`
+// so the value carries no false CAPCO §-claim.
+const PROPTEST_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 // ---------------------------------------------------------------------------
 // Bitset marking type — up to 8 tokens as bits.
@@ -142,7 +154,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     ClosureRule {
         name: "stub/a-implies-b",
         display_label: "Stub A implies B",
-        label: "StubScheme proptest fixture",
+        label: PROPTEST_CITATION,
         triggers: &[TokenRef::Token(TOK_A)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_B)],
@@ -156,7 +168,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     ClosureRule {
         name: "stub/b-implies-c",
         display_label: "Stub B implies C",
-        label: "StubScheme proptest fixture",
+        label: PROPTEST_CITATION,
         triggers: &[TokenRef::Token(TOK_B)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_C)],
@@ -169,7 +181,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     ClosureRule {
         name: "stub/c-implies-d",
         display_label: "Stub C implies D",
-        label: "StubScheme proptest fixture",
+        label: PROPTEST_CITATION,
         triggers: &[TokenRef::Token(TOK_C)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_D)],
@@ -180,7 +192,7 @@ static CLOSURE_RULES: &[ClosureRule<ClosureStubScheme>] = &[
     ClosureRule {
         name: "stub/f-implies-g-h",
         display_label: "Stub F implies G and H",
-        label: "StubScheme proptest fixture",
+        label: PROPTEST_CITATION,
         triggers: &[TokenRef::Token(TOK_F)],
         suppressors: &[],
         cone: &[TokenRef::Token(TOK_G), TokenRef::Token(TOK_H)],

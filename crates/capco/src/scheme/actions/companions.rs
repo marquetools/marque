@@ -42,7 +42,7 @@ pub(crate) fn emit_companion_insert(
     fix_scope: marque_scheme::Scope,
     token: &str,
     message: marque_rules::Message,
-    citation: marque_rules::Citation,
+    citation: marque_scheme::Citation,
 ) -> marque_rules::Diagnostic<CapcoScheme> {
     use marque_rules::{
         Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
@@ -137,7 +137,7 @@ pub(crate) fn emit_hcs_o_companions(
                 marque_rules::MessageTemplate::RequiredByPresence,
                 marque_rules::MessageArgs::default(),
             ),
-            row.citation_typed,
+            row.citation,
         ));
     }
     if !has_noforn {
@@ -152,7 +152,7 @@ pub(crate) fn emit_hcs_o_companions(
                 marque_rules::MessageTemplate::RequiredByPresence,
                 marque_rules::MessageArgs::default(),
             ),
-            row.citation_typed,
+            row.citation,
         ));
     }
     if let Some((span, text)) = usgov_entry {
@@ -171,7 +171,7 @@ pub(crate) fn emit_hcs_o_companions(
                     ..marque_rules::MessageArgs::default()
                 },
             ),
-            citation: row.citation_typed,
+            citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
             confidence: 0.9,
@@ -218,7 +218,7 @@ pub(crate) fn emit_hcs_p_sub_companions(
                 marque_rules::MessageTemplate::RequiredByPresence,
                 marque_rules::MessageArgs::default(),
             ),
-            row.citation_typed,
+            row.citation,
         ));
     }
     if let Some((span, text)) = usgov_entry {
@@ -237,7 +237,7 @@ pub(crate) fn emit_hcs_p_sub_companions(
                     ..marque_rules::MessageArgs::default()
                 },
             ),
-            citation: row.citation_typed,
+            citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
             confidence: 0.9,
@@ -282,7 +282,7 @@ pub(crate) fn emit_si_g_companions(
                 marque_rules::MessageTemplate::RequiredByPresence,
                 marque_rules::MessageArgs::default(),
             ),
-            row.citation_typed,
+            row.citation,
         ));
     }
     if let Some((span, text)) = usgov_entry {
@@ -301,7 +301,7 @@ pub(crate) fn emit_si_g_companions(
                     ..marque_rules::MessageArgs::default()
                 },
             ),
-            citation: row.citation_typed,
+            citation: row.citation,
             original: text.to_owned(),
             replacement: form.orcon().to_owned(),
             confidence: 0.9,
@@ -390,6 +390,6 @@ pub(crate) fn emit_companion_required(
         fix_scope,
         companion_text,
         message,
-        row.citation_typed,
+        row.citation,
     )]
 }

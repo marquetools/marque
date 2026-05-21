@@ -107,7 +107,7 @@
       "name": "nodis_without_noforn.txt",
       "category": "invalid",
       "input": "SECRET//NODIS\n",
-      "expected_lint": "{\"rule\":\"E038\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"[engine-internal]\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
+      "expected_lint": "{\"rule\":\"E038\",\"severity\":\"error\",\"span\":{\"start\":8,\"end\":13},\"message\":{\"template\":\"ConflictsWith\"},\"citation\":\"§H.9 p172\",\"fix\":{\"source\":\"BuiltinRule\",\"intent_kind\":\"FactAdd\",\"replacement\":null,\"confidence\":1.0,\"migration_ref\":null}}\n"
     },
     {
       "name": "portion_nodis_exdis_commingled.txt",

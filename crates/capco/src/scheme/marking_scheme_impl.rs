@@ -643,10 +643,13 @@ impl MarkingScheme for CapcoScheme {
             } else {
                 inventory.push(ClosureRuleMetadata {
                     name: row.name,
-                    // Bitmask rows currently expose citation text only; until
-                    // they grow an explicit display label, inventory surfaces
-                    // reuse that citation text as the human-facing label.
-                    label: row.label,
+                    // PR 10.A.1 split the pre-existing `label: &'static str`
+                    // into `display_label: &'static str` (human-facing UI
+                    // text) + `label: Citation` (typed authoritative-source
+                    // anchor). Metadata reads from each field directly —
+                    // no string-form display of the citation, which would
+                    // need runtime formatting.
+                    label: row.display_label,
                     citation: Some(row.label),
                     default_severity: row.default_severity,
                 });

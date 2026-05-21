@@ -76,6 +76,7 @@
 
 use marque_scheme::{
     CategoryAction, CategoryId, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
+    SectionLetter, capco,
 };
 
 use super::super::{
@@ -118,7 +119,7 @@ pub(super) fn relido_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // canonical `display_only_to` axis.
         PageRewrite::declarative(
             "capco/display-only-clears-relido",
-            "CAPCO-2016 §H.8 p154",
+            capco(SectionLetter::H, 8, 154),
             CategoryPredicate::Contains {
                 category: CAT_DISSEM,
                 token: TOK_DISPLAY_ONLY,
@@ -141,7 +142,7 @@ pub(super) fn relido_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // correctness.
         PageRewrite::declarative(
             "capco/orcon-clears-relido",
-            "CAPCO-2016 §H.8 p136",
+            capco(SectionLetter::H, 8, 136),
             CategoryPredicate::Contains {
                 category: CAT_DISSEM,
                 token: TOK_ORCON,
@@ -165,7 +166,7 @@ pub(super) fn relido_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // (`Constraint::Conflicts` row). Migrated to Page scope.
         PageRewrite::declarative(
             "capco/orcon-usgov-clears-relido",
-            "CAPCO-2016 §H.8 p140",
+            capco(SectionLetter::H, 8, 140),
             CategoryPredicate::Contains {
                 category: CAT_DISSEM,
                 token: TOK_ORCON_USGOV,

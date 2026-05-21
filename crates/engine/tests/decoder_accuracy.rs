@@ -765,10 +765,11 @@ fn fixture_class_matches_directory() {
 fn expected_form_parses_strictly() {
     let cases = load_fixtures();
     let strict = StrictRecognizer::new();
+    let scheme = CapcoScheme::new();
     let mut unparseable: Vec<String> = Vec::new();
 
     for case in &cases {
-        if parse_expected(&strict, &case.fixture.expected).is_none() {
+        if parse_expected(&strict, &scheme, &case.fixture.expected).is_none() {
             unparseable.push(format!(
                 "  [{}] expected={:?} (in {})",
                 case.fixture.mangling_class,

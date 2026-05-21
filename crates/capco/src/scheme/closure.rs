@@ -48,7 +48,7 @@
 //! into the single `CLOSURE_NOFORN_CAVEATED` row that PR-D then
 //! retired into the `CLOSURE_TABLE` Row 0.
 
-use marque_scheme::{ClosureRule, FactRef, Severity, TokenRef};
+use marque_scheme::{ClosureRule, FactRef, SectionLetter, Severity, TokenRef, capco};
 use smallvec::{SmallVec, smallvec};
 
 use super::*;
@@ -321,7 +321,7 @@ fn rel_to_usa_nato_derived_cone(_m: &CapcoMarking) -> SmallVec<[FactRef<CapcoSch
 pub(super) const CLOSURE_REL_TO_USA_NATO: ClosureRule<CapcoScheme> = ClosureRule {
     name: "capco/rel-to-usa-nato-if-nato-classification",
     display_label: "Bare NATO classification implies REL TO USA, NATO",
-    label: "CAPCO-2016 §H.7 p127 (example-derived) + §G.2 Table 5 p40",
+    label: capco(SectionLetter::H, 7, 127),
     triggers: &[TokenRef::Token(TOK_NATO_CLASS)],
     suppressors: FDR_DOMINATORS,
     cone: &[TokenRef::Token(TOK_USA)],

@@ -2,18 +2,28 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! PR 3c.2.C C6 — positive control proving [`marque_rules::Citation`] is
-//! constructible only through structured construction.
+//! PR 3c.2.C C6 — positive control proving [`marque_scheme::Citation`]
+//! is constructible only through structured construction.
 //!
 //! The compile-fail proofs that no free-form constructor exists
 //! (`From<&str>`, `From<String>`, `Citation::from_str`) live as
-//! `compile_fail` doctests on the [`marque_rules::Citation`] type
-//! itself in `crates/rules/src/citation.rs` (lines 65–84). They run
-//! via `cargo test --doc -p marque-rules`. This integration file pins
-//! the complementary positive case: structured construction via
-//! [`Citation::new`] and the three const-fn ergonomic helpers
-//! ([`capco`], [`capco_section`], [`capco_table`]) works from outside
-//! the `marque-rules` crate.
+//! `compile_fail` doctests on the [`marque_scheme::Citation`] type
+//! itself (PR 10.A.1 moved `Citation` from `marque-rules` to
+//! `marque-scheme` so the scheme-level catalog rows can carry typed
+//! citations without inverting the crate dependency graph). This
+//! integration file pins the complementary positive case: structured
+//! construction via [`Citation::new`] and the three const-fn ergonomic
+//! helpers ([`capco`], [`capco_section`], [`capco_table`]) works from
+//! outside the `marque-scheme` crate. The test stays in the
+//! `marque-rules` integration tests directory because `marque-rules`
+//! is the load-bearing public consumer — `Diagnostic.citation` is
+//! a `marque_scheme::Citation` carried verbatim through this crate's
+//! public type surface (the `Citation` type itself moved to
+//! `marque-scheme` in PR 10.A.1 so the scheme-level catalog rows
+//! could carry typed citations without inverting the crate dependency
+//! graph; there is no `marque-rules` re-export). Verifying
+//! constructibility through this crate's transitive surface still
+//! covers the real-world consumer pattern.
 //!
 //! Companion to `crates/rules/tests/message_no_freeform_ctor.rs`
 //! (PR 3c.1 T033 — the [`Message`] equivalent). Together the two
@@ -35,7 +45,7 @@
 //!   section letter; §F is the unnumbered legacy-markings section).
 
 use core::num::{NonZeroU8, NonZeroU16};
-use marque_rules::{
+use marque_scheme::{
     AuthoritativeSource, Citation, SectionLetter, SectionRef, capco, capco_section, capco_table,
 };
 

@@ -265,11 +265,8 @@ impl FixResult {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use marque_rules::{
-        AuthoritativeSource, Citation, Diagnostic, Message, MessageArgs, MessageTemplate, RuleId,
-        SectionLetter, SectionRef, Severity,
-    };
-    use marque_scheme::Span;
+    use marque_rules::{Diagnostic, Message, MessageArgs, MessageTemplate, RuleId, Severity};
+    use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef, Span};
 
     /// Test-fixture `Message` stub mirroring the helper in
     /// `engine.rs::tests`. Used by `LintResult` shape tests that do

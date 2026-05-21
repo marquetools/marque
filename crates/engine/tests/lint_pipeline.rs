@@ -155,11 +155,17 @@ fn diagnostic_carries_citation() {
         .iter()
         .find(|d| d.rule.as_str() == "E002")
         .expect("E002 must fire");
-    assert!(
-        !e002.citation.is_empty(),
-        "FR-003: every diagnostic must carry a citation"
+    // PR 10.A.1: typed Citation — assert the authoritative source is
+    // CAPCO-2016 (the structural equivalent of the previous
+    // `.contains("CAPCO")` substring check). FR-003 requires every
+    // diagnostic to carry a citation; the type now enforces presence
+    // by construction (every `Diagnostic` has a `Citation` field).
+    assert_eq!(
+        e002.citation.document,
+        marque_scheme::AuthoritativeSource::Capco2016,
+        "FR-003: E002 diagnostic must cite CAPCO-2016; got: {:?}",
+        e002.citation,
     );
-    assert!(e002.citation.contains("CAPCO"));
 }
 
 #[test]

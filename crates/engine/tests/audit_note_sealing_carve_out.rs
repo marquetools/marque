@@ -54,8 +54,7 @@ use marque_capco::CapcoScheme;
 use marque_rules::{
     AuditNote, AuditNoteKind, AuditNoteStructural, Confidence, EnginePromotionToken, RuleId,
 };
-use marque_scheme::Span;
-use marque_scheme::{Scope, TokenId, TokenRef};
+use marque_scheme::{Scope, SectionLetter, Span, TokenId, TokenRef, capco};
 
 /// Smoke test: construct a synthetic `AuditNote` via the sealed
 /// `__engine_promote` constructor and verify (a) construction succeeds,
@@ -93,7 +92,7 @@ fn audit_note_engine_promote_sealing_pattern() {
     // verifies sealing pattern compiles + round-trips via Debug.
     let note = AuditNote::<CapcoScheme>::__engine_promote(
         RuleId::new("capco/noforn-if-no-fdr"),
-        "CAPCO-2016 §H.8 p145",
+        capco(SectionLetter::H, 8, 145),
         AuditNoteKind::InferredFact,
         timestamp,
         classifier_id.clone(),
@@ -110,7 +109,7 @@ fn audit_note_engine_promote_sealing_pattern() {
     assert!(debug.contains("InferredFact"));
 
     // Field-level spot checks.
-    assert_eq!(note.citation, "CAPCO-2016 §H.8 p145");
+    assert_eq!(note.citation, capco(SectionLetter::H, 8, 145));
     assert_eq!(note.kind, AuditNoteKind::InferredFact);
     assert!(!note.dry_run);
     assert!(note.classifier_id.is_some());
@@ -144,7 +143,7 @@ fn audit_note_clone_does_not_require_scheme_clone() {
     // AuditNote construction for the Clone-surface test below.
     let note: AuditNote<CapcoScheme> = AuditNote::__engine_promote(
         RuleId::new("test/clone"),
-        "TEST §0",
+        capco(SectionLetter::A, 1, 1),
         AuditNoteKind::InferredFact,
         SystemTime::UNIX_EPOCH,
         None,

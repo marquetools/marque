@@ -42,6 +42,7 @@
 
 use marque_scheme::ambiguity::{Candidate, Parsed};
 use marque_scheme::category::{Category, CategoryId, TokenId};
+use marque_scheme::citation::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 use marque_scheme::codec::{Codec, CodecError};
 use marque_scheme::constraint::{Constraint, TokenRef};
 use marque_scheme::lattice::{
@@ -127,6 +128,18 @@ struct StubScheme {
     page_rewrites: [PageRewrite<StubScheme>; 1],
 }
 
+// Sentinel test citation for the readiness fixture. Routes through
+// `AuthoritativeSource::EngineInternal` so Display renders
+// `[engine-internal]` and the value carries no false CAPCO §-claim.
+const STUB_CITATION: Citation = Citation::new(
+    AuthoritativeSource::EngineInternal,
+    SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
+
 impl StubScheme {
     fn new() -> Self {
         Self {
@@ -134,14 +147,15 @@ impl StubScheme {
                 left: TokenRef::Token(STUB_TOKEN),
                 right: TokenRef::Token(OTHER_TOKEN),
                 // `name` is the stable identifier (rule-style id);
-                // `label` is the authoritative-source citation
-                // (e.g. "CAPCO-2016 §H.4"). Keeping them
-                // semantically distinct in the readiness fixture
-                // mirrors what every real scheme does — Phase F
-                // adapters that copy this stub get the right shape
-                // by default rather than collapsing the two fields.
+                // `label` is the typed authoritative-source citation
+                // (PR 10.A.1 — flipped from `&'static str` to
+                // [`Citation`]). Keeping them semantically distinct in
+                // the readiness fixture mirrors what every real scheme
+                // does — Phase F adapters that copy this stub get the
+                // right shape by default rather than collapsing the
+                // two fields.
                 name: "stub/conflicts",
-                label: "StubScheme readiness fixture (no real citation)",
+                label: STUB_CITATION,
                 severity: None,
                 span_anchor: None,
             }],
@@ -153,7 +167,7 @@ impl StubScheme {
             // check.
             page_rewrites: [PageRewrite::declarative(
                 "stub/noop-rewrite",
-                "StubScheme readiness fixture",
+                STUB_CITATION,
                 CategoryPredicate::Contains {
                     category: STUB_CATEGORY,
                     token: STUB_TOKEN,

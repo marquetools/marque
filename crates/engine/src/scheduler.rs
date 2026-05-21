@@ -418,9 +418,22 @@ fn cycle_axis<S: MarkingScheme + ?Sized>(
 mod tests {
     use super::*;
     use marque_scheme::{
-        Category, Constraint, ConstraintViolation, JoinSemilattice, MeetSemilattice, Parsed, Scope,
-        Template, TokenId, TokenRef,
+        Category, Citation, Constraint, ConstraintViolation, JoinSemilattice, MeetSemilattice,
+        Parsed, Scope, SectionLetter, Template, TokenId, TokenRef,
     };
+
+    // Test-fixture sentinel Citation (Constitution V Principle V test
+    // carve-out). Routes through `AuthoritativeSource::EngineInternal`
+    // so Display renders `[engine-internal]` and the value carries no
+    // false CAPCO §-claim.
+    const TEST_CITATION: Citation = Citation::new(
+        marque_scheme::AuthoritativeSource::EngineInternal,
+        marque_scheme::SectionRef::new(SectionLetter::A),
+        match core::num::NonZeroU16::new(1) {
+            Some(n) => n,
+            None => unreachable!(),
+        },
+    );
 
     // Minimal scheme used to exercise the scheduler without pulling in
     // marque-capco (unit tests within `marque-engine` should not force
@@ -507,7 +520,7 @@ mod tests {
     ) -> PageRewrite<StubScheme> {
         PageRewrite::declarative(
             id,
-            "test",
+            TEST_CITATION,
             CategoryPredicate::Empty { category: CAT_X },
             CategoryAction::Clear { category: CAT_X },
             reads,

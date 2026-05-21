@@ -1026,7 +1026,7 @@ mod tests {
                 MessageTemplate::BannerRollupMismatch,
                 MessageArgs::default(),
             ),
-            marque_rules::capco(marque_rules::SectionLetter::A, 6, 15),
+            marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15),
             fix,
         )
     }
@@ -1203,7 +1203,7 @@ mod tests {
             Severity::Error,
             span,
             Message::new(MessageTemplate::UnrecognizedToken, MessageArgs::default()),
-            marque_rules::capco(marque_rules::SectionLetter::A, 6, 15),
+            marque_scheme::capco(marque_scheme::SectionLetter::A, 6, 15),
             None,
         );
 
@@ -1230,7 +1230,7 @@ mod tests {
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
-            marque_rules::capco(marque_rules::SectionLetter::H, 8, 150),
+            marque_scheme::capco(marque_scheme::SectionLetter::H, 8, 150),
             Some(fix),
         );
 
@@ -1275,7 +1275,7 @@ mod tests {
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
-            marque_rules::capco(marque_rules::SectionLetter::H, 8, 150),
+            marque_scheme::capco(marque_scheme::SectionLetter::H, 8, 150),
             Some(fix),
         );
 
@@ -1314,9 +1314,9 @@ mod tests {
             // S999 is a hypothetical test rule with no CAPCO citation;
             // use the EngineInternal sentinel per PM-C-4 so citation-lint
             // skips the entry.
-            marque_rules::Citation::new(
-                marque_rules::AuthoritativeSource::EngineInternal,
-                marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+            marque_scheme::Citation::new(
+                marque_scheme::AuthoritativeSource::EngineInternal,
+                marque_scheme::SectionRef::new(marque_scheme::SectionLetter::A),
                 core::num::NonZeroU16::new(1).unwrap(),
             ),
             None,
@@ -1353,7 +1353,7 @@ mod tests {
             Severity::Suggest,
             span,
             Message::new(MessageTemplate::NonCanonicalOrder, MessageArgs::default()),
-            marque_rules::capco(marque_rules::SectionLetter::H, 8, 150),
+            marque_scheme::capco(marque_scheme::SectionLetter::H, 8, 150),
             Some(fix),
         );
 

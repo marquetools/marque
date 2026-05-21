@@ -2,7 +2,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 
-//! Golden + property tests for [`marque_rules::Citation`] `Display`.
+//! Golden + property tests for [`marque_scheme::Citation`] `Display`
+//! (PR 10.A.1 moved `Citation` from `marque-rules` to `marque-scheme`
+//! so the scheme-level catalog rows can carry typed citations without
+//! inverting the crate dependency graph).
 //!
 //! Lands in PR 3c.2.A per `docs/plans/2026-05-19-pr3c2-a-pm-decisions.md`
 //! PM-7. The golden tests pin the exact citation-lint regex shape
@@ -39,7 +42,7 @@
 //!   FOUO and other non-FD&R dissemination control markings).
 
 use core::num::{NonZeroU8, NonZeroU16};
-use marque_rules::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
+use marque_scheme::{AuthoritativeSource, Citation, SectionLetter, SectionRef};
 
 /// Helper: construct a Citation against CAPCO-2016 succinctly.
 fn capco(letter: SectionLetter, sub: u8, page: u16) -> Citation {

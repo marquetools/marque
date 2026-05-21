@@ -37,6 +37,7 @@ use marque_config::Config;
 use marque_engine::{Engine, FixedClock};
 use marque_ism::{CanonicalAttrs, MarkingType};
 use marque_rules::MessageTemplate;
+use marque_scheme::MarkingScheme;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -336,54 +337,63 @@ fn message_by_name_class_floor_unknown_label_returns_none() {
     );
 }
 
-/// Class-floor citation_by_name dispatch (parallel to message_by_name)
-/// must return the per-row `citation_typed`, not the
-/// `[engine-internal]` sentinel.
+/// PR 10.A.1: typed Citation now lives directly on `Constraint.label`
+/// (not in a `citation_by_name` bridge fallback). This test reads the
+/// `Constraint::Custom { label }` field directly to confirm the per-row
+/// citation matches the documented anchor — `class-floor/HCS-comp-sub`
+/// at §H.4 p60 (SCI section start).
 #[test]
-fn citation_by_name_class_floor_hcs_comp_sub_returns_typed_citation() {
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+fn class_floor_hcs_comp_sub_carries_typed_citation_on_label() {
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     let scheme = CapcoScheme::new();
-    let cite = scheme
-        .citation_by_name("class-floor/HCS-comp-sub")
-        .expect("class-floor/HCS-comp-sub must return Some(citation)");
-    // HCS-comp-sub anchors at §H.4 p60 (SCI section start).
+    let row = scheme
+        .constraints()
+        .iter()
+        .find(|c| c.name() == "class-floor/HCS-comp-sub")
+        .expect("class-floor/HCS-comp-sub must appear in the catalog");
+    let cite = row.label();
     assert_eq!(
         cite,
         capco(SectionLetter::H, 4, 60),
-        "class-floor/HCS-comp-sub citation must be §H.4 p60; got {:?}",
-        cite,
+        "class-floor/HCS-comp-sub citation must be §H.4 p60; got {cite}",
     );
     assert_eq!(cite.document, AuthoritativeSource::Capco2016);
 }
 
-/// SCI per-system citation_by_name dispatch must return the per-row
-/// `citation_typed`.
+/// PR 10.A.1: typed Citation now lives directly on `Constraint.label`.
+/// Mirror of the class-floor test for the SCI per-system catalog.
 #[test]
-fn citation_by_name_sci_per_system_hcs_o_returns_typed_citation() {
-    use marque_rules::{AuthoritativeSource, SectionLetter, capco};
+fn sci_per_system_hcs_o_carries_typed_citation_on_label() {
+    use marque_scheme::{AuthoritativeSource, SectionLetter, capco};
     let scheme = CapcoScheme::new();
-    let cite = scheme
-        .citation_by_name("sci-per-system/HCS-O-companions")
-        .expect("sci-per-system/HCS-O-companions must return Some(citation)");
-    // HCS-O companions anchor at §H.4 p64.
+    let row = scheme
+        .constraints()
+        .iter()
+        .find(|c| c.name() == "sci-per-system/HCS-O-companions")
+        .expect("sci-per-system/HCS-O-companions must appear in the catalog");
+    let cite = row.label();
     assert_eq!(
         cite,
         capco(SectionLetter::H, 4, 64),
-        "sci-per-system/HCS-O-companions citation must be §H.4 p64; got {:?}",
-        cite,
+        "sci-per-system/HCS-O-companions citation must be §H.4 p64; got {cite}",
     );
     assert_eq!(cite.document, AuthoritativeSource::Capco2016);
 }
 
-/// Passthrough class-floor rows route to `AuthoritativeSource::EngineInternal`
-/// (they reference marque-applied.md, not CAPCO-2016).
+/// PR 10.A.1: passthrough class-floor rows route to
+/// `AuthoritativeSource::EngineInternal` (they reference
+/// marque-applied.md, not CAPCO-2016). Read directly from the row's
+/// typed Citation `label`.
 #[test]
-fn citation_by_name_class_floor_passthrough_routes_to_engine_internal() {
-    use marque_rules::AuthoritativeSource;
+fn class_floor_passthrough_carries_engine_internal_citation() {
+    use marque_scheme::AuthoritativeSource;
     let scheme = CapcoScheme::new();
-    let cite = scheme
-        .citation_by_name("class-floor/passthrough-BUR")
-        .expect("class-floor/passthrough-BUR must return Some(citation)");
+    let row = scheme
+        .constraints()
+        .iter()
+        .find(|c| c.name() == "class-floor/passthrough-BUR")
+        .expect("class-floor/passthrough-BUR must appear in the catalog");
+    let cite = row.label();
     // Passthrough rows reference marque-applied.md, not CAPCO. The
     // citation routes through AuthoritativeSource::EngineInternal so
     // Display renders `[engine-internal]`.
