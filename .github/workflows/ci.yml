@@ -557,16 +557,19 @@ jobs:
       # 1. `refactor-006-pr-4b-perf-closeout` — the diagnosis branch
       #    where the cumulative WASM regression is the deliverable
       #    rather than a defect.
-      # 2. `refactor/006-pr10-polish` — the PR 10 sub-PR umbrella
-      #    branch carrying the residual cumulative 006-refactor
-      #    regression forward. Project memories
+      # 2. `refactor/006-pr10-*` — the PR 10 sub-PR umbrella
+      #    branches (10.A.1 / 10.A.2 / 10.B and any closeout
+      #    follow-ups) carrying the residual cumulative
+      #    006-refactor regression forward. Project memories
       #    `project_perf_regression_4_to_6` and
       #    `project_perf_baseline_pr5_trigger` (the `lint_10kb`
       #    828→914+µs cumulative band) document that the
       #    PR-4-through-9 drift is bundled — zero-hot-path closeout
       #    PRs on this branch must not block on bench-check until
       #    dedicated perf-analysis lands and refreshes the
-      #    baseline.
+      #    baseline. Prefix-match (`startsWith`) covers every
+      #    sub-PR under the PR-10 umbrella without per-branch
+      #    yaml edits each time a new sub-PR splits off.
       #
       # Build failures and missing-artifact failures still fail;
       # only the +5% drift gate is skipped (there is no absolute-
@@ -584,7 +587,7 @@ jobs:
       # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
       - name: wasm-size-check (release-web profile)
         env:
-          MARQUE_WASM_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || github.ref == 'refs/heads/refactor/006-pr10-polish' || github.head_ref == 'refactor/006-pr10-polish') && '1' || '' }}
+          MARQUE_WASM_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || startsWith(github.ref, 'refs/heads/refactor/006-pr10-') || startsWith(github.head_ref, 'refactor/006-pr10-')) && '1' || '' }}
         run: ./tools/wasm-size-check.sh
 
       - uses: NiklasEi/wasm-opt-action@379437a7e494484c2c9af2c6280407c967dc2c3c
@@ -866,17 +869,20 @@ jobs:
       # 1. `refactor-006-pr-4b-perf-closeout` — the diagnosis branch
       #    where the cumulative perf regression is the deliverable
       #    rather than a defect.
-      # 2. `refactor/006-pr10-polish` — the PR 10 sub-PR umbrella
-      #    branch carrying the residual cumulative 006-refactor
-      #    regression forward. The `lint_10kb` 828→914+µs band is
-      #    cumulative across PRs 4–6 plus GHA runner noise, and
-      #    consistently lands 1086–1251µs on CI (over the +10%
-      #    drift gate). Per project memory
+      # 2. `refactor/006-pr10-*` — the PR 10 sub-PR umbrella
+      #    branches (10.A.1 / 10.A.2 / 10.B and any closeout
+      #    follow-ups) carrying the residual cumulative
+      #    006-refactor regression forward. The `lint_10kb`
+      #    828→914+µs band is cumulative across PRs 4–6 plus GHA
+      #    runner noise, and consistently lands 1086–1251µs on
+      #    CI (over the +10% drift gate). Per project memory
       #    `project_perf_regression_4_to_6` (zero-hot-path closeout
       #    PRs do NOT block on bench-check) and
       #    `project_perf_baseline_pr5_trigger` (dedicated perf-
       #    analysis is the right place to close this drift, not
-      #    incremental baseline bumps).
+      #    incremental baseline bumps). Prefix-match
+      #    (`startsWith`) covers every sub-PR under the PR-10
+      #    umbrella without per-branch yaml edits each time.
       #
       # Absolute SC-001 16ms ceiling, SC-002 18ms ceiling, SC-005
       # R² gate, fix-throughput R² gate, and deadline-overhead gate
@@ -894,5 +900,5 @@ jobs:
       # `docs/plans/2026-05-19-pr4b-perf-pm-decisions.md` D-3.
       - name: scripts/bench-check.sh
         env:
-          MARQUE_BENCH_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || github.ref == 'refs/heads/refactor/006-pr10-polish' || github.head_ref == 'refactor/006-pr10-polish') && '1' || '' }}
+          MARQUE_BENCH_SKIP_REGRESSION: ${{ (github.ref == 'refs/heads/refactor-006-pr-4b-perf-closeout' || github.head_ref == 'refactor-006-pr-4b-perf-closeout' || startsWith(github.ref, 'refs/heads/refactor/006-pr10-') || startsWith(github.head_ref, 'refactor/006-pr10-')) && '1' || '' }}
         run: bash scripts/bench-check.sh

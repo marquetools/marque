@@ -32,10 +32,21 @@ changes per PR. Read this before opening a PR against the branch.
 - **Pass-split**: rules declare `Phase::Localized | WholeMarking` at
   registration; engine re-parses between passes; `R002` for
   re-parse-failure cases.
-- **Audit schema cuts over once**: `marque-mvp-2 → marque-1.0` at PR 3c.
-  Clean break — no reader compat, no `mvp-N` naming after.
-- **Rule IDs become `(scheme, predicate-id)`**: `E###`/`W###`/`S###`/`C###`
-  retire at PR 3c.
+- **Audit schema lands `marque-1.0` via two atomic steps**:
+  `mvp-2 → mvp-3` at PR 3c.B Commit 10 (`FixProposal` retired;
+  audit envelope reshapes to a structural `proposal: FixIntent |
+  TextCorrection` sub-object, closing the G13
+  audit-content-ignorance channel); `mvp-3 → 1.0` at PR 3c.2.D
+  (the PR 3c.2 carve-out per the 2026-05-14 PM decision). The
+  `mvp-N` naming retires at the second step. Clean break post-`1.0`
+  — no reader compat, no `mvp-N` shapes accepted by the build-time
+  validator.
+- **Rule IDs stay single-field through 006**: `RuleId::new("E###")` is
+  the surface that ships at PR 10 stability-freeze (FR-049). The
+  originally-planned `(scheme, predicate-id)` 2-tuple defers to a
+  dedicated post-PR-10 PR per the PR 3c.2 carve-out — the freeze
+  begins at PR 10 merge, and the 2-tuple change requires the freeze
+  to be unfrozen for its own PR.
 - **Three new CI lints**: citation (FR-018), masking-pin (FR-039),
   promote-callsite (FR-040). All AST-based, all `tools/`.
 
@@ -120,73 +131,132 @@ Per-crate change index (more detail in `plan.md` §Project Structure):
 ## How to add a new rule (post-PR-3c)
 
 ```rust
-use marque_rules::*;
-use marque_scheme::*;
+use marque_capco::CapcoScheme;
+use marque_rules::{
+    Confidence, Diagnostic, FixIntent, FixSource, Message, MessageArgs, MessageTemplate,
+    Phase, Rule, RuleContext, RuleId, Severity, SmallVec,
+};
+use marque_scheme::{capco, Citation, SectionLetter};
+use marque_scheme::fix_intent::{FactRef, ReplacementIntent};
+use marque_scheme::Scope;
+use marque_ism::{CanonicalAttrs, TokenKind};
 
-pub struct MyRule;
+pub struct MyDissemConflictRule;
 
-impl Rule for MyRule {
+// `cited_authorities` returns a `&'static [Citation]`; declare the
+// authority slice as a module-level const so the F.1 corpus-fidelity
+// gate (`crates/capco/tests/citation_fidelity.rs`) sees a stable
+// reference.
+const MY_RULE_AUTHORITIES: &[Citation] = &[capco(SectionLetter::H, 8, 150)];
+
+impl Rule<CapcoScheme> for MyDissemConflictRule {
     fn id(&self) -> RuleId {
-        RuleId("capco", "portion.dissem.my-new-predicate")  // R-3 naming
+        RuleId::new("E###")        // Single-field; see FR-049 freeze note above.
+    }
+
+    fn name(&self) -> &'static str {
+        "my-dissem-conflict"
+    }
+
+    fn default_severity(&self) -> Severity {
+        Severity::Error
     }
 
     fn phase(&self) -> Phase {
-        Phase::Localized   // or WholeMarking; see contracts/fix-intent.md
+        Phase::WholeMarking        // or Phase::Localized; see contracts/fix-intent.md.
     }
 
-    fn evaluate(
+    fn cited_authorities(&self) -> &'static [Citation] {
+        MY_RULE_AUTHORITIES
+    }
+
+    fn check(
         &self,
         attrs: &CanonicalAttrs,
-        ctx: &RuleContext,
-    ) -> Vec<Diagnostic> {
+        ctx: &RuleContext<'_>,
+    ) -> Vec<Diagnostic<CapcoScheme>> {
+        // Predicate: bail early when the rule has nothing to say.
         if !my_predicate(attrs) {
             return vec![];
         }
 
-        let bad_token = /* ... */;
-        let canonical_token = /* ... */;
+        // Locate the offending token's span inside the candidate. The
+        // engine populates `ctx.candidate_span` with the marking-scope
+        // span (full portion or banner); narrow it to a sub-token span
+        // when the diagnostic should point at a single token.
+        let offending_span = attrs
+            .token_spans
+            .iter()
+            .find(|t| t.kind == TokenKind::DissemControl)
+            .map(|t| t.span)
+            .unwrap_or(ctx.candidate_span);
 
-        vec![Diagnostic {
-            rule: self.id(),
-            severity: Severity::Error,
-            span: ctx.target_span(),
-            message: Message::new(
-                MessageTemplate::PortionUnknownDissem,
-                MessageArgs {
-                    actual_token: Some(bad_token),
-                    expected_token: Some(canonical_token),
-                    ..MessageArgs::default()
-                },
+        // Closed-template message — no `format!`, no free-form text.
+        // `MessageArgs::default()` populates only the fields the
+        // template's args contract names; the rest stay `None`.
+        let message = Message::new(
+            MessageTemplate::ConflictsWith,
+            MessageArgs {
+                token: Some(my_dominated_token()),
+                expected_token: Some(my_dominating_token()),
+                ..MessageArgs::default()
+            },
+        );
+
+        // Typed citation. Prefer the const-fn helpers — `capco(letter,
+        // sub, page)` for `§<L>.<sub> p<page>`, `capco_section(letter,
+        // page)` for bare-section `§<L> p<page>` (e.g. §F), and
+        // `capco_table(letter, sub, table, page)` for the table form.
+        // Each panics at const-eval on a zero argument; citation-lint
+        // additionally verifies the (section, page) pair resolves
+        // against `crates/capco/docs/CAPCO-2016.md`.
+        let citation = capco(SectionLetter::H, 8, 150);
+
+        // Structural `FixIntent`. The engine renders the canonical
+        // bytes via `MarkingScheme::apply_intent` +
+        // `render_canonical` at promotion time — the rule never
+        // computes a byte-precise replacement (G13 / Constitution V).
+        let fix = FixIntent {
+            replacement: ReplacementIntent::fact_remove(
+                FactRef::Cve(my_dominated_token()),
+                Scope::Portion,
             ),
-            citation: Citation::new(
-                SectionRef::H8,           // CAPCO §H.8 — must be in normative range A–H
-                PageNumber::new(150),     // verified mechanically by citation-lint
-                AuthoritativeSource::Capco2016,
-            ),
-            fix: Some(FixIntent {
-                target_span: ctx.target_span(),
-                replacement: ReplacementIntent::Cve {
-                    token: canonical_token,
-                    scope: Scope::Portion,
-                },
-                confidence: Confidence::new(0.95, 1.0).unwrap(),
-                feature_ids: smallvec![FeatureId::StrictExactMatch],
-                message: Message::new(/* ... same as Diagnostic.message */),
-            }),
-        }]
+            confidence: Confidence::strict(0.95),
+            feature_ids: SmallVec::new(),
+            message: message.clone(),
+            source: FixSource::BuiltinRule,
+            migration_ref: None,
+        };
+
+        vec![Diagnostic::with_fix_at_span(
+            self.id(),
+            self.default_severity(),
+            offending_span,
+            ctx.candidate_span,
+            message,
+            citation,
+            fix,
+        )]
     }
 }
+
+// Predicate + token-lookup stubs (per-rule; the real shape consumes
+// `CanonicalAttrs` fields and `crate::scheme::TOK_*` const TokenIds).
+fn my_predicate(_: &CanonicalAttrs) -> bool { false }
+fn my_dominated_token() -> marque_scheme::TokenId { marque_scheme::TokenId(0) }
+fn my_dominating_token() -> marque_scheme::TokenId { marque_scheme::TokenId(0) }
 ```
 
 **What you cannot do**:
-- Construct `Canonical<S>` directly: `Canonical::from_render` is `pub(crate)` to `marque-scheme`.
-- Construct `AppliedFix`: `__engine_promote` is engine-only (FR-005, FR-040 lint).
-- Use `format!` over input bytes in `Message`: `Message::new(template, args)` is the only path; `MessageArgs` field set is closed.
-- Cite a fabricated section: `Citation::new` runtime-validates; the citation lint catches at PR time.
+- Construct `Canonical<S>` directly: the sealed constructor is engine-only.
+- Construct `AppliedFix<S>`: `__engine_promote` is engine-only in production code (Constitution V Principle V; FR-040 lint enforces).
+- Use `format!` over input bytes in `Message`: `Message::new(template, args)` is the only public constructor; `MessageArgs` field set is closed. The compile-fail tests at `crates/rules/tests/message_no_freeform_ctor.rs` pin every absent constructor.
+- Cite a fabricated section: citation-lint (FR-018) resolves every `§X.Y pNN` against `crates/capco/docs/CAPCO-2016.md` at CI time.
 
-**Add a corpus fixture** at `crates/capco/tests/citation_fidelity.rs`
-that exercises your predicate against the canonical example from the
-cited passage (FR-019, F.1 gate).
+**Add a corpus fixture** at `tests/corpus/...` plus declare the
+authority in `cited_authorities()` so the F.1 corpus-fidelity gate
+at `crates/capco/tests/citation_fidelity.rs` covers the predicate
+against the canonical example from the cited passage (FR-019).
 
 ---
 
@@ -200,10 +270,18 @@ The lint inspects `citation:` fields, `message:` strings,
 `constraint_label:` strings, and doc-comment `§X.Y` references.
 Failures point at the offending source line. Pre-conditions for green:
 
-- `§X.Y` exists in `crates/capco/docs/CAPCO-2016.md`.
-- `X` is in `{A, B, C, D, E, F, G, H}` (normative range).
-- `pNN` is within the document's page range.
-- No bare `§NN` (must include subsection).
+- `§X.Y` exists in `crates/capco/docs/CAPCO-2016.md` (subsection
+  resolves against the section's own subsection table).
+- `X` is in `{A, B, C, D, E, F, G, H}` (normative range; §I/§J/§K
+  are non-normative and rejected).
+- `pNN` is within the cited subsection's page span (not just the
+  document range).
+- No bare `§NN`-form (a digit without a section letter is rejected).
+- A bare-letter `§X` is permitted only when `X` has no numbered
+  subsections (e.g. `§F p35`). For sections with subsections (§A–§E,
+  §G, §H), the subsection number is required.
+- Legacy `line NNNN` citation form is rejected (retired in commit
+  `b340bec`; page numbers only).
 
 The full F.1 gate at `crates/capco/tests/citation_fidelity.rs`
 additionally requires that every cited authority has a corpus fixture
