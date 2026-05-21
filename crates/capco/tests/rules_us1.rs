@@ -160,8 +160,10 @@ fn lint(source: &[u8]) -> Vec<(String, usize, usize)> {
                     // (added in #388) needs the same prefix relaxation
                     // here to fold to "W005" instead of falling through
                     // to the full constraint label.
-                    if matches!(id_part.as_bytes(), [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9'])
-                    {
+                    if matches!(
+                        id_part.as_bytes(),
+                        [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9']
+                    ) {
                         id_part.to_owned()
                     } else {
                         v.constraint_label.to_owned()

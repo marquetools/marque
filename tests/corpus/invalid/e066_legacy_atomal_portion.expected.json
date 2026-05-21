@@ -1,0 +1,8 @@
+{
+  "_note": "Issue #660: legacy CTSA portion form canonicalizes to bare CTS class + ATOMAL companion (AEA axis) per CAPCO-2016 §G.1 Table 4 p37 (registration) + §G.2 p40 (Table 5 ARH) + §H.7 p122 (worked example SECRET//RD/ATOMAL//FGI NATO//NOFORN). E066 emits Recanonicalize → `(//CTS//ATOMAL)`. Co-fires S007 §H.7 p127 (bare NATO requires REL TO USA, NATO) and E015 §H.7 p122 (non-US classification requires dissem control).",
+  "diagnostics": [
+    {"rule": "E066", "span": {"start": 3, "end": 7}},
+    {"rule": "S007", "span": {"start": 3, "end": 7}},
+    {"rule": "E015", "span": {"start": 3, "end": 7}}
+  ]
+}

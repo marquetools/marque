@@ -174,7 +174,11 @@ pub(crate) fn w005_rel_to_not_in_joint_coverage(
         constraint_label: "W005/rel-to-not-in-joint-coverage",
         message: format!(
             "REL TO {} not in JOINT participant list: {}",
-            if entries.len() == 1 { "entry" } else { "entries" },
+            if entries.len() == 1 {
+                "entry"
+            } else {
+                "entries"
+            },
             entries.join(", ")
         ),
         citation: capco(SectionLetter::H, 3, 57),
