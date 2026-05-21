@@ -98,7 +98,7 @@ even though the load-bearing assertion still holds.
 - **Status**: verified
 - **Check kind**: `lint`
 - **Check ref**: `tools/citation-lint/ + .github/workflows/ci.yml citation-lint job`
-- **Evidence**: `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 on latest staging merge. CI job at `.github/workflows/ci.yml` lines 427+ runs the lint workspace-wide and gates every PR.
+- **Evidence**: `cargo run --manifest-path tools/citation-lint/Cargo.toml -- .` exits 0 on latest staging merge. The `citation-lint` CI job in `.github/workflows/ci.yml` runs the lint workspace-wide and gates every PR.
 - **Notes**: PR 0.6 cleared the initial defect catalog; PR 10.A.1 hardened the typed-Citation surface so future drift fails at construction. Catalog at `docs/refactor-006/citation-defect-catalog.md` is empty at PR 10.B HEAD.
 
 ### SC-006 — F.1 corpus fidelity: 100% of cited authorities have ≥1 fixture

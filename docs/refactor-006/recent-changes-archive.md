@@ -3,13 +3,22 @@ SPDX-FileCopyrightText: 2026 Knitli Inc. <knitli@knitli.com>
 SPDX-License-Identifier: LicenseRef-MarqueLicense-1.0
 -->
 
-# Recent Changes — archive (entries dated 2026-05-01 and earlier)
+# Recent Changes — archive (pre-keystone-window entries)
 
 Cold-storage form of the `Recent Changes` section at the bottom of
 `CLAUDE.md`. Entries below were moved out of `CLAUDE.md` during the
 PR 10.B (006 polish) sweep (T139) to keep the live `Recent Changes`
-section actionable for new readers. The live section retains entries
-dated 2026-05-02 onward; everything older lives here.
+section actionable for new readers.
+
+The cutoff is content-shaped, not strictly date-shaped: the live
+section retains the keystone-window narrative (PR-3b umbrella and
+later — the post-2026-05-08 work that defines the post-refactor
+shape), and the archive holds everything earlier (`Phase 1`–`Phase 9`
+labels, the decoder PRs #258 / #259, and the Phase B lattice plan).
+Some entries near the boundary are dated 2026-05-08 or shortly
+after; their placement reflects whether they describe pre-keystone
+foundational work (archived) or post-keystone surfaces a future
+maintainer is likely to need (live).
 
 Entries are in original chronological order (newest at the top). No
 content edits — this is a verbatim move.

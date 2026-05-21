@@ -32,8 +32,15 @@ changes per PR. Read this before opening a PR against the branch.
 - **Pass-split**: rules declare `Phase::Localized | WholeMarking` at
   registration; engine re-parses between passes; `R002` for
   re-parse-failure cases.
-- **Audit schema cuts over once**: `marque-mvp-2 → marque-1.0` at PR 3c.
-  Clean break — no reader compat, no `mvp-N` naming after.
+- **Audit schema lands `marque-1.0` via two atomic steps**:
+  `mvp-2 → mvp-3` at PR 3c.B Commit 10 (`FixProposal` retired;
+  audit envelope reshapes to a structural `proposal: FixIntent |
+  TextCorrection` sub-object, closing the G13
+  audit-content-ignorance channel); `mvp-3 → 1.0` at PR 3c.2.D
+  (the PR 3c.2 carve-out per the 2026-05-14 PM decision). The
+  `mvp-N` naming retires at the second step. Clean break post-`1.0`
+  — no reader compat, no `mvp-N` shapes accepted by the build-time
+  validator.
 - **Rule IDs stay single-field through 006**: `RuleId::new("E###")` is
   the surface that ships at PR 10 stability-freeze (FR-049). The
   originally-planned `(scheme, predicate-id)` 2-tuple defers to a
@@ -131,7 +138,7 @@ use marque_rules::{
 };
 use marque_scheme::{capco, Citation, SectionLetter};
 use marque_scheme::fix_intent::{FactRef, ReplacementIntent};
-use marque_scheme::scope::Scope;
+use marque_scheme::Scope;
 use marque_ism::{CanonicalAttrs, TokenKind};
 
 pub struct MyDissemConflictRule;
