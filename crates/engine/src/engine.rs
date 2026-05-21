@@ -979,6 +979,15 @@ impl Engine {
         // + PageRewrite pipeline is now the single source of truth
         // for the page roll-up that banner-validation rules consume.
         let mut page_marking_arc: Option<Arc<marque_ism::ProjectedMarking>> = None;
+        // Incremental page-projection accumulator. Maintained as a
+        // running lattice join of all portions seen since the last
+        // page reset. Updated O(1) per portion so that
+        // `project_page_marking` can project from a single element
+        // instead of re-folding the entire `page_portions` slice on
+        // every banner/CAB candidate (O(N²) → O(N) for the
+        // `fix_throughput` bench pattern where `\n\n` never trips a
+        // page reset — issue #306).
+        let mut page_join_acc: marque_ism::CanonicalAttrs = marque_ism::CanonicalAttrs::default();
 
         // FR-011: per-page strict classification floor. Tracks the
         // highest classification rank produced by the strict path on
@@ -1094,6 +1103,7 @@ impl Engine {
                         &page_portions,
                         &mut page_portions_arc,
                         &mut page_marking_arc,
+                        &page_join_acc,
                         &corrections_arc,
                         candidate.span.start,
                         opts.deadline,
@@ -1114,6 +1124,7 @@ impl Engine {
                     );
                 }
                 page_portions = fresh_page_portions_accumulator();
+                page_join_acc = marque_ism::CanonicalAttrs::default();
                 page_portions_arc = None;
                 // PR 9b (T133): the page-marking cache resets on the
                 // same boundary as the per-page accumulator
@@ -1351,24 +1362,20 @@ impl Engine {
             // hardcoded `Zone::Body`/`DocumentPosition::Body` was a silent
             // lie to any future rule that read them.
             //
-            // PR 6c (T069): the per-page accumulator freezes into an
-            // `Arc<Box<[CanonicalAttrs]>>` once at first banner/CAB
-            // consumer; consecutive banner/CAB candidates on the same
-            // page clone only the cheap Arc pointer. The
-            // `into_boxed_slice()` allocation pays once per page on
-            // the first banner/CAB use, matching the cadence of the
-            // pre-PR-6c `PageContext::clone()` snapshot.
-            let ctx_page_portions = if candidate.kind != MarkingType::Portion
-                && !page_portions.is_empty()
-            {
-                Some(
-                    page_portions_arc
-                        .get_or_insert_with(|| Arc::new(page_portions.clone().into_boxed_slice()))
-                        .clone(),
-                )
-            } else {
-                None
-            };
+            // Issue #306 (O(N²) fix): `ctx.page_portions` is consumed
+            // exclusively by Phase::PageFinalization rules, which are
+            // skipped in the main candidate loop (see skip gate below).
+            // Materializing `page_portions_arc` here on every banner/CAB
+            // candidate — cloning all k accumulated portions each time —
+            // was O(N²) with zero consumers. `dispatch_page_finalization`
+            // force-inits the Arc once per page break/EOD boundary; the
+            // main loop passes `None` for the field unconditionally.
+            //
+            // (Historical: PR 6c T069 introduced the lazy-init Arc to
+            // amortize the snapshot clone; issue #306 eliminates the
+            // snapshot from the hot path entirely by proving no consumer
+            // exists outside PageFinalization dispatch.)
+            let ctx_page_portions: Option<Arc<Box<[marque_ism::CanonicalAttrs]>>> = None;
             // N-9-2 (PR 437 10th-pass): `cross_portion_context` removed.
             // The field cloned the full per-page accumulator once per
             // Portion candidate (O(N²) over N portions per page —
@@ -1386,21 +1393,23 @@ impl Engine {
             //
             // PR 9b (T133): lazy/cached construction for the
             // page-marking projection. Built from
-            // `project_page_marking(&self.scheme, &page_portions)`
+            // `project_page_marking(&self.scheme, &page_join_acc)`
             // (post-PR-4b-D.2 hot-path flip — the helper invokes
             // `CapcoScheme::project_from_attrs_slice` which drives
             // the lattice + closure + page-rewrite pipeline) so
             // banner-validation rules see the rolled-up shape
             // (classification / SCI / SAR / AEA / dissem_us /
-            // dissem_nato / REL TO). Sharing the Arc across
-            // consecutive banner/CAB candidates on the same page
-            // mirrors the `page_portions_arc` discipline.
+            // dissem_nato / REL TO). `page_join_acc` is the
+            // incremental lattice join over all portions seen so far
+            // on this page (issue #306, PR #674); the Arc is shared
+            // across consecutive banner/CAB candidates on the same
+            // page and invalidated on page break.
             let ctx_page_marking =
                 if candidate.kind != MarkingType::Portion && !page_portions.is_empty() {
                     Some(
                         page_marking_arc
                             .get_or_insert_with(|| {
-                                Arc::new(project_page_marking(&self.scheme, &page_portions))
+                                Arc::new(project_page_marking(&self.scheme, &page_join_acc))
                             })
                             .clone(),
                     )
@@ -1791,6 +1800,28 @@ impl Engine {
                 candidate.span.start
             );
             if candidate.kind == MarkingType::Portion {
+                // Update the incremental join accumulator (issue #306).
+                // First portion on the page: copy directly so that
+                // cross-axis state in `join_via_lattice_body` (JointSet,
+                // DissemSet unanimity, etc.) is seeded from a real
+                // portion, NOT from `CanonicalAttrs::default()`.
+                // `CanonicalAttrs::default()` has `classification = None`,
+                // which `JointSet::from_attrs_iter` counts as a non-JOINT
+                // element — joining it with a JOINT portion would falsely
+                // produce `Mixed` instead of `UnanimousProducers`.
+                // For k ≥ 1 the join is correct because `page_join_acc`
+                // already carries a real (post-overlay) CanonicalAttrs,
+                // so `JointSet::from_attrs_iter([acc, new_p])` sees
+                // `acc.classification = Some(Joint(...))` and correctly
+                // detects the unanimous case.
+                if page_portions.is_empty() {
+                    page_join_acc = attrs.clone();
+                } else {
+                    page_join_acc = marque_capco::CapcoMarking::join_via_lattice(&[
+                        std::mem::take(&mut page_join_acc),
+                        attrs.clone(),
+                    ]);
+                }
                 if intent_emitted {
                     parsed_markings.push((
                         candidate.span,
@@ -1839,6 +1870,7 @@ impl Engine {
                 &page_portions,
                 &mut page_portions_arc,
                 &mut page_marking_arc,
+                &page_join_acc,
                 &corrections_arc,
                 source.len(),
                 opts.deadline,
@@ -3699,10 +3731,21 @@ fn find_containing_marking(
     parsed_markings: &[(Span, marque_capco::CapcoMarking)],
     fix_span: Span,
 ) -> Option<Span> {
-    parsed_markings
-        .iter()
-        .map(|(s, _)| *s)
-        .find(|marking_span| span_is_within_marking(fix_span, *marking_span))
+    // Binary search: `parsed_markings` is sorted by `Span.start` ascending
+    // (Scanner::scan order, enforced by the push-site debug_assert).
+    // `partition_point` gives the first index where start > fix_span.start;
+    // the candidate containing marking (if any) is therefore at index − 1.
+    // O(log N) rather than the prior O(N) linear scan.
+    let idx = parsed_markings.partition_point(|(s, _)| s.start <= fix_span.start);
+    if idx == 0 {
+        return None;
+    }
+    let (marking_span, _) = &parsed_markings[idx - 1];
+    if span_is_within_marking(fix_span, *marking_span) {
+        Some(*marking_span)
+    } else {
+        None
+    }
 }
 
 /// Point lookup for the recognized marking at exactly `span`.
@@ -4624,6 +4667,7 @@ fn dispatch_page_finalization(
     page_portions: &[marque_ism::CanonicalAttrs],
     page_portions_arc: &mut Option<Arc<Box<[marque_ism::CanonicalAttrs]>>>,
     page_marking_arc: &mut Option<Arc<marque_ism::ProjectedMarking>>,
+    page_join_acc: &marque_ism::CanonicalAttrs,
     corrections_arc: &Option<Arc<HashMap<String, String>>>,
     boundary_offset: usize,
     deadline: Option<Instant>,
@@ -4685,7 +4729,7 @@ fn dispatch_page_finalization(
         .get_or_insert_with(|| Arc::new(page_portions.to_vec().into_boxed_slice()))
         .clone();
     let page_mark_arc = page_marking_arc
-        .get_or_insert_with(|| Arc::new(project_page_marking(scheme, page_portions)))
+        .get_or_insert_with(|| Arc::new(project_page_marking(scheme, page_join_acc)))
         .clone();
 
     // Zero-length span at the boundary anchor. Rules use this as
@@ -4901,25 +4945,19 @@ fn dispatch_page_finalization(
 /// pipeline ordering.
 fn project_page_marking(
     scheme: &CapcoScheme,
-    page_portions: &[marque_ism::CanonicalAttrs],
+    page_join_acc: &marque_ism::CanonicalAttrs,
 ) -> marque_ism::ProjectedMarking {
     // PR 4b-D.2 Commit 7 perf optimization: route through
     // `CapcoScheme::project_from_attrs_slice`, the engine fast-path
-    // that consumes the per-page accumulator slice directly. This
-    // skips three categories of redundant work the trait-level
-    // `MarkingScheme::project` would pay:
+    // that consumes the per-page accumulator slice directly.
     //
-    //   1. Wrapping each portion in a `CapcoMarking::new(p.clone())`
-    //      at the engine boundary.
-    //   2. Re-extracting `m.0.clone()` for each marking back into a
-    //      `Vec<CanonicalAttrs>` inside the trait body.
-    //   3. Rebuilding a tmp_ctx via `add_portion(p.clone())` for each
-    //      portion inside `join_via_lattice`.
-    //
-    // The engine ALREADY owns a `Vec<CanonicalAttrs>` accumulator
-    // across the document; reusing the slice here eliminates all
-    // three.
-    let projected = scheme.project_from_attrs_slice(page_portions);
+    // Issue #306 (O(N²) fix): the caller now passes the pre-computed
+    // incremental join accumulator (`page_join_acc`) rather than the
+    // full `page_portions` slice. The accumulator is maintained by the
+    // portion-push site via `join_via_lattice([acc, new_portion])` so
+    // this call projects a single element (O(1)) instead of re-folding
+    // all N portions on every banner/CAB candidate (O(N)).
+    let projected = scheme.project_from_attrs_slice(std::slice::from_ref(page_join_acc));
     marque_ism::ProjectedMarking::from_canonical(projected)
 }
 

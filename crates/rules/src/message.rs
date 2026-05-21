@@ -184,6 +184,16 @@ pub enum MessageTemplate {
     /// (SIGMA), §H.5 (SAR), §H.4 (SCI compartments), §H.3 (JOINT).
     NonCanonicalOrder,
 
+    /// Token(s) are present in a non-canonical form that could be
+    /// compacted or expanded to the preferred representation (e.g., an
+    /// explicit trigraph list where a tetragraph abbreviation is
+    /// preferred, or vice versa). Args: `category` (which axis carries
+    /// the non-canonical form).
+    ///
+    /// Authority: CAPCO-2016 §H.8 (REL TO compaction into tetragraphs
+    /// per §H.8 p150-151).
+    NonCanonicalForm,
+
     /// Two tokens commingled that are mutually exclusive per
     /// CAPCO-2016 §H.8 / §H.9 invariants. Args: `token` (the dominated
     /// token to remove), `expected_token` (the dominating token that
@@ -289,6 +299,7 @@ impl MessageTemplate {
             Self::BannerRollupMismatch => "BannerRollupMismatch",
             Self::ClassificationFloorViolated => "ClassificationFloorViolated",
             Self::NonCanonicalOrder => "NonCanonicalOrder",
+            Self::NonCanonicalForm => "NonCanonicalForm",
             Self::ConflictsWith => "ConflictsWith",
             Self::RequiredByPresence => "RequiredByPresence",
             Self::SupersededToken => "SupersededToken",
@@ -577,6 +588,10 @@ mod tests {
         assert_eq!(
             MessageTemplate::NonCanonicalOrder.as_str(),
             "NonCanonicalOrder"
+        );
+        assert_eq!(
+            MessageTemplate::NonCanonicalForm.as_str(),
+            "NonCanonicalForm"
         );
         assert_eq!(MessageTemplate::ConflictsWith.as_str(), "ConflictsWith");
         assert_eq!(
