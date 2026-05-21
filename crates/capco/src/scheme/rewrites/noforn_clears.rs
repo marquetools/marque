@@ -22,6 +22,7 @@
 //! Lifted from the monolithic `rewrites.rs` per the issue #466
 //! Stage 2 PR A leaf split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
+use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
 };
@@ -126,7 +127,7 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // execution path (Phase D/E) produce the same result.
         PageRewrite::declarative(
             "capco/noforn-clears-rel-to",
-            "CAPCO-2016 §D.2 Table 3 + §H.8 p145",
+            capco(SectionLetter::H, 8, 145),
             CategoryPredicate::Contains {
                 category: CAT_DISSEM,
                 token: TOK_NOFORN,
@@ -188,7 +189,7 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // CAT_DISSEM FD&R tokens).
         PageRewrite::declarative(
             "capco/noforn-clears-fdr-family",
-            "CAPCO-2016 §D.2 Table 3 row 2 + §H.8 p154 + §H.8 p157",
+            capco(SectionLetter::H, 8, 154),
             CategoryPredicate::Contains {
                 category: CAT_DISSEM,
                 token: TOK_NOFORN,
@@ -236,7 +237,7 @@ pub(super) fn noforn_clears_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // `capco_category_has_values`.
         PageRewrite::declarative(
             "capco/noforn-clears-display-only-to",
-            "CAPCO-2016 §H.8 p145 + §D.2 Table 3 rows 1-2",
+            capco(SectionLetter::H, 8, 145),
             CategoryPredicate::Contains {
                 category: CAT_DISSEM,
                 token: TOK_NOFORN,

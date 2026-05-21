@@ -13,6 +13,7 @@
 //! ordering.
 
 use marque_scheme::{Constraint, Severity, TokenRef};
+use marque_rules::{SectionLetter, capco};
 
 use super::super::*;
 
@@ -71,7 +72,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // marking (one per failing sub-rule).
         Constraint::Custom {
             name: "E010/HCS-system-constraints",
-            label: "CAPCO-2016 §H.4 pp 62-66",
+            label: capco(SectionLetter::H, 4, 62),
         },
         // ---- E012: dual classification (CAPCO-2016 §H.3 p55) -
         //
@@ -86,7 +87,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // encounters two systems in one marking.
         Constraint::Custom {
             name: "E012/dual-classification",
-            label: "CAPCO-2016 §H.3 p55",
+            label: capco(SectionLetter::H, 3, 55),
         },
         // ---- E014: JOINT requires REL TO coverage (§H.3 p57) -
         //
@@ -97,7 +98,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // JOINT countries.
         Constraint::Custom {
             name: "E014/joint-requires-rel-to-coverage",
-            label: "CAPCO-2016 §H.3 p57",
+            label: capco(SectionLetter::H, 3, 57),
         },
         // ---- E015: non-US requires dissem (§H.7 + §B.3) ------
         //
@@ -115,7 +116,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E015/non-us-requires-dissem",
             left: TokenRef::AnyInCategory(CAT_NON_US_CLASSIFICATION),
             right: TokenRef::AnyInCategory(CAT_DISSEM),
-            label: "CAPCO-2016 §H.7 p122 + §B.3 p20",
+            label: capco(SectionLetter::H, 7, 122),
             severity: Some(Severity::Error),
         },
         // ---- E016: JOINT conflicts RESTRICTED (§H.3 p56) -----
@@ -128,7 +129,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E016/joint-conflicts-restricted",
             left: TokenRef::Token(TOK_JOINT),
             right: TokenRef::Token(TOK_RESTRICTED),
-            label: "CAPCO-2016 §H.3 p56",
+            label: capco(SectionLetter::H, 3, 56),
             severity: Some(Severity::Error),
             span_anchor: None,
         },
@@ -157,7 +158,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E036/joint-conflicts-hcs",
             left: TokenRef::Token(TOK_JOINT),
             right: TokenRef::Token(TOK_HCS),
-            label: "CAPCO-2016 §H.3 p57",
+            label: capco(SectionLetter::H, 3, 57),
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_HCS)),
         },
@@ -190,7 +191,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // `U//UCNI` marking would incorrectly require NOFORN.
         Constraint::Custom {
             name: "E021/rd-frd-requires-noforn",
-            label: "CAPCO-2016 §H.6 p104 + p111",
+            label: capco(SectionLetter::H, 6, 104),
         },
         // ---- §H.6 p106 CNWDI subset-of-RD: enforced by data
         //      model, NO Constraint row needed -----------------
@@ -255,7 +256,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // `project(Scope::Page, ...)`.
         Constraint::Custom {
             name: "E024/rd-precedence",
-            label: "CAPCO-2016 §H.6 p104",
+            label: capco(SectionLetter::H, 6, 104),
         },
         // ---- E070: FRD precedence over TFNI (§H.6 p120) ------
         //
@@ -274,7 +275,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // decision 2026-05-19.
         Constraint::Custom {
             name: "E070/frd-tfni-precedence",
-            label: "CAPCO-2016 §H.6 p120",
+            label: capco(SectionLetter::H, 6, 120),
         },
         // ---- E025 retired in PR 3b.D (T026d) -----------------
         //
@@ -314,7 +315,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "capco/noforn-conflicts-rel-to",
             left: TokenRef::Token(TOK_NOFORN),
             right: TokenRef::AnyInCategory(CAT_REL_TO),
-            label: "CAPCO-2016 §H.8 p145",
+            label: capco(SectionLetter::H, 8, 145),
             severity: Some(Severity::Error),
             span_anchor: None,
         },
@@ -329,7 +330,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // into a single TokenRef pair.
         Constraint::Custom {
             name: "capco/joint-requires-usa",
-            label: "CAPCO-2016 §H.3 p55",
+            label: capco(SectionLetter::H, 3, 55),
         },
         // ---- E037: NODIS ⊥ EXDIS (§H.9 p172 + p174) ----------
         //
@@ -347,7 +348,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E037/nodis-conflicts-exdis",
             left: TokenRef::Token(TOK_NODIS),
             right: TokenRef::Token(TOK_EXDIS),
-            label: "CAPCO-2016 §H.9 p172 + p174",
+            label: capco(SectionLetter::H, 9, 172),
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_NODIS)),
         },
@@ -368,7 +369,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
         // single Custom predicate keeps the wrapper trivial.
         Constraint::Custom {
             name: "E038/nodis-or-exdis-requires-noforn",
-            label: "CAPCO-2016 §H.9 p172 + p174",
+            label: capco(SectionLetter::H, 9, 172),
         },
         // ---- E054: RELIDO ⊥ NOFORN (§H.8 p154) ------------------
         //
@@ -387,7 +388,7 @@ pub(super) fn core_constraints() -> Vec<Constraint> {
             name: "E054/relido-conflicts-noforn",
             left: TokenRef::Token(TOK_RELIDO),
             right: TokenRef::Token(TOK_NOFORN),
-            label: "CAPCO-2016 §H.8 p154",
+            label: capco(SectionLetter::H, 8, 154),
             severity: Some(Severity::Error),
             span_anchor: Some(TokenRef::Token(TOK_RELIDO)),
         },

@@ -10,6 +10,9 @@
 //! Row order preserved verbatim from the pre-split catalog.
 
 use marque_scheme::Constraint;
+use marque_rules::{SectionLetter, capco};
+
+use super::super::class_floor::PASSTHROUGH_CITATION;
 
 // ================================================================
 // PR 3b.D (T026d) — class-floor catalog (§3.4.6)
@@ -105,15 +108,15 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // ---- §2.1 Floor TS — single classification level (5 rows) -
         Constraint::Custom {
             name: "class-floor/HCS-comp-sub",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
             name: "class-floor/SI-comp",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
             name: "class-floor/TK-BLFH",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
         // to "§G.2 p40". §G.2 p40 is the authoritative anchor —
@@ -127,32 +130,32 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // appendix, not the BALK/BOHEMIA registration.
         Constraint::Custom {
             name: "class-floor/BALK",
-            label: "CAPCO-2016 §G.2 p40",
+            label: capco(SectionLetter::G, 2, 40),
         },
         Constraint::Custom {
             name: "class-floor/BOHEMIA",
-            label: "CAPCO-2016 §G.2 p40",
+            label: capco(SectionLetter::G, 2, 40),
         },
         // ---- §2.2 Floor S — TS-or-S allowed (8 rows) --------------
         Constraint::Custom {
             name: "class-floor/HCS-comp",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
             name: "class-floor/RSV-comp",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
             name: "class-floor/TK",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         Constraint::Custom {
             name: "class-floor/RD-SG",
-            label: "CAPCO-2016 §H.6 p113",
+            label: capco(SectionLetter::H, 6, 113),
         },
         Constraint::Custom {
             name: "class-floor/FRD-SG",
-            label: "CAPCO-2016 §H.6 p113",
+            label: capco(SectionLetter::H, 6, 113),
         },
         // CNWDI — replaces retired E022. Per PM directive #5 + the
         // PR 3b.D planning doc §5.2, catalog row names use the
@@ -163,38 +166,38 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // at `E022` will need to migrate to `E058`.
         Constraint::Custom {
             name: "E058/CNWDI-classification-floor",
-            label: "CAPCO-2016 §H.6 p104",
+            label: capco(SectionLetter::H, 6, 104),
         },
         Constraint::Custom {
             name: "class-floor/RSEN",
-            label: "CAPCO-2016 §H.8 p149",
+            label: capco(SectionLetter::H, 8, 149),
         },
         Constraint::Custom {
             name: "class-floor/IMCON",
-            label: "CAPCO-2016 §H.8 p144",
+            label: capco(SectionLetter::H, 8, 144),
         },
         // ---- §2.3 Floor C — any classified level (8 rows) --------
         Constraint::Custom {
             name: "class-floor/SI",
-            label: "CAPCO-2016 §H.4",
+            label: capco(SectionLetter::H, 4, 60),
         },
         // SAR — replaces retired E027. Walker-prefixed name per PM
         // directive #5.
         Constraint::Custom {
             name: "E058/SAR-classification-floor",
-            label: "CAPCO-2016 §H.5",
+            label: capco(SectionLetter::H, 5, 99),
         },
         Constraint::Custom {
             name: "class-floor/RD",
-            label: "CAPCO-2016 §H.6 p104",
+            label: capco(SectionLetter::H, 6, 104),
         },
         Constraint::Custom {
             name: "class-floor/FRD",
-            label: "CAPCO-2016 §H.6 p104",
+            label: capco(SectionLetter::H, 6, 104),
         },
         Constraint::Custom {
             name: "class-floor/TFNI",
-            label: "CAPCO-2016 §H.6 p107",
+            label: capco(SectionLetter::H, 6, 107),
         },
         // PR 9c.1 T134: citation tightened from "§H.7 Appendix B"
         // to "§H.7 p122". §H.7 p122 is the worked example showing
@@ -204,15 +207,15 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // RD/CNWDI worked-example citations).
         Constraint::Custom {
             name: "class-floor/ATOMAL",
-            label: "CAPCO-2016 §H.7 p122",
+            label: capco(SectionLetter::H, 7, 122),
         },
         Constraint::Custom {
             name: "class-floor/ORCON",
-            label: "CAPCO-2016 §H.8 p136",
+            label: capco(SectionLetter::H, 8, 136),
         },
         Constraint::Custom {
             name: "class-floor/EYES-ONLY",
-            label: "CAPCO-2016 §H.8 p152",
+            label: capco(SectionLetter::H, 8, 152),
         },
         // ---- §2.4 Floor =U — UNCLASSIFIED-only (2 rows; UCNI split) -
         //
@@ -222,11 +225,11 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // use the walker-prefixed name `E058/<suffix>`.
         Constraint::Custom {
             name: "E058/DOD-UCNI-classification-ceiling",
-            label: "CAPCO-2016 §H.6 p116",
+            label: capco(SectionLetter::H, 6, 116),
         },
         Constraint::Custom {
             name: "E058/DOE-UCNI-classification-ceiling",
-            label: "CAPCO-2016 §H.6 p118",
+            label: capco(SectionLetter::H, 6, 118),
         },
         // ---- §2.6 Unknown-floor passthrough (4 rows) -------------
         //
@@ -237,19 +240,19 @@ pub(super) fn class_floor_constraints() -> Vec<Constraint> {
         // table.
         Constraint::Custom {
             name: "class-floor/passthrough-BUR",
-            label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            label: PASSTHROUGH_CITATION,
         },
         Constraint::Custom {
             name: "class-floor/passthrough-HCS-X",
-            label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            label: PASSTHROUGH_CITATION,
         },
         Constraint::Custom {
             name: "class-floor/passthrough-KLM",
-            label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            label: PASSTHROUGH_CITATION,
         },
         Constraint::Custom {
             name: "class-floor/passthrough-MVL",
-            label: "marque-applied.md §3.7 (passthrough); CAPCO-2016 unmapped",
+            label: PASSTHROUGH_CITATION,
         },
     ]
 }

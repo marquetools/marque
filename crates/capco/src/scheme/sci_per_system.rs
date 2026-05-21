@@ -14,6 +14,7 @@
 //! (the parent module's `pub use self::adapter::CapcoScheme` re-export).
 
 use super::actions::*;
+use marque_rules::{SectionLetter, capco};
 use super::predicates::*;
 use super::*;
 use crate::fact_bitmask::fact_bit;
@@ -178,15 +179,13 @@ pub(crate) struct SciPerSystemRow {
     /// (forbidden-bit OR-mask).
     /// Zero means no forbidden bits.
     pub(crate) bitmask_companion_forbidden: u128,
-    /// Per-row §-citation, matching `Constraint::Custom { label }`.
-    /// PR 3c.2.C C5 retired the emission path through this field per
-    /// PM-C-1 (catalog row citations stay `&'static str` for
-    /// citation-lint scanning); use [`Self::citation_typed`] at emit
-    /// time.
-    pub(crate) citation: &'static str,
-    /// Typed [`marque_rules::Citation`] used at emission time. Must
-    /// agree with [`Self::citation`].
-    pub(crate) citation_typed: marque_rules::Citation,
+    /// Per-row typed §-citation, matching `Constraint::Custom { label }`.
+    /// PR 10.A.1 consolidated the dual-track `citation: &'static str` +
+    /// `citation_typed: Citation` design into this single typed field.
+    /// The engine's constraint-catalog bridge reads it directly; the
+    /// `Citation` `Display` impl produces the `§<L>.<sub> p<page>`
+    /// canonical form when emitted into diagnostics.
+    pub(crate) citation: marque_rules::Citation,
 }
 
 // ---------------------------------------------------------------------------
@@ -211,8 +210,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_hcs_o,
         kind: SciPerSystemKind::Custom(emit_hcs_o_companions),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p64",
-        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 64),
+        citation: capco(SectionLetter::H, 4, 64),
         bitmask_trigger: Some(1u128 << fact_bit::SCI_HCS_O),
         bitmask_trigger_exact: true,
         bitmask_companion_required: (1u128 << fact_bit::ORCON) | (1u128 << fact_bit::NOFORN),
@@ -234,8 +232,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
             token_name: "NOFORN",
         },
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p66",
-        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 66),
+        citation: capco(SectionLetter::H, 4, 66),
         bitmask_trigger: Some(1u128 << fact_bit::SCI_PRESENT),
         bitmask_trigger_exact: false,
         bitmask_companion_required: 1u128 << fact_bit::NOFORN,
@@ -253,8 +250,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_hcs_p_sub,
         kind: SciPerSystemKind::Custom(emit_hcs_p_sub_companions),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p68",
-        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 68),
+        citation: capco(SectionLetter::H, 4, 68),
         bitmask_trigger: Some(1u128 << fact_bit::SCI_HCS_P_SUB),
         bitmask_trigger_exact: true,
         bitmask_companion_required: 1u128 << fact_bit::ORCON,
@@ -272,8 +268,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
         presence: presence_si_g,
         kind: SciPerSystemKind::Custom(emit_si_g_companions),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p80",
-        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 80),
+        citation: capco(SectionLetter::H, 4, 80),
         bitmask_trigger: Some(1u128 << fact_bit::SCI_SI_G),
         bitmask_trigger_exact: true,
         bitmask_companion_required: 1u128 << fact_bit::ORCON,
@@ -299,8 +294,7 @@ pub(crate) const SCI_PER_SYSTEM_CATALOG: &[SciPerSystemRow] = &[
             token_name: "NOFORN",
         },
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §H.4 p87 + p91 + p95",
-        citation_typed: marque_rules::capco(marque_rules::SectionLetter::H, 4, 87),
+        citation: capco(SectionLetter::H, 4, 87),
         bitmask_trigger: Some(
             (1u128 << fact_bit::SCI_TK_BLFH)
                 | (1u128 << fact_bit::SCI_TK_IDIT)

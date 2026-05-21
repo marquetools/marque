@@ -61,6 +61,7 @@
 //! authority here.
 
 use marque_scheme::{FactBitmask, Severity};
+use marque_rules::{Citation, SectionLetter, capco, capco_table};
 
 use crate::fact_bitmask::{
     MASK_FDR_DOMINATORS, MASK_FDR_OR_RELIDO_INCOMPAT, MASK_RELIDO_US_CLASS_SUPPRESSORS, fact_bit,
@@ -165,7 +166,16 @@ const ROW0_NOFORN_IF_CAVEATED_TRIGGERS: u128 = (1u128 << fact_bit::SAR_PRESENT)
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ClosureRow {
     pub name: &'static str,
-    pub label: &'static str,
+    /// Human-readable display label for inventory surfaces. PR 10.A.1
+    /// split the pre-existing `label: &'static str` field into two
+    /// parts so the typed Citation can stand alone on `citation` while
+    /// inventory consumers still get a human-facing string here.
+    pub display_label: &'static str,
+    /// Typed authoritative-source citation (migrated from `&'static str`
+    /// to [`Citation`] in PR 10.A.1 — mirrors `ClosureRule.label` on the
+    /// trait side; both feed the same `AuditNote.citation` field at
+    /// firing time).
+    pub label: Citation,
     pub default_severity: Severity,
     pub trigger_mask: u128,
     pub suppressor_mask: u128,
@@ -198,7 +208,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 0 — Trio 1: caveated → NOFORN.
     ClosureRow {
         name: "capco/noforn-if-caveated",
-        label: "CAPCO-2016 §B.3 Table 2 p21 (rooted in ICD 403)",
+        display_label: "NOFORN if classified-and-caveated",
+        label: capco_table(SectionLetter::B, 3, 2, 21),
         default_severity: Severity::Info,
         trigger_mask: ROW0_NOFORN_IF_CAVEATED_TRIGGERS,
         suppressor_mask: MASK_FDR_DOMINATORS,
@@ -207,7 +218,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 1 — Per-marking: HCS-O → NOFORN + ORCON.
     ClosureRow {
         name: "capco/hcs-o-implies-noforn-orcon",
-        label: "CAPCO-2016 §H.4 p64",
+        display_label: "HCS-O implies NOFORN + ORCON",
+        label: capco(SectionLetter::H, 4, 64),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_HCS_O,
         suppressor_mask: 0,
@@ -216,7 +228,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 2 — Per-marking: HCS-P[sub] → NOFORN + ORCON.
     ClosureRow {
         name: "capco/hcs-p-sub-implies-noforn-orcon",
-        label: "CAPCO-2016 §H.4 p68",
+        display_label: "HCS-P[sub] implies NOFORN + ORCON",
+        label: capco(SectionLetter::H, 4, 68),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_HCS_P_SUB,
         suppressor_mask: 0,
@@ -227,7 +240,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // transitively via ORCON in caveated triggers).
     ClosureRow {
         name: "capco/si-g-implies-orcon",
-        label: "CAPCO-2016 §H.4 p80",
+        display_label: "SI-G implies ORCON",
+        label: capco(SectionLetter::H, 4, 80),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_SI_G,
         suppressor_mask: 0,
@@ -236,7 +250,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 4 — Per-marking: TK-BLFH → NOFORN.
     ClosureRow {
         name: "capco/tk-blfh-implies-noforn",
-        label: "CAPCO-2016 §H.4 p87",
+        display_label: "TK-BLFH implies NOFORN",
+        label: capco(SectionLetter::H, 4, 87),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_BLFH,
         suppressor_mask: 0,
@@ -245,7 +260,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 5 — Per-marking: TK-IDIT → NOFORN.
     ClosureRow {
         name: "capco/tk-idit-implies-noforn",
-        label: "CAPCO-2016 §H.4 p91",
+        display_label: "TK-IDIT implies NOFORN",
+        label: capco(SectionLetter::H, 4, 91),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_IDIT,
         suppressor_mask: 0,
@@ -254,7 +270,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // Row 6 — Per-marking: TK-KAND → NOFORN.
     ClosureRow {
         name: "capco/tk-kand-implies-noforn",
-        label: "CAPCO-2016 §H.4 p95",
+        display_label: "TK-KAND implies NOFORN",
+        label: capco(SectionLetter::H, 4, 95),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_TK_KAND,
         suppressor_mask: 0,
@@ -264,7 +281,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // open-vocab cone applied by PR-D outside the bitmask loop).
     ClosureRow {
         name: "capco/rel-to-usa-nato-if-nato-classification",
-        label: "CAPCO-2016 §H.7 p127 (example-derived) + §G.2 Table 5 p40",
+        display_label: "Bare NATO classification implies REL TO USA, NATO",
+        label: capco(SectionLetter::H, 7, 127),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::NATO_CLASS,
         suppressor_mask: MASK_FDR_DOMINATORS,
@@ -274,7 +292,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // RELIDO-incompatible.
     ClosureRow {
         name: "capco/relido-if-sci-and-not-incompatible",
-        label: "CAPCO-2016 §H.8 p154",
+        display_label: "SCI presence implies RELIDO (unless FD&R or incompatible)",
+        label: capco(SectionLetter::H, 8, 154),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::SCI_PRESENT,
         suppressor_mask: MASK_FDR_OR_RELIDO_INCOMPAT,
@@ -284,7 +303,8 @@ pub static CLOSURE_TABLE: &[ClosureRow] = &[
     // FD&R-marked or per-compartment SCI sentinel present.
     ClosureRow {
         name: "capco/relido-if-us-collateral-class",
-        label: "CAPCO-2016 §B.3 Table 2 p21 (grammar: §H.8 p154)",
+        display_label: "US collateral classification implies RELIDO (unless FD&R)",
+        label: capco_table(SectionLetter::B, 3, 2, 21),
         default_severity: Severity::Info,
         trigger_mask: 1u128 << fact_bit::US_COLLATERAL_CLASSIFIED,
         suppressor_mask: MASK_RELIDO_US_CLASS_SUPPRESSORS,

@@ -11,6 +11,7 @@
 //! UCNI pair so the promote predicate sees UCNI before the strip
 //! removes it.
 
+use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
 };
@@ -142,7 +143,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/limdis-evicted-by-classified",
-            "CAPCO-2016 §H.9 p170",
+            capco(SectionLetter::H, 9, 170),
             CategoryPredicate::Custom(limdis_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactRemove {
                 facts: smallvec::smallvec![FactRef::Cve(TOK_LIMDIS)],
@@ -161,7 +162,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/sbu-evicted-by-classified",
-            "CAPCO-2016 §H.9 p176",
+            capco(SectionLetter::H, 9, 176),
             CategoryPredicate::Custom(sbu_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactRemove {
                 facts: smallvec::smallvec![FactRef::Cve(TOK_SBU)],
@@ -209,7 +210,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-18 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/sbu-nf-evicted-by-classified",
-            "CAPCO-2016 §H.9 p178",
+            capco(SectionLetter::H, 9, 178),
             CategoryPredicate::Custom(sbu_nf_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactRemove {
                 facts: smallvec::smallvec![FactRef::Cve(TOK_SBU_NF)],
@@ -270,7 +271,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/dod-ucni-promotes-noforn-when-classified",
-            "CAPCO-2016 §H.6 p116",
+            capco(SectionLetter::H, 6, 116),
             CategoryPredicate::Custom(dod_ucni_promotes_noforn_trigger),
             CategoryAction::Intent(ReplacementIntent::FactAdd {
                 token: FactRef::Cve(TOK_NOFORN),
@@ -298,7 +299,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/dod-ucni-evicted-by-classified",
-            "CAPCO-2016 §H.6 p116",
+            capco(SectionLetter::H, 6, 116),
             CategoryPredicate::Custom(dod_ucni_classified_trigger),
             CategoryAction::Custom(strip_dod_ucni_action),
             PATTERN_C_UCNI_STRIP_READS,
@@ -320,7 +321,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/doe-ucni-promotes-noforn-when-classified",
-            "CAPCO-2016 §H.6 p118",
+            capco(SectionLetter::H, 6, 118),
             CategoryPredicate::Custom(doe_ucni_promotes_noforn_trigger),
             CategoryAction::Intent(ReplacementIntent::FactAdd {
                 token: FactRef::Cve(TOK_NOFORN),
@@ -339,7 +340,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/doe-ucni-evicted-by-classified",
-            "CAPCO-2016 §H.6 p118",
+            capco(SectionLetter::H, 6, 118),
             CategoryPredicate::Custom(doe_ucni_classified_trigger),
             CategoryAction::Custom(strip_doe_ucni_action),
             PATTERN_C_UCNI_STRIP_READS,
@@ -364,7 +365,7 @@ pub(super) fn pattern_c_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // verified 2026-05-16 against `crates/capco/docs/CAPCO-2016.md`.
         PageRewrite::custom(
             "capco/fouo-evicted-by-classified",
-            "CAPCO-2016 §H.8 p134",
+            capco(SectionLetter::H, 8, 134),
             CategoryPredicate::Custom(fouo_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactRemove {
                 facts: smallvec::smallvec![FactRef::Cve(TOK_FOUO)],

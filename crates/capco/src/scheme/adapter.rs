@@ -476,62 +476,15 @@ impl CapcoScheme {
         }
     }
 
-    /// Typed [`Citation`](marque_rules::Citation) lookup for known
-    /// constraint labels. Bridge layer per PR 3c.2.C C5 / PM-C-1.
-    /// Returns `None` for labels not in the explicit mapping; in that
-    /// case `Engine::bridge_constraint_diagnostic` falls back to an
-    /// `AuthoritativeSource::EngineInternal` sentinel citation —
-    /// the legacy `ConstraintViolation.citation: &'static str` value
-    /// is dropped (logged only). No parser-based conversion occurs.
-    ///
-    /// Constitution VIII propagation: each citation re-verified
-    /// against `crates/capco/docs/CAPCO-2016.md` at PR 3c.2.C
-    /// authorship.
-    ///
-    /// # Class-floor and SCI-per-system catalog rows (PR 3c.2.C C7)
-    ///
-    /// PR 3c.2.C C7 (reviewer R-C1) extended this dispatch to cover
-    /// the 27 `class-floor/*` + `E058/*` catalog rows and the 5
-    /// `sci-per-system/*` catalog rows. Both prefixes return the
-    /// row's pre-computed [`Citation`](marque_rules::Citation)
-    /// (the `citation_typed` field on each row) rather than the
-    /// `[engine-internal]` sentinel previously emitted by the
-    /// bridge fallback.
-    pub fn citation_by_name(&self, name: &str) -> Option<marque_rules::Citation> {
-        use marque_rules::{SectionLetter, capco};
-
-        // PR 3c.2.C C7 (R-C1): class-floor catalog row citations.
-        if (name.starts_with("class-floor/") || name.starts_with("E058/"))
-            && let Some(row) = self.find_class_floor_row(name)
-        {
-            return Some(row.citation_typed);
-        }
-
-        // PR 3c.2.C C7 (R-C1): sci-per-system catalog row citations.
-        if name.starts_with("sci-per-system/")
-            && let Some(row) = self.find_sci_per_system_row(name)
-        {
-            return Some(row.citation_typed);
-        }
-
-        match name {
-            // E015 §H.7 p122 (FGI grammar) + §B.3 p20 (caveated
-            // definition); typed anchor at §H.7 p122.
-            "E015/non-us-requires-dissem" => Some(capco(SectionLetter::H, 7, 122)),
-            // E016 §H.3 p56 (JOINT grammar).
-            "E016/joint-conflicts-restricted" => Some(capco(SectionLetter::H, 3, 56)),
-            // E036 §H.3 p57 (Derivative Use).
-            "E036/joint-conflicts-hcs" => Some(capco(SectionLetter::H, 3, 57)),
-            // §H.8 p145 (NOFORN-dominates rule).
-            "capco/noforn-conflicts-rel-to" => Some(capco(SectionLetter::H, 8, 145)),
-            // E037 §H.9 p172 (EXDIS) + §H.9 p174 (NODIS); typed
-            // anchor at §H.9 p172.
-            "E037/nodis-conflicts-exdis" => Some(capco(SectionLetter::H, 9, 172)),
-            // E054 §H.8 p154 (RELIDO grammar).
-            "E054/relido-conflicts-noforn" => Some(capco(SectionLetter::H, 8, 154)),
-            _ => None,
-        }
-    }
+    // PR 10.A.1: `citation_by_name` was the bridge fallback for
+    // converting `ConstraintViolation.citation: &'static str` → typed
+    // `Diagnostic.citation: Citation`. With typed citations end-to-end
+    // (`Constraint.label: Citation` flows verbatim through the
+    // evaluator into `ConstraintViolation.citation: Citation`), the
+    // lookup is dead weight and was retired. Per-row citations on
+    // `ClassFloorRow` and `SciPerSystemRow` are now `Citation` directly
+    // (no `citation_typed` companion field) and the engine bridge does
+    // a direct copy.
 
     /// O(27) linear lookup for a `ClassFloorRow` by `name`. The
     /// catalog has 27 rows; the linear scan is faster than a

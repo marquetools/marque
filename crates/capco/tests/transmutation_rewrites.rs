@@ -41,6 +41,7 @@ use marque_capco::scheme::{
 };
 use marque_config::Config;
 use marque_engine::Engine;
+use marque_rules::{SectionLetter, capco};
 use marque_scheme::{CategoryAction, CategoryPredicate, MarkingScheme, PageRewrite};
 
 // ---------------------------------------------------------------------------
@@ -98,7 +99,7 @@ fn entry_4_frd_sigma_consolidates_is_correctly_authored() {
 
     // Assert — id, citation, axes, predicate / action shape.
     assert_eq!(rw.id, "capco/frd-sigma-consolidates-into-rd-sigma");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.6 p113");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 6, 113));
     assert_eq!(rw.reads, &[CAT_AEA]);
     assert_eq!(rw.writes, &[CAT_AEA]);
     assert_predicate_is_custom(rw);
@@ -119,7 +120,7 @@ fn entry_1_fgi_rollup_on_us_contact_is_correctly_authored() {
     // §4. Class lift is parser-side per §3.4.1 Note (i), so CLASS is
     // not in `writes`.
     assert_eq!(rw.id, "capco/fgi-rollup-on-us-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 7, 122));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);
@@ -136,7 +137,7 @@ fn entry_2_fgi_restricted_rollup_is_correctly_authored() {
 
     // Assert — narrow-form reads (CLASS only); see Entry 1 note.
     assert_eq!(rw.id, "capco/fgi-restricted-rollup-on-us-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 7, 122));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);
@@ -156,7 +157,7 @@ fn entry_3_joint_cross_class_rollup_is_correctly_authored() {
     // FGI_MARKER only (JOINT does not roll up to banner; class
     // lift is parser-side).
     assert_eq!(rw.id, "capco/joint-cross-class-rollup");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.3 p57");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 3, 57));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION, CAT_JOINT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);
@@ -176,7 +177,7 @@ fn entry_7_us_presence_promotes_bare_fgi_is_correctly_authored() {
     // state of entries 1, 2, 3), so FGI_MARKER stays in `reads`
     // and the scheduler orders entry 7 after 1, 2, 3.
     assert_eq!(rw.id, "capco/us-presence-promotes-bare-fgi-attribution");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.7 p122");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 7, 122));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION, CAT_FGI_MARKER]);
     assert_eq!(rw.writes, &[CAT_FGI_MARKER]);
     assert_predicate_is_custom(rw);
@@ -195,7 +196,7 @@ fn entry_5_orcon_nato_transmutes_to_us_orcon_is_correctly_authored() {
     // predicate-scan axis, excluded from `reads` to avoid
     // manufactured cycles against 6a / 6b.
     assert_eq!(rw.id, "capco/orcon-nato-to-us-orcon-on-us-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.8 p136");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 8, 136));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_DISSEM]);
     assert_predicate_is_custom(rw);
@@ -215,7 +216,7 @@ fn entry_6a_sbu_nf_transmutes_is_correctly_authored() {
     // CAT_DISSEM stands in for the non-IC dissem axis until
     // Phase D/E.
     assert_eq!(rw.id, "capco/sbu-nf-transmutes-on-classified-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.9 p178");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 9, 178));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_DISSEM]);
     assert_predicate_is_custom(rw);
@@ -235,7 +236,7 @@ fn entry_6b_les_nf_transmutes_is_correctly_authored() {
     // §3.4.1 Entry 6 is split into 6a/6b so each row has exactly
     // one §-citation).
     assert_eq!(rw.id, "capco/les-nf-transmutes-on-classified-contact");
-    assert_eq!(rw.citation, "CAPCO-2016 §H.9 p185");
+    assert_eq!(rw.citation, capco(SectionLetter::H, 9, 185));
     assert_eq!(rw.reads, &[CAT_CLASSIFICATION]);
     assert_eq!(rw.writes, &[CAT_DISSEM]);
     assert_predicate_is_custom(rw);

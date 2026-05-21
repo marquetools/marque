@@ -17,6 +17,7 @@
 //! [`FactBitmask`]: marque_scheme::FactBitmask
 
 use super::super::actions::emit_companion_required;
+use marque_rules::{SectionLetter, capco};
 use super::super::predicates::{
     class_floor_anchor_span, class_floor_satisfied, rel_to_covers, token_span_attrs,
 };
@@ -87,7 +88,7 @@ pub(crate) fn e012_dual_classification(
                 us.banner_str(),
                 foreign_desc
             ),
-            citation: "CAPCO-2016 §H.3 p55",
+            citation: capco(SectionLetter::H, 3, 55),
             span: Some(span),
             severity: Some(Severity::Fix),
         }]
@@ -122,7 +123,7 @@ pub(crate) fn e014_joint_rel_to_coverage(
             "JOINT participants [{}] must appear in REL TO list",
             missing.join(", ")
         ),
-        citation: "CAPCO-2016 §H.3 p57",
+        citation: capco(SectionLetter::H, 3, 57),
         span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),
         severity: Some(Severity::Fix),
     }]

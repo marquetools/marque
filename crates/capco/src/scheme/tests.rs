@@ -696,7 +696,11 @@ fn project_applies_declarative_contains_then_clear() {
     // match arms in the project() dispatch.
     let rewrites = vec![PageRewrite {
         id: "test/nf-clears-rel-to",
-        citation: "test",
+        citation: marque_rules::Citation::new(
+            marque_rules::AuthoritativeSource::EngineInternal,
+            marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        ),
         trigger: CategoryPredicate::Contains {
             category: CAT_DISSEM,
             token: TOK_NOFORN,
@@ -734,7 +738,11 @@ fn project_applies_declarative_empty_then_replace() {
 
     let rewrites = vec![PageRewrite {
         id: "test/empty-rel-to-triggers-replace-dissem",
-        citation: "test",
+        citation: marque_rules::Citation::new(
+            marque_rules::AuthoritativeSource::EngineInternal,
+            marque_rules::SectionRef::new(marque_rules::SectionLetter::A),
+            core::num::NonZeroU16::new(1).unwrap(),
+        ),
         trigger: CategoryPredicate::Empty {
             category: CAT_REL_TO,
         },

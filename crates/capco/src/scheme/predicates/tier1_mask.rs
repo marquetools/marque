@@ -58,7 +58,7 @@
 //! PR.
 
 use marque_ism::canonical::CanonicalAttrs;
-use marque_rules::Severity;
+use marque_rules::{SectionLetter, Severity, capco};
 use marque_scheme::{ConstraintViolation, TokenRef};
 
 use crate::fact_bitmask::fact_bit;
@@ -127,7 +127,7 @@ pub(crate) fn e021_rd_frd_requires_noforn(
                   sharing agreement has been established under the \
                   Atomic Energy Act"
             .to_owned(),
-        citation: "CAPCO-2016 §H.6 p104 + p111",
+        citation: capco(SectionLetter::H, 6, 104),
         span: token_span_attrs(attrs, &TokenRef::AnyInCategory(CAT_AEA)),
         severity: Some(Severity::Warn),
     }]
@@ -155,7 +155,7 @@ pub(crate) fn e024_rd_precedence(
         constraint_label: "E024/rd-precedence",
         message: "RD takes precedence over FRD/TFNI; FRD/TFNI should not appear alongside RD"
             .to_owned(),
-        citation: "CAPCO-2016 §H.6 p104",
+        citation: capco(SectionLetter::H, 6, 104),
         span: token_span_attrs(attrs, &TokenRef::AnyInCategory(CAT_AEA)),
         severity: Some(Severity::Fix),
     }]
@@ -200,7 +200,7 @@ pub(crate) fn e038_dos_dissem_requires_noforn(
     vec![ConstraintViolation {
         constraint_label: "E038/nodis-or-exdis-requires-noforn",
         message: "NODIS and EXDIS may be used only with NOFORN information".to_owned(),
-        citation: "CAPCO-2016 §H.9 p172 + p174",
+        citation: capco(SectionLetter::H, 9, 172),
         span: token_span_attrs(attrs, &TokenRef::Token(trigger_token)),
         severity: Some(Severity::Error),
     }]
@@ -228,7 +228,7 @@ pub(crate) fn e070_frd_tfni_precedence(
     vec![ConstraintViolation {
         constraint_label: "E070/frd-tfni-precedence",
         message: "FRD takes precedence over TFNI; TFNI should not appear alongside FRD".to_owned(),
-        citation: "CAPCO-2016 §H.6 p120",
+        citation: capco(SectionLetter::H, 6, 120),
         span: None,
         severity: None,
     }]

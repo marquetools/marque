@@ -128,11 +128,16 @@ fn catalog_declares_27_class_floor_rows() {
 /// soft); §H.7 p122 (ATOMAL — worked example in §H.7).
 #[test]
 fn pr_9c_1_nato_rows_pin_citation_anchors() {
+    use marque_rules::{Citation, SectionLetter, capco};
     let scheme = CapcoScheme::new();
-    let expected: &[(&str, &str)] = &[
-        ("class-floor/BALK", "CAPCO-2016 §G.2 p40"),
-        ("class-floor/BOHEMIA", "CAPCO-2016 §G.2 p40"),
-        ("class-floor/ATOMAL", "CAPCO-2016 §H.7 p122"),
+    // PR 10.A.1: typed Citation pin — assertions compare structured
+    // §/page values directly. Constitution VIII propagation: every
+    // row's expected citation re-verified at PR 9c.1 authorship; this
+    // PR preserves the per-row anchor values verbatim.
+    let expected: &[(&str, Citation)] = &[
+        ("class-floor/BALK", capco(SectionLetter::G, 2, 40)),
+        ("class-floor/BOHEMIA", capco(SectionLetter::G, 2, 40)),
+        ("class-floor/ATOMAL", capco(SectionLetter::H, 7, 122)),
     ];
 
     for (row_name, expected_cite) in expected {
@@ -145,7 +150,7 @@ fn pr_9c_1_nato_rows_pin_citation_anchors() {
             row.label(),
             *expected_cite,
             "{row_name} citation drifted (PR 9c.1 D5 pin); \
-             expected {expected_cite:?}, got {actual:?}",
+             expected {expected_cite}, got {actual}",
             actual = row.label(),
         );
     }
@@ -167,6 +172,7 @@ fn catalog_row_names_are_unique() {
 
 #[test]
 fn catalog_citations_reference_capco_or_passthrough() {
+    use marque_rules::AuthoritativeSource;
     let scheme = CapcoScheme::new();
     for c in scheme.constraints() {
         let n = c.name();
@@ -174,12 +180,22 @@ fn catalog_citations_reference_capco_or_passthrough() {
             continue;
         }
         let label = c.label();
-        let valid =
-            label.starts_with("CAPCO-2016 §") || label.starts_with("marque-applied.md §3.7");
+        // PR 10.A.1: typed Citation pin — row labels are either
+        // `AuthoritativeSource::Capco2016` (the 23 enumerated rows) or
+        // `AuthoritativeSource::EngineInternal` (the 4 passthrough rows
+        // that cite `marque-applied.md §3.7`, not a CAPCO passage).
+        // No other source variants are valid for this catalog.
+        let valid = matches!(
+            label.document,
+            AuthoritativeSource::Capco2016 | AuthoritativeSource::EngineInternal
+        );
         assert!(
             valid,
-            "class-floor row {n:?} citation must start with `CAPCO-2016 §` or \
-             `marque-applied.md §3.7` (passthrough); got: {label:?}"
+            "class-floor row {n:?} citation must originate from CAPCO-2016 \
+             or the engine's marque-applied.md passthrough policy; got: \
+             document={:?} ({})",
+            label.document,
+            label,
         );
     }
 }

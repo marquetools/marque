@@ -41,6 +41,7 @@
 //! through `scheme.project(Scope::Page, ...)` exercising the
 //! lattice helper.
 
+use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
 };
@@ -84,7 +85,7 @@ pub(super) fn supersession_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // renders as `UNCLASSIFIED//SBU NOFORN`.
         PageRewrite::declarative(
             "capco/sbu-nf-supersedes-sbu",
-            "CAPCO-2016 §H.9 p178",
+            capco(SectionLetter::H, 9, 178),
             CategoryPredicate::Contains {
                 category: CAT_NON_IC_DISSEM,
                 token: TOK_SBU_NF,
@@ -128,7 +129,7 @@ pub(super) fn supersession_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // TOK_LES arm to enable this row.
         PageRewrite::declarative(
             "capco/les-nf-supersedes-les",
-            "CAPCO-2016 §H.9 p185",
+            capco(SectionLetter::H, 9, 185),
             CategoryPredicate::Contains {
                 category: CAT_NON_IC_DISSEM,
                 token: TOK_LES_NF,

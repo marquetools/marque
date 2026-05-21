@@ -16,10 +16,24 @@ use marque_config::Config;
 use marque_engine::{Engine, EngineConstructionError};
 use marque_rules::RuleSet;
 use marque_scheme::{
-    ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Constraint,
-    ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme, MeetSemilattice, PageRewrite,
-    Parsed, RecanonScope, ReplacementIntent, RewriteId, Scope, Template, TokenId, TokenRef,
+    ApplyIntentError, Category, CategoryAction, CategoryId, CategoryPredicate, Citation,
+    Constraint, ConstraintViolation, FactRef, JoinSemilattice, MarkingScheme, MeetSemilattice,
+    PageRewrite, Parsed, RecanonScope, ReplacementIntent, RewriteId, Scope, SectionLetter,
+    Template, TokenId, TokenRef,
 };
+
+// Test-fixture sentinel Citation (Constitution V Principle V test
+// carve-out). Routes through `AuthoritativeSource::EngineInternal`
+// so Display renders `[engine-internal]` and the value carries no
+// false CAPCO §-claim.
+const TEST_CITATION: Citation = Citation::new(
+    marque_scheme::AuthoritativeSource::EngineInternal,
+    marque_scheme::SectionRef::new(SectionLetter::A),
+    match core::num::NonZeroU16::new(1) {
+        Some(n) => n,
+        None => unreachable!(),
+    },
+);
 
 // ---------------------------------------------------------------------------
 // StubScheme — a minimal `MarkingScheme` whose rewrite table the test
@@ -165,7 +179,7 @@ fn custom_rewrite_with(
     // we bypass the constructor-level guard.
     PageRewrite {
         id,
-        citation: "test",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Custom(never_triggers),
         action: CategoryAction::Custom(never_acts),
         reads,
@@ -180,7 +194,7 @@ fn declarative_rewrite(
 ) -> PageRewrite<StubScheme> {
     PageRewrite::declarative(
         id,
-        "test",
+        TEST_CITATION,
         CategoryPredicate::Empty { category: CAT_X },
         CategoryAction::Clear { category: CAT_X },
         reads,
@@ -478,7 +492,7 @@ fn joint_promotion_before_fgi_absorption() {
 fn intent_action_with_empty_axes_does_not_trigger_unannotated_custom_error() {
     let intent_rewrite = PageRewrite {
         id: "intent-empty-axes",
-        citation: "test",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Empty { category: CAT_X },
         action: CategoryAction::Intent(ReplacementIntent::FactAdd {
             // TokenId(1) routes to CAT_X via StubScheme::category_of,
@@ -517,7 +531,7 @@ fn intent_action_orders_correctly_against_existing_rewrite_writers() {
 
     let writer = PageRewrite::<StubScheme>::declarative(
         "writer-clears-x",
-        "test",
+        TEST_CITATION,
         CategoryPredicate::Empty { category: CAT_X },
         CategoryAction::Clear { category: CAT_X },
         &[],
@@ -525,7 +539,7 @@ fn intent_action_orders_correctly_against_existing_rewrite_writers() {
     );
     let reader_intent = PageRewrite {
         id: "reader-intent-on-x",
-        citation: "test",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Empty { category: CAT_X },
         action: CategoryAction::Intent(ReplacementIntent::FactAdd {
             token: FactRef::Cve(TokenId(1)),
@@ -568,7 +582,7 @@ fn intent_action_orders_correctly_against_existing_rewrite_writers() {
 fn engine_new_rejects_intent_with_unroutable_token_via_stub_scheme() {
     let rewrite = PageRewrite {
         id: "intent-unroutable",
-        citation: "test",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Empty { category: CAT_X },
         action: CategoryAction::Intent(ReplacementIntent::FactAdd {
             token: FactRef::Cve(TokenId(99)),
@@ -606,7 +620,7 @@ fn engine_new_rejects_intent_with_unroutable_token_via_stub_scheme() {
 fn engine_new_accepts_recanonicalize_intent_in_page_rewrite() {
     let rewrite = PageRewrite {
         id: "intent-recanonicalize",
-        citation: "test",
+        citation: TEST_CITATION,
         trigger: CategoryPredicate::Empty { category: CAT_X },
         action: CategoryAction::Intent(ReplacementIntent::Recanonicalize {
             scope: RecanonScope::Page,

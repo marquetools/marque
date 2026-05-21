@@ -10,6 +10,7 @@
 //! split (`claudedocs/refactor-466/stage2_leaves_plan.md`).
 
 use marque_ism::{Classification, CountryCode};
+use marque_rules::{SectionLetter, capco};
 use marque_scheme::{Severity, TokenRef};
 
 use super::super::*;
@@ -33,7 +34,7 @@ pub(crate) fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
         message: "JOINT classifications must list USA in both the \
                   classification countries and REL TO"
             .to_owned(),
-        citation: "CAPCO-2016 §H.3 pp 55–57",
+        citation: capco(SectionLetter::H, 3, 55),
         span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),
         severity: Some(Severity::Error),
     }]
@@ -70,7 +71,7 @@ pub(crate) fn joint_requires_usa(attrs: &marque_ism::CanonicalAttrs) -> Vec<Cons
 /// But for users in that environment, they may encounter all three variants routinely.
 pub(crate) fn hcs_system_constraints(
     attrs: &marque_ism::CanonicalAttrs,
-    citation: &'static str,
+    citation: marque_rules::Citation,
 ) -> Vec<marque_scheme::ConstraintViolation> {
     use marque_ism::{DissemControl, SciControl, SciControlBare, SciControlSystem};
 

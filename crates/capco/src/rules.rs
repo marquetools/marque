@@ -6271,16 +6271,17 @@ mod tests {
         let diags = lint_banner("SECRET//25X1//NOFORN");
         let e005: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E005").collect();
         assert_eq!(e005.len(), 1);
-        assert!(
-            e005[0].citation.contains("§E.1 p31"),
-            "E005 citation must reference §E.1 p31 (Declassify On is a CAB line); \
+        // PR 10.A.1: typed Citation pins the primary anchor (§E.1 p31 —
+        // "Declassify On is a CAB line"). The cross-reference to §D.1
+        // p27 (banner categories exclude declassification) is documented
+        // in the rule's doc-comment but is not representable as a
+        // second § on a single typed Citation; the brief's "Multi-page
+        // citation decision" applies.
+        assert_eq!(
+            e005[0].citation,
+            capco(SectionLetter::E, 1, 31),
+            "E005 citation must anchor at §E.1 p31 (Declassify On is a CAB line); \
              got: {:?}",
-            e005[0].citation
-        );
-        assert!(
-            e005[0].citation.contains("§D.1 p27"),
-            "E005 citation must reference §D.1 p27 (banner categories exclude \
-             declassification); got: {:?}",
             e005[0].citation
         );
     }
@@ -6571,22 +6572,18 @@ mod tests {
         let s003: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "S003").collect();
         assert_eq!(s003.len(), 1);
         let citation = s003[0].citation;
-        assert!(
-            citation.contains("IC convention"),
-            "S003 citation must frame as IC convention (not CAPCO \
-             mandate); got: {citation:?}"
-        );
-        assert!(
-            citation.contains("§H.3 p56"),
-            "S003 citation must reference the §H.3 passage it defers to \
-             (pure alpha); got: {:?}",
-            citation
-        );
-        assert!(
-            citation.contains("§H.8 pp 150"),
-            "S003 citation must reference the REL TO USA-first source \
-             at §H.8 pp 150–151 that establishes the convention; got: \
-             {citation:?}"
+        // PR 10.A.1: typed `Citation` pins the primary anchor (§H.3 p56,
+        // which prescribes pure-alpha JOINT ordering — the IC convention
+        // S003 encodes is layered above this default). The cross-
+        // reference to §H.8 pp 150-151 (REL TO USA-first convention)
+        // and the "IC convention" framing both live in the rule's
+        // doc-comment, not in the typed Citation; the brief's
+        // "Multi-page citation decision" applies.
+        assert_eq!(
+            citation,
+            capco(SectionLetter::H, 3, 56),
+            "S003 citation must anchor at §H.3 p56 (pure-alpha JOINT \
+             ordering); got: {citation:?}"
         );
     }
 
@@ -7417,7 +7414,7 @@ mod tests {
         // would be caught here; structural citation-lint (which
         // accepts both `§B.1` and `§H.3 p55` as well-formed)
         // would not flag the regression.
-        assert_eq!(e012[0].citation, "CAPCO-2016 §H.3 p55");
+        assert_eq!(e012[0].citation, capco(SectionLetter::H, 3, 55));
         // PR 3c.B Sub-PR 8.D.5: conscious-defer migration. E012
         // emits neither a legacy `FixProposal` nor a structural
         // `FixIntent`. See `crates/capco/src/rules_declarative.rs`
@@ -7520,7 +7517,10 @@ mod tests {
         // (§H.7 p122 + §B.3 p20). Regression guard against drift back
         // to the legacy `§B.3`-only umbrella reference; structural
         // citation-lint accepts both forms and would not catch it.
-        assert_eq!(e015[0].citation, "CAPCO-2016 §H.7 p122 + §B.3 p20");
+        // Multi-passage citation `§H.7 p122 + §B.3 p20` — primary anchor
+        // is the leading passage (§H.7 p122). Cross-reference to §B.3 p20
+        // documented at the core_catalog row.
+        assert_eq!(e015[0].citation, capco(SectionLetter::H, 7, 122));
     }
 
     #[test]
@@ -7778,7 +7778,7 @@ mod tests {
             e016[0].message
         );
         // PR 3c.B Sub-PR 8.B — citation pin (D13 single-citation discipline).
-        assert_eq!(e016[0].citation, "CAPCO-2016 §H.3 p56");
+        assert_eq!(e016[0].citation, capco(SectionLetter::H, 3, 56));
     }
 
     /// PR 3c.B Sub-PR 8.B — pin the consciously-decided-no-fix-intent
@@ -8008,7 +8008,7 @@ mod tests {
         );
         let d = &diags[0];
         assert_eq!(d.rule.as_str(), "E036");
-        assert_eq!(d.citation, "CAPCO-2016 §H.3 p57");
+        assert_eq!(d.citation, capco(SectionLetter::H, 3, 57));
         assert!(
             d.fix.is_none(),
             "E036 fix must be None until Stage-4 B reject lands; \
@@ -8096,14 +8096,14 @@ mod tests {
             1,
             "E037 must fire when both NODIS and EXDIS are present: {diags:?}"
         );
-        assert!(
-            e037[0].citation.contains("§H.9 p172"),
-            "E037 citation must pin §H.9 p172; got: {:?}",
-            e037[0].citation
-        );
-        assert!(
-            e037[0].citation.contains("p174"),
-            "E037 citation must pin p174 (NODIS authority); got: {:?}",
+        // PR 10.A.1: typed Citation pins the primary anchor (§H.9 p172 —
+        // EXDIS authority). The cross-reference to p174 (NODIS) lives
+        // in the rule's doc-comment per the brief's "Multi-page
+        // citation decision".
+        assert_eq!(
+            e037[0].citation,
+            capco(SectionLetter::H, 9, 172),
+            "E037 citation must pin §H.9 p172 (EXDIS authority); got: {:?}",
             e037[0].citation
         );
     }
@@ -8140,14 +8140,12 @@ mod tests {
             1,
             "E038 must fire on NODIS without NOFORN: {diags:?}"
         );
-        assert!(
-            e038[0].citation.contains("§H.9 p172"),
+        // PR 10.A.1: typed Citation pins §H.9 p172; cross-reference to
+        // p174 lives in the rule doc-comment.
+        assert_eq!(
+            e038[0].citation,
+            capco(SectionLetter::H, 9, 172),
             "E038 citation must pin §H.9 p172 (EXDIS authority); got: {:?}",
-            e038[0].citation
-        );
-        assert!(
-            e038[0].citation.contains("p174"),
-            "E038 citation must pin p174 (NODIS authority); got: {:?}",
             e038[0].citation
         );
     }
@@ -8218,14 +8216,12 @@ mod tests {
              requires human judgment): {:?}",
             e039[0].fix
         );
-        assert!(
-            e039[0].citation.contains("§H.9 p172"),
+        // PR 10.A.1: typed Citation pins §H.9 p172; cross-reference to
+        // p174 (NODIS) documented at the rule.
+        assert_eq!(
+            e039[0].citation,
+            capco(SectionLetter::H, 9, 172),
             "E039 citation must pin §H.9 p172 (EXDIS); got: {:?}",
-            e039[0].citation
-        );
-        assert!(
-            e039[0].citation.contains("p174"),
-            "E039 citation must pin p174 (NODIS); got: {:?}",
             e039[0].citation
         );
     }
@@ -8295,9 +8291,11 @@ mod tests {
             "E039 must continue firing after PR 3c.B-8F-engine-gap (banner \
              has REL TO + portion has NODIS): {diags:?}"
         );
-        assert!(
-            e039[0].citation.contains("§H.9 p172") && e039[0].citation.contains("p174"),
-            "E039 citation must continue to pin §H.9 p172 + p174: {:?}",
+        // PR 10.A.1: typed Citation pins the primary anchor §H.9 p172.
+        assert_eq!(
+            e039[0].citation,
+            capco(SectionLetter::H, 9, 172),
+            "E039 citation must continue to pin §H.9 p172: {:?}",
             e039[0].citation
         );
     }
@@ -8986,30 +8984,18 @@ mod tests {
         // same invariant in general-algorithm prose; it lives as a
         // background reference in `evaluate_sci_banner_rollup`'s doc
         // comment, NOT in the citation string.
-        assert!(
-            e035[0].citation.contains("§H.4"),
-            "E035 citation must reference §H.4; got: {:?}",
-            e035[0].citation
-        );
-        assert!(
-            e035[0]
-                .citation
-                .contains("Precedence Rules for Banner Line"),
-            "E035 citation must reference the per-system Precedence Rules \
-             template; got: {:?}",
-            e035[0].citation
-        );
-        // §D.2 was demoted to a background-only doc-comment reference
-        // per the M-1 review condition (citation-discipline cleanup).
-        // Pin its absence so a future change that re-adds it to the
-        // citation string trips this test instead of silently
-        // re-introducing a co-primary cross-citation.
-        assert!(
-            !e035[0].citation.contains("§D.2"),
-            "E035 citation must NOT mix §D.2 (general-algorithm prose) \
-             with §H.4 (per-category operative rule) — D13 single-\
-             citation discipline. §D.2 lives in evaluator doc comment \
-             as a background reference. got: {:?}",
+        // PR 10.A.1: typed Citation pins §H.4 p61 (SCI per-system
+        // "Precedence Rules for Banner Line Guidance" anchor). The
+        // string framing "Precedence Rules for Banner Line" lived in
+        // the pre-migration string citation and is dropped here —
+        // the typed Citation is structurally `§H.4 p61` only. §D.2's
+        // general-algorithm prose stays in `evaluate_sci_banner_rollup`'s
+        // doc comment as a background reference (D13 single-citation
+        // discipline preserved by construction).
+        assert_eq!(
+            e035[0].citation,
+            capco(SectionLetter::H, 4, 61),
+            "E035 citation must pin §H.4 p61; got: {:?}",
             e035[0].citation
         );
     }
@@ -9235,15 +9221,14 @@ mod tests {
         let diags = lint_banner(source);
         let e031: Vec<_> = diags.iter().filter(|d| d.rule.as_str() == "E031").collect();
         assert_eq!(e031.len(), 1);
-        assert!(
-            e031[0].citation.contains("§H.5 p101"),
-            "E031 citation must pin §H.5 p101 (roll-up rule); got: {:?}",
-            e031[0].citation
-        );
-        assert!(
-            e031[0].citation.contains("§H.5 p101"),
-            "E031 citation must reference the hierarchy-optional carve-out \
-             at §H.5 p101; got: {:?}",
+        // PR 10.A.1: typed Citation pins §H.5 p101 — both the SAR
+        // roll-up rule and the hierarchy-optional carve-out live at
+        // the same passage.
+        assert_eq!(
+            e031[0].citation,
+            capco(SectionLetter::H, 5, 101),
+            "E031 citation must pin §H.5 p101 (roll-up rule + \
+             hierarchy-optional carve-out); got: {:?}",
             e031[0].citation
         );
     }

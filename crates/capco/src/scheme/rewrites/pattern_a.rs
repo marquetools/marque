@@ -12,6 +12,7 @@
 //! catalog — DAG-sibling rows whose declaration order seeds Kahn's
 //! algorithm with the right cohort ordering.
 
+use marque_rules::{SectionLetter, capco};
 use marque_scheme::{
     CategoryAction, CategoryPredicate, FactRef, PageRewrite, ReplacementIntent, Scope,
 };
@@ -174,7 +175,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // through `scheme.project`.
         PageRewrite::declarative(
             "capco/nodis-implies-noforn",
-            "CAPCO-2016 §H.9 p174",
+            capco(SectionLetter::H, 9, 174),
             CategoryPredicate::Contains {
                 category: CAT_NON_IC_DISSEM,
                 token: TOK_NODIS,
@@ -238,7 +239,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Runtime execution gap: see the NODIS entry doc-comment.
         PageRewrite::declarative(
             "capco/exdis-implies-noforn",
-            "CAPCO-2016 §H.9 p172",
+            capco(SectionLetter::H, 9, 172),
             CategoryPredicate::Contains {
                 category: CAT_NON_IC_DISSEM,
                 token: TOK_EXDIS,
@@ -313,7 +314,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // `scheme.project(Scope::Page, …)`.
         PageRewrite::custom(
             "capco/sbu-nf-implies-noforn",
-            "CAPCO-2016 §H.9 p178",
+            capco(SectionLetter::H, 9, 178),
             CategoryPredicate::Custom(sbu_nf_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactAdd {
                 token: FactRef::Cve(TOK_NOFORN),
@@ -400,7 +401,7 @@ pub(super) fn pattern_a_rows() -> Vec<PageRewrite<CapcoScheme>> {
         // Runtime execution gap: see the NODIS entry doc-comment.
         PageRewrite::custom(
             "capco/les-nf-implies-noforn",
-            "CAPCO-2016 §H.9 p185",
+            capco(SectionLetter::H, 9, 185),
             CategoryPredicate::Custom(les_nf_classified_trigger),
             CategoryAction::Intent(ReplacementIntent::FactAdd {
                 token: FactRef::Cve(TOK_NOFORN),

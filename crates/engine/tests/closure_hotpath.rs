@@ -339,7 +339,10 @@ fn apply_fact_add_noforn_strips_displayonly_via_supersession() {
     // overlay and strips DISPLAY ONLY at the injection site.
     let rewrite = PageRewrite {
         id: "test/displayonly-triggers-noforn-overlay",
-        citation: "§H.8 p145 + PR 4b-D.2 D22 test fixture",
+        // PR 10.A.1: typed Citation — anchor at §H.8 p145 (NOFORN-
+        // dominates rule); the "PR 4b-D.2 D22 test fixture" framing
+        // lived in the pre-migration string and is dropped here.
+        citation: marque_rules::capco(marque_rules::SectionLetter::H, 8, 145),
         trigger: CategoryPredicate::Custom(displayonly_present),
         action: CategoryAction::Intent(ReplacementIntent::FactAdd {
             token: FactRef::Cve(TOK_NOFORN),
@@ -392,7 +395,10 @@ fn apply_fact_add_noforn_is_idempotent() {
 
     let rewrite = PageRewrite {
         id: "test/noforn-already-present",
-        citation: "§H.8 p145 idempotence",
+        // PR 10.A.1: typed Citation — anchor at §H.8 p145 (NOFORN-
+        // dominates rule). The "idempotence" annotation lived in the
+        // pre-migration string and is dropped here.
+        citation: marque_rules::capco(marque_rules::SectionLetter::H, 8, 145),
         trigger: CategoryPredicate::Contains {
             category: CAT_DISSEM,
             token: TOK_NOFORN,

@@ -109,27 +109,24 @@ pub(crate) struct ClassFloorRow {
     /// Per-row severity (`Error` for enumerated rows, `Warn` for
     /// passthrough rows per §3.4.6 Q-3.4.6b).
     pub(crate) severity: marque_rules::Severity,
-    /// Per-row §-citation, matching `Constraint::Custom { label }`.
-    /// PR 3c.2.C C7 retired the bridge-emission path through this
-    /// field per PM-C-1 R-C1 (catalog row citations stay `&'static str`
-    /// for citation-lint scanning); use [`Self::citation_typed`] at
-    /// emit time.
-    pub(crate) citation: &'static str,
-    /// Typed [`marque_rules::Citation`] used at emission time. Must
-    /// agree with [`Self::citation`]. Per PR 3c.2.C C7 the engine
-    /// bridge (`message_by_name`/`citation_by_name`) reads this field
-    /// so the bridge-emitted `Diagnostic.citation` carries the real
-    /// per-row CAPCO anchor instead of the `[engine-internal]`
-    /// sentinel fallback (R-C1).
+    /// Per-row typed §-citation, matching `Constraint::Custom { label }`.
+    /// PR 10.A.1 consolidated the dual-track `citation: &'static str` +
+    /// `citation_typed: Citation` design into a single typed field —
+    /// the catalog declaration is now structurally constructed via
+    /// `capco(...)` / `capco_section(...)` / `capco_table(...)`, and
+    /// the engine's constraint-catalog bridge reads this field
+    /// directly. Display via the [`Citation`](marque_rules::Citation)
+    /// `Display` impl produces the canonical `§<L>.<sub> p<page>`
+    /// form when emitted into diagnostics.
     ///
     /// Passthrough rows (`passthrough: true`) use
     /// [`AuthoritativeSource::EngineInternal`](marque_rules::AuthoritativeSource::EngineInternal)
-    /// because their `citation` field references `marque-applied.md
-    /// Section 3.7`, the engine's own policy document — not a CAPCO-2016
-    /// anchor. The page number for passthrough rows is a synthetic `1`
-    /// since marque-applied.md has no canonical page anchor; the
-    /// stable identifier is the source kind, not the page.
-    pub(crate) citation_typed: marque_rules::Citation,
+    /// because their citation references `marque-applied.md Section 3.7`,
+    /// the engine's own policy document — not a CAPCO-2016 anchor. The
+    /// page number for passthrough rows is a synthetic `1` since
+    /// marque-applied.md has no canonical page anchor; the stable
+    /// identifier is the source kind, not the page.
+    pub(crate) citation: marque_rules::Citation,
     /// True for the unknown-floor passthrough rows. Drives the
     /// diagnostic message variant (passthrough rows quote the §3.7
     /// passthrough-policy framing).
@@ -181,7 +178,7 @@ pub(crate) struct ClassFloorRow {
 /// through `AuthoritativeSource::EngineInternal`. The Display impl
 /// drops the §/page suffix for this source, rendering as
 /// `[engine-internal]`.
-const PASSTHROUGH_CITATION: Citation = {
+pub(crate) const PASSTHROUGH_CITATION: Citation = {
     // SectionRef::new(SectionLetter::A) with no subsection is a valid
     // bare-section reference; the AuthoritativeSource::EngineInternal
     // Display arm drops both §/page entirely. The page value is
@@ -205,12 +202,11 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_hcs_comp_sub,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
+        citation: capco(SectionLetter::H, 4, 60),
         // §H.4 section start — SCI grammar anchor for §3.4.6 family
         // floor invariants. The HCS-P sub-compartment guidance lives
         // at §H.4 p68 in the per-system block; the cross-system §3.4.6
         // anchor is the section's General Information at p60.
-        citation_typed: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_HCS_P_SUB is the dedicated sentinel for HCS-P with
@@ -225,8 +221,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_si_comp,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
-        citation_typed: capco(SectionLetter::H, 4, 60),
+        citation: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_SI_G (bit 40) gates on SI-G — the registered SI
@@ -241,8 +236,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_tk_blfh,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
-        citation_typed: capco(SectionLetter::H, 4, 60),
+        citation: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_TK_BLFH (bit 43) is the dedicated BLUEFISH sentinel.
@@ -274,8 +268,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_balk,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §G.2 p40",
-        citation_typed: capco(SectionLetter::G, 2, 40),
+        citation: capco(SectionLetter::G, 2, 40),
         passthrough: false,
         // `None` falls through to the Classification token span. PR
         // 9c.1 Commit 3's parser writes the BALK SciMarking but does
@@ -295,8 +288,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_bohemia,
         policy: ClassFloorPolicy::AtLeast(Classification::TopSecret),
         severity: marque_rules::Severity::Warn,
-        citation: "CAPCO-2016 §G.2 p40",
-        citation_typed: capco(SectionLetter::G, 2, 40),
+        citation: capco(SectionLetter::G, 2, 40),
         passthrough: false,
         primary_kind: None,
         // AEA_BOHEMIA (bit 49) is the NATO SAP sentinel for BOHEMIA.
@@ -311,8 +303,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_hcs_comp_only,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
-        citation_typed: capco(SectionLetter::H, 4, 60),
+        citation: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_PRESENT (bit 37): coarse gate. HCS-O sets SCI_HCS_O (41)
@@ -330,8 +321,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_rsv_comp,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
-        citation_typed: capco(SectionLetter::H, 4, 60),
+        citation: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_PRESENT (bit 37): coarse gate; no `SCI_RSV` atom exists
@@ -348,8 +338,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_tk_family,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
-        citation_typed: capco(SectionLetter::H, 4, 60),
+        citation: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_PRESENT (bit 37): coarse gate covering all TK forms —
@@ -370,8 +359,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_rd_sigma,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p113",
-        citation_typed: capco(SectionLetter::H, 6, 113),
+        citation: capco(SectionLetter::H, 6, 113),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_RD (bit 22): coarse gate. Fires when any RD marking is
@@ -386,8 +374,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_frd_sigma,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p113",
-        citation_typed: capco(SectionLetter::H, 6, 113),
+        citation: capco(SectionLetter::H, 6, 113),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_FRD (bit 23): coarse gate. Mirror of RD-SG for FRD.
@@ -403,8 +390,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_rd_cnwdi,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p104",
-        citation_typed: capco(SectionLetter::H, 6, 104),
+        citation: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_RD (bit 22): coarse gate. CNWDI is a sub-classification
@@ -419,8 +405,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_rsen,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.8 p149",
-        citation_typed: capco(SectionLetter::H, 8, 149),
+        citation: capco(SectionLetter::H, 8, 149),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
         // RSEN (bit 6) is the closed-vocab IC dissem sentinel.
@@ -434,8 +419,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_imcon,
         policy: ClassFloorPolicy::AtLeast(Classification::Secret),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.8 p144",
-        citation_typed: capco(SectionLetter::H, 8, 144),
+        citation: capco(SectionLetter::H, 8, 144),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
         // IMCON (bit 7) is the closed-vocab IC dissem sentinel.
@@ -450,8 +434,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_si_bare,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.4",
-        citation_typed: capco(SectionLetter::H, 4, 60),
+        citation: capco(SectionLetter::H, 4, 60),
         passthrough: false,
         primary_kind: Some(TokenKind::SciSystem),
         // SCI_PRESENT (bit 37): coarse gate; bare SI (no compartments)
@@ -468,11 +451,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_sar,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.5",
+        citation: capco(SectionLetter::H, 5, 99),
         // §H.5 section start — SAR section anchor (no per-page
         // sub-section was specified in the `citation` string; the
         // citation index puts §H.5 start at p99).
-        citation_typed: capco(SectionLetter::H, 5, 99),
         passthrough: false,
         primary_kind: Some(TokenKind::SarIndicator),
         // SAR_PRESENT (bit 36) is the structural SAR sentinel.
@@ -486,8 +468,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_rd_bare,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p104",
-        citation_typed: capco(SectionLetter::H, 6, 104),
+        citation: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_RD (bit 22): coarse gate. Fires when any RD marking is
@@ -502,8 +483,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_frd_bare,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p104",
-        citation_typed: capco(SectionLetter::H, 6, 104),
+        citation: capco(SectionLetter::H, 6, 104),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_FRD (bit 23): coarse gate. Mirror of RD for FRD.
@@ -518,8 +498,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_tfni,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p107",
-        citation_typed: capco(SectionLetter::H, 6, 107),
+        citation: capco(SectionLetter::H, 6, 107),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_TFNI (bit 24) is the closed-vocab TFNI sentinel.
@@ -549,8 +528,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_atomal,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.7 p122",
-        citation_typed: capco(SectionLetter::H, 7, 122),
+        citation: capco(SectionLetter::H, 7, 122),
         passthrough: false,
         primary_kind: None,
         // AEA_ATOMAL (bit 48) is the NATO AEA sentinel for ATOMAL.
@@ -564,8 +542,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_orcon_family,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.8 p136",
-        citation_typed: capco(SectionLetter::H, 8, 136),
+        citation: capco(SectionLetter::H, 8, 136),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
         // ORCON (bit 3) | ORCON_USGOV (bit 4): covers the ORCON
@@ -580,8 +557,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_eyes_only,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.8 p152",
-        citation_typed: capco(SectionLetter::H, 8, 152),
+        citation: capco(SectionLetter::H, 8, 152),
         passthrough: false,
         primary_kind: Some(TokenKind::DissemControl),
         // EYES (bit 5) is the closed-vocab IC dissem sentinel for
@@ -597,8 +573,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_dod_ucni,
         policy: ClassFloorPolicy::EqualsU,
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p116",
-        citation_typed: capco(SectionLetter::H, 6, 116),
+        citation: capco(SectionLetter::H, 6, 116),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_DOD_UCNI (bit 26) is the closed-vocab DOD UCNI sentinel.
@@ -615,8 +590,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_doe_ucni,
         policy: ClassFloorPolicy::EqualsU,
         severity: marque_rules::Severity::Error,
-        citation: "CAPCO-2016 §H.6 p118",
-        citation_typed: capco(SectionLetter::H, 6, 118),
+        citation: capco(SectionLetter::H, 6, 118),
         passthrough: false,
         primary_kind: Some(TokenKind::AeaMarking),
         // AEA_DOE_UCNI (bit 25) is the closed-vocab DOE UCNI sentinel.
@@ -635,7 +609,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
     // sections are A-K, not digits). The cross-document
     // `marque-applied.md` prefix doesn't currently disambiguate.
     //
-    // The corresponding `Constraint::Custom { label: "marque-applied.md §3.7 ..." }`
+    // The corresponding `Constraint::Custom { label: PASSTHROUGH_CITATION }`
     // entries in `build_constraints()` keep the `§3.7` form because
     // the lint only scans `citation:`, `message:`, and
     // `constraint_label:` struct fields (not `label:`). The bridge's
@@ -657,11 +631,10 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_bur,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
+        citation: PASSTHROUGH_CITATION,
         // Passthrough rows reference marque-applied.md (engine policy
         // doc), not CAPCO-2016. Routes through AuthoritativeSource::
         // EngineInternal so Display renders `[engine-internal]`.
-        citation_typed: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         // Passthrough rows have no atom bit in the closed inventory;
@@ -676,8 +649,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_hcs_x,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
-        citation_typed: PASSTHROUGH_CITATION,
+        citation: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         // HCS-X presence requires compartment-string read (`identifier == "X"`);
@@ -691,8 +663,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_klm,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
-        citation_typed: PASSTHROUGH_CITATION,
+        citation: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         bitmask_trigger: None,
@@ -704,8 +675,7 @@ pub(crate) const CLASS_FLOOR_CATALOG: &[ClassFloorRow] = &[
         presence: presence_passthrough_mvl,
         policy: ClassFloorPolicy::AtLeast(Classification::Confidential),
         severity: marque_rules::Severity::Warn,
-        citation: "marque-applied.md Section 3.7 (passthrough); CAPCO-2016 unmapped",
-        citation_typed: PASSTHROUGH_CITATION,
+        citation: PASSTHROUGH_CITATION,
         passthrough: true,
         primary_kind: Some(TokenKind::SciSystem),
         bitmask_trigger: None,
