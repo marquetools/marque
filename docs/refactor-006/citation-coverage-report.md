@@ -31,12 +31,30 @@ corresponding `EXPECTED_UNCOVERED` row (and vice versa).
 A citation enters `EXPECTED_UNCOVERED` only when one of the
 following structural properties holds:
 
-1. **PageRewrite citation that does not surface as a `Diagnostic`.**
-   PageRewrites operate at projection time; they mutate the
-   projected page-level marking but do not themselves emit a
-   `Diagnostic` carrying their declared citation. The citation
-   shows up in tooling and in the catalog inventory, but never on
-   the engine's diagnostic stream.
+1. **Declared citation whose carrying primitive does not emit a
+   `Diagnostic` at runtime.** Two sub-shapes share this property:
+   - *PageRewrite-side:* PageRewrites operate at projection time;
+     they mutate the projected page-level marking but do not
+     themselves emit a `Diagnostic` carrying their declared
+     citation. The citation shows up in tooling and in the
+     catalog inventory, but never on the engine's diagnostic
+     stream.
+   - *Engine-bridge-suppressed:* A `Constraint` that fires (the
+     predicate evaluates true) but whose `ConstraintViolation`
+     carries `span: None` and/or `severity: None`. The bridge at
+     `engine.rs::bridge_constraint_diagnostic` requires both to
+     be `Some` before producing a user-visible diagnostic;
+     advisory `ConstraintViolation`s are logged via
+     `tracing::trace!` only. E070 (`§H.6 p120`) is the
+     representative case today.
+
+   Both sub-shapes share the structural invariant: no fixture
+   can harvest the citation regardless of input, because the
+   carrying primitive does not flow through the
+   `Diagnostic.citation` slot. Removal of any entry under this
+   property requires either changing the carrying primitive
+   (e.g., adding a Diagnostic-emitting twin rule) or fixing the
+   engine bridge for advisory violations.
 2. **Closure rule citation that has no byte-surfacing twin rule.**
    Same architecture as (1) — closures inject facts into a
    marking, no `Diagnostic` emission. Closures that DO have a
@@ -183,8 +201,9 @@ relative to PR 10.A.2.
 
 ### `§H.6 p120` — E070 FRD/TFNI precedence
 
-Property: (1) — Engine-bridge structural suppression (no
-`Diagnostic` emission for advisory `ConstraintViolation`s).
+Property: (1) — Engine-bridge-suppressed sub-shape (no
+`Diagnostic` emission for advisory `ConstraintViolation`s; see
+the property (1) taxonomy header above).
 
 Root cause re-verified at PR 10.A.2 reviewer fix-pass: the
 predicate **does** fire correctly when both `AEA_FRD` and

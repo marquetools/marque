@@ -4,9 +4,12 @@
 
 //! Build-time integrity pins for vendored authoritative sources.
 //!
-//! This module is `include!()`d by both `build.rs` (via `mod
-//! build_inputs;`) and the runtime crate so the same pin constants
-//! are visible to:
+//! This module is imported by both `build.rs` (via
+//! `#[path = "src/build_inputs.rs"] mod build_inputs;` — a module
+//! import that pulls the file in directly without going through
+//! `src/lib.rs`'s module graph) and the runtime crate (via the
+//! `pub mod build_inputs;` declaration in `src/lib.rs`) so the same
+//! pin constants are visible to:
 //!
 //! 1. `build.rs::verify_capco_2016_md` — runs at compile time, panics
 //!    the build if the vendored markdown drifts from the pinned

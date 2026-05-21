@@ -31,10 +31,12 @@
 #[doc(hidden)]
 pub mod fact_bitmask;
 
-// `build_inputs` is `include!()`d by `build.rs` (via `mod
-// build_inputs;`) at compile time AND exposed here so the
-// `build_input_pin_test` integration test can re-verify the same
-// digest at test time. The two surfaces share the constant
+// `build_inputs` is imported by `build.rs` via
+// `#[path = "src/build_inputs.rs"] mod build_inputs;` (a module
+// import that pulls the .rs file in directly, bypassing
+// `src/lib.rs`'s module graph) AND exposed here as a regular `pub
+// mod` so the `build_input_pin_test` integration test can re-verify
+// the same digest at test time. The two surfaces share the constant
 // declaration; bumping the pin is a single-site edit.
 //
 // `pub(crate)` would suffice for runtime use, but the integration

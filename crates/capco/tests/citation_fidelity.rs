@@ -214,26 +214,75 @@ fn corpus_covers_every_declared_authority() {
     // --- 3. Whitelist consistency ------------------------------------------
     let whitelist_set: HashSet<Citation> = EXPECTED_UNCOVERED.iter().map(|(c, _)| *c).collect();
 
+    // Engine-side synthetic citations the harvest may legitimately
+    // observe even though no `Rule::cited_authorities()` or catalog
+    // row declares them. R001 (decoder canonicalization) cites
+    // §A.6 p15 and R002 (re-parse failure) cites the
+    // `[engine-internal]` sentinel; both are engine-side machinery,
+    // not catalog data. Excluding them from the
+    // `harvested ⊆ declared` check is correct — a stricter check
+    // would force engine-side citations into the catalog surface,
+    // which is the inversion of dependency the typed-citation
+    // migration was designed to avoid.
+    //
+    // If new engine-side synthetic citations get added (e.g., new
+    // diagnostic rules emitted by `marque-engine` directly), add
+    // them here.
+    let engine_emitted: HashSet<Citation> = [
+        capco(SectionLetter::A, 6, 15), // R001 — `engine.rs::DECODER_CITATION_TYPED`
+        engine_internal_sentinel(),     // R002 — `engine.rs::R002_CITATION_TYPED`
+    ]
+    .into_iter()
+    .collect();
+
     // Assertion (a): declared ⊆ harvested ∪ whitelist.
-    let undocumented_gaps: Vec<Citation> = declared
+    // Catches: declared citation has no fixture exercising it (the rule
+    // exists but no corpus input triggers it). Sorted for deterministic
+    // failure output ordering — Copilot review on PR #662 caught the
+    // nondeterministic `HashSet` iteration order in the prior
+    // implementation.
+    let mut undocumented_gaps: Vec<Citation> = declared
         .iter()
         .filter(|c| !harvested.contains(c) && !whitelist_set.contains(c))
         .copied()
         .collect();
+    undocumented_gaps.sort();
 
     // Assertion (b): whitelist ⊆ declared.
-    let orphaned_whitelist: Vec<Citation> = EXPECTED_UNCOVERED
+    // Catches: whitelist entry refers to a citation no rule / catalog row
+    // declares (rule was retired but whitelist not cleaned up).
+    let mut orphaned_whitelist: Vec<Citation> = EXPECTED_UNCOVERED
         .iter()
         .filter(|(c, _)| !declared.contains(c))
         .map(|(c, _)| *c)
         .collect();
+    orphaned_whitelist.sort();
 
     // Assertion (c): whitelist ∩ harvested == ∅.
-    let now_covered_whitelist: Vec<Citation> = EXPECTED_UNCOVERED
+    // Catches: a fixture started exercising a whitelisted citation
+    // (good news — coverage improved) but the whitelist wasn't
+    // cleaned up. Whitelist must drain as coverage grows.
+    let mut now_covered_whitelist: Vec<Citation> = EXPECTED_UNCOVERED
         .iter()
         .filter(|(c, _)| harvested.contains(c))
         .map(|(c, _)| *c)
         .collect();
+    now_covered_whitelist.sort();
+
+    // Assertion (d): harvested ⊆ declared ∪ engine_emitted.
+    // Catches: a rule emits a `Diagnostic.citation` that doesn't
+    // appear in its `cited_authorities()` declaration (drift in the
+    // OTHER direction — adding a new `capco(...)` literal to a
+    // rule's `check()` body without updating `cited_authorities()`).
+    // Copilot review on PR #662 flagged this gap; without it, the
+    // F.1 gate is one-directional and lets undeclared emissions
+    // slip through silently.
+    let mut undeclared_emissions: Vec<Citation> = harvested
+        .iter()
+        .filter(|c| !declared.contains(c) && !engine_emitted.contains(c))
+        .copied()
+        .collect();
+    undeclared_emissions.sort();
 
     // Hard-fail with a single combined diagnostic so the operator can
     // see every failure mode at once instead of fixing them one-PR at
@@ -242,6 +291,7 @@ fn corpus_covers_every_declared_authority() {
     if !undocumented_gaps.is_empty()
         || !orphaned_whitelist.is_empty()
         || !now_covered_whitelist.is_empty()
+        || !undeclared_emissions.is_empty()
     {
         let mut msg = String::from("F.1 corpus-fidelity gate failed:\n\n");
 
@@ -288,11 +338,30 @@ fn corpus_covers_every_declared_authority() {
             );
         }
 
+        if !undeclared_emissions.is_empty() {
+            msg.push_str(
+                "  (d) Harvested citations that no rule declares via cited_authorities() AND\n\
+                  \x20     no catalog row carries:\n",
+            );
+            for c in &undeclared_emissions {
+                msg.push_str(&format!("      - {c}\n"));
+            }
+            msg.push_str(
+                "\n      → A rule emitted a Diagnostic with a Citation it never declared.\n\
+                  \x20       Either add the citation to the rule's `cited_authorities()` const\n\
+                  \x20       (preferred — the rule does emit it), OR if the rule should not have\n\
+                  \x20       emitted that citation, fix the `check()` body. If the citation comes\n\
+                  \x20       from engine-side machinery (R001/R002), add it to the local\n\
+                  \x20       `engine_emitted` set above and document why.\n\n",
+            );
+        }
+
         msg.push_str(&format!(
-            "Counts: declared={}, harvested={}, whitelisted={}",
+            "Counts: declared={}, harvested={}, whitelisted={}, engine_emitted={}",
             declared.len(),
             harvested.len(),
             whitelist_set.len(),
+            engine_emitted.len(),
         ));
 
         panic!("{msg}");
