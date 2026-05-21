@@ -73,7 +73,7 @@ fi
 # files — prose mentions of the absence in markdown / source comments
 # are out of scope by construction.
 # ---------------------------------------------------------------------------
-CARGO_HITS="$(grep -RnE '\b(audit[-_]reader|marque[-_]audit[-_]reader)\b' \
+CARGO_HITS="$(grep -RnP '\b(audit[-_]reader|marque[-_]audit[-_]reader)\b' \
     --include='Cargo.toml' . 2>/dev/null || true)"
 if [ -n "${CARGO_HITS}" ]; then
     print_fail \
@@ -94,7 +94,7 @@ fi
 # field on a local type.
 # ---------------------------------------------------------------------------
 if [ -d "crates/engine/src" ]; then
-    READER_HITS="$(grep -RnE '^\s*pub\s+(mod|use)\s+([A-Za-z0-9_:]+::)?reader\b' \
+    READER_HITS="$(grep -RnP '^\s*pub\s+(mod|use)\s+([A-Za-z0-9_:]+::)?reader\b' \
         crates/engine/src/ 2>/dev/null || true)"
     if [ -n "${READER_HITS}" ]; then
         print_fail \

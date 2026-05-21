@@ -153,35 +153,29 @@ pub(crate) fn w005_rel_to_not_in_joint_coverage(
     }
     let joint_set: std::collections::HashSet<&str> =
         joint.countries.iter().map(|c| c.as_str()).collect();
-    let mut not_in_joint: Vec<&str> = Vec::new();
+    let mut not_in_joint: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for rel_entry in &attrs.rel_to {
         let code = rel_entry.as_str();
         if let Some(members) = crate::vocab::expand_tetragraph(code) {
             for member in members {
-                if *member != "USA"
-                    && !joint_set.contains(member)
-                    && !not_in_joint.contains(member)
-                {
-                    not_in_joint.push(member);
+                if *member != "USA" && !joint_set.contains(member) {
+                    not_in_joint.insert(member);
                 }
             }
-        } else if code != "USA" && !joint_set.contains(code) && !not_in_joint.contains(&code) {
-            not_in_joint.push(code);
+        } else if code != "USA" && !joint_set.contains(code) {
+            not_in_joint.insert(code);
         }
     }
     if not_in_joint.is_empty() {
         return Vec::new();
     }
+    let entries: Vec<&str> = not_in_joint.iter().copied().collect();
     vec![ConstraintViolation {
         constraint_label: "W005/rel-to-not-in-joint-coverage",
         message: format!(
-            "{} REL TO {} not in JOINT participant list",
-            not_in_joint.len(),
-            if not_in_joint.len() == 1 {
-                "entry is"
-            } else {
-                "entries are"
-            }
+            "REL TO {} not in JOINT participant list: {}",
+            if entries.len() == 1 { "entry" } else { "entries" },
+            entries.join(", ")
         ),
         citation: capco(SectionLetter::H, 3, 57),
         span: token_span_attrs(attrs, &TokenRef::Token(TOK_JOINT)),

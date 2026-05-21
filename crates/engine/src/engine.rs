@@ -2331,7 +2331,7 @@ impl Engine {
             // bugfixes (OC-USGOV / RELIDO supersession). Bugfix-class
             // change confined to the bridge's ID-recognition predicate;
             // the engine's rule-execution semantics are unchanged.
-            if (id_part.starts_with('E') || id_part.starts_with('W')) && id_part.len() == 4 {
+            if matches!(id_part.as_bytes(), [b'E' | b'W', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9']) {
                 RuleId::new(id_part)
             } else if v.constraint_label == "capco/noforn-conflicts-rel-to" {
                 RuleId::new("E053")
